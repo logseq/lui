@@ -55,6 +55,21 @@ struct LUIAppleBackendTests {
         #expect(backend.generation == 1)
     }
 
+    @Test("rejects duplicate or skipped generations atomically")
+    func rejectsOutOfOrderGeneration() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: Self.initialBatch)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":3,"ops":[{"op":"create-node","id":4,"kind":"text"}]}
+            """)
+        }
+
+        #expect(backend.view(id: 4) == nil)
+        #expect(backend.generation == 1)
+    }
+
     @Test("native control action returns a semantic event")
     func returnsButtonEvent() throws {
         let backend = LUIAppleBackend()

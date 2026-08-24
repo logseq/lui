@@ -12,6 +12,7 @@
     (next-node-id (atom 0))
     (mounted-nodes (atom (hash-map)))
     (runtime-children (atom (hash-map)))
+    (runtime-parents (atom (hash-map)))
     (pending-ops (atom (empty-ops)))
     (runtime-generation (atom 0))
     (next-handler-id (atom 0))
@@ -59,6 +60,24 @@
   (insert-at (remove-at values from-index) to-index
              (nth values from-index)))
 
+(defn- descendant? [application root target]
+  (if (= root target)
+    true
+    (if-some [children (clojure.core/get
+                        (deref (:runtime-children application)) root)]
+      (loop [index 0]
+        (if (= index (count children))
+          false
+          (if (descendant? application (nth children index) target)
+            true
+            (recur (inc index)))))
+      false)))
+
+(defn- require-node-kind [application node]
+  (if-some [kind (clojure.core/get (deref (:mounted-nodes application)) node)]
+    kind
+    (raise (Invalid_argument "unknown node"))))
+
 (defn create-node! [application kind]
   (let [node (swap! (:next-node-id application) inc)]
     (swap! (:mounted-nodes application) assoc node kind)
@@ -67,8 +86,14 @@
     node))
 
 (defn drop-node! [application node]
+  (require-node-kind application node)
+  (when (contains? (deref (:runtime-parents application)) node)
+    (raise (Invalid_argument "cannot drop an attached node")))
+  (when (not (empty? (children application node)))
+    (raise (Invalid_argument "cannot drop a node with children")))
   (swap! (:mounted-nodes application) dissoc node)
   (swap! (:runtime-children application) dissoc node)
+  (swap! (:runtime-parents application) dissoc node)
   (enqueue! application (proto/drop-node-op node)))
 
 (defn drop-subtree! [application node]
@@ -82,44 +107,54 @@
     (drop-node! application node)))
 
 (defn set-prop! [application node property value]
+  (let [kind (require-node-kind application node)]
+    (when (not (proto/property-supported? kind property))
+      (raise (Invalid_argument "property is unsupported by node kind"))))
   (enqueue! application (proto/set-prop-op node property value)))
 
 (defn insert-child! [application parent child index]
-  (if-some [children (clojure.core/get
-                      (deref (:runtime-children application)) parent)]
-    (do
-      (when (and (contains? (deref (:mounted-nodes application)) child)
-                 (<= 0 index)
-                 (<= index (count children)))
-        (swap! (:runtime-children application)
-               assoc parent (insert-at children index child)))
-      true)
-    true)
+  (let [parent-kind (require-node-kind application parent)
+        _child-kind (require-node-kind application child)
+        children (children application parent)]
+    (when (not (proto/can-contain-children? parent-kind))
+      (raise (Invalid_argument "parent cannot contain children")))
+    (when (and (proto/single-child-container? parent-kind)
+               (not (empty? children)))
+      (raise (Invalid_argument "parent can contain only one child")))
+    (when (contains? (deref (:runtime-parents application)) child)
+      (raise (Invalid_argument "child is already attached")))
+    (when (or (< index 0) (> index (count children)))
+      (raise (Invalid_argument "child index is out of bounds")))
+    (when (descendant? application child parent)
+      (raise (Invalid_argument "child insertion would create a cycle")))
+    (swap! (:runtime-children application)
+           assoc parent (insert-at children index child))
+    (swap! (:runtime-parents application) assoc child parent))
   (enqueue! application (proto/insert-child-op parent child index)))
 
 (defn remove-child! [application parent child]
-  (if-some [children (clojure.core/get
-                      (deref (:runtime-children application)) parent)]
+  (require-node-kind application parent)
+  (require-node-kind application child)
+  (let [children (children application parent)]
     (if-some [index (find-child-index children child)]
       (do
         (swap! (:runtime-children application)
                assoc parent (remove-at children index))
-        true)
-      true)
-    true)
+        (swap! (:runtime-parents application) dissoc child))
+      (raise (Invalid_argument "child is not attached to parent"))))
   (enqueue! application (proto/remove-child-op parent child)))
 
 (defn move-child! [application parent child index]
-  (if-some [children (clojure.core/get
-                      (deref (:runtime-children application)) parent)]
+  (require-node-kind application parent)
+  (require-node-kind application child)
+  (let [children (children application parent)]
     (if-some [current-index (find-child-index children child)]
       (do
-        (when (and (<= 0 index) (< index (count children)))
-          (swap! (:runtime-children application)
-                 assoc parent (move-at children current-index index)))
-        true)
-      true)
-    true)
+        (when (or (< index 0) (>= index (count children)))
+          (raise (Invalid_argument "child index is out of bounds")))
+        (swap! (:runtime-children application)
+               assoc parent (move-at children current-index index)))
+      (raise (Invalid_argument "child is not attached to parent"))))
   (enqueue! application (proto/move-child-op parent child index)))
 
 (defn bind-prop! [scope application node property source]
@@ -144,6 +179,7 @@
     true))
 
 (defn on-event! [scope application node callback]
+  (require-node-kind application node)
   (let [handler-id (swap! (:next-handler-id application) inc)
         handler
         (record event-handler
@@ -162,7 +198,10 @@
     true))
 
 (defn dispatch! [application event]
-  (let [node (proto/event-node event)]
+  (let [node (proto/event-node event)
+        kind (require-node-kind application node)]
+    (when (not (proto/event-supported? kind event))
+      (raise (Invalid_argument "event is unsupported by node kind")))
     (if-some [handlers (clojure.core/get
                         (deref (:event-handlers application)) node)]
       (do

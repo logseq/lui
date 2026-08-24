@@ -1,16 +1,25 @@
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter/foundation.dart';
 
 typedef _NativePatchCallback = Void Function(Pointer<Utf8> json);
 typedef _NativeStart =
-    Int32 Function(Pointer<NativeFunction<_NativePatchCallback>> callback);
+    Int32 Function(
+      Pointer<NativeFunction<_NativePatchCallback>> callback,
+      Int32 platform,
+    );
 typedef _DartStart =
-    int Function(Pointer<NativeFunction<_NativePatchCallback>> callback);
+    int Function(
+      Pointer<NativeFunction<_NativePatchCallback>> callback,
+      int platform,
+    );
 typedef _NativePress = Int32 Function(Int64 node);
 typedef _DartPress = int Function(int node);
 typedef _NativeTextChanged = Int32 Function(Int64 node, Pointer<Utf8> text);
 typedef _DartTextChanged = int Function(int node, Pointer<Utf8> text);
+typedef _NativeStop = Int32 Function();
+typedef _DartStop = int Function();
 typedef _NativeNode = Int64 Function();
 typedef _DartNode = int Function();
 
@@ -26,6 +35,7 @@ final class LUIOcamlBridge {
           .lookupFunction<_NativeTextChanged, _DartTextChanged>(
             'lui_ocaml_text_changed',
           ),
+      _stop = library.lookupFunction<_NativeStop, _DartStop>('lui_ocaml_stop'),
       _rootNode = library.lookupFunction<_NativeNode, _DartNode>(
         'lui_ocaml_root_node',
       );
@@ -40,6 +50,7 @@ final class LUIOcamlBridge {
   final _DartStart _start;
   final _DartPress _press;
   final _DartTextChanged _textChanged;
+  final _DartStop _stop;
   final _DartNode _rootNode;
   NativeCallable<_NativePatchCallback>? _patchCallback;
 
@@ -51,12 +62,22 @@ final class LUIOcamlBridge {
       (Pointer<Utf8> json) => onPatch(json.toDartString()),
     );
     _patchCallback = callback;
-    if (_start(callback.nativeFunction) != 1) {
+    if (_start(callback.nativeFunction, _platformCode(defaultTargetPlatform)) !=
+        1) {
       callback.close();
       _patchCallback = null;
       throw StateError('OCaml runtime initialization failed');
     }
   }
+
+  static int _platformCode(TargetPlatform platform) => switch (platform) {
+    TargetPlatform.macOS => 1,
+    TargetPlatform.iOS => 2,
+    TargetPlatform.android => 3,
+    TargetPlatform.linux => 4,
+    TargetPlatform.windows => 5,
+    TargetPlatform.fuchsia => 0,
+  };
 
   void press(int node) {
     if (_press(node) != 1) throw StateError('OCaml press dispatch failed');
@@ -81,7 +102,12 @@ final class LUIOcamlBridge {
   }
 
   void close() {
-    _patchCallback?.close();
+    final callback = _patchCallback;
+    if (callback == null) return;
+    if (_stop() != 1) {
+      throw StateError('OCaml runtime disposal failed');
+    }
+    callback.close();
     _patchCallback = null;
   }
 }

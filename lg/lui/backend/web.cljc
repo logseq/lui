@@ -156,6 +156,7 @@
 
 (defn backend [renderer]
   (record proto/backend
+    (backend-profile (proto/profile proto/WebOS proto/WebHost))
     (apply-batch
      (fn [batch]
        (let [previous-nodes

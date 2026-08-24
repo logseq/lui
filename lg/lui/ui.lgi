@@ -3,10 +3,14 @@
 (type-record ui-context
   (ui-application :application)
   (ui-scheduler :scheduler)
-  (ui-scope :scope))
+  (ui-scope :scope)
+  (ui-profile :platform-profile))
 
 (signature lui.ui/context :fn<application;scope;ui-context>)
 (signature lui.ui/child-context :fn<ui-context;string;ui-context>)
+(signature lui.ui/profile :fn<ui-context;platform-profile>)
+(signature lui.ui/platform :fn<ui-context;operating-system>)
+(signature lui.ui/host :fn<ui-context;host-kind>)
 (signature lui.ui/row! :fn<ui-context;int>)
 (signature lui.ui/column! :fn<ui-context;int>)
 (signature lui.ui/scroll! :fn<ui-context;int>)

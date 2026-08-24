@@ -1,9 +1,22 @@
 (ns lui.protocol)
 
+(defn profile [operating-system host]
+  (record platform-profile
+    (profile-os operating-system)
+    (profile-host host)))
+
+(defn generic-profile []
+  (profile GenericOS GenericHost))
+
 (defn event-node [event]
   (match event
     (Press node) node
     (TextChanged node _text) node))
+
+(defn event-supported? [kind event]
+  (match event
+    (Press _node) (= kind Button)
+    (TextChanged _node _text) (= kind TextInput)))
 
 (defn property-supported? [kind property]
   (match property
@@ -25,6 +38,16 @@
       Row true
       Column true
       _ false)))
+
+(defn can-contain-children? [kind]
+  (match kind
+    Row true
+    Column true
+    Scroll true
+    _ false))
+
+(defn single-child-container? [kind]
+  (= kind Scroll))
 
 (defn create-node-op [node kind]
   (CreateNode node kind))

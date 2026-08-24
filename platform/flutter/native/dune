@@ -14,6 +14,7 @@
    ../../../lg/lui/backend/retained
    ../../../lg/lui/backend/flutter
    ../../../examples/todos/lg/todos
+   .
    -o %{target})))
 
 (rule

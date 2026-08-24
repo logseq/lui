@@ -87,6 +87,18 @@
       ~@body
       true)))
 
+(defmacro platform []
+  `(lui.ui/platform ~'ui-context))
+
+(defmacro host []
+  `(lui.ui/host ~'ui-context))
+
+(defmacro platform? [operating-system]
+  `(= (lui.ui/platform ~'ui-context) ~operating-system))
+
+(defmacro host? [host-kind]
+  `(= (lui.ui/host ~'ui-context) ~host-kind))
+
 (defmacro reactive [transform & sources]
   `(signal.core/own-signal!
     (:ui-scope ~'ui-context)

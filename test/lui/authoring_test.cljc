@@ -5,8 +5,9 @@
             [lui.runtime :as runtime]
             [lui.ui :as ui]
             [lui.elements :refer [defelement]]
-            [lui.macros :refer [defui state effect]]
-            [lui.backend.apple :as apple]))
+            [lui.macros :refer [defui state effect platform host]]
+            [lui.backend.apple :as apple]
+            [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
   `(is (= ~expected ~actual) ~message))
@@ -28,6 +29,31 @@
 
 (defui custom-element-view []
   [:lui.authoring-test/badge "Extensible"])
+
+(defui current-platform-profile []
+  (tuple (platform) (host)))
+
+(deftest platform-profile-flows-through-ui-context
+  (let [apple-renderer (apple/create)
+        apple-application
+        (runtime/create (sig/scheduler) (apple/backend apple-renderer))
+        apple-context
+        (ui/context apple-application (sig/scope "apple-profile"))
+        flutter-renderer (flutter/create)
+        flutter-application
+        (runtime/create
+         (sig/scheduler)
+         (flutter/backend-for flutter-renderer proto/AndroidOS))
+        flutter-context
+        (ui/context flutter-application (sig/scope "flutter-profile"))]
+    (assert-equal
+     (tuple proto/MacOS proto/AppKitHost)
+     (current-platform-profile apple-context)
+     "AppKit publishes its OS and host profile")
+    (assert-equal
+     (tuple proto/AndroidOS proto/FlutterHost)
+     (current-platform-profile flutter-context)
+     "Flutter can publish an Android-specific profile")))
 
 (deftest defui-state-is-stable-and-scoped
   (let [scheduler (sig/scheduler)

@@ -1,18 +1,28 @@
 (ns lui.app)
 
+(type-variant app-lifecycle
+  (Running)
+  (Disposing)
+  (Disposed))
+
 (type-record reducer-app [model action]
   (app-scheduler :scheduler)
   (app-runtime :application)
   (app-scope :scope)
   (app-read-model :fn<model>)
   (app-send-action :fn<action;bool>)
-  (app-root-node :int))
+  (app-root-node :int)
+  (app-lifecycle-state :ref<app-lifecycle>))
 
 (signature lui.app/reduce! [model action]
   :fn<state<model>;fn<model;action;model>;action;bool>)
 (signature lui.app/start! [model action]
   :fn<reducer-app<model;action>;bool>)
 (signature lui.app/flush! [model action]
+  :fn<reducer-app<model;action>;bool>)
+(signature lui.app/dispose! [model action]
+  :fn<reducer-app<model;action>;bool>)
+(signature lui.app/disposed? [model action]
   :fn<reducer-app<model;action>;bool>)
 (signature lui.app/root-node [model action]
   :fn<reducer-app<model;action>;int>)

@@ -7,12 +7,22 @@
   (record ui-context
     (ui-application application)
     (ui-scheduler (:runtime-scheduler application))
-    (ui-scope scope)))
+    (ui-scope scope)
+    (ui-profile (:backend-profile (:runtime-backend application)))))
 
 (defn child-context [parent name]
   (context
    (:ui-application parent)
    (sig/scope name (:ui-scope parent))))
+
+(defn profile [context]
+  (:ui-profile context))
+
+(defn platform [context]
+  (:profile-os (:ui-profile context)))
+
+(defn host [context]
+  (:profile-host (:ui-profile context)))
 
 (defn row! [context]
   (runtime/create-node! (:ui-application context) proto/Row))

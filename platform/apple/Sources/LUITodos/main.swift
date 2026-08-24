@@ -1,10 +1,12 @@
+#if canImport(AppKit)
 import AppKit
 import Darwin
 import Foundation
 import LUIAppleBackend
 
 private typealias PatchCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
-private typealias StartFunction = @convention(c) (PatchCallback?) -> Int32
+private typealias StartFunction = @convention(c) (PatchCallback?, Int32) -> Int32
+private typealias StopFunction = @convention(c) () -> Int32
 private typealias PressFunction = @convention(c) (Int64) -> Int32
 private typealias TextChangedFunction =
     @convention(c) (Int64, UnsafePointer<CChar>?) -> Int32
@@ -23,6 +25,7 @@ nonisolated(unsafe) private let receivePatch: PatchCallback = { source in
 private final class NativeTodosRuntime {
     private let handle: UnsafeMutableRawPointer
     private let startFunction: StartFunction
+    private let stopFunction: StopFunction
     private let pressFunction: PressFunction
     private let textChangedFunction: TextChangedFunction
 
@@ -32,14 +35,19 @@ private final class NativeTodosRuntime {
         }
         self.handle = handle
         startFunction = try Self.load("lui_ocaml_start", from: handle)
+        stopFunction = try Self.load("lui_ocaml_stop", from: handle)
         pressFunction = try Self.load("lui_ocaml_press", from: handle)
         textChangedFunction = try Self.load("lui_ocaml_text_changed", from: handle)
     }
 
     func start() throws {
-        guard startFunction(receivePatch) == 1 else {
+        guard startFunction(receivePatch, 1) == 1 else {
             throw RuntimeError("LG Todos initialization failed")
         }
+    }
+
+    func stop() {
+        _ = stopFunction()
     }
 
     func press(node: Int) {
@@ -110,6 +118,12 @@ private final class TodosHost: NSObject, NSApplicationDelegate, NSWindowDelegate
         true
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        runtime?.stop()
+        runtime = nil
+        activeHost = nil
+    }
+
     func apply(json: String) {
         do {
             try backend.apply(json: json)
@@ -173,3 +187,4 @@ private let delegate = TodosHost()
 application.setActivationPolicy(.regular)
 application.delegate = delegate
 application.run()
+#endif

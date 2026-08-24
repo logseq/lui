@@ -3,6 +3,7 @@
             [lui.protocol :as proto :refer [StringValue]]
             [lui.backend.apple :as apple]
             [lui.app :as driver]
+            [lui.runtime :as runtime]
             [todos.app :as todos]))
 
 (defmacro assert-equal [expected actual message]
@@ -80,3 +81,25 @@
       (match (apple/node renderer first-row)
         None (is true "the removed keyed subtree is dropped")
         _ (is false "the removed row must not remain"))))))
+
+(deftest disposing-an-app-releases-its-retained-tree-once
+  (let [renderer (apple/create)
+        application (todos/create (apple/backend renderer))]
+    (driver/start! application)
+    (driver/flush! application)
+    (let [before-dispose (count (apple/batches renderer))]
+      (is (> (apple/node-count renderer) 0) "showcase mounts native nodes")
+      (is (driver/dispose! application) "first dispose succeeds")
+      (assert-equal 0 (apple/node-count renderer)
+                    "dispose drops the complete retained host tree")
+      (assert-equal 0
+                    (runtime/mounted-count (driver/runtime application))
+                    "dispose clears runtime node ownership")
+      (assert-equal (inc before-dispose) (count (apple/batches renderer))
+                    "dispose emits one final structural batch")
+      (is (driver/dispose! application) "dispose is idempotent")
+      (assert-equal (inc before-dispose) (count (apple/batches renderer))
+                    "repeated dispose emits no extra batch")
+      (is (driver/disposed? application) "app reports its terminal lifecycle")
+      (is (not (driver/dispatch-event! application (proto/Press 1)))
+          "disposed apps reject host events"))))

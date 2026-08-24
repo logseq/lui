@@ -39,6 +39,21 @@
      @sent
      "Apple host receives one encoded PatchBatch")))
 
+(deftest retained-backend-rejects-out-of-order-generations
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        skipped
+        (record proto/patch-batch
+          (generation 2)
+          (ops [(proto/create-node-op 1 proto/Text)]))]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"expected patch generation 1"
+         ((:apply-batch backend) skipped))
+        "retained backends reject skipped generations")
+    (assert-equal 0 (apple/node-count renderer)
+                  "rejected generations do not mutate retained nodes")))
+
 (deftest reactive-property-produces-local-patch
   (let [scheduler (sig/scheduler)
         renderer (apple/create)
@@ -154,6 +169,29 @@
     (assert-equal 1 (sig/get count-state)
                   "disposed component handler is detached")))
 
+(deftest runtime-validates-native-events-before-scheduling
+  (let [application
+        (runtime/create (sig/scheduler) (apple/backend (apple/create)))
+        component-scope (sig/scope "events")
+        text (runtime/create-node! application proto/Text)
+        calls (atom 0)]
+    (sig/mount! component-scope)
+    (runtime/on-event!
+     component-scope application text
+     (fn [_event] (swap! calls inc) true))
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"unsupported"
+         (runtime/dispatch! application (proto/Press text)))
+        "a native host cannot emit button events for text nodes")
+    (runtime/flush! application)
+    (assert-equal 0 @calls "invalid native events never enter the effect queue")
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"unknown node"
+         (runtime/dispatch! application (proto/Press 999)))
+        "events cannot target unknown retained identities")))
+
 (deftest semantic-nodes-map-to-platform-retained-types
   (let [scheduler (sig/scheduler)
         apple-renderer (apple/create)
@@ -190,55 +228,123 @@
       _ (is false "Flutter text input mapping"))))
 
 (deftest backend-rejects-invalid-structural-patches
-  (let [scheduler (sig/scheduler)
-        renderer (apple/create)
-        application (runtime/create scheduler (apple/backend renderer))
-        root (runtime/create-node! application proto/Row)]
-    (runtime/flush! application)
-    (runtime/insert-child! application root 999 0)
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        invalid-batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Row)
+                (proto/insert-child-op 1 999 0)]))]
     (is (thrown-with-msg?
          Invalid_argument
          #"unknown child"
-         (runtime/flush! application))
-        "backend validates patch identities")))
+         ((:apply-batch backend) invalid-batch))
+        "backend validates patch identities")
+    (assert-equal 0 (apple/node-count renderer)
+                  "invalid batches are rejected atomically")))
 
 (deftest backend-protects-retained-tree-invariants
-  (let [scheduler (sig/scheduler)
-        renderer (apple/create)
-        application (runtime/create scheduler (apple/backend renderer))
-        root (runtime/create-node! application proto/Row)
-        child (runtime/create-node! application proto/Text)]
-    (runtime/insert-child! application root child 0)
-    (runtime/flush! application)
-    (runtime/drop-node! application child)
+  (let [backend (apple/backend (apple/create))
+        invalid-batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Row)
+                (proto/create-node-op 2 proto/Text)
+                (proto/insert-child-op 1 2 0)
+                (proto/drop-node-op 2)]))]
     (is (thrown-with-msg?
          Invalid_argument
          #"attached"
-         (runtime/flush! application))
+         ((:apply-batch backend) invalid-batch))
         "backend rejects dropping an attached node"))
-  (let [scheduler (sig/scheduler)
-        renderer (apple/create)
-        application (runtime/create scheduler (apple/backend renderer))
-        root (runtime/create-node! application proto/Row)
-        child (runtime/create-node! application proto/Column)]
-    (runtime/insert-child! application root child 0)
-    (runtime/insert-child! application child root 0)
+  (let [backend (apple/backend (apple/create))
+        invalid-batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Row)
+                (proto/create-node-op 2 proto/Column)
+                (proto/insert-child-op 1 2 0)
+                (proto/insert-child-op 2 1 0)]))]
     (is (thrown-with-msg?
          Invalid_argument
          #"cycle"
-         (runtime/flush! application))
+         ((:apply-batch backend) invalid-batch))
         "backend rejects structural cycles"))
-  (let [scheduler (sig/scheduler)
-        renderer (apple/create)
-        application (runtime/create scheduler (apple/backend renderer))
-        row (runtime/create-node! application proto/Row)]
-    (runtime/set-prop!
-     application row proto/TextValue (proto/StringValue "invalid"))
+  (let [backend (apple/backend (apple/create))
+        invalid-batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Row)
+                (proto/set-prop-op
+                 1 proto/TextValue (proto/StringValue "invalid"))]))]
     (is (thrown-with-msg?
          Invalid_argument
          #"property"
-         (runtime/flush! application))
-        "backend rejects properties unsupported by a semantic node")))
+         ((:apply-batch backend) invalid-batch))
+        "backend rejects properties unsupported by a semantic node"))
+  (let [backend (apple/backend (apple/create))
+        invalid-batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Text)
+                (proto/create-node-op 2 proto/Text)
+                (proto/insert-child-op 1 2 0)]))]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"cannot contain"
+         ((:apply-batch backend) invalid-batch))
+        "backend rejects children on leaf nodes"))
+  (let [backend (apple/backend (apple/create))
+        invalid-batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Scroll)
+                (proto/create-node-op 2 proto/Text)
+                (proto/create-node-op 3 proto/Text)
+                (proto/insert-child-op 1 2 0)
+                (proto/insert-child-op 1 3 1)]))]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"one child"
+         ((:apply-batch backend) invalid-batch))
+        "backend enforces single-child containers")))
+
+(deftest runtime-rejects-invalid-structure-before-enqueue
+  (let [application
+        (runtime/create (sig/scheduler) (apple/backend (apple/create)))
+        label (runtime/create-node! application proto/Text)
+        child (runtime/create-node! application proto/Text)]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"cannot contain"
+         (runtime/insert-child! application label child 0))
+        "leaf nodes reject children before a batch reaches the backend"))
+  (let [application
+        (runtime/create (sig/scheduler) (apple/backend (apple/create)))
+        scroll (runtime/create-node! application proto/Scroll)
+        first-child (runtime/create-node! application proto/Text)
+        second-child (runtime/create-node! application proto/Text)]
+    (runtime/insert-child! application scroll first-child 0)
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"one child"
+         (runtime/insert-child! application scroll second-child 1))
+        "scroll nodes enforce their single-child contract"))
+  (let [application
+        (runtime/create (sig/scheduler) (apple/backend (apple/create)))
+        root (runtime/create-node! application proto/Column)
+        child (runtime/create-node! application proto/Row)]
+    (runtime/insert-child! application root child 0)
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"already attached"
+         (runtime/insert-child! application root child 1))
+        "a retained node can only have one parent")
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"cycle"
+         (runtime/insert-child! application child root 0))
+        "runtime prevents retained-tree cycles")))
 
 (deftest platform-bridge-receives-one-call-per-batch
   (let [scheduler (sig/scheduler)

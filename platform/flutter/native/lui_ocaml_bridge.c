@@ -28,7 +28,9 @@ static int emit_patch(value result) {
   return 1;
 }
 
-LUI_EXPORT int32_t lui_ocaml_start(lui_patch_callback callback) {
+LUI_EXPORT int32_t lui_ocaml_start(
+    lui_patch_callback callback,
+    int32_t platform_code) {
   patch_callback = callback;
   if (!runtime_started) {
     char *arguments[] = {"lui_flutter", NULL};
@@ -40,7 +42,7 @@ LUI_EXPORT int32_t lui_ocaml_start(lui_patch_callback callback) {
   if (initialize == NULL) {
     return 0;
   }
-  return emit_patch(caml_callback_exn(*initialize, Val_unit));
+  return emit_patch(caml_callback_exn(*initialize, Val_long(platform_code)));
 }
 
 LUI_EXPORT int32_t lui_ocaml_press(int64_t node) {
@@ -62,6 +64,14 @@ LUI_EXPORT int32_t lui_ocaml_text_changed(int64_t node, const char *text) {
   result = caml_callback2_exn(*dispatch, Val_long(node), text_value);
   int32_t accepted = emit_patch(result);
   CAMLreturnT(int32_t, accepted);
+}
+
+LUI_EXPORT int32_t lui_ocaml_stop(void) {
+  const value *dispose = caml_named_value("lui_flutter_dispose");
+  if (dispose == NULL) {
+    return 0;
+  }
+  return emit_patch(caml_callback_exn(*dispose, Val_unit));
 }
 
 static int64_t read_node(const char *callback_name) {

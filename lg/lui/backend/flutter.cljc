@@ -24,13 +24,17 @@
     Scroll FlutterViewport
     Spacer FlutterSpacer))
 
-(defn backend [renderer]
+(defn backend-for [renderer operating-system]
   (record proto/backend
+    (backend-profile (proto/profile operating-system proto/FlutterHost))
     (apply-batch
      (fn [batch]
        (retained/apply-batch-with!
         (:flutter-store renderer) platform-node
         (:flutter-send-batch renderer) batch)))))
+
+(defn backend [renderer]
+  (backend-for renderer proto/GenericOS))
 
 (defn- some-node [value]
   (Some value))

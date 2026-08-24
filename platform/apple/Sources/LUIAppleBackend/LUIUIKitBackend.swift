@@ -1,29 +1,27 @@
+#if canImport(UIKit)
 import Foundation
-
-#if canImport(AppKit)
-import AppKit
+import UIKit
 
 @MainActor
-public final class LUIAppleBackend {
+public final class LUIUIKitBackend {
     public private(set) var generation = 0
     public var onEvent: ((LUIEvent) -> Void)?
 
     private var tree = LUIRetainedTree()
-    private var views: [Int: NSView] = [:]
-    private var controls: [Int: ControlTarget] = [:]
+    private var views: [Int: UIView] = [:]
     private let decoder = JSONDecoder()
 
     public init() {}
 
-    public func view(id: Int) -> NSView? {
+    public func view(id: Int) -> UIView? {
         views[id]
     }
 
-    public func id(of view: NSView) -> Int? {
+    public func id(of view: UIView) -> Int? {
         views.first(where: { $0.value === view })?.key
     }
 
-    public var rootViews: [NSView] {
+    public var rootViews: [UIView] {
         tree.rootIDs.compactMap { views[$0] }
     }
 
@@ -62,7 +60,6 @@ public final class LUIAppleBackend {
         case let .dropNode(id):
             views[id]?.removeFromSuperview()
             views[id] = nil
-            controls[id] = nil
         case let .setProp(id, property, value):
             guard let view = views[id] else { throw invalid("missing native view") }
             apply(property, value: value, to: view)
@@ -76,62 +73,79 @@ public final class LUIAppleBackend {
         }
     }
 
-    private func makeView(kind: LUINodeKind, id: Int) -> NSView {
+    private func makeView(kind: LUINodeKind, id: Int) -> UIView {
+        let view: UIView
         switch kind {
         case .row, .column:
-            let view = NSStackView()
-            view.orientation = kind == .row ? .horizontal : .vertical
-            view.translatesAutoresizingMaskIntoConstraints = false
-            return view
+            let stack = UIStackView()
+            stack.axis = kind == .row ? .horizontal : .vertical
+            stack.alignment = .fill
+            stack.distribution = .fill
+            view = stack
         case .text:
-            let view = NSTextField(labelWithString: "")
-            view.translatesAutoresizingMaskIntoConstraints = false
-            return view
+            let label = UILabel()
+            label.font = .preferredFont(forTextStyle: .body)
+            label.adjustsFontForContentSizeCategory = true
+            label.numberOfLines = 0
+            view = label
         case .button:
-            let target = ControlTarget { [weak self] in self?.onEvent?(.press(node: id)) }
-            let view = NSButton(title: "", target: target, action: #selector(ControlTarget.performAction))
-            controls[id] = target
-            view.translatesAutoresizingMaskIntoConstraints = false
-            return view
+            let button = UIButton(type: .system)
+            button.addAction(
+                UIAction { [weak self] _ in self?.onEvent?(.press(node: id)) },
+                for: .touchUpInside
+            )
+            view = button
         case .textInput:
-            let target = ControlTarget { [weak self] in
-                guard let field = self?.views[id] as? NSTextField else { return }
-                self?.onEvent?(.textChanged(node: id, text: field.stringValue))
-            }
-            let view = NSTextField(string: "")
-            view.delegate = target
-            controls[id] = target
-            view.translatesAutoresizingMaskIntoConstraints = false
-            return view
+            let field = UITextField()
+            field.borderStyle = .roundedRect
+            field.font = .preferredFont(forTextStyle: .body)
+            field.adjustsFontForContentSizeCategory = true
+            field.accessibilityLabel = "New todo"
+            field.addAction(
+                UIAction { [weak self, weak field] _ in
+                    guard let text = field?.text else { return }
+                    self?.onEvent?(.textChanged(node: id, text: text))
+                },
+                for: .editingChanged
+            )
+            view = field
         case .scroll:
-            let view = NSScrollView()
-            view.hasVerticalScroller = true
-            view.translatesAutoresizingMaskIntoConstraints = false
-            return view
+            let scroll = UIScrollView()
+            scroll.alwaysBounceVertical = true
+            view = scroll
         case .spacer:
-            let view = NSView()
-            view.translatesAutoresizingMaskIntoConstraints = false
-            return view
+            let spacer = UIView()
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
+            view = spacer
         }
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
     }
 
-    private func apply(_ property: LUIProperty, value: LUIWireValue, to view: NSView) {
+    private func apply(_ property: LUIProperty, value: LUIWireValue, to view: UIView) {
         switch (property, value) {
         case let (.text, .string(text)):
-            if let label = view as? NSTextField { label.stringValue = text }
-            if let button = view as? NSButton { button.title = text }
+            if let label = view as? UILabel, label.text != text { label.text = text }
+            if let button = view as? UIButton { button.configuration = .plain(); button.setTitle(text, for: .normal) }
+            if let field = view as? UITextField, field.text != text { field.text = text }
         case let (.enabled, .bool(enabled)):
-            (view as? NSControl)?.isEnabled = enabled
+            (view as? UIControl)?.isEnabled = enabled
         case let (.gap, .int(gap)):
-            (view as? NSStackView)?.spacing = CGFloat(gap)
+            (view as? UIStackView)?.spacing = CGFloat(gap)
         case let (.padding, .int(padding)):
-            if let stack = view as? NSStackView {
+            if let stack = view as? UIStackView {
                 let inset = CGFloat(padding)
-                stack.edgeInsets = NSEdgeInsets(top: inset, left: inset, bottom: inset, right: inset)
+                stack.isLayoutMarginsRelativeArrangement = true
+                stack.directionalLayoutMargins = NSDirectionalEdgeInsets(
+                    top: inset,
+                    leading: inset,
+                    bottom: inset,
+                    trailing: inset
+                )
             }
         case let (.background, .string(color)):
-            view.wantsLayer = true
-            view.layer?.backgroundColor = Self.color(named: color).cgColor
+            view.backgroundColor = Self.color(named: color)
         default:
             break
         }
@@ -141,12 +155,19 @@ public final class LUIAppleBackend {
         guard let parent = views[parentID], let child = views[childID] else {
             throw invalid("missing native parent or child")
         }
-        if let stack = parent as? NSStackView {
+        if let stack = parent as? UIStackView {
             stack.insertArrangedSubview(child, at: index)
-        } else if let scroll = parent as? NSScrollView {
-            scroll.documentView = child
+        } else if let scroll = parent as? UIScrollView {
+            scroll.addSubview(child)
+            NSLayoutConstraint.activate([
+                child.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+                child.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+                child.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+                child.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+                child.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
+            ])
         } else {
-            parent.addSubview(child, positioned: .above, relativeTo: index == 0 ? nil : parent.subviews[index - 1])
+            parent.insertSubview(child, at: index)
         }
     }
 
@@ -154,10 +175,8 @@ public final class LUIAppleBackend {
         guard let parent = views[parentID], let child = views[childID] else {
             throw invalid("missing native parent or child")
         }
-        if let stack = parent as? NSStackView {
+        if let stack = parent as? UIStackView {
             stack.removeArrangedSubview(child)
-        } else if let scroll = parent as? NSScrollView, scroll.documentView === child {
-            scroll.documentView = nil
         }
         child.removeFromSuperview()
     }
@@ -166,7 +185,7 @@ public final class LUIAppleBackend {
         .invalidBatch(message)
     }
 
-    private static func color(named name: String) -> NSColor {
+    private static func color(named name: String) -> UIColor {
         switch name.lowercased() {
         case "black": .black
         case "white": .white
@@ -175,23 +194,6 @@ public final class LUIAppleBackend {
         case "green": .systemGreen
         default: .clear
         }
-    }
-}
-
-@MainActor
-private final class ControlTarget: NSObject, NSTextFieldDelegate {
-    private let action: () -> Void
-
-    init(action: @escaping () -> Void) {
-        self.action = action
-    }
-
-    @objc func performAction() {
-        action()
-    }
-
-    func controlTextDidChange(_ notification: Notification) {
-        action()
     }
 }
 #endif

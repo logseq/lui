@@ -1,5 +1,7 @@
-import AppKit
 import Foundation
+
+#if canImport(AppKit)
+import AppKit
 
 public typealias LUIAppleEventCallback =
     @convention(c) (Int32, Int32, UnsafePointer<CChar>?) -> Void
@@ -134,3 +136,4 @@ public func luiApplePerformAction(_ node: Int32) -> Int32 {
         return 1
     }
 }
+#endif

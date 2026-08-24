@@ -9,7 +9,8 @@
 
 (type-record retained-store [platform]
   (retained-nodes :ref<map<int;retained-node<platform>>>)
-  (retained-batches :ref<vector<patch-batch>>))
+  (retained-batches :ref<vector<patch-batch>>)
+  (retained-generation :ref<int>))
 
 (signature lui.backend.retained/create-store [platform]
   :fn<retained-store<platform>>)
@@ -49,3 +50,5 @@
   :fn<retained-store<platform>;int>)
 (signature lui.backend.retained/batches [platform]
   :fn<retained-store<platform>;vector<patch-batch>>)
+(signature lui.backend.retained/generation [platform]
+  :fn<retained-store<platform>;int>)

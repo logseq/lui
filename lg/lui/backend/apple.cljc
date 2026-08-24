@@ -24,13 +24,17 @@
     Scroll AppleScrollView
     Spacer AppleSpacer))
 
-(defn backend [renderer]
+(defn backend-for [renderer operating-system host]
   (record proto/backend
+    (backend-profile (proto/profile operating-system host))
     (apply-batch
      (fn [batch]
        (retained/apply-batch-with!
         (:apple-store renderer) platform-node
         (:apple-send-batch renderer) batch)))))
+
+(defn backend [renderer]
+  (backend-for renderer proto/MacOS proto/AppKitHost))
 
 (defn- some-node [value]
   (Some value))

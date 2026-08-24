@@ -1,7 +1,22 @@
 (ns todos.view
-  (:require [lui.protocol :refer [TextChanged]]
-            [lui.macros :refer [defui reactive event]]
+  (:require [lui.protocol :refer [TextChanged MacOS IOS AndroidOS WebOS]]
+            [lui.macros :refer [defui reactive event platform]]
             [todos.model :as model]))
+
+(defn content-padding [operating-system]
+  (match operating-system
+    MacOS 24
+    IOS 20
+    AndroidOS 16
+    WebOS 16
+    _ 16))
+
+(defn content-gap [operating-system]
+  (match operating-system
+    MacOS 14
+    IOS 12
+    AndroidOS 12
+    _ 12))
 
 (defn item-label [item]
   (str (if (:todo-done item) "[x] " "[ ] ")
@@ -20,7 +35,8 @@
     "Delete"]])
 
 (defui todos-view [model-source send]
-  [:column {:gap 12 :padding 16}
+  [:column {:gap (content-gap (platform))
+            :padding (content-padding (platform))}
    [:text "Todos"]
    [:row {:gap 8}
     [:text-input

@@ -18,6 +18,8 @@
 (signature lui.backend.flutter/create-wire
   :fn<fn<string;bool>;flutter-renderer>)
 (signature lui.backend.flutter/platform-node :fn<node-kind;flutter-node>)
+(signature lui.backend.flutter/backend-for
+  :fn<flutter-renderer;operating-system;backend>)
 (signature lui.backend.flutter/backend :fn<flutter-renderer;backend>)
 (signature lui.backend.flutter/some-node
   :fn<flutter-node;option<flutter-node>>)

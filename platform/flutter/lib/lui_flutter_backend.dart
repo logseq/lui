@@ -81,6 +81,13 @@ final class LUIFlutterBackend extends ChangeNotifier {
     }
     final batch = _objectMap(decoded, 'patch batch');
     final nextGeneration = _integer(batch['generation'], 'generation');
+    final expectedGeneration = generation + 1;
+    if (nextGeneration != expectedGeneration) {
+      throw LUIBackendException(
+        'expected patch generation $expectedGeneration, '
+        'received $nextGeneration',
+      );
+    }
     final operations = _objectList(batch['ops'], 'ops')
         .map((operation) => _objectMap(operation, 'operation'))
         .toList(growable: false);

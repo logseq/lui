@@ -8,7 +8,8 @@
 (defn create-store []
   (record retained-store
           (retained-nodes (atom (hash-map)))
-          (retained-batches (atom (empty-batches)))))
+          (retained-batches (atom (empty-batches)))
+          (retained-generation (atom 0))))
 
 (defn- find-child-index [children child]
   (loop [index 0]
@@ -127,6 +128,11 @@
     (if-some [parent-node (clojure.core/get nodes parent)]
       (if-some [child-node (clojure.core/get nodes child)]
         (cond
+          (not (proto/can-contain-children? (:semantic-kind parent-node)))
+          (raise (Invalid_argument "parent cannot contain children"))
+          (and (proto/single-child-container? (:semantic-kind parent-node))
+               (not (empty? (:retained-children parent-node))))
+          (raise (Invalid_argument "parent can contain only one child"))
           (descendant? nodes child parent)
           (raise (Invalid_argument "child insertion would create a cycle"))
           (match (:retained-parent child-node)
@@ -176,15 +182,22 @@
        (apply-op current-nodes platform-for (nth (:ops batch) index))))))
 
 (defn apply-batch-with! [store platform-for send-batch batch]
-  (let [next-nodes
+  (let [expected-generation (inc (deref (:retained-generation store)))]
+    (when (not (= expected-generation (:generation batch)))
+      (raise
+       (Invalid_argument
+        (str "expected patch generation " expected-generation
+             ", received " (:generation batch)))))
+    (let [next-nodes
         (apply-operations
          (deref (:retained-nodes store)) platform-for batch)]
-    (if (send-batch batch)
-      (do
-        (reset! (:retained-nodes store) next-nodes)
-        (swap! (:retained-batches store) conj batch)
-        true)
-      (raise (Invalid_argument "platform rejected patch batch")))))
+      (if (send-batch batch)
+        (do
+          (reset! (:retained-nodes store) next-nodes)
+          (swap! (:retained-batches store) conj batch)
+          (reset! (:retained-generation store) (:generation batch))
+          true)
+        (raise (Invalid_argument "platform rejected patch batch"))))))
 
 (defn apply-batch! [store platform-for batch]
   (apply-batch-with! store platform-for (fn [_batch] true) batch))
@@ -210,3 +223,6 @@
 
 (defn batches [store]
   (deref (:retained-batches store)))
+
+(defn generation [store]
+  (deref (:retained-generation store)))

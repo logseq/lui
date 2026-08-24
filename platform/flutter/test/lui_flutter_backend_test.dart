@@ -57,6 +57,26 @@ void main() {
     expect(backend.containsNode(4), isFalse);
     expect(backend.generation, 1);
   });
+
+  test('rejects duplicate or skipped generations atomically', () {
+    final backend = LUIFlutterBackend()..applyJson(_initialBatch);
+
+    expect(
+      () => backend.applyJson(
+        '{"generation":3,"ops":['
+        '{"op":"create-node","id":4,"kind":"text"}]}',
+      ),
+      throwsA(
+        isA<LUIBackendException>().having(
+          (error) => error.message,
+          'message',
+          contains('expected patch generation 2'),
+        ),
+      ),
+    );
+    expect(backend.containsNode(4), isFalse);
+    expect(backend.generation, 1);
+  });
 }
 
 const _initialBatch = '''
