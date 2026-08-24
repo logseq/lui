@@ -45,9 +45,9 @@ Build and serve the browser example with:
 make serve-web
 ```
 
-Then open <http://127.0.0.1:8765/platform/web/index.html>. The page loads the
+Then open <http://127.0.0.1:8765/examples/todos/web/index.html>. The page loads the
 Melange output from `_build`; the renderer and Todos entrypoint are LG source
-under `lg/lui/backend/web.cljc` and `platform/web/lg/todos/web_main.cljc`.
+under `lg/lui/backend/web.cljc` and `examples/todos/web/lg/todos/web_main.cljc`.
 
 ## Declarative UI
 

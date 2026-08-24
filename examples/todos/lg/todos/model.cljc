@@ -21,6 +21,18 @@
 (defn remove-item [items id]
   (filterv (fn [current] (not (= id (:todo-id current)))) items))
 
+(defn move-item-up [items id]
+  (loop [index 0]
+    (if (= index (count items))
+      items
+      (if (= id (:todo-id (nth items index)))
+        (if (= index 0)
+          items
+          (let [previous (nth items (dec index))
+                current (nth items index)]
+            (assoc (assoc items (dec index) current) index previous)))
+        (recur (inc index))))))
+
 (defn update [model action]
   (match action
     (ChangeDraft text)
@@ -49,6 +61,12 @@
     (ToggleTodo id)
     (record todo-model
       (model-items (toggle-items (:model-items model) id))
+      (model-draft (:model-draft model))
+      (model-next-id (:model-next-id model)))
+
+    (MoveTodoUp id)
+    (record todo-model
+      (model-items (move-item-up (:model-items model) id))
       (model-draft (:model-draft model))
       (model-next-id (:model-next-id model)))
 

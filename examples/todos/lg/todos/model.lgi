@@ -14,6 +14,7 @@
   (ChangeDraft :string)
   (AddTodo)
   (ToggleTodo :int)
+  (MoveTodoUp :int)
   (DeleteTodo :int))
 
 (signature todos.model/initial :fn<todo-model>)
@@ -21,3 +22,4 @@
 (signature todos.model/toggle-one :fn<todo;int;todo>)
 (signature todos.model/toggle-items :fn<vector<todo>;int;vector<todo>>)
 (signature todos.model/remove-item :fn<vector<todo>;int;vector<todo>>)
+(signature todos.model/move-item-up :fn<vector<todo>;int;vector<todo>>)

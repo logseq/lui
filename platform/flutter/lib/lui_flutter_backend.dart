@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 sealed class LUIEvent {
@@ -59,18 +60,46 @@ final class _NodeState {
   int? parent;
   List<int> children = [];
   Map<String, Object> properties = {};
+
+  bool rendersLike(_NodeState other) =>
+      kind == other.kind &&
+      listEquals(children, other.children) &&
+      mapEquals(properties, other.properties);
 }
 
-final class LUIFlutterBackend extends ChangeNotifier {
+final class _NodeHandle extends ChangeNotifier {
+  _NodeHandle(this.state);
+
+  _NodeState state;
+  int revision = 0;
+
+  void markChanged() {
+    revision += 1;
+    notifyListeners();
+  }
+}
+
+final class LUIFlutterBackend {
   LUIFlutterBackend({this.onEvent});
 
   final void Function(LUIEvent event)? onEvent;
   Map<int, _NodeState> _states = {};
+  final Map<int, _NodeHandle> _handles = {};
   int generation = 0;
 
   static Key nodeKey(int id) => ValueKey('lui-node-$id');
 
   bool containsNode(int id) => _states.containsKey(id);
+
+  int debugRevision(int id) => _requireHandle(id).revision;
+
+  void dispose() {
+    for (final handle in _handles.values) {
+      handle.dispose();
+    }
+    _handles.clear();
+    _states = {};
+  }
 
   void applyJson(String source) {
     final Object? decoded;
@@ -99,15 +128,34 @@ final class LUIFlutterBackend extends ChangeNotifier {
     for (final operation in operations) {
       _applyState(next, operation);
     }
+    final changed = <_NodeHandle>[];
+    final removed = _handles.keys
+        .where((id) => !next.containsKey(id))
+        .toList(growable: false);
+    for (final entry in next.entries) {
+      final handle = _handles[entry.key];
+      if (handle == null) {
+        _handles[entry.key] = _NodeHandle(entry.value);
+      } else {
+        if (!handle.state.rendersLike(entry.value)) changed.add(handle);
+        handle.state = entry.value;
+      }
+    }
+    for (final id in removed) {
+      _handles.remove(id);
+    }
     _states = next;
     generation = nextGeneration;
-    notifyListeners();
+    for (final handle in changed) {
+      handle.markChanged();
+    }
   }
 
   Widget widget({required int node}) {
-    _requireState(_states, node);
+    final handle = _requireHandle(node);
     return ListenableBuilder(
-      listenable: this,
+      key: nodeKey(node),
+      listenable: handle,
       builder: (context, _) => _buildNode(node),
     );
   }
@@ -123,7 +171,9 @@ final class LUIFlutterBackend extends ChangeNotifier {
 
   Widget _buildNode(int id) {
     final state = _requireState(_states, id);
-    final children = state.children.map(_buildNode).toList(growable: false);
+    final children = state.children
+        .map((child) => widget(node: child))
+        .toList(growable: false);
     final enabled = state.properties['enabled'] as bool? ?? true;
     final text = state.properties['text'] as String? ?? '';
     final gap = (state.properties['gap'] as int? ?? 0).toDouble();
@@ -159,7 +209,6 @@ final class LUIFlutterBackend extends ChangeNotifier {
     };
 
     return Container(
-      key: nodeKey(id),
       padding: EdgeInsets.all(
         (state.properties['padding'] as int? ?? 0).toDouble(),
       ),
@@ -285,6 +334,12 @@ final class LUIFlutterBackend extends ChangeNotifier {
     final node = states[id];
     if (node == null) throw LUIBackendException('unknown node $id');
     return node;
+  }
+
+  _NodeHandle _requireHandle(int id) {
+    final handle = _handles[id];
+    if (handle == null) throw LUIBackendException('unknown node $id');
+    return handle;
   }
 
   static _NodeKind _kind(Object? value) => switch (_string(value, 'kind')) {

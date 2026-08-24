@@ -3,7 +3,7 @@
  (deps
   ../../../lg/lui/lui_native.state
   (source_tree ../../../lg/lui/backend)
-  (source_tree ../../../examples/todos/lg/todos)
+  (source_tree ../lg/todos)
   (source_tree .)
   %{bin:lg})
  (action
@@ -13,7 +13,7 @@
    --compile-files-from ../../../lg/lui/lui_native.state
    ../../../lg/lui/backend/retained
    ../../../lg/lui/backend/flutter
-   ../../../examples/todos/lg/todos
+   ../lg/todos
    .
    -o %{target})))
 
@@ -31,13 +31,15 @@
 
 (rule
  (target liblui_todos.dylib)
- (deps todos_bridge_complete.o lui_ocaml_bridge.c)
+ (deps
+  todos_bridge_complete.o
+  ../../../platform/flutter/native/lui_ocaml_bridge.c)
  (action
   (run
    clang
    -dynamiclib
    -o %{target}
-   %{dep:lui_ocaml_bridge.c}
+   %{dep:../../../platform/flutter/native/lui_ocaml_bridge.c}
    %{dep:todos_bridge_complete.o}
    -I %{ocaml_where}
    -lpthread)))

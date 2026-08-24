@@ -5,12 +5,13 @@
 
 (type-record web-renderer
   (web-store :retained-store<web-node>)
+  (web-document :Dom.document)
   (web-event-handler :ref<fn<event;bool>>))
 
-(signature lui.backend.web/create :fn<web-renderer>)
+(signature lui.backend.web/create :fn<Dom.element;web-renderer>)
 (signature lui.backend.web/set-event-handler!
   :fn<web-renderer;fn<event;bool>;bool>)
-(signature lui.backend.web/platform-node :fn<node-kind;web-node>)
+(signature lui.backend.web/platform-node :fn<web-renderer;node-kind;web-node>)
 (signature lui.backend.web/dom-node :fn<web-renderer;int;web-node>)
 (signature lui.backend.web/dom-node-before
   :fn<web-renderer;map<int;retained-node<web-node>>;int;web-node>)

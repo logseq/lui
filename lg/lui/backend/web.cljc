@@ -1,6 +1,5 @@
 (ns lui.backend.web
   (:require [ocaml.package/melange-webapi]
-            [ocaml.Webapi.Dom :refer [document]]
             [ocaml.Webapi.Dom.HtmlCollection :as html-collection]
             [lui.protocol :as proto
              :refer [Row Column Text Button TextInput Scroll Spacer
@@ -9,22 +8,24 @@
                      BackgroundValue StringValue BoolValue IntValue]]
             [lui.backend.retained :as retained]))
 
-(defn create []
+(defn create [host]
   (record web-renderer
     (web-store (retained/create-store))
+    (web-document (Webapi.Dom.Element.ownerDocument host))
     (web-event-handler (atom (fn [_event] true)))))
 
 (defn set-event-handler! [renderer handler]
   (reset! (:web-event-handler renderer) handler)
   true)
 
-(defn- platform-node [kind]
+(defn- platform-node [renderer kind]
   (let [tag
         (match kind
           Text "span"
           Button "button"
           _ "div")
-        node (Webapi.Dom.Document.createElement tag document)
+        node
+        (Webapi.Dom.Document.createElement tag (:web-document renderer))
         class-name
         (match kind
           Row "lui-row"
@@ -161,7 +162,10 @@
      (fn [batch]
        (let [previous-nodes
              (retained/nodes (:web-store renderer))]
-         (retained/apply-batch! (:web-store renderer) platform-node batch)
+         (retained/apply-batch!
+          (:web-store renderer)
+          (fn [kind] (platform-node renderer kind))
+          batch)
          (apply-dom-batch! renderer previous-nodes batch)
          true)))))
 

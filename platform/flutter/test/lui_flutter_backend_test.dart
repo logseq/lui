@@ -77,6 +77,19 @@ void main() {
     expect(backend.containsNode(4), isFalse);
     expect(backend.generation, 1);
   });
+
+  test('property patches invalidate only their retained node', () {
+    final backend = LUIFlutterBackend()..applyJson(_initialBatch);
+
+    backend.applyJson(
+      '{"generation":2,"ops":['
+      '{"op":"set-prop","id":2,"property":"text","value":"Updated"}]}',
+    );
+
+    expect(backend.debugRevision(1), 0);
+    expect(backend.debugRevision(2), 1);
+    expect(backend.debugRevision(3), 0);
+  });
 }
 
 const _initialBatch = '''

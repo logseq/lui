@@ -22,6 +22,12 @@
   (str (if (:todo-done item) "[x] " "[ ] ")
        (:todo-title item)))
 
+(defn summary-label [model]
+  (let [items (:model-items model)
+        remaining
+        (count (filterv (fn [item] (not (:todo-done item))) items))]
+    (str remaining " remaining / " (count items) " total")))
+
 (defui todo-row [item-source send]
   [:row {:gap 8}
    [:text {:value (reactive item-label item-source)}]
@@ -29,6 +35,10 @@
     {:on-press (event [item item-source]
                  (send (model/ToggleTodo (:todo-id item))))}
     "Toggle"]
+   [:button
+    {:on-press (event [item item-source]
+                 (send (model/MoveTodoUp (:todo-id item))))}
+    "Up"]
    [:button
     {:on-press (event [item item-source]
                  (send (model/DeleteTodo (:todo-id item))))}
@@ -52,6 +62,7 @@
      [:keyed
       {:source (reactive :model-items model-source)
        :key :todo-id
-       :compare compare
+      :compare compare
        :as item-source}
-      [todo-row item-source send]]]]])
+      [todo-row item-source send]]]]
+   [:text {:value (reactive summary-label model-source)}]])

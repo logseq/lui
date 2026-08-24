@@ -44,9 +44,13 @@ void main() {
     expect(find.byType(SingleChildScrollView), findsOneWidget);
     expect(find.textContaining('Write LG todos'), findsNothing);
 
+    final inputBefore = tester.widget<EditableText>(find.byType(EditableText));
     await tester.enterText(find.byType(TextField), 'Write LG todos');
     await tester.pump();
     expect(backend.generation, 2);
+    final inputAfter = tester.widget<EditableText>(find.byType(EditableText));
+    expect(inputAfter.focusNode, same(inputBefore.focusNode));
+    expect(inputAfter.focusNode.hasFocus, isTrue);
     await tester.tap(find.widgetWithText(TextButton, 'Add'));
     await tester.pump();
     expect(backend.generation, 3);

@@ -1,4 +1,0 @@
-(ns todos.web-main)
-
-(signature todos.web-main/main :fn<bool>)
-(signature todos.web-main/show-error! :fn<string;bool>)

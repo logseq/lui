@@ -118,7 +118,7 @@ packages:
   lui_flutter_backend:
     dependency: "direct main"
     description:
-      path: ".."
+      path: "../../../platform/flutter"
       relative: true
     source: path
     version: "0.1.0"

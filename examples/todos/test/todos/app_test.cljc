@@ -38,7 +38,7 @@
           first-row-children (apple/children renderer first-row)
           first-label (nth first-row-children 0)
           first-toggle (nth first-row-children 1)
-          first-delete (nth first-row-children 2)]
+          first-delete (nth first-row-children 3)]
       (assert-equal "Write LG todos" (:todo-title first-todo)
                     "add creates a todo from the draft")
       (is (not (:todo-done first-todo)) "new todos are active")
@@ -69,6 +69,15 @@
       (driver/flush! application)
       (assert-equal 2 (count (:model-items (todos/model application)))
                     "a second todo is added")
+
+      (let [second-row (nth (apple/children renderer list-node) 1)
+            second-move-up (nth (apple/children renderer second-row) 2)]
+        (driver/dispatch-event! application (proto/Press second-move-up))
+        (driver/flush! application)
+        (assert-equal second-row (nth (apple/children renderer list-node) 0)
+                      "move up preserves and reorders keyed native identity")
+        (assert-equal first-row (nth (apple/children renderer list-node) 1)
+                      "unmoved keyed rows are preserved"))
 
       (driver/dispatch-event! application (proto/Press first-delete))
       (driver/flush! application)
