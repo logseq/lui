@@ -6,9 +6,11 @@
 (type-record web-renderer
   (web-store :retained-store<web-node>)
   (web-document :Dom.document)
-  (web-event-handler :ref<fn<event;bool>>))
+  (web-event-handler :ref<fn<event;bool>>)
+  (web-app-icons :map<string;string>))
 
-(signature lui.backend.web/create :fn<Dom.element;web-renderer>)
+(signature lui.backend.web/create
+  :overload<fn<Dom.element;web-renderer>;fn<Dom.element;map<string;string>;web-renderer>>)
 (signature lui.backend.web/set-event-handler!
   :fn<web-renderer;fn<event;bool>;bool>)
 (signature lui.backend.web/platform-node :fn<web-renderer;node-kind;web-node>)
@@ -28,6 +30,8 @@
 (signature lui.backend.web/set-state-attribute!
   :fn<web-node;string;bool;unit>)
 (signature lui.backend.web/web-color-value :fn<string;string>)
+(signature lui.backend.web/update-icon-name!
+  :fn<web-renderer;web-node;string;unit>)
 (signature lui.backend.web/apply-property!
   :fn<web-renderer;int;node-kind;web-node;property;wire-value;unit>)
 (signature lui.backend.web/progress-int

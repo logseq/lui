@@ -1,5 +1,6 @@
 (ns lui.backend.web
   (:require [ocaml.package/melange-webapi]
+            [clojure.string :as string]
             [ocaml.Webapi.Dom.HtmlCollection :as html-collection]
             [lui.protocol :as proto
              :refer [Row Column Grid Stack Panel Card Box
@@ -22,11 +23,14 @@
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
 
-(defn create [host]
-  (record web-renderer
-    (web-store (retained/create-store))
-    (web-document (Webapi.Dom.Element.ownerDocument host))
-    (web-event-handler (atom (fn [_event] true)))))
+(defn create
+  ([host] (create host {}))
+  ([host app-icons]
+   (record web-renderer
+     (web-store (retained/create-store))
+     (web-document (Webapi.Dom.Element.ownerDocument host))
+     (web-event-handler (atom (fn [_event] true)))
+     (web-app-icons app-icons))))
 
 (defn set-event-handler! [renderer handler]
   (reset! (:web-event-handler renderer) handler)
@@ -215,6 +219,28 @@
          (Webapi.Dom.Element.unsafeAsHtmlElement dom-node))]
     (Webapi.Dom.CssStyleDeclaration.setProperty
      property value "" element-style)))
+
+(defn- css-url [url]
+  (str
+   "url(\""
+   (string/escape url {\\ "\\\\" \" "\\\""})
+   "\")"))
+
+(defn- update-icon-name! [renderer dom-node name]
+  (let [element-style
+        (Webapi.Dom.HtmlElement.style
+         (Webapi.Dom.Element.unsafeAsHtmlElement dom-node))]
+    (if (string/starts-with? name "app:")
+      (let [bare-name (subs name 4)
+            image
+            (if-some [url (clojure.core/get (:web-app-icons renderer) bare-name)]
+              (css-url url)
+              "url(\"./icons/missing.svg\")")]
+        (Webapi.Dom.CssStyleDeclaration.setProperty
+         "--lui-icon-image" image "" element-style))
+      (Stdlib.ignore
+       (Webapi.Dom.CssStyleDeclaration.removeProperty
+        "--lui-icon-image" element-style)))))
 
 (defn- web-color-value [color]
   (if (= color "transparent")
@@ -463,7 +489,9 @@
     (Webapi.Dom.Element.setAttribute "data-size" size dom-node)
 
     (tuple IconName (StringValue name))
-    (Webapi.Dom.Element.setAttribute "data-name" name dom-node)
+    (do
+      (Webapi.Dom.Element.setAttribute "data-name" name dom-node)
+      (update-icon-name! renderer dom-node name))
 
     (tuple MinLines (IntValue lines))
     (do

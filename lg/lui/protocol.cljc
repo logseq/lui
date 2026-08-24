@@ -56,7 +56,7 @@
    (= value "lg")
    (= value "icon")))
 
-(defn icon-name-supported? [value]
+(defn- built-in-icon-name-supported? [value]
   (match value
     "alert" true "archive" true "arrow-down" true "arrow-right" true
     "arrow-up" true "check" true "check-circle" true "chevron-down" true
@@ -71,6 +71,11 @@
     "skip-back" true "skip-forward" true "sun" true "terminal" true
     "trash" true "volume" true "wrench" true "x" true "x-circle" true
     _ false))
+
+(defn icon-name-supported? [value]
+  (or
+   (built-in-icon-name-supported? value)
+   (boolean (re-matches #"app:[a-z0-9]+(?:-[a-z0-9]+)*" value))))
 
 (defn main-alignment-supported? [value]
   (or

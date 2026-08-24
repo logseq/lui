@@ -508,10 +508,15 @@
       (is (proto/property-value-supported?
            proto/IconName (proto/StringValue name))
           "every Vercel Native built-in icon name is accepted"))
-    (doseq [name ["" "unknown" "app:logo"]]
+    (doseq [name ["app:logo" "app:wave-pulse" "app:status-2"]]
+      (is (proto/property-value-supported?
+           proto/IconName (proto/StringValue name))
+          "well-shaped application icon names are structurally accepted"))
+    (doseq [name ["" "unknown" "app:" "app:Wave" "app:wave_pulse"
+                  "app:-wave" "app:wave-" "app:wave--pulse" "vendor:wave"]]
       (is (not (proto/property-value-supported?
                 proto/IconName (proto/StringValue name)))
-          "unknown and unregistered app icons are rejected"))
+          "unknown built-ins and malformed namespaces are rejected"))
     (is (proto/property-supported? proto/Icon proto/IconName)
         "name belongs to Icon")
     (is (proto/property-supported? proto/Icon proto/SizeValue)

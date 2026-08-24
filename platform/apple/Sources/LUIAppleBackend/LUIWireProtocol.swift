@@ -142,7 +142,7 @@ enum LUIWireValue: Decodable, Equatable {
         case let (.size, .string(value)):
             Self.controlSizes.contains(value)
         case let (.name, .string(value)):
-            Self.iconNames.contains(value)
+            Self.iconNames.contains(value) || Self.isApplicationIconName(value)
         case let (.main, .string(value)):
             Self.mainAlignments.contains(value)
         case let (.cross, .string(value)):
@@ -198,6 +198,18 @@ enum LUIWireValue: Decodable, Equatable {
         "skip-back", "skip-forward", "sun", "terminal", "trash", "volume",
         "wrench", "x", "x-circle",
     ]
+
+    private static func isApplicationIconName(_ value: String) -> Bool {
+        guard value.hasPrefix("app:") else { return false }
+        let name = value.dropFirst(4)
+        let segments = name.split(separator: "-", omittingEmptySubsequences: false)
+        return !segments.isEmpty && segments.allSatisfy { segment in
+            !segment.isEmpty && segment.unicodeScalars.allSatisfy { scalar in
+                (scalar.value >= 97 && scalar.value <= 122) ||
+                    (scalar.value >= 48 && scalar.value <= 57)
+            }
+        }
+    }
 }
 
 struct LUINodeState {

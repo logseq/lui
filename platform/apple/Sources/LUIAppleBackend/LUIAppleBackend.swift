@@ -2,6 +2,11 @@ import Foundation
 import Observation
 import SwiftUI
 
+public enum LUIAppleIconSource: Equatable, Sendable {
+    case systemName(String)
+    case assetName(String)
+}
+
 @Observable
 @MainActor
 final class LUINodeModel: Identifiable {
@@ -93,8 +98,14 @@ final class LUINodeModel: Identifiable {
     var iconWidth: Int { surfaceWidth ?? iconExtent }
     var iconHeight: Int { surfaceHeight ?? iconExtent }
 
+    var iconName: String { properties[.name]?.stringValue ?? "" }
+
     var iconSystemName: String {
-        switch properties[.name]?.stringValue ?? "" {
+        Self.systemIconName(for: iconName)
+    }
+
+    static func systemIconName(for name: String) -> String {
+        switch name {
         case "alert": "exclamationmark.triangle"
         case "archive": "archivebox"
         case "arrow-down": "arrow.down"
@@ -186,8 +197,19 @@ public final class LUIAppleBackend {
     private var tree = LUIRetainedTree()
     private var models: [Int: LUINodeModel] = [:]
     private let decoder = JSONDecoder()
+    private let appIcons: [String: LUIAppleIconSource]
 
-    public init() {}
+    public init(appIcons: [String: LUIAppleIconSource] = [:]) {
+        self.appIcons = appIcons
+    }
+
+    func iconSource(for name: String) -> LUIAppleIconSource {
+        if name.hasPrefix("app:") {
+            return appIcons[String(name.dropFirst(4))]
+                ?? .systemName("questionmark.square.dashed")
+        }
+        return .systemName(LUINodeModel.systemIconName(for: name))
+    }
 
     public var rootIDs: [Int] {
         tree.rootIDs.sorted()

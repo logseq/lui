@@ -107,8 +107,7 @@ private struct LUINodeView: View {
                     height: CGFloat(model.spinnerHeight)
                 )
         case .icon:
-            Image(systemName: model.iconSystemName)
-                .resizable()
+            LUIIconImage(source: backend.iconSource(for: model.iconName))
                 .scaledToFit()
                 .frame(
                     width: CGFloat(model.iconWidth),
@@ -139,6 +138,22 @@ private struct LUINodeView: View {
 
     private var progressAccessibilityValue: String {
         "\(Int((model.progressFraction * 100).rounded()))%"
+    }
+}
+
+private struct LUIIconImage: View {
+    let source: LUIAppleIconSource
+
+    @ViewBuilder
+    var body: some View {
+        switch source {
+        case let .systemName(name):
+            Image(systemName: name)
+                .resizable()
+        case let .assetName(name):
+            Image(name)
+                .resizable()
+        }
     }
 }
 

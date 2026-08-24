@@ -154,10 +154,34 @@ Delivered parity slices:
   rungs, native SwiftUI/Flutter indicators, and a reduced-motion Web renderer;
 - direct retained `icon` leaves with the 51-name Vercel Native built-in
   vocabulary, 16/18/24 sizing, shared foreground tint, CSS-mask SVGs on Web,
-  SF Symbols on SwiftUI, and Material Icons on Flutter; application-registered
-  `app:` names remain a later extension;
+  SF Symbols on SwiftUI, and Material Icons on Flutter, plus immutable
+  application-registered `app:` names on every backend;
 - stacking containers reject `gap`; `card` supplies the reference 24-point
   default content padding while explicit `padding` overrides it.
+
+### Application icon registry
+
+The 51 bare icon names are the stable cross-platform built-in vocabulary, not
+the full icon ceiling. Application-owned icons use the reference `app:<name>`
+namespace and remain host resources:
+
+- LG and the wire protocol carry only the shape-checked semantic name, for
+  example `app:wave-pulse`; vector paths, asset names, and `IconData` never
+  enter the retained tree;
+- Web registers a bare app name to an SVG URL and applies it through the same
+  CSS mask channel as built-ins;
+- SwiftUI registers a bare app name to either an SF Symbol or an Asset Catalog
+  image;
+- Flutter registers a bare app name to `IconData`;
+- an unregistered but well-shaped `app:` name renders the platform's visible
+  missing-icon fallback rather than becoming an invisible gap;
+- registration belongs to backend construction and is immutable while a
+  retained application is running, so one property patch cannot silently
+  change the resource table.
+
+Bare names never consult the app registry and app names never shadow built-ins.
+The public component API remains `[:icon {:name "app:wave-pulse"}]`; there is
+no backend-specific prop or asset payload in LG.
 
 ## State ownership
 

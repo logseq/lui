@@ -146,6 +146,8 @@ const _iconNames = <String>{
   'x-circle',
 };
 
+final _appIconNamePattern = RegExp(r'^app:[a-z0-9]+(?:-[a-z0-9]+)*$');
+
 IconData _materialIcon(String name) => switch (name) {
   'alert' => Icons.warning_amber,
   'archive' => Icons.archive_outlined,
@@ -233,9 +235,11 @@ final class _NodeHandle extends ChangeNotifier {
 }
 
 final class LUIFlutterBackend {
-  LUIFlutterBackend({this.onEvent});
+  LUIFlutterBackend({this.onEvent, Map<String, IconData> appIcons = const {}})
+    : appIcons = Map.unmodifiable(appIcons);
 
   final void Function(LUIEvent event)? onEvent;
+  final Map<String, IconData> appIcons;
   Map<int, _NodeState> _states = {};
   final Map<int, _NodeHandle> _handles = {};
   int generation = 0;
@@ -245,6 +249,13 @@ final class LUIFlutterBackend {
   bool containsNode(int id) => _states.containsKey(id);
 
   int debugRevision(int id) => _requireHandle(id).revision;
+
+  IconData _iconData(String name) {
+    if (name.startsWith('app:')) {
+      return appIcons[name.substring(4)] ?? Icons.question_mark;
+    }
+    return _materialIcon(name);
+  }
 
   void dispose() {
     for (final handle in _handles.values) {
@@ -564,7 +575,7 @@ final class LUIFlutterBackend {
         child: CircularProgressIndicator(strokeWidth: 2, color: foreground),
       ),
       _NodeKind.icon => Icon(
-        _materialIcon(state.properties['name'] as String? ?? ''),
+        _iconData(state.properties['name'] as String? ?? ''),
         size: iconExtent,
         color: foreground,
       ),
@@ -777,7 +788,10 @@ final class LUIFlutterBackend {
             _controlSizes.contains(value) &&
             (kind == _NodeKind.spinner || kind == _NodeKind.icon),
       'name' =>
-        value is String && _iconNames.contains(value) && kind == _NodeKind.icon,
+        value is String &&
+            (_iconNames.contains(value) ||
+                _appIconNamePattern.hasMatch(value)) &&
+            kind == _NodeKind.icon,
       'gap' =>
         value is int &&
             value >= 0 &&

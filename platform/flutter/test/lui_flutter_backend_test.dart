@@ -696,6 +696,32 @@ void main() {
     expect(backend.generation, 0);
   });
 
+  testWidgets('resolves application icons through the Flutter registry', (
+    tester,
+  ) async {
+    final backend =
+        LUIFlutterBackend(appIcons: const {'wave-pulse': Icons.waves})
+          ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"icon"},
+        {"op":"set-prop","id":1,"property":"name","value":"app:wave-pulse"}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    expect(tester.widget<Icon>(find.byType(Icon)).icon, Icons.waves);
+
+    backend.applyJson('''
+    {"generation":2,"ops":[
+      {"op":"set-prop","id":1,"property":"name","value":"app:missing"}
+    ]}
+    ''');
+    await tester.pump();
+    expect(tester.widget<Icon>(find.byType(Icon)).icon, Icons.question_mark);
+  });
+
   test('rejects an empty progress range atomically', () {
     final backend = LUIFlutterBackend();
 

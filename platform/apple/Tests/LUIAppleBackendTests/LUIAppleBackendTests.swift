@@ -271,6 +271,28 @@ struct LUISwiftUIBackendTests {
         #expect(icon.iconSystemName == "trash")
     }
 
+    @Test("resolves application icons through the immutable SwiftUI registry")
+    func mapsApplicationIcon() throws {
+        let backend = LUIAppleBackend(appIcons: [
+            "wave-pulse": .systemName("waveform.path"),
+            "brand": .assetName("BrandMark"),
+        ])
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"icon"},
+          {"op":"set-prop","id":1,"property":"name","value":"app:wave-pulse"}
+        ]}
+        """)
+
+        #expect(backend.iconSource(for: "app:wave-pulse") == .systemName("waveform.path"))
+        #expect(backend.iconSource(for: "app:brand") == .assetName("BrandMark"))
+        #expect(
+            backend.iconSource(for: "app:missing") ==
+                .systemName("questionmark.square.dashed")
+        )
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+    }
+
     @Test("maps Separator orientation without replacing its SwiftUI model")
     func mapsSeparatorOrientation() throws {
         let backend = LUIAppleBackend()

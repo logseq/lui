@@ -148,4 +148,5 @@ test("the production stylesheet contains the Vercel Native Icon contract", async
   for (const name of ["search", "trash", "git-pull-request"]) {
     assert.match(css, new RegExp(`\\.lui-icon\\[data-name=${name}\\]\\{[^}]*--lui-icon-image:`))
   }
+  await stat(new URL("../dist/icons/missing.svg", import.meta.url))
 })
