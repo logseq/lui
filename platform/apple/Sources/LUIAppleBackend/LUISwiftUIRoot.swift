@@ -37,7 +37,7 @@ private struct LUINodeView: View {
         switch model.kind {
         case .row:
             LUIRowView(model: model, backend: backend)
-        case .tabs, .buttonGroup, .toggleGroup:
+        case .tabs, .buttonGroup, .toggleGroup, .breadcrumb, .pagination:
             LUIHorizontalGroupView(model: model, backend: backend)
         case .column, .list:
             LUIColumnView(model: model, backend: backend)
@@ -55,7 +55,7 @@ private struct LUINodeView: View {
                 children
             }
         case .text:
-            Text(verbatim: model.text)
+            LUITextView(model: model, backend: backend)
         case .heading:
             Text(verbatim: model.text)
                 .font(headingFont)
@@ -556,6 +556,16 @@ enum LUIHorizontalFocusKey {
 }
 
 enum LUIHorizontalFocus {
+    static func isEligible(parent: LUINodeKind, child: LUINodeKind) -> Bool {
+        switch parent {
+        case .tabs: child == .button
+        case .buttonGroup: child == .button || child == .toggleButton
+        case .toggleGroup: child == .toggleButton
+        case .breadcrumb, .pagination: child == .button
+        default: false
+        }
+    }
+
     static func nextIndex(
         current: Int?,
         key: LUIHorizontalFocusKey,
@@ -573,6 +583,12 @@ enum LUIHorizontalFocus {
             let offset = key == .right ? 1 : candidates.count - 1
             return candidates[(position + offset) % candidates.count]
         }
+    }
+}
+
+enum LUIHorizontalGroupDefaults {
+    static func gap(for kind: LUINodeKind) -> Int {
+        kind == .pagination ? 2 : 4
     }
 }
 
@@ -645,12 +661,7 @@ private struct LUIHorizontalGroupView: View {
     }
 
     private func isEligible(_ child: LUINodeModel) -> Bool {
-        switch model.kind {
-        case .tabs: child.kind == .button
-        case .buttonGroup: child.kind == .button || child.kind == .toggleButton
-        case .toggleGroup: child.kind == .toggleButton
-        default: false
-        }
+        LUIHorizontalFocus.isEligible(parent: model.kind, child: child.kind)
     }
 
     private func focusKey(_ key: KeyEquivalent) -> LUIHorizontalFocusKey? {
@@ -664,7 +675,10 @@ private struct LUIHorizontalGroupView: View {
     }
 
     private var gap: CGFloat {
-        CGFloat(model.property(.gap)?.intValue ?? 4)
+        CGFloat(
+            model.property(.gap)?.intValue ??
+                LUIHorizontalGroupDefaults.gap(for: model.kind)
+        )
     }
 
     private var main: String? {
@@ -776,6 +790,25 @@ private struct LUIIconImage: View {
         case let .assetName(name):
             Image(name)
                 .resizable()
+        }
+    }
+}
+
+private struct LUITextView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    @ViewBuilder
+    var body: some View {
+        if model.supportsPress {
+            Button {
+                try? backend.performPress(node: model.id)
+            } label: {
+                Text(verbatim: model.text)
+            }
+            .buttonStyle(.plain)
+        } else {
+            Text(verbatim: model.text)
         }
     }
 }

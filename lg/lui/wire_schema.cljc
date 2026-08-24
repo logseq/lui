@@ -6,15 +6,16 @@
                      Input SearchField Textarea Checkbox SwitchControl Progress
                      Divider Scroll ListContainer Tabs ButtonGroup ToggleGroup
                      Spacer Spinner Icon Select Combobox DropdownMenu
-                     MenuItem ListItem Avatar TextValue Enabled Gap
-                     MainAlignment CrossAlignment GrowValue GridColumns PaddingValue PaddingHorizontal
-                     PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth CornerRadius
-                     WidthValue HeightValue MinWidth MaxWidth MinHeight MaxHeight
-                     PlaceholderValue AccessibilityLabel StyleClass HeadingLevel Checked ProgressValue
-                     OrientationValue SizeValue IconName VariantValue InlineIconName IconPlacementValue
-                     Selected Autofocus SubmitOnEnter HoldEnabled ChangeEnabled ToggleEnabled
-                     PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue SourceX SourceY
-                     SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset]]))
+                     MenuItem ListItem Avatar Breadcrumb Pagination TextValue
+                     Enabled Gap MainAlignment CrossAlignment GrowValue GridColumns
+                     PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue
+                     BorderWidth CornerRadius WidthValue HeightValue MinWidth MaxWidth
+                     MinHeight MaxHeight PlaceholderValue AccessibilityLabel StyleClass HeadingLevel
+                     Checked ProgressValue OrientationValue SizeValue IconName VariantValue
+                     InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled
+                     ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue
+                     SourceX SourceY SourceWidth SourceHeight AnchorValue AnchorAlignmentValue
+                     AnchorOffset]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -56,7 +57,9 @@
     DropdownMenu "dropdown-menu"
     MenuItem "menu-item"
     ListItem "list-item"
-    Avatar "avatar"))
+    Avatar "avatar"
+    Breadcrumb "breadcrumb"
+    Pagination "pagination"))
 
 (defn property-name [property]
   (match property

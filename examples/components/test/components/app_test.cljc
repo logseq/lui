@@ -122,6 +122,10 @@
         "the shared Gallery demonstrates ButtonGroup")
     (is (creates-kind? (flutter/batches renderer) proto/ToggleGroup)
         "the shared Gallery demonstrates ToggleGroup")
+    (is (creates-kind? (flutter/batches renderer) proto/Breadcrumb)
+        "the shared Gallery demonstrates Breadcrumb composition")
+    (is (creates-kind? (flutter/batches renderer) proto/Pagination)
+        "the shared Gallery demonstrates Pagination composition")
     (assert-equal 1 (count (flutter/batches renderer)) "mount is one batch")
     (let [mounted-count (flutter/node-count renderer)]
       (driver/send! application model/ToggleDisabled)

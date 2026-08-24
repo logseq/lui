@@ -241,6 +241,91 @@ void main() {
     expect(events, isEmpty);
   });
 
+  testWidgets('maps Breadcrumb and Pagination as retained native groups', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"breadcrumb"},
+        {"op":"create-node","id":3,"kind":"text"},
+        {"op":"create-node","id":4,"kind":"icon"},
+        {"op":"create-node","id":5,"kind":"text"},
+        {"op":"create-node","id":6,"kind":"pagination"},
+        {"op":"create-node","id":7,"kind":"button"},
+        {"op":"create-node","id":8,"kind":"button"},
+        {"op":"set-prop","id":2,"property":"accessibility-label","value":"Component path"},
+        {"op":"set-prop","id":3,"property":"text","value":"Home"},
+        {"op":"set-prop","id":3,"property":"press-enabled","value":true},
+        {"op":"set-prop","id":4,"property":"name","value":"chevron-right"},
+        {"op":"set-prop","id":5,"property":"text","value":"Components"},
+        {"op":"set-prop","id":6,"property":"accessibility-label","value":"Gallery pages"},
+        {"op":"set-prop","id":7,"property":"text","value":"1"},
+        {"op":"set-prop","id":7,"property":"selected","value":true},
+        {"op":"set-prop","id":8,"property":"text","value":"2"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":6,"index":1},
+        {"op":"insert-child","parent":2,"child":3,"index":0},
+        {"op":"insert-child","parent":2,"child":4,"index":1},
+        {"op":"insert-child","parent":2,"child":5,"index":2},
+        {"op":"insert-child","parent":6,"child":7,"index":0},
+        {"op":"insert-child","parent":6,"child":8,"index":1}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    Row groupRow(int node) => tester.widget<Row>(
+      find
+          .descendant(
+            of: find.byKey(LUIFlutterBackend.nodeKey(node)),
+            matching: find.byType(Row),
+          )
+          .first,
+    );
+    expect(groupRow(2).spacing, 4);
+    expect(groupRow(6).spacing, 2);
+    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Components'), findsOneWidget);
+    expect(
+      tester.getSemantics(find.text('Home')),
+      matchesSemantics(
+        label: 'Home',
+        isButton: true,
+        hasEnabledState: true,
+        isEnabled: true,
+        isFocusable: true,
+        hasFocusAction: true,
+        hasTapAction: true,
+      ),
+    );
+
+    await tester.tap(find.text('Home'));
+    await tester.tap(find.text('2'));
+    await tester.pump();
+    expect(events, const [LUIEvent.press(node: 3), LUIEvent.press(node: 8)]);
+
+    final breadcrumbRevision = backend.debugRevision(2);
+    final homeRevision = backend.debugRevision(3);
+    final paginationRevision = backend.debugRevision(6);
+    backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":7,"property":"selected","value":false},
+        {"op":"set-prop","id":8,"property":"selected","value":true}
+      ]}
+      ''');
+    await tester.pump();
+    expect(backend.debugRevision(2), breadcrumbRevision);
+    expect(backend.debugRevision(3), homeRevision);
+    expect(backend.debugRevision(6), paginationRevision);
+    semantics.dispose();
+  });
+
   test('rejects text on Tabs instead of silently ignoring it', () {
     final backend = LUIFlutterBackend();
     expect(

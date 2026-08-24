@@ -34,6 +34,8 @@
                          (= tag :tabs)
                          (= tag :button-group)
                          (= tag :toggle-group)
+                         (= tag :breadcrumb)
+                         (= tag :pagination)
                          (= tag :spacer)
                          (= tag :spinner)
                          (= tag :icon)
@@ -383,7 +385,7 @@
 (defelement tabs [context parent attrs & children]
   (container-expansion 'lui.ui/tabs! context parent attrs children))
 
-(macro-helper-defn action-group-expansion
+(macro-helper-defn labelled-container-expansion
                    [constructor context parent attrs children]
                    (let [node (gensym "node")]
                      `(let [~node (~constructor ~context)]
@@ -402,12 +404,20 @@
                         ~node)))
 
 (defelement button-group [context parent attrs & children]
-  (action-group-expansion
+  (labelled-container-expansion
    'lui.ui/button-group! context parent attrs children))
 
 (defelement toggle-group [context parent attrs & children]
-  (action-group-expansion
+  (labelled-container-expansion
    'lui.ui/toggle-group! context parent attrs children))
+
+(defelement breadcrumb [context parent attrs & children]
+  (labelled-container-expansion
+   'lui.ui/breadcrumb! context parent attrs children))
+
+(defelement pagination [context parent attrs & children]
+  (labelled-container-expansion
+   'lui.ui/pagination! context parent attrs children))
 
 (defelement spacer [context parent _attrs & _children]
   (let [node (gensym "node")]
@@ -449,11 +459,23 @@
 
 (defelement text [context parent attrs & children]
   (let [value (:value attrs)
+        on-press (:on-press attrs)
         expression
         (if value
           `(lui.ui/text-signal! ~context ~value)
-          `(lui.ui/text! ~context ~(first children)))]
-    (leaf-expansion expression context parent attrs)))
+          `(lui.ui/text! ~context ~(first children)))
+        node (gensym "node")]
+    `(let [~node ~expression]
+       ~@(element-properties context node attrs)
+       ~@(if on-press
+           [`(lui.ui/bool-property!
+              ~context ~node lui.protocol/PressEnabled true)
+            `(lui.ui/on-event! ~context ~node ~on-press)]
+           [])
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
 
 (defelement heading [context parent attrs & children]
   (let [level (if (:level attrs) (:level attrs) 1)

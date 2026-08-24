@@ -168,6 +168,25 @@
      {:selected primary-selected :disabled disabled :on-press on-event}
      "Compact"]]])
 
+(defui retained-navigation-containers [page-selected on-event]
+  [:column
+   [:breadcrumb {:accessibility-label "Component path"}
+    [:text {:foreground "text-muted" :on-press on-event} "Home"]
+    [:icon {:name "chevron-right" :foreground "text-muted"}]
+    [:text "Components"]]
+   [:pagination {:accessibility-label "Gallery pages"}
+    [:button
+     {:variant "ghost" :icon "chevron-left" :on-press on-event}
+     "Previous"]
+    [:button
+     {:variant "outline" :selected page-selected :on-press on-event}
+     "1"]
+    [:icon {:name "ellipsis"}]
+    [:button
+     {:variant "ghost" :icon "chevron-right"
+      :icon-placement "trailing" :on-press on-event}
+     "Next"]]])
+
 (defui current-platform-profile []
   (tuple (platform) (host)))
 
@@ -703,6 +722,61 @@
         (Some (proto/BoolValue value))
         (assert-equal false value "disabled Signal stays child owned")
         _ (is false "controlled enabled state exists")))))
+
+(deftest navigation-containers-compose-pressable-text-and-controlled-buttons
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-navigation-containers")
+        context (ui/context application scope)
+        page-selected (sig/state scheduler false)
+        received (atom [])
+        callback (fn [event] (swap! received conj event) true)
+        root
+        (retained-navigation-containers
+         context (sig/value page-selected) callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [containers (apple/children renderer root)
+          breadcrumb (nth containers 0)
+          pagination (nth containers 1)
+          crumbs (apple/children renderer breadcrumb)
+          pages (apple/children renderer pagination)
+          home (nth crumbs 0)
+          current-page (nth pages 1)
+          node-count (apple/node-count renderer)]
+      (assert-equal (Some apple/AppleBreadcrumb)
+                    (apple/node renderer breadcrumb)
+                    "Breadcrumb is one retained native composition node")
+      (assert-equal (Some apple/ApplePagination)
+                    (apple/node renderer pagination)
+                    "Pagination is one retained native composition node")
+      (assert-equal 3 (count crumbs)
+                    "Breadcrumb retains Text and Icon composition")
+      (assert-equal 4 (count pages)
+                    "Pagination retains ordinary Buttons and Icon")
+      (assert-equal (Some (proto/BoolValue true))
+                    (apple/property renderer home proto/PressEnabled)
+                    "on-press makes Text pressable without another item type")
+      (assert-equal None
+                    (apple/property renderer breadcrumb proto/Gap)
+                    "the house gap remains a backend default")
+      (assert-equal None
+                    (apple/property renderer pagination proto/Gap)
+                    "the smaller Pagination gap remains a backend default")
+      (runtime/dispatch! application (proto/Press home))
+      (runtime/dispatch! application (proto/Press current-page))
+      (runtime/flush! application)
+      (assert-equal [(proto/Press home) (proto/Press current-page)]
+                    @received
+                    "composed children keep their ordinary Press events")
+      (sig/set! page-selected true)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "page selection patches one retained Button")
+      (assert-equal (Some (proto/BoolValue true))
+                    (apple/property renderer current-page proto/Selected)
+                    "the model owns the current page selection"))))
 
 (deftest defelement-adds-a-tag-without-changing-defui
   (let [scheduler (sig/scheduler)

@@ -264,6 +264,74 @@ struct LUISwiftUIBackendTests {
         #expect(LUIHorizontalFocus.nextIndex(current: 0, key: .right, enabled: [false, false]) == nil)
     }
 
+    @Test("maps Breadcrumb and Pagination as retained native compositions")
+    func mapsNavigationContainers() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"breadcrumb"},
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"create-node","id":4,"kind":"icon"},
+          {"op":"create-node","id":5,"kind":"text"},
+          {"op":"create-node","id":6,"kind":"pagination"},
+          {"op":"create-node","id":7,"kind":"button"},
+          {"op":"create-node","id":8,"kind":"button"},
+          {"op":"set-prop","id":2,"property":"accessibility-label","value":"Component path"},
+          {"op":"set-prop","id":3,"property":"text","value":"Home"},
+          {"op":"set-prop","id":3,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":4,"property":"name","value":"chevron-right"},
+          {"op":"set-prop","id":5,"property":"text","value":"Components"},
+          {"op":"set-prop","id":6,"property":"accessibility-label","value":"Gallery pages"},
+          {"op":"set-prop","id":7,"property":"text","value":"1"},
+          {"op":"set-prop","id":7,"property":"selected","value":true},
+          {"op":"set-prop","id":8,"property":"text","value":"2"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":6,"index":1},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":2,"child":4,"index":1},
+          {"op":"insert-child","parent":2,"child":5,"index":2},
+          {"op":"insert-child","parent":6,"child":7,"index":0},
+          {"op":"insert-child","parent":6,"child":8,"index":1}
+        ]}
+        """)
+
+        let breadcrumb = try #require(backend.model(id: 2))
+        let home = try #require(backend.model(id: 3))
+        let pagination = try #require(backend.model(id: 6))
+        let firstPage = try #require(backend.model(id: 7))
+        let breadcrumbRevision = breadcrumb.revision
+        #expect(breadcrumb.kind == .breadcrumb)
+        #expect(pagination.kind == .pagination)
+        #expect(breadcrumb.children == [3, 4, 5])
+        #expect(pagination.children == [7, 8])
+        #expect(home.supportsPress)
+        #expect(LUIHorizontalGroupDefaults.gap(for: .breadcrumb) == 4)
+        #expect(LUIHorizontalGroupDefaults.gap(for: .pagination) == 2)
+        #expect(LUIHorizontalFocus.isEligible(parent: .pagination, child: .button))
+        #expect(!LUIHorizontalFocus.isEligible(parent: .breadcrumb, child: .text))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.performPress(node: 3)
+        try backend.performPress(node: 8)
+        #expect(events == [.press(node: 3), .press(node: 8)])
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":7,"property":"selected","value":false},
+          {"op":"set-prop","id":8,"property":"selected","value":true}
+        ]}
+        """)
+        #expect(backend.model(id: 2) === breadcrumb)
+        #expect(backend.model(id: 3) === home)
+        #expect(backend.model(id: 6) === pagination)
+        #expect(backend.model(id: 7) === firstPage)
+        #expect(breadcrumb.revision == breadcrumbRevision)
+        #expect(!firstPage.isSelected)
+    }
+
     @Test("rejects text on Tabs instead of silently ignoring it")
     func rejectsTextOnTabs() {
         let backend = LUIAppleBackend()

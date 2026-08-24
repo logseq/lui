@@ -48,10 +48,26 @@ test("ButtonGroup and ToggleGroup use compact Tailwind horizontal layouts", asyn
   assert.match(css, /\.lui-button-group\{[^}]*display:inline-flex/)
   assert.match(css, /\.lui-button-group\{[^}]*align-items:center/)
   assert.match(css, /\.lui-button-group\{[^}]*gap:calc\(var\(--spacing\)\*1\)/)
-  assert.match(css, /\.lui-toggle-group\{[^}]*display:inline-flex/)
-  assert.match(css, /\.lui-toggle-group\{[^}]*align-items:center/)
-  assert.match(css, /\.lui-toggle-group\{[^}]*gap:calc\(var\(--spacing\)\*1\)/)
+  assert.match(css, /\.lui-toggle-group[^\{]*\{[^}]*display:inline-flex/)
+  assert.match(css, /\.lui-toggle-group[^\{]*\{[^}]*align-items:center/)
+  assert.match(css, /\.lui-toggle-group[^\{]*\{[^}]*gap:calc\(var\(--spacing\)\*1\)/)
   assert.match(css, /\.lui-button-group>\.lui-button\{/)
+})
+
+test("Breadcrumb and Pagination use compact Tailwind composition", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-breadcrumb\{[^}]*display:inline-flex/)
+  assert.match(css, /\.lui-breadcrumb\{[^}]*align-items:center/)
+  assert.match(css, /\.lui-breadcrumb\{[^}]*gap:calc\(var\(--spacing\)\*1\)/)
+  assert.match(css, /\.lui-pagination\{[^}]*display:inline-flex/)
+  assert.match(css, /\.lui-pagination\{[^}]*align-items:center/)
+  assert.match(css, /\.lui-pagination\{[^}]*gap:2px/)
+  assert.match(css, /\.lui-pagination>\.lui-button\{[^}]*height:calc\(var\(--spacing\)\*9\)/)
+  assert.match(css, /\.lui-text\[data-pressable\]\{[^}]*cursor:pointer/)
+  assert.match(css, /\.lui-text\[data-pressable\]:focus-visible/)
+  assert.doesNotMatch(css, /\.lui-breadcrumb-item/)
+  assert.doesNotMatch(css, /\.lui-pagination-item/)
 })
 
 test("the production stylesheet contains Vercel Native overlay surfaces", async () => {

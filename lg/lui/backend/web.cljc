@@ -7,7 +7,7 @@
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
                      Select Combobox DropdownMenu MenuItem ListItem Avatar
-                     Scroll ListContainer Tabs ButtonGroup ToggleGroup
+                     Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
                      Progress Divider
                      Toggle RadioGroup Radio Slider
@@ -76,6 +76,8 @@
     Tabs "lui-tabs"
     ButtonGroup "lui-button-group"
     ToggleGroup "lui-toggle-group"
+    Breadcrumb "lui-breadcrumb"
+    Pagination "lui-pagination"
     Spacer "lui-spacer"
     Spinner "lui-spinner"
     Icon "lui-icon"
@@ -212,6 +214,8 @@
           Tabs {"role" "tablist" "aria-orientation" "horizontal"}
           ButtonGroup {"role" "group"}
           ToggleGroup {"role" "group"}
+          Breadcrumb {"role" "group"}
+          Pagination {"role" "group"}
           Slider
           {"type" "range" "min" "0" "max" "1" "step" "any"}
           Spinner {"role" "progressbar"}
@@ -399,6 +403,27 @@
   (= (retained/property (:web-store renderer) node property)
      (Some (BoolValue true))))
 
+(defn- attach-pressable-text-events! [renderer node dom-node]
+  (Webapi.Dom.Element.addEventListener
+   "click"
+   (fn [_event]
+     (when (event-capability? renderer node PressEnabled)
+       (Stdlib.ignore
+        ((deref (:web-event-handler renderer)) (proto/Press node))))
+     (Stdlib.ignore true))
+   dom-node)
+  (Webapi.Dom.Element.addKeyDownEventListener
+   (fn [event]
+     (let [key (Webapi.Dom.KeyboardEvent.key event)]
+       (when (and
+              (event-capability? renderer node PressEnabled)
+              (or (= key "Enter") (= key " ")))
+         (Webapi.Dom.KeyboardEvent.preventDefault event)
+         (Stdlib.ignore
+          ((deref (:web-event-handler renderer)) (proto/Press node))))
+       (Stdlib.ignore true)))
+   dom-node))
+
 (defn- attach-list-item-events! [renderer node dom-node]
   (Webapi.Dom.Element.addEventListener
    "click"
@@ -578,6 +603,8 @@
     Tabs (= child-kind Button)
     ButtonGroup (or (= child-kind Button) (= child-kind ToggleButton))
     ToggleGroup (= child-kind ToggleButton)
+    Breadcrumb (= child-kind Button)
+    Pagination (= child-kind Button)
     _ false))
 
 (defn- enabled-node? [renderer node]
@@ -645,6 +672,7 @@
 
 (defn- attach-events! [renderer node kind dom-node]
   (match kind
+    Text (attach-pressable-text-events! renderer node dom-node)
     Button (attach-button-events! renderer node kind dom-node)
     ToggleButton (attach-button-events! renderer node kind dom-node)
     TextField (attach-text-events! renderer node kind dom-node)
@@ -667,6 +695,8 @@
     Tabs (attach-horizontal-focus! renderer node kind dom-node)
     ButtonGroup (attach-horizontal-focus! renderer node kind dom-node)
     ToggleGroup (attach-horizontal-focus! renderer node kind dom-node)
+    Breadcrumb (attach-horizontal-focus! renderer node kind dom-node)
+    Pagination (attach-horizontal-focus! renderer node kind dom-node)
     _ (Stdlib.ignore true)))
 
 (defn- set-style! [dom-node property value]
@@ -1128,7 +1158,17 @@
     (set-state-attribute! dom-node "data-toggle-enabled" enabled)
 
     (tuple PressEnabled (BoolValue enabled))
-    (set-state-attribute! dom-node "data-press-enabled" enabled)
+    (do
+      (set-state-attribute! dom-node "data-press-enabled" enabled)
+      (when (= kind Text)
+        (set-state-attribute! dom-node "data-pressable" enabled)
+        (if enabled
+          (do
+            (Webapi.Dom.Element.setAttribute "role" "button" dom-node)
+            (Webapi.Dom.Element.setAttribute "tabindex" "0" dom-node))
+          (do
+            (Webapi.Dom.Element.removeAttribute "role" dom-node)
+            (Webapi.Dom.Element.removeAttribute "tabindex" dom-node)))))
 
     (tuple SubmitEnabled (BoolValue enabled))
     (set-state-attribute! dom-node "data-submit-enabled" enabled)

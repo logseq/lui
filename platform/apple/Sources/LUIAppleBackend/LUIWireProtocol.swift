@@ -323,6 +323,7 @@ struct LUIRetainedTree {
             kind == .button || kind == .toggleButton || isTextEntry(kind) || kind == .checkbox ||
                 kind == .switchControl || kind == .toggle ||
                 kind == .radioGroup || kind == .buttonGroup || kind == .toggleGroup ||
+                kind == .breadcrumb || kind == .pagination ||
                 kind == .radio || kind == .slider || kind == .avatar
         case .headingLevel: kind == .heading
         case .checked:
@@ -344,7 +345,7 @@ struct LUIRetainedTree {
         case .submitOnEnter: kind == .textarea
         case .changeEnabled, .toggleEnabled: kind == .radio
         case .pressEnabled:
-            kind == .radio || kind == .select || kind == .combobox ||
+            kind == .text || kind == .radio || kind == .select || kind == .combobox ||
                 kind == .menuItem || kind == .listItem
         case .submitEnabled: kind == .combobox || kind == .listItem
         case .doublePressEnabled: kind == .listItem
@@ -367,7 +368,8 @@ struct LUIRetainedTree {
     }
 
     private static func isHorizontalGroup(_ kind: LUINodeKind) -> Bool {
-        kind == .tabs || kind == .buttonGroup || kind == .toggleGroup
+        kind == .tabs || kind == .buttonGroup || kind == .toggleGroup ||
+            kind == .breadcrumb || kind == .pagination
     }
 
     private func validateNodeProperties() throws {

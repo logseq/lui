@@ -540,6 +540,41 @@ delegation; SwiftUI and Flutter use retained native controls plus their native
 focus systems. Reparenting a retained control into or out of a group updates
 only that control's contextual presentation and focus membership.
 
+### Breadcrumb and Pagination contract
+
+`breadcrumb` and `pagination` are retained horizontal composition containers,
+not model owners. Neither introduces a value, current item, selection rule or
+group event. Both accept `gap`, `main`, `cross`, the common surface attributes
+and an accessibility label. They hug their children unless the caller authors
+a main-axis size or alignment. Breadcrumb defaults to a 4px gap and Pagination
+to a 2px gap; both center children on the cross axis. An explicitly authored
+supported value wins for its field.
+
+Breadcrumb follows the pinned reference's plain composition API: muted `text`
+ancestors, muted `chevron-right` `icon` separators and an ordinary current-page
+Text. Binding `on-press` directly to a Text makes that retained Text pressable;
+there is no BreadcrumbItem type. Pressability is a general Text capability, so
+pointer, keyboard and accessibility activation use the same callback and do not
+replace the Text node. Non-pressable Text remains selectable display text.
+
+Pagination is composed from ordinary Button children and an optional `ellipsis`
+Icon. Previous and next actions are ghost Buttons with chevron icons. Page
+buttons use the existing `selected` Signal and variants; the model owns the
+current page and each Button dispatches its own `on-press`. Updating the current
+page patches only affected Button properties and never rebuilds the Pagination
+or its siblings.
+
+Direct Button and IconButton children in either container use the pinned
+reference keymap: Left and Right move focus with wrapping, while Home and End
+move to the first and last eligible enabled control. LUI has no separate public
+IconButton element yet, so the current public contract exercises Button
+children. Breadcrumb's pressable Text participates in normal sequential focus
+and native activation, but not in the reference's Button-only arrow group.
+Focus movement never selects or activates a child. Web exposes labelled group
+semantics with retained DOM nodes; SwiftUI and Flutter retain native controls
+and their native focus objects. Reparenting updates contextual focus membership
+without recreating the child.
+
 ## Showcase
 
 All examples live under `examples/`. `examples/components/` is a component

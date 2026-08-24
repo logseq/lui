@@ -27,6 +27,8 @@
   (FlutterTabs)
   (FlutterButtonGroup)
   (FlutterToggleGroup)
+  (FlutterBreadcrumb)
+  (FlutterPagination)
   (FlutterSpacer)
   (FlutterSpinner)
   (FlutterIcon)

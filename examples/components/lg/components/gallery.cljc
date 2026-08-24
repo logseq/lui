@@ -394,6 +394,42 @@
    [:paragraph
     "Groups own native layout and focus navigation; each child owns its event and selection state."]])
 
+(defui navigation-gallery
+  [overview-selected-source activity-selected-source disabled-source
+   select-overview select-activity]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Breadcrumb"]
+   [:breadcrumb {:accessibility-label "Component path"}
+    [:text
+     {:foreground "muted-foreground" :on-press select-overview}
+     "Gallery"]
+    [:icon
+     {:name "chevron-right" :size "sm"
+      :foreground "muted-foreground"}]
+    [:text "Navigation"]]
+   [:heading {:level 2} "Pagination"]
+   [:pagination {:accessibility-label "Gallery pages"}
+    [:button
+     {:variant "ghost" :icon "chevron-left"
+      :disabled disabled-source :on-press select-overview}
+     "Previous"]
+    [:button
+     {:variant "outline" :selected overview-selected-source
+      :disabled disabled-source :on-press select-overview}
+     "1"]
+    [:icon {:name "ellipsis" :foreground "muted-foreground"}]
+    [:button
+     {:variant "outline" :selected activity-selected-source
+      :disabled disabled-source :on-press select-activity}
+     "2"]
+    [:button
+     {:variant "ghost" :icon "chevron-right"
+      :icon-placement "trailing" :disabled disabled-source
+      :on-press select-activity}
+     "Next"]]
+   [:paragraph
+    "Both containers are plain composition; the shared tab Signal also controls the current page."]])
+
 (defui tabs-gallery
   [overview-selected-source activity-selected-source content-source
    disabled-source select-overview select-activity]
@@ -437,6 +473,9 @@
     checked-source disabled-source update-toggle toggle-disabled]
    [action-group-gallery
     checked-source disabled-source update-toggle toggle-disabled]
+   [navigation-gallery
+    overview-tab-selected-source activity-tab-selected-source disabled-source
+    select-overview-tab select-activity-tab]
    [tabs-gallery
     overview-tab-selected-source activity-tab-selected-source
     tab-content-source disabled-source select-overview-tab

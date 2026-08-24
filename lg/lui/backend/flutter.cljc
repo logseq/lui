@@ -3,7 +3,7 @@
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea
-                     Scroll ListContainer Tabs ButtonGroup ToggleGroup
+                     Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
@@ -53,6 +53,8 @@
     Tabs FlutterTabs
     ButtonGroup FlutterButtonGroup
     ToggleGroup FlutterToggleGroup
+    Breadcrumb FlutterBreadcrumb
+    Pagination FlutterPagination
     Spacer FlutterSpacer
     Spinner FlutterSpinner
     Icon FlutterIcon

@@ -23,6 +23,8 @@
 (signature lui.ui/tabs! :fn<ui-context;int>)
 (signature lui.ui/button-group! :fn<ui-context;int>)
 (signature lui.ui/toggle-group! :fn<ui-context;int>)
+(signature lui.ui/breadcrumb! :fn<ui-context;int>)
+(signature lui.ui/pagination! :fn<ui-context;int>)
 (signature lui.ui/spacer! :fn<ui-context;int>)
 (signature lui.ui/spinner! :fn<ui-context;int>)
 (signature lui.ui/icon! :fn<ui-context;string;int>)

@@ -56,6 +56,8 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.ok(summary.supported.includes('tabs'));
   assert.ok(summary.supported.includes('button-group'));
   assert.ok(summary.supported.includes('toggle-group'));
+  assert.ok(summary.supported.includes('breadcrumb'));
+  assert.ok(summary.supported.includes('pagination'));
   assert.ok(summary.supported.includes('textarea'));
   assert.ok(summary.pending.includes('dialog'));
 });

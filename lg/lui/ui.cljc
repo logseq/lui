@@ -60,6 +60,12 @@
 (defn toggle-group! [context]
   (runtime/create-node! (:ui-application context) proto/ToggleGroup))
 
+(defn breadcrumb! [context]
+  (runtime/create-node! (:ui-application context) proto/Breadcrumb))
+
+(defn pagination! [context]
+  (runtime/create-node! (:ui-application context) proto/Pagination))
+
 (defn spacer! [context]
   (runtime/create-node! (:ui-application context) proto/Spacer))
 

@@ -24,7 +24,7 @@
   (match event
     (Press _node)
     (or (= kind Button) (= kind Radio) (= kind Select)
-        (= kind Combobox) (= kind MenuItem) (= kind ListItem))
+        (= kind Combobox) (= kind MenuItem) (= kind ListItem) (= kind Text))
     (Hold _node) (or (= kind Button) (= kind ToggleButton))
     (TextChanged _node _text)
     (or (= kind TextField) (= kind Input) (= kind SearchField)
@@ -98,14 +98,21 @@
    (= value "center")
    (= value "end")))
 
+(defn- horizontal-container? [kind]
+  (or (= kind Tabs) (= kind ButtonGroup) (= kind ToggleGroup)
+      (= kind Breadcrumb) (= kind Pagination)))
+
+(defn- labelled-horizontal-container? [kind]
+  (and (horizontal-container? kind) (not (= kind Tabs))))
+
 (defn property-supported? [kind property]
   (match property
     MainAlignment
-    (or (= kind Row) (= kind Column) (= kind ListContainer) (= kind Tabs)
-        (= kind ButtonGroup) (= kind ToggleGroup))
+    (or (= kind Row) (= kind Column) (= kind ListContainer)
+        (horizontal-container? kind))
     CrossAlignment
-    (or (= kind Row) (= kind Column) (= kind ListContainer) (= kind Tabs)
-        (= kind ButtonGroup) (= kind ToggleGroup))
+    (or (= kind Row) (= kind Column) (= kind ListContainer)
+        (horizontal-container? kind))
     GrowValue (not (= kind Avatar))
     GridColumns (= kind Grid)
     PaddingValue (not (= kind Avatar))
@@ -154,7 +161,7 @@
         (= kind Textarea)
         (= kind Checkbox) (= kind SwitchControl)
         (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider)
-        (= kind ButtonGroup) (= kind ToggleGroup)
+        (labelled-horizontal-container? kind)
         (= kind Avatar))
     PlaceholderValue
     (or (= kind TextField) (= kind Input) (= kind SearchField)
@@ -184,8 +191,8 @@
     ChangeEnabled (= kind Radio)
     ToggleEnabled (= kind Radio)
     PressEnabled
-    (or (= kind Radio) (= kind Select) (= kind Combobox) (= kind MenuItem)
-        (= kind ListItem))
+    (or (= kind Text) (= kind Radio) (= kind Select) (= kind Combobox)
+        (= kind MenuItem) (= kind ListItem))
     SubmitEnabled (or (= kind Combobox) (= kind ListItem))
     DoublePressEnabled (= kind ListItem)
     ImageIdValue (= kind Avatar)
@@ -237,16 +244,9 @@
       ListItem true
       _ false)
     Gap
-    (match kind
-      Row true
-      Column true
-      Grid true
-      ListContainer true
-      DropdownMenu true
-      Tabs true
-      ButtonGroup true
-      ToggleGroup true
-      _ false)))
+    (or (= kind Row) (= kind Column) (= kind Grid)
+        (= kind ListContainer) (= kind DropdownMenu)
+        (horizontal-container? kind))))
 
 (defn property-value-supported? [property value]
   (match (tuple property value)
@@ -429,23 +429,22 @@
      true)))
 
 (defn can-contain-children? [kind]
-  (match kind
-    Row true
-    Column true
-    Grid true
-    Stack true
-    Panel true
-    Card true
-    Box true
-    Scroll true
-    ListContainer true
-    Tabs true
-    ButtonGroup true
-    ToggleGroup true
-    RadioGroup true
-    DropdownMenu true
-    ListItem true
-    _ false))
+  (if (horizontal-container? kind)
+    true
+    (match kind
+      Row true
+      Column true
+      Grid true
+      Stack true
+      Panel true
+      Card true
+      Box true
+      Scroll true
+      ListContainer true
+      RadioGroup true
+      DropdownMenu true
+      ListItem true
+      _ false)))
 
 (defn create-node-op [node kind]
   (CreateNode node kind))

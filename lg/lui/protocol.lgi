@@ -40,7 +40,9 @@
   (DropdownMenu)
   (MenuItem)
   (ListItem)
-  (Avatar))
+  (Avatar)
+  (Breadcrumb)
+  (Pagination))
 
 (type-variant operating-system
   (GenericOS)

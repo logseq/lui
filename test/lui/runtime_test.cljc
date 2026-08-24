@@ -254,6 +254,65 @@
     (is (not (proto/event-supported? kind (proto/ToggleChanged 1 true)))
         "groups introduce no toggle event")))
 
+(deftest breadcrumb-and-pagination-are-stateless-composition-containers
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Breadcrumb)
+                      (proto/create-node-op 2 proto/Text)
+                      (proto/create-node-op 3 proto/Pagination)
+                      (proto/create-node-op 4 proto/Button)
+                      (proto/set-prop-op 1 proto/Gap (proto/IntValue 4))
+                      (proto/set-prop-op
+                       2 proto/TextValue (proto/StringValue "Home"))
+                      (proto/set-prop-op
+                       2 proto/PressEnabled (proto/BoolValue true))
+                      (proto/set-prop-op 3 proto/Gap (proto/IntValue 2))
+                      (proto/set-prop-op
+                       4 proto/TextValue (proto/StringValue "1"))
+                      (proto/set-prop-op
+                       4 proto/Selected (proto/BoolValue true))
+                      (proto/insert-child-op 1 2 0)
+                      (proto/insert-child-op 3 4 0)]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"breadcrumb\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"text\"},"
+      "{\"op\":\"create-node\",\"id\":3,\"kind\":\"pagination\"},"
+      "{\"op\":\"create-node\",\"id\":4,\"kind\":\"button\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"gap\",\"value\":4},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"text\","
+      "\"value\":\"Home\"},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"press-enabled\","
+      "\"value\":true},"
+      "{\"op\":\"set-prop\",\"id\":3,\"property\":\"gap\",\"value\":2},"
+      "{\"op\":\"set-prop\",\"id\":4,\"property\":\"text\",\"value\":\"1\"},"
+      "{\"op\":\"set-prop\",\"id\":4,\"property\":\"selected\","
+      "\"value\":true},"
+      "{\"op\":\"insert-child\",\"parent\":1,\"child\":2,\"index\":0},"
+      "{\"op\":\"insert-child\",\"parent\":3,\"child\":4,\"index\":0}]}" )
+     (wire/encode-batch batch)
+     "navigation containers and pressable Text use the closed wire vocabulary"))
+  (doseq [kind [proto/Breadcrumb proto/Pagination]]
+    (is (proto/can-contain-children? kind)
+        "navigation containers retain their composed children")
+    (doseq [property
+            [proto/Gap proto/MainAlignment proto/CrossAlignment
+             proto/PaddingValue proto/GrowValue proto/WidthValue
+             proto/MinWidth proto/MaxWidth proto/AccessibilityLabel]]
+      (is (proto/property-supported? kind property)
+          "navigation containers admit the horizontal-container surface"))
+    (doseq [property [proto/TextValue proto/Selected proto/Enabled]]
+      (is (not (proto/property-supported? kind property))
+          "navigation containers own no child state"))
+    (is (not (proto/event-supported? kind (proto/Press 1)))
+        "navigation containers introduce no event"))
+  (is (proto/property-supported? proto/Text proto/PressEnabled)
+      "Text can opt into the reference's general press capability")
+  (is (proto/event-supported? proto/Text (proto/Press 2))
+      "pressable Text dispatches the ordinary Press event"))
+
 (deftest list-item-has-the-complete-reference-contract
   (let [batch
         (record proto/patch-batch
@@ -1144,17 +1203,17 @@
   (let [application
         (runtime/create (sig/scheduler) (apple/backend (apple/create)))
         component-scope (sig/scope "events")
-        text (runtime/create-node! application proto/Text)
+        heading (runtime/create-node! application proto/Heading)
         calls (atom 0)]
     (sig/mount! component-scope)
     (runtime/on-event!
-     component-scope application text
+     component-scope application heading
      (fn [_event] (swap! calls inc) true))
     (is (thrown-with-msg?
          Invalid_argument
          #"unsupported"
-         (runtime/dispatch! application (proto/Press text)))
-        "a native host cannot emit button events for text nodes")
+         (runtime/dispatch! application (proto/Press heading)))
+        "a native host cannot emit press events for non-pressable headings")
     (runtime/flush! application)
     (assert-equal 0 @calls "invalid native events never enter the effect queue")
     (is (thrown-with-msg?

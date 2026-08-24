@@ -438,12 +438,15 @@ final class LUIFlutterBackend {
 
   void performAction(int node) {
     final state = _requireState(_states, node);
-    if (state.kind != _NodeKind.button &&
-            state.kind != _NodeKind.select &&
-            state.kind != _NodeKind.combobox &&
-            state.kind != _NodeKind.menuItem &&
-            state.kind != _NodeKind.listItem ||
-        state.properties['enabled'] == false) {
+    final pressable =
+        state.kind == _NodeKind.button ||
+        state.kind == _NodeKind.select ||
+        state.kind == _NodeKind.combobox ||
+        state.kind == _NodeKind.menuItem ||
+        state.kind == _NodeKind.listItem ||
+        (state.kind == _NodeKind.text &&
+            state.properties['press-enabled'] == true);
+    if (!pressable || state.properties['enabled'] == false) {
       throw LUIBackendException(
         'node $node is not an enabled pressable control',
       );
@@ -595,7 +598,9 @@ final class LUIFlutterBackend {
     final cornerRadius = state.properties['corner-radius'] as int?;
     final gap =
         (state.properties['gap'] as int? ??
-                (_isHorizontalGroupKind(state.kind) ? 4 : 0))
+                (_isHorizontalGroupKind(state.kind)
+                    ? _horizontalGroupDefaultGap(state.kind)
+                    : 0))
             .toDouble();
     final main = state.properties['main'] as String? ?? 'start';
     final cross =
@@ -1002,6 +1007,22 @@ final class LUIFlutterBackend {
           ? () => performSubmit(id)
           : null,
     );
+    Widget textNode() {
+      final label = Text(text, style: TextStyle(color: foreground));
+      if (state.properties['press-enabled'] != true) return label;
+      return TextButton(
+        onPressed: () => performAction(id),
+        focusNode: _requireHandle(id).focusNode,
+        style: TextButton.styleFrom(
+          foregroundColor: foreground,
+          minimumSize: Size.zero,
+          padding: EdgeInsets.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: label,
+      );
+    }
+
     Widget avatar() {
       final imageID = state.properties['image'] as int? ?? 0;
       final image = imageID == 0 ? null : _images[imageID];
@@ -1063,7 +1084,9 @@ final class LUIFlutterBackend {
       _NodeKind.row => row(),
       _NodeKind.tabs ||
       _NodeKind.buttonGroup ||
-      _NodeKind.toggleGroup => horizontalGroup(),
+      _NodeKind.toggleGroup ||
+      _NodeKind.breadcrumb ||
+      _NodeKind.pagination => horizontalGroup(),
       _NodeKind.column || _NodeKind.list => column(),
       _NodeKind.grid => grid(),
       _NodeKind.stack => stack(),
@@ -1073,7 +1096,7 @@ final class LUIFlutterBackend {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: children,
       ),
-      _NodeKind.text => Text(text, style: TextStyle(color: foreground)),
+      _NodeKind.text => textNode(),
       _NodeKind.heading => Semantics(
         header: true,
         child: Text(
@@ -1463,7 +1486,8 @@ final class LUIFlutterBackend {
       'toggle-enabled' => value is bool && kind == _NodeKind.radio,
       'press-enabled' =>
         value is bool &&
-            (kind == _NodeKind.radio ||
+            (kind == _NodeKind.text ||
+                kind == _NodeKind.radio ||
                 kind == _NodeKind.select ||
                 kind == _NodeKind.combobox ||
                 kind == _NodeKind.menuItem ||
@@ -1551,6 +1575,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.radioGroup ||
                 kind == _NodeKind.buttonGroup ||
                 kind == _NodeKind.toggleGroup ||
+                kind == _NodeKind.breadcrumb ||
+                kind == _NodeKind.pagination ||
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider ||
                 kind == _NodeKind.avatar),
@@ -1730,7 +1756,12 @@ final class LUIFlutterBackend {
   static bool _isHorizontalGroupKind(_NodeKind kind) =>
       kind == _NodeKind.tabs ||
       kind == _NodeKind.buttonGroup ||
-      kind == _NodeKind.toggleGroup;
+      kind == _NodeKind.toggleGroup ||
+      kind == _NodeKind.breadcrumb ||
+      kind == _NodeKind.pagination;
+
+  static int _horizontalGroupDefaultGap(_NodeKind kind) =>
+      kind == _NodeKind.pagination ? 2 : 4;
 
   static bool _isHorizontalGroupChild(
     _NodeKind groupKind,
@@ -1739,6 +1770,8 @@ final class LUIFlutterBackend {
     _NodeKind.tabs => childKind == _NodeKind.button,
     _NodeKind.buttonGroup => _isButtonKind(childKind),
     _NodeKind.toggleGroup => childKind == _NodeKind.toggleButton,
+    _NodeKind.breadcrumb ||
+    _NodeKind.pagination => childKind == _NodeKind.button,
     _ => false,
   };
 

@@ -22,8 +22,8 @@
     {"name": "toggle-group", "status": "supported"},
     {"name": "button-group", "status": "supported"},
     {"name": "radio-group", "status": "supported"},
-    {"name": "breadcrumb", "status": "pending"},
-    {"name": "pagination", "status": "pending"},
+    {"name": "breadcrumb", "status": "supported"},
+    {"name": "pagination", "status": "supported"},
     {"name": "table", "status": "pending"},
     {"name": "table-row", "status": "pending"},
     {"name": "table-cell", "status": "pending"},
@@ -110,7 +110,9 @@
     {"lg": "DropdownMenu", "wire": "dropdown-menu", "dart": "dropdownMenu", "swift": "dropdownMenu", "container": true},
     {"lg": "MenuItem", "wire": "menu-item", "dart": "menuItem", "swift": "menuItem", "container": false},
     {"lg": "ListItem", "wire": "list-item", "dart": "listItem", "swift": "listItem", "container": true},
-    {"lg": "Avatar", "wire": "avatar", "dart": "avatar", "swift": "avatar", "container": false}
+    {"lg": "Avatar", "wire": "avatar", "dart": "avatar", "swift": "avatar", "container": false},
+    {"lg": "Breadcrumb", "wire": "breadcrumb", "dart": "breadcrumb", "swift": "breadcrumb", "container": true},
+    {"lg": "Pagination", "wire": "pagination", "dart": "pagination", "swift": "pagination", "container": true}
   ],
   "properties": [
     {"lg": "TextValue", "wire": "text", "swift": "text"},

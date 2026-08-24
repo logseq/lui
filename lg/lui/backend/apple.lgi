@@ -29,6 +29,8 @@
   (AppleTabs)
   (AppleButtonGroup)
   (AppleToggleGroup)
+  (AppleBreadcrumb)
+  (ApplePagination)
   (AppleSpacer)
   (AppleSpinner)
   (AppleIcon)

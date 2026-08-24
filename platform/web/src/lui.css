@@ -689,4 +689,24 @@
   .lui-toggle-group {
     @apply inline-flex items-center gap-1;
   }
+
+  .lui-breadcrumb {
+    @apply inline-flex items-center gap-1;
+  }
+
+  .lui-pagination {
+    @apply inline-flex items-center gap-[2px];
+  }
+
+  .lui-pagination > .lui-button {
+    @apply h-9 px-3;
+  }
+
+  .lui-text[data-pressable] {
+    @apply cursor-pointer rounded-sm;
+  }
+
+  .lui-text[data-pressable]:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
 }
