@@ -49,6 +49,12 @@
   (BorderColorValue)
   (BorderWidth)
   (CornerRadius)
+  (WidthValue)
+  (HeightValue)
+  (MinWidth)
+  (MaxWidth)
+  (MinHeight)
+  (MaxHeight)
   (PlaceholderValue)
   (ReadOnly)
   (AccessibilityLabel)
@@ -106,6 +112,8 @@
   :fn<property;wire-value;bool>)
 (signature lui.protocol/int-property
   :fn<map<property;wire-value>;property;int;int>)
+(signature lui.protocol/surface-size-supported?
+  :fn<map<property;wire-value>;bool>)
 (signature lui.protocol/node-properties-supported?
   :fn<node-kind;map<property;wire-value>;bool>)
 (signature lui.protocol/can-contain-children? :fn<node-kind;bool>)

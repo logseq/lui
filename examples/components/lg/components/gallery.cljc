@@ -4,6 +4,7 @@
             [lui.card :as card]
             [lui.progress :as progress]
             [lui.separator]
+            [lui.skeleton]
             [lui.switch :as switch]
             [lui.text-field :as text-field]))
 
@@ -98,6 +99,14 @@
     [:separator {:orientation "vertical"}]
     [:text "Right"]]])
 
+(defui skeleton-gallery []
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Skeleton"]
+   [:column {:gap 12 :max-width 320}
+    [:skeleton {:width 320 :height 16 :corner-radius 6}]
+    [:skeleton {:width 240 :height 16 :corner-radius 6}]
+    [:skeleton {:width 280 :height 16 :corner-radius 6}]]])
+
 (defui text-field-gallery
   [value-source invalid-source disabled-source update-value toggle-invalid]
   [:column {:gap 24 :padding 32}
@@ -170,6 +179,7 @@
    [button-gallery disabled-source toggle-disabled]
    [badge-gallery]
    [separator-gallery]
+   [skeleton-gallery]
    [progress-gallery progress-source progress-label-source advance-progress]
    [card-gallery card-copy]
    [text-field-gallery

@@ -56,6 +56,13 @@ final class LUINodeModel: Identifiable {
         properties[.invalid]?.boolValue ?? false
     }
 
+    var surfaceWidth: Int? { properties[.width]?.intValue }
+    var surfaceHeight: Int? { properties[.height]?.intValue }
+    var surfaceMinWidth: Int? { properties[.minWidth]?.intValue }
+    var surfaceMaxWidth: Int? { properties[.maxWidth]?.intValue }
+    var surfaceMinHeight: Int? { properties[.minHeight]?.intValue }
+    var surfaceMaxHeight: Int? { properties[.maxHeight]?.intValue }
+
     var progressFraction: Double {
         let minimum = properties[.minValue]?.intValue ?? 0
         let maximum = properties[.maxValue]?.intValue ?? 100

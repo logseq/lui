@@ -69,6 +69,12 @@
     BorderColorValue true
     BorderWidth true
     CornerRadius true
+    WidthValue true
+    HeightValue true
+    MinWidth true
+    MaxWidth true
+    MinHeight true
+    MaxHeight true
     StyleClass true
     AccessibilityLabel
     (or (= kind TextInput) (= kind TextArea)
@@ -132,6 +138,12 @@
     (tuple BorderColorValue (StringValue _value)) true
     (tuple BorderWidth (IntValue value)) (>= value 0)
     (tuple CornerRadius (IntValue value)) (>= value 0)
+    (tuple WidthValue (IntValue value)) (>= value 0)
+    (tuple HeightValue (IntValue value)) (>= value 0)
+    (tuple MinWidth (IntValue value)) (>= value 0)
+    (tuple MaxWidth (IntValue value)) (>= value 0)
+    (tuple MinHeight (IntValue value)) (>= value 0)
+    (tuple MaxHeight (IntValue value)) (>= value 0)
     (tuple PlaceholderValue (StringValue _value)) true
     (tuple ReadOnly (BoolValue _value)) true
     (tuple AccessibilityLabel (StringValue _value)) true
@@ -161,11 +173,30 @@
       _ fallback)
     fallback))
 
+(defn- size-axis-supported? [properties fixed-property min-property max-property]
+  (let [minimum (int-property properties min-property 0)
+        fixed (int-property properties fixed-property minimum)]
+    (and
+     (>= fixed minimum)
+     (if-some [value (clojure.core/get properties max-property)]
+       (match value
+         (IntValue maximum)
+         (and (<= minimum maximum) (<= fixed maximum))
+         _ false)
+       true))))
+
+(defn surface-size-supported? [properties]
+  (and
+   (size-axis-supported? properties WidthValue MinWidth MaxWidth)
+   (size-axis-supported? properties HeightValue MinHeight MaxHeight)))
+
 (defn node-properties-supported? [kind properties]
-  (if (= kind ProgressControl)
-    (< (int-property properties MinValue 0)
-       (int-property properties MaxValue 100))
-    true))
+  (and
+   (surface-size-supported? properties)
+   (if (= kind ProgressControl)
+     (< (int-property properties MinValue 0)
+        (int-property properties MaxValue 100))
+     true)))
 
 (defn can-contain-children? [kind]
   (match kind

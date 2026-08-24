@@ -9,6 +9,7 @@
             [lui.card :as card]
             [lui.progress :as progress]
             [lui.separator]
+            [lui.skeleton]
             [lui.text-field :as text-field]
             [lui.switch :as switch]
             [lui.macros :refer [defui state effect platform host]]
@@ -44,6 +45,14 @@
 (defui simple-component-view []
   [:lui.authoring-test/simple-panel {:class "profile-panel"}
    [:text "Declarative"]])
+
+(defui loading-placeholder []
+  [:skeleton
+   {:width 120
+    :height 16
+    :min-width 80
+    :max-width 160
+    :class "profile-loading"}])
 
 (defui current-platform-profile []
   (tuple (platform) (host)))
@@ -266,6 +275,35 @@
       _ (is false "component root exposes its style class"))
     (assert-equal 1 (count (apple/children renderer root))
                   "component children are mounted automatically")))
+
+(deftest skeleton-is-a-declarative-sized-surface
+  (let [renderer (apple/create)
+        application
+        (runtime/create (sig/scheduler) (apple/backend renderer))
+        root
+        (loading-placeholder
+         (ui/context application (sig/scope "loading-placeholder")))]
+    (runtime/flush! application)
+    (match (apple/node renderer root)
+      (Some AppleBox) (is true "Skeleton reuses the Box primitive")
+      _ (is false "Skeleton must not introduce a platform node kind"))
+    (match (apple/property renderer root proto/StyleClass)
+      (Some (StringValue value))
+      (assert-equal "lui-skeleton profile-loading" value
+                    "Skeleton exposes its semantic class")
+      _ (is false "Skeleton retains its class"))
+    (doseq [constraint
+            [(tuple proto/WidthValue 120)
+             (tuple proto/HeightValue 16)
+             (tuple proto/MinWidth 80)
+             (tuple proto/MaxWidth 160)]]
+      (match constraint
+        (tuple property expected)
+        (match (apple/property renderer root property)
+          (Some (proto/IntValue value))
+          (assert-equal expected value
+                        "component sizing flows through shared Surface props")
+          _ (is false "Skeleton retains its size constraints"))))))
 
 (deftest semantic-builders-produce-retained-ui
   (let [scheduler (sig/scheduler)

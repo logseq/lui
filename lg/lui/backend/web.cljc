@@ -10,6 +10,7 @@
                      PaddingHorizontal PaddingVertical
                      BackgroundValue ForegroundValue BorderColorValue
                      BorderWidth CornerRadius
+                     WidthValue HeightValue MinWidth MaxWidth MinHeight MaxHeight
                      PlaceholderValue ReadOnly MinLines MaxLines
                      AccessibilityLabel StyleClass HeadingLevel LabelledBy
                      DescribedBy ErrorMessageBy InputType Invalid
@@ -290,6 +291,24 @@
 
     (tuple CornerRadius (IntValue radius))
     (set-style! dom-node "border-radius" (str radius "px"))
+
+    (tuple WidthValue (IntValue width))
+    (set-style! dom-node "width" (str width "px"))
+
+    (tuple HeightValue (IntValue height))
+    (set-style! dom-node "height" (str height "px"))
+
+    (tuple MinWidth (IntValue width))
+    (set-style! dom-node "min-width" (str width "px"))
+
+    (tuple MaxWidth (IntValue width))
+    (set-style! dom-node "max-width" (str width "px"))
+
+    (tuple MinHeight (IntValue height))
+    (set-style! dom-node "min-height" (str height "px"))
+
+    (tuple MaxHeight (IntValue height))
+    (set-style! dom-node "max-height" (str height "px"))
 
     (tuple PlaceholderValue (StringValue placeholder))
     (Webapi.Dom.HtmlInputElement.setPlaceholder

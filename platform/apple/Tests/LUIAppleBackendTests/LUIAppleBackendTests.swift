@@ -218,6 +218,53 @@ struct LUISwiftUIBackendTests {
         #expect(separator.revision == revision + 1)
     }
 
+    @Test("maps typed Surface size constraints without replacing its SwiftUI model")
+    func mapsSurfaceSizeConstraints() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"box"},
+          {"op":"set-prop","id":1,"property":"width","value":120},
+          {"op":"set-prop","id":1,"property":"height","value":24},
+          {"op":"set-prop","id":1,"property":"min-width","value":80},
+          {"op":"set-prop","id":1,"property":"max-width","value":160},
+          {"op":"set-prop","id":1,"property":"min-height","value":16},
+          {"op":"set-prop","id":1,"property":"max-height","value":32}
+        ]}
+        """)
+
+        let box = try #require(backend.model(id: 1))
+        let revision = box.revision
+        #expect(box.surfaceWidth == 120)
+        #expect(box.surfaceHeight == 24)
+        #expect(box.surfaceMinWidth == 80)
+        #expect(box.surfaceMaxWidth == 160)
+        #expect(box.surfaceMinHeight == 16)
+        #expect(box.surfaceMaxHeight == 32)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"width","value":140}
+        ]}
+        """)
+        #expect(backend.model(id: 1) === box)
+        #expect(box.surfaceWidth == 140)
+        #expect(box.revision == revision + 1)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":3,"ops":[
+              {"op":"set-prop","id":1,"property":"min-width","value":170},
+              {"op":"set-prop","id":1,"property":"max-width","value":160}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 2)
+        #expect(box.surfaceMinWidth == 80)
+        #expect(box.revision == revision + 1)
+    }
+
     @Test("C ABI forwards SwiftUI backend events")
     func cABIForwardsEvent() {
         capturedAppleEvent = nil

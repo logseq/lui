@@ -103,3 +103,16 @@ test("the production stylesheet contains the Solid UI Separator contract", async
   assert.match(css, /\.lui-separator\[data-orientation=vertical\]\{[^}]*width:1px/)
   assert.doesNotMatch(css, /\.h-px\{/)
 })
+
+test("the production stylesheet contains the Solid UI Skeleton contract", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-skeleton\{[^}]*background-color:/)
+  assert.match(css, /\.lui-skeleton\{[^}]*animation:/)
+  assert.match(css, /@media \(prefers-reduced-motion:reduce\)/)
+  assert.match(
+    css,
+    /@media \(prefers-reduced-motion:reduce\)\{\.lui-skeleton\{[^}]*animation:none/,
+  )
+  assert.doesNotMatch(css, /\.animate-pulse\{/)
+})

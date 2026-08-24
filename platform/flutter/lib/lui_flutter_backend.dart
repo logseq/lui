@@ -376,7 +376,7 @@ final class LUIFlutterBackend {
         state.properties['padding-horizontal'] as int? ?? padding;
     final paddingVertical =
         state.properties['padding-vertical'] as int? ?? padding;
-    return Container(
+    Widget surface = Container(
       padding: EdgeInsets.symmetric(
         horizontal: paddingHorizontal.toDouble(),
         vertical: paddingVertical.toDouble(),
@@ -395,6 +395,34 @@ final class LUIFlutterBackend {
       ),
       child: content,
     );
+    final width = state.properties['width'] as int?;
+    final height = state.properties['height'] as int?;
+    if (width != null || height != null) {
+      surface = SizedBox(
+        width: width?.toDouble(),
+        height: height?.toDouble(),
+        child: surface,
+      );
+    }
+    final minWidth = state.properties['min-width'] as int?;
+    final maxWidth = state.properties['max-width'] as int?;
+    final minHeight = state.properties['min-height'] as int?;
+    final maxHeight = state.properties['max-height'] as int?;
+    if (minWidth != null ||
+        maxWidth != null ||
+        minHeight != null ||
+        maxHeight != null) {
+      surface = ConstrainedBox(
+        constraints: BoxConstraints(
+          minWidth: minWidth?.toDouble() ?? 0,
+          maxWidth: maxWidth?.toDouble() ?? double.infinity,
+          minHeight: minHeight?.toDouble() ?? 0,
+          maxHeight: maxHeight?.toDouble() ?? double.infinity,
+        ),
+        child: surface,
+      );
+    }
+    return surface;
   }
 
   void _applyState(
@@ -528,6 +556,12 @@ final class LUIFlutterBackend {
       'border-color' => value is String,
       'border-width' => value is int && value >= 0,
       'corner-radius' => value is int && value >= 0,
+      'width' ||
+      'height' ||
+      'min-width' ||
+      'max-width' ||
+      'min-height' ||
+      'max-height' => value is int && value >= 0,
       'style-class' => value is String,
       'labelled-by' =>
         value is int &&
@@ -590,14 +624,31 @@ final class LUIFlutterBackend {
 
   static void _validateStates(Map<int, _NodeState> states) {
     for (final state in states.values) {
-      if (state.kind != _NodeKind.progress) continue;
-      final minimum = state.properties['min-value'] as int? ?? 0;
-      final maximum = state.properties['max-value'] as int? ?? 100;
-      if (maximum <= minimum) {
-        throw const LUIBackendException(
-          'progress max-value must be greater than min-value',
-        );
+      _validateSizeAxis(state, 'width', 'min-width', 'max-width');
+      _validateSizeAxis(state, 'height', 'min-height', 'max-height');
+      if (state.kind == _NodeKind.progress) {
+        final minimum = state.properties['min-value'] as int? ?? 0;
+        final maximum = state.properties['max-value'] as int? ?? 100;
+        if (maximum <= minimum) {
+          throw const LUIBackendException(
+            'progress max-value must be greater than min-value',
+          );
+        }
       }
+    }
+  }
+
+  static void _validateSizeAxis(
+    _NodeState state,
+    String fixedProperty,
+    String minProperty,
+    String maxProperty,
+  ) {
+    final minimum = state.properties[minProperty] as int? ?? 0;
+    final maximum = state.properties[maxProperty] as int? ?? 0x7fffffffffffffff;
+    final fixed = state.properties[fixedProperty] as int? ?? minimum;
+    if (minimum > maximum || fixed < minimum || fixed > maximum) {
+      throw const LUIBackendException('surface size constraints conflict');
     }
   }
 

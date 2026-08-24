@@ -254,6 +254,16 @@ private struct LUISurfaceModifier: ViewModifier {
         content
             .padding(.horizontal, CGFloat(horizontal))
             .padding(.vertical, CGFloat(vertical))
+            .frame(
+                width: model.surfaceWidth.map(CGFloat.init),
+                height: model.surfaceHeight.map(CGFloat.init)
+            )
+            .frame(
+                minWidth: model.surfaceMinWidth.map(CGFloat.init),
+                maxWidth: model.surfaceMaxWidth.map(CGFloat.init),
+                minHeight: model.surfaceMinHeight.map(CGFloat.init),
+                maxHeight: model.surfaceMaxHeight.map(CGFloat.init)
+            )
             .foregroundStyle(color(model.property(.foreground)?.stringValue) ?? .primary)
             .background(
                 color(model.property(.background)?.stringValue) ?? .clear,

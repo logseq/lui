@@ -28,6 +28,11 @@ enum LUIProperty: String, Decodable, Hashable {
     case borderColor = "border-color"
     case borderWidth = "border-width"
     case cornerRadius = "corner-radius"
+    case width, height
+    case minWidth = "min-width"
+    case maxWidth = "max-width"
+    case minHeight = "min-height"
+    case maxHeight = "max-height"
     case readOnly = "read-only"
     case accessibilityLabel = "accessibility-label"
     case minLines = "min-lines"
@@ -133,7 +138,13 @@ enum LUIWireValue: Decodable, Equatable {
         case let (.paddingHorizontal, .int(value)),
              let (.paddingVertical, .int(value)),
              let (.borderWidth, .int(value)),
-             let (.cornerRadius, .int(value)): value >= 0
+             let (.cornerRadius, .int(value)),
+             let (.width, .int(value)),
+             let (.height, .int(value)),
+             let (.minWidth, .int(value)),
+             let (.maxWidth, .int(value)),
+             let (.minHeight, .int(value)),
+             let (.maxHeight, .int(value)): value >= 0
         case (.text, .string), (.enabled, .bool), (.gap, .int),
              (.padding, .int), (.background, .string),
              (.placeholder, .string), (.readOnly, .bool),
@@ -250,7 +261,8 @@ struct LUIRetainedTree {
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         switch property {
         case .padding, .background, .borderColor, .borderWidth,
-             .cornerRadius, .styleClass: true
+             .cornerRadius, .styleClass, .width, .height,
+             .minWidth, .maxWidth, .minHeight, .maxHeight: true
         case .paddingHorizontal, .paddingVertical:
             kind == .row || kind == .column || kind == .box
         case .foreground:
@@ -297,12 +309,40 @@ struct LUIRetainedTree {
     }
 
     private func validateNodeProperties() throws {
-        for node in nodes.values where node.kind == .progress {
-            let minimum = node.properties[.minValue]?.intValue ?? 0
-            let maximum = node.properties[.maxValue]?.intValue ?? 100
-            guard maximum > minimum else {
-                throw invalid("progress max-value must be greater than min-value")
+        for node in nodes.values {
+            try validateSizeAxis(
+                node,
+                fixed: .width,
+                minimum: .minWidth,
+                maximum: .maxWidth
+            )
+            try validateSizeAxis(
+                node,
+                fixed: .height,
+                minimum: .minHeight,
+                maximum: .maxHeight
+            )
+            if node.kind == .progress {
+                let minimum = node.properties[.minValue]?.intValue ?? 0
+                let maximum = node.properties[.maxValue]?.intValue ?? 100
+                guard maximum > minimum else {
+                    throw invalid("progress max-value must be greater than min-value")
+                }
             }
+        }
+    }
+
+    private func validateSizeAxis(
+        _ node: LUINodeState,
+        fixed: LUIProperty,
+        minimum: LUIProperty,
+        maximum: LUIProperty
+    ) throws {
+        let lower = node.properties[minimum]?.intValue ?? 0
+        let upper = node.properties[maximum]?.intValue ?? .max
+        let exact = node.properties[fixed]?.intValue ?? lower
+        guard lower <= upper, exact >= lower, exact <= upper else {
+            throw invalid("surface size constraints conflict")
         }
     }
 

@@ -258,6 +258,59 @@ void main() {
     );
   });
 
+  testWidgets('maps typed Surface size constraints to native layout widgets', (
+    tester,
+  ) async {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"box"},
+        {"op":"set-prop","id":1,"property":"width","value":120},
+        {"op":"set-prop","id":1,"property":"height","value":24},
+        {"op":"set-prop","id":1,"property":"min-width","value":80},
+        {"op":"set-prop","id":1,"property":"max-width","value":160},
+        {"op":"set-prop","id":1,"property":"min-height","value":16},
+        {"op":"set-prop","id":1,"property":"max-height","value":32}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    final root = find.byKey(LUIFlutterBackend.nodeKey(1));
+    final sized = tester.widget<SizedBox>(
+      find.descendant(of: root, matching: find.byType(SizedBox)).first,
+    );
+    final constrained = tester.widget<ConstrainedBox>(
+      find.descendant(of: root, matching: find.byType(ConstrainedBox)).first,
+    );
+    expect(sized.width, 120);
+    expect(sized.height, 24);
+    expect(
+      constrained.constraints,
+      const BoxConstraints(
+        minWidth: 80,
+        maxWidth: 160,
+        minHeight: 16,
+        maxHeight: 32,
+      ),
+    );
+
+    final revision = backend.debugRevision(1);
+    expect(
+      () => backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":1,"property":"min-width","value":170},
+        {"op":"set-prop","id":1,"property":"max-width","value":160}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 1);
+    expect(backend.debugRevision(1), revision);
+  });
+
   testWidgets('maps progress ranges to one retained LinearProgressIndicator', (
     tester,
   ) async {

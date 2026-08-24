@@ -124,7 +124,19 @@
                 (proto/set-prop-op
                  1 proto/BorderWidth (proto/IntValue 1))
                 (proto/set-prop-op
-                 1 proto/CornerRadius (proto/IntValue 6))]))]
+                 1 proto/CornerRadius (proto/IntValue 6))
+                (proto/set-prop-op
+                 1 proto/WidthValue (proto/IntValue 120))
+                (proto/set-prop-op
+                 1 proto/HeightValue (proto/IntValue 24))
+                (proto/set-prop-op
+                 1 proto/MinWidth (proto/IntValue 80))
+                (proto/set-prop-op
+                 1 proto/MaxWidth (proto/IntValue 160))
+                (proto/set-prop-op
+                 1 proto/MinHeight (proto/IntValue 16))
+                (proto/set-prop-op
+                 1 proto/MaxHeight (proto/IntValue 32))]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
@@ -140,7 +152,19 @@
       "{\"op\":\"set-prop\",\"id\":1,"
       "\"property\":\"border-width\",\"value\":1},"
       "{\"op\":\"set-prop\",\"id\":1,"
-      "\"property\":\"corner-radius\",\"value\":6}]}")
+      "\"property\":\"corner-radius\",\"value\":6},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"width\",\"value\":120},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"height\",\"value\":24},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"min-width\",\"value\":80},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"max-width\",\"value\":160},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"min-height\",\"value\":16},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"max-height\",\"value\":32}]}")
      (wire/encode-batch batch)
      "Surface styling remains a closed typed wire contract")))
 
@@ -243,7 +267,59 @@
          #"invalid property value"
          (runtime/set-prop!
           application box proto/PaddingHorizontal (proto/IntValue -1)))
-        "surface padding cannot be negative")))
+        "surface padding cannot be negative")
+    (doseq [property
+            [proto/WidthValue proto/HeightValue
+             proto/MinWidth proto/MaxWidth
+             proto/MinHeight proto/MaxHeight]]
+      (is (thrown-with-msg?
+           Invalid_argument
+           #"invalid property value"
+           (runtime/set-prop!
+            application box property (proto/IntValue -1)))
+          "size constraints cannot be negative"))))
+
+(deftest surface-size-constraints-reject-conflicts-atomically
+  (doseq [constraint
+          [(tuple proto/MinWidth 121 proto/MaxWidth 120)
+           (tuple proto/WidthValue 79 proto/MinWidth 80)
+           (tuple proto/WidthValue 161 proto/MaxWidth 160)
+           (tuple proto/MinHeight 25 proto/MaxHeight 24)
+           (tuple proto/HeightValue 15 proto/MinHeight 16)
+           (tuple proto/HeightValue 33 proto/MaxHeight 32)]]
+    (match constraint
+      (tuple property-a value-a property-b value-b)
+      (let [renderer (apple/create)
+            backend (apple/backend renderer)
+            batch
+            (record proto/patch-batch
+              (generation 1)
+              (ops [(proto/create-node-op 1 proto/Box)
+                    (proto/set-prop-op
+                     1 property-a (proto/IntValue value-a))
+                    (proto/set-prop-op
+                     1 property-b (proto/IntValue value-b))]))]
+        (is (thrown-with-msg?
+             Invalid_argument
+             #"surface size constraints conflict"
+             ((:apply-batch backend) batch))
+            "conflicting size constraints reject the complete patch batch")
+        (assert-equal 0 (apple/node-count renderer)
+                      "a rejected size batch leaves no retained nodes")))))
+
+(deftest surface-size-bounds-may-be-equal
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Box)
+                (proto/set-prop-op 1 proto/WidthValue (proto/IntValue 80))
+                (proto/set-prop-op 1 proto/MinWidth (proto/IntValue 80))
+                (proto/set-prop-op 1 proto/MaxWidth (proto/IntValue 80))]))]
+    ((:apply-batch backend) batch)
+    (assert-equal 1 (apple/node-count renderer)
+                  "equal bounds describe a valid fixed size")))
 
 (deftest form-controls-retain-typed-accessibility-relationships
   (let [renderer (apple/create)

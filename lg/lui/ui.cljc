@@ -318,6 +318,30 @@
    (:ui-application context) node proto/CornerRadius
    (proto/IntValue radius)))
 
+(defn width! [context node width]
+  (runtime/set-prop!
+   (:ui-application context) node proto/WidthValue (proto/IntValue width)))
+
+(defn height! [context node height]
+  (runtime/set-prop!
+   (:ui-application context) node proto/HeightValue (proto/IntValue height)))
+
+(defn min-width! [context node width]
+  (runtime/set-prop!
+   (:ui-application context) node proto/MinWidth (proto/IntValue width)))
+
+(defn max-width! [context node width]
+  (runtime/set-prop!
+   (:ui-application context) node proto/MaxWidth (proto/IntValue width)))
+
+(defn min-height! [context node height]
+  (runtime/set-prop!
+   (:ui-application context) node proto/MinHeight (proto/IntValue height)))
+
+(defn max-height! [context node height]
+  (runtime/set-prop!
+   (:ui-application context) node proto/MaxHeight (proto/IntValue height)))
+
 (defn placeholder! [context node placeholder]
   (runtime/set-prop!
    (:ui-application context) node proto/PlaceholderValue

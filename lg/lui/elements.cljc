@@ -246,6 +246,24 @@
    (if (:corner-radius attrs)
      [`(lui.ui/corner-radius! ~context ~node ~(:corner-radius attrs))]
      [])
+   (if (:width attrs)
+     [`(lui.ui/width! ~context ~node ~(:width attrs))]
+     [])
+   (if (:height attrs)
+     [`(lui.ui/height! ~context ~node ~(:height attrs))]
+     [])
+   (if (:min-width attrs)
+     [`(lui.ui/min-width! ~context ~node ~(:min-width attrs))]
+     [])
+   (if (:max-width attrs)
+     [`(lui.ui/max-width! ~context ~node ~(:max-width attrs))]
+     [])
+   (if (:min-height attrs)
+     [`(lui.ui/min-height! ~context ~node ~(:min-height attrs))]
+     [])
+   (if (:max-height attrs)
+     [`(lui.ui/max-height! ~context ~node ~(:max-height attrs))]
+     [])
    (if (:class attrs)
      [`(lui.ui/style-class! ~context ~node ~(:class attrs))]
      [])))

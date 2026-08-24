@@ -314,6 +314,16 @@
     @apply flex items-center p-6 pt-0;
   }
 
+  .lui-skeleton {
+    @apply animate-pulse bg-secondary;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lui-skeleton {
+      animation: none;
+    }
+  }
+
   .lui-button {
     @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors;
   }

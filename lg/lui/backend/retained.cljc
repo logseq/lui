@@ -2,7 +2,7 @@
   (:require [lui.protocol :as proto
              :refer [CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild LabelledBy DescribedBy ErrorMessageBy
-                     IntValue]]))
+                     ProgressControl MinValue MaxValue IntValue]]))
 
 (defn- empty-batches [] [])
 
@@ -208,7 +208,15 @@
              (:semantic-kind current) (:retained-properties current)))
        (raise
         (Invalid_argument
-         "progress max-value must be greater than min-value")))
+         (if (and
+              (= (:semantic-kind current) ProgressControl)
+              (>=
+               (proto/int-property
+                (:retained-properties current) MinValue 0)
+               (proto/int-property
+                (:retained-properties current) MaxValue 100)))
+           "progress max-value must be greater than min-value"
+           "surface size constraints conflict"))))
      true)
    true
    nodes))

@@ -212,6 +212,12 @@ SwiftUI applies fixed and constrained `frame` modifiers, and Flutter composes
 and unbounded fill are separate typed capabilities; they are not encoded as
 magic integers or arbitrary strings.
 
+Skeleton validates the composed Surface path: it is a Box with semantic
+background and radius defaults plus caller-supplied typed size constraints.
+Web adds only the Solid-style pulse through its semantic class and disables it
+for reduced-motion users; SwiftUI and Flutter render the same retained Surface
+without introducing a Skeleton-specific native node.
+
 ### Component extension paths
 
 Adding a component and adding a primitive are deliberately different jobs:

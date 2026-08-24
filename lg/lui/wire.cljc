@@ -9,6 +9,7 @@
                      PaddingHorizontal PaddingVertical
                      BackgroundValue ForegroundValue BorderColorValue
                      BorderWidth CornerRadius
+                     WidthValue HeightValue MinWidth MaxWidth MinHeight MaxHeight
                      PlaceholderValue ReadOnly AccessibilityLabel MinLines MaxLines
                      StyleClass HeadingLevel LabelledBy DescribedBy
                      ErrorMessageBy InputType Invalid
@@ -62,6 +63,12 @@
     BorderColorValue "border-color"
     BorderWidth "border-width"
     CornerRadius "corner-radius"
+    WidthValue "width"
+    HeightValue "height"
+    MinWidth "min-width"
+    MaxWidth "max-width"
+    MinHeight "min-height"
+    MaxHeight "max-height"
     PlaceholderValue "placeholder"
     ReadOnly "read-only"
     AccessibilityLabel "accessibility-label"
