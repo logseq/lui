@@ -276,6 +276,7 @@ final class _NodeState {
 
   bool rendersLike(_NodeState other) =>
       kind == other.kind &&
+      parent == other.parent &&
       listEquals(children, other.children) &&
       mapEquals(properties, other.properties);
 }
@@ -560,9 +561,14 @@ final class LUIFlutterBackend {
     );
     final borderWidth = state.properties['border-width'] as int?;
     final cornerRadius = state.properties['corner-radius'] as int?;
-    final gap = (state.properties['gap'] as int? ?? 0).toDouble();
+    final gap =
+        (state.properties['gap'] as int? ??
+                (state.kind == _NodeKind.tabs ? 4 : 0))
+            .toDouble();
     final main = state.properties['main'] as String? ?? 'start';
-    final cross = state.properties['cross'] as String? ?? 'stretch';
+    final cross =
+        state.properties['cross'] as String? ??
+        (state.kind == _NodeKind.tabs ? 'center' : 'stretch');
     final headingLevel = state.properties['heading-level'] as int? ?? 1;
     final spinnerExtent = switch (state.properties['size'] as String? ??
         'default') {
@@ -585,6 +591,10 @@ final class LUIFlutterBackend {
     final buttonAutofocus = state.properties['autofocus'] as bool? ?? false;
     final buttonHoldEnabled =
         state.properties['hold-enabled'] as bool? ?? false;
+    final isTabTrigger =
+        state.kind == _NodeKind.button &&
+        state.parent != null &&
+        _states[state.parent]?.kind == _NodeKind.tabs;
     Widget textControl({required _NodeKind kind}) {
       final multiline = kind == _NodeKind.textarea;
       final combobox = kind == _NodeKind.combobox;
@@ -683,45 +693,67 @@ final class LUIFlutterBackend {
       final selectedColor = selected ? colors.secondaryContainer : null;
       final style = buttonStyle(backgroundColor: selectedColor);
       final label = buttonLabel();
-      final materialButton = switch (buttonVariant) {
-        'primary' => FilledButton(
-          onPressed: onPressed,
-          onLongPress: onLongPress,
-          autofocus: buttonAutofocus,
-          style: style,
-          child: label,
+      final tabStyle = ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(0, 32)),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 12),
         ),
-        'secondary' => FilledButton.tonal(
-          onPressed: onPressed,
-          onLongPress: onLongPress,
-          autofocus: buttonAutofocus,
-          style: style,
-          child: label,
+        foregroundColor: WidgetStatePropertyAll(foreground ?? colors.onSurface),
+        backgroundColor: WidgetStatePropertyAll(
+          selected ? colors.surface : Colors.transparent,
         ),
-        'outline' => OutlinedButton(
-          onPressed: onPressed,
-          onLongPress: onLongPress,
-          autofocus: buttonAutofocus,
-          style: style,
-          child: label,
+        elevation: WidgetStatePropertyAll(selected ? 1 : 0),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
         ),
-        'destructive' => FilledButton(
-          onPressed: onPressed,
-          onLongPress: onLongPress,
-          autofocus: buttonAutofocus,
-          style: buttonStyle(backgroundColor: colors.error),
-          child: label,
-        ),
-        _ => TextButton(
-          onPressed: onPressed,
-          onLongPress: onLongPress,
-          autofocus: buttonAutofocus,
-          style: style,
-          child: label,
-        ),
-      };
+      );
+      final materialButton = isTabTrigger
+          ? TextButton(
+              onPressed: onPressed,
+              onLongPress: onLongPress,
+              autofocus: buttonAutofocus,
+              style: tabStyle,
+              child: label,
+            )
+          : switch (buttonVariant) {
+              'primary' => FilledButton(
+                onPressed: onPressed,
+                onLongPress: onLongPress,
+                autofocus: buttonAutofocus,
+                style: style,
+                child: label,
+              ),
+              'secondary' => FilledButton.tonal(
+                onPressed: onPressed,
+                onLongPress: onLongPress,
+                autofocus: buttonAutofocus,
+                style: style,
+                child: label,
+              ),
+              'outline' => OutlinedButton(
+                onPressed: onPressed,
+                onLongPress: onLongPress,
+                autofocus: buttonAutofocus,
+                style: style,
+                child: label,
+              ),
+              'destructive' => FilledButton(
+                onPressed: onPressed,
+                onLongPress: onLongPress,
+                autofocus: buttonAutofocus,
+                style: buttonStyle(backgroundColor: colors.error),
+                child: label,
+              ),
+              _ => TextButton(
+                onPressed: onPressed,
+                onLongPress: onLongPress,
+                autofocus: buttonAutofocus,
+                style: style,
+                child: label,
+              ),
+            };
       return Semantics(
-        key: semanticsKey,
+        key: semanticsKey ?? (isTabTrigger ? ValueKey('lui-tab-$id') : null),
         label: accessibilityLabel?.isNotEmpty ?? false
             ? accessibilityLabel
             : (text.isEmpty ? null : text),
@@ -788,6 +820,27 @@ final class LUIFlutterBackend {
         spacing: gap,
         children: children,
       ),
+    );
+    Widget tabs() => LayoutBuilder(
+      builder: (context, constraints) {
+        final expandsForAlignment =
+            state.properties.containsKey('main') && constraints.hasBoundedWidth;
+        return Semantics(
+          container: true,
+          child: Row(
+            mainAxisSize: expandsForAlignment
+                ? MainAxisSize.max
+                : MainAxisSize.min,
+            mainAxisAlignment: _mainAxisAlignment(main),
+            crossAxisAlignment: _crossAxisAlignment(
+              cross,
+              canStretch: constraints.hasBoundedHeight,
+            ),
+            spacing: gap,
+            children: children,
+          ),
+        );
+      },
     );
     Widget column() => LayoutBuilder(
       builder: (context, constraints) => Column(
@@ -956,6 +1009,7 @@ final class LUIFlutterBackend {
 
     final content = switch (state.kind) {
       _NodeKind.row => row(),
+      _NodeKind.tabs => tabs(),
       _NodeKind.column || _NodeKind.list => column(),
       _NodeKind.grid => grid(),
       _NodeKind.stack => stack(),
@@ -1084,13 +1138,23 @@ final class LUIFlutterBackend {
     final isSurface = state.kind.isOverlaySurface;
     final padding =
         state.properties['padding'] as int? ??
-        (state.kind == _NodeKind.card ? 24 : 0);
+        (state.kind == _NodeKind.card
+            ? 24
+            : state.kind == _NodeKind.tabs
+            ? 4
+            : 0);
     final paddingHorizontal =
         state.properties['padding-horizontal'] as int? ?? padding;
     final paddingVertical =
         state.properties['padding-vertical'] as int? ?? padding;
     final effectiveBorderWidth = borderWidth ?? (isSurface ? 1 : 0);
-    final effectiveCornerRadius = cornerRadius ?? (isSurface ? 12 : 0);
+    final effectiveCornerRadius =
+        cornerRadius ??
+        (isSurface
+            ? 12
+            : state.kind == _NodeKind.tabs
+            ? 8
+            : 0);
     final contentPadding = EdgeInsets.symmetric(
       horizontal: paddingHorizontal.toDouble(),
       vertical: paddingVertical.toDouble(),
@@ -1118,7 +1182,11 @@ final class LUIFlutterBackend {
         : Container(
             padding: contentPadding,
             decoration: BoxDecoration(
-              color: background,
+              color:
+                  background ??
+                  (state.kind == _NodeKind.tabs
+                      ? Theme.of(context).colorScheme.secondaryContainer
+                      : null),
               border: effectiveBorderWidth == 0
                   ? null
                   : Border.all(
@@ -1251,13 +1319,15 @@ final class LUIFlutterBackend {
             _mainAlignments.contains(value) &&
             (kind == _NodeKind.row ||
                 kind == _NodeKind.column ||
-                kind == _NodeKind.list),
+                kind == _NodeKind.list ||
+                kind == _NodeKind.tabs),
       'cross' =>
         value is String &&
             _crossAlignments.contains(value) &&
             (kind == _NodeKind.row ||
                 kind == _NodeKind.column ||
-                kind == _NodeKind.list),
+                kind == _NodeKind.list ||
+                kind == _NodeKind.tabs),
       'grow' =>
         value is num &&
             value.isFinite &&
@@ -1368,7 +1438,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.column ||
                 kind == _NodeKind.grid ||
                 kind == _NodeKind.list ||
-                kind == _NodeKind.dropdownMenu),
+                kind == _NodeKind.dropdownMenu ||
+                kind == _NodeKind.tabs),
       'padding' => value is int && kind != _NodeKind.avatar,
       'padding-horizontal' || 'padding-vertical' =>
         value is int &&
@@ -1569,6 +1640,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.box ||
       kind == _NodeKind.scroll ||
       kind == _NodeKind.list ||
+      kind == _NodeKind.tabs ||
       kind == _NodeKind.radioGroup ||
       kind == _NodeKind.dropdownMenu ||
       kind == _NodeKind.listItem;

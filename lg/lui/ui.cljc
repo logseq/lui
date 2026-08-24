@@ -51,6 +51,9 @@
 (defn list! [context]
   (runtime/create-node! (:ui-application context) proto/ListContainer))
 
+(defn tabs! [context]
+  (runtime/create-node! (:ui-application context) proto/Tabs))
+
 (defn spacer! [context]
   (runtime/create-node! (:ui-application context) proto/Spacer))
 

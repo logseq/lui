@@ -23,6 +23,101 @@ void main() {
     expect(events, [const LUIEvent.press(node: 3)]);
   });
 
+  testWidgets('maps Tabs to retained native Button triggers', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"tabs"},
+        {"op":"create-node","id":2,"kind":"button"},
+        {"op":"create-node","id":3,"kind":"button"},
+        {"op":"create-node","id":4,"kind":"toggle-button"},
+        {"op":"set-prop","id":1,"property":"gap","value":4},
+        {"op":"set-prop","id":2,"property":"text","value":"Overview"},
+        {"op":"set-prop","id":2,"property":"selected","value":true},
+        {"op":"set-prop","id":3,"property":"text","value":"Activity"},
+        {"op":"set-prop","id":3,"property":"selected","value":false},
+        {"op":"set-prop","id":4,"property":"text","value":"Pinned"},
+        {"op":"set-prop","id":4,"property":"selected","value":false},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":1,"child":4,"index":2}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    final tabs = tester.widget<Row>(
+      find.descendant(
+        of: find.byKey(LUIFlutterBackend.nodeKey(1)),
+        matching: find.byType(Row),
+      ).first,
+    );
+    expect(tabs.spacing, 4);
+    expect(find.text('Overview'), findsOneWidget);
+    expect(find.text('Activity'), findsOneWidget);
+    expect(
+      tester
+          .widget<Semantics>(find.byKey(const ValueKey('lui-tab-2')))
+          .properties
+          .selected,
+      isTrue,
+    );
+
+    await tester.tap(find.text('Activity'));
+    await tester.tap(find.text('Pinned'));
+    await tester.pump();
+    expect(events, const [
+      LUIEvent.press(node: 3),
+      LUIEvent.toggleChanged(node: 4, checked: true),
+    ]);
+
+    final tabsRevision = backend.debugRevision(1);
+    final overviewRevision = backend.debugRevision(2);
+    final toggleRevision = backend.debugRevision(4);
+    backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":2,"property":"selected","value":false},
+        {"op":"set-prop","id":3,"property":"selected","value":true}
+      ]}
+      ''');
+    await tester.pump();
+    expect(backend.debugRevision(1), tabsRevision);
+    expect(backend.debugRevision(2), overviewRevision + 1);
+    expect(backend.debugRevision(4), toggleRevision);
+    expect(
+      tester
+          .widget<Semantics>(find.byKey(const ValueKey('lui-tab-3')))
+          .properties
+          .selected,
+      isTrue,
+    );
+    semantics.dispose();
+  });
+
+  test('rejects text on Tabs instead of silently ignoring it', () {
+    final backend = LUIFlutterBackend();
+    expect(
+      () => backend.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"tabs"},
+        {"op":"set-prop","id":1,"property":"text","value":"Overview"}
+      ]}
+      '''),
+      throwsA(
+        isA<LUIBackendException>().having(
+          (error) => error.message,
+          'message',
+          contains('unsupported property'),
+        ),
+      ),
+    );
+    expect(backend.generation, 0);
+  });
+
   testWidgets('maps the complete Vercel Native Button contract', (
     tester,
   ) async {

@@ -3,7 +3,7 @@
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea
-                     Scroll ListContainer Spacer Spinner Icon
+                     Scroll ListContainer Tabs Spacer Spinner Icon
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
                      Select Combobox DropdownMenu MenuItem ListItem Avatar]]
@@ -49,6 +49,7 @@
     Divider AppleDivider
     Scroll AppleScrollView
     ListContainer AppleList
+    Tabs AppleTabs
     Spacer AppleSpacer
     Spinner AppleSpinner
     Icon AppleIcon

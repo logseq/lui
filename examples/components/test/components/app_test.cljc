@@ -25,7 +25,8 @@
                  (gallery-open-picker "none")
                  (gallery-document "Quarterly report.md")
                  (gallery-document-action "Selected Quarterly report.md")
-                 (gallery-avatar-image 1))
+                 (gallery-avatar-image 1)
+                 (gallery-tab "overview"))
          model/AdvanceProgress)]
     (assert-equal false (:gallery-disabled initial) "controls start enabled")
     (assert-equal 0.3 (:gallery-progress initial) "progress has a visible start")
@@ -41,6 +42,15 @@
                   "list starts with one model-owned selection")
     (assert-equal 0 (:gallery-avatar-image initial)
                   "avatar starts on its initials fallback")
+    (assert-equal "overview" (:gallery-tab initial)
+                  "Tabs starts with one model-owned selection")
+    (let [activity (model/update initial (model/SelectTab "activity"))]
+      (assert-equal true (model/activity-tab-selected? activity)
+                    "the shared reducer controls the selected trigger")
+      (assert-equal false (model/overview-tab-selected? activity)
+                    "selecting one trigger clears its controlled sibling")
+      (assert-equal "Recent retained updates" (model/tab-content activity)
+                    "selected content is derived from the same shared state"))
     (assert-equal 1
                   (:gallery-avatar-image
                    (model/update initial model/ToggleAvatarImage))
@@ -112,6 +122,19 @@
      true
      (:gallery-checked (components/model application))
      "toggle state is shared across hosts")
+    (let [mounted-count (flutter/node-count renderer)
+          batch-count (count (flutter/batches renderer))]
+      (driver/send! application (model/SelectTab "activity"))
+      (driver/flush! application)
+      (assert-equal
+       mounted-count (flutter/node-count renderer)
+       "tab selection patches retained triggers and content without remounting")
+      (assert-equal
+       (inc batch-count) (count (flutter/batches renderer))
+       "one shared tab action produces one atomic backend batch")
+      (assert-equal
+       "activity" (:gallery-tab (components/model application))
+       "the shared reducer owns tab selection across hosts"))
     (driver/dispose! application)
     (assert-equal 0 (flutter/node-count renderer) "dispose drops every retained node")
     (is (driver/disposed? application) "the native gallery lifecycle terminates")))

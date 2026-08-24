@@ -26,6 +26,7 @@
   (AppleDivider)
   (AppleScrollView)
   (AppleList)
+  (AppleTabs)
   (AppleSpacer)
   (AppleSpinner)
   (AppleIcon)

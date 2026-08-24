@@ -37,6 +37,8 @@ private struct LUINodeView: View {
         switch model.kind {
         case .row:
             LUIRowView(model: model, backend: backend)
+        case .tabs:
+            LUITabsView(model: model, backend: backend)
         case .column, .list:
             LUIColumnView(model: model, backend: backend)
         case .grid:
@@ -443,7 +445,22 @@ private struct LUIButtonView: View {
 
     @ViewBuilder
     private var styledButton: some View {
-        switch model.buttonVariant {
+        if isTabTrigger {
+            button
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    model.isSelected ? tabBackground : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 6)
+                )
+                .shadow(
+                    color: model.isSelected ? .black.opacity(0.08) : .clear,
+                    radius: model.isSelected ? 1 : 0,
+                    y: model.isSelected ? 1 : 0
+                )
+        } else {
+            switch model.buttonVariant {
         case "primary":
             button.buttonStyle(.borderedProminent)
         case "secondary", "outline", "default":
@@ -452,6 +469,7 @@ private struct LUIButtonView: View {
             button.buttonStyle(.borderedProminent).tint(.red)
         default:
             button.buttonStyle(.plain)
+            }
         }
     }
 
@@ -514,6 +532,72 @@ private struct LUIButtonView: View {
 
     private func requestFocusIfNeeded() {
         if model.requestsAutofocus { focused = true }
+    }
+
+    private var isTabTrigger: Bool {
+        guard let parent = model.parent else { return false }
+        return backend.model(id: parent)?.kind == .tabs
+    }
+
+    private var tabBackground: Color {
+#if os(macOS)
+        Color(nsColor: .controlBackgroundColor)
+#else
+        Color(uiColor: .secondarySystemBackground)
+#endif
+    }
+}
+
+private struct LUITabsView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        HStack(
+            alignment: verticalAlignment,
+            spacing: spacing
+        ) {
+            if main == "center" || main == "end" {
+                Spacer(minLength: 0)
+            }
+            ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
+                if let child = backend.model(id: childID) {
+                    LUINodeView(model: child, backend: backend)
+                        .frame(
+                            maxWidth: child.property(.grow)?.doubleValue ?? 0 > 0
+                                ? .infinity : nil
+                        )
+                        .layoutPriority(child.property(.grow)?.doubleValue ?? 0)
+                }
+                if main == "space_between" && index < model.children.count - 1 {
+                    Spacer(minLength: gap)
+                }
+            }
+            if main == "start" || main == "center" {
+                Spacer(minLength: 0)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var gap: CGFloat {
+        CGFloat(model.property(.gap)?.intValue ?? 4)
+    }
+
+    private var main: String? {
+        model.property(.main)?.stringValue
+    }
+
+    private var spacing: CGFloat {
+        main == "space_between" ? 0 : gap
+    }
+
+    private var verticalAlignment: VerticalAlignment {
+        switch model.property(.cross)?.stringValue ?? "center" {
+        case "start": .top
+        case "end": .bottom
+        default: .center
+        }
     }
 }
 
@@ -869,14 +953,18 @@ private struct LUISurfaceModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         let isSurface = model.kind == .panel || model.kind == .card
-        let padding = model.property(.padding)?.intValue ?? (model.kind == .card ? 24 : 0)
+        let isTabs = model.kind == .tabs
+        let defaultPadding = model.kind == .card ? 24 : (isTabs ? 2 : 0)
+        let padding = model.property(.padding)?.intValue ?? defaultPadding
         let horizontal = model.property(.paddingHorizontal)?.intValue ?? padding
         let vertical = model.property(.paddingVertical)?.intValue ?? padding
-        let radius = CGFloat(model.property(.cornerRadius)?.intValue ?? (isSurface ? 12 : 0))
+        let radius = CGFloat(
+            model.property(.cornerRadius)?.intValue ?? (isSurface ? 12 : (isTabs ? 8 : 0))
+        )
         let borderWidth = CGFloat(model.property(.borderWidth)?.intValue ?? (isSurface ? 1 : 0))
         let shape = RoundedRectangle(cornerRadius: radius)
         let background = color(model.property(.background)?.stringValue) ??
-            (isSurface ? systemBackground : .clear)
+            (isSurface ? systemBackground : (isTabs ? Color.secondary.opacity(0.12) : .clear))
         let border = color(model.property(.borderColor)?.stringValue) ??
             (isSurface ? Color.secondary.opacity(0.35) : .clear)
         let castsShadow = model.kind == .panel &&

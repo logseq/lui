@@ -31,6 +31,7 @@
                          (= tag :box)
                          (= tag :scroll)
                          (= tag :list)
+                         (= tag :tabs)
                          (= tag :spacer)
                          (= tag :spinner)
                          (= tag :icon)
@@ -376,6 +377,9 @@
 
 (defelement list [context parent attrs & children]
   (container-expansion 'lui.ui/list! context parent attrs children))
+
+(defelement tabs [context parent attrs & children]
+  (container-expansion 'lui.ui/tabs! context parent attrs children))
 
 (defelement spacer [context parent _attrs & _children]
   (let [node (gensym "node")]

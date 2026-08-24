@@ -130,6 +130,81 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 3) === button)
     }
 
+    @Test("maps Tabs to a retained native strip with controlled Button triggers")
+    func mapsTabs() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"tabs"},
+          {"op":"create-node","id":2,"kind":"button"},
+          {"op":"create-node","id":3,"kind":"button"},
+          {"op":"create-node","id":4,"kind":"toggle-button"},
+          {"op":"set-prop","id":1,"property":"gap","value":4},
+          {"op":"set-prop","id":2,"property":"text","value":"Overview"},
+          {"op":"set-prop","id":2,"property":"selected","value":true},
+          {"op":"set-prop","id":3,"property":"text","value":"Activity"},
+          {"op":"set-prop","id":3,"property":"selected","value":false},
+          {"op":"set-prop","id":4,"property":"text","value":"Pinned"},
+          {"op":"set-prop","id":4,"property":"selected","value":false},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"insert-child","parent":1,"child":4,"index":2}
+        ]}
+        """)
+
+        let tabs = try #require(backend.model(id: 1))
+        let overview = try #require(backend.model(id: 2))
+        let activity = try #require(backend.model(id: 3))
+        let toggle = try #require(backend.model(id: 4))
+        let tabsRevision = tabs.revision
+        let overviewRevision = overview.revision
+        let toggleRevision = toggle.revision
+        #expect(tabs.kind.rawValue == "tabs")
+        #expect(tabs.children == [2, 3, 4])
+        #expect(tabs.property(.gap) == .int(4))
+        #expect(overview.isSelected)
+        #expect(!activity.isSelected)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.performPress(node: 3)
+        try backend.performToggle(node: 4, checked: true)
+        #expect(events == [
+            .press(node: 3),
+            .toggleChanged(node: 4, checked: true),
+        ])
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":2,"property":"selected","value":false},
+          {"op":"set-prop","id":3,"property":"selected","value":true}
+        ]}
+        """)
+        #expect(backend.model(id: 1) === tabs)
+        #expect(backend.model(id: 2) === overview)
+        #expect(backend.model(id: 3) === activity)
+        #expect(backend.model(id: 4) === toggle)
+        #expect(tabs.revision == tabsRevision)
+        #expect(overview.revision == overviewRevision + 1)
+        #expect(toggle.revision == toggleRevision)
+        #expect(activity.isSelected)
+    }
+
+    @Test("rejects text on Tabs instead of silently ignoring it")
+    func rejectsTextOnTabs() {
+        let backend = LUIAppleBackend()
+        #expect(throws: LUIBackendError.invalidBatch("unsupported property value")) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"tabs"},
+              {"op":"set-prop","id":1,"property":"text","value":"Overview"}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 0)
+    }
+
     @Test("rejects invalid batches before observable models change")
     func rejectsInvalidBatchAtomically() throws {
         let backend = LUIAppleBackend()

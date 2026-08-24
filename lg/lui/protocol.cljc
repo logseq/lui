@@ -100,8 +100,10 @@
 
 (defn property-supported? [kind property]
   (match property
-    MainAlignment (or (= kind Row) (= kind Column) (= kind ListContainer))
-    CrossAlignment (or (= kind Row) (= kind Column) (= kind ListContainer))
+    MainAlignment
+    (or (= kind Row) (= kind Column) (= kind ListContainer) (= kind Tabs))
+    CrossAlignment
+    (or (= kind Row) (= kind Column) (= kind ListContainer) (= kind Tabs))
     GrowValue (not (= kind Avatar))
     GridColumns (= kind Grid)
     PaddingValue (not (= kind Avatar))
@@ -238,6 +240,7 @@
       Grid true
       ListContainer true
       DropdownMenu true
+      Tabs true
       _ false)))
 
 (defn property-value-supported? [property value]
@@ -431,6 +434,7 @@
     Box true
     Scroll true
     ListContainer true
+    Tabs true
     RadioGroup true
     DropdownMenu true
     ListItem true

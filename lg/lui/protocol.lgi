@@ -29,6 +29,7 @@
   (Divider)
   (Scroll)
   (ListContainer)
+  (Tabs)
   (Spacer)
   (Spinner)
   (Icon)

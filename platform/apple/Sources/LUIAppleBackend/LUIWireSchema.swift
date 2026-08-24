@@ -29,6 +29,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case divider = "divider"
     case scroll = "scroll"
     case list = "list"
+    case tabs = "tabs"
     case spacer = "spacer"
     case spinner = "spinner"
     case icon = "icon"

@@ -16,6 +16,7 @@ final class LUINodeModel: Identifiable {
 
     @ObservationIgnored private(set) var properties: [LUIProperty: LUIWireValue]
     @ObservationIgnored private(set) var children: [Int]
+    @ObservationIgnored private(set) var parent: Int?
     private(set) var revision = 0
 
     init(id: Int, state: LUINodeState) {
@@ -23,6 +24,7 @@ final class LUINodeModel: Identifiable {
         kind = state.kind
         properties = state.properties
         children = state.children
+        parent = state.parent
     }
 
     func property(_ property: LUIProperty) -> LUIWireValue? {
@@ -30,11 +32,13 @@ final class LUINodeModel: Identifiable {
     }
 
     func apply(state: LUINodeState) {
-        guard properties != state.properties || children != state.children else {
+        guard properties != state.properties || children != state.children ||
+            parent != state.parent else {
             return
         }
         properties = state.properties
         children = state.children
+        parent = state.parent
         revision += 1
     }
 

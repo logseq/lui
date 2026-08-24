@@ -7,7 +7,7 @@
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
                      Select Combobox DropdownMenu MenuItem ListItem Avatar
-                     Scroll ListContainer Spacer Spinner Icon
+                     Scroll ListContainer Tabs Spacer Spinner Icon
                      Progress Divider
                      Toggle RadioGroup Radio Slider
                      CreateNode DropNode SetProp InsertChild RemoveChild
@@ -72,6 +72,7 @@
     Divider "lui-separator"
     Scroll "lui-scroll"
     ListContainer "lui-list"
+    Tabs "lui-tabs"
     Spacer "lui-spacer"
     Spinner "lui-spinner"
     Icon "lui-icon"
@@ -205,6 +206,7 @@
            "aria-valuemin" "0"
            "aria-valuemax" "1"}
           RadioGroup {"role" "radiogroup"}
+          Tabs {"role" "tablist" "aria-orientation" "horizontal"}
           Slider
           {"type" "range" "min" "0" "max" "1" "step" "any"}
           Spinner {"role" "progressbar"}
@@ -787,6 +789,44 @@
       (Some (StringValue placeholder)) placeholder
       _ "")))
 
+(defn- direct-tab-trigger? [renderer node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (and
+     (= (:semantic-kind current) Button)
+     (match (:retained-parent current)
+       (Some parent)
+       (if-some [parent-node (retained/node (:web-store renderer) parent)]
+         (= (:semantic-kind parent-node) Tabs)
+         false)
+       None false))
+    false))
+
+(defn- selected-property [renderer node]
+  (match (retained/property (:web-store renderer) node Selected)
+    (Some (BoolValue selected)) selected
+    _ false))
+
+(defn- refresh-button-context! [renderer node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (when (= (:semantic-kind current) Button)
+      (let [element (:platform-node current)
+            selected (selected-property renderer node)]
+        (if (direct-tab-trigger? renderer node)
+          (do
+            (Webapi.Dom.Element.setAttribute "role" "tab" element)
+            (Webapi.Dom.Element.setAttribute
+             "aria-selected" (if selected "true" "false") element)
+            (Webapi.Dom.Element.removeAttribute "aria-pressed" element))
+          (do
+            (Webapi.Dom.Element.removeAttribute "role" element)
+            (Webapi.Dom.Element.removeAttribute "aria-selected" element)
+            (match (retained/property (:web-store renderer) node Selected)
+              (Some (BoolValue _))
+              (Webapi.Dom.Element.setAttribute
+               "aria-pressed" (if selected "true" "false") element)
+              _ (Webapi.Dom.Element.removeAttribute "aria-pressed" element))))))
+    (Stdlib.ignore true)))
+
 (defn- apply-property! [renderer node kind dom-node property value]
   (match (tuple property value)
     (tuple TextValue (StringValue text))
@@ -978,7 +1018,9 @@
     (do
       (set-state-attribute! dom-node "data-selected" selected)
       (Webapi.Dom.Element.setAttribute
-       (if (= kind MenuItem) "aria-selected" "aria-pressed")
+       (if (or (= kind MenuItem) (direct-tab-trigger? renderer node))
+         "aria-selected"
+         "aria-pressed")
        (if selected "true" "false") dom-node))
 
     (tuple Autofocus (BoolValue autofocus))
@@ -1152,6 +1194,7 @@
     (do
       (insert-dom-child!
        (dom-node renderer parent) (dom-node renderer child) index)
+      (refresh-button-context! renderer child)
       (if-some [current (retained/node (:web-store renderer) child)]
         (match (:semantic-kind current)
           Radio (update-radio-group! renderer child)
@@ -1166,6 +1209,7 @@
         (Webapi.Dom.Element.asNode
          (dom-node-before renderer previous-nodes child))
         (dom-node-before renderer previous-nodes parent)))
+      (refresh-button-context! renderer child)
       (if-some [previous (clojure.core/get previous-nodes child)]
         (when (= (:semantic-kind previous) DropdownMenu)
           (update-picker-expanded! renderer parent false))

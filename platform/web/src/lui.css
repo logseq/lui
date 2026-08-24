@@ -661,4 +661,20 @@
   .lui-button[data-size="icon"] {
     @apply size-10;
   }
+
+  .lui-tabs {
+    @apply inline-flex items-center gap-1 rounded-lg bg-secondary p-1 text-secondary-foreground;
+  }
+
+  .lui-tabs > .lui-button {
+    @apply h-8 rounded-md bg-transparent px-3 py-1 text-sm shadow-none;
+  }
+
+  .lui-tabs > .lui-button:hover {
+    @apply bg-background/60 text-foreground;
+  }
+
+  .lui-tabs > .lui-button[data-selected] {
+    @apply bg-background text-foreground shadow-sm;
+  }
 }

@@ -171,6 +171,45 @@
        proto/AnchorAlignmentValue (proto/StringValue "stretch"))
       "stretch is a legal anchored alignment"))
 
+(deftest tabs-is-a-controlled-horizontal-trigger-container
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Tabs)
+                      (proto/create-node-op 2 proto/Button)
+                      (proto/set-prop-op 1 proto/Gap (proto/IntValue 4))
+                      (proto/set-prop-op
+                       2 proto/TextValue (proto/StringValue "Overview"))
+                      (proto/set-prop-op
+                       2 proto/Selected (proto/BoolValue true))
+                      (proto/insert-child-op 1 2 0)]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"tabs\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"button\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"gap\",\"value\":4},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"text\","
+      "\"value\":\"Overview\"},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"selected\","
+      "\"value\":true},"
+      "{\"op\":\"insert-child\",\"parent\":1,\"child\":2,\"index\":0}]}" )
+     (wire/encode-batch batch)
+     "Tabs adds one closed container kind without a second trigger API"))
+  (is (proto/can-contain-children? proto/Tabs)
+      "Tabs retains its direct trigger children")
+  (doseq [property
+          [proto/Gap proto/MainAlignment proto/CrossAlignment
+           proto/PaddingValue proto/GrowValue proto/WidthValue
+           proto/MinWidth proto/MaxWidth]]
+    (is (proto/property-supported? proto/Tabs property)
+        "Tabs admits the reference container surface"))
+  (doseq [property [proto/TextValue proto/Selected proto/Enabled]]
+    (is (not (proto/property-supported? proto/Tabs property))
+        "Tabs does not own trigger content or selection"))
+  (is (not (proto/event-supported? proto/Tabs (proto/Press 1)))
+      "Tabs introduces no container event"))
+
 (deftest list-item-has-the-complete-reference-contract
   (let [batch
         (record proto/patch-batch

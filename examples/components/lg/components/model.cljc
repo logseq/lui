@@ -13,7 +13,8 @@
     (gallery-open-picker "none")
     (gallery-document "Quarterly report.md")
     (gallery-document-action "Selected Quarterly report.md")
-    (gallery-avatar-image 0)))
+    (gallery-avatar-image 0)
+    (gallery-tab "overview")))
 
 (defn update [model action]
   (match action
@@ -67,6 +68,9 @@
            :gallery-avatar-image
            (if (= (:gallery-avatar-image model) 0) 1 0))
 
+    (SelectTab tab)
+    (assoc model :gallery-tab tab)
+
     AdvanceProgress
     (assoc
      model
@@ -104,3 +108,14 @@
 
 (defn checklist-selected? [model]
   (= (:gallery-document model) "Launch checklist.md"))
+
+(defn overview-tab-selected? [model]
+  (= (:gallery-tab model) "overview"))
+
+(defn activity-tab-selected? [model]
+  (= (:gallery-tab model) "activity"))
+
+(defn tab-content [model]
+  (if (activity-tab-selected? model)
+    "Recent retained updates"
+    "Signal updates remain local"))

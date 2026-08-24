@@ -15,6 +15,11 @@ native_library="$app_bundle/Contents/Frameworks/liblui_components.dylib"
 cd "$project_dir"
 flutter build macos --debug
 
+# Flutter's incremental embed phase can refresh App.framework after Xcode has
+# sealed the outer debug bundle. Re-sign only the outer app so its resource
+# envelope always describes the frameworks produced by this build.
+codesign --force --sign - "$app_bundle"
+
 test -x "$executable"
 test -f "$native_library"
 file "$native_library" | grep -q 'Mach-O.*dynamically linked shared library'

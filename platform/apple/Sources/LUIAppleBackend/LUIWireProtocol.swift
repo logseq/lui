@@ -288,7 +288,7 @@ struct LUIRetainedTree {
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         switch property {
         case .main, .cross:
-            kind == .row || kind == .column || kind == .list
+            kind == .row || kind == .column || kind == .list || kind == .tabs
         case .grow: kind != .avatar
         case .columns: kind == .grid
         case .padding, .background, .borderColor, .borderWidth,
@@ -315,7 +315,7 @@ struct LUIRetainedTree {
                 kind == .combobox || kind == .menuItem || kind == .listItem
         case .gap:
             kind == .row || kind == .column || kind == .grid || kind == .list ||
-                kind == .dropdownMenu
+                kind == .dropdownMenu || kind == .tabs
         case .placeholder:
             isTextEntry(kind) || kind == .select
         case .accessibilityLabel:
@@ -360,7 +360,7 @@ struct LUIRetainedTree {
     private static func canContainChildren(_ kind: LUINodeKind) -> Bool {
         kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
-            kind == .list || kind == .radioGroup
+            kind == .list || kind == .tabs || kind == .radioGroup
             || kind == .dropdownMenu || kind == .listItem
     }
 

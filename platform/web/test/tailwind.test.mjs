@@ -32,6 +32,16 @@ test("ToggleButton reuses Button chrome with explicit pressed state", async () =
   assert.match(css, /\.lui-toggle-button:focus-visible/)
 })
 
+test("Tabs is a retained TabsList whose direct Buttons become triggers", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-tabs\{[^}]*display:inline-flex/)
+  assert.match(css, /\.lui-tabs\{[^}]*align-items:center/)
+  assert.match(css, /\.lui-tabs>\.lui-button\{[^}]*border-radius:/)
+  assert.match(css, /\.lui-tabs>\.lui-button\[data-selected\]/)
+  assert.doesNotMatch(css, /\.lui-tab(?:\{|-|\[)/)
+})
+
 test("the production stylesheet contains Vercel Native overlay surfaces", async () => {
   const css = await readFile(outputUrl, "utf8")
 

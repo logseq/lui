@@ -12,7 +12,8 @@
   (gallery-open-picker :string)
   (gallery-document :string)
   (gallery-document-action :string)
-  (gallery-avatar-image :int))
+  (gallery-avatar-image :int)
+  (gallery-tab :string))
 
 (type-variant gallery-action
   (ToggleDisabled)
@@ -28,6 +29,7 @@
   (SelectDocument :string)
   (OpenDocument :string)
   (ToggleAvatarImage)
+  (SelectTab :string)
   (AdvanceProgress))
 
 (signature components.model/initial :fn<gallery-model>)
@@ -43,3 +45,6 @@
 (signature components.model/staging-selected? :fn<gallery-model;bool>)
 (signature components.model/report-selected? :fn<gallery-model;bool>)
 (signature components.model/checklist-selected? :fn<gallery-model;bool>)
+(signature components.model/overview-tab-selected? :fn<gallery-model;bool>)
+(signature components.model/activity-tab-selected? :fn<gallery-model;bool>)
+(signature components.model/tab-content :fn<gallery-model;string>)

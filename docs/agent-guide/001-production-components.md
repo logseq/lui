@@ -488,6 +488,27 @@ rectangle to the decoded image bounds and draw it with cover fit inside the
 same circular Avatar frame. Supplying only part of the group is rejected
 atomically rather than silently drawing a different image.
 
+### Tabs contract
+
+`tabs` is the reference's horizontal TabsList container, not a page-content
+owner. It introduces no selection value, tab identifier, panel part or event.
+Direct `button` children are presented as tab triggers; their existing
+`selected` Signal and `on-press` callback remain the model-owned controlled
+contract. The application composes the selected content beside the strip with
+ordinary LG conditionals or keyed dynamic regions. Direct `toggle-button`
+children retain toggle-button behavior and are not converted into tab
+triggers.
+
+The bare strip hugs its triggers with house spacing and chrome. An explicitly
+authored `gap` or padding value wins for that field. A selected trigger changes
+only that retained Button node; it does not replace the Tabs node, sibling
+triggers or selected content. Web maps the strip to a `tablist` and direct
+Button children to `tab` semantics. SwiftUI and Flutter use retained native
+Button controls with platform tab-strip presentation and selected semantics.
+Enter or Space activates the focused trigger through the Button's normal
+platform behavior. Like the pinned reference, Tabs adds no separate arrow-key
+selection protocol or runtime-owned mutual exclusion.
+
 ## Showcase
 
 All examples live under `examples/`. `examples/components/` is a component

@@ -361,6 +361,27 @@
    [:paragraph
     "Controlled selection follows one Signal; backend-owned selection survives unrelated patches."]])
 
+(defui tabs-gallery
+  [overview-selected-source activity-selected-source content-source
+   disabled-source select-overview select-activity]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Tabs"]
+   [:tabs
+    [:button
+     {:selected overview-selected-source
+      :disabled disabled-source
+      :on-press select-overview}
+     "Overview"]
+    [:button
+     {:selected activity-selected-source
+      :disabled disabled-source
+      :on-press select-activity}
+     "Activity"]]
+   [:card {:padding 16}
+    [:paragraph {:value content-source}]]
+   [:paragraph
+    "Tabs owns layout and platform presentation; Signals own selection and content."]])
+
 (defui component-gallery
   [disabled-source toggle-disabled card-copy
    value-source update-value
@@ -374,11 +395,17 @@
    dismiss-picker select-production select-staging
    report-selected-source checklist-selected-source document-action-source
    select-report select-checklist open-report open-checklist
-   avatar-image-source toggle-avatar-image]
+   avatar-image-source toggle-avatar-image
+   overview-tab-selected-source activity-tab-selected-source
+   tab-content-source select-overview-tab select-activity-tab]
   [:column
    [button-gallery disabled-source toggle-disabled]
    [toggle-button-gallery
     checked-source disabled-source update-toggle toggle-disabled]
+   [tabs-gallery
+    overview-tab-selected-source activity-tab-selected-source
+    tab-content-source disabled-source select-overview-tab
+    select-activity-tab]
    [badge-gallery]
    [separator-gallery]
    [skeleton-gallery]

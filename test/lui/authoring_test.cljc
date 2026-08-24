@@ -140,6 +140,17 @@
     "ZN"]
    [:avatar "CT"]])
 
+(defui retained-tabs
+  [overview-selected activity-selected on-overview on-activity on-toggle]
+  [:tabs {:gap 4 :main "start" :cross "center"}
+   [:button
+    {:selected overview-selected :on-press on-overview}
+    "Overview"]
+   [:button
+    {:selected activity-selected :on-press on-activity}
+    "Activity"]
+   [:toggle-button {:selected false :on-toggle on-toggle} "Pinned"]])
+
 (defui current-platform-profile []
   (tuple (platform) (host)))
 
@@ -553,6 +564,55 @@
         (Some (proto/IntValue value))
         (assert-equal 7 value "the registered image id is model owned")
         _ (is false "patched avatar image id exists")))))
+
+(deftest tabs-composes-controlled-buttons-without-owning-selection
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-tabs")
+        context (ui/context application scope)
+        overview-selected (sig/state scheduler true)
+        activity-selected (sig/state scheduler false)
+        received (atom [])
+        callback (fn [event] (swap! received conj event) true)
+        root
+        (retained-tabs
+         context
+         (sig/value overview-selected)
+         (sig/value activity-selected)
+         callback callback callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [children (apple/children renderer root)
+          overview (nth children 0)
+          activity (nth children 1)
+          toggle (nth children 2)
+          node-count (apple/node-count renderer)]
+      (assert-equal 3 (count children) "Tabs retains all direct triggers")
+      (match (apple/property renderer root proto/Gap)
+        (Some (proto/IntValue value))
+        (assert-equal 4 value "Tabs keeps its explicit trigger gap")
+        _ (is false "Tabs gap exists"))
+      (match (apple/property renderer overview proto/Selected)
+        (Some (proto/BoolValue value))
+        (assert-equal true value "the first Button owns selected state")
+        _ (is false "overview selection exists"))
+      (runtime/dispatch! application (proto/Press activity))
+      (runtime/dispatch! application (proto/ToggleChanged toggle true))
+      (runtime/flush! application)
+      (assert-equal
+       [(proto/Press activity) (proto/ToggleChanged toggle true)]
+       @received
+       "Button and ToggleButton children keep their distinct events")
+      (sig/set! overview-selected false)
+      (sig/set! activity-selected true)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "selection Signals patch triggers without replacing Tabs")
+      (match (apple/property renderer activity proto/Selected)
+        (Some (proto/BoolValue value))
+        (assert-equal true value "the model selects the second trigger")
+        _ (is false "activity selection exists")))))
 
 (deftest defelement-adds-a-tag-without-changing-defui
   (let [scheduler (sig/scheduler)

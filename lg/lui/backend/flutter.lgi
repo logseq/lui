@@ -24,6 +24,7 @@
   (FlutterDivider)
   (FlutterViewport)
   (FlutterList)
+  (FlutterTabs)
   (FlutterSpacer)
   (FlutterSpinner)
   (FlutterIcon)
