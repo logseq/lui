@@ -2,13 +2,19 @@
 
 Date: 2026-08-24
 
+Status: superseded API recommendation; dependency research retained
+
+The component API recommendation in this report is superseded by
+`001-production-components_vercel_native_matrix.md`. Solid UI remains useful as
+a Web implementation reference only; it does not define LUI's public API.
+
 ## Decision
 
 LUI implements its own Web component layer on retained native DOM. It does not
 use React, Solid, Vaadin, Lion, Web Awesome or another UI runtime as the default
 provider.
 
-Solid UI revision `21ba4fa` defines the Web parity contract: catalog, public
+Solid UI revision `21ba4fa` was evaluated as a Web implementation reference:
 parts and props, variants, sizes, state attributes, behavior, examples and
 visual output. Its component source is
 available in a sibling local checkout for study, but no Solid JSX, Kobalte,
@@ -27,7 +33,7 @@ class strings are not part of the LUI runtime or cross-platform authoring API.
   translation.
 - LG behaviors own cross-platform interaction state that native controls do not
   provide consistently.
-- LUI components own tokens, variants, named parts and finished visual styling.
+- LUI components own tokens, reference variants and finished visual styling.
 - Applications consume components as library APIs instead of copying generated
   source into each project.
 
@@ -53,11 +59,12 @@ and incremental diagnostics part of one cross-platform component contract.
 3. Preserve composition, selection, focus and scroll position during external
    value patches and keyed moves.
 4. Prefer browser layout and presentation APIs over JavaScript measurement.
-5. Keep behaviors headless and components composable through named parts.
+5. Keep behaviors headless and components composable through the reference
+   element grammar.
 6. Express visual state through theme tokens, semantic classes and data-state
    attributes, not inline provider-specific options.
-7. Match every Solid UI registry component and its meaningful public parts as
-   specified in `001-production-components_solid_ui_matrix.md`.
+7. Keep Solid UI techniques internal; public names and attributes follow the
+   Vercel Native parity matrix.
 8. Test keyboard and accessibility contracts in a real browser.
 9. Measure generated LUI JavaScript and CSS from the component gallery and fail
    production builds when agreed budgets regress.
