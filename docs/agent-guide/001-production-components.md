@@ -12,7 +12,9 @@ platform behavior without becoming a separate complex application.
 The public UI component API is identical to Vercel Native's UI API. LG changes
 the notation and Signal supplies reactivity; LUI does not invent a second
 component vocabulary. The pinned source and exact parity rules live in
-`001-production-components_vercel_native_matrix.md`.
+`001-production-components_vercel_native_matrix.md`. The source-level runtime,
+backend and Web research behind the implementation strategy lives in
+`001-production-components_vercel_native_architecture_report.md`.
 
 ## Non-negotiable API boundary
 
