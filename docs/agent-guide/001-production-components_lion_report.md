@@ -2,12 +2,15 @@
 
 Date: 2026-08-24
 
+Status: superseded as the default provider; retained-behavior findings remain
+valid.
+
 ## Question
 
 Can LUI reuse an existing Web Component library for complex controls without
 introducing React, a second application state tree or a Web-only semantic API?
 
-## Candidate result
+## Candidate result at the time of the spike
 
 [Lion](https://lion.js.org/) is the best fit for the default behavior
 foundation. It is framework-agnostic, MIT licensed, accessibility-focused and
@@ -45,11 +48,9 @@ measurements, not published guarantees.
 | `lion-combobox` and `lion-option` | 196.9 KB | 53.8 KB |
 | Input, dialog and combobox together | 200.6 KB | 54.5 KB |
 
-The shared total is reasonable when Lion is the standard Web control provider.
-The application pays more than for an isolated native HTML input, but
-component-level imports and a shared production chunk prevent every control
-from duplicating the runtime. This is an explicit consistency and behavior
-tradeoff, not a reason to maintain two default control implementations.
+The measured shared total was reasonable for the behavior spike. It did not
+account for the additional visual component implementation Lion requires, so
+bundle size alone was not sufficient to make Lion the finished default.
 
 ## Browser behavior
 
@@ -73,12 +74,22 @@ with the current explicit remove-and-insert implementation. It is a browser DOM
 movement limitation, not a Lion state recreation. The tested browser did not
 expose the newer state-preserving `moveBefore` API.
 
-## Decision
+## Superseded decision
 
-Proceed with a provider boundary, not a hard-coded Lion backend:
+Lion proved that an opaque custom-element implementation can coexist with the
+LUI retained tree, but it is intentionally white-label and does not meet the
+later requirement for a polished, ready-to-use default visual component set.
+Web Awesome was also explicitly excluded. The current provider decision and
+same-tool bundle comparison are recorded in
+`001-production-components_vaadin_report.md`.
 
-1. Keep native HTML for layout, content, scrolling and fallback primitives;
-   use Lion as the default provider for matching interactive controls.
+The adapter and focus findings below still apply to any Web Component provider.
+The following list records the original spike recommendations and is not the
+current provider decision:
+
+### Original recommendations
+
+1. Keep native HTML for layout, content, scrolling and fallback primitives.
 2. Fix Web keyed movement so focus is captured and restored when the platform
    lacks state-preserving DOM movement.
 3. Define an opaque Web Component adapter for tag creation, property mapping,

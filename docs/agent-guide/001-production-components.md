@@ -9,14 +9,15 @@ drop into platform code. Components use the retained incremental runtime and
 share one LG state and behavior model across platforms. Platform backends
 render native controls and may apply scoped platform tweaks.
 
-The Web backend uses real DOM with Lion as its default interactive component
-provider. It does not depend on React or a virtual DOM.
+The Web backend uses real DOM with standalone Vaadin Web Components as its
+default interactive component provider. It does not use Vaadin Flow, Java,
+React, or a virtual DOM.
 
 ## Product principles
 
 - **Native behavior first.** Use native text editing, scrolling, focus,
   accessibility and platform presentation rather than imitating them.
-- **Established controls by default.** Web uses Lion custom elements, Flutter
+- **Established controls by default.** Web uses Vaadin custom elements, Flutter
   uses Material or Cupertino widgets, UIKit and AppKit use system views and
   controls, and SwiftUI integration uses system views. Custom drawing is
   reserved for semantics the selected provider does not supply or for composed
@@ -118,7 +119,7 @@ Events are validated against node kind before entering the Signal scheduler.
 Text uses intrinsic content measurement by default and updates its measured
 size when content, typography or available width changes. TextArea grows with
 content while respecting minimum and maximum line constraints when its selected
-provider supports that behavior. LUI maps the semantic constraints to Lion,
+provider supports that behavior. LUI maps the semantic constraints to Vaadin,
 Flutter, UIKit or AppKit; it does not implement a parallel text measurement or
 sizing engine. The provider must preserve selection, composition, scroll
 position and retained control identity.
@@ -189,7 +190,7 @@ Every interactive component must define and verify:
 - retained identity across property patches, keyed moves and parent rebuilds;
 - lifecycle cleanup for handlers, overlays, controllers and native resources.
 
-Web behavior is delegated to Lion where a matching component exists, with LUI
+Web behavior is delegated to Vaadin where a matching component exists, with LUI
 verifying the resulting WAI-ARIA behavior. Apple backends use AppKit/UIKit
 controls and accessibility APIs. Flutter uses Material/Cupertino-capable
 widgets and semantics without rebuilding unrelated retained nodes.
@@ -198,11 +199,11 @@ widgets and semantics without rebuilding unrelated retained nodes.
 
 | Semantic need | Web | AppKit | UIKit | Flutter |
 | --- | --- | --- | --- | --- |
-| Text input | `lion-input` / `lion-textarea` | `NSTextField` / `NSTextView` | `UITextField` / `UITextView` | Material/Cupertino `TextField` |
-| Toggle | `lion-checkbox` / `lion-switch` | `NSButton` | `UISwitch` / `UIButton` | Material/Cupertino `Checkbox` / `Switch` |
-| Selection | `lion-select` / `lion-select-rich` | `NSPopUpButton` | `UIMenu` / picker presentation | Material/Cupertino picker |
+| Text input | `vaadin-text-field` / `vaadin-text-area` | `NSTextField` / `NSTextView` | `UITextField` / `UITextView` | Material/Cupertino `TextField` |
+| Toggle | `vaadin-checkbox` / `vaadin-switch` | `NSButton` | `UISwitch` / `UIButton` | Material/Cupertino `Checkbox` / `Switch` |
+| Selection | `vaadin-select` / `vaadin-combo-box` | `NSPopUpButton` | `UIMenu` / picker presentation | Material/Cupertino picker |
 | Scroll/list | native scroll element | `NSScrollView` | `UIScrollView` / collection view | scroll and sliver widgets |
-| Overlay | `lion-dialog` and overlay system | panel/popover/window APIs | presentation/popover APIs | `Overlay` / `Navigator` |
+| Overlay | `vaadin-dialog` / `vaadin-popover` | panel/popover/window APIs | presentation/popover APIs | `Overlay` / `Navigator` |
 
 SwiftUI integration embeds the retained UIKit root. SwiftUI is a host surface,
 not a second state or component implementation.
@@ -214,33 +215,38 @@ layers:
 
 1. Native HTML elements provide retained layout, text, image, scrolling and
    other non-control primitives.
-2. [Lion](https://lion.js.org/) is the default provider for interactive
-   controls, including buttons, text fields, text areas, toggles, selection,
-   validation and overlays wherever Lion has a matching component. LUI creates
-   its custom elements directly and adapts semantic properties, slots and
-   events; Lion's internal Lit rendering remains opaque to the LUI retained
-   tree. Native form controls are a fallback, not the default component layer.
-3. Provider adapters may map the same semantic nodes to
-   [Web Awesome](https://webawesome.com/) or
-   [Spectrum Web Components](https://opensource.adobe.com/spectrum-web-components/)
-   when an application wants those visual systems. Provider-specific options
-   never leak into the shared component contract.
+2. Standalone [Vaadin Web Components](https://github.com/vaadin/web-components)
+   are the default provider for interactive controls, including buttons, text
+   fields, text areas, toggles, selection, validation and overlays. They are
+   consumed as browser-side npm packages and do not require Java or Vaadin
+   Flow. LUI creates the custom elements directly and adapts their properties,
+   slots and events. Native form controls are a fallback, not the default
+   component layer.
+3. The provider boundary remains replaceable. Provider-specific options never
+   leak into the shared component contract. Web Awesome is excluded from the
+   default provider set, and Spectrum is not selected because the measured
+   common-control bundle is substantially larger.
 
-Lion is preferred for the default foundation because it is framework-agnostic,
-MIT licensed, accessibility-focused and intentionally white-label. Web Awesome
-is highly customizable and ready-styled, but some daily-development components
-are commercial Pro components. Spectrum is comprehensive and production-used,
-but intentionally expresses Adobe's design language. UI5 Web Components remain
-a possible enterprise provider rather than a core dependency because they are
-optimized around the Fiori system.
+Vaadin is selected because its Apache-licensed core catalog covers the daily
+and data-heavy controls LUI needs, its Aura/Lumo themes are usable without a
+new design implementation, and its component-level npm imports tree-shake into
+a smaller representative bundle than Spectrum. Commercial Vaadin Pro controls
+do not define LUI's capability floor.
 
-Lion is consumed from the `@lion/ui` npm package through per-component ES
-module imports. The provider package owns registration and mapping so the
-shared protocol and Web retained tree do not import Lion directly. The spike
-has already proved direct retained updates, event delivery, focus behavior,
-keyed movement requirements and component-level imports for input, combobox
-and dialog; its measurements and limitations are recorded in the companion
-report.
+The Web provider has enforced production budgets:
+
+- an isolated initial text field bundle must not exceed 35 KB gzip;
+- Button, TextField, TextArea, Select and Dialog together must not exceed
+  55 KB gzip;
+- components outside the initial route are imported in lazy chunks;
+- builds import component entry points individually and never import an
+  all-components bundle.
+
+The provider package owns registration and mapping so the shared protocol and
+Web retained tree do not import Vaadin directly. Measurements and the rejected
+alternatives are recorded in the companion Vaadin report. The earlier Lion
+spike remains useful evidence for retained custom-element identity and focus
+behavior, but Lion is not the default visual provider.
 
 ## Delivery order
 
