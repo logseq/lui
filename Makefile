@@ -1,4 +1,6 @@
-.PHONY: test test-lg test-apple test-flutter build-apple-app build-web build-web-css serve-web
+.PHONY: test test-lg test-apple test-flutter build-apple-app \
+	build-components-flutter-macos test-components-flutter-macos \
+	run-components-flutter-macos build-web build-web-css serve-web
 
 test: test-lg test-apple test-flutter build-web
 
@@ -23,6 +25,18 @@ test-flutter:
 	cd examples/components/flutter && flutter analyze
 	cd examples/components/flutter && flutter test \
 		--dart-define=LUI_NATIVE_LIBRARY="$(CURDIR)/_build/default/examples/components/native/liblui_components.dylib"
+	$(MAKE) test-components-flutter-macos
+
+build-components-flutter-macos:
+	opam exec -- dune build -j 1 \
+		examples/components/native/liblui_components.dylib
+	cd examples/components/flutter && flutter build macos --debug
+
+test-components-flutter-macos:
+	cd examples/components/flutter && sh test/macos_package_test.sh
+
+run-components-flutter-macos: build-components-flutter-macos
+	cd examples/components/flutter && flutter run -d macos
 
 build-apple-app:
 	sh examples/todos/macos-appkit/build-app.sh

@@ -14,17 +14,28 @@ make serve-web
 
 Open <http://127.0.0.1:8765/examples/components/web/index.html>.
 
-## Flutter
+## Flutter desktop
 
-Build the native LG bridge and run the real Flutter integration test:
+Build the signed macOS app with the native LG library embedded:
 
 ```sh
-opam exec -- dune build -j 1 \
-  examples/components/native/liblui_components.dylib
-cd examples/components/flutter
-flutter test \
-  --dart-define=LUI_NATIVE_LIBRARY="$PWD/../../../_build/default/examples/components/native/liblui_components.dylib"
+make build-components-flutter-macos
 ```
 
-The test drives retained Flutter widgets through Dart FFI and verifies that
-Signal patches preserve unrelated widget identity and backend-owned state.
+Run it from the Flutter tool:
+
+```sh
+make run-components-flutter-macos
+```
+
+Run both the real Dart-to-OCaml FFI interaction test and the signed application
+package smoke test:
+
+```sh
+make test-flutter
+```
+
+The interaction test drives retained Flutter widgets through Dart FFI and
+verifies that Signal patches preserve unrelated widget identity and
+backend-owned state. The package test performs a real macOS Flutter build and
+checks the executable, embedded native library, Mach-O type, and code signature.
