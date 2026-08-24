@@ -3,16 +3,16 @@
   (:require [lui.protocol :refer [Row Column Grid Stack Panel Card
                      Box Text Heading Paragraph Label Button
                      ToggleButton Toggle RadioGroup Radio Slider TextInput
-                     TextArea Checkbox SwitchControl ProgressControl Divider Scroll
+                     TextArea Checkbox SwitchControl Progress Divider Scroll
                      ListContainer Spacer Spinner Icon TextValue Enabled
                      Gap MainAlignment CrossAlignment GrowValue GridColumns PaddingValue
                      PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth
                      CornerRadius WidthValue HeightValue MinWidth MaxWidth MinHeight
                      MaxHeight PlaceholderValue ReadOnly AccessibilityLabel MinLines MaxLines
                      StyleClass HeadingLevel LabelledBy DescribedBy ErrorMessageBy InputType
-                     Invalid Checked ProgressValue MinValue MaxValue OrientationValue
-                     SizeValue IconName VariantValue InlineIconName IconPlacementValue Selected
-                     Autofocus HoldEnabled ChangeEnabled ToggleEnabled PressEnabled]]))
+                     Invalid Checked ProgressValue OrientationValue SizeValue IconName
+                     VariantValue InlineIconName IconPlacementValue Selected Autofocus HoldEnabled
+                     ChangeEnabled ToggleEnabled PressEnabled]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -37,7 +37,7 @@
     TextArea "text-area"
     Checkbox "checkbox"
     SwitchControl "switch"
-    ProgressControl "progress"
+    Progress "progress"
     Divider "divider"
     Scroll "scroll"
     ListContainer "list"
@@ -82,8 +82,6 @@
     Invalid "invalid"
     Checked "checked"
     ProgressValue "value"
-    MinValue "min-value"
-    MaxValue "max-value"
     OrientationValue "orientation"
     SizeValue "size"
     IconName "name"

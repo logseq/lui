@@ -6,7 +6,7 @@
     (gallery-field-value "")
     (gallery-invalid false)
     (gallery-checked false)
-    (gallery-progress 30)
+    (gallery-progress 0.3)
     (gallery-density "comfortable")
     (gallery-volume 0.35)))
 
@@ -34,12 +34,12 @@
     (assoc
      model
      :gallery-progress
-     (if (>= (:gallery-progress model) 100)
-       0
-       (+ (:gallery-progress model) 10)))))
+     (if (>= (:gallery-progress model) 1.0)
+       0.0
+       (+ (:gallery-progress model) 0.1)))))
 
 (defn progress-label [model]
-  (str (:gallery-progress model) "%"))
+  (str "Progress fraction: " (:gallery-progress model)))
 
 (defn density-comfortable? [model]
   (= (:gallery-density model) "comfortable"))

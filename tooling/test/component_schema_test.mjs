@@ -43,6 +43,7 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.ok(summary.supported.includes('radio-group'));
   assert.ok(summary.supported.includes('radio'));
   assert.ok(summary.supported.includes('slider'));
+  assert.ok(summary.supported.includes('progress'));
   assert.ok(summary.pending.includes('dialog'));
 });
 

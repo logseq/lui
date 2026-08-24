@@ -42,6 +42,7 @@
                          (= tag :radio-group)
                          (= tag :radio)
                          (= tag :slider)
+                         (= tag :progress)
                          (= tag :checkbox)
                          (= tag :switch)
                          (= tag :text-input)
@@ -640,6 +641,22 @@
            [`(lui.ui/append! ~context ~parent ~node)]
            [])
        ~node)))
+
+(defelement progress [context parent attrs & children]
+  (if (empty? children)
+    (let [node (gensym "node")
+          value (:value attrs)
+          constructor
+          (if (float? value) 'lui.ui/progress-literal! 'lui.ui/progress!)]
+      `(let [~node (~constructor ~context ~value)]
+         ~@(element-properties context node attrs)
+         ~@(if parent
+             [`(lui.ui/append! ~context ~parent ~node)]
+             [])
+         ~node))
+    (throw
+     (IllegalArgumentException.
+      "progress is a leaf and cannot contain children"))))
 
 (defelement text-input [context parent attrs & _children]
   (let [node (gensym "node")]

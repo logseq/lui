@@ -18,18 +18,18 @@
                  (gallery-field-value "")
                  (gallery-invalid false)
                  (gallery-checked false)
-                 (gallery-progress 100)
+                 (gallery-progress 1.0)
                  (gallery-density "comfortable")
                  (gallery-volume 0.35))
          model/AdvanceProgress)]
     (assert-equal false (:gallery-disabled initial) "controls start enabled")
-    (assert-equal 30 (:gallery-progress initial) "progress has a visible start")
+    (assert-equal 0.3 (:gallery-progress initial) "progress has a visible start")
     (assert-equal "comfortable" (:gallery-density initial)
                   "radio group starts with a visible selection")
     (assert-equal 0.35 (:gallery-volume initial)
                   "slider starts with a fractional shared value")
-    (assert-equal 40 (:gallery-progress advanced) "progress advances by ten")
-    (assert-equal 0 (:gallery-progress wrapped) "progress wraps after completion")
+    (assert-equal 0.4 (:gallery-progress advanced) "progress advances by a tenth")
+    (assert-equal 0.0 (:gallery-progress wrapped) "progress wraps after completion")
     (assert-equal
      "draft@example.com"
      (:gallery-field-value

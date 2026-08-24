@@ -152,16 +152,14 @@
     AccessibilityLabel
     (or (= kind Button) (= kind ToggleButton)
         (= kind TextInput) (= kind TextArea)
-        (= kind Checkbox) (= kind SwitchControl) (= kind ProgressControl)
+        (= kind Checkbox) (= kind SwitchControl)
         (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider))
     PlaceholderValue (or (= kind TextInput) (= kind TextArea))
     ReadOnly (or (= kind TextInput) (= kind TextArea))
     MinLines (= kind TextArea)
     MaxLines (= kind TextArea)
     HeadingLevel (= kind Heading)
-    LabelledBy
-    (or (= kind TextInput) (= kind TextArea)
-        (= kind ProgressControl))
+    LabelledBy (or (= kind TextInput) (= kind TextArea))
     DescribedBy
     (or (= kind TextInput) (= kind TextArea))
     ErrorMessageBy
@@ -171,9 +169,7 @@
     (or (= kind TextInput) (= kind TextArea))
     Checked (or (= kind Checkbox) (= kind SwitchControl)
                 (= kind Toggle) (= kind Radio))
-    ProgressValue (or (= kind ProgressControl) (= kind Slider))
-    MinValue (= kind ProgressControl)
-    MaxValue (= kind ProgressControl)
+    ProgressValue (or (= kind Progress) (= kind Slider))
     OrientationValue (= kind Divider)
     SizeValue
     (or (= kind Button) (= kind ToggleButton) (= kind Spinner) (= kind Icon))
@@ -261,10 +257,7 @@
     (tuple InputType (StringValue value)) (input-type-supported? value)
     (tuple Invalid (BoolValue _value)) true
     (tuple Checked (BoolValue _value)) true
-    (tuple ProgressValue (IntValue _value)) true
     (tuple ProgressValue (FloatValue _value)) true
-    (tuple MinValue (IntValue _value)) true
-    (tuple MaxValue (IntValue _value)) true
     (tuple OrientationValue (StringValue value))
     (orientation-supported? value)
     (tuple SizeValue (StringValue value))
@@ -336,16 +329,12 @@
           (not (= label ""))
           true)))
      true)
-   (if (= kind ProgressControl)
-     (< (int-property properties MinValue 0)
-        (int-property properties MaxValue 100))
-     true)
    (if (or (= kind RadioGroup) (= kind Slider))
      (match (clojure.core/get properties AccessibilityLabel)
        (Some (StringValue value)) (not (= value ""))
        _ false)
      true)
-   (if (= kind Slider)
+   (if (or (= kind Slider) (= kind Progress))
      (match (clojure.core/get properties ProgressValue)
        (Some (FloatValue _value)) true
        _ false)

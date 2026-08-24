@@ -301,18 +301,22 @@
 (defn switch-control! [context]
   (runtime/create-node! (:ui-application context) proto/SwitchControl))
 
-(defn progress-control! [context source minimum maximum]
+(defn progress! [context source]
   (let [node
-        (runtime/create-node! (:ui-application context) proto/ProgressControl)]
-    (runtime/set-prop!
-     (:ui-application context) node proto/MinValue (proto/IntValue minimum))
-    (runtime/set-prop!
-     (:ui-application context) node proto/MaxValue (proto/IntValue maximum))
+        (runtime/create-node! (:ui-application context) proto/Progress)]
     (runtime/bind-prop!
      (:ui-scope context) (:ui-application context) node proto/ProgressValue
      (sig/own-signal!
       (:ui-scope context)
-      (sig/map (fn [value] (proto/IntValue value)) source)))
+      (sig/map (fn [value] (proto/FloatValue value)) source)))
+    node))
+
+(defn progress-literal! [context value]
+  (let [node
+        (runtime/create-node! (:ui-application context) proto/Progress)]
+    (runtime/set-prop!
+     (:ui-application context) node proto/ProgressValue
+     (proto/FloatValue value))
     node))
 
 (defn separator! [context orientation]

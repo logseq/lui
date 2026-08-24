@@ -1,7 +1,6 @@
 (ns components.gallery
   (:require [lui.macros :refer [defui]]
             [lui.badge]
-            [lui.progress :as progress]
             [lui.separator]
             [lui.skeleton]
             [lui.text-field :as text-field]))
@@ -112,9 +111,9 @@
 (defui progress-gallery [value-source value-label-source advance]
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "Progress"]
-   [:progress {:value value-source}
-    [:progress/label "Uploading files"]
-    [:progress/value-label {:value value-label-source}]]
+   [:paragraph "Uploading files"]
+   [:progress {:value value-source :width 280}]
+   [:text {:value value-label-source}]
    [:button {:variant "outline" :on-press advance} "Advance progress"]])
 
 (defui separator-gallery []

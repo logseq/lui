@@ -96,8 +96,7 @@ enum LUIWireValue: Decodable, Equatable {
         case let (.inputType, .string(type)): Self.inputTypes.contains(type)
         case (.invalid, .bool): true
         case (.checked, .bool): true
-        case (.progressValue, .int), (.progressValue, .double),
-             (.minValue, .int), (.maxValue, .int): true
+        case (.progressValue, .double): true
         case let (.orientation, .string(value)):
             value == "horizontal" || value == "vertical"
         case let (.size, .string(value)):
@@ -308,12 +307,12 @@ struct LUIRetainedTree {
             kind == .textInput || kind == .textArea
         case .accessibilityLabel:
             kind == .button || kind == .toggleButton || kind == .textInput || kind == .textArea || kind == .checkbox ||
-                kind == .switchControl || kind == .progress || kind == .toggle ||
+                kind == .switchControl || kind == .toggle ||
                 kind == .radioGroup || kind == .radio || kind == .slider
         case .minLines, .maxLines: kind == .textArea
         case .headingLevel: kind == .heading
         case .labelledBy:
-            kind == .textInput || kind == .textArea || kind == .progress
+            kind == .textInput || kind == .textArea
         case .describedBy, .errorMessageBy:
             kind == .textInput || kind == .textArea
         case .invalid:
@@ -322,7 +321,6 @@ struct LUIRetainedTree {
         case .checked:
             kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
         case .progressValue: kind == .progress || kind == .slider
-        case .minValue, .maxValue: kind == .progress
         case .orientation: kind == .divider
         case .size: kind == .button || kind == .toggleButton || kind == .spinner || kind == .icon
         case .name: kind == .icon
@@ -352,13 +350,6 @@ struct LUIRetainedTree {
                 minimum: .minHeight,
                 maximum: .maxHeight
             )
-            if node.kind == .progress {
-                let minimum = node.properties[.minValue]?.intValue ?? 0
-                let maximum = node.properties[.maxValue]?.intValue ?? 100
-                guard maximum > minimum else {
-                    throw invalid("progress max-value must be greater than min-value")
-                }
-            }
             if node.kind == .icon, node.properties[.name] == nil {
                 throw invalid("icon requires name")
             }
@@ -379,9 +370,9 @@ struct LUIRetainedTree {
                     throw invalid("value control requires an accessibility label")
                 }
             }
-            if node.kind == .slider {
+            if node.kind == .slider || node.kind == .progress {
                 guard case let .double(value)? = node.properties[.progressValue], value.isFinite else {
-                    throw invalid("slider requires a finite fractional value")
+                    throw invalid("value control requires a finite fractional value")
                 }
             }
             if node.kind == .radio, !hasAncestor(node.parent, kind: .radioGroup) {

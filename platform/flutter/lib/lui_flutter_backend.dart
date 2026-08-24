@@ -439,13 +439,8 @@ final class LUIFlutterBackend {
     final errorMessage = _relatedText(state, 'error-message-by');
     final invalid = state.properties['invalid'] as bool? ?? false;
     final checked = state.properties['checked'] as bool? ?? false;
-    final minimum = state.properties['min-value'] as int? ?? 0;
-    final maximum = state.properties['max-value'] as int? ?? 100;
-    final progressValue = state.kind == _NodeKind.progress
-        ? state.properties['value'] as int? ?? minimum
-        : minimum;
-    final progressFraction =
-        (progressValue.clamp(minimum, maximum) - minimum) / (maximum - minimum);
+    final progressFraction = ((state.properties['value'] as double?) ?? 0)
+        .clamp(0.0, 1.0);
     final orientation =
         state.properties['orientation'] as String? ?? 'horizontal';
     final foreground = _color(
@@ -1023,9 +1018,9 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider),
       'value' =>
-        (value is int && kind == _NodeKind.progress) ||
-            (value is num && value.isFinite && kind == _NodeKind.slider),
-      'min-value' || 'max-value' => value is int && kind == _NodeKind.progress,
+        value is double &&
+            value.isFinite &&
+            (kind == _NodeKind.progress || kind == _NodeKind.slider),
       'orientation' =>
         value is String &&
             (value == 'horizontal' || value == 'vertical') &&
@@ -1101,8 +1096,7 @@ final class LUIFlutterBackend {
       'min-height' ||
       'max-height' => value is int && value >= 0,
       'style-class' => value is String,
-      'labelled-by' =>
-        value is int && (kind.isTextControl || kind == _NodeKind.progress),
+      'labelled-by' => value is int && kind.isTextControl,
       'described-by' ||
       'error-message-by' => value is int && kind.isTextControl,
       'input-type' =>
@@ -1126,7 +1120,6 @@ final class LUIFlutterBackend {
                 _isTextControl(kind) ||
                 kind == _NodeKind.checkbox ||
                 kind == _NodeKind.switchControl ||
-                kind == _NodeKind.progress ||
                 kind == _NodeKind.toggle ||
                 kind == _NodeKind.radioGroup ||
                 kind == _NodeKind.radio ||
@@ -1164,15 +1157,6 @@ final class LUIFlutterBackend {
     for (final state in states.values) {
       _validateSizeAxis(state, 'width', 'min-width', 'max-width');
       _validateSizeAxis(state, 'height', 'min-height', 'max-height');
-      if (state.kind == _NodeKind.progress) {
-        final minimum = state.properties['min-value'] as int? ?? 0;
-        final maximum = state.properties['max-value'] as int? ?? 100;
-        if (maximum <= minimum) {
-          throw const LUIBackendException(
-            'progress max-value must be greater than min-value',
-          );
-        }
-      }
       if (state.kind == _NodeKind.icon &&
           !state.properties.containsKey('name')) {
         throw const LUIBackendException('icon requires name');

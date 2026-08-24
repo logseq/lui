@@ -4,7 +4,7 @@
                      Text Heading Paragraph Label Button ToggleButton
                      TextInput TextArea Scroll ListContainer Spacer Spinner Icon
                      Checkbox SwitchControl
-                     ProgressControl Divider Toggle RadioGroup Radio Slider]]
+                     Progress Divider Toggle RadioGroup Radio Slider]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -37,7 +37,7 @@
     TextArea FlutterWidgetIsland
     Checkbox FlutterCheckbox
     SwitchControl FlutterSwitch
-    ProgressControl FlutterProgress
+    Progress FlutterProgress
     Toggle FlutterToggle
     RadioGroup FlutterRadioGroup
     Radio FlutterRadio

@@ -38,8 +38,8 @@
   :fn<web-renderer;web-node;string;unit>)
 (signature lui.backend.web/apply-property!
   :fn<web-renderer;int;node-kind;web-node;property;wire-value;unit>)
-(signature lui.backend.web/progress-int
-  :fn<web-renderer;int;property;int;int>)
+(signature lui.backend.web/progress-float
+  :fn<web-renderer;int;float>)
 (signature lui.backend.web/update-progress!
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/insert-dom-child!

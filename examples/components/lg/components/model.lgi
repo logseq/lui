@@ -5,7 +5,7 @@
   (gallery-field-value :string)
   (gallery-invalid :bool)
   (gallery-checked :bool)
-  (gallery-progress :int)
+  (gallery-progress :float)
   (gallery-density :string)
   (gallery-volume :float))
 

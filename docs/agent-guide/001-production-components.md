@@ -179,6 +179,8 @@ Delivered parity slices:
   on Web, SwiftUI, and Flutter;
 - direct retained `spinner` progress leaves with the reference 16/20/24 size
   rungs, native SwiftUI/Flutter indicators, and a reduced-motion Web renderer;
+- direct retained `progress` leaves with a model-owned `float` fraction,
+  render-time `0..1` clamping, and no range props or compound public parts;
 - direct retained `icon` leaves with the 51-name Vercel Native built-in
   vocabulary, 16/18/24 sizing, shared foreground tint, CSS-mask SVGs on Web,
   SF Symbols on SwiftUI, and Material Icons on Flutter, plus immutable
@@ -315,6 +317,19 @@ arrow navigation remain native. Flutter uses `RadioGroup`, and Apple keeps the
 same semantic group while rendering platform controls. Slider drag state stays
 host-owned during interaction; the applied fraction returns through the typed
 event pipeline and the Signal remains the reconciliation source.
+
+### Progress contract
+
+`progress` is one display-only retained leaf. It accepts the model-owned
+`value` as `float` or `Signal<float>` and the reference `width` layout
+attribute. Integer values, `min-value`, `max-value`, labels, events and public
+compound parts are not part of its API. Values outside `0..1` remain unchanged
+in the model and are clamped only when a backend renders the fill.
+
+Web updates one retained progressbar DOM node and its CSS fill fraction.
+SwiftUI uses `ProgressView(value:)`, and Flutter uses
+`LinearProgressIndicator`; a Signal patch preserves the platform object and
+does not rebuild the gallery section.
 
 ## State ownership
 

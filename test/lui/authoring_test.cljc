@@ -6,7 +6,6 @@
             [lui.ui :as ui]
             [lui.elements :refer [defcomponent defelement]]
             [lui.badge]
-            [lui.progress :as progress]
             [lui.separator]
             [lui.skeleton]
             [lui.text-field :as text-field]
@@ -170,11 +169,11 @@
     {:variant "success" :round true :class "sync-status"}
     "Synchronized"]])
 
-(defui task-progress [completed completed-label]
-  [:progress
-   {:value completed :min-value 0 :max-value 10 :class "task-progress"}
-   [:progress/label "Processing..."]
-   [:progress/value-label {:value completed-label}]])
+(defui task-progress [completed]
+  [:progress {:value completed :width 240 :class "task-progress"}])
+
+(defui literal-progress []
+  [:progress {:value 0.5}])
 
 (defui content-separators []
   [:column
@@ -662,70 +661,46 @@
          "success-foreground" value "Badge content uses foreground")
         _ (is false "Badge retains its content color")))))
 
-(deftest progress-composes-public-parts-around-one-native-control
+(deftest progress-is-one-fractional-retained-native-control
   (let [scheduler (sig/scheduler)
         renderer (apple/create)
         application (runtime/create scheduler (apple/backend renderer))
         scope (sig/scope "task-progress")
-        completed (sig/state scheduler 3)
-        completed-label (sig/state scheduler "3 of 10 tasks completed")
+        completed (sig/state scheduler 0.3)
         root
         (task-progress
          (ui/context application scope)
-         (sig/value completed)
-         (sig/value completed-label))]
+         (sig/value completed))]
     (sig/mount! scope)
     (runtime/flush! application)
-    (let [parts (apple/children renderer root)
-          label (nth parts 0)
-          value-label (nth parts 1)
-          control (nth parts 2)
-          node-count (apple/node-count renderer)]
-      (assert-equal 3 (count parts)
-                    "Progress retains two public parts and one control")
+    (let [node-count (apple/node-count renderer)]
       (match (apple/node renderer root)
-        (Some AppleColumn) (is true "Progress root composes Column")
-        _ (is false "Progress root maps to Column"))
-      (match (apple/node renderer label)
-        (Some AppleFormLabel) (is true "ProgressLabel is semantic")
-        _ (is false "ProgressLabel maps to Label"))
-      (match (apple/node renderer value-label)
-        (Some AppleFormLabel) (is true "ProgressValueLabel is semantic")
-        _ (is false "ProgressValueLabel maps to Label"))
-      (match (apple/node renderer control)
-        (Some AppleProgress) (is true "Progress uses one native control")
-        _ (is false "Progress maps to the progress primitive"))
+        (Some AppleProgress) (is true "Progress maps directly to native progress")
+        _ (is false "Progress must be one retained progress node"))
+      (assert-equal [] (apple/children renderer root)
+                    "Progress does not expose compound public parts")
       (match (apple/property renderer root proto/StyleClass)
         (Some (StringValue value))
-        (assert-equal "lui-progress task-progress" value
-                      "Progress exposes one semantic root class")
+        (assert-equal "task-progress" value "Progress keeps its style class")
         _ (is false "Progress root class"))
-      (match (apple/property renderer control proto/MinValue)
-        (Some (proto/IntValue value))
-        (assert-equal 0 value "Progress retains min-value")
-        _ (is false "Progress min-value"))
-      (match (apple/property renderer control proto/MaxValue)
-        (Some (proto/IntValue value))
-        (assert-equal 10 value "Progress retains max-value")
-        _ (is false "Progress max-value"))
-      (match (apple/property renderer control proto/ProgressValue)
-        (Some (proto/IntValue value))
-        (assert-equal 3 value "Progress retains its Signal value")
+      (match (apple/property renderer root proto/ProgressValue)
+        (Some (proto/FloatValue value))
+        (assert-equal 0.3 value "Progress retains its fractional Signal value")
         _ (is false "Progress value"))
-      (match (apple/property renderer control proto/LabelledBy)
-        (Some (proto/IntValue value))
-        (assert-equal label value "ProgressControl references ProgressLabel")
-        _ (is false "Progress label relationship"))
-      (sig/set! completed 8)
+      (sig/set! completed 0.8)
       (runtime/flush! application)
       (assert-equal node-count (apple/node-count renderer)
-                    "value patches preserve the retained component tree")
-      (assert-equal control (nth (apple/children renderer root) 2)
-                    "value patches preserve ProgressControl identity")
-      (match (apple/property renderer control proto/ProgressValue)
-        (Some (proto/IntValue value))
-        (assert-equal 8 value "the value Signal patches ProgressControl")
-        _ (is false "patched Progress value")))))
+                    "value patches preserve retained identity")
+      (match (apple/property renderer root proto/ProgressValue)
+        (Some (proto/FloatValue value))
+        (assert-equal 0.8 value "the Signal patches Progress in place")
+        _ (is false "patched Progress value")))
+    (let [literal-root (literal-progress (ui/context application scope))]
+      (runtime/flush! application)
+      (match (apple/property renderer literal-root proto/ProgressValue)
+        (Some (proto/FloatValue value))
+        (assert-equal 0.5 value "Progress accepts a float literal")
+        _ (is false "literal Progress value")))))
 
 (deftest separator-maps-orientation-to-retained-native-leaves
   (let [renderer (apple/create)

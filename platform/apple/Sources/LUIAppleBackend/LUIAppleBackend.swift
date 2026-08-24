@@ -172,11 +172,7 @@ final class LUINodeModel: Identifiable {
     }
 
     var progressFraction: Double {
-        let minimum = properties[.minValue]?.intValue ?? 0
-        let maximum = properties[.maxValue]?.intValue ?? 100
-        let value = properties[.progressValue]?.intValue ?? minimum
-        let clamped = min(max(value, minimum), maximum)
-        return Double(clamped - minimum) / Double(maximum - minimum)
+        min(max(properties[.progressValue]?.doubleValue ?? 0, 0), 1)
     }
 
     func accessibilityLabel(in backend: LUIAppleBackend) -> String? {

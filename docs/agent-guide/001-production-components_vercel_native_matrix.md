@@ -168,7 +168,6 @@ names and payload semantics: `on-press`, `on-double-press`, `on-toggle`,
 | `:heading`, `:paragraph`, `:label` | `:text` plus the reference text/semantic attributes |
 | `:text-input`, `:text-area` | `:text-field`/`:input` and `:textarea` |
 | compound `:text-field/*` | direct reference text-entry elements |
-| compound `:progress/*` with integer range | one fractional `:progress` |
 | `:padding-horizontal`, `:padding-vertical`, `:max-height` | not public parity attributes |
 | `:class` | Web platform escape hatch, not standard component API |
 

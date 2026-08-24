@@ -687,20 +687,15 @@ void main() {
     expect((scroll.child! as Stack).children, hasLength(2));
   });
 
-  testWidgets('maps progress ranges to one retained LinearProgressIndicator', (
+  testWidgets('maps a progress fraction to one retained native indicator', (
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
     final backend = LUIFlutterBackend()
       ..applyJson('''
       {"generation":1,"ops":[
-        {"op":"create-node","id":1,"kind":"label"},
         {"op":"create-node","id":2,"kind":"progress"},
-        {"op":"set-prop","id":1,"property":"text","value":"Processing"},
-        {"op":"set-prop","id":2,"property":"min-value","value":0},
-        {"op":"set-prop","id":2,"property":"max-value","value":10},
-        {"op":"set-prop","id":2,"property":"value","value":3},
-        {"op":"set-prop","id":2,"property":"labelled-by","value":1}
+        {"op":"set-prop","id":2,"property":"value","value":0.3}
       ]}
       ''');
 
@@ -719,12 +714,12 @@ void main() {
     );
     expect(
       tester.getSemantics(find.byType(LinearProgressIndicator)),
-      matchesSemantics(label: 'Processing', value: '30%'),
+      matchesSemantics(value: '30%'),
     );
 
     backend.applyJson('''
     {"generation":2,"ops":[
-      {"op":"set-prop","id":2,"property":"value","value":12}
+      {"op":"set-prop","id":2,"property":"value","value":1.2}
     ]}
     ''');
     await tester.pump();
@@ -878,23 +873,6 @@ void main() {
     ''');
     await tester.pump();
     expect(tester.widget<Icon>(find.byType(Icon)).icon, Icons.question_mark);
-  });
-
-  test('rejects an empty progress range atomically', () {
-    final backend = LUIFlutterBackend();
-
-    expect(
-      () => backend.applyJson('''
-      {"generation":1,"ops":[
-        {"op":"create-node","id":1,"kind":"progress"},
-        {"op":"set-prop","id":1,"property":"min-value","value":10},
-        {"op":"set-prop","id":1,"property":"max-value","value":10}
-      ]}
-      '''),
-      throwsA(isA<LUIBackendException>()),
-    );
-    expect(backend.containsNode(1), isFalse);
-    expect(backend.generation, 0);
   });
 
   testWidgets('maps Separator orientation to retained native dividers', (

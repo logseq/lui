@@ -63,7 +63,7 @@ void main() {
     );
 
     expect(find.text('ToggleButton'), findsOneWidget);
-    expect(find.text('30%'), findsOneWidget);
+    expect(find.text('Progress fraction: 0.3'), findsOneWidget);
     final backendOwnedLabel = find.text('Backend-owned');
     final retainedLabel = tester.renderObject(backendOwnedLabel);
     final backendOwnedSemantics = find.byWidgetPredicate(
@@ -86,7 +86,7 @@ void main() {
     await tester.ensureVisible(advance);
     await tester.tap(advance);
     await tester.pump();
-    expect(find.text('40%'), findsOneWidget);
+    expect(find.text('Progress fraction: 0.4'), findsOneWidget);
     expect(tester.renderObject(backendOwnedLabel), same(retainedLabel));
     expect(
       tester.widget<Semantics>(backendOwnedSemantics).properties.selected,

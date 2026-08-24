@@ -7,7 +7,7 @@
                      Text Heading Paragraph Label Button ToggleButton
                      TextInput TextArea Checkbox SwitchControl
                      Scroll ListContainer Spacer Spinner Icon
-                     ProgressControl Divider
+                     Progress Divider
                      Toggle RadioGroup Radio Slider
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild TextValue Enabled Gap MainAlignment
@@ -20,7 +20,7 @@
                      AccessibilityLabel StyleClass HeadingLevel LabelledBy
                      DescribedBy ErrorMessageBy InputType Invalid
                      Checked
-                     ProgressValue MinValue MaxValue OrientationValue SizeValue IconName
+                     ProgressValue OrientationValue SizeValue IconName
                      VariantValue InlineIconName IconPlacementValue Selected Autofocus HoldEnabled
                      ChangeEnabled ToggleEnabled PressEnabled
                      StringValue BoolValue IntValue FloatValue]]
@@ -62,7 +62,7 @@
     TextArea "lui-text-area"
     Checkbox "lui-checkbox"
     SwitchControl "lui-switch"
-    ProgressControl "lui-progress-control"
+    Progress "lui-progress"
     Divider "lui-separator"
     Scroll "lui-scroll"
     ListContainer "lui-list"
@@ -133,7 +133,7 @@
           Button "button"
           TextInput "input"
           TextArea "textarea"
-          ProgressControl "div"
+          Progress "div"
           Slider "input"
           Divider "hr"
           _ "div")
@@ -145,8 +145,11 @@
     (when (= kind TextArea)
       (Webapi.Dom.Element.setAttribute
        "style" "field-sizing: content; resize: vertical; overflow-y: auto" node))
-    (when (= kind ProgressControl)
-      (Webapi.Dom.Element.setAttribute "role" "progressbar" node))
+    (when (= kind Progress)
+      (do
+        (Webapi.Dom.Element.setAttribute "role" "progressbar" node)
+        (Webapi.Dom.Element.setAttribute "aria-valuemin" "0" node)
+        (Webapi.Dom.Element.setAttribute "aria-valuemax" "1" node)))
     (when (= kind RadioGroup)
       (Webapi.Dom.Element.setAttribute "role" "radiogroup" node))
     (when (= kind Slider)
@@ -489,19 +492,15 @@
     "end" "flex-end"
     _ (raise (Invalid_argument "invalid cross alignment"))))
 
-(defn- progress-int [renderer node property fallback]
-  (match (retained/property (:web-store renderer) node property)
-    (Some (IntValue value)) value
-    _ fallback))
+(defn- progress-float [renderer node]
+  (match (retained/property (:web-store renderer) node ProgressValue)
+    (Some (FloatValue value)) value
+    _ 0.0))
 
 (defn- update-progress! [renderer node dom-node]
-  (let [minimum (progress-int renderer node MinValue 0)
-        maximum (progress-int renderer node MaxValue 100)
-        value (progress-int renderer node ProgressValue minimum)
-        clamped (max minimum (min value maximum))
-        position (/ (* (- clamped minimum) 100) (- maximum minimum))]
-    (Webapi.Dom.Element.setAttribute "aria-valuemin" (str minimum) dom-node)
-    (Webapi.Dom.Element.setAttribute "aria-valuemax" (str maximum) dom-node)
+  (let [value (progress-float renderer node)
+        clamped (max 0.0 (min value 1.0))
+        position (* clamped 100.0)]
     (Webapi.Dom.Element.setAttribute "aria-valuenow" (str clamped) dom-node)
     (set-style! dom-node "--lui-progress-position" (str position "%"))))
 
@@ -677,17 +676,11 @@
          "aria-checked" (if checked "true" "false")
          (child-element dom-node 0))))
 
-    (tuple ProgressValue (IntValue _value))
-    (update-progress! renderer node dom-node)
-
     (tuple ProgressValue (FloatValue value))
-    (Webapi.Dom.HtmlInputElement.setValue (text-control-node dom-node) (str value))
-
-    (tuple MinValue (IntValue _value))
-    (update-progress! renderer node dom-node)
-
-    (tuple MaxValue (IntValue _value))
-    (update-progress! renderer node dom-node)
+    (if (= kind Progress)
+      (update-progress! renderer node dom-node)
+      (Webapi.Dom.HtmlInputElement.setValue
+       (text-control-node dom-node) (str value)))
 
     (tuple OrientationValue (StringValue orientation))
     (do

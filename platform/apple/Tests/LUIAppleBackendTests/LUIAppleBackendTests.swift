@@ -318,41 +318,32 @@ struct LUISwiftUIBackendTests {
     }
 
     @Test("maps Progress to a clamped retained SwiftUI value")
-    func mapsProgressControl() throws {
+    func mapsProgress() throws {
         let backend = LUIAppleBackend()
         try backend.apply(json: """
         {"generation":1,"ops":[
-          {"op":"create-node","id":1,"kind":"label"},
-          {"op":"create-node","id":2,"kind":"progress"},
-          {"op":"set-prop","id":1,"property":"text","value":"Processing"},
-          {"op":"set-prop","id":2,"property":"min-value","value":0},
-          {"op":"set-prop","id":2,"property":"max-value","value":10},
-          {"op":"set-prop","id":2,"property":"value","value":3},
-          {"op":"set-prop","id":2,"property":"labelled-by","value":1}
+          {"op":"create-node","id":1,"kind":"progress"},
+          {"op":"set-prop","id":1,"property":"value","value":0.3}
         ]}
         """)
 
-        let label = try #require(backend.model(id: 1))
-        let progress = try #require(backend.model(id: 2))
+        let progress = try #require(backend.model(id: 1))
         let progressRevision = progress.revision
         #expect(progress.progressFraction == 0.3)
-        #expect(progress.accessibilityLabel(in: backend) == "Processing")
 
         try backend.apply(json: """
         {"generation":2,"ops":[
-          {"op":"set-prop","id":2,"property":"value","value":12}
+          {"op":"set-prop","id":1,"property":"value","value":1.2}
         ]}
         """)
-        #expect(backend.model(id: 1) === label)
-        #expect(backend.model(id: 2) === progress)
+        #expect(backend.model(id: 1) === progress)
         #expect(progress.progressFraction == 1)
         #expect(progress.revision == progressRevision + 1)
 
         #expect(throws: LUIBackendError.self) {
             try backend.apply(json: """
             {"generation":3,"ops":[
-              {"op":"set-prop","id":2,"property":"min-value","value":10},
-              {"op":"set-prop","id":2,"property":"max-value","value":10}
+              {"op":"set-prop","id":1,"property":"value","value":1}
             ]}
             """)
         }

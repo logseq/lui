@@ -2,8 +2,7 @@
   (:require [lui.protocol :as proto
              :refer [CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild LabelledBy DescribedBy ErrorMessageBy
-                     ProgressControl Radio RadioGroup
-                     MinValue MaxValue IntValue StringValue]]))
+                     Radio RadioGroup IntValue StringValue]]))
 
 (defn- empty-batches [] [])
 
@@ -215,11 +214,9 @@
           (if (and (= text "") (not (= icon "")) (= label ""))
             "icon-only button requires an accessibility label"
             "button requires text or an accessibility label"))
-        (if (= kind ProgressControl)
-          "progress max-value must be greater than min-value"
-          (if (= kind proto/Icon)
-            "icon requires a valid name"
-            "node properties conflict"))))))
+        (if (= kind proto/Icon)
+          "icon requires a valid name"
+          "node properties conflict")))))
 
 (defn- has-ancestor-kind? [nodes parent kind]
   (match parent

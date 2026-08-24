@@ -75,8 +75,9 @@
 (signature lui.ui/on-event! :fn<ui-context;int;fn<event;bool>;bool>)
 (signature lui.ui/checkbox! :fn<ui-context;int>)
 (signature lui.ui/switch-control! :fn<ui-context;int>)
-(signature lui.ui/progress-control!
-  :fn<ui-context;signal.core/signal<int>;int;int;int>)
+(signature lui.ui/progress!
+  :fn<ui-context;signal.core/signal<float>;int>)
+(signature lui.ui/progress-literal! :fn<ui-context;float;int>)
 (signature lui.ui/separator! :fn<ui-context;string;int>)
 (signature lui.ui/size! :fn<ui-context;int;string;bool>)
 (signature lui.ui/labelled-by! :fn<ui-context;int;int;bool>)

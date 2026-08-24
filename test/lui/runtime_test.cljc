@@ -187,27 +187,19 @@
      (wire/encode-batch batch)
      "Surface styling remains a closed typed wire contract")))
 
-(deftest progress-control-uses-a-closed-range-contract
+(deftest progress-control-uses-a-closed-fractional-contract
   (let [batch
         (record proto/patch-batch
                 (generation 1)
-                (ops [(proto/create-node-op 1 proto/ProgressControl)
+                (ops [(proto/create-node-op 1 proto/Progress)
                       (proto/set-prop-op
-                       1 proto/MinValue (proto/IntValue 0))
-                      (proto/set-prop-op
-                       1 proto/MaxValue (proto/IntValue 10))
-                      (proto/set-prop-op
-                       1 proto/ProgressValue (proto/IntValue 3))]))]
+                       1 proto/ProgressValue (proto/FloatValue 0.3))]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
       "{\"op\":\"create-node\",\"id\":1,\"kind\":\"progress\"},"
       "{\"op\":\"set-prop\",\"id\":1,"
-      "\"property\":\"min-value\",\"value\":0},"
-      "{\"op\":\"set-prop\",\"id\":1,"
-      "\"property\":\"max-value\",\"value\":10},"
-      "{\"op\":\"set-prop\",\"id\":1,"
-      "\"property\":\"value\",\"value\":3}]}")
+      "\"property\":\"value\",\"value\":0.3}]}")
      (wire/encode-batch batch)
      "Progress stays inside the typed native wire vocabulary")))
 
@@ -246,24 +238,17 @@
      (count (:ops (nth (apple/batches renderer) 0)))
      "invalid orientation never enters the patch queue")))
 
-(deftest progress-control-rejects-an-empty-range-atomically
+(deftest progress-control-rejects-an-integer-value
   (let [renderer (apple/create)
-        backend (apple/backend renderer)
-        batch
-        (record proto/patch-batch
-                (generation 1)
-                (ops [(proto/create-node-op 1 proto/ProgressControl)
-                      (proto/set-prop-op
-                       1 proto/MinValue (proto/IntValue 10))
-                      (proto/set-prop-op
-                       1 proto/MaxValue (proto/IntValue 10))]))]
+        application
+        (runtime/create (sig/scheduler) (apple/backend renderer))
+        progress (runtime/create-node! application proto/Progress)]
     (is (thrown-with-msg?
          Invalid_argument
-         #"progress max-value must be greater than min-value"
-         ((:apply-batch backend) batch))
-        "an invalid range never reaches a platform backend")
-    (assert-equal 0 (apple/node-count renderer)
-                  "range validation rejects the complete patch batch")))
+         #"invalid property value"
+         (runtime/set-prop!
+          application progress proto/ProgressValue (proto/IntValue 1)))
+        "Progress accepts only fractional float values")))
 
 (deftest surface-numeric-properties-reject-negative-values
   (let [application

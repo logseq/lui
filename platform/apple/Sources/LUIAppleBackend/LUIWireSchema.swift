@@ -68,8 +68,6 @@ enum LUIProperty: String, Decodable, Hashable {
     case invalid = "invalid"
     case checked = "checked"
     case progressValue = "value"
-    case minValue = "min-value"
-    case maxValue = "max-value"
     case orientation = "orientation"
     case size = "size"
     case name = "name"
