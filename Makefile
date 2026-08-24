@@ -1,8 +1,14 @@
-.PHONY: test test-lg test-apple test-flutter build-apple-app \
+.PHONY: test test-schema generate-component-schema test-lg test-apple test-flutter build-apple-app \
 	build-components-flutter-macos test-components-flutter-macos \
 	run-components-flutter-macos build-web build-web-css serve-web
 
-test: test-lg test-apple test-flutter build-web
+test: test-schema test-lg test-apple test-flutter build-web
+
+test-schema:
+	node --test tooling/test/component_schema_test.mjs
+
+generate-component-schema:
+	node tooling/generate_component_schema.mjs
 
 test-lg:
 	opam exec -- dune runtest -j 1

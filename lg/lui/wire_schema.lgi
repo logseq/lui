@@ -1,0 +1,5 @@
+;; Generated from schema/components.json. Do not edit by hand.
+(ns lui.wire-schema)
+
+(signature lui.wire-schema/node-kind-name :fn<node-kind;string>)
+(signature lui.wire-schema/property-name :fn<property;string>)

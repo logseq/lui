@@ -1,0 +1,62 @@
+// Generated from schema/components.json. Do not edit by hand.
+part of 'lui_flutter_backend.dart';
+
+enum _NodeKind {
+  row,
+  column,
+  grid,
+  stack,
+  panel,
+  card,
+  box,
+  text,
+  heading,
+  paragraph,
+  label,
+  button,
+  toggleButton,
+  textInput,
+  textArea,
+  checkbox,
+  switchControl,
+  progress,
+  divider,
+  scroll,
+  list,
+  spacer,
+  spinner,
+  icon,
+}
+
+_NodeKind _decodeNodeKind(Object? value) {
+  if (value is! String) {
+    throw const LUIBackendException('kind must be a string');
+  }
+  return switch (value) {
+    'row' => _NodeKind.row,
+    'column' => _NodeKind.column,
+    'grid' => _NodeKind.grid,
+    'stack' => _NodeKind.stack,
+    'panel' => _NodeKind.panel,
+    'card' => _NodeKind.card,
+    'box' => _NodeKind.box,
+    'text' => _NodeKind.text,
+    'heading' => _NodeKind.heading,
+    'paragraph' => _NodeKind.paragraph,
+    'label' => _NodeKind.label,
+    'button' => _NodeKind.button,
+    'toggle-button' => _NodeKind.toggleButton,
+    'text-input' => _NodeKind.textInput,
+    'text-area' => _NodeKind.textArea,
+    'checkbox' => _NodeKind.checkbox,
+    'switch' => _NodeKind.switchControl,
+    'progress' => _NodeKind.progress,
+    'divider' => _NodeKind.divider,
+    'scroll' => _NodeKind.scroll,
+    'list' => _NodeKind.list,
+    'spacer' => _NodeKind.spacer,
+    'spinner' => _NodeKind.spinner,
+    'icon' => _NodeKind.icon,
+    _ => throw const LUIBackendException('unknown node kind'),
+  };
+}

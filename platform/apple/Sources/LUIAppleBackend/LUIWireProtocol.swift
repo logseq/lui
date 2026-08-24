@@ -11,56 +11,6 @@ public enum LUIEvent: Equatable, Sendable {
     case toggleChanged(node: Int, checked: Bool)
 }
 
-enum LUINodeKind: String, Decodable, Equatable {
-    case row, column, grid, stack, panel, card, box, text, heading, paragraph, label, button
-    case toggleButton = "toggle-button"
-    case textInput = "text-input", textArea = "text-area"
-    case checkbox
-    case switchControl = "switch"
-    case progress
-    case divider
-    case scroll, list, spacer, spinner, icon
-}
-
-enum LUIProperty: String, Decodable, Hashable {
-    case text, enabled, gap, main, cross, grow, columns, padding, background, placeholder
-    case paddingHorizontal = "padding-horizontal"
-    case paddingVertical = "padding-vertical"
-    case foreground
-    case borderColor = "border-color"
-    case borderWidth = "border-width"
-    case cornerRadius = "corner-radius"
-    case width, height
-    case minWidth = "min-width"
-    case maxWidth = "max-width"
-    case minHeight = "min-height"
-    case maxHeight = "max-height"
-    case readOnly = "read-only"
-    case accessibilityLabel = "accessibility-label"
-    case minLines = "min-lines"
-    case maxLines = "max-lines"
-    case styleClass = "style-class"
-    case headingLevel = "heading-level"
-    case labelledBy = "labelled-by"
-    case describedBy = "described-by"
-    case errorMessageBy = "error-message-by"
-    case inputType = "input-type"
-    case invalid
-    case checked
-    case progressValue = "value"
-    case minValue = "min-value"
-    case maxValue = "max-value"
-    case orientation
-    case size
-    case name
-    case variant
-    case icon
-    case iconPlacement = "icon-placement"
-    case selected
-    case autofocus
-    case holdEnabled = "hold-enabled"
-}
-
 struct LUIPatchBatch: Decodable {
     let generation: Int
     let ops: [LUIPatchOperation]

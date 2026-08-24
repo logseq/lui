@@ -8,6 +8,20 @@ Reference: `vercel-labs/native` revision
 Reference source: `skill-data/native-ui/SKILL.md` and the closed schema in
 `src/primitives/canvas/ui_schema.zig`.
 
+LUI's implementation registry is [`schema/components.json`](../../schema/components.json).
+It records the pinned public boundary and the currently implemented wire kinds
+and properties once. `make generate-component-schema` derives:
+
+- LG `node-kind` and `property` variants;
+- LG wire-name encoders;
+- Swift wire enums;
+- the Dart node-kind enum and decoder.
+
+`make test-schema` rejects stale generated files and duplicate protocol names.
+Component-specific semantics, native widget behavior, and bespoke validation
+remain handwritten and must pass the platform parity gates; the manifest does
+not replace those platform decisions.
+
 ## Compatibility rule
 
 LUI's supported public UI component API is a deliberate subset of the Vercel

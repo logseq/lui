@@ -1,0 +1,78 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const generator = join(repository, 'tooling/generate_component_schema.mjs');
+
+function runGenerator(arguments_) {
+  return spawnSync(process.execPath, [generator, ...arguments_], {
+    cwd: repository,
+    encoding: 'utf8',
+  });
+}
+
+test('committed protocol artifacts match the canonical component schema', () => {
+  const result = runGenerator(['--check']);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
+test('schema summary preserves the pinned public API boundary', () => {
+  const result = runGenerator(['--summary']);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+
+  const summary = JSON.parse(result.stdout);
+  assert.equal(
+    summary.referenceRevision,
+    '4e015e925fc9974e2ab92840d6f8bb5a8f201c2d',
+  );
+  assert.deepEqual(summary.excluded, [
+    'chart',
+    'code',
+    'markdown',
+    'series',
+    'span',
+  ]);
+  assert.ok(summary.supported.includes('button'));
+  assert.ok(summary.supported.includes('toggle-button'));
+  assert.ok(summary.pending.includes('radio'));
+  assert.ok(summary.pending.includes('dialog'));
+});
+
+test('schema validation rejects duplicate wire names before generation', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'lui-component-schema-'));
+  const manifest = join(directory, 'duplicate.json');
+  writeFileSync(
+    manifest,
+    JSON.stringify({
+      schemaVersion: 1,
+      reference: { revision: 'test', excluded: [] },
+      publicElements: [],
+      nodeKinds: [
+        {
+          lg: 'First',
+          wire: 'duplicate',
+          dart: 'first',
+          swift: 'first',
+          container: false,
+        },
+        {
+          lg: 'Second',
+          wire: 'duplicate',
+          dart: 'second',
+          swift: 'second',
+          container: false,
+        },
+      ],
+      properties: [],
+    }),
+  );
+
+  const result = runGenerator(['--manifest', manifest, '--validate']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /duplicate node-kind wire name: duplicate/);
+});

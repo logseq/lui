@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+part 'lui_wire_schema.g.dart';
+
 sealed class LUIEvent {
   const LUIEvent();
 
@@ -75,33 +77,6 @@ final class LUIBackendException implements Exception {
 
   @override
   String toString() => 'LUIBackendException: $message';
-}
-
-enum _NodeKind {
-  row,
-  column,
-  grid,
-  stack,
-  panel,
-  card,
-  box,
-  text,
-  heading,
-  paragraph,
-  label,
-  button,
-  toggleButton,
-  textInput,
-  textArea,
-  checkbox,
-  switchControl,
-  progress,
-  divider,
-  scroll,
-  list,
-  spacer,
-  spinner,
-  icon,
 }
 
 const _iconNames = <String>{
@@ -836,7 +811,7 @@ final class LUIFlutterBackend {
         if (states.containsKey(id)) {
           throw const LUIBackendException('node already exists');
         }
-        states[id] = _NodeState(_kind(operation['kind']));
+        states[id] = _NodeState(_decodeNodeKind(operation['kind']));
       case 'drop-node':
         final id = _integer(operation['id'], 'id');
         final node = _requireState(states, id);
@@ -1150,34 +1125,6 @@ final class LUIFlutterBackend {
     if (handle == null) throw LUIBackendException('unknown node $id');
     return handle;
   }
-
-  static _NodeKind _kind(Object? value) => switch (_string(value, 'kind')) {
-    'row' => _NodeKind.row,
-    'column' => _NodeKind.column,
-    'grid' => _NodeKind.grid,
-    'stack' => _NodeKind.stack,
-    'panel' => _NodeKind.panel,
-    'card' => _NodeKind.card,
-    'box' => _NodeKind.box,
-    'text' => _NodeKind.text,
-    'heading' => _NodeKind.heading,
-    'paragraph' => _NodeKind.paragraph,
-    'label' => _NodeKind.label,
-    'button' => _NodeKind.button,
-    'toggle-button' => _NodeKind.toggleButton,
-    'text-input' => _NodeKind.textInput,
-    'text-area' => _NodeKind.textArea,
-    'checkbox' => _NodeKind.checkbox,
-    'switch' => _NodeKind.switchControl,
-    'progress' => _NodeKind.progress,
-    'divider' => _NodeKind.divider,
-    'scroll' => _NodeKind.scroll,
-    'list' => _NodeKind.list,
-    'spacer' => _NodeKind.spacer,
-    'spinner' => _NodeKind.spinner,
-    'icon' => _NodeKind.icon,
-    _ => throw const LUIBackendException('unknown node kind'),
-  };
 
   static Map<String, Object?> _objectMap(Object? value, String name) {
     if (value is! Map<String, Object?>) {
