@@ -1,0 +1,23 @@
+(ns todos.model)
+
+(type-record todo
+  (todo-id :int)
+  (todo-title :string)
+  (todo-done :bool))
+
+(type-record todo-model
+  (model-items :vector<todo>)
+  (model-draft :string)
+  (model-next-id :int))
+
+(type-variant todo-action
+  (ChangeDraft :string)
+  (AddTodo)
+  (ToggleTodo :int)
+  (DeleteTodo :int))
+
+(signature todos.model/initial :fn<todo-model>)
+(signature todos.model/update :fn<todo-model;todo-action;todo-model>)
+(signature todos.model/toggle-one :fn<todo;int;todo>)
+(signature todos.model/toggle-items :fn<vector<todo>;int;vector<todo>>)
+(signature todos.model/remove-item :fn<vector<todo>;int;vector<todo>>)

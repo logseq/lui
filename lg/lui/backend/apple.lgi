@@ -1,0 +1,27 @@
+(ns lui.backend.apple)
+
+(type-variant apple-node
+  (AppleRow)
+  (AppleColumn)
+  (AppleLabel)
+  (AppleButton)
+  (AppleTextInput)
+  (AppleScrollView)
+  (AppleSpacer))
+
+(type-record apple-renderer
+  (apple-store :retained-store<apple-node>)
+  (apple-send-batch :fn<patch-batch;bool>))
+
+(signature lui.backend.apple/create
+  :overload<fn<apple-renderer>;fn<fn<patch-batch;bool>;apple-renderer>>)
+(signature lui.backend.apple/create-wire :fn<fn<string;bool>;apple-renderer>)
+(signature lui.backend.apple/platform-node :fn<node-kind;apple-node>)
+(signature lui.backend.apple/backend :fn<apple-renderer;backend>)
+(signature lui.backend.apple/some-node :fn<apple-node;option<apple-node>>)
+(signature lui.backend.apple/node :fn<apple-renderer;int;option<apple-node>>)
+(signature lui.backend.apple/property
+  :fn<apple-renderer;int;property;option<wire-value>>)
+(signature lui.backend.apple/children :fn<apple-renderer;int;vector<int>>)
+(signature lui.backend.apple/node-count :fn<apple-renderer;int>)
+(signature lui.backend.apple/batches :fn<apple-renderer;vector<patch-batch>>)

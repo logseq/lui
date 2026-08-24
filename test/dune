@@ -1,0 +1,337 @@
+(rule
+ (target lui_runtime_native_chunk.ml)
+ (deps
+  %{lib:lg:stdlib/lg_stdlib_native.state}
+  %{lib:lg-test.sources:test.cljc}
+  %{lib:lg-test.sources:test_native.cljc}
+  %{lib:signal-lg.sources:lg/signal/core.lgi}
+  %{lib:signal-lg.sources:lg/signal/core.cljc}
+  ../lg/lui/protocol.lgi
+  ../lg/lui/protocol.cljc
+  ../lg/lui/wire.lgi
+  ../lg/lui/wire.cljc
+  ../lg/lui/runtime.lgi
+  ../lg/lui/runtime.cljc
+  ../lg/lui/ui.lgi
+  ../lg/lui/ui.cljc
+  ../lg/lui/app.lgi
+  ../lg/lui/app.cljc
+  ../lg/lui/elements.cljc
+  ../lg/lui/macros.cljc
+  ../lg/lui/dynamic.lgi
+  ../lg/lui/dynamic.cljc
+  ../lg/lui/backend/retained.lgi
+  ../lg/lui/backend/retained.cljc
+  ../lg/lui/backend/apple.lgi
+  ../lg/lui/backend/apple.cljc
+  ../lg/lui/backend/flutter.lgi
+  ../lg/lui/backend/flutter.cljc
+  ../examples/todos/lg/todos/model.lgi
+  ../examples/todos/lg/todos/model.cljc
+  ../examples/todos/lg/todos/view.lgi
+  ../examples/todos/lg/todos/view.cljc
+  ../examples/todos/lg/todos/app.lgi
+  ../examples/todos/lg/todos/app.cljc
+  ../examples/todos/test/todos/app_test.cljc
+  lui/runtime_test.cljc
+  lui/authoring_test.cljc
+  lui/dynamic_test.cljc
+  lui/benchmark_test.cljc
+  %{lib:lg-test.sources:run.cljc}
+  %{lib:lg-test.runtime:lg_test_runtime.cmi}
+  %{lib:lg-test.alcotest:lg_test_alcotest.cmi}
+  %{bin:lg})
+ (action
+  (run
+   %{bin:lg}
+   --target native
+   --compile-files-from %{lib:lg:stdlib/lg_stdlib_native.state}
+   %{lib:lg-test.sources:test.cljc}
+   %{lib:lg-test.sources:test_native.cljc}
+   %{lib:signal-lg.sources:lg/signal/core.lgi}
+   %{lib:signal-lg.sources:lg/signal/core.cljc}
+   %{dep:../lg/lui/protocol.lgi}
+   %{dep:../lg/lui/protocol.cljc}
+   %{dep:../lg/lui/wire.lgi}
+   %{dep:../lg/lui/wire.cljc}
+   %{dep:../lg/lui/runtime.lgi}
+   %{dep:../lg/lui/runtime.cljc}
+   %{dep:../lg/lui/ui.lgi}
+   %{dep:../lg/lui/ui.cljc}
+   %{dep:../lg/lui/app.lgi}
+   %{dep:../lg/lui/app.cljc}
+   %{dep:../lg/lui/elements.cljc}
+   %{dep:../lg/lui/macros.cljc}
+   %{dep:../lg/lui/dynamic.lgi}
+   %{dep:../lg/lui/dynamic.cljc}
+   %{dep:../lg/lui/backend/retained.lgi}
+   %{dep:../lg/lui/backend/retained.cljc}
+   %{dep:../lg/lui/backend/apple.lgi}
+   %{dep:../lg/lui/backend/apple.cljc}
+   %{dep:../lg/lui/backend/flutter.lgi}
+   %{dep:../lg/lui/backend/flutter.cljc}
+   %{dep:../examples/todos/lg/todos/model.lgi}
+   %{dep:../examples/todos/lg/todos/model.cljc}
+   %{dep:../examples/todos/lg/todos/view.lgi}
+   %{dep:../examples/todos/lg/todos/view.cljc}
+   %{dep:../examples/todos/lg/todos/app.lgi}
+   %{dep:../examples/todos/lg/todos/app.cljc}
+   %{dep:../examples/todos/test/todos/app_test.cljc}
+   %{dep:lui/runtime_test.cljc}
+   %{dep:lui/authoring_test.cljc}
+   %{dep:lui/dynamic_test.cljc}
+   %{dep:lui/benchmark_test.cljc}
+   %{lib:lg-test.sources:run.cljc}
+   -o %{target})))
+
+(rule
+ (target lui_runtime_native.ml)
+ (deps %{lib:lg:stdlib/lg_stdlib_native.ml} lui_runtime_native_chunk.ml)
+ (action
+  (with-stdout-to %{target}
+   (progn
+    (cat %{lib:lg:stdlib/lg_stdlib_native.ml})
+    (cat %{dep:lui_runtime_native_chunk.ml})))))
+
+(executable
+ (name lui_runtime_native)
+ (modules lui_runtime_native)
+ (flags (:standard -w -27-32-37-39-69))
+ (libraries
+  lg.edn-backend.native
+  lg.runtime
+  lg.rrbvec
+  lg-test.runtime
+  lg-test.alcotest))
+
+(rule
+ (target lui_runtime_melange_chunk.ml)
+ (deps
+  %{lib:lg:stdlib/lg_stdlib_melange.state}
+  %{lib:lg-test.sources:test.cljc}
+  %{lib:lg-test.sources:test_melange.cljc}
+  %{lib:signal-lg.sources:lg/signal/core.lgi}
+  %{lib:signal-lg.sources:lg/signal/core.cljc}
+  ../lg/lui/protocol.lgi
+  ../lg/lui/protocol.cljc
+  ../lg/lui/wire.lgi
+  ../lg/lui/wire.cljc
+  ../lg/lui/runtime.lgi
+  ../lg/lui/runtime.cljc
+  ../lg/lui/ui.lgi
+  ../lg/lui/ui.cljc
+  ../lg/lui/app.lgi
+  ../lg/lui/app.cljc
+  ../lg/lui/elements.cljc
+  ../lg/lui/macros.cljc
+  ../lg/lui/dynamic.lgi
+  ../lg/lui/dynamic.cljc
+  ../lg/lui/backend/retained.lgi
+  ../lg/lui/backend/retained.cljc
+  ../lg/lui/backend/apple.lgi
+  ../lg/lui/backend/apple.cljc
+  ../lg/lui/backend/flutter.lgi
+  ../lg/lui/backend/flutter.cljc
+  ../lg/lui/backend/web.lgi
+  ../lg/lui/backend/web.cljc
+  ../examples/todos/lg/todos/model.lgi
+  ../examples/todos/lg/todos/model.cljc
+  ../examples/todos/lg/todos/view.lgi
+  ../examples/todos/lg/todos/view.cljc
+  ../examples/todos/lg/todos/app.lgi
+  ../examples/todos/lg/todos/app.cljc
+  ../examples/todos/test/todos/app_test.cljc
+  lui/runtime_test.cljc
+  lui/authoring_test.cljc
+  lui/dynamic_test.cljc
+  lui/benchmark_test.cljc
+  %{lib:lg-test.sources:run.cljc}
+  %{lib:lg-test.runtime:lg_test_runtime.cmi}
+  %{bin:lg})
+ (action
+  (run
+   %{bin:lg}
+   --target melange
+   --compile-files-from %{lib:lg:stdlib/lg_stdlib_melange.state}
+   %{lib:lg-test.sources:test.cljc}
+   %{lib:lg-test.sources:test_melange.cljc}
+   %{lib:signal-lg.sources:lg/signal/core.lgi}
+   %{lib:signal-lg.sources:lg/signal/core.cljc}
+   %{dep:../lg/lui/protocol.lgi}
+   %{dep:../lg/lui/protocol.cljc}
+   %{dep:../lg/lui/wire.lgi}
+   %{dep:../lg/lui/wire.cljc}
+   %{dep:../lg/lui/runtime.lgi}
+   %{dep:../lg/lui/runtime.cljc}
+   %{dep:../lg/lui/ui.lgi}
+   %{dep:../lg/lui/ui.cljc}
+   %{dep:../lg/lui/app.lgi}
+   %{dep:../lg/lui/app.cljc}
+   %{dep:../lg/lui/elements.cljc}
+   %{dep:../lg/lui/macros.cljc}
+   %{dep:../lg/lui/dynamic.lgi}
+   %{dep:../lg/lui/dynamic.cljc}
+   %{dep:../lg/lui/backend/retained.lgi}
+   %{dep:../lg/lui/backend/retained.cljc}
+   %{dep:../lg/lui/backend/apple.lgi}
+   %{dep:../lg/lui/backend/apple.cljc}
+   %{dep:../lg/lui/backend/flutter.lgi}
+   %{dep:../lg/lui/backend/flutter.cljc}
+   %{dep:../lg/lui/backend/web.lgi}
+   %{dep:../lg/lui/backend/web.cljc}
+   %{dep:../examples/todos/lg/todos/model.lgi}
+   %{dep:../examples/todos/lg/todos/model.cljc}
+   %{dep:../examples/todos/lg/todos/view.lgi}
+   %{dep:../examples/todos/lg/todos/view.cljc}
+   %{dep:../examples/todos/lg/todos/app.lgi}
+   %{dep:../examples/todos/lg/todos/app.cljc}
+   %{dep:../examples/todos/test/todos/app_test.cljc}
+   %{dep:lui/runtime_test.cljc}
+   %{dep:lui/authoring_test.cljc}
+   %{dep:lui/dynamic_test.cljc}
+   %{dep:lui/benchmark_test.cljc}
+   %{lib:lg-test.sources:run.cljc}
+   -o %{target})))
+
+(rule
+ (target lui_runtime_melange.ml)
+ (deps %{lib:lg:stdlib/lg_stdlib_melange.ml} lui_runtime_melange_chunk.ml)
+ (action
+  (with-stdout-to %{target}
+   (progn
+    (cat %{lib:lg:stdlib/lg_stdlib_melange.ml})
+    (cat %{dep:lui_runtime_melange_chunk.ml})))))
+
+(melange.emit
+ (target lui-runtime-melange)
+ (alias lui-runtime-melange)
+ (module_systems es6)
+ (modules lui_runtime_melange)
+ (preprocess (pps melange.ppx))
+ (compile_flags -w -27-32-37-39-69)
+ (libraries
+  lg.edn-backend
+  lg.edn-backend.melange
+  lg.runtime
+  lg.rrbvec
+  lg-test.runtime
+  lg-test.melange
+  melange-webapi))
+
+(rule
+ (alias runtest)
+ (deps
+  lui_runtime_native.exe
+  (alias lui-runtime-melange)
+  lui-runtime-melange/test/lui_runtime_melange.js)
+ (action
+  (progn
+   (run %{exe:lui_runtime_native.exe})
+   (run node %{dep:lui-runtime-melange/test/lui_runtime_melange.js}))))
+
+(rule
+ (target apple_bridge_native_chunk.ml)
+ (deps
+  %{lib:lg:stdlib/lg_stdlib_native.state}
+  %{lib:lg-test.sources:test.cljc}
+  %{lib:lg-test.sources:test_native.cljc}
+  %{lib:signal-lg.sources:lg/signal/core.lgi}
+  %{lib:signal-lg.sources:lg/signal/core.cljc}
+  ../lg/lui/protocol.lgi
+  ../lg/lui/protocol.cljc
+  ../lg/lui/wire.lgi
+  ../lg/lui/wire.cljc
+  ../lg/lui/runtime.lgi
+  ../lg/lui/runtime.cljc
+  ../lg/lui/ui.lgi
+  ../lg/lui/ui.cljc
+  ../lg/lui/app.lgi
+  ../lg/lui/app.cljc
+  ../lg/lui/elements.cljc
+  ../lg/lui/macros.cljc
+  ../lg/lui/dynamic.lgi
+  ../lg/lui/dynamic.cljc
+  ../lg/lui/backend/retained.lgi
+  ../lg/lui/backend/retained.cljc
+  ../lg/lui/backend/apple.lgi
+  ../lg/lui/backend/apple.cljc
+  ../lg/lui/host/ctypes.lgi
+  ../lg/lui/host/ctypes.cljc
+  ../lg/lui/host/apple.lgi
+  ../lg/lui/host/apple.cljc
+  ../examples/todos/lg/todos/model.lgi
+  ../examples/todos/lg/todos/model.cljc
+  ../examples/todos/lg/todos/view.lgi
+  ../examples/todos/lg/todos/view.cljc
+  ../examples/todos/lg/todos/app.lgi
+  ../examples/todos/lg/todos/app.cljc
+  lui/apple_bridge_test.cljc
+  %{lib:lg-test.sources:run.cljc}
+  %{bin:lg})
+ (action
+  (run
+   %{bin:lg}
+   --target native
+   --compile-files-from %{lib:lg:stdlib/lg_stdlib_native.state}
+   %{lib:lg-test.sources:test.cljc}
+   %{lib:lg-test.sources:test_native.cljc}
+   %{lib:signal-lg.sources:lg/signal/core.lgi}
+   %{lib:signal-lg.sources:lg/signal/core.cljc}
+   %{dep:../lg/lui/protocol.lgi}
+   %{dep:../lg/lui/protocol.cljc}
+   %{dep:../lg/lui/wire.lgi}
+   %{dep:../lg/lui/wire.cljc}
+   %{dep:../lg/lui/runtime.lgi}
+   %{dep:../lg/lui/runtime.cljc}
+   %{dep:../lg/lui/ui.lgi}
+   %{dep:../lg/lui/ui.cljc}
+   %{dep:../lg/lui/app.lgi}
+   %{dep:../lg/lui/app.cljc}
+   %{dep:../lg/lui/elements.cljc}
+   %{dep:../lg/lui/macros.cljc}
+   %{dep:../lg/lui/dynamic.lgi}
+   %{dep:../lg/lui/dynamic.cljc}
+   %{dep:../lg/lui/backend/retained.lgi}
+   %{dep:../lg/lui/backend/retained.cljc}
+   %{dep:../lg/lui/backend/apple.lgi}
+   %{dep:../lg/lui/backend/apple.cljc}
+   %{dep:../lg/lui/host/ctypes.lgi}
+   %{dep:../lg/lui/host/ctypes.cljc}
+   %{dep:../lg/lui/host/apple.lgi}
+   %{dep:../lg/lui/host/apple.cljc}
+   %{dep:../examples/todos/lg/todos/model.lgi}
+   %{dep:../examples/todos/lg/todos/model.cljc}
+   %{dep:../examples/todos/lg/todos/view.lgi}
+   %{dep:../examples/todos/lg/todos/view.cljc}
+   %{dep:../examples/todos/lg/todos/app.lgi}
+   %{dep:../examples/todos/lg/todos/app.cljc}
+   %{dep:lui/apple_bridge_test.cljc}
+   %{lib:lg-test.sources:run.cljc}
+   -o %{target})))
+
+(rule
+ (target apple_bridge_native.ml)
+ (deps %{lib:lg:stdlib/lg_stdlib_native.ml} apple_bridge_native_chunk.ml)
+ (action
+  (with-stdout-to %{target}
+   (progn
+    (cat %{lib:lg:stdlib/lg_stdlib_native.ml})
+    (cat %{dep:apple_bridge_native_chunk.ml})))))
+
+(executable
+ (name apple_bridge_native)
+ (modules apple_bridge_native)
+ (flags (:standard -w -27-32-34-37-39-69))
+ (libraries
+  ctypes.foreign
+  lg.edn-backend.native
+  lg.runtime
+  lg.rrbvec
+  lg-test.runtime
+  lg-test.alcotest))
+
+(rule
+ (alias apple-bridge-test)
+ (deps apple_bridge_native.exe (env_var LUI_APPLE_LIBRARY))
+ (action
+  (run %{exe:apple_bridge_native.exe})))

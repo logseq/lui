@@ -1,0 +1,9 @@
+(ns todos.flutter-bridge)
+
+(signature todos.flutter-bridge/send-patch! :fn<string;bool>)
+(signature todos.flutter-bridge/app
+  :fn<reducer-app<todo-model;todo-action>>)
+(signature todos.flutter-bridge/initialize :fn<string>)
+(signature todos.flutter-bridge/press :fn<int;string>)
+(signature todos.flutter-bridge/text-changed :fn<int;string;string>)
+(signature todos.flutter-bridge/root-node :fn<int>)

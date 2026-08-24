@@ -1,0 +1,5 @@
+/_build/
+/.lg-cache/
+/platform/apple/.build/
+/platform/flutter/.dart_tool/
+/platform/flutter/build/

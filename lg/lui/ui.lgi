@@ -1,0 +1,25 @@
+(ns lui.ui)
+
+(type-record ui-context
+  (ui-application :application)
+  (ui-scheduler :scheduler)
+  (ui-scope :scope))
+
+(signature lui.ui/context :fn<application;scope;ui-context>)
+(signature lui.ui/child-context :fn<ui-context;string;ui-context>)
+(signature lui.ui/row! :fn<ui-context;int>)
+(signature lui.ui/column! :fn<ui-context;int>)
+(signature lui.ui/scroll! :fn<ui-context;int>)
+(signature lui.ui/spacer! :fn<ui-context;int>)
+(signature lui.ui/text! :fn<ui-context;string;int>)
+(signature lui.ui/text-signal! :fn<ui-context;signal<string>;int>)
+(signature lui.ui/text-value! :fn<ui-context;signal<wire-value>;int>)
+(signature lui.ui/text-input!
+  :fn<ui-context;signal<string>;fn<event;bool>;int>)
+(signature lui.ui/text-input-value!
+  :fn<ui-context;signal<wire-value>;fn<event;bool>;int>)
+(signature lui.ui/button! :fn<ui-context;string;fn<event;bool>;int>)
+(signature lui.ui/append! :fn<ui-context;int;int;bool>)
+(signature lui.ui/gap! :fn<ui-context;int;int;bool>)
+(signature lui.ui/padding! :fn<ui-context;int;int;bool>)
+(signature lui.ui/background! :fn<ui-context;int;string;bool>)

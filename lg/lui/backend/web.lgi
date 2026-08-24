@@ -1,0 +1,37 @@
+(ns lui.backend.web
+  (:require [ocaml.package/melange-webapi]))
+
+(type-alias web-node :Dom.element)
+
+(type-record web-renderer
+  (web-store :retained-store<web-node>)
+  (web-event-handler :ref<fn<event;bool>>))
+
+(signature lui.backend.web/create :fn<web-renderer>)
+(signature lui.backend.web/set-event-handler!
+  :fn<web-renderer;fn<event;bool>;bool>)
+(signature lui.backend.web/platform-node :fn<node-kind;web-node>)
+(signature lui.backend.web/dom-node :fn<web-renderer;int;web-node>)
+(signature lui.backend.web/dom-node-before
+  :fn<web-renderer;map<int;retained-node<web-node>>;int;web-node>)
+(signature lui.backend.web/attach-events!
+  :fn<web-renderer;int;node-kind;web-node;unit>)
+(signature lui.backend.web/apply-property!
+  :fn<node-kind;web-node;property;wire-value;unit>)
+(signature lui.backend.web/insert-dom-child!
+  :fn<web-node;web-node;int;unit>)
+(signature lui.backend.web/apply-dom-op!
+  :fn<web-renderer;map<int;retained-node<web-node>>;patch-op;unit>)
+(signature lui.backend.web/apply-dom-batch!
+  :fn<web-renderer;map<int;retained-node<web-node>>;patch-batch;unit>)
+(signature lui.backend.web/backend :fn<web-renderer;backend>)
+(signature lui.backend.web/mount!
+  :fn<web-renderer;int;Dom.element;unit>)
+(signature lui.backend.web/some-node
+  :fn<web-node;option<web-node>>)
+(signature lui.backend.web/node :fn<web-renderer;int;option<web-node>>)
+(signature lui.backend.web/property
+  :fn<web-renderer;int;property;option<wire-value>>)
+(signature lui.backend.web/children :fn<web-renderer;int;vector<int>>)
+(signature lui.backend.web/node-count :fn<web-renderer;int>)
+(signature lui.backend.web/batches :fn<web-renderer;vector<patch-batch>>)

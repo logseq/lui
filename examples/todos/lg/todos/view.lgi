@@ -1,0 +1,7 @@
+(ns todos.view)
+
+(signature todos.view/item-label :fn<todo;string>)
+(signature todos.view/todo-row
+  :fn<ui-context;signal<todo>;fn<todo-action;bool>;int>)
+(signature todos.view/todos-view
+  :fn<ui-context;signal<todo-model>;fn<todo-action;bool>;int>)

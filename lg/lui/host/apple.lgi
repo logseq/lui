@@ -1,0 +1,15 @@
+(ns lui.host.apple)
+
+(type-record apple-host
+  (apple-apply-json :fn<string;int>)
+  (apple-show-window :fn<unit>)
+  (apple-reset-host :fn<unit>)
+  (apple-perform-action :fn<int;int>)
+  (apple-event-callback :fn<int;fn<int;fn<string;unit>>>))
+
+(signature lui.host.apple/connect
+  :fn<string;fn<event;unit>;apple-host>)
+(signature lui.host.apple/apply-json! :fn<apple-host;string;bool>)
+(signature lui.host.apple/show! :fn<apple-host;unit>)
+(signature lui.host.apple/reset-host! :fn<apple-host;unit>)
+(signature lui.host.apple/perform-action! :fn<apple-host;int;bool>)

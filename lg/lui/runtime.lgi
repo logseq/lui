@@ -1,0 +1,45 @@
+(ns lui.runtime)
+
+(type-record event-handler
+  (handler-id :int)
+  (handler-callback :fn<event;bool>))
+
+(type-record application
+  (runtime-scheduler :scheduler)
+  (runtime-backend :backend)
+  (next-node-id :ref<int>)
+  (mounted-nodes :ref<map<int;node-kind>>)
+  (runtime-children :ref<map<int;vector<int>>>)
+  (pending-ops :ref<vector<patch-op>>)
+  (runtime-generation :ref<int>)
+  (next-handler-id :ref<int>)
+  (event-handlers :ref<map<int;vector<event-handler>>>))
+
+(signature lui.runtime/create :fn<scheduler;backend;application>)
+(signature lui.runtime/empty-ops :fn<vector<patch-op>>)
+(signature lui.runtime/empty-handlers :fn<vector<event-handler>>)
+(signature lui.runtime/enqueue! :fn<application;patch-op;bool>)
+(signature lui.runtime/find-child-index
+  :fn<vector<int>;int;option<int>>)
+(signature lui.runtime/remove-at :fn<vector<int>;int;vector<int>>)
+(signature lui.runtime/insert-at :fn<vector<int>;int;int;vector<int>>)
+(signature lui.runtime/move-at :fn<vector<int>;int;int;vector<int>>)
+(signature lui.runtime/create-node! :fn<application;node-kind;int>)
+(signature lui.runtime/drop-node! :fn<application;int;bool>)
+(signature lui.runtime/drop-subtree! :fn<application;int;bool>)
+(signature lui.runtime/set-prop! :fn<application;int;property;wire-value;bool>)
+(signature lui.runtime/insert-child! :fn<application;int;int;int;bool>)
+(signature lui.runtime/remove-child! :fn<application;int;int;bool>)
+(signature lui.runtime/move-child! :fn<application;int;int;int;bool>)
+(signature lui.runtime/bind-prop! [value]
+  :fn<scope;application;int;property;signal<wire-value>;subscription>)
+(signature lui.runtime/on-event!
+  :fn<scope;application;int;fn<event;bool>;bool>)
+(signature lui.runtime/remove-handler!
+  :fn<application;int;int;bool>)
+(signature lui.runtime/dispatch! :fn<application;event;bool>)
+(signature lui.runtime/flush! :fn<application;bool>)
+(signature lui.runtime/generation :fn<application;int>)
+(signature lui.runtime/mounted-count :fn<application;int>)
+(signature lui.runtime/child-count :fn<application;int;int>)
+(signature lui.runtime/children :fn<application;int;vector<int>>)

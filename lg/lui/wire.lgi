@@ -1,0 +1,10 @@
+(ns lui.wire)
+
+(signature lui.wire/escape-json :fn<string;string>)
+(signature lui.wire/quoted :fn<string;string>)
+(signature lui.wire/node-kind-name :fn<node-kind;string>)
+(signature lui.wire/property-name :fn<property;string>)
+(signature lui.wire/encode-value :fn<wire-value;string>)
+(signature lui.wire/encode-op :fn<patch-op;string>)
+(signature lui.wire/encode-ops :fn<vector<patch-op>;string>)
+(signature lui.wire/encode-batch :fn<patch-batch;string>)

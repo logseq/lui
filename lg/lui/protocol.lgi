@@ -1,0 +1,51 @@
+(ns lui.protocol)
+
+(type-variant node-kind
+  (Row)
+  (Column)
+  (Text)
+  (Button)
+  (TextInput)
+  (Scroll)
+  (Spacer))
+
+(type-variant property
+  (TextValue)
+  (Enabled)
+  (Gap)
+  (PaddingValue)
+  (BackgroundValue))
+
+(type-variant wire-value
+  (StringValue :string)
+  (BoolValue :bool)
+  (IntValue :int))
+
+(type-variant event
+  (Press :int)
+  (TextChanged :int :string))
+
+(type-variant patch-op
+  (CreateNode :int :node-kind)
+  (DropNode :int)
+  (SetProp :int :property :wire-value)
+  (InsertChild :int :int :int)
+  (RemoveChild :int :int)
+  (MoveChild :int :int :int))
+
+(type-record patch-batch
+  (generation :int)
+  (ops :vector<patch-op>))
+
+(type-record backend
+  (apply-batch :fn<patch-batch;bool>))
+
+(signature lui.protocol/event-node :fn<event;int>)
+(signature lui.protocol/property-supported? :fn<node-kind;property;bool>)
+(signature lui.protocol/create-node-op :fn<int;node-kind;patch-op>)
+(signature lui.protocol/drop-node-op :fn<int;patch-op>)
+(signature lui.protocol/set-prop-op
+  :fn<int;property;wire-value;patch-op>)
+(signature lui.protocol/insert-child-op :fn<int;int;int;patch-op>)
+(signature lui.protocol/remove-child-op :fn<int;int;patch-op>)
+(signature lui.protocol/move-child-op :fn<int;int;int;patch-op>)

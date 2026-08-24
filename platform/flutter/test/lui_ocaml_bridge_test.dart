@@ -1,0 +1,69 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lui_flutter_backend/lui_flutter_backend.dart';
+import 'package:lui_flutter_backend/lui_ocaml_bridge.dart';
+
+const _libraryPath = String.fromEnvironment('LUI_NATIVE_LIBRARY');
+
+void main() {
+  testWidgets('LG Todos uses real Flutter widgets through OCaml FFI', (
+    tester,
+  ) async {
+    expect(
+      _libraryPath,
+      isNotEmpty,
+      reason: 'Pass --dart-define=LUI_NATIVE_LIBRARY=...',
+    );
+    late LUIOcamlBridge bridge;
+    final backend = LUIFlutterBackend(
+      onEvent: (event) => switch (event) {
+        LUIPressEvent(:final node) => bridge.press(node),
+        LUITextChangedEvent(:final node, :final text) => bridge.textChanged(
+          node,
+          text,
+        ),
+      },
+    );
+    bridge = LUIOcamlBridge.open(_libraryPath, onPatch: backend.applyJson);
+    addTearDown(bridge.close);
+
+    bridge.start();
+    expect(backend.generation, 1);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 640,
+            height: 480,
+            child: backend.widget(node: bridge.rootNode),
+          ),
+        ),
+      ),
+    );
+    expect(find.byType(EditableText), findsOneWidget);
+    expect(find.byType(SingleChildScrollView), findsOneWidget);
+    expect(find.textContaining('Write LG todos'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), 'Write LG todos');
+    await tester.pump();
+    expect(backend.generation, 2);
+    await tester.tap(find.widgetWithText(TextButton, 'Add'));
+    await tester.pump();
+    expect(backend.generation, 3);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      '',
+    );
+    final label = find.text('[ ] Write LG todos');
+    expect(label, findsOneWidget);
+    final retainedLabel = tester.renderObject(label);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Toggle'));
+    await tester.pump();
+    expect(backend.generation, 4);
+    expect(
+      tester.renderObject(find.text('[x] Write LG todos')),
+      same(retainedLabel),
+    );
+  });
+}
