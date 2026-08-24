@@ -66,6 +66,8 @@ private struct LUINodeView: View {
                 .font(.body)
         case .button:
             LUIButtonView(model: model, backend: backend)
+        case .toggleButton:
+            LUIButtonView(model: model, backend: backend, isToggle: true)
         case .textInput:
             LUITextControlView(model: model, backend: backend, multiline: false)
         case .textArea:
@@ -140,8 +142,17 @@ private struct LUINodeView: View {
 private struct LUIButtonView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    let isToggle: Bool
     @FocusState private var focused: Bool
     @State private var held = false
+    @State private var selected: Bool
+
+    init(model: LUINodeModel, backend: LUIAppleBackend, isToggle: Bool = false) {
+        self.model = model
+        self.backend = backend
+        self.isToggle = isToggle
+        _selected = State(initialValue: model.isSelected)
+    }
 
     var body: some View {
         styledButton
@@ -155,6 +166,11 @@ private struct LUIButtonView: View {
             .onAppear { requestFocusIfNeeded() }
             .onChange(of: model.requestsAutofocus) { _, requested in
                 if requested { focused = true }
+            }
+            .onChange(of: model.isSelected) { _, modelSelected in
+                if isToggle, model.property(.selected) != nil {
+                    selected = modelSelected
+                }
             }
             .simultaneousGesture(
                 LongPressGesture(minimumDuration: 0.35)
@@ -170,7 +186,11 @@ private struct LUIButtonView: View {
                     action: { try? backend.performHold(node: model.id) }
                 )
             )
-            .modifier(LUISelectedButtonModifier(selected: model.isSelected))
+            .modifier(
+                LUISelectedButtonModifier(
+                    selected: isToggle ? selected : model.isSelected
+                )
+            )
     }
 
     @ViewBuilder
@@ -191,6 +211,9 @@ private struct LUIButtonView: View {
         Button {
             if held {
                 held = false
+            } else if isToggle {
+                selected.toggle()
+                try? backend.performToggle(node: model.id, checked: selected)
             } else {
                 try? backend.performPress(node: model.id)
             }

@@ -162,6 +162,10 @@ Delivered parity slices:
 - direct retained `button` controls with the six reference variants, four
   sizes, inline registry icons, selected/autofocus state, press, 350 ms hold,
   and immediate desktop secondary hold behavior;
+- direct retained `toggle-button` controls with Button-compatible variants,
+  sizes and inline icons, `on-toggle` activation, optional model-owned
+  `selected`, backend-owned selection when that property is absent, and the
+  same hold and autofocus behavior;
 - stacking containers reject `gap`; `card` supplies the reference 24-point
   default content padding while explicit `padding` overrides it.
 
@@ -197,6 +201,22 @@ system `Button` with native label/icon composition, control sizing, focus, and
 accessibility traits. Flutter uses Material button APIs and native gesture,
 focus, semantics, and icon facilities. The internal event-capability bit does
 not become a public LG attribute.
+
+### ToggleButton contract
+
+`toggle-button` follows the pinned pressed-button contract. It shares `text`,
+`variant`, `size`, `icon`, `icon-placement`, `disabled`, `selected`,
+`autofocus`, `label`, and `on-hold` with Button, but primary activation emits
+`on-toggle` with the requested next selection instead of `on-press`.
+
+When `selected` is present, its literal or Signal value is the model's
+reconciliation channel. Native interaction updates pressed feedback
+immediately and the next changed model value corrects it. When `selected` is
+absent, selection is backend-owned transient state and survives unrelated
+property patches without entering the retained protocol tree. Web uses one
+native `button` with `aria-pressed`; SwiftUI and Flutter keep the transient
+selection in the identity-preserving native view state associated with that
+retained node.
 
 ### Application icon registry
 

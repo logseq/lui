@@ -18,10 +18,10 @@
 (defn event-supported? [kind event]
   (match event
     (Press _node) (= kind Button)
-    (Hold _node) (= kind Button)
+    (Hold _node) (or (= kind Button) (= kind ToggleButton))
     (TextChanged _node _text) (or (= kind TextInput) (= kind TextArea))
     (ToggleChanged _node _checked)
-    (or (= kind Checkbox) (= kind SwitchControl))))
+    (or (= kind ToggleButton) (= kind Checkbox) (= kind SwitchControl))))
 
 (defn input-type-supported? [value]
   (or
@@ -124,6 +124,7 @@
       Paragraph true
       Label true
       Button true
+      ToggleButton true
       TextInput true
       TextArea true
       Checkbox true
@@ -141,7 +142,8 @@
     MaxHeight true
     StyleClass true
     AccessibilityLabel
-    (or (= kind Button) (= kind TextInput) (= kind TextArea)
+    (or (= kind Button) (= kind ToggleButton)
+        (= kind TextInput) (= kind TextArea)
         (= kind Checkbox) (= kind SwitchControl) (= kind ProgressControl))
     PlaceholderValue (or (= kind TextInput) (= kind TextArea))
     ReadOnly (or (= kind TextInput) (= kind TextArea))
@@ -163,14 +165,15 @@
     MinValue (= kind ProgressControl)
     MaxValue (= kind ProgressControl)
     OrientationValue (= kind Divider)
-    SizeValue (or (= kind Button) (= kind Spinner) (= kind Icon))
+    SizeValue
+    (or (= kind Button) (= kind ToggleButton) (= kind Spinner) (= kind Icon))
     IconName (= kind Icon)
-    VariantValue (= kind Button)
-    InlineIconName (= kind Button)
-    IconPlacementValue (= kind Button)
-    Selected (= kind Button)
-    Autofocus (= kind Button)
-    HoldEnabled (= kind Button)
+    VariantValue (or (= kind Button) (= kind ToggleButton))
+    InlineIconName (or (= kind Button) (= kind ToggleButton))
+    IconPlacementValue (or (= kind Button) (= kind ToggleButton))
+    Selected (or (= kind Button) (= kind ToggleButton))
+    Autofocus (or (= kind Button) (= kind ToggleButton))
+    HoldEnabled (or (= kind Button) (= kind ToggleButton))
     TextValue
     (match kind
       Text true
@@ -178,6 +181,7 @@
       Paragraph true
       Label true
       Button true
+      ToggleButton true
       TextInput true
       TextArea true
       Checkbox true
@@ -186,6 +190,7 @@
     Enabled
     (match kind
       Button true
+      ToggleButton true
       TextInput true
       TextArea true
       Checkbox true
@@ -290,7 +295,7 @@
        (property-value-supported? IconName name)
        false)
      true)
-   (if (= kind Button)
+   (if (or (= kind Button) (= kind ToggleButton))
      (let [text
            (match (clojure.core/get properties TextValue)
              (Some (StringValue value)) value

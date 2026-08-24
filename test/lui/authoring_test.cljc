@@ -135,6 +135,17 @@
     :label "New note"
     :on-press callback}])
 
+(defui formatting-toggle [selected-source on-toggle on-hold]
+  [:toggle-button
+   {:variant "outline"
+    :size "sm"
+    :icon "edit"
+    :selected selected-source
+    :label "Bold formatting"
+    :on-toggle on-toggle
+    :on-hold on-hold}
+   "Bold"])
+
 (defui semantic-content []
   [:box {:class "semantic-content"}
    [:heading {:level 3} "Account"]
@@ -1066,3 +1077,38 @@
     (match (apple/property renderer button proto/Autofocus)
       (Some (proto/BoolValue value)) (assert-equal true value "literal autofocus")
       _ (is false "literal autofocus is present"))))
+
+(deftest toggle-button-selected-state-is-incremental-and-dispatches-toggle-only
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "formatting-toggle")
+        context (ui/context application scope)
+        selected (sig/state scheduler false)
+        toggles (atom [])
+        holds (atom 0)
+        button
+        (formatting-toggle
+         context
+         (sig/value selected)
+         (fn [event] (swap! toggles conj event) true)
+         (fn [_event] (swap! holds inc) true))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (is (= (Some apple/AppleToggleButton) (apple/node renderer button))
+        "ToggleButton maps to a distinct native control kind")
+    (runtime/dispatch! application (proto/ToggleChanged button true))
+    (runtime/dispatch! application (proto/Hold button))
+    (runtime/flush! application)
+    (assert-equal 1 (count @toggles) "on-toggle receives one toggle event")
+    (assert-equal 1 @holds "on-hold receives one hold event")
+    (let [node-count (apple/node-count renderer)]
+      (sig/set! selected true)
+      (runtime/flush! application)
+      (assert-equal
+       node-count (apple/node-count renderer)
+       "selected Signal patches the retained ToggleButton in place"))
+    (match (apple/property renderer button proto/Selected)
+      (Some (proto/BoolValue value))
+      (assert-equal true value "selected Signal reaches the backend")
+      _ (is false "selected property is present"))))

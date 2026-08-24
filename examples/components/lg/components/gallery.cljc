@@ -203,6 +203,34 @@
    [:paragraph
     "Both native controls share one Signal and patch in place."]])
 
+(defui toggle-button-gallery
+  [selected-source disabled-source update-selected toggle-disabled]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "ToggleButton"]
+   [:row {:gap 12}
+    [:toggle-button
+     {:variant "outline"
+      :size "sm"
+      :icon "edit"
+      :selected selected-source
+      :disabled disabled-source
+      :on-toggle update-selected
+      :on-hold toggle-disabled}
+     "Controlled"]
+    [:toggle-button
+     {:variant "ghost"
+      :disabled disabled-source
+      :on-toggle (fn [_event] true)}
+     "Backend-owned"]
+    [:toggle-button
+     {:size "icon"
+      :icon "check"
+      :label "Toggle approval"
+      :disabled disabled-source
+      :on-toggle (fn [_event] true)}]]
+   [:paragraph
+    "Controlled selection follows one Signal; backend-owned selection survives unrelated patches."]])
+
 (defui component-gallery
   [disabled-source toggle-disabled card-copy
    value-source invalid-source update-value toggle-invalid
@@ -210,6 +238,8 @@
    progress-source progress-label-source advance-progress]
   [:column
    [button-gallery disabled-source toggle-disabled]
+   [toggle-button-gallery
+    checked-source disabled-source update-toggle toggle-disabled]
    [badge-gallery]
    [separator-gallery]
    [skeleton-gallery]

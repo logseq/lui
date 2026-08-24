@@ -1,7 +1,7 @@
 (ns lui.backend.apple
   (:require [lui.protocol :as proto
              :refer [Row Column Grid Stack Panel Card Box
-                     Text Heading Paragraph Label Button
+                     Text Heading Paragraph Label Button ToggleButton
                      TextInput TextArea Scroll ListContainer Spacer Spinner Icon
                      Checkbox SwitchControl
                      ProgressControl Divider]]
@@ -32,6 +32,7 @@
     Paragraph AppleParagraph
     Label AppleFormLabel
     Button AppleButton
+    ToggleButton AppleToggleButton
     TextInput AppleTextInput
     TextArea AppleTextArea
     Checkbox AppleCheckbox

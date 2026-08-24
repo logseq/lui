@@ -24,6 +24,14 @@ test("the production stylesheet contains the Vercel Native Button contract", asy
   assert.doesNotMatch(css, /\.inline-flex\{/)
 })
 
+test("ToggleButton reuses Button chrome with explicit pressed state", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-toggle-button/)
+  assert.match(css, /\.lui-toggle-button\[data-selected\]/)
+  assert.match(css, /\.lui-toggle-button:focus-visible/)
+})
+
 test("the production stylesheet stays within the component-library size budget", async () => {
   const { size } = await stat(outputUrl)
 

@@ -12,6 +12,7 @@
   (FlutterHeading)
   (FlutterFormLabel)
   (FlutterButton)
+  (FlutterToggleButton)
   (FlutterWidgetIsland)
   (FlutterCheckbox)
   (FlutterSwitch)

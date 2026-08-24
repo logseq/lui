@@ -102,6 +102,83 @@ void main() {
     expect(unnamed.generation, 0);
   });
 
+  testWidgets('retains controlled and uncontrolled ToggleButton selection', (
+    tester,
+  ) async {
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"row"},
+        {"op":"create-node","id":2,"kind":"toggle-button"},
+        {"op":"create-node","id":3,"kind":"toggle-button"},
+        {"op":"set-prop","id":2,"property":"text","value":"Bold"},
+        {"op":"set-prop","id":2,"property":"variant","value":"outline"},
+        {"op":"set-prop","id":2,"property":"selected","value":false},
+        {"op":"set-prop","id":3,"property":"text","value":"Italic"},
+        {"op":"set-prop","id":3,"property":"icon","value":"edit"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Bold'));
+    await tester.tap(find.widgetWithText(TextButton, 'Italic'));
+    await tester.pump();
+
+    expect(events, const [
+      LUIEvent.toggleChanged(node: 2, checked: true),
+      LUIEvent.toggleChanged(node: 3, checked: true),
+    ]);
+    expect(
+      tester
+          .widget<Semantics>(find.byKey(const ValueKey('lui-toggle-2')))
+          .properties
+          .selected,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<Semantics>(find.byKey(const ValueKey('lui-toggle-3')))
+          .properties
+          .selected,
+      isTrue,
+    );
+
+    backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":3,"property":"text","value":"Italic style"}
+      ]}
+      ''');
+    await tester.pump();
+    expect(
+      tester
+          .widget<Semantics>(find.byKey(const ValueKey('lui-toggle-3')))
+          .properties
+          .selected,
+      isTrue,
+      reason: 'an unrelated patch must not erase backend-owned selection',
+    );
+
+    backend.applyJson('''
+      {"generation":3,"ops":[
+        {"op":"set-prop","id":2,"property":"selected","value":true}
+      ]}
+      ''');
+    await tester.pump();
+    expect(
+      tester
+          .widget<Semantics>(find.byKey(const ValueKey('lui-toggle-2')))
+          .properties
+          .selected,
+      isTrue,
+      reason: 'a model selection patch must reconcile local interaction',
+    );
+  });
+
   testWidgets('keyed move preserves the Flutter RenderObject', (tester) async {
     final backend = LUIFlutterBackend()..applyJson(_initialBatch);
 

@@ -13,6 +13,7 @@ public enum LUIEvent: Equatable, Sendable {
 
 enum LUINodeKind: String, Decodable, Equatable {
     case row, column, grid, stack, panel, card, box, text, heading, paragraph, label, button
+    case toggleButton = "toggle-button"
     case textInput = "text-input", textArea = "text-area"
     case checkbox
     case switchControl = "switch"
@@ -337,20 +338,20 @@ struct LUIRetainedTree {
             kind == .row || kind == .column || kind == .grid || kind == .box
         case .foreground:
             kind == .text || kind == .heading || kind == .paragraph ||
-                kind == .label || kind == .button || kind == .textInput ||
+                kind == .label || kind == .button || kind == .toggleButton || kind == .textInput ||
                 kind == .textArea || kind == .checkbox || kind == .spinner || kind == .icon
         case .text:
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
-                kind == .button || kind == .textInput || kind == .textArea ||
+                kind == .button || kind == .toggleButton || kind == .textInput || kind == .textArea ||
                 kind == .checkbox || kind == .switchControl
         case .enabled:
-            kind == .button || kind == .textInput || kind == .textArea ||
+            kind == .button || kind == .toggleButton || kind == .textInput || kind == .textArea ||
                 kind == .checkbox || kind == .switchControl
         case .gap: kind == .row || kind == .column || kind == .grid || kind == .list
         case .placeholder, .readOnly:
             kind == .textInput || kind == .textArea
         case .accessibilityLabel:
-            kind == .button || kind == .textInput || kind == .textArea || kind == .checkbox ||
+            kind == .button || kind == .toggleButton || kind == .textInput || kind == .textArea || kind == .checkbox ||
                 kind == .switchControl || kind == .progress
         case .minLines, .maxLines: kind == .textArea
         case .headingLevel: kind == .heading
@@ -364,10 +365,10 @@ struct LUIRetainedTree {
         case .checked: kind == .checkbox || kind == .switchControl
         case .progressValue, .minValue, .maxValue: kind == .progress
         case .orientation: kind == .divider
-        case .size: kind == .button || kind == .spinner || kind == .icon
+        case .size: kind == .button || kind == .toggleButton || kind == .spinner || kind == .icon
         case .name: kind == .icon
         case .variant, .icon, .iconPlacement, .selected, .autofocus, .holdEnabled:
-            kind == .button
+            kind == .button || kind == .toggleButton
         }
     }
 
@@ -401,7 +402,7 @@ struct LUIRetainedTree {
             if node.kind == .icon, node.properties[.name] == nil {
                 throw invalid("icon requires name")
             }
-            if node.kind == .button {
+            if node.kind == .button || node.kind == .toggleButton {
                 let text = node.properties[.text]?.stringValue ?? ""
                 let label = node.properties[.accessibilityLabel]?.stringValue ?? ""
                 let icon = node.properties[.icon]?.stringValue ?? ""

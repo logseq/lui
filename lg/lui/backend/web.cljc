@@ -4,7 +4,7 @@
             [ocaml.Webapi.Dom.HtmlCollection :as html-collection]
             [lui.protocol :as proto
              :refer [Row Column Grid Stack Panel Card Box
-                     Text Heading Paragraph Label Button
+                     Text Heading Paragraph Label Button ToggleButton
                      TextInput TextArea Checkbox SwitchControl
                      Scroll ListContainer Spacer Spinner Icon
                      ProgressControl Divider
@@ -51,6 +51,7 @@
     Paragraph "lui-paragraph"
     Label "lui-label"
     Button "lui-button"
+    ToggleButton "lui-button lui-toggle-button"
     TextInput "lui-text-input"
     TextArea "lui-text-area"
     Checkbox "lui-checkbox"
@@ -65,6 +66,9 @@
 
 (defn- direct-toggle? [kind]
   (or (= kind Checkbox) (= kind SwitchControl)))
+
+(defn- button-like? [kind]
+  (or (= kind Button) (= kind ToggleButton)))
 
 (defn- create-direct-toggle-node [renderer kind]
   (let [document (:web-document renderer)
@@ -87,25 +91,28 @@
      (Webapi.Dom.Element.asNode label) root)
     root))
 
-(defn- create-button-node [renderer]
+(defn- create-button-node [renderer kind]
   (let [document (:web-document renderer)
         root (Webapi.Dom.Document.createElement "button" document)
         icon (Webapi.Dom.Document.createElement "span" document)
         label (Webapi.Dom.Document.createElement "span" document)]
-    (Webapi.Dom.Element.setClassName root "lui-button")
+    (Webapi.Dom.Element.setClassName root (base-class-name kind))
     (Webapi.Dom.Element.setClassName icon "lui-button-icon lui-icon")
     (Webapi.Dom.Element.setClassName label "lui-button-label")
     (Webapi.Dom.Element.setAttribute "aria-hidden" "true" icon)
     (Webapi.Dom.Element.setAttribute "data-variant" "default" root)
     (Webapi.Dom.Element.setAttribute "data-size" "default" root)
     (Webapi.Dom.Element.setAttribute "data-icon-placement" "leading" root)
+    (Webapi.Dom.Element.setAttribute "type" "button" root)
+    (when (= kind ToggleButton)
+      (Webapi.Dom.Element.setAttribute "aria-pressed" "false" root))
     (Webapi.Dom.Element.appendChild (Webapi.Dom.Element.asNode icon) root)
     (Webapi.Dom.Element.appendChild (Webapi.Dom.Element.asNode label) root)
     root))
 
 (defn- platform-node [renderer kind]
-  (if (= kind Button)
-    (create-button-node renderer)
+  (if (button-like? kind)
+    (create-button-node renderer kind)
     (if (direct-toggle? kind)
     (create-direct-toggle-node renderer kind)
     (let [tag
@@ -254,7 +261,7 @@
        (Stdlib.ignore true)))
    (child-element dom-node 0)))
 
-(defn- attach-button-events! [renderer node dom-node]
+(defn- attach-button-events! [renderer node kind dom-node]
   (let [timer (atom None)
         suppress-click (atom false)
         hold-enabled?
@@ -275,6 +282,26 @@
             (reset! suppress-click suppress)
             (Stdlib.ignore
              ((deref (:web-event-handler renderer)) (proto/Hold node))))
+          true)
+        dispatch-primary!
+        (fn []
+          (if (= kind ToggleButton)
+            (let [selected
+                  (match (Webapi.Dom.Element.getAttribute
+                          "aria-pressed" dom-node)
+                    (Some "true") true
+                    _ false)
+                  next-selected (not selected)]
+              (if next-selected
+                (Webapi.Dom.Element.setAttribute "data-selected" "" dom-node)
+                (Webapi.Dom.Element.removeAttribute "data-selected" dom-node))
+              (Webapi.Dom.Element.setAttribute
+               "aria-pressed" (if next-selected "true" "false") dom-node)
+              (Stdlib.ignore
+               ((deref (:web-event-handler renderer))
+                (proto/ToggleChanged node next-selected))))
+            (Stdlib.ignore
+             ((deref (:web-event-handler renderer)) (proto/Press node))))
           true)
         start!
         (fn []
@@ -328,14 +355,14 @@
          (do
            (reset! suppress-click false)
            (Webapi.Dom.Event.preventDefault event))
-         (Stdlib.ignore
-          ((deref (:web-event-handler renderer)) (proto/Press node))))
+         (Stdlib.ignore (dispatch-primary!)))
        (Stdlib.ignore true))
      dom-node)))
 
 (defn- attach-events! [renderer node kind dom-node]
   (match kind
-    Button (attach-button-events! renderer node dom-node)
+    Button (attach-button-events! renderer node kind dom-node)
+    ToggleButton (attach-button-events! renderer node kind dom-node)
     TextInput (attach-text-event! renderer node dom-node)
     TextArea (attach-text-event! renderer node dom-node)
     Checkbox (attach-toggle-event! renderer node kind dom-node)
@@ -440,7 +467,7 @@
               (toggle-label-node dom-node)
               dom-node)]
         (let [text-node
-              (if (= kind Button)
+              (if (button-like? kind)
                 (button-label-node dom-node)
                 text-node)]
         (when (not (= text (Webapi.Dom.Element.textContent text-node)))

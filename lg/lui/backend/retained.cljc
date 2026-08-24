@@ -207,7 +207,7 @@
         properties (:retained-properties current)]
     (if (not (proto/surface-size-supported? properties))
       "surface size constraints conflict"
-      (if (= kind proto/Button)
+      (if (or (= kind proto/Button) (= kind proto/ToggleButton))
         (let [text (string-property properties proto/TextValue)
               label (string-property properties proto/AccessibilityLabel)
               icon (string-property properties proto/InlineIconName)]

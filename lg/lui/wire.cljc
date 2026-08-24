@@ -2,7 +2,7 @@
   (:require [clojure.string :as string]
             [lui.protocol
              :refer [Row Column Grid Stack Panel Card Box
-                     Text Heading Paragraph Label Button
+                     Text Heading Paragraph Label Button ToggleButton
                      TextInput TextArea Scroll ListContainer Spacer Spinner Icon
                      Checkbox SwitchControl
                      ProgressControl Divider
@@ -48,6 +48,7 @@
     Paragraph "paragraph"
     Label "label"
     Button "button"
+    ToggleButton "toggle-button"
     TextInput "text-input"
     TextArea "text-area"
     Checkbox "checkbox"

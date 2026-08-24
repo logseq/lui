@@ -492,6 +492,18 @@
     @apply bg-accent text-accent-foreground;
   }
 
+  .lui-toggle-button {
+    @apply cursor-pointer;
+  }
+
+  .lui-toggle-button:focus-visible {
+    @apply outline-none;
+  }
+
+  .lui-toggle-button[data-selected] {
+    @apply bg-accent text-accent-foreground;
+  }
+
   .lui-button[data-size="default"] {
     @apply h-10 px-4 py-2;
   }

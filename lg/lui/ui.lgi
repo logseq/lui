@@ -48,6 +48,7 @@
 (signature lui.ui/text-area-value!
   :fn<ui-context;signal<wire-value>;fn<event;bool>;int>)
 (signature lui.ui/button! :fn<ui-context;int>)
+(signature lui.ui/toggle-button! :fn<ui-context;int>)
 (signature lui.ui/string-property!
   :fn<ui-context;int;property;string;bool>)
 (signature lui.ui/string-property-signal!

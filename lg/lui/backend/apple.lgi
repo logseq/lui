@@ -13,6 +13,7 @@
   (AppleParagraph)
   (AppleFormLabel)
   (AppleButton)
+  (AppleToggleButton)
   (AppleTextInput)
   (AppleTextArea)
   (AppleCheckbox)

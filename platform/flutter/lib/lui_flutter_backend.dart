@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:ui' show SemanticsValidationResult;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -91,6 +90,7 @@ enum _NodeKind {
   paragraph,
   label,
   button,
+  toggleButton,
   textInput,
   textArea,
   checkbox,
@@ -356,12 +356,21 @@ final class LUIFlutterBackend {
 
   void performHold(int node) {
     final state = _requireState(_states, node);
-    if (state.kind != _NodeKind.button ||
+    if (!_isButtonKind(state.kind) ||
         state.properties['enabled'] == false ||
         state.properties['hold-enabled'] != true) {
       throw LUIBackendException('node $node is not an enabled holdable button');
     }
     onEvent?.call(LUIEvent.hold(node: node));
+  }
+
+  void performToggle(int node, bool checked) {
+    final state = _requireState(_states, node);
+    if (state.kind != _NodeKind.toggleButton ||
+        state.properties['enabled'] == false) {
+      throw LUIBackendException('node $node is not an enabled toggle button');
+    }
+    onEvent?.call(LUIEvent.toggleChanged(node: node, checked: checked));
   }
 
   Widget _buildNode(BuildContext context, int id) {
@@ -519,13 +528,16 @@ final class LUIFlutterBackend {
       );
     }
 
-    Widget button() {
-      final onPressed = enabled ? () => performAction(id) : null;
+    Widget button({
+      required bool selected,
+      required VoidCallback? onPressed,
+      Key? semanticsKey,
+    }) {
       final onLongPress = enabled && buttonHoldEnabled
           ? () => performHold(id)
           : null;
       final colors = Theme.of(context).colorScheme;
-      final selectedColor = buttonSelected ? colors.secondaryContainer : null;
+      final selectedColor = selected ? colors.secondaryContainer : null;
       final style = buttonStyle(backgroundColor: selectedColor);
       final label = buttonLabel();
       final materialButton = switch (buttonVariant) {
@@ -566,11 +578,12 @@ final class LUIFlutterBackend {
         ),
       };
       return Semantics(
+        key: semanticsKey,
         label: accessibilityLabel?.isNotEmpty ?? false
             ? accessibilityLabel
             : (text.isEmpty ? null : text),
         button: true,
-        selected: buttonSelected,
+        selected: selected,
         enabled: enabled,
         onTap: onPressed,
         onLongPress: onLongPress,
@@ -578,6 +591,21 @@ final class LUIFlutterBackend {
         child: materialButton,
       );
     }
+
+    Widget toggleButton() => _LUIToggleSelection(
+      modelSelected: state.properties['selected'] as bool?,
+      builder: (context, selected, setSelected) => button(
+        selected: selected,
+        semanticsKey: ValueKey('lui-toggle-$id'),
+        onPressed: enabled
+            ? () {
+                final next = !selected;
+                setSelected(next);
+                performToggle(id, next);
+              }
+            : null,
+      ),
+    );
 
     Widget grid() => LayoutBuilder(
       builder: (context, constraints) {
@@ -657,7 +685,11 @@ final class LUIFlutterBackend {
       ),
       _NodeKind.paragraph => Text(text, style: TextStyle(color: foreground)),
       _NodeKind.label => Text(text, style: TextStyle(color: foreground)),
-      _NodeKind.button => button(),
+      _NodeKind.button => button(
+        selected: buttonSelected,
+        onPressed: enabled ? () => performAction(id) : null,
+      ),
+      _NodeKind.toggleButton => toggleButton(),
       _NodeKind.textInput => textControl(multiline: false),
       _NodeKind.textArea => textControl(multiline: true),
       _NodeKind.checkbox => toggleSemantics(
@@ -900,13 +932,13 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.heading ||
                 kind == _NodeKind.paragraph ||
                 kind == _NodeKind.label ||
-                kind == _NodeKind.button ||
+                _isButtonKind(kind) ||
                 _isTextControl(kind) ||
                 kind == _NodeKind.checkbox ||
                 kind == _NodeKind.switchControl),
       'enabled' =>
         value is bool &&
-            (kind == _NodeKind.button ||
+            (_isButtonKind(kind) ||
                 _isTextControl(kind) ||
                 kind == _NodeKind.checkbox ||
                 kind == _NodeKind.switchControl),
@@ -920,7 +952,7 @@ final class LUIFlutterBackend {
       'size' =>
         value is String &&
             _controlSizes.contains(value) &&
-            (kind == _NodeKind.button ||
+            (_isButtonKind(kind) ||
                 kind == _NodeKind.spinner ||
                 kind == _NodeKind.icon),
       'name' =>
@@ -931,19 +963,19 @@ final class LUIFlutterBackend {
       'variant' =>
         value is String &&
             _buttonVariants.contains(value) &&
-            kind == _NodeKind.button,
+            _isButtonKind(kind),
       'icon' =>
         value is String &&
             (_iconNames.contains(value) ||
                 _appIconNamePattern.hasMatch(value)) &&
-            kind == _NodeKind.button,
+            _isButtonKind(kind),
       'icon-placement' =>
         value is String &&
             (value == 'leading' || value == 'trailing') &&
-            kind == _NodeKind.button,
+            _isButtonKind(kind),
       'selected' ||
       'autofocus' ||
-      'hold-enabled' => value is bool && kind == _NodeKind.button,
+      'hold-enabled' => value is bool && _isButtonKind(kind),
       'gap' =>
         value is int &&
             value >= 0 &&
@@ -966,7 +998,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.heading ||
                 kind == _NodeKind.paragraph ||
                 kind == _NodeKind.label ||
-                kind == _NodeKind.button ||
+                _isButtonKind(kind) ||
                 kind == _NodeKind.textInput ||
                 kind == _NodeKind.textArea ||
                 kind == _NodeKind.checkbox ||
@@ -1000,7 +1032,7 @@ final class LUIFlutterBackend {
       'read-only' => value is bool && _isTextControl(kind),
       'accessibility-label' =>
         value is String &&
-            (kind == _NodeKind.button ||
+            (_isButtonKind(kind) ||
                 _isTextControl(kind) ||
                 kind == _NodeKind.checkbox ||
                 kind == _NodeKind.switchControl ||
@@ -1051,7 +1083,7 @@ final class LUIFlutterBackend {
           !state.properties.containsKey('name')) {
         throw const LUIBackendException('icon requires name');
       }
-      if (state.kind == _NodeKind.button) {
+      if (_isButtonKind(state.kind)) {
         final text = state.properties['text'] as String? ?? '';
         final label = state.properties['accessibility-label'] as String? ?? '';
         final icon = state.properties['icon'] as String? ?? '';
@@ -1089,6 +1121,9 @@ final class LUIFlutterBackend {
       kind == _NodeKind.box ||
       kind == _NodeKind.scroll ||
       kind == _NodeKind.list;
+
+  static bool _isButtonKind(_NodeKind kind) =>
+      kind == _NodeKind.button || kind == _NodeKind.toggleButton;
 
   static bool _isTextControl(_NodeKind kind) =>
       kind == _NodeKind.textInput || kind == _NodeKind.textArea;
@@ -1129,6 +1164,7 @@ final class LUIFlutterBackend {
     'paragraph' => _NodeKind.paragraph,
     'label' => _NodeKind.label,
     'button' => _NodeKind.button,
+    'toggle-button' => _NodeKind.toggleButton,
     'text-input' => _NodeKind.textInput,
     'text-area' => _NodeKind.textArea,
     'checkbox' => _NodeKind.checkbox,
@@ -1290,6 +1326,52 @@ extension on _NodeKind {
 
   bool get isOverlaySurface =>
       this == _NodeKind.panel || this == _NodeKind.card;
+}
+
+typedef _LUIToggleSelectionBuilder =
+    Widget Function(
+      BuildContext context,
+      bool selected,
+      ValueChanged<bool> setSelected,
+    );
+
+final class _LUIToggleSelection extends StatefulWidget {
+  const _LUIToggleSelection({
+    required this.modelSelected,
+    required this.builder,
+  });
+
+  final bool? modelSelected;
+  final _LUIToggleSelectionBuilder builder;
+
+  @override
+  State<_LUIToggleSelection> createState() => _LUIToggleSelectionState();
+}
+
+final class _LUIToggleSelectionState extends State<_LUIToggleSelection> {
+  late bool _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.modelSelected ?? false;
+  }
+
+  @override
+  void didUpdateWidget(_LUIToggleSelection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.modelSelected != null &&
+        widget.modelSelected != oldWidget.modelSelected) {
+      _selected = widget.modelSelected!;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(
+    context,
+    _selected,
+    (selected) => setState(() => _selected = selected),
+  );
 }
 
 final class _LUITextInput extends StatefulWidget {

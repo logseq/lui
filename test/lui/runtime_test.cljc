@@ -614,6 +614,54 @@
          ((:apply-batch backend) batch))
         "Button accessibility failures report the actionable contract")))
 
+(deftest toggle-button-uses-the-closed-vercel-native-contract
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/ToggleButton)
+                      (proto/set-prop-op
+                       1 proto/TextValue (proto/StringValue "Bold"))
+                      (proto/set-prop-op
+                       1 proto/VariantValue (proto/StringValue "outline"))
+                      (proto/set-prop-op
+                       1 proto/SizeValue (proto/StringValue "sm"))
+                      (proto/set-prop-op
+                       1 proto/InlineIconName (proto/StringValue "edit"))
+                      (proto/set-prop-op
+                       1 proto/IconPlacementValue (proto/StringValue "leading"))
+                      (proto/set-prop-op 1 proto/Selected (proto/BoolValue false))
+                      (proto/set-prop-op 1 proto/Autofocus (proto/BoolValue true))
+                      (proto/set-prop-op 1 proto/HoldEnabled (proto/BoolValue true))]))]
+    (is (proto/event-supported?
+         proto/ToggleButton (proto/ToggleChanged 1 true))
+        "ToggleButton activation emits on-toggle with the next state")
+    (is (proto/event-supported? proto/ToggleButton (proto/Hold 1))
+        "ToggleButton supports the reference hold gesture")
+    (is (not (proto/event-supported? proto/ToggleButton (proto/Press 1)))
+        "ToggleButton does not expose Button on-press activation")
+    (doseq [property [proto/TextValue proto/VariantValue proto/SizeValue
+                      proto/InlineIconName proto/IconPlacementValue
+                      proto/Selected proto/Autofocus proto/HoldEnabled
+                      proto/Enabled proto/AccessibilityLabel]]
+      (is (proto/property-supported? proto/ToggleButton property)
+          "ToggleButton admits the exact shared control properties"))
+    (is (not (proto/can-contain-children? proto/ToggleButton))
+        "ToggleButton content is one text run")
+    (is (=
+         (str
+          "{\"generation\":1,\"ops\":["
+          "{\"op\":\"create-node\",\"id\":1,\"kind\":\"toggle-button\"},"
+          "{\"op\":\"set-prop\",\"id\":1,\"property\":\"text\",\"value\":\"Bold\"},"
+          "{\"op\":\"set-prop\",\"id\":1,\"property\":\"variant\",\"value\":\"outline\"},"
+          "{\"op\":\"set-prop\",\"id\":1,\"property\":\"size\",\"value\":\"sm\"},"
+          "{\"op\":\"set-prop\",\"id\":1,\"property\":\"icon\",\"value\":\"edit\"},"
+          "{\"op\":\"set-prop\",\"id\":1,\"property\":\"icon-placement\",\"value\":\"leading\"},"
+          "{\"op\":\"set-prop\",\"id\":1,\"property\":\"selected\",\"value\":false},"
+          "{\"op\":\"set-prop\",\"id\":1,\"property\":\"autofocus\",\"value\":true},"
+          "{\"op\":\"set-prop\",\"id\":1,\"property\":\"hold-enabled\",\"value\":true}]}")
+         (wire/encode-batch batch))
+        "ToggleButton has one stable typed wire representation")))
+
 (deftest form-controls-retain-typed-accessibility-relationships
   (let [renderer (apple/create)
         application

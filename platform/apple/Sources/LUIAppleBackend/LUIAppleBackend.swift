@@ -261,7 +261,8 @@ public final class LUIAppleBackend {
     }
 
     func performHold(node: Int) throws {
-        guard let model = models[node], model.kind == .button,
+        guard let model = models[node],
+              model.kind == .button || model.kind == .toggleButton,
               model.isEnabled, model.supportsHold else {
             throw invalid("node \(node) is not an enabled holdable button")
         }
@@ -279,7 +280,8 @@ public final class LUIAppleBackend {
 
     func performToggle(node: Int, checked: Bool) throws {
         guard let model = models[node],
-              model.kind == .checkbox || model.kind == .switchControl,
+              model.kind == .toggleButton || model.kind == .checkbox ||
+                model.kind == .switchControl,
               model.isEnabled else {
             throw invalid("node \(node) is not an enabled toggle")
         }
@@ -291,6 +293,8 @@ public final class LUIAppleBackend {
         switch model.kind {
         case .button:
             try performPress(node: node)
+        case .toggleButton:
+            try performToggle(node: node, checked: !model.isSelected)
         case .checkbox, .switchControl:
             try performToggle(node: node, checked: !model.isChecked)
         default:

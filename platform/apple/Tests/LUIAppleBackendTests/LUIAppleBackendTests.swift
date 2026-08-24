@@ -231,6 +231,46 @@ struct LUISwiftUIBackendTests {
         #expect(backend.generation == 0)
     }
 
+    @Test("maps ToggleButton as a distinct retained native control")
+    func mapsToggleButton() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"toggle-button"},
+          {"op":"set-prop","id":1,"property":"text","value":"Bold"},
+          {"op":"set-prop","id":1,"property":"variant","value":"outline"},
+          {"op":"set-prop","id":1,"property":"size","value":"sm"},
+          {"op":"set-prop","id":1,"property":"icon","value":"edit"},
+          {"op":"set-prop","id":1,"property":"selected","value":false},
+          {"op":"set-prop","id":1,"property":"hold-enabled","value":true}
+        ]}
+        """)
+
+        let toggle = try #require(backend.model(id: 1))
+        let revision = toggle.revision
+        #expect(toggle.kind == .toggleButton)
+        #expect(toggle.property(.selected) == .bool(false))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.performToggle(node: 1, checked: true)
+        try backend.performHold(node: 1)
+        #expect(events == [
+            .toggleChanged(node: 1, checked: true),
+            .hold(node: 1),
+        ])
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"selected","value":true}
+        ]}
+        """)
+        #expect(backend.model(id: 1) === toggle)
+        #expect(toggle.revision == revision + 1)
+        #expect(toggle.isSelected)
+    }
+
     @Test("maps direct text-bearing checkbox and switch without replacing models")
     func mapsDirectToggleControls() throws {
         let backend = LUIAppleBackend()

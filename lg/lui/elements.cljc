@@ -37,6 +37,7 @@
                          (= tag :paragraph)
                          (= tag :label)
                          (= tag :button)
+                         (= tag :toggle-button)
                          (= tag :checkbox)
                          (= tag :switch)
                          (= tag :text-input)
@@ -301,11 +302,11 @@
 
 (macro-helper-defn bool-attribute-expansion
                    [context node value property]
-                   (if value
-                     (if (or (= value true) (= value false))
-                       [`(lui.ui/bool-property! ~context ~node ~property ~value)]
-                       [`(lui.ui/bool-property-signal! ~context ~node ~property ~value)])
-                     []))
+                   (if (or (= value true) (= value false))
+                     [`(lui.ui/bool-property! ~context ~node ~property ~value)]
+                     (if value
+                       [`(lui.ui/bool-property-signal! ~context ~node ~property ~value)]
+                       [])))
 
 (macro-helper-defn disabled-attribute-expansion [context node attrs]
                    (let [value (:disabled attrs)]
@@ -325,6 +326,21 @@
                             (match ~'event
                               (lui.protocol/Press ~'_node)
                               ~(if on-press `(~on-press ~'event) true)
+                              (lui.protocol/Hold ~'_node)
+                              ~(if on-hold `(~on-hold ~'event) true)
+                              ~'_ true)))]
+                       [])))
+
+(macro-helper-defn toggle-button-event-expansion [context node attrs]
+                   (let [on-toggle (:on-toggle attrs)
+                         on-hold (:on-hold attrs)]
+                     (if (or on-toggle on-hold)
+                       [`(lui.ui/on-event!
+                          ~context ~node
+                          (fn [~'event]
+                            (match ~'event
+                              (lui.protocol/ToggleChanged ~'_node ~'_checked)
+                              ~(if on-toggle `(~on-toggle ~'event) true)
                               (lui.protocol/Hold ~'_node)
                               ~(if on-hold `(~on-hold ~'event) true)
                               ~'_ true)))]
@@ -499,6 +515,42 @@
               ~context ~node lui.protocol/HoldEnabled true)]
            [])
        ~@(button-event-expansion context node attrs)
+       ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
+
+(defelement toggle-button [context parent attrs & children]
+  (let [node (gensym "node")
+        text-source (:text attrs)
+        literal-text (first children)]
+    `(let [~node (lui.ui/toggle-button! ~context)]
+       ~@(if text-source
+           [`(lui.ui/text-property-signal! ~context ~node ~text-source)]
+           (if literal-text
+             [`(lui.ui/text-property! ~context ~node ~literal-text)]
+             []))
+       ~@(string-attribute-expansion
+          context node (:variant attrs) 'lui.protocol/VariantValue)
+       ~@(string-attribute-expansion
+          context node (:size attrs) 'lui.protocol/SizeValue)
+       ~@(string-attribute-expansion
+          context node (:icon attrs) 'lui.protocol/InlineIconName)
+       ~@(string-attribute-expansion
+          context node (:icon-placement attrs) 'lui.protocol/IconPlacementValue)
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(bool-attribute-expansion
+          context node (:selected attrs) 'lui.protocol/Selected)
+       ~@(bool-attribute-expansion
+          context node (:autofocus attrs) 'lui.protocol/Autofocus)
+       ~@(disabled-attribute-expansion context node attrs)
+       ~@(if (:on-hold attrs)
+           [`(lui.ui/bool-property!
+              ~context ~node lui.protocol/HoldEnabled true)]
+           [])
+       ~@(toggle-button-event-expansion context node attrs)
        ~@(element-properties context node attrs)
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]

@@ -190,6 +190,9 @@
 (defn button! [context]
   (runtime/create-node! (:ui-application context) proto/Button))
 
+(defn toggle-button! [context]
+  (runtime/create-node! (:ui-application context) proto/ToggleButton))
+
 (defn string-property! [context node property value]
   (runtime/set-prop!
    (:ui-application context) node property (proto/StringValue value)))

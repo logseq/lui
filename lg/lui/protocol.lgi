@@ -13,6 +13,7 @@
   (Paragraph)
   (Label)
   (Button)
+  (ToggleButton)
   (TextInput)
   (TextArea)
   (Checkbox)
