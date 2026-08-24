@@ -7,6 +7,7 @@
   (AppleLabel)
   (AppleHeading)
   (AppleParagraph)
+  (AppleFormLabel)
   (AppleButton)
   (AppleTextInput)
   (AppleTextArea)

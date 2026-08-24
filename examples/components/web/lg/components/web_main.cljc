@@ -1,6 +1,7 @@
 (ns components.web-main
   (:require [ocaml.package/melange-webapi]
             [signal.core :as sig]
+            [lui.protocol :refer [TextChanged]]
             [lui.backend.web :as web]
             [lui.runtime :as runtime]
             [lui.ui :as ui]
@@ -13,6 +14,8 @@
         scope (sig/scope "components-gallery")
         context (ui/context application scope)
         disabled (sig/state scheduler false)
+        field-value (sig/state scheduler "")
+        field-invalid (sig/state scheduler false)
         card-copy
         (sig/map
          (fn [is-disabled]
@@ -27,7 +30,17 @@
          (fn [_event]
            (sig/set!
             disabled (if (= (sig/get disabled) true) false true)))
-         card-copy)]
+         card-copy
+         (sig/value field-value)
+         (sig/value field-invalid)
+         (fn [event]
+           (match event
+             (TextChanged _node text) (sig/set! field-value text)
+             _ true))
+         (fn [_event]
+           (sig/set!
+            field-invalid
+            (if (= (sig/get field-invalid) true) false true))))]
     (web/set-event-handler!
      renderer
      (fn [event]

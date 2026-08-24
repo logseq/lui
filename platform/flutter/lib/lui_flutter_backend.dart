@@ -53,6 +53,7 @@ enum _NodeKind {
   text,
   heading,
   paragraph,
+  label,
   button,
   textInput,
   textArea,
@@ -140,7 +141,7 @@ final class LUIFlutterBackend {
     for (final operation in operations) {
       _applyState(next, operation);
     }
-    final changed = <_NodeHandle>[];
+    final changedIDs = <int>{};
     final removed = _handles.keys
         .where((id) => !next.containsKey(id))
         .toList(growable: false);
@@ -149,7 +150,9 @@ final class LUIFlutterBackend {
       if (handle == null) {
         _handles[entry.key] = _NodeHandle(entry.value);
       } else {
-        if (!handle.state.rendersLike(entry.value)) changed.add(handle);
+        if (!handle.state.rendersLike(entry.value)) {
+          changedIDs.add(entry.key);
+        }
         handle.state = entry.value;
       }
     }
@@ -158,8 +161,14 @@ final class LUIFlutterBackend {
     }
     _states = next;
     generation = nextGeneration;
-    for (final handle in changed) {
-      handle.markChanged();
+    final changedSources = Set<int>.of(changedIDs);
+    for (final entry in next.entries) {
+      if (_relationshipTargets(entry.value).any(changedSources.contains)) {
+        changedIDs.add(entry.key);
+      }
+    }
+    for (final id in changedIDs) {
+      _handles[id]?.markChanged();
     }
   }
 
@@ -191,13 +200,22 @@ final class LUIFlutterBackend {
     final placeholder = state.properties['placeholder'] as String?;
     final readOnly = state.properties['read-only'] as bool? ?? false;
     final accessibilityLabel =
-        state.properties['accessibility-label'] as String?;
+        state.properties['accessibility-label'] as String? ??
+        _relatedText(state, 'labelled-by');
+    final description = _relatedText(state, 'described-by');
+    final errorMessage = _relatedText(state, 'error-message-by');
+    final invalid = state.properties['invalid'] as bool? ?? false;
+    final accessibilityHint = [
+      ?description,
+      if (invalid && errorMessage != null) errorMessage,
+    ].join(' ');
     final gap = (state.properties['gap'] as int? ?? 0).toDouble();
     final headingLevel = state.properties['heading-level'] as int? ?? 1;
     Widget textControl({required bool multiline}) => SizedBox(
       width: 240,
       child: Semantics(
         label: accessibilityLabel,
+        hint: accessibilityHint.isEmpty ? null : accessibilityHint,
         textField: true,
         readOnly: readOnly,
         multiline: multiline,
@@ -206,6 +224,8 @@ final class LUIFlutterBackend {
           enabled: enabled,
           readOnly: readOnly,
           placeholder: placeholder,
+          inputType: state.properties['input-type'] as String? ?? 'text',
+          invalid: invalid,
           minLines: multiline
               ? (state.properties['min-lines'] as int? ?? 2)
               : 1,
@@ -237,6 +257,7 @@ final class LUIFlutterBackend {
         child: Text(text, style: _headingStyle(context, headingLevel)),
       ),
       _NodeKind.paragraph => Text(text),
+      _NodeKind.label => Text(text),
       _NodeKind.button => TextButton(
         onPressed: enabled ? () => performAction(id) : null,
         child: Text(text),
@@ -276,6 +297,13 @@ final class LUIFlutterBackend {
           throw const LUIBackendException('cannot drop an attached node');
         }
         states.remove(id);
+        for (final remaining in states.values) {
+          for (final property in _relationshipProperties) {
+            if (remaining.properties[property] == id) {
+              remaining.properties.remove(property);
+            }
+          }
+        }
       case 'set-prop':
         final node = _requireState(states, _integer(operation['id'], 'id'));
         final property = _string(operation['property'], 'property');
@@ -283,6 +311,7 @@ final class LUIFlutterBackend {
         if (!_supports(node.kind, property, value)) {
           throw const LUIBackendException('unsupported property value');
         }
+        _validateRelationship(states, property, value);
         node.properties[property] = value!;
       case 'insert-child':
         final parentID = _integer(operation['parent'], 'parent');
@@ -342,6 +371,7 @@ final class LUIFlutterBackend {
             (kind == _NodeKind.text ||
                 kind == _NodeKind.heading ||
                 kind == _NodeKind.paragraph ||
+                kind == _NodeKind.label ||
                 kind == _NodeKind.button ||
                 _isTextControl(kind)),
       'enabled' =>
@@ -351,6 +381,14 @@ final class LUIFlutterBackend {
       'padding' => value is int,
       'background' => value is String,
       'style-class' => value is String,
+      'labelled-by' => value is int && kind.isTextControl,
+      'described-by' => value is int && kind.isTextControl,
+      'error-message-by' => value is int && kind.isTextControl,
+      'input-type' =>
+        value is String &&
+            _inputTypes.contains(value) &&
+            kind == _NodeKind.textInput,
+      'invalid' => value is bool && kind.isTextControl,
       'heading-level' =>
         value is int && value >= 1 && value <= 6 && kind == _NodeKind.heading,
       'placeholder' => value is String && _isTextControl(kind),
@@ -360,6 +398,29 @@ final class LUIFlutterBackend {
       'max-lines' => value is int && value > 0 && kind == _NodeKind.textArea,
       _ => false,
     };
+  }
+
+  static void _validateRelationship(
+    Map<int, _NodeState> states,
+    String property,
+    Object? value,
+  ) {
+    if (property != 'labelled-by' &&
+        property != 'described-by' &&
+        property != 'error-message-by') {
+      return;
+    }
+    if (value is! int) return;
+    final target = _requireState(states, value);
+    final valid = switch (property) {
+      'labelled-by' => target.kind == _NodeKind.label,
+      'described-by' || 'error-message-by' =>
+        target.kind == _NodeKind.text || target.kind == _NodeKind.paragraph,
+      _ => true,
+    };
+    if (!valid) {
+      throw const LUIBackendException('invalid relationship target');
+    }
   }
 
   static bool _canContainChildren(_NodeKind kind) =>
@@ -403,6 +464,7 @@ final class LUIFlutterBackend {
     'text' => _NodeKind.text,
     'heading' => _NodeKind.heading,
     'paragraph' => _NodeKind.paragraph,
+    'label' => _NodeKind.label,
     'button' => _NodeKind.button,
     'text-input' => _NodeKind.textInput,
     'text-area' => _NodeKind.textArea,
@@ -456,6 +518,56 @@ final class LUIFlutterBackend {
       _ => textTheme.labelLarge,
     };
   }
+
+  String? _relatedText(_NodeState state, String property) {
+    final related = state.properties[property] as int?;
+    return related == null
+        ? null
+        : _states[related]?.properties['text'] as String?;
+  }
+
+  static Iterable<int> _relationshipTargets(_NodeState state) sync* {
+    for (final property in _relationshipProperties) {
+      final target = state.properties[property];
+      if (target is int) yield target;
+    }
+  }
+
+  static const _inputTypes = {
+    'button',
+    'checkbox',
+    'color',
+    'date',
+    'datetime-local',
+    'email',
+    'file',
+    'hidden',
+    'image',
+    'month',
+    'number',
+    'password',
+    'radio',
+    'range',
+    'reset',
+    'search',
+    'submit',
+    'tel',
+    'text',
+    'time',
+    'url',
+    'week',
+  };
+
+  static const _relationshipProperties = {
+    'labelled-by',
+    'described-by',
+    'error-message-by',
+  };
+}
+
+extension on _NodeKind {
+  bool get isTextControl =>
+      this == _NodeKind.textInput || this == _NodeKind.textArea;
 }
 
 final class _LUITextInput extends StatefulWidget {
@@ -464,6 +576,8 @@ final class _LUITextInput extends StatefulWidget {
     required this.enabled,
     required this.readOnly,
     required this.placeholder,
+    required this.inputType,
+    required this.invalid,
     required this.minLines,
     required this.maxLines,
     required this.onChanged,
@@ -473,6 +587,8 @@ final class _LUITextInput extends StatefulWidget {
   final bool enabled;
   final bool readOnly;
   final String? placeholder;
+  final String inputType;
+  final bool invalid;
   final int minLines;
   final int? maxLines;
   final ValueChanged<String> onChanged;
@@ -502,22 +618,42 @@ final class _LUITextInputState extends State<_LUITextInput> {
   }
 
   @override
-  Widget build(BuildContext context) => TextField(
-    controller: _controller,
-    enabled: widget.enabled,
-    readOnly: widget.readOnly,
-    keyboardType: widget.maxLines == 1
-        ? TextInputType.text
-        : TextInputType.multiline,
-    minLines: widget.minLines,
-    maxLines: widget.maxLines,
-    decoration: InputDecoration(hintText: widget.placeholder),
-    onChanged: widget.onChanged,
-  );
+  Widget build(BuildContext context) {
+    final invalidBorder = widget.invalid
+        ? OutlineInputBorder(
+            borderSide: BorderSide(color: Theme.of(context).colorScheme.error),
+          )
+        : null;
+    return TextField(
+      controller: _controller,
+      enabled: widget.enabled,
+      readOnly: widget.readOnly,
+      keyboardType: widget.maxLines == 1
+          ? _keyboardType(widget.inputType)
+          : TextInputType.multiline,
+      obscureText: widget.inputType == 'password',
+      minLines: widget.minLines,
+      maxLines: widget.maxLines,
+      decoration: InputDecoration(
+        hintText: widget.placeholder,
+        enabledBorder: invalidBorder,
+        focusedBorder: invalidBorder,
+      ),
+      onChanged: widget.onChanged,
+    );
+  }
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
+
+  static TextInputType _keyboardType(String inputType) => switch (inputType) {
+    'email' => TextInputType.emailAddress,
+    'number' => TextInputType.number,
+    'tel' => TextInputType.phone,
+    'url' => TextInputType.url,
+    _ => TextInputType.text,
+  };
 }

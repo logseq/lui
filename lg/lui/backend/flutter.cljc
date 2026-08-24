@@ -1,6 +1,6 @@
 (ns lui.backend.flutter
   (:require [lui.protocol :as proto
-             :refer [Row Column Box Text Heading Paragraph Button
+             :refer [Row Column Box Text Heading Paragraph Label Button
                      TextInput TextArea Scroll Spacer]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
@@ -23,6 +23,7 @@
     Text FlutterParagraph
     Heading FlutterHeading
     Paragraph FlutterParagraph
+    Label FlutterFormLabel
     Button FlutterButton
     TextInput FlutterWidgetIsland
     TextArea FlutterWidgetIsland

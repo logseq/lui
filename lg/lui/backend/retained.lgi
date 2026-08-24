@@ -28,6 +28,10 @@
   :fn<map<int;retained-node<platform>>;int;retained-node<platform>;map<property;wire-value>;vector<int>;map<int;retained-node<platform>>>)
 (signature lui.backend.retained/update-parent [platform]
   :fn<map<int;retained-node<platform>>;int;retained-node<platform>;option<int>;map<int;retained-node<platform>>>)
+(signature lui.backend.retained/remove-reference
+  :fn<map<property;wire-value>;property;int;map<property;wire-value>>)
+(signature lui.backend.retained/remove-relationships-to [platform]
+  :fn<map<int;retained-node<platform>>;int;map<int;retained-node<platform>>>)
 (signature lui.backend.retained/descendant? [platform]
   :fn<map<int;retained-node<platform>>;int;int;bool>)
 (signature lui.backend.retained/apply-op [platform]

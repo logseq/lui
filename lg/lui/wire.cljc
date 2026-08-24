@@ -1,11 +1,12 @@
 (ns lui.wire
   (:require [clojure.string :as string]
             [lui.protocol
-             :refer [Row Column Box Text Heading Paragraph Button
+             :refer [Row Column Box Text Heading Paragraph Label Button
                      TextInput TextArea Scroll Spacer
                      TextValue Enabled Gap PaddingValue BackgroundValue
                      PlaceholderValue ReadOnly AccessibilityLabel MinLines MaxLines
-                     StyleClass HeadingLevel
+                     StyleClass HeadingLevel LabelledBy DescribedBy
+                     ErrorMessageBy InputType Invalid
                      StringValue BoolValue IntValue
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild]]))
@@ -30,6 +31,7 @@
     Text "text"
     Heading "heading"
     Paragraph "paragraph"
+    Label "label"
     Button "button"
     TextInput "text-input"
     TextArea "text-area"
@@ -49,7 +51,12 @@
     MinLines "min-lines"
     MaxLines "max-lines"
     StyleClass "style-class"
-    HeadingLevel "heading-level"))
+    HeadingLevel "heading-level"
+    LabelledBy "labelled-by"
+    DescribedBy "described-by"
+    ErrorMessageBy "error-message-by"
+    InputType "input-type"
+    Invalid "invalid"))
 
 (defn- encode-value [value]
   (match value

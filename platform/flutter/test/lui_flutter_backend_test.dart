@@ -78,6 +78,23 @@ void main() {
     expect(backend.generation, 1);
   });
 
+  test('rejects form relationships with the wrong semantic target', () {
+    final backend = LUIFlutterBackend();
+
+    expect(
+      () => backend.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"paragraph"},
+        {"op":"create-node","id":2,"kind":"text-input"},
+        {"op":"set-prop","id":2,"property":"labelled-by","value":1}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.containsNode(1), isFalse);
+    expect(backend.generation, 0);
+  });
+
   test('property patches invalidate only their retained node', () {
     final backend = LUIFlutterBackend()..applyJson(_initialBatch);
 
@@ -89,6 +106,27 @@ void main() {
     expect(backend.debugRevision(1), 0);
     expect(backend.debugRevision(2), 1);
     expect(backend.debugRevision(3), 0);
+  });
+
+  test('dropping form content clears dependent relationships', () {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"label"},
+        {"op":"create-node","id":2,"kind":"text-input"},
+        {"op":"set-prop","id":1,"property":"text","value":"Email"},
+        {"op":"set-prop","id":2,"property":"labelled-by","value":1}
+      ]}
+      ''');
+
+    backend.applyJson('''
+    {"generation":2,"ops":[
+      {"op":"drop-node","id":1}
+    ]}
+    ''');
+
+    expect(backend.containsNode(1), isFalse);
+    expect(backend.debugRevision(2), 1);
   });
 
   testWidgets('maps semantic text-input properties to a native TextField', (
@@ -197,6 +235,76 @@ void main() {
       same(editable),
     );
     expect(editable.widget.focusNode.hasFocus, isTrue);
+  });
+
+  testWidgets('maps typed form relationships and invalid state', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"box"},
+        {"op":"create-node","id":2,"kind":"label"},
+        {"op":"create-node","id":3,"kind":"text-input"},
+        {"op":"create-node","id":4,"kind":"paragraph"},
+        {"op":"create-node","id":5,"kind":"paragraph"},
+        {"op":"set-prop","id":2,"property":"text","value":"Email"},
+        {"op":"set-prop","id":3,"property":"input-type","value":"email"},
+        {"op":"set-prop","id":3,"property":"invalid","value":true},
+        {"op":"set-prop","id":3,"property":"labelled-by","value":2},
+        {"op":"set-prop","id":3,"property":"described-by","value":4},
+        {"op":"set-prop","id":3,"property":"error-message-by","value":5},
+        {"op":"set-prop","id":4,"property":"text","value":"Work address."},
+        {"op":"set-prop","id":5,"property":"text","value":"Email is invalid."},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":1,"child":4,"index":2},
+        {"op":"insert-child","parent":1,"child":5,"index":3}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    final editable = tester.state<EditableTextState>(find.byType(EditableText));
+    expect(field.keyboardType, TextInputType.emailAddress);
+    expect(field.decoration?.errorText, isNull);
+    expect(field.decoration?.enabledBorder, isA<OutlineInputBorder>());
+    expect(
+      tester.getSemantics(find.byType(TextField)),
+      matchesSemantics(
+        label: 'Email',
+        hint: 'Work address. Email is invalid.',
+        isTextField: true,
+      ),
+    );
+
+    await tester.tap(find.byType(TextField));
+    backend.applyJson('''
+    {"generation":2,"ops":[
+      {"op":"set-prop","id":4,"property":"text","value":"Primary work address."},
+      {"op":"set-prop","id":3,"property":"invalid","value":false}
+    ]}
+    ''');
+    await tester.pump();
+
+    expect(
+      tester.state<EditableTextState>(find.byType(EditableText)),
+      same(editable),
+    );
+    expect(editable.widget.focusNode.hasFocus, isTrue);
+    expect(
+      tester.getSemantics(find.byType(TextField)),
+      matchesSemantics(
+        label: 'Email',
+        hint: 'Primary work address.',
+        isTextField: true,
+      ),
+    );
+    semantics.dispose();
   });
 }
 

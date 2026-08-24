@@ -34,3 +34,7 @@ body {
   font-weight: 600;
   letter-spacing: -0.025em;
 }
+
+.lui-text-field {
+  width: min(24rem, 100%);
+}

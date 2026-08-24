@@ -1,6 +1,7 @@
 (ns lui.runtime
   (:require [signal.core :as sig]
-            [lui.protocol :as proto]))
+            [lui.protocol :as proto
+             :refer [LabelledBy DescribedBy ErrorMessageBy IntValue]]))
 
 (defn- empty-ops [] [])
 (defn- empty-handlers [] [])
@@ -111,7 +112,24 @@
     (when (not (proto/property-supported? kind property))
       (raise (Invalid_argument "property is unsupported by node kind")))
     (when (not (proto/property-value-supported? property value))
-      (raise (Invalid_argument "invalid property value"))))
+      (raise (Invalid_argument "invalid property value")))
+    (match (tuple property value)
+      (tuple LabelledBy (IntValue target))
+      (when (not (= (require-node-kind application target) proto/Label))
+        (raise (Invalid_argument "labelled-by must reference a label")))
+      (tuple DescribedBy (IntValue target))
+      (let [target-kind (require-node-kind application target)]
+        (when (not (or (= target-kind proto/Text)
+                       (= target-kind proto/Paragraph)))
+          (raise (Invalid_argument
+                  "described-by must reference text content"))))
+      (tuple ErrorMessageBy (IntValue target))
+      (let [target-kind (require-node-kind application target)]
+        (when (not (or (= target-kind proto/Text)
+                       (= target-kind proto/Paragraph)))
+          (raise (Invalid_argument
+                  "error-message-by must reference text content"))))
+      _ true))
   (enqueue! application (proto/set-prop-op node property value)))
 
 (defn insert-child! [application parent child index]

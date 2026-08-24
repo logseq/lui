@@ -19,6 +19,7 @@
   ../lg/lui/elements.cljc
   ../lg/lui/macros.cljc
   ../lg/lui/card.cljc
+  ../lg/lui/text_field.cljc
   ../lg/lui/dynamic.lgi
   ../lg/lui/dynamic.cljc
   ../lg/lui/backend/retained.lgi
@@ -64,6 +65,7 @@
    %{dep:../lg/lui/elements.cljc}
    %{dep:../lg/lui/macros.cljc}
    %{dep:../lg/lui/card.cljc}
+   %{dep:../lg/lui/text_field.cljc}
    %{dep:../lg/lui/dynamic.lgi}
    %{dep:../lg/lui/dynamic.cljc}
    %{dep:../lg/lui/backend/retained.lgi}
@@ -127,6 +129,7 @@
   ../lg/lui/elements.cljc
   ../lg/lui/macros.cljc
   ../lg/lui/card.cljc
+  ../lg/lui/text_field.cljc
   ../lg/lui/dynamic.lgi
   ../lg/lui/dynamic.cljc
   ../lg/lui/backend/retained.lgi
@@ -173,6 +176,7 @@
    %{dep:../lg/lui/elements.cljc}
    %{dep:../lg/lui/macros.cljc}
    %{dep:../lg/lui/card.cljc}
+   %{dep:../lg/lui/text_field.cljc}
    %{dep:../lg/lui/dynamic.lgi}
    %{dep:../lg/lui/dynamic.cljc}
    %{dep:../lg/lui/backend/retained.lgi}
@@ -254,6 +258,7 @@
   ../lg/lui/elements.cljc
   ../lg/lui/macros.cljc
   ../lg/lui/card.cljc
+  ../lg/lui/text_field.cljc
   ../lg/lui/dynamic.lgi
   ../lg/lui/dynamic.cljc
   ../lg/lui/backend/retained.lgi
@@ -295,6 +300,7 @@
    %{dep:../lg/lui/elements.cljc}
    %{dep:../lg/lui/macros.cljc}
    %{dep:../lg/lui/card.cljc}
+   %{dep:../lg/lui/text_field.cljc}
    %{dep:../lg/lui/dynamic.lgi}
    %{dep:../lg/lui/dynamic.cljc}
    %{dep:../lg/lui/backend/retained.lgi}

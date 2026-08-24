@@ -1,6 +1,7 @@
 (ns components.gallery
   (:require [lui.macros :refer [defui]]
-            [lui.card :as card]))
+            [lui.card :as card]
+            [lui.text-field :as text-field]))
 
 (defui button-gallery [disabled-source toggle-disabled]
   [:column {:gap 24 :padding 32}
@@ -63,7 +64,41 @@
     [:card/footer
      [:button {:on-press (fn [_event] true)} "Save changes"]]]])
 
-(defui component-gallery [disabled-source toggle-disabled card-copy]
+(defui text-field-gallery
+  [value-source invalid-source disabled-source update-value toggle-invalid]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "TextField"]
+   [:text-field
+    [:text-field/label "Email"]
+    [:text-field/input
+     {:value value-source
+      :type "email"
+      :invalid invalid-source
+      :disabled disabled-source
+      :placeholder "you@example.com"
+      :on-change update-value}]
+    [:text-field/description "Used for account notifications."]
+    [:text-field/error-message "Enter a valid email address."]]
+   [:button
+    {:variant "outline" :on-press toggle-invalid}
+    "Toggle invalid"]
+   [:text-field
+    [:text-field/label "Notes"]
+    [:text-field/text-area
+     {:value value-source
+      :placeholder "Add notes"
+      :min-lines 2
+      :max-lines 5
+      :disabled disabled-source
+      :on-change update-value}]
+    [:text-field/description
+     "This TextArea shares the same Signal to demonstrate local patches."]]])
+
+(defui component-gallery
+  [disabled-source toggle-disabled card-copy
+   value-source invalid-source update-value toggle-invalid]
   [:column
    [button-gallery disabled-source toggle-disabled]
-   [card-gallery card-copy]])
+   [card-gallery card-copy]
+   [text-field-gallery
+    value-source invalid-source disabled-source update-value toggle-invalid]])

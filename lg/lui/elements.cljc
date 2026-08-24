@@ -65,6 +65,21 @@
       (str resolved " " (:class attrs))
       resolved)))
 
+(macro-helper-defn find-part-node [children child-nodes part]
+  (if (empty? children)
+    false
+    (if (= (first (first children)) part)
+      (first child-nodes)
+      (find-part-node (next children) (next child-nodes) part))))
+
+(macro-helper-defn part-bindings [context children child-nodes]
+  (if (empty? children)
+    []
+    (concat
+     [(first child-nodes)
+      `(lui.elements/element ~context nil ~(first children))]
+     (part-bindings context (next children) (next child-nodes)))))
+
 (macro-helper-defn container-expansion
   [constructor context parent attrs children]
   (let [node (gensym "node")]
@@ -103,6 +118,48 @@
           (fn [child]
             `(lui.elements/element ~context ~node ~child))
           children)
+       ~node)))
+
+(defelement text-field [context parent attrs & children]
+  (let [node (gensym "node")
+        child-nodes (map (fn [_child] (gensym "part")) children)
+        label-node
+        (find-part-node children child-nodes :text-field/label)
+        input-node
+        (find-part-node children child-nodes :text-field/input)
+        text-area-node
+        (find-part-node children child-nodes :text-field/text-area)
+        description-node
+        (find-part-node children child-nodes :text-field/description)
+        error-node
+        (find-part-node children child-nodes :text-field/error-message)
+        control-node (if input-node input-node text-area-node)
+        class-name
+        (if (:class attrs)
+          (str "lui-text-field " (:class attrs))
+          "lui-text-field")]
+    `(let [~node (lui.ui/box! ~context)
+           ~@(part-bindings context children child-nodes)]
+       (lui.ui/style-class! ~context ~node ~class-name)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [part-node]
+            `(lui.ui/append! ~context ~node ~part-node))
+          child-nodes)
+       ~@(if (and control-node label-node)
+           [`(lui.ui/labelled-by!
+              ~context ~control-node ~label-node)]
+           [])
+       ~@(if (and control-node description-node)
+           [`(lui.ui/described-by!
+              ~context ~control-node ~description-node)]
+           [])
+       ~@(if (and control-node error-node)
+           [`(lui.ui/error-message-by!
+              ~context ~control-node ~error-node)]
+           [])
        ~node)))
 
 (defelement scroll [context parent attrs & children]
@@ -162,6 +219,22 @@
            [])
        ~node)))
 
+(defelement label [context parent attrs & children]
+  (let [node (gensym "node")
+        value (:value attrs)
+        expression
+        (if value
+          `(lui.ui/label-signal! ~context ~value)
+          `(lui.ui/label! ~context ~(first children)))]
+    `(let [~node ~expression]
+       ~@(if (:class attrs)
+           [`(lui.ui/style-class! ~context ~node ~(:class attrs))]
+           [])
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
+
 (defelement button [context parent attrs & children]
   (let [node (gensym "node")]
     `(let [~node
@@ -191,6 +264,18 @@
            [`(lui.ui/accessibility-label!
               ~context ~node ~(:accessibility-label attrs))]
            [])
+       ~@(if (:type attrs)
+           [`(lui.ui/input-type! ~context ~node ~(:type attrs))]
+           [])
+       ~@(if (:invalid attrs)
+           [`(lui.ui/invalid-signal! ~context ~node ~(:invalid attrs))]
+           [])
+       ~@(if (:disabled attrs)
+           [`(lui.ui/disabled-signal! ~context ~node ~(:disabled attrs))]
+           [])
+       ~@(if (:class attrs)
+           [`(lui.ui/style-class! ~context ~node ~(:class attrs))]
+           [])
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])
@@ -216,6 +301,15 @@
            [])
        ~@(if (:max-lines attrs)
            [`(lui.ui/max-lines! ~context ~node ~(:max-lines attrs))]
+           [])
+       ~@(if (:invalid attrs)
+           [`(lui.ui/invalid-signal! ~context ~node ~(:invalid attrs))]
+           [])
+       ~@(if (:disabled attrs)
+           [`(lui.ui/disabled-signal! ~context ~node ~(:disabled attrs))]
+           [])
+       ~@(if (:class attrs)
+           [`(lui.ui/style-class! ~context ~node ~(:class attrs))]
            [])
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]

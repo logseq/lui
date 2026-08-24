@@ -1,7 +1,8 @@
 (ns lui.backend.retained
   (:require [lui.protocol :as proto
              :refer [CreateNode DropNode SetProp InsertChild RemoveChild
-                     MoveChild]]))
+                     MoveChild LabelledBy DescribedBy ErrorMessageBy
+                     IntValue]]))
 
 (defn- empty-batches [] [])
 
@@ -74,6 +75,31 @@
      (retained-properties (:retained-properties current))
      (retained-children (:retained-children current)))))
 
+(defn- remove-reference [properties property removed]
+  (if-some [value (clojure.core/get properties property)]
+    (match value
+      (IntValue target)
+      (if (= target removed) (dissoc properties property) properties)
+      _ properties)
+    properties))
+
+(defn- remove-relationships-to [nodes removed]
+  (update-vals
+   nodes
+   (fn [current]
+     (record retained-node
+       (platform-node (:platform-node current))
+       (semantic-kind (:semantic-kind current))
+       (retained-parent (:retained-parent current))
+       (retained-properties
+        (remove-reference
+         (remove-reference
+          (remove-reference
+           (:retained-properties current) LabelledBy removed)
+          DescribedBy removed)
+         ErrorMessageBy removed))
+       (retained-children (:retained-children current))))))
+
 (defn- descendant? [nodes root target]
   (if (= root target)
     true
@@ -111,7 +137,7 @@
         (raise (Invalid_argument "cannot drop an attached node"))
         (not (empty? (:retained-children current)))
         (raise (Invalid_argument "cannot drop a node with children"))
-        :else (dissoc nodes node))
+        :else (remove-relationships-to (dissoc nodes node) node))
       (raise (Invalid_argument "unknown node")))
 
     (SetProp node property value)

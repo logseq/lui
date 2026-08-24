@@ -94,6 +94,27 @@
     (:ui-scope context)
     (sig/map (fn [text] (proto/StringValue text)) source))))
 
+(defn label! [context text]
+  (let [node (runtime/create-node! (:ui-application context) proto/Label)]
+    (runtime/set-prop!
+     (:ui-application context) node proto/TextValue
+     (proto/StringValue text))
+    node))
+
+(defn label-value! [context source]
+  (let [node (runtime/create-node! (:ui-application context) proto/Label)]
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context)
+     node proto/TextValue source)
+    node))
+
+(defn label-signal! [context source]
+  (label-value!
+   context
+   (sig/own-signal!
+    (:ui-scope context)
+    (sig/map (fn [text] (proto/StringValue text)) source))))
+
 (defn text-value! [context source]
   (let [node (runtime/create-node! (:ui-application context) proto/Text)]
     (runtime/bind-prop!
@@ -159,6 +180,34 @@
       (:ui-scope context)
       (sig/map (fn [disabled] (proto/BoolValue (not disabled))) source)))
     true))
+
+(defn invalid-signal! [context node source]
+  (do
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context) node proto/Invalid
+     (sig/own-signal!
+      (:ui-scope context)
+      (sig/map (fn [invalid] (proto/BoolValue invalid)) source)))
+    true))
+
+(defn labelled-by! [context node label]
+  (runtime/set-prop!
+   (:ui-application context) node proto/LabelledBy (proto/IntValue label)))
+
+(defn described-by! [context node description]
+  (runtime/set-prop!
+   (:ui-application context) node proto/DescribedBy
+   (proto/IntValue description)))
+
+(defn error-message-by! [context node error]
+  (runtime/set-prop!
+   (:ui-application context) node proto/ErrorMessageBy
+   (proto/IntValue error)))
+
+(defn input-type! [context node input-type]
+  (runtime/set-prop!
+   (:ui-application context) node proto/InputType
+   (proto/StringValue input-type)))
 
 (defn style-class! [context node class-name]
   (runtime/set-prop!

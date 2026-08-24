@@ -1,6 +1,6 @@
 (ns lui.backend.apple
   (:require [lui.protocol :as proto
-             :refer [Row Column Box Text Heading Paragraph Button
+             :refer [Row Column Box Text Heading Paragraph Label Button
                      TextInput TextArea Scroll Spacer]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
@@ -23,6 +23,7 @@
     Text AppleLabel
     Heading AppleHeading
     Paragraph AppleParagraph
+    Label AppleFormLabel
     Button AppleButton
     TextInput AppleTextInput
     TextArea AppleTextArea

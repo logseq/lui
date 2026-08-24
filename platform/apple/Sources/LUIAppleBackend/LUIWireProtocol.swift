@@ -10,7 +10,7 @@ public enum LUIEvent: Equatable, Sendable {
 }
 
 enum LUINodeKind: String, Decodable {
-    case row, column, box, text, heading, paragraph, button
+    case row, column, box, text, heading, paragraph, label, button
     case textInput = "text-input", textArea = "text-area"
     case scroll, spacer
 }
@@ -23,6 +23,11 @@ enum LUIProperty: String, Decodable {
     case maxLines = "max-lines"
     case styleClass = "style-class"
     case headingLevel = "heading-level"
+    case labelledBy = "labelled-by"
+    case describedBy = "described-by"
+    case errorMessageBy = "error-message-by"
+    case inputType = "input-type"
+    case invalid
 }
 
 struct LUIPatchBatch: Decodable {
@@ -100,6 +105,10 @@ enum LUIWireValue: Decodable {
     func matches(_ property: LUIProperty) -> Bool {
         switch (property, self) {
         case let (.headingLevel, .int(level)): (1...6).contains(level)
+        case (.labelledBy, .int), (.describedBy, .int),
+             (.errorMessageBy, .int): true
+        case let (.inputType, .string(type)): Self.inputTypes.contains(type)
+        case (.invalid, .bool): true
         case (.text, .string), (.enabled, .bool), (.gap, .int),
              (.padding, .int), (.background, .string),
              (.placeholder, .string), (.readOnly, .bool),
@@ -108,6 +117,12 @@ enum LUIWireValue: Decodable {
         default: false
         }
     }
+
+    private static let inputTypes: Set<String> = [
+        "button", "checkbox", "color", "date", "datetime-local", "email",
+        "file", "hidden", "image", "month", "number", "password", "radio",
+        "range", "reset", "search", "submit", "tel", "text", "time", "url", "week",
+    ]
 }
 
 struct LUINodeState {
@@ -147,6 +162,7 @@ struct LUIRetainedTree {
             guard Self.supports(property, on: node.kind), value.matches(property) else {
                 throw invalid("unsupported property value")
             }
+            try validateRelationship(property, value: value)
         case let .insertChild(parent, child, index):
             guard var parentNode = nodes[parent], var childNode = nodes[child] else {
                 throw invalid("unknown parent or child")
@@ -200,7 +216,7 @@ struct LUIRetainedTree {
         switch property {
         case .padding, .background, .styleClass: true
         case .text:
-            kind == .text || kind == .heading || kind == .paragraph ||
+            kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
                 kind == .button || kind == .textInput || kind == .textArea
         case .enabled: kind == .button || kind == .textInput || kind == .textArea
         case .gap: kind == .row || kind == .column
@@ -208,6 +224,9 @@ struct LUIRetainedTree {
             kind == .textInput || kind == .textArea
         case .minLines, .maxLines: kind == .textArea
         case .headingLevel: kind == .heading
+        case .labelledBy, .describedBy, .errorMessageBy, .invalid:
+            kind == .textInput || kind == .textArea
+        case .inputType: kind == .textInput
         }
     }
 
@@ -217,6 +236,26 @@ struct LUIRetainedTree {
 
     private static func isSingleChildContainer(_ kind: LUINodeKind) -> Bool {
         kind == .scroll
+    }
+
+    private func validateRelationship(
+        _ property: LUIProperty,
+        value: LUIWireValue
+    ) throws {
+        guard case let .int(target) = value else { return }
+        switch property {
+        case .labelledBy:
+            guard nodes[target]?.kind == .label else {
+                throw invalid("labelled-by must reference a label")
+            }
+        case .describedBy, .errorMessageBy:
+            guard let kind = nodes[target]?.kind,
+                  kind == .text || kind == .paragraph else {
+                throw invalid("description must reference text content")
+            }
+        default:
+            break
+        }
     }
 
     private func invalid(_ message: String) -> LUIBackendError {

@@ -155,6 +155,53 @@ struct LUIAppleBackendTests {
         #expect(paragraph.stringValue == "Manage your profile.")
     }
 
+    @Test("retains form labels, descriptions, errors, and input type")
+    func retainsFormRelationships() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"label"},
+          {"op":"create-node","id":2,"kind":"text-input"},
+          {"op":"create-node","id":3,"kind":"paragraph"},
+          {"op":"create-node","id":4,"kind":"paragraph"},
+          {"op":"set-prop","id":1,"property":"text","value":"Password"},
+          {"op":"set-prop","id":3,"property":"text","value":"Use at least 12 characters."},
+          {"op":"set-prop","id":4,"property":"text","value":"Password is too short."},
+          {"op":"set-prop","id":2,"property":"labelled-by","value":1},
+          {"op":"set-prop","id":2,"property":"described-by","value":3},
+          {"op":"set-prop","id":2,"property":"error-message-by","value":4},
+          {"op":"set-prop","id":2,"property":"input-type","value":"password"},
+          {"op":"set-prop","id":2,"property":"invalid","value":true}
+        ]}
+        """)
+
+        let label = try #require(backend.view(id: 1) as? NSTextField)
+        let input = try #require(backend.view(id: 2) as? NSTextField)
+        let titleElement = input.accessibilityTitleUIElement() as? NSView
+        #expect(titleElement === label)
+        #expect(input.accessibilityHelp() == "Use at least 12 characters. Password is too short.")
+        #expect(input.cell is NSSecureTextFieldCell)
+        #expect(input.layer?.borderWidth == 1)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":3,"property":"text","value":"Twelve or more characters."},
+          {"op":"set-prop","id":2,"property":"invalid","value":false}
+        ]}
+        """)
+        #expect(input.accessibilityHelp() == "Twelve or more characters.")
+        #expect(input.layer?.borderWidth == 0)
+
+        try backend.apply(json: """
+        {"generation":3,"ops":[
+          {"op":"drop-node","id":1},
+          {"op":"drop-node","id":3}
+        ]}
+        """)
+        #expect(input.accessibilityTitleUIElement() == nil)
+        #expect(input.accessibilityHelp() == nil)
+    }
+
     @Test("maps text-area to a retained native multiline editor")
     func mapsTextAreaSemantics() throws {
         let backend = LUIAppleBackend()

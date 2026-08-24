@@ -13,12 +13,18 @@
   :fn<web-renderer;fn<event;bool>;bool>)
 (signature lui.backend.web/platform-node :fn<web-renderer;node-kind;web-node>)
 (signature lui.backend.web/dom-node :fn<web-renderer;int;web-node>)
+(signature lui.backend.web/relationship-dom-node
+  :fn<web-renderer;int;web-node>)
+(signature lui.backend.web/attribute-target?
+  :fn<web-node;string;int;bool>)
+(signature lui.backend.web/clear-dom-relationships!
+  :fn<map<int;retained-node<web-node>>;int;bool>)
 (signature lui.backend.web/dom-node-before
   :fn<web-renderer;map<int;retained-node<web-node>>;int;web-node>)
 (signature lui.backend.web/attach-events!
   :fn<web-renderer;int;node-kind;web-node;unit>)
 (signature lui.backend.web/apply-property!
-  :fn<node-kind;web-node;property;wire-value;unit>)
+  :fn<web-renderer;node-kind;web-node;property;wire-value;unit>)
 (signature lui.backend.web/insert-dom-child!
   :fn<web-node;web-node;int;unit>)
 (signature lui.backend.web/apply-dom-op!

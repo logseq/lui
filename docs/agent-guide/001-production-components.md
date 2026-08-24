@@ -84,6 +84,42 @@ Convenience forms may supply default parts, but the part-based form is the
 semantic source of truth. Qualified application components continue to use
 `defelement` without changing the central dispatcher.
 
+### Label and TextField contract
+
+The implemented TextField family follows Solid UI's compound anatomy:
+
+```clojure
+[:text-field
+ [:text-field/label "Email"]
+ [:text-field/input
+  {:value email
+   :type "email"
+   :invalid invalid?
+   :on-change change-email}]
+ [:text-field/description "Used for account notifications."]
+ [:text-field/error-message "Enter a valid email address."]]
+```
+
+`:text-field/input` and `:text-field/text-area` are alternative controls; a
+root associates its label, description and error with its control through the
+typed `LabelledBy`, `DescribedBy` and `ErrorMessageBy` retained properties.
+`InputType` is a closed HTML-compatible value on text input, and `Invalid` is
+a Signal-bindable boolean. An invalid patch updates the existing native
+control; it does not rebuild the TextField root or replace editing state.
+
+Web renders `label`, `input` and `textarea`, establishes `for`,
+`aria-labelledby`, conditional `aria-describedby`, `aria-invalid` and
+`data-invalid`, and preserves native focus and selection. AppKit uses
+`NSTextField`/`NSSecureTextFieldCell`, UIKit uses `UILabel`/`UITextField` or
+`UITextView`, and Flutter uses `TextField` plus `Semantics`. Descriptions are
+always exposed; error text joins the accessible description only while the
+control is invalid.
+
+CLJC component code emits only stable semantic classes such as
+`lui-text-field-input`. Solid UI utility combinations live exclusively in
+`platform/web/src/lui.css` as Tailwind `@apply` rules and compile to static
+CSS. Cross-platform behavior must never depend on a Tailwind utility string.
+
 ## State ownership
 
 - Controlled state is represented by a Signal plus an event callback.

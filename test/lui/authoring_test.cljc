@@ -6,9 +6,11 @@
             [lui.ui :as ui]
             [lui.elements :refer [defelement]]
             [lui.card :as card]
+            [lui.text-field :as text-field]
             [lui.macros :refer [defui state effect platform host]]
             [lui.backend.apple :as apple
-             :refer [AppleBox AppleHeading AppleParagraph]]
+             :refer [AppleBox AppleFormLabel AppleHeading AppleParagraph
+                     AppleTextInput]]
             [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
@@ -83,6 +85,19 @@
     [:paragraph "Changes stay local until you save them."]]
    [:card/footer
     [:button {:on-press callback} "Save changes"]]])
+
+(defui email-field [value invalid disabled callback]
+  [:text-field {:class "account-email"}
+   [:text-field/label "Email"]
+   [:text-field/input
+    {:value value
+     :type "email"
+     :invalid invalid
+     :disabled disabled
+     :placeholder "you@example.com"
+     :on-change callback}]
+   [:text-field/description "Used for account notifications."]
+   [:text-field/error-message "Enter a valid email address."]])
 
 (deftest platform-profile-flows-through-ui-context
   (let [apple-renderer (apple/create)
@@ -311,6 +326,94 @@
       (match (apple/node renderer description)
         (Some AppleParagraph) (is true "CardDescription is a paragraph")
         _ (is false "CardDescription maps to Paragraph")))))
+
+(deftest text-field-composes-semantic-parts-and-patches-invalid-in-place
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "email-field")
+        value (sig/state scheduler "")
+        invalid (sig/state scheduler false)
+        disabled (sig/state scheduler false)
+        root
+        (email-field
+         (ui/context application scope)
+         (sig/value value)
+         (sig/value invalid)
+         (sig/value disabled)
+         (fn [_event] true))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [parts (apple/children renderer root)
+          label (nth parts 0)
+          input (nth parts 1)
+          description (nth parts 2)
+          error (nth parts 3)
+          node-count (apple/node-count renderer)]
+      (assert-equal 4 (count parts) "TextField retains all public parts")
+      (match (apple/property renderer root proto/StyleClass)
+        (Some (StringValue value))
+        (assert-equal "lui-text-field account-email" value
+                      "TextField exposes one semantic root class")
+        _ (is false "TextField exposes its resolved class"))
+      (match (apple/node renderer label)
+        (Some AppleFormLabel) (is true "TextFieldLabel is semantic")
+        _ (is false "TextFieldLabel maps to Label"))
+      (match (apple/node renderer input)
+        (Some AppleTextInput) (is true "TextFieldInput is semantic")
+        _ (is false "TextFieldInput maps to TextInput"))
+      (match (apple/property renderer label proto/StyleClass)
+        (Some (StringValue value))
+        (assert-equal "lui-text-field-label" value "label class")
+        _ (is false "label class"))
+      (match (apple/property renderer input proto/StyleClass)
+        (Some (StringValue value))
+        (assert-equal "lui-text-field-input" value "input class")
+        _ (is false "input class"))
+      (match (apple/property renderer description proto/StyleClass)
+        (Some (StringValue value))
+        (assert-equal
+         "lui-text-field-description" value "description class")
+        _ (is false "description class"))
+      (match (apple/property renderer error proto/StyleClass)
+        (Some (StringValue value))
+        (assert-equal
+         "lui-text-field-error-message" value "error class")
+        _ (is false "error class"))
+      (match (apple/property renderer input proto/LabelledBy)
+        (Some (proto/IntValue value))
+        (assert-equal label value "input references its label")
+        _ (is false "input references its label"))
+      (match (apple/property renderer input proto/DescribedBy)
+        (Some (proto/IntValue value))
+        (assert-equal description value "input references description")
+        _ (is false "input references description"))
+      (match (apple/property renderer input proto/ErrorMessageBy)
+        (Some (proto/IntValue value))
+        (assert-equal error value "input references error")
+        _ (is false "input references error"))
+      (match (apple/property renderer input proto/InputType)
+        (Some (StringValue value))
+        (assert-equal "email" value "TextFieldInput retains its type")
+        _ (is false "TextFieldInput retains its type"))
+      (sig/set! invalid true)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "invalid Signal does not replace retained nodes")
+      (assert-equal input (nth (apple/children renderer root) 1)
+                    "invalid Signal preserves control identity")
+      (match (apple/property renderer input proto/Invalid)
+        (Some (proto/BoolValue value))
+        (assert-equal true value "invalid Signal patches one property")
+        _ (is false "invalid Signal reaches the input"))
+      (sig/set! disabled true)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "disabled Signal does not replace retained nodes")
+      (match (apple/property renderer input proto/Enabled)
+        (Some (proto/BoolValue value))
+        (assert-equal false value "disabled Signal patches Enabled")
+        _ (is false "disabled Signal reaches the input")))))
 
 (deftest reactive-text-input-updates-through-semantic-events
   (let [scheduler (sig/scheduler)

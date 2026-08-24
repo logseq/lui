@@ -9,6 +9,10 @@ public final class LUIUIKitBackend {
 
     private var tree = LUIRetainedTree()
     private var views: [Int: UIView] = [:]
+    private var labelledBy: [Int: Int] = [:]
+    private var describedBy: [Int: Int] = [:]
+    private var errorMessageBy: [Int: Int] = [:]
+    private var invalidStates: [Int: Bool] = [:]
     private let decoder = JSONDecoder()
 
     public init() {}
@@ -60,9 +64,10 @@ public final class LUIUIKitBackend {
         case let .dropNode(id):
             views[id]?.removeFromSuperview()
             views[id] = nil
+            removeRelationships(involving: id)
         case let .setProp(id, property, value):
             guard let view = views[id] else { throw invalid("missing native view") }
-            apply(property, value: value, to: view)
+            apply(property, value: value, to: view, node: id)
         case let .insertChild(parent, child, index):
             try insert(viewID: child, into: parent, at: index)
         case let .removeChild(parent, child):
@@ -82,7 +87,7 @@ public final class LUIUIKitBackend {
             stack.alignment = .fill
             stack.distribution = .fill
             view = stack
-        case .text, .heading, .paragraph:
+        case .text, .heading, .paragraph, .label:
             let label = UILabel()
             label.font = .preferredFont(
                 forTextStyle: kind == .heading ? .headline : .body
@@ -135,13 +140,19 @@ public final class LUIUIKitBackend {
         return view
     }
 
-    private func apply(_ property: LUIProperty, value: LUIWireValue, to view: UIView) {
+    private func apply(
+        _ property: LUIProperty,
+        value: LUIWireValue,
+        to view: UIView,
+        node: Int
+    ) {
         switch (property, value) {
         case let (.text, .string(text)):
             if let label = view as? UILabel, label.text != text { label.text = text }
             if let button = view as? UIButton { button.configuration = .plain(); button.setTitle(text, for: .normal) }
             if let field = view as? UITextField, field.text != text { field.text = text }
             (view as? LUIUIKitTextArea)?.setText(text)
+            refreshControls(referencing: node)
         case let (.enabled, .bool(enabled)):
             (view as? UIControl)?.isEnabled = enabled
             (view as? LUIUIKitTextArea)?.isEditorEnabled = enabled
@@ -172,8 +183,98 @@ public final class LUIUIKitBackend {
             (view as? LUIUIKitTextArea)?.minLines = lines
         case let (.maxLines, .int(lines)):
             (view as? LUIUIKitTextArea)?.maxLines = lines
+        case let (.labelledBy, .int(label)):
+            labelledBy[node] = label
+            refreshAccessibility(for: node)
+        case let (.describedBy, .int(description)):
+            describedBy[node] = description
+            refreshAccessibility(for: node)
+        case let (.errorMessageBy, .int(error)):
+            errorMessageBy[node] = error
+            refreshAccessibility(for: node)
+        case let (.inputType, .string(type)):
+            if let field = view as? UITextField {
+                field.isSecureTextEntry = type == "password"
+                field.keyboardType = Self.keyboardType(for: type)
+                field.textContentType = Self.textContentType(for: type)
+            }
+        case let (.invalid, .bool(invalid)):
+            invalidStates[node] = invalid
+            if view is LUIUIKitTextArea {
+                view.layer.borderWidth = 1
+                view.layer.borderColor = invalid
+                    ? UIColor.systemRed.cgColor
+                    : UIColor.separator.cgColor
+            } else {
+                view.layer.borderWidth = invalid ? 1 : 0
+                view.layer.borderColor = invalid ? UIColor.systemRed.cgColor : nil
+                view.layer.cornerRadius = invalid ? 6 : 0
+            }
+            refreshAccessibility(for: node)
         default:
             break
+        }
+    }
+
+    private func refreshControls(referencing source: Int) {
+        let controls = Set(
+            labelledBy.filter { $0.value == source }.map(\.key) +
+            describedBy.filter { $0.value == source }.map(\.key) +
+            errorMessageBy.filter { $0.value == source }.map(\.key)
+        )
+        for control in controls {
+            refreshAccessibility(for: control)
+        }
+    }
+
+    private func refreshAccessibility(for control: Int) {
+        guard let view = views[control] else { return }
+        view.accessibilityLabel = labelledBy[control].flatMap { text(for: $0) }
+        let hint = [
+            describedBy[control].flatMap { text(for: $0) },
+            invalidStates[control] == true
+                ? errorMessageBy[control].flatMap { text(for: $0) }
+                : nil,
+        ].compactMap { $0 }.joined(separator: " ")
+        view.accessibilityHint = hint.isEmpty ? nil : hint
+    }
+
+    private func text(for node: Int) -> String? {
+        (views[node] as? UILabel)?.text
+    }
+
+    private func removeRelationships(involving node: Int) {
+        let affectedControls = Set(
+            labelledBy.filter { $0.value == node }.map(\.key) +
+            describedBy.filter { $0.value == node }.map(\.key) +
+            errorMessageBy.filter { $0.value == node }.map(\.key)
+        )
+        labelledBy = labelledBy.filter { $0.key != node && $0.value != node }
+        describedBy = describedBy.filter { $0.key != node && $0.value != node }
+        errorMessageBy = errorMessageBy.filter { $0.key != node && $0.value != node }
+        invalidStates[node] = nil
+        for control in affectedControls {
+            refreshAccessibility(for: control)
+        }
+    }
+
+    private static func keyboardType(for type: String) -> UIKeyboardType {
+        switch type {
+        case "email": .emailAddress
+        case "number": .numberPad
+        case "tel": .phonePad
+        case "url": .URL
+        default: .default
+        }
+    }
+
+    private static func textContentType(for type: String) -> UITextContentType? {
+        switch type {
+        case "email": .emailAddress
+        case "password": .password
+        case "tel": .telephoneNumber
+        case "url": .URL
+        default: nil
         }
     }
 

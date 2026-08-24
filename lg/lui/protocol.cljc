@@ -18,6 +18,31 @@
     (Press _node) (= kind Button)
     (TextChanged _node _text) (or (= kind TextInput) (= kind TextArea))))
 
+(defn input-type-supported? [value]
+  (or
+   (= value "button")
+   (= value "checkbox")
+   (= value "color")
+   (= value "date")
+   (= value "datetime-local")
+   (= value "email")
+   (= value "file")
+   (= value "hidden")
+   (= value "image")
+   (= value "month")
+   (= value "number")
+   (= value "password")
+   (= value "radio")
+   (= value "range")
+   (= value "reset")
+   (= value "search")
+   (= value "submit")
+   (= value "tel")
+   (= value "text")
+   (= value "time")
+   (= value "url")
+   (= value "week")))
+
 (defn property-supported? [kind property]
   (match property
     PaddingValue true
@@ -29,11 +54,17 @@
     MinLines (= kind TextArea)
     MaxLines (= kind TextArea)
     HeadingLevel (= kind Heading)
+    LabelledBy (or (= kind TextInput) (= kind TextArea))
+    DescribedBy (or (= kind TextInput) (= kind TextArea))
+    ErrorMessageBy (or (= kind TextInput) (= kind TextArea))
+    InputType (= kind TextInput)
+    Invalid (or (= kind TextInput) (= kind TextArea))
     TextValue
     (match kind
       Text true
       Heading true
       Paragraph true
+      Label true
       Button true
       TextInput true
       TextArea true
@@ -65,6 +96,11 @@
     (tuple StyleClass (StringValue _value)) true
     (tuple HeadingLevel (IntValue value))
     (and (>= value 1) (<= value 6))
+    (tuple LabelledBy (IntValue value)) (> value 0)
+    (tuple DescribedBy (IntValue value)) (> value 0)
+    (tuple ErrorMessageBy (IntValue value)) (> value 0)
+    (tuple InputType (StringValue value)) (input-type-supported? value)
+    (tuple Invalid (BoolValue _value)) true
     _ false))
 
 (defn can-contain-children? [kind]

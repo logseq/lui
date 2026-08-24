@@ -6,6 +6,7 @@
   (FlutterBox)
   (FlutterParagraph)
   (FlutterHeading)
+  (FlutterFormLabel)
   (FlutterButton)
   (FlutterWidgetIsland)
   (FlutterViewport)

@@ -2,12 +2,13 @@
   (:require [ocaml.package/melange-webapi]
             [ocaml.Webapi.Dom.HtmlCollection :as html-collection]
             [lui.protocol :as proto
-             :refer [Row Column Box Text Heading Paragraph Button
+             :refer [Row Column Box Text Heading Paragraph Label Button
                      TextInput TextArea Scroll Spacer
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild TextValue Enabled Gap PaddingValue
                      BackgroundValue PlaceholderValue ReadOnly MinLines MaxLines
-                     AccessibilityLabel StyleClass HeadingLevel
+                     AccessibilityLabel StyleClass HeadingLevel LabelledBy
+                     DescribedBy ErrorMessageBy InputType Invalid
                      StringValue BoolValue IntValue]]
             [lui.backend.retained :as retained]))
 
@@ -29,6 +30,7 @@
     Text "lui-text"
     Heading "lui-heading"
     Paragraph "lui-paragraph"
+    Label "lui-label"
     Button "lui-button"
     TextInput "lui-text-input"
     TextArea "lui-text-area"
@@ -40,6 +42,7 @@
         (match kind
           Heading "div"
           Paragraph "p"
+          Label "label"
           Text "span"
           Button "button"
           TextInput "input"
@@ -74,6 +77,59 @@
     control
     (raise (Invalid_argument "DOM node is not a text control"))))
 
+(defn- node-dom-id [node]
+  (str "lui-node-" node))
+
+(defn- relationship-dom-node [renderer node]
+  (dom-node renderer node))
+
+(defn- update-describedby! [dom-node]
+  (let [description
+        (Webapi.Dom.Element.getAttribute "data-lui-described-by" dom-node)
+        error
+        (Webapi.Dom.Element.getAttribute "data-lui-error-message-by" dom-node)
+        invalid
+        (Webapi.Dom.Element.hasAttribute "data-invalid" dom-node)]
+    (match (tuple description error)
+      (tuple (Some description-id) (Some error-id))
+      (Webapi.Dom.Element.setAttribute "aria-describedby"
+       (if invalid
+         (str description-id " " error-id)
+         description-id)
+       dom-node)
+      (tuple (Some description-id) None)
+      (Webapi.Dom.Element.setAttribute
+       "aria-describedby" description-id dom-node)
+      (tuple None (Some error-id))
+      (if invalid
+        (Webapi.Dom.Element.setAttribute
+         "aria-describedby" error-id dom-node)
+        (Webapi.Dom.Element.removeAttribute "aria-describedby" dom-node))
+      (tuple None None)
+      (Webapi.Dom.Element.removeAttribute "aria-describedby" dom-node))))
+
+(defn- attribute-target? [element attribute target]
+  (if-some [value (Webapi.Dom.Element.getAttribute attribute element)]
+    (= value (node-dom-id target))
+    false))
+
+(defn- clear-dom-relationships! [previous-nodes target]
+  (reduce-kv
+   (fn [_result _node current]
+     (let [element (:platform-node current)]
+       (when (attribute-target? element "aria-labelledby" target)
+         (Webapi.Dom.Element.removeAttribute "aria-labelledby" element))
+       (when (attribute-target? element "data-lui-described-by" target)
+         (Webapi.Dom.Element.removeAttribute "data-lui-described-by" element)
+         (update-describedby! element))
+       (when (attribute-target? element "data-lui-error-message-by" target)
+         (Webapi.Dom.Element.removeAttribute
+          "data-lui-error-message-by" element)
+         (update-describedby! element))
+       true))
+   true
+   previous-nodes))
+
 (defn- attach-text-event! [renderer node dom-node]
   (Webapi.Dom.Element.addEventListener
    "input"
@@ -106,7 +162,7 @@
     (Webapi.Dom.CssStyleDeclaration.setProperty
      property value "" element-style)))
 
-(defn- apply-property! [kind dom-node property value]
+(defn- apply-property! [renderer kind dom-node property value]
   (match (tuple property value)
     (tuple TextValue (StringValue text))
     (if (or (= kind TextInput) (= kind TextArea))
@@ -147,6 +203,42 @@
 
     (tuple HeadingLevel (IntValue level))
     (Webapi.Dom.Element.setAttribute "aria-level" (str level) dom-node)
+
+    (tuple LabelledBy (IntValue label))
+    (do
+      (Webapi.Dom.Element.setAttribute
+       "aria-labelledby" (node-dom-id label) dom-node)
+      (if-some [control-id
+                (Webapi.Dom.Element.getAttribute "id" dom-node)]
+        (Webapi.Dom.Element.setAttribute
+         "for" control-id (relationship-dom-node renderer label))
+        (Stdlib.ignore true)))
+
+    (tuple DescribedBy (IntValue description))
+    (do
+      (Webapi.Dom.Element.setAttribute
+       "data-lui-described-by" (node-dom-id description) dom-node)
+      (update-describedby! dom-node))
+
+    (tuple ErrorMessageBy (IntValue error))
+    (do
+      (Webapi.Dom.Element.setAttribute
+       "data-lui-error-message-by" (node-dom-id error) dom-node)
+      (update-describedby! dom-node))
+
+    (tuple InputType (StringValue input-type))
+    (Webapi.Dom.Element.setAttribute "type" input-type dom-node)
+
+    (tuple Invalid (BoolValue invalid))
+    (do
+      (if invalid
+        (do
+          (Webapi.Dom.Element.setAttribute "aria-invalid" "true" dom-node)
+          (Webapi.Dom.Element.setAttribute "data-invalid" "" dom-node))
+        (do
+          (Webapi.Dom.Element.removeAttribute "aria-invalid" dom-node)
+          (Webapi.Dom.Element.removeAttribute "data-invalid" dom-node)))
+      (update-describedby! dom-node))
 
     (tuple MinLines (IntValue lines))
     (do
@@ -220,14 +312,18 @@
 (defn- apply-dom-op! [renderer previous-nodes operation]
   (match operation
     (CreateNode node kind)
-    (attach-events! renderer node kind (dom-node renderer node))
+    (let [created (dom-node renderer node)]
+      (Webapi.Dom.Element.setAttribute "id" (node-dom-id node) created)
+      (attach-events! renderer node kind created))
 
-    (DropNode _node) (Stdlib.ignore true)
+    (DropNode node)
+    (Stdlib.ignore (clear-dom-relationships! previous-nodes node))
 
     (SetProp node property value)
     (if-some [current (retained/node (:web-store renderer) node)]
       (apply-property!
-       (:semantic-kind current) (:platform-node current) property value)
+       renderer (:semantic-kind current) (:platform-node current)
+       property value)
       (raise (Invalid_argument "unknown DOM node")))
 
     (InsertChild parent child index)
