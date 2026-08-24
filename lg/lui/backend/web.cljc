@@ -2,10 +2,10 @@
   (:require [ocaml.package/melange-webapi]
             [ocaml.Webapi.Dom.HtmlCollection :as html-collection]
             [lui.protocol :as proto
-             :refer [Row Column Text Button TextInput Scroll Spacer
+             :refer [Row Column Text Button TextInput TextArea Scroll Spacer
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild TextValue Enabled Gap PaddingValue
-                     BackgroundValue PlaceholderValue ReadOnly
+                     BackgroundValue PlaceholderValue ReadOnly MinLines MaxLines
                      AccessibilityLabel StringValue BoolValue IntValue]]
             [lui.backend.retained :as retained]))
 
@@ -25,6 +25,7 @@
           Text "span"
           Button "button"
           TextInput "input"
+          TextArea "textarea"
           _ "div")
         node
         (Webapi.Dom.Document.createElement tag (:web-document renderer))
@@ -35,17 +36,14 @@
           Text "lui-text"
           Button "lui-button"
           TextInput "lui-text-input"
+          TextArea "lui-text-area"
           Scroll "lui-scroll"
           Spacer "lui-spacer")]
     (Webapi.Dom.Element.setClassName node class-name)
+    (when (= kind TextArea)
+      (Webapi.Dom.Element.setAttribute
+       "style" "field-sizing: content; resize: vertical; overflow-y: auto" node))
     node))
-
-(defn- input-node [dom-node]
-  (if-some [input
-            (Webapi.Dom.HtmlInputElement.ofNode
-             (Webapi.Dom.Element.asNode dom-node))]
-    input
-    (raise (Invalid_argument "DOM node is not an input"))))
 
 (defn- dom-node [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
@@ -59,6 +57,25 @@
       (:platform-node previous)
       (raise (Invalid_argument "unknown DOM node")))))
 
+(defn- text-control-node [dom-node]
+  (if-some [control
+            (Webapi.Dom.HtmlInputElement.ofNode
+             (Webapi.Dom.Element.asNode dom-node))]
+    control
+    (raise (Invalid_argument "DOM node is not a text control"))))
+
+(defn- attach-text-event! [renderer node dom-node]
+  (Webapi.Dom.Element.addEventListener
+   "input"
+   (fn [_event]
+     (Stdlib.ignore
+      ((deref (:web-event-handler renderer))
+       (proto/TextChanged
+        node (Webapi.Dom.HtmlInputElement.value
+              (text-control-node dom-node)))))
+     (Stdlib.ignore true))
+   dom-node))
+
 (defn- attach-events! [renderer node kind dom-node]
   (match kind
     Button
@@ -68,15 +85,8 @@
        ((deref (:web-event-handler renderer)) (proto/Press node))
        (Stdlib.ignore true))
      dom-node)
-    TextInput
-    (Webapi.Dom.Element.addEventListener
-     "input"
-     (fn [_event]
-       ((deref (:web-event-handler renderer))
-        (proto/TextChanged
-         node (Webapi.Dom.HtmlInputElement.value (input-node dom-node))))
-       (Stdlib.ignore true))
-     dom-node)
+    TextInput (attach-text-event! renderer node dom-node)
+    TextArea (attach-text-event! renderer node dom-node)
     _ (Stdlib.ignore true)))
 
 (defn- set-style! [dom-node property value]
@@ -89,10 +99,10 @@
 (defn- apply-property! [kind dom-node property value]
   (match (tuple property value)
     (tuple TextValue (StringValue text))
-    (if (= kind TextInput)
-      (let [input (input-node dom-node)]
-        (when (not (= text (Webapi.Dom.HtmlInputElement.value input)))
-          (Webapi.Dom.HtmlInputElement.setValue input text)))
+    (if (or (= kind TextInput) (= kind TextArea))
+      (let [control (text-control-node dom-node)]
+        (when (not (= text (Webapi.Dom.HtmlInputElement.value control)))
+          (Webapi.Dom.HtmlInputElement.setValue control text)))
       (when (not (= text (Webapi.Dom.Element.textContent dom-node)))
         (Webapi.Dom.Element.setTextContent dom-node text)))
 
@@ -112,13 +122,28 @@
 
     (tuple PlaceholderValue (StringValue placeholder))
     (Webapi.Dom.HtmlInputElement.setPlaceholder
-     (input-node dom-node) placeholder)
+     (text-control-node dom-node) placeholder)
 
     (tuple ReadOnly (BoolValue read-only))
-    (Webapi.Dom.HtmlInputElement.setReadOnly (input-node dom-node) read-only)
+    (Webapi.Dom.HtmlInputElement.setReadOnly
+     (text-control-node dom-node) read-only)
 
     (tuple AccessibilityLabel (StringValue label))
     (Webapi.Dom.Element.setAttribute "aria-label" label dom-node)
+
+    (tuple MinLines (IntValue lines))
+    (do
+      (Webapi.Dom.Element.setAttribute "rows" (str lines) dom-node)
+      (set-style!
+       dom-node "min-block-size"
+       (str "calc(" lines
+            "lh + var(--lui-text-area-block-chrome, 1rem + 2px))")))
+
+    (tuple MaxLines (IntValue lines))
+    (set-style!
+     dom-node "max-block-size"
+     (str "calc(" lines
+          "lh + var(--lui-text-area-block-chrome, 1rem + 2px))"))
 
     _ (raise (Invalid_argument "invalid DOM property value"))))
 

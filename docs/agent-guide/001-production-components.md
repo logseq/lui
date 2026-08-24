@@ -9,19 +9,19 @@ drop into platform code. Components use the retained incremental runtime and
 share one LG state and behavior model across platforms. Platform backends
 render native controls and may apply scoped platform tweaks.
 
-The Web backend uses real DOM with standalone Vaadin Web Components as its
-default interactive component provider. It does not use Vaadin Flow, Java,
-React, or a virtual DOM.
+The Web backend uses retained real DOM and native HTML controls. LUI owns its
+component API, headless behaviors and visual system. It does not require a
+third-party UI runtime, React, Solid, Tailwind or a virtual DOM.
 
 ## Product principles
 
 - **Native behavior first.** Use native text editing, scrolling, focus,
   accessibility and platform presentation rather than imitating them.
-- **Established controls by default.** Web uses Vaadin custom elements, Flutter
+- **Platform controls by default.** Web uses semantic HTML controls, Flutter
   uses Material or Cupertino widgets, UIKit and AppKit use system views and
-  controls, and SwiftUI integration uses system views. Custom drawing is
-  reserved for semantics the selected provider does not supply or for composed
-  styling around native behavior.
+  controls, and SwiftUI integration uses system views. LUI composes and styles
+  those controls instead of replacing text editing, scrolling, focus or
+  accessibility engines.
 - **Useful by default, replaceable by design.** Components ship with a quiet,
   coherent visual theme, while behavior and visual parts remain separable.
 - **One semantic contract.** A component may look platform-native without
@@ -118,11 +118,10 @@ Events are validated against node kind before entering the Signal scheduler.
 
 Text uses intrinsic content measurement by default and updates its measured
 size when content, typography or available width changes. TextArea grows with
-content while respecting minimum and maximum line constraints when its selected
-provider supports that behavior. LUI maps the semantic constraints to Vaadin,
-Flutter, UIKit or AppKit; it does not implement a parallel text measurement or
-sizing engine. The provider must preserve selection, composition, scroll
-position and retained control identity.
+content while respecting minimum and maximum line constraints. LUI maps those
+constraints to native HTML, Flutter, UIKit or AppKit measurement APIs; it does
+not implement a parallel glyph layout engine. Backends preserve selection,
+composition, scroll position and retained control identity.
 Focus, key activation, value changes, selection changes and dismissal use typed
 events. Backends reject invalid property/value and parent/child combinations
 transactionally.
@@ -138,6 +137,12 @@ transactionally.
 - [Base UI](https://base-ui.com/react/overview/about) informs headless,
   composable behavior and accessibility contracts. LUI does not adopt Base
   UI's React runtime.
+- [Solid UI](https://www.solid-ui.com/) defines the Web component contract:
+  component names, named parts, props, variants, sizes, state attributes,
+  accessibility behavior, examples and default visuals stay in parity.
+  Its local reference checkout is kept outside this repository. LUI implements
+  the contract with retained LG components rather than Solid JSX, Kobalte,
+  Corvu or Tailwind.
 
 ## Layers
 
@@ -153,6 +158,13 @@ transactionally.
    state remains the source of truth.
 
 ## Required catalog
+
+The Web catalog corresponds one for one with the 54 UI registry entries in
+Solid UI revision `21ba4fa`. The authoritative names, public parts, behavior
+substrates and delivery waves are listed in
+`001-production-components_solid_ui_matrix.md`. A component is not counted as
+corresponding merely because it has the same name; it must satisfy the
+conformance rules in that matrix.
 
 ### Tier 1: daily foundations
 
@@ -190,63 +202,55 @@ Every interactive component must define and verify:
 - retained identity across property patches, keyed moves and parent rebuilds;
 - lifecycle cleanup for handlers, overlays, controllers and native resources.
 
-Web behavior is delegated to Vaadin where a matching component exists, with LUI
-verifying the resulting WAI-ARIA behavior. Apple backends use AppKit/UIKit
-controls and accessibility APIs. Flutter uses Material/Cupertino-capable
+Web uses semantic HTML and browser focus, form, dialog and popover behavior
+where it matches the contract. LUI headless behaviors fill semantic gaps and
+are verified against WAI-ARIA interaction patterns. Apple backends use
+AppKit/UIKit controls and accessibility APIs. Flutter uses Material/Cupertino
 widgets and semantics without rebuilding unrelated retained nodes.
 
 ## Backend mapping
 
 | Semantic need | Web | AppKit | UIKit | Flutter |
 | --- | --- | --- | --- | --- |
-| Text input | `vaadin-text-field` / `vaadin-text-area` | `NSTextField` / `NSTextView` | `UITextField` / `UITextView` | Material/Cupertino `TextField` |
-| Toggle | `vaadin-checkbox` / `vaadin-switch` | `NSButton` | `UISwitch` / `UIButton` | Material/Cupertino `Checkbox` / `Switch` |
-| Selection | `vaadin-select` / `vaadin-combo-box` | `NSPopUpButton` | `UIMenu` / picker presentation | Material/Cupertino picker |
+| Text input | `input` / `textarea` | `NSTextField` / `NSTextView` | `UITextField` / `UITextView` | Material/Cupertino `TextField` |
+| Toggle | `input[type=checkbox]` | `NSButton` | `UISwitch` / `UIButton` | Material/Cupertino `Checkbox` / `Switch` |
+| Selection | `select` plus LUI combobox behavior | `NSPopUpButton` | `UIMenu` / picker presentation | Material/Cupertino picker |
 | Scroll/list | native scroll element | `NSScrollView` | `UIScrollView` / collection view | scroll and sliver widgets |
-| Overlay | `vaadin-dialog` / `vaadin-popover` | panel/popover/window APIs | presentation/popover APIs | `Overlay` / `Navigator` |
+| Overlay | `dialog` / Popover API plus LUI behavior | panel/popover/window APIs | presentation/popover APIs | `Overlay` / `Navigator` |
 
 SwiftUI integration embeds the retained UIKit root. SwiftUI is a host surface,
 not a second state or component implementation.
 
-## Web component provider
+## LUI Web component system
 
-The Web backend does not reimplement a full component library. It uses three
-layers:
+The Web implementation has no external component runtime:
 
-1. Native HTML elements provide retained layout, text, image, scrolling and
-   other non-control primitives.
-2. Standalone [Vaadin Web Components](https://github.com/vaadin/web-components)
-   are the default provider for interactive controls, including buttons, text
-   fields, text areas, toggles, selection, validation and overlays. They are
-   consumed as browser-side npm packages and do not require Java or Vaadin
-   Flow. LUI creates the custom elements directly and adapts their properties,
-   slots and events. Native form controls are a fallback, not the default
-   component layer.
-3. The provider boundary remains replaceable. Provider-specific options never
-   leak into the shared component contract. Web Awesome is excluded from the
-   default provider set, and Spectrum is not selected because the measured
-   common-control bundle is substantially larger.
+1. **Retained DOM primitives** create `button`, `input`, `textarea`, `select`,
+   `dialog`, semantic text and layout elements directly. Property patches set
+   DOM properties without replacing focused nodes.
+2. **LUI behaviors** implement only the missing reusable interaction state:
+   roving focus, selection models, escape/outside dismissal, focus restoration,
+   overlay placement and validation relationships.
+3. **LUI components** compose primitives and behaviors into the polished daily
+   catalog. They use semantic classes, data-state attributes and CSS custom
+   properties generated from the shared theme tokens.
 
-Vaadin is selected because its Apache-licensed core catalog covers the daily
-and data-heavy controls LUI needs, its Aura/Lumo themes are usable without a
-new design implementation, and its component-level npm imports tree-shake into
-a smaller representative bundle than Spectrum. Commercial Vaadin Pro controls
-do not define LUI's capability floor.
+The Solid UI reference defines component anatomy and visual output, but not the
+runtime architecture. Solid props, contexts and headless runtime state become
+one LG Signal graph. LUI components are library code, not source copied into
+each application. A Signal change patches only the retained primitive
+properties and keyed children that changed.
 
-The Web provider has enforced production budgets:
+Native CSS capabilities are preferred for layout, focus indication, color
+schemes, reduced motion and content-sized fields. A small backend adapter may
+bridge a browser capability gap, but it must preserve the native element and
+must not become a general layout or text engine.
 
-- an isolated initial text field bundle must not exceed 35 KB gzip;
-- Button, TextField, TextArea, Select and Dialog together must not exceed
-  55 KB gzip;
-- components outside the initial route are imported in lazy chunks;
-- builds import component entry points individually and never import an
-  all-components bundle.
-
-The provider package owns registration and mapping so the shared protocol and
-Web retained tree do not import Vaadin directly. Measurements and the rejected
-alternatives are recorded in the companion Vaadin report. The earlier Lion
-spike remains useful evidence for retained custom-element identity and focus
-behavior, but Lion is not the default visual provider.
+The Web production budget is measured against LUI's generated JavaScript and
+CSS, with no baseline npm UI dependency. Tier 2 and Tier 3 code remains
+separately reachable so applications only ship components they use. Bundle
+budgets are set from the first gallery build rather than inherited from a
+third-party provider experiment.
 
 ## Delivery order
 

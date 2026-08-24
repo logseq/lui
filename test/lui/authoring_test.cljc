@@ -41,6 +41,15 @@
     :accessibility-label "Search todos"
     :on-change callback}])
 
+(defui bounded-notes [source callback]
+  [:text-area
+   {:value source
+    :placeholder "Notes"
+    :min-lines 2
+    :max-lines 5
+    :accessibility-label "Todo notes"
+    :on-change callback}])
+
 (deftest platform-profile-flows-through-ui-context
   (let [apple-renderer (apple/create)
         apple-application
@@ -218,3 +227,32 @@
       (Some (StringValue value))
       (assert-equal "Search todos" value "accessible name reaches the backend")
       _ (is false "accessible name is present"))))
+
+(deftest declarative-text-area-maps-provider-sizing-semantics
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "bounded-notes")
+        context (ui/context application scope)
+        notes (sig/state scheduler "One line")
+        node
+        (bounded-notes
+         context
+         (sig/value notes)
+         (fn [event]
+           (match event
+             (TextChanged _node text) (sig/set! notes text)
+             _ true)))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (match (apple/property renderer node proto/MinLines)
+      (Some (proto/IntValue lines))
+      (assert-equal 2 lines "minimum lines reach the provider")
+      _ (is false "minimum lines are present"))
+    (match (apple/property renderer node proto/MaxLines)
+      (Some (proto/IntValue lines))
+      (assert-equal 5 lines "maximum lines reach the provider")
+      _ (is false "maximum lines are present"))
+    (runtime/dispatch! application (proto/TextChanged node "One\nTwo"))
+    (runtime/flush! application)
+    (assert-equal "One\nTwo" (sig/get notes) "text area updates LG state")))

@@ -40,22 +40,31 @@ void main() {
         ),
       ),
     );
-    expect(find.byType(EditableText), findsOneWidget);
+    final draftField = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.maxLines == 1,
+      description: 'single-line todo draft field',
+    );
+    final draftEditor = find.descendant(
+      of: draftField,
+      matching: find.byType(EditableText),
+    );
+    expect(find.byType(EditableText), findsNWidgets(2));
+    expect(draftEditor, findsOneWidget);
     expect(find.byType(SingleChildScrollView), findsOneWidget);
     expect(find.textContaining('Write LG todos'), findsNothing);
 
-    final inputBefore = tester.widget<EditableText>(find.byType(EditableText));
-    await tester.enterText(find.byType(TextField), 'Write LG todos');
+    final inputBefore = tester.widget<EditableText>(draftEditor);
+    await tester.enterText(draftField, 'Write LG todos');
     await tester.pump();
     expect(backend.generation, 2);
-    final inputAfter = tester.widget<EditableText>(find.byType(EditableText));
+    final inputAfter = tester.widget<EditableText>(draftEditor);
     expect(inputAfter.focusNode, same(inputBefore.focusNode));
     expect(inputAfter.focusNode.hasFocus, isTrue);
     await tester.tap(find.widgetWithText(TextButton, 'Add'));
     await tester.pump();
     expect(backend.generation, 3);
     expect(
-      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      tester.widget<TextField>(draftField).controller!.text,
       '',
     );
     final label = find.text('[ ] Write LG todos');

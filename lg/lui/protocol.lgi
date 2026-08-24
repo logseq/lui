@@ -6,6 +6,7 @@
   (Text)
   (Button)
   (TextInput)
+  (TextArea)
   (Scroll)
   (Spacer))
 
@@ -38,7 +39,9 @@
   (BackgroundValue)
   (PlaceholderValue)
   (ReadOnly)
-  (AccessibilityLabel))
+  (AccessibilityLabel)
+  (MinLines)
+  (MaxLines))
 
 (type-variant wire-value
   (StringValue :string)

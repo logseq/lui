@@ -46,7 +46,16 @@ final class LUIBackendException implements Exception {
   String toString() => 'LUIBackendException: $message';
 }
 
-enum _NodeKind { row, column, text, button, textInput, scroll, spacer }
+enum _NodeKind {
+  row,
+  column,
+  text,
+  button,
+  textInput,
+  textArea,
+  scroll,
+  spacer,
+}
 
 final class _NodeState {
   _NodeState(this.kind);
@@ -181,6 +190,27 @@ final class LUIFlutterBackend {
     final accessibilityLabel =
         state.properties['accessibility-label'] as String?;
     final gap = (state.properties['gap'] as int? ?? 0).toDouble();
+    Widget textControl({required bool multiline}) => SizedBox(
+      width: 240,
+      child: Semantics(
+        label: accessibilityLabel,
+        textField: true,
+        readOnly: readOnly,
+        multiline: multiline,
+        child: _LUITextInput(
+          text: text,
+          enabled: enabled,
+          readOnly: readOnly,
+          placeholder: placeholder,
+          minLines: multiline
+              ? (state.properties['min-lines'] as int? ?? 2)
+              : 1,
+          maxLines: multiline ? state.properties['max-lines'] as int? : 1,
+          onChanged: (value) =>
+              onEvent?.call(LUIEvent.textChanged(node: id, text: value)),
+        ),
+      ),
+    );
     final content = switch (state.kind) {
       _NodeKind.row => Row(
         mainAxisSize: MainAxisSize.min,
@@ -197,22 +227,8 @@ final class LUIFlutterBackend {
         onPressed: enabled ? () => performAction(id) : null,
         child: Text(text),
       ),
-      _NodeKind.textInput => SizedBox(
-        width: 240,
-        child: Semantics(
-          label: accessibilityLabel,
-          textField: true,
-          readOnly: readOnly,
-          child: _LUITextInput(
-            text: text,
-            enabled: enabled,
-            readOnly: readOnly,
-            placeholder: placeholder,
-            onChanged: (value) =>
-                onEvent?.call(LUIEvent.textChanged(node: id, text: value)),
-          ),
-        ),
-      ),
+      _NodeKind.textInput => textControl(multiline: false),
+      _NodeKind.textArea => textControl(multiline: true),
       _NodeKind.scroll => SingleChildScrollView(
         child: children.isEmpty ? const SizedBox.shrink() : children.single,
       ),
@@ -311,17 +327,18 @@ final class LUIFlutterBackend {
         value is String &&
             (kind == _NodeKind.text ||
                 kind == _NodeKind.button ||
-                kind == _NodeKind.textInput),
+                _isTextControl(kind)),
       'enabled' =>
-        value is bool &&
-            (kind == _NodeKind.button || kind == _NodeKind.textInput),
+        value is bool && (kind == _NodeKind.button || _isTextControl(kind)),
       'gap' =>
         value is int && (kind == _NodeKind.row || kind == _NodeKind.column),
       'padding' => value is int,
       'background' => value is String,
-      'placeholder' => value is String && kind == _NodeKind.textInput,
-      'read-only' => value is bool && kind == _NodeKind.textInput,
-      'accessibility-label' => value is String && kind == _NodeKind.textInput,
+      'placeholder' => value is String && _isTextControl(kind),
+      'read-only' => value is bool && _isTextControl(kind),
+      'accessibility-label' => value is String && _isTextControl(kind),
+      'min-lines' => value is int && value > 0 && kind == _NodeKind.textArea,
+      'max-lines' => value is int && value > 0 && kind == _NodeKind.textArea,
       _ => false,
     };
   }
@@ -330,6 +347,9 @@ final class LUIFlutterBackend {
       kind == _NodeKind.row ||
       kind == _NodeKind.column ||
       kind == _NodeKind.scroll;
+
+  static bool _isTextControl(_NodeKind kind) =>
+      kind == _NodeKind.textInput || kind == _NodeKind.textArea;
 
   static bool _isSingleChild(_NodeKind kind) => kind == _NodeKind.scroll;
 
@@ -362,6 +382,7 @@ final class LUIFlutterBackend {
     'text' => _NodeKind.text,
     'button' => _NodeKind.button,
     'text-input' => _NodeKind.textInput,
+    'text-area' => _NodeKind.textArea,
     'scroll' => _NodeKind.scroll,
     'spacer' => _NodeKind.spacer,
     _ => throw const LUIBackendException('unknown node kind'),
@@ -408,6 +429,8 @@ final class _LUITextInput extends StatefulWidget {
     required this.enabled,
     required this.readOnly,
     required this.placeholder,
+    required this.minLines,
+    required this.maxLines,
     required this.onChanged,
   });
 
@@ -415,6 +438,8 @@ final class _LUITextInput extends StatefulWidget {
   final bool enabled;
   final bool readOnly;
   final String? placeholder;
+  final int minLines;
+  final int? maxLines;
   final ValueChanged<String> onChanged;
 
   @override
@@ -446,6 +471,11 @@ final class _LUITextInputState extends State<_LUITextInput> {
     controller: _controller,
     enabled: widget.enabled,
     readOnly: widget.readOnly,
+    keyboardType: widget.maxLines == 1
+        ? TextInputType.text
+        : TextInputType.multiline,
+    minLines: widget.minLines,
+    maxLines: widget.maxLines,
     decoration: InputDecoration(hintText: widget.placeholder),
     onChanged: widget.onChanged,
   );

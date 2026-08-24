@@ -74,6 +74,23 @@
     (sig/map (fn [text] (proto/StringValue text)) source))
    callback))
 
+(defn text-area-value! [context source callback]
+  (let [node (runtime/create-node! (:ui-application context) proto/TextArea)]
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context)
+     node proto/TextValue source)
+    (runtime/on-event!
+     (:ui-scope context) (:ui-application context) node callback)
+    node))
+
+(defn text-area! [context source callback]
+  (text-area-value!
+   context
+   (sig/own-signal!
+    (:ui-scope context)
+    (sig/map (fn [text] (proto/StringValue text)) source))
+   callback))
+
 (defn button! [context label callback]
   (let [node (runtime/create-node! (:ui-application context) proto/Button)]
     (runtime/set-prop!
@@ -116,3 +133,13 @@
   (runtime/set-prop!
    (:ui-application context) node proto/AccessibilityLabel
    (proto/StringValue label)))
+
+(defn min-lines! [context node lines]
+  (runtime/set-prop!
+   (:ui-application context) node proto/MinLines
+   (proto/IntValue lines)))
+
+(defn max-lines! [context node lines]
+  (runtime/set-prop!
+   (:ui-application context) node proto/MaxLines
+   (proto/IntValue lines)))

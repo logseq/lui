@@ -10,13 +10,16 @@ public enum LUIEvent: Equatable, Sendable {
 }
 
 enum LUINodeKind: String, Decodable {
-    case row, column, text, button, textInput = "text-input", scroll, spacer
+    case row, column, text, button, textInput = "text-input", textArea = "text-area"
+    case scroll, spacer
 }
 
 enum LUIProperty: String, Decodable {
     case text, enabled, gap, padding, background, placeholder
     case readOnly = "read-only"
     case accessibilityLabel = "accessibility-label"
+    case minLines = "min-lines"
+    case maxLines = "max-lines"
 }
 
 struct LUIPatchBatch: Decodable {
@@ -96,7 +99,8 @@ enum LUIWireValue: Decodable {
         case (.text, .string), (.enabled, .bool), (.gap, .int),
              (.padding, .int), (.background, .string),
              (.placeholder, .string), (.readOnly, .bool),
-             (.accessibilityLabel, .string): true
+             (.accessibilityLabel, .string), (.minLines, .int),
+             (.maxLines, .int): true
         default: false
         }
     }
@@ -191,11 +195,12 @@ struct LUIRetainedTree {
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         switch property {
         case .padding, .background: true
-        case .text: kind == .text || kind == .button || kind == .textInput
-        case .enabled: kind == .button || kind == .textInput
+        case .text: kind == .text || kind == .button || kind == .textInput || kind == .textArea
+        case .enabled: kind == .button || kind == .textInput || kind == .textArea
         case .gap: kind == .row || kind == .column
-        case .placeholder, .readOnly: kind == .textInput
-        case .accessibilityLabel: kind == .textInput
+        case .placeholder, .readOnly, .accessibilityLabel:
+            kind == .textInput || kind == .textArea
+        case .minLines, .maxLines: kind == .textArea
         }
     }
 

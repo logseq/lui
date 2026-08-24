@@ -2,7 +2,7 @@
 
 Date: 2026-08-24
 
-Status: superseded as the default provider; retained-behavior findings remain
+Status: rejected as a runtime dependency; retained-behavior findings remain
 valid.
 
 ## Question
@@ -79,11 +79,12 @@ expose the newer state-preserving `moveBefore` API.
 Lion proved that an opaque custom-element implementation can coexist with the
 LUI retained tree, but it is intentionally white-label and does not meet the
 later requirement for a polished, ready-to-use default visual component set.
-Web Awesome was also explicitly excluded. The current provider decision and
-same-tool bundle comparison are recorded in
-`001-production-components_vaadin_report.md`.
+Web Awesome was also explicitly excluded. The current LUI-native decision and
+historical bundle comparison are recorded in
+`001-production-components_web_report.md`.
 
-The adapter and focus findings below still apply to any Web Component provider.
+The adapter and focus findings below remain useful evidence about opaque custom
+elements, although the current Web design uses retained semantic HTML.
 The following list records the original spike recommendations and is not the
 current provider decision:
 

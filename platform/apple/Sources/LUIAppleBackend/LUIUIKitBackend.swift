@@ -108,6 +108,14 @@ public final class LUIUIKitBackend {
                 for: .editingChanged
             )
             view = field
+        case .textArea:
+            let area = LUIUIKitTextArea()
+            area.font = .preferredFont(forTextStyle: .body)
+            area.adjustsFontForContentSizeCategory = true
+            area.onChange = { [weak self] text in
+                self?.onEvent?(.textChanged(node: id, text: text))
+            }
+            view = area
         case .scroll:
             let scroll = UIScrollView()
             scroll.alwaysBounceVertical = true
@@ -128,8 +136,10 @@ public final class LUIUIKitBackend {
             if let label = view as? UILabel, label.text != text { label.text = text }
             if let button = view as? UIButton { button.configuration = .plain(); button.setTitle(text, for: .normal) }
             if let field = view as? UITextField, field.text != text { field.text = text }
+            (view as? LUIUIKitTextArea)?.setText(text)
         case let (.enabled, .bool(enabled)):
             (view as? UIControl)?.isEnabled = enabled
+            (view as? LUIUIKitTextArea)?.isEditorEnabled = enabled
         case let (.gap, .int(gap)):
             (view as? UIStackView)?.spacing = CGFloat(gap)
         case let (.padding, .int(padding)):
@@ -147,10 +157,16 @@ public final class LUIUIKitBackend {
             view.backgroundColor = Self.color(named: color)
         case let (.placeholder, .string(placeholder)):
             (view as? UITextField)?.placeholder = placeholder
+            (view as? LUIUIKitTextArea)?.placeholder = placeholder
         case let (.readOnly, .bool(readOnly)):
             (view as? LUITextField)?.isReadOnly = readOnly
+            (view as? LUIUIKitTextArea)?.isReadOnly = readOnly
         case let (.accessibilityLabel, .string(label)):
             view.accessibilityLabel = label
+        case let (.minLines, .int(lines)):
+            (view as? LUIUIKitTextArea)?.minLines = lines
+        case let (.maxLines, .int(lines)):
+            (view as? LUIUIKitTextArea)?.maxLines = lines
         default:
             break
         }
@@ -199,6 +215,124 @@ public final class LUIUIKitBackend {
         case "green": .systemGreen
         default: .clear
         }
+    }
+}
+
+@MainActor
+final class LUIUIKitTextArea: UITextView, UITextViewDelegate {
+    var onChange: ((String) -> Void)?
+
+    var minLines = 2 {
+        didSet { updateIntrinsicHeight() }
+    }
+
+    var maxLines: Int? {
+        didSet { updateIntrinsicHeight() }
+    }
+
+    var placeholder = "" {
+        didSet {
+            placeholderLabel.text = placeholder
+            accessibilityHint = placeholder
+            updatePlaceholder()
+        }
+    }
+
+    var isReadOnly = false {
+        didSet { updateEditability() }
+    }
+
+    var isEditorEnabled = true {
+        didSet { updateEditability() }
+    }
+
+    private let placeholderLabel = UILabel()
+
+    override init(frame: CGRect, textContainer: NSTextContainer?) {
+        super.init(frame: frame, textContainer: textContainer)
+        configure()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configure()
+    }
+
+    override var intrinsicContentSize: CGSize {
+        let lineHeight = font?.lineHeight ?? UIFont.preferredFont(forTextStyle: .body).lineHeight
+        let verticalInsets = textContainerInset.top + textContainerInset.bottom
+        let minimumHeight = lineHeight * CGFloat(minLines) + verticalInsets
+        guard bounds.width > 0 else {
+            return CGSize(width: UIView.noIntrinsicMetric, height: minimumHeight)
+        }
+
+        let fittingSize = CGSize(width: bounds.width, height: .greatestFiniteMagnitude)
+        let naturalHeight = max(minimumHeight, super.sizeThatFits(fittingSize).height)
+        let maximumHeight = maxLines.map { lineHeight * CGFloat($0) + verticalInsets }
+        let height = maximumHeight.map { min(naturalHeight, $0) } ?? naturalHeight
+        isScrollEnabled = maximumHeight.map { naturalHeight > $0 } ?? false
+        return CGSize(width: UIView.noIntrinsicMetric, height: height)
+    }
+
+    func setText(_ value: String) {
+        guard text != value else { return }
+        let selection = selectedRange
+        text = value
+        selectedRange = NSRange(location: min(selection.location, value.utf16.count), length: 0)
+        updateAfterTextChange()
+    }
+
+    func textViewDidChange(_ textView: UITextView) {
+        updateAfterTextChange()
+        onChange?(textView.text)
+    }
+
+    private func configure() {
+        delegate = self
+        backgroundColor = .secondarySystemBackground
+        layer.borderColor = UIColor.separator.cgColor
+        layer.borderWidth = 1
+        layer.cornerRadius = 8
+
+        placeholderLabel.font = font ?? .preferredFont(forTextStyle: .body)
+        placeholderLabel.textColor = .placeholderText
+        placeholderLabel.isUserInteractionEnabled = false
+        placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(placeholderLabel)
+        NSLayoutConstraint.activate([
+            placeholderLabel.leadingAnchor.constraint(
+                equalTo: leadingAnchor,
+                constant: textContainerInset.left + textContainer.lineFragmentPadding
+            ),
+            placeholderLabel.topAnchor.constraint(
+                equalTo: topAnchor,
+                constant: textContainerInset.top
+            ),
+            placeholderLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: trailingAnchor,
+                constant: -(textContainerInset.right + textContainer.lineFragmentPadding)
+            ),
+        ])
+        updatePlaceholder()
+    }
+
+    private func updateEditability() {
+        isEditable = isEditorEnabled && !isReadOnly
+        isSelectable = isEditorEnabled
+    }
+
+    private func updateAfterTextChange() {
+        updatePlaceholder()
+        updateIntrinsicHeight()
+    }
+
+    private func updatePlaceholder() {
+        placeholderLabel.isHidden = !text.isEmpty || placeholder.isEmpty
+    }
+
+    private func updateIntrinsicHeight() {
+        invalidateIntrinsicContentSize()
+        setNeedsLayout()
     }
 }
 

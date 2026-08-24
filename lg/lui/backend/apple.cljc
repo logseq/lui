@@ -1,6 +1,6 @@
 (ns lui.backend.apple
   (:require [lui.protocol :as proto
-             :refer [Row Column Text Button TextInput Scroll Spacer]]
+             :refer [Row Column Text Button TextInput TextArea Scroll Spacer]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -21,6 +21,7 @@
     Text AppleLabel
     Button AppleButton
     TextInput AppleTextInput
+    TextArea AppleTextArea
     Scroll AppleScrollView
     Spacer AppleSpacer))
 

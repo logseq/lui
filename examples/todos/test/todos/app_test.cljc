@@ -16,7 +16,8 @@
     (driver/flush! application)
     (let [root-children (apple/children renderer (driver/root-node application))
           controls (nth root-children 1)
-          scroll (nth root-children 2)
+          notes (nth root-children 2)
+          scroll (nth root-children 3)
           input (nth (apple/children renderer controls) 0)
           add (nth (apple/children renderer controls) 1)
           list-node (nth (apple/children renderer scroll) 0)]
@@ -24,6 +25,13 @@
                     "the example starts empty")
       (assert-equal [] (apple/children renderer list-node)
                     "the retained list starts empty")
+
+      (driver/dispatch-event!
+       application (proto/TextChanged notes "Shared multiline notes"))
+      (driver/flush! application)
+      (assert-equal "Shared multiline notes"
+                    (:model-notes (todos/model application))
+                    "text area updates the shared showcase model")
 
       (driver/dispatch-event!
        application (proto/TextChanged input "Write LG todos"))

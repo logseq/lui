@@ -8,10 +8,12 @@
 (type-record todo-model
   (model-items :vector<todo>)
   (model-draft :string)
+  (model-notes :string)
   (model-next-id :int))
 
 (type-variant todo-action
   (ChangeDraft :string)
+  (ChangeNotes :string)
   (AddTodo)
   (ToggleTodo :int)
   (MoveTodoUp :int)

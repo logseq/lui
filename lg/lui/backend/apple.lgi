@@ -6,6 +6,7 @@
   (AppleLabel)
   (AppleButton)
   (AppleTextInput)
+  (AppleTextArea)
   (AppleScrollView)
   (AppleSpacer))
 

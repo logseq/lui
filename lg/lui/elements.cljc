@@ -126,6 +126,32 @@
            [])
        ~node)))
 
+(defelement text-area [context parent attrs & _children]
+  (let [node (gensym "node")]
+    `(let [~node
+           (lui.ui/text-area!
+            ~context ~(:value attrs) ~(:on-change attrs))]
+       ~@(if (:placeholder attrs)
+           [`(lui.ui/placeholder! ~context ~node ~(:placeholder attrs))]
+           [])
+       ~@(if (:read-only attrs)
+           [`(lui.ui/read-only! ~context ~node ~(:read-only attrs))]
+           [])
+       ~@(if (:accessibility-label attrs)
+           [`(lui.ui/accessibility-label!
+              ~context ~node ~(:accessibility-label attrs))]
+           [])
+       ~@(if (:min-lines attrs)
+           [`(lui.ui/min-lines! ~context ~node ~(:min-lines attrs))]
+           [])
+       ~@(if (:max-lines attrs)
+           [`(lui.ui/max-lines! ~context ~node ~(:max-lines attrs))]
+           [])
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
+
 (defelement keyed [context parent attrs & children]
   (let [item-context (gensym "item_context")
         item-symbol (:as attrs)]

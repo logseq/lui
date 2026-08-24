@@ -1,9 +1,9 @@
 (ns lui.wire
   (:require [clojure.string :as string]
             [lui.protocol
-             :refer [Row Column Text Button TextInput Scroll Spacer
+             :refer [Row Column Text Button TextInput TextArea Scroll Spacer
                      TextValue Enabled Gap PaddingValue BackgroundValue
-                     PlaceholderValue ReadOnly AccessibilityLabel
+                     PlaceholderValue ReadOnly AccessibilityLabel MinLines MaxLines
                      StringValue BoolValue IntValue
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild]]))
@@ -27,6 +27,7 @@
     Text "text"
     Button "button"
     TextInput "text-input"
+    TextArea "text-area"
     Scroll "scroll"
     Spacer "spacer"))
 
@@ -39,7 +40,9 @@
     BackgroundValue "background"
     PlaceholderValue "placeholder"
     ReadOnly "read-only"
-    AccessibilityLabel "accessibility-label"))
+    AccessibilityLabel "accessibility-label"
+    MinLines "min-lines"
+    MaxLines "max-lines"))
 
 (defn- encode-value [value]
   (match value

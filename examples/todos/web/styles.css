@@ -44,7 +44,8 @@ body {
   letter-spacing: -0.03em;
 }
 
-.lui-text-input {
+.lui-text-input,
+.lui-text-area {
   min-height: 42px;
   flex: 1;
   padding: 10px 12px;
@@ -55,11 +56,19 @@ body {
   overflow: hidden;
 }
 
-.lui-text-input::placeholder {
+.lui-text-area {
+  width: 100%;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.lui-text-input::placeholder,
+.lui-text-area::placeholder {
   color: #8a929d;
 }
 
-.lui-text-input:focus {
+.lui-text-input:focus,
+.lui-text-area:focus {
   border-color: #446ee7;
   box-shadow: 0 0 0 3px rgb(68 110 231 / 15%);
 }

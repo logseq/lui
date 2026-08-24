@@ -124,6 +124,47 @@ struct LUIAppleBackendTests {
         #expect(field.accessibilityLabel() == "Search todos")
     }
 
+    @Test("maps text-area to a retained native multiline editor")
+    func mapsTextAreaSemantics() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"text-area"},
+          {"op":"set-prop","id":1,"property":"text","value":"First line"},
+          {"op":"set-prop","id":1,"property":"placeholder","value":"Notes"},
+          {"op":"set-prop","id":1,"property":"read-only","value":false},
+          {"op":"set-prop","id":1,"property":"min-lines","value":3},
+          {"op":"set-prop","id":1,"property":"max-lines","value":6},
+          {"op":"set-prop","id":1,"property":"accessibility-label","value":"Todo notes"}
+        ]}
+        """)
+
+        let area = try #require(backend.view(id: 1) as? LUIAppKitTextArea)
+        let originalArea = area
+        #expect(area.textView.string == "First line")
+        #expect(area.placeholder == "Notes")
+        #expect(area.textView.isEditable == true)
+        #expect(area.minLines == 3)
+        #expect(area.maxLines == 6)
+        #expect(area.accessibilityLabel() == "Todo notes")
+
+        area.textView.string = "First line\nSecond line"
+        area.textDidChange(Notification(name: NSText.didChangeNotification, object: area.textView))
+        #expect(events == [.textChanged(node: 1, text: "First line\nSecond line")])
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"text","value":"Patched"},
+          {"op":"set-prop","id":1,"property":"read-only","value":true}
+        ]}
+        """)
+        #expect(backend.view(id: 1) === originalArea)
+        #expect(area.textView.string == "Patched")
+        #expect(area.textView.isEditable == false)
+    }
+
     @Test("C ABI accepts the LG wire batch")
     func cABIReceivesWireBatch() {
         luiAppleReset()

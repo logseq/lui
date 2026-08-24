@@ -16,25 +16,29 @@
 (defn event-supported? [kind event]
   (match event
     (Press _node) (= kind Button)
-    (TextChanged _node _text) (= kind TextInput)))
+    (TextChanged _node _text) (or (= kind TextInput) (= kind TextArea))))
 
 (defn property-supported? [kind property]
   (match property
     PaddingValue true
     BackgroundValue true
-    AccessibilityLabel (= kind TextInput)
-    PlaceholderValue (= kind TextInput)
-    ReadOnly (= kind TextInput)
+    AccessibilityLabel (or (= kind TextInput) (= kind TextArea))
+    PlaceholderValue (or (= kind TextInput) (= kind TextArea))
+    ReadOnly (or (= kind TextInput) (= kind TextArea))
+    MinLines (= kind TextArea)
+    MaxLines (= kind TextArea)
     TextValue
     (match kind
       Text true
       Button true
       TextInput true
+      TextArea true
       _ false)
     Enabled
     (match kind
       Button true
       TextInput true
+      TextArea true
       _ false)
     Gap
     (match kind
@@ -52,6 +56,8 @@
     (tuple PlaceholderValue (StringValue _value)) true
     (tuple ReadOnly (BoolValue _value)) true
     (tuple AccessibilityLabel (StringValue _value)) true
+    (tuple MinLines (IntValue value)) (> value 0)
+    (tuple MaxLines (IntValue value)) (> value 0)
     _ false))
 
 (defn can-contain-children? [kind]

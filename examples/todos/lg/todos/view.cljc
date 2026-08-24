@@ -59,6 +59,17 @@
           (TextChanged _node text) (send (model/ChangeDraft text))
           _ true))}]
     [:button {:on-press (fn [_event] (send model/AddTodo))} "Add"]]
+   [:text-area
+    {:value (reactive :model-notes model-source)
+     :placeholder "Notes"
+     :accessibility-label "Todo notes"
+     :min-lines 2
+     :max-lines 5
+     :on-change
+     (fn [event]
+       (match event
+         (TextChanged _node text) (send (model/ChangeNotes text))
+         _ true))}]
    [:scroll
     [:column {:gap 8}
      [:keyed

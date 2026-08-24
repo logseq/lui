@@ -103,6 +103,13 @@ public final class LUIAppleBackend {
             controls[id] = target
             view.translatesAutoresizingMaskIntoConstraints = false
             return view
+        case .textArea:
+            let view = LUIAppKitTextArea()
+            view.onChange = { [weak self] text in
+                self?.onEvent?(.textChanged(node: id, text: text))
+            }
+            view.translatesAutoresizingMaskIntoConstraints = false
+            return view
         case .scroll:
             let view = NSScrollView()
             view.hasVerticalScroller = true
@@ -120,8 +127,10 @@ public final class LUIAppleBackend {
         case let (.text, .string(text)):
             if let label = view as? NSTextField { label.stringValue = text }
             if let button = view as? NSButton { button.title = text }
+            if let area = view as? LUIAppKitTextArea { area.setText(text) }
         case let (.enabled, .bool(enabled)):
             (view as? NSControl)?.isEnabled = enabled
+            (view as? LUIAppKitTextArea)?.isEditorEnabled = enabled
         case let (.gap, .int(gap)):
             (view as? NSStackView)?.spacing = CGFloat(gap)
         case let (.padding, .int(padding)):
@@ -134,10 +143,16 @@ public final class LUIAppleBackend {
             view.layer?.backgroundColor = Self.color(named: color).cgColor
         case let (.placeholder, .string(placeholder)):
             (view as? NSTextField)?.placeholderString = placeholder
+            (view as? LUIAppKitTextArea)?.placeholder = placeholder
         case let (.readOnly, .bool(readOnly)):
             (view as? NSTextField)?.isEditable = !readOnly
+            (view as? LUIAppKitTextArea)?.isReadOnly = readOnly
         case let (.accessibilityLabel, .string(label)):
             view.setAccessibilityLabel(label)
+        case let (.minLines, .int(lines)):
+            (view as? LUIAppKitTextArea)?.minLines = lines
+        case let (.maxLines, .int(lines)):
+            (view as? LUIAppKitTextArea)?.maxLines = lines
         default:
             break
         }
@@ -181,6 +196,137 @@ public final class LUIAppleBackend {
         case "green": .systemGreen
         default: .clear
         }
+    }
+}
+
+@MainActor
+final class LUIAppKitTextArea: NSScrollView, NSTextViewDelegate {
+    let textView = NSTextView(frame: .zero)
+    var onChange: ((String) -> Void)?
+
+    var minLines = 2 {
+        didSet { updateIntrinsicHeight() }
+    }
+
+    var maxLines: Int? {
+        didSet { updateIntrinsicHeight() }
+    }
+
+    var placeholder = "" {
+        didSet {
+            placeholderLabel.stringValue = placeholder
+            textView.setAccessibilityPlaceholderValue(placeholder)
+            updatePlaceholder()
+        }
+    }
+
+    var isReadOnly = false {
+        didSet { updateEditability() }
+    }
+
+    var isEditorEnabled = true {
+        didSet { updateEditability() }
+    }
+
+    private let placeholderLabel = NSTextField(labelWithString: "")
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        configure()
+    }
+
+    convenience init() {
+        self.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configure()
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let lineHeight = nativeLineHeight
+        let verticalInsets = textView.textContainerInset.height * 2
+        let minimumHeight = lineHeight * CGFloat(minLines) + verticalInsets
+
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer else {
+            return NSSize(width: NSView.noIntrinsicMetric, height: minimumHeight)
+        }
+        layoutManager.ensureLayout(for: textContainer)
+        let contentHeight = ceil(layoutManager.usedRect(for: textContainer).height + verticalInsets)
+        let desiredHeight = max(minimumHeight, contentHeight)
+        let maximumHeight = maxLines.map { lineHeight * CGFloat($0) + verticalInsets }
+        let height = maximumHeight.map { min(desiredHeight, $0) } ?? desiredHeight
+        hasVerticalScroller = maximumHeight.map { desiredHeight > $0 } ?? false
+        return NSSize(width: NSView.noIntrinsicMetric, height: height)
+    }
+
+    func setText(_ text: String) {
+        guard textView.string != text else { return }
+        let selection = textView.selectedRange()
+        textView.string = text
+        textView.setSelectedRange(NSRange(location: min(selection.location, text.utf16.count), length: 0))
+        updateAfterTextChange()
+    }
+
+    func textDidChange(_ notification: Notification) {
+        updateAfterTextChange()
+        onChange?(textView.string)
+    }
+
+    private var nativeLineHeight: CGFloat {
+        let font = textView.font ?? NSFont.preferredFont(forTextStyle: .body)
+        return textView.layoutManager?.defaultLineHeight(for: font) ?? font.boundingRectForFont.height
+    }
+
+    private func configure() {
+        borderType = .bezelBorder
+        drawsBackground = true
+        autohidesScrollers = true
+
+        textView.delegate = self
+        textView.font = .preferredFont(forTextStyle: .body)
+        textView.isRichText = false
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        documentView = textView
+
+        placeholderLabel.textColor = .placeholderTextColor
+        placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(placeholderLabel, positioned: .above, relativeTo: contentView)
+        NSLayoutConstraint.activate([
+            placeholderLabel.leadingAnchor.constraint(
+                equalTo: contentView.leadingAnchor,
+                constant: textView.textContainerInset.width + 5
+            ),
+            placeholderLabel.topAnchor.constraint(
+                equalTo: contentView.topAnchor,
+                constant: textView.textContainerInset.height
+            ),
+        ])
+        updatePlaceholder()
+    }
+
+    private func updateEditability() {
+        textView.isEditable = isEditorEnabled && !isReadOnly
+        textView.isSelectable = isEditorEnabled
+    }
+
+    private func updateAfterTextChange() {
+        updatePlaceholder()
+        updateIntrinsicHeight()
+    }
+
+    private func updatePlaceholder() {
+        placeholderLabel.isHidden = !textView.string.isEmpty || placeholder.isEmpty
+    }
+
+    private func updateIntrinsicHeight() {
+        invalidateIntrinsicContentSize()
+        needsLayout = true
     }
 }
 

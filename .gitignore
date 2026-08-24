@@ -3,3 +3,4 @@
 /platform/apple/.build/
 /platform/flutter/.dart_tool/
 /platform/flutter/build/
+/platform/web/dist/

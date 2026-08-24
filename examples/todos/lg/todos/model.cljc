@@ -4,6 +4,7 @@
   (record todo-model
     (model-items [])
     (model-draft "")
+    (model-notes "")
     (model-next-id 0)))
 
 (defn toggle-one [current id]
@@ -39,6 +40,14 @@
     (record todo-model
       (model-items (:model-items model))
       (model-draft text)
+      (model-notes (:model-notes model))
+      (model-next-id (:model-next-id model)))
+
+    (ChangeNotes text)
+    (record todo-model
+      (model-items (:model-items model))
+      (model-draft (:model-draft model))
+      (model-notes text)
       (model-next-id (:model-next-id model)))
 
     AddTodo
@@ -46,6 +55,7 @@
       (record todo-model
         (model-items (:model-items model))
         (model-draft (:model-draft model))
+        (model-notes (:model-notes model))
         (model-next-id (:model-next-id model)))
       (let [id (inc (:model-next-id model))
             item
@@ -56,22 +66,26 @@
         (record todo-model
           (model-items (conj (:model-items model) item))
           (model-draft "")
+          (model-notes (:model-notes model))
           (model-next-id id))))
 
     (ToggleTodo id)
     (record todo-model
       (model-items (toggle-items (:model-items model) id))
       (model-draft (:model-draft model))
+      (model-notes (:model-notes model))
       (model-next-id (:model-next-id model)))
 
     (MoveTodoUp id)
     (record todo-model
       (model-items (move-item-up (:model-items model) id))
       (model-draft (:model-draft model))
+      (model-notes (:model-notes model))
       (model-next-id (:model-next-id model)))
 
     (DeleteTodo id)
     (record todo-model
       (model-items (remove-item (:model-items model) id))
       (model-draft (:model-draft model))
+      (model-notes (:model-notes model))
       (model-next-id (:model-next-id model)))))

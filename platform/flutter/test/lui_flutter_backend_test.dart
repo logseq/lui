@@ -122,6 +122,49 @@ void main() {
     );
     semantics.dispose();
   });
+
+  testWidgets('maps text-area sizing to one retained native TextField', (
+    tester,
+  ) async {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"text-area"},
+        {"op":"set-prop","id":1,"property":"text","value":"One line"},
+        {"op":"set-prop","id":1,"property":"min-lines","value":2},
+        {"op":"set-prop","id":1,"property":"max-lines","value":5},
+        {"op":"set-prop","id":1,"property":"placeholder","value":"Notes"}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    final editable = tester.state<EditableTextState>(find.byType(EditableText));
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+
+    expect(field.minLines, 2);
+    expect(field.maxLines, 5);
+    expect(field.keyboardType, TextInputType.multiline);
+    expect(field.decoration?.hintText, 'Notes');
+    expect(editable.widget.focusNode.hasFocus, isTrue);
+
+    backend.applyJson(r'''
+    {"generation":2,"ops":[
+      {"op":"set-prop","id":1,"property":"text","value":"One\nTwo\nThree"}
+    ]}
+    ''');
+    await tester.pump();
+
+    expect(
+      tester.state<EditableTextState>(find.byType(EditableText)),
+      same(editable),
+    );
+    expect(editable.widget.focusNode.hasFocus, isTrue);
+  });
 }
 
 const _initialBatch = '''
