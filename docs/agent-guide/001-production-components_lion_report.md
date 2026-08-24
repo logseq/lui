@@ -45,9 +45,11 @@ measurements, not published guarantees.
 | `lion-combobox` and `lion-option` | 196.9 KB | 53.8 KB |
 | Input, dialog and combobox together | 200.6 KB | 54.5 KB |
 
-The shared total is reasonable for complex controls, but a Lion input alone is
-not competitive with a native HTML input. Tier 1 remains native HTML and Lion
-is loaded only for complex behavior that the browser does not provide.
+The shared total is reasonable when Lion is the standard Web control provider.
+The application pays more than for an isolated native HTML input, but
+component-level imports and a shared production chunk prevent every control
+from duplicating the runtime. This is an explicit consistency and behavior
+tradeoff, not a reason to maintain two default control implementations.
 
 ## Browser behavior
 
@@ -75,15 +77,21 @@ expose the newer state-preserving `moveBefore` API.
 
 Proceed with a provider boundary, not a hard-coded Lion backend:
 
-1. Keep native HTML for Tier 1 primitives and controls.
+1. Keep native HTML for layout, content, scrolling and fallback primitives;
+   use Lion as the default provider for matching interactive controls.
 2. Fix Web keyed movement so focus is captured and restored when the platform
    lacks state-preserving DOM movement.
 3. Define an opaque Web Component adapter for tag creation, property mapping,
    slots, events, readiness and capability reporting.
-4. Prove the adapter with Lion combobox and dialog before adding more controls.
+4. Prove the adapter first with Lion input, textarea, combobox and dialog.
 5. Import provider components individually and measure the production bundle.
 6. Keep Web Awesome, Spectrum and UI5 as optional providers behind the same
    semantic contract.
+
+Lion is installed through the `@lion/ui` npm package. Provider entry points
+import registrations individually, for example
+`@lion/ui/define/lion-textarea.js`, so an application includes only the
+components it uses plus their shared dependencies.
 
 Lion's internal Lit tree owns only the implementation of one opaque custom
 element. LG remains the application state owner, and LUI remains responsible

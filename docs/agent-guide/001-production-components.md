@@ -9,17 +9,18 @@ drop into platform code. Components use the retained incremental runtime and
 share one LG state and behavior model across platforms. Platform backends
 render native controls and may apply scoped platform tweaks.
 
-The Web backend uses real DOM and browser controls. It does not depend on
-React or a virtual DOM.
+The Web backend uses real DOM with Lion as its default interactive component
+provider. It does not depend on React or a virtual DOM.
 
 ## Product principles
 
 - **Native behavior first.** Use native text editing, scrolling, focus,
   accessibility and platform presentation rather than imitating them.
-- **Native controls by default.** Flutter uses Material or Cupertino widgets,
-  UIKit and AppKit use system views and controls, and SwiftUI integration uses
-  system views. Custom drawing is reserved for semantics the platform does not
-  provide or for composed styling around native behavior.
+- **Established controls by default.** Web uses Lion custom elements, Flutter
+  uses Material or Cupertino widgets, UIKit and AppKit use system views and
+  controls, and SwiftUI integration uses system views. Custom drawing is
+  reserved for semantics the selected provider does not supply or for composed
+  styling around native behavior.
 - **Useful by default, replaceable by design.** Components ship with a quiet,
   coherent visual theme, while behavior and visual parts remain separable.
 - **One semantic contract.** A component may look platform-native without
@@ -115,11 +116,12 @@ sum; no arbitrary JSON or dynamic property bag is introduced.
 Events are validated against node kind before entering the Signal scheduler.
 
 Text uses intrinsic content measurement by default and updates its measured
-size when content, typography or available width changes. TextArea supports an
-explicit `auto-resize` policy that grows with its content while respecting
-minimum and maximum height or line constraints. Auto-resize uses each
-platform's native text measurement and must preserve selection, composition,
-scroll position and retained control identity.
+size when content, typography or available width changes. TextArea grows with
+content while respecting minimum and maximum line constraints when its selected
+provider supports that behavior. LUI maps the semantic constraints to Lion,
+Flutter, UIKit or AppKit; it does not implement a parallel text measurement or
+sizing engine. The provider must preserve selection, composition, scroll
+position and retained control identity.
 Focus, key activation, value changes, selection changes and dismissal use typed
 events. Backends reject invalid property/value and parent/child combinations
 transactionally.
@@ -187,20 +189,20 @@ Every interactive component must define and verify:
 - retained identity across property patches, keyed moves and parent rebuilds;
 - lifecycle cleanup for handlers, overlays, controllers and native resources.
 
-Web behavior follows WAI-ARIA patterns while preferring native HTML semantics.
-Apple backends use AppKit/UIKit controls and accessibility APIs. Flutter uses
-Material/Cupertino-capable widgets and semantics without rebuilding unrelated
-retained nodes.
+Web behavior is delegated to Lion where a matching component exists, with LUI
+verifying the resulting WAI-ARIA behavior. Apple backends use AppKit/UIKit
+controls and accessibility APIs. Flutter uses Material/Cupertino-capable
+widgets and semantics without rebuilding unrelated retained nodes.
 
 ## Backend mapping
 
 | Semantic need | Web | AppKit | UIKit | Flutter |
 | --- | --- | --- | --- | --- |
-| Text input | `input` / `textarea` | `NSTextField` / `NSTextView` | `UITextField` / `UITextView` | `TextField` |
-| Toggle | `input[type=checkbox]` | `NSButton` | `UISwitch` / `UIButton` | `Checkbox` / `Switch` |
-| Selection | native control where suitable | `NSPopUpButton` | `UIMenu` / picker presentation | Material/Cupertino picker |
+| Text input | `lion-input` / `lion-textarea` | `NSTextField` / `NSTextView` | `UITextField` / `UITextView` | Material/Cupertino `TextField` |
+| Toggle | `lion-checkbox` / `lion-switch` | `NSButton` | `UISwitch` / `UIButton` | Material/Cupertino `Checkbox` / `Switch` |
+| Selection | `lion-select` / `lion-select-rich` | `NSPopUpButton` | `UIMenu` / picker presentation | Material/Cupertino picker |
 | Scroll/list | native scroll element | `NSScrollView` | `UIScrollView` / collection view | scroll and sliver widgets |
-| Overlay | top-layer or positioned portal | panel/popover/window APIs | presentation/popover APIs | Overlay/Navigator |
+| Overlay | `lion-dialog` and overlay system | panel/popover/window APIs | presentation/popover APIs | `Overlay` / `Navigator` |
 
 SwiftUI integration embeds the retained UIKit root. SwiftUI is a host surface,
 not a second state or component implementation.
@@ -210,13 +212,14 @@ not a second state or component implementation.
 The Web backend does not reimplement a full component library. It uses three
 layers:
 
-1. Native HTML elements provide layout, text, links, buttons, basic form
-   controls, scrolling, tables and other semantics already built into the
-   browser.
-2. [Lion](https://lion.js.org/) is the default behavior foundation for complex
-   form controls, selection, validation and overlays. LUI creates its custom
-   elements directly and adapts semantic properties, slots and events; Lion's
-   internal Lit rendering remains opaque to the LUI retained tree.
+1. Native HTML elements provide retained layout, text, image, scrolling and
+   other non-control primitives.
+2. [Lion](https://lion.js.org/) is the default provider for interactive
+   controls, including buttons, text fields, text areas, toggles, selection,
+   validation and overlays wherever Lion has a matching component. LUI creates
+   its custom elements directly and adapts semantic properties, slots and
+   events; Lion's internal Lit rendering remains opaque to the LUI retained
+   tree. Native form controls are a fallback, not the default component layer.
 3. Provider adapters may map the same semantic nodes to
    [Web Awesome](https://webawesome.com/) or
    [Spectrum Web Components](https://opensource.adobe.com/spectrum-web-components/)
@@ -231,9 +234,13 @@ but intentionally expresses Adobe's design language. UI5 Web Components remain
 a possible enterprise provider rather than a core dependency because they are
 optimized around the Fiori system.
 
-Before Lion becomes a dependency, a Web spike must prove direct retained
-updates, event delivery, focus retention, keyed movement, styling through LUI
-tokens and per-component ES module imports for input, combobox and dialog.
+Lion is consumed from the `@lion/ui` npm package through per-component ES
+module imports. The provider package owns registration and mapping so the
+shared protocol and Web retained tree do not import Lion directly. The spike
+has already proved direct retained updates, event delivery, focus behavior,
+keyed movement requirements and component-level imports for input, combobox
+and dialog; its measurements and limitations are recorded in the companion
+report.
 
 ## Delivery order
 
