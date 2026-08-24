@@ -82,6 +82,74 @@ final class LUINodeModel: Identifiable {
         }
     }
 
+    var iconExtent: Int {
+        switch properties[.size]?.stringValue ?? "default" {
+        case "sm": 16
+        case "lg": 24
+        default: 18
+        }
+    }
+
+    var iconWidth: Int { surfaceWidth ?? iconExtent }
+    var iconHeight: Int { surfaceHeight ?? iconExtent }
+
+    var iconSystemName: String {
+        switch properties[.name]?.stringValue ?? "" {
+        case "alert": "exclamationmark.triangle"
+        case "archive": "archivebox"
+        case "arrow-down": "arrow.down"
+        case "arrow-right": "arrow.right"
+        case "arrow-up": "arrow.up"
+        case "check": "checkmark"
+        case "check-circle": "checkmark.circle"
+        case "chevron-down": "chevron.down"
+        case "chevron-left": "chevron.left"
+        case "chevron-right": "chevron.right"
+        case "chevron-up": "chevron.up"
+        case "circle-dot": "circle.circle"
+        case "clock": "clock"
+        case "copy": "doc.on.doc"
+        case "download": "arrow.down.to.line"
+        case "edit": "pencil"
+        case "ellipsis": "ellipsis"
+        case "external-link": "arrow.up.right.square"
+        case "eye": "eye"
+        case "file-text": "doc.text"
+        case "folder": "folder"
+        case "folder-open": "folder.fill"
+        case "git-branch": "arrow.triangle.branch"
+        case "git-merge": "arrow.triangle.merge"
+        case "git-pull-request": "arrow.triangle.pull"
+        case "info": "info.circle"
+        case "menu": "line.3.horizontal"
+        case "mic": "mic"
+        case "moon": "moon"
+        case "music": "music.note"
+        case "panel-left": "sidebar.left"
+        case "panel-right": "sidebar.right"
+        case "pause": "pause"
+        case "play": "play"
+        case "plus": "plus"
+        case "refresh-cw": "arrow.clockwise"
+        case "repeat": "repeat"
+        case "save": "square.and.arrow.down"
+        case "search": "magnifyingglass"
+        case "send": "paperplane"
+        case "settings": "gearshape"
+        case "shuffle": "shuffle"
+        case "skip-back": "backward.end"
+        case "skip-forward": "forward.end"
+        case "sun": "sun.max"
+        case "terminal": "terminal"
+        case "trash": "trash"
+        case "volume": "speaker.wave.2"
+        case "wrench": "wrench"
+        case "x": "xmark"
+        case "x-circle": "xmark.circle"
+        default: "questionmark.square.dashed"
+        }
+    }
+
     var progressFraction: Double {
         let minimum = properties[.minValue]?.intValue ?? 0
         let maximum = properties[.maxValue]?.intValue ?? 100

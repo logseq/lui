@@ -170,6 +170,7 @@ create a second component language and are therefore not retained.
 | stack/panel/card | CSS overlay/surface | SwiftUI overlay/ZStack | `Stack`/Material surface |
 | scroll | CSS scrolling overlay box | `ScrollView` + `ZStack` | `SingleChildScrollView` + `Stack` |
 | spinner | semantic CSS activity glyph | indeterminate `ProgressView` | `CircularProgressIndicator` |
+| icon | bundled SVG CSS mask | SF Symbols `Image` | Material `Icon` |
 | grid | CSS grid | `LazyVGrid` | `GridView` |
 | controls | native HTML first | SwiftUI controls | Flutter widgets |
 | modal/menu | browser platform API when suitable | SwiftUI presentation | Flutter presentation APIs |

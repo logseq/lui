@@ -2,7 +2,7 @@
   "name": "@lui/web",
   "private": true,
   "scripts": {
-    "build": "tailwindcss -i src/lui.css -o dist/lui.css --minify",
+    "build": "tailwindcss -i src/lui.css -o dist/lui.css --minify && mkdir -p dist/icons && cp src/icons/* dist/icons/",
     "test": "node --test test/*.test.mjs",
     "check": "npm run build && npm test"
   },

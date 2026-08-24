@@ -232,6 +232,45 @@ struct LUISwiftUIBackendTests {
         #expect(spinner.spinnerExtent == 24)
     }
 
+    @Test("maps Icon names to SF Symbols without replacing its model")
+    func mapsIcon() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"icon"},
+          {"op":"set-prop","id":1,"property":"name","value":"search"},
+          {"op":"set-prop","id":1,"property":"size","value":"sm"},
+          {"op":"set-prop","id":1,"property":"foreground","value":"primary"}
+        ]}
+        """)
+
+        let icon = try #require(backend.model(id: 1))
+        let revision = icon.revision
+        #expect(icon.kind == .icon)
+        #expect(icon.iconSystemName == "magnifyingglass")
+        #expect(icon.iconExtent == 16)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"name","value":"trash"}
+        ]}
+        """)
+        #expect(backend.model(id: 1) === icon)
+        #expect(icon.iconSystemName == "trash")
+        #expect(icon.revision == revision + 1)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":3,"ops":[
+              {"op":"set-prop","id":1,"property":"name","value":"unknown"}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 2)
+        #expect(icon.iconSystemName == "trash")
+    }
+
     @Test("maps Separator orientation without replacing its SwiftUI model")
     func mapsSeparatorOrientation() throws {
         let backend = LUIAppleBackend()

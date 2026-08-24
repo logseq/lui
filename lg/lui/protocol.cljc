@@ -56,6 +56,22 @@
    (= value "lg")
    (= value "icon")))
 
+(defn icon-name-supported? [value]
+  (match value
+    "alert" true "archive" true "arrow-down" true "arrow-right" true
+    "arrow-up" true "check" true "check-circle" true "chevron-down" true
+    "chevron-left" true "chevron-right" true "chevron-up" true
+    "circle-dot" true "clock" true "copy" true "download" true "edit" true
+    "ellipsis" true "external-link" true "eye" true "file-text" true
+    "folder" true "folder-open" true "git-branch" true "git-merge" true
+    "git-pull-request" true "info" true "menu" true "mic" true "moon" true
+    "music" true "panel-left" true "panel-right" true "pause" true
+    "play" true "plus" true "refresh-cw" true "repeat" true "save" true
+    "search" true "send" true "settings" true "shuffle" true
+    "skip-back" true "skip-forward" true "sun" true "terminal" true
+    "trash" true "volume" true "wrench" true "x" true "x-circle" true
+    _ false))
+
 (defn main-alignment-supported? [value]
   (or
    (= value "start")
@@ -93,6 +109,7 @@
       TextArea true
       Checkbox true
       Spinner true
+      Icon true
       _ false)
     BorderColorValue true
     BorderWidth true
@@ -129,7 +146,8 @@
     MinValue (= kind ProgressControl)
     MaxValue (= kind ProgressControl)
     OrientationValue (= kind Divider)
-    SizeValue (= kind Spinner)
+    SizeValue (or (= kind Spinner) (= kind Icon))
+    IconName (= kind Icon)
     TextValue
     (match kind
       Text true
@@ -203,6 +221,8 @@
     (orientation-supported? value)
     (tuple SizeValue (StringValue value))
     (control-size-supported? value)
+    (tuple IconName (StringValue value))
+    (icon-name-supported? value)
     _ false))
 
 (defn int-property [properties property fallback]
@@ -232,6 +252,11 @@
 (defn node-properties-supported? [kind properties]
   (and
    (surface-size-supported? properties)
+   (if (= kind Icon)
+     (if-some [name (clojure.core/get properties IconName)]
+       (property-value-supported? IconName name)
+       false)
+     true)
    (if (= kind ProgressControl)
      (< (int-property properties MinValue 0)
         (int-property properties MaxValue 100))

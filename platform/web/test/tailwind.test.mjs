@@ -137,3 +137,15 @@ test("the production stylesheet contains the Vercel Native Spinner contract", as
     /@media \(prefers-reduced-motion:reduce\)\{[^{}]*\.lui-spinner[^{}]*\{[^}]*animation:none/,
   )
 })
+
+test("the production stylesheet contains the Vercel Native Icon contract", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-icon\{[^}]*width:18px/)
+  assert.match(css, /\.lui-icon\{[^}]*background-color:currentColor/)
+  assert.match(css, /\.lui-icon\[data-size=sm\]\{[^}]*width:calc\(var\(--spacing\)\*4\)/)
+  assert.match(css, /\.lui-icon\[data-size=lg\]\{[^}]*width:calc\(var\(--spacing\)\*6\)/)
+  for (const name of ["search", "trash", "git-pull-request"]) {
+    assert.match(css, new RegExp(`\\.lui-icon\\[data-name=${name}\\]\\{[^}]*--lui-icon-image:`))
+  }
+})

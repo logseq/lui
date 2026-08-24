@@ -89,7 +89,117 @@ enum _NodeKind {
   list,
   spacer,
   spinner,
+  icon,
 }
+
+const _iconNames = <String>{
+  'alert',
+  'archive',
+  'arrow-down',
+  'arrow-right',
+  'arrow-up',
+  'check',
+  'check-circle',
+  'chevron-down',
+  'chevron-left',
+  'chevron-right',
+  'chevron-up',
+  'circle-dot',
+  'clock',
+  'copy',
+  'download',
+  'edit',
+  'ellipsis',
+  'external-link',
+  'eye',
+  'file-text',
+  'folder',
+  'folder-open',
+  'git-branch',
+  'git-merge',
+  'git-pull-request',
+  'info',
+  'menu',
+  'mic',
+  'moon',
+  'music',
+  'panel-left',
+  'panel-right',
+  'pause',
+  'play',
+  'plus',
+  'refresh-cw',
+  'repeat',
+  'save',
+  'search',
+  'send',
+  'settings',
+  'shuffle',
+  'skip-back',
+  'skip-forward',
+  'sun',
+  'terminal',
+  'trash',
+  'volume',
+  'wrench',
+  'x',
+  'x-circle',
+};
+
+IconData _materialIcon(String name) => switch (name) {
+  'alert' => Icons.warning_amber,
+  'archive' => Icons.archive_outlined,
+  'arrow-down' => Icons.arrow_downward,
+  'arrow-right' => Icons.arrow_forward,
+  'arrow-up' => Icons.arrow_upward,
+  'check' => Icons.check,
+  'check-circle' => Icons.check_circle_outline,
+  'chevron-down' => Icons.keyboard_arrow_down,
+  'chevron-left' => Icons.chevron_left,
+  'chevron-right' => Icons.chevron_right,
+  'chevron-up' => Icons.keyboard_arrow_up,
+  'circle-dot' => Icons.radio_button_checked,
+  'clock' => Icons.schedule,
+  'copy' => Icons.content_copy,
+  'download' => Icons.download,
+  'edit' => Icons.edit_outlined,
+  'ellipsis' => Icons.more_horiz,
+  'external-link' => Icons.open_in_new,
+  'eye' => Icons.visibility_outlined,
+  'file-text' => Icons.description_outlined,
+  'folder' => Icons.folder_outlined,
+  'folder-open' => Icons.folder_open,
+  'git-branch' => Icons.account_tree_outlined,
+  'git-merge' => Icons.merge,
+  'git-pull-request' => Icons.call_merge,
+  'info' => Icons.info_outline,
+  'menu' => Icons.menu,
+  'mic' => Icons.mic_none,
+  'moon' => Icons.dark_mode_outlined,
+  'music' => Icons.music_note,
+  'panel-left' => Icons.view_sidebar_outlined,
+  'panel-right' => Icons.view_sidebar,
+  'pause' => Icons.pause,
+  'play' => Icons.play_arrow,
+  'plus' => Icons.add,
+  'refresh-cw' => Icons.refresh,
+  'repeat' => Icons.repeat,
+  'save' => Icons.save_outlined,
+  'search' => Icons.search,
+  'send' => Icons.send_outlined,
+  'settings' => Icons.settings_outlined,
+  'shuffle' => Icons.shuffle,
+  'skip-back' => Icons.skip_previous,
+  'skip-forward' => Icons.skip_next,
+  'sun' => Icons.light_mode_outlined,
+  'terminal' => Icons.terminal,
+  'trash' => Icons.delete_outline,
+  'volume' => Icons.volume_up_outlined,
+  'wrench' => Icons.build_outlined,
+  'x' => Icons.close,
+  'x-circle' => Icons.cancel_outlined,
+  _ => Icons.question_mark,
+};
 
 final class _NodeState {
   _NodeState(this.kind);
@@ -284,6 +394,12 @@ final class LUIFlutterBackend {
       'lg' => 24.0,
       _ => 20.0,
     };
+    final iconExtent = switch (state.properties['size'] as String? ??
+        'default') {
+      'sm' => 16.0,
+      'lg' => 24.0,
+      _ => 18.0,
+    };
     Widget textControl({required bool multiline}) => SizedBox(
       width: 240,
       child: Semantics(
@@ -446,6 +562,11 @@ final class LUIFlutterBackend {
       _NodeKind.spinner => SizedBox.square(
         dimension: spinnerExtent,
         child: CircularProgressIndicator(strokeWidth: 2, color: foreground),
+      ),
+      _NodeKind.icon => Icon(
+        _materialIcon(state.properties['name'] as String? ?? ''),
+        size: iconExtent,
+        color: foreground,
       ),
     };
 
@@ -654,7 +775,9 @@ final class LUIFlutterBackend {
       'size' =>
         value is String &&
             _controlSizes.contains(value) &&
-            kind == _NodeKind.spinner,
+            (kind == _NodeKind.spinner || kind == _NodeKind.icon),
+      'name' =>
+        value is String && _iconNames.contains(value) && kind == _NodeKind.icon,
       'gap' =>
         value is int &&
             value >= 0 &&
@@ -681,7 +804,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.textInput ||
                 kind == _NodeKind.textArea ||
                 kind == _NodeKind.checkbox ||
-                kind == _NodeKind.spinner),
+                kind == _NodeKind.spinner ||
+                kind == _NodeKind.icon),
       'border-color' => value is String,
       'border-width' => value is int && value >= 0,
       'corner-radius' => value is int && value >= 0,
@@ -764,6 +888,10 @@ final class LUIFlutterBackend {
           );
         }
       }
+      if (state.kind == _NodeKind.icon &&
+          !state.properties.containsKey('name')) {
+        throw const LUIBackendException('icon requires name');
+      }
     }
   }
 
@@ -844,6 +972,7 @@ final class LUIFlutterBackend {
     'list' => _NodeKind.list,
     'spacer' => _NodeKind.spacer,
     'spinner' => _NodeKind.spinner,
+    'icon' => _NodeKind.icon,
     _ => throw const LUIBackendException('unknown node kind'),
   };
 

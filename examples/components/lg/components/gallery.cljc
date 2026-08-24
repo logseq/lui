@@ -135,6 +135,19 @@
     [:spinner {:size "lg"}]
     [:spinner {:size "icon"}]]])
 
+(defui icon-gallery []
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Icon"]
+   [:paragraph "Common actions, navigation, status, files, and media"]
+   [:row {:gap 16 :cross "center"}
+    [:icon {:name "search" :size "sm"}]
+    [:icon {:name "check-circle"}]
+    [:icon {:name "git-pull-request"}]
+    [:icon {:name "folder-open"}]
+    [:icon {:name "play"}]
+    [:icon {:name "settings"}]
+    [:icon {:name "trash" :size "lg" :foreground "destructive"}]]])
+
 (defui text-field-gallery
   [value-source invalid-source disabled-source update-value toggle-invalid]
   [:column {:gap 24 :padding 32}
@@ -209,6 +222,7 @@
    [separator-gallery]
    [skeleton-gallery]
    [spinner-gallery]
+   [icon-gallery]
    [progress-gallery progress-source progress-label-source advance-progress]
    [surface-gallery card-copy]
    [collection-gallery]

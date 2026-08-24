@@ -152,6 +152,10 @@ Delivered parity slices:
   on Web, SwiftUI, and Flutter;
 - direct retained `spinner` progress leaves with the reference 16/20/24 size
   rungs, native SwiftUI/Flutter indicators, and a reduced-motion Web renderer;
+- direct retained `icon` leaves with the 51-name Vercel Native built-in
+  vocabulary, 16/18/24 sizing, shared foreground tint, CSS-mask SVGs on Web,
+  SF Symbols on SwiftUI, and Material Icons on Flutter; application-registered
+  `app:` names remain a later extension;
 - stacking containers reject `gap`; `card` supplies the reference 24-point
   default content padding while explicit `padding` overrides it.
 

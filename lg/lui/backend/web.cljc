@@ -5,7 +5,7 @@
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button
                      TextInput TextArea Checkbox SwitchControl
-                     Scroll ListContainer Spacer Spinner
+                     Scroll ListContainer Spacer Spinner Icon
                      ProgressControl Divider
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild TextValue Enabled Gap MainAlignment
@@ -18,7 +18,7 @@
                      AccessibilityLabel StyleClass HeadingLevel LabelledBy
                      DescribedBy ErrorMessageBy InputType Invalid
                      Checked Indeterminate
-                     ProgressValue MinValue MaxValue OrientationValue SizeValue
+                     ProgressValue MinValue MaxValue OrientationValue SizeValue IconName
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
 
@@ -55,7 +55,8 @@
     Scroll "lui-scroll"
     ListContainer "lui-list"
     Spacer "lui-spacer"
-    Spinner "lui-spinner"))
+    Spinner "lui-spinner"
+    Icon "lui-icon"))
 
 (defn- platform-node [renderer kind]
   (let [tag
@@ -460,6 +461,9 @@
 
     (tuple SizeValue (StringValue size))
     (Webapi.Dom.Element.setAttribute "data-size" size dom-node)
+
+    (tuple IconName (StringValue name))
+    (Webapi.Dom.Element.setAttribute "data-name" name dom-node)
 
     (tuple MinLines (IntValue lines))
     (do

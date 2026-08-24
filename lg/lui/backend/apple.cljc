@@ -2,7 +2,7 @@
   (:require [lui.protocol :as proto
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button
-                     TextInput TextArea Scroll ListContainer Spacer Spinner
+                     TextInput TextArea Scroll ListContainer Spacer Spinner Icon
                      Checkbox SwitchControl
                      ProgressControl Divider]]
             [lui.backend.retained :as retained]
@@ -41,7 +41,8 @@
     Scroll AppleScrollView
     ListContainer AppleList
     Spacer AppleSpacer
-    Spinner AppleSpinner))
+    Spinner AppleSpinner
+    Icon AppleIcon))
 
 (defn backend-for [renderer operating-system host]
   (record proto/backend

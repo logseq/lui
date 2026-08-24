@@ -645,6 +645,57 @@ void main() {
     expect(backend.generation, 0);
   });
 
+  testWidgets('maps Icon names to Material icons incrementally', (
+    tester,
+  ) async {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"icon"},
+        {"op":"set-prop","id":1,"property":"name","value":"search"},
+        {"op":"set-prop","id":1,"property":"size","value":"sm"},
+        {"op":"set-prop","id":1,"property":"foreground","value":"red"}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    final originalNode = tester.renderObject(
+      find.byKey(LUIFlutterBackend.nodeKey(1)),
+    );
+    expect(tester.widget<Icon>(find.byType(Icon)).icon, Icons.search);
+    expect(tester.widget<Icon>(find.byType(Icon)).size, 16);
+    expect(tester.widget<Icon>(find.byType(Icon)).color, Colors.red);
+
+    backend.applyJson('''
+    {"generation":2,"ops":[
+      {"op":"set-prop","id":1,"property":"name","value":"trash"}
+    ]}
+    ''');
+    await tester.pump();
+    expect(
+      tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(1))),
+      same(originalNode),
+    );
+    expect(tester.widget<Icon>(find.byType(Icon)).icon, Icons.delete_outline);
+  });
+
+  test('rejects unsupported Icon names atomically', () {
+    final backend = LUIFlutterBackend();
+    expect(
+      () => backend.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"icon"},
+        {"op":"set-prop","id":1,"property":"name","value":"unknown"}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.containsNode(1), isFalse);
+    expect(backend.generation, 0);
+  });
+
   test('rejects an empty progress range atomically', () {
     final backend = LUIFlutterBackend();
 

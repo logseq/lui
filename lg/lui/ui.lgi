@@ -22,6 +22,7 @@
 (signature lui.ui/list! :fn<ui-context;int>)
 (signature lui.ui/spacer! :fn<ui-context;int>)
 (signature lui.ui/spinner! :fn<ui-context;int>)
+(signature lui.ui/icon! :fn<ui-context;string;int>)
 (signature lui.ui/text! :fn<ui-context;string;int>)
 (signature lui.ui/heading! :fn<ui-context;int;string;int>)
 (signature lui.ui/heading-value!

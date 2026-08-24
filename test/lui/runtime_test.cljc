@@ -479,6 +479,47 @@
            (runtime/insert-child! application spinner child 0))
           "runtime rejects children on Spinner before enqueue"))))
 
+(deftest icon-uses-a-closed-leaf-contract
+  (let [batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Icon)
+                (proto/set-prop-op
+                 1 proto/IconName (proto/StringValue "search"))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"icon\"},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"name\",\"value\":\"search\"}]}")
+     (wire/encode-batch batch)
+     "Icon and name use pinned closed wire names")
+    (doseq
+        [name
+         ["alert" "archive" "arrow-down" "arrow-right" "arrow-up"
+          "check" "check-circle" "chevron-down" "chevron-left" "chevron-right"
+          "chevron-up" "circle-dot" "clock" "copy" "download" "edit"
+          "ellipsis" "external-link" "eye" "file-text" "folder" "folder-open"
+          "git-branch" "git-merge" "git-pull-request" "info" "menu" "mic"
+          "moon" "music" "panel-left" "panel-right" "pause" "play" "plus"
+          "refresh-cw" "repeat" "save" "search" "send" "settings" "shuffle"
+          "skip-back" "skip-forward" "sun" "terminal" "trash" "volume"
+          "wrench" "x" "x-circle"]]
+      (is (proto/property-value-supported?
+           proto/IconName (proto/StringValue name))
+          "every Vercel Native built-in icon name is accepted"))
+    (doseq [name ["" "unknown" "app:logo"]]
+      (is (not (proto/property-value-supported?
+                proto/IconName (proto/StringValue name)))
+          "unknown and unregistered app icons are rejected"))
+    (is (proto/property-supported? proto/Icon proto/IconName)
+        "name belongs to Icon")
+    (is (proto/property-supported? proto/Icon proto/SizeValue)
+        "size belongs to Icon")
+    (is (proto/property-supported? proto/Icon proto/ForegroundValue)
+        "foreground belongs to Icon")
+    (is (not (proto/can-contain-children? proto/Icon)) "Icon is a leaf")))
+
 (deftest form-controls-retain-typed-accessibility-relationships
   (let [renderer (apple/create)
         application

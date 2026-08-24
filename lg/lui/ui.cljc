@@ -57,6 +57,12 @@
 (defn spinner! [context]
   (runtime/create-node! (:ui-application context) proto/Spinner))
 
+(defn icon! [context name]
+  (let [node (runtime/create-node! (:ui-application context) proto/Icon)]
+    (runtime/set-prop!
+     (:ui-application context) node proto/IconName (proto/StringValue name))
+    node))
+
 (defn text! [context text]
   (let [node (runtime/create-node! (:ui-application context) proto/Text)]
     (runtime/set-prop!

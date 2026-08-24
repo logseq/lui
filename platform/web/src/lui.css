@@ -356,6 +356,73 @@
     @apply size-5;
   }
 
+  .lui-icon {
+    @apply size-[18px] shrink-0 bg-current;
+    mask-image: var(--lui-icon-image);
+    mask-position: center;
+    mask-repeat: no-repeat;
+    mask-size: contain;
+    -webkit-mask-image: var(--lui-icon-image);
+    -webkit-mask-position: center;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-size: contain;
+  }
+
+  .lui-icon[data-size="sm"] { @apply size-4; }
+  .lui-icon[data-size="lg"] { @apply size-6; }
+  .lui-icon[data-size="icon"] { @apply size-[18px]; }
+  .lui-icon[data-name="alert"] { --lui-icon-image: url("./icons/alert.svg"); }
+  .lui-icon[data-name="archive"] { --lui-icon-image: url("./icons/archive.svg"); }
+  .lui-icon[data-name="arrow-down"] { --lui-icon-image: url("./icons/arrow-down.svg"); }
+  .lui-icon[data-name="arrow-right"] { --lui-icon-image: url("./icons/arrow-right.svg"); }
+  .lui-icon[data-name="arrow-up"] { --lui-icon-image: url("./icons/arrow-up.svg"); }
+  .lui-icon[data-name="check"] { --lui-icon-image: url("./icons/check.svg"); }
+  .lui-icon[data-name="check-circle"] { --lui-icon-image: url("./icons/check-circle.svg"); }
+  .lui-icon[data-name="chevron-down"] { --lui-icon-image: url("./icons/chevron-down.svg"); }
+  .lui-icon[data-name="chevron-left"] { --lui-icon-image: url("./icons/chevron-left.svg"); }
+  .lui-icon[data-name="chevron-right"] { --lui-icon-image: url("./icons/chevron-right.svg"); }
+  .lui-icon[data-name="chevron-up"] { --lui-icon-image: url("./icons/chevron-up.svg"); }
+  .lui-icon[data-name="circle-dot"] { --lui-icon-image: url("./icons/circle-dot.svg"); }
+  .lui-icon[data-name="clock"] { --lui-icon-image: url("./icons/clock.svg"); }
+  .lui-icon[data-name="copy"] { --lui-icon-image: url("./icons/copy.svg"); }
+  .lui-icon[data-name="download"] { --lui-icon-image: url("./icons/download.svg"); }
+  .lui-icon[data-name="edit"] { --lui-icon-image: url("./icons/edit.svg"); }
+  .lui-icon[data-name="ellipsis"] { --lui-icon-image: url("./icons/ellipsis.svg"); }
+  .lui-icon[data-name="external-link"] { --lui-icon-image: url("./icons/external-link.svg"); }
+  .lui-icon[data-name="eye"] { --lui-icon-image: url("./icons/eye.svg"); }
+  .lui-icon[data-name="file-text"] { --lui-icon-image: url("./icons/file-text.svg"); }
+  .lui-icon[data-name="folder"] { --lui-icon-image: url("./icons/folder.svg"); }
+  .lui-icon[data-name="folder-open"] { --lui-icon-image: url("./icons/folder-open.svg"); }
+  .lui-icon[data-name="git-branch"] { --lui-icon-image: url("./icons/git-branch.svg"); }
+  .lui-icon[data-name="git-merge"] { --lui-icon-image: url("./icons/git-merge.svg"); }
+  .lui-icon[data-name="git-pull-request"] { --lui-icon-image: url("./icons/git-pull-request.svg"); }
+  .lui-icon[data-name="info"] { --lui-icon-image: url("./icons/info.svg"); }
+  .lui-icon[data-name="menu"] { --lui-icon-image: url("./icons/menu.svg"); }
+  .lui-icon[data-name="mic"] { --lui-icon-image: url("./icons/mic.svg"); }
+  .lui-icon[data-name="moon"] { --lui-icon-image: url("./icons/moon.svg"); }
+  .lui-icon[data-name="music"] { --lui-icon-image: url("./icons/music.svg"); }
+  .lui-icon[data-name="panel-left"] { --lui-icon-image: url("./icons/panel-left.svg"); }
+  .lui-icon[data-name="panel-right"] { --lui-icon-image: url("./icons/panel-right.svg"); }
+  .lui-icon[data-name="pause"] { --lui-icon-image: url("./icons/pause.svg"); }
+  .lui-icon[data-name="play"] { --lui-icon-image: url("./icons/play.svg"); }
+  .lui-icon[data-name="plus"] { --lui-icon-image: url("./icons/plus.svg"); }
+  .lui-icon[data-name="refresh-cw"] { --lui-icon-image: url("./icons/refresh-cw.svg"); }
+  .lui-icon[data-name="repeat"] { --lui-icon-image: url("./icons/repeat.svg"); }
+  .lui-icon[data-name="save"] { --lui-icon-image: url("./icons/save.svg"); }
+  .lui-icon[data-name="search"] { --lui-icon-image: url("./icons/search.svg"); }
+  .lui-icon[data-name="send"] { --lui-icon-image: url("./icons/send.svg"); }
+  .lui-icon[data-name="settings"] { --lui-icon-image: url("./icons/settings.svg"); }
+  .lui-icon[data-name="shuffle"] { --lui-icon-image: url("./icons/shuffle.svg"); }
+  .lui-icon[data-name="skip-back"] { --lui-icon-image: url("./icons/skip-back.svg"); }
+  .lui-icon[data-name="skip-forward"] { --lui-icon-image: url("./icons/skip-forward.svg"); }
+  .lui-icon[data-name="sun"] { --lui-icon-image: url("./icons/sun.svg"); }
+  .lui-icon[data-name="terminal"] { --lui-icon-image: url("./icons/terminal.svg"); }
+  .lui-icon[data-name="trash"] { --lui-icon-image: url("./icons/trash.svg"); }
+  .lui-icon[data-name="volume"] { --lui-icon-image: url("./icons/volume.svg"); }
+  .lui-icon[data-name="wrench"] { --lui-icon-image: url("./icons/wrench.svg"); }
+  .lui-icon[data-name="x"] { --lui-icon-image: url("./icons/x.svg"); }
+  .lui-icon[data-name="x-circle"] { --lui-icon-image: url("./icons/x-circle.svg"); }
+
   @media (prefers-reduced-motion: reduce) {
     .lui-skeleton {
       animation: none;

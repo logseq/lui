@@ -22,7 +22,8 @@
   (AppleScrollView)
   (AppleList)
   (AppleSpacer)
-  (AppleSpinner))
+  (AppleSpinner)
+  (AppleIcon))
 
 (type-record apple-renderer
   (apple-store :retained-store<apple-node>)

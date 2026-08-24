@@ -106,6 +106,14 @@ private struct LUINodeView: View {
                     width: CGFloat(model.spinnerWidth),
                     height: CGFloat(model.spinnerHeight)
                 )
+        case .icon:
+            Image(systemName: model.iconSystemName)
+                .resizable()
+                .scaledToFit()
+                .frame(
+                    width: CGFloat(model.iconWidth),
+                    height: CGFloat(model.iconHeight)
+                )
         }
     }
 

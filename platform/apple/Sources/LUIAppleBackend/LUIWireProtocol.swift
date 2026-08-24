@@ -17,7 +17,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case switchControl = "switch"
     case progress
     case divider
-    case scroll, list, spacer, spinner
+    case scroll, list, spacer, spinner, icon
 }
 
 enum LUIProperty: String, Decodable, Hashable {
@@ -50,6 +50,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case maxValue = "max-value"
     case orientation
     case size
+    case name
 }
 
 struct LUIPatchBatch: Decodable {
@@ -140,6 +141,8 @@ enum LUIWireValue: Decodable, Equatable {
             value == "horizontal" || value == "vertical"
         case let (.size, .string(value)):
             Self.controlSizes.contains(value)
+        case let (.name, .string(value)):
+            Self.iconNames.contains(value)
         case let (.main, .string(value)):
             Self.mainAlignments.contains(value)
         case let (.cross, .string(value)):
@@ -182,6 +185,18 @@ enum LUIWireValue: Decodable, Equatable {
 
     private static let controlSizes: Set<String> = [
         "default", "sm", "lg", "icon",
+    ]
+
+    private static let iconNames: Set<String> = [
+        "alert", "archive", "arrow-down", "arrow-right", "arrow-up",
+        "check", "check-circle", "chevron-down", "chevron-left", "chevron-right",
+        "chevron-up", "circle-dot", "clock", "copy", "download", "edit",
+        "ellipsis", "external-link", "eye", "file-text", "folder", "folder-open",
+        "git-branch", "git-merge", "git-pull-request", "info", "menu", "mic",
+        "moon", "music", "panel-left", "panel-right", "pause", "play", "plus",
+        "refresh-cw", "repeat", "save", "search", "send", "settings", "shuffle",
+        "skip-back", "skip-forward", "sun", "terminal", "trash", "volume",
+        "wrench", "x", "x-circle",
     ]
 }
 
@@ -297,7 +312,7 @@ struct LUIRetainedTree {
         case .foreground:
             kind == .text || kind == .heading || kind == .paragraph ||
                 kind == .label || kind == .button || kind == .textInput ||
-                kind == .textArea || kind == .checkbox || kind == .spinner
+                kind == .textArea || kind == .checkbox || kind == .spinner || kind == .icon
         case .text:
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
                 kind == .button || kind == .textInput || kind == .textArea
@@ -325,7 +340,8 @@ struct LUIRetainedTree {
         case .indeterminate: kind == .checkbox
         case .progressValue, .minValue, .maxValue: kind == .progress
         case .orientation: kind == .divider
-        case .size: kind == .spinner
+        case .size: kind == .spinner || kind == .icon
+        case .name: kind == .icon
         }
     }
 
@@ -359,6 +375,9 @@ struct LUIRetainedTree {
                 guard maximum > minimum else {
                     throw invalid("progress max-value must be greater than min-value")
                 }
+            }
+            if node.kind == .icon, node.properties[.name] == nil {
+                throw invalid("icon requires name")
             }
         }
     }

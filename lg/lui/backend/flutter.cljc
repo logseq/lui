@@ -2,7 +2,7 @@
   (:require [lui.protocol :as proto
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button
-                     TextInput TextArea Scroll ListContainer Spacer Spinner
+                     TextInput TextArea Scroll ListContainer Spacer Spinner Icon
                      Checkbox SwitchControl
                      ProgressControl Divider]]
             [lui.backend.retained :as retained]
@@ -41,7 +41,8 @@
     Scroll FlutterViewport
     ListContainer FlutterList
     Spacer FlutterSpacer
-    Spinner FlutterSpinner))
+    Spinner FlutterSpinner
+    Icon FlutterIcon))
 
 (defn backend-for [renderer operating-system]
   (record proto/backend

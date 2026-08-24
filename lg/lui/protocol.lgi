@@ -22,7 +22,8 @@
   (Scroll)
   (ListContainer)
   (Spacer)
-  (Spinner))
+  (Spinner)
+  (Icon))
 
 (type-variant operating-system
   (GenericOS)
@@ -83,7 +84,8 @@
   (MinValue)
   (MaxValue)
   (OrientationValue)
-  (SizeValue))
+  (SizeValue)
+  (IconName))
 
 (type-variant wire-value
   (StringValue :string)
@@ -120,6 +122,7 @@
 (signature lui.protocol/input-type-supported? :fn<string;bool>)
 (signature lui.protocol/orientation-supported? :fn<string;bool>)
 (signature lui.protocol/control-size-supported? :fn<string;bool>)
+(signature lui.protocol/icon-name-supported? :fn<string;bool>)
 (signature lui.protocol/main-alignment-supported? :fn<string;bool>)
 (signature lui.protocol/cross-alignment-supported? :fn<string;bool>)
 (signature lui.protocol/property-supported? :fn<node-kind;property;bool>)
