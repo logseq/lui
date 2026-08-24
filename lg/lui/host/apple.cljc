@@ -15,9 +15,11 @@
         (fn [kind]
           (fn [node]
             (fn [text]
-              (if (= kind 0)
-                (on-event (proto/Press node))
-                (on-event (proto/TextChanged node text))))))]
+              (cond
+                (= kind 0) (on-event (proto/Press node))
+                (= kind 1) (on-event (proto/TextChanged node text))
+                :else
+                (on-event (proto/ToggleChanged node (= text "true")))))))]
     (set-event-callback callback)
     (record apple-host
       (apple-apply-json apply-json)

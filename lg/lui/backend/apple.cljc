@@ -1,7 +1,8 @@
 (ns lui.backend.apple
   (:require [lui.protocol :as proto
              :refer [Row Column Box Text Heading Paragraph Label Button
-                     TextInput TextArea Scroll Spacer]]
+                     TextInput TextArea Scroll Spacer
+                     Checkbox SwitchControl]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -9,8 +10,8 @@
   ([] (create (fn [_batch] true)))
   ([send-batch]
    (record apple-renderer
-     (apple-store (retained/create-store))
-     (apple-send-batch send-batch))))
+           (apple-store (retained/create-store))
+           (apple-send-batch send-batch))))
 
 (defn create-wire [send-json]
   (create (fn [batch] (send-json (wire/encode-batch batch)))))
@@ -27,17 +28,19 @@
     Button AppleButton
     TextInput AppleTextInput
     TextArea AppleTextArea
+    Checkbox AppleCheckbox
+    SwitchControl AppleSwitch
     Scroll AppleScrollView
     Spacer AppleSpacer))
 
 (defn backend-for [renderer operating-system host]
   (record proto/backend
-    (backend-profile (proto/profile operating-system host))
-    (apply-batch
-     (fn [batch]
-       (retained/apply-batch-with!
-        (:apple-store renderer) platform-node
-        (:apple-send-batch renderer) batch)))))
+          (backend-profile (proto/profile operating-system host))
+          (apply-batch
+           (fn [batch]
+             (retained/apply-batch-with!
+              (:apple-store renderer) platform-node
+              (:apple-send-batch renderer) batch)))))
 
 (defn backend [renderer]
   (backend-for renderer proto/MacOS proto/AppKitHost))

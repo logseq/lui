@@ -1,7 +1,8 @@
 (ns lui.backend.flutter
   (:require [lui.protocol :as proto
              :refer [Row Column Box Text Heading Paragraph Label Button
-                     TextInput TextArea Scroll Spacer]]
+                     TextInput TextArea Scroll Spacer
+                     Checkbox SwitchControl]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -9,8 +10,8 @@
   ([] (create (fn [_batch] true)))
   ([send-batch]
    (record flutter-renderer
-     (flutter-store (retained/create-store))
-     (flutter-send-batch send-batch))))
+           (flutter-store (retained/create-store))
+           (flutter-send-batch send-batch))))
 
 (defn create-wire [send-json]
   (create (fn [batch] (send-json (wire/encode-batch batch)))))
@@ -27,17 +28,19 @@
     Button FlutterButton
     TextInput FlutterWidgetIsland
     TextArea FlutterWidgetIsland
+    Checkbox FlutterCheckbox
+    SwitchControl FlutterSwitch
     Scroll FlutterViewport
     Spacer FlutterSpacer))
 
 (defn backend-for [renderer operating-system]
   (record proto/backend
-    (backend-profile (proto/profile operating-system proto/FlutterHost))
-    (apply-batch
-     (fn [batch]
-       (retained/apply-batch-with!
-        (:flutter-store renderer) platform-node
-        (:flutter-send-batch renderer) batch)))))
+          (backend-profile (proto/profile operating-system proto/FlutterHost))
+          (apply-batch
+           (fn [batch]
+             (retained/apply-batch-with!
+              (:flutter-store renderer) platform-node
+              (:flutter-send-batch renderer) batch)))))
 
 (defn backend [renderer]
   (backend-for renderer proto/GenericOS))

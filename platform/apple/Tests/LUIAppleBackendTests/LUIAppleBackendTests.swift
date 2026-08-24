@@ -2,8 +2,24 @@ import AppKit
 import Testing
 @testable import LUIAppleBackend
 
+private struct CapturedAppleEvent: Equatable, Sendable {
+    let kind: Int32
+    let node: Int32
+    let text: String
+}
+
+nonisolated(unsafe) private var capturedAppleEvent: CapturedAppleEvent?
+
+private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
+    capturedAppleEvent = CapturedAppleEvent(
+        kind: kind,
+        node: node,
+        text: text.map(String.init(cString:)) ?? ""
+    )
+}
+
 @MainActor
-@Suite("LUI AppKit backend")
+@Suite("LUI AppKit backend", .serialized)
 struct LUIAppleBackendTests {
     @Test("applies one LG patch batch to real AppKit views")
     func appliesPatchBatch() throws {
@@ -202,6 +218,57 @@ struct LUIAppleBackendTests {
         #expect(input.accessibilityHelp() == nil)
     }
 
+    @Test("maps checkbox and switch to retained native controls")
+    func mapsToggleControls() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"checkbox"},
+          {"op":"create-node","id":2,"kind":"switch"},
+          {"op":"set-prop","id":1,"property":"accessibility-label","value":"Select all"},
+          {"op":"set-prop","id":1,"property":"checked","value":true},
+          {"op":"set-prop","id":1,"property":"indeterminate","value":true},
+          {"op":"set-prop","id":2,"property":"accessibility-label","value":"Notifications"},
+          {"op":"set-prop","id":2,"property":"checked","value":true}
+        ]}
+        """)
+
+        let checkbox = try #require(backend.view(id: 1) as? NSButton)
+        let toggle = try #require(backend.view(id: 2) as? NSSwitch)
+        #expect(checkbox.allowsMixedState)
+        #expect(checkbox.state == .mixed)
+        #expect(checkbox.accessibilityLabel() == "Select all")
+        #expect(toggle.state == .on)
+        #expect(toggle.accessibilityLabel() == "Notifications")
+
+        checkbox.performClick(nil)
+        #expect(events == [.toggleChanged(node: 1, checked: true)])
+        events.removeAll()
+
+        let originalCheckbox = checkbox
+        let originalToggle = toggle
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"indeterminate","value":false},
+          {"op":"set-prop","id":1,"property":"checked","value":false},
+          {"op":"set-prop","id":2,"property":"checked","value":false}
+        ]}
+        """)
+        #expect(backend.view(id: 1) === originalCheckbox)
+        #expect(backend.view(id: 2) === originalToggle)
+        #expect(checkbox.state == .off)
+        #expect(toggle.state == .off)
+
+        checkbox.performClick(nil)
+        toggle.performClick(nil)
+        #expect(events == [
+            .toggleChanged(node: 1, checked: true),
+            .toggleChanged(node: 2, checked: true),
+        ])
+    }
+
     @Test("maps text-area to a retained native multiline editor")
     func mapsTextAreaSemantics() throws {
         let backend = LUIAppleBackend()
@@ -249,6 +316,28 @@ struct LUIAppleBackendTests {
         let accepted = Self.initialBatch.withCString(luiAppleApply)
         #expect(accepted == 1)
         luiAppleReset()
+    }
+
+    @Test("C ABI forwards toggle events with the next checked value")
+    func cABIForwardsToggleEvent() {
+        capturedAppleEvent = nil
+        luiAppleReset()
+        luiAppleSetEventCallback(captureAppleEvent)
+        defer {
+            luiAppleSetEventCallback(nil)
+            luiAppleReset()
+        }
+
+        let accepted = """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"checkbox"},
+          {"op":"set-prop","id":1,"property":"checked","value":false}
+        ]}
+        """.withCString(luiAppleApply)
+
+        #expect(accepted == 1)
+        #expect(luiApplePerformAction(1) == 1)
+        #expect(capturedAppleEvent == CapturedAppleEvent(kind: 2, node: 1, text: "true"))
     }
 
     private static let initialBatch = """

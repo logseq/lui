@@ -66,6 +66,21 @@ LUI_EXPORT int32_t lui_ocaml_text_changed(int64_t node, const char *text) {
   CAMLreturnT(int32_t, accepted);
 }
 
+LUI_EXPORT int32_t lui_ocaml_toggle_changed(int64_t node, int32_t checked) {
+  CAMLparam0();
+  CAMLlocal1(result);
+  const value *dispatch = caml_named_value("lui_flutter_toggle_changed");
+  if (dispatch == NULL) {
+    CAMLreturnT(int32_t, 0);
+  }
+  result = caml_callback2_exn(
+      *dispatch,
+      Val_long(node),
+      Val_bool(checked != 0));
+  int32_t accepted = emit_patch(result);
+  CAMLreturnT(int32_t, accepted);
+}
+
 LUI_EXPORT int32_t lui_ocaml_stop(void) {
   const value *dispose = caml_named_value("lui_flutter_dispose");
   if (dispose == NULL) {

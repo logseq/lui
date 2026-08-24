@@ -49,6 +49,12 @@
   (driver/flush! (app))
   (deref latest-patch))
 
+(defn toggle-changed [node checked]
+  (reset! latest-patch "")
+  (driver/dispatch-event! (app) (proto/ToggleChanged node checked))
+  (driver/flush! (app))
+  (deref latest-patch))
+
 (defn dispose []
   (reset! latest-patch "")
   (driver/dispose! (app))
@@ -59,5 +65,6 @@
 (callback/register "lui_flutter_init" initialize)
 (callback/register "lui_flutter_press" press)
 (callback/register "lui_flutter_text_changed" text-changed)
+(callback/register "lui_flutter_toggle_changed" toggle-changed)
 (callback/register "lui_flutter_dispose" dispose)
 (callback/register "lui_flutter_root_node" root-node)

@@ -7,5 +7,6 @@
 (signature todos.flutter-bridge/initialize :fn<int;string>)
 (signature todos.flutter-bridge/press :fn<int;string>)
 (signature todos.flutter-bridge/text-changed :fn<int;string;string>)
+(signature todos.flutter-bridge/toggle-changed :fn<int;bool;string>)
 (signature todos.flutter-bridge/dispose :fn<string>)
 (signature todos.flutter-bridge/root-node :fn<int>)

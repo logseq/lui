@@ -45,6 +45,14 @@
   :fn<ui-context;int;signal.core/signal<bool>;bool>)
 (signature lui.ui/invalid-signal!
   :fn<ui-context;int;signal.core/signal<bool>;bool>)
+(signature lui.ui/checked-signal!
+  :fn<ui-context;int;signal.core/signal<bool>;bool>)
+(signature lui.ui/indeterminate-signal!
+  :fn<ui-context;int;signal.core/signal<bool>;bool>)
+(signature lui.ui/checkbox!
+  :fn<ui-context;signal.core/signal<bool>;fn<event;bool>;int>)
+(signature lui.ui/switch-control!
+  :fn<ui-context;signal.core/signal<bool>;fn<event;bool>;int>)
 (signature lui.ui/labelled-by! :fn<ui-context;int;int;bool>)
 (signature lui.ui/described-by! :fn<ui-context;int;int;bool>)
 (signature lui.ui/error-message-by! :fn<ui-context;int;int;bool>)

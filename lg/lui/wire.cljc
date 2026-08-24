@@ -3,10 +3,12 @@
             [lui.protocol
              :refer [Row Column Box Text Heading Paragraph Label Button
                      TextInput TextArea Scroll Spacer
+                     Checkbox SwitchControl
                      TextValue Enabled Gap PaddingValue BackgroundValue
                      PlaceholderValue ReadOnly AccessibilityLabel MinLines MaxLines
                      StyleClass HeadingLevel LabelledBy DescribedBy
                      ErrorMessageBy InputType Invalid
+                     Checked Indeterminate
                      StringValue BoolValue IntValue
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild]]))
@@ -35,6 +37,8 @@
     Button "button"
     TextInput "text-input"
     TextArea "text-area"
+    Checkbox "checkbox"
+    SwitchControl "switch"
     Scroll "scroll"
     Spacer "spacer"))
 
@@ -56,7 +60,9 @@
     DescribedBy "described-by"
     ErrorMessageBy "error-message-by"
     InputType "input-type"
-    Invalid "invalid"))
+    Invalid "invalid"
+    Checked "checked"
+    Indeterminate "indeterminate"))
 
 (defn- encode-value [value]
   (match value

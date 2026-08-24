@@ -11,6 +11,8 @@
   (AppleButton)
   (AppleTextInput)
   (AppleTextArea)
+  (AppleCheckbox)
+  (AppleSwitch)
   (AppleScrollView)
   (AppleSpacer))
 

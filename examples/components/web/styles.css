@@ -38,3 +38,7 @@ body {
 .lui-text-field {
   width: min(24rem, 100%);
 }
+
+.lui-switch {
+  width: min(24rem, 100%);
+}

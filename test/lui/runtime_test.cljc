@@ -82,6 +82,32 @@
      (wire/encode-batch batch)
      "form controls use the native host's closed wire vocabulary")))
 
+(deftest toggle-controls-use-closed-wire-names
+  (let [batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Checkbox)
+                (proto/create-node-op 2 proto/SwitchControl)
+                (proto/set-prop-op
+                 1 proto/Checked (proto/BoolValue true))
+                (proto/set-prop-op
+                 1 proto/Indeterminate (proto/BoolValue true))
+                (proto/set-prop-op
+                 2 proto/Checked (proto/BoolValue false))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"checkbox\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"switch\"},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"checked\",\"value\":true},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"indeterminate\",\"value\":true},"
+      "{\"op\":\"set-prop\",\"id\":2,"
+      "\"property\":\"checked\",\"value\":false}]}")
+     (wire/encode-batch batch)
+     "toggle controls use a closed native wire vocabulary")))
+
 (deftest form-controls-retain-typed-accessibility-relationships
   (let [renderer (apple/create)
         application
@@ -303,6 +329,28 @@
          (runtime/dispatch! application (proto/Press 999)))
         "events cannot target unknown retained identities")))
 
+(deftest toggle-events-carry-the-native-next-value
+  (let [application
+        (runtime/create (sig/scheduler) (apple/backend (apple/create)))
+        component-scope (sig/scope "toggle-events")
+        checkbox (runtime/create-node! application proto/Checkbox)
+        changes (atom [])]
+    (sig/mount! component-scope)
+    (runtime/on-event!
+     component-scope application checkbox
+     (fn [event]
+       (match event
+         (proto/ToggleChanged _node checked)
+         (do
+           (swap! changes conj checked)
+           true)
+         _ true)))
+    (runtime/dispatch!
+     application (proto/ToggleChanged checkbox true))
+    (runtime/flush! application)
+    (assert-equal [true] @changes
+                  "toggle events carry the native checked value")))
+
 (deftest semantic-nodes-map-to-platform-retained-types
   (let [scheduler (sig/scheduler)
         apple-renderer (apple/create)
@@ -361,7 +409,9 @@
         text (runtime/create-node! application proto/Text)
         heading (runtime/create-node! application proto/Heading)
         button (runtime/create-node! application proto/Button)
-        row (runtime/create-node! application proto/Row)]
+        row (runtime/create-node! application proto/Row)
+        checkbox (runtime/create-node! application proto/Checkbox)
+        switch-control (runtime/create-node! application proto/SwitchControl)]
     (is (thrown-with-msg?
          Invalid_argument
          #"invalid property value"
@@ -386,9 +436,22 @@
          (runtime/set-prop!
           application row proto/Gap (proto/StringValue "8")))
         "numeric layout properties require integer wire values")
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"invalid property value"
+         (runtime/set-prop!
+          application checkbox proto/Checked (proto/StringValue "yes")))
+        "checked state requires a boolean wire value")
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"unsupported"
+         (runtime/set-prop!
+          application switch-control proto/Indeterminate
+          (proto/BoolValue true)))
+        "only Checkbox supports indeterminate state")
     (runtime/flush! application)
     (assert-equal
-     4
+     6
      (count (:ops (nth (apple/batches renderer) 0)))
      "rejected values never enter the patch queue")))
 

@@ -11,6 +11,8 @@
   (Button)
   (TextInput)
   (TextArea)
+  (Checkbox)
+  (SwitchControl)
   (Scroll)
   (Spacer))
 
@@ -52,7 +54,9 @@
   (DescribedBy)
   (ErrorMessageBy)
   (InputType)
-  (Invalid))
+  (Invalid)
+  (Checked)
+  (Indeterminate))
 
 (type-variant wire-value
   (StringValue :string)
@@ -61,7 +65,8 @@
 
 (type-variant event
   (Press :int)
-  (TextChanged :int :string))
+  (TextChanged :int :string)
+  (ToggleChanged :int :bool))
 
 (type-variant patch-op
   (CreateNode :int :node-kind)

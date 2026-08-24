@@ -9,6 +9,8 @@
   (FlutterFormLabel)
   (FlutterButton)
   (FlutterWidgetIsland)
+  (FlutterCheckbox)
+  (FlutterSwitch)
   (FlutterViewport)
   (FlutterSpacer))
 

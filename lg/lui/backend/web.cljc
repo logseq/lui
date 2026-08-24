@@ -3,12 +3,13 @@
             [ocaml.Webapi.Dom.HtmlCollection :as html-collection]
             [lui.protocol :as proto
              :refer [Row Column Box Text Heading Paragraph Label Button
-                     TextInput TextArea Scroll Spacer
+                     TextInput TextArea Checkbox SwitchControl Scroll Spacer
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild TextValue Enabled Gap PaddingValue
                      BackgroundValue PlaceholderValue ReadOnly MinLines MaxLines
                      AccessibilityLabel StyleClass HeadingLevel LabelledBy
                      DescribedBy ErrorMessageBy InputType Invalid
+                     Checked Indeterminate
                      StringValue BoolValue IntValue]]
             [lui.backend.retained :as retained]))
 
@@ -34,6 +35,8 @@
     Button "lui-button"
     TextInput "lui-text-input"
     TextArea "lui-text-area"
+    Checkbox "lui-checkbox"
+    SwitchControl "lui-switch-control"
     Scroll "lui-scroll"
     Spacer "lui-spacer"))
 
@@ -47,6 +50,8 @@
           Button "button"
           TextInput "input"
           TextArea "textarea"
+          Checkbox "input"
+          SwitchControl "button"
           _ "div")
         node
         (Webapi.Dom.Document.createElement tag (:web-document renderer))]
@@ -56,6 +61,11 @@
     (when (= kind TextArea)
       (Webapi.Dom.Element.setAttribute
        "style" "field-sizing: content; resize: vertical; overflow-y: auto" node))
+    (when (= kind Checkbox)
+      (Webapi.Dom.Element.setAttribute "type" "checkbox" node))
+    (when (= kind SwitchControl)
+      (Webapi.Dom.Element.setAttribute "type" "button" node)
+      (Webapi.Dom.Element.setAttribute "role" "switch" node))
     node))
 
 (defn- dom-node [renderer node]
@@ -142,6 +152,22 @@
      (Stdlib.ignore true))
    dom-node))
 
+(defn- attach-toggle-event! [renderer node kind dom-node]
+  (Webapi.Dom.Element.addEventListener
+   (if (= kind Checkbox) "change" "click")
+   (fn [_event]
+     (let [checked
+           (if (= kind Checkbox)
+             (Webapi.Dom.HtmlInputElement.checked
+              (text-control-node dom-node))
+             (not (Webapi.Dom.Element.hasAttribute
+                   "data-checked" dom-node)))]
+       (Stdlib.ignore
+        ((deref (:web-event-handler renderer))
+         (proto/ToggleChanged node checked)))
+       (Stdlib.ignore true)))
+   dom-node))
+
 (defn- attach-events! [renderer node kind dom-node]
   (match kind
     Button
@@ -153,6 +179,8 @@
      dom-node)
     TextInput (attach-text-event! renderer node dom-node)
     TextArea (attach-text-event! renderer node dom-node)
+    Checkbox (attach-toggle-event! renderer node kind dom-node)
+    SwitchControl (attach-toggle-event! renderer node kind dom-node)
     _ (Stdlib.ignore true)))
 
 (defn- set-style! [dom-node property value]
@@ -161,6 +189,11 @@
          (Webapi.Dom.Element.unsafeAsHtmlElement dom-node))]
     (Webapi.Dom.CssStyleDeclaration.setProperty
      property value "" element-style)))
+
+(defn- set-state-attribute! [dom-node attribute enabled]
+  (if enabled
+    (Webapi.Dom.Element.setAttribute attribute "" dom-node)
+    (Webapi.Dom.Element.removeAttribute attribute dom-node)))
 
 (defn- apply-property! [renderer kind dom-node property value]
   (match (tuple property value)
@@ -173,9 +206,12 @@
         (Webapi.Dom.Element.setTextContent dom-node text)))
 
     (tuple Enabled (BoolValue enabled))
-    (if enabled
-      (Webapi.Dom.Element.removeAttribute "disabled" dom-node)
-      (Webapi.Dom.Element.setAttribute "disabled" "disabled" dom-node))
+    (do
+      (if enabled
+        (Webapi.Dom.Element.removeAttribute "disabled" dom-node)
+        (Webapi.Dom.Element.setAttribute "disabled" "disabled" dom-node))
+      (when (or (= kind Checkbox) (= kind SwitchControl))
+        (set-state-attribute! dom-node "data-disabled" (not enabled))))
 
     (tuple Gap (IntValue gap))
     (set-style! dom-node "gap" (str gap "px"))
@@ -239,6 +275,34 @@
           (Webapi.Dom.Element.removeAttribute "aria-invalid" dom-node)
           (Webapi.Dom.Element.removeAttribute "data-invalid" dom-node)))
       (update-describedby! dom-node))
+
+    (tuple Checked (BoolValue checked))
+    (do
+      (when (= kind Checkbox)
+        (Webapi.Dom.HtmlInputElement.setChecked
+         (text-control-node dom-node) checked))
+      (set-state-attribute! dom-node "data-checked" checked)
+      (Webapi.Dom.Element.setAttribute
+       "aria-checked"
+       (if (and
+            (= kind Checkbox)
+            (Webapi.Dom.HtmlInputElement.indeterminate
+             (text-control-node dom-node)))
+         "mixed"
+         (if checked "true" "false"))
+       dom-node))
+
+    (tuple Indeterminate (BoolValue indeterminate))
+    (let [control (text-control-node dom-node)]
+      (Webapi.Dom.HtmlInputElement.setIndeterminate control indeterminate)
+      (set-state-attribute!
+       dom-node "data-indeterminate" indeterminate)
+      (Webapi.Dom.Element.setAttribute
+       "aria-checked"
+       (if indeterminate
+         "mixed"
+         (if (Webapi.Dom.HtmlInputElement.checked control) "true" "false"))
+       dom-node))
 
     (tuple MinLines (IntValue lines))
     (do

@@ -11,12 +11,15 @@
 (defn event-node [event]
   (match event
     (Press node) node
-    (TextChanged node _text) node))
+    (TextChanged node _text) node
+    (ToggleChanged node _checked) node))
 
 (defn event-supported? [kind event]
   (match event
     (Press _node) (= kind Button)
-    (TextChanged _node _text) (or (= kind TextInput) (= kind TextArea))))
+    (TextChanged _node _text) (or (= kind TextInput) (= kind TextArea))
+    (ToggleChanged _node _checked)
+    (or (= kind Checkbox) (= kind SwitchControl))))
 
 (defn input-type-supported? [value]
   (or
@@ -48,17 +51,26 @@
     PaddingValue true
     BackgroundValue true
     StyleClass true
-    AccessibilityLabel (or (= kind TextInput) (= kind TextArea))
+    AccessibilityLabel
+    (or (= kind TextInput) (= kind TextArea)
+        (= kind Checkbox) (= kind SwitchControl))
     PlaceholderValue (or (= kind TextInput) (= kind TextArea))
     ReadOnly (or (= kind TextInput) (= kind TextArea))
     MinLines (= kind TextArea)
     MaxLines (= kind TextArea)
     HeadingLevel (= kind Heading)
-    LabelledBy (or (= kind TextInput) (= kind TextArea))
-    DescribedBy (or (= kind TextInput) (= kind TextArea))
-    ErrorMessageBy (or (= kind TextInput) (= kind TextArea))
+    LabelledBy
+    (or (= kind TextInput) (= kind TextArea) (= kind SwitchControl))
+    DescribedBy
+    (or (= kind TextInput) (= kind TextArea) (= kind SwitchControl))
+    ErrorMessageBy
+    (or (= kind TextInput) (= kind TextArea) (= kind SwitchControl))
     InputType (= kind TextInput)
-    Invalid (or (= kind TextInput) (= kind TextArea))
+    Invalid
+    (or (= kind TextInput) (= kind TextArea)
+        (= kind Checkbox) (= kind SwitchControl))
+    Checked (or (= kind Checkbox) (= kind SwitchControl))
+    Indeterminate (= kind Checkbox)
     TextValue
     (match kind
       Text true
@@ -74,6 +86,8 @@
       Button true
       TextInput true
       TextArea true
+      Checkbox true
+      SwitchControl true
       _ false)
     Gap
     (match kind
@@ -101,6 +115,8 @@
     (tuple ErrorMessageBy (IntValue value)) (> value 0)
     (tuple InputType (StringValue value)) (input-type-supported? value)
     (tuple Invalid (BoolValue _value)) true
+    (tuple Checked (BoolValue _value)) true
+    (tuple Indeterminate (BoolValue _value)) true
     _ false))
 
 (defn can-contain-children? [kind]
@@ -109,10 +125,11 @@
     Column true
     Box true
     Scroll true
+    SwitchControl true
     _ false))
 
 (defn single-child-container? [kind]
-  (= kind Scroll))
+  (or (= kind Scroll) (= kind SwitchControl)))
 
 (defn create-node-op [node kind]
   (CreateNode node kind))

@@ -13,6 +13,9 @@ public final class LUIUIKitBackend {
     private var describedBy: [Int: Int] = [:]
     private var errorMessageBy: [Int: Int] = [:]
     private var invalidStates: [Int: Bool] = [:]
+    private var checkedStates: [Int: Bool] = [:]
+    private var indeterminateStates: [Int: Bool] = [:]
+    private var explicitAccessibilityLabels: [Int: String] = [:]
     private let decoder = JSONDecoder()
 
     public init() {}
@@ -126,6 +129,28 @@ public final class LUIUIKitBackend {
                 self?.onEvent?(.textChanged(node: id, text: text))
             }
             view = area
+        case .checkbox:
+            let checkbox = LUIUIKitCheckbox()
+            checkbox.addAction(
+                UIAction { [weak self, weak checkbox] _ in
+                    guard let checkbox else { return }
+                    let checked = checkbox.nextCheckedValue
+                    checkbox.setState(checked: checked, indeterminate: false)
+                    self?.onEvent?(.toggleChanged(node: id, checked: checked))
+                },
+                for: .touchUpInside
+            )
+            view = checkbox
+        case .switchControl:
+            let toggle = UISwitch()
+            toggle.addAction(
+                UIAction { [weak self, weak toggle] _ in
+                    guard let toggle else { return }
+                    self?.onEvent?(.toggleChanged(node: id, checked: toggle.isOn))
+                },
+                for: .valueChanged
+            )
+            view = toggle
         case .scroll:
             let scroll = UIScrollView()
             scroll.alwaysBounceVertical = true
@@ -178,6 +203,7 @@ public final class LUIUIKitBackend {
             (view as? LUITextField)?.isReadOnly = readOnly
             (view as? LUIUIKitTextArea)?.isReadOnly = readOnly
         case let (.accessibilityLabel, .string(label)):
+            explicitAccessibilityLabels[node] = label
             view.accessibilityLabel = label
         case let (.minLines, .int(lines)):
             (view as? LUIUIKitTextArea)?.minLines = lines
@@ -211,6 +237,12 @@ public final class LUIUIKitBackend {
                 view.layer.cornerRadius = invalid ? 6 : 0
             }
             refreshAccessibility(for: node)
+        case let (.checked, .bool(checked)):
+            checkedStates[node] = checked
+            updateToggleState(for: node)
+        case let (.indeterminate, .bool(indeterminate)):
+            indeterminateStates[node] = indeterminate
+            updateToggleState(for: node)
         default:
             break
         }
@@ -229,7 +261,9 @@ public final class LUIUIKitBackend {
 
     private func refreshAccessibility(for control: Int) {
         guard let view = views[control] else { return }
-        view.accessibilityLabel = labelledBy[control].flatMap { text(for: $0) }
+        view.accessibilityLabel =
+            labelledBy[control].flatMap { text(for: $0) } ??
+            explicitAccessibilityLabels[control]
         let hint = [
             describedBy[control].flatMap { text(for: $0) },
             invalidStates[control] == true
@@ -243,6 +277,15 @@ public final class LUIUIKitBackend {
         (views[node] as? UILabel)?.text
     }
 
+    private func updateToggleState(for node: Int) {
+        let checked = checkedStates[node] == true
+        (views[node] as? LUIUIKitCheckbox)?.setState(
+            checked: checked,
+            indeterminate: indeterminateStates[node] == true
+        )
+        (views[node] as? UISwitch)?.setOn(checked, animated: false)
+    }
+
     private func removeRelationships(involving node: Int) {
         let affectedControls = Set(
             labelledBy.filter { $0.value == node }.map(\.key) +
@@ -253,6 +296,9 @@ public final class LUIUIKitBackend {
         describedBy = describedBy.filter { $0.key != node && $0.value != node }
         errorMessageBy = errorMessageBy.filter { $0.key != node && $0.value != node }
         invalidStates[node] = nil
+        checkedStates[node] = nil
+        indeterminateStates[node] = nil
+        explicitAccessibilityLabels[node] = nil
         for control in affectedControls {
             refreshAccessibility(for: control)
         }
@@ -282,7 +328,9 @@ public final class LUIUIKitBackend {
         guard let parent = views[parentID], let child = views[childID] else {
             throw invalid("missing native parent or child")
         }
-        if let stack = parent as? UIStackView {
+        if parent is UISwitch {
+            return
+        } else if let stack = parent as? UIStackView {
             stack.insertArrangedSubview(child, at: index)
         } else if let scroll = parent as? UIScrollView {
             scroll.addSubview(child)
@@ -302,7 +350,9 @@ public final class LUIUIKitBackend {
         guard let parent = views[parentID], let child = views[childID] else {
             throw invalid("missing native parent or child")
         }
-        if let stack = parent as? UIStackView {
+        if parent is UISwitch {
+            return
+        } else if let stack = parent as? UIStackView {
             stack.removeArrangedSubview(child)
         }
         child.removeFromSuperview()
@@ -320,6 +370,45 @@ public final class LUIUIKitBackend {
         case "blue": .systemBlue
         case "green": .systemGreen
         default: .clear
+        }
+    }
+}
+
+@MainActor
+final class LUIUIKitCheckbox: UIButton {
+    private var checked = false
+    private var indeterminate = false
+
+    var nextCheckedValue: Bool {
+        indeterminate || !checked
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        configuration = .plain()
+        accessibilityTraits = [.button]
+        setState(checked: false, indeterminate: false)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configuration = .plain()
+        accessibilityTraits = [.button]
+        setState(checked: false, indeterminate: false)
+    }
+
+    func setState(checked: Bool, indeterminate: Bool) {
+        self.checked = checked
+        self.indeterminate = indeterminate
+        let imageName = indeterminate
+            ? "minus.square.fill"
+            : (checked ? "checkmark.square.fill" : "square")
+        configuration?.image = UIImage(systemName: imageName)
+        accessibilityValue = indeterminate ? "mixed" : (checked ? "1" : "0")
+        if checked && !indeterminate {
+            accessibilityTraits.insert(.selected)
+        } else {
+            accessibilityTraits.remove(.selected)
         }
     }
 }

@@ -190,6 +190,40 @@
       (sig/map (fn [invalid] (proto/BoolValue invalid)) source)))
     true))
 
+(defn checked-signal! [context node source]
+  (do
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context) node proto/Checked
+     (sig/own-signal!
+      (:ui-scope context)
+      (sig/map (fn [checked] (proto/BoolValue checked)) source)))
+    true))
+
+(defn indeterminate-signal! [context node source]
+  (do
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context) node proto/Indeterminate
+     (sig/own-signal!
+      (:ui-scope context)
+      (sig/map
+       (fn [indeterminate] (proto/BoolValue indeterminate)) source)))
+    true))
+
+(defn checkbox! [context source callback]
+  (let [node (runtime/create-node! (:ui-application context) proto/Checkbox)]
+    (checked-signal! context node source)
+    (runtime/on-event!
+     (:ui-scope context) (:ui-application context) node callback)
+    node))
+
+(defn switch-control! [context source callback]
+  (let [node
+        (runtime/create-node! (:ui-application context) proto/SwitchControl)]
+    (checked-signal! context node source)
+    (runtime/on-event!
+     (:ui-scope context) (:ui-application context) node callback)
+    node))
+
 (defn labelled-by! [context node label]
   (runtime/set-prop!
    (:ui-application context) node proto/LabelledBy (proto/IntValue label)))

@@ -23,6 +23,10 @@
   :fn<web-renderer;map<int;retained-node<web-node>>;int;web-node>)
 (signature lui.backend.web/attach-events!
   :fn<web-renderer;int;node-kind;web-node;unit>)
+(signature lui.backend.web/attach-toggle-event!
+  :fn<web-renderer;int;node-kind;web-node;unit>)
+(signature lui.backend.web/set-state-attribute!
+  :fn<web-node;string;bool;unit>)
 (signature lui.backend.web/apply-property!
   :fn<web-renderer;node-kind;web-node;property;wire-value;unit>)
 (signature lui.backend.web/insert-dom-child!

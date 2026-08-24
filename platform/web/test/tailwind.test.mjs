@@ -15,10 +15,10 @@ test("the production stylesheet contains the Solid UI button contract", async ()
   assert.doesNotMatch(css, /\.inline-flex\{/)
 })
 
-test("the production stylesheet stays within the initial size budget", async () => {
+test("the production stylesheet stays within the component-library size budget", async () => {
   const { size } = await stat(outputUrl)
 
-  assert.ok(size <= 20_000, `expected at most 20 KB, received ${size} bytes`)
+  assert.ok(size <= 32_000, `expected at most 32 KB, received ${size} bytes`)
 })
 
 test("the production stylesheet contains the Solid UI Card parts", async () => {
@@ -45,4 +45,23 @@ test("the production stylesheet contains the Solid UI TextField contract", async
   assert.match(css, /\.lui-text-field-error-message\{[^}]*font-size:var\(--text-xs\)/)
   assert.match(css, /\.lui-text-field:has\(\[data-invalid\]\) \.lui-text-field-error-message/)
   assert.doesNotMatch(css, /\.h-10\{/)
+})
+
+test("the production stylesheet contains the Solid UI toggle contracts", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-checkbox\{[^}]*appearance:none/)
+  assert.match(css, /\.lui-checkbox\[data-checked\]/)
+  assert.match(css, /\.lui-checkbox\[data-indeterminate\]/)
+  assert.match(css, /\.lui-checkbox:focus-visible/)
+  assert.match(css, /\.lui-switch-control\{[^}]*display:inline-flex/)
+  assert.match(css, /\.lui-switch-control\[data-checked\]/)
+  assert.match(css, /\.lui-switch-thumb\{[^}]*pointer-events:none/)
+  assert.match(
+    css,
+    /\.lui-switch-control\[data-checked\] \.lui-switch-thumb\{[^}]*translate:/,
+  )
+  assert.match(css, /\.lui-switch-error-message\{[^}]*display:none/)
+  assert.match(css, /\.lui-switch:has\(\[data-invalid\]\) \.lui-switch-error-message/)
+  assert.doesNotMatch(css, /\.size-4\{/)
 })

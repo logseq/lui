@@ -72,6 +72,10 @@ private final class LUIAppleBridge {
                 "".withCString { callback(0, Int32(node), $0) }
             case let .textChanged(node, text):
                 text.withCString { callback(1, Int32(node), $0) }
+            case let .toggleChanged(node, checked):
+                (checked ? "true" : "false").withCString {
+                    callback(2, Int32(node), $0)
+                }
             }
         }
     }
@@ -129,11 +133,15 @@ public func luiAppleReset() {
 @_cdecl("lui_apple_perform_action")
 public func luiApplePerformAction(_ node: Int32) -> Int32 {
     MainActor.assumeIsolated {
-        guard let button = LUIAppleBridge.shared.backend.view(id: Int(node)) as? NSButton else {
-            return 0
+        if let button = LUIAppleBridge.shared.backend.view(id: Int(node)) as? NSButton {
+            button.performClick(nil)
+            return 1
         }
-        button.performClick(nil)
-        return 1
+        if let toggle = LUIAppleBridge.shared.backend.view(id: Int(node)) as? NSSwitch {
+            toggle.performClick(nil)
+            return 1
+        }
+        return 0
     }
 }
 #endif

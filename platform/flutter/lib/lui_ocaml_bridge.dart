@@ -18,6 +18,8 @@ typedef _NativePress = Int32 Function(Int64 node);
 typedef _DartPress = int Function(int node);
 typedef _NativeTextChanged = Int32 Function(Int64 node, Pointer<Utf8> text);
 typedef _DartTextChanged = int Function(int node, Pointer<Utf8> text);
+typedef _NativeToggleChanged = Int32 Function(Int64 node, Int32 checked);
+typedef _DartToggleChanged = int Function(int node, int checked);
 typedef _NativeStop = Int32 Function();
 typedef _DartStop = int Function();
 typedef _NativeNode = Int64 Function();
@@ -35,6 +37,10 @@ final class LUIOcamlBridge {
           .lookupFunction<_NativeTextChanged, _DartTextChanged>(
             'lui_ocaml_text_changed',
           ),
+      _toggleChanged = library
+          .lookupFunction<_NativeToggleChanged, _DartToggleChanged>(
+            'lui_ocaml_toggle_changed',
+          ),
       _stop = library.lookupFunction<_NativeStop, _DartStop>('lui_ocaml_stop'),
       _rootNode = library.lookupFunction<_NativeNode, _DartNode>(
         'lui_ocaml_root_node',
@@ -50,6 +56,7 @@ final class LUIOcamlBridge {
   final _DartStart _start;
   final _DartPress _press;
   final _DartTextChanged _textChanged;
+  final _DartToggleChanged _toggleChanged;
   final _DartStop _stop;
   final _DartNode _rootNode;
   NativeCallable<_NativePatchCallback>? _patchCallback;
@@ -91,6 +98,12 @@ final class LUIOcamlBridge {
       }
     } finally {
       malloc.free(nativeText);
+    }
+  }
+
+  void toggleChanged(int node, bool checked) {
+    if (_toggleChanged(node, checked ? 1 : 0) != 1) {
+      throw StateError('OCaml toggle dispatch failed');
     }
   }
 

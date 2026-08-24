@@ -15,6 +15,8 @@ public final class LUIAppleBackend {
     private var describedBy: [Int: Int] = [:]
     private var errorMessageBy: [Int: Int] = [:]
     private var invalidStates: [Int: Bool] = [:]
+    private var checkedStates: [Int: Bool] = [:]
+    private var indeterminateStates: [Int: Bool] = [:]
     private let decoder = JSONDecoder()
 
     public init() {}
@@ -121,6 +123,30 @@ public final class LUIAppleBackend {
             }
             view.translatesAutoresizingMaskIntoConstraints = false
             return view
+        case .checkbox:
+            let target = ControlTarget { [weak self] in
+                guard let checkbox = self?.views[id] as? NSButton else { return }
+                self?.onEvent?(.toggleChanged(node: id, checked: checkbox.state == .on))
+            }
+            let view = NSButton(
+                checkboxWithTitle: "",
+                target: target,
+                action: #selector(ControlTarget.performAction)
+            )
+            controls[id] = target
+            view.translatesAutoresizingMaskIntoConstraints = false
+            return view
+        case .switchControl:
+            let target = ControlTarget { [weak self] in
+                guard let toggle = self?.views[id] as? NSSwitch else { return }
+                self?.onEvent?(.toggleChanged(node: id, checked: toggle.state == .on))
+            }
+            let view = NSSwitch()
+            view.target = target
+            view.action = #selector(ControlTarget.performAction)
+            controls[id] = target
+            view.translatesAutoresizingMaskIntoConstraints = false
+            return view
         case .scroll:
             let view = NSScrollView()
             view.hasVerticalScroller = true
@@ -193,6 +219,12 @@ public final class LUIAppleBackend {
             view.layer?.borderColor = invalid ? NSColor.systemRed.cgColor : nil
             view.layer?.cornerRadius = invalid ? 6 : 0
             refreshAccessibility(for: node)
+        case let (.checked, .bool(checked)):
+            checkedStates[node] = checked
+            updateToggleState(for: node)
+        case let (.indeterminate, .bool(indeterminate)):
+            indeterminateStates[node] = indeterminate
+            updateToggleState(for: node)
         default:
             break
         }
@@ -229,6 +261,20 @@ public final class LUIAppleBackend {
         (views[node] as? NSTextField)?.stringValue
     }
 
+    private func updateToggleState(for node: Int) {
+        let checked = checkedStates[node] == true
+        if let checkbox = views[node] as? NSButton {
+            let indeterminate = indeterminateStates[node] == true
+            checkbox.allowsMixedState = indeterminate
+            checkbox.state = indeterminate
+                ? .mixed
+                : (checked ? .on : .off)
+        }
+        if let toggle = views[node] as? NSSwitch {
+            toggle.state = checked ? .on : .off
+        }
+    }
+
     private func removeRelationships(involving node: Int) {
         let affectedControls = Set(
             labelledBy.filter { $0.value == node }.map(\.key) +
@@ -239,6 +285,8 @@ public final class LUIAppleBackend {
         describedBy = describedBy.filter { $0.key != node && $0.value != node }
         errorMessageBy = errorMessageBy.filter { $0.key != node && $0.value != node }
         invalidStates[node] = nil
+        checkedStates[node] = nil
+        indeterminateStates[node] = nil
         for control in affectedControls {
             refreshAccessibility(for: control)
         }
@@ -248,7 +296,9 @@ public final class LUIAppleBackend {
         guard let parent = views[parentID], let child = views[childID] else {
             throw invalid("missing native parent or child")
         }
-        if let stack = parent as? NSStackView {
+        if parent is NSSwitch {
+            return
+        } else if let stack = parent as? NSStackView {
             stack.insertArrangedSubview(child, at: index)
         } else if let scroll = parent as? NSScrollView {
             scroll.documentView = child
@@ -261,7 +311,9 @@ public final class LUIAppleBackend {
         guard let parent = views[parentID], let child = views[childID] else {
             throw invalid("missing native parent or child")
         }
-        if let stack = parent as? NSStackView {
+        if parent is NSSwitch {
+            return
+        } else if let stack = parent as? NSStackView {
             stack.removeArrangedSubview(child)
         } else if let scroll = parent as? NSScrollView, scroll.documentView === child {
             scroll.documentView = nil

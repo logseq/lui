@@ -120,6 +120,53 @@ CLJC component code emits only stable semantic classes such as
 `platform/web/src/lui.css` as Tailwind `@apply` rules and compile to static
 CSS. Cross-platform behavior must never depend on a Tailwind utility string.
 
+### Checkbox and Switch contract
+
+Checkbox follows Solid UI's single public root while Switch preserves its
+compound parts:
+
+```clojure
+[:checkbox
+ {:checked completed?
+  :indeterminate partially-completed?
+  :accessibility-label "Complete all tasks"
+  :on-change change-completed}]
+
+[:switch
+ {:checked notifications?
+  :disabled notifications-locked?
+  :invalid notifications-invalid?
+  :on-change change-notifications}
+ [:switch/control
+  [:switch/thumb]]
+ [:switch/label "Email notifications"]
+ [:switch/description "Receive one summary each day."]
+ [:switch/error-message "Choose a notification preference."]]
+```
+
+`Checked`, `Indeterminate` and `Invalid` are typed, Signal-bindable retained
+properties. Checkbox and Switch emit `ToggleChanged(node, checked)` rather
+than a generic click, so the application receives the native control's next
+value without sampling a second platform model. Indeterminate applies only to
+Checkbox and clears through the same retained property path. Activating an
+indeterminate Checkbox consistently emits `ToggleChanged(node, true)` before
+the controlled Signal supplies the retained state patch.
+
+The Switch root owns controlled state, matching Solid UI. Its component macro
+passes that state to the semantic `/control`, then associates `/label`,
+`/description` and `/error-message` with the control. `/thumb` is a retained
+visual child on Web; native backends keep it in the semantic tree but render
+the platform switch's built-in thumb instead of layering a custom control over
+it.
+
+Web uses native checkbox input and switch semantics, real focus, keyboard
+activation, `aria-checked` (including `mixed`), `aria-invalid`, and matching
+`data-checked`, `data-indeterminate` and `data-disabled` selectors. AppKit uses
+`NSButton` checkbox and switch controls, UIKit uses a stateful system button
+for Checkbox and `UISwitch`, and Flutter uses `Checkbox` and `Switch` with
+native Semantics. All backends preserve control identity when Signals patch
+checked, disabled, indeterminate or invalid state.
+
 ## State ownership
 
 - Controlled state is represented by a Signal plus an event callback.

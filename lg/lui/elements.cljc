@@ -80,6 +80,27 @@
       `(lui.elements/element ~context nil ~(first children))]
      (part-bindings context (next children) (next child-nodes)))))
 
+(macro-helper-defn switch-child-form [child attrs]
+  (if (= (first child) :switch/control)
+    (let [control-attrs
+          (assoc
+           (assoc
+            (assoc
+             (assoc
+              (element-attrs child)
+              :checked (:checked attrs))
+             :disabled (:disabled attrs))
+            :invalid (:invalid attrs))
+           :on-change (:on-change attrs))]
+      (vec
+       (concat
+        [(first child) control-attrs]
+        (element-children child))))
+    child))
+
+(macro-helper-defn switch-child-forms [children attrs]
+  (map (fn [child] (switch-child-form child attrs)) children))
+
 (macro-helper-defn container-expansion
   [constructor context parent attrs children]
   (let [node (gensym "node")]
@@ -140,6 +161,46 @@
           "lui-text-field")]
     `(let [~node (lui.ui/box! ~context)
            ~@(part-bindings context children child-nodes)]
+       (lui.ui/style-class! ~context ~node ~class-name)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [part-node]
+            `(lui.ui/append! ~context ~node ~part-node))
+          child-nodes)
+       ~@(if (and control-node label-node)
+           [`(lui.ui/labelled-by!
+              ~context ~control-node ~label-node)]
+           [])
+       ~@(if (and control-node description-node)
+           [`(lui.ui/described-by!
+              ~context ~control-node ~description-node)]
+           [])
+       ~@(if (and control-node error-node)
+           [`(lui.ui/error-message-by!
+              ~context ~control-node ~error-node)]
+           [])
+       ~node)))
+
+(defelement switch [context parent attrs & children]
+  (let [node (gensym "node")
+        resolved-children (switch-child-forms children attrs)
+        child-nodes (map (fn [_child] (gensym "part")) resolved-children)
+        control-node
+        (find-part-node resolved-children child-nodes :switch/control)
+        label-node
+        (find-part-node resolved-children child-nodes :switch/label)
+        description-node
+        (find-part-node resolved-children child-nodes :switch/description)
+        error-node
+        (find-part-node resolved-children child-nodes :switch/error-message)
+        class-name
+        (if (:class attrs)
+          (str "lui-switch " (:class attrs))
+          "lui-switch")]
+    `(let [~node (lui.ui/box! ~context)
+           ~@(part-bindings context resolved-children child-nodes)]
        (lui.ui/style-class! ~context ~node ~class-name)
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
@@ -244,6 +305,33 @@
            [`(lui.ui/disabled-signal! ~context ~node ~(:disabled attrs))]
            [])
        (lui.ui/style-class! ~context ~node ~(button-style-class attrs))
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
+
+(defelement checkbox [context parent attrs & _children]
+  (let [node (gensym "node")]
+    `(let [~node
+           (lui.ui/checkbox!
+            ~context ~(:checked attrs) ~(:on-change attrs))]
+       ~@(if (:indeterminate attrs)
+           [`(lui.ui/indeterminate-signal!
+              ~context ~node ~(:indeterminate attrs))]
+           [])
+       ~@(if (:disabled attrs)
+           [`(lui.ui/disabled-signal! ~context ~node ~(:disabled attrs))]
+           [])
+       ~@(if (:invalid attrs)
+           [`(lui.ui/invalid-signal! ~context ~node ~(:invalid attrs))]
+           [])
+       ~@(if (:accessibility-label attrs)
+           [`(lui.ui/accessibility-label!
+              ~context ~node ~(:accessibility-label attrs))]
+           [])
+       ~@(if (:class attrs)
+           [`(lui.ui/style-class! ~context ~node ~(:class attrs))]
+           [])
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])

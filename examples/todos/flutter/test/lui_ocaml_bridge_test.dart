@@ -22,6 +22,8 @@ void main() {
           node,
           text,
         ),
+        LUIToggleChangedEvent(:final node, :final checked) =>
+          bridge.toggleChanged(node, checked),
       },
     );
     bridge = LUIOcamlBridge.open(_libraryPath, onPatch: backend.applyJson);
@@ -63,10 +65,7 @@ void main() {
     await tester.tap(find.widgetWithText(TextButton, 'Add'));
     await tester.pump();
     expect(backend.generation, 3);
-    expect(
-      tester.widget<TextField>(draftField).controller!.text,
-      '',
-    );
+    expect(tester.widget<TextField>(draftField).controller!.text, '');
     final label = find.text('[ ] Write LG todos');
     expect(label, findsOneWidget);
     final retainedLabel = tester.renderObject(label);

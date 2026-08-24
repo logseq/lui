@@ -7,11 +7,14 @@ public enum LUIBackendError: Error, Equatable {
 public enum LUIEvent: Equatable, Sendable {
     case press(node: Int)
     case textChanged(node: Int, text: String)
+    case toggleChanged(node: Int, checked: Bool)
 }
 
 enum LUINodeKind: String, Decodable {
     case row, column, box, text, heading, paragraph, label, button
     case textInput = "text-input", textArea = "text-area"
+    case checkbox
+    case switchControl = "switch"
     case scroll, spacer
 }
 
@@ -28,6 +31,7 @@ enum LUIProperty: String, Decodable {
     case errorMessageBy = "error-message-by"
     case inputType = "input-type"
     case invalid
+    case checked, indeterminate
 }
 
 struct LUIPatchBatch: Decodable {
@@ -109,6 +113,7 @@ enum LUIWireValue: Decodable {
              (.errorMessageBy, .int): true
         case let (.inputType, .string(type)): Self.inputTypes.contains(type)
         case (.invalid, .bool): true
+        case (.checked, .bool), (.indeterminate, .bool): true
         case (.text, .string), (.enabled, .bool), (.gap, .int),
              (.padding, .int), (.background, .string),
              (.placeholder, .string), (.readOnly, .bool),
@@ -218,24 +223,35 @@ struct LUIRetainedTree {
         case .text:
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
                 kind == .button || kind == .textInput || kind == .textArea
-        case .enabled: kind == .button || kind == .textInput || kind == .textArea
+        case .enabled:
+            kind == .button || kind == .textInput || kind == .textArea ||
+                kind == .checkbox || kind == .switchControl
         case .gap: kind == .row || kind == .column
-        case .placeholder, .readOnly, .accessibilityLabel:
+        case .placeholder, .readOnly:
             kind == .textInput || kind == .textArea
+        case .accessibilityLabel:
+            kind == .textInput || kind == .textArea || kind == .checkbox ||
+                kind == .switchControl
         case .minLines, .maxLines: kind == .textArea
         case .headingLevel: kind == .heading
-        case .labelledBy, .describedBy, .errorMessageBy, .invalid:
-            kind == .textInput || kind == .textArea
+        case .labelledBy, .describedBy, .errorMessageBy:
+            kind == .textInput || kind == .textArea || kind == .switchControl
+        case .invalid:
+            kind == .textInput || kind == .textArea || kind == .checkbox ||
+                kind == .switchControl
         case .inputType: kind == .textInput
+        case .checked: kind == .checkbox || kind == .switchControl
+        case .indeterminate: kind == .checkbox
         }
     }
 
     private static func canContainChildren(_ kind: LUINodeKind) -> Bool {
-        kind == .row || kind == .column || kind == .box || kind == .scroll
+        kind == .row || kind == .column || kind == .box || kind == .scroll ||
+            kind == .switchControl
     }
 
     private static func isSingleChildContainer(_ kind: LUINodeKind) -> Bool {
-        kind == .scroll
+        kind == .scroll || kind == .switchControl
     }
 
     private func validateRelationship(

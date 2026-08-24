@@ -1,6 +1,7 @@
 (ns components.gallery
   (:require [lui.macros :refer [defui]]
             [lui.card :as card]
+            [lui.switch :as switch]
             [lui.text-field :as text-field]))
 
 (defui button-gallery [disabled-source toggle-disabled]
@@ -94,11 +95,48 @@
     [:text-field/description
      "This TextArea shares the same Signal to demonstrate local patches."]]])
 
+(defui toggle-gallery
+  [checked-source indeterminate-source invalid-source disabled-source
+   update-toggle toggle-indeterminate toggle-invalid]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Checkbox and Switch"]
+   [:row {:gap 12}
+    [:checkbox
+     {:checked checked-source
+      :indeterminate indeterminate-source
+      :disabled disabled-source
+      :accessibility-label "Enable notifications"
+      :on-change update-toggle}]
+    [:paragraph "Native Checkbox with checked and indeterminate Signals"]]
+   [:switch
+    {:checked checked-source
+     :disabled disabled-source
+     :invalid invalid-source
+     :on-change update-toggle}
+    [:switch/control
+     [:switch/thumb]]
+    [:switch/label "Background sync"]
+    [:switch/description
+     "The retained control keeps its identity while the Signal changes."]
+    [:switch/error-message "Background sync is currently unavailable."]]
+   [:row {:gap 12}
+    [:button
+     {:variant "outline" :on-press toggle-indeterminate}
+     "Toggle indeterminate"]
+    [:button
+     {:variant "outline" :on-press toggle-invalid}
+     "Toggle switch invalid"]]])
+
 (defui component-gallery
   [disabled-source toggle-disabled card-copy
-   value-source invalid-source update-value toggle-invalid]
+   value-source invalid-source update-value toggle-invalid
+   checked-source indeterminate-source toggle-invalid-source
+   update-toggle toggle-indeterminate toggle-toggle-invalid]
   [:column
    [button-gallery disabled-source toggle-disabled]
    [card-gallery card-copy]
    [text-field-gallery
-    value-source invalid-source disabled-source update-value toggle-invalid]])
+    value-source invalid-source disabled-source update-value toggle-invalid]
+   [toggle-gallery
+    checked-source indeterminate-source toggle-invalid-source disabled-source
+    update-toggle toggle-indeterminate toggle-toggle-invalid]])
