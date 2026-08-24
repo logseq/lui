@@ -1,0 +1,14 @@
+(ns components.flutter-bridge)
+
+(signature components.flutter-bridge/send-patch! :fn<string;bool>)
+(signature components.flutter-bridge/operating-system
+  :fn<int;operating-system>)
+(signature components.flutter-bridge/app
+  :fn<reducer-app<gallery-model;gallery-action>>)
+(signature components.flutter-bridge/initialize :fn<int;string>)
+(signature components.flutter-bridge/press :fn<int;string>)
+(signature components.flutter-bridge/hold :fn<int;string>)
+(signature components.flutter-bridge/text-changed :fn<int;string;string>)
+(signature components.flutter-bridge/toggle-changed :fn<int;bool;string>)
+(signature components.flutter-bridge/dispose :fn<string>)
+(signature components.flutter-bridge/root-node :fn<int>)

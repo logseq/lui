@@ -6,6 +6,8 @@
   %{lib:lg-test.sources:test.cljc}
   %{lib:lg-test.sources:test_native.cljc}
   (source_tree ../examples/todos/lg/todos)
+  (source_tree ../examples/components/lg/components)
+  ../examples/components/test/components/app_test.cljc
   ../examples/todos/test/todos/app_test.cljc
   lui/runtime_test.cljc
   lui/authoring_test.cljc
@@ -26,6 +28,8 @@
    %{lib:lg-test.sources:test.cljc}
    %{lib:lg-test.sources:test_native.cljc}
    ../examples/todos/lg/todos
+   ../examples/components/lg/components
+   %{dep:../examples/components/test/components/app_test.cljc}
    %{dep:../examples/todos/test/todos/app_test.cljc}
    %{dep:lui/runtime_test.cljc}
    %{dep:lui/authoring_test.cljc}
@@ -53,6 +57,8 @@
   %{lib:lg-test.sources:test.cljc}
   %{lib:lg-test.sources:test_melange.cljc}
   (source_tree ../examples/todos/lg/todos)
+  (source_tree ../examples/components/lg/components)
+  ../examples/components/test/components/app_test.cljc
   ../examples/todos/test/todos/app_test.cljc
   lui/runtime_test.cljc
   lui/authoring_test.cljc
@@ -73,6 +79,8 @@
    %{lib:lg-test.sources:test.cljc}
    %{lib:lg-test.sources:test_melange.cljc}
    ../examples/todos/lg/todos
+   ../examples/components/lg/components
+   %{dep:../examples/components/test/components/app_test.cljc}
    %{dep:../examples/todos/test/todos/app_test.cljc}
    %{dep:lui/runtime_test.cljc}
    %{dep:lui/authoring_test.cljc}

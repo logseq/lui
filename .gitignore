@@ -3,5 +3,7 @@
 /platform/apple/.build/
 /platform/flutter/.dart_tool/
 /platform/flutter/build/
+/examples/*/flutter/.dart_tool/
+/examples/*/flutter/build/
 /platform/web/node_modules/
 /platform/web/dist/

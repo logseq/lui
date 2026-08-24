@@ -51,7 +51,9 @@ under `lg/lui/backend/web.cljc` and `examples/todos/web/lg/todos/web_main.cljc`.
 
 The component showcase is at
 <http://127.0.0.1:8765/examples/components/web/index.html>. It uses the same LG
-Signal view model and includes interactive incremental component states.
+Signal reducer and component tree as the native hosts. The Flutter host and its
+real OCaml FFI integration test are documented in
+[`examples/components/README.md`](examples/components/README.md).
 
 ## Declarative UI
 

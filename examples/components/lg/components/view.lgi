@@ -1,0 +1,5 @@
+(ns components.view)
+
+(signature components.view/card-copy :fn<gallery-model;string>)
+(signature components.view/gallery-view
+  :fn<ui-context;signal<gallery-model>;fn<gallery-action;bool>;int>)

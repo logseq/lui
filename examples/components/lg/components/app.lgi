@@ -1,0 +1,6 @@
+(ns components.app)
+
+(signature components.app/create
+  :fn<backend;reducer-app<gallery-model;gallery-action>>)
+(signature components.app/model
+  :fn<reducer-app<gallery-model;gallery-action>;gallery-model>)

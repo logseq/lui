@@ -1,0 +1,20 @@
+(ns components.model)
+
+(type-record gallery-model
+  (gallery-disabled :bool)
+  (gallery-field-value :string)
+  (gallery-invalid :bool)
+  (gallery-checked :bool)
+  (gallery-progress :int))
+
+(type-variant gallery-action
+  (ToggleDisabled)
+  (SetFieldValue :string)
+  (ToggleInvalid)
+  (SetChecked :bool)
+  (AdvanceProgress))
+
+(signature components.model/initial :fn<gallery-model>)
+(signature components.model/update
+  :fn<gallery-model;gallery-action;gallery-model>)
+(signature components.model/progress-label :fn<gallery-model;string>)

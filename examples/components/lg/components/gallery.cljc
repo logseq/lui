@@ -12,7 +12,7 @@
    [:button
     {:variant "outline" :on-press toggle-disabled}
     "Toggle disabled"]
-   [:row {:gap 12}
+   [:grid {:columns 2 :gap 12}
     [:button {:disabled disabled-source :on-press (fn [_event] true)} "Default"]
     [:button
      {:variant "primary"
@@ -100,7 +100,7 @@
 (defui badge-gallery []
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "Badge"]
-   [:row {:gap 8}
+   [:grid {:columns 2 :gap 8}
     [:badge "Default"]
     [:badge {:variant "secondary"} "Secondary"]
     [:badge {:variant "outline"} "Outline"]

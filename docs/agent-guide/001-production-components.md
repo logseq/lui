@@ -144,6 +144,10 @@ wire protocol vocabulary.
 
 Delivered parity slices:
 
+- one shared component-gallery model, reducer, and Signal view under
+  `examples/components/lg`; Web and Flutter hosts reuse it without duplicating
+  application state, and the Flutter integration test crosses the real OCaml
+  FFI boundary;
 - `row`, `column`, and `grid`, including `main`, `cross`, `grow`, `columns`,
   and `gap` validation;
 - direct retained `stack`, `panel`, and `card` overlay nodes on Web, SwiftUI,
