@@ -2,17 +2,16 @@
 (ns lui.wire-schema
   (:require [lui.protocol :refer [Row Column Grid Stack Panel Card
                      Box Text Heading Paragraph Label Button
-                     ToggleButton Toggle RadioGroup Radio Slider TextInput
-                     TextArea Checkbox SwitchControl Progress Divider Scroll
-                     ListContainer Spacer Spinner Icon TextValue Enabled
-                     Gap MainAlignment CrossAlignment GrowValue GridColumns PaddingValue
-                     PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth
-                     CornerRadius WidthValue HeightValue MinWidth MaxWidth MinHeight
-                     MaxHeight PlaceholderValue ReadOnly AccessibilityLabel MinLines MaxLines
-                     StyleClass HeadingLevel LabelledBy DescribedBy ErrorMessageBy InputType
-                     Invalid Checked ProgressValue OrientationValue SizeValue IconName
-                     VariantValue InlineIconName IconPlacementValue Selected Autofocus HoldEnabled
-                     ChangeEnabled ToggleEnabled PressEnabled]]))
+                     ToggleButton Toggle RadioGroup Radio Slider TextField
+                     Input SearchField Textarea Checkbox SwitchControl Progress
+                     Divider Scroll ListContainer Spacer Spinner Icon
+                     TextValue Enabled Gap MainAlignment CrossAlignment GrowValue
+                     GridColumns PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue
+                     BorderColorValue BorderWidth CornerRadius WidthValue HeightValue MinWidth
+                     MaxWidth MinHeight MaxHeight PlaceholderValue AccessibilityLabel StyleClass
+                     HeadingLevel Checked ProgressValue OrientationValue SizeValue IconName
+                     VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter
+                     HoldEnabled ChangeEnabled ToggleEnabled PressEnabled]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -33,8 +32,10 @@
     RadioGroup "radio-group"
     Radio "radio"
     Slider "slider"
-    TextInput "text-input"
-    TextArea "text-area"
+    TextField "text-field"
+    Input "input"
+    SearchField "search-field"
+    Textarea "textarea"
     Checkbox "checkbox"
     SwitchControl "switch"
     Progress "progress"
@@ -69,17 +70,9 @@
     MinHeight "min-height"
     MaxHeight "max-height"
     PlaceholderValue "placeholder"
-    ReadOnly "read-only"
     AccessibilityLabel "accessibility-label"
-    MinLines "min-lines"
-    MaxLines "max-lines"
     StyleClass "style-class"
     HeadingLevel "heading-level"
-    LabelledBy "labelled-by"
-    DescribedBy "described-by"
-    ErrorMessageBy "error-message-by"
-    InputType "input-type"
-    Invalid "invalid"
     Checked "checked"
     ProgressValue "value"
     OrientationValue "orientation"
@@ -90,6 +83,7 @@
     IconPlacementValue "icon-placement"
     Selected "selected"
     Autofocus "autofocus"
+    SubmitOnEnter "submit-on-enter"
     HoldEnabled "hold-enabled"
     ChangeEnabled "change-enabled"
     ToggleEnabled "toggle-enabled"

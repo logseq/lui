@@ -68,10 +68,8 @@ private struct LUINodeView: View {
             LUIButtonView(model: model, backend: backend)
         case .toggleButton:
             LUIButtonView(model: model, backend: backend, isToggle: true)
-        case .textInput:
-            LUITextControlView(model: model, backend: backend, multiline: false)
-        case .textArea:
-            LUITextControlView(model: model, backend: backend, multiline: true)
+        case .textField, .input, .searchField, .textarea:
+            LUITextControlView(model: model, backend: backend)
         case .checkbox:
             LUICheckboxView(model: model, backend: backend)
         case .switchControl:
@@ -540,19 +538,24 @@ private struct LUISeparatorView: View {
 private struct LUITextControlView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
-    let multiline: Bool
     @State private var draft: String
+    @FocusState private var focused: Bool
 
-    init(model: LUINodeModel, backend: LUIAppleBackend, multiline: Bool) {
+    init(model: LUINodeModel, backend: LUIAppleBackend) {
         self.model = model
         self.backend = backend
-        self.multiline = multiline
         _draft = State(initialValue: model.text)
     }
 
     var body: some View {
         field
-            .disabled(!model.isEnabled || model.isReadOnly)
+            .disabled(!model.isEnabled)
+            .focused($focused)
+            .onSubmit { try? backend.performSubmit(node: model.id) }
+            .onAppear { if model.requestsAutofocus { focused = true } }
+            .onChange(of: model.requestsAutofocus) { _, requested in
+                if requested { focused = true }
+            }
             .onChange(of: model.text) { _, next in
                 if draft != next {
                     draft = next
@@ -562,33 +565,34 @@ private struct LUITextControlView: View {
 
     @ViewBuilder
     private var field: some View {
-        if multiline {
-            multilineField
-        } else if model.property(.inputType)?.stringValue == "password" {
-            SecureField(model.property(.placeholder)?.stringValue ?? "", text: binding)
+        if model.kind == .textarea {
+            TextField(
+                model.property(.placeholder)?.stringValue ?? "",
+                text: binding,
+                axis: .vertical
+            )
+            .lineLimit(1...)
+        } else if model.kind == .searchField {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField(
+                    model.property(.placeholder)?.stringValue ?? "",
+                    text: binding
+                )
+                if !draft.isEmpty {
+                    Button {
+                        draft = ""
+                        try? backend.performTextChange(node: model.id, text: "")
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         } else {
             TextField(model.property(.placeholder)?.stringValue ?? "", text: binding)
-        }
-    }
-
-    @ViewBuilder
-    private var multilineField: some View {
-        let minimum = model.property(.minLines)?.intValue ?? 2
-        let maximum = model.property(.maxLines)?.intValue
-        if let maximum {
-            TextField(
-                model.property(.placeholder)?.stringValue ?? "",
-                text: binding,
-                axis: .vertical
-            )
-            .lineLimit(minimum...maximum)
-        } else {
-            TextField(
-                model.property(.placeholder)?.stringValue ?? "",
-                text: binding,
-                axis: .vertical
-            )
-            .lineLimit(minimum...)
         }
     }
 

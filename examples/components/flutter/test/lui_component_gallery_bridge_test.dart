@@ -31,6 +31,7 @@ void main() {
           node,
           text,
         ),
+        LUISubmitEvent(:final node) => bridge.submit(node),
         LUIToggleChangedEvent(:final node, :final checked) =>
           bridge.toggleChanged(node, checked),
         LUIChangeEvent(:final node) => bridge.radioChanged(node),
@@ -64,6 +65,11 @@ void main() {
 
     expect(find.text('ToggleButton'), findsOneWidget);
     expect(find.text('Progress fraction: 0.3'), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(4));
+    expect(find.text('TextField'), findsOneWidget);
+    expect(find.text('Input'), findsOneWidget);
+    expect(find.text('SearchField'), findsOneWidget);
+    expect(find.text('Textarea'), findsOneWidget);
     final backendOwnedLabel = find.text('Backend-owned');
     final retainedLabel = tester.renderObject(backendOwnedLabel);
     final backendOwnedSemantics = find.byWidgetPredicate(

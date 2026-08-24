@@ -55,6 +55,12 @@
   (driver/flush! (app))
   (deref latest-patch))
 
+(defn submit [node]
+  (reset! latest-patch "")
+  (driver/dispatch-event! (app) (proto/Submit node))
+  (driver/flush! (app))
+  (deref latest-patch))
+
 (defn toggle-changed [node checked]
   (reset! latest-patch "")
   (driver/dispatch-event! (app) (proto/ToggleChanged node checked))
@@ -84,6 +90,7 @@
 (callback/register "lui_flutter_press" press)
 (callback/register "lui_flutter_hold" hold)
 (callback/register "lui_flutter_text_changed" text-changed)
+(callback/register "lui_flutter_submit" submit)
 (callback/register "lui_flutter_toggle_changed" toggle-changed)
 (callback/register "lui_flutter_radio_changed" radio-changed)
 (callback/register "lui_flutter_slider_changed" slider-changed)

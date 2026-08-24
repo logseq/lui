@@ -48,37 +48,37 @@
      (wire/encode-batch batch)
      "semantic content uses the native host's closed wire vocabulary")))
 
-(deftest form-control-patch-uses-closed-wire-names
+(deftest text-entry-patch-uses-direct-reference-wire-names
   (let [batch
         (record proto/patch-batch
                 (generation 1)
-                (ops [(proto/create-node-op 1 proto/Label)
-                      (proto/create-node-op 2 proto/TextInput)
+                (ops [(proto/create-node-op 1 proto/TextField)
+                      (proto/create-node-op 2 proto/Input)
+                      (proto/create-node-op 3 proto/SearchField)
+                      (proto/create-node-op 4 proto/Textarea)
                       (proto/set-prop-op
-                       2 proto/LabelledBy (proto/IntValue 1))
+                       1 proto/TextValue (proto/StringValue "Draft"))
                       (proto/set-prop-op
-                       2 proto/DescribedBy (proto/IntValue 3))
+                       2 proto/PlaceholderValue (proto/StringValue "Email"))
                       (proto/set-prop-op
-                       2 proto/ErrorMessageBy (proto/IntValue 4))
+                       3 proto/Autofocus (proto/BoolValue true))
                       (proto/set-prop-op
-                       2 proto/InputType (proto/StringValue "email"))
-                      (proto/set-prop-op
-                       2 proto/Invalid (proto/BoolValue true))]))]
+                       4 proto/SubmitOnEnter (proto/BoolValue true))]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
-      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"label\"},"
-      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"text-input\"},"
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"text-field\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"input\"},"
+      "{\"op\":\"create-node\",\"id\":3,\"kind\":\"search-field\"},"
+      "{\"op\":\"create-node\",\"id\":4,\"kind\":\"textarea\"},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"text\",\"value\":\"Draft\"},"
       "{\"op\":\"set-prop\",\"id\":2,"
-      "\"property\":\"labelled-by\",\"value\":1},"
-      "{\"op\":\"set-prop\",\"id\":2,"
-      "\"property\":\"described-by\",\"value\":3},"
-      "{\"op\":\"set-prop\",\"id\":2,"
-      "\"property\":\"error-message-by\",\"value\":4},"
-      "{\"op\":\"set-prop\",\"id\":2,"
-      "\"property\":\"input-type\",\"value\":\"email\"},"
-      "{\"op\":\"set-prop\",\"id\":2,"
-      "\"property\":\"invalid\",\"value\":true}]}")
+      "\"property\":\"placeholder\",\"value\":\"Email\"},"
+      "{\"op\":\"set-prop\",\"id\":3,"
+      "\"property\":\"autofocus\",\"value\":true},"
+      "{\"op\":\"set-prop\",\"id\":4,"
+      "\"property\":\"submit-on-enter\",\"value\":true}]}")
      (wire/encode-batch batch)
      "form controls use the native host's closed wire vocabulary")))
 
@@ -122,8 +122,8 @@
         "direct controls carry disabled state through Enabled")
     (is (proto/property-supported? kind proto/AccessibilityLabel)
         "direct controls accept the accessibility-only label")
-    (is (not (proto/property-supported? kind proto/Invalid))
-        "invalid is not part of the reference control contract")
+    (is (not (proto/property-supported? kind proto/PlaceholderValue))
+        "text-entry properties stay off toggle controls")
     (is (not (proto/can-contain-children? kind))
         "backend-owned control parts never enter the retained tree")))
 
@@ -647,63 +647,6 @@
          (wire/encode-batch batch))
         "ToggleButton has one stable typed wire representation")))
 
-(deftest form-controls-retain-typed-accessibility-relationships
-  (let [renderer (apple/create)
-        application
-        (runtime/create (sig/scheduler) (apple/backend renderer))
-        label (runtime/create-node! application proto/Label)
-        input (runtime/create-node! application proto/TextInput)
-        description (runtime/create-node! application proto/Paragraph)
-        error (runtime/create-node! application proto/Paragraph)]
-    (runtime/set-prop!
-     application label proto/TextValue (proto/StringValue "Email"))
-    (runtime/set-prop!
-     application input proto/LabelledBy (proto/IntValue label))
-    (runtime/set-prop!
-     application input proto/DescribedBy (proto/IntValue description))
-    (runtime/set-prop!
-     application input proto/ErrorMessageBy (proto/IntValue error))
-    (runtime/set-prop!
-     application input proto/InputType (proto/StringValue "email"))
-    (runtime/set-prop!
-     application input proto/Invalid (proto/BoolValue true))
-    (runtime/flush! application)
-    (match (apple/property renderer input proto/LabelledBy)
-      (Some (proto/IntValue node))
-      (assert-equal label node "input retains its Label node relationship")
-      _ (is false "input has a labelled-by relationship"))
-    (match (apple/property renderer input proto/DescribedBy)
-      (Some (proto/IntValue node))
-      (assert-equal description node "input retains its description")
-      _ (is false "input has a described-by relationship"))
-    (match (apple/property renderer input proto/ErrorMessageBy)
-      (Some (proto/IntValue node))
-      (assert-equal error node "input retains its error message")
-      _ (is false "input has an error relationship"))
-    (match (apple/property renderer input proto/InputType)
-      (Some (StringValue value))
-      (assert-equal "email" value "input type is typed retained state")
-      _ (is false "input type reaches the backend"))
-    (match (apple/property renderer input proto/Invalid)
-      (Some (proto/BoolValue value))
-      (assert-equal true value "invalid state is retained")
-      _ (is false "invalid state reaches the backend"))))
-
-(deftest dropping-form-content-clears-retained-relationships
-  (let [renderer (apple/create)
-        application
-        (runtime/create (sig/scheduler) (apple/backend renderer))
-        label (runtime/create-node! application proto/Label)
-        input (runtime/create-node! application proto/TextInput)]
-    (runtime/set-prop!
-     application input proto/LabelledBy (proto/IntValue label))
-    (runtime/flush! application)
-    (runtime/drop-node! application label)
-    (runtime/flush! application)
-    (match (apple/property renderer input proto/LabelledBy)
-      None (is true "dropping a label clears incoming relationships")
-      _ (is false "retained relationships cannot point at dropped nodes"))))
-
 (deftest wire-backend-sends-one-json-batch
   (let [sent (atom "")
         renderer (apple/create-wire (fn [json] (reset! sent json) true))
@@ -903,10 +846,10 @@
         (runtime/create (sig/scheduler) (flutter/backend flutter-renderer))
         apple-row (runtime/create-node! apple-runtime proto/Row)
         apple-text (runtime/create-node! apple-runtime proto/Text)
-        apple-input (runtime/create-node! apple-runtime proto/TextInput)
+        apple-input (runtime/create-node! apple-runtime proto/TextField)
         flutter-row (runtime/create-node! flutter-runtime proto/Row)
         flutter-text (runtime/create-node! flutter-runtime proto/Text)
-        flutter-input (runtime/create-node! flutter-runtime proto/TextInput)]
+        flutter-input (runtime/create-node! flutter-runtime proto/TextField)]
     (runtime/flush! apple-runtime)
     (runtime/flush! flutter-runtime)
     (match (apple/node apple-renderer apple-row)

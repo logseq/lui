@@ -2,8 +2,7 @@
   (:require [lui.macros :refer [defui]]
             [lui.badge]
             [lui.separator]
-            [lui.skeleton]
-            [lui.text-field :as text-field]))
+            [lui.skeleton]))
 
 (defui button-gallery [disabled-source toggle-disabled]
   [:column {:gap 24 :padding 32}
@@ -156,35 +155,38 @@
     [:icon {:name "settings"}]
     [:icon {:name "trash" :size "lg" :foreground "destructive"}]]])
 
-(defui text-field-gallery
-  [value-source invalid-source disabled-source update-value toggle-invalid]
+(defui text-entry-gallery [value-source disabled-source update-value]
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "TextField"]
    [:text-field
-    [:text-field/label "Email"]
-    [:text-field/input
-     {:value value-source
-      :type "email"
-      :invalid invalid-source
-      :disabled disabled-source
-      :placeholder "you@example.com"
-      :on-change update-value}]
-    [:text-field/description "Used for account notifications."]
-    [:text-field/error-message "Enter a valid email address."]]
-   [:button
-    {:variant "outline" :on-press toggle-invalid}
-    "Toggle invalid"]
-   [:text-field
-    [:text-field/label "Notes"]
-    [:text-field/text-area
-     {:value value-source
-      :placeholder "Add notes"
-      :min-lines 2
-      :max-lines 5
-      :disabled disabled-source
-      :on-change update-value}]
-    [:text-field/description
-     "This TextArea shares the same Signal to demonstrate local patches."]]])
+    {:text value-source
+     :label "Project name"
+     :placeholder "Project name"
+     :disabled disabled-source
+     :on-input update-value}]
+   [:heading {:level 2} "Input"]
+   [:input
+    {:text value-source
+     :label "Email"
+     :placeholder "you@example.com"
+     :disabled disabled-source
+     :on-input update-value}]
+   [:heading {:level 2} "SearchField"]
+   [:search-field
+    {:text value-source
+     :label "Search components"
+     :placeholder "Search components"
+     :disabled disabled-source
+     :on-input update-value}]
+   [:heading {:level 2} "Textarea"]
+   [:textarea
+    {:text value-source
+     :label "Notes"
+     :placeholder "Add notes"
+     :disabled disabled-source
+     :on-input update-value}]
+   [:paragraph
+    "All four controls share one Signal and patch their retained native nodes in place."]])
 
 (defui toggle-gallery [checked-source disabled-source update-toggle]
   [:column {:gap 24 :padding 32}
@@ -263,7 +265,7 @@
 
 (defui component-gallery
   [disabled-source toggle-disabled card-copy
-   value-source invalid-source update-value toggle-invalid
+   value-source update-value
    checked-source update-toggle
    progress-source progress-label-source advance-progress
    comfortable-source compact-source volume-source volume-label-source
@@ -280,8 +282,7 @@
    [progress-gallery progress-source progress-label-source advance-progress]
    [surface-gallery card-copy]
    [collection-gallery]
-   [text-field-gallery
-    value-source invalid-source disabled-source update-value toggle-invalid]
+   [text-entry-gallery value-source disabled-source update-value]
    [toggle-gallery checked-source disabled-source update-toggle]
    [value-control-gallery
     checked-source comfortable-source compact-source volume-source

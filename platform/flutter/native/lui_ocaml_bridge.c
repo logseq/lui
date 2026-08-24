@@ -74,6 +74,14 @@ LUI_EXPORT int32_t lui_ocaml_text_changed(int64_t node, const char *text) {
   CAMLreturnT(int32_t, accepted);
 }
 
+LUI_EXPORT int32_t lui_ocaml_submit(int64_t node) {
+  const value *dispatch = caml_named_value("lui_flutter_submit");
+  if (dispatch == NULL) {
+    return 0;
+  }
+  return emit_patch(caml_callback_exn(*dispatch, Val_long(node)));
+}
+
 LUI_EXPORT int32_t lui_ocaml_toggle_changed(int64_t node, int32_t checked) {
   CAMLparam0();
   CAMLlocal1(result);

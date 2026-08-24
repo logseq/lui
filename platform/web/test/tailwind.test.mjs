@@ -56,18 +56,14 @@ test("the production stylesheet distinguishes List flow from Scroll overlays", a
   assert.match(css, /\.lui-scroll>\*\{[^}]*grid-area:1\/1/)
 })
 
-test("the production stylesheet contains the Solid UI TextField contract", async () => {
+test("the production stylesheet contains the direct text-entry contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 
-  assert.match(css, /\.lui-label(?:,\.lui-text-field-label)?\{[^}]*font-size:var\(--text-sm\)/)
-  assert.match(css, /\.lui-text-field\{[^}]*display:flex/)
-  assert.match(css, /\.lui-text-field\{[^}]*flex-direction:column/)
-  assert.match(css, /\.lui-text-field-input\{[^}]*height:calc\(var\(--spacing\)\*10\)/)
-  assert.match(css, /\.lui-text-field-input\[data-invalid\]/)
-  assert.match(css, /\.lui-text-field-text-area\{[^}]*min-height:80px/)
-  assert.match(css, /\.lui-text-field-description\{[^}]*color:var\(--color-muted-foreground\)/)
-  assert.match(css, /\.lui-text-field-error-message\{[^}]*font-size:var\(--text-xs\)/)
-  assert.match(css, /\.lui-text-field:has\(\[data-invalid\]\) \.lui-text-field-error-message/)
+  assert.match(css, /\.lui-text-field,\.lui-input,\.lui-search-field\{[^}]*height:calc\(var\(--spacing\)\*10\)/)
+  assert.match(css, /\.lui-text-field,\.lui-input,\.lui-search-field,\.lui-textarea\{[^}]*border-radius:var\(--radius-md\)/)
+  assert.match(css, /\.lui-text-field:focus-visible,\.lui-input:focus-visible,\.lui-search-field:focus-visible,\.lui-textarea:focus-visible/)
+  assert.match(css, /\.lui-textarea\{[^}]*min-height:80px/)
+  assert.match(css, /\.lui-textarea\{[^}]*field-sizing:content/)
   assert.doesNotMatch(css, /\.h-10\{/)
 })
 

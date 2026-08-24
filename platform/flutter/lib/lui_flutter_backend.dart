@@ -14,6 +14,7 @@ sealed class LUIEvent {
     required int node,
     required String text,
   }) = LUITextChangedEvent;
+  const factory LUIEvent.submit({required int node}) = LUISubmitEvent;
   const factory LUIEvent.toggleChanged({
     required int node,
     required bool checked,
@@ -82,6 +83,18 @@ final class LUITextChangedEvent extends LUIEvent {
 
   @override
   int get hashCode => Object.hash(node, text);
+}
+
+final class LUISubmitEvent extends LUIEvent {
+  const LUISubmitEvent({required this.node});
+  final int node;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUISubmitEvent && other.node == node;
+
+  @override
+  int get hashCode => node.hashCode;
 }
 
 final class LUIToggleChangedEvent extends LUIEvent {
@@ -329,11 +342,6 @@ final class LUIFlutterBackend {
     _states = next;
     generation = nextGeneration;
     final changedSources = Set<int>.of(changedIDs);
-    for (final entry in next.entries) {
-      if (_relationshipTargets(entry.value).any(changedSources.contains)) {
-        changedIDs.add(entry.key);
-      }
-    }
     for (final source in changedSources) {
       var parent = next[source]?.parent;
       while (parent != null) {
@@ -431,13 +439,8 @@ final class LUIFlutterBackend {
     final enabled = state.properties['enabled'] as bool? ?? true;
     final text = state.properties['text'] as String? ?? '';
     final placeholder = state.properties['placeholder'] as String?;
-    final readOnly = state.properties['read-only'] as bool? ?? false;
     final accessibilityLabel =
-        state.properties['accessibility-label'] as String? ??
-        _relatedText(state, 'labelled-by');
-    final description = _relatedText(state, 'described-by');
-    final errorMessage = _relatedText(state, 'error-message-by');
-    final invalid = state.properties['invalid'] as bool? ?? false;
+        state.properties['accessibility-label'] as String?;
     final checked = state.properties['checked'] as bool? ?? false;
     final progressFraction = ((state.properties['value'] as double?) ?? 0)
         .clamp(0.0, 1.0);
@@ -457,10 +460,6 @@ final class LUIFlutterBackend {
     );
     final borderWidth = state.properties['border-width'] as int?;
     final cornerRadius = state.properties['corner-radius'] as int?;
-    final accessibilityHint = [
-      ?description,
-      if (invalid && errorMessage != null) errorMessage,
-    ].join(' ');
     final gap = (state.properties['gap'] as int? ?? 0).toDouble();
     final main = state.properties['main'] as String? ?? 'start';
     final cross = state.properties['cross'] as String? ?? 'stretch';
@@ -486,31 +485,33 @@ final class LUIFlutterBackend {
     final buttonAutofocus = state.properties['autofocus'] as bool? ?? false;
     final buttonHoldEnabled =
         state.properties['hold-enabled'] as bool? ?? false;
-    Widget textControl({required bool multiline}) => SizedBox(
-      width: 240,
-      child: Semantics(
-        label: accessibilityLabel,
-        hint: accessibilityHint.isEmpty ? null : accessibilityHint,
-        textField: true,
-        readOnly: readOnly,
-        multiline: multiline,
-        child: _LUITextInput(
-          text: text,
-          enabled: enabled,
-          readOnly: readOnly,
-          placeholder: placeholder,
-          inputType: state.properties['input-type'] as String? ?? 'text',
-          invalid: invalid,
-          foreground: foreground,
-          minLines: multiline
-              ? (state.properties['min-lines'] as int? ?? 2)
-              : 1,
-          maxLines: multiline ? state.properties['max-lines'] as int? : 1,
-          onChanged: (value) =>
-              onEvent?.call(LUIEvent.textChanged(node: id, text: value)),
+    Widget textControl({required _NodeKind kind}) {
+      final multiline = kind == _NodeKind.textarea;
+      return SizedBox(
+        width: 240,
+        child: Semantics(
+          label: accessibilityLabel,
+          textField: true,
+          readOnly: false,
+          multiline: multiline,
+          child: _LUITextInput(
+            text: text,
+            enabled: enabled,
+            placeholder: placeholder,
+            foreground: foreground,
+            autofocus: state.properties['autofocus'] as bool? ?? false,
+            multiline: multiline,
+            search: kind == _NodeKind.searchField,
+            submitOnEnter:
+                state.properties['submit-on-enter'] as bool? ?? false,
+            onChanged: (value) =>
+                onEvent?.call(LUIEvent.textChanged(node: id, text: value)),
+            onSubmitted: (_) => onEvent?.call(LUIEvent.submit(node: id)),
+          ),
         ),
-      ),
-    );
+      );
+    }
+
     Widget toggleSemantics({required bool asSwitch, required Widget child}) {
       final label = accessibilityLabel?.isNotEmpty ?? false
           ? accessibilityLabel
@@ -760,8 +761,10 @@ final class LUIFlutterBackend {
         ),
         onChanged: enabled ? (value) => performValueChange(id, value) : null,
       ),
-      _NodeKind.textInput => textControl(multiline: false),
-      _NodeKind.textArea => textControl(multiline: true),
+      _NodeKind.textField ||
+      _NodeKind.input ||
+      _NodeKind.searchField ||
+      _NodeKind.textarea => textControl(kind: state.kind),
       _NodeKind.checkbox => toggleSemantics(
         asSwitch: false,
         child: CheckboxListTile(
@@ -914,13 +917,6 @@ final class LUIFlutterBackend {
           throw const LUIBackendException('cannot drop an attached node');
         }
         states.remove(id);
-        for (final remaining in states.values) {
-          for (final property in _relationshipProperties) {
-            if (remaining.properties[property] == id) {
-              remaining.properties.remove(property);
-            }
-          }
-        }
       case 'set-prop':
         final node = _requireState(states, _integer(operation['id'], 'id'));
         final property = _string(operation['property'], 'property');
@@ -928,7 +924,6 @@ final class LUIFlutterBackend {
         if (!_supports(node.kind, property, value)) {
           throw const LUIBackendException('unsupported property value');
         }
-        _validateRelationship(states, property, value);
         node.properties[property] = value!;
       case 'insert-child':
         final parentID = _integer(operation['parent'], 'parent');
@@ -1049,9 +1044,10 @@ final class LUIFlutterBackend {
         value is String &&
             (value == 'leading' || value == 'trailing') &&
             _isButtonKind(kind),
-      'selected' ||
-      'autofocus' ||
-      'hold-enabled' => value is bool && _isButtonKind(kind),
+      'selected' || 'hold-enabled' => value is bool && _isButtonKind(kind),
+      'autofocus' =>
+        value is bool && (_isButtonKind(kind) || _isTextControl(kind)),
+      'submit-on-enter' => value is bool && kind == _NodeKind.textarea,
       'change-enabled' ||
       'toggle-enabled' ||
       'press-enabled' => value is bool && kind == _NodeKind.radio,
@@ -1078,8 +1074,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.paragraph ||
                 kind == _NodeKind.label ||
                 _isButtonKind(kind) ||
-                kind == _NodeKind.textInput ||
-                kind == _NodeKind.textArea ||
+                _isTextControl(kind) ||
                 kind == _NodeKind.checkbox ||
                 kind == _NodeKind.toggle ||
                 kind == _NodeKind.radio ||
@@ -1096,14 +1091,6 @@ final class LUIFlutterBackend {
       'min-height' ||
       'max-height' => value is int && value >= 0,
       'style-class' => value is String,
-      'labelled-by' => value is int && kind.isTextControl,
-      'described-by' ||
-      'error-message-by' => value is int && kind.isTextControl,
-      'input-type' =>
-        value is String &&
-            _inputTypes.contains(value) &&
-            kind == _NodeKind.textInput,
-      'invalid' => value is bool && kind.isTextControl,
       'checked' =>
         value is bool &&
             (kind == _NodeKind.checkbox ||
@@ -1113,7 +1100,6 @@ final class LUIFlutterBackend {
       'heading-level' =>
         value is int && value >= 1 && value <= 6 && kind == _NodeKind.heading,
       'placeholder' => value is String && _isTextControl(kind),
-      'read-only' => value is bool && _isTextControl(kind),
       'accessibility-label' =>
         value is String &&
             (_isButtonKind(kind) ||
@@ -1124,33 +1110,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.radioGroup ||
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider),
-      'min-lines' => value is int && value > 0 && kind == _NodeKind.textArea,
-      'max-lines' => value is int && value > 0 && kind == _NodeKind.textArea,
       _ => false,
     };
-  }
-
-  static void _validateRelationship(
-    Map<int, _NodeState> states,
-    String property,
-    Object? value,
-  ) {
-    if (property != 'labelled-by' &&
-        property != 'described-by' &&
-        property != 'error-message-by') {
-      return;
-    }
-    if (value is! int) return;
-    final target = _requireState(states, value);
-    final valid = switch (property) {
-      'labelled-by' => target.kind == _NodeKind.label,
-      'described-by' || 'error-message-by' =>
-        target.kind == _NodeKind.text || target.kind == _NodeKind.paragraph,
-      _ => true,
-    };
-    if (!valid) {
-      throw const LUIBackendException('invalid relationship target');
-    }
   }
 
   static void _validateStates(Map<int, _NodeState> states) {
@@ -1252,7 +1213,10 @@ final class LUIFlutterBackend {
       kind == _NodeKind.button || kind == _NodeKind.toggleButton;
 
   static bool _isTextControl(_NodeKind kind) =>
-      kind == _NodeKind.textInput || kind == _NodeKind.textArea;
+      kind == _NodeKind.textField ||
+      kind == _NodeKind.input ||
+      kind == _NodeKind.searchField ||
+      kind == _NodeKind.textarea;
 
   static bool _isDescendant(
     Map<int, _NodeState> states, {
@@ -1357,45 +1321,6 @@ final class LUIFlutterBackend {
     _ => canStretch ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
   };
 
-  String? _relatedText(_NodeState state, String property) {
-    final related = state.properties[property] as int?;
-    return related == null
-        ? null
-        : _states[related]?.properties['text'] as String?;
-  }
-
-  static Iterable<int> _relationshipTargets(_NodeState state) sync* {
-    for (final property in _relationshipProperties) {
-      final target = state.properties[property];
-      if (target is int) yield target;
-    }
-  }
-
-  static const _inputTypes = {
-    'button',
-    'checkbox',
-    'color',
-    'date',
-    'datetime-local',
-    'email',
-    'file',
-    'hidden',
-    'image',
-    'month',
-    'number',
-    'password',
-    'radio',
-    'range',
-    'reset',
-    'search',
-    'submit',
-    'tel',
-    'text',
-    'time',
-    'url',
-    'week',
-  };
-
   static const _mainAlignments = {'start', 'center', 'end', 'space_between'};
 
   static const _crossAlignments = {'stretch', 'start', 'center', 'end'};
@@ -1410,18 +1335,9 @@ final class LUIFlutterBackend {
     'ghost',
     'destructive',
   };
-
-  static const _relationshipProperties = {
-    'labelled-by',
-    'described-by',
-    'error-message-by',
-  };
 }
 
 extension on _NodeKind {
-  bool get isTextControl =>
-      this == _NodeKind.textInput || this == _NodeKind.textArea;
-
   bool get isOverlaySurface =>
       this == _NodeKind.panel || this == _NodeKind.card;
 }
@@ -1476,26 +1392,26 @@ final class _LUITextInput extends StatefulWidget {
   const _LUITextInput({
     required this.text,
     required this.enabled,
-    required this.readOnly,
     required this.placeholder,
-    required this.inputType,
-    required this.invalid,
     required this.foreground,
-    required this.minLines,
-    required this.maxLines,
+    required this.autofocus,
+    required this.multiline,
+    required this.search,
+    required this.submitOnEnter,
     required this.onChanged,
+    required this.onSubmitted,
   });
 
   final String text;
   final bool enabled;
-  final bool readOnly;
   final String? placeholder;
-  final String inputType;
-  final bool invalid;
   final Color? foreground;
-  final int minLines;
-  final int? maxLines;
+  final bool autofocus;
+  final bool multiline;
+  final bool search;
+  final bool submitOnEnter;
   final ValueChanged<String> onChanged;
+  final ValueChanged<String> onSubmitted;
 
   @override
   State<_LUITextInput> createState() => _LUITextInputState();
@@ -1523,29 +1439,44 @@ final class _LUITextInputState extends State<_LUITextInput> {
 
   @override
   Widget build(BuildContext context) {
-    final invalidBorder = widget.invalid
-        ? OutlineInputBorder(
-            borderSide: BorderSide(color: Theme.of(context).colorScheme.error),
-          )
-        : null;
     return TextField(
       controller: _controller,
       enabled: widget.enabled,
-      readOnly: widget.readOnly,
-      keyboardType: widget.maxLines == 1
-          ? _keyboardType(widget.inputType)
-          : TextInputType.multiline,
-      obscureText: widget.inputType == 'password',
-      minLines: widget.minLines,
-      maxLines: widget.maxLines,
+      autofocus: widget.autofocus,
+      keyboardType: widget.multiline
+          ? TextInputType.multiline
+          : TextInputType.text,
+      textInputAction: widget.multiline && !widget.submitOnEnter
+          ? TextInputAction.newline
+          : TextInputAction.done,
+      minLines: 1,
+      maxLines: widget.multiline ? null : 1,
       style: TextStyle(color: widget.foreground),
       decoration: InputDecoration(
         hintText: widget.placeholder,
-        enabledBorder: invalidBorder,
-        focusedBorder: invalidBorder,
+        prefixIcon: widget.search ? const Icon(Icons.search) : null,
+        suffixIcon: widget.search && _controller.text.isNotEmpty
+            ? IconButton(
+                tooltip: 'Clear',
+                icon: const Icon(Icons.clear),
+                onPressed: _clear,
+              )
+            : null,
       ),
-      onChanged: widget.onChanged,
+      onChanged: _handleChanged,
+      onSubmitted: widget.onSubmitted,
     );
+  }
+
+  void _handleChanged(String value) {
+    if (widget.search) setState(() {});
+    widget.onChanged(value);
+  }
+
+  void _clear() {
+    _controller.clear();
+    setState(() {});
+    widget.onChanged('');
   }
 
   @override
@@ -1553,12 +1484,4 @@ final class _LUITextInputState extends State<_LUITextInput> {
     _controller.dispose();
     super.dispose();
   }
-
-  static TextInputType _keyboardType(String inputType) => switch (inputType) {
-    'email' => TextInputType.emailAddress,
-    'number' => TextInputType.number,
-    'tel' => TextInputType.phone,
-    'url' => TextInputType.url,
-    _ => TextInputType.text,
-  };
 }

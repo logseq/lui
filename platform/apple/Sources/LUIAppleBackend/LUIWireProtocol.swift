@@ -8,6 +8,7 @@ public enum LUIEvent: Equatable, Sendable {
     case press(node: Int)
     case hold(node: Int)
     case textChanged(node: Int, text: String)
+    case submit(node: Int)
     case toggleChanged(node: Int, checked: Bool)
     case change(node: Int)
     case valueChanged(node: Int, value: Double)
@@ -91,10 +92,6 @@ enum LUIWireValue: Decodable, Equatable {
     func matches(_ property: LUIProperty) -> Bool {
         switch (property, self) {
         case let (.headingLevel, .int(level)): (1...6).contains(level)
-        case (.labelledBy, .int), (.describedBy, .int),
-             (.errorMessageBy, .int): true
-        case let (.inputType, .string(type)): Self.inputTypes.contains(type)
-        case (.invalid, .bool): true
         case (.checked, .bool): true
         case (.progressValue, .double): true
         case let (.orientation, .string(value)):
@@ -108,7 +105,8 @@ enum LUIWireValue: Decodable, Equatable {
             Self.iconNames.contains(value) || Self.isApplicationIconName(value)
         case let (.iconPlacement, .string(value)):
             value == "leading" || value == "trailing"
-        case (.selected, .bool), (.autofocus, .bool), (.holdEnabled, .bool),
+        case (.selected, .bool), (.autofocus, .bool), (.submitOnEnter, .bool),
+             (.holdEnabled, .bool),
              (.changeEnabled, .bool), (.toggleEnabled, .bool), (.pressEnabled, .bool): true
         case let (.main, .string(value)):
             Self.mainAlignments.contains(value)
@@ -129,18 +127,12 @@ enum LUIWireValue: Decodable, Equatable {
              let (.maxHeight, .int(value)): value >= 0
         case (.text, .string), (.enabled, .bool), (.gap, .int),
              (.padding, .int), (.background, .string),
-             (.placeholder, .string), (.readOnly, .bool),
-             (.accessibilityLabel, .string), (.minLines, .int),
-             (.maxLines, .int), (.styleClass, .string): true
+             (.placeholder, .string), (.accessibilityLabel, .string),
+             (.styleClass, .string): true
         default: false
         }
     }
 
-    private static let inputTypes: Set<String> = [
-        "button", "checkbox", "color", "date", "datetime-local", "email",
-        "file", "hidden", "image", "month", "number", "password", "radio",
-        "range", "reset", "search", "submit", "tel", "text", "time", "url", "week",
-    ]
 
     private static let mainAlignments: Set<String> = [
         "start", "center", "end", "space_between",
@@ -222,14 +214,12 @@ struct LUIRetainedTree {
                 throw invalid("cannot drop an attached node")
             }
             nodes[id] = nil
-            removeRelationships(to: id)
         case let .setProp(id, property, value):
             guard var node = nodes[id] else { throw invalid("unknown node") }
             let normalizedValue = value.normalized(for: property)
             guard Self.supports(property, on: node.kind), normalizedValue.matches(property) else {
                 throw invalid("unsupported property value")
             }
-            try validateRelationship(property, value: normalizedValue)
             node.properties[property] = normalizedValue
             nodes[id] = node
         case let .insertChild(parent, child, index):
@@ -291,43 +281,42 @@ struct LUIRetainedTree {
             kind == .row || kind == .column || kind == .grid || kind == .box
         case .foreground:
             kind == .text || kind == .heading || kind == .paragraph ||
-                kind == .label || kind == .button || kind == .toggleButton || kind == .textInput ||
-                kind == .textArea || kind == .checkbox || kind == .toggle ||
+                kind == .label || kind == .button || kind == .toggleButton ||
+                isTextEntry(kind) || kind == .checkbox || kind == .toggle ||
                 kind == .radio || kind == .slider || kind == .spinner || kind == .icon
         case .text:
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
-                kind == .button || kind == .toggleButton || kind == .textInput || kind == .textArea ||
+                kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
         case .enabled:
-            kind == .button || kind == .toggleButton || kind == .textInput || kind == .textArea ||
+            kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle ||
                 kind == .radio || kind == .slider
         case .gap: kind == .row || kind == .column || kind == .grid || kind == .list
-        case .placeholder, .readOnly:
-            kind == .textInput || kind == .textArea
+        case .placeholder:
+            isTextEntry(kind)
         case .accessibilityLabel:
-            kind == .button || kind == .toggleButton || kind == .textInput || kind == .textArea || kind == .checkbox ||
+            kind == .button || kind == .toggleButton || isTextEntry(kind) || kind == .checkbox ||
                 kind == .switchControl || kind == .toggle ||
                 kind == .radioGroup || kind == .radio || kind == .slider
-        case .minLines, .maxLines: kind == .textArea
         case .headingLevel: kind == .heading
-        case .labelledBy:
-            kind == .textInput || kind == .textArea
-        case .describedBy, .errorMessageBy:
-            kind == .textInput || kind == .textArea
-        case .invalid:
-            kind == .textInput || kind == .textArea
-        case .inputType: kind == .textInput
         case .checked:
             kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
         case .progressValue: kind == .progress || kind == .slider
         case .orientation: kind == .divider
         case .size: kind == .button || kind == .toggleButton || kind == .spinner || kind == .icon
         case .name: kind == .icon
-        case .variant, .icon, .iconPlacement, .selected, .autofocus, .holdEnabled:
+        case .variant, .icon, .iconPlacement, .selected, .holdEnabled:
             kind == .button || kind == .toggleButton
+        case .autofocus:
+            kind == .button || kind == .toggleButton || isTextEntry(kind)
+        case .submitOnEnter: kind == .textarea
         case .changeEnabled, .toggleEnabled, .pressEnabled: kind == .radio
         }
+    }
+
+    private static func isTextEntry(_ kind: LUINodeKind) -> Bool {
+        kind == .textField || kind == .input || kind == .searchField || kind == .textarea
     }
 
     private static func canContainChildren(_ kind: LUINodeKind) -> Bool {
@@ -397,42 +386,6 @@ struct LUIRetainedTree {
         let exact = node.properties[fixed]?.intValue ?? lower
         guard lower <= upper, exact >= lower, exact <= upper else {
             throw invalid("surface size constraints conflict")
-        }
-    }
-
-    private mutating func removeRelationships(to removed: Int) {
-        let relationships: [LUIProperty] = [
-            .labelledBy,
-            .describedBy,
-            .errorMessageBy,
-        ]
-        for id in Array(nodes.keys) {
-            guard var node = nodes[id] else { continue }
-            for property in relationships
-            where node.properties[property]?.intValue == removed {
-                node.properties[property] = nil
-            }
-            nodes[id] = node
-        }
-    }
-
-    private func validateRelationship(
-        _ property: LUIProperty,
-        value: LUIWireValue
-    ) throws {
-        guard case let .int(target) = value else { return }
-        switch property {
-        case .labelledBy:
-            guard nodes[target]?.kind == .label else {
-                throw invalid("labelled-by must reference a label")
-            }
-        case .describedBy, .errorMessageBy:
-            guard let kind = nodes[target]?.kind,
-                  kind == .text || kind == .paragraph else {
-                throw invalid("description must reference text content")
-            }
-        default:
-            break
         }
     }
 

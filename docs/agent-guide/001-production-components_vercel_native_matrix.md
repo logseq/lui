@@ -160,9 +160,9 @@ names and payload semantics: `on-press`, `on-double-press`, `on-toggle`,
 `on-change`, `on-input`, `on-submit`, `on-dismiss`, `on-resize`, `on-hold`, and
 `on-drag` where admitted by the reference element.
 
-## Current LUI migration deltas
+## Completed provisional API removals
 
-| Current public shape | Parity target |
+| Removed public shape | Current parity shape |
 | --- | --- |
 | `:box` | internal primitive; public callers use `:stack` or `:panel` |
 | `:heading`, `:paragraph`, `:label` | `:text` plus the reference text/semantic attributes |
@@ -173,6 +173,13 @@ names and payload semantics: `on-press`, `on-double-press`, `on-toggle`,
 
 Migration is allowed to break the provisional API. Compatibility aliases would
 create a second component language and are therefore not retained.
+
+The four direct text-entry elements are now schema-supported retained leaves.
+They share `text`, `placeholder`, `disabled`, `autofocus`, `label`,
+`on-input`, and `on-submit`; `textarea` alone adds `submit-on-enter` and grows
+without a public autoresize or line-count property. Web maps them to native
+`input`/`textarea`, Apple to SwiftUI text controls, and Flutter to retained
+Material `TextField` widgets.
 
 ## Platform mapping
 

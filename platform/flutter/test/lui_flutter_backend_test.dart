@@ -236,23 +236,6 @@ void main() {
     expect(backend.generation, 1);
   });
 
-  test('rejects form relationships with the wrong semantic target', () {
-    final backend = LUIFlutterBackend();
-
-    expect(
-      () => backend.applyJson('''
-      {"generation":1,"ops":[
-        {"op":"create-node","id":1,"kind":"paragraph"},
-        {"op":"create-node","id":2,"kind":"text-input"},
-        {"op":"set-prop","id":2,"property":"labelled-by","value":1}
-      ]}
-      '''),
-      throwsA(isA<LUIBackendException>()),
-    );
-    expect(backend.containsNode(1), isFalse);
-    expect(backend.generation, 0);
-  });
-
   test('property patches invalidate only their retained node', () {
     final backend = LUIFlutterBackend()..applyJson(_initialBatch);
 
@@ -266,42 +249,30 @@ void main() {
     expect(backend.debugRevision(3), 0);
   });
 
-  test('dropping form content clears dependent relationships', () {
-    final backend = LUIFlutterBackend();
-    expect(
-      () => backend.applyJson('''
-      {"generation":1,"ops":[
-        {"op":"create-node","id":1,"kind":"label"},
-        {"op":"create-node","id":2,"kind":"text-input"},
-        {"op":"set-prop","id":1,"property":"text","value":"Email"},
-        {"op":"set-prop","id":2,"property":"labelled-by","value":1}
-      ]}
-      '''),
-      returnsNormally,
-    );
-    if (backend.generation == 0) return;
-
-    backend.applyJson('''
-    {"generation":2,"ops":[
-      {"op":"drop-node","id":1}
-    ]}
-    ''');
-
-    expect(backend.containsNode(1), isFalse);
-    expect(backend.debugRevision(2), 1);
-  });
-
-  testWidgets('maps semantic text-input properties to a native TextField', (
+  testWidgets('maps all direct text-entry kinds to native TextFields', (
     tester,
   ) async {
-    final semantics = tester.ensureSemantics();
-    final backend = LUIFlutterBackend()
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
       ..applyJson('''
       {"generation":1,"ops":[
-        {"op":"create-node","id":1,"kind":"text-input"},
-        {"op":"set-prop","id":1,"property":"placeholder","value":"Search"},
-        {"op":"set-prop","id":1,"property":"read-only","value":true},
-        {"op":"set-prop","id":1,"property":"accessibility-label","value":"Search todos"}
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"text-field"},
+        {"op":"create-node","id":3,"kind":"input"},
+        {"op":"create-node","id":4,"kind":"search-field"},
+        {"op":"create-node","id":5,"kind":"textarea"},
+        {"op":"set-prop","id":2,"property":"text","value":"Draft"},
+        {"op":"set-prop","id":2,"property":"placeholder","value":"Project"},
+        {"op":"set-prop","id":2,"property":"autofocus","value":true},
+        {"op":"set-prop","id":3,"property":"placeholder","value":"Email"},
+        {"op":"set-prop","id":4,"property":"text","value":"Query"},
+        {"op":"set-prop","id":4,"property":"placeholder","value":"Search"},
+        {"op":"set-prop","id":5,"property":"text","value":"One line"},
+        {"op":"set-prop","id":5,"property":"submit-on-enter","value":true},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":1,"child":4,"index":2},
+        {"op":"insert-child","parent":1,"child":5,"index":3}
       ]}
       ''');
 
@@ -309,18 +280,47 @@ void main() {
       MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
     );
 
-    final field = tester.widget<TextField>(find.byType(TextField));
-    expect(field.decoration?.hintText, 'Search');
-    expect(field.readOnly, isTrue);
+    expect(find.byType(TextField), findsNWidgets(4));
+    final textFieldFinder = find.descendant(
+      of: find.byKey(LUIFlutterBackend.nodeKey(2)),
+      matching: find.byType(TextField),
+    );
+    final searchFinder = find.descendant(
+      of: find.byKey(LUIFlutterBackend.nodeKey(4)),
+      matching: find.byType(TextField),
+    );
+    final textareaFinder = find.descendant(
+      of: find.byKey(LUIFlutterBackend.nodeKey(5)),
+      matching: find.byType(TextField),
+    );
+    final textField = tester.widget<TextField>(textFieldFinder);
+    final search = tester.widget<TextField>(searchFinder);
+    final textarea = tester.widget<TextField>(textareaFinder);
+    expect(textField.autofocus, isTrue);
+    expect(textField.decoration?.hintText, 'Project');
+    expect(search.decoration?.prefixIcon, isA<Icon>());
+    expect(search.decoration?.suffixIcon, isA<IconButton>());
+    expect(textarea.minLines, 1);
+    expect(textarea.maxLines, isNull);
+    expect(textarea.keyboardType, TextInputType.multiline);
+
+    await tester.enterText(textFieldFinder, 'Updated');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
     expect(
-      tester.getSemantics(find.byType(TextField)),
-      matchesSemantics(
-        label: 'Search todos',
-        isTextField: true,
-        isReadOnly: true,
+      events,
+      contains(const LUITextChangedEvent(node: 2, text: 'Updated')),
+    );
+    expect(events, contains(const LUISubmitEvent(node: 2)));
+
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(LUIFlutterBackend.nodeKey(4)),
+        matching: find.byType(IconButton),
       ),
     );
-    semantics.dispose();
+    await tester.pump();
+    expect(events, contains(const LUITextChangedEvent(node: 4, text: '')));
   });
 
   testWidgets('maps semantic content primitives to native Flutter widgets', (
@@ -922,16 +922,14 @@ void main() {
     expect(backend.debugRevision(1), 1);
   });
 
-  testWidgets('maps text-area sizing to one retained native TextField', (
+  testWidgets('textarea auto-resizes without losing focus or retained state', (
     tester,
   ) async {
     final backend = LUIFlutterBackend()
       ..applyJson('''
       {"generation":1,"ops":[
-        {"op":"create-node","id":1,"kind":"text-area"},
+        {"op":"create-node","id":1,"kind":"textarea"},
         {"op":"set-prop","id":1,"property":"text","value":"One line"},
-        {"op":"set-prop","id":1,"property":"min-lines","value":2},
-        {"op":"set-prop","id":1,"property":"max-lines","value":5},
         {"op":"set-prop","id":1,"property":"placeholder","value":"Notes"}
       ]}
       ''');
@@ -942,11 +940,12 @@ void main() {
 
     final field = tester.widget<TextField>(find.byType(TextField));
     final editable = tester.state<EditableTextState>(find.byType(EditableText));
+    final oneLineHeight = tester.getSize(find.byType(TextField)).height;
     await tester.tap(find.byType(TextField));
     await tester.pump();
 
-    expect(field.minLines, 2);
-    expect(field.maxLines, 5);
+    expect(field.minLines, 1);
+    expect(field.maxLines, isNull);
     expect(field.keyboardType, TextInputType.multiline);
     expect(field.decoration?.hintText, 'Notes');
     expect(editable.widget.focusNode.hasFocus, isTrue);
@@ -959,80 +958,14 @@ void main() {
     await tester.pump();
 
     expect(
-      tester.state<EditableTextState>(find.byType(EditableText)),
-      same(editable),
+      tester.getSize(find.byType(TextField)).height,
+      greaterThan(oneLineHeight),
     );
-    expect(editable.widget.focusNode.hasFocus, isTrue);
-  });
-
-  testWidgets('maps typed form relationships and invalid state', (
-    tester,
-  ) async {
-    final semantics = tester.ensureSemantics();
-    final backend = LUIFlutterBackend()
-      ..applyJson('''
-      {"generation":1,"ops":[
-        {"op":"create-node","id":1,"kind":"box"},
-        {"op":"create-node","id":2,"kind":"label"},
-        {"op":"create-node","id":3,"kind":"text-input"},
-        {"op":"create-node","id":4,"kind":"paragraph"},
-        {"op":"create-node","id":5,"kind":"paragraph"},
-        {"op":"set-prop","id":2,"property":"text","value":"Email"},
-        {"op":"set-prop","id":3,"property":"input-type","value":"email"},
-        {"op":"set-prop","id":3,"property":"invalid","value":true},
-        {"op":"set-prop","id":3,"property":"labelled-by","value":2},
-        {"op":"set-prop","id":3,"property":"described-by","value":4},
-        {"op":"set-prop","id":3,"property":"error-message-by","value":5},
-        {"op":"set-prop","id":4,"property":"text","value":"Work address."},
-        {"op":"set-prop","id":5,"property":"text","value":"Email is invalid."},
-        {"op":"insert-child","parent":1,"child":2,"index":0},
-        {"op":"insert-child","parent":1,"child":3,"index":1},
-        {"op":"insert-child","parent":1,"child":4,"index":2},
-        {"op":"insert-child","parent":1,"child":5,"index":3}
-      ]}
-      ''');
-
-    await tester.pumpWidget(
-      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
-    );
-
-    final field = tester.widget<TextField>(find.byType(TextField));
-    final editable = tester.state<EditableTextState>(find.byType(EditableText));
-    expect(field.keyboardType, TextInputType.emailAddress);
-    expect(field.decoration?.errorText, isNull);
-    expect(field.decoration?.enabledBorder, isA<OutlineInputBorder>());
-    expect(
-      tester.getSemantics(find.byType(TextField)),
-      matchesSemantics(
-        label: 'Email',
-        hint: 'Work address. Email is invalid.',
-        isTextField: true,
-      ),
-    );
-
-    await tester.tap(find.byType(TextField));
-    backend.applyJson('''
-    {"generation":2,"ops":[
-      {"op":"set-prop","id":4,"property":"text","value":"Primary work address."},
-      {"op":"set-prop","id":3,"property":"invalid","value":false}
-    ]}
-    ''');
-    await tester.pump();
-
     expect(
       tester.state<EditableTextState>(find.byType(EditableText)),
       same(editable),
     );
     expect(editable.widget.focusNode.hasFocus, isTrue);
-    expect(
-      tester.getSemantics(find.byType(TextField)),
-      matchesSemantics(
-        label: 'Email',
-        hint: 'Primary work address.',
-        isTextField: true,
-      ),
-    );
-    semantics.dispose();
   });
 
   testWidgets('maps direct text-bearing checkbox and switch natively', (

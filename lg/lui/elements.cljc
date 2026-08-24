@@ -45,8 +45,10 @@
                          (= tag :progress)
                          (= tag :checkbox)
                          (= tag :switch)
-                         (= tag :text-input)
-                         (= tag :text-area)
+                         (= tag :text-field)
+                         (= tag :input)
+                         (= tag :search-field)
+                         (= tag :textarea)
                          (= tag :keyed))
                          (symbol (str "lui.elements/" (name tag)))
                          (symbol (str "lui." (name tag) "/" (name tag)))))))
@@ -76,141 +78,6 @@
      [~'context ~'parent ~'attrs & ~'children]
      (lui.elements/component-expansion
       ~root-tag ~defaults ~'context ~'parent ~'attrs ~'children)))
-
-(macro-helper-defn find-part-node [children child-nodes part]
-                   (if (empty? children)
-                     false
-                     (if (= (first (first children)) part)
-                       (first child-nodes)
-                       (find-part-node (next children) (next child-nodes) part))))
-
-(macro-helper-defn part-bindings [context children child-nodes]
-                   (if (empty? children)
-                     []
-                     (concat
-                      [(first child-nodes)
-                       `(lui.elements/element ~context nil ~(first children))]
-                      (part-bindings context (next children) (next child-nodes)))))
-
-(macro-helper-defn tag-in? [tag tags]
-                   (if (empty? tags)
-                     false
-                     (if (= tag (first tags))
-                       true
-                       (tag-in? tag (next tags)))))
-
-(macro-helper-defn forwarded-attr-value [attrs key]
-                   (cond
-                     (= key :checked) (:checked attrs)
-                     (= key :disabled) (:disabled attrs)
-                     (= key :invalid) (:invalid attrs)
-                     (= key :on-change) (:on-change attrs)
-                     (= key :accessibility-label) (:accessibility-label attrs)
-                     :else
-                     (throw
-                      (IllegalArgumentException.
-                       (str "unsupported forwarded compound attribute: " key)))))
-
-(macro-helper-defn forwarded-attrs [root-attrs keys child-attrs]
-                   (if (empty? keys)
-                     child-attrs
-                     (forwarded-attrs
-                      root-attrs
-                      (next keys)
-                      (assoc
-                       child-attrs (first keys)
-                       (forwarded-attr-value root-attrs (first keys))))))
-
-(macro-helper-defn compound-child-form
-                   [child root-attrs controls forwards]
-                   (if (tag-in? (first child) controls)
-                     (vec
-                      (concat
-                       [(first child)
-                        (forwarded-attrs root-attrs forwards (element-attrs child))]
-                       (element-children child)))
-                     child))
-
-(macro-helper-defn compound-child-forms
-                   [children root-attrs controls forwards]
-                   (map
-                    (fn [child]
-                      (compound-child-form child root-attrs controls forwards))
-                    children))
-
-(macro-helper-defn first-part-node [children child-nodes parts]
-                   (if (empty? parts)
-                     false
-                     (let [node (find-part-node children child-nodes (first parts))]
-                       (if node
-                         node
-                         (first-part-node children child-nodes (next parts))))))
-
-(macro-helper-defn compound-relation-expansions
-                   [context control children child-nodes relations]
-                   (if (empty? relations)
-                     []
-                     (let [relation (first (first relations))
-                           part (second (first relations))
-                           part-node (find-part-node children child-nodes part)
-                           setter
-                           (cond
-                             (= relation :labelled-by) 'lui.ui/labelled-by!
-                             (= relation :described-by) 'lui.ui/described-by!
-                             (= relation :error-message-by) 'lui.ui/error-message-by!
-                             :else
-                             (throw
-                              (IllegalArgumentException.
-                               (str "unsupported compound relation: " relation))))]
-                       (concat
-                        (if (and control part-node)
-                          [`(~setter ~context ~control ~part-node)]
-                          [])
-                        (compound-relation-expansions
-                         context control children child-nodes (next relations))))))
-
-(macro-helper-defn compound-constructor [root-tag]
-                   (cond
-                     (= root-tag :box) 'lui.ui/box!
-                     (= root-tag :row) 'lui.ui/row!
-                     (= root-tag :column) 'lui.ui/column!
-                     :else
-                     (throw
-                      (IllegalArgumentException.
-                       (str "unsupported compound root: " root-tag)))))
-
-(macro-helper-defn compound-expansion
-                   [root-tag default-class controls forwards relations
-                    context parent attrs children]
-                   (let [node (gensym "node")
-                         resolved-children
-                         (compound-child-forms children attrs controls forwards)
-                         child-nodes (map (fn [_child] (gensym "part")) resolved-children)
-                         control-node
-                         (first-part-node resolved-children child-nodes controls)
-                         root-attrs (component-attrs {:class default-class} attrs)
-                         constructor (compound-constructor root-tag)]
-                     `(let [~node (~constructor ~context)
-                            ~@(part-bindings context resolved-children child-nodes)]
-                        ~@(element-properties context node root-attrs)
-                        ~@(if parent
-                            [`(lui.ui/append! ~context ~parent ~node)]
-                            [])
-                        ~@(map
-                           (fn [part-node]
-                             `(lui.ui/append! ~context ~node ~part-node))
-                           child-nodes)
-                        ~@(compound-relation-expansions
-                           context control-node resolved-children child-nodes relations)
-                        ~node)))
-
-(defmacro defcompound [component-name options]
-  `(defmacro ~component-name
-     [~'context ~'parent ~'attrs & ~'children]
-     (lui.elements/compound-expansion
-      ~(:root options) ~(:class options) ~(:controls options)
-      ~(:forwards options) ~(:relations options)
-      ~'context ~'parent ~'attrs ~'children)))
 
 (defmacro element [context parent form]
   (let [tag (first form)
@@ -272,21 +139,6 @@
                      context node
                      [[(:disabled attrs) 'lui.ui/disabled-signal!]
                       [(:accessibility-label attrs) 'lui.ui/accessibility-label!]])))
-
-(macro-helper-defn control-properties [context node attrs]
-                   (concat
-                    (interactive-properties context node attrs)
-                    (property-expansions
-                     context node
-                     [[(:invalid attrs) 'lui.ui/invalid-signal!]])))
-
-(macro-helper-defn text-control-properties [context node attrs]
-                   (concat
-                    (control-properties context node attrs)
-                    (property-expansions
-                     context node
-                     [[(:placeholder attrs) 'lui.ui/placeholder!]
-                      [(:read-only attrs) 'lui.ui/read-only!]])))
 
 (macro-helper-defn leaf-expansion [expression context parent attrs]
                    (let [node (gensym "node")]
@@ -350,6 +202,55 @@
                               ~(if on-hold `(~on-hold ~'event) true)
                               ~'_ true)))]
                        [])))
+
+(macro-helper-defn text-entry-event-expansion [context node attrs]
+                   (let [on-input (:on-input attrs)
+                         on-submit (:on-submit attrs)]
+                     (if (or on-input on-submit)
+                       [`(lui.ui/on-event!
+                          ~context ~node
+                          (fn [~'event]
+                            (match ~'event
+                              (lui.protocol/TextChanged ~'_node ~'_text)
+                              ~(if on-input `(~on-input ~'event) true)
+                              (lui.protocol/Submit ~'_node)
+                              ~(if on-submit `(~on-submit ~'event) true)
+                              ~'_ true)))]
+                       [])))
+
+(macro-helper-defn text-entry-expansion
+                   [constructor context parent attrs children]
+                   (if (empty? children)
+                     (let [node (gensym "node")
+                           resolved-attrs
+                           (if (:label attrs)
+                             (assoc attrs :accessibility-label (:label attrs))
+                             attrs)]
+                       `(let [~node (~constructor ~context)]
+                          ~@(string-attribute-expansion
+                             context node (:text attrs) 'lui.protocol/TextValue)
+                          ~@(string-attribute-expansion
+                             context node (:placeholder attrs)
+                             'lui.protocol/PlaceholderValue)
+                          ~@(string-attribute-expansion
+                             context node (:accessibility-label resolved-attrs)
+                             'lui.protocol/AccessibilityLabel)
+                          ~@(bool-attribute-expansion
+                             context node (:autofocus attrs)
+                             'lui.protocol/Autofocus)
+                          ~@(bool-attribute-expansion
+                             context node (:submit-on-enter attrs)
+                             'lui.protocol/SubmitOnEnter)
+                          ~@(disabled-attribute-expansion context node attrs)
+                          ~@(text-entry-event-expansion context node attrs)
+                          ~@(element-properties context node attrs)
+                          ~@(if parent
+                              [`(lui.ui/append! ~context ~parent ~node)]
+                              [])
+                          ~node))
+                     (throw
+                      (IllegalArgumentException.
+                       "text-entry elements are leaves and cannot contain children"))))
 
 (macro-helper-defn direct-toggle-expansion
                    [constructor context parent attrs children]
@@ -658,36 +559,21 @@
      (IllegalArgumentException.
       "progress is a leaf and cannot contain children"))))
 
-(defelement text-input [context parent attrs & _children]
-  (let [node (gensym "node")]
-    `(let [~node
-           (lui.ui/text-input!
-            ~context ~(:value attrs) ~(:on-change attrs))]
-       ~@(text-control-properties context node attrs)
-       ~@(if (:type attrs)
-           [`(lui.ui/input-type! ~context ~node ~(:type attrs))]
-           [])
-       ~@(if parent
-           [`(lui.ui/append! ~context ~parent ~node)]
-           [])
-       ~node)))
+(defelement text-field [context parent attrs & children]
+  (text-entry-expansion
+   'lui.ui/text-field! context parent attrs children))
 
-(defelement text-area [context parent attrs & _children]
-  (let [node (gensym "node")]
-    `(let [~node
-           (lui.ui/text-area!
-            ~context ~(:value attrs) ~(:on-change attrs))]
-       ~@(text-control-properties context node attrs)
-       ~@(if (:min-lines attrs)
-           [`(lui.ui/min-lines! ~context ~node ~(:min-lines attrs))]
-           [])
-       ~@(if (:max-lines attrs)
-           [`(lui.ui/max-lines! ~context ~node ~(:max-lines attrs))]
-           [])
-       ~@(if parent
-           [`(lui.ui/append! ~context ~parent ~node)]
-           [])
-       ~node)))
+(defelement input [context parent attrs & children]
+  (text-entry-expansion
+   'lui.ui/input! context parent attrs children))
+
+(defelement search-field [context parent attrs & children]
+  (text-entry-expansion
+   'lui.ui/search-field! context parent attrs children))
+
+(defelement textarea [context parent attrs & children]
+  (text-entry-expansion
+   'lui.ui/textarea! context parent attrs children))
 
 (defelement keyed [context parent attrs & children]
   (let [item-context (gensym "item_context")

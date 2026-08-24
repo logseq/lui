@@ -5,7 +5,7 @@
             [lui.protocol :as proto
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button ToggleButton
-                     TextInput TextArea Checkbox SwitchControl
+                     TextField Input SearchField Textarea Checkbox SwitchControl
                      Scroll ListContainer Spacer Spinner Icon
                      Progress Divider
                      Toggle RadioGroup Radio Slider
@@ -16,12 +16,10 @@
                      BackgroundValue ForegroundValue BorderColorValue
                      BorderWidth CornerRadius
                      WidthValue HeightValue MinWidth MaxWidth MinHeight MaxHeight
-                     PlaceholderValue ReadOnly MinLines MaxLines
-                     AccessibilityLabel StyleClass HeadingLevel LabelledBy
-                     DescribedBy ErrorMessageBy InputType Invalid
+                     PlaceholderValue AccessibilityLabel StyleClass HeadingLevel
                      Checked
                      ProgressValue OrientationValue SizeValue IconName
-                     VariantValue InlineIconName IconPlacementValue Selected Autofocus HoldEnabled
+                     VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled
                      ChangeEnabled ToggleEnabled PressEnabled
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
@@ -58,8 +56,10 @@
     RadioGroup "lui-radio-group"
     Radio "lui-radio"
     Slider "lui-slider"
-    TextInput "lui-text-input"
-    TextArea "lui-text-area"
+    TextField "lui-text-field"
+    Input "lui-input"
+    SearchField "lui-search-field"
+    Textarea "lui-textarea"
     Checkbox "lui-checkbox"
     SwitchControl "lui-switch"
     Progress "lui-progress"
@@ -131,8 +131,10 @@
           Label "label"
           Text "span"
           Button "button"
-          TextInput "input"
-          TextArea "textarea"
+          TextField "input"
+          Input "input"
+          SearchField "input"
+          Textarea "textarea"
           Progress "div"
           Slider "input"
           Divider "hr"
@@ -142,7 +144,9 @@
     (Webapi.Dom.Element.setClassName node (base-class-name kind))
     (when (= kind Heading)
       (Webapi.Dom.Element.setAttribute "role" "heading" node))
-    (when (= kind TextArea)
+    (when (= kind SearchField)
+      (Webapi.Dom.Element.setAttribute "type" "search" node))
+    (when (= kind Textarea)
       (Webapi.Dom.Element.setAttribute
        "style" "field-sizing: content; resize: vertical; overflow-y: auto" node))
     (when (= kind Progress)
@@ -207,57 +211,11 @@
 (defn- node-dom-id [node]
   (str "lui-node-" node))
 
-(defn- relationship-dom-node [renderer node]
-  (dom-node renderer node))
+(defn- submit-on-enter? [renderer node]
+  (= (retained/property (:web-store renderer) node SubmitOnEnter)
+     (Some (BoolValue true))))
 
-(defn- update-describedby! [dom-node]
-  (let [description
-        (Webapi.Dom.Element.getAttribute "data-lui-described-by" dom-node)
-        error
-        (Webapi.Dom.Element.getAttribute "data-lui-error-message-by" dom-node)
-        invalid
-        (Webapi.Dom.Element.hasAttribute "data-invalid" dom-node)]
-    (match (tuple description error)
-      (tuple (Some description-id) (Some error-id))
-      (Webapi.Dom.Element.setAttribute "aria-describedby"
-       (if invalid
-         (str description-id " " error-id)
-         description-id)
-       dom-node)
-      (tuple (Some description-id) None)
-      (Webapi.Dom.Element.setAttribute
-       "aria-describedby" description-id dom-node)
-      (tuple None (Some error-id))
-      (if invalid
-        (Webapi.Dom.Element.setAttribute
-         "aria-describedby" error-id dom-node)
-        (Webapi.Dom.Element.removeAttribute "aria-describedby" dom-node))
-      (tuple None None)
-      (Webapi.Dom.Element.removeAttribute "aria-describedby" dom-node))))
-
-(defn- attribute-target? [element attribute target]
-  (if-some [value (Webapi.Dom.Element.getAttribute attribute element)]
-    (= value (node-dom-id target))
-    false))
-
-(defn- clear-dom-relationships! [previous-nodes target]
-  (reduce-kv
-   (fn [_result _node current]
-     (let [element (:platform-node current)]
-       (when (attribute-target? element "aria-labelledby" target)
-         (Webapi.Dom.Element.removeAttribute "aria-labelledby" element))
-       (when (attribute-target? element "data-lui-described-by" target)
-         (Webapi.Dom.Element.removeAttribute "data-lui-described-by" element)
-         (update-describedby! element))
-       (when (attribute-target? element "data-lui-error-message-by" target)
-         (Webapi.Dom.Element.removeAttribute
-          "data-lui-error-message-by" element)
-         (update-describedby! element))
-       true))
-   true
-   previous-nodes))
-
-(defn- attach-text-event! [renderer node dom-node]
+(defn- attach-text-events! [renderer node kind dom-node]
   (Webapi.Dom.Element.addEventListener
    "input"
    (fn [_event]
@@ -267,6 +225,27 @@
         node (Webapi.Dom.HtmlInputElement.value
               (text-control-node dom-node)))))
      (Stdlib.ignore true))
+   dom-node)
+  (Webapi.Dom.Element.addKeyDownEventListener
+   (fn [event]
+     (let [enter (= "Enter" (Webapi.Dom.KeyboardEvent.key event))
+           shift (Webapi.Dom.KeyboardEvent.shiftKey event)
+           primary
+           (or (Webapi.Dom.KeyboardEvent.metaKey event)
+               (Webapi.Dom.KeyboardEvent.ctrlKey event))
+           submit
+           (and
+            enter
+            (if (= kind Textarea)
+              (if (submit-on-enter? renderer node)
+                (not shift)
+                primary)
+              true))]
+       (when submit
+         (Webapi.Dom.KeyboardEvent.preventDefault event)
+         (Stdlib.ignore
+          ((deref (:web-event-handler renderer)) (proto/Submit node))))
+       (Stdlib.ignore true)))
    dom-node))
 
 (defn- attach-toggle-event! [renderer node _kind dom-node]
@@ -413,8 +392,10 @@
   (match kind
     Button (attach-button-events! renderer node kind dom-node)
     ToggleButton (attach-button-events! renderer node kind dom-node)
-    TextInput (attach-text-event! renderer node dom-node)
-    TextArea (attach-text-event! renderer node dom-node)
+    TextField (attach-text-events! renderer node kind dom-node)
+    Input (attach-text-events! renderer node kind dom-node)
+    SearchField (attach-text-events! renderer node kind dom-node)
+    Textarea (attach-text-events! renderer node kind dom-node)
     Checkbox (attach-toggle-event! renderer node kind dom-node)
     SwitchControl (attach-toggle-event! renderer node kind dom-node)
     Toggle (attach-button-events! renderer node kind dom-node)
@@ -507,7 +488,8 @@
 (defn- apply-property! [renderer node kind dom-node property value]
   (match (tuple property value)
     (tuple TextValue (StringValue text))
-    (if (or (= kind TextInput) (= kind TextArea))
+    (if (or (= kind TextField) (= kind Input) (= kind SearchField)
+            (= kind Textarea))
       (let [control (text-control-node dom-node)]
         (when (not (= text (Webapi.Dom.HtmlInputElement.value control)))
           (Webapi.Dom.HtmlInputElement.setValue control text)))
@@ -608,10 +590,6 @@
     (Webapi.Dom.HtmlInputElement.setPlaceholder
      (text-control-node dom-node) placeholder)
 
-    (tuple ReadOnly (BoolValue read-only))
-    (Webapi.Dom.HtmlInputElement.setReadOnly
-     (text-control-node dom-node) read-only)
-
     (tuple AccessibilityLabel (StringValue label))
     (Webapi.Dom.Element.setAttribute
      "aria-label" label
@@ -625,42 +603,6 @@
 
     (tuple HeadingLevel (IntValue level))
     (Webapi.Dom.Element.setAttribute "aria-level" (str level) dom-node)
-
-    (tuple LabelledBy (IntValue label))
-    (do
-      (Webapi.Dom.Element.setAttribute
-       "aria-labelledby" (node-dom-id label) dom-node)
-      (if-some [control-id
-                (Webapi.Dom.Element.getAttribute "id" dom-node)]
-        (Webapi.Dom.Element.setAttribute
-         "for" control-id (relationship-dom-node renderer label))
-        (Stdlib.ignore true)))
-
-    (tuple DescribedBy (IntValue description))
-    (do
-      (Webapi.Dom.Element.setAttribute
-       "data-lui-described-by" (node-dom-id description) dom-node)
-      (update-describedby! dom-node))
-
-    (tuple ErrorMessageBy (IntValue error))
-    (do
-      (Webapi.Dom.Element.setAttribute
-       "data-lui-error-message-by" (node-dom-id error) dom-node)
-      (update-describedby! dom-node))
-
-    (tuple InputType (StringValue input-type))
-    (Webapi.Dom.Element.setAttribute "type" input-type dom-node)
-
-    (tuple Invalid (BoolValue invalid))
-    (do
-      (if invalid
-        (do
-          (Webapi.Dom.Element.setAttribute "aria-invalid" "true" dom-node)
-          (Webapi.Dom.Element.setAttribute "data-invalid" "" dom-node))
-        (do
-          (Webapi.Dom.Element.removeAttribute "aria-invalid" dom-node)
-          (Webapi.Dom.Element.removeAttribute "data-invalid" dom-node)))
-      (update-describedby! dom-node))
 
     (tuple Checked (BoolValue checked))
     (if (= kind Toggle)
@@ -728,6 +670,9 @@
             (Stdlib.ignore true)))))
       (Webapi.Dom.Element.removeAttribute "autofocus" dom-node))
 
+    (tuple SubmitOnEnter (BoolValue submit-on-enter))
+    (set-state-attribute! dom-node "data-submit-on-enter" submit-on-enter)
+
     (tuple HoldEnabled (BoolValue enabled))
     (set-state-attribute! dom-node "data-hold-enabled" enabled)
 
@@ -739,20 +684,6 @@
 
     (tuple PressEnabled (BoolValue enabled))
     (set-state-attribute! dom-node "data-press-enabled" enabled)
-
-    (tuple MinLines (IntValue lines))
-    (do
-      (Webapi.Dom.Element.setAttribute "rows" (str lines) dom-node)
-      (set-style!
-       dom-node "min-block-size"
-       (str "calc(" lines
-            "lh + var(--lui-text-area-block-chrome, 1rem + 2px))")))
-
-    (tuple MaxLines (IntValue lines))
-    (set-style!
-     dom-node "max-block-size"
-     (str "calc(" lines
-          "lh + var(--lui-text-area-block-chrome, 1rem + 2px))"))
 
     _ (raise (Invalid_argument "invalid DOM property value"))))
 
@@ -836,8 +767,8 @@
       (Webapi.Dom.Element.setAttribute "id" (node-dom-id node) created)
       (attach-events! renderer node kind created))
 
-    (DropNode node)
-    (Stdlib.ignore (clear-dom-relationships! previous-nodes node))
+    (DropNode _node)
+    (Stdlib.ignore true)
 
     (SetProp node property value)
     (if-some [current (retained/node (:web-store renderer) node)]

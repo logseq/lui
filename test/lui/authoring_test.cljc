@@ -8,7 +8,6 @@
             [lui.badge]
             [lui.separator]
             [lui.skeleton]
-            [lui.text-field :as text-field]
             [lui.macros :refer [defui state effect platform host]]
             [lui.backend.apple :as apple
              :refer [AppleBox AppleCard AppleCheckbox AppleColumn AppleFormLabel AppleGrid
@@ -80,22 +79,32 @@
 (defui current-platform-profile []
   (tuple (platform) (host)))
 
-(defui accessible-search [source callback]
-  [:text-input
-   {:value source
-    :placeholder "Search"
-    :read-only true
-    :accessibility-label "Search todos"
-    :on-change callback}])
-
-(defui bounded-notes [source callback]
-  [:text-area
-   {:value source
-    :placeholder "Notes"
-    :min-lines 2
-    :max-lines 5
-    :accessibility-label "Todo notes"
-    :on-change callback}])
+(defui text-entry-set [draft notes disabled on-input on-submit]
+  [:column
+   [:text-field
+    {:text draft
+     :placeholder "Project name"
+     :disabled disabled
+     :autofocus true
+     :label "Project name"
+     :on-input on-input
+     :on-submit on-submit}]
+   [:input
+    {:text "Literal input"
+     :placeholder "Email address"
+     :on-input on-input}]
+   [:search-field
+    {:text draft
+     :placeholder "Search todos"
+     :on-input on-input
+     :on-submit on-submit}]
+   [:textarea
+    {:text notes
+     :placeholder "Notes"
+     :disabled disabled
+     :submit-on-enter true
+     :on-input on-input
+     :on-submit on-submit}]])
 
 (defui controlled-delete-button [disabled-source callback]
   [:button
@@ -179,19 +188,6 @@
   [:column
    [:separator]
    [:separator {:orientation "vertical" :class "content-divider"}]])
-
-(defui email-field [value invalid disabled callback]
-  [:text-field {:class "account-email"}
-   [:text-field/label "Email"]
-   [:text-field/input
-    {:value value
-     :type "email"
-     :invalid invalid
-     :disabled disabled
-     :placeholder "you@example.com"
-     :on-change callback}]
-   [:text-field/description "Used for account notifications."]
-   [:text-field/error-message "Enter a valid email address."]])
 
 (defui settings-toggles
   [checked disabled checkbox-text switch-text checkbox-toggle switch-toggle]
@@ -735,93 +731,79 @@
          "Separator retains its semantic class and override")
         _ (is false "Separator semantic class")))))
 
-(deftest text-field-composes-semantic-parts-and-patches-invalid-in-place
+(deftest direct-text-entry-elements-patch-signals-and-route-events
   (let [scheduler (sig/scheduler)
         renderer (apple/create)
         application (runtime/create scheduler (apple/backend renderer))
-        scope (sig/scope "email-field")
-        value (sig/state scheduler "")
-        invalid (sig/state scheduler false)
+        scope (sig/scope "text-entry")
+        draft (sig/state scheduler "Draft")
+        notes (sig/state scheduler "One line")
         disabled (sig/state scheduler false)
+        received (atom [])
+        on-input
+        (fn [event]
+          (do
+            (swap! received conj event)
+            (match event
+              (TextChanged _node text) (sig/set! draft text)
+              _ true)))
+        on-submit (fn [event] (do (swap! received conj event) true))
         root
-        (email-field
+        (text-entry-set
          (ui/context application scope)
-         (sig/value value)
-         (sig/value invalid)
+         (sig/value draft)
+         (sig/value notes)
          (sig/value disabled)
-         (fn [_event] true))]
+         on-input on-submit)]
     (sig/mount! scope)
     (runtime/flush! application)
-    (let [parts (apple/children renderer root)
-          label (nth parts 0)
-          input (nth parts 1)
-          description (nth parts 2)
-          error (nth parts 3)
+    (let [entries (apple/children renderer root)
+          text-field (nth entries 0)
+          input (nth entries 1)
+          search-field (nth entries 2)
+          textarea (nth entries 3)
           node-count (apple/node-count renderer)]
-      (assert-equal 4 (count parts) "TextField retains all public parts")
-      (match (apple/property renderer root proto/StyleClass)
+      (assert-equal 4 (count entries) "all direct text-entry kinds mount")
+      (doseq [node [text-field input search-field]]
+        (match (apple/node renderer node)
+          (Some AppleTextInput) (is true "single-line entry is native")
+          _ (is false "single-line entry maps to Apple text input")))
+      (match (apple/node renderer textarea)
+        (Some AppleTextArea) (is true "textarea is native multiline entry")
+        _ (is false "textarea maps to Apple multiline input"))
+      (match (apple/property renderer input proto/TextValue)
         (Some (StringValue value))
-        (assert-equal "lui-text-field account-email" value
-                      "TextField exposes one semantic root class")
-        _ (is false "TextField exposes its resolved class"))
-      (match (apple/node renderer label)
-        (Some AppleFormLabel) (is true "TextFieldLabel is semantic")
-        _ (is false "TextFieldLabel maps to Label"))
-      (match (apple/node renderer input)
-        (Some AppleTextInput) (is true "TextFieldInput is semantic")
-        _ (is false "TextFieldInput maps to TextInput"))
-      (match (apple/property renderer label proto/StyleClass)
-        (Some (StringValue value))
-        (assert-equal "lui-text-field-label" value "label class")
-        _ (is false "label class"))
-      (match (apple/property renderer input proto/StyleClass)
-        (Some (StringValue value))
-        (assert-equal "lui-text-field-input" value "input class")
-        _ (is false "input class"))
-      (match (apple/property renderer description proto/StyleClass)
-        (Some (StringValue value))
-        (assert-equal
-         "lui-text-field-description" value "description class")
-        _ (is false "description class"))
-      (match (apple/property renderer error proto/StyleClass)
-        (Some (StringValue value))
-        (assert-equal
-         "lui-text-field-error-message" value "error class")
-        _ (is false "error class"))
-      (match (apple/property renderer input proto/LabelledBy)
-        (Some (proto/IntValue value))
-        (assert-equal label value "input references its label")
-        _ (is false "input references its label"))
-      (match (apple/property renderer input proto/DescribedBy)
-        (Some (proto/IntValue value))
-        (assert-equal description value "input references description")
-        _ (is false "input references description"))
-      (match (apple/property renderer input proto/ErrorMessageBy)
-        (Some (proto/IntValue value))
-        (assert-equal error value "input references error")
-        _ (is false "input references error"))
-      (match (apple/property renderer input proto/InputType)
-        (Some (StringValue value))
-        (assert-equal "email" value "TextFieldInput retains its type")
-        _ (is false "TextFieldInput retains its type"))
-      (sig/set! invalid true)
-      (runtime/flush! application)
-      (assert-equal node-count (apple/node-count renderer)
-                    "invalid Signal does not replace retained nodes")
-      (assert-equal input (nth (apple/children renderer root) 1)
-                    "invalid Signal preserves control identity")
-      (match (apple/property renderer input proto/Invalid)
+        (assert-equal "Literal input" value "input accepts literal text")
+        _ (is false "literal input text"))
+      (match (apple/property renderer text-field proto/Autofocus)
         (Some (proto/BoolValue value))
-        (assert-equal true value "invalid Signal patches one property")
-        _ (is false "invalid Signal reaches the input"))
+        (assert-equal true value "autofocus reaches the retained node")
+        _ (is false "autofocus property"))
+      (match (apple/property renderer textarea proto/SubmitOnEnter)
+        (Some (proto/BoolValue value))
+        (assert-equal true value "textarea keeps its Enter policy")
+        _ (is false "submit-on-enter property"))
+      (runtime/dispatch!
+       application (proto/TextChanged search-field "Updated"))
+      (runtime/dispatch! application (proto/Submit text-field))
+      (runtime/flush! application)
+      (assert-equal "Updated" (sig/get draft) "on-input updates shared state")
+      (assert-equal
+       [(proto/TextChanged search-field "Updated") (proto/Submit text-field)]
+       @received
+       "input and submit callbacks stay distinct")
+      (match (apple/property renderer text-field proto/TextValue)
+        (Some (StringValue value))
+        (assert-equal "Updated" value "Signal patches retained text")
+        _ (is false "patched text-field value"))
+      (assert-equal node-count (apple/node-count renderer)
+                    "text edits do not replace retained nodes")
       (sig/set! disabled true)
       (runtime/flush! application)
-      (assert-equal node-count (apple/node-count renderer)
-                    "disabled Signal does not replace retained nodes")
-      (match (apple/property renderer input proto/Enabled)
+      (match (apple/property renderer textarea proto/Enabled)
         (Some (proto/BoolValue value))
-        (assert-equal false value "disabled Signal patches Enabled")
-        _ (is false "disabled Signal reaches the input")))))
+        (assert-equal false value "disabled Signal patches textarea")
+        _ (is false "textarea enabled state")))))
 
 (deftest direct-toggle-controls-patch-text-and-state-without-replacement
   (let [scheduler (sig/scheduler)
@@ -899,85 +881,6 @@
           (proto/ToggleChanged switch-control false)]
          (deref events)
          "on-toggle callbacks receive only their native transitions")))))
-
-(deftest reactive-text-input-updates-through-semantic-events
-  (let [scheduler (sig/scheduler)
-        renderer (apple/create)
-        application (runtime/create scheduler (apple/backend renderer))
-        scope (sig/scope "input")
-        context (ui/context application scope)
-        draft (sig/state scheduler "")
-        value
-        (sig/map (fn [text] (proto/StringValue text)) (sig/value draft))
-        input
-        (ui/text-input-value!
-         context value
-         (fn [event]
-           (match event
-             (TextChanged _node text) (sig/set! draft text)
-             _ true)))]
-    (sig/mount! scope)
-    (runtime/flush! application)
-    (runtime/dispatch! application (proto/TextChanged input "new todo"))
-    (runtime/flush! application)
-    (assert-equal "new todo" (sig/get draft) "input event updates LG state")
-    (match (apple/property renderer input proto/TextValue)
-      (Some (StringValue text))
-      (assert-equal "new todo" text "state updates retained input text")
-      _ (is false "reactive input text exists"))))
-
-(deftest declarative-text-input-preserves-native-semantics
-  (let [scheduler (sig/scheduler)
-        renderer (apple/create)
-        application (runtime/create scheduler (apple/backend renderer))
-        scope (sig/scope "accessible-input")
-        context (ui/context application scope)
-        draft (sig/state scheduler "")
-        input
-        (accessible-search context (sig/value draft) (fn [_event] true))]
-    (sig/mount! scope)
-    (runtime/flush! application)
-    (match (apple/property renderer input proto/PlaceholderValue)
-      (Some (StringValue value))
-      (assert-equal "Search" value "placeholder reaches the backend")
-      _ (is false "placeholder is present"))
-    (match (apple/property renderer input proto/ReadOnly)
-      (Some (proto/BoolValue value))
-      (assert-equal true value "readonly reaches the backend")
-      _ (is false "readonly is present"))
-    (match (apple/property renderer input proto/AccessibilityLabel)
-      (Some (StringValue value))
-      (assert-equal "Search todos" value "accessible name reaches the backend")
-      _ (is false "accessible name is present"))))
-
-(deftest declarative-text-area-maps-provider-sizing-semantics
-  (let [scheduler (sig/scheduler)
-        renderer (apple/create)
-        application (runtime/create scheduler (apple/backend renderer))
-        scope (sig/scope "bounded-notes")
-        context (ui/context application scope)
-        notes (sig/state scheduler "One line")
-        node
-        (bounded-notes
-         context
-         (sig/value notes)
-         (fn [event]
-           (match event
-             (TextChanged _node text) (sig/set! notes text)
-             _ true)))]
-    (sig/mount! scope)
-    (runtime/flush! application)
-    (match (apple/property renderer node proto/MinLines)
-      (Some (proto/IntValue lines))
-      (assert-equal 2 lines "minimum lines reach the provider")
-      _ (is false "minimum lines are present"))
-    (match (apple/property renderer node proto/MaxLines)
-      (Some (proto/IntValue lines))
-      (assert-equal 5 lines "maximum lines reach the provider")
-      _ (is false "maximum lines are present"))
-    (runtime/dispatch! application (proto/TextChanged node "One\nTwo"))
-    (runtime/flush! application)
-    (assert-equal "One\nTwo" (sig/get notes) "text area updates LG state")))
 
 (deftest button-disabled-state-is-signal-controlled
   (let [scheduler (sig/scheduler)

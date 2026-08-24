@@ -49,23 +49,22 @@
             :padding (content-padding (platform))}
    [:text "Todos"]
    [:row {:gap 8}
-    [:text-input
-     {:value (reactive :model-draft model-source)
+    [:text-field
+     {:text (reactive :model-draft model-source)
       :placeholder "What needs to be done?"
-      :accessibility-label "New todo"
-      :on-change
+      :label "New todo"
+      :on-input
       (fn [event]
         (match event
           (TextChanged _node text) (send (model/ChangeDraft text))
-          _ true))}]
+          _ true))
+      :on-submit (fn [_event] (send model/AddTodo))}]
     [:button {:on-press (fn [_event] (send model/AddTodo))} "Add"]]
-   [:text-area
-    {:value (reactive :model-notes model-source)
+   [:textarea
+    {:text (reactive :model-notes model-source)
      :placeholder "Notes"
-     :accessibility-label "Todo notes"
-     :min-lines 2
-     :max-lines 5
-     :on-change
+     :label "Todo notes"
+     :on-input
      (fn [event]
        (match event
          (TextChanged _node text) (send (model/ChangeNotes text))

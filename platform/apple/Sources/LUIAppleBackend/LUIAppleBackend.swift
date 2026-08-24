@@ -45,10 +45,6 @@ final class LUINodeModel: Identifiable {
         properties[.enabled]?.boolValue ?? true
     }
 
-    var isReadOnly: Bool {
-        properties[.readOnly]?.boolValue ?? false
-    }
-
     var isChecked: Bool {
         properties[.checked]?.boolValue ?? false
     }
@@ -65,10 +61,6 @@ final class LUINodeModel: Identifiable {
     var buttonIconName: String { properties[.icon]?.stringValue ?? "" }
     var buttonIconPlacement: String {
         properties[.iconPlacement]?.stringValue ?? "leading"
-    }
-
-    var isInvalid: Bool {
-        properties[.invalid]?.boolValue ?? false
     }
 
     var surfaceWidth: Int? { properties[.width]?.intValue }
@@ -176,23 +168,10 @@ final class LUINodeModel: Identifiable {
     }
 
     func accessibilityLabel(in backend: LUIAppleBackend) -> String? {
-        if let explicit = properties[.accessibilityLabel]?.stringValue {
-            return explicit
-        }
-        guard let label = properties[.labelledBy]?.intValue else { return nil }
-        return backend.model(id: label)?.text
+        properties[.accessibilityLabel]?.stringValue
     }
 
-    func accessibilityHint(in backend: LUIAppleBackend) -> String? {
-        let description = properties[.describedBy]?.intValue
-            .flatMap { backend.model(id: $0)?.text }
-        let error = isInvalid
-            ? properties[.errorMessageBy]?.intValue
-                .flatMap { backend.model(id: $0)?.text }
-            : nil
-        let combined = [description, error].compactMap { $0 }.joined(separator: " ")
-        return combined.isEmpty ? nil : combined
-    }
+    func accessibilityHint(in backend: LUIAppleBackend) -> String? { nil }
 }
 
 @MainActor
@@ -271,11 +250,17 @@ public final class LUIAppleBackend {
 
     func performTextChange(node: Int, text: String) throws {
         guard let model = models[node],
-              model.kind == .textInput || model.kind == .textArea,
-              model.isEnabled, !model.isReadOnly else {
+              Self.isTextEntry(model.kind), model.isEnabled else {
             throw invalid("node \(node) is not an editable text control")
         }
         onEvent?(.textChanged(node: node, text: text))
+    }
+
+    func performSubmit(node: Int) throws {
+        guard let model = models[node], Self.isTextEntry(model.kind), model.isEnabled else {
+            throw invalid("node \(node) is not an enabled text control")
+        }
+        onEvent?(.submit(node: node))
     }
 
     func performToggle(node: Int, checked: Bool) throws {
@@ -340,5 +325,9 @@ public final class LUIAppleBackend {
 
     private func invalid(_ message: String) -> LUIBackendError {
         .invalidBatch(message)
+    }
+
+    private static func isTextEntry(_ kind: LUINodeKind) -> Bool {
+        kind == .textField || kind == .input || kind == .searchField || kind == .textarea
     }
 }

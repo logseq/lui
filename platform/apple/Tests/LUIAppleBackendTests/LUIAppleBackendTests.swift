@@ -142,7 +142,7 @@ struct LUISwiftUIBackendTests {
         try backend.apply(json: """
         {"generation":1,"ops":[
           {"op":"create-node","id":1,"kind":"button"},
-          {"op":"create-node","id":2,"kind":"text-input"},
+          {"op":"create-node","id":2,"kind":"text-field"},
           {"op":"create-node","id":3,"kind":"switch"},
           {"op":"set-prop","id":1,"property":"text","value":"Continue"},
           {"op":"set-prop","id":1,"property":"enabled","value":true},
@@ -154,16 +154,57 @@ struct LUISwiftUIBackendTests {
         try backend.performPress(node: 1)
         try backend.performHold(node: 1)
         try backend.performTextChange(node: 2, text: "Draft")
+        try backend.performSubmit(node: 2)
         try backend.performToggle(node: 3, checked: true)
 
         #expect(events == [
             .press(node: 1),
             .hold(node: 1),
             .textChanged(node: 2, text: "Draft"),
+            .submit(node: 2),
             .toggleChanged(node: 3, checked: true),
         ])
         #expect(backend.model(id: 2)?.property(.text) == nil)
         #expect(backend.model(id: 3)?.property(.checked) == .bool(false))
+    }
+
+    @Test("maps every direct text-entry kind to retained native state")
+    func mapsDirectTextEntryKinds() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"text-field"},
+          {"op":"create-node","id":3,"kind":"input"},
+          {"op":"create-node","id":4,"kind":"search-field"},
+          {"op":"create-node","id":5,"kind":"textarea"},
+          {"op":"set-prop","id":2,"property":"text","value":"Draft"},
+          {"op":"set-prop","id":3,"property":"placeholder","value":"Email"},
+          {"op":"set-prop","id":4,"property":"autofocus","value":true},
+          {"op":"set-prop","id":5,"property":"submit-on-enter","value":true},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"insert-child","parent":1,"child":4,"index":2},
+          {"op":"insert-child","parent":1,"child":5,"index":3}
+        ]}
+        """)
+
+        let textField = try #require(backend.model(id: 2))
+        #expect(textField.kind == .textField)
+        #expect(backend.model(id: 3)?.kind == .input)
+        #expect(backend.model(id: 4)?.kind == .searchField)
+        #expect(backend.model(id: 5)?.kind == .textarea)
+        #expect(textField.text == "Draft")
+        #expect(backend.model(id: 4)?.property(.autofocus) == .bool(true))
+        #expect(backend.model(id: 5)?.property(.submitOnEnter) == .bool(true))
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":2,"property":"text","value":"Updated"}
+        ]}
+        """)
+        #expect(backend.model(id: 2) === textField)
+        #expect(textField.text == "Updated")
     }
 
     @Test("maps the complete Vercel Native Button contract to one retained model")

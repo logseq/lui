@@ -4,7 +4,6 @@
   (record gallery-model
     (gallery-disabled false)
     (gallery-field-value "")
-    (gallery-invalid false)
     (gallery-checked false)
     (gallery-progress 0.3)
     (gallery-density "comfortable")
@@ -17,9 +16,6 @@
 
     (SetFieldValue value)
     (assoc model :gallery-field-value value)
-
-    ToggleInvalid
-    (assoc model :gallery-invalid (not (:gallery-invalid model)))
 
     (SetChecked checked)
     (assoc model :gallery-checked checked)

@@ -16,7 +16,6 @@
          (record model/gallery-model
                  (gallery-disabled false)
                  (gallery-field-value "")
-                 (gallery-invalid false)
                  (gallery-checked false)
                  (gallery-progress 1.0)
                  (gallery-density "comfortable")

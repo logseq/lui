@@ -15,12 +15,10 @@
    (fn [_event] (send model/ToggleDisabled))
    (reactive card-copy model-source)
    (reactive :gallery-field-value model-source)
-   (reactive :gallery-invalid model-source)
    (fn [event]
      (match event
        (TextChanged _node text) (send (model/SetFieldValue text))
        _ true))
-   (fn [_event] (send model/ToggleInvalid))
    (reactive :gallery-checked model-source)
    (fn [event]
      (match event

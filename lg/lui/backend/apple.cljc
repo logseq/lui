@@ -2,7 +2,8 @@
   (:require [lui.protocol :as proto
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button ToggleButton
-                     TextInput TextArea Scroll ListContainer Spacer Spinner Icon
+                     TextField Input SearchField Textarea
+                     Scroll ListContainer Spacer Spinner Icon
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider]]
             [lui.backend.retained :as retained]
@@ -33,8 +34,10 @@
     Label AppleFormLabel
     Button AppleButton
     ToggleButton AppleToggleButton
-    TextInput AppleTextInput
-    TextArea AppleTextArea
+    TextField AppleTextInput
+    Input AppleTextInput
+    SearchField AppleTextInput
+    Textarea AppleTextArea
     Checkbox AppleCheckbox
     SwitchControl AppleSwitch
     Progress AppleProgress

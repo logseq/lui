@@ -355,11 +355,23 @@ public contract does not require app-owned state.
 
 ## Text sizing
 
-Text entry follows the Vercel Native element API. Multiline `textarea` grows to
-its content until constrained by its admitted layout bounds. Auto-sizing is an
-implementation behavior, not an extra `autoresize` prop. Web uses intrinsic
-measurement, SwiftUI uses its native sizing behavior and Flutter uses native
-text layout constraints.
+Text entry is four direct retained leaves: `text-field`, `input`,
+`search-field`, and `textarea`. Their shared public attributes are `text`,
+`placeholder`, `disabled`, `autofocus`, `label`, `on-input`, and `on-submit`.
+`textarea` additionally admits `submit-on-enter`. There are no compound parts,
+relationship IDs, input-type aliases, or line-count props.
+
+`on-input` carries the current text and `on-submit` is a separate typed event.
+Single-line controls submit on Enter. A default textarea inserts a newline and
+submits on the platform primary modifier plus Enter; `submit-on-enter` changes
+the common Enter path to submit while Shift+Enter retains newline entry.
+
+Multiline `textarea` grows to its content until constrained by admitted layout
+bounds. Auto-sizing is an implementation behavior, not an extra `autoresize`
+prop. Web uses native `field-sizing: content`, SwiftUI uses vertical-axis native
+text layout, and Flutter uses an unbounded native multiline `TextField`. Signal
+text patches preserve the DOM element, SwiftUI model, Flutter controller,
+selection, focus, and IME-owned transient state.
 
 ## Showcase
 

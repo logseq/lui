@@ -13,6 +13,7 @@
     (Press node) node
     (Hold node) node
     (TextChanged node _text) node
+    (Submit node) node
     (ToggleChanged node _checked) node
     (Change node) node
     (ValueChanged node _value) node))
@@ -21,37 +22,17 @@
   (match event
     (Press _node) (or (= kind Button) (= kind Radio))
     (Hold _node) (or (= kind Button) (= kind ToggleButton))
-    (TextChanged _node _text) (or (= kind TextInput) (= kind TextArea))
+    (TextChanged _node _text)
+    (or (= kind TextField) (= kind Input) (= kind SearchField)
+        (= kind Textarea))
+    (Submit _node)
+    (or (= kind TextField) (= kind Input) (= kind SearchField)
+        (= kind Textarea))
     (ToggleChanged _node _checked)
     (or (= kind ToggleButton) (= kind Checkbox) (= kind SwitchControl)
         (= kind Toggle) (= kind Radio))
     (Change _node) (= kind Radio)
     (ValueChanged _node _value) (= kind Slider)))
-
-(defn input-type-supported? [value]
-  (or
-   (= value "button")
-   (= value "checkbox")
-   (= value "color")
-   (= value "date")
-   (= value "datetime-local")
-   (= value "email")
-   (= value "file")
-   (= value "hidden")
-   (= value "image")
-   (= value "month")
-   (= value "number")
-   (= value "password")
-   (= value "radio")
-   (= value "range")
-   (= value "reset")
-   (= value "search")
-   (= value "submit")
-   (= value "tel")
-   (= value "text")
-   (= value "time")
-   (= value "url")
-   (= value "week")))
 
 (defn orientation-supported? [value]
   (or (= value "horizontal") (= value "vertical")))
@@ -130,8 +111,10 @@
       Label true
       Button true
       ToggleButton true
-      TextInput true
-      TextArea true
+      TextField true
+      Input true
+      SearchField true
+      Textarea true
       Checkbox true
       Toggle true
       Radio true
@@ -151,22 +134,14 @@
     StyleClass true
     AccessibilityLabel
     (or (= kind Button) (= kind ToggleButton)
-        (= kind TextInput) (= kind TextArea)
+        (= kind TextField) (= kind Input) (= kind SearchField)
+        (= kind Textarea)
         (= kind Checkbox) (= kind SwitchControl)
         (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider))
-    PlaceholderValue (or (= kind TextInput) (= kind TextArea))
-    ReadOnly (or (= kind TextInput) (= kind TextArea))
-    MinLines (= kind TextArea)
-    MaxLines (= kind TextArea)
+    PlaceholderValue
+    (or (= kind TextField) (= kind Input) (= kind SearchField)
+        (= kind Textarea))
     HeadingLevel (= kind Heading)
-    LabelledBy (or (= kind TextInput) (= kind TextArea))
-    DescribedBy
-    (or (= kind TextInput) (= kind TextArea))
-    ErrorMessageBy
-    (or (= kind TextInput) (= kind TextArea))
-    InputType (= kind TextInput)
-    Invalid
-    (or (= kind TextInput) (= kind TextArea))
     Checked (or (= kind Checkbox) (= kind SwitchControl)
                 (= kind Toggle) (= kind Radio))
     ProgressValue (or (= kind Progress) (= kind Slider))
@@ -178,7 +153,11 @@
     InlineIconName (or (= kind Button) (= kind ToggleButton))
     IconPlacementValue (or (= kind Button) (= kind ToggleButton))
     Selected (or (= kind Button) (= kind ToggleButton))
-    Autofocus (or (= kind Button) (= kind ToggleButton))
+    Autofocus
+    (or (= kind Button) (= kind ToggleButton)
+        (= kind TextField) (= kind Input) (= kind SearchField)
+        (= kind Textarea))
+    SubmitOnEnter (= kind Textarea)
     HoldEnabled (or (= kind Button) (= kind ToggleButton))
     ChangeEnabled (= kind Radio)
     ToggleEnabled (= kind Radio)
@@ -191,8 +170,10 @@
       Label true
       Button true
       ToggleButton true
-      TextInput true
-      TextArea true
+      TextField true
+      Input true
+      SearchField true
+      Textarea true
       Checkbox true
       SwitchControl true
       Toggle true
@@ -202,8 +183,10 @@
     (match kind
       Button true
       ToggleButton true
-      TextInput true
-      TextArea true
+      TextField true
+      Input true
+      SearchField true
+      Textarea true
       Checkbox true
       SwitchControl true
       Toggle true
@@ -244,18 +227,10 @@
     (tuple MinHeight (IntValue value)) (>= value 0)
     (tuple MaxHeight (IntValue value)) (>= value 0)
     (tuple PlaceholderValue (StringValue _value)) true
-    (tuple ReadOnly (BoolValue _value)) true
     (tuple AccessibilityLabel (StringValue _value)) true
-    (tuple MinLines (IntValue value)) (> value 0)
-    (tuple MaxLines (IntValue value)) (> value 0)
     (tuple StyleClass (StringValue _value)) true
     (tuple HeadingLevel (IntValue value))
     (and (>= value 1) (<= value 6))
-    (tuple LabelledBy (IntValue value)) (> value 0)
-    (tuple DescribedBy (IntValue value)) (> value 0)
-    (tuple ErrorMessageBy (IntValue value)) (> value 0)
-    (tuple InputType (StringValue value)) (input-type-supported? value)
-    (tuple Invalid (BoolValue _value)) true
     (tuple Checked (BoolValue _value)) true
     (tuple ProgressValue (FloatValue _value)) true
     (tuple OrientationValue (StringValue value))
@@ -272,6 +247,7 @@
     (icon-placement-supported? value)
     (tuple Selected (BoolValue _value)) true
     (tuple Autofocus (BoolValue _value)) true
+    (tuple SubmitOnEnter (BoolValue _value)) true
     (tuple HoldEnabled (BoolValue _value)) true
     (tuple ChangeEnabled (BoolValue _value)) true
     (tuple ToggleEnabled (BoolValue _value)) true

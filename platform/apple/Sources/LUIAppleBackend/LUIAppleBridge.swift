@@ -65,6 +65,8 @@ private final class LUIAppleBridge {
                 "".withCString { callback(3, Int32(node), $0) }
             case let .textChanged(node, text):
                 text.withCString { callback(1, Int32(node), $0) }
+            case let .submit(node):
+                "".withCString { callback(6, Int32(node), $0) }
             case let .toggleChanged(node, checked):
                 (checked ? "true" : "false").withCString {
                     callback(2, Int32(node), $0)

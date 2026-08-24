@@ -20,6 +20,8 @@ typedef _NativeHold = Int32 Function(Int64 node);
 typedef _DartHold = int Function(int node);
 typedef _NativeTextChanged = Int32 Function(Int64 node, Pointer<Utf8> text);
 typedef _DartTextChanged = int Function(int node, Pointer<Utf8> text);
+typedef _NativeSubmit = Int32 Function(Int64 node);
+typedef _DartSubmit = int Function(int node);
 typedef _NativeToggleChanged = Int32 Function(Int64 node, Int32 checked);
 typedef _DartToggleChanged = int Function(int node, int checked);
 typedef _NativeRadioChanged = Int32 Function(Int64 node);
@@ -44,6 +46,9 @@ final class LUIOcamlBridge {
           .lookupFunction<_NativeTextChanged, _DartTextChanged>(
             'lui_ocaml_text_changed',
           ),
+      _submit = library.lookupFunction<_NativeSubmit, _DartSubmit>(
+        'lui_ocaml_submit',
+      ),
       _toggleChanged = library
           .lookupFunction<_NativeToggleChanged, _DartToggleChanged>(
             'lui_ocaml_toggle_changed',
@@ -72,6 +77,7 @@ final class LUIOcamlBridge {
   final _DartPress _press;
   final _DartHold _hold;
   final _DartTextChanged _textChanged;
+  final _DartSubmit _submit;
   final _DartToggleChanged _toggleChanged;
   final _DartRadioChanged _radioChanged;
   final _DartSliderChanged _sliderChanged;
@@ -121,6 +127,10 @@ final class LUIOcamlBridge {
     } finally {
       malloc.free(nativeText);
     }
+  }
+
+  void submit(int node) {
+    if (_submit(node) != 1) throw StateError('OCaml submit dispatch failed');
   }
 
   void toggleChanged(int node, bool checked) {

@@ -39,14 +39,10 @@
 (signature lui.ui/label-signal! :fn<ui-context;signal<string>;int>)
 (signature lui.ui/text-signal! :fn<ui-context;signal<string>;int>)
 (signature lui.ui/text-value! :fn<ui-context;signal<wire-value>;int>)
-(signature lui.ui/text-input!
-  :fn<ui-context;signal<string>;fn<event;bool>;int>)
-(signature lui.ui/text-input-value!
-  :fn<ui-context;signal<wire-value>;fn<event;bool>;int>)
-(signature lui.ui/text-area!
-  :fn<ui-context;signal<string>;fn<event;bool>;int>)
-(signature lui.ui/text-area-value!
-  :fn<ui-context;signal<wire-value>;fn<event;bool>;int>)
+(signature lui.ui/text-field! :fn<ui-context;int>)
+(signature lui.ui/input! :fn<ui-context;int>)
+(signature lui.ui/search-field! :fn<ui-context;int>)
+(signature lui.ui/textarea! :fn<ui-context;int>)
 (signature lui.ui/button! :fn<ui-context;int>)
 (signature lui.ui/toggle-button! :fn<ui-context;int>)
 (signature lui.ui/toggle! :fn<ui-context;int>)
@@ -65,8 +61,6 @@
 (signature lui.ui/disabled! :fn<ui-context;int;bool;bool>)
 (signature lui.ui/disabled-signal!
   :fn<ui-context;int;signal.core/signal<bool>;bool>)
-(signature lui.ui/invalid-signal!
-  :fn<ui-context;int;signal.core/signal<bool>;bool>)
 (signature lui.ui/checked-signal!
   :fn<ui-context;int;signal.core/signal<bool>;bool>)
 (signature lui.ui/text-property! :fn<ui-context;int;string;bool>)
@@ -80,10 +74,6 @@
 (signature lui.ui/progress-literal! :fn<ui-context;float;int>)
 (signature lui.ui/separator! :fn<ui-context;string;int>)
 (signature lui.ui/size! :fn<ui-context;int;string;bool>)
-(signature lui.ui/labelled-by! :fn<ui-context;int;int;bool>)
-(signature lui.ui/described-by! :fn<ui-context;int;int;bool>)
-(signature lui.ui/error-message-by! :fn<ui-context;int;int;bool>)
-(signature lui.ui/input-type! :fn<ui-context;int;string;bool>)
 (signature lui.ui/style-class! :fn<ui-context;int;string;bool>)
 (signature lui.ui/append! :fn<ui-context;int;int;bool>)
 (signature lui.ui/gap! :fn<ui-context;int;int;bool>)
@@ -106,7 +96,4 @@
 (signature lui.ui/min-height! :fn<ui-context;int;int;bool>)
 (signature lui.ui/max-height! :fn<ui-context;int;int;bool>)
 (signature lui.ui/placeholder! :fn<ui-context;int;string;bool>)
-(signature lui.ui/read-only! :fn<ui-context;int;bool;bool>)
 (signature lui.ui/accessibility-label! :fn<ui-context;int;string;bool>)
-(signature lui.ui/min-lines! :fn<ui-context;int;int;bool>)
-(signature lui.ui/max-lines! :fn<ui-context;int;int;bool>)

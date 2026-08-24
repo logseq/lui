@@ -153,39 +153,17 @@
     (:ui-scope context)
     (sig/map (fn [text] (proto/StringValue text)) source))))
 
-(defn text-input-value! [context source callback]
-  (let [node (runtime/create-node! (:ui-application context) proto/TextInput)]
-    (runtime/bind-prop!
-     (:ui-scope context) (:ui-application context)
-     node proto/TextValue source)
-    (runtime/on-event!
-     (:ui-scope context) (:ui-application context) node callback)
-    node))
+(defn text-field! [context]
+  (runtime/create-node! (:ui-application context) proto/TextField))
 
-(defn text-input! [context source callback]
-  (text-input-value!
-   context
-   (sig/own-signal!
-    (:ui-scope context)
-    (sig/map (fn [text] (proto/StringValue text)) source))
-   callback))
+(defn input! [context]
+  (runtime/create-node! (:ui-application context) proto/Input))
 
-(defn text-area-value! [context source callback]
-  (let [node (runtime/create-node! (:ui-application context) proto/TextArea)]
-    (runtime/bind-prop!
-     (:ui-scope context) (:ui-application context)
-     node proto/TextValue source)
-    (runtime/on-event!
-     (:ui-scope context) (:ui-application context) node callback)
-    node))
+(defn search-field! [context]
+  (runtime/create-node! (:ui-application context) proto/SearchField))
 
-(defn text-area! [context source callback]
-  (text-area-value!
-   context
-   (sig/own-signal!
-    (:ui-scope context)
-    (sig/map (fn [text] (proto/StringValue text)) source))
-   callback))
+(defn textarea! [context]
+  (runtime/create-node! (:ui-application context) proto/Textarea))
 
 (defn button! [context]
   (runtime/create-node! (:ui-application context) proto/Button))
@@ -258,15 +236,6 @@
       (sig/map (fn [disabled] (proto/BoolValue (not disabled))) source)))
     true))
 
-(defn invalid-signal! [context node source]
-  (do
-    (runtime/bind-prop!
-     (:ui-scope context) (:ui-application context) node proto/Invalid
-     (sig/own-signal!
-      (:ui-scope context)
-      (sig/map (fn [invalid] (proto/BoolValue invalid)) source)))
-    true))
-
 (defn checked-signal! [context node source]
   (do
     (runtime/bind-prop!
@@ -330,25 +299,6 @@
   (runtime/set-prop!
    (:ui-application context) node proto/SizeValue
    (proto/StringValue size)))
-
-(defn labelled-by! [context node label]
-  (runtime/set-prop!
-   (:ui-application context) node proto/LabelledBy (proto/IntValue label)))
-
-(defn described-by! [context node description]
-  (runtime/set-prop!
-   (:ui-application context) node proto/DescribedBy
-   (proto/IntValue description)))
-
-(defn error-message-by! [context node error]
-  (runtime/set-prop!
-   (:ui-application context) node proto/ErrorMessageBy
-   (proto/IntValue error)))
-
-(defn input-type! [context node input-type]
-  (runtime/set-prop!
-   (:ui-application context) node proto/InputType
-   (proto/StringValue input-type)))
 
 (defn style-class! [context node class-name]
   (runtime/set-prop!
@@ -452,22 +402,7 @@
    (:ui-application context) node proto/PlaceholderValue
    (proto/StringValue placeholder)))
 
-(defn read-only! [context node read-only]
-  (runtime/set-prop!
-   (:ui-application context) node proto/ReadOnly
-   (proto/BoolValue read-only)))
-
 (defn accessibility-label! [context node label]
   (runtime/set-prop!
    (:ui-application context) node proto/AccessibilityLabel
    (proto/StringValue label)))
-
-(defn min-lines! [context node lines]
-  (runtime/set-prop!
-   (:ui-application context) node proto/MinLines
-   (proto/IntValue lines)))
-
-(defn max-lines! [context node lines]
-  (runtime/set-prop!
-   (:ui-application context) node proto/MaxLines
-   (proto/IntValue lines)))
