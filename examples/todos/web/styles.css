@@ -55,10 +55,8 @@ body {
   overflow: hidden;
 }
 
-.lui-text-input:empty::before {
+.lui-text-input::placeholder {
   color: #8a929d;
-  content: attr(data-placeholder);
-  pointer-events: none;
 }
 
 .lui-text-input:focus {

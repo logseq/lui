@@ -116,12 +116,14 @@
 
     (SetProp node property value)
     (if-some [current (clojure.core/get nodes node)]
-      (if (proto/property-supported? (:semantic-kind current) property)
+      (if (and
+           (proto/property-supported? (:semantic-kind current) property)
+           (proto/property-value-supported? property value))
         (update-node
          nodes node current
          (assoc (:retained-properties current) property value)
          (:retained-children current))
-        (raise (Invalid_argument "property is unsupported by node kind")))
+        (raise (Invalid_argument "unsupported property value")))
       (raise (Invalid_argument "unknown node")))
 
     (InsertChild parent child index)

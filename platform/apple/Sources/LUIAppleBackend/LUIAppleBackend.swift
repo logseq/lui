@@ -132,6 +132,12 @@ public final class LUIAppleBackend {
         case let (.background, .string(color)):
             view.wantsLayer = true
             view.layer?.backgroundColor = Self.color(named: color).cgColor
+        case let (.placeholder, .string(placeholder)):
+            (view as? NSTextField)?.placeholderString = placeholder
+        case let (.readOnly, .bool(readOnly)):
+            (view as? NSTextField)?.isEditable = !readOnly
+        case let (.accessibilityLabel, .string(label)):
+            view.setAccessibilityLabel(label)
         default:
             break
         }

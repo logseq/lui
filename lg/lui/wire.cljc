@@ -3,6 +3,7 @@
             [lui.protocol
              :refer [Row Column Text Button TextInput Scroll Spacer
                      TextValue Enabled Gap PaddingValue BackgroundValue
+                     PlaceholderValue ReadOnly AccessibilityLabel
                      StringValue BoolValue IntValue
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild]]))
@@ -35,7 +36,10 @@
     Enabled "enabled"
     Gap "gap"
     PaddingValue "padding"
-    BackgroundValue "background"))
+    BackgroundValue "background"
+    PlaceholderValue "placeholder"
+    ReadOnly "read-only"
+    AccessibilityLabel "accessibility-label"))
 
 (defn- encode-value [value]
   (match value

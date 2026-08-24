@@ -96,11 +96,10 @@ public final class LUIUIKitBackend {
             )
             view = button
         case .textInput:
-            let field = UITextField()
+            let field = LUITextField()
             field.borderStyle = .roundedRect
             field.font = .preferredFont(forTextStyle: .body)
             field.adjustsFontForContentSizeCategory = true
-            field.accessibilityLabel = "New todo"
             field.addAction(
                 UIAction { [weak self, weak field] _ in
                     guard let text = field?.text else { return }
@@ -146,6 +145,12 @@ public final class LUIUIKitBackend {
             }
         case let (.background, .string(color)):
             view.backgroundColor = Self.color(named: color)
+        case let (.placeholder, .string(placeholder)):
+            (view as? UITextField)?.placeholder = placeholder
+        case let (.readOnly, .bool(readOnly)):
+            (view as? LUITextField)?.isReadOnly = readOnly
+        case let (.accessibilityLabel, .string(label)):
+            view.accessibilityLabel = label
         default:
             break
         }
@@ -194,6 +199,28 @@ public final class LUIUIKitBackend {
         case "green": .systemGreen
         default: .clear
         }
+    }
+}
+
+private final class LUITextField: UITextField, UITextFieldDelegate {
+    var isReadOnly = false
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        delegate = self
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        delegate = self
+    }
+
+    func textField(
+        _ textField: UITextField,
+        shouldChangeCharactersIn range: NSRange,
+        replacementString string: String
+    ) -> Bool {
+        !isReadOnly
     }
 }
 #endif

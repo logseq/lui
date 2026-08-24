@@ -101,3 +101,18 @@
   (runtime/set-prop!
    (:ui-application context) node proto/BackgroundValue
    (proto/StringValue color)))
+
+(defn placeholder! [context node placeholder]
+  (runtime/set-prop!
+   (:ui-application context) node proto/PlaceholderValue
+   (proto/StringValue placeholder)))
+
+(defn read-only! [context node read-only]
+  (runtime/set-prop!
+   (:ui-application context) node proto/ReadOnly
+   (proto/BoolValue read-only)))
+
+(defn accessibility-label! [context node label]
+  (runtime/set-prop!
+   (:ui-application context) node proto/AccessibilityLabel
+   (proto/StringValue label)))

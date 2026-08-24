@@ -22,6 +22,9 @@
   (match property
     PaddingValue true
     BackgroundValue true
+    AccessibilityLabel (= kind TextInput)
+    PlaceholderValue (= kind TextInput)
+    ReadOnly (= kind TextInput)
     TextValue
     (match kind
       Text true
@@ -38,6 +41,18 @@
       Row true
       Column true
       _ false)))
+
+(defn property-value-supported? [property value]
+  (match (tuple property value)
+    (tuple TextValue (StringValue _value)) true
+    (tuple Enabled (BoolValue _value)) true
+    (tuple Gap (IntValue _value)) true
+    (tuple PaddingValue (IntValue _value)) true
+    (tuple BackgroundValue (StringValue _value)) true
+    (tuple PlaceholderValue (StringValue _value)) true
+    (tuple ReadOnly (BoolValue _value)) true
+    (tuple AccessibilityLabel (StringValue _value)) true
+    _ false))
 
 (defn can-contain-children? [kind]
   (match kind

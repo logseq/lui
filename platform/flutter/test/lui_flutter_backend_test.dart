@@ -90,6 +90,38 @@ void main() {
     expect(backend.debugRevision(2), 1);
     expect(backend.debugRevision(3), 0);
   });
+
+  testWidgets('maps semantic text-input properties to a native TextField', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"text-input"},
+        {"op":"set-prop","id":1,"property":"placeholder","value":"Search"},
+        {"op":"set-prop","id":1,"property":"read-only","value":true},
+        {"op":"set-prop","id":1,"property":"accessibility-label","value":"Search todos"}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.decoration?.hintText, 'Search');
+    expect(field.readOnly, isTrue);
+    expect(
+      tester.getSemantics(find.byType(TextField)),
+      matchesSemantics(
+        label: 'Search todos',
+        isTextField: true,
+        isReadOnly: true,
+      ),
+    );
+    semantics.dispose();
+  });
 }
 
 const _initialBatch = '''

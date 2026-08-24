@@ -35,7 +35,10 @@
   (Enabled)
   (Gap)
   (PaddingValue)
-  (BackgroundValue))
+  (BackgroundValue)
+  (PlaceholderValue)
+  (ReadOnly)
+  (AccessibilityLabel))
 
 (type-variant wire-value
   (StringValue :string)
@@ -68,6 +71,8 @@
 (signature lui.protocol/event-node :fn<event;int>)
 (signature lui.protocol/event-supported? :fn<node-kind;event;bool>)
 (signature lui.protocol/property-supported? :fn<node-kind;property;bool>)
+(signature lui.protocol/property-value-supported?
+  :fn<property;wire-value;bool>)
 (signature lui.protocol/can-contain-children? :fn<node-kind;bool>)
 (signature lui.protocol/single-child-container? :fn<node-kind;bool>)
 (signature lui.protocol/create-node-op :fn<int;node-kind;patch-op>)

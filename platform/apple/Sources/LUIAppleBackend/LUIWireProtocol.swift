@@ -14,7 +14,9 @@ enum LUINodeKind: String, Decodable {
 }
 
 enum LUIProperty: String, Decodable {
-    case text, enabled, gap, padding, background
+    case text, enabled, gap, padding, background, placeholder
+    case readOnly = "read-only"
+    case accessibilityLabel = "accessibility-label"
 }
 
 struct LUIPatchBatch: Decodable {
@@ -92,7 +94,9 @@ enum LUIWireValue: Decodable {
     func matches(_ property: LUIProperty) -> Bool {
         switch (property, self) {
         case (.text, .string), (.enabled, .bool), (.gap, .int),
-             (.padding, .int), (.background, .string): true
+             (.padding, .int), (.background, .string),
+             (.placeholder, .string), (.readOnly, .bool),
+             (.accessibilityLabel, .string): true
         default: false
         }
     }
@@ -190,6 +194,8 @@ struct LUIRetainedTree {
         case .text: kind == .text || kind == .button || kind == .textInput
         case .enabled: kind == .button || kind == .textInput
         case .gap: kind == .row || kind == .column
+        case .placeholder, .readOnly: kind == .textInput
+        case .accessibilityLabel: kind == .textInput
         }
     }
 

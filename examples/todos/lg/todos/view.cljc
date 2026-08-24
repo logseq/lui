@@ -51,6 +51,8 @@
    [:row {:gap 8}
     [:text-input
      {:value (reactive :model-draft model-source)
+      :placeholder "What needs to be done?"
+      :accessibility-label "New todo"
       :on-change
       (fn [event]
         (match event

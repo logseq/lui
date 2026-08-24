@@ -243,6 +243,37 @@
     (assert-equal 0 (apple/node-count renderer)
                   "invalid batches are rejected atomically")))
 
+(deftest runtime-rejects-property-values-with-the-wrong-wire-type
+  (let [renderer (apple/create)
+        application
+        (runtime/create (sig/scheduler) (apple/backend renderer))
+        text (runtime/create-node! application proto/Text)
+        button (runtime/create-node! application proto/Button)
+        row (runtime/create-node! application proto/Row)]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"invalid property value"
+         (runtime/set-prop!
+          application text proto/TextValue (proto/BoolValue true)))
+        "text properties require string wire values")
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"invalid property value"
+         (runtime/set-prop!
+          application button proto/Enabled (proto/StringValue "yes")))
+        "enabled properties require boolean wire values")
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"invalid property value"
+         (runtime/set-prop!
+          application row proto/Gap (proto/StringValue "8")))
+        "numeric layout properties require integer wire values")
+    (runtime/flush! application)
+    (assert-equal
+     3
+     (count (:ops (nth (apple/batches renderer) 0)))
+     "rejected values never enter the patch queue")))
+
 (deftest backend-protects-retained-tree-invariants
   (let [backend (apple/backend (apple/create))
         invalid-batch

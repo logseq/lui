@@ -176,6 +176,10 @@ final class LUIFlutterBackend {
         .toList(growable: false);
     final enabled = state.properties['enabled'] as bool? ?? true;
     final text = state.properties['text'] as String? ?? '';
+    final placeholder = state.properties['placeholder'] as String?;
+    final readOnly = state.properties['read-only'] as bool? ?? false;
+    final accessibilityLabel =
+        state.properties['accessibility-label'] as String?;
     final gap = (state.properties['gap'] as int? ?? 0).toDouble();
     final content = switch (state.kind) {
       _NodeKind.row => Row(
@@ -195,11 +199,18 @@ final class LUIFlutterBackend {
       ),
       _NodeKind.textInput => SizedBox(
         width: 240,
-        child: _LUITextInput(
-          text: text,
-          enabled: enabled,
-          onChanged: (value) =>
-              onEvent?.call(LUIEvent.textChanged(node: id, text: value)),
+        child: Semantics(
+          label: accessibilityLabel,
+          textField: true,
+          readOnly: readOnly,
+          child: _LUITextInput(
+            text: text,
+            enabled: enabled,
+            readOnly: readOnly,
+            placeholder: placeholder,
+            onChanged: (value) =>
+                onEvent?.call(LUIEvent.textChanged(node: id, text: value)),
+          ),
         ),
       ),
       _NodeKind.scroll => SingleChildScrollView(
@@ -308,6 +319,9 @@ final class LUIFlutterBackend {
         value is int && (kind == _NodeKind.row || kind == _NodeKind.column),
       'padding' => value is int,
       'background' => value is String,
+      'placeholder' => value is String && kind == _NodeKind.textInput,
+      'read-only' => value is bool && kind == _NodeKind.textInput,
+      'accessibility-label' => value is String && kind == _NodeKind.textInput,
       _ => false,
     };
   }
@@ -392,11 +406,15 @@ final class _LUITextInput extends StatefulWidget {
   const _LUITextInput({
     required this.text,
     required this.enabled,
+    required this.readOnly,
+    required this.placeholder,
     required this.onChanged,
   });
 
   final String text;
   final bool enabled;
+  final bool readOnly;
+  final String? placeholder;
   final ValueChanged<String> onChanged;
 
   @override
@@ -427,6 +445,8 @@ final class _LUITextInputState extends State<_LUITextInput> {
   Widget build(BuildContext context) => TextField(
     controller: _controller,
     enabled: widget.enabled,
+    readOnly: widget.readOnly,
+    decoration: InputDecoration(hintText: widget.placeholder),
     onChanged: widget.onChanged,
   );
 

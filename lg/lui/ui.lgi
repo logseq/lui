@@ -27,3 +27,6 @@
 (signature lui.ui/gap! :fn<ui-context;int;int;bool>)
 (signature lui.ui/padding! :fn<ui-context;int;int;bool>)
 (signature lui.ui/background! :fn<ui-context;int;string;bool>)
+(signature lui.ui/placeholder! :fn<ui-context;int;string;bool>)
+(signature lui.ui/read-only! :fn<ui-context;int;bool;bool>)
+(signature lui.ui/accessibility-label! :fn<ui-context;int;string;bool>)

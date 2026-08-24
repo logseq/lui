@@ -109,7 +109,9 @@
 (defn set-prop! [application node property value]
   (let [kind (require-node-kind application node)]
     (when (not (proto/property-supported? kind property))
-      (raise (Invalid_argument "property is unsupported by node kind"))))
+      (raise (Invalid_argument "property is unsupported by node kind")))
+    (when (not (proto/property-value-supported? property value))
+      (raise (Invalid_argument "invalid property value"))))
   (enqueue! application (proto/set-prop-op node property value)))
 
 (defn insert-child! [application parent child index]

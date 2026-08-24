@@ -33,6 +33,14 @@
 (defui current-platform-profile []
   (tuple (platform) (host)))
 
+(defui accessible-search [source callback]
+  [:text-input
+   {:value source
+    :placeholder "Search"
+    :read-only true
+    :accessibility-label "Search todos"
+    :on-change callback}])
+
 (deftest platform-profile-flows-through-ui-context
   (let [apple-renderer (apple/create)
         apple-application
@@ -186,3 +194,27 @@
       (Some (StringValue text))
       (assert-equal "new todo" text "state updates retained input text")
       _ (is false "reactive input text exists"))))
+
+(deftest declarative-text-input-preserves-native-semantics
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "accessible-input")
+        context (ui/context application scope)
+        draft (sig/state scheduler "")
+        input
+        (accessible-search context (sig/value draft) (fn [_event] true))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (match (apple/property renderer input proto/PlaceholderValue)
+      (Some (StringValue value))
+      (assert-equal "Search" value "placeholder reaches the backend")
+      _ (is false "placeholder is present"))
+    (match (apple/property renderer input proto/ReadOnly)
+      (Some (proto/BoolValue value))
+      (assert-equal true value "readonly reaches the backend")
+      _ (is false "readonly is present"))
+    (match (apple/property renderer input proto/AccessibilityLabel)
+      (Some (StringValue value))
+      (assert-equal "Search todos" value "accessible name reaches the backend")
+      _ (is false "accessible name is present"))))

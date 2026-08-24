@@ -5,7 +5,8 @@
              :refer [Row Column Text Button TextInput Scroll Spacer
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild TextValue Enabled Gap PaddingValue
-                     BackgroundValue StringValue BoolValue IntValue]]
+                     BackgroundValue PlaceholderValue ReadOnly
+                     AccessibilityLabel StringValue BoolValue IntValue]]
             [lui.backend.retained :as retained]))
 
 (defn create [host]
@@ -23,6 +24,7 @@
         (match kind
           Text "span"
           Button "button"
+          TextInput "input"
           _ "div")
         node
         (Webapi.Dom.Document.createElement tag (:web-document renderer))
@@ -36,13 +38,14 @@
           Scroll "lui-scroll"
           Spacer "lui-spacer")]
     (Webapi.Dom.Element.setClassName node class-name)
-    (when (= kind TextInput)
-      (Webapi.Dom.Element.setAttribute "contenteditable" "plaintext-only" node)
-      (Webapi.Dom.Element.setAttribute "role" "textbox" node)
-      (Webapi.Dom.Element.setAttribute "aria-label" "New todo" node)
-      (Webapi.Dom.Element.setAttribute
-       "data-placeholder" "What needs to be done?" node))
     node))
+
+(defn- input-node [dom-node]
+  (if-some [input
+            (Webapi.Dom.HtmlInputElement.ofNode
+             (Webapi.Dom.Element.asNode dom-node))]
+    input
+    (raise (Invalid_argument "DOM node is not an input"))))
 
 (defn- dom-node [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
@@ -70,7 +73,8 @@
      "input"
      (fn [_event]
        ((deref (:web-event-handler renderer))
-        (proto/TextChanged node (Webapi.Dom.Element.textContent dom-node)))
+        (proto/TextChanged
+         node (Webapi.Dom.HtmlInputElement.value (input-node dom-node))))
        (Stdlib.ignore true))
      dom-node)
     _ (Stdlib.ignore true)))
@@ -85,8 +89,12 @@
 (defn- apply-property! [kind dom-node property value]
   (match (tuple property value)
     (tuple TextValue (StringValue text))
-    (when (not (= text (Webapi.Dom.Element.textContent dom-node)))
-      (Webapi.Dom.Element.setTextContent dom-node text))
+    (if (= kind TextInput)
+      (let [input (input-node dom-node)]
+        (when (not (= text (Webapi.Dom.HtmlInputElement.value input)))
+          (Webapi.Dom.HtmlInputElement.setValue input text)))
+      (when (not (= text (Webapi.Dom.Element.textContent dom-node)))
+        (Webapi.Dom.Element.setTextContent dom-node text)))
 
     (tuple Enabled (BoolValue enabled))
     (if enabled
@@ -101,6 +109,16 @@
 
     (tuple BackgroundValue (StringValue background))
     (set-style! dom-node "background" background)
+
+    (tuple PlaceholderValue (StringValue placeholder))
+    (Webapi.Dom.HtmlInputElement.setPlaceholder
+     (input-node dom-node) placeholder)
+
+    (tuple ReadOnly (BoolValue read-only))
+    (Webapi.Dom.HtmlInputElement.setReadOnly (input-node dom-node) read-only)
+
+    (tuple AccessibilityLabel (StringValue label))
+    (Webapi.Dom.Element.setAttribute "aria-label" label dom-node)
 
     _ (raise (Invalid_argument "invalid DOM property value"))))
 

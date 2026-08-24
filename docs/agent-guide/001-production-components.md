@@ -16,6 +16,10 @@ React or a virtual DOM.
 
 - **Native behavior first.** Use native text editing, scrolling, focus,
   accessibility and platform presentation rather than imitating them.
+- **Native controls by default.** Flutter uses Material or Cupertino widgets,
+  UIKit and AppKit use system views and controls, and SwiftUI integration uses
+  system views. Custom drawing is reserved for semantics the platform does not
+  provide or for composed styling around native behavior.
 - **Useful by default, replaceable by design.** Components ship with a quiet,
   coherent visual theme, while behavior and visual parts remain separable.
 - **One semantic contract.** A component may look platform-native without
@@ -193,6 +197,36 @@ retained nodes.
 
 SwiftUI integration embeds the retained UIKit root. SwiftUI is a host surface,
 not a second state or component implementation.
+
+## Web component provider
+
+The Web backend does not reimplement a full component library. It uses three
+layers:
+
+1. Native HTML elements provide layout, text, links, buttons, basic form
+   controls, scrolling, tables and other semantics already built into the
+   browser.
+2. [Lion](https://lion.js.org/) is the default behavior foundation for complex
+   form controls, selection, validation and overlays. LUI creates its custom
+   elements directly and adapts semantic properties, slots and events; Lion's
+   internal Lit rendering remains opaque to the LUI retained tree.
+3. Provider adapters may map the same semantic nodes to
+   [Web Awesome](https://webawesome.com/) or
+   [Spectrum Web Components](https://opensource.adobe.com/spectrum-web-components/)
+   when an application wants those visual systems. Provider-specific options
+   never leak into the shared component contract.
+
+Lion is preferred for the default foundation because it is framework-agnostic,
+MIT licensed, accessibility-focused and intentionally white-label. Web Awesome
+is highly customizable and ready-styled, but some daily-development components
+are commercial Pro components. Spectrum is comprehensive and production-used,
+but intentionally expresses Adobe's design language. UI5 Web Components remain
+a possible enterprise provider rather than a core dependency because they are
+optimized around the Fiori system.
+
+Before Lion becomes a dependency, a Web spike must prove direct retained
+updates, event delivery, focus retention, keyed movement, styling through LUI
+tokens and per-component ES module imports for input, combobox and dialog.
 
 ## Delivery order
 

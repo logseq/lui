@@ -106,6 +106,24 @@ struct LUIAppleBackendTests {
         #expect(events == [.textChanged(node: 1, text: "Write Apple Todos")])
     }
 
+    @Test("maps semantic text-input properties to native AppKit behavior")
+    func mapsTextInputSemantics() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"text-input"},
+          {"op":"set-prop","id":1,"property":"placeholder","value":"Search"},
+          {"op":"set-prop","id":1,"property":"read-only","value":true},
+          {"op":"set-prop","id":1,"property":"accessibility-label","value":"Search todos"}
+        ]}
+        """)
+
+        let field = try #require(backend.view(id: 1) as? NSTextField)
+        #expect(field.placeholderString == "Search")
+        #expect(field.isEditable == false)
+        #expect(field.accessibilityLabel() == "Search todos")
+    }
+
     @Test("C ABI accepts the LG wire batch")
     func cABIReceivesWireBatch() {
         luiAppleReset()
