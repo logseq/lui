@@ -28,7 +28,11 @@
   (AppleList)
   (AppleSpacer)
   (AppleSpinner)
-  (AppleIcon))
+  (AppleIcon)
+  (AppleSelect)
+  (AppleCombobox)
+  (AppleDropdownMenu)
+  (AppleMenuItem))
 
 (type-record apple-renderer
   (apple-store :retained-store<apple-node>)

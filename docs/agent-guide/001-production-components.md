@@ -211,6 +211,10 @@ Delivered parity slices:
   sizes and inline icons, `on-toggle` activation, optional model-owned
   `selected`, backend-owned selection when that property is absent, and the
   same hold and autofocus behavior;
+- direct retained `select`, `combobox`, `dropdown-menu`, and `menu-item`
+  picker primitives with model-owned value, query, and visibility Signals,
+  typed press/input/submit/dismiss events, anchored native presentation, and
+  identity-preserving conditional menu insertion and removal;
 - stacking containers reject `gap`; `card` supplies the reference 24-point
   default content padding while explicit `padding` overrides it.
 
@@ -321,10 +325,9 @@ These daily value controls preserve the pinned Vercel Native API:
 - `radio` accepts `text`, either `checked` or `selected`, `disabled`, `label`,
   and the reference event fallback order `on-change`, `on-toggle`, then
   `on-press`;
-- `slider` accepts the model-owned fractional `value` as `number` or
-  `Signal<number>`, plus `disabled`, `label` and `on-change`; rendered values
-  are normalized to the runtime's canonical float representation and clamped
-  to `0..1` without changing the model-owned source.
+- `slider` accepts the model-owned fractional `value` as `float` or
+  `Signal<float>`, plus `disabled`, `label` and `on-change`; rendered values
+  are clamped to `0..1` without changing the model-owned source.
 
 Radio activation emits `on-change` only for a new selection. Activating an
 already selected radio may still reach the legacy toggle or press fallback.
@@ -337,12 +340,13 @@ event pipeline and the Signal remains the reconciliation source.
 ### Progress contract
 
 `progress` is one display-only retained leaf. It accepts the model-owned
-`value` as `number` or `Signal<number>` and the reference `width` layout
-attribute. Continuous numeric values are normalized to the runtime's canonical
-float representation; callers do not have to spell `1` as `1.0`. `min-value`,
-`max-value`, labels, events and public compound parts are not part of its API.
-Values outside `0..1` remain unchanged in the model and are clamped only when
-a backend renders the fill. Discrete indexes and counts remain integers.
+`value` as `float` or `Signal<float>` and the reference `width` layout
+attribute. The typed LG API uses floats for continuous values; a JSON integer
+at a wire boundary is normalized once to the canonical float representation.
+`min-value`, `max-value`, labels, events and public compound parts are not part
+of its API. Values outside `0..1` remain unchanged in the model and are clamped
+only when a backend renders the fill. Discrete indexes and counts remain
+integers.
 
 Web updates one retained progressbar DOM node and its CSS fill fraction.
 SwiftUI uses `ProgressView(value:)`, and Flutter uses
@@ -391,6 +395,36 @@ text layout, and Flutter uses an unbounded native multiline `TextField`. Signal
 text patches preserve the DOM element, SwiftUI model, Flutter controller,
 selection, focus, and IME-owned transient state.
 
+### Picker contract
+
+The first picker slice uses four semantic retained elements and keeps their
+composition explicit:
+
+- `select` is a leaf trigger with `text`, `placeholder`, `disabled`,
+  `on-press`, and `on-dismiss`;
+- `combobox` is an editable leaf with `text`, `placeholder`, `disabled`,
+  `on-input`, `on-submit`, `on-press`, and `on-dismiss`;
+- `dropdown-menu` is a sibling of its trigger inside `stack`. It accepts
+  `anchor` (`above` or `below`), `anchor-alignment` (`start`, `center`, `end`,
+  or `stretch`), floating-point `anchor-offset`, admitted common size props,
+  and `on-dismiss`;
+- `menu-item` is a text-bearing leaf with `icon`, `selected`, `disabled`, and
+  `on-press`.
+
+The application owns selected value, combobox query, and open menu identity as
+Signals. A menu is mounted with `:if` only while open, so dismissal disposes
+that dynamic segment without replacing the trigger or unrelated siblings.
+Selected value and host-owned keyboard highlight are separate state: a native
+focus move does not commit model selection until activation.
+
+Web uses retained native DOM controls, Tailwind component selectors, anchored
+positioning, Escape handling, and outside-pointer dismissal. Flutter uses
+Material controls plus a composited `OverlayPortal`; the stack keeps one stable
+widget shape while the portal is shown or hidden, preserving the trigger and
+text controller identities. Apple uses SwiftUI controls and material menu
+surfaces in the same retained node model. Platform-native focus, animation,
+menu tracking, and input composition remain backend-owned.
+
 ## Showcase
 
 All examples live under `examples/`. `examples/components/` is a component
@@ -408,6 +442,12 @@ element and covers:
 
 The same LG showcase source runs on Web, SwiftUI desktop/iOS, and Flutter
 desktop/mobile. Host shells stay deliberately small.
+
+The picker section is currently exercised through the real Web host and the
+Flutter host across the OCaml FFI boundary. Its integration checks open and
+close the overlay, commit selection and free-form submission, and assert that
+the retained Select render object and native text editor survive those Signal
+patches.
 
 ## Delivery order
 

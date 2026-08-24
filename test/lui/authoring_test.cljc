@@ -12,7 +12,8 @@
             [lui.backend.apple :as apple
              :refer [AppleBox AppleCard AppleCheckbox AppleColumn AppleFormLabel AppleGrid
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
-                     AppleList ApplePanel AppleScrollView AppleStack AppleTextInput]]
+                     AppleList ApplePanel AppleScrollView AppleStack AppleTextInput
+                     AppleSelect AppleCombobox AppleDropdownMenu AppleMenuItem]]
             [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
@@ -36,6 +37,33 @@
    [:if {:test visible}
     [:text "visible"]]
    [:text "after"]])
+
+(defui picker-primitives
+  [selected query open on-open on-input on-submit on-dismiss on-pick]
+  [:column
+   [:stack {:width 240}
+    [:select
+     {:text selected
+      :placeholder "Choose environment"
+      :on-press on-open}]
+    [:if {:test open}
+     [:dropdown-menu
+      {:anchor "below"
+       :anchor-alignment "stretch"
+       :anchor-offset 6.0
+       :min-width 200
+       :on-dismiss on-dismiss}
+      [:menu-item
+       {:icon "check" :selected true :on-press on-pick}
+       "Production"]
+      [:separator]
+      [:menu-item {:disabled true} "Development"]]]]
+   [:combobox
+    {:text query
+     :placeholder "Search frameworks"
+     :on-input on-input
+     :on-submit on-submit
+     :on-press on-open}]])
 
 (defelement badge [context parent _attrs & children]
   `(lui.elements/text ~context ~parent {} ~@children))
@@ -346,6 +374,82 @@
     (runtime/flush! application)
     (assert-equal 2 (count (apple/children renderer root))
                   "declarative if removes its child again")))
+
+(deftest picker-elements-compose-through-model-owned-conditional-state
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "picker-primitives")
+        context (ui/context application scope)
+        selected (sig/state scheduler "Production")
+        query (sig/state scheduler "")
+        open (sig/state scheduler false)
+        received (atom [])
+        callback
+        (fn [event]
+          (swap! received conj event)
+          true)
+        root
+        (picker-primitives
+         context (sig/value selected) (sig/value query) (sig/value open)
+         callback callback callback callback callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [root-children (apple/children renderer root)
+          picker-stack (nth root-children 0)
+          combobox (nth root-children 1)
+          select (nth (apple/children renderer picker-stack) 0)]
+      (match (apple/node renderer select)
+        (Some AppleSelect) (is true "select is one retained native trigger")
+        _ (is false "select maps to its semantic native node"))
+      (match (apple/node renderer combobox)
+        (Some AppleCombobox) (is true "combobox is one retained native trigger")
+        _ (is false "combobox maps to its semantic native node"))
+      (assert-equal 1 (count (apple/children renderer picker-stack))
+                    "closed picker retains no menu placeholder")
+      (runtime/dispatch! application (proto/Press select))
+      (runtime/dispatch! application (proto/TextChanged combobox "sol"))
+      (runtime/dispatch! application (proto/Submit combobox))
+      (runtime/flush! application)
+      (assert-equal
+       [(proto/Press select) (proto/TextChanged combobox "sol")
+        (proto/Submit combobox)]
+       @received
+       "trigger events preserve the pinned callback split")
+      (sig/set! open true)
+      (runtime/flush! application)
+      (let [menu (nth (apple/children renderer picker-stack) 1)
+            menu-children (apple/children renderer menu)
+            selected-item (nth menu-children 0)
+            disabled-item (nth menu-children 2)]
+        (match (apple/node renderer menu)
+          (Some AppleDropdownMenu)
+          (is true "conditional branch mounts one semantic dropdown")
+          _ (is false "dropdown maps to its semantic native node"))
+        (match (apple/node renderer selected-item)
+          (Some AppleMenuItem) (is true "menu row is a semantic native node")
+          _ (is false "menu row mapping exists"))
+        (match (apple/property renderer menu proto/AnchorValue)
+          (Some (StringValue value))
+          (assert-equal "below" value "dropdown retains its anchor")
+          _ (is false "dropdown anchor exists"))
+        (match (apple/property renderer menu proto/AnchorOffset)
+          (Some (proto/FloatValue value))
+          (assert-equal 6.0 value "dropdown retains fractional anchor offset")
+          _ (is false "dropdown anchor offset exists"))
+        (match (apple/property renderer selected-item proto/Selected)
+          (Some (proto/BoolValue value))
+          (assert-equal true value "committed option keeps its check state")
+          _ (is false "menu item selection exists"))
+        (match (apple/property renderer disabled-item proto/Enabled)
+          (Some (proto/BoolValue value))
+          (assert-equal false value "disabled menu item is retained")
+          _ (is false "menu item disabled state exists"))
+        (runtime/dispatch! application (proto/Press selected-item))
+        (runtime/dispatch! application (proto/Dismiss menu))
+        (runtime/flush! application)
+        (assert-equal (proto/Dismiss menu) (nth @received 4)
+                      "native menu dismissal returns through on-dismiss")))))
 
 (deftest defelement-adds-a-tag-without-changing-defui
   (let [scheduler (sig/scheduler)

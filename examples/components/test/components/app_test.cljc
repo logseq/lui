@@ -19,7 +19,10 @@
                  (gallery-checked false)
                  (gallery-progress 1.0)
                  (gallery-density "comfortable")
-                 (gallery-volume 0.35))
+                 (gallery-volume 0.35)
+                 (gallery-environment "Production")
+                 (gallery-picker-query "")
+                 (gallery-open-picker "none"))
          model/AdvanceProgress)]
     (assert-equal false (:gallery-disabled initial) "controls start enabled")
     (assert-equal 0.3 (:gallery-progress initial) "progress has a visible start")
@@ -27,6 +30,10 @@
                   "radio group starts with a visible selection")
     (assert-equal 0.35 (:gallery-volume initial)
                   "slider starts with a fractional shared value")
+    (assert-equal "Production" (:gallery-environment initial)
+                  "picker starts with a visible selection")
+    (assert-equal "none" (:gallery-open-picker initial)
+                  "picker menu starts closed")
     (assert-equal 0.4 (:gallery-progress advanced) "progress advances by a tenth")
     (assert-equal 0.0 (:gallery-progress wrapped) "progress wraps after completion")
     (assert-equal
@@ -41,7 +48,26 @@
     (assert-equal
      0.8
      (:gallery-volume (model/update initial (model/SetVolume 0.8)))
-     "slider value is owned by the shared reducer")))
+     "slider value is owned by the shared reducer")
+    (assert-equal
+     "select"
+     (:gallery-open-picker
+      (model/update initial (model/OpenPicker "select")))
+     "picker visibility is owned by the shared reducer")
+    (let [selected
+          (model/update initial (model/SelectEnvironment "Staging"))]
+      (assert-equal "Staging" (:gallery-environment selected)
+                    "menu item selection updates the shared model")
+      (assert-equal "none" (:gallery-open-picker selected)
+                    "selection closes the retained menu segment"))
+    (let [committed
+          (model/update
+           (model/update initial (model/SetPickerQuery "Preview"))
+           model/CommitPickerQuery)]
+      (assert-equal "Preview" (:gallery-environment committed)
+                    "combobox submit commits its controlled query")
+      (assert-equal "none" (:gallery-open-picker committed)
+                    "combobox submit closes its menu"))))
 
 (deftest native-gallery-app-batches-actions-and-disposes-the-retained-tree
   (let [renderer (flutter/create)

@@ -5,13 +5,14 @@
                      ToggleButton Toggle RadioGroup Radio Slider TextField
                      Input SearchField Textarea Checkbox SwitchControl Progress
                      Divider Scroll ListContainer Spacer Spinner Icon
-                     TextValue Enabled Gap MainAlignment CrossAlignment GrowValue
-                     GridColumns PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue
-                     BorderColorValue BorderWidth CornerRadius WidthValue HeightValue MinWidth
-                     MaxWidth MinHeight MaxHeight PlaceholderValue AccessibilityLabel StyleClass
-                     HeadingLevel Checked ProgressValue OrientationValue SizeValue IconName
-                     VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter
-                     HoldEnabled ChangeEnabled ToggleEnabled PressEnabled]]))
+                     Select Combobox DropdownMenu MenuItem TextValue Enabled
+                     Gap MainAlignment CrossAlignment GrowValue GridColumns PaddingValue
+                     PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth
+                     CornerRadius WidthValue HeightValue MinWidth MaxWidth MinHeight
+                     MaxHeight PlaceholderValue AccessibilityLabel StyleClass HeadingLevel Checked
+                     ProgressValue OrientationValue SizeValue IconName VariantValue InlineIconName
+                     IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled ChangeEnabled
+                     ToggleEnabled PressEnabled SubmitEnabled AnchorValue AnchorAlignmentValue AnchorOffset]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -44,7 +45,11 @@
     ListContainer "list"
     Spacer "spacer"
     Spinner "spinner"
-    Icon "icon"))
+    Icon "icon"
+    Select "select"
+    Combobox "combobox"
+    DropdownMenu "dropdown-menu"
+    MenuItem "menu-item"))
 
 (defn property-name [property]
   (match property
@@ -87,4 +92,8 @@
     HoldEnabled "hold-enabled"
     ChangeEnabled "change-enabled"
     ToggleEnabled "toggle-enabled"
-    PressEnabled "press-enabled"))
+    PressEnabled "press-enabled"
+    SubmitEnabled "submit-enabled"
+    AnchorValue "anchor"
+    AnchorAlignmentValue "anchor-alignment"
+    AnchorOffset "anchor-offset"))

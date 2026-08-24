@@ -24,6 +24,7 @@ void main() {
           text,
         ),
         LUISubmitEvent(:final node) => bridge.submit(node),
+        LUIDismissEvent(:final node) => bridge.dismiss(node),
         LUIToggleChangedEvent(:final node, :final checked) =>
           bridge.toggleChanged(node, checked),
         LUIChangeEvent(:final node) => bridge.radioChanged(node),

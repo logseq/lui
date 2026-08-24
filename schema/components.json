@@ -27,8 +27,8 @@
     {"name": "table", "status": "pending"},
     {"name": "table-row", "status": "pending"},
     {"name": "table-cell", "status": "pending"},
-    {"name": "dropdown-menu", "status": "pending"},
-    {"name": "menu-item", "status": "pending"},
+    {"name": "dropdown-menu", "status": "supported"},
+    {"name": "menu-item", "status": "supported"},
     {"name": "accordion", "status": "pending"},
     {"name": "list-item", "status": "pending"},
     {"name": "alert", "status": "pending"},
@@ -49,7 +49,7 @@
     {"name": "toggle-button", "status": "supported"},
     {"name": "toggle", "status": "supported"},
     {"name": "switch", "status": "supported"},
-    {"name": "select", "status": "pending"},
+    {"name": "select", "status": "supported"},
     {"name": "avatar", "status": "pending"},
     {"name": "checkbox", "status": "supported"},
     {"name": "radio", "status": "supported"},
@@ -58,7 +58,7 @@
     {"name": "text-field", "status": "supported"},
     {"name": "input", "status": "supported"},
     {"name": "search-field", "status": "supported"},
-    {"name": "combobox", "status": "pending"},
+    {"name": "combobox", "status": "supported"},
     {"name": "textarea", "status": "supported"},
     {"name": "separator", "status": "supported"},
     {"name": "spacer", "status": "supported"},
@@ -101,7 +101,11 @@
     {"lg": "ListContainer", "wire": "list", "dart": "list", "swift": "list", "container": true},
     {"lg": "Spacer", "wire": "spacer", "dart": "spacer", "swift": "spacer", "container": false},
     {"lg": "Spinner", "wire": "spinner", "dart": "spinner", "swift": "spinner", "container": false},
-    {"lg": "Icon", "wire": "icon", "dart": "icon", "swift": "icon", "container": false}
+    {"lg": "Icon", "wire": "icon", "dart": "icon", "swift": "icon", "container": false},
+    {"lg": "Select", "wire": "select", "dart": "select", "swift": "select", "container": false},
+    {"lg": "Combobox", "wire": "combobox", "dart": "combobox", "swift": "combobox", "container": false},
+    {"lg": "DropdownMenu", "wire": "dropdown-menu", "dart": "dropdownMenu", "swift": "dropdownMenu", "container": true},
+    {"lg": "MenuItem", "wire": "menu-item", "dart": "menuItem", "swift": "menuItem", "container": false}
   ],
   "properties": [
     {"lg": "TextValue", "wire": "text", "swift": "text"},
@@ -143,7 +147,11 @@
     {"lg": "HoldEnabled", "wire": "hold-enabled", "swift": "holdEnabled"},
     {"lg": "ChangeEnabled", "wire": "change-enabled", "swift": "changeEnabled"},
     {"lg": "ToggleEnabled", "wire": "toggle-enabled", "swift": "toggleEnabled"},
-    {"lg": "PressEnabled", "wire": "press-enabled", "swift": "pressEnabled"}
+    {"lg": "PressEnabled", "wire": "press-enabled", "swift": "pressEnabled"},
+    {"lg": "SubmitEnabled", "wire": "submit-enabled", "swift": "submitEnabled"},
+    {"lg": "AnchorValue", "wire": "anchor", "swift": "anchor"},
+    {"lg": "AnchorAlignmentValue", "wire": "anchor-alignment", "swift": "anchorAlignment"},
+    {"lg": "AnchorOffset", "wire": "anchor-offset", "swift": "anchorOffset"}
   ],
   "events": [
     {"lg": "Press", "fields": [":int"]},
@@ -152,6 +160,7 @@
     {"lg": "Submit", "fields": [":int"]},
     {"lg": "ToggleChanged", "fields": [":int", ":bool"]},
     {"lg": "Change", "fields": [":int"]},
-    {"lg": "ValueChanged", "fields": [":int", ":float"]}
+    {"lg": "ValueChanged", "fields": [":int", ":float"]},
+    {"lg": "Dismiss", "fields": [":int"]}
   ]
 }

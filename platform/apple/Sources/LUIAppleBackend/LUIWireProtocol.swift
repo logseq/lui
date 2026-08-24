@@ -12,6 +12,7 @@ public enum LUIEvent: Equatable, Sendable {
     case toggleChanged(node: Int, checked: Bool)
     case change(node: Int)
     case valueChanged(node: Int, value: Double)
+    case dismiss(node: Int)
 }
 
 struct LUIPatchBatch: Decodable {
@@ -107,7 +108,13 @@ enum LUIWireValue: Decodable, Equatable {
             value == "leading" || value == "trailing"
         case (.selected, .bool), (.autofocus, .bool), (.submitOnEnter, .bool),
              (.holdEnabled, .bool),
-             (.changeEnabled, .bool), (.toggleEnabled, .bool), (.pressEnabled, .bool): true
+             (.changeEnabled, .bool), (.toggleEnabled, .bool), (.pressEnabled, .bool),
+             (.submitEnabled, .bool): true
+        case let (.anchor, .string(value)):
+            value == "above" || value == "below"
+        case let (.anchorAlignment, .string(value)):
+            ["start", "center", "end", "stretch"].contains(value)
+        case let (.anchorOffset, .double(value)): value.isFinite
         case let (.main, .string(value)):
             Self.mainAlignments.contains(value)
         case let (.cross, .string(value)):
@@ -229,6 +236,10 @@ struct LUIRetainedTree {
             guard Self.canContainChildren(parentNode.kind) else {
                 throw invalid("parent cannot contain children")
             }
+            if parentNode.kind == .dropdownMenu,
+               childNode.kind != .menuItem, childNode.kind != .divider {
+                throw invalid("dropdown-menu accepts only menu-item or separator children")
+            }
             guard childNode.parent == nil else { throw invalid("child is already attached") }
             guard index >= 0 && index <= parentNode.children.count else {
                 throw invalid("child index is out of bounds")
@@ -284,17 +295,23 @@ struct LUIRetainedTree {
                 kind == .label || kind == .button || kind == .toggleButton ||
                 isTextEntry(kind) || kind == .checkbox || kind == .toggle ||
                 kind == .radio || kind == .slider || kind == .spinner || kind == .icon
+                || kind == .select || kind == .combobox || kind == .dropdownMenu
+                || kind == .menuItem
         case .text:
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
                 kind == .button || kind == .toggleButton || isTextEntry(kind) ||
-                kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
+                kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio ||
+                kind == .select || kind == .menuItem
         case .enabled:
             kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle ||
-                kind == .radio || kind == .slider
-        case .gap: kind == .row || kind == .column || kind == .grid || kind == .list
+                kind == .radio || kind == .slider || kind == .select ||
+                kind == .combobox || kind == .menuItem
+        case .gap:
+            kind == .row || kind == .column || kind == .grid || kind == .list ||
+                kind == .dropdownMenu
         case .placeholder:
-            isTextEntry(kind)
+            isTextEntry(kind) || kind == .select
         case .accessibilityLabel:
             kind == .button || kind == .toggleButton || isTextEntry(kind) || kind == .checkbox ||
                 kind == .switchControl || kind == .toggle ||
@@ -306,23 +323,33 @@ struct LUIRetainedTree {
         case .orientation: kind == .divider
         case .size: kind == .button || kind == .toggleButton || kind == .spinner || kind == .icon
         case .name: kind == .icon
-        case .variant, .icon, .iconPlacement, .selected, .holdEnabled:
+        case .variant, .iconPlacement, .holdEnabled:
             kind == .button || kind == .toggleButton
+        case .icon:
+            kind == .button || kind == .toggleButton || kind == .menuItem
+        case .selected:
+            kind == .button || kind == .toggleButton || kind == .menuItem
         case .autofocus:
             kind == .button || kind == .toggleButton || isTextEntry(kind)
         case .submitOnEnter: kind == .textarea
-        case .changeEnabled, .toggleEnabled, .pressEnabled: kind == .radio
+        case .changeEnabled, .toggleEnabled: kind == .radio
+        case .pressEnabled:
+            kind == .radio || kind == .select || kind == .combobox || kind == .menuItem
+        case .submitEnabled: kind == .combobox
+        case .anchor, .anchorAlignment, .anchorOffset: kind == .dropdownMenu
         }
     }
 
     private static func isTextEntry(_ kind: LUINodeKind) -> Bool {
-        kind == .textField || kind == .input || kind == .searchField || kind == .textarea
+        kind == .textField || kind == .input || kind == .searchField || kind == .textarea ||
+            kind == .combobox
     }
 
     private static func canContainChildren(_ kind: LUINodeKind) -> Bool {
         kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
             kind == .list || kind == .radioGroup
+            || kind == .dropdownMenu
     }
 
     private func validateNodeProperties() throws {
@@ -367,6 +394,18 @@ struct LUIRetainedTree {
             if node.kind == .radio, !hasAncestor(node.parent, kind: .radioGroup) {
                 throw invalid("radio must be contained by a radio-group")
             }
+            if node.kind == .select || node.kind == .combobox {
+                let text = node.properties[.text]?.stringValue ?? ""
+                let placeholder = node.properties[.placeholder]?.stringValue ?? ""
+                guard !text.isEmpty || !placeholder.isEmpty else {
+                    throw invalid("picker trigger requires text or placeholder")
+                }
+            }
+            if node.kind == .menuItem {
+                guard !(node.properties[.text]?.stringValue ?? "").isEmpty else {
+                    throw invalid("menu-item requires text")
+                }
+            }
         }
     }
 
@@ -396,7 +435,8 @@ struct LUIRetainedTree {
 
 extension LUIWireValue {
     func normalized(for property: LUIProperty) -> LUIWireValue {
-        if property == .grow, case let .int(value) = self {
+        if property == .grow || property == .anchorOffset,
+           case let .int(value) = self {
             return .double(Double(value))
         }
         return self

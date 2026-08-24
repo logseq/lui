@@ -190,6 +190,61 @@
    [:paragraph
     "All four controls share one Signal and patch their retained native nodes in place."]])
 
+(defui environment-menu
+  [production-selected-source staging-selected-source disabled-source
+   select-production select-staging dismiss]
+  [:dropdown-menu
+   {:anchor "below"
+    :anchor-alignment "stretch"
+    :anchor-offset 6.0
+    :min-width 200
+    :on-dismiss dismiss}
+   [:menu-item
+    {:icon "check"
+     :selected production-selected-source
+     :disabled disabled-source
+     :on-press select-production}
+    "Production"]
+   [:menu-item
+    {:selected staging-selected-source
+     :disabled disabled-source
+     :on-press select-staging}
+    "Staging"]
+   [:menu-item {:disabled true} "Development"]])
+
+(defui picker-gallery
+  [selected-source query-source select-open-source combobox-open-source
+   production-selected-source staging-selected-source disabled-source
+   open-select open-combobox update-query submit-query dismiss
+   select-production select-staging]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Select, Combobox, and DropdownMenu"]
+   [:stack
+    [:select
+     {:text selected-source
+      :disabled disabled-source
+      :on-press open-select
+      :on-dismiss dismiss}]
+    [:if {:test select-open-source}
+     [environment-menu
+      production-selected-source staging-selected-source disabled-source
+      select-production select-staging dismiss]]]
+   [:stack
+    [:combobox
+     {:text query-source
+      :placeholder "Search environments"
+      :disabled disabled-source
+      :on-input update-query
+      :on-submit submit-query
+      :on-press open-combobox
+      :on-dismiss dismiss}]
+    [:if {:test combobox-open-source}
+     [environment-menu
+      production-selected-source staging-selected-source disabled-source
+      select-production select-staging dismiss]]]
+   [:paragraph
+    "Selection, query, and menu visibility are shared Signals; opening and closing mounts only the retained menu segment."]])
+
 (defui toggle-gallery [checked-source disabled-source update-toggle]
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "Checkbox and Switch"]
@@ -271,7 +326,11 @@
    checked-source update-toggle
    progress-source progress-label-source advance-progress
    comfortable-source compact-source volume-source volume-label-source
-   select-comfortable select-compact update-volume]
+   select-comfortable select-compact update-volume
+   environment-source picker-query-source select-open-source
+   combobox-open-source production-selected-source staging-selected-source
+   open-select open-combobox update-picker-query submit-picker-query
+   dismiss-picker select-production select-staging]
   [:column
    [button-gallery disabled-source toggle-disabled]
    [toggle-button-gallery
@@ -285,6 +344,11 @@
    [surface-gallery card-copy]
    [collection-gallery]
    [text-entry-gallery value-source disabled-source update-value]
+   [picker-gallery
+    environment-source picker-query-source select-open-source
+    combobox-open-source production-selected-source staging-selected-source
+    disabled-source open-select open-combobox update-picker-query
+    submit-picker-query dismiss-picker select-production select-staging]
    [toggle-gallery checked-source disabled-source update-toggle]
    [value-control-gallery
     checked-source comfortable-source compact-source volume-source

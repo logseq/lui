@@ -36,4 +36,20 @@
    (fn [event]
      (match event
        (ValueChanged _node value) (send (model/SetVolume value))
-       _ true))])
+       _ true))
+   (reactive :gallery-environment model-source)
+   (reactive :gallery-picker-query model-source)
+   (reactive model/select-open? model-source)
+   (reactive model/combobox-open? model-source)
+   (reactive model/production-selected? model-source)
+   (reactive model/staging-selected? model-source)
+   (fn [_event] (send (model/OpenPicker "select")))
+   (fn [_event] (send (model/OpenPicker "combobox")))
+   (fn [event]
+     (match event
+       (TextChanged _node query) (send (model/SetPickerQuery query))
+       _ true))
+   (fn [_event] (send model/CommitPickerQuery))
+   (fn [_event] (send model/ClosePicker))
+   (fn [_event] (send (model/SelectEnvironment "Production")))
+   (fn [_event] (send (model/SelectEnvironment "Staging")))])

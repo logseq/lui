@@ -16,23 +16,28 @@
     (Submit node) node
     (ToggleChanged node _checked) node
     (Change node) node
-    (ValueChanged node _value) node))
+    (ValueChanged node _value) node
+    (Dismiss node) node))
 
 (defn event-supported? [kind event]
   (match event
-    (Press _node) (or (= kind Button) (= kind Radio))
+    (Press _node)
+    (or (= kind Button) (= kind Radio) (= kind Select)
+        (= kind Combobox) (= kind MenuItem))
     (Hold _node) (or (= kind Button) (= kind ToggleButton))
     (TextChanged _node _text)
     (or (= kind TextField) (= kind Input) (= kind SearchField)
-        (= kind Textarea))
+        (= kind Textarea) (= kind Combobox))
     (Submit _node)
     (or (= kind TextField) (= kind Input) (= kind SearchField)
-        (= kind Textarea))
+        (= kind Textarea) (= kind Combobox))
     (ToggleChanged _node _checked)
     (or (= kind ToggleButton) (= kind Checkbox) (= kind SwitchControl)
         (= kind Toggle) (= kind Radio))
     (Change _node) (= kind Radio)
-    (ValueChanged _node _value) (= kind Slider)))
+    (ValueChanged _node _value) (= kind Slider)
+    (Dismiss _node)
+    (or (= kind Select) (= kind Combobox) (= kind DropdownMenu))))
 
 (defn orientation-supported? [value]
   (or (= value "horizontal") (= value "vertical")))
@@ -121,6 +126,10 @@
       Slider true
       Spinner true
       Icon true
+      Select true
+      Combobox true
+      DropdownMenu true
+      MenuItem true
       _ false)
     BorderColorValue true
     BorderWidth true
@@ -140,7 +149,7 @@
         (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider))
     PlaceholderValue
     (or (= kind TextField) (= kind Input) (= kind SearchField)
-        (= kind Textarea))
+        (= kind Textarea) (= kind Select) (= kind Combobox))
     HeadingLevel (= kind Heading)
     Checked (or (= kind Checkbox) (= kind SwitchControl)
                 (= kind Toggle) (= kind Radio))
@@ -150,9 +159,9 @@
     (or (= kind Button) (= kind ToggleButton) (= kind Spinner) (= kind Icon))
     IconName (= kind Icon)
     VariantValue (or (= kind Button) (= kind ToggleButton))
-    InlineIconName (or (= kind Button) (= kind ToggleButton))
+    InlineIconName (or (= kind Button) (= kind ToggleButton) (= kind MenuItem))
     IconPlacementValue (or (= kind Button) (= kind ToggleButton))
-    Selected (or (= kind Button) (= kind ToggleButton))
+    Selected (or (= kind Button) (= kind ToggleButton) (= kind MenuItem))
     Autofocus
     (or (= kind Button) (= kind ToggleButton)
         (= kind TextField) (= kind Input) (= kind SearchField)
@@ -161,7 +170,12 @@
     HoldEnabled (or (= kind Button) (= kind ToggleButton))
     ChangeEnabled (= kind Radio)
     ToggleEnabled (= kind Radio)
-    PressEnabled (= kind Radio)
+    PressEnabled
+    (or (= kind Radio) (= kind Select) (= kind Combobox) (= kind MenuItem))
+    SubmitEnabled (= kind Combobox)
+    AnchorValue (= kind DropdownMenu)
+    AnchorAlignmentValue (= kind DropdownMenu)
+    AnchorOffset (= kind DropdownMenu)
     TextValue
     (match kind
       Text true
@@ -178,6 +192,9 @@
       SwitchControl true
       Toggle true
       Radio true
+      Select true
+      Combobox true
+      MenuItem true
       _ false)
     Enabled
     (match kind
@@ -192,6 +209,9 @@
       Toggle true
       Radio true
       Slider true
+      Select true
+      Combobox true
+      MenuItem true
       _ false)
     Gap
     (match kind
@@ -199,6 +219,7 @@
       Column true
       Grid true
       ListContainer true
+      DropdownMenu true
       _ false)))
 
 (defn property-value-supported? [property value]
@@ -252,6 +273,13 @@
     (tuple ChangeEnabled (BoolValue _value)) true
     (tuple ToggleEnabled (BoolValue _value)) true
     (tuple PressEnabled (BoolValue _value)) true
+    (tuple SubmitEnabled (BoolValue _value)) true
+    (tuple AnchorValue (StringValue value))
+    (or (= value "above") (= value "below"))
+    (tuple AnchorAlignmentValue (StringValue value))
+    (or (= value "start") (= value "center") (= value "end")
+        (= value "stretch"))
+    (tuple AnchorOffset (FloatValue _value)) true
     _ false))
 
 (defn int-property [properties property fallback]
@@ -308,6 +336,22 @@
    (if (or (= kind RadioGroup) (= kind Slider))
      (match (clojure.core/get properties AccessibilityLabel)
        (Some (StringValue value)) (not (= value ""))
+     _ false)
+     true)
+   (if (or (= kind Select) (= kind Combobox))
+     (let [text
+           (match (clojure.core/get properties TextValue)
+             (Some (StringValue value)) value
+             _ "")
+           placeholder
+           (match (clojure.core/get properties PlaceholderValue)
+             (Some (StringValue value)) value
+             _ "")]
+       (or (not (= text "")) (not (= placeholder ""))))
+     true)
+   (if (= kind MenuItem)
+     (match (clojure.core/get properties TextValue)
+       (Some (StringValue value)) (not (= value ""))
        _ false)
      true)
    (if (or (= kind Slider) (= kind Progress))
@@ -328,6 +372,7 @@
     Scroll true
     ListContainer true
     RadioGroup true
+    DropdownMenu true
     _ false))
 
 (defn create-node-op [node kind]

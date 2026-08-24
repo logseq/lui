@@ -20,6 +20,7 @@
                 (= kind 1) (on-event (proto/TextChanged node text))
                 (= kind 3) (on-event (proto/Hold node))
                 (= kind 6) (on-event (proto/Submit node))
+                (= kind 7) (on-event (proto/Dismiss node))
                 :else
                 (on-event (proto/ToggleChanged node (= text "true")))))))]
     (set-event-callback callback)

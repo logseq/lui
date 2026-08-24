@@ -323,6 +323,74 @@ void main() {
     expect(events, contains(const LUITextChangedEvent(node: 4, text: '')));
   });
 
+  testWidgets('maps picker primitives to native retained widgets and events', (
+    tester,
+  ) async {
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"select"},
+        {"op":"create-node","id":3,"kind":"combobox"},
+        {"op":"create-node","id":4,"kind":"dropdown-menu"},
+        {"op":"create-node","id":5,"kind":"menu-item"},
+        {"op":"create-node","id":6,"kind":"stack"},
+        {"op":"set-prop","id":1,"property":"cross","value":"start"},
+        {"op":"set-prop","id":2,"property":"text","value":"Production"},
+        {"op":"set-prop","id":2,"property":"press-enabled","value":true},
+        {"op":"set-prop","id":3,"property":"placeholder","value":"Search"},
+        {"op":"set-prop","id":3,"property":"submit-enabled","value":true},
+        {"op":"set-prop","id":4,"property":"anchor","value":"below"},
+        {"op":"set-prop","id":4,"property":"anchor-alignment","value":"stretch"},
+        {"op":"set-prop","id":4,"property":"anchor-offset","value":6.0},
+        {"op":"set-prop","id":5,"property":"text","value":"Production"},
+        {"op":"set-prop","id":5,"property":"selected","value":true},
+        {"op":"set-prop","id":5,"property":"press-enabled","value":true},
+        {"op":"insert-child","parent":1,"child":6,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":6,"child":2,"index":0},
+        {"op":"insert-child","parent":6,"child":4,"index":1},
+        {"op":"insert-child","parent":4,"child":5,"index":0}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    await tester.pump();
+
+    expect(find.widgetWithText(OutlinedButton, 'Production'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.byType(MenuItemButton), findsOneWidget);
+    expect(find.byIcon(Icons.check), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Production'));
+    await tester.tap(find.byType(MenuItemButton));
+    await tester.pump();
+    backend.performDismiss(4);
+    backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"remove-child","parent":6,"child":4},
+        {"op":"remove-child","parent":4,"child":5},
+        {"op":"drop-node","id":5},
+        {"op":"drop-node","id":4}
+      ]}
+      ''');
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'sol');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+
+    expect(events, [
+      const LUIPressEvent(node: 2),
+      const LUIPressEvent(node: 5),
+      const LUIDismissEvent(node: 4),
+      const LUITextChangedEvent(node: 3, text: 'sol'),
+      const LUISubmitEvent(node: 3),
+    ]);
+  });
+
   testWidgets('maps semantic content primitives to native Flutter widgets', (
     tester,
   ) async {

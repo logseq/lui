@@ -207,6 +207,60 @@ struct LUISwiftUIBackendTests {
         #expect(textField.text == "Updated")
     }
 
+    @Test("maps picker primitives to retained SwiftUI state and typed events")
+    func mapsPickerPrimitives() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"stack"},
+          {"op":"create-node","id":2,"kind":"select"},
+          {"op":"create-node","id":3,"kind":"combobox"},
+          {"op":"create-node","id":4,"kind":"dropdown-menu"},
+          {"op":"create-node","id":5,"kind":"menu-item"},
+          {"op":"set-prop","id":2,"property":"text","value":"Production"},
+          {"op":"set-prop","id":2,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":3,"property":"placeholder","value":"Search"},
+          {"op":"set-prop","id":3,"property":"submit-enabled","value":true},
+          {"op":"set-prop","id":4,"property":"anchor","value":"below"},
+          {"op":"set-prop","id":4,"property":"anchor-alignment","value":"stretch"},
+          {"op":"set-prop","id":4,"property":"anchor-offset","value":6.0},
+          {"op":"set-prop","id":5,"property":"text","value":"Production"},
+          {"op":"set-prop","id":5,"property":"selected","value":true},
+          {"op":"set-prop","id":5,"property":"press-enabled","value":true},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":4,"index":1},
+          {"op":"insert-child","parent":4,"child":5,"index":0}
+        ]}
+        """)
+
+        let select = try #require(backend.model(id: 2))
+        let menu = try #require(backend.model(id: 4))
+        #expect(select.kind == .select)
+        #expect(backend.model(id: 3)?.kind == .combobox)
+        #expect(menu.kind == .dropdownMenu)
+        #expect(backend.model(id: 5)?.kind == .menuItem)
+        #expect(menu.children == [5])
+        #expect(menu.property(.anchor) == .string("below"))
+        #expect(menu.property(.anchorAlignment) == .string("stretch"))
+        #expect(menu.property(.anchorOffset) == .double(6))
+        #expect(backend.model(id: 5)?.isSelected == true)
+
+        try backend.performAction(node: 2)
+        try backend.performTextChange(node: 3, text: "sol")
+        try backend.performSubmit(node: 3)
+        try backend.performAction(node: 5)
+        try backend.performDismiss(node: 4)
+        #expect(events == [
+            .press(node: 2),
+            .textChanged(node: 3, text: "sol"),
+            .submit(node: 3),
+            .press(node: 5),
+            .dismiss(node: 4),
+        ])
+    }
+
     @Test("maps the complete Vercel Native Button contract to one retained model")
     func mapsVercelNativeButton() throws {
         let backend = LUIAppleBackend()

@@ -82,6 +82,95 @@
      (wire/encode-batch batch)
      "form controls use the native host's closed wire vocabulary")))
 
+(deftest picker-primitives-use-closed-reference-wire-names
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Select)
+                      (proto/create-node-op 2 proto/Combobox)
+                      (proto/create-node-op 3 proto/DropdownMenu)
+                      (proto/create-node-op 4 proto/MenuItem)
+                      (proto/set-prop-op
+                       1 proto/TextValue (proto/StringValue "Production"))
+                      (proto/set-prop-op
+                       2 proto/SubmitEnabled (proto/BoolValue true))
+                      (proto/set-prop-op
+                       3 proto/AnchorValue (proto/StringValue "below"))
+                      (proto/set-prop-op
+                       3 proto/AnchorAlignmentValue
+                       (proto/StringValue "stretch"))
+                      (proto/set-prop-op
+                       3 proto/AnchorOffset (proto/FloatValue 6.0))
+                      (proto/set-prop-op
+                       4 proto/Selected (proto/BoolValue true))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"select\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"combobox\"},"
+      "{\"op\":\"create-node\",\"id\":3,\"kind\":\"dropdown-menu\"},"
+      "{\"op\":\"create-node\",\"id\":4,\"kind\":\"menu-item\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"text\","
+      "\"value\":\"Production\"},"
+      "{\"op\":\"set-prop\",\"id\":2,"
+      "\"property\":\"submit-enabled\",\"value\":true},"
+      "{\"op\":\"set-prop\",\"id\":3,"
+      "\"property\":\"anchor\",\"value\":\"below\"},"
+      "{\"op\":\"set-prop\",\"id\":3,"
+      "\"property\":\"anchor-alignment\",\"value\":\"stretch\"},"
+      "{\"op\":\"set-prop\",\"id\":3,"
+      "\"property\":\"anchor-offset\",\"value\":6.0},"
+      "{\"op\":\"set-prop\",\"id\":4,"
+      "\"property\":\"selected\",\"value\":true}]}" )
+     (wire/encode-batch batch)
+     "picker primitives keep the pinned wire vocabulary")))
+
+(deftest picker-primitives-have-distinct-retained-contracts
+  (doseq [property
+          [proto/TextValue proto/PlaceholderValue proto/Enabled
+           proto/PressEnabled]]
+    (is (proto/property-supported? proto/Select property)
+        "select admits only trigger state"))
+  (doseq [property
+          [proto/TextValue proto/PlaceholderValue proto/Enabled
+           proto/PressEnabled proto/SubmitEnabled]]
+    (is (proto/property-supported? proto/Combobox property)
+        "combobox admits editable trigger state"))
+  (doseq [property
+          [proto/AnchorValue proto/AnchorAlignmentValue proto/AnchorOffset
+           proto/MinWidth]]
+    (is (proto/property-supported? proto/DropdownMenu property)
+        "dropdown menu admits anchored surface state"))
+  (doseq [property
+          [proto/TextValue proto/InlineIconName proto/Enabled proto/Selected
+           proto/PressEnabled]]
+    (is (proto/property-supported? proto/MenuItem property)
+        "menu item admits row state"))
+  (is (proto/can-contain-children? proto/DropdownMenu)
+      "dropdown menu retains menu item children")
+  (doseq [kind [proto/Select proto/Combobox proto/MenuItem]]
+    (is (not (proto/can-contain-children? kind))
+        "picker triggers and rows are retained leaves"))
+  (is (proto/event-supported? proto/Select (proto/Press 1))
+      "select activation opens through on-press")
+  (is (proto/event-supported? proto/Combobox (proto/TextChanged 2 "q"))
+      "combobox edits through on-input")
+  (is (proto/event-supported? proto/Combobox (proto/Submit 2))
+      "combobox Enter may submit")
+  (is (proto/event-supported? proto/DropdownMenu (proto/Dismiss 3))
+      "dropdown surface reports native dismissal")
+  (is (proto/event-supported? proto/MenuItem (proto/Press 4))
+      "menu item commits through on-press")
+  (is (proto/property-value-supported?
+       proto/AnchorValue (proto/StringValue "below"))
+      "below is a legal anchor")
+  (is (not (proto/property-value-supported?
+            proto/AnchorValue (proto/StringValue "sideways")))
+      "anchor direction is closed")
+  (is (proto/property-value-supported?
+       proto/AnchorAlignmentValue (proto/StringValue "stretch"))
+      "stretch is a legal anchored alignment"))
+
 (deftest toggle-controls-use-closed-wire-names
   (let [batch
         (record proto/patch-batch

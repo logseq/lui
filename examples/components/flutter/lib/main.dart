@@ -44,6 +44,8 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
         _bridge.textChanged(node, text);
       case LUISubmitEvent(:final node):
         _bridge.submit(node);
+      case LUIDismissEvent(:final node):
+        _bridge.dismiss(node);
       case LUIToggleChangedEvent(:final node, :final checked):
         _bridge.toggleChanged(node, checked);
       case LUIChangeEvent(:final node):

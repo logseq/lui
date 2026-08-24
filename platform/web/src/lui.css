@@ -116,6 +116,10 @@
     @apply grid;
   }
 
+  .lui-stack {
+    @apply relative;
+  }
+
   .lui-stack > *,
   .lui-panel > *,
   .lui-card > * {
@@ -171,6 +175,102 @@
   .lui-textarea {
     @apply min-h-[80px];
     field-sizing: content;
+  }
+
+  .lui-select {
+    @apply inline-flex h-10 min-w-40 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background;
+  }
+
+  .lui-select::after,
+  .lui-combobox-trigger::after {
+    @apply size-4 shrink-0 bg-current;
+    content: "";
+    mask: url("./icons/chevron-down.svg") center / contain no-repeat;
+    -webkit-mask: url("./icons/chevron-down.svg") center / contain no-repeat;
+  }
+
+  .lui-select:focus-visible,
+  .lui-combobox:focus-within {
+    @apply outline-none ring-2 ring-ring ring-offset-2;
+  }
+
+  .lui-select:disabled,
+  .lui-combobox[data-disabled] {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  .lui-combobox {
+    @apply flex h-10 min-w-40 items-center rounded-md border border-input bg-background ring-offset-background;
+  }
+
+  .lui-combobox-control {
+    @apply h-full min-w-0 flex-1 bg-transparent px-3 py-2 text-sm outline-none;
+  }
+
+  .lui-combobox-control::placeholder {
+    @apply text-muted-foreground;
+  }
+
+  .lui-combobox-trigger {
+    @apply inline-flex h-full items-center justify-center px-2;
+  }
+
+  .lui-dropdown-menu {
+    --lui-anchor-offset: 0px;
+    @apply absolute z-50 flex max-h-72 min-w-full flex-col overflow-auto rounded-md border bg-card p-1 text-card-foreground shadow-md;
+  }
+
+  .lui-dropdown-menu[data-anchor="below"] {
+    top: calc(100% + var(--lui-anchor-offset));
+  }
+
+  .lui-dropdown-menu[data-anchor="above"] {
+    bottom: calc(100% + var(--lui-anchor-offset));
+  }
+
+  .lui-dropdown-menu[data-anchor-alignment="start"] {
+    left: 0;
+  }
+
+  .lui-dropdown-menu[data-anchor-alignment="center"] {
+    left: 50%;
+    translate: -50% 0;
+  }
+
+  .lui-dropdown-menu[data-anchor-alignment="end"] {
+    right: 0;
+  }
+
+  .lui-dropdown-menu[data-anchor-alignment="stretch"] {
+    left: 0;
+    right: 0;
+  }
+
+  .lui-menu-item {
+    @apply relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none;
+  }
+
+  .lui-menu-item:hover,
+  .lui-menu-item:focus-visible {
+    @apply bg-accent text-accent-foreground;
+  }
+
+  .lui-menu-item:disabled {
+    @apply pointer-events-none opacity-50;
+  }
+
+  .lui-menu-item-icon,
+  .lui-menu-item-check {
+    @apply size-4 shrink-0;
+  }
+
+  .lui-menu-item-icon:not([data-name]),
+  .lui-menu-item:not([data-selected]) .lui-menu-item-check {
+    @apply invisible;
+  }
+
+  .lui-menu-item-label {
+    @apply flex-1;
   }
 
   .lui-checkbox {

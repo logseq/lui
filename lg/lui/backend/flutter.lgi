@@ -26,7 +26,11 @@
   (FlutterList)
   (FlutterSpacer)
   (FlutterSpinner)
-  (FlutterIcon))
+  (FlutterIcon)
+  (FlutterSelect)
+  (FlutterCombobox)
+  (FlutterDropdownMenu)
+  (FlutterMenuItem))
 
 (type-record flutter-renderer
   (flutter-store :retained-store<flutter-node>)

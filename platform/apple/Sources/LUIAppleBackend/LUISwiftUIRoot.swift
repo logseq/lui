@@ -70,6 +70,14 @@ private struct LUINodeView: View {
             LUIButtonView(model: model, backend: backend, isToggle: true)
         case .textField, .input, .searchField, .textarea:
             LUITextControlView(model: model, backend: backend)
+        case .select:
+            LUISelectView(model: model, backend: backend)
+        case .combobox:
+            LUIComboboxView(model: model, backend: backend)
+        case .dropdownMenu:
+            LUIDropdownMenuView(model: model, backend: backend)
+        case .menuItem:
+            LUIMenuItemView(model: model, backend: backend)
         case .checkbox:
             LUICheckboxView(model: model, backend: backend)
         case .switchControl:
@@ -162,6 +170,141 @@ private struct LUINodeView: View {
 
     private var progressAccessibilityValue: String {
         "\(Int((model.progressFraction * 100).rounded()))%"
+    }
+}
+
+private struct LUISelectView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        Button {
+            try? backend.performPress(node: model.id)
+        } label: {
+            HStack(spacing: 8) {
+                Text(verbatim: displayText)
+                    .foregroundStyle(model.text.isEmpty ? .secondary : .primary)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.down")
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.bordered)
+        .disabled(!model.isEnabled)
+    }
+
+    private var displayText: String {
+        model.text.isEmpty
+            ? (model.property(.placeholder)?.stringValue ?? "")
+            : model.text
+    }
+}
+
+private struct LUIComboboxView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        HStack(spacing: 4) {
+            TextField(
+                model.property(.placeholder)?.stringValue ?? "",
+                text: Binding(
+                    get: { model.text },
+                    set: { try? backend.performTextChange(node: model.id, text: $0) }
+                )
+            )
+            .textFieldStyle(.plain)
+            .onSubmit {
+                if model.supportsSubmit {
+                    try? backend.performSubmit(node: model.id)
+                } else {
+                    try? backend.performPress(node: model.id)
+                }
+            }
+            Button {
+                try? backend.performPress(node: model.id)
+            } label: {
+                Image(systemName: "chevron.down")
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(.background, in: RoundedRectangle(cornerRadius: 6))
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(.separator)
+        }
+        .disabled(!model.isEnabled)
+    }
+}
+
+private struct LUIDropdownMenuView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: CGFloat(model.property(.gap)?.intValue ?? 2)) {
+            ForEach(model.children, id: \.self) { childID in
+                if let child = backend.model(id: childID) {
+                    LUINodeView(model: child, backend: backend)
+                }
+            }
+        }
+        .padding(4)
+        .frame(
+            minWidth: model.surfaceMinWidth.map(CGFloat.init),
+            maxWidth: isStretch ? .infinity : nil,
+            alignment: .leading
+        )
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .shadow(radius: 8, y: 4)
+        .offset(y: anchorDisplacement)
+        .zIndex(1)
+#if os(macOS)
+        .onExitCommand {
+            try? backend.performDismiss(node: model.id)
+        }
+#endif
+    }
+
+    private var isStretch: Bool {
+        model.property(.anchorAlignment)?.stringValue == "stretch"
+    }
+
+    private var anchorDisplacement: CGFloat {
+        let offset = CGFloat(model.property(.anchorOffset)?.doubleValue ?? 0)
+        return (model.property(.anchor)?.stringValue ?? "below") == "above"
+            ? -(40 + offset)
+            : 40 + offset
+    }
+}
+
+private struct LUIMenuItemView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        Button {
+            try? backend.performPress(node: model.id)
+        } label: {
+            HStack(spacing: 8) {
+                if !model.buttonIconName.isEmpty {
+                    LUIIconImage(source: backend.iconSource(for: model.buttonIconName))
+                        .frame(width: 16, height: 16)
+                }
+                Text(verbatim: model.text)
+                Spacer(minLength: 12)
+                if model.isSelected {
+                    Image(systemName: "checkmark")
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .disabled(!model.isEnabled)
     }
 }
 

@@ -13,6 +13,7 @@ private typealias HoldFunction = @convention(c) (Int64) -> Int32
 private typealias TextChangedFunction =
     @convention(c) (Int64, UnsafePointer<CChar>?) -> Int32
 private typealias SubmitFunction = @convention(c) (Int64) -> Int32
+private typealias DismissFunction = @convention(c) (Int64) -> Int32
 private typealias ToggleChangedFunction = @convention(c) (Int64, Int32) -> Int32
 private typealias RadioChangedFunction = @convention(c) (Int64) -> Int32
 private typealias SliderChangedFunction = @convention(c) (Int64, Double) -> Int32
@@ -36,6 +37,7 @@ private final class NativeTodosRuntime {
     private let holdFunction: HoldFunction
     private let textChangedFunction: TextChangedFunction
     private let submitFunction: SubmitFunction
+    private let dismissFunction: DismissFunction
     private let toggleChangedFunction: ToggleChangedFunction
     private let radioChangedFunction: RadioChangedFunction
     private let sliderChangedFunction: SliderChangedFunction
@@ -51,6 +53,7 @@ private final class NativeTodosRuntime {
         holdFunction = try Self.load("lui_ocaml_hold", from: handle)
         textChangedFunction = try Self.load("lui_ocaml_text_changed", from: handle)
         submitFunction = try Self.load("lui_ocaml_submit", from: handle)
+        dismissFunction = try Self.load("lui_ocaml_dismiss", from: handle)
         toggleChangedFunction = try Self.load("lui_ocaml_toggle_changed", from: handle)
         radioChangedFunction = try Self.load("lui_ocaml_radio_changed", from: handle)
         sliderChangedFunction = try Self.load("lui_ocaml_slider_changed", from: handle)
@@ -82,6 +85,10 @@ private final class NativeTodosRuntime {
 
     func submit(node: Int) {
         _ = submitFunction(Int64(node))
+    }
+
+    func dismiss(node: Int) {
+        _ = dismissFunction(Int64(node))
     }
 
     func toggleChanged(node: Int, checked: Bool) {
@@ -145,6 +152,8 @@ private final class TodosHost: NSObject, NSApplicationDelegate, NSWindowDelegate
                     self?.runtime?.radioChanged(node: node)
                 case let .valueChanged(node, value):
                     self?.runtime?.sliderChanged(node: node, value: value)
+                case let .dismiss(node):
+                    self?.runtime?.dismiss(node: node)
                 }
             }
             makeWindow()

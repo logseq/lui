@@ -31,7 +31,11 @@
   (ListContainer)
   (Spacer)
   (Spinner)
-  (Icon))
+  (Icon)
+  (Select)
+  (Combobox)
+  (DropdownMenu)
+  (MenuItem))
 
 (type-variant operating-system
   (GenericOS)
@@ -92,7 +96,11 @@
   (HoldEnabled)
   (ChangeEnabled)
   (ToggleEnabled)
-  (PressEnabled))
+  (PressEnabled)
+  (SubmitEnabled)
+  (AnchorValue)
+  (AnchorAlignmentValue)
+  (AnchorOffset))
 
 (type-variant wire-value
   (StringValue :string)
@@ -107,7 +115,8 @@
   (Submit :int)
   (ToggleChanged :int :bool)
   (Change :int)
-  (ValueChanged :int :float))
+  (ValueChanged :int :float)
+  (Dismiss :int))
 
 (type-variant patch-op
   (CreateNode :int :node-kind)

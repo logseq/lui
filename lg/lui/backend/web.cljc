@@ -6,6 +6,7 @@
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
+                     Select Combobox DropdownMenu MenuItem
                      Scroll ListContainer Spacer Spinner Icon
                      Progress Divider
                      Toggle RadioGroup Radio Slider
@@ -21,6 +22,7 @@
                      ProgressValue OrientationValue SizeValue IconName
                      VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled
                      ChangeEnabled ToggleEnabled PressEnabled
+                     SubmitEnabled AnchorValue AnchorAlignmentValue AnchorOffset
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
 
@@ -28,10 +30,11 @@
   ([host] (create host {}))
   ([host app-icons]
    (record web-renderer
-     (web-store (retained/create-store))
-     (web-document (Webapi.Dom.Element.ownerDocument host))
-     (web-event-handler (atom (fn [_event] true)))
-     (web-app-icons app-icons))))
+           (web-store (retained/create-store))
+           (web-document (Webapi.Dom.Element.ownerDocument host))
+           (web-event-handler (atom (fn [_event] true)))
+           (web-app-icons app-icons)
+           (web-cleanups (atom {})))))
 
 (defn set-event-handler! [renderer handler]
   (reset! (:web-event-handler renderer) handler)
@@ -68,7 +71,11 @@
     ListContainer "lui-list"
     Spacer "lui-spacer"
     Spinner "lui-spinner"
-    Icon "lui-icon"))
+    Icon "lui-icon"
+    Select "lui-select"
+    Combobox "lui-combobox"
+    DropdownMenu "lui-dropdown-menu"
+    MenuItem "lui-menu-item"))
 
 (defn- direct-toggle? [kind]
   (or (= kind Checkbox) (= kind SwitchControl) (= kind Radio)))
@@ -76,97 +83,140 @@
 (defn- button-like? [kind]
   (or (= kind Button) (= kind ToggleButton) (= kind Toggle)))
 
+(defn- element [document tag class-name attributes children]
+  (let [node (Webapi.Dom.Document.createElement tag document)
+        node
+        (reduce-kv
+         (fn [current name value]
+           (Webapi.Dom.Element.setAttribute name value current)
+           current)
+         node
+         attributes)]
+    (Webapi.Dom.Element.setClassName node class-name)
+    (doseq [child children]
+      (Webapi.Dom.Element.appendChild
+       (Webapi.Dom.Element.asNode child) node))
+    node))
+
 (defn- create-direct-toggle-node [renderer kind]
   (let [document (:web-document renderer)
-        root (Webapi.Dom.Document.createElement "label" document)
-        control (Webapi.Dom.Document.createElement "input" document)
-        label (Webapi.Dom.Document.createElement "span" document)]
-    (Webapi.Dom.Element.setClassName root (base-class-name kind))
-    (Webapi.Dom.Element.setClassName
-     control
-     (if (= kind Radio)
-       "lui-radio-control"
-       (if (= kind Checkbox)
-       "lui-checkbox-control"
-       "lui-switch-control")))
-    (Webapi.Dom.Element.setClassName label "lui-control-label")
-    (Webapi.Dom.Element.setAttribute
-     "type" (if (= kind Radio) "radio" "checkbox") control)
-    (when (= kind SwitchControl)
-      (Webapi.Dom.Element.setAttribute "role" "switch" control))
-    (Webapi.Dom.Element.appendChild
-     (Webapi.Dom.Element.asNode control) root)
-    (Webapi.Dom.Element.appendChild
-     (Webapi.Dom.Element.asNode label) root)
-    root))
+        control-class
+        (match kind
+          Radio "lui-radio-control"
+          Checkbox "lui-checkbox-control"
+          _ "lui-switch-control")
+        control-attributes
+        (if (= kind SwitchControl)
+          {"type" "checkbox" "role" "switch"}
+          {"type" (if (= kind Radio) "radio" "checkbox")})]
+    (element
+     document "label" (base-class-name kind) {}
+     [(element document "input" control-class control-attributes [])
+      (element document "span" "lui-control-label" {} [])])))
 
 (defn- create-button-node [renderer kind]
   (let [document (:web-document renderer)
-        root (Webapi.Dom.Document.createElement "button" document)
-        icon (Webapi.Dom.Document.createElement "span" document)
-        label (Webapi.Dom.Document.createElement "span" document)]
-    (Webapi.Dom.Element.setClassName root (base-class-name kind))
-    (Webapi.Dom.Element.setClassName icon "lui-button-icon lui-icon")
-    (Webapi.Dom.Element.setClassName label "lui-button-label")
-    (Webapi.Dom.Element.setAttribute "aria-hidden" "true" icon)
-    (Webapi.Dom.Element.setAttribute "data-variant" "default" root)
-    (Webapi.Dom.Element.setAttribute "data-size" "default" root)
-    (Webapi.Dom.Element.setAttribute "data-icon-placement" "leading" root)
-    (Webapi.Dom.Element.setAttribute "type" "button" root)
-    (when (or (= kind ToggleButton) (= kind Toggle))
-      (Webapi.Dom.Element.setAttribute "aria-pressed" "false" root))
-    (Webapi.Dom.Element.appendChild (Webapi.Dom.Element.asNode icon) root)
-    (Webapi.Dom.Element.appendChild (Webapi.Dom.Element.asNode label) root)
-    root))
+        attributes
+        {"data-variant" "default"
+         "data-size" "default"
+         "data-icon-placement" "leading"
+         "type" "button"}
+        attributes
+        (if (or (= kind ToggleButton) (= kind Toggle))
+          (assoc attributes "aria-pressed" "false")
+          attributes)]
+    (element
+     document "button" (base-class-name kind) attributes
+     [(element
+       document "span" "lui-button-icon lui-icon"
+       {"aria-hidden" "true"} [])
+      (element document "span" "lui-button-label" {} [])])))
 
-(defn- platform-node [renderer kind]
-  (if (button-like? kind)
-    (create-button-node renderer kind)
-    (if (direct-toggle? kind)
-    (create-direct-toggle-node renderer kind)
-    (let [tag
+(defn- create-combobox-node [renderer]
+  (let [document (:web-document renderer)]
+    (element
+     document "div" "lui-combobox" {}
+     [(element
+       document "input" "lui-combobox-control"
+       {"role" "combobox"
+        "aria-haspopup" "listbox"
+        "aria-expanded" "false"}
+       [])
+      (element
+       document "button" "lui-combobox-trigger"
+       {"type" "button" "aria-label" "Open menu"}
+       [])])))
+
+(defn- create-menu-item-node [renderer]
+  (let [document (:web-document renderer)
+        hidden {"aria-hidden" "true"}]
+    (element
+     document "button" "lui-menu-item"
+     {"type" "button"
+      "role" "option"
+      "aria-selected" "false"}
+     [(element document "span" "lui-menu-item-icon lui-icon" hidden [])
+      (element document "span" "lui-menu-item-label" {} [])
+      (element
+       document "span" "lui-menu-item-check lui-icon"
+       {"aria-hidden" "true" "data-name" "check"}
+       [])])))
+
+(defn- create-simple-node [renderer kind]
+  (let [tag
         (match kind
           Heading "div"
           Paragraph "p"
           Label "label"
           Text "span"
-          Button "button"
           TextField "input"
           Input "input"
           SearchField "input"
           Textarea "textarea"
-          Progress "div"
+          Select "button"
           Slider "input"
           Divider "hr"
           _ "div")
-        node
-        (Webapi.Dom.Document.createElement tag (:web-document renderer))]
-    (Webapi.Dom.Element.setClassName node (base-class-name kind))
-    (when (= kind Heading)
-      (Webapi.Dom.Element.setAttribute "role" "heading" node))
-    (when (= kind SearchField)
-      (Webapi.Dom.Element.setAttribute "type" "search" node))
-    (when (= kind Textarea)
-      (Webapi.Dom.Element.setAttribute
-       "style" "field-sizing: content; resize: vertical; overflow-y: auto" node))
-    (when (= kind Progress)
-      (do
-        (Webapi.Dom.Element.setAttribute "role" "progressbar" node)
-        (Webapi.Dom.Element.setAttribute "aria-valuemin" "0" node)
-        (Webapi.Dom.Element.setAttribute "aria-valuemax" "1" node)))
-    (when (= kind RadioGroup)
-      (Webapi.Dom.Element.setAttribute "role" "radiogroup" node))
-    (when (= kind Slider)
-      (do
-        (Webapi.Dom.Element.setAttribute "type" "range" node)
-        (Webapi.Dom.Element.setAttribute "min" "0" node)
-        (Webapi.Dom.Element.setAttribute "max" "1" node)
-        (Webapi.Dom.Element.setAttribute "step" "any" node)))
-    (when (= kind Spinner)
-      (Webapi.Dom.Element.setAttribute "role" "progressbar" node))
-    (when (= kind Divider)
-      (Webapi.Dom.Element.setAttribute "role" "separator" node))
-      node))))
+        attributes
+        (match kind
+          Heading {"role" "heading"}
+          SearchField {"type" "search"}
+          Textarea
+          {"style"
+           "field-sizing: content; resize: vertical; overflow-y: auto"}
+          Progress
+          {"role" "progressbar"
+           "aria-valuemin" "0"
+           "aria-valuemax" "1"}
+          RadioGroup {"role" "radiogroup"}
+          Slider
+          {"type" "range" "min" "0" "max" "1" "step" "any"}
+          Spinner {"role" "progressbar"}
+          Divider {"role" "separator"}
+          Select
+          {"type" "button"
+           "role" "combobox"
+           "aria-haspopup" "listbox"
+           "aria-expanded" "false"}
+          DropdownMenu
+          {"role" "listbox"
+           "data-anchor" "below"
+           "data-anchor-alignment" "start"}
+          _ {})]
+    (element
+     (:web-document renderer) tag (base-class-name kind) attributes [])))
+
+(defn- platform-node [renderer kind]
+  (match kind
+    Button (create-button-node renderer kind)
+    ToggleButton (create-button-node renderer kind)
+    Toggle (create-button-node renderer kind)
+    Checkbox (create-direct-toggle-node renderer kind)
+    SwitchControl (create-direct-toggle-node renderer kind)
+    Radio (create-direct-toggle-node renderer kind)
+    Combobox (create-combobox-node renderer)
+    MenuItem (create-menu-item-node renderer)
+    _ (create-simple-node renderer kind)))
 
 (defn- dom-node [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
@@ -196,7 +246,7 @@
     (if-some [control
               (Webapi.Dom.HtmlInputElement.ofNode
                (Webapi.Dom.Element.asNode candidate))]
-    control
+      control
       (raise (Invalid_argument "DOM node is not a text control")))))
 
 (defn- toggle-label-node [dom-node]
@@ -213,6 +263,10 @@
 
 (defn- submit-on-enter? [renderer node]
   (= (retained/property (:web-store renderer) node SubmitOnEnter)
+     (Some (BoolValue true))))
+
+(defn- submit-enabled? [renderer node]
+  (= (retained/property (:web-store renderer) node SubmitEnabled)
      (Some (BoolValue true))))
 
 (defn- attach-text-events! [renderer node kind dom-node]
@@ -241,10 +295,25 @@
                 (not shift)
                 primary)
               true))]
-       (when submit
+       (when (and submit (not (= kind Combobox)))
          (Webapi.Dom.KeyboardEvent.preventDefault event)
          (Stdlib.ignore
           ((deref (:web-event-handler renderer)) (proto/Submit node))))
+       (when (and enter (= kind Combobox))
+         (Webapi.Dom.KeyboardEvent.preventDefault event)
+         (Stdlib.ignore
+          ((deref (:web-event-handler renderer))
+           (if (submit-enabled? renderer node)
+             (proto/Submit node)
+             (proto/Press node)))))
+       (when (and
+              (= kind Combobox)
+              (or
+               (= "ArrowDown" (Webapi.Dom.KeyboardEvent.key event))
+               (= "ArrowUp" (Webapi.Dom.KeyboardEvent.key event))))
+         (Webapi.Dom.KeyboardEvent.preventDefault event)
+         (Stdlib.ignore
+          ((deref (:web-event-handler renderer)) (proto/Press node))))
        (Stdlib.ignore true)))
    dom-node))
 
@@ -289,6 +358,63 @@
               (text-control-node dom-node)))))
      (Stdlib.ignore true))
    dom-node))
+
+(defn- attach-picker-press-event! [renderer node dom-node]
+  (Webapi.Dom.Element.addEventListener
+   "click"
+   (fn [_event]
+     (Stdlib.ignore
+      ((deref (:web-event-handler renderer)) (proto/Press node)))
+     (Stdlib.ignore true))
+   dom-node))
+
+(defn- dropdown-group-contains-event? [renderer node event]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (match (:retained-parent current)
+      (Some parent)
+      (Webapi.Dom.Element.contains
+       (Webapi.Dom.Element.asNode
+        (Webapi.Dom.EventTarget.unsafeAsElement
+         (Webapi.Dom.Event.target event)))
+       (dom-node renderer parent))
+      None false)
+    false))
+
+(defn- cleanup-node! [renderer node]
+  (if-some [cleanup (clojure.core/get (deref (:web-cleanups renderer)) node)]
+    (do
+      (cleanup)
+      (Stdlib.ignore (swap! (:web-cleanups renderer) dissoc node)))
+    (Stdlib.ignore true)))
+
+(defn- attach-dropdown-events! [renderer node _dom-node]
+  (let [document (:web-document renderer)
+        pointer-handler
+        (fn [event]
+          (when (not (dropdown-group-contains-event? renderer node event))
+            (Stdlib.ignore
+             ((deref (:web-event-handler renderer)) (proto/Dismiss node))))
+          (Stdlib.ignore true))
+        key-handler
+        (fn [event]
+          (when (= "Escape" (Webapi.Dom.KeyboardEvent.key event))
+            (Webapi.Dom.KeyboardEvent.preventDefault event)
+            (Stdlib.ignore
+             ((deref (:web-event-handler renderer)) (proto/Dismiss node))))
+          (Stdlib.ignore true))]
+    (Webapi.Dom.Document.addEventListener
+     "pointerdown" pointer-handler document)
+    (Webapi.Dom.Document.addKeyDownEventListener key-handler document)
+    (swap!
+     (:web-cleanups renderer)
+     assoc
+     node
+     (fn []
+       (Webapi.Dom.Document.removeEventListener
+        "pointerdown" pointer-handler document)
+       (Webapi.Dom.Document.removeKeyDownEventListener key-handler document)
+       (Stdlib.ignore true)))
+    (Stdlib.ignore true)))
 
 (defn- attach-button-events! [renderer node kind dom-node]
   (let [timer (atom None)
@@ -396,6 +522,13 @@
     Input (attach-text-events! renderer node kind dom-node)
     SearchField (attach-text-events! renderer node kind dom-node)
     Textarea (attach-text-events! renderer node kind dom-node)
+    Select (attach-picker-press-event! renderer node dom-node)
+    Combobox
+    (do
+      (attach-text-events! renderer node kind dom-node)
+      (attach-picker-press-event! renderer node (child-element dom-node 1)))
+    DropdownMenu (attach-dropdown-events! renderer node dom-node)
+    MenuItem (attach-picker-press-event! renderer node dom-node)
     Checkbox (attach-toggle-event! renderer node kind dom-node)
     SwitchControl (attach-toggle-event! renderer node kind dom-node)
     Toggle (attach-button-events! renderer node kind dom-node)
@@ -485,34 +618,58 @@
     (Webapi.Dom.Element.setAttribute "aria-valuenow" (str clamped) dom-node)
     (set-style! dom-node "--lui-progress-position" (str position "%"))))
 
+(defn- select-display-text [renderer node]
+  (match (retained/property (:web-store renderer) node TextValue)
+    (Some (StringValue text))
+    (if (not (= text ""))
+      text
+      (match (retained/property (:web-store renderer) node PlaceholderValue)
+        (Some (StringValue placeholder)) placeholder
+        _ ""))
+    _
+    (match (retained/property (:web-store renderer) node PlaceholderValue)
+      (Some (StringValue placeholder)) placeholder
+      _ "")))
+
 (defn- apply-property! [renderer node kind dom-node property value]
   (match (tuple property value)
     (tuple TextValue (StringValue text))
-    (if (or (= kind TextField) (= kind Input) (= kind SearchField)
-            (= kind Textarea))
-      (let [control (text-control-node dom-node)]
-        (when (not (= text (Webapi.Dom.HtmlInputElement.value control)))
-          (Webapi.Dom.HtmlInputElement.setValue control text)))
-      (let [text-node
-            (if (direct-toggle? kind)
-              (toggle-label-node dom-node)
-              dom-node)]
+    (if (= kind Select)
+      (Webapi.Dom.Element.setTextContent
+       dom-node (select-display-text renderer node))
+      (if (or (= kind TextField) (= kind Input) (= kind SearchField)
+              (= kind Textarea) (= kind Combobox))
+        (let [control (text-control-node dom-node)]
+          (when (not (= text (Webapi.Dom.HtmlInputElement.value control)))
+            (Webapi.Dom.HtmlInputElement.setValue control text)))
         (let [text-node
-              (if (button-like? kind)
-                (button-label-node dom-node)
-                text-node)]
-        (when (not (= text (Webapi.Dom.Element.textContent text-node)))
-          (Webapi.Dom.Element.setTextContent text-node text)))))
+              (if (direct-toggle? kind)
+                (toggle-label-node dom-node)
+                dom-node)]
+          (let [text-node
+                (if (or (button-like? kind) (= kind MenuItem))
+                  (button-label-node dom-node)
+                  text-node)]
+            (when (not (= text (Webapi.Dom.Element.textContent text-node)))
+              (Webapi.Dom.Element.setTextContent text-node text))))))
 
     (tuple Enabled (BoolValue enabled))
     (let [control-node
           (if (direct-toggle? kind)
             (child-element dom-node 0)
-            dom-node)]
+            (if (= kind Combobox)
+              (child-element dom-node 0)
+              dom-node))]
       (if enabled
         (Webapi.Dom.Element.removeAttribute "disabled" control-node)
         (Webapi.Dom.Element.setAttribute
          "disabled" "disabled" control-node))
+      (when (= kind Combobox)
+        (let [trigger (child-element dom-node 1)]
+          (if enabled
+            (Webapi.Dom.Element.removeAttribute "disabled" trigger)
+            (Webapi.Dom.Element.setAttribute "disabled" "disabled" trigger))
+          (set-state-attribute! dom-node "data-disabled" (not enabled))))
       (when (direct-toggle? kind)
         (set-state-attribute! dom-node "data-disabled" (not enabled))))
 
@@ -587,8 +744,11 @@
     (set-style! dom-node "max-height" (str height "px"))
 
     (tuple PlaceholderValue (StringValue placeholder))
-    (Webapi.Dom.HtmlInputElement.setPlaceholder
-     (text-control-node dom-node) placeholder)
+    (if (= kind Select)
+      (Webapi.Dom.Element.setTextContent
+       dom-node (select-display-text renderer node))
+      (Webapi.Dom.HtmlInputElement.setPlaceholder
+       (text-control-node dom-node) placeholder))
 
     (tuple AccessibilityLabel (StringValue label))
     (Webapi.Dom.Element.setAttribute
@@ -654,7 +814,8 @@
     (do
       (set-state-attribute! dom-node "data-selected" selected)
       (Webapi.Dom.Element.setAttribute
-       "aria-pressed" (if selected "true" "false") dom-node))
+       (if (= kind MenuItem) "aria-selected" "aria-pressed")
+       (if selected "true" "false") dom-node))
 
     (tuple Autofocus (BoolValue autofocus))
     (if autofocus
@@ -684,6 +845,19 @@
 
     (tuple PressEnabled (BoolValue enabled))
     (set-state-attribute! dom-node "data-press-enabled" enabled)
+
+    (tuple SubmitEnabled (BoolValue enabled))
+    (set-state-attribute! dom-node "data-submit-enabled" enabled)
+
+    (tuple AnchorValue (StringValue anchor))
+    (Webapi.Dom.Element.setAttribute "data-anchor" anchor dom-node)
+
+    (tuple AnchorAlignmentValue (StringValue alignment))
+    (Webapi.Dom.Element.setAttribute
+     "data-anchor-alignment" alignment dom-node)
+
+    (tuple AnchorOffset (FloatValue offset))
+    (set-style! dom-node "--lui-anchor-offset" (str offset "px"))
 
     _ (raise (Invalid_argument "invalid DOM property value"))))
 
@@ -720,6 +894,21 @@
      "name" (str "lui-radio-group-" group)
      (child-element (dom-node renderer node) 0))
     None (Stdlib.ignore true)))
+
+(defn- update-picker-expanded! [renderer parent expanded]
+  (doseq [child (retained/children (:web-store renderer) parent)]
+    (if-some [current (retained/node (:web-store renderer) child)]
+      (match (:semantic-kind current)
+        Select
+        (Webapi.Dom.Element.setAttribute
+         "aria-expanded" (if expanded "true" "false")
+         (:platform-node current))
+        Combobox
+        (Webapi.Dom.Element.setAttribute
+         "aria-expanded" (if expanded "true" "false")
+         (child-element (:platform-node current) 0))
+        _ (Stdlib.ignore true))
+      (Stdlib.ignore true))))
 
 (defn- focused-descendant [renderer dom-node]
   (let [document
@@ -767,8 +956,8 @@
       (Webapi.Dom.Element.setAttribute "id" (node-dom-id node) created)
       (attach-events! renderer node kind created))
 
-    (DropNode _node)
-    (Stdlib.ignore true)
+    (DropNode node)
+    (cleanup-node! renderer node)
 
     (SetProp node property value)
     (if-some [current (retained/node (:web-store renderer) node)]
@@ -782,16 +971,23 @@
       (insert-dom-child!
        (dom-node renderer parent) (dom-node renderer child) index)
       (if-some [current (retained/node (:web-store renderer) child)]
-        (when (= (:semantic-kind current) Radio)
-          (update-radio-group! renderer child))
+        (match (:semantic-kind current)
+          Radio (update-radio-group! renderer child)
+          DropdownMenu (update-picker-expanded! renderer parent true)
+          _ (Stdlib.ignore true))
         (Stdlib.ignore true)))
 
     (RemoveChild parent child)
-    (Stdlib.ignore
-     (Webapi.Dom.Element.removeChild
-      (Webapi.Dom.Element.asNode
-       (dom-node-before renderer previous-nodes child))
-      (dom-node-before renderer previous-nodes parent)))
+    (do
+      (Stdlib.ignore
+       (Webapi.Dom.Element.removeChild
+        (Webapi.Dom.Element.asNode
+         (dom-node-before renderer previous-nodes child))
+        (dom-node-before renderer previous-nodes parent)))
+      (if-some [previous (clojure.core/get previous-nodes child)]
+        (when (= (:semantic-kind previous) DropdownMenu)
+          (update-picker-expanded! renderer parent false))
+        (Stdlib.ignore true)))
 
     (MoveChild parent child index)
     (let [parent-node (dom-node-before renderer previous-nodes parent)
@@ -810,17 +1006,17 @@
 
 (defn backend [renderer]
   (record proto/backend
-    (backend-profile (proto/profile proto/WebOS proto/WebHost))
-    (apply-batch
-     (fn [batch]
-       (let [previous-nodes
-             (retained/nodes (:web-store renderer))]
-         (retained/apply-batch!
-          (:web-store renderer)
-          (fn [kind] (platform-node renderer kind))
-          batch)
-         (apply-dom-batch! renderer previous-nodes batch)
-         true)))))
+          (backend-profile (proto/profile proto/WebOS proto/WebHost))
+          (apply-batch
+           (fn [batch]
+             (let [previous-nodes
+                   (retained/nodes (:web-store renderer))]
+               (retained/apply-batch!
+                (:web-store renderer)
+                (fn [kind] (platform-node renderer kind))
+                batch)
+               (apply-dom-batch! renderer previous-nodes batch)
+               true)))))
 
 (defn mount! [renderer root host]
   (Webapi.Dom.Element.appendChild

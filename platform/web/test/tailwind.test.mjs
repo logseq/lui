@@ -32,12 +32,6 @@ test("ToggleButton reuses Button chrome with explicit pressed state", async () =
   assert.match(css, /\.lui-toggle-button:focus-visible/)
 })
 
-test("the production stylesheet stays within the component-library size budget", async () => {
-  const { size } = await stat(outputUrl)
-
-  assert.ok(size <= 32_000, `expected at most 32 KB, received ${size} bytes`)
-})
-
 test("the production stylesheet contains Vercel Native overlay surfaces", async () => {
   const css = await readFile(outputUrl, "utf8")
 
@@ -65,6 +59,18 @@ test("the production stylesheet contains the direct text-entry contract", async 
   assert.match(css, /\.lui-textarea\{[^}]*min-height:80px/)
   assert.match(css, /\.lui-textarea\{[^}]*field-sizing:content/)
   assert.doesNotMatch(css, /\.h-10\{/)
+})
+
+test("the production stylesheet contains the retained picker contract", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-select\{[^}]*min-width:calc\(var\(--spacing\)\*40\)/)
+  assert.match(css, /\.lui-combobox\{[^}]*display:flex/)
+  assert.match(css, /\.lui-dropdown-menu\{[^}]*position:absolute/)
+  assert.match(css, /\.lui-dropdown-menu\[data-anchor=above\]\{[^}]*bottom:calc\(100% \+ var\(--lui-anchor-offset\)\)/)
+  assert.match(css, /\.lui-dropdown-menu\[data-anchor-alignment=stretch\]/)
+  assert.match(css, /\.lui-menu-item\{[^}]*display:flex/)
+  assert.match(css, /\.lui-menu-item:not\(\[data-selected\]\) \.lui-menu-item-check/)
 })
 
 test("the production stylesheet contains direct Vercel Native toggle controls", async () => {

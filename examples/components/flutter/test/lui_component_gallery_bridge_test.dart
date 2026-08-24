@@ -32,6 +32,7 @@ void main() {
           text,
         ),
         LUISubmitEvent(:final node) => bridge.submit(node),
+        LUIDismissEvent(:final node) => bridge.dismiss(node),
         LUIToggleChangedEvent(:final node, :final checked) =>
           bridge.toggleChanged(node, checked),
         LUIChangeEvent(:final node) => bridge.radioChanged(node),
@@ -65,7 +66,7 @@ void main() {
 
     expect(find.text('ToggleButton'), findsOneWidget);
     expect(find.text('Progress fraction: 0.3'), findsOneWidget);
-    expect(find.byType(TextField), findsNWidgets(4));
+    expect(find.byType(TextField), findsNWidgets(5));
     expect(find.text('TextField'), findsOneWidget);
     expect(find.text('Input'), findsOneWidget);
     expect(find.text('SearchField'), findsOneWidget);
@@ -123,6 +124,54 @@ void main() {
     expect(
       tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
       isTrue,
+    );
+
+    final select = find.widgetWithText(OutlinedButton, 'Production');
+    await tester.ensureVisible(select);
+    final retainedSelect = tester.renderObject(select);
+    await tester.tap(select);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(MenuItemButton), findsNWidgets(3));
+    await tester.tap(find.widgetWithText(MenuItemButton, 'Staging'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.widgetWithText(OutlinedButton, 'Staging'), findsOneWidget);
+    expect(
+      tester.renderObject(find.widgetWithText(OutlinedButton, 'Staging')),
+      same(retainedSelect),
+      reason: 'selection patches the retained Select instead of rebuilding it',
+    );
+    expect(find.byType(MenuItemButton), findsNothing);
+
+    final combobox = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField &&
+          widget.decoration?.hintText == 'Search environments',
+      description: 'environment Combobox',
+    );
+    await tester.ensureVisible(combobox);
+    final editor = find.descendant(
+      of: combobox,
+      matching: find.byType(EditableText),
+    );
+    final retainedEditor = tester.widget<EditableText>(editor);
+    await tester.tap(
+      find.descendant(of: combobox, matching: find.byType(IconButton)),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(MenuItemButton), findsNWidgets(3));
+    await tester.enterText(combobox, 'Preview');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    await tester.pump();
+    expect(find.widgetWithText(OutlinedButton, 'Preview'), findsOneWidget);
+    expect(find.byType(MenuItemButton), findsNothing);
+    expect(
+      tester.widget<EditableText>(editor).focusNode,
+      same(retainedEditor.focusNode),
+      reason: 'query and submit patches preserve native input identity',
     );
   });
 }

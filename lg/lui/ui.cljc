@@ -165,6 +165,18 @@
 (defn textarea! [context]
   (runtime/create-node! (:ui-application context) proto/Textarea))
 
+(defn select! [context]
+  (runtime/create-node! (:ui-application context) proto/Select))
+
+(defn combobox! [context]
+  (runtime/create-node! (:ui-application context) proto/Combobox))
+
+(defn dropdown-menu! [context]
+  (runtime/create-node! (:ui-application context) proto/DropdownMenu))
+
+(defn menu-item! [context]
+  (runtime/create-node! (:ui-application context) proto/MenuItem))
+
 (defn button! [context]
   (runtime/create-node! (:ui-application context) proto/Button))
 
@@ -222,6 +234,19 @@
      (sig/own-signal!
       (:ui-scope context)
       (sig/map (fn [value] (proto/BoolValue value)) source)))
+    true))
+
+(defn float-property! [context node property value]
+  (runtime/set-prop!
+   (:ui-application context) node property (proto/FloatValue value)))
+
+(defn float-property-signal! [context node property source]
+  (do
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context) node property
+     (sig/own-signal!
+      (:ui-scope context)
+      (sig/map (fn [value] (proto/FloatValue value)) source)))
     true))
 
 (defn disabled! [context node disabled]

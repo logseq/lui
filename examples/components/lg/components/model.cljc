@@ -7,7 +7,10 @@
     (gallery-checked false)
     (gallery-progress 0.3)
     (gallery-density "comfortable")
-    (gallery-volume 0.35)))
+    (gallery-volume 0.35)
+    (gallery-environment "Production")
+    (gallery-picker-query "")
+    (gallery-open-picker "none")))
 
 (defn update [model action]
   (match action
@@ -25,6 +28,28 @@
 
     (SetVolume volume)
     (assoc model :gallery-volume volume)
+
+    (OpenPicker picker)
+    (assoc model :gallery-open-picker picker)
+
+    (SetPickerQuery query)
+    (assoc model :gallery-picker-query query :gallery-open-picker "combobox")
+
+    (SelectEnvironment environment)
+    (assoc model
+           :gallery-environment environment
+           :gallery-picker-query environment
+           :gallery-open-picker "none")
+
+    ClosePicker
+    (assoc model :gallery-open-picker "none")
+
+    CommitPickerQuery
+    (if (= (:gallery-picker-query model) "")
+      (assoc model :gallery-open-picker "none")
+      (assoc model
+             :gallery-environment (:gallery-picker-query model)
+             :gallery-open-picker "none"))
 
     AdvanceProgress
     (assoc
@@ -45,3 +70,15 @@
 
 (defn volume-label [model]
   (str "Volume: " (:gallery-volume model)))
+
+(defn select-open? [model]
+  (= (:gallery-open-picker model) "select"))
+
+(defn combobox-open? [model]
+  (= (:gallery-open-picker model) "combobox"))
+
+(defn production-selected? [model]
+  (= (:gallery-environment model) "Production"))
+
+(defn staging-selected? [model]
+  (= (:gallery-environment model) "Staging"))

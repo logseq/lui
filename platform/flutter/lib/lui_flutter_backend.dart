@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 part 'lui_wire_schema.g.dart';
 
@@ -24,6 +25,19 @@ sealed class LUIEvent {
     required int node,
     required double value,
   }) = LUIValueChangedEvent;
+  const factory LUIEvent.dismiss({required int node}) = LUIDismissEvent;
+}
+
+final class LUIDismissEvent extends LUIEvent {
+  const LUIDismissEvent({required this.node});
+  final int node;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIDismissEvent && other.node == node;
+
+  @override
+  int get hashCode => node.hashCode;
 }
 
 final class LUIChangeEvent extends LUIEvent {
@@ -367,9 +381,14 @@ final class LUIFlutterBackend {
 
   void performAction(int node) {
     final state = _requireState(_states, node);
-    if (state.kind != _NodeKind.button ||
+    if (state.kind != _NodeKind.button &&
+            state.kind != _NodeKind.select &&
+            state.kind != _NodeKind.combobox &&
+            state.kind != _NodeKind.menuItem ||
         state.properties['enabled'] == false) {
-      throw LUIBackendException('node $node is not an enabled button');
+      throw LUIBackendException(
+        'node $node is not an enabled pressable control',
+      );
     }
     onEvent?.call(LUIEvent.press(node: node));
   }
@@ -418,6 +437,16 @@ final class LUIFlutterBackend {
       throw LUIBackendException('node $node is not an enabled slider');
     }
     onEvent?.call(LUIEvent.valueChanged(node: node, value: value.clamp(0, 1)));
+  }
+
+  void performDismiss(int node) {
+    final state = _requireState(_states, node);
+    if (state.kind != _NodeKind.select &&
+        state.kind != _NodeKind.combobox &&
+        state.kind != _NodeKind.dropdownMenu) {
+      throw LUIBackendException('node $node is not dismissible');
+    }
+    onEvent?.call(LUIEvent.dismiss(node: node));
   }
 
   Widget _buildNode(BuildContext context, int id) {
@@ -487,6 +516,7 @@ final class LUIFlutterBackend {
         state.properties['hold-enabled'] as bool? ?? false;
     Widget textControl({required _NodeKind kind}) {
       final multiline = kind == _NodeKind.textarea;
+      final combobox = kind == _NodeKind.combobox;
       return SizedBox(
         width: 240,
         child: Semantics(
@@ -502,11 +532,16 @@ final class LUIFlutterBackend {
             autofocus: state.properties['autofocus'] as bool? ?? false,
             multiline: multiline,
             search: kind == _NodeKind.searchField,
+            onOpen: combobox && enabled ? () => performAction(id) : null,
             submitOnEnter:
                 state.properties['submit-on-enter'] as bool? ?? false,
             onChanged: (value) =>
                 onEvent?.call(LUIEvent.textChanged(node: id, text: value)),
-            onSubmitted: (_) => onEvent?.call(LUIEvent.submit(node: id)),
+            onSubmitted: (_) => state.properties['submit-enabled'] == true
+                ? onEvent?.call(LUIEvent.submit(node: id))
+                : combobox
+                ? performAction(id)
+                : onEvent?.call(LUIEvent.submit(node: id)),
           ),
         ),
       );
@@ -697,13 +732,85 @@ final class LUIFlutterBackend {
         children: children,
       ),
     );
+    Widget stack() {
+      final menuID = state.children.cast<int?>().firstWhere(
+        (childID) =>
+            childID != null &&
+            _requireState(_states, childID).kind == _NodeKind.dropdownMenu,
+        orElse: () => null,
+      );
+      final menuState = menuID == null ? null : _requireState(_states, menuID);
+      return _LUIAnchoredStack(
+        groupID: id,
+        anchor: menuState?.properties['anchor'] as String? ?? 'below',
+        alignment:
+            menuState?.properties['anchor-alignment'] as String? ?? 'start',
+        offset:
+            (menuState?.properties['anchor-offset'] as num?)?.toDouble() ?? 0,
+        menu: menuID == null ? null : widget(node: menuID),
+        children: state.children
+            .where((childID) => childID != menuID)
+            .map((childID) => widget(node: childID))
+            .toList(growable: false),
+      );
+    }
+
+    Widget select() => OutlinedButton(
+      onPressed: enabled ? () => performAction(id) : null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Expanded(
+            child: Text(
+              text.isEmpty ? placeholder ?? '' : text,
+              style: text.isEmpty
+                  ? TextStyle(color: Theme.of(context).hintColor)
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Icon(Icons.arrow_drop_down),
+        ],
+      ),
+    );
+    Widget dropdownMenu() => CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () =>
+            performDismiss(id),
+      },
+      child: Focus(
+        autofocus: true,
+        child: TapRegion(
+          groupId: state.parent,
+          onTapOutside: (_) => performDismiss(id),
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(8),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: gap,
+              children: children,
+            ),
+          ),
+        ),
+      ),
+    );
+    Widget menuItem() => MenuItemButton(
+      onPressed: enabled ? () => performAction(id) : null,
+      leadingIcon: buttonIcon == null
+          ? null
+          : Icon(_iconData(buttonIcon), size: 16),
+      trailingIcon: buttonSelected ? const Icon(Icons.check) : null,
+      child: Text(text),
+    );
     final content = switch (state.kind) {
       _NodeKind.row => row(),
       _NodeKind.column || _NodeKind.list => column(),
       _NodeKind.grid => grid(),
-      _NodeKind.stack ||
-      _NodeKind.panel ||
-      _NodeKind.card => Stack(children: children),
+      _NodeKind.stack => stack(),
+      _NodeKind.panel || _NodeKind.card => Stack(children: children),
       _NodeKind.box => Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -727,6 +834,10 @@ final class LUIFlutterBackend {
         onPressed: enabled ? () => performAction(id) : null,
       ),
       _NodeKind.toggleButton => toggleButton(),
+      _NodeKind.select => select(),
+      _NodeKind.combobox => textControl(kind: state.kind),
+      _NodeKind.dropdownMenu => dropdownMenu(),
+      _NodeKind.menuItem => menuItem(),
       _NodeKind.toggle => FilterChip(
         label: Text(text),
         selected: checked,
@@ -937,6 +1048,13 @@ final class LUIFlutterBackend {
         if (!_canContainChildren(parent.kind)) {
           throw const LUIBackendException('parent cannot contain child');
         }
+        if (parent.kind == _NodeKind.dropdownMenu &&
+            child.kind != _NodeKind.menuItem &&
+            child.kind != _NodeKind.divider) {
+          throw const LUIBackendException(
+            'dropdown-menu accepts only menu-item or separator children',
+          );
+        }
         if (index < 0 || index > parent.children.length) {
           throw const LUIBackendException('child index is out of bounds');
         }
@@ -1002,7 +1120,9 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.checkbox ||
                 kind == _NodeKind.switchControl ||
                 kind == _NodeKind.toggle ||
-                kind == _NodeKind.radio),
+                kind == _NodeKind.radio ||
+                kind == _NodeKind.select ||
+                kind == _NodeKind.menuItem),
       'enabled' =>
         value is bool &&
             (_isButtonKind(kind) ||
@@ -1011,7 +1131,9 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.switchControl ||
                 kind == _NodeKind.toggle ||
                 kind == _NodeKind.radio ||
-                kind == _NodeKind.slider),
+                kind == _NodeKind.slider ||
+                kind == _NodeKind.select ||
+                kind == _NodeKind.menuItem),
       'value' =>
         value is double &&
             value.isFinite &&
@@ -1039,25 +1161,44 @@ final class LUIFlutterBackend {
         value is String &&
             (_iconNames.contains(value) ||
                 _appIconNamePattern.hasMatch(value)) &&
-            _isButtonKind(kind),
+            (_isButtonKind(kind) || kind == _NodeKind.menuItem),
       'icon-placement' =>
         value is String &&
             (value == 'leading' || value == 'trailing') &&
             _isButtonKind(kind),
-      'selected' || 'hold-enabled' => value is bool && _isButtonKind(kind),
+      'selected' =>
+        value is bool && (_isButtonKind(kind) || kind == _NodeKind.menuItem),
+      'hold-enabled' => value is bool && _isButtonKind(kind),
       'autofocus' =>
         value is bool && (_isButtonKind(kind) || _isTextControl(kind)),
       'submit-on-enter' => value is bool && kind == _NodeKind.textarea,
       'change-enabled' ||
-      'toggle-enabled' ||
-      'press-enabled' => value is bool && kind == _NodeKind.radio,
+      'toggle-enabled' => value is bool && kind == _NodeKind.radio,
+      'press-enabled' =>
+        value is bool &&
+            (kind == _NodeKind.radio ||
+                kind == _NodeKind.select ||
+                kind == _NodeKind.combobox ||
+                kind == _NodeKind.menuItem),
+      'submit-enabled' => value is bool && kind == _NodeKind.combobox,
+      'anchor' =>
+        value is String &&
+            (value == 'above' || value == 'below') &&
+            kind == _NodeKind.dropdownMenu,
+      'anchor-alignment' =>
+        value is String &&
+            const {'start', 'center', 'end', 'stretch'}.contains(value) &&
+            kind == _NodeKind.dropdownMenu,
+      'anchor-offset' =>
+        value is num && value.isFinite && kind == _NodeKind.dropdownMenu,
       'gap' =>
         value is int &&
             value >= 0 &&
             (kind == _NodeKind.row ||
                 kind == _NodeKind.column ||
                 kind == _NodeKind.grid ||
-                kind == _NodeKind.list),
+                kind == _NodeKind.list ||
+                kind == _NodeKind.dropdownMenu),
       'padding' => value is int,
       'padding-horizontal' || 'padding-vertical' =>
         value is int &&
@@ -1080,7 +1221,10 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider ||
                 kind == _NodeKind.spinner ||
-                kind == _NodeKind.icon),
+                kind == _NodeKind.icon ||
+                kind == _NodeKind.select ||
+                kind == _NodeKind.dropdownMenu ||
+                kind == _NodeKind.menuItem),
       'border-color' => value is String,
       'border-width' => value is int && value >= 0,
       'corner-radius' => value is int && value >= 0,
@@ -1099,7 +1243,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.radio),
       'heading-level' =>
         value is int && value >= 1 && value <= 6 && kind == _NodeKind.heading,
-      'placeholder' => value is String && _isTextControl(kind),
+      'placeholder' =>
+        value is String && (_isTextControl(kind) || kind == _NodeKind.select),
       'accessibility-label' =>
         value is String &&
             (_isButtonKind(kind) ||
@@ -1157,6 +1302,19 @@ final class LUIFlutterBackend {
           'radio must be contained by a radio-group',
         );
       }
+      if (state.kind == _NodeKind.select || state.kind == _NodeKind.combobox) {
+        final text = state.properties['text'] as String? ?? '';
+        final placeholder = state.properties['placeholder'] as String? ?? '';
+        if (text.isEmpty && placeholder.isEmpty) {
+          throw const LUIBackendException(
+            'picker trigger requires text or placeholder',
+          );
+        }
+      }
+      if (state.kind == _NodeKind.menuItem &&
+          (state.properties['text'] as String? ?? '').isEmpty) {
+        throw const LUIBackendException('menu-item requires text');
+      }
     }
   }
 
@@ -1184,7 +1342,8 @@ final class LUIFlutterBackend {
       kind == _NodeKind.box ||
       kind == _NodeKind.scroll ||
       kind == _NodeKind.list ||
-      kind == _NodeKind.radioGroup;
+      kind == _NodeKind.radioGroup ||
+      kind == _NodeKind.dropdownMenu;
 
   int? _checkedRadio(_NodeState root) {
     for (final child in root.children) {
@@ -1216,7 +1375,8 @@ final class LUIFlutterBackend {
       kind == _NodeKind.textField ||
       kind == _NodeKind.input ||
       kind == _NodeKind.searchField ||
-      kind == _NodeKind.textarea;
+      kind == _NodeKind.textarea ||
+      kind == _NodeKind.combobox;
 
   static bool _isDescendant(
     Map<int, _NodeState> states, {
@@ -1342,6 +1502,102 @@ extension on _NodeKind {
       this == _NodeKind.panel || this == _NodeKind.card;
 }
 
+final class _LUIAnchoredStack extends StatefulWidget {
+  const _LUIAnchoredStack({
+    required this.groupID,
+    required this.anchor,
+    required this.alignment,
+    required this.offset,
+    required this.menu,
+    required this.children,
+  });
+
+  final int groupID;
+  final String anchor;
+  final String alignment;
+  final double offset;
+  final Widget? menu;
+  final List<Widget> children;
+
+  @override
+  State<_LUIAnchoredStack> createState() => _LUIAnchoredStackState();
+}
+
+final class _LUIAnchoredStackState extends State<_LUIAnchoredStack> {
+  final LayerLink _link = LayerLink();
+  final OverlayPortalController _overlay = OverlayPortalController();
+
+  @override
+  void initState() {
+    super.initState();
+    _syncOverlay();
+  }
+
+  @override
+  void didUpdateWidget(_LUIAnchoredStack oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if ((oldWidget.menu == null) != (widget.menu == null)) _syncOverlay();
+  }
+
+  void _syncOverlay() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.menu == null) {
+        _overlay.hide();
+      } else {
+        _overlay.show();
+      }
+    });
+  }
+
+  Alignment get _horizontalAnchor => switch (widget.alignment) {
+    'center' => Alignment.bottomCenter,
+    'end' => Alignment.bottomRight,
+    _ => Alignment.bottomLeft,
+  };
+
+  Alignment get _targetAnchor => widget.anchor == 'above'
+      ? Alignment(_horizontalAnchor.x, -1)
+      : _horizontalAnchor;
+
+  Alignment get _followerAnchor => widget.anchor == 'above'
+      ? Alignment(_horizontalAnchor.x, 1)
+      : Alignment(_horizontalAnchor.x, -1);
+
+  @override
+  Widget build(BuildContext context) {
+    return CompositedTransformTarget(
+      link: _link,
+      child: OverlayPortal(
+        controller: _overlay,
+        overlayChildBuilder: (context) => CompositedTransformFollower(
+          link: _link,
+          showWhenUnlinked: false,
+          targetAnchor: _targetAnchor,
+          followerAnchor: _followerAnchor,
+          offset: Offset(
+            0,
+            widget.anchor == 'above' ? -widget.offset : widget.offset,
+          ),
+          child: TapRegion(
+            groupId: widget.groupID,
+            child: SizedBox(
+              width: widget.alignment == 'stretch'
+                  ? _link.leaderSize?.width
+                  : null,
+              child: widget.menu ?? const SizedBox.shrink(),
+            ),
+          ),
+        ),
+        child: TapRegion(
+          groupId: widget.groupID,
+          child: Stack(clipBehavior: Clip.none, children: widget.children),
+        ),
+      ),
+    );
+  }
+}
+
 typedef _LUIToggleSelectionBuilder =
     Widget Function(
       BuildContext context,
@@ -1397,6 +1653,7 @@ final class _LUITextInput extends StatefulWidget {
     required this.autofocus,
     required this.multiline,
     required this.search,
+    required this.onOpen,
     required this.submitOnEnter,
     required this.onChanged,
     required this.onSubmitted,
@@ -1409,6 +1666,7 @@ final class _LUITextInput extends StatefulWidget {
   final bool autofocus;
   final bool multiline;
   final bool search;
+  final VoidCallback? onOpen;
   final bool submitOnEnter;
   final ValueChanged<String> onChanged;
   final ValueChanged<String> onSubmitted;
@@ -1460,6 +1718,12 @@ final class _LUITextInputState extends State<_LUITextInput> {
                 tooltip: 'Clear',
                 icon: const Icon(Icons.clear),
                 onPressed: _clear,
+              )
+            : widget.onOpen != null
+            ? IconButton(
+                tooltip: 'Open menu',
+                icon: const Icon(Icons.arrow_drop_down),
+                onPressed: widget.onOpen,
               )
             : null,
       ),

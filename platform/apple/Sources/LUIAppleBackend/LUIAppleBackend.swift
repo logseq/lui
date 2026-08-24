@@ -55,6 +55,7 @@ final class LUINodeModel: Identifiable {
     var supportsChange: Bool { properties[.changeEnabled]?.boolValue ?? false }
     var supportsToggle: Bool { properties[.toggleEnabled]?.boolValue ?? false }
     var supportsPress: Bool { properties[.pressEnabled]?.boolValue ?? false }
+    var supportsSubmit: Bool { properties[.submitEnabled]?.boolValue ?? false }
     var sliderValue: Double { properties[.progressValue]?.doubleValue ?? 0 }
     var buttonVariant: String { properties[.variant]?.stringValue ?? "default" }
     var buttonSize: String { properties[.size]?.stringValue ?? "default" }
@@ -233,8 +234,11 @@ public final class LUIAppleBackend {
     }
 
     func performPress(node: Int) throws {
-        guard let model = models[node], model.kind == .button, model.isEnabled else {
-            throw invalid("node \(node) is not an enabled button")
+        guard let model = models[node],
+              model.kind == .button || model.kind == .select ||
+                model.kind == .combobox || model.kind == .menuItem,
+              model.isEnabled else {
+            throw invalid("node \(node) is not an enabled pressable control")
         }
         onEvent?(.press(node: node))
     }
@@ -294,10 +298,19 @@ public final class LUIAppleBackend {
         onEvent?(.valueChanged(node: node, value: min(max(value, 0), 1)))
     }
 
+    func performDismiss(node: Int) throws {
+        guard let model = models[node],
+              model.kind == .select || model.kind == .combobox ||
+                model.kind == .dropdownMenu else {
+            throw invalid("node \(node) is not dismissible")
+        }
+        onEvent?(.dismiss(node: node))
+    }
+
     func performAction(node: Int) throws {
         guard let model = models[node] else { throw invalid("unknown node") }
         switch model.kind {
-        case .button:
+        case .button, .select, .combobox, .menuItem:
             try performPress(node: node)
         case .toggleButton:
             try performToggle(node: node, checked: !model.isSelected)
@@ -328,6 +341,7 @@ public final class LUIAppleBackend {
     }
 
     private static func isTextEntry(_ kind: LUINodeKind) -> Bool {
-        kind == .textField || kind == .input || kind == .searchField || kind == .textarea
+        kind == .textField || kind == .input || kind == .searchField || kind == .textarea ||
+            kind == .combobox
     }
 }

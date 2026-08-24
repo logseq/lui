@@ -5,7 +5,8 @@
                      TextField Input SearchField Textarea
                      Scroll ListContainer Spacer Spinner Icon
                      Checkbox SwitchControl
-                     Progress Divider Toggle RadioGroup Radio Slider]]
+                     Progress Divider Toggle RadioGroup Radio Slider
+                     Select Combobox DropdownMenu MenuItem]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -50,7 +51,11 @@
     ListContainer FlutterList
     Spacer FlutterSpacer
     Spinner FlutterSpinner
-    Icon FlutterIcon))
+    Icon FlutterIcon
+    Select FlutterSelect
+    Combobox FlutterCombobox
+    DropdownMenu FlutterDropdownMenu
+    MenuItem FlutterMenuItem))
 
 (defn backend-for [renderer operating-system]
   (record proto/backend

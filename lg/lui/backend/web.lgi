@@ -7,7 +7,8 @@
   (web-store :retained-store<web-node>)
   (web-document :Dom.document)
   (web-event-handler :ref<fn<event;bool>>)
-  (web-app-icons :map<string;string>))
+  (web-app-icons :map<string;string>)
+  (web-cleanups :ref<map<int;fn<unit>>>))
 
 (signature lui.backend.web/create
   :overload<fn<Dom.element;web-renderer>;fn<Dom.element;map<string;string>;web-renderer>>)
@@ -27,6 +28,12 @@
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/attach-slider-event!
   :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/attach-picker-press-event!
+  :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/attach-dropdown-events!
+  :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/cleanup-node!
+  :fn<web-renderer;int;unit>)
 (signature lui.backend.web/set-state-attribute!
   :fn<web-node;string;bool;unit>)
 (signature lui.backend.web/web-color-value :fn<string;string>)

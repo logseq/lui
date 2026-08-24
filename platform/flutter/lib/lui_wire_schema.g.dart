@@ -32,6 +32,10 @@ enum _NodeKind {
   spacer,
   spinner,
   icon,
+  select,
+  combobox,
+  dropdownMenu,
+  menuItem,
 }
 
 _NodeKind _decodeNodeKind(Object? value) {
@@ -69,6 +73,10 @@ _NodeKind _decodeNodeKind(Object? value) {
     'spacer' => _NodeKind.spacer,
     'spinner' => _NodeKind.spinner,
     'icon' => _NodeKind.icon,
+    'select' => _NodeKind.select,
+    'combobox' => _NodeKind.combobox,
+    'dropdown-menu' => _NodeKind.dropdownMenu,
+    'menu-item' => _NodeKind.menuItem,
     _ => throw const LUIBackendException('unknown node kind'),
   };
 }

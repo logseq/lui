@@ -43,6 +43,10 @@
 (signature lui.ui/input! :fn<ui-context;int>)
 (signature lui.ui/search-field! :fn<ui-context;int>)
 (signature lui.ui/textarea! :fn<ui-context;int>)
+(signature lui.ui/select! :fn<ui-context;int>)
+(signature lui.ui/combobox! :fn<ui-context;int>)
+(signature lui.ui/dropdown-menu! :fn<ui-context;int>)
+(signature lui.ui/menu-item! :fn<ui-context;int>)
 (signature lui.ui/button! :fn<ui-context;int>)
 (signature lui.ui/toggle-button! :fn<ui-context;int>)
 (signature lui.ui/toggle! :fn<ui-context;int>)
@@ -58,6 +62,10 @@
   :fn<ui-context;int;property;bool;bool>)
 (signature lui.ui/bool-property-signal!
   :fn<ui-context;int;property;signal.core/signal<bool>;bool>)
+(signature lui.ui/float-property!
+  :fn<ui-context;int;property;float;bool>)
+(signature lui.ui/float-property-signal!
+  :fn<ui-context;int;property;signal.core/signal<float>;bool>)
 (signature lui.ui/disabled! :fn<ui-context;int;bool;bool>)
 (signature lui.ui/disabled-signal!
   :fn<ui-context;int;signal.core/signal<bool>;bool>)

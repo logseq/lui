@@ -6,7 +6,10 @@
   (gallery-checked :bool)
   (gallery-progress :float)
   (gallery-density :string)
-  (gallery-volume :float))
+  (gallery-volume :float)
+  (gallery-environment :string)
+  (gallery-picker-query :string)
+  (gallery-open-picker :string))
 
 (type-variant gallery-action
   (ToggleDisabled)
@@ -14,6 +17,11 @@
   (SetChecked :bool)
   (SetDensity :string)
   (SetVolume :float)
+  (OpenPicker :string)
+  (SetPickerQuery :string)
+  (SelectEnvironment :string)
+  (ClosePicker)
+  (CommitPickerQuery)
   (AdvanceProgress))
 
 (signature components.model/initial :fn<gallery-model>)
@@ -23,3 +31,7 @@
 (signature components.model/density-comfortable? :fn<gallery-model;bool>)
 (signature components.model/density-compact? :fn<gallery-model;bool>)
 (signature components.model/volume-label :fn<gallery-model;string>)
+(signature components.model/select-open? :fn<gallery-model;bool>)
+(signature components.model/combobox-open? :fn<gallery-model;bool>)
+(signature components.model/production-selected? :fn<gallery-model;bool>)
+(signature components.model/staging-selected? :fn<gallery-model;bool>)
