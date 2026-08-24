@@ -49,7 +49,10 @@ final class LUIBackendException implements Exception {
 enum _NodeKind {
   row,
   column,
+  box,
   text,
+  heading,
+  paragraph,
   button,
   textInput,
   textArea,
@@ -165,7 +168,7 @@ final class LUIFlutterBackend {
     return ListenableBuilder(
       key: nodeKey(node),
       listenable: handle,
-      builder: (context, _) => _buildNode(node),
+      builder: (context, _) => _buildNode(context, node),
     );
   }
 
@@ -178,7 +181,7 @@ final class LUIFlutterBackend {
     onEvent?.call(LUIEvent.press(node: node));
   }
 
-  Widget _buildNode(int id) {
+  Widget _buildNode(BuildContext context, int id) {
     final state = _requireState(_states, id);
     final children = state.children
         .map((child) => widget(node: child))
@@ -190,6 +193,7 @@ final class LUIFlutterBackend {
     final accessibilityLabel =
         state.properties['accessibility-label'] as String?;
     final gap = (state.properties['gap'] as int? ?? 0).toDouble();
+    final headingLevel = state.properties['heading-level'] as int? ?? 1;
     Widget textControl({required bool multiline}) => SizedBox(
       width: 240,
       child: Semantics(
@@ -222,7 +226,17 @@ final class LUIFlutterBackend {
         spacing: gap,
         children: children,
       ),
+      _NodeKind.box => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
       _NodeKind.text => Text(text),
+      _NodeKind.heading => Semantics(
+        header: true,
+        child: Text(text, style: _headingStyle(context, headingLevel)),
+      ),
+      _NodeKind.paragraph => Text(text),
       _NodeKind.button => TextButton(
         onPressed: enabled ? () => performAction(id) : null,
         child: Text(text),
@@ -326,6 +340,8 @@ final class LUIFlutterBackend {
       'text' =>
         value is String &&
             (kind == _NodeKind.text ||
+                kind == _NodeKind.heading ||
+                kind == _NodeKind.paragraph ||
                 kind == _NodeKind.button ||
                 _isTextControl(kind)),
       'enabled' =>
@@ -335,6 +351,8 @@ final class LUIFlutterBackend {
       'padding' => value is int,
       'background' => value is String,
       'style-class' => value is String,
+      'heading-level' =>
+        value is int && value >= 1 && value <= 6 && kind == _NodeKind.heading,
       'placeholder' => value is String && _isTextControl(kind),
       'read-only' => value is bool && _isTextControl(kind),
       'accessibility-label' => value is String && _isTextControl(kind),
@@ -347,6 +365,7 @@ final class LUIFlutterBackend {
   static bool _canContainChildren(_NodeKind kind) =>
       kind == _NodeKind.row ||
       kind == _NodeKind.column ||
+      kind == _NodeKind.box ||
       kind == _NodeKind.scroll;
 
   static bool _isTextControl(_NodeKind kind) =>
@@ -380,7 +399,10 @@ final class LUIFlutterBackend {
   static _NodeKind _kind(Object? value) => switch (_string(value, 'kind')) {
     'row' => _NodeKind.row,
     'column' => _NodeKind.column,
+    'box' => _NodeKind.box,
     'text' => _NodeKind.text,
+    'heading' => _NodeKind.heading,
+    'paragraph' => _NodeKind.paragraph,
     'button' => _NodeKind.button,
     'text-input' => _NodeKind.textInput,
     'text-area' => _NodeKind.textArea,
@@ -422,6 +444,18 @@ final class LUIFlutterBackend {
     'green' => Colors.green,
     _ => Colors.transparent,
   };
+
+  static TextStyle? _headingStyle(BuildContext context, int level) {
+    final textTheme = Theme.of(context).textTheme;
+    return switch (level) {
+      1 => textTheme.headlineLarge,
+      2 => textTheme.headlineMedium,
+      3 => textTheme.titleLarge,
+      4 => textTheme.titleMedium,
+      5 => textTheme.titleSmall,
+      _ => textTheme.labelLarge,
+    };
+  }
 }
 
 final class _LUITextInput extends StatefulWidget {

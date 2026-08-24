@@ -50,6 +50,9 @@
      [])
    (if (:background attrs)
      [`(lui.ui/background! ~context ~node ~(:background attrs))]
+     [])
+   (if (:class attrs)
+     [`(lui.ui/style-class! ~context ~node ~(:class attrs))]
      [])))
 
 (macro-helper-defn button-style-class [attrs]
@@ -82,6 +85,26 @@
 (defelement column [context parent attrs & children]
   (container-expansion 'lui.ui/column! context parent attrs children))
 
+(defelement box [context parent attrs & children]
+  (container-expansion 'lui.ui/box! context parent attrs children))
+
+(defelement card [context parent attrs & children]
+  (let [node (gensym "node")
+        class-name
+        (if (:class attrs)
+          (str "lui-card " (:class attrs))
+          "lui-card")]
+    `(let [~node (lui.ui/box! ~context)]
+       (lui.ui/style-class! ~context ~node ~class-name)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
+       ~node)))
+
 (defelement scroll [context parent attrs & children]
   (container-expansion 'lui.ui/scroll! context parent attrs children))
 
@@ -101,6 +124,39 @@
           `(lui.ui/text-signal! ~context ~value)
           `(lui.ui/text! ~context ~(first children)))]
     `(let [~node ~expression]
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
+
+(defelement heading [context parent attrs & children]
+  (let [node (gensym "node")
+        level (if (:level attrs) (:level attrs) 1)
+        value (:value attrs)
+        expression
+        (if value
+          `(lui.ui/heading-signal! ~context ~level ~value)
+          `(lui.ui/heading! ~context ~level ~(first children)))]
+    `(let [~node ~expression]
+       ~@(if (:class attrs)
+           [`(lui.ui/style-class! ~context ~node ~(:class attrs))]
+           [])
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
+
+(defelement paragraph [context parent attrs & children]
+  (let [node (gensym "node")
+        value (:value attrs)
+        expression
+        (if value
+          `(lui.ui/paragraph-signal! ~context ~value)
+          `(lui.ui/paragraph! ~context ~(first children)))]
+    `(let [~node ~expression]
+       ~@(if (:class attrs)
+           [`(lui.ui/style-class! ~context ~node ~(:class attrs))]
+           [])
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])

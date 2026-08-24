@@ -78,13 +78,19 @@ public final class LUIAppleBackend {
 
     private func makeView(kind: LUINodeKind, id: Int) -> NSView {
         switch kind {
-        case .row, .column:
+        case .row, .column, .box:
             let view = NSStackView()
             view.orientation = kind == .row ? .horizontal : .vertical
             view.translatesAutoresizingMaskIntoConstraints = false
             return view
-        case .text:
+        case .text, .heading, .paragraph:
             let view = NSTextField(labelWithString: "")
+            if kind == .heading {
+                if #available(macOS 26.0, *) {
+                    view.setAccessibilityRole(.headingRole)
+                }
+                view.font = .preferredFont(forTextStyle: .headline)
+            }
             view.translatesAutoresizingMaskIntoConstraints = false
             return view
         case .button:

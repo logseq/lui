@@ -5,15 +5,19 @@
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
   --primary: oklch(0.205 0 0);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
+  --muted-foreground: oklch(0.556 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.577 0.245 27.325);
   --input: oklch(0.922 0 0);
+  --border: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --radius: 0.5rem;
 }
@@ -22,30 +26,38 @@
 [data-kb-theme="dark"] {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
+  --card: oklch(0.145 0 0);
+  --card-foreground: oklch(0.985 0 0);
   --primary: oklch(0.985 0 0);
   --primary-foreground: oklch(0.205 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
+  --muted-foreground: oklch(0.708 0 0);
   --destructive: oklch(0.396 0.141 25.723);
   --destructive-foreground: oklch(0.637 0.237 25.331);
   --input: oklch(0.269 0 0);
+  --border: oklch(0.269 0 0);
   --ring: oklch(0.439 0 0);
 }
 
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-muted-foreground: var(--muted-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-input: var(--input);
+  --color-border: var(--border);
   --color-ring: var(--ring);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -54,6 +66,30 @@
 }
 
 @layer components {
+  .lui-card {
+    @apply rounded-lg border bg-card text-card-foreground shadow-sm;
+  }
+
+  .lui-card-header {
+    @apply flex flex-col space-y-1.5 p-6;
+  }
+
+  .lui-card-title {
+    @apply text-lg font-semibold leading-none tracking-tight;
+  }
+
+  .lui-card-description {
+    @apply text-sm text-muted-foreground;
+  }
+
+  .lui-card-content {
+    @apply p-6 pt-0;
+  }
+
+  .lui-card-footer {
+    @apply flex items-center p-6 pt-0;
+  }
+
   .lui-button {
     @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors;
   }

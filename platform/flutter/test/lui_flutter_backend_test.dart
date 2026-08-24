@@ -123,6 +123,39 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('maps semantic content primitives to native Flutter widgets', (
+    tester,
+  ) async {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"box"},
+        {"op":"create-node","id":2,"kind":"heading"},
+        {"op":"create-node","id":3,"kind":"paragraph"},
+        {"op":"set-prop","id":2,"property":"heading-level","value":3},
+        {"op":"set-prop","id":2,"property":"text","value":"Account"},
+        {"op":"set-prop","id":3,"property":"text","value":"Manage your profile."},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    final box = tester.widget<Column>(find.byType(Column));
+    final headingSemantics = tester.widget<Semantics>(
+      find.byWidgetPredicate(
+        (widget) => widget is Semantics && widget.properties.header == true,
+      ),
+    );
+    expect(box.crossAxisAlignment, CrossAxisAlignment.stretch);
+    expect(headingSemantics.properties.header, isTrue);
+    expect(find.text('Account'), findsOneWidget);
+    expect(find.text('Manage your profile.'), findsOneWidget);
+  });
+
   testWidgets('maps text-area sizing to one retained native TextField', (
     tester,
   ) async {

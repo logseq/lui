@@ -11,7 +11,8 @@ render native controls and may apply scoped platform tweaks.
 
 The Web backend uses retained real DOM and native HTML controls. LUI owns its
 component API, headless behaviors and visual system. It does not require a
-third-party UI runtime, React, Solid, Tailwind or a virtual DOM.
+third-party UI runtime, React, Solid or a virtual DOM. Tailwind is a pinned
+build-time CSS compiler only and ships no JavaScript runtime.
 
 ## Product principles
 
@@ -142,7 +143,8 @@ transactionally.
   accessibility behavior, examples and default visuals stay in parity.
   Its local reference checkout is kept outside this repository. LUI implements
   the contract with retained LG components rather than Solid JSX, Kobalte,
-  Corvu or Tailwind.
+  or Corvu. Solid UI utility combinations are compiled behind LUI semantic
+  classes with Tailwind rather than exposed through the cross-platform DSL.
 
 ## Layers
 
@@ -233,7 +235,8 @@ The Web implementation has no external component runtime:
    overlay placement and validation relationships.
 3. **LUI components** compose primitives and behaviors into the polished daily
    catalog. They use semantic classes, data-state attributes and CSS custom
-   properties generated from the shared theme tokens.
+   properties generated from the shared theme tokens. A pinned Tailwind CLI
+   resolves component `@apply` rules into minified static CSS at build time.
 
 The Solid UI reference defines component anatomy and visual output, but not the
 runtime architecture. Solid props, contexts and headless runtime state become
@@ -247,8 +250,9 @@ bridge a browser capability gap, but it must preserve the native element and
 must not become a general layout or text engine.
 
 The Web production budget is measured against LUI's generated JavaScript and
-CSS, with no baseline npm UI dependency. Tier 2 and Tier 3 code remains
-separately reachable so applications only ship components they use. Bundle
+CSS, with no baseline npm UI runtime dependency. Tailwind remains a development
+dependency and its generated CSS is the only shipped artifact. Tier 2 and Tier
+3 code remains separately reachable so applications only ship components they use. Bundle
 budgets are set from the first gallery build rather than inherited from a
 third-party provider experiment.
 

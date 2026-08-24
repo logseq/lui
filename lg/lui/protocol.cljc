@@ -28,9 +28,12 @@
     ReadOnly (or (= kind TextInput) (= kind TextArea))
     MinLines (= kind TextArea)
     MaxLines (= kind TextArea)
+    HeadingLevel (= kind Heading)
     TextValue
     (match kind
       Text true
+      Heading true
+      Paragraph true
       Button true
       TextInput true
       TextArea true
@@ -60,12 +63,15 @@
     (tuple MinLines (IntValue value)) (> value 0)
     (tuple MaxLines (IntValue value)) (> value 0)
     (tuple StyleClass (StringValue _value)) true
+    (tuple HeadingLevel (IntValue value))
+    (and (>= value 1) (<= value 6))
     _ false))
 
 (defn can-contain-children? [kind]
   (match kind
     Row true
     Column true
+    Box true
     Scroll true
     _ false))
 

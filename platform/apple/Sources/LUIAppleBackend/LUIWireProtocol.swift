@@ -10,7 +10,8 @@ public enum LUIEvent: Equatable, Sendable {
 }
 
 enum LUINodeKind: String, Decodable {
-    case row, column, text, button, textInput = "text-input", textArea = "text-area"
+    case row, column, box, text, heading, paragraph, button
+    case textInput = "text-input", textArea = "text-area"
     case scroll, spacer
 }
 
@@ -21,6 +22,7 @@ enum LUIProperty: String, Decodable {
     case minLines = "min-lines"
     case maxLines = "max-lines"
     case styleClass = "style-class"
+    case headingLevel = "heading-level"
 }
 
 struct LUIPatchBatch: Decodable {
@@ -97,6 +99,7 @@ enum LUIWireValue: Decodable {
 
     func matches(_ property: LUIProperty) -> Bool {
         switch (property, self) {
+        case let (.headingLevel, .int(level)): (1...6).contains(level)
         case (.text, .string), (.enabled, .bool), (.gap, .int),
              (.padding, .int), (.background, .string),
              (.placeholder, .string), (.readOnly, .bool),
@@ -196,17 +199,20 @@ struct LUIRetainedTree {
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         switch property {
         case .padding, .background, .styleClass: true
-        case .text: kind == .text || kind == .button || kind == .textInput || kind == .textArea
+        case .text:
+            kind == .text || kind == .heading || kind == .paragraph ||
+                kind == .button || kind == .textInput || kind == .textArea
         case .enabled: kind == .button || kind == .textInput || kind == .textArea
         case .gap: kind == .row || kind == .column
         case .placeholder, .readOnly, .accessibilityLabel:
             kind == .textInput || kind == .textArea
         case .minLines, .maxLines: kind == .textArea
+        case .headingLevel: kind == .heading
         }
     }
 
     private static func canContainChildren(_ kind: LUINodeKind) -> Bool {
-        kind == .row || kind == .column || kind == .scroll
+        kind == .row || kind == .column || kind == .box || kind == .scroll
     }
 
     private static func isSingleChildContainer(_ kind: LUINodeKind) -> Bool {

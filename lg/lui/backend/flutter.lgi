@@ -3,7 +3,9 @@
 (type-variant flutter-node
   (FlutterFlexRow)
   (FlutterFlexColumn)
+  (FlutterBox)
   (FlutterParagraph)
+  (FlutterHeading)
   (FlutterButton)
   (FlutterWidgetIsland)
   (FlutterViewport)

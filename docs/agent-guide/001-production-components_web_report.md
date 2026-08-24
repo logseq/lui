@@ -15,6 +15,10 @@ available in a sibling local checkout for study, but no Solid JSX, Kobalte,
 Corvu or Tailwind runtime is added to LUI. Solid's reactive model is replaced by
 the existing LG Signal graph and retained incremental scheduler.
 
+Tailwind 4.1.4 is used only as a locked build-time compiler for LUI semantic
+classes. The generated, minified CSS is shipped; Tailwind JavaScript and utility
+class strings are not part of the LUI runtime or cross-platform authoring API.
+
 ## Runtime boundary
 
 - Native HTML owns text editing, selection, composition, focus, forms,

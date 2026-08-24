@@ -124,6 +124,37 @@ struct LUIAppleBackendTests {
         #expect(field.accessibilityLabel() == "Search todos")
     }
 
+    @Test("maps semantic content primitives to native AppKit views")
+    func mapsSemanticContentPrimitives() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"box"},
+          {"op":"create-node","id":2,"kind":"heading"},
+          {"op":"create-node","id":3,"kind":"paragraph"},
+          {"op":"set-prop","id":2,"property":"heading-level","value":3},
+          {"op":"set-prop","id":2,"property":"text","value":"Account"},
+          {"op":"set-prop","id":3,"property":"text","value":"Manage your profile."},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let box = try #require(backend.view(id: 1) as? NSStackView)
+        let heading = try #require(backend.view(id: 2) as? NSTextField)
+        let paragraph = try #require(backend.view(id: 3) as? NSTextField)
+
+        #expect(box.orientation == .vertical)
+        #expect(box.arrangedSubviews.map(backend.id(of:)) == [2, 3])
+        #expect(heading.stringValue == "Account")
+        if #available(macOS 26.0, *) {
+            #expect(heading.accessibilityRole() == .headingRole)
+        } else {
+            #expect(heading.accessibilityRole() == .staticText)
+        }
+        #expect(paragraph.stringValue == "Manage your profile.")
+    }
+
     @Test("maps text-area to a retained native multiline editor")
     func mapsTextAreaSemantics() throws {
         let backend = LUIAppleBackend()

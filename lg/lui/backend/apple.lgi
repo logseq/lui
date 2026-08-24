@@ -3,7 +3,10 @@
 (type-variant apple-node
   (AppleRow)
   (AppleColumn)
+  (AppleBox)
   (AppleLabel)
+  (AppleHeading)
+  (AppleParagraph)
   (AppleButton)
   (AppleTextInput)
   (AppleTextArea)

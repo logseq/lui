@@ -2,11 +2,12 @@
   (:require [ocaml.package/melange-webapi]
             [ocaml.Webapi.Dom.HtmlCollection :as html-collection]
             [lui.protocol :as proto
-             :refer [Row Column Text Button TextInput TextArea Scroll Spacer
+             :refer [Row Column Box Text Heading Paragraph Button
+                     TextInput TextArea Scroll Spacer
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild TextValue Enabled Gap PaddingValue
                      BackgroundValue PlaceholderValue ReadOnly MinLines MaxLines
-                     AccessibilityLabel StyleClass
+                     AccessibilityLabel StyleClass HeadingLevel
                      StringValue BoolValue IntValue]]
             [lui.backend.retained :as retained]))
 
@@ -24,7 +25,10 @@
   (match kind
     Row "lui-row"
     Column "lui-column"
+    Box "lui-box"
     Text "lui-text"
+    Heading "lui-heading"
+    Paragraph "lui-paragraph"
     Button "lui-button"
     TextInput "lui-text-input"
     TextArea "lui-text-area"
@@ -34,6 +38,8 @@
 (defn- platform-node [renderer kind]
   (let [tag
         (match kind
+          Heading "div"
+          Paragraph "p"
           Text "span"
           Button "button"
           TextInput "input"
@@ -42,6 +48,8 @@
         node
         (Webapi.Dom.Document.createElement tag (:web-document renderer))]
     (Webapi.Dom.Element.setClassName node (base-class-name kind))
+    (when (= kind Heading)
+      (Webapi.Dom.Element.setAttribute "role" "heading" node))
     (when (= kind TextArea)
       (Webapi.Dom.Element.setAttribute
        "style" "field-sizing: content; resize: vertical; overflow-y: auto" node))
@@ -136,6 +144,9 @@
     (tuple StyleClass (StringValue class-name))
     (Webapi.Dom.Element.setClassName
      dom-node (str (base-class-name kind) " " class-name))
+
+    (tuple HeadingLevel (IntValue level))
+    (Webapi.Dom.Element.setAttribute "aria-level" (str level) dom-node)
 
     (tuple MinLines (IntValue lines))
     (do

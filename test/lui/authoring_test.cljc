@@ -5,8 +5,10 @@
             [lui.runtime :as runtime]
             [lui.ui :as ui]
             [lui.elements :refer [defelement]]
+            [lui.card :as card]
             [lui.macros :refer [defui state effect platform host]]
-            [lui.backend.apple :as apple]
+            [lui.backend.apple :as apple
+             :refer [AppleBox AppleHeading AppleParagraph]]
             [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
@@ -61,6 +63,26 @@
 
 (defui default-solid-button [callback]
   [:button {:on-press callback} "Continue"])
+
+(defui semantic-content []
+  [:box {:class "semantic-content"}
+   [:heading {:level 3} "Account"]
+   [:paragraph "Manage your profile settings."]])
+
+(defui reactive-semantic-content [source]
+  [:box
+   [:heading {:level 2 :value source}]
+   [:paragraph {:value source}]])
+
+(defui profile-card [callback]
+  [:card {:class "profile-card"}
+   [:card/header
+    [:card/title "Account"]
+    [:card/description "Manage your profile settings."]]
+   [:card/content
+    [:paragraph "Changes stay local until you save them."]]
+   [:card/footer
+    [:button {:on-press callback} "Save changes"]]])
 
 (deftest platform-profile-flows-through-ui-context
   (let [apple-renderer (apple/create)
@@ -189,6 +211,106 @@
     (runtime/dispatch! application (proto/Press save))
     (runtime/flush! application)
     (assert-equal 1 @presses "semantic button dispatches through effects")))
+
+(deftest semantic-content-primitives-retain-structure-and-heading-level
+  (let [renderer (apple/create)
+        application
+        (runtime/create (sig/scheduler) (apple/backend renderer))
+        scope (sig/scope "semantic-content")
+        root (semantic-content (ui/context application scope))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [children (apple/children renderer root)
+          heading (nth children 0)
+          paragraph (nth children 1)]
+      (match (apple/node renderer root)
+        (Some AppleBox) (is true "box has a retained platform identity")
+        _ (is false "box maps to the Apple backend"))
+      (match (apple/property renderer root proto/StyleClass)
+        (Some (StringValue value))
+        (assert-equal "semantic-content" value "Box retains its class")
+        _ (is false "Box class reaches the backend"))
+      (match (apple/node renderer heading)
+        (Some AppleHeading) (is true "heading retains semantic identity")
+        _ (is false "heading maps to the Apple backend"))
+      (match (apple/node renderer paragraph)
+        (Some AppleParagraph) (is true "paragraph retains semantic identity")
+        _ (is false "paragraph maps to the Apple backend"))
+      (match (apple/property renderer heading proto/HeadingLevel)
+        (Some (proto/IntValue level))
+        (assert-equal 3 level "heading level reaches the backend")
+        _ (is false "heading level is retained")))))
+
+(deftest semantic-content-signals-patch-text-without-replacing-nodes
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "reactive-semantic-content")
+        copy (sig/state scheduler "Initial copy")
+        root
+        (reactive-semantic-content
+         (ui/context application scope) (sig/value copy))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [children (apple/children renderer root)
+          heading (nth children 0)
+          paragraph (nth children 1)
+          node-count (apple/node-count renderer)]
+      (sig/set! copy "Updated copy")
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "Signal copy updates preserve semantic nodes")
+      (match (apple/property renderer heading proto/TextValue)
+        (Some (StringValue value))
+        (assert-equal "Updated copy" value "Heading patches TextValue")
+        _ (is false "Heading retains reactive text"))
+      (match (apple/property renderer paragraph proto/TextValue)
+        (Some (StringValue value))
+        (assert-equal "Updated copy" value "Paragraph patches TextValue")
+        _ (is false "Paragraph retains reactive text")))))
+
+(deftest card-composes-public-parts-from-semantic-retained-primitives
+  (let [renderer (apple/create)
+        application
+        (runtime/create (sig/scheduler) (apple/backend renderer))
+        scope (sig/scope "profile-card")
+        root (profile-card (ui/context application scope) (fn [_event] true))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [parts (apple/children renderer root)
+          header (nth parts 0)
+          content (nth parts 1)
+          footer (nth parts 2)
+          title (nth (apple/children renderer header) 0)
+          description (nth (apple/children renderer header) 1)]
+      (assert-equal 3 (count parts) "Card retains header, content, and footer")
+      (match (apple/property renderer root proto/StyleClass)
+        (Some (StringValue value))
+        (assert-equal "lui-card profile-card" value
+                      "application class follows the Card default")
+        _ (is false "Card exposes its resolved class"))
+      (match (apple/property renderer header proto/StyleClass)
+        (Some (StringValue value))
+        (assert-equal "lui-card-header" value "CardHeader class")
+        _ (is false "CardHeader exposes its class"))
+      (match (apple/property renderer content proto/StyleClass)
+        (Some (StringValue value))
+        (assert-equal "lui-card-content" value "CardContent class")
+        _ (is false "CardContent exposes its class"))
+      (match (apple/property renderer footer proto/StyleClass)
+        (Some (StringValue value))
+        (assert-equal "lui-card-footer" value "CardFooter class")
+        _ (is false "CardFooter exposes its class"))
+      (match (apple/node renderer title)
+        (Some AppleHeading) (is true "CardTitle is a semantic heading")
+        _ (is false "CardTitle maps to Heading"))
+      (match (apple/property renderer title proto/HeadingLevel)
+        (Some (proto/IntValue level))
+        (assert-equal 3 level "CardTitle matches Solid UI's h3")
+        _ (is false "CardTitle retains heading level"))
+      (match (apple/node renderer description)
+        (Some AppleParagraph) (is true "CardDescription is a paragraph")
+        _ (is false "CardDescription maps to Paragraph")))))
 
 (deftest reactive-text-input-updates-through-semantic-events
   (let [scheduler (sig/scheduler)

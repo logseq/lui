@@ -76,15 +76,20 @@ public final class LUIUIKitBackend {
     private func makeView(kind: LUINodeKind, id: Int) -> UIView {
         let view: UIView
         switch kind {
-        case .row, .column:
+        case .row, .column, .box:
             let stack = UIStackView()
             stack.axis = kind == .row ? .horizontal : .vertical
             stack.alignment = .fill
             stack.distribution = .fill
             view = stack
-        case .text:
+        case .text, .heading, .paragraph:
             let label = UILabel()
-            label.font = .preferredFont(forTextStyle: .body)
+            label.font = .preferredFont(
+                forTextStyle: kind == .heading ? .headline : .body
+            )
+            if kind == .heading {
+                label.accessibilityTraits.insert(.header)
+            }
             label.adjustsFontForContentSizeCategory = true
             label.numberOfLines = 0
             view = label

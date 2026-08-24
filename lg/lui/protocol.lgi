@@ -3,7 +3,10 @@
 (type-variant node-kind
   (Row)
   (Column)
+  (Box)
   (Text)
+  (Heading)
+  (Paragraph)
   (Button)
   (TextInput)
   (TextArea)
@@ -42,7 +45,8 @@
   (AccessibilityLabel)
   (MinLines)
   (MaxLines)
-  (StyleClass))
+  (StyleClass)
+  (HeadingLevel))
 
 (type-variant wire-value
   (StringValue :string)

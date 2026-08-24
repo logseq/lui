@@ -30,6 +30,9 @@
 (defn column! [context]
   (runtime/create-node! (:ui-application context) proto/Column))
 
+(defn box! [context]
+  (runtime/create-node! (:ui-application context) proto/Box))
+
 (defn scroll! [context]
   (runtime/create-node! (:ui-application context) proto/Scroll))
 
@@ -42,6 +45,54 @@
      (:ui-application context) node proto/TextValue
      (proto/StringValue text))
     node))
+
+(defn heading! [context level text]
+  (let [node (runtime/create-node! (:ui-application context) proto/Heading)]
+    (runtime/set-prop!
+     (:ui-application context) node proto/HeadingLevel
+     (proto/IntValue level))
+    (runtime/set-prop!
+     (:ui-application context) node proto/TextValue
+     (proto/StringValue text))
+    node))
+
+(defn heading-value! [context level source]
+  (let [node (runtime/create-node! (:ui-application context) proto/Heading)]
+    (runtime/set-prop!
+     (:ui-application context) node proto/HeadingLevel
+     (proto/IntValue level))
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context)
+     node proto/TextValue source)
+    node))
+
+(defn heading-signal! [context level source]
+  (heading-value!
+   context level
+   (sig/own-signal!
+    (:ui-scope context)
+    (sig/map (fn [text] (proto/StringValue text)) source))))
+
+(defn paragraph! [context text]
+  (let [node (runtime/create-node! (:ui-application context) proto/Paragraph)]
+    (runtime/set-prop!
+     (:ui-application context) node proto/TextValue
+     (proto/StringValue text))
+    node))
+
+(defn paragraph-value! [context source]
+  (let [node (runtime/create-node! (:ui-application context) proto/Paragraph)]
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context)
+     node proto/TextValue source)
+    node))
+
+(defn paragraph-signal! [context source]
+  (paragraph-value!
+   context
+   (sig/own-signal!
+    (:ui-scope context)
+    (sig/map (fn [text] (proto/StringValue text)) source))))
 
 (defn text-value! [context source]
   (let [node (runtime/create-node! (:ui-application context) proto/Text)]

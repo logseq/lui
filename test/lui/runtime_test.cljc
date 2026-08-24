@@ -28,6 +28,26 @@
      (wire/encode-batch batch)
      "LG emits the native host wire format without dynamic values")))
 
+(deftest semantic-content-patch-uses-closed-wire-names
+  (let [batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Box)
+                (proto/create-node-op 2 proto/Heading)
+                (proto/create-node-op 3 proto/Paragraph)
+                (proto/set-prop-op
+                 2 proto/HeadingLevel (proto/IntValue 3))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"box\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"heading\"},"
+      "{\"op\":\"create-node\",\"id\":3,\"kind\":\"paragraph\"},"
+      "{\"op\":\"set-prop\",\"id\":2,"
+      "\"property\":\"heading-level\",\"value\":3}]}")
+     (wire/encode-batch batch)
+     "semantic content uses the native host's closed wire vocabulary")))
+
 (deftest wire-backend-sends-one-json-batch
   (let [sent (atom "")
         renderer (apple/create-wire (fn [json] (reset! sent json) true))
@@ -248,8 +268,15 @@
         application
         (runtime/create (sig/scheduler) (apple/backend renderer))
         text (runtime/create-node! application proto/Text)
+        heading (runtime/create-node! application proto/Heading)
         button (runtime/create-node! application proto/Button)
         row (runtime/create-node! application proto/Row)]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"invalid property value"
+         (runtime/set-prop!
+          application heading proto/HeadingLevel (proto/IntValue 7)))
+        "heading levels are limited to the semantic HTML range")
     (is (thrown-with-msg?
          Invalid_argument
          #"invalid property value"
@@ -270,7 +297,7 @@
         "numeric layout properties require integer wire values")
     (runtime/flush! application)
     (assert-equal
-     3
+     4
      (count (:ops (nth (apple/batches renderer) 0)))
      "rejected values never enter the patch queue")))
 

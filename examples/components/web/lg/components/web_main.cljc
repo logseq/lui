@@ -13,13 +13,21 @@
         scope (sig/scope "components-gallery")
         context (ui/context application scope)
         disabled (sig/state scheduler false)
+        card-copy
+        (sig/map
+         (fn [is-disabled]
+           (if is-disabled
+             "Signal patched this paragraph; the Card node stayed mounted."
+             "Signals update retained content without rebuilding the Card."))
+         (sig/value disabled))
         root
-        (gallery/button-gallery
+        (gallery/component-gallery
          context
          (sig/value disabled)
          (fn [_event]
            (sig/set!
-            disabled (if (= (sig/get disabled) true) false true))))]
+            disabled (if (= (sig/get disabled) true) false true)))
+         card-copy)]
     (web/set-event-handler!
      renderer
      (fn [event]

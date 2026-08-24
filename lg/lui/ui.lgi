@@ -13,9 +13,20 @@
 (signature lui.ui/host :fn<ui-context;host-kind>)
 (signature lui.ui/row! :fn<ui-context;int>)
 (signature lui.ui/column! :fn<ui-context;int>)
+(signature lui.ui/box! :fn<ui-context;int>)
 (signature lui.ui/scroll! :fn<ui-context;int>)
 (signature lui.ui/spacer! :fn<ui-context;int>)
 (signature lui.ui/text! :fn<ui-context;string;int>)
+(signature lui.ui/heading! :fn<ui-context;int;string;int>)
+(signature lui.ui/heading-value!
+  :fn<ui-context;int;signal<wire-value>;int>)
+(signature lui.ui/heading-signal!
+  :fn<ui-context;int;signal<string>;int>)
+(signature lui.ui/paragraph! :fn<ui-context;string;int>)
+(signature lui.ui/paragraph-value!
+  :fn<ui-context;signal<wire-value>;int>)
+(signature lui.ui/paragraph-signal!
+  :fn<ui-context;signal<string>;int>)
 (signature lui.ui/text-signal! :fn<ui-context;signal<string>;int>)
 (signature lui.ui/text-value! :fn<ui-context;signal<wire-value>;int>)
 (signature lui.ui/text-input!

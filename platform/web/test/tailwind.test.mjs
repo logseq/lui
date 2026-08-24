@@ -20,3 +20,14 @@ test("the production stylesheet stays within the initial size budget", async () 
 
   assert.ok(size <= 20_000, `expected at most 20 KB, received ${size} bytes`)
 })
+
+test("the production stylesheet contains the Solid UI Card parts", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-card\{[^}]*border-radius:var\(--radius-lg\)/)
+  assert.match(css, /\.lui-card-header\{[^}]*display:flex/)
+  assert.match(css, /\.lui-card-title\{[^}]*font-size:var\(--text-lg\)/)
+  assert.match(css, /\.lui-card-description\{[^}]*color:var\(--color-muted-foreground\)/)
+  assert.match(css, /\.lui-card-content\{[^}]*padding:calc\(var\(--spacing\)\*6\)/)
+  assert.match(css, /\.lui-card-footer\{[^}]*align-items:center/)
+})
