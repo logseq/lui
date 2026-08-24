@@ -30,6 +30,9 @@
 (defn column! [context]
   (runtime/create-node! (:ui-application context) proto/Column))
 
+(defn grid! [context]
+  (runtime/create-node! (:ui-application context) proto/Grid))
+
 (defn box! [context]
   (runtime/create-node! (:ui-application context) proto/Box))
 
@@ -277,6 +280,25 @@
 (defn gap! [context node gap]
   (runtime/set-prop!
    (:ui-application context) node proto/Gap (proto/IntValue gap)))
+
+(defn main! [context node alignment]
+  (runtime/set-prop!
+   (:ui-application context) node proto/MainAlignment
+   (proto/StringValue alignment)))
+
+(defn cross! [context node alignment]
+  (runtime/set-prop!
+   (:ui-application context) node proto/CrossAlignment
+   (proto/StringValue alignment)))
+
+(defn grow! [context node grow]
+  (runtime/set-prop!
+   (:ui-application context) node proto/GrowValue (proto/FloatValue grow)))
+
+(defn columns! [context node columns]
+  (runtime/set-prop!
+   (:ui-application context) node proto/GridColumns
+   (proto/IntValue columns)))
 
 (defn padding! [context node padding]
   (runtime/set-prop!

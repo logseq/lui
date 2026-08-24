@@ -84,6 +84,20 @@
 }
 
 @layer components {
+  .lui-row {
+    @apply flex flex-row;
+  }
+
+  .lui-column {
+    @apply flex flex-col;
+  }
+
+  .lui-grid {
+    @apply grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+
   .lui-label,
   .lui-text-field-label {
     @apply text-sm font-medium leading-none;

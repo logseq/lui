@@ -265,6 +265,50 @@ struct LUISwiftUIBackendTests {
         #expect(box.revision == revision + 1)
     }
 
+    @Test("maps the Vercel Native layout vocabulary to SwiftUI primitives")
+    func mapsVercelLayoutPrimitives() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"row"},
+          {"op":"create-node","id":3,"kind":"grid"},
+          {"op":"create-node","id":4,"kind":"text"},
+          {"op":"set-prop","id":1,"property":"main","value":"center"},
+          {"op":"set-prop","id":1,"property":"cross","value":"stretch"},
+          {"op":"set-prop","id":2,"property":"main","value":"space_between"},
+          {"op":"set-prop","id":2,"property":"cross","value":"end"},
+          {"op":"set-prop","id":3,"property":"columns","value":2},
+          {"op":"set-prop","id":3,"property":"gap","value":6},
+          {"op":"set-prop","id":4,"property":"grow","value":1.0},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"insert-child","parent":2,"child":4,"index":0}
+        ]}
+        """)
+
+        let column = try #require(backend.model(id: 1))
+        let row = try #require(backend.model(id: 2))
+        let grid = try #require(backend.model(id: 3))
+        let text = try #require(backend.model(id: 4))
+        #expect(column.property(.main) == .string("center"))
+        #expect(column.property(.cross) == .string("stretch"))
+        #expect(row.property(.main) == .string("space_between"))
+        #expect(row.property(.cross) == .string("end"))
+        #expect(grid.property(.columns) == .int(2))
+        #expect(text.property(.grow) == .double(1.0))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"set-prop","id":2,"property":"main","value":"between"}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 1)
+    }
+
     @Test("C ABI forwards SwiftUI backend events")
     func cABIForwardsEvent() {
         capturedAppleEvent = nil

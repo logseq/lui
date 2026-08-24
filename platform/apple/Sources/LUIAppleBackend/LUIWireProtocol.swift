@@ -11,7 +11,7 @@ public enum LUIEvent: Equatable, Sendable {
 }
 
 enum LUINodeKind: String, Decodable, Equatable {
-    case row, column, box, text, heading, paragraph, label, button
+    case row, column, grid, box, text, heading, paragraph, label, button
     case textInput = "text-input", textArea = "text-area"
     case checkbox
     case switchControl = "switch"
@@ -21,7 +21,7 @@ enum LUINodeKind: String, Decodable, Equatable {
 }
 
 enum LUIProperty: String, Decodable, Hashable {
-    case text, enabled, gap, padding, background, placeholder
+    case text, enabled, gap, main, cross, grow, columns, padding, background, placeholder
     case paddingHorizontal = "padding-horizontal"
     case paddingVertical = "padding-vertical"
     case foreground
@@ -111,6 +111,7 @@ enum LUIWireValue: Decodable, Equatable {
     case string(String)
     case bool(Bool)
     case int(Int)
+    case double(Double)
 
     init(from decoder: Decoder) throws {
         let value = try decoder.singleValueContainer()
@@ -118,6 +119,8 @@ enum LUIWireValue: Decodable, Equatable {
             self = .bool(decoded)
         } else if let decoded = try? value.decode(Int.self) {
             self = .int(decoded)
+        } else if let decoded = try? value.decode(Double.self) {
+            self = .double(decoded)
         } else {
             self = .string(try value.decode(String.self))
         }
@@ -134,6 +137,12 @@ enum LUIWireValue: Decodable, Equatable {
         case (.progressValue, .int), (.minValue, .int), (.maxValue, .int): true
         case let (.orientation, .string(value)):
             value == "horizontal" || value == "vertical"
+        case let (.main, .string(value)):
+            Self.mainAlignments.contains(value)
+        case let (.cross, .string(value)):
+            Self.crossAlignments.contains(value)
+        case let (.grow, .double(value)): value.isFinite && value >= 0
+        case let (.columns, .int(value)): value >= 0
         case (.foreground, .string), (.borderColor, .string): true
         case let (.paddingHorizontal, .int(value)),
              let (.paddingVertical, .int(value)),
@@ -158,6 +167,14 @@ enum LUIWireValue: Decodable, Equatable {
         "button", "checkbox", "color", "date", "datetime-local", "email",
         "file", "hidden", "image", "month", "number", "password", "radio",
         "range", "reset", "search", "submit", "tel", "text", "time", "url", "week",
+    ]
+
+    private static let mainAlignments: Set<String> = [
+        "start", "center", "end", "space_between",
+    ]
+
+    private static let crossAlignments: Set<String> = [
+        "stretch", "start", "center", "end",
     ]
 }
 
@@ -203,11 +220,12 @@ struct LUIRetainedTree {
             removeRelationships(to: id)
         case let .setProp(id, property, value):
             guard var node = nodes[id] else { throw invalid("unknown node") }
-            guard Self.supports(property, on: node.kind), value.matches(property) else {
+            let normalizedValue = value.normalized(for: property)
+            guard Self.supports(property, on: node.kind), normalizedValue.matches(property) else {
                 throw invalid("unsupported property value")
             }
-            try validateRelationship(property, value: value)
-            node.properties[property] = value
+            try validateRelationship(property, value: normalizedValue)
+            node.properties[property] = normalizedValue
             nodes[id] = node
         case let .insertChild(parent, child, index):
             guard var parentNode = nodes[parent], var childNode = nodes[child] else {
@@ -260,11 +278,15 @@ struct LUIRetainedTree {
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         switch property {
+        case .main, .cross:
+            kind == .row || kind == .column
+        case .grow: true
+        case .columns: kind == .grid
         case .padding, .background, .borderColor, .borderWidth,
              .cornerRadius, .styleClass, .width, .height,
              .minWidth, .maxWidth, .minHeight, .maxHeight: true
         case .paddingHorizontal, .paddingVertical:
-            kind == .row || kind == .column || kind == .box
+            kind == .row || kind == .column || kind == .grid || kind == .box
         case .foreground:
             kind == .text || kind == .heading || kind == .paragraph ||
                 kind == .label || kind == .button || kind == .textInput ||
@@ -275,7 +297,7 @@ struct LUIRetainedTree {
         case .enabled:
             kind == .button || kind == .textInput || kind == .textArea ||
                 kind == .checkbox || kind == .switchControl
-        case .gap: kind == .row || kind == .column
+        case .gap: kind == .row || kind == .column || kind == .grid
         case .placeholder, .readOnly:
             kind == .textInput || kind == .textArea
         case .accessibilityLabel:
@@ -300,7 +322,7 @@ struct LUIRetainedTree {
     }
 
     private static func canContainChildren(_ kind: LUINodeKind) -> Bool {
-        kind == .row || kind == .column || kind == .box || kind == .scroll ||
+        kind == .row || kind == .column || kind == .grid || kind == .box || kind == .scroll ||
             kind == .switchControl
     }
 
@@ -388,6 +410,13 @@ struct LUIRetainedTree {
 }
 
 extension LUIWireValue {
+    func normalized(for property: LUIProperty) -> LUIWireValue {
+        if property == .grow, case let .int(value) = self {
+            return .double(Double(value))
+        }
+        return self
+    }
+
     var intValue: Int? {
         guard case let .int(value) = self else { return nil }
         return value
@@ -400,6 +429,11 @@ extension LUIWireValue {
 
     var boolValue: Bool? {
         guard case let .bool(value) = self else { return nil }
+        return value
+    }
+
+    var doubleValue: Double? {
+        guard case let .double(value) = self else { return nil }
         return value
     }
 }

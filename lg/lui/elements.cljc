@@ -22,6 +22,7 @@
        (or
         (= tag :row)
         (= tag :column)
+        (= tag :grid)
         (= tag :box)
         (= tag :scroll)
         (= tag :spacer)
@@ -215,86 +216,64 @@
                [])
            ~node)))))
 
+(macro-helper-defn property-expansions [context node mappings]
+  (if (empty? mappings)
+    []
+    (let [mapping (first mappings)
+          value (first mapping)
+          setter (second mapping)]
+      (concat
+       (if value
+         [`(~setter ~context ~node ~value)]
+         [])
+       (property-expansions context node (next mappings))))))
+
 (macro-helper-defn element-properties [context node attrs]
-  (concat
-   (if (:gap attrs)
-     [`(lui.ui/gap! ~context ~node ~(:gap attrs))]
-     [])
-   (if (:padding attrs)
-     [`(lui.ui/padding! ~context ~node ~(:padding attrs))]
-     [])
-   (if (:padding-horizontal attrs)
-     [`(lui.ui/padding-horizontal!
-        ~context ~node ~(:padding-horizontal attrs))]
-     [])
-   (if (:padding-vertical attrs)
-     [`(lui.ui/padding-vertical!
-        ~context ~node ~(:padding-vertical attrs))]
-     [])
-   (if (:background attrs)
-     [`(lui.ui/background! ~context ~node ~(:background attrs))]
-     [])
-   (if (:foreground attrs)
-     [`(lui.ui/foreground! ~context ~node ~(:foreground attrs))]
-     [])
-   (if (:border-color attrs)
-     [`(lui.ui/border-color! ~context ~node ~(:border-color attrs))]
-     [])
-   (if (:border-width attrs)
-     [`(lui.ui/border-width! ~context ~node ~(:border-width attrs))]
-     [])
-   (if (:corner-radius attrs)
-     [`(lui.ui/corner-radius! ~context ~node ~(:corner-radius attrs))]
-     [])
-   (if (:width attrs)
-     [`(lui.ui/width! ~context ~node ~(:width attrs))]
-     [])
-   (if (:height attrs)
-     [`(lui.ui/height! ~context ~node ~(:height attrs))]
-     [])
-   (if (:min-width attrs)
-     [`(lui.ui/min-width! ~context ~node ~(:min-width attrs))]
-     [])
-   (if (:max-width attrs)
-     [`(lui.ui/max-width! ~context ~node ~(:max-width attrs))]
-     [])
-   (if (:min-height attrs)
-     [`(lui.ui/min-height! ~context ~node ~(:min-height attrs))]
-     [])
-   (if (:max-height attrs)
-     [`(lui.ui/max-height! ~context ~node ~(:max-height attrs))]
-     [])
-   (if (:class attrs)
-     [`(lui.ui/style-class! ~context ~node ~(:class attrs))]
-     [])))
+  (property-expansions
+   context node
+   [[(:gap attrs) 'lui.ui/gap!]
+    [(:main attrs) 'lui.ui/main!]
+    [(:cross attrs) 'lui.ui/cross!]
+    [(:grow attrs) 'lui.ui/grow!]
+    [(:columns attrs) 'lui.ui/columns!]
+    [(:padding attrs) 'lui.ui/padding!]
+    [(:padding-horizontal attrs) 'lui.ui/padding-horizontal!]
+    [(:padding-vertical attrs) 'lui.ui/padding-vertical!]
+    [(:background attrs) 'lui.ui/background!]
+    [(:foreground attrs) 'lui.ui/foreground!]
+    [(:border-color attrs) 'lui.ui/border-color!]
+    [(:border-width attrs) 'lui.ui/border-width!]
+    [(:corner-radius attrs) 'lui.ui/corner-radius!]
+    [(:width attrs) 'lui.ui/width!]
+    [(:height attrs) 'lui.ui/height!]
+    [(:min-width attrs) 'lui.ui/min-width!]
+    [(:max-width attrs) 'lui.ui/max-width!]
+    [(:min-height attrs) 'lui.ui/min-height!]
+    [(:max-height attrs) 'lui.ui/max-height!]
+    [(:class attrs) 'lui.ui/style-class!]]))
 
 (macro-helper-defn interactive-properties [context node attrs]
   (concat
    (element-properties context node attrs)
-   (if (:disabled attrs)
-     [`(lui.ui/disabled-signal! ~context ~node ~(:disabled attrs))]
-     [])
-   (if (:accessibility-label attrs)
-     [`(lui.ui/accessibility-label!
-        ~context ~node ~(:accessibility-label attrs))]
-     [])))
+   (property-expansions
+    context node
+    [[(:disabled attrs) 'lui.ui/disabled-signal!]
+     [(:accessibility-label attrs) 'lui.ui/accessibility-label!]])))
 
 (macro-helper-defn control-properties [context node attrs]
   (concat
    (interactive-properties context node attrs)
-   (if (:invalid attrs)
-     [`(lui.ui/invalid-signal! ~context ~node ~(:invalid attrs))]
-     [])))
+   (property-expansions
+    context node
+    [[(:invalid attrs) 'lui.ui/invalid-signal!]])))
 
 (macro-helper-defn text-control-properties [context node attrs]
   (concat
    (control-properties context node attrs)
-   (if (:placeholder attrs)
-     [`(lui.ui/placeholder! ~context ~node ~(:placeholder attrs))]
-     [])
-   (if (:read-only attrs)
-     [`(lui.ui/read-only! ~context ~node ~(:read-only attrs))]
-     [])))
+   (property-expansions
+    context node
+    [[(:placeholder attrs) 'lui.ui/placeholder!]
+     [(:read-only attrs) 'lui.ui/read-only!]])))
 
 (macro-helper-defn leaf-expansion [expression context parent attrs]
   (let [node (gensym "node")]
@@ -334,6 +313,9 @@
 
 (defelement column [context parent attrs & children]
   (container-expansion 'lui.ui/column! context parent attrs children))
+
+(defelement grid [context parent attrs & children]
+  (container-expansion 'lui.ui/grid! context parent attrs children))
 
 (defelement box [context parent attrs & children]
   (container-expansion 'lui.ui/box! context parent attrs children))

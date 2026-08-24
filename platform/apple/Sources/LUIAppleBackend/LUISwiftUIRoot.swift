@@ -36,10 +36,12 @@ private struct LUINodeView: View {
     private var content: some View {
         switch model.kind {
         case .row:
-            HStack(spacing: CGFloat(model.property(.gap)?.intValue ?? 0)) {
-                children
-            }
-        case .column, .box:
+            LUIRowView(model: model, backend: backend)
+        case .column:
+            LUIColumnView(model: model, backend: backend)
+        case .grid:
+            LUIGridView(model: model, backend: backend)
+        case .box:
             VStack(
                 alignment: .leading,
                 spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
@@ -115,6 +117,133 @@ private struct LUINodeView: View {
 
     private var progressAccessibilityValue: String {
         "\(Int((model.progressFraction * 100).rounded()))%"
+    }
+}
+
+private struct LUIRowView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        HStack(alignment: alignment, spacing: spacing) {
+            if model.property(.main)?.stringValue == "center" ||
+                model.property(.main)?.stringValue == "end" {
+                Spacer(minLength: 0)
+            }
+            ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
+                if let child = backend.model(id: childID) {
+                    LUINodeView(model: child, backend: backend)
+                        .frame(
+                            maxWidth: child.property(.grow)?.doubleValue ?? 0 > 0
+                                ? .infinity : nil,
+                            maxHeight: cross == "stretch"
+                                ? .infinity : nil
+                        )
+                        .layoutPriority(child.property(.grow)?.doubleValue ?? 0)
+                }
+                if model.property(.main)?.stringValue == "space_between" &&
+                    index < model.children.count - 1 {
+                    Spacer(minLength: gap)
+                }
+            }
+            if model.property(.main)?.stringValue == nil ||
+                model.property(.main)?.stringValue == "start" ||
+                model.property(.main)?.stringValue == "center" {
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var gap: CGFloat { CGFloat(model.property(.gap)?.intValue ?? 0) }
+    private var cross: String {
+        model.property(.cross)?.stringValue ?? "stretch"
+    }
+    private var spacing: CGFloat {
+        model.property(.main)?.stringValue == "space_between" ? 0 : gap
+    }
+    private var alignment: VerticalAlignment {
+        switch cross {
+        case "start": .top
+        case "end": .bottom
+        default: .center
+        }
+    }
+}
+
+private struct LUIColumnView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        VStack(alignment: alignment, spacing: spacing) {
+            if model.property(.main)?.stringValue == "center" ||
+                model.property(.main)?.stringValue == "end" {
+                Spacer(minLength: 0)
+            }
+            ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
+                if let child = backend.model(id: childID) {
+                    LUINodeView(model: child, backend: backend)
+                        .frame(
+                            maxWidth: cross == "stretch"
+                                ? .infinity : nil,
+                            maxHeight: child.property(.grow)?.doubleValue ?? 0 > 0
+                                ? .infinity : nil
+                        )
+                        .layoutPriority(child.property(.grow)?.doubleValue ?? 0)
+                }
+                if model.property(.main)?.stringValue == "space_between" &&
+                    index < model.children.count - 1 {
+                    Spacer(minLength: gap)
+                }
+            }
+            if model.property(.main)?.stringValue == nil ||
+                model.property(.main)?.stringValue == "start" ||
+                model.property(.main)?.stringValue == "center" {
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var gap: CGFloat { CGFloat(model.property(.gap)?.intValue ?? 0) }
+    private var cross: String {
+        model.property(.cross)?.stringValue ?? "stretch"
+    }
+    private var spacing: CGFloat {
+        model.property(.main)?.stringValue == "space_between" ? 0 : gap
+    }
+    private var alignment: HorizontalAlignment {
+        switch cross {
+        case "center": .center
+        case "end": .trailing
+        default: .leading
+        }
+    }
+}
+
+private struct LUIGridView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        LazyVGrid(columns: gridItems, spacing: gap) {
+            ForEach(model.children, id: \.self) { childID in
+                if let child = backend.model(id: childID) {
+                    LUINodeView(model: child, backend: backend)
+                }
+            }
+        }
+    }
+
+    private var gap: CGFloat { CGFloat(model.property(.gap)?.intValue ?? 0) }
+    private var columnCount: Int {
+        let requested = model.property(.columns)?.intValue ?? 0
+        return max(1, requested > 0 ? requested : model.children.count)
+    }
+    private var gridItems: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(), spacing: gap),
+            count: columnCount
+        )
     }
 }
 

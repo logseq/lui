@@ -2,11 +2,12 @@
   (:require [ocaml.package/melange-webapi]
             [ocaml.Webapi.Dom.HtmlCollection :as html-collection]
             [lui.protocol :as proto
-             :refer [Row Column Box Text Heading Paragraph Label Button
+             :refer [Row Column Grid Box Text Heading Paragraph Label Button
                      TextInput TextArea Checkbox SwitchControl Scroll Spacer
                      ProgressControl Divider
                      CreateNode DropNode SetProp InsertChild RemoveChild
-                     MoveChild TextValue Enabled Gap PaddingValue
+                     MoveChild TextValue Enabled Gap MainAlignment
+                     CrossAlignment GrowValue GridColumns PaddingValue
                      PaddingHorizontal PaddingVertical
                      BackgroundValue ForegroundValue BorderColorValue
                      BorderWidth CornerRadius
@@ -16,7 +17,7 @@
                      DescribedBy ErrorMessageBy InputType Invalid
                      Checked Indeterminate
                      ProgressValue MinValue MaxValue OrientationValue
-                     StringValue BoolValue IntValue]]
+                     StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
 
 (defn create [host]
@@ -33,6 +34,7 @@
   (match kind
     Row "lui-row"
     Column "lui-column"
+    Grid "lui-grid"
     Box "lui-box"
     Text "lui-text"
     Heading "lui-heading"
@@ -229,6 +231,22 @@
     (Webapi.Dom.Element.setAttribute attribute "" dom-node)
     (Webapi.Dom.Element.removeAttribute attribute dom-node)))
 
+(defn- main-alignment-value [alignment]
+  (match alignment
+    "start" "flex-start"
+    "center" "center"
+    "end" "flex-end"
+    "space_between" "space-between"
+    _ (raise (Invalid_argument "invalid main alignment"))))
+
+(defn- cross-alignment-value [alignment]
+  (match alignment
+    "stretch" "stretch"
+    "start" "flex-start"
+    "center" "center"
+    "end" "flex-end"
+    _ (raise (Invalid_argument "invalid cross alignment"))))
+
 (defn- progress-int [renderer node property fallback]
   (match (retained/property (:web-store renderer) node property)
     (Some (IntValue value)) value
@@ -265,6 +283,29 @@
 
     (tuple Gap (IntValue gap))
     (set-style! dom-node "gap" (str gap "px"))
+
+    (tuple MainAlignment (StringValue alignment))
+    (set-style!
+     dom-node "justify-content" (main-alignment-value alignment))
+
+    (tuple CrossAlignment (StringValue alignment))
+    (set-style! dom-node "align-items" (cross-alignment-value alignment))
+
+    (tuple GrowValue (FloatValue grow))
+    (set-style! dom-node "flex-grow" (str grow))
+
+    (tuple GridColumns (IntValue columns))
+    (if (= columns 0)
+      (do
+        (set-style! dom-node "grid-auto-flow" "column")
+        (set-style! dom-node "grid-auto-columns" "minmax(0, 1fr)")
+        (set-style! dom-node "grid-template-columns" "none"))
+      (do
+        (set-style! dom-node "grid-auto-flow" "row")
+        (set-style! dom-node "grid-auto-columns" "auto")
+        (set-style!
+         dom-node "grid-template-columns"
+         (str "repeat(" columns ", minmax(0, 1fr))"))))
 
     (tuple PaddingValue (IntValue padding))
     (set-style! dom-node "padding" (str padding "px"))

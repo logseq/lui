@@ -321,6 +321,54 @@
     (assert-equal 1 (apple/node-count renderer)
                   "equal bounds describe a valid fixed size")))
 
+(deftest vercel-layout-properties-use-a-closed-wire-contract
+  (let [batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Row)
+                (proto/create-node-op 2 proto/Grid)
+                (proto/set-prop-op
+                 1 proto/MainAlignment (proto/StringValue "space_between"))
+                (proto/set-prop-op
+                 1 proto/CrossAlignment (proto/StringValue "center"))
+                (proto/set-prop-op
+                 1 proto/GrowValue (proto/FloatValue 1.0))
+                (proto/set-prop-op
+                 2 proto/GridColumns (proto/IntValue 3))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"row\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"grid\"},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"main\",\"value\":\"space_between\"},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"cross\",\"value\":\"center\"},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"grow\",\"value\":1.0},"
+      "{\"op\":\"set-prop\",\"id\":2,"
+      "\"property\":\"columns\",\"value\":3}]}" )
+     (wire/encode-batch batch)
+     "layout names match Vercel Native without CSS vocabulary")))
+
+(deftest vercel-layout-values-are-validated-before-enqueue
+  (let [application
+        (runtime/create (sig/scheduler) (apple/backend (apple/create)))
+        row (runtime/create-node! application proto/Row)
+        grid (runtime/create-node! application proto/Grid)]
+    (doseq [constraint
+            [(tuple row proto/MainAlignment (proto/StringValue "between"))
+             (tuple row proto/CrossAlignment (proto/StringValue "baseline"))
+             (tuple row proto/GrowValue (proto/FloatValue -1.0))
+             (tuple grid proto/GridColumns (proto/IntValue -1))]]
+      (match constraint
+        (tuple node property value)
+        (is (thrown-with-msg?
+             Invalid_argument
+             #"invalid property value"
+             (runtime/set-prop! application node property value))
+            "invalid layout values never enter a patch batch")))))
+
 (deftest form-controls-retain-typed-accessibility-relationships
   (let [renderer (apple/create)
         application

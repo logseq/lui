@@ -14,8 +14,8 @@
             [lui.switch :as switch]
             [lui.macros :refer [defui state effect platform host]]
             [lui.backend.apple :as apple
-             :refer [AppleBox AppleCheckbox AppleColumn AppleFormLabel AppleHeading
-                     AppleDivider AppleParagraph AppleProgress AppleSwitch
+             :refer [AppleBox AppleCheckbox AppleColumn AppleFormLabel AppleGrid
+                     AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSwitch
                      AppleTextInput]]
             [lui.backend.flutter :as flutter]))
 
@@ -53,6 +53,16 @@
     :min-width 80
     :max-width 160
     :class "profile-loading"}])
+
+(defui vercel-layout-primitives []
+  [:column {:gap 12 :main "center" :cross "stretch"}
+   [:row {:gap 8 :main "space_between" :cross "end"}
+    [:text {:grow 1.0} "Leading"]
+    [:text "Trailing"]]
+   [:grid {:columns 2 :gap 6}
+    [:text "One"]
+    [:text "Two"]
+    [:text "Three"]]])
 
 (defui current-platform-profile []
   (tuple (platform) (host)))
@@ -304,6 +314,45 @@
           (assert-equal expected value
                         "component sizing flows through shared Surface props")
           _ (is false "Skeleton retains its size constraints"))))))
+
+(deftest vercel-layout-primitives-lower-without-an-extra-flex-api
+  (let [renderer (apple/create)
+        application
+        (runtime/create (sig/scheduler) (apple/backend renderer))
+        root
+        (vercel-layout-primitives
+         (ui/context application (sig/scope "vercel-layout")))]
+    (runtime/flush! application)
+    (let [children (apple/children renderer root)
+          row (nth children 0)
+          grid (nth children 1)
+          leading (nth (apple/children renderer row) 0)]
+      (match (apple/node renderer root)
+        (Some AppleColumn) (is true "Column remains the vertical primitive")
+        _ (is false "the root is a retained Column"))
+      (match (apple/node renderer row)
+        (Some AppleRow) (is true "Row remains the horizontal primitive")
+        _ (is false "the first child is a retained Row"))
+      (match (apple/node renderer grid)
+        (Some AppleGrid) (is true "Grid is one semantic retained primitive")
+        _ (is false "the second child is a retained Grid"))
+      (doseq [constraint
+              [(tuple root proto/MainAlignment
+                      (proto/StringValue "center"))
+               (tuple root proto/CrossAlignment
+                      (proto/StringValue "stretch"))
+               (tuple row proto/MainAlignment
+                      (proto/StringValue "space_between"))
+               (tuple row proto/CrossAlignment
+                      (proto/StringValue "end"))
+               (tuple leading proto/GrowValue (proto/FloatValue 1.0))
+               (tuple grid proto/GridColumns (proto/IntValue 2))]]
+        (match constraint
+          (tuple node property expected)
+          (assert-equal
+           (Some expected)
+           (apple/property renderer node property)
+           "layout attrs retain the exact Vercel Native vocabulary"))))))
 
 (deftest semantic-builders-produce-retained-ui
   (let [scheduler (sig/scheduler)

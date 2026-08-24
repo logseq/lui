@@ -1,6 +1,6 @@
 (ns lui.backend.apple
   (:require [lui.protocol :as proto
-             :refer [Row Column Box Text Heading Paragraph Label Button
+             :refer [Row Column Grid Box Text Heading Paragraph Label Button
                      TextInput TextArea Scroll Spacer
                      Checkbox SwitchControl
                      ProgressControl Divider]]
@@ -21,6 +21,7 @@
   (match kind
     Row AppleRow
     Column AppleColumn
+    Grid AppleGrid
     Box AppleBox
     Text AppleLabel
     Heading AppleHeading

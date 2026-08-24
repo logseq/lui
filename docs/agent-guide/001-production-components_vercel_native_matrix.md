@@ -55,6 +55,11 @@ reference API contains it. This explicitly excludes public `:flex`,
 
 These adaptations cannot change defaults or introduce additional state.
 
+Vercel Native's markup-language constructs are intentionally out of scope.
+`template`, `use`, `import`, `if`, `else` and `for` are replaced by LG
+functions, macros, `defui`, ordinary conditionals and keyed collection APIs.
+LUI does not add a markup parser or a second template system.
+
 ## Element inventory
 
 The following names are the public target. Qualified LUI-only part names are

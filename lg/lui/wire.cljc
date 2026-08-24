@@ -1,11 +1,12 @@
 (ns lui.wire
   (:require [clojure.string :as string]
             [lui.protocol
-             :refer [Row Column Box Text Heading Paragraph Label Button
+             :refer [Row Column Grid Box Text Heading Paragraph Label Button
                      TextInput TextArea Scroll Spacer
                      Checkbox SwitchControl
                      ProgressControl Divider
-                     TextValue Enabled Gap PaddingValue
+                     TextValue Enabled Gap MainAlignment CrossAlignment
+                     GrowValue GridColumns PaddingValue
                      PaddingHorizontal PaddingVertical
                      BackgroundValue ForegroundValue BorderColorValue
                      BorderWidth CornerRadius
@@ -15,7 +16,7 @@
                      ErrorMessageBy InputType Invalid
                      Checked Indeterminate
                      ProgressValue MinValue MaxValue OrientationValue
-                     StringValue BoolValue IntValue
+                     StringValue BoolValue IntValue FloatValue
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild]]))
 
@@ -35,6 +36,7 @@
   (match kind
     Row "row"
     Column "column"
+    Grid "grid"
     Box "box"
     Text "text"
     Heading "heading"
@@ -55,6 +57,10 @@
     TextValue "text"
     Enabled "enabled"
     Gap "gap"
+    MainAlignment "main"
+    CrossAlignment "cross"
+    GrowValue "grow"
+    GridColumns "columns"
     PaddingValue "padding"
     PaddingHorizontal "padding-horizontal"
     PaddingVertical "padding-vertical"
@@ -92,7 +98,15 @@
   (match value
     (StringValue text) (quoted text)
     (BoolValue enabled) (if enabled "true" "false")
-    (IntValue number) (str number)))
+    (IntValue number) (str number)
+    (FloatValue number)
+    (let [encoded (str number)]
+      (cond
+        (string/ends-with? encoded ".") (str encoded "0")
+        (and (not (string/includes? encoded "."))
+             (not (string/includes? encoded "e"))
+             (not (string/includes? encoded "E"))) (str encoded ".0")
+        :else encoded))))
 
 (defn- encode-op [operation]
   (match operation

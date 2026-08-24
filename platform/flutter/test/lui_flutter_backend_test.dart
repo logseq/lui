@@ -311,6 +311,79 @@ void main() {
     expect(backend.debugRevision(1), revision);
   });
 
+  testWidgets('maps the Vercel Native layout vocabulary to Flutter widgets', (
+    tester,
+  ) async {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"row"},
+        {"op":"create-node","id":2,"kind":"box"},
+        {"op":"create-node","id":3,"kind":"box"},
+        {"op":"create-node","id":4,"kind":"grid"},
+        {"op":"create-node","id":5,"kind":"box"},
+        {"op":"create-node","id":6,"kind":"box"},
+        {"op":"set-prop","id":1,"property":"width","value":300},
+        {"op":"set-prop","id":1,"property":"height","value":100},
+        {"op":"set-prop","id":1,"property":"main","value":"space_between"},
+        {"op":"set-prop","id":1,"property":"cross","value":"end"},
+        {"op":"set-prop","id":2,"property":"grow","value":1.0},
+        {"op":"set-prop","id":2,"property":"height","value":20},
+        {"op":"set-prop","id":3,"property":"width","value":50},
+        {"op":"set-prop","id":3,"property":"height","value":20},
+        {"op":"set-prop","id":4,"property":"width","value":300},
+        {"op":"set-prop","id":4,"property":"columns","value":2},
+        {"op":"set-prop","id":4,"property":"gap","value":6},
+        {"op":"set-prop","id":5,"property":"height","value":20},
+        {"op":"set-prop","id":6,"property":"height","value":20},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":4,"child":5,"index":0},
+        {"op":"insert-child","parent":4,"child":6,"index":1}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: backend.widget(node: 1),
+          ),
+        ),
+      ),
+    );
+
+    final row = tester.widget<Row>(find.byType(Row).first);
+    expect(row.mainAxisAlignment, MainAxisAlignment.spaceBetween);
+    expect(row.crossAxisAlignment, CrossAxisAlignment.end);
+    expect(tester.getSize(find.byKey(LUIFlutterBackend.nodeKey(2))).width, 250);
+    expect(tester.getTopLeft(find.byKey(LUIFlutterBackend.nodeKey(2))).dy, 80);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: backend.widget(node: 4),
+          ),
+        ),
+      ),
+    );
+    expect(tester.getSize(find.byKey(LUIFlutterBackend.nodeKey(5))).width, 147);
+    expect(tester.getTopLeft(find.byKey(LUIFlutterBackend.nodeKey(6))).dx, 153);
+
+    expect(
+      () => backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":1,"property":"main","value":"between"}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 1);
+  });
+
   testWidgets('maps progress ranges to one retained LinearProgressIndicator', (
     tester,
   ) async {

@@ -49,11 +49,31 @@
 (defn orientation-supported? [value]
   (or (= value "horizontal") (= value "vertical")))
 
+(defn main-alignment-supported? [value]
+  (or
+   (= value "start")
+   (= value "center")
+   (= value "end")
+   (= value "space_between")))
+
+(defn cross-alignment-supported? [value]
+  (or
+   (= value "stretch")
+   (= value "start")
+   (= value "center")
+   (= value "end")))
+
 (defn property-supported? [kind property]
   (match property
+    MainAlignment (or (= kind Row) (= kind Column))
+    CrossAlignment (or (= kind Row) (= kind Column))
+    GrowValue true
+    GridColumns (= kind Grid)
     PaddingValue true
-    PaddingHorizontal (or (= kind Row) (= kind Column) (= kind Box))
-    PaddingVertical (or (= kind Row) (= kind Column) (= kind Box))
+    PaddingHorizontal
+    (or (= kind Row) (= kind Column) (= kind Grid) (= kind Box))
+    PaddingVertical
+    (or (= kind Row) (= kind Column) (= kind Grid) (= kind Box))
     BackgroundValue true
     ForegroundValue
     (match kind
@@ -123,13 +143,20 @@
     (match kind
       Row true
       Column true
+      Grid true
       _ false)))
 
 (defn property-value-supported? [property value]
   (match (tuple property value)
     (tuple TextValue (StringValue _value)) true
     (tuple Enabled (BoolValue _value)) true
-    (tuple Gap (IntValue _value)) true
+    (tuple Gap (IntValue value)) (>= value 0)
+    (tuple MainAlignment (StringValue value))
+    (main-alignment-supported? value)
+    (tuple CrossAlignment (StringValue value))
+    (cross-alignment-supported? value)
+    (tuple GrowValue (FloatValue value)) (>= value 0.0)
+    (tuple GridColumns (IntValue value)) (>= value 0)
     (tuple PaddingValue (IntValue _value)) true
     (tuple PaddingHorizontal (IntValue value)) (>= value 0)
     (tuple PaddingVertical (IntValue value)) (>= value 0)
@@ -202,6 +229,7 @@
   (match kind
     Row true
     Column true
+    Grid true
     Box true
     Scroll true
     SwitchControl true

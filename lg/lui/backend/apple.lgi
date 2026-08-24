@@ -3,6 +3,7 @@
 (type-variant apple-node
   (AppleRow)
   (AppleColumn)
+  (AppleGrid)
   (AppleBox)
   (AppleLabel)
   (AppleHeading)

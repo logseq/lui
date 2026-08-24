@@ -69,6 +69,7 @@ final class LUIBackendException implements Exception {
 enum _NodeKind {
   row,
   column,
+  grid,
   box,
   text,
   heading,
@@ -218,7 +219,16 @@ final class LUIFlutterBackend {
   Widget _buildNode(BuildContext context, int id) {
     final state = _requireState(_states, id);
     final children = state.children
-        .map((child) => widget(node: child))
+        .map((child) {
+          final childWidget = widget(node: child);
+          if (state.kind != _NodeKind.row && state.kind != _NodeKind.column) {
+            return childWidget;
+          }
+          final grow = _states[child]?.properties['grow'] as num? ?? 0;
+          if (grow <= 0) return childWidget;
+          final scaled = (grow * 1000).round();
+          return Expanded(flex: scaled < 1 ? 1 : scaled, child: childWidget);
+        })
         .toList(growable: false);
     final enabled = state.properties['enabled'] as bool? ?? true;
     final text = state.properties['text'] as String? ?? '';
@@ -258,6 +268,8 @@ final class LUIFlutterBackend {
       if (invalid && errorMessage != null) errorMessage,
     ].join(' ');
     final gap = (state.properties['gap'] as int? ?? 0).toDouble();
+    final main = state.properties['main'] as String? ?? 'start';
+    final cross = state.properties['cross'] as String? ?? 'stretch';
     final headingLevel = state.properties['heading-level'] as int? ?? 1;
     Widget textControl({required bool multiline}) => SizedBox(
       width: 240,
@@ -284,17 +296,63 @@ final class LUIFlutterBackend {
         ),
       ),
     );
+    Widget grid() => LayoutBuilder(
+      builder: (context, constraints) {
+        final requested = state.properties['columns'] as int? ?? 0;
+        final columns = requested > 0
+            ? requested
+            : (children.isEmpty ? 1 : children.length);
+        final available = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : 0.0;
+        final cellWidth = available > 0
+            ? (available - gap * (columns - 1)) / columns
+            : 0.0;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: children
+              .map(
+                (child) => cellWidth > 0
+                    ? SizedBox(width: cellWidth, child: child)
+                    : child,
+              )
+              .toList(growable: false),
+        );
+      },
+    );
+    Widget row() => LayoutBuilder(
+      builder: (context, constraints) => Row(
+        mainAxisSize: constraints.hasBoundedWidth
+            ? MainAxisSize.max
+            : MainAxisSize.min,
+        mainAxisAlignment: _mainAxisAlignment(main),
+        crossAxisAlignment: _crossAxisAlignment(
+          cross,
+          canStretch: constraints.hasBoundedHeight,
+        ),
+        spacing: gap,
+        children: children,
+      ),
+    );
+    Widget column() => LayoutBuilder(
+      builder: (context, constraints) => Column(
+        mainAxisSize: constraints.hasBoundedHeight
+            ? MainAxisSize.max
+            : MainAxisSize.min,
+        mainAxisAlignment: _mainAxisAlignment(main),
+        crossAxisAlignment: _crossAxisAlignment(
+          cross,
+          canStretch: constraints.hasBoundedWidth,
+        ),
+        spacing: gap,
+        children: children,
+      ),
+    );
     final content = switch (state.kind) {
-      _NodeKind.row => Row(
-        mainAxisSize: MainAxisSize.min,
-        spacing: gap,
-        children: children,
-      ),
-      _NodeKind.column => Column(
-        mainAxisSize: MainAxisSize.min,
-        spacing: gap,
-        children: children,
-      ),
+      _NodeKind.row => row(),
+      _NodeKind.column => column(),
+      _NodeKind.grid => grid(),
       _NodeKind.box => Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -512,6 +570,16 @@ final class LUIFlutterBackend {
 
   static bool _supports(_NodeKind kind, String property, Object? value) {
     return switch (property) {
+      'main' =>
+        value is String &&
+            _mainAlignments.contains(value) &&
+            (kind == _NodeKind.row || kind == _NodeKind.column),
+      'cross' =>
+        value is String &&
+            _crossAlignments.contains(value) &&
+            (kind == _NodeKind.row || kind == _NodeKind.column),
+      'grow' => value is num && value.isFinite && value >= 0,
+      'columns' => value is int && value >= 0 && kind == _NodeKind.grid,
       'text' =>
         value is String &&
             (kind == _NodeKind.text ||
@@ -534,13 +602,18 @@ final class LUIFlutterBackend {
             (value == 'horizontal' || value == 'vertical') &&
             kind == _NodeKind.divider,
       'gap' =>
-        value is int && (kind == _NodeKind.row || kind == _NodeKind.column),
+        value is int &&
+            value >= 0 &&
+            (kind == _NodeKind.row ||
+                kind == _NodeKind.column ||
+                kind == _NodeKind.grid),
       'padding' => value is int,
       'padding-horizontal' || 'padding-vertical' =>
         value is int &&
             value >= 0 &&
             (kind == _NodeKind.row ||
                 kind == _NodeKind.column ||
+                kind == _NodeKind.grid ||
                 kind == _NodeKind.box),
       'background' => value is String,
       'foreground' =>
@@ -655,6 +728,7 @@ final class LUIFlutterBackend {
   static bool _canContainChildren(_NodeKind kind) =>
       kind == _NodeKind.row ||
       kind == _NodeKind.column ||
+      kind == _NodeKind.grid ||
       kind == _NodeKind.box ||
       kind == _NodeKind.scroll ||
       kind == _NodeKind.switchControl;
@@ -691,6 +765,7 @@ final class LUIFlutterBackend {
   static _NodeKind _kind(Object? value) => switch (_string(value, 'kind')) {
     'row' => _NodeKind.row,
     'column' => _NodeKind.column,
+    'grid' => _NodeKind.grid,
     'box' => _NodeKind.box,
     'text' => _NodeKind.text,
     'heading' => _NodeKind.heading,
@@ -771,6 +846,23 @@ final class LUIFlutterBackend {
     };
   }
 
+  static MainAxisAlignment _mainAxisAlignment(String value) => switch (value) {
+    'center' => MainAxisAlignment.center,
+    'end' => MainAxisAlignment.end,
+    'space_between' => MainAxisAlignment.spaceBetween,
+    _ => MainAxisAlignment.start,
+  };
+
+  static CrossAxisAlignment _crossAxisAlignment(
+    String value, {
+    required bool canStretch,
+  }) => switch (value) {
+    'start' => CrossAxisAlignment.start,
+    'center' => CrossAxisAlignment.center,
+    'end' => CrossAxisAlignment.end,
+    _ => canStretch ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
+  };
+
   String? _relatedText(_NodeState state, String property) {
     final related = state.properties[property] as int?;
     return related == null
@@ -809,6 +901,10 @@ final class LUIFlutterBackend {
     'url',
     'week',
   };
+
+  static const _mainAlignments = {'start', 'center', 'end', 'space_between'};
+
+  static const _crossAlignments = {'stretch', 'start', 'center', 'end'};
 
   static const _relationshipProperties = {
     'labelled-by',
