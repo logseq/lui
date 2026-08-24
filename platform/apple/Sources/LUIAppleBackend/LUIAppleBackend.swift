@@ -181,9 +181,35 @@ public final class LUIAppleBackend {
                 let inset = CGFloat(padding)
                 stack.edgeInsets = NSEdgeInsets(top: inset, left: inset, bottom: inset, right: inset)
             }
+        case let (.paddingHorizontal, .int(padding)):
+            if let stack = view as? NSStackView {
+                let inset = CGFloat(padding)
+                stack.edgeInsets.left = inset
+                stack.edgeInsets.right = inset
+            }
+        case let (.paddingVertical, .int(padding)):
+            if let stack = view as? NSStackView {
+                let inset = CGFloat(padding)
+                stack.edgeInsets.top = inset
+                stack.edgeInsets.bottom = inset
+            }
         case let (.background, .string(color)):
             view.wantsLayer = true
             view.layer?.backgroundColor = Self.color(named: color).cgColor
+        case let (.foreground, .string(color)):
+            let resolved = Self.color(named: color)
+            (view as? NSTextField)?.textColor = resolved
+            (view as? NSButton)?.contentTintColor = resolved
+            (view as? LUIAppKitTextArea)?.textView.textColor = resolved
+        case let (.borderColor, .string(color)):
+            view.wantsLayer = true
+            view.layer?.borderColor = Self.color(named: color).cgColor
+        case let (.borderWidth, .int(width)):
+            view.wantsLayer = true
+            view.layer?.borderWidth = CGFloat(width)
+        case let (.cornerRadius, .int(radius)):
+            view.wantsLayer = true
+            view.layer?.cornerRadius = CGFloat(radius)
         case let (.placeholder, .string(placeholder)):
             (view as? NSTextField)?.placeholderString = placeholder
             (view as? LUIAppKitTextArea)?.placeholder = placeholder
@@ -327,6 +353,20 @@ public final class LUIAppleBackend {
 
     private static func color(named name: String) -> NSColor {
         switch name.lowercased() {
+        case "transparent": .clear
+        case "background": .windowBackgroundColor
+        case "foreground": .labelColor
+        case "primary": .controlAccentColor
+        case "primary-foreground": .selectedControlTextColor
+        case "secondary": .controlBackgroundColor
+        case "secondary-foreground": .labelColor
+        case "success": .systemGreen.withAlphaComponent(0.15)
+        case "success-foreground": .systemGreen
+        case "warning": .systemOrange.withAlphaComponent(0.15)
+        case "warning-foreground": .systemOrange
+        case "error": .systemRed.withAlphaComponent(0.15)
+        case "error-foreground": .systemRed
+        case "border": .separatorColor
         case "black": .black
         case "white": .white
         case "red": .systemRed

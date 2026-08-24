@@ -65,3 +65,18 @@ test("the production stylesheet contains the Solid UI toggle contracts", async (
   assert.match(css, /\.lui-switch:has\(\[data-invalid\]\) \.lui-switch-error-message/)
   assert.doesNotMatch(css, /\.size-4\{/)
 })
+
+test("the production stylesheet contains the Solid UI Badge contract", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-badge\{[^}]*display:inline-flex/)
+  assert.match(css, /\.lui-badge\{[^}]*border-radius:var\(--radius-md\)/)
+  assert.match(css, /\.lui-badge--default\{[^}]*background-color:var\(--color-primary\)/)
+  assert.match(css, /\.lui-badge--secondary\{[^}]*background-color:var\(--color-secondary\)/)
+  assert.match(css, /\.lui-badge--outline\{[^}]*color:var\(--color-foreground\)/)
+  assert.match(css, /\.lui-badge--success\{[^}]*background-color:var\(--color-success\)/)
+  assert.match(css, /\.lui-badge--warning\{[^}]*background-color:var\(--color-warning\)/)
+  assert.match(css, /\.lui-badge--error\{[^}]*background-color:var\(--color-error\)/)
+  assert.match(css, /\.lui-badge--round\{[^}]*border-radius:3\.40282e38px/)
+  assert.doesNotMatch(css, /\.rounded-full\{/)
+})

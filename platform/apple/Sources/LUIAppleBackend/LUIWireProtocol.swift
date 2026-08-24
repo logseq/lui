@@ -20,6 +20,12 @@ enum LUINodeKind: String, Decodable {
 
 enum LUIProperty: String, Decodable {
     case text, enabled, gap, padding, background, placeholder
+    case paddingHorizontal = "padding-horizontal"
+    case paddingVertical = "padding-vertical"
+    case foreground
+    case borderColor = "border-color"
+    case borderWidth = "border-width"
+    case cornerRadius = "corner-radius"
     case readOnly = "read-only"
     case accessibilityLabel = "accessibility-label"
     case minLines = "min-lines"
@@ -114,6 +120,11 @@ enum LUIWireValue: Decodable {
         case let (.inputType, .string(type)): Self.inputTypes.contains(type)
         case (.invalid, .bool): true
         case (.checked, .bool), (.indeterminate, .bool): true
+        case (.foreground, .string), (.borderColor, .string): true
+        case let (.paddingHorizontal, .int(value)),
+             let (.paddingVertical, .int(value)),
+             let (.borderWidth, .int(value)),
+             let (.cornerRadius, .int(value)): value >= 0
         case (.text, .string), (.enabled, .bool), (.gap, .int),
              (.padding, .int), (.background, .string),
              (.placeholder, .string), (.readOnly, .bool),
@@ -219,7 +230,14 @@ struct LUIRetainedTree {
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         switch property {
-        case .padding, .background, .styleClass: true
+        case .padding, .background, .borderColor, .borderWidth,
+             .cornerRadius, .styleClass: true
+        case .paddingHorizontal, .paddingVertical:
+            kind == .row || kind == .column || kind == .box
+        case .foreground:
+            kind == .text || kind == .heading || kind == .paragraph ||
+                kind == .label || kind == .button || kind == .textInput ||
+                kind == .textArea || kind == .checkbox
         case .text:
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
                 kind == .button || kind == .textInput || kind == .textArea

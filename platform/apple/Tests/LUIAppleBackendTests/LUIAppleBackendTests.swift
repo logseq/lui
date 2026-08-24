@@ -171,6 +171,49 @@ struct LUIAppleBackendTests {
         #expect(paragraph.stringValue == "Manage your profile.")
     }
 
+    @Test("applies reusable Surface styles without replacing native views")
+    func appliesSurfaceStyles() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"row"},
+          {"op":"create-node","id":2,"kind":"text"},
+          {"op":"set-prop","id":1,"property":"padding-horizontal","value":10},
+          {"op":"set-prop","id":1,"property":"padding-vertical","value":2},
+          {"op":"set-prop","id":1,"property":"background","value":"success"},
+          {"op":"set-prop","id":1,"property":"border-color","value":"success-foreground"},
+          {"op":"set-prop","id":1,"property":"border-width","value":1},
+          {"op":"set-prop","id":1,"property":"corner-radius","value":6},
+          {"op":"set-prop","id":2,"property":"foreground","value":"success-foreground"},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+
+        let row = try #require(backend.view(id: 1) as? NSStackView)
+        let label = try #require(backend.view(id: 2) as? NSTextField)
+        let originalRow = row
+        let originalLabel = label
+        #expect(row.edgeInsets.top == 2)
+        #expect(row.edgeInsets.left == 10)
+        #expect(row.edgeInsets.bottom == 2)
+        #expect(row.edgeInsets.right == 10)
+        #expect(row.layer?.borderWidth == 1)
+        #expect(row.layer?.cornerRadius == 6)
+        #expect(row.layer?.backgroundColor != nil)
+        #expect(row.layer?.borderColor != nil)
+        #expect(label.textColor != nil)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"corner-radius","value":999},
+          {"op":"set-prop","id":1,"property":"background","value":"error"}
+        ]}
+        """)
+        #expect(backend.view(id: 1) === originalRow)
+        #expect(backend.view(id: 2) === originalLabel)
+        #expect(row.layer?.cornerRadius == 999)
+    }
+
     @Test("retains form labels, descriptions, errors, and input type")
     func retainsFormRelationships() throws {
         let backend = LUIAppleBackend()

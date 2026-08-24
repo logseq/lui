@@ -262,10 +262,40 @@
    (:ui-application context) node proto/PaddingValue
    (proto/IntValue padding)))
 
+(defn padding-horizontal! [context node padding]
+  (runtime/set-prop!
+   (:ui-application context) node proto/PaddingHorizontal
+   (proto/IntValue padding)))
+
+(defn padding-vertical! [context node padding]
+  (runtime/set-prop!
+   (:ui-application context) node proto/PaddingVertical
+   (proto/IntValue padding)))
+
 (defn background! [context node color]
   (runtime/set-prop!
    (:ui-application context) node proto/BackgroundValue
    (proto/StringValue color)))
+
+(defn foreground! [context node color]
+  (runtime/set-prop!
+   (:ui-application context) node proto/ForegroundValue
+   (proto/StringValue color)))
+
+(defn border-color! [context node color]
+  (runtime/set-prop!
+   (:ui-application context) node proto/BorderColorValue
+   (proto/StringValue color)))
+
+(defn border-width! [context node width]
+  (runtime/set-prop!
+   (:ui-application context) node proto/BorderWidth
+   (proto/IntValue width)))
+
+(defn corner-radius! [context node radius]
+  (runtime/set-prop!
+   (:ui-application context) node proto/CornerRadius
+   (proto/IntValue radius)))
 
 (defn placeholder! [context node placeholder]
   (runtime/set-prop!

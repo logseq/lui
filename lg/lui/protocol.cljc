@@ -49,7 +49,23 @@
 (defn property-supported? [kind property]
   (match property
     PaddingValue true
+    PaddingHorizontal (or (= kind Row) (= kind Column) (= kind Box))
+    PaddingVertical (or (= kind Row) (= kind Column) (= kind Box))
     BackgroundValue true
+    ForegroundValue
+    (match kind
+      Text true
+      Heading true
+      Paragraph true
+      Label true
+      Button true
+      TextInput true
+      TextArea true
+      Checkbox true
+      _ false)
+    BorderColorValue true
+    BorderWidth true
+    CornerRadius true
     StyleClass true
     AccessibilityLabel
     (or (= kind TextInput) (= kind TextArea)
@@ -101,7 +117,13 @@
     (tuple Enabled (BoolValue _value)) true
     (tuple Gap (IntValue _value)) true
     (tuple PaddingValue (IntValue _value)) true
+    (tuple PaddingHorizontal (IntValue value)) (>= value 0)
+    (tuple PaddingVertical (IntValue value)) (>= value 0)
     (tuple BackgroundValue (StringValue _value)) true
+    (tuple ForegroundValue (StringValue _value)) true
+    (tuple BorderColorValue (StringValue _value)) true
+    (tuple BorderWidth (IntValue value)) (>= value 0)
+    (tuple CornerRadius (IntValue value)) (>= value 0)
     (tuple PlaceholderValue (StringValue _value)) true
     (tuple ReadOnly (BoolValue _value)) true
     (tuple AccessibilityLabel (StringValue _value)) true

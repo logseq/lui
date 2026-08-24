@@ -194,8 +194,41 @@ public final class LUIUIKitBackend {
                     trailing: inset
                 )
             }
+        case let (.paddingHorizontal, .int(padding)):
+            if let stack = view as? UIStackView {
+                let inset = CGFloat(padding)
+                var margins = stack.directionalLayoutMargins
+                stack.isLayoutMarginsRelativeArrangement = true
+                margins.leading = inset
+                margins.trailing = inset
+                stack.directionalLayoutMargins = margins
+            }
+        case let (.paddingVertical, .int(padding)):
+            if let stack = view as? UIStackView {
+                let inset = CGFloat(padding)
+                var margins = stack.directionalLayoutMargins
+                stack.isLayoutMarginsRelativeArrangement = true
+                margins.top = inset
+                margins.bottom = inset
+                stack.directionalLayoutMargins = margins
+            }
         case let (.background, .string(color)):
             view.backgroundColor = Self.color(named: color)
+        case let (.foreground, .string(color)):
+            let resolved = Self.color(named: color)
+            (view as? UILabel)?.textColor = resolved
+            (view as? UITextField)?.textColor = resolved
+            (view as? UITextView)?.textColor = resolved
+            if let button = view as? UIButton {
+                button.tintColor = resolved
+                button.setTitleColor(resolved, for: .normal)
+            }
+        case let (.borderColor, .string(color)):
+            view.layer.borderColor = Self.color(named: color).cgColor
+        case let (.borderWidth, .int(width)):
+            view.layer.borderWidth = CGFloat(width)
+        case let (.cornerRadius, .int(radius)):
+            view.layer.cornerRadius = CGFloat(radius)
         case let (.placeholder, .string(placeholder)):
             (view as? UITextField)?.placeholder = placeholder
             (view as? LUIUIKitTextArea)?.placeholder = placeholder
@@ -364,6 +397,20 @@ public final class LUIUIKitBackend {
 
     private static func color(named name: String) -> UIColor {
         switch name.lowercased() {
+        case "transparent": .clear
+        case "background": .systemBackground
+        case "foreground": .label
+        case "primary": .systemBlue
+        case "primary-foreground": .white
+        case "secondary": .secondarySystemBackground
+        case "secondary-foreground": .label
+        case "success": .systemGreen.withAlphaComponent(0.15)
+        case "success-foreground": .systemGreen
+        case "warning": .systemOrange.withAlphaComponent(0.15)
+        case "warning-foreground": .systemOrange
+        case "error": .systemRed.withAlphaComponent(0.15)
+        case "error-foreground": .systemRed
+        case "border": .separator
         case "black": .black
         case "white": .white
         case "red": .systemRed

@@ -178,6 +178,52 @@ checked, disabled, indeterminate or invalid state.
   component contract explicitly exposes it.
 - Selection collections use stable keys, not child indices.
 
+## Primitive admission and composition
+
+A public component does not automatically become a retained protocol node.
+Add a semantic primitive only when at least one backend needs a distinct
+platform object to preserve native behavior, accessibility, events, transient
+state or lifecycle. `TextField`, `Switch` and the progress control satisfy this
+rule. Visual families such as Badge, Card and Skeleton do not.
+
+Composition still uses each platform's provided UI APIs. A composed `Row` is a
+real flex container on Web, `NSStackView` on AppKit, `UIStackView` on UIKit and
+`Row` on Flutter. Backgrounds, insets, borders and corner radii map to CSS,
+native view/layer properties and Flutter decoration APIs. Composition never
+means implementing a parallel renderer or drawing system.
+
+The first reusable Surface property set is:
+
+- `PaddingHorizontal` and `PaddingVertical`, expressed in platform logical
+  points;
+- `ForegroundValue` and `BackgroundValue`, resolved from semantic color names;
+- `BorderColorValue`, `BorderWidth` and `CornerRadius`.
+
+Numeric surface values are non-negative. These properties apply to retained
+primitives and patch the existing platform object. Component-specific classes
+remain Web-only visual selectors and are not interpreted as native styling.
+
+### Badge contract
+
+Badge proves the composition boundary: it is a retained `Row` containing its
+content primitives and never introduces a `Badge` node kind. It matches Solid
+UI's `default`, `secondary`, `outline`, `success`, `warning` and `error`
+variants plus `round` and `class` overrides:
+
+```clojure
+[:badge "Default"]
+[:badge {:variant "success" :round true} "Synchronized"]
+```
+
+Web visuals come from `lui-badge`, `lui-badge--<variant>` and
+`lui-badge--round` Tailwind component rules. Native backends receive the same
+variant as reusable Surface properties on the Row and foreground styling on
+its text content. Flutter uses `Row`, `Container` decoration and `Text`; UIKit
+uses `UIStackView`, `UILabel` and standard view/layer APIs; AppKit uses
+`NSStackView`, `NSTextField` and standard view/layer APIs. SwiftUI integration
+continues to host the same retained UIKit root rather than maintaining another
+Badge state tree.
+
 ## Primitive protocol design
 
 The retained protocol grows by semantic capability rather than one node kind

@@ -65,6 +65,18 @@
     [:card/footer
      [:button {:on-press (fn [_event] true)} "Save changes"]]]])
 
+(defui badge-gallery []
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Badge"]
+   [:row {:gap 8}
+    [:badge "Default"]
+    [:badge {:variant "secondary"} "Secondary"]
+    [:badge {:variant "outline"} "Outline"]
+    [:badge {:variant "success"} "Success"]
+    [:badge {:variant "warning"} "Warning"]
+    [:badge {:variant "error"} "Error"]
+    [:badge {:round true} "Round"]]])
+
 (defui text-field-gallery
   [value-source invalid-source disabled-source update-value toggle-invalid]
   [:column {:gap 24 :padding 32}
@@ -134,6 +146,7 @@
    update-toggle toggle-indeterminate toggle-toggle-invalid]
   [:column
    [button-gallery disabled-source toggle-disabled]
+   [badge-gallery]
    [card-gallery card-copy]
    [text-field-gallery
     value-source invalid-source disabled-source update-value toggle-invalid]

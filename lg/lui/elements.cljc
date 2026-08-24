@@ -48,8 +48,28 @@
    (if (:padding attrs)
      [`(lui.ui/padding! ~context ~node ~(:padding attrs))]
      [])
+   (if (:padding-horizontal attrs)
+     [`(lui.ui/padding-horizontal!
+        ~context ~node ~(:padding-horizontal attrs))]
+     [])
+   (if (:padding-vertical attrs)
+     [`(lui.ui/padding-vertical!
+        ~context ~node ~(:padding-vertical attrs))]
+     [])
    (if (:background attrs)
      [`(lui.ui/background! ~context ~node ~(:background attrs))]
+     [])
+   (if (:foreground attrs)
+     [`(lui.ui/foreground! ~context ~node ~(:foreground attrs))]
+     [])
+   (if (:border-color attrs)
+     [`(lui.ui/border-color! ~context ~node ~(:border-color attrs))]
+     [])
+   (if (:border-width attrs)
+     [`(lui.ui/border-width! ~context ~node ~(:border-width attrs))]
+     [])
+   (if (:corner-radius attrs)
+     [`(lui.ui/corner-radius! ~context ~node ~(:corner-radius attrs))]
      [])
    (if (:class attrs)
      [`(lui.ui/style-class! ~context ~node ~(:class attrs))]
@@ -64,6 +84,66 @@
     (if (:class attrs)
       (str resolved " " (:class attrs))
       resolved)))
+
+(macro-helper-defn badge-variant [attrs]
+  (if (:variant attrs) (:variant attrs) "default"))
+
+(macro-helper-defn badge-background [variant]
+  (cond
+    (= variant "default") "primary"
+    (= variant "secondary") "secondary"
+    (= variant "outline") "transparent"
+    (= variant "success") "success"
+    (= variant "warning") "warning"
+    (= variant "error") "error"
+    :else
+    (throw
+     (IllegalArgumentException.
+      (str "unsupported Badge variant: " variant)))))
+
+(macro-helper-defn badge-foreground [variant]
+  (cond
+    (= variant "default") "primary-foreground"
+    (= variant "secondary") "secondary-foreground"
+    (= variant "outline") "foreground"
+    (= variant "success") "success-foreground"
+    (= variant "warning") "warning-foreground"
+    (= variant "error") "error-foreground"
+    :else
+    (throw
+     (IllegalArgumentException.
+      (str "unsupported Badge variant: " variant)))))
+
+(macro-helper-defn badge-border [variant]
+  (cond
+    (= variant "default") "transparent"
+    (= variant "secondary") "transparent"
+    (= variant "outline") "border"
+    (= variant "success") "success-foreground"
+    (= variant "warning") "warning-foreground"
+    (= variant "error") "error-foreground"
+    :else
+    (throw
+     (IllegalArgumentException.
+      (str "unsupported Badge variant: " variant)))))
+
+(macro-helper-defn badge-style-class [attrs]
+  (let [variant (badge-variant attrs)
+        base (str "lui-badge lui-badge--" variant)
+        rounded (if (:round attrs) (str base " lui-badge--round") base)]
+    (if (:class attrs)
+      (str rounded " " (:class attrs))
+      rounded)))
+
+(macro-helper-defn badge-child-bindings [context children child-nodes]
+  (if (empty? children)
+    []
+    (concat
+     [(first child-nodes)
+      (if (vector? (first children))
+        `(lui.elements/element ~context nil ~(first children))
+        `(lui.ui/text! ~context ~(first children)))]
+     (badge-child-bindings context (next children) (next child-nodes)))))
 
 (macro-helper-defn find-part-node [children child-nodes part]
   (if (empty? children)
@@ -139,6 +219,31 @@
           (fn [child]
             `(lui.elements/element ~context ~node ~child))
           children)
+       ~node)))
+
+(defelement badge [context parent attrs & children]
+  (let [node (gensym "node")
+        child-nodes (map (fn [_child] (gensym "content")) children)
+        variant (badge-variant attrs)
+        foreground (badge-foreground variant)]
+    `(let [~node (lui.ui/row! ~context)
+           ~@(badge-child-bindings context children child-nodes)]
+       (lui.ui/style-class! ~context ~node ~(badge-style-class attrs))
+       (lui.ui/padding-horizontal! ~context ~node 10)
+       (lui.ui/padding-vertical! ~context ~node 2)
+       (lui.ui/background! ~context ~node ~(badge-background variant))
+       (lui.ui/border-color! ~context ~node ~(badge-border variant))
+       (lui.ui/border-width! ~context ~node 1)
+       (lui.ui/corner-radius! ~context ~node ~(if (:round attrs) 999 6))
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child-node]
+            `(do
+               (lui.ui/foreground! ~context ~child-node ~foreground)
+               (lui.ui/append! ~context ~node ~child-node)))
+          child-nodes)
        ~node)))
 
 (defelement text-field [context parent attrs & children]

@@ -229,6 +229,20 @@ final class LUIFlutterBackend {
     final invalid = state.properties['invalid'] as bool? ?? false;
     final checked = state.properties['checked'] as bool? ?? false;
     final indeterminate = state.properties['indeterminate'] as bool? ?? false;
+    final foreground = _color(
+      context,
+      state.properties['foreground'] as String?,
+    );
+    final background = _color(
+      context,
+      state.properties['background'] as String?,
+    );
+    final borderColor = _color(
+      context,
+      state.properties['border-color'] as String?,
+    );
+    final borderWidth = state.properties['border-width'] as int? ?? 0;
+    final cornerRadius = state.properties['corner-radius'] as int? ?? 0;
     final accessibilityHint = [
       ?description,
       if (invalid && errorMessage != null) errorMessage,
@@ -250,6 +264,7 @@ final class LUIFlutterBackend {
           placeholder: placeholder,
           inputType: state.properties['input-type'] as String? ?? 'text',
           invalid: invalid,
+          foreground: foreground,
           minLines: multiline
               ? (state.properties['min-lines'] as int? ?? 2)
               : 1,
@@ -275,15 +290,24 @@ final class LUIFlutterBackend {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: children,
       ),
-      _NodeKind.text => Text(text),
+      _NodeKind.text => Text(text, style: TextStyle(color: foreground)),
       _NodeKind.heading => Semantics(
         header: true,
-        child: Text(text, style: _headingStyle(context, headingLevel)),
+        child: Text(
+          text,
+          style: _headingStyle(
+            context,
+            headingLevel,
+          )?.copyWith(color: foreground),
+        ),
       ),
-      _NodeKind.paragraph => Text(text),
-      _NodeKind.label => Text(text),
+      _NodeKind.paragraph => Text(text, style: TextStyle(color: foreground)),
+      _NodeKind.label => Text(text, style: TextStyle(color: foreground)),
       _NodeKind.button => TextButton(
         onPressed: enabled ? () => performAction(id) : null,
+        style: foreground == null
+            ? null
+            : TextButton.styleFrom(foregroundColor: foreground),
         child: Text(text),
       ),
       _NodeKind.textInput => textControl(multiline: false),
@@ -328,11 +352,28 @@ final class LUIFlutterBackend {
       _NodeKind.spacer => const SizedBox.shrink(),
     };
 
+    final padding = state.properties['padding'] as int? ?? 0;
+    final paddingHorizontal =
+        state.properties['padding-horizontal'] as int? ?? padding;
+    final paddingVertical =
+        state.properties['padding-vertical'] as int? ?? padding;
     return Container(
-      padding: EdgeInsets.all(
-        (state.properties['padding'] as int? ?? 0).toDouble(),
+      padding: EdgeInsets.symmetric(
+        horizontal: paddingHorizontal.toDouble(),
+        vertical: paddingVertical.toDouble(),
       ),
-      color: _color(state.properties['background'] as String?),
+      decoration: BoxDecoration(
+        color: background,
+        border: borderWidth == 0
+            ? null
+            : Border.all(
+                color: borderColor ?? Colors.transparent,
+                width: borderWidth.toDouble(),
+              ),
+        borderRadius: cornerRadius == 0
+            ? null
+            : BorderRadius.circular(cornerRadius.toDouble()),
+      ),
       child: content,
     );
   }
@@ -441,7 +482,26 @@ final class LUIFlutterBackend {
       'gap' =>
         value is int && (kind == _NodeKind.row || kind == _NodeKind.column),
       'padding' => value is int,
+      'padding-horizontal' || 'padding-vertical' =>
+        value is int &&
+            value >= 0 &&
+            (kind == _NodeKind.row ||
+                kind == _NodeKind.column ||
+                kind == _NodeKind.box),
       'background' => value is String,
+      'foreground' =>
+        value is String &&
+            (kind == _NodeKind.text ||
+                kind == _NodeKind.heading ||
+                kind == _NodeKind.paragraph ||
+                kind == _NodeKind.label ||
+                kind == _NodeKind.button ||
+                kind == _NodeKind.textInput ||
+                kind == _NodeKind.textArea ||
+                kind == _NodeKind.checkbox),
+      'border-color' => value is String,
+      'border-width' => value is int && value >= 0,
+      'corner-radius' => value is int && value >= 0,
       'style-class' => value is String,
       'labelled-by' => value is int && kind.isRelationshipControl,
       'described-by' => value is int && kind.isRelationshipControl,
@@ -575,15 +635,32 @@ final class LUIFlutterBackend {
     return value;
   }
 
-  static Color? _color(String? name) => switch (name?.toLowerCase()) {
-    null => null,
-    'black' => Colors.black,
-    'white' => Colors.white,
-    'red' => Colors.red,
-    'blue' => Colors.blue,
-    'green' => Colors.green,
-    _ => Colors.transparent,
-  };
+  static Color? _color(BuildContext context, String? name) {
+    final colors = Theme.of(context).colorScheme;
+    return switch (name?.toLowerCase()) {
+      null => null,
+      'transparent' => Colors.transparent,
+      'background' => colors.surface,
+      'foreground' => colors.onSurface,
+      'primary' => colors.primary,
+      'primary-foreground' => colors.onPrimary,
+      'secondary' => colors.secondaryContainer,
+      'secondary-foreground' => colors.onSecondaryContainer,
+      'success' => colors.tertiaryContainer,
+      'success-foreground' => colors.onTertiaryContainer,
+      'warning' => colors.secondaryContainer,
+      'warning-foreground' => colors.onSecondaryContainer,
+      'error' => colors.errorContainer,
+      'error-foreground' => colors.onErrorContainer,
+      'border' => colors.outlineVariant,
+      'black' => Colors.black,
+      'white' => Colors.white,
+      'red' => Colors.red,
+      'blue' => Colors.blue,
+      'green' => Colors.green,
+      _ => Colors.transparent,
+    };
+  }
 
   static TextStyle? _headingStyle(BuildContext context, int level) {
     final textTheme = Theme.of(context).textTheme;
@@ -659,6 +736,7 @@ final class _LUITextInput extends StatefulWidget {
     required this.placeholder,
     required this.inputType,
     required this.invalid,
+    required this.foreground,
     required this.minLines,
     required this.maxLines,
     required this.onChanged,
@@ -670,6 +748,7 @@ final class _LUITextInput extends StatefulWidget {
   final String? placeholder;
   final String inputType;
   final bool invalid;
+  final Color? foreground;
   final int minLines;
   final int? maxLines;
   final ValueChanged<String> onChanged;
@@ -715,6 +794,7 @@ final class _LUITextInputState extends State<_LUITextInput> {
       obscureText: widget.inputType == 'password',
       minLines: widget.minLines,
       maxLines: widget.maxLines,
+      style: TextStyle(color: widget.foreground),
       decoration: InputDecoration(
         hintText: widget.placeholder,
         enabledBorder: invalidBorder,

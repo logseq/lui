@@ -4,7 +4,10 @@
              :refer [Row Column Box Text Heading Paragraph Label Button
                      TextInput TextArea Scroll Spacer
                      Checkbox SwitchControl
-                     TextValue Enabled Gap PaddingValue BackgroundValue
+                     TextValue Enabled Gap PaddingValue
+                     PaddingHorizontal PaddingVertical
+                     BackgroundValue ForegroundValue BorderColorValue
+                     BorderWidth CornerRadius
                      PlaceholderValue ReadOnly AccessibilityLabel MinLines MaxLines
                      StyleClass HeadingLevel LabelledBy DescribedBy
                      ErrorMessageBy InputType Invalid
@@ -48,7 +51,13 @@
     Enabled "enabled"
     Gap "gap"
     PaddingValue "padding"
+    PaddingHorizontal "padding-horizontal"
+    PaddingVertical "padding-vertical"
     BackgroundValue "background"
+    ForegroundValue "foreground"
+    BorderColorValue "border-color"
+    BorderWidth "border-width"
+    CornerRadius "corner-radius"
     PlaceholderValue "placeholder"
     ReadOnly "read-only"
     AccessibilityLabel "accessibility-label"

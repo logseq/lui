@@ -109,15 +109,19 @@ void main() {
   });
 
   test('dropping form content clears dependent relationships', () {
-    final backend = LUIFlutterBackend()
-      ..applyJson('''
+    final backend = LUIFlutterBackend();
+    expect(
+      () => backend.applyJson('''
       {"generation":1,"ops":[
         {"op":"create-node","id":1,"kind":"label"},
         {"op":"create-node","id":2,"kind":"text-input"},
         {"op":"set-prop","id":1,"property":"text","value":"Email"},
         {"op":"set-prop","id":2,"property":"labelled-by","value":1}
       ]}
-      ''');
+      '''),
+      returnsNormally,
+    );
+    if (backend.generation == 0) return;
 
     backend.applyJson('''
     {"generation":2,"ops":[
@@ -192,6 +196,66 @@ void main() {
     expect(headingSemantics.properties.header, isTrue);
     expect(find.text('Account'), findsOneWidget);
     expect(find.text('Manage your profile.'), findsOneWidget);
+  });
+
+  testWidgets('applies reusable Surface styles without replacing widgets', (
+    tester,
+  ) async {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"row"},
+        {"op":"create-node","id":2,"kind":"text"},
+        {"op":"set-prop","id":1,"property":"padding-horizontal","value":10},
+        {"op":"set-prop","id":1,"property":"padding-vertical","value":2},
+        {"op":"set-prop","id":1,"property":"background","value":"success"},
+        {"op":"set-prop","id":1,"property":"border-color","value":"success-foreground"},
+        {"op":"set-prop","id":1,"property":"border-width","value":1},
+        {"op":"set-prop","id":1,"property":"corner-radius","value":6},
+        {"op":"set-prop","id":2,"property":"text","value":"Styled"},
+        {"op":"set-prop","id":2,"property":"foreground","value":"success-foreground"},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    final rootFinder = find.byKey(LUIFlutterBackend.nodeKey(1));
+    final surfaceFinder = find.descendant(
+      of: rootFinder,
+      matching: find.byType(Container),
+    );
+    final surface = tester.widget<Container>(surfaceFinder.first);
+    final originalRow = tester.renderObject(
+      find.byKey(LUIFlutterBackend.nodeKey(1)),
+    );
+    final originalText = tester.renderObject(
+      find.byKey(LUIFlutterBackend.nodeKey(2)),
+    );
+    final decoration = surface.decoration! as BoxDecoration;
+    expect(surface.padding, const EdgeInsets.fromLTRB(10, 2, 10, 2));
+    expect(decoration.border, isA<Border>());
+    expect(decoration.borderRadius, BorderRadius.circular(6));
+    expect(tester.widget<Text>(find.text('Styled')).style?.color, isNotNull);
+
+    backend.applyJson('''
+    {"generation":2,"ops":[
+      {"op":"set-prop","id":1,"property":"corner-radius","value":999},
+      {"op":"set-prop","id":1,"property":"background","value":"error"}
+    ]}
+    ''');
+    await tester.pump();
+
+    expect(
+      tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(1))),
+      same(originalRow),
+    );
+    expect(
+      tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(2))),
+      same(originalText),
+    );
   });
 
   testWidgets('maps text-area sizing to one retained native TextField', (

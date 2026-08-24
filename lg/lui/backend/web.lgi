@@ -27,6 +27,7 @@
   :fn<web-renderer;int;node-kind;web-node;unit>)
 (signature lui.backend.web/set-state-attribute!
   :fn<web-node;string;bool;unit>)
+(signature lui.backend.web/web-color-value :fn<string;string>)
 (signature lui.backend.web/apply-property!
   :fn<web-renderer;node-kind;web-node;property;wire-value;unit>)
 (signature lui.backend.web/insert-dom-child!

@@ -108,6 +108,65 @@
      (wire/encode-batch batch)
      "toggle controls use a closed native wire vocabulary")))
 
+(deftest surface-properties-use-closed-wire-names
+  (let [batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Row)
+                (proto/set-prop-op
+                 1 proto/PaddingHorizontal (proto/IntValue 10))
+                (proto/set-prop-op
+                 1 proto/PaddingVertical (proto/IntValue 2))
+                (proto/set-prop-op
+                 1 proto/ForegroundValue (proto/StringValue "foreground"))
+                (proto/set-prop-op
+                 1 proto/BorderColorValue (proto/StringValue "border"))
+                (proto/set-prop-op
+                 1 proto/BorderWidth (proto/IntValue 1))
+                (proto/set-prop-op
+                 1 proto/CornerRadius (proto/IntValue 6))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"row\"},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"padding-horizontal\",\"value\":10},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"padding-vertical\",\"value\":2},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"foreground\",\"value\":\"foreground\"},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"border-color\",\"value\":\"border\"},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"border-width\",\"value\":1},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"corner-radius\",\"value\":6}]}")
+     (wire/encode-batch batch)
+     "Surface styling remains a closed typed wire contract")))
+
+(deftest surface-numeric-properties-reject-negative-values
+  (let [application
+        (runtime/create (sig/scheduler) (apple/backend (apple/create)))
+        box (runtime/create-node! application proto/Box)]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"invalid property value"
+         (runtime/set-prop!
+          application box proto/BorderWidth (proto/IntValue -1)))
+        "border width cannot be negative")
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"invalid property value"
+         (runtime/set-prop!
+          application box proto/CornerRadius (proto/IntValue -1)))
+        "corner radius cannot be negative")
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"invalid property value"
+         (runtime/set-prop!
+          application box proto/PaddingHorizontal (proto/IntValue -1)))
+        "surface padding cannot be negative")))
+
 (deftest form-controls-retain-typed-accessibility-relationships
   (let [renderer (apple/create)
         application

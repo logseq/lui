@@ -87,6 +87,13 @@
    [:card/footer
     [:button {:on-press callback} "Save changes"]]])
 
+(defui status-badges []
+  [:column
+   [:badge "Default"]
+   [:badge
+    {:variant "success" :round true :class "sync-status"}
+    "Synchronized"]])
+
 (defui email-field [value invalid disabled callback]
   [:text-field {:class "account-email"}
    [:text-field/label "Email"]
@@ -347,6 +354,62 @@
       (match (apple/node renderer description)
         (Some AppleParagraph) (is true "CardDescription is a paragraph")
         _ (is false "CardDescription maps to Paragraph")))))
+
+(deftest badge-composes-row-and-text-with-reusable-surface-properties
+  (let [renderer (apple/create)
+        application
+        (runtime/create (sig/scheduler) (apple/backend renderer))
+        scope (sig/scope "status-badges")
+        root (status-badges (ui/context application scope))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [badges (apple/children renderer root)
+          badge (nth badges 1)
+          label (nth (apple/children renderer badge) 0)]
+      (assert-equal 2 (count badges) "Badge adds no wrapper beyond its Row")
+      (match (apple/node renderer badge)
+        (Some AppleRow) (is true "Badge reuses the Row primitive")
+        _ (is false "Badge must not introduce a platform node kind"))
+      (match (apple/node renderer label)
+        (Some AppleLabel) (is true "Badge text reuses the Text primitive")
+        _ (is false "Badge content remains semantic text"))
+      (match (apple/property renderer badge proto/StyleClass)
+        (Some (StringValue value))
+        (assert-equal
+         "lui-badge lui-badge--success lui-badge--round sync-status"
+         value
+         "Badge exposes Solid UI variant selectors")
+        _ (is false "Badge retains its semantic classes"))
+      (match (apple/property renderer badge proto/PaddingHorizontal)
+        (Some (proto/IntValue value))
+        (assert-equal 10 value "Badge uses reusable horizontal padding")
+        _ (is false "Badge retains horizontal padding"))
+      (match (apple/property renderer badge proto/PaddingVertical)
+        (Some (proto/IntValue value))
+        (assert-equal 2 value "Badge uses reusable vertical padding")
+        _ (is false "Badge retains vertical padding"))
+      (match (apple/property renderer badge proto/BackgroundValue)
+        (Some (StringValue value))
+        (assert-equal "success" value "Badge background is semantic")
+        _ (is false "Badge retains its background"))
+      (match (apple/property renderer badge proto/BorderColorValue)
+        (Some (StringValue value))
+        (assert-equal
+         "success-foreground" value "Badge border is semantic")
+        _ (is false "Badge retains its border color"))
+      (match (apple/property renderer badge proto/BorderWidth)
+        (Some (proto/IntValue value))
+        (assert-equal 1 value "Badge border uses a Surface property")
+        _ (is false "Badge retains its border width"))
+      (match (apple/property renderer badge proto/CornerRadius)
+        (Some (proto/IntValue value))
+        (assert-equal 999 value "round Badge uses a reusable radius")
+        _ (is false "Badge retains its corner radius"))
+      (match (apple/property renderer label proto/ForegroundValue)
+        (Some (StringValue value))
+        (assert-equal
+         "success-foreground" value "Badge content uses foreground")
+        _ (is false "Badge retains its content color")))))
 
 (deftest text-field-composes-semantic-parts-and-patches-invalid-in-place
   (let [scheduler (sig/scheduler)

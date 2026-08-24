@@ -6,7 +6,10 @@
                      TextInput TextArea Checkbox SwitchControl Scroll Spacer
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild TextValue Enabled Gap PaddingValue
-                     BackgroundValue PlaceholderValue ReadOnly MinLines MaxLines
+                     PaddingHorizontal PaddingVertical
+                     BackgroundValue ForegroundValue BorderColorValue
+                     BorderWidth CornerRadius
+                     PlaceholderValue ReadOnly MinLines MaxLines
                      AccessibilityLabel StyleClass HeadingLevel LabelledBy
                      DescribedBy ErrorMessageBy InputType Invalid
                      Checked Indeterminate
@@ -190,6 +193,26 @@
     (Webapi.Dom.CssStyleDeclaration.setProperty
      property value "" element-style)))
 
+(defn- web-color-value [color]
+  (if (= color "transparent")
+    "transparent"
+    (if (or
+         (= color "background")
+         (= color "foreground")
+         (= color "primary")
+         (= color "primary-foreground")
+         (= color "secondary")
+         (= color "secondary-foreground")
+         (= color "success")
+         (= color "success-foreground")
+         (= color "warning")
+         (= color "warning-foreground")
+         (= color "error")
+         (= color "error-foreground")
+         (= color "border"))
+      (str "var(--color-" color ")")
+      color)))
+
 (defn- set-state-attribute! [dom-node attribute enabled]
   (if enabled
     (Webapi.Dom.Element.setAttribute attribute "" dom-node)
@@ -219,8 +242,28 @@
     (tuple PaddingValue (IntValue padding))
     (set-style! dom-node "padding" (str padding "px"))
 
+    (tuple PaddingHorizontal (IntValue padding))
+    (set-style! dom-node "padding-inline" (str padding "px"))
+
+    (tuple PaddingVertical (IntValue padding))
+    (set-style! dom-node "padding-block" (str padding "px"))
+
     (tuple BackgroundValue (StringValue background))
-    (set-style! dom-node "background" background)
+    (set-style! dom-node "background" (web-color-value background))
+
+    (tuple ForegroundValue (StringValue foreground))
+    (set-style! dom-node "color" (web-color-value foreground))
+
+    (tuple BorderColorValue (StringValue border))
+    (set-style! dom-node "border-color" (web-color-value border))
+
+    (tuple BorderWidth (IntValue width))
+    (do
+      (set-style! dom-node "border-style" "solid")
+      (set-style! dom-node "border-width" (str width "px")))
+
+    (tuple CornerRadius (IntValue radius))
+    (set-style! dom-node "border-radius" (str radius "px"))
 
     (tuple PlaceholderValue (StringValue placeholder))
     (Webapi.Dom.HtmlInputElement.setPlaceholder
