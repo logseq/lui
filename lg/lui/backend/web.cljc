@@ -5,7 +5,7 @@
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button
                      TextInput TextArea Checkbox SwitchControl
-                     Scroll ListContainer Spacer
+                     Scroll ListContainer Spacer Spinner
                      ProgressControl Divider
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild TextValue Enabled Gap MainAlignment
@@ -18,7 +18,7 @@
                      AccessibilityLabel StyleClass HeadingLevel LabelledBy
                      DescribedBy ErrorMessageBy InputType Invalid
                      Checked Indeterminate
-                     ProgressValue MinValue MaxValue OrientationValue
+                     ProgressValue MinValue MaxValue OrientationValue SizeValue
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
 
@@ -54,7 +54,8 @@
     Divider "lui-separator"
     Scroll "lui-scroll"
     ListContainer "lui-list"
-    Spacer "lui-spacer"))
+    Spacer "lui-spacer"
+    Spinner "lui-spinner"))
 
 (defn- platform-node [renderer kind]
   (let [tag
@@ -85,6 +86,8 @@
       (Webapi.Dom.Element.setAttribute "type" "button" node)
       (Webapi.Dom.Element.setAttribute "role" "switch" node))
     (when (= kind ProgressControl)
+      (Webapi.Dom.Element.setAttribute "role" "progressbar" node))
+    (when (= kind Spinner)
       (Webapi.Dom.Element.setAttribute "role" "progressbar" node))
     (when (= kind Divider)
       (Webapi.Dom.Element.setAttribute "role" "separator" node))
@@ -454,6 +457,9 @@
        "data-orientation" orientation dom-node)
       (Webapi.Dom.Element.setAttribute
        "aria-orientation" orientation dom-node))
+
+    (tuple SizeValue (StringValue size))
+    (Webapi.Dom.Element.setAttribute "data-size" size dom-node)
 
     (tuple MinLines (IntValue lines))
     (do

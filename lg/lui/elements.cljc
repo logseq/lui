@@ -30,6 +30,7 @@
         (= tag :scroll)
         (= tag :list)
         (= tag :spacer)
+        (= tag :spinner)
         (= tag :text)
         (= tag :heading)
         (= tag :paragraph)
@@ -346,6 +347,21 @@
            [`(lui.ui/append! ~context ~parent ~node)]
            [])
        ~node)))
+
+(defelement spinner [context parent attrs & children]
+  (if (empty? children)
+    (let [node (gensym "node")]
+      `(let [~node (lui.ui/spinner! ~context)]
+         ~@(element-properties context node attrs)
+         ~@(property-expansions
+            context node [[(:size attrs) 'lui.ui/size!]])
+         ~@(if parent
+             [`(lui.ui/append! ~context ~parent ~node)]
+             [])
+         ~node))
+    (throw
+     (IllegalArgumentException.
+      "spinner is a leaf and cannot contain children"))))
 
 (defelement text [context parent attrs & children]
   (let [value (:value attrs)

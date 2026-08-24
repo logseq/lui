@@ -21,6 +21,7 @@
 (signature lui.ui/scroll! :fn<ui-context;int>)
 (signature lui.ui/list! :fn<ui-context;int>)
 (signature lui.ui/spacer! :fn<ui-context;int>)
+(signature lui.ui/spinner! :fn<ui-context;int>)
 (signature lui.ui/text! :fn<ui-context;string;int>)
 (signature lui.ui/heading! :fn<ui-context;int;string;int>)
 (signature lui.ui/heading-value!
@@ -61,6 +62,7 @@
 (signature lui.ui/progress-control!
   :fn<ui-context;signal.core/signal<int>;int;int;int>)
 (signature lui.ui/separator! :fn<ui-context;string;int>)
+(signature lui.ui/size! :fn<ui-context;int;string;bool>)
 (signature lui.ui/labelled-by! :fn<ui-context;int;int;bool>)
 (signature lui.ui/described-by! :fn<ui-context;int;int;bool>)
 (signature lui.ui/error-message-by! :fn<ui-context;int;int;bool>)

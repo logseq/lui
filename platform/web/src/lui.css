@@ -340,8 +340,28 @@
     @apply animate-pulse bg-secondary;
   }
 
+  .lui-spinner {
+    @apply size-5 animate-spin rounded-full border-2 border-current border-r-transparent;
+  }
+
+  .lui-spinner[data-size="sm"] {
+    @apply size-4;
+  }
+
+  .lui-spinner[data-size="lg"] {
+    @apply size-6;
+  }
+
+  .lui-spinner[data-size="icon"] {
+    @apply size-5;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .lui-skeleton {
+      animation: none;
+    }
+
+    .lui-spinner {
       animation: none;
     }
   }

@@ -21,7 +21,8 @@
   (Divider)
   (Scroll)
   (ListContainer)
-  (Spacer))
+  (Spacer)
+  (Spinner))
 
 (type-variant operating-system
   (GenericOS)
@@ -81,7 +82,8 @@
   (ProgressValue)
   (MinValue)
   (MaxValue)
-  (OrientationValue))
+  (OrientationValue)
+  (SizeValue))
 
 (type-variant wire-value
   (StringValue :string)
@@ -117,6 +119,7 @@
 (signature lui.protocol/event-supported? :fn<node-kind;event;bool>)
 (signature lui.protocol/input-type-supported? :fn<string;bool>)
 (signature lui.protocol/orientation-supported? :fn<string;bool>)
+(signature lui.protocol/control-size-supported? :fn<string;bool>)
 (signature lui.protocol/main-alignment-supported? :fn<string;bool>)
 (signature lui.protocol/cross-alignment-supported? :fn<string;bool>)
 (signature lui.protocol/property-supported? :fn<node-kind;property;bool>)

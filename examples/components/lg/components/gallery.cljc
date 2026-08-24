@@ -126,6 +126,15 @@
     [:skeleton {:width 240 :height 16 :corner-radius 6}]
     [:skeleton {:width 280 :height 16 :corner-radius 6}]]])
 
+(defui spinner-gallery []
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Spinner"]
+   [:row {:gap 16 :cross "center"}
+    [:spinner {:size "sm"}]
+    [:spinner]
+    [:spinner {:size "lg"}]
+    [:spinner {:size "icon"}]]])
+
 (defui text-field-gallery
   [value-source invalid-source disabled-source update-value toggle-invalid]
   [:column {:gap 24 :padding 32}
@@ -199,6 +208,7 @@
    [badge-gallery]
    [separator-gallery]
    [skeleton-gallery]
+   [spinner-gallery]
    [progress-gallery progress-source progress-label-source advance-progress]
    [surface-gallery card-copy]
    [collection-gallery]

@@ -17,7 +17,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case switchControl = "switch"
     case progress
     case divider
-    case scroll, list, spacer
+    case scroll, list, spacer, spinner
 }
 
 enum LUIProperty: String, Decodable, Hashable {
@@ -49,6 +49,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case minValue = "min-value"
     case maxValue = "max-value"
     case orientation
+    case size
 }
 
 struct LUIPatchBatch: Decodable {
@@ -137,6 +138,8 @@ enum LUIWireValue: Decodable, Equatable {
         case (.progressValue, .int), (.minValue, .int), (.maxValue, .int): true
         case let (.orientation, .string(value)):
             value == "horizontal" || value == "vertical"
+        case let (.size, .string(value)):
+            Self.controlSizes.contains(value)
         case let (.main, .string(value)):
             Self.mainAlignments.contains(value)
         case let (.cross, .string(value)):
@@ -175,6 +178,10 @@ enum LUIWireValue: Decodable, Equatable {
 
     private static let crossAlignments: Set<String> = [
         "stretch", "start", "center", "end",
+    ]
+
+    private static let controlSizes: Set<String> = [
+        "default", "sm", "lg", "icon",
     ]
 }
 
@@ -290,7 +297,7 @@ struct LUIRetainedTree {
         case .foreground:
             kind == .text || kind == .heading || kind == .paragraph ||
                 kind == .label || kind == .button || kind == .textInput ||
-                kind == .textArea || kind == .checkbox
+                kind == .textArea || kind == .checkbox || kind == .spinner
         case .text:
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
                 kind == .button || kind == .textInput || kind == .textArea
@@ -318,6 +325,7 @@ struct LUIRetainedTree {
         case .indeterminate: kind == .checkbox
         case .progressValue, .minValue, .maxValue: kind == .progress
         case .orientation: kind == .divider
+        case .size: kind == .spinner
         }
     }
 

@@ -49,6 +49,13 @@
 (defn orientation-supported? [value]
   (or (= value "horizontal") (= value "vertical")))
 
+(defn control-size-supported? [value]
+  (or
+   (= value "default")
+   (= value "sm")
+   (= value "lg")
+   (= value "icon")))
+
 (defn main-alignment-supported? [value]
   (or
    (= value "start")
@@ -85,6 +92,7 @@
       TextInput true
       TextArea true
       Checkbox true
+      Spinner true
       _ false)
     BorderColorValue true
     BorderWidth true
@@ -121,6 +129,7 @@
     MinValue (= kind ProgressControl)
     MaxValue (= kind ProgressControl)
     OrientationValue (= kind Divider)
+    SizeValue (= kind Spinner)
     TextValue
     (match kind
       Text true
@@ -192,6 +201,8 @@
     (tuple MaxValue (IntValue _value)) true
     (tuple OrientationValue (StringValue value))
     (orientation-supported? value)
+    (tuple SizeValue (StringValue value))
+    (control-size-supported? value)
     _ false))
 
 (defn int-property [properties property fallback]

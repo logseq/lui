@@ -3,7 +3,7 @@
             [lui.protocol
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button
-                     TextInput TextArea Scroll ListContainer Spacer
+                     TextInput TextArea Scroll ListContainer Spacer Spinner
                      Checkbox SwitchControl
                      ProgressControl Divider
                      TextValue Enabled Gap MainAlignment CrossAlignment
@@ -16,7 +16,7 @@
                      StyleClass HeadingLevel LabelledBy DescribedBy
                      ErrorMessageBy InputType Invalid
                      Checked Indeterminate
-                     ProgressValue MinValue MaxValue OrientationValue
+                     ProgressValue MinValue MaxValue OrientationValue SizeValue
                      StringValue BoolValue IntValue FloatValue
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild]]))
@@ -55,7 +55,8 @@
     Divider "divider"
     Scroll "scroll"
     ListContainer "list"
-    Spacer "spacer"))
+    Spacer "spacer"
+    Spinner "spinner"))
 
 (defn- property-name [property]
   (match property
@@ -97,7 +98,8 @@
     ProgressValue "value"
     MinValue "min-value"
     MaxValue "max-value"
-    OrientationValue "orientation"))
+    OrientationValue "orientation"
+    SizeValue "size"))
 
 (defn- encode-value [value]
   (match value

@@ -88,6 +88,7 @@ enum _NodeKind {
   scroll,
   list,
   spacer,
+  spinner,
 }
 
 final class _NodeState {
@@ -277,6 +278,12 @@ final class LUIFlutterBackend {
     final main = state.properties['main'] as String? ?? 'start';
     final cross = state.properties['cross'] as String? ?? 'stretch';
     final headingLevel = state.properties['heading-level'] as int? ?? 1;
+    final spinnerExtent = switch (state.properties['size'] as String? ??
+        'default') {
+      'sm' => 16.0,
+      'lg' => 24.0,
+      _ => 20.0,
+    };
     Widget textControl({required bool multiline}) => SizedBox(
       width: 240,
       child: Semantics(
@@ -436,6 +443,10 @@ final class LUIFlutterBackend {
         child: Stack(children: children),
       ),
       _NodeKind.spacer => const SizedBox.shrink(),
+      _NodeKind.spinner => SizedBox.square(
+        dimension: spinnerExtent,
+        child: CircularProgressIndicator(strokeWidth: 2, color: foreground),
+      ),
     };
 
     final isSurface = state.kind.isOverlaySurface;
@@ -640,6 +651,10 @@ final class LUIFlutterBackend {
         value is String &&
             (value == 'horizontal' || value == 'vertical') &&
             kind == _NodeKind.divider,
+      'size' =>
+        value is String &&
+            _controlSizes.contains(value) &&
+            kind == _NodeKind.spinner,
       'gap' =>
         value is int &&
             value >= 0 &&
@@ -665,7 +680,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.button ||
                 kind == _NodeKind.textInput ||
                 kind == _NodeKind.textArea ||
-                kind == _NodeKind.checkbox),
+                kind == _NodeKind.checkbox ||
+                kind == _NodeKind.spinner),
       'border-color' => value is String,
       'border-width' => value is int && value >= 0,
       'corner-radius' => value is int && value >= 0,
@@ -827,6 +843,7 @@ final class LUIFlutterBackend {
     'scroll' => _NodeKind.scroll,
     'list' => _NodeKind.list,
     'spacer' => _NodeKind.spacer,
+    'spinner' => _NodeKind.spinner,
     _ => throw const LUIBackendException('unknown node kind'),
   };
 
@@ -952,6 +969,8 @@ final class LUIFlutterBackend {
   static const _mainAlignments = {'start', 'center', 'end', 'space_between'};
 
   static const _crossAlignments = {'stretch', 'start', 'center', 'end'};
+
+  static const _controlSizes = {'default', 'sm', 'lg', 'icon'};
 
   static const _relationshipProperties = {
     'labelled-by',

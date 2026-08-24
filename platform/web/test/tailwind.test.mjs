@@ -119,7 +119,21 @@ test("the production stylesheet contains the Solid UI Skeleton contract", async 
   assert.match(css, /@media \(prefers-reduced-motion:reduce\)/)
   assert.match(
     css,
-    /@media \(prefers-reduced-motion:reduce\)\{\.lui-skeleton\{[^}]*animation:none/,
+    /@media \(prefers-reduced-motion:reduce\)\{[^{}]*\.lui-skeleton[^{}]*\{[^}]*animation:none/,
   )
   assert.doesNotMatch(css, /\.animate-pulse\{/)
+})
+
+test("the production stylesheet contains the Vercel Native Spinner contract", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-spinner\{[^}]*width:calc\(var\(--spacing\)\*5\)/)
+  assert.match(css, /\.lui-spinner\{[^}]*animation:/)
+  assert.match(css, /\.lui-spinner\[data-size=sm\]\{[^}]*width:calc\(var\(--spacing\)\*4\)/)
+  assert.match(css, /\.lui-spinner\[data-size=lg\]\{[^}]*width:calc\(var\(--spacing\)\*6\)/)
+  assert.match(css, /\.lui-spinner\[data-size=icon\]\{[^}]*width:calc\(var\(--spacing\)\*5\)/)
+  assert.match(
+    css,
+    /@media \(prefers-reduced-motion:reduce\)\{[^{}]*\.lui-spinner[^{}]*\{[^}]*animation:none/,
+  )
 })

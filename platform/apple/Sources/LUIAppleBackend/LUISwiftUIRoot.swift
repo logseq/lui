@@ -98,6 +98,14 @@ private struct LUINodeView: View {
             }
         case .spacer:
             Spacer()
+        case .spinner:
+            ProgressView()
+                .progressViewStyle(.circular)
+                .controlSize(model.spinnerControlSize)
+                .frame(
+                    width: CGFloat(model.spinnerWidth),
+                    height: CGFloat(model.spinnerHeight)
+                )
         }
     }
 

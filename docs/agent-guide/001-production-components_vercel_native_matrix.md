@@ -10,8 +10,13 @@ Reference source: `skill-data/native-ui/SKILL.md` and the closed schema in
 
 ## Compatibility rule
 
-LUI's public UI component API is the Vercel Native UI API expressed as LG data.
-The syntax changes; the vocabulary and behavior do not.
+LUI's supported public UI component API is a deliberate subset of the Vercel
+Native UI API expressed as LG data. Inside that subset, the syntax changes;
+the vocabulary and behavior do not.
+
+The deliberate exclusions are `span`, `code`, `markdown`, `chart`, and
+`series`. LUI keeps `text` as a plain-text leaf and does not own rich-text
+runs, syntax highlighting, Markdown parsing/rendering, or a chart engine.
 
 ```html
 <row gap="8" main="center" cross="center">
@@ -24,7 +29,7 @@ The syntax changes; the vocabulary and behavior do not.
  [:button {:variant "primary" :on-press save} "Save"]]
 ```
 
-Parity requires all of the following:
+Parity for every in-scope component requires all of the following:
 
 1. the same element names and parent/child constraints;
 2. the same public attribute names, legal values, defaults and element scope;
@@ -89,8 +94,7 @@ not substitutes for these elements.
 
 ### Text and media
 
-`text`, `span`, `badge`, `status-bar`, `icon`, `image`, `media-surface`, `code`,
-and `markdown`.
+`text`, `badge`, `status-bar`, `icon`, `image`, and `media-surface`.
 
 ### Controls
 
@@ -100,8 +104,8 @@ and `markdown`.
 
 ### Composite data views
 
-`stepper`, `step`, `timeline`, `timeline-item`, `chart`, `series`,
-`input-group`, and `input-group-actions`.
+`stepper`, `step`, `timeline`, `timeline-item`, `input-group`, and
+`input-group-actions`.
 
 ## Shared attribute vocabulary
 
@@ -165,6 +169,7 @@ create a second component language and are therefore not retained.
 | row/column/list | CSS flex via Tailwind | `HStack`/`VStack` | `Row`/`Column` |
 | stack/panel/card | CSS overlay/surface | SwiftUI overlay/ZStack | `Stack`/Material surface |
 | scroll | CSS scrolling overlay box | `ScrollView` + `ZStack` | `SingleChildScrollView` + `Stack` |
+| spinner | semantic CSS activity glyph | indeterminate `ProgressView` | `CircularProgressIndicator` |
 | grid | CSS grid | `LazyVGrid` | `GridView` |
 | controls | native HTML first | SwiftUI controls | Flutter widgets |
 | modal/menu | browser platform API when suitable | SwiftUI presentation | Flutter presentation APIs |

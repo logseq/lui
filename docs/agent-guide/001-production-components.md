@@ -9,9 +9,12 @@ Apple platforms through one SwiftUI backend, and Flutter platforms. A small
 showcase in `examples/` demonstrates the complete public component catalog and
 platform behavior without becoming a separate complex application.
 
-The public UI component API is identical to Vercel Native's UI API. LG changes
-the notation and Signal supplies reactivity; LUI does not invent a second
-component vocabulary. The pinned source and exact parity rules live in
+The supported public UI component API is a deliberate subset of Vercel
+Native's UI API. Within that subset, LG changes only the notation and Signal
+supplies reactivity; LUI does not invent a second component vocabulary.
+Rich-text `span`, `code`, `markdown`, and charting (`chart`/`series`) are
+intentionally excluded. The pinned source, exclusions, and exact parity rules
+live in
 `001-production-components_vercel_native_matrix.md`. The source-level runtime,
 backend and Web research behind the implementation strategy lives in
 `001-production-components_vercel_native_architecture_report.md`.
@@ -27,6 +30,9 @@ backend and Web research behind the implementation strategy lives in
   to standard components.
 - Provisional LUI APIs may be broken to reach parity; compatibility aliases are
   not kept.
+- `span`, `code`, `markdown`, `chart`, and `series` are out of scope; `text`
+  remains a plain-text leaf and LUI does not own rich-text or chart rendering
+  pipelines.
 
 For example:
 
@@ -144,6 +150,8 @@ Delivered parity slices:
   and Flutter;
 - direct retained `list` flow nodes and multi-child `scroll` overlay semantics
   on Web, SwiftUI, and Flutter;
+- direct retained `spinner` progress leaves with the reference 16/20/24 size
+  rungs, native SwiftUI/Flutter indicators, and a reduced-motion Web renderer;
 - stacking containers reject `gap`; `card` supplies the reference 24-point
   default content padding while explicit `padding` overrides it.
 
@@ -202,7 +210,8 @@ Each large completed wave is committed and pushed independently.
 ### 1. API parity foundation
 
 - Pin the Vercel Native reference revision.
-- Maintain the complete element/attribute/default parity matrix.
+- Maintain the complete in-scope element/attribute/default parity matrix and
+  its explicit exclusions.
 - Add closed schema validation so unsupported attributes cannot be ignored.
 - Replace provisional Solid-style public APIs instead of aliasing them.
 
@@ -218,7 +227,7 @@ Each large completed wave is committed and pushed independently.
 
 - `row`, `column`, `stack`, `panel`, `card`, `scroll`, `list`, `grid`;
 - `gap`, `main`, `cross`, `columns`, `padding`, `grow` and size bounds;
-- `text`, `span`, `separator`, `spacer`, `badge`, `skeleton`, `spinner`, `icon`;
+- `text`, `separator`, `spacer`, `badge`, `skeleton`, `spinner`, `icon`;
 - native mappings and the first showcase sections.
 
 ### 4. Daily controls
@@ -240,10 +249,10 @@ Each large completed wave is committed and pushed independently.
 - dialog, drawer, sheet, resizable and split;
 - native platform presentation, dismissal, focus restoration and drag behavior.
 
-### 7. Rich content and data display
+### 7. Media and data display
 
-- image/media surfaces, code, markdown;
-- stepper, timeline and chart/series;
+- image and media surfaces;
+- stepper and timeline;
 - input group and remaining reference composites.
 
 ### 8. Production qualification
@@ -258,7 +267,8 @@ Each large completed wave is committed and pushed independently.
 
 The goal is complete only when:
 
-- the parity matrix has no unimplemented standard element or attribute;
+- the parity matrix has no unimplemented in-scope element or attribute and
+  keeps every deliberate exclusion explicit;
 - the public API contains no LUI-only standard component props;
 - updates are retained and incremental on all three backends;
 - the shared showcase demonstrates every component and meaningful state;

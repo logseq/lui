@@ -21,7 +21,8 @@
   (AppleDivider)
   (AppleScrollView)
   (AppleList)
-  (AppleSpacer))
+  (AppleSpacer)
+  (AppleSpinner))
 
 (type-record apple-renderer
   (apple-store :retained-store<apple-node>)

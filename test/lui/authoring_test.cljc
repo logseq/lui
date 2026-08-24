@@ -14,7 +14,7 @@
             [lui.macros :refer [defui state effect platform host]]
             [lui.backend.apple :as apple
              :refer [AppleBox AppleCard AppleCheckbox AppleColumn AppleFormLabel AppleGrid
-                     AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSwitch
+                     AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput]]
             [lui.backend.flutter :as flutter]))
 
@@ -52,6 +52,13 @@
     :min-width 80
     :max-width 160
     :class "profile-loading"}])
+
+(defui activity-indicators []
+  [:row {:gap 12 :cross "center"}
+   [:spinner]
+   [:spinner {:size "sm"}]
+   [:spinner {:size "lg" :foreground "primary"}]
+   [:spinner {:size "icon"}]])
 
 (defui vercel-layout-primitives []
   [:column {:gap 12 :main "center" :cross "stretch"}
@@ -319,6 +326,35 @@
           (assert-equal expected value
                         "component sizing flows through shared Surface props")
           _ (is false "Skeleton retains its size constraints"))))))
+
+(deftest spinner-is-a-direct-sized-progress-leaf
+  (let [renderer (apple/create)
+        application
+        (runtime/create (sig/scheduler) (apple/backend renderer))
+        root
+        (activity-indicators
+         (ui/context application (sig/scope "activity-indicators")))]
+    (runtime/flush! application)
+    (let [spinners (apple/children renderer root)]
+      (assert-equal 4 (count spinners) "all Spinner sizes are retained")
+      (doseq [spinner spinners]
+        (match (apple/node renderer spinner)
+          (Some AppleSpinner) (is true "Spinner maps to a native progress leaf")
+          _ (is false "Spinner must keep its semantic node kind")))
+      (assert-equal None
+                    (apple/property renderer (nth spinners 0) proto/SizeValue)
+                    "an omitted size keeps the Vercel Native default")
+      (doseq [expected [(tuple 1 "sm") (tuple 2 "lg") (tuple 3 "icon")]]
+        (match expected
+          (tuple index size)
+          (assert-equal
+           (Some (proto/StringValue size))
+           (apple/property renderer (nth spinners index) proto/SizeValue)
+           "Spinner retains its closed size rung")))
+      (assert-equal
+       (Some (proto/StringValue "primary"))
+       (apple/property renderer (nth spinners 2) proto/ForegroundValue)
+       "Spinner tint uses the shared foreground token"))))
 
 (deftest vercel-layout-primitives-lower-without-an-extra-flex-api
   (let [renderer (apple/create)

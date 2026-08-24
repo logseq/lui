@@ -54,6 +54,9 @@
 (defn spacer! [context]
   (runtime/create-node! (:ui-application context) proto/Spacer))
 
+(defn spinner! [context]
+  (runtime/create-node! (:ui-application context) proto/Spinner))
+
 (defn text! [context text]
   (let [node (runtime/create-node! (:ui-application context) proto/Text)]
     (runtime/set-prop!
@@ -259,6 +262,11 @@
      (:ui-application context) node proto/OrientationValue
      (proto/StringValue orientation))
     node))
+
+(defn size! [context node size]
+  (runtime/set-prop!
+   (:ui-application context) node proto/SizeValue
+   (proto/StringValue size)))
 
 (defn labelled-by! [context node label]
   (runtime/set-prop!

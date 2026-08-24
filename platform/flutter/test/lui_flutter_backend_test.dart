@@ -583,6 +583,68 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('maps Spinner size rungs to CircularProgressIndicator', (
+    tester,
+  ) async {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"spinner"},
+        {"op":"set-prop","id":1,"property":"size","value":"sm"},
+        {"op":"set-prop","id":1,"property":"foreground","value":"red"}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    final spinner = find.byType(CircularProgressIndicator);
+    final originalNode = tester.renderObject(
+      find.byKey(LUIFlutterBackend.nodeKey(1)),
+    );
+    expect(spinner, findsOneWidget);
+    expect(tester.getSize(spinner), const Size.square(16));
+    expect(tester.widget<CircularProgressIndicator>(spinner).color, Colors.red);
+
+    backend.applyJson('''
+    {"generation":2,"ops":[
+      {"op":"set-prop","id":1,"property":"size","value":"lg"}
+    ]}
+    ''');
+    await tester.pump();
+    expect(
+      tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(1))),
+      same(originalNode),
+    );
+    expect(tester.getSize(spinner), const Size.square(24));
+
+    backend.applyJson('''
+    {"generation":3,"ops":[
+      {"op":"set-prop","id":1,"property":"width","value":32},
+      {"op":"set-prop","id":1,"property":"height","value":28}
+    ]}
+    ''');
+    await tester.pump();
+    expect(tester.getSize(spinner), const Size(32, 28));
+  });
+
+  test('rejects unsupported Spinner size names atomically', () {
+    final backend = LUIFlutterBackend();
+
+    expect(
+      () => backend.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"spinner"},
+        {"op":"set-prop","id":1,"property":"size","value":"heading"}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.containsNode(1), isFalse);
+    expect(backend.generation, 0);
+  });
+
   test('rejects an empty progress range atomically', () {
     final backend = LUIFlutterBackend();
 

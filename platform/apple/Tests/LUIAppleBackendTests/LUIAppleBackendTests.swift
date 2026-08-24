@@ -185,6 +185,53 @@ struct LUISwiftUIBackendTests {
         #expect(progress.progressFraction == 1)
     }
 
+    @Test("maps Spinner size rungs to an indeterminate SwiftUI ProgressView")
+    func mapsSpinner() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"spinner"},
+          {"op":"set-prop","id":1,"property":"size","value":"sm"},
+          {"op":"set-prop","id":1,"property":"foreground","value":"primary"}
+        ]}
+        """)
+
+        let spinner = try #require(backend.model(id: 1))
+        let revision = spinner.revision
+        #expect(spinner.kind == .spinner)
+        #expect(spinner.spinnerExtent == 16)
+        #expect(spinner.property(.foreground) == .string("primary"))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"size","value":"lg"}
+        ]}
+        """)
+        #expect(backend.model(id: 1) === spinner)
+        #expect(spinner.spinnerExtent == 24)
+        #expect(spinner.revision == revision + 1)
+
+        try backend.apply(json: """
+        {"generation":3,"ops":[
+          {"op":"set-prop","id":1,"property":"width","value":32},
+          {"op":"set-prop","id":1,"property":"height","value":28}
+        ]}
+        """)
+        #expect(spinner.spinnerWidth == 32)
+        #expect(spinner.spinnerHeight == 28)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":4,"ops":[
+              {"op":"set-prop","id":1,"property":"size","value":"heading"}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 3)
+        #expect(spinner.spinnerExtent == 24)
+    }
+
     @Test("maps Separator orientation without replacing its SwiftUI model")
     func mapsSeparatorOrientation() throws {
         let backend = LUIAppleBackend()

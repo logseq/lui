@@ -442,6 +442,43 @@
      (wire/encode-batch batch)
      "List uses the pinned Vercel Native wire name")))
 
+(deftest spinner-uses-a-closed-leaf-contract
+  (let [batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Spinner)
+                (proto/set-prop-op
+                 1 proto/SizeValue (proto/StringValue "lg"))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"spinner\"},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"size\",\"value\":\"lg\"}]}")
+     (wire/encode-batch batch)
+     "Spinner and size use the pinned closed wire names")
+    (doseq [size ["default" "sm" "lg" "icon"]]
+      (is (proto/property-value-supported?
+           proto/SizeValue (proto/StringValue size))
+          "every Vercel Native control-size rung is accepted"))
+    (doseq [size ["heading" "display" "large" ""]]
+      (is (not (proto/property-value-supported?
+                proto/SizeValue (proto/StringValue size)))
+          "typography and open-ended size names are rejected"))
+    (is (proto/property-supported? proto/Spinner proto/SizeValue)
+        "size belongs to Spinner")
+    (is (not (proto/can-contain-children? proto/Spinner))
+        "Spinner is a leaf")
+    (let [application
+          (runtime/create (sig/scheduler) (apple/backend (apple/create)))
+          spinner (runtime/create-node! application proto/Spinner)
+          child (runtime/create-node! application proto/Text)]
+      (is (thrown-with-msg?
+           Invalid_argument
+           #"cannot contain"
+           (runtime/insert-child! application spinner child 0))
+          "runtime rejects children on Spinner before enqueue"))))
+
 (deftest form-controls-retain-typed-accessibility-relationships
   (let [renderer (apple/create)
         application

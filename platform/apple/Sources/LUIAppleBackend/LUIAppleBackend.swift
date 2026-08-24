@@ -63,6 +63,25 @@ final class LUINodeModel: Identifiable {
     var surfaceMinHeight: Int? { properties[.minHeight]?.intValue }
     var surfaceMaxHeight: Int? { properties[.maxHeight]?.intValue }
 
+    var spinnerExtent: Int {
+        switch properties[.size]?.stringValue ?? "default" {
+        case "sm": 16
+        case "lg": 24
+        default: 20
+        }
+    }
+
+    var spinnerWidth: Int { surfaceWidth ?? spinnerExtent }
+    var spinnerHeight: Int { surfaceHeight ?? spinnerExtent }
+
+    var spinnerControlSize: ControlSize {
+        switch properties[.size]?.stringValue ?? "default" {
+        case "sm": .small
+        case "lg": .large
+        default: .regular
+        }
+    }
+
     var progressFraction: Double {
         let minimum = properties[.minValue]?.intValue ?? 0
         let maximum = properties[.maxValue]?.intValue ?? 100
