@@ -1,28 +1,34 @@
 (ns lui.progress
-  (:require [lui.elements :refer [defelement]]))
+  (:require [lui.elements :refer [defcomponent defelement]]))
 
-(macro-helper-defn resolved-class [default-class attrs]
-  (if (:class attrs)
-    (str default-class " " (:class attrs))
-    default-class))
-
-(macro-helper-defn label-expansion [default-class context parent attrs children]
+(defelement progress [context parent attrs & children]
   (let [node (gensym "node")
-        value (:value attrs)
-        expression
-        (if value
-          `(lui.ui/label-signal! ~context ~value)
-          `(lui.ui/label! ~context ~(first children)))]
-    `(let [~node ~expression]
-       (lui.ui/style-class!
-        ~context ~node ~(resolved-class default-class attrs))
+        control (gensym "control")
+        child-nodes (map (fn [_child] (gensym "part")) children)
+        label-node
+        (lui.elements/find-part-node children child-nodes :progress/label)
+        minimum (if (:min-value attrs) (:min-value attrs) 0)
+        maximum (if (:max-value attrs) (:max-value attrs) 100)
+        resolved-attrs
+        (lui.elements/component-attrs {:class "lui-progress"} attrs)]
+    `(let [~node (lui.ui/column! ~context)
+           ~@(lui.elements/part-bindings context children child-nodes)
+           ~control
+           (lui.ui/progress-control!
+            ~context ~(:value attrs) ~minimum ~maximum)]
+       ~@(lui.elements/element-properties context node resolved-attrs)
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])
+       ~@(map
+          (fn [part-node]
+            `(lui.ui/append! ~context ~node ~part-node))
+          child-nodes)
+       (lui.ui/append! ~context ~node ~control)
+       ~@(if label-node
+           [`(lui.ui/labelled-by! ~context ~control ~label-node)]
+           [])
        ~node)))
 
-(defelement label [context parent attrs & children]
-  (label-expansion "lui-progress-label" context parent attrs children))
-
-(defelement value-label [context parent attrs & children]
-  (label-expansion "lui-progress-value-label" context parent attrs children))
+(defcomponent label :label {:class "lui-progress-label"})
+(defcomponent value-label :label {:class "lui-progress-value-label"})

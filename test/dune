@@ -1,41 +1,11 @@
 (rule
- (target lui_runtime_native_chunk.ml)
+ (target lui_runtime_native.ml)
  (deps
-  %{lib:lg:stdlib/lg_stdlib_native.state}
+  ../lg/lui/lui_native.state
+  (source_tree ../lg/lui/backend)
   %{lib:lg-test.sources:test.cljc}
   %{lib:lg-test.sources:test_native.cljc}
-  %{lib:signal-lg.sources:lg/signal/core.lgi}
-  %{lib:signal-lg.sources:lg/signal/core.cljc}
-  ../lg/lui/protocol.lgi
-  ../lg/lui/protocol.cljc
-  ../lg/lui/wire.lgi
-  ../lg/lui/wire.cljc
-  ../lg/lui/runtime.lgi
-  ../lg/lui/runtime.cljc
-  ../lg/lui/ui.lgi
-  ../lg/lui/ui.cljc
-  ../lg/lui/app.lgi
-  ../lg/lui/app.cljc
-  ../lg/lui/elements.cljc
-  ../lg/lui/macros.cljc
-  ../lg/lui/card.cljc
-  ../lg/lui/text_field.cljc
-  ../lg/lui/switch.cljc
-  ../lg/lui/progress.cljc
-  ../lg/lui/dynamic.lgi
-  ../lg/lui/dynamic.cljc
-  ../lg/lui/backend/retained.lgi
-  ../lg/lui/backend/retained.cljc
-  ../lg/lui/backend/apple.lgi
-  ../lg/lui/backend/apple.cljc
-  ../lg/lui/backend/flutter.lgi
-  ../lg/lui/backend/flutter.cljc
-  ../examples/todos/lg/todos/model.lgi
-  ../examples/todos/lg/todos/model.cljc
-  ../examples/todos/lg/todos/view.lgi
-  ../examples/todos/lg/todos/view.cljc
-  ../examples/todos/lg/todos/app.lgi
-  ../examples/todos/lg/todos/app.cljc
+  (source_tree ../examples/todos/lg/todos)
   ../examples/todos/test/todos/app_test.cljc
   lui/runtime_test.cljc
   lui/authoring_test.cljc
@@ -49,41 +19,13 @@
   (run
    %{bin:lg}
    --target native
-   --compile-files-chunk-from %{lib:lg:stdlib/lg_stdlib_native.state}
+   --compile-files-from ../lg/lui/lui_native.state
+   ../lg/lui/backend/retained
+   ../lg/lui/backend/apple
+   ../lg/lui/backend/flutter
    %{lib:lg-test.sources:test.cljc}
    %{lib:lg-test.sources:test_native.cljc}
-   %{lib:signal-lg.sources:lg/signal/core.lgi}
-   %{lib:signal-lg.sources:lg/signal/core.cljc}
-   %{dep:../lg/lui/protocol.lgi}
-   %{dep:../lg/lui/protocol.cljc}
-   %{dep:../lg/lui/wire.lgi}
-   %{dep:../lg/lui/wire.cljc}
-   %{dep:../lg/lui/runtime.lgi}
-   %{dep:../lg/lui/runtime.cljc}
-   %{dep:../lg/lui/ui.lgi}
-   %{dep:../lg/lui/ui.cljc}
-   %{dep:../lg/lui/app.lgi}
-   %{dep:../lg/lui/app.cljc}
-   %{dep:../lg/lui/elements.cljc}
-   %{dep:../lg/lui/macros.cljc}
-   %{dep:../lg/lui/card.cljc}
-   %{dep:../lg/lui/text_field.cljc}
-   %{dep:../lg/lui/switch.cljc}
-   %{dep:../lg/lui/progress.cljc}
-   %{dep:../lg/lui/dynamic.lgi}
-   %{dep:../lg/lui/dynamic.cljc}
-   %{dep:../lg/lui/backend/retained.lgi}
-   %{dep:../lg/lui/backend/retained.cljc}
-   %{dep:../lg/lui/backend/apple.lgi}
-   %{dep:../lg/lui/backend/apple.cljc}
-   %{dep:../lg/lui/backend/flutter.lgi}
-   %{dep:../lg/lui/backend/flutter.cljc}
-   %{dep:../examples/todos/lg/todos/model.lgi}
-   %{dep:../examples/todos/lg/todos/model.cljc}
-   %{dep:../examples/todos/lg/todos/view.lgi}
-   %{dep:../examples/todos/lg/todos/view.cljc}
-   %{dep:../examples/todos/lg/todos/app.lgi}
-   %{dep:../examples/todos/lg/todos/app.cljc}
+   ../examples/todos/lg/todos
    %{dep:../examples/todos/test/todos/app_test.cljc}
    %{dep:lui/runtime_test.cljc}
    %{dep:lui/authoring_test.cljc}
@@ -91,15 +33,6 @@
    %{dep:lui/benchmark_test.cljc}
    %{lib:lg-test.sources:run.cljc}
    -o %{target})))
-
-(rule
- (target lui_runtime_native.ml)
- (deps %{lib:lg:stdlib/lg_stdlib_native.ml} lui_runtime_native_chunk.ml)
- (action
-  (with-stdout-to %{target}
-   (progn
-    (cat %{lib:lg:stdlib/lg_stdlib_native.ml})
-    (cat %{dep:lui_runtime_native_chunk.ml})))))
 
 (executable
  (name lui_runtime_native)
@@ -113,45 +46,13 @@
   lg-test.alcotest))
 
 (rule
- (target lui_runtime_melange_chunk.ml)
+ (target lui_runtime_melange.ml)
  (deps
-  %{lib:lg:stdlib/lg_stdlib_melange.state}
+  ../lg/lui/lui_melange.state
+  (source_tree ../lg/lui/backend)
   %{lib:lg-test.sources:test.cljc}
   %{lib:lg-test.sources:test_melange.cljc}
-  %{lib:signal-lg.sources:lg/signal/core.lgi}
-  %{lib:signal-lg.sources:lg/signal/core.cljc}
-  ../lg/lui/protocol.lgi
-  ../lg/lui/protocol.cljc
-  ../lg/lui/wire.lgi
-  ../lg/lui/wire.cljc
-  ../lg/lui/runtime.lgi
-  ../lg/lui/runtime.cljc
-  ../lg/lui/ui.lgi
-  ../lg/lui/ui.cljc
-  ../lg/lui/app.lgi
-  ../lg/lui/app.cljc
-  ../lg/lui/elements.cljc
-  ../lg/lui/macros.cljc
-  ../lg/lui/card.cljc
-  ../lg/lui/text_field.cljc
-  ../lg/lui/switch.cljc
-  ../lg/lui/progress.cljc
-  ../lg/lui/dynamic.lgi
-  ../lg/lui/dynamic.cljc
-  ../lg/lui/backend/retained.lgi
-  ../lg/lui/backend/retained.cljc
-  ../lg/lui/backend/apple.lgi
-  ../lg/lui/backend/apple.cljc
-  ../lg/lui/backend/flutter.lgi
-  ../lg/lui/backend/flutter.cljc
-  ../lg/lui/backend/web.lgi
-  ../lg/lui/backend/web.cljc
-  ../examples/todos/lg/todos/model.lgi
-  ../examples/todos/lg/todos/model.cljc
-  ../examples/todos/lg/todos/view.lgi
-  ../examples/todos/lg/todos/view.cljc
-  ../examples/todos/lg/todos/app.lgi
-  ../examples/todos/lg/todos/app.cljc
+  (source_tree ../examples/todos/lg/todos)
   ../examples/todos/test/todos/app_test.cljc
   lui/runtime_test.cljc
   lui/authoring_test.cljc
@@ -164,43 +65,14 @@
   (run
    %{bin:lg}
    --target melange
-   --compile-files-chunk-from %{lib:lg:stdlib/lg_stdlib_melange.state}
+   --compile-files-from ../lg/lui/lui_melange.state
+   ../lg/lui/backend/retained
+   ../lg/lui/backend/apple
+   ../lg/lui/backend/flutter
+   ../lg/lui/backend/web
    %{lib:lg-test.sources:test.cljc}
    %{lib:lg-test.sources:test_melange.cljc}
-   %{lib:signal-lg.sources:lg/signal/core.lgi}
-   %{lib:signal-lg.sources:lg/signal/core.cljc}
-   %{dep:../lg/lui/protocol.lgi}
-   %{dep:../lg/lui/protocol.cljc}
-   %{dep:../lg/lui/wire.lgi}
-   %{dep:../lg/lui/wire.cljc}
-   %{dep:../lg/lui/runtime.lgi}
-   %{dep:../lg/lui/runtime.cljc}
-   %{dep:../lg/lui/ui.lgi}
-   %{dep:../lg/lui/ui.cljc}
-   %{dep:../lg/lui/app.lgi}
-   %{dep:../lg/lui/app.cljc}
-   %{dep:../lg/lui/elements.cljc}
-   %{dep:../lg/lui/macros.cljc}
-   %{dep:../lg/lui/card.cljc}
-   %{dep:../lg/lui/text_field.cljc}
-   %{dep:../lg/lui/switch.cljc}
-   %{dep:../lg/lui/progress.cljc}
-   %{dep:../lg/lui/dynamic.lgi}
-   %{dep:../lg/lui/dynamic.cljc}
-   %{dep:../lg/lui/backend/retained.lgi}
-   %{dep:../lg/lui/backend/retained.cljc}
-   %{dep:../lg/lui/backend/apple.lgi}
-   %{dep:../lg/lui/backend/apple.cljc}
-   %{dep:../lg/lui/backend/flutter.lgi}
-   %{dep:../lg/lui/backend/flutter.cljc}
-   %{dep:../lg/lui/backend/web.lgi}
-   %{dep:../lg/lui/backend/web.cljc}
-   %{dep:../examples/todos/lg/todos/model.lgi}
-   %{dep:../examples/todos/lg/todos/model.cljc}
-   %{dep:../examples/todos/lg/todos/view.lgi}
-   %{dep:../examples/todos/lg/todos/view.cljc}
-   %{dep:../examples/todos/lg/todos/app.lgi}
-   %{dep:../examples/todos/lg/todos/app.cljc}
+   ../examples/todos/lg/todos
    %{dep:../examples/todos/test/todos/app_test.cljc}
    %{dep:lui/runtime_test.cljc}
    %{dep:lui/authoring_test.cljc}
@@ -208,15 +80,6 @@
    %{dep:lui/benchmark_test.cljc}
    %{lib:lg-test.sources:run.cljc}
    -o %{target})))
-
-(rule
- (target lui_runtime_melange.ml)
- (deps %{lib:lg:stdlib/lg_stdlib_melange.ml} lui_runtime_melange_chunk.ml)
- (action
-  (with-stdout-to %{target}
-   (progn
-    (cat %{lib:lg:stdlib/lg_stdlib_melange.ml})
-    (cat %{dep:lui_runtime_melange_chunk.ml})))))
 
 (melange.emit
  (target lui-runtime-melange)
@@ -246,45 +109,14 @@
    (run node %{dep:lui-runtime-melange/test/lui_runtime_melange.js}))))
 
 (rule
- (target apple_bridge_native_chunk.ml)
+ (target apple_bridge_native.ml)
  (deps
-  %{lib:lg:stdlib/lg_stdlib_native.state}
+  ../lg/lui/lui_native.state
+  (source_tree ../lg/lui/backend)
+  (source_tree ../lg/lui/host)
   %{lib:lg-test.sources:test.cljc}
   %{lib:lg-test.sources:test_native.cljc}
-  %{lib:signal-lg.sources:lg/signal/core.lgi}
-  %{lib:signal-lg.sources:lg/signal/core.cljc}
-  ../lg/lui/protocol.lgi
-  ../lg/lui/protocol.cljc
-  ../lg/lui/wire.lgi
-  ../lg/lui/wire.cljc
-  ../lg/lui/runtime.lgi
-  ../lg/lui/runtime.cljc
-  ../lg/lui/ui.lgi
-  ../lg/lui/ui.cljc
-  ../lg/lui/app.lgi
-  ../lg/lui/app.cljc
-  ../lg/lui/elements.cljc
-  ../lg/lui/macros.cljc
-  ../lg/lui/card.cljc
-  ../lg/lui/text_field.cljc
-  ../lg/lui/switch.cljc
-  ../lg/lui/progress.cljc
-  ../lg/lui/dynamic.lgi
-  ../lg/lui/dynamic.cljc
-  ../lg/lui/backend/retained.lgi
-  ../lg/lui/backend/retained.cljc
-  ../lg/lui/backend/apple.lgi
-  ../lg/lui/backend/apple.cljc
-  ../lg/lui/host/ctypes.lgi
-  ../lg/lui/host/ctypes.cljc
-  ../lg/lui/host/apple.lgi
-  ../lg/lui/host/apple.cljc
-  ../examples/todos/lg/todos/model.lgi
-  ../examples/todos/lg/todos/model.cljc
-  ../examples/todos/lg/todos/view.lgi
-  ../examples/todos/lg/todos/view.cljc
-  ../examples/todos/lg/todos/app.lgi
-  ../examples/todos/lg/todos/app.cljc
+  (source_tree ../examples/todos/lg/todos)
   lui/apple_bridge_test.cljc
   %{lib:lg-test.sources:run.cljc}
   %{bin:lg})
@@ -292,55 +124,16 @@
   (run
    %{bin:lg}
    --target native
-   --compile-files-chunk-from %{lib:lg:stdlib/lg_stdlib_native.state}
+   --compile-files-from ../lg/lui/lui_native.state
+   ../lg/lui/backend/retained
+   ../lg/lui/backend/apple
+   ../lg/lui/host
    %{lib:lg-test.sources:test.cljc}
    %{lib:lg-test.sources:test_native.cljc}
-   %{lib:signal-lg.sources:lg/signal/core.lgi}
-   %{lib:signal-lg.sources:lg/signal/core.cljc}
-   %{dep:../lg/lui/protocol.lgi}
-   %{dep:../lg/lui/protocol.cljc}
-   %{dep:../lg/lui/wire.lgi}
-   %{dep:../lg/lui/wire.cljc}
-   %{dep:../lg/lui/runtime.lgi}
-   %{dep:../lg/lui/runtime.cljc}
-   %{dep:../lg/lui/ui.lgi}
-   %{dep:../lg/lui/ui.cljc}
-   %{dep:../lg/lui/app.lgi}
-   %{dep:../lg/lui/app.cljc}
-   %{dep:../lg/lui/elements.cljc}
-   %{dep:../lg/lui/macros.cljc}
-   %{dep:../lg/lui/card.cljc}
-   %{dep:../lg/lui/text_field.cljc}
-   %{dep:../lg/lui/switch.cljc}
-   %{dep:../lg/lui/progress.cljc}
-   %{dep:../lg/lui/dynamic.lgi}
-   %{dep:../lg/lui/dynamic.cljc}
-   %{dep:../lg/lui/backend/retained.lgi}
-   %{dep:../lg/lui/backend/retained.cljc}
-   %{dep:../lg/lui/backend/apple.lgi}
-   %{dep:../lg/lui/backend/apple.cljc}
-   %{dep:../lg/lui/host/ctypes.lgi}
-   %{dep:../lg/lui/host/ctypes.cljc}
-   %{dep:../lg/lui/host/apple.lgi}
-   %{dep:../lg/lui/host/apple.cljc}
-   %{dep:../examples/todos/lg/todos/model.lgi}
-   %{dep:../examples/todos/lg/todos/model.cljc}
-   %{dep:../examples/todos/lg/todos/view.lgi}
-   %{dep:../examples/todos/lg/todos/view.cljc}
-   %{dep:../examples/todos/lg/todos/app.lgi}
-   %{dep:../examples/todos/lg/todos/app.cljc}
+   ../examples/todos/lg/todos
    %{dep:lui/apple_bridge_test.cljc}
    %{lib:lg-test.sources:run.cljc}
    -o %{target})))
-
-(rule
- (target apple_bridge_native.ml)
- (deps %{lib:lg:stdlib/lg_stdlib_native.ml} apple_bridge_native_chunk.ml)
- (action
-  (with-stdout-to %{target}
-   (progn
-    (cat %{lib:lg:stdlib/lg_stdlib_native.ml})
-    (cat %{dep:apple_bridge_native_chunk.ml})))))
 
 (executable
  (name apple_bridge_native)

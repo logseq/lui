@@ -1,7 +1,9 @@
 (ns components.gallery
   (:require [lui.macros :refer [defui]]
+            [lui.badge]
             [lui.card :as card]
             [lui.progress :as progress]
+            [lui.separator]
             [lui.switch :as switch]
             [lui.text-field :as text-field]))
 

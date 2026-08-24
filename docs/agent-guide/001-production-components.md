@@ -192,6 +192,8 @@ renderer or drawing system.
 
 The first reusable Surface property set is:
 
+- `WidthValue`, `HeightValue`, `MinWidth`, `MaxWidth`, `MinHeight` and
+  `MaxHeight`, expressed in platform logical points;
 - `PaddingHorizontal` and `PaddingVertical`, expressed in platform logical
   points;
 - `ForegroundValue` and `BackgroundValue`, resolved from semantic color names;
@@ -200,6 +202,15 @@ The first reusable Surface property set is:
 Numeric surface values are non-negative. These properties apply to retained
 primitives and patch the existing platform object. Component-specific classes
 remain Web-only visual selectors and are not interpreted as native styling.
+
+Omitted size properties preserve native intrinsic sizing. A minimum must not
+exceed its corresponding maximum, and a fixed width or height must fall inside
+the supplied range. The complete patch batch is rejected before commit when
+those constraints conflict. Web maps them to inline CSS size constraints,
+SwiftUI applies fixed and constrained `frame` modifiers, and Flutter composes
+`SizedBox` with `ConstrainedBox`. Percentages, viewport units, content keywords
+and unbounded fill are separate typed capabilities; they are not encoded as
+magic integers or arbitrary strings.
 
 ### Component extension paths
 
@@ -218,6 +229,49 @@ A Web component must not acquire a new protocol node merely to obtain a tag or
 CSS selector. Conversely, the primitive path must not be replaced with an
 arbitrary DOM/JSON escape hatch, because that would remove cross-platform type
 safety and create a second Web-only UI model.
+
+Component definitions have three explicit levels:
+
+```clojure
+(defcomponent card :box {:class "lui-card"})
+
+(defcompound text-field
+  {:root :box
+   :class "lui-text-field"
+   :controls [:text-field/input :text-field/text-area]
+   :relations
+   [[:labelled-by :text-field/label]
+    [:described-by :text-field/description]
+    [:error-message-by :text-field/error-message]]})
+```
+
+- `defcomponent` is the default. It composes one existing primitive, merges
+  default and caller attributes once, preserves both semantic classes, mounts
+  children and applies the shared Surface property set.
+- `defcompound` additionally declares control parts, root attributes forwarded
+  to those controls, and accessibility relationships. It owns the repeated
+  node and property plumbing for compound families.
+- `defelement` is the protocol-boundary escape hatch for implementing an actual
+  semantic primitive or a component with genuinely custom retained wiring. It
+  is not the normal component authoring API.
+
+Unqualified non-primitive tags follow a namespace convention: `:card` resolves
+to `lui.card/card`, while qualified application tags keep their exact namespace.
+The consuming namespace requires the component namespace explicitly. A new
+component file under `lg/lui/` is discovered through the existing LUI compile
+state; no Dune file list or central dispatcher registration is updated.
+
+The complete default Web component workflow is therefore:
+
+1. record the public anatomy, states and platform behavior in this design;
+2. define the root and parts together in `lg/lui/<component>.cljc` with
+   `defcomponent` or `defcompound`;
+3. add semantic `lui-*` Tailwind component rules to the Web stylesheet;
+4. add contract assertions and one `examples/components/` gallery section.
+
+Protocol, wire, Web backend, SwiftUI and Flutter changes happen only when step
+1 proves that a reusable native semantic primitive is missing. Dune never
+changes merely because a component source file was added.
 
 ### Badge contract
 

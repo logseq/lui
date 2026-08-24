@@ -4,9 +4,11 @@
             [lui.protocol :as proto :refer [StringValue TextChanged]]
             [lui.runtime :as runtime]
             [lui.ui :as ui]
-            [lui.elements :refer [defelement]]
+            [lui.elements :refer [defcomponent defelement]]
+            [lui.badge]
             [lui.card :as card]
             [lui.progress :as progress]
+            [lui.separator]
             [lui.text-field :as text-field]
             [lui.switch :as switch]
             [lui.macros :refer [defui state effect platform host]]
@@ -34,8 +36,14 @@
 (defelement badge [context parent _attrs & children]
   `(lui.elements/text ~context ~parent {} ~@children))
 
+(defcomponent simple-panel :box {:class "simple-panel"})
+
 (defui custom-element-view []
   [:lui.authoring-test/badge "Extensible"])
+
+(defui simple-component-view []
+  [:lui.authoring-test/simple-panel {:class "profile-panel"}
+   [:text "Declarative"]])
 
 (defui current-platform-profile []
   (tuple (platform) (host)))
@@ -241,6 +249,23 @@
       (Some (StringValue text))
       (assert-equal "Extensible" text "qualified custom tag is expanded")
       _ (is false "custom element creates a retained node"))))
+
+(deftest defcomponent-composes-a-primitive-without-node-plumbing
+  (let [renderer (apple/create)
+        application
+        (runtime/create (sig/scheduler) (apple/backend renderer))
+        scope (sig/scope "simple-component")
+        root (simple-component-view (ui/context application scope))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (match (apple/property renderer root proto/StyleClass)
+      (Some (StringValue value))
+      (assert-equal
+       "simple-panel profile-panel" value
+       "component defaults and caller classes are merged")
+      _ (is false "component root exposes its style class"))
+    (assert-equal 1 (count (apple/children renderer root))
+                  "component children are mounted automatically")))
 
 (deftest semantic-builders-produce-retained-ui
   (let [scheduler (sig/scheduler)
