@@ -259,6 +259,25 @@
     @apply rounded-full;
   }
 
+  .lui-progress {
+    @apply flex w-full flex-col gap-1;
+  }
+
+  .lui-progress-label,
+  .lui-progress-value-label {
+    @apply text-sm font-medium leading-none;
+  }
+
+  .lui-progress-control {
+    @apply h-2 w-full overflow-hidden rounded-full bg-secondary;
+  }
+
+  .lui-progress-control::before {
+    @apply block h-full bg-primary transition-[width];
+    content: "";
+    width: var(--lui-progress-position);
+  }
+
   .lui-card {
     @apply rounded-lg border bg-card text-card-foreground shadow-sm;
   }

@@ -4,6 +4,7 @@
              :refer [Row Column Box Text Heading Paragraph Label Button
                      TextInput TextArea Scroll Spacer
                      Checkbox SwitchControl
+                     ProgressControl
                      TextValue Enabled Gap PaddingValue
                      PaddingHorizontal PaddingVertical
                      BackgroundValue ForegroundValue BorderColorValue
@@ -12,6 +13,7 @@
                      StyleClass HeadingLevel LabelledBy DescribedBy
                      ErrorMessageBy InputType Invalid
                      Checked Indeterminate
+                     ProgressValue MinValue MaxValue
                      StringValue BoolValue IntValue
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild]]))
@@ -42,6 +44,7 @@
     TextArea "text-area"
     Checkbox "checkbox"
     SwitchControl "switch"
+    ProgressControl "progress"
     Scroll "scroll"
     Spacer "spacer"))
 
@@ -71,7 +74,10 @@
     InputType "input-type"
     Invalid "invalid"
     Checked "checked"
-    Indeterminate "indeterminate"))
+    Indeterminate "indeterminate"
+    ProgressValue "value"
+    MinValue "min-value"
+    MaxValue "max-value"))
 
 (defn- encode-value [value]
   (match value

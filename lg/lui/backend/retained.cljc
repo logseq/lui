@@ -200,11 +200,26 @@
         (raise (Invalid_argument "child is not attached to parent")))
       (raise (Invalid_argument "unknown parent")))))
 
+(defn- validate-nodes! [nodes]
+  (reduce-kv
+   (fn [_valid _node current]
+     (when (not
+            (proto/node-properties-supported?
+             (:semantic-kind current) (:retained-properties current)))
+       (raise
+        (Invalid_argument
+         "progress max-value must be greater than min-value")))
+     true)
+   true
+   nodes))
+
 (defn- apply-operations [nodes platform-for batch]
   (loop [index 0
          current-nodes nodes]
     (if (= index (count (:ops batch)))
-      current-nodes
+      (do
+        (validate-nodes! current-nodes)
+        current-nodes)
       (recur
        (inc index)
        (apply-op current-nodes platform-for (nth (:ops batch) index))))))

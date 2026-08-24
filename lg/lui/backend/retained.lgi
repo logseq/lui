@@ -36,6 +36,8 @@
   :fn<map<int;retained-node<platform>>;int;int;bool>)
 (signature lui.backend.retained/apply-op [platform]
   :fn<map<int;retained-node<platform>>;fn<node-kind;platform>;patch-op;map<int;retained-node<platform>>>)
+(signature lui.backend.retained/validate-nodes! [platform]
+  :fn<map<int;retained-node<platform>>;bool>)
 (signature lui.backend.retained/apply-operations [platform]
   :fn<map<int;retained-node<platform>>;fn<node-kind;platform>;patch-batch;map<int;retained-node<platform>>>)
 (signature lui.backend.retained/apply-batch-with! [platform]

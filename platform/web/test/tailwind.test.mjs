@@ -80,3 +80,15 @@ test("the production stylesheet contains the Solid UI Badge contract", async () 
   assert.match(css, /\.lui-badge--round\{[^}]*border-radius:3\.40282e38px/)
   assert.doesNotMatch(css, /\.rounded-full\{/)
 })
+
+test("the production stylesheet contains the Solid UI Progress contract", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-progress\{[^}]*display:flex/)
+  assert.match(css, /\.lui-progress-control\{[^}]*height:calc\(var\(--spacing\)\*2\)/)
+  assert.match(css, /\.lui-progress-control\{[^}]*background-color:var\(--color-secondary\)/)
+  assert.match(css, /\.lui-progress-control:{1,2}before\{[^}]*background-color:var\(--color-primary\)/)
+  assert.match(css, /\.lui-progress-control:{1,2}before\{[^}]*width:var\(--lui-progress-position\)/)
+  assert.match(css, /\.lui-progress-label,\.lui-progress-value-label\{[^}]*font-size:var\(--text-sm\)/)
+  assert.doesNotMatch(css, /\.h-2\{/)
+})

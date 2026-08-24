@@ -144,6 +144,49 @@
      (wire/encode-batch batch)
      "Surface styling remains a closed typed wire contract")))
 
+(deftest progress-control-uses-a-closed-range-contract
+  (let [batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/ProgressControl)
+                (proto/set-prop-op
+                 1 proto/MinValue (proto/IntValue 0))
+                (proto/set-prop-op
+                 1 proto/MaxValue (proto/IntValue 10))
+                (proto/set-prop-op
+                 1 proto/ProgressValue (proto/IntValue 3))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"progress\"},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"min-value\",\"value\":0},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"max-value\",\"value\":10},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"value\",\"value\":3}]}")
+     (wire/encode-batch batch)
+     "Progress stays inside the typed native wire vocabulary")))
+
+(deftest progress-control-rejects-an-empty-range-atomically
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/ProgressControl)
+                (proto/set-prop-op
+                 1 proto/MinValue (proto/IntValue 10))
+                (proto/set-prop-op
+                 1 proto/MaxValue (proto/IntValue 10))]))]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"progress max-value must be greater than min-value"
+         ((:apply-batch backend) batch))
+        "an invalid range never reaches a platform backend")
+    (assert-equal 0 (apple/node-count renderer)
+                  "range validation rejects the complete patch batch")))
+
 (deftest surface-numeric-properties-reject-negative-values
   (let [application
         (runtime/create (sig/scheduler) (apple/backend (apple/create)))

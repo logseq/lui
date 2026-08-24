@@ -246,6 +246,36 @@
           child-nodes)
        ~node)))
 
+(defelement progress [context parent attrs & children]
+  (let [node (gensym "node")
+        control (gensym "control")
+        child-nodes (map (fn [_child] (gensym "part")) children)
+        label-node (find-part-node children child-nodes :progress/label)
+        minimum (if (:min-value attrs) (:min-value attrs) 0)
+        maximum (if (:max-value attrs) (:max-value attrs) 100)
+        class-name
+        (if (:class attrs)
+          (str "lui-progress " (:class attrs))
+          "lui-progress")]
+    `(let [~node (lui.ui/column! ~context)
+           ~@(part-bindings context children child-nodes)
+           ~control
+           (lui.ui/progress-control!
+            ~context ~(:value attrs) ~minimum ~maximum)]
+       (lui.ui/style-class! ~context ~node ~class-name)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [part-node]
+            `(lui.ui/append! ~context ~node ~part-node))
+          child-nodes)
+       (lui.ui/append! ~context ~node ~control)
+       ~@(if label-node
+           [`(lui.ui/labelled-by! ~context ~control ~label-node)]
+           [])
+       ~node)))
+
 (defelement text-field [context parent attrs & children]
   (let [node (gensym "node")
         child-nodes (map (fn [_child] (gensym "part")) children)

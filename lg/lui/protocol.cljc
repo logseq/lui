@@ -69,14 +69,15 @@
     StyleClass true
     AccessibilityLabel
     (or (= kind TextInput) (= kind TextArea)
-        (= kind Checkbox) (= kind SwitchControl))
+        (= kind Checkbox) (= kind SwitchControl) (= kind ProgressControl))
     PlaceholderValue (or (= kind TextInput) (= kind TextArea))
     ReadOnly (or (= kind TextInput) (= kind TextArea))
     MinLines (= kind TextArea)
     MaxLines (= kind TextArea)
     HeadingLevel (= kind Heading)
     LabelledBy
-    (or (= kind TextInput) (= kind TextArea) (= kind SwitchControl))
+    (or (= kind TextInput) (= kind TextArea)
+        (= kind SwitchControl) (= kind ProgressControl))
     DescribedBy
     (or (= kind TextInput) (= kind TextArea) (= kind SwitchControl))
     ErrorMessageBy
@@ -87,6 +88,9 @@
         (= kind Checkbox) (= kind SwitchControl))
     Checked (or (= kind Checkbox) (= kind SwitchControl))
     Indeterminate (= kind Checkbox)
+    ProgressValue (= kind ProgressControl)
+    MinValue (= kind ProgressControl)
+    MaxValue (= kind ProgressControl)
     TextValue
     (match kind
       Text true
@@ -139,7 +143,23 @@
     (tuple Invalid (BoolValue _value)) true
     (tuple Checked (BoolValue _value)) true
     (tuple Indeterminate (BoolValue _value)) true
+    (tuple ProgressValue (IntValue _value)) true
+    (tuple MinValue (IntValue _value)) true
+    (tuple MaxValue (IntValue _value)) true
     _ false))
+
+(defn int-property [properties property fallback]
+  (if-some [value (clojure.core/get properties property)]
+    (match value
+      (IntValue number) number
+      _ fallback)
+    fallback))
+
+(defn node-properties-supported? [kind properties]
+  (if (= kind ProgressControl)
+    (< (int-property properties MinValue 0)
+       (int-property properties MaxValue 100))
+    true))
 
 (defn can-contain-children? [kind]
   (match kind

@@ -4,7 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "LUIAppleBackend",
-    platforms: [.macOS(.v13), .iOS(.v16)],
+    platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         .library(name: "LUIAppleBackend", type: .dynamic, targets: ["LUIAppleBackend"]),
     ],

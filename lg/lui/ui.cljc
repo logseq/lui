@@ -224,6 +224,20 @@
      (:ui-scope context) (:ui-application context) node callback)
     node))
 
+(defn progress-control! [context source minimum maximum]
+  (let [node
+        (runtime/create-node! (:ui-application context) proto/ProgressControl)]
+    (runtime/set-prop!
+     (:ui-application context) node proto/MinValue (proto/IntValue minimum))
+    (runtime/set-prop!
+     (:ui-application context) node proto/MaxValue (proto/IntValue maximum))
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context) node proto/ProgressValue
+     (sig/own-signal!
+      (:ui-scope context)
+      (sig/map (fn [value] (proto/IntValue value)) source)))
+    node))
+
 (defn labelled-by! [context node label]
   (runtime/set-prop!
    (:ui-application context) node proto/LabelledBy (proto/IntValue label)))

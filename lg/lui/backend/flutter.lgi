@@ -11,6 +11,7 @@
   (FlutterWidgetIsland)
   (FlutterCheckbox)
   (FlutterSwitch)
+  (FlutterProgress)
   (FlutterViewport)
   (FlutterSpacer))
 

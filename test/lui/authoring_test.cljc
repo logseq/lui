@@ -6,12 +6,13 @@
             [lui.ui :as ui]
             [lui.elements :refer [defelement]]
             [lui.card :as card]
+            [lui.progress :as progress]
             [lui.text-field :as text-field]
             [lui.switch :as switch]
             [lui.macros :refer [defui state effect platform host]]
             [lui.backend.apple :as apple
-             :refer [AppleBox AppleCheckbox AppleFormLabel AppleHeading
-                     AppleParagraph AppleSwitch AppleTextInput]]
+             :refer [AppleBox AppleCheckbox AppleColumn AppleFormLabel AppleHeading
+                     AppleParagraph AppleProgress AppleSwitch AppleTextInput]]
             [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
@@ -94,6 +95,12 @@
     {:variant "success" :round true :class "sync-status"}
     "Synchronized"]])
 
+(defui task-progress [completed completed-label]
+  [:progress
+   {:value completed :min-value 0 :max-value 10 :class "task-progress"}
+   [:progress/label "Processing..."]
+   [:progress/value-label {:value completed-label}]])
+
 (defui email-field [value invalid disabled callback]
   [:text-field {:class "account-email"}
    [:text-field/label "Email"]
@@ -141,9 +148,9 @@
         flutter-context
         (ui/context flutter-application (sig/scope "flutter-profile"))]
     (assert-equal
-     (tuple proto/MacOS proto/AppKitHost)
+     (tuple proto/MacOS proto/SwiftUIHost)
      (current-platform-profile apple-context)
-     "AppKit publishes its OS and host profile")
+     "SwiftUI publishes its OS and host profile")
     (assert-equal
      (tuple proto/AndroidOS proto/FlutterHost)
      (current-platform-profile flutter-context)
@@ -410,6 +417,71 @@
         (assert-equal
          "success-foreground" value "Badge content uses foreground")
         _ (is false "Badge retains its content color")))))
+
+(deftest progress-composes-public-parts-around-one-native-control
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "task-progress")
+        completed (sig/state scheduler 3)
+        completed-label (sig/state scheduler "3 of 10 tasks completed")
+        root
+        (task-progress
+         (ui/context application scope)
+         (sig/value completed)
+         (sig/value completed-label))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [parts (apple/children renderer root)
+          label (nth parts 0)
+          value-label (nth parts 1)
+          control (nth parts 2)
+          node-count (apple/node-count renderer)]
+      (assert-equal 3 (count parts)
+                    "Progress retains two public parts and one control")
+      (match (apple/node renderer root)
+        (Some AppleColumn) (is true "Progress root composes Column")
+        _ (is false "Progress root maps to Column"))
+      (match (apple/node renderer label)
+        (Some AppleFormLabel) (is true "ProgressLabel is semantic")
+        _ (is false "ProgressLabel maps to Label"))
+      (match (apple/node renderer value-label)
+        (Some AppleFormLabel) (is true "ProgressValueLabel is semantic")
+        _ (is false "ProgressValueLabel maps to Label"))
+      (match (apple/node renderer control)
+        (Some AppleProgress) (is true "Progress uses one native control")
+        _ (is false "Progress maps to the progress primitive"))
+      (match (apple/property renderer root proto/StyleClass)
+        (Some (StringValue value))
+        (assert-equal "lui-progress task-progress" value
+                      "Progress exposes one semantic root class")
+        _ (is false "Progress root class"))
+      (match (apple/property renderer control proto/MinValue)
+        (Some (proto/IntValue value))
+        (assert-equal 0 value "Progress retains min-value")
+        _ (is false "Progress min-value"))
+      (match (apple/property renderer control proto/MaxValue)
+        (Some (proto/IntValue value))
+        (assert-equal 10 value "Progress retains max-value")
+        _ (is false "Progress max-value"))
+      (match (apple/property renderer control proto/ProgressValue)
+        (Some (proto/IntValue value))
+        (assert-equal 3 value "Progress retains its Signal value")
+        _ (is false "Progress value"))
+      (match (apple/property renderer control proto/LabelledBy)
+        (Some (proto/IntValue value))
+        (assert-equal label value "ProgressControl references ProgressLabel")
+        _ (is false "Progress label relationship"))
+      (sig/set! completed 8)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "value patches preserve the retained component tree")
+      (assert-equal control (nth (apple/children renderer root) 2)
+                    "value patches preserve ProgressControl identity")
+      (match (apple/property renderer control proto/ProgressValue)
+        (Some (proto/IntValue value))
+        (assert-equal 8 value "the value Signal patches ProgressControl")
+        _ (is false "patched Progress value")))))
 
 (deftest text-field-composes-semantic-parts-and-patches-invalid-in-place
   (let [scheduler (sig/scheduler)

@@ -2,6 +2,7 @@ import Foundation
 
 #if canImport(AppKit)
 import AppKit
+import SwiftUI
 
 public typealias LUIAppleEventCallback =
     @convention(c) (Int32, Int32, UnsafePointer<CChar>?) -> Void
@@ -14,6 +15,7 @@ private final class LUIAppleBridge {
 
     private(set) var backend = LUIAppleBackend()
     private var window: NSWindow?
+    private var hostedRootID: Int?
 
     private init() {
         connectEvents()
@@ -27,17 +29,6 @@ private final class LUIAppleBridge {
     func show() {
         _ = NSApplication.shared
         if window == nil {
-            let root = NSStackView()
-            root.orientation = .vertical
-            root.translatesAutoresizingMaskIntoConstraints = false
-            let content = NSView()
-            content.addSubview(root)
-            NSLayoutConstraint.activate([
-                root.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
-                root.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
-                root.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
-                root.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -16),
-            ])
             let created = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
                 styleMask: [.titled, .closable, .resizable],
@@ -45,7 +36,6 @@ private final class LUIAppleBridge {
                 defer: false
             )
             created.title = "LUI"
-            created.contentView = content
             window = created
         }
         refreshWindow()
@@ -60,6 +50,7 @@ private final class LUIAppleBridge {
     func reset() {
         window?.close()
         window = nil
+        hostedRootID = nil
         backend = LUIAppleBackend()
         connectEvents()
     }
@@ -81,19 +72,18 @@ private final class LUIAppleBridge {
     }
 
     private func refreshWindow() {
-        guard let root = window?.contentView?.subviews.first as? NSStackView else { return }
-        let nextViews = backend.rootViews
-        guard root.arrangedSubviews.count != nextViews.count
-                || !zip(root.arrangedSubviews, nextViews).allSatisfy({ $0 === $1 }) else {
+        guard let window else { return }
+        guard let rootID = backend.rootIDs.first else {
+            window.contentView = nil
+            hostedRootID = nil
             return
         }
-        for child in root.arrangedSubviews {
-            root.removeArrangedSubview(child)
-            child.removeFromSuperview()
-        }
-        for view in nextViews {
-            root.addArrangedSubview(view)
-        }
+        guard hostedRootID != rootID else { return }
+        window.contentView = NSHostingView(
+            rootView: LUISwiftUIRoot(backend: backend, rootID: rootID)
+                .padding(16)
+        )
+        hostedRootID = rootID
     }
 }
 
@@ -133,15 +123,12 @@ public func luiAppleReset() {
 @_cdecl("lui_apple_perform_action")
 public func luiApplePerformAction(_ node: Int32) -> Int32 {
     MainActor.assumeIsolated {
-        if let button = LUIAppleBridge.shared.backend.view(id: Int(node)) as? NSButton {
-            button.performClick(nil)
+        do {
+            try LUIAppleBridge.shared.backend.performAction(node: Int(node))
             return 1
+        } catch {
+            return 0
         }
-        if let toggle = LUIAppleBridge.shared.backend.view(id: Int(node)) as? NSSwitch {
-            toggle.performClick(nil)
-            return 1
-        }
-        return 0
     }
 }
 #endif

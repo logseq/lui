@@ -3,6 +3,7 @@ import AppKit
 import Darwin
 import Foundation
 import LUIAppleBackend
+import SwiftUI
 
 private typealias PatchCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
 private typealias StartFunction = @convention(c) (PatchCallback?, Int32) -> Int32
@@ -10,6 +11,7 @@ private typealias StopFunction = @convention(c) () -> Int32
 private typealias PressFunction = @convention(c) (Int64) -> Int32
 private typealias TextChangedFunction =
     @convention(c) (Int64, UnsafePointer<CChar>?) -> Int32
+private typealias ToggleChangedFunction = @convention(c) (Int64, Int32) -> Int32
 
 nonisolated(unsafe) private var activeHost: TodosHost?
 
@@ -28,6 +30,7 @@ private final class NativeTodosRuntime {
     private let stopFunction: StopFunction
     private let pressFunction: PressFunction
     private let textChangedFunction: TextChangedFunction
+    private let toggleChangedFunction: ToggleChangedFunction
 
     init(path: String) throws {
         guard let handle = dlopen(path, RTLD_NOW | RTLD_LOCAL) else {
@@ -38,6 +41,7 @@ private final class NativeTodosRuntime {
         stopFunction = try Self.load("lui_ocaml_stop", from: handle)
         pressFunction = try Self.load("lui_ocaml_press", from: handle)
         textChangedFunction = try Self.load("lui_ocaml_text_changed", from: handle)
+        toggleChangedFunction = try Self.load("lui_ocaml_toggle_changed", from: handle)
     }
 
     func start() throws {
@@ -58,6 +62,10 @@ private final class NativeTodosRuntime {
         text.withCString { source in
             _ = textChangedFunction(Int64(node), source)
         }
+    }
+
+    func toggleChanged(node: Int, checked: Bool) {
+        _ = toggleChangedFunction(Int64(node), checked ? 1 : 0)
     }
 
     private static func load<Function>(
@@ -85,6 +93,7 @@ private final class TodosHost: NSObject, NSApplicationDelegate, NSWindowDelegate
     private let content = NSView()
     private var runtime: NativeTodosRuntime?
     private var window: NSWindow?
+    private var hostedRootID: Int?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -98,6 +107,8 @@ private final class TodosHost: NSObject, NSApplicationDelegate, NSWindowDelegate
                     self?.runtime?.press(node: node)
                 case let .textChanged(node, text):
                     self?.runtime?.textChanged(node: node, text: text)
+                case let .toggleChanged(node, checked):
+                    self?.runtime?.toggleChanged(node: node, checked: checked)
                 }
             }
             makeWindow()
@@ -148,16 +159,26 @@ private final class TodosHost: NSObject, NSApplicationDelegate, NSWindowDelegate
     }
 
     private func refreshRoot() {
-        guard let root = backend.rootViews.first else { return }
-        guard root.superview !== content else { return }
+        guard let rootID = backend.rootIDs.first else {
+            content.subviews.forEach { $0.removeFromSuperview() }
+            hostedRootID = nil
+            return
+        }
+        guard hostedRootID != rootID else { return }
         content.subviews.forEach { $0.removeFromSuperview() }
+        let root = NSHostingView(
+            rootView: LUISwiftUIRoot(backend: backend, rootID: rootID)
+                .padding(24)
+        )
+        root.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(root)
         NSLayoutConstraint.activate([
-            root.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
-            root.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -24),
-            root.topAnchor.constraint(equalTo: content.topAnchor, constant: 24),
-            root.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -24),
+            root.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            root.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            root.topAnchor.constraint(equalTo: content.topAnchor),
+            root.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ])
+        hostedRootID = rootID
     }
 
     private func libraryPath() throws -> String {

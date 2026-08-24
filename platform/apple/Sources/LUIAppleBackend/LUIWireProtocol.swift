@@ -10,15 +10,16 @@ public enum LUIEvent: Equatable, Sendable {
     case toggleChanged(node: Int, checked: Bool)
 }
 
-enum LUINodeKind: String, Decodable {
+enum LUINodeKind: String, Decodable, Equatable {
     case row, column, box, text, heading, paragraph, label, button
     case textInput = "text-input", textArea = "text-area"
     case checkbox
     case switchControl = "switch"
+    case progress
     case scroll, spacer
 }
 
-enum LUIProperty: String, Decodable {
+enum LUIProperty: String, Decodable, Hashable {
     case text, enabled, gap, padding, background, placeholder
     case paddingHorizontal = "padding-horizontal"
     case paddingVertical = "padding-vertical"
@@ -38,6 +39,9 @@ enum LUIProperty: String, Decodable {
     case inputType = "input-type"
     case invalid
     case checked, indeterminate
+    case progressValue = "value"
+    case minValue = "min-value"
+    case maxValue = "max-value"
 }
 
 struct LUIPatchBatch: Decodable {
@@ -96,7 +100,7 @@ enum LUIPatchOperation: Decodable {
     }
 }
 
-enum LUIWireValue: Decodable {
+enum LUIWireValue: Decodable, Equatable {
     case string(String)
     case bool(Bool)
     case int(Int)
@@ -120,6 +124,7 @@ enum LUIWireValue: Decodable {
         case let (.inputType, .string(type)): Self.inputTypes.contains(type)
         case (.invalid, .bool): true
         case (.checked, .bool), (.indeterminate, .bool): true
+        case (.progressValue, .int), (.minValue, .int), (.maxValue, .int): true
         case (.foreground, .string), (.borderColor, .string): true
         case let (.paddingHorizontal, .int(value)),
              let (.paddingVertical, .int(value)),
@@ -145,6 +150,7 @@ struct LUINodeState {
     let kind: LUINodeKind
     var parent: Int?
     var children: [Int]
+    var properties: [LUIProperty: LUIWireValue]
 }
 
 struct LUIRetainedTree {
@@ -159,6 +165,7 @@ struct LUIRetainedTree {
         for operation in operations {
             try next.apply(operation)
         }
+        try next.validateNodeProperties()
         return next
     }
 
@@ -166,19 +173,27 @@ struct LUIRetainedTree {
         switch operation {
         case let .createNode(id, kind):
             guard nodes[id] == nil else { throw invalid("node already exists") }
-            nodes[id] = LUINodeState(kind: kind, parent: nil, children: [])
+            nodes[id] = LUINodeState(
+                kind: kind,
+                parent: nil,
+                children: [],
+                properties: [:]
+            )
         case let .dropNode(id):
             guard let node = nodes[id] else { throw invalid("unknown node") }
             guard node.parent == nil && node.children.isEmpty else {
                 throw invalid("cannot drop an attached node")
             }
             nodes[id] = nil
+            removeRelationships(to: id)
         case let .setProp(id, property, value):
-            guard let node = nodes[id] else { throw invalid("unknown node") }
+            guard var node = nodes[id] else { throw invalid("unknown node") }
             guard Self.supports(property, on: node.kind), value.matches(property) else {
                 throw invalid("unsupported property value")
             }
             try validateRelationship(property, value: value)
+            node.properties[property] = value
+            nodes[id] = node
         case let .insertChild(parent, child, index):
             guard var parentNode = nodes[parent], var childNode = nodes[child] else {
                 throw invalid("unknown parent or child")
@@ -249,10 +264,13 @@ struct LUIRetainedTree {
             kind == .textInput || kind == .textArea
         case .accessibilityLabel:
             kind == .textInput || kind == .textArea || kind == .checkbox ||
-                kind == .switchControl
+                kind == .switchControl || kind == .progress
         case .minLines, .maxLines: kind == .textArea
         case .headingLevel: kind == .heading
-        case .labelledBy, .describedBy, .errorMessageBy:
+        case .labelledBy:
+            kind == .textInput || kind == .textArea || kind == .switchControl ||
+                kind == .progress
+        case .describedBy, .errorMessageBy:
             kind == .textInput || kind == .textArea || kind == .switchControl
         case .invalid:
             kind == .textInput || kind == .textArea || kind == .checkbox ||
@@ -260,6 +278,7 @@ struct LUIRetainedTree {
         case .inputType: kind == .textInput
         case .checked: kind == .checkbox || kind == .switchControl
         case .indeterminate: kind == .checkbox
+        case .progressValue, .minValue, .maxValue: kind == .progress
         }
     }
 
@@ -270,6 +289,32 @@ struct LUIRetainedTree {
 
     private static func isSingleChildContainer(_ kind: LUINodeKind) -> Bool {
         kind == .scroll || kind == .switchControl
+    }
+
+    private func validateNodeProperties() throws {
+        for node in nodes.values where node.kind == .progress {
+            let minimum = node.properties[.minValue]?.intValue ?? 0
+            let maximum = node.properties[.maxValue]?.intValue ?? 100
+            guard maximum > minimum else {
+                throw invalid("progress max-value must be greater than min-value")
+            }
+        }
+    }
+
+    private mutating func removeRelationships(to removed: Int) {
+        let relationships: [LUIProperty] = [
+            .labelledBy,
+            .describedBy,
+            .errorMessageBy,
+        ]
+        for id in Array(nodes.keys) {
+            guard var node = nodes[id] else { continue }
+            for property in relationships
+            where node.properties[property]?.intValue == removed {
+                node.properties[property] = nil
+            }
+            nodes[id] = node
+        }
     }
 
     private func validateRelationship(
@@ -294,5 +339,22 @@ struct LUIRetainedTree {
 
     private func invalid(_ message: String) -> LUIBackendError {
         .invalidBatch(message)
+    }
+}
+
+extension LUIWireValue {
+    var intValue: Int? {
+        guard case let .int(value) = self else { return nil }
+        return value
+    }
+
+    var stringValue: String? {
+        guard case let .string(value) = self else { return nil }
+        return value
+    }
+
+    var boolValue: Bool? {
+        guard case let .bool(value) = self else { return nil }
+        return value
     }
 }

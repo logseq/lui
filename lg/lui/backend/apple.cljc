@@ -2,7 +2,8 @@
   (:require [lui.protocol :as proto
              :refer [Row Column Box Text Heading Paragraph Label Button
                      TextInput TextArea Scroll Spacer
-                     Checkbox SwitchControl]]
+                     Checkbox SwitchControl
+                     ProgressControl]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -30,6 +31,7 @@
     TextArea AppleTextArea
     Checkbox AppleCheckbox
     SwitchControl AppleSwitch
+    ProgressControl AppleProgress
     Scroll AppleScrollView
     Spacer AppleSpacer))
 
@@ -43,7 +45,7 @@
               (:apple-send-batch renderer) batch)))))
 
 (defn backend [renderer]
-  (backend-for renderer proto/MacOS proto/AppKitHost))
+  (backend-for renderer proto/MacOS proto/SwiftUIHost))
 
 (defn- some-node [value]
   (Some value))

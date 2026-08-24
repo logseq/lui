@@ -13,6 +13,7 @@
   (AppleTextArea)
   (AppleCheckbox)
   (AppleSwitch)
+  (AppleProgress)
   (AppleScrollView)
   (AppleSpacer))
 

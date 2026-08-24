@@ -4,6 +4,7 @@
             [lui.protocol :as proto
              :refer [Row Column Box Text Heading Paragraph Label Button
                      TextInput TextArea Checkbox SwitchControl Scroll Spacer
+                     ProgressControl
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild TextValue Enabled Gap PaddingValue
                      PaddingHorizontal PaddingVertical
@@ -13,6 +14,7 @@
                      AccessibilityLabel StyleClass HeadingLevel LabelledBy
                      DescribedBy ErrorMessageBy InputType Invalid
                      Checked Indeterminate
+                     ProgressValue MinValue MaxValue
                      StringValue BoolValue IntValue]]
             [lui.backend.retained :as retained]))
 
@@ -40,6 +42,7 @@
     TextArea "lui-text-area"
     Checkbox "lui-checkbox"
     SwitchControl "lui-switch-control"
+    ProgressControl "lui-progress-control"
     Scroll "lui-scroll"
     Spacer "lui-spacer"))
 
@@ -55,6 +58,7 @@
           TextArea "textarea"
           Checkbox "input"
           SwitchControl "button"
+          ProgressControl "div"
           _ "div")
         node
         (Webapi.Dom.Document.createElement tag (:web-document renderer))]
@@ -69,6 +73,8 @@
     (when (= kind SwitchControl)
       (Webapi.Dom.Element.setAttribute "type" "button" node)
       (Webapi.Dom.Element.setAttribute "role" "switch" node))
+    (when (= kind ProgressControl)
+      (Webapi.Dom.Element.setAttribute "role" "progressbar" node))
     node))
 
 (defn- dom-node [renderer node]
@@ -218,7 +224,23 @@
     (Webapi.Dom.Element.setAttribute attribute "" dom-node)
     (Webapi.Dom.Element.removeAttribute attribute dom-node)))
 
-(defn- apply-property! [renderer kind dom-node property value]
+(defn- progress-int [renderer node property fallback]
+  (match (retained/property (:web-store renderer) node property)
+    (Some (IntValue value)) value
+    _ fallback))
+
+(defn- update-progress! [renderer node dom-node]
+  (let [minimum (progress-int renderer node MinValue 0)
+        maximum (progress-int renderer node MaxValue 100)
+        value (progress-int renderer node ProgressValue minimum)
+        clamped (max minimum (min value maximum))
+        position (/ (* (- clamped minimum) 100) (- maximum minimum))]
+    (Webapi.Dom.Element.setAttribute "aria-valuemin" (str minimum) dom-node)
+    (Webapi.Dom.Element.setAttribute "aria-valuemax" (str maximum) dom-node)
+    (Webapi.Dom.Element.setAttribute "aria-valuenow" (str clamped) dom-node)
+    (set-style! dom-node "--lui-progress-position" (str position "%"))))
+
+(defn- apply-property! [renderer node kind dom-node property value]
   (match (tuple property value)
     (tuple TextValue (StringValue text))
     (if (or (= kind TextInput) (= kind TextArea))
@@ -347,6 +369,15 @@
          (if (Webapi.Dom.HtmlInputElement.checked control) "true" "false"))
        dom-node))
 
+    (tuple ProgressValue (IntValue _value))
+    (update-progress! renderer node dom-node)
+
+    (tuple MinValue (IntValue _value))
+    (update-progress! renderer node dom-node)
+
+    (tuple MaxValue (IntValue _value))
+    (update-progress! renderer node dom-node)
+
     (tuple MinLines (IntValue lines))
     (do
       (Webapi.Dom.Element.setAttribute "rows" (str lines) dom-node)
@@ -429,7 +460,7 @@
     (SetProp node property value)
     (if-some [current (retained/node (:web-store renderer) node)]
       (apply-property!
-       renderer (:semantic-kind current) (:platform-node current)
+       renderer node (:semantic-kind current) (:platform-node current)
        property value)
       (raise (Invalid_argument "unknown DOM node")))
 

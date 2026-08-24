@@ -19,6 +19,11 @@
         toggle-checked (sig/state scheduler false)
         toggle-indeterminate (sig/state scheduler true)
         toggle-invalid (sig/state scheduler false)
+        progress-value (sig/state scheduler 30)
+        progress-label
+        (sig/map
+         (fn [value] (str value "%"))
+         (sig/value progress-value))
         card-copy
         (sig/map
          (fn [is-disabled]
@@ -61,7 +66,14 @@
          (fn [_event]
            (sig/set!
             toggle-invalid
-            (if (= (sig/get toggle-invalid) true) false true))))]
+            (if (= (sig/get toggle-invalid) true) false true)))
+         (sig/value progress-value)
+         progress-label
+         (fn [_event]
+           (let [current (sig/get progress-value)]
+             (sig/set!
+              progress-value
+              (if (>= current 100) 0 (+ current 10))))))]
     (web/set-event-handler!
      renderer
      (fn [event]

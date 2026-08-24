@@ -4,7 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "LUITodos",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)],
     dependencies: [
         .package(path: "../../../platform/apple"),
     ],

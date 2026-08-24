@@ -1,6 +1,7 @@
 (ns components.gallery
   (:require [lui.macros :refer [defui]]
             [lui.card :as card]
+            [lui.progress :as progress]
             [lui.switch :as switch]
             [lui.text-field :as text-field]))
 
@@ -77,6 +78,14 @@
     [:badge {:variant "error"} "Error"]
     [:badge {:round true} "Round"]]])
 
+(defui progress-gallery [value-source value-label-source advance]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Progress"]
+   [:progress {:value value-source}
+    [:progress/label "Uploading files"]
+    [:progress/value-label {:value value-label-source}]]
+   [:button {:variant "outline" :on-press advance} "Advance progress"]])
+
 (defui text-field-gallery
   [value-source invalid-source disabled-source update-value toggle-invalid]
   [:column {:gap 24 :padding 32}
@@ -143,10 +152,12 @@
   [disabled-source toggle-disabled card-copy
    value-source invalid-source update-value toggle-invalid
    checked-source indeterminate-source toggle-invalid-source
-   update-toggle toggle-indeterminate toggle-toggle-invalid]
+   update-toggle toggle-indeterminate toggle-toggle-invalid
+   progress-source progress-label-source advance-progress]
   [:column
    [button-gallery disabled-source toggle-disabled]
    [badge-gallery]
+   [progress-gallery progress-source progress-label-source advance-progress]
    [card-gallery card-copy]
    [text-field-gallery
     value-source invalid-source disabled-source update-value toggle-invalid]

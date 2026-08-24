@@ -5,8 +5,8 @@ LUI is a retained cross-platform UI runtime written in LG and powered by
 patch generation stay in LG. Each backend applies those patches to real UI
 objects:
 
-- Apple: Swift and AppKit (`NSStackView`, `NSTextField`, `NSButton`, and
-  `NSScrollView`).
+- Apple: one SwiftUI backend shared by iOS and macOS. AppKit is used only to
+  host the SwiftUI root in command-line macOS examples.
 - Flutter: Dart and Flutter widgets (`Row`, `Column`, `Text`,
   `TextButton`, `TextField`, and `SingleChildScrollView`).
 - Web: LG compiled by Melange, using typed `melange-webapi` bindings to the
@@ -34,10 +34,10 @@ make test-apple
 make test-flutter
 ```
 
-LG tests run on both Native and Melange. Apple tests instantiate real AppKit
-views and exercise target-action. Flutter widget tests mount real widgets,
-drive `TextField` input and button taps through the OCaml bridge, and verify
-that keyed moves preserve Flutter render identity.
+LG tests run on both Native and Melange. Apple tests exercise the retained
+SwiftUI model, per-node invalidation, typed events, and keyed identity. Flutter
+widget tests mount real widgets, drive `TextField` input and button taps through
+the OCaml bridge, and verify that keyed moves preserve Flutter render identity.
 
 Build and serve the browser example with:
 
@@ -48,6 +48,10 @@ make serve-web
 Then open <http://127.0.0.1:8765/examples/todos/web/index.html>. The page loads the
 Melange output from `_build`; the renderer and Todos entrypoint are LG source
 under `lg/lui/backend/web.cljc` and `examples/todos/web/lg/todos/web_main.cljc`.
+
+The component showcase is at
+<http://127.0.0.1:8765/examples/components/web/index.html>. It uses the same LG
+Signal view model and includes interactive incremental component states.
 
 ## Declarative UI
 

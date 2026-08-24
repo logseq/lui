@@ -21,6 +21,7 @@
   ../lg/lui/card.cljc
   ../lg/lui/text_field.cljc
   ../lg/lui/switch.cljc
+  ../lg/lui/progress.cljc
   ../lg/lui/dynamic.lgi
   ../lg/lui/dynamic.cljc
   ../lg/lui/backend/retained.lgi
@@ -68,6 +69,7 @@
    %{dep:../lg/lui/card.cljc}
    %{dep:../lg/lui/text_field.cljc}
    %{dep:../lg/lui/switch.cljc}
+   %{dep:../lg/lui/progress.cljc}
    %{dep:../lg/lui/dynamic.lgi}
    %{dep:../lg/lui/dynamic.cljc}
    %{dep:../lg/lui/backend/retained.lgi}
@@ -133,6 +135,7 @@
   ../lg/lui/card.cljc
   ../lg/lui/text_field.cljc
   ../lg/lui/switch.cljc
+  ../lg/lui/progress.cljc
   ../lg/lui/dynamic.lgi
   ../lg/lui/dynamic.cljc
   ../lg/lui/backend/retained.lgi
@@ -181,6 +184,7 @@
    %{dep:../lg/lui/card.cljc}
    %{dep:../lg/lui/text_field.cljc}
    %{dep:../lg/lui/switch.cljc}
+   %{dep:../lg/lui/progress.cljc}
    %{dep:../lg/lui/dynamic.lgi}
    %{dep:../lg/lui/dynamic.cljc}
    %{dep:../lg/lui/backend/retained.lgi}
@@ -264,6 +268,7 @@
   ../lg/lui/card.cljc
   ../lg/lui/text_field.cljc
   ../lg/lui/switch.cljc
+  ../lg/lui/progress.cljc
   ../lg/lui/dynamic.lgi
   ../lg/lui/dynamic.cljc
   ../lg/lui/backend/retained.lgi
@@ -307,6 +312,7 @@
    %{dep:../lg/lui/card.cljc}
    %{dep:../lg/lui/text_field.cljc}
    %{dep:../lg/lui/switch.cljc}
+   %{dep:../lg/lui/progress.cljc}
    %{dep:../lg/lui/dynamic.lgi}
    %{dep:../lg/lui/dynamic.cljc}
    %{dep:../lg/lui/backend/retained.lgi}

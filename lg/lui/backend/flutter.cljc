@@ -2,7 +2,8 @@
   (:require [lui.protocol :as proto
              :refer [Row Column Box Text Heading Paragraph Label Button
                      TextInput TextArea Scroll Spacer
-                     Checkbox SwitchControl]]
+                     Checkbox SwitchControl
+                     ProgressControl]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -30,6 +31,7 @@
     TextArea FlutterWidgetIsland
     Checkbox FlutterCheckbox
     SwitchControl FlutterSwitch
+    ProgressControl FlutterProgress
     Scroll FlutterViewport
     Spacer FlutterSpacer))
 

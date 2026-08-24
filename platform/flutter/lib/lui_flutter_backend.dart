@@ -79,6 +79,7 @@ enum _NodeKind {
   textArea,
   checkbox,
   switchControl,
+  progress,
   scroll,
   spacer,
 }
@@ -163,6 +164,7 @@ final class LUIFlutterBackend {
     for (final operation in operations) {
       _applyState(next, operation);
     }
+    _validateStates(next);
     final changedIDs = <int>{};
     final removed = _handles.keys
         .where((id) => !next.containsKey(id))
@@ -229,6 +231,11 @@ final class LUIFlutterBackend {
     final invalid = state.properties['invalid'] as bool? ?? false;
     final checked = state.properties['checked'] as bool? ?? false;
     final indeterminate = state.properties['indeterminate'] as bool? ?? false;
+    final minimum = state.properties['min-value'] as int? ?? 0;
+    final maximum = state.properties['max-value'] as int? ?? 100;
+    final progressValue = state.properties['value'] as int? ?? minimum;
+    final progressFraction =
+        (progressValue.clamp(minimum, maximum) - minimum) / (maximum - minimum);
     final foreground = _color(
       context,
       state.properties['foreground'] as String?,
@@ -345,6 +352,11 @@ final class LUIFlutterBackend {
                 )
               : null,
         ),
+      ),
+      _NodeKind.progress => LinearProgressIndicator(
+        value: progressFraction,
+        semanticsLabel: accessibilityLabel,
+        semanticsValue: '${(progressFraction * 100).round()}%',
       ),
       _NodeKind.scroll => SingleChildScrollView(
         child: children.isEmpty ? const SizedBox.shrink() : children.single,
@@ -479,6 +491,9 @@ final class LUIFlutterBackend {
                 _isTextControl(kind) ||
                 kind == _NodeKind.checkbox ||
                 kind == _NodeKind.switchControl),
+      'value' ||
+      'min-value' ||
+      'max-value' => value is int && kind == _NodeKind.progress,
       'gap' =>
         value is int && (kind == _NodeKind.row || kind == _NodeKind.column),
       'padding' => value is int,
@@ -503,9 +518,13 @@ final class LUIFlutterBackend {
       'border-width' => value is int && value >= 0,
       'corner-radius' => value is int && value >= 0,
       'style-class' => value is String,
-      'labelled-by' => value is int && kind.isRelationshipControl,
-      'described-by' => value is int && kind.isRelationshipControl,
-      'error-message-by' => value is int && kind.isRelationshipControl,
+      'labelled-by' =>
+        value is int &&
+            (kind.isTextControl ||
+                kind == _NodeKind.switchControl ||
+                kind == _NodeKind.progress),
+      'described-by' || 'error-message-by' =>
+        value is int && (kind.isTextControl || kind == _NodeKind.switchControl),
       'input-type' =>
         value is String &&
             _inputTypes.contains(value) &&
@@ -527,7 +546,8 @@ final class LUIFlutterBackend {
         value is String &&
             (_isTextControl(kind) ||
                 kind == _NodeKind.checkbox ||
-                kind == _NodeKind.switchControl),
+                kind == _NodeKind.switchControl ||
+                kind == _NodeKind.progress),
       'min-lines' => value is int && value > 0 && kind == _NodeKind.textArea,
       'max-lines' => value is int && value > 0 && kind == _NodeKind.textArea,
       _ => false,
@@ -554,6 +574,19 @@ final class LUIFlutterBackend {
     };
     if (!valid) {
       throw const LUIBackendException('invalid relationship target');
+    }
+  }
+
+  static void _validateStates(Map<int, _NodeState> states) {
+    for (final state in states.values) {
+      if (state.kind != _NodeKind.progress) continue;
+      final minimum = state.properties['min-value'] as int? ?? 0;
+      final maximum = state.properties['max-value'] as int? ?? 100;
+      if (maximum <= minimum) {
+        throw const LUIBackendException(
+          'progress max-value must be greater than min-value',
+        );
+      }
     }
   }
 
@@ -606,6 +639,7 @@ final class LUIFlutterBackend {
     'text-area' => _NodeKind.textArea,
     'checkbox' => _NodeKind.checkbox,
     'switch' => _NodeKind.switchControl,
+    'progress' => _NodeKind.progress,
     'scroll' => _NodeKind.scroll,
     'spacer' => _NodeKind.spacer,
     _ => throw const LUIBackendException('unknown node kind'),
@@ -723,9 +757,6 @@ final class LUIFlutterBackend {
 extension on _NodeKind {
   bool get isTextControl =>
       this == _NodeKind.textInput || this == _NodeKind.textArea;
-
-  bool get isRelationshipControl =>
-      isTextControl || this == _NodeKind.switchControl;
 }
 
 final class _LUITextInput extends StatefulWidget {
