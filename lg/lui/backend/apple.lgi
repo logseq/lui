@@ -32,7 +32,8 @@
   (AppleSelect)
   (AppleCombobox)
   (AppleDropdownMenu)
-  (AppleMenuItem))
+  (AppleMenuItem)
+  (AppleListItem))
 
 (type-record apple-renderer
   (apple-store :retained-store<apple-node>)

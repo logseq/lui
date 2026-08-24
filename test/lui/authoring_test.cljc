@@ -13,7 +13,7 @@
              :refer [AppleBox AppleCard AppleCheckbox AppleColumn AppleFormLabel AppleGrid
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput
-                     AppleSelect AppleCombobox AppleDropdownMenu AppleMenuItem]]
+                     AppleSelect AppleCombobox AppleDropdownMenu AppleMenuItem AppleListItem]]
             [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
@@ -110,6 +110,22 @@
    [:scroll {:width 160 :height 80}
     [:text "Base scroll layer"]
     [:text {:value copy-source}]]])
+
+(defui retained-list-items
+  [selected disabled on-select on-open]
+  [:list {:gap 2}
+   [:list-item
+    {:icon "file-text"
+     :selected selected
+     :disabled disabled
+     :on-press on-select
+     :on-double-press on-open
+     :on-submit on-open}
+    "Quarterly report.md"]
+   [:list-item {:on-press on-select}
+    [:row {:gap 8}
+     [:icon {:name "folder"}]
+     [:text "Custom child row"]]]])
 
 (defui current-platform-profile []
   (tuple (platform) (host)))
@@ -450,6 +466,47 @@
         (runtime/flush! application)
         (assert-equal (proto/Dismiss menu) (nth @received 4)
                       "native menu dismissal returns through on-dismiss")))))
+
+(deftest list-item-supports-text-or-custom-children-and-additive-actions
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-list-items")
+        context (ui/context application scope)
+        selected (sig/state scheduler false)
+        disabled (sig/state scheduler false)
+        received (atom [])
+        callback (fn [event] (swap! received conj event) true)
+        root
+        (retained-list-items
+         context (sig/value selected) (sig/value disabled) callback callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [text-item (nth (apple/children renderer root) 0)
+          custom-item (nth (apple/children renderer root) 1)]
+      (match (apple/node renderer text-item)
+        (Some AppleListItem) (is true "text row is one semantic ListItem")
+        _ (is false "text row has the native ListItem kind"))
+      (match (apple/property renderer text-item proto/InlineIconName)
+        (Some (StringValue value))
+        (assert-equal "file-text" value "inline icon stays on the row")
+        _ (is false "list row icon exists"))
+      (assert-equal 1 (count (apple/children renderer custom-item))
+                    "custom row content is retained below the ListItem")
+      (runtime/dispatch! application (proto/Press text-item))
+      (runtime/dispatch! application (proto/DoublePress text-item))
+      (runtime/dispatch! application (proto/Submit text-item))
+      (runtime/flush! application)
+      (assert-equal
+       [(proto/Press text-item) (proto/DoublePress text-item)
+        (proto/Submit text-item)]
+       @received
+       "press, additive double press, and Enter submit stay distinct")
+      (let [node-count (apple/node-count renderer)]
+        (sig/set! selected true)
+        (runtime/flush! application)
+        (assert-equal node-count (apple/node-count renderer)
+                      "selection patches the retained ListItem in place")))))
 
 (deftest defelement-adds-a-tag-without-changing-defui
   (let [scheduler (sig/scheduler)

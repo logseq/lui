@@ -6,7 +6,7 @@
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
-                     Select Combobox DropdownMenu MenuItem
+                     Select Combobox DropdownMenu MenuItem ListItem
                      Scroll ListContainer Spacer Spinner Icon
                      Progress Divider
                      Toggle RadioGroup Radio Slider
@@ -22,7 +22,8 @@
                      ProgressValue OrientationValue SizeValue IconName
                      VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled
                      ChangeEnabled ToggleEnabled PressEnabled
-                     SubmitEnabled AnchorValue AnchorAlignmentValue AnchorOffset
+                     SubmitEnabled DoublePressEnabled
+                     AnchorValue AnchorAlignmentValue AnchorOffset
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
 
@@ -75,7 +76,8 @@
     Select "lui-select"
     Combobox "lui-combobox"
     DropdownMenu "lui-dropdown-menu"
-    MenuItem "lui-menu-item"))
+    MenuItem "lui-menu-item"
+    ListItem "lui-list-item"))
 
 (defn- direct-toggle? [kind]
   (or (= kind Checkbox) (= kind SwitchControl) (= kind Radio)))
@@ -174,6 +176,7 @@
           SearchField "input"
           Textarea "textarea"
           Select "button"
+          ListItem "button"
           Slider "input"
           Divider "hr"
           _ "div")
@@ -198,6 +201,9 @@
            "role" "combobox"
            "aria-haspopup" "listbox"
            "aria-expanded" "false"}
+          ListItem
+          {"type" "button"
+           "aria-pressed" "false"}
           DropdownMenu
           {"role" "listbox"
            "data-anchor" "below"
@@ -368,6 +374,38 @@
      (Stdlib.ignore true))
    dom-node))
 
+(defn- event-capability? [renderer node property]
+  (= (retained/property (:web-store renderer) node property)
+     (Some (BoolValue true))))
+
+(defn- attach-list-item-events! [renderer node dom-node]
+  (Webapi.Dom.Element.addEventListener
+   "click"
+   (fn [_event]
+     (when (event-capability? renderer node PressEnabled)
+       (Stdlib.ignore
+        ((deref (:web-event-handler renderer)) (proto/Press node))))
+     (Stdlib.ignore true))
+   dom-node)
+  (Webapi.Dom.Element.addEventListener
+   "dblclick"
+   (fn [_event]
+     (when (event-capability? renderer node DoublePressEnabled)
+       (Stdlib.ignore
+        ((deref (:web-event-handler renderer)) (proto/DoublePress node))))
+     (Stdlib.ignore true))
+   dom-node)
+  (Webapi.Dom.Element.addKeyDownEventListener
+   (fn [event]
+     (when (and
+            (= "Enter" (Webapi.Dom.KeyboardEvent.key event))
+            (event-capability? renderer node SubmitEnabled))
+       (Webapi.Dom.KeyboardEvent.preventDefault event)
+       (Stdlib.ignore
+        ((deref (:web-event-handler renderer)) (proto/Submit node))))
+     (Stdlib.ignore true))
+   dom-node))
+
 (defn- dropdown-group-contains-event? [renderer node event]
   (if-some [current (retained/node (:web-store renderer) node)]
     (match (:retained-parent current)
@@ -529,6 +567,7 @@
       (attach-picker-press-event! renderer node (child-element dom-node 1)))
     DropdownMenu (attach-dropdown-events! renderer node dom-node)
     MenuItem (attach-picker-press-event! renderer node dom-node)
+    ListItem (attach-list-item-events! renderer node dom-node)
     Checkbox (attach-toggle-event! renderer node kind dom-node)
     SwitchControl (attach-toggle-event! renderer node kind dom-node)
     Toggle (attach-button-events! renderer node kind dom-node)
@@ -561,9 +600,9 @@
               "url(\"./icons/missing.svg\")")]
         (Webapi.Dom.CssStyleDeclaration.setProperty
          "--lui-icon-image" image "" element-style))
-      (Stdlib.ignore
-       (Webapi.Dom.CssStyleDeclaration.removeProperty
-        "--lui-icon-image" element-style)))))
+      (Webapi.Dom.CssStyleDeclaration.setProperty
+       "--lui-icon-image" (css-url (str "./icons/" name ".svg"))
+       "" element-style))))
 
 (defn- web-color-value [color]
   (if (= color "transparent")
@@ -803,7 +842,10 @@
     (Webapi.Dom.Element.setAttribute "data-variant" variant dom-node)
 
     (tuple InlineIconName (StringValue name))
-    (let [icon (button-icon-node dom-node)]
+    (let [icon
+          (if (= kind ListItem)
+            dom-node
+            (button-icon-node dom-node))]
       (Webapi.Dom.Element.setAttribute "data-name" name icon)
       (update-icon-name! renderer icon name))
 
@@ -848,6 +890,9 @@
 
     (tuple SubmitEnabled (BoolValue enabled))
     (set-state-attribute! dom-node "data-submit-enabled" enabled)
+
+    (tuple DoublePressEnabled (BoolValue enabled))
+    (set-state-attribute! dom-node "data-double-press-enabled" enabled)
 
     (tuple AnchorValue (StringValue anchor))
     (Webapi.Dom.Element.setAttribute "data-anchor" anchor dom-node)

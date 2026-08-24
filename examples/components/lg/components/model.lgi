@@ -9,7 +9,9 @@
   (gallery-volume :float)
   (gallery-environment :string)
   (gallery-picker-query :string)
-  (gallery-open-picker :string))
+  (gallery-open-picker :string)
+  (gallery-document :string)
+  (gallery-document-action :string))
 
 (type-variant gallery-action
   (ToggleDisabled)
@@ -22,6 +24,8 @@
   (SelectEnvironment :string)
   (ClosePicker)
   (CommitPickerQuery)
+  (SelectDocument :string)
+  (OpenDocument :string)
   (AdvanceProgress))
 
 (signature components.model/initial :fn<gallery-model>)
@@ -35,3 +39,5 @@
 (signature components.model/combobox-open? :fn<gallery-model;bool>)
 (signature components.model/production-selected? :fn<gallery-model;bool>)
 (signature components.model/staging-selected? :fn<gallery-model;bool>)
+(signature components.model/report-selected? :fn<gallery-model;bool>)
+(signature components.model/checklist-selected? :fn<gallery-model;bool>)

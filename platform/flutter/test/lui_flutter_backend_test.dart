@@ -391,6 +391,71 @@ void main() {
     ]);
   });
 
+  testWidgets(
+    'maps ListItem text and custom children to retained native rows',
+    (tester) async {
+      final events = <LUIEvent>[];
+      final backend = LUIFlutterBackend(onEvent: events.add)
+        ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"list"},
+        {"op":"create-node","id":2,"kind":"list-item"},
+        {"op":"create-node","id":3,"kind":"list-item"},
+        {"op":"create-node","id":4,"kind":"row"},
+        {"op":"create-node","id":5,"kind":"text"},
+        {"op":"set-prop","id":2,"property":"text","value":"Quarterly report.md"},
+        {"op":"set-prop","id":2,"property":"icon","value":"file-text"},
+        {"op":"set-prop","id":2,"property":"selected","value":true},
+        {"op":"set-prop","id":2,"property":"press-enabled","value":true},
+        {"op":"set-prop","id":2,"property":"double-press-enabled","value":true},
+        {"op":"set-prop","id":2,"property":"submit-enabled","value":true},
+        {"op":"set-prop","id":5,"property":"text","value":"Custom child row"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":3,"child":4,"index":0},
+        {"op":"insert-child","parent":4,"child":5,"index":0}
+      ]}
+      ''');
+
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+      );
+
+      expect(find.byType(ListTile), findsNWidgets(2));
+      expect(find.text('Quarterly report.md'), findsOneWidget);
+      expect(find.text('Custom child row'), findsOneWidget);
+      expect(find.byIcon(Icons.description_outlined), findsOneWidget);
+      final retained = tester.renderObject(find.text('Quarterly report.md'));
+
+      await tester.tap(find.text('Quarterly report.md'));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Quarterly report.md'));
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.tap(find.text('Quarterly report.md'));
+      await tester.pump();
+      expect(
+        events.map((event) => event.runtimeType.toString()),
+        containsAllInOrder([
+          'LUIPressEvent',
+          'LUIPressEvent',
+          'LUIPressEvent',
+          'LUIDoublePressEvent',
+        ]),
+      );
+
+      backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":2,"property":"selected","value":false}
+      ]}
+      ''');
+      await tester.pump();
+      expect(
+        tester.renderObject(find.text('Quarterly report.md')),
+        same(retained),
+      );
+    },
+  );
+
   testWidgets('maps semantic content primitives to native Flutter widgets', (
     tester,
   ) async {

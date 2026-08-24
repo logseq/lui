@@ -67,6 +67,12 @@
   (driver/flush! (app))
   (deref latest-patch))
 
+(defn double-press [node]
+  (reset! latest-patch "")
+  (driver/dispatch-event! (app) (proto/DoublePress node))
+  (driver/flush! (app))
+  (deref latest-patch))
+
 (defn toggle-changed [node checked]
   (reset! latest-patch "")
   (driver/dispatch-event! (app) (proto/ToggleChanged node checked))
@@ -98,6 +104,7 @@
 (callback/register "lui_flutter_text_changed" text-changed)
 (callback/register "lui_flutter_submit" submit)
 (callback/register "lui_flutter_dismiss" dismiss)
+(callback/register "lui_flutter_double_press" double-press)
 (callback/register "lui_flutter_toggle_changed" toggle-changed)
 (callback/register "lui_flutter_radio_changed" radio-changed)
 (callback/register "lui_flutter_slider_changed" slider-changed)

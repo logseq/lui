@@ -10,7 +10,9 @@
     (gallery-volume 0.35)
     (gallery-environment "Production")
     (gallery-picker-query "")
-    (gallery-open-picker "none")))
+    (gallery-open-picker "none")
+    (gallery-document "Quarterly report.md")
+    (gallery-document-action "Selected Quarterly report.md")))
 
 (defn update [model action]
   (match action
@@ -51,6 +53,14 @@
              :gallery-environment (:gallery-picker-query model)
              :gallery-open-picker "none"))
 
+    (SelectDocument document)
+    (assoc model
+           :gallery-document document
+           :gallery-document-action (str "Selected " document))
+
+    (OpenDocument document)
+    (assoc model :gallery-document-action (str "Opened " document))
+
     AdvanceProgress
     (assoc
      model
@@ -82,3 +92,9 @@
 
 (defn staging-selected? [model]
   (= (:gallery-environment model) "Staging"))
+
+(defn report-selected? [model]
+  (= (:gallery-document model) "Quarterly report.md"))
+
+(defn checklist-selected? [model]
+  (= (:gallery-document model) "Launch checklist.md"))

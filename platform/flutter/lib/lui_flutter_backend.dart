@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -26,6 +28,19 @@ sealed class LUIEvent {
     required double value,
   }) = LUIValueChangedEvent;
   const factory LUIEvent.dismiss({required int node}) = LUIDismissEvent;
+  const factory LUIEvent.doublePress({required int node}) = LUIDoublePressEvent;
+}
+
+final class LUIDoublePressEvent extends LUIEvent {
+  const LUIDoublePressEvent({required this.node});
+  final int node;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIDoublePressEvent && other.node == node;
+
+  @override
+  int get hashCode => node.hashCode;
 }
 
 final class LUIDismissEvent extends LUIEvent {
@@ -384,13 +399,36 @@ final class LUIFlutterBackend {
     if (state.kind != _NodeKind.button &&
             state.kind != _NodeKind.select &&
             state.kind != _NodeKind.combobox &&
-            state.kind != _NodeKind.menuItem ||
+            state.kind != _NodeKind.menuItem &&
+            state.kind != _NodeKind.listItem ||
         state.properties['enabled'] == false) {
       throw LUIBackendException(
         'node $node is not an enabled pressable control',
       );
     }
     onEvent?.call(LUIEvent.press(node: node));
+  }
+
+  void performDoublePress(int node) {
+    final state = _requireState(_states, node);
+    if (state.kind != _NodeKind.listItem ||
+        state.properties['enabled'] == false ||
+        state.properties['double-press-enabled'] != true) {
+      throw LUIBackendException(
+        'node $node is not an enabled double-press control',
+      );
+    }
+    onEvent?.call(LUIEvent.doublePress(node: node));
+  }
+
+  void performSubmit(int node) {
+    final state = _requireState(_states, node);
+    if (state.kind != _NodeKind.listItem ||
+        state.properties['enabled'] == false ||
+        state.properties['submit-enabled'] != true) {
+      throw LUIBackendException('node $node is not an enabled submit control');
+    }
+    onEvent?.call(LUIEvent.submit(node: node));
   }
 
   void performHold(int node) {
@@ -805,6 +843,27 @@ final class LUIFlutterBackend {
       trailingIcon: buttonSelected ? const Icon(Icons.check) : null,
       child: Text(text),
     );
+    Widget listItem() => _LUIListItem(
+      enabled: enabled,
+      selected: buttonSelected,
+      leading: buttonIcon == null
+          ? null
+          : Icon(_iconData(buttonIcon), size: 16),
+      content: children.isEmpty
+          ? Text(text)
+          : children.length == 1
+          ? children.single
+          : Row(children: children),
+      onPress: state.properties['press-enabled'] == true
+          ? () => performAction(id)
+          : null,
+      onDoublePress: state.properties['double-press-enabled'] == true
+          ? () => performDoublePress(id)
+          : null,
+      onSubmit: state.properties['submit-enabled'] == true
+          ? () => performSubmit(id)
+          : null,
+    );
     final content = switch (state.kind) {
       _NodeKind.row => row(),
       _NodeKind.column || _NodeKind.list => column(),
@@ -838,6 +897,7 @@ final class LUIFlutterBackend {
       _NodeKind.combobox => textControl(kind: state.kind),
       _NodeKind.dropdownMenu => dropdownMenu(),
       _NodeKind.menuItem => menuItem(),
+      _NodeKind.listItem => listItem(),
       _NodeKind.toggle => FilterChip(
         label: Text(text),
         selected: checked,
@@ -1122,7 +1182,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.toggle ||
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.select ||
-                kind == _NodeKind.menuItem),
+                kind == _NodeKind.menuItem ||
+                kind == _NodeKind.listItem),
       'enabled' =>
         value is bool &&
             (_isButtonKind(kind) ||
@@ -1133,7 +1194,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider ||
                 kind == _NodeKind.select ||
-                kind == _NodeKind.menuItem),
+                kind == _NodeKind.menuItem ||
+                kind == _NodeKind.listItem),
       'value' =>
         value is double &&
             value.isFinite &&
@@ -1161,13 +1223,18 @@ final class LUIFlutterBackend {
         value is String &&
             (_iconNames.contains(value) ||
                 _appIconNamePattern.hasMatch(value)) &&
-            (_isButtonKind(kind) || kind == _NodeKind.menuItem),
+            (_isButtonKind(kind) ||
+                kind == _NodeKind.menuItem ||
+                kind == _NodeKind.listItem),
       'icon-placement' =>
         value is String &&
             (value == 'leading' || value == 'trailing') &&
             _isButtonKind(kind),
       'selected' =>
-        value is bool && (_isButtonKind(kind) || kind == _NodeKind.menuItem),
+        value is bool &&
+            (_isButtonKind(kind) ||
+                kind == _NodeKind.menuItem ||
+                kind == _NodeKind.listItem),
       'hold-enabled' => value is bool && _isButtonKind(kind),
       'autofocus' =>
         value is bool && (_isButtonKind(kind) || _isTextControl(kind)),
@@ -1179,8 +1246,12 @@ final class LUIFlutterBackend {
             (kind == _NodeKind.radio ||
                 kind == _NodeKind.select ||
                 kind == _NodeKind.combobox ||
-                kind == _NodeKind.menuItem),
-      'submit-enabled' => value is bool && kind == _NodeKind.combobox,
+                kind == _NodeKind.menuItem ||
+                kind == _NodeKind.listItem),
+      'submit-enabled' =>
+        value is bool &&
+            (kind == _NodeKind.combobox || kind == _NodeKind.listItem),
+      'double-press-enabled' => value is bool && kind == _NodeKind.listItem,
       'anchor' =>
         value is String &&
             (value == 'above' || value == 'below') &&
@@ -1224,7 +1295,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.icon ||
                 kind == _NodeKind.select ||
                 kind == _NodeKind.dropdownMenu ||
-                kind == _NodeKind.menuItem),
+                kind == _NodeKind.menuItem ||
+                kind == _NodeKind.listItem),
       'border-color' => value is String,
       'border-width' => value is int && value >= 0,
       'corner-radius' => value is int && value >= 0,
@@ -1315,6 +1387,20 @@ final class LUIFlutterBackend {
           (state.properties['text'] as String? ?? '').isEmpty) {
         throw const LUIBackendException('menu-item requires text');
       }
+      if (state.kind == _NodeKind.listItem) {
+        final hasText = (state.properties['text'] as String? ?? '').isNotEmpty;
+        final hasChildren = state.children.isNotEmpty;
+        if (!hasText && !hasChildren) {
+          throw const LUIBackendException(
+            'list-item requires text or children',
+          );
+        }
+        if (hasText && hasChildren) {
+          throw const LUIBackendException(
+            'list-item accepts text or children, not both',
+          );
+        }
+      }
     }
   }
 
@@ -1343,7 +1429,8 @@ final class LUIFlutterBackend {
       kind == _NodeKind.scroll ||
       kind == _NodeKind.list ||
       kind == _NodeKind.radioGroup ||
-      kind == _NodeKind.dropdownMenu;
+      kind == _NodeKind.dropdownMenu ||
+      kind == _NodeKind.listItem;
 
   int? _checkedRadio(_NodeState root) {
     for (final child in root.children) {
@@ -1500,6 +1587,124 @@ final class LUIFlutterBackend {
 extension on _NodeKind {
   bool get isOverlaySurface =>
       this == _NodeKind.panel || this == _NodeKind.card;
+}
+
+final class _LUIListItem extends StatefulWidget {
+  const _LUIListItem({
+    required this.enabled,
+    required this.selected,
+    required this.leading,
+    required this.content,
+    required this.onPress,
+    required this.onDoublePress,
+    required this.onSubmit,
+  });
+
+  final bool enabled;
+  final bool selected;
+  final Widget? leading;
+  final Widget content;
+  final VoidCallback? onPress;
+  final VoidCallback? onDoublePress;
+  final VoidCallback? onSubmit;
+
+  @override
+  State<_LUIListItem> createState() => _LUIListItemState();
+}
+
+final class _LUIListItemState extends State<_LUIListItem> {
+  int? _primaryPointer;
+  Duration? _lastRelease;
+  Offset? _lastPosition;
+  Timer? _releaseTimer;
+
+  void _handlePointerDown(PointerDownEvent event) {
+    if (widget.enabled && event.buttons & kPrimaryButton != 0) {
+      _primaryPointer = event.pointer;
+    }
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    if (_primaryPointer == event.pointer) _primaryPointer = null;
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    if (_primaryPointer != event.pointer) return;
+    _primaryPointer = null;
+    if (!widget.enabled) return;
+    widget.onPress?.call();
+
+    final previousRelease = _lastRelease;
+    final previousPosition = _lastPosition;
+    final isDoublePress =
+        previousRelease != null &&
+        previousPosition != null &&
+        event.timeStamp - previousRelease <= kDoubleTapTimeout &&
+        (event.position - previousPosition).distance <= kDoubleTapSlop;
+    if (isDoublePress) {
+      _releaseTimer?.cancel();
+      _lastRelease = null;
+      _lastPosition = null;
+      widget.onDoublePress?.call();
+    } else {
+      _lastRelease = event.timeStamp;
+      _lastPosition = event.position;
+      _releaseTimer?.cancel();
+      _releaseTimer = Timer(kDoubleTapTimeout, () {
+        _lastRelease = null;
+        _lastPosition = null;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _releaseTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final press = widget.enabled ? widget.onPress : null;
+    final submit = widget.enabled ? widget.onSubmit : null;
+    final bindings = <ShortcutActivator, VoidCallback>{};
+    if (press != null) {
+      bindings[const SingleActivator(LogicalKeyboardKey.space)] = press;
+    }
+    if (submit != null || press != null) {
+      bindings[const SingleActivator(LogicalKeyboardKey.enter)] =
+          submit ?? press!;
+    }
+    return Semantics(
+      button: true,
+      enabled: widget.enabled,
+      selected: widget.selected,
+      onTap: press,
+      child: CallbackShortcuts(
+        bindings: bindings,
+        child: Focus(
+          canRequestFocus: widget.enabled,
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: _handlePointerDown,
+            onPointerCancel: _handlePointerCancel,
+            onPointerUp: _handlePointerUp,
+            child: ListTile(
+              enabled: widget.enabled,
+              selected: widget.selected,
+              leading: widget.leading,
+              title: widget.content,
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 final class _LUIAnchoredStack extends StatefulWidget {

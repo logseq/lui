@@ -56,6 +56,9 @@ final class LUINodeModel: Identifiable {
     var supportsToggle: Bool { properties[.toggleEnabled]?.boolValue ?? false }
     var supportsPress: Bool { properties[.pressEnabled]?.boolValue ?? false }
     var supportsSubmit: Bool { properties[.submitEnabled]?.boolValue ?? false }
+    var supportsDoublePress: Bool {
+        properties[.doublePressEnabled]?.boolValue ?? false
+    }
     var sliderValue: Double { properties[.progressValue]?.doubleValue ?? 0 }
     var buttonVariant: String { properties[.variant]?.stringValue ?? "default" }
     var buttonSize: String { properties[.size]?.stringValue ?? "default" }
@@ -236,7 +239,8 @@ public final class LUIAppleBackend {
     func performPress(node: Int) throws {
         guard let model = models[node],
               model.kind == .button || model.kind == .select ||
-                model.kind == .combobox || model.kind == .menuItem,
+                model.kind == .combobox || model.kind == .menuItem ||
+                model.kind == .listItem,
               model.isEnabled else {
             throw invalid("node \(node) is not an enabled pressable control")
         }
@@ -261,10 +265,21 @@ public final class LUIAppleBackend {
     }
 
     func performSubmit(node: Int) throws {
-        guard let model = models[node], Self.isTextEntry(model.kind), model.isEnabled else {
+        guard let model = models[node],
+              Self.isTextEntry(model.kind) ||
+                (model.kind == .listItem && model.supportsSubmit),
+              model.isEnabled else {
             throw invalid("node \(node) is not an enabled text control")
         }
         onEvent?(.submit(node: node))
+    }
+
+    func performDoublePress(node: Int) throws {
+        guard let model = models[node], model.kind == .listItem,
+              model.isEnabled, model.supportsDoublePress else {
+            throw invalid("node \(node) is not an enabled double-press control")
+        }
+        onEvent?(.doublePress(node: node))
     }
 
     func performToggle(node: Int, checked: Bool) throws {
@@ -310,7 +325,7 @@ public final class LUIAppleBackend {
     func performAction(node: Int) throws {
         guard let model = models[node] else { throw invalid("unknown node") }
         switch model.kind {
-        case .button, .select, .combobox, .menuItem:
+        case .button, .select, .combobox, .menuItem, .listItem:
             try performPress(node: node)
         case .toggleButton:
             try performToggle(node: node, checked: !model.isSelected)

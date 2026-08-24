@@ -55,6 +55,7 @@
                          (= tag :combobox)
                          (= tag :dropdown-menu)
                          (= tag :menu-item)
+                         (= tag :list-item)
                           (= tag :keyed))
                           (symbol (str "lui.elements/" (name tag)))
                           (symbol (str "lui." (name tag) "/" (name tag))))))))
@@ -251,6 +252,26 @@
                               ~(if on-submit `(~on-submit ~'event) true)
                               (lui.protocol/Dismiss ~'_node)
                               ~(if on-dismiss `(~on-dismiss ~'event) true)
+                              ~'_ true)))]
+                       [])))
+
+(macro-helper-defn list-item-event-expansion [context node attrs]
+                   (let [on-press (:on-press attrs)
+                         on-double-press (:on-double-press attrs)
+                         on-submit (:on-submit attrs)]
+                     (if (or on-press on-double-press on-submit)
+                       [`(lui.ui/on-event!
+                          ~context ~node
+                          (fn [~'event]
+                            (match ~'event
+                              (lui.protocol/Press ~'_node)
+                              ~(if on-press `(~on-press ~'event) true)
+                              (lui.protocol/DoublePress ~'_node)
+                              ~(if on-double-press
+                                 `(~on-double-press ~'event)
+                                 true)
+                              (lui.protocol/Submit ~'_node)
+                              ~(if on-submit `(~on-submit ~'event) true)
                               ~'_ true)))]
                        [])))
 
@@ -707,6 +728,62 @@
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])
+       ~node)))
+
+(defelement list-item [context parent attrs & children]
+  (let [node (gensym "node")
+        text-source (:text attrs)
+        literal-text
+        (if (and (= (count children) 1) (string? (first children)))
+          (first children)
+          nil)
+        child-elements (if literal-text [] children)]
+    (if text-source
+      (if (empty? children)
+        nil
+        (throw
+         (IllegalArgumentException.
+          "list-item accepts :text or children, not both")))
+      nil)
+    (if (string? (first children))
+      (if (= (count children) 1)
+        nil
+        (throw
+         (IllegalArgumentException.
+          "list-item cannot mix text and element children")))
+      nil)
+    `(let [~node (lui.ui/list-item! ~context)]
+       ~@(if text-source
+           [`(lui.ui/text-property-signal! ~context ~node ~text-source)]
+           (if literal-text
+             [`(lui.ui/text-property! ~context ~node ~literal-text)]
+             []))
+       ~@(string-attribute-expansion
+          context node (:icon attrs) 'lui.protocol/InlineIconName)
+       ~@(bool-attribute-expansion
+          context node (:selected attrs) 'lui.protocol/Selected)
+       ~@(disabled-attribute-expansion context node attrs)
+       ~@(if (:on-press attrs)
+           [`(lui.ui/bool-property!
+              ~context ~node lui.protocol/PressEnabled true)]
+           [])
+       ~@(if (:on-double-press attrs)
+           [`(lui.ui/bool-property!
+              ~context ~node lui.protocol/DoublePressEnabled true)]
+           [])
+       ~@(if (:on-submit attrs)
+           [`(lui.ui/bool-property!
+              ~context ~node lui.protocol/SubmitEnabled true)]
+           [])
+       ~@(list-item-event-expansion context node attrs)
+       ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          child-elements)
        ~node)))
 
 (defelement conditional [context parent attrs & children]

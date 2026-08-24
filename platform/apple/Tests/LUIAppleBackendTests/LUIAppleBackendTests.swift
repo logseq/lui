@@ -261,6 +261,57 @@ struct LUISwiftUIBackendTests {
         ])
     }
 
+    @Test("maps ListItem text and custom content to one retained native row")
+    func mapsListItem() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"list"},
+          {"op":"create-node","id":2,"kind":"list-item"},
+          {"op":"create-node","id":3,"kind":"list-item"},
+          {"op":"create-node","id":4,"kind":"row"},
+          {"op":"create-node","id":5,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"text","value":"Quarterly report.md"},
+          {"op":"set-prop","id":2,"property":"icon","value":"file-text"},
+          {"op":"set-prop","id":2,"property":"selected","value":true},
+          {"op":"set-prop","id":2,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":2,"property":"double-press-enabled","value":true},
+          {"op":"set-prop","id":2,"property":"submit-enabled","value":true},
+          {"op":"set-prop","id":5,"property":"text","value":"Custom child row"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"insert-child","parent":3,"child":4,"index":0},
+          {"op":"insert-child","parent":4,"child":5,"index":0}
+        ]}
+        """)
+
+        let item = try #require(backend.model(id: 2))
+        let revision = item.revision
+        #expect(item.kind == .listItem)
+        #expect(item.property(.icon) == .string("file-text"))
+        #expect(item.isSelected)
+        #expect(backend.model(id: 3)?.children == [4])
+
+        try backend.performPress(node: 2)
+        try backend.performDoublePress(node: 2)
+        try backend.performSubmit(node: 2)
+        #expect(events == [
+            .press(node: 2),
+            .doublePress(node: 2),
+            .submit(node: 2),
+        ])
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":2,"property":"selected","value":false}
+        ]}
+        """)
+        #expect(backend.model(id: 2) === item)
+        #expect(item.revision == revision + 1)
+    }
+
     @Test("maps the complete Vercel Native Button contract to one retained model")
     func mapsVercelNativeButton() throws {
         let backend = LUIAppleBackend()

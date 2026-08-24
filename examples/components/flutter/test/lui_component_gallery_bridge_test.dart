@@ -32,6 +32,7 @@ void main() {
           text,
         ),
         LUISubmitEvent(:final node) => bridge.submit(node),
+        LUIDoublePressEvent(:final node) => bridge.doublePress(node),
         LUIDismissEvent(:final node) => bridge.dismiss(node),
         LUIToggleChangedEvent(:final node, :final checked) =>
           bridge.toggleChanged(node, checked),
@@ -72,6 +73,12 @@ void main() {
     expect(find.text('SearchField'), findsOneWidget);
     expect(find.text('Textarea'), findsOneWidget);
     expect(find.text('Controls are disabled.'), findsNothing);
+    expect(find.text('ListItem'), findsOneWidget);
+    final listItems = find.byWidgetPredicate(
+      (widget) => widget is ListTile && widget.shape is RoundedRectangleBorder,
+      description: 'LUI ListItem rows',
+    );
+    expect(listItems, findsNWidgets(3));
     final toggleDisabled = find.widgetWithText(
       OutlinedButton,
       'Toggle disabled',
@@ -173,5 +180,18 @@ void main() {
       same(retainedEditor.focusNode),
       reason: 'query and submit patches preserve native input identity',
     );
+
+    final checklist = find.text('Launch checklist.md');
+    await tester.ensureVisible(checklist);
+    final retainedChecklist = tester.renderObject(checklist);
+    await tester.tap(checklist);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Selected Launch checklist.md'), findsOneWidget);
+    expect(tester.renderObject(checklist), same(retainedChecklist));
+    await tester.tap(checklist);
+    await tester.pump(const Duration(milliseconds: 40));
+    await tester.tap(checklist);
+    await tester.pump();
+    expect(find.text('Opened Launch checklist.md'), findsOneWidget);
   });
 }

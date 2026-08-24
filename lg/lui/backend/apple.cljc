@@ -6,7 +6,7 @@
                      Scroll ListContainer Spacer Spinner Icon
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
-                     Select Combobox DropdownMenu MenuItem]]
+                     Select Combobox DropdownMenu MenuItem ListItem]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -55,7 +55,8 @@
     Select AppleSelect
     Combobox AppleCombobox
     DropdownMenu AppleDropdownMenu
-    MenuItem AppleMenuItem))
+    MenuItem AppleMenuItem
+    ListItem AppleListItem))
 
 (defn backend-for [renderer operating-system host]
   (record proto/backend

@@ -24,6 +24,8 @@ typedef _NativeSubmit = Int32 Function(Int64 node);
 typedef _DartSubmit = int Function(int node);
 typedef _NativeDismiss = Int32 Function(Int64 node);
 typedef _DartDismiss = int Function(int node);
+typedef _NativeDoublePress = Int32 Function(Int64 node);
+typedef _DartDoublePress = int Function(int node);
 typedef _NativeToggleChanged = Int32 Function(Int64 node, Int32 checked);
 typedef _DartToggleChanged = int Function(int node, int checked);
 typedef _NativeRadioChanged = Int32 Function(Int64 node);
@@ -54,6 +56,10 @@ final class LUIOcamlBridge {
       _dismiss = library.lookupFunction<_NativeDismiss, _DartDismiss>(
         'lui_ocaml_dismiss',
       ),
+      _doublePress = library
+          .lookupFunction<_NativeDoublePress, _DartDoublePress>(
+            'lui_ocaml_double_press',
+          ),
       _toggleChanged = library
           .lookupFunction<_NativeToggleChanged, _DartToggleChanged>(
             'lui_ocaml_toggle_changed',
@@ -84,6 +90,7 @@ final class LUIOcamlBridge {
   final _DartTextChanged _textChanged;
   final _DartSubmit _submit;
   final _DartDismiss _dismiss;
+  final _DartDoublePress _doublePress;
   final _DartToggleChanged _toggleChanged;
   final _DartRadioChanged _radioChanged;
   final _DartSliderChanged _sliderChanged;
@@ -122,6 +129,12 @@ final class LUIOcamlBridge {
 
   void hold(int node) {
     if (_hold(node) != 1) throw StateError('OCaml hold dispatch failed');
+  }
+
+  void doublePress(int node) {
+    if (_doublePress(node) != 1) {
+      throw StateError('OCaml double-press dispatch failed');
+    }
   }
 
   void textChanged(int node, String text) {

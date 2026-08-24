@@ -13,6 +13,7 @@ public enum LUIEvent: Equatable, Sendable {
     case change(node: Int)
     case valueChanged(node: Int, value: Double)
     case dismiss(node: Int)
+    case doublePress(node: Int)
 }
 
 struct LUIPatchBatch: Decodable {
@@ -109,7 +110,7 @@ enum LUIWireValue: Decodable, Equatable {
         case (.selected, .bool), (.autofocus, .bool), (.submitOnEnter, .bool),
              (.holdEnabled, .bool),
              (.changeEnabled, .bool), (.toggleEnabled, .bool), (.pressEnabled, .bool),
-             (.submitEnabled, .bool): true
+             (.submitEnabled, .bool), (.doublePressEnabled, .bool): true
         case let (.anchor, .string(value)):
             value == "above" || value == "below"
         case let (.anchorAlignment, .string(value)):
@@ -296,17 +297,17 @@ struct LUIRetainedTree {
                 isTextEntry(kind) || kind == .checkbox || kind == .toggle ||
                 kind == .radio || kind == .slider || kind == .spinner || kind == .icon
                 || kind == .select || kind == .combobox || kind == .dropdownMenu
-                || kind == .menuItem
+                || kind == .menuItem || kind == .listItem
         case .text:
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
                 kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio ||
-                kind == .select || kind == .menuItem
+                kind == .select || kind == .menuItem || kind == .listItem
         case .enabled:
             kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle ||
                 kind == .radio || kind == .slider || kind == .select ||
-                kind == .combobox || kind == .menuItem
+                kind == .combobox || kind == .menuItem || kind == .listItem
         case .gap:
             kind == .row || kind == .column || kind == .grid || kind == .list ||
                 kind == .dropdownMenu
@@ -326,16 +327,20 @@ struct LUIRetainedTree {
         case .variant, .iconPlacement, .holdEnabled:
             kind == .button || kind == .toggleButton
         case .icon:
-            kind == .button || kind == .toggleButton || kind == .menuItem
+            kind == .button || kind == .toggleButton || kind == .menuItem ||
+                kind == .listItem
         case .selected:
-            kind == .button || kind == .toggleButton || kind == .menuItem
+            kind == .button || kind == .toggleButton || kind == .menuItem ||
+                kind == .listItem
         case .autofocus:
             kind == .button || kind == .toggleButton || isTextEntry(kind)
         case .submitOnEnter: kind == .textarea
         case .changeEnabled, .toggleEnabled: kind == .radio
         case .pressEnabled:
-            kind == .radio || kind == .select || kind == .combobox || kind == .menuItem
-        case .submitEnabled: kind == .combobox
+            kind == .radio || kind == .select || kind == .combobox ||
+                kind == .menuItem || kind == .listItem
+        case .submitEnabled: kind == .combobox || kind == .listItem
+        case .doublePressEnabled: kind == .listItem
         case .anchor, .anchorAlignment, .anchorOffset: kind == .dropdownMenu
         }
     }
@@ -349,7 +354,7 @@ struct LUIRetainedTree {
         kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
             kind == .list || kind == .radioGroup
-            || kind == .dropdownMenu
+            || kind == .dropdownMenu || kind == .listItem
     }
 
     private func validateNodeProperties() throws {
@@ -404,6 +409,16 @@ struct LUIRetainedTree {
             if node.kind == .menuItem {
                 guard !(node.properties[.text]?.stringValue ?? "").isEmpty else {
                     throw invalid("menu-item requires text")
+                }
+            }
+            if node.kind == .listItem {
+                let hasText = !(node.properties[.text]?.stringValue ?? "").isEmpty
+                let hasChildren = !node.children.isEmpty
+                guard hasText || hasChildren else {
+                    throw invalid("list-item requires text or children")
+                }
+                guard !(hasText && hasChildren) else {
+                    throw invalid("list-item accepts text or children, not both")
                 }
             }
         }

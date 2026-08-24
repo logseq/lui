@@ -47,6 +47,7 @@
 (signature lui.ui/combobox! :fn<ui-context;int>)
 (signature lui.ui/dropdown-menu! :fn<ui-context;int>)
 (signature lui.ui/menu-item! :fn<ui-context;int>)
+(signature lui.ui/list-item! :fn<ui-context;int>)
 (signature lui.ui/button! :fn<ui-context;int>)
 (signature lui.ui/toggle-button! :fn<ui-context;int>)
 (signature lui.ui/toggle! :fn<ui-context;int>)

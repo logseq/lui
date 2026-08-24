@@ -50,6 +50,16 @@ test("the production stylesheet distinguishes List flow from Scroll overlays", a
   assert.match(css, /\.lui-scroll>\*\{[^}]*grid-area:1\/1/)
 })
 
+test("the production stylesheet contains the retained ListItem contract", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-list-item\{[^}]*display:flex/)
+  assert.match(css, /\.lui-list-item\{[^}]*width:100%/)
+  assert.match(css, /\.lui-list-item\[data-selected\]/)
+  assert.match(css, /\.lui-list-item:focus-visible/)
+  assert.match(css, /\.lui-list-item\[data-name\]:{1,2}before\{[^}]*width:calc\(var\(--spacing\)\*4\)/)
+})
+
 test("the production stylesheet contains the direct text-entry contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 

@@ -22,7 +22,9 @@
                  (gallery-volume 0.35)
                  (gallery-environment "Production")
                  (gallery-picker-query "")
-                 (gallery-open-picker "none"))
+                 (gallery-open-picker "none")
+                 (gallery-document "Quarterly report.md")
+                 (gallery-document-action "Selected Quarterly report.md"))
          model/AdvanceProgress)]
     (assert-equal false (:gallery-disabled initial) "controls start enabled")
     (assert-equal 0.3 (:gallery-progress initial) "progress has a visible start")
@@ -34,6 +36,8 @@
                   "picker starts with a visible selection")
     (assert-equal "none" (:gallery-open-picker initial)
                   "picker menu starts closed")
+    (assert-equal "Quarterly report.md" (:gallery-document initial)
+                  "list starts with one model-owned selection")
     (assert-equal 0.4 (:gallery-progress advanced) "progress advances by a tenth")
     (assert-equal 0.0 (:gallery-progress wrapped) "progress wraps after completion")
     (assert-equal
@@ -67,7 +71,15 @@
       (assert-equal "Preview" (:gallery-environment committed)
                     "combobox submit commits its controlled query")
       (assert-equal "none" (:gallery-open-picker committed)
-                    "combobox submit closes its menu"))))
+                    "combobox submit closes its menu"))
+    (let [selected
+          (model/update initial (model/SelectDocument "Launch checklist.md"))
+          opened
+          (model/update selected (model/OpenDocument "Launch checklist.md"))]
+      (assert-equal "Launch checklist.md" (:gallery-document selected)
+                    "list-item press owns selection in the shared reducer")
+      (assert-equal "Opened Launch checklist.md" (:gallery-document-action opened)
+                    "double press and Enter share the primary action"))))
 
 (deftest native-gallery-app-batches-actions-and-disposes-the-retained-tree
   (let [renderer (flutter/create)

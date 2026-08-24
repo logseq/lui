@@ -78,6 +78,8 @@ private struct LUINodeView: View {
             LUIDropdownMenuView(model: model, backend: backend)
         case .menuItem:
             LUIMenuItemView(model: model, backend: backend)
+        case .listItem:
+            LUIListItemView(model: model, backend: backend)
         case .checkbox:
             LUICheckboxView(model: model, backend: backend)
         case .switchControl:
@@ -304,6 +306,59 @@ private struct LUIMenuItemView: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
+        .disabled(!model.isEnabled)
+    }
+}
+
+private struct LUIListItemView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        Button {
+            if model.supportsPress {
+                try? backend.performPress(node: model.id)
+            }
+        } label: {
+            HStack(spacing: 8) {
+                if !model.buttonIconName.isEmpty {
+                    LUIIconImage(source: backend.iconSource(for: model.buttonIconName))
+                        .frame(width: 16, height: 16)
+                }
+                if model.children.isEmpty {
+                    Text(verbatim: model.text)
+                } else {
+                    ForEach(model.children, id: \.self) { childID in
+                        if let child = backend.model(id: childID) {
+                            LUINodeView(model: child, backend: backend)
+                        }
+                    }
+                }
+                Spacer(minLength: 8)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            model.isSelected ? Color.accentColor.opacity(0.16) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 6)
+        )
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                if model.supportsDoublePress {
+                    try? backend.performDoublePress(node: model.id)
+                }
+            }
+        )
+        .onKeyPress(.return) {
+            guard model.supportsSubmit else { return .ignored }
+            try? backend.performSubmit(node: model.id)
+            return .handled
+        }
+        .accessibilityAddTraits(model.isSelected ? .isSelected : [])
         .disabled(!model.isEnabled)
     }
 }

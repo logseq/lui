@@ -192,6 +192,19 @@
           "icon requires a valid name"
           "node properties conflict")))))
 
+(defn- validate-list-item! [current]
+  (when (= (:semantic-kind current) proto/ListItem)
+    (let [text
+          (string-property (:retained-properties current) proto/TextValue)
+          has-text (not (= text ""))
+          has-children (not (empty? (:retained-children current)))]
+      (when (and has-text has-children)
+        (raise
+         (Invalid_argument "list-item accepts text or children, not both")))
+      (when (and (not has-text) (not has-children))
+        (raise
+         (Invalid_argument "list-item requires text or children"))))))
+
 (defn- has-ancestor-kind? [nodes parent kind]
   (match parent
     (Some parent-id)
@@ -211,6 +224,7 @@
                   nodes (:retained-parent current) RadioGroup)))
        (raise
         (Invalid_argument "radio must be contained by a radio-group")))
+     (validate-list-item! current)
      (when (not
             (proto/node-properties-supported?
              (:semantic-kind current) (:retained-properties current)))

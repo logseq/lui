@@ -171,6 +171,86 @@
        proto/AnchorAlignmentValue (proto/StringValue "stretch"))
       "stretch is a legal anchored alignment"))
 
+(deftest list-item-has-the-complete-reference-contract
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/ListItem)
+                      (proto/set-prop-op
+                       1 proto/TextValue
+                       (proto/StringValue "Quarterly report.md"))
+                      (proto/set-prop-op
+                       1 proto/InlineIconName
+                       (proto/StringValue "file-text"))
+                      (proto/set-prop-op
+                       1 proto/Selected
+                       (proto/BoolValue true))
+                      (proto/set-prop-op
+                       1 proto/DoublePressEnabled
+                       (proto/BoolValue true))
+                      (proto/set-prop-op
+                       1 proto/SubmitEnabled
+                       (proto/BoolValue true))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"list-item\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"text\","
+      "\"value\":\"Quarterly report.md\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"icon\","
+      "\"value\":\"file-text\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"selected\","
+      "\"value\":true},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"double-press-enabled\",\"value\":true},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"submit-enabled\",\"value\":true}]}" )
+     (wire/encode-batch batch)
+     "list-item uses the pinned wire vocabulary"))
+  (doseq [property
+          [proto/TextValue proto/InlineIconName proto/Selected proto/Enabled
+           proto/PressEnabled proto/DoublePressEnabled proto/SubmitEnabled]]
+    (is (proto/property-supported? proto/ListItem property)
+        "list-item admits its complete row contract"))
+  (is (proto/can-contain-children? proto/ListItem)
+      "list-item may retain custom row children instead of text")
+  (is (proto/event-supported? proto/ListItem (proto/Press 1))
+      "Space and click select through on-press")
+  (is (proto/event-supported? proto/ListItem (proto/DoublePress 1))
+      "double click dispatches the additive primary action")
+  (is (proto/event-supported? proto/ListItem (proto/Submit 1))
+      "Enter dispatches the primary action when configured"))
+
+(deftest list-item-rejects-mixed-or-empty-content
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        mixed
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/ListItem)
+                      (proto/create-node-op 2 proto/Text)
+                      (proto/set-prop-op
+                       1 proto/TextValue (proto/StringValue "Mixed"))
+                      (proto/set-prop-op
+                       2 proto/TextValue (proto/StringValue "Child"))
+                      (proto/insert-child-op 1 2 0)]))]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"list-item accepts text or children, not both"
+         ((:apply-batch backend) mixed))
+        "the wire boundary rejects ambiguous row content"))
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        empty-row
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/ListItem)]))]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"list-item requires text or children"
+         ((:apply-batch backend) empty-row))
+        "an unnamed empty interactive row is rejected")))
+
 (deftest toggle-controls-use-closed-wire-names
   (let [batch
         (record proto/patch-batch

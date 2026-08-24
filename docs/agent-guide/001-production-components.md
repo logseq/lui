@@ -215,6 +215,9 @@ Delivered parity slices:
   picker primitives with model-owned value, query, and visibility Signals,
   typed press/input/submit/dismiss events, anchored native presentation, and
   identity-preserving conditional menu insertion and removal;
+- direct retained `list-item` rows with text-or-children content, inline
+  registry icons, model-owned selection, disabled state, immediate press,
+  additive double press, Enter submit, and identity-preserving Signal patches;
 - stacking containers reject `gap`; `card` supplies the reference 24-point
   default content padding while explicit `padding` overrides it.
 
@@ -425,6 +428,38 @@ text controller identities. Apple uses SwiftUI controls and material menu
 surfaces in the same retained node model. Platform-native focus, animation,
 menu tracking, and input composition remain backend-owned.
 
+### ListItem contract
+
+`list-item` is one semantic retained row, not a styled Card. Its public API is
+the pinned reference shape: `text`, `icon`, `selected`, `disabled`,
+`on-press`, `on-double-press`, and `on-submit`, plus admitted common layout and
+style props. Content is exactly one of:
+
+- a string child or reactive `text` Signal; or
+- retained element children for a custom row layout.
+
+Empty rows and rows that mix text with element children are rejected at the
+atomic batch boundary. `selected` remains application-owned state; focus,
+hover, pointer capture, and click cadence remain backend-owned.
+
+A single pointer release dispatches `on-press` immediately. A second release
+within the platform double-click window dispatches its own `on-press` and then
+adds `on-double-press`; the first click is never delayed while the backend
+waits to disambiguate it. Space dispatches `on-press`. Enter dispatches
+`on-submit` when present and otherwise retains the ordinary press behavior.
+
+Web uses one retained native button row, native click/double-click ordering,
+and Tailwind component selectors. SwiftUI uses a native Button row with an
+additive simultaneous double-tap gesture and return-key handling. Flutter
+keeps a native Material `ListTile` and uses a small pointer-release adapter
+only for the reference's immediate-plus-additive click contract. All three
+retain the row and its custom child subtree when a selection Signal changes.
+
+`avatar` is intentionally not approximated with a URL prop. The pinned API
+requires a runtime-registered `u64 ImageId`, initials fallback, and optional
+four-coordinate atlas crop; it will be delivered with the shared image
+registry rather than as a second incompatible image model.
+
 ## Showcase
 
 All examples live under `examples/`. `examples/components/` is a component
@@ -443,10 +478,11 @@ element and covers:
 The same LG showcase source runs on Web, SwiftUI desktop/iOS, and Flutter
 desktop/mobile. Host shells stay deliberately small.
 
-The picker section is currently exercised through the real Web host and the
-Flutter host across the OCaml FFI boundary. Its integration checks open and
-close the overlay, commit selection and free-form submission, and assert that
-the retained Select render object and native text editor survive those Signal
+The picker and ListItem sections are exercised through the real Web host and
+the Flutter host across the OCaml FFI boundary. Integration checks open and
+close overlays, commit selection and free-form submission, perform immediate
+single selection plus additive double-click activation, and assert that the
+retained Select, native text editor, and ListItem content survive their Signal
 patches.
 
 ## Delivery order

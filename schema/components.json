@@ -30,7 +30,7 @@
     {"name": "dropdown-menu", "status": "supported"},
     {"name": "menu-item", "status": "supported"},
     {"name": "accordion", "status": "pending"},
-    {"name": "list-item", "status": "pending"},
+    {"name": "list-item", "status": "supported"},
     {"name": "alert", "status": "pending"},
     {"name": "bubble", "status": "pending"},
     {"name": "reactions", "status": "pending"},
@@ -105,7 +105,8 @@
     {"lg": "Select", "wire": "select", "dart": "select", "swift": "select", "container": false},
     {"lg": "Combobox", "wire": "combobox", "dart": "combobox", "swift": "combobox", "container": false},
     {"lg": "DropdownMenu", "wire": "dropdown-menu", "dart": "dropdownMenu", "swift": "dropdownMenu", "container": true},
-    {"lg": "MenuItem", "wire": "menu-item", "dart": "menuItem", "swift": "menuItem", "container": false}
+    {"lg": "MenuItem", "wire": "menu-item", "dart": "menuItem", "swift": "menuItem", "container": false},
+    {"lg": "ListItem", "wire": "list-item", "dart": "listItem", "swift": "listItem", "container": true}
   ],
   "properties": [
     {"lg": "TextValue", "wire": "text", "swift": "text"},
@@ -149,6 +150,7 @@
     {"lg": "ToggleEnabled", "wire": "toggle-enabled", "swift": "toggleEnabled"},
     {"lg": "PressEnabled", "wire": "press-enabled", "swift": "pressEnabled"},
     {"lg": "SubmitEnabled", "wire": "submit-enabled", "swift": "submitEnabled"},
+    {"lg": "DoublePressEnabled", "wire": "double-press-enabled", "swift": "doublePressEnabled"},
     {"lg": "AnchorValue", "wire": "anchor", "swift": "anchor"},
     {"lg": "AnchorAlignmentValue", "wire": "anchor-alignment", "swift": "anchorAlignment"},
     {"lg": "AnchorOffset", "wire": "anchor-offset", "swift": "anchorOffset"}
@@ -161,6 +163,7 @@
     {"lg": "ToggleChanged", "fields": [":int", ":bool"]},
     {"lg": "Change", "fields": [":int"]},
     {"lg": "ValueChanged", "fields": [":int", ":float"]},
-    {"lg": "Dismiss", "fields": [":int"]}
+    {"lg": "Dismiss", "fields": [":int"]},
+    {"lg": "DoublePress", "fields": [":int"]}
   ]
 }

@@ -90,6 +90,14 @@ LUI_EXPORT int32_t lui_ocaml_dismiss(int64_t node) {
   return emit_patch(caml_callback_exn(*dispatch, Val_long(node)));
 }
 
+LUI_EXPORT int32_t lui_ocaml_double_press(int64_t node) {
+  const value *dispatch = caml_named_value("lui_flutter_double_press");
+  if (dispatch == NULL) {
+    return 0;
+  }
+  return emit_patch(caml_callback_exn(*dispatch, Val_long(node)));
+}
+
 LUI_EXPORT int32_t lui_ocaml_toggle_changed(int64_t node, int32_t checked) {
   CAMLparam0();
   CAMLlocal1(result);

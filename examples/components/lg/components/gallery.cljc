@@ -97,6 +97,36 @@
      [:card {:padding 16} [:text "Scrollable item three"]]
      [:card {:padding 16} [:text "Scrollable item four"]]]]])
 
+(defui list-item-gallery
+  [report-selected-source checklist-selected-source disabled-source
+   action-source select-report select-checklist open-report open-checklist]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "ListItem"]
+   [:list {:gap 2 :cross "stretch" :max-width 480}
+    [:list-item
+     {:icon "file-text"
+      :selected report-selected-source
+      :disabled disabled-source
+      :on-press select-report
+      :on-double-press open-report
+      :on-submit open-report}
+     "Quarterly report.md"]
+    [:list-item
+     {:selected checklist-selected-source
+      :disabled disabled-source
+      :on-press select-checklist
+      :on-double-press open-checklist
+      :on-submit open-checklist}
+     [:row {:gap 8 :cross "center"}
+      [:icon {:name "check-circle" :size "sm"}]
+      [:text "Launch checklist.md"]
+      [:spacer]
+      [:badge {:variant "success"} "Ready"]]]
+    [:list-item {:icon "music" :disabled true} "demo-track.wav"]]
+   [:paragraph {:value action-source}]
+   [:paragraph
+    "Click selects immediately; double click and Enter run the primary action without replacing a row."]])
+
 (defui badge-gallery []
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "Badge"]
@@ -330,7 +360,9 @@
    environment-source picker-query-source select-open-source
    combobox-open-source production-selected-source staging-selected-source
    open-select open-combobox update-picker-query submit-picker-query
-   dismiss-picker select-production select-staging]
+   dismiss-picker select-production select-staging
+   report-selected-source checklist-selected-source document-action-source
+   select-report select-checklist open-report open-checklist]
   [:column
    [button-gallery disabled-source toggle-disabled]
    [toggle-button-gallery
@@ -343,6 +375,10 @@
    [progress-gallery progress-source progress-label-source advance-progress]
    [surface-gallery card-copy]
    [collection-gallery]
+   [list-item-gallery
+    report-selected-source checklist-selected-source disabled-source
+    document-action-source select-report select-checklist open-report
+    open-checklist]
    [text-entry-gallery value-source disabled-source update-value]
    [picker-gallery
     environment-source picker-query-source select-open-source

@@ -46,6 +46,8 @@ class _TodosHostState extends State<TodosHost> {
         _bridge.submit(node);
       case LUIDismissEvent(:final node):
         _bridge.dismiss(node);
+      case LUIDoublePressEvent(:final node):
+        _bridge.doublePress(node);
       case LUIToggleChangedEvent(:final node, :final checked):
         _bridge.toggleChanged(node, checked);
       case LUIChangeEvent(:final node):

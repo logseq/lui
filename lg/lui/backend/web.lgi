@@ -30,6 +30,10 @@
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/attach-picker-press-event!
   :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/event-capability?
+  :fn<web-renderer;int;property;bool>)
+(signature lui.backend.web/attach-list-item-events!
+  :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/attach-dropdown-events!
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/cleanup-node!

@@ -177,6 +177,9 @@
 (defn menu-item! [context]
   (runtime/create-node! (:ui-application context) proto/MenuItem))
 
+(defn list-item! [context]
+  (runtime/create-node! (:ui-application context) proto/ListItem))
+
 (defn button! [context]
   (runtime/create-node! (:ui-application context) proto/Button))
 

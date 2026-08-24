@@ -102,6 +102,30 @@
     @apply flex flex-col;
   }
 
+  .lui-list-item {
+    @apply flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ring-offset-background;
+  }
+
+  .lui-list-item:hover,
+  .lui-list-item[data-selected] {
+    @apply bg-accent text-accent-foreground;
+  }
+
+  .lui-list-item:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2;
+  }
+
+  .lui-list-item:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  .lui-list-item[data-name]::before {
+    @apply size-4 shrink-0 bg-current;
+    content: "";
+    mask: var(--lui-icon-image, url("./icons/missing.svg")) center / contain no-repeat;
+    -webkit-mask: var(--lui-icon-image, url("./icons/missing.svg")) center / contain no-repeat;
+  }
+
   .lui-scroll {
     @apply grid overflow-auto;
   }

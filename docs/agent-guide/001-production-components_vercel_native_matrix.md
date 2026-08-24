@@ -192,6 +192,7 @@ Material `TextField` widgets.
 | icon | bundled SVG CSS mask | SF Symbols `Image` | Material `Icon` |
 | grid | CSS grid | `LazyVGrid` | `GridView` |
 | controls | native HTML first | SwiftUI controls | Flutter widgets |
+| list-item | native button row | SwiftUI Button row | Material `ListTile` |
 | modal/menu | browser platform API when suitable | SwiftUI presentation | Flutter presentation APIs |
 
 Backends may differ internally, but they cannot expose backend-specific props

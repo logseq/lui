@@ -35,7 +35,8 @@
   (Select)
   (Combobox)
   (DropdownMenu)
-  (MenuItem))
+  (MenuItem)
+  (ListItem))
 
 (type-variant operating-system
   (GenericOS)
@@ -98,6 +99,7 @@
   (ToggleEnabled)
   (PressEnabled)
   (SubmitEnabled)
+  (DoublePressEnabled)
   (AnchorValue)
   (AnchorAlignmentValue)
   (AnchorOffset))
@@ -116,7 +118,8 @@
   (ToggleChanged :int :bool)
   (Change :int)
   (ValueChanged :int :float)
-  (Dismiss :int))
+  (Dismiss :int)
+  (DoublePress :int))
 
 (type-variant patch-op
   (CreateNode :int :node-kind)
