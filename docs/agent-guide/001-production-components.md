@@ -156,6 +156,9 @@ Delivered parity slices:
   vocabulary, 16/18/24 sizing, shared foreground tint, CSS-mask SVGs on Web,
   SF Symbols on SwiftUI, and Material Icons on Flutter, plus immutable
   application-registered `app:` names on every backend;
+- direct text-bearing `checkbox` and `switch` controls with model-owned
+  `checked`, `disabled`, `label`, and `on-toggle`; their labels and native
+  controls form one hit target and one accessibility node;
 - stacking containers reject `gap`; `card` supplies the reference 24-point
   default content padding while explicit `padding` overrides it.
 
@@ -182,6 +185,29 @@ namespace and remain host resources:
 Bare names never consult the app registry and app names never shadow built-ins.
 The public component API remains `[:icon {:name "app:wave-pulse"}]`; there is
 no backend-specific prop or asset payload in LG.
+
+### Checkbox and switch contract
+
+`checkbox` and `switch` are direct, text-bearing controlled elements. Their
+public API is the Vercel Native contract exactly:
+
+- visible text is the single child string, or a reactive `:text` value;
+- `:checked` is the model-owned Signal and `:on-toggle` receives the native
+  checked transition;
+- `:disabled` is an optional Signal;
+- `:label` supplies an accessible name without drawing a second label.
+
+The provisional Solid-style API is removed rather than aliased. There are no
+public `switch/control`, `switch/thumb`, `switch/label`, description or error
+parts, and no `:on-change`, `:indeterminate` or `:invalid` attributes on these
+two elements.
+
+Each element remains one retained LUI node. Backend-owned implementation
+children do not enter the retained tree: Web uses a native checkbox input in a
+semantic label wrapper, SwiftUI uses `Toggle` with the platform checkbox or
+switch style, and Flutter composes its native `Checkbox` or `Switch` with the
+label. A checked or text patch updates that retained node and must not replace
+the platform control.
 
 ## State ownership
 

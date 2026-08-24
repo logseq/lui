@@ -44,7 +44,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case errorMessageBy = "error-message-by"
     case inputType = "input-type"
     case invalid
-    case checked, indeterminate
+    case checked
     case progressValue = "value"
     case minValue = "min-value"
     case maxValue = "max-value"
@@ -135,7 +135,7 @@ enum LUIWireValue: Decodable, Equatable {
              (.errorMessageBy, .int): true
         case let (.inputType, .string(type)): Self.inputTypes.contains(type)
         case (.invalid, .bool): true
-        case (.checked, .bool), (.indeterminate, .bool): true
+        case (.checked, .bool): true
         case (.progressValue, .int), (.minValue, .int), (.maxValue, .int): true
         case let (.orientation, .string(value)):
             value == "horizontal" || value == "vertical"
@@ -268,9 +268,6 @@ struct LUIRetainedTree {
             guard Self.canContainChildren(parentNode.kind) else {
                 throw invalid("parent cannot contain children")
             }
-            guard !Self.isSingleChildContainer(parentNode.kind) || parentNode.children.isEmpty else {
-                throw invalid("parent can contain only one child")
-            }
             guard childNode.parent == nil else { throw invalid("child is already attached") }
             guard index >= 0 && index <= parentNode.children.count else {
                 throw invalid("child index is out of bounds")
@@ -327,7 +324,8 @@ struct LUIRetainedTree {
                 kind == .textArea || kind == .checkbox || kind == .spinner || kind == .icon
         case .text:
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
-                kind == .button || kind == .textInput || kind == .textArea
+                kind == .button || kind == .textInput || kind == .textArea ||
+                kind == .checkbox || kind == .switchControl
         case .enabled:
             kind == .button || kind == .textInput || kind == .textArea ||
                 kind == .checkbox || kind == .switchControl
@@ -340,16 +338,13 @@ struct LUIRetainedTree {
         case .minLines, .maxLines: kind == .textArea
         case .headingLevel: kind == .heading
         case .labelledBy:
-            kind == .textInput || kind == .textArea || kind == .switchControl ||
-                kind == .progress
+            kind == .textInput || kind == .textArea || kind == .progress
         case .describedBy, .errorMessageBy:
-            kind == .textInput || kind == .textArea || kind == .switchControl
+            kind == .textInput || kind == .textArea
         case .invalid:
-            kind == .textInput || kind == .textArea || kind == .checkbox ||
-                kind == .switchControl
+            kind == .textInput || kind == .textArea
         case .inputType: kind == .textInput
         case .checked: kind == .checkbox || kind == .switchControl
-        case .indeterminate: kind == .checkbox
         case .progressValue, .minValue, .maxValue: kind == .progress
         case .orientation: kind == .divider
         case .size: kind == .spinner || kind == .icon
@@ -360,11 +355,7 @@ struct LUIRetainedTree {
     private static func canContainChildren(_ kind: LUINodeKind) -> Bool {
         kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
-            kind == .list || kind == .switchControl
-    }
-
-    private static func isSingleChildContainer(_ kind: LUINodeKind) -> Bool {
-        kind == .switchControl
+            kind == .list
     }
 
     private func validateNodeProperties() throws {

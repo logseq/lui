@@ -899,9 +899,10 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('maps checkbox and switch to retained native controls', (
+  testWidgets('maps direct text-bearing checkbox and switch natively', (
     tester,
   ) async {
+    final semantics = tester.ensureSemantics();
     final events = <LUIEvent>[];
     final backend = LUIFlutterBackend(onEvent: events.add)
       ..applyJson('''
@@ -910,9 +911,10 @@ void main() {
         {"op":"create-node","id":2,"kind":"checkbox"},
         {"op":"create-node","id":3,"kind":"switch"},
         {"op":"set-prop","id":2,"property":"accessibility-label","value":"Select all"},
+        {"op":"set-prop","id":2,"property":"text","value":"Select everything"},
         {"op":"set-prop","id":2,"property":"checked","value":true},
-        {"op":"set-prop","id":2,"property":"indeterminate","value":true},
         {"op":"set-prop","id":3,"property":"accessibility-label","value":"Notifications"},
+        {"op":"set-prop","id":3,"property":"text","value":"Email notifications"},
         {"op":"set-prop","id":3,"property":"checked","value":false},
         {"op":"insert-child","parent":1,"child":2,"index":0},
         {"op":"insert-child","parent":1,"child":3,"index":1}
@@ -925,9 +927,35 @@ void main() {
 
     final checkbox = tester.widget<Checkbox>(find.byType(Checkbox));
     final toggle = tester.widget<Switch>(find.byType(Switch));
-    expect(checkbox.tristate, isTrue);
-    expect(checkbox.value, isNull);
+    expect(checkbox.tristate, isFalse);
+    expect(checkbox.value, isTrue);
     expect(toggle.value, isFalse);
+    expect(find.text('Select everything'), findsOneWidget);
+    expect(find.text('Email notifications'), findsOneWidget);
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Select all')),
+      matchesSemantics(
+        label: 'Select all',
+        hasCheckedState: true,
+        isChecked: true,
+        hasEnabledState: true,
+        isEnabled: true,
+        hasTapAction: true,
+      ),
+    );
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Notifications')),
+      matchesSemantics(
+        label: 'Notifications',
+        hasToggledState: true,
+        hasEnabledState: true,
+        isEnabled: true,
+        hasTapAction: true,
+      ),
+    );
+    await tester.tap(find.text('Select everything'));
+    expect(events, const [LUIEvent.toggleChanged(node: 2, checked: false)]);
+    events.clear();
 
     final originalCheckbox = tester.renderObject(
       find.byKey(LUIFlutterBackend.nodeKey(2)),
@@ -938,14 +966,14 @@ void main() {
     await tester.tap(find.byType(Checkbox));
     await tester.tap(find.byType(Switch));
     expect(events, const [
-      LUIEvent.toggleChanged(node: 2, checked: true),
+      LUIEvent.toggleChanged(node: 2, checked: false),
       LUIEvent.toggleChanged(node: 3, checked: true),
     ]);
 
     backend.applyJson('''
     {"generation":2,"ops":[
-      {"op":"set-prop","id":2,"property":"indeterminate","value":false},
       {"op":"set-prop","id":2,"property":"checked","value":false},
+      {"op":"set-prop","id":2,"property":"text","value":"All items"},
       {"op":"set-prop","id":3,"property":"checked","value":true}
     ]}
     ''');
@@ -958,6 +986,17 @@ void main() {
       tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(3))),
       same(originalSwitch),
     );
+    expect(find.text('All items'), findsOneWidget);
+    expect(
+      () => backend.applyJson('''
+      {"generation":3,"ops":[
+        {"op":"set-prop","id":2,"property":"indeterminate","value":true}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 2);
+    semantics.dispose();
   });
 }
 

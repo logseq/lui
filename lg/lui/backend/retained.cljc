@@ -158,9 +158,6 @@
         (cond
           (not (proto/can-contain-children? (:semantic-kind parent-node)))
           (raise (Invalid_argument "parent cannot contain children"))
-          (and (proto/single-child-container? (:semantic-kind parent-node))
-               (not (empty? (:retained-children parent-node))))
-          (raise (Invalid_argument "parent can contain only one child"))
           (descendant? nodes child parent)
           (raise (Invalid_argument "child insertion would create a cycle"))
           (match (:retained-parent child-node)

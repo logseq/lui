@@ -369,7 +369,6 @@ final class LUIFlutterBackend {
     final errorMessage = _relatedText(state, 'error-message-by');
     final invalid = state.properties['invalid'] as bool? ?? false;
     final checked = state.properties['checked'] as bool? ?? false;
-    final indeterminate = state.properties['indeterminate'] as bool? ?? false;
     final minimum = state.properties['min-value'] as int? ?? 0;
     final maximum = state.properties['max-value'] as int? ?? 100;
     final progressValue = state.properties['value'] as int? ?? minimum;
@@ -436,6 +435,25 @@ final class LUIFlutterBackend {
         ),
       ),
     );
+    Widget toggleSemantics({required bool asSwitch, required Widget child}) {
+      final label = accessibilityLabel?.isNotEmpty ?? false
+          ? accessibilityLabel
+          : (text.isEmpty ? null : text);
+      return Semantics(
+        label: label,
+        enabled: enabled,
+        checked: asSwitch ? null : checked,
+        toggled: asSwitch ? checked : null,
+        onTap: enabled
+            ? () => onEvent?.call(
+                LUIEvent.toggleChanged(node: id, checked: !checked),
+              )
+            : null,
+        excludeSemantics: true,
+        child: child,
+      );
+    }
+
     Widget grid() => LayoutBuilder(
       builder: (context, constraints) {
         final requested = state.properties['columns'] as int? ?? 0;
@@ -523,38 +541,34 @@ final class LUIFlutterBackend {
       ),
       _NodeKind.textInput => textControl(multiline: false),
       _NodeKind.textArea => textControl(multiline: true),
-      _NodeKind.checkbox => Semantics(
-        label: accessibilityLabel,
-        hint: accessibilityHint.isEmpty ? null : accessibilityHint,
-        validationResult: invalid
-            ? SemanticsValidationResult.invalid
-            : SemanticsValidationResult.none,
-        child: Checkbox(
-          tristate: true,
-          value: indeterminate ? null : checked,
+      _NodeKind.checkbox => toggleSemantics(
+        asSwitch: false,
+        child: CheckboxListTile(
+          value: checked,
           onChanged: enabled
               ? (value) => onEvent?.call(
-                  LUIEvent.toggleChanged(
-                    node: id,
-                    checked: indeterminate || (value ?? false),
-                  ),
+                  LUIEvent.toggleChanged(node: id, checked: value ?? false),
                 )
               : null,
+          title: Text(text),
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          dense: true,
         ),
       ),
-      _NodeKind.switchControl => Semantics(
-        label: accessibilityLabel,
-        hint: accessibilityHint.isEmpty ? null : accessibilityHint,
-        validationResult: invalid
-            ? SemanticsValidationResult.invalid
-            : SemanticsValidationResult.none,
-        child: Switch(
+      _NodeKind.switchControl => toggleSemantics(
+        asSwitch: true,
+        child: SwitchListTile(
           value: checked,
           onChanged: enabled
               ? (value) => onEvent?.call(
                   LUIEvent.toggleChanged(node: id, checked: value),
                 )
               : null,
+          title: Text(text),
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          dense: true,
         ),
       ),
       _NodeKind.progress => LinearProgressIndicator(
@@ -704,8 +718,7 @@ final class LUIFlutterBackend {
         if (child.parent != null) {
           throw const LUIBackendException('child is already attached');
         }
-        if (!_canContainChildren(parent.kind) ||
-            (_isSingleChild(parent.kind) && parent.children.isNotEmpty)) {
+        if (!_canContainChildren(parent.kind)) {
           throw const LUIBackendException('parent cannot contain child');
         }
         if (index < 0 || index > parent.children.length) {
@@ -769,7 +782,9 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.paragraph ||
                 kind == _NodeKind.label ||
                 kind == _NodeKind.button ||
-                _isTextControl(kind)),
+                _isTextControl(kind) ||
+                kind == _NodeKind.checkbox ||
+                kind == _NodeKind.switchControl),
       'enabled' =>
         value is bool &&
             (kind == _NodeKind.button ||
@@ -831,25 +846,17 @@ final class LUIFlutterBackend {
       'max-height' => value is int && value >= 0,
       'style-class' => value is String,
       'labelled-by' =>
-        value is int &&
-            (kind.isTextControl ||
-                kind == _NodeKind.switchControl ||
-                kind == _NodeKind.progress),
-      'described-by' || 'error-message-by' =>
-        value is int && (kind.isTextControl || kind == _NodeKind.switchControl),
+        value is int && (kind.isTextControl || kind == _NodeKind.progress),
+      'described-by' ||
+      'error-message-by' => value is int && kind.isTextControl,
       'input-type' =>
         value is String &&
             _inputTypes.contains(value) &&
             kind == _NodeKind.textInput,
-      'invalid' =>
-        value is bool &&
-            (kind.isTextControl ||
-                kind == _NodeKind.checkbox ||
-                kind == _NodeKind.switchControl),
+      'invalid' => value is bool && kind.isTextControl,
       'checked' =>
         value is bool &&
             (kind == _NodeKind.checkbox || kind == _NodeKind.switchControl),
-      'indeterminate' => value is bool && kind == _NodeKind.checkbox,
       'heading-level' =>
         value is int && value >= 1 && value <= 6 && kind == _NodeKind.heading,
       'placeholder' => value is String && _isTextControl(kind),
@@ -932,13 +939,10 @@ final class LUIFlutterBackend {
       kind == _NodeKind.card ||
       kind == _NodeKind.box ||
       kind == _NodeKind.scroll ||
-      kind == _NodeKind.list ||
-      kind == _NodeKind.switchControl;
+      kind == _NodeKind.list;
 
   static bool _isTextControl(_NodeKind kind) =>
       kind == _NodeKind.textInput || kind == _NodeKind.textArea;
-
-  static bool _isSingleChild(_NodeKind kind) => kind == _NodeKind.switchControl;
 
   static bool _isDescendant(
     Map<int, _NodeState> states, {

@@ -191,86 +191,72 @@
   }
 
   .lui-checkbox {
+    @apply inline-flex cursor-pointer items-center gap-2;
+  }
+
+  .lui-checkbox-control {
     @apply relative size-4 shrink-0 cursor-pointer appearance-none rounded-sm border border-primary text-primary-foreground ring-offset-background;
   }
 
-  .lui-checkbox:focus-visible {
+  .lui-checkbox-control:focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2;
   }
 
-  .lui-checkbox:disabled {
+  .lui-checkbox-control:disabled {
     @apply cursor-not-allowed opacity-50;
   }
 
-  .lui-checkbox[data-checked],
-  .lui-checkbox[data-indeterminate] {
+  .lui-checkbox-control:checked {
     @apply border-0 bg-primary;
   }
 
-  .lui-checkbox::after {
+  .lui-checkbox-control::after {
     @apply absolute hidden;
     content: "";
   }
 
-  .lui-checkbox[data-checked]::after {
+  .lui-checkbox-control:checked::after {
     @apply block h-2 w-1 rotate-45 border-b-2 border-r-2;
     top: 0.125rem;
     left: 0.3125rem;
   }
 
-  .lui-checkbox[data-indeterminate]::after {
-    @apply block h-0.5 w-2 bg-current;
-    top: 0.4375rem;
-    left: 0.1875rem;
-  }
-
   .lui-switch {
-    @apply grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-1;
+    @apply inline-flex cursor-pointer items-center gap-2;
   }
 
   .lui-switch-control {
-    @apply col-start-1 row-start-1 inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent bg-input p-0 transition-[color,background-color,box-shadow];
+    @apply inline-flex h-6 w-11 shrink-0 cursor-pointer appearance-none items-center rounded-full border-2 border-transparent bg-input p-0 ring-offset-background transition-[color,background-color,box-shadow];
   }
 
   .lui-switch-control:focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 
-  .lui-switch-control:disabled,
-  .lui-switch-control[data-disabled] {
+  .lui-switch-control:disabled {
     @apply cursor-not-allowed opacity-50;
   }
 
-  .lui-switch-control[data-checked] {
+  .lui-switch-control:checked {
     @apply bg-primary;
   }
 
-  .lui-switch-thumb {
+  .lui-switch-control::after {
     @apply pointer-events-none block size-5 translate-x-0 rounded-full bg-background shadow-lg ring-0 transition-transform;
+    content: "";
   }
 
-  .lui-switch-control[data-checked] .lui-switch-thumb {
+  .lui-switch-control:checked::after {
     @apply translate-x-5;
   }
 
-  .lui-switch-label {
-    @apply col-start-2 row-start-1 self-center text-sm font-medium leading-none;
+  .lui-control-label {
+    @apply text-sm font-medium leading-none;
   }
 
-  .lui-switch:has([data-disabled]) .lui-switch-label {
+  .lui-checkbox:has(:disabled) .lui-control-label,
+  .lui-switch:has(:disabled) .lui-control-label {
     @apply cursor-not-allowed opacity-70;
-  }
-
-  .lui-switch-description {
-    @apply col-start-2 text-sm text-muted-foreground;
-  }
-
-  .lui-switch-error-message {
-    @apply col-start-2 hidden text-xs font-medium text-destructive;
-  }
-
-  .lui-switch:has([data-invalid]) .lui-switch-error-message {
-    @apply block;
   }
 
   .lui-badge {

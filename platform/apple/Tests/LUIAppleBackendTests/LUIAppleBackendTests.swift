@@ -142,6 +142,52 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 3)?.property(.checked) == .bool(false))
     }
 
+    @Test("maps direct text-bearing checkbox and switch without replacing models")
+    func mapsDirectToggleControls() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"checkbox"},
+          {"op":"create-node","id":2,"kind":"switch"},
+          {"op":"set-prop","id":1,"property":"text","value":"Select all"},
+          {"op":"set-prop","id":1,"property":"accessibility-label","value":"Select every item"},
+          {"op":"set-prop","id":1,"property":"checked","value":false},
+          {"op":"set-prop","id":2,"property":"text","value":"Notifications"},
+          {"op":"set-prop","id":2,"property":"checked","value":false}
+        ]}
+        """)
+
+        let checkbox = try #require(backend.model(id: 1))
+        let toggle = try #require(backend.model(id: 2))
+        let checkboxRevision = checkbox.revision
+        let toggleRevision = toggle.revision
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 2)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"text","value":"All items"},
+          {"op":"set-prop","id":2,"property":"checked","value":true}
+        ]}
+        """)
+
+        #expect(backend.model(id: 1) === checkbox)
+        #expect(backend.model(id: 2) === toggle)
+        #expect(checkbox.property(.text) == .string("All items"))
+        #expect(toggle.property(.checked) == .bool(true))
+        #expect(checkbox.revision == checkboxRevision + 1)
+        #expect(toggle.revision == toggleRevision + 1)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":3,"ops":[
+              {"op":"set-prop","id":1,"property":"indeterminate","value":true}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 2)
+    }
+
     @Test("maps Progress to a clamped retained SwiftUI value")
     func mapsProgressControl() throws {
         let backend = LUIAppleBackend()

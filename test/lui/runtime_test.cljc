@@ -91,9 +91,11 @@
                 (proto/set-prop-op
                  1 proto/Checked (proto/BoolValue true))
                 (proto/set-prop-op
-                 1 proto/Indeterminate (proto/BoolValue true))
+                 1 proto/TextValue (proto/StringValue "Select all"))
                 (proto/set-prop-op
-                 2 proto/Checked (proto/BoolValue false))]))]
+                 2 proto/Checked (proto/BoolValue false))
+                (proto/set-prop-op
+                 2 proto/TextValue (proto/StringValue "Notifications"))]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
@@ -102,11 +104,28 @@
       "{\"op\":\"set-prop\",\"id\":1,"
       "\"property\":\"checked\",\"value\":true},"
       "{\"op\":\"set-prop\",\"id\":1,"
-      "\"property\":\"indeterminate\",\"value\":true},"
+      "\"property\":\"text\",\"value\":\"Select all\"},"
       "{\"op\":\"set-prop\",\"id\":2,"
-      "\"property\":\"checked\",\"value\":false}]}")
+      "\"property\":\"checked\",\"value\":false},"
+      "{\"op\":\"set-prop\",\"id\":2,"
+      "\"property\":\"text\",\"value\":\"Notifications\"}]}")
      (wire/encode-batch batch)
      "toggle controls use a closed native wire vocabulary")))
+
+(deftest checkbox-and-switch-use-the-direct-vercel-native-contract
+  (doseq [kind [proto/Checkbox proto/SwitchControl]]
+    (is (proto/property-supported? kind proto/TextValue)
+        "direct controls carry their visible text")
+    (is (proto/property-supported? kind proto/Checked)
+        "direct controls carry model-owned checked state")
+    (is (proto/property-supported? kind proto/Enabled)
+        "direct controls carry disabled state through Enabled")
+    (is (proto/property-supported? kind proto/AccessibilityLabel)
+        "direct controls accept the accessibility-only label")
+    (is (not (proto/property-supported? kind proto/Invalid))
+        "invalid is not part of the reference control contract")
+    (is (not (proto/can-contain-children? kind))
+        "backend-owned control parts never enter the retained tree")))
 
 (deftest surface-properties-use-closed-wire-names
   (let [batch
@@ -428,9 +447,7 @@
     (assert-equal [3] (apple/children renderer 1)
                   "List retains a vertical flow collection")
     (assert-equal [4 5] (apple/children renderer 2)
-                  "Scroll retains multiple overlay children")
-    (assert-equal false (proto/single-child-container? proto/Scroll)
-                  "Scroll is not a one-child wrapper")))
+                  "Scroll retains multiple overlay children")))
 
 (deftest list-has-a-closed-wire-node-name
   (let [batch
@@ -827,8 +844,7 @@
         heading (runtime/create-node! application proto/Heading)
         button (runtime/create-node! application proto/Button)
         row (runtime/create-node! application proto/Row)
-        checkbox (runtime/create-node! application proto/Checkbox)
-        switch-control (runtime/create-node! application proto/SwitchControl)]
+        checkbox (runtime/create-node! application proto/Checkbox)]
     (is (thrown-with-msg?
          Invalid_argument
          #"invalid property value"
@@ -859,16 +875,9 @@
          (runtime/set-prop!
           application checkbox proto/Checked (proto/StringValue "yes")))
         "checked state requires a boolean wire value")
-    (is (thrown-with-msg?
-         Invalid_argument
-         #"unsupported"
-         (runtime/set-prop!
-          application switch-control proto/Indeterminate
-          (proto/BoolValue true)))
-        "only Checkbox supports indeterminate state")
     (runtime/flush! application)
     (assert-equal
-     6
+     5
      (count (:ops (nth (apple/batches renderer) 0)))
      "rejected values never enter the patch queue")))
 
@@ -929,14 +938,12 @@
           (generation 1)
           (ops [(proto/create-node-op 1 proto/SwitchControl)
                 (proto/create-node-op 2 proto/Text)
-                (proto/create-node-op 3 proto/Text)
-                (proto/insert-child-op 1 2 0)
-                (proto/insert-child-op 1 3 1)]))]
+                (proto/insert-child-op 1 2 0)]))]
     (is (thrown-with-msg?
          Invalid_argument
-         #"one child"
+         #"cannot contain"
          ((:apply-batch backend) invalid-batch))
-        "backend enforces single-child containers")))
+        "backend keeps native switch implementation parts off-tree")))
 
 (deftest runtime-rejects-invalid-structure-before-enqueue
   (let [application
@@ -952,13 +959,12 @@
         (runtime/create (sig/scheduler) (apple/backend (apple/create)))
         switch-control (runtime/create-node! application proto/SwitchControl)
         first-child (runtime/create-node! application proto/Text)
-        second-child (runtime/create-node! application proto/Text)]
-    (runtime/insert-child! application switch-control first-child 0)
+        _second-child (runtime/create-node! application proto/Text)]
     (is (thrown-with-msg?
          Invalid_argument
-         #"one child"
-         (runtime/insert-child! application switch-control second-child 1))
-        "switch controls enforce their single-child contract"))
+         #"cannot contain"
+         (runtime/insert-child! application switch-control first-child 0))
+        "switch controls are direct retained leaves"))
   (let [application
         (runtime/create (sig/scheduler) (apple/backend (apple/create)))
         root (runtime/create-node! application proto/Column)

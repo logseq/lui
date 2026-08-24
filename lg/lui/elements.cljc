@@ -38,6 +38,7 @@
         (= tag :label)
         (= tag :button)
         (= tag :checkbox)
+        (= tag :switch)
         (= tag :text-input)
         (= tag :text-area)
         (= tag :keyed))
@@ -300,6 +301,33 @@
       (str resolved " " (:class attrs))
       resolved)))
 
+(macro-helper-defn direct-toggle-expansion
+  [constructor context parent attrs children]
+  (let [node (gensym "node")
+        text-source (:text attrs)
+        literal-text (first children)
+        resolved-attrs
+        (if (:label attrs)
+          (assoc attrs :accessibility-label (:label attrs))
+          attrs)]
+    `(let [~node (~constructor ~context)]
+       ~@(if text-source
+           [`(lui.ui/text-property-signal! ~context ~node ~text-source)]
+           (if literal-text
+             [`(lui.ui/text-property! ~context ~node ~literal-text)]
+             []))
+       ~@(if (:checked attrs)
+           [`(lui.ui/checked-signal! ~context ~node ~(:checked attrs))]
+           [])
+       ~@(if (:on-toggle attrs)
+           [`(lui.ui/on-event! ~context ~node ~(:on-toggle attrs))]
+           [])
+       ~@(interactive-properties context node resolved-attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
+
 (macro-helper-defn container-expansion
   [constructor context parent attrs children]
   (let [node (gensym "node")]
@@ -425,19 +453,12 @@
        ~node)))
 
 (defelement checkbox [context parent attrs & _children]
-  (let [node (gensym "node")]
-    `(let [~node
-           (lui.ui/checkbox!
-            ~context ~(:checked attrs) ~(:on-change attrs))]
-       ~@(if (:indeterminate attrs)
-           [`(lui.ui/indeterminate-signal!
-              ~context ~node ~(:indeterminate attrs))]
-           [])
-       ~@(control-properties context node attrs)
-       ~@(if parent
-           [`(lui.ui/append! ~context ~parent ~node)]
-           [])
-       ~node)))
+  (direct-toggle-expansion
+   'lui.ui/checkbox! context parent attrs _children))
+
+(defelement switch [context parent attrs & children]
+  (direct-toggle-expansion
+   'lui.ui/switch-control! context parent attrs children))
 
 (defelement text-input [context parent attrs & _children]
   (let [node (gensym "node")]

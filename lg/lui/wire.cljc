@@ -15,7 +15,7 @@
                      PlaceholderValue ReadOnly AccessibilityLabel MinLines MaxLines
                      StyleClass HeadingLevel LabelledBy DescribedBy
                      ErrorMessageBy InputType Invalid
-                     Checked Indeterminate
+                     Checked
                      ProgressValue MinValue MaxValue OrientationValue SizeValue IconName
                      StringValue BoolValue IntValue FloatValue
                      CreateNode DropNode SetProp InsertChild RemoveChild
@@ -95,7 +95,6 @@
     InputType "input-type"
     Invalid "invalid"
     Checked "checked"
-    Indeterminate "indeterminate"
     ProgressValue "value"
     MinValue "min-value"
     MaxValue "max-value"

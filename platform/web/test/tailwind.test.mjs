@@ -54,22 +54,21 @@ test("the production stylesheet contains the Solid UI TextField contract", async
   assert.doesNotMatch(css, /\.h-10\{/)
 })
 
-test("the production stylesheet contains the Solid UI toggle contracts", async () => {
+test("the production stylesheet contains direct Vercel Native toggle controls", async () => {
   const css = await readFile(outputUrl, "utf8")
 
-  assert.match(css, /\.lui-checkbox\{[^}]*appearance:none/)
-  assert.match(css, /\.lui-checkbox\[data-checked\]/)
-  assert.match(css, /\.lui-checkbox\[data-indeterminate\]/)
-  assert.match(css, /\.lui-checkbox:focus-visible/)
-  assert.match(css, /\.lui-switch-control\{[^}]*display:inline-flex/)
-  assert.match(css, /\.lui-switch-control\[data-checked\]/)
-  assert.match(css, /\.lui-switch-thumb\{[^}]*pointer-events:none/)
-  assert.match(
-    css,
-    /\.lui-switch-control\[data-checked\] \.lui-switch-thumb\{[^}]*translate:/,
-  )
-  assert.match(css, /\.lui-switch-error-message\{[^}]*display:none/)
-  assert.match(css, /\.lui-switch:has\(\[data-invalid\]\) \.lui-switch-error-message/)
+  assert.match(css, /\.lui-checkbox\{[^}]*display:inline-flex/)
+  assert.match(css, /\.lui-checkbox-control\{[^}]*appearance:none/)
+  assert.match(css, /\.lui-checkbox-control:checked/)
+  assert.match(css, /\.lui-checkbox-control:focus-visible/)
+  assert.match(css, /\.lui-switch\{[^}]*display:inline-flex/)
+  assert.match(css, /\.lui-switch-control\{[^}]*appearance:none/)
+  assert.match(css, /\.lui-switch-control:checked/)
+  assert.match(css, /\.lui-switch-control:checked:after\{[^}]*translate:/)
+  assert.match(css, /\.lui-control-label\{[^}]*font-size:var\(--text-sm\)/)
+  assert.doesNotMatch(css, /data-indeterminate/)
+  assert.doesNotMatch(css, /\.lui-switch-thumb/)
+  assert.doesNotMatch(css, /\.lui-switch-error-message/)
   assert.doesNotMatch(css, /\.size-4\{/)
 })
 

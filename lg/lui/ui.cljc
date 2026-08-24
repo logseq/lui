@@ -223,30 +223,30 @@
       (sig/map (fn [checked] (proto/BoolValue checked)) source)))
     true))
 
-(defn indeterminate-signal! [context node source]
+(defn text-property! [context node text]
   (do
-    (runtime/bind-prop!
-     (:ui-scope context) (:ui-application context) node proto/Indeterminate
-     (sig/own-signal!
-      (:ui-scope context)
-      (sig/map
-       (fn [indeterminate] (proto/BoolValue indeterminate)) source)))
+    (runtime/set-prop!
+     (:ui-application context) node proto/TextValue (proto/StringValue text))
     true))
 
-(defn checkbox! [context source callback]
-  (let [node (runtime/create-node! (:ui-application context) proto/Checkbox)]
-    (checked-signal! context node source)
-    (runtime/on-event!
-     (:ui-scope context) (:ui-application context) node callback)
-    node))
+(defn text-property-signal! [context node source]
+  (do
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context) node proto/TextValue
+     (sig/own-signal!
+      (:ui-scope context)
+      (sig/map (fn [text] (proto/StringValue text)) source)))
+    true))
 
-(defn switch-control! [context source callback]
-  (let [node
-        (runtime/create-node! (:ui-application context) proto/SwitchControl)]
-    (checked-signal! context node source)
-    (runtime/on-event!
-     (:ui-scope context) (:ui-application context) node callback)
-    node))
+(defn on-event! [context node callback]
+  (runtime/on-event!
+   (:ui-scope context) (:ui-application context) node callback))
+
+(defn checkbox! [context]
+  (runtime/create-node! (:ui-application context) proto/Checkbox))
+
+(defn switch-control! [context]
+  (runtime/create-node! (:ui-application context) proto/SwitchControl))
 
 (defn progress-control! [context source minimum maximum]
   (let [node

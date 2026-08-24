@@ -4,7 +4,6 @@
             [lui.progress :as progress]
             [lui.separator]
             [lui.skeleton]
-            [lui.switch :as switch]
             [lui.text-field :as text-field]))
 
 (defui button-gallery [disabled-source toggle-disabled]
@@ -178,43 +177,26 @@
     [:text-field/description
      "This TextArea shares the same Signal to demonstrate local patches."]]])
 
-(defui toggle-gallery
-  [checked-source indeterminate-source invalid-source disabled-source
-   update-toggle toggle-indeterminate toggle-invalid]
+(defui toggle-gallery [checked-source disabled-source update-toggle]
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "Checkbox and Switch"]
-   [:row {:gap 12}
-    [:checkbox
-     {:checked checked-source
-      :indeterminate indeterminate-source
-      :disabled disabled-source
-      :accessibility-label "Enable notifications"
-      :on-change update-toggle}]
-    [:paragraph "Native Checkbox with checked and indeterminate Signals"]]
+   [:checkbox
+    {:checked checked-source
+     :disabled disabled-source
+     :on-toggle update-toggle}
+    "Enable notifications"]
    [:switch
     {:checked checked-source
      :disabled disabled-source
-     :invalid invalid-source
-     :on-change update-toggle}
-    [:switch/control
-     [:switch/thumb]]
-    [:switch/label "Background sync"]
-    [:switch/description
-     "The retained control keeps its identity while the Signal changes."]
-    [:switch/error-message "Background sync is currently unavailable."]]
-   [:row {:gap 12}
-    [:button
-     {:variant "outline" :on-press toggle-indeterminate}
-     "Toggle indeterminate"]
-    [:button
-     {:variant "outline" :on-press toggle-invalid}
-     "Toggle switch invalid"]]])
+     :on-toggle update-toggle}
+    "Background sync"]
+   [:paragraph
+    "Both native controls share one Signal and patch in place."]])
 
 (defui component-gallery
   [disabled-source toggle-disabled card-copy
    value-source invalid-source update-value toggle-invalid
-   checked-source indeterminate-source toggle-invalid-source
-   update-toggle toggle-indeterminate toggle-toggle-invalid
+   checked-source update-toggle
    progress-source progress-label-source advance-progress]
   [:column
    [button-gallery disabled-source toggle-disabled]
@@ -228,6 +210,4 @@
    [collection-gallery]
    [text-field-gallery
     value-source invalid-source disabled-source update-value toggle-invalid]
-   [toggle-gallery
-    checked-source indeterminate-source toggle-invalid-source disabled-source
-    update-toggle toggle-indeterminate toggle-toggle-invalid]])
+   [toggle-gallery checked-source disabled-source update-toggle]])

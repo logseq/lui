@@ -53,10 +53,6 @@ final class LUINodeModel: Identifiable {
         properties[.checked]?.boolValue ?? false
     }
 
-    var isIndeterminate: Bool {
-        properties[.indeterminate]?.boolValue ?? false
-    }
-
     var isInvalid: Bool {
         properties[.invalid]?.boolValue ?? false
     }
@@ -278,7 +274,7 @@ public final class LUIAppleBackend {
         case .button:
             try performPress(node: node)
         case .checkbox, .switchControl:
-            try performToggle(node: node, checked: model.isIndeterminate || !model.isChecked)
+            try performToggle(node: node, checked: !model.isChecked)
         default:
             throw invalid("node \(node) has no action")
         }

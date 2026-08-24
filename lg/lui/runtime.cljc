@@ -138,9 +138,6 @@
         children (children application parent)]
     (when (not (proto/can-contain-children? parent-kind))
       (raise (Invalid_argument "parent cannot contain children")))
-    (when (and (proto/single-child-container? parent-kind)
-               (not (empty? children)))
-      (raise (Invalid_argument "parent can contain only one child")))
     (when (contains? (deref (:runtime-parents application)) child)
       (raise (Invalid_argument "child is already attached")))
     (when (or (< index 0) (> index (count children)))

@@ -136,17 +136,15 @@
     HeadingLevel (= kind Heading)
     LabelledBy
     (or (= kind TextInput) (= kind TextArea)
-        (= kind SwitchControl) (= kind ProgressControl))
+        (= kind ProgressControl))
     DescribedBy
-    (or (= kind TextInput) (= kind TextArea) (= kind SwitchControl))
+    (or (= kind TextInput) (= kind TextArea))
     ErrorMessageBy
-    (or (= kind TextInput) (= kind TextArea) (= kind SwitchControl))
+    (or (= kind TextInput) (= kind TextArea))
     InputType (= kind TextInput)
     Invalid
-    (or (= kind TextInput) (= kind TextArea)
-        (= kind Checkbox) (= kind SwitchControl))
+    (or (= kind TextInput) (= kind TextArea))
     Checked (or (= kind Checkbox) (= kind SwitchControl))
-    Indeterminate (= kind Checkbox)
     ProgressValue (= kind ProgressControl)
     MinValue (= kind ProgressControl)
     MaxValue (= kind ProgressControl)
@@ -162,6 +160,8 @@
       Button true
       TextInput true
       TextArea true
+      Checkbox true
+      SwitchControl true
       _ false)
     Enabled
     (match kind
@@ -218,7 +218,6 @@
     (tuple InputType (StringValue value)) (input-type-supported? value)
     (tuple Invalid (BoolValue _value)) true
     (tuple Checked (BoolValue _value)) true
-    (tuple Indeterminate (BoolValue _value)) true
     (tuple ProgressValue (IntValue _value)) true
     (tuple MinValue (IntValue _value)) true
     (tuple MaxValue (IntValue _value)) true
@@ -278,11 +277,7 @@
     Box true
     Scroll true
     ListContainer true
-    SwitchControl true
     _ false))
-
-(defn single-child-container? [kind]
-  (= kind SwitchControl))
 
 (defn create-node-op [node kind]
   (CreateNode node kind))

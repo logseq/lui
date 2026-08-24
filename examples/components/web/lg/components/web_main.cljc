@@ -17,8 +17,6 @@
         field-value (sig/state scheduler "")
         field-invalid (sig/state scheduler false)
         toggle-checked (sig/state scheduler false)
-        toggle-indeterminate (sig/state scheduler true)
-        toggle-invalid (sig/state scheduler false)
         progress-value (sig/state scheduler 30)
         progress-label
         (sig/map
@@ -50,23 +48,11 @@
             field-invalid
             (if (= (sig/get field-invalid) true) false true)))
          (sig/value toggle-checked)
-         (sig/value toggle-indeterminate)
-         (sig/value toggle-invalid)
          (fn [event]
            (match event
              (ToggleChanged _node checked)
-             (do
-               (sig/set! toggle-indeterminate false)
-               (sig/set! toggle-checked checked))
+             (sig/set! toggle-checked checked)
              _ true))
-         (fn [_event]
-           (sig/set!
-            toggle-indeterminate
-            (if (= (sig/get toggle-indeterminate) true) false true)))
-         (fn [_event]
-           (sig/set!
-            toggle-invalid
-            (if (= (sig/get toggle-invalid) true) false true)))
          (sig/value progress-value)
          progress-label
          (fn [_event]

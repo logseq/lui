@@ -10,7 +10,6 @@
             [lui.separator]
             [lui.skeleton]
             [lui.text-field :as text-field]
-            [lui.switch :as switch]
             [lui.macros :refer [defui state effect platform host]]
             [lui.backend.apple :as apple
              :refer [AppleBox AppleCard AppleCheckbox AppleColumn AppleFormLabel AppleGrid
@@ -160,24 +159,19 @@
    [:text-field/error-message "Enter a valid email address."]])
 
 (defui settings-toggles
-  [checked indeterminate disabled invalid checkbox-change switch-change]
+  [checked disabled checkbox-text switch-text checkbox-toggle switch-toggle]
   [:column
    [:checkbox
     {:checked checked
-     :indeterminate indeterminate
      :disabled disabled
-     :accessibility-label "Select all"
-     :on-change checkbox-change}]
+     :text checkbox-text
+     :label "Select all"
+     :on-toggle checkbox-toggle}]
    [:switch
     {:checked checked
      :disabled disabled
-     :invalid invalid
-     :on-change switch-change}
-    [:switch/control
-     [:switch/thumb]]
-    [:switch/label "Notifications"]
-    [:switch/description "Receive a daily summary."]
-    [:switch/error-message "Choose a notification preference."]]])
+     :text switch-text
+     :on-toggle switch-toggle}]])
 
 (deftest platform-profile-flows-through-ui-context
   (let [apple-renderer (apple/create)
@@ -789,80 +783,82 @@
         (assert-equal false value "disabled Signal patches Enabled")
         _ (is false "disabled Signal reaches the input")))))
 
-(deftest toggle-components-patch-native-controls-without-replacing-them
+(deftest direct-toggle-controls-patch-text-and-state-without-replacement
   (let [scheduler (sig/scheduler)
         renderer (apple/create)
         application (runtime/create scheduler (apple/backend renderer))
         scope (sig/scope "settings-toggles")
         checked (sig/state scheduler false)
-        indeterminate (sig/state scheduler true)
         disabled (sig/state scheduler false)
-        invalid (sig/state scheduler false)
+        checkbox-text (sig/state scheduler "Select everything")
+        switch-text (sig/state scheduler "Notifications")
+        events (atom [])
         root
         (settings-toggles
          (ui/context application scope)
          (sig/value checked)
-         (sig/value indeterminate)
          (sig/value disabled)
-         (sig/value invalid)
-         (fn [_event] true)
-         (fn [_event] true))]
+         (sig/value checkbox-text)
+         (sig/value switch-text)
+         (fn [event] (swap! events conj event) true)
+         (fn [event] (swap! events conj event) true))]
     (sig/mount! scope)
     (runtime/flush! application)
     (let [children (apple/children renderer root)
           checkbox (nth children 0)
-          switch-root (nth children 1)
-          switch-parts (apple/children renderer switch-root)
-          control (nth switch-parts 0)
-          label (nth switch-parts 1)
-          description (nth switch-parts 2)
-          error (nth switch-parts 3)
-          thumb (nth (apple/children renderer control) 0)
+          switch-control (nth children 1)
           node-count (apple/node-count renderer)]
       (match (apple/node renderer checkbox)
         (Some AppleCheckbox) (is true "Checkbox maps to a native control")
         _ (is false "Checkbox native mapping"))
-      (match (apple/node renderer control)
+      (match (apple/node renderer switch-control)
         (Some AppleSwitch) (is true "SwitchControl maps to a native switch")
         _ (is false "SwitchControl native mapping"))
-      (match (apple/node renderer thumb)
-        (Some AppleBox) (is true "SwitchThumb remains a retained visual part")
-        _ (is false "SwitchThumb retained mapping"))
-      (match (apple/property renderer control proto/LabelledBy)
-        (Some (proto/IntValue value))
-        (assert-equal label value "SwitchControl references SwitchLabel")
-        _ (is false "Switch label relationship"))
-      (match (apple/property renderer control proto/DescribedBy)
-        (Some (proto/IntValue value))
-        (assert-equal description value "SwitchControl references description")
-        _ (is false "Switch description relationship"))
-      (match (apple/property renderer control proto/ErrorMessageBy)
-        (Some (proto/IntValue value))
-        (assert-equal error value "SwitchControl references error")
-        _ (is false "Switch error relationship"))
-      (match (apple/property renderer checkbox proto/Indeterminate)
-        (Some (proto/BoolValue value))
-        (assert-equal true value "Checkbox retains indeterminate Signal")
-        _ (is false "Checkbox indeterminate state"))
+      (assert-equal 3 node-count
+                    "direct controls add no retained implementation parts")
+      (match (apple/property renderer checkbox proto/TextValue)
+        (Some (StringValue value))
+        (assert-equal "Select everything" value "Checkbox retains text")
+        _ (is false "Checkbox text"))
+      (match (apple/property renderer switch-control proto/TextValue)
+        (Some (StringValue value))
+        (assert-equal "Notifications" value "Switch retains text")
+        _ (is false "Switch text"))
+      (match (apple/property renderer checkbox proto/AccessibilityLabel)
+        (Some (StringValue value))
+        (assert-equal "Select all" value "label is accessibility-only")
+        _ (is false "Checkbox accessibility label"))
       (sig/set! checked true)
-      (sig/set! indeterminate false)
-      (sig/set! invalid true)
+      (sig/set! checkbox-text "All items")
+      (sig/set! switch-text "Email notifications")
       (runtime/flush! application)
       (assert-equal node-count (apple/node-count renderer)
                     "toggle Signals preserve the retained tree")
       (assert-equal checkbox (nth (apple/children renderer root) 0)
                     "Checkbox identity is stable")
-      (assert-equal control
-                    (nth (apple/children renderer switch-root) 0)
+      (assert-equal switch-control
+                    (nth (apple/children renderer root) 1)
                     "Switch identity is stable")
-      (match (apple/property renderer control proto/Checked)
+      (match (apple/property renderer switch-control proto/Checked)
         (Some (proto/BoolValue value))
         (assert-equal true value "checked Signal patches SwitchControl")
         _ (is false "Switch checked state"))
-      (match (apple/property renderer control proto/Invalid)
-        (Some (proto/BoolValue value))
-        (assert-equal true value "invalid Signal patches SwitchControl")
-        _ (is false "Switch invalid state")))))
+      (match (apple/property renderer checkbox proto/TextValue)
+        (Some (StringValue value))
+        (assert-equal "All items" value "text Signal patches Checkbox")
+        _ (is false "Checkbox patched text"))
+      (when (and (= (apple/node renderer checkbox) (Some AppleCheckbox))
+                 (= (apple/node renderer switch-control) (Some AppleSwitch)))
+        (runtime/dispatch!
+         application (proto/ToggleChanged checkbox false))
+        (runtime/dispatch!
+         application (proto/ToggleChanged switch-control false))
+        (runtime/flush! application)
+        (assert-equal
+         [(proto/ToggleChanged checkbox false)
+          (proto/ToggleChanged switch-control false)]
+         (deref events)
+         "on-toggle callbacks receive only their native transitions")))))
 
 (deftest reactive-text-input-updates-through-semantic-events
   (let [scheduler (sig/scheduler)

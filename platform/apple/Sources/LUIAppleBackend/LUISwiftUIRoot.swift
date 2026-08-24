@@ -77,13 +77,12 @@ private struct LUINodeView: View {
             LUICheckboxView(model: model, backend: backend)
         case .switchControl:
             Toggle(
-                "",
+                model.text,
                 isOn: Binding(
                     get: { model.isChecked },
                     set: { try? backend.performToggle(node: model.id, checked: $0) }
                 )
             )
-            .labelsHidden()
             .disabled(!model.isEnabled)
         case .progress:
             ProgressView(value: model.progressFraction)
@@ -374,34 +373,30 @@ private struct LUICheckboxView: View {
     var body: some View {
         #if os(macOS)
         Toggle(
-            "",
+            model.text,
             isOn: Binding(
                 get: { model.isChecked },
                 set: { try? backend.performToggle(node: model.id, checked: $0) }
             )
         )
         .toggleStyle(.checkbox)
-        .labelsHidden()
         .disabled(!model.isEnabled)
         #else
         Button {
             try? backend.performToggle(
                 node: model.id,
-                checked: model.isIndeterminate || !model.isChecked
+                checked: !model.isChecked
             )
         } label: {
-            Image(systemName: checkboxImageName)
+            Label(model.text, systemImage: checkboxImageName)
         }
         .buttonStyle(.plain)
         .disabled(!model.isEnabled)
-        .accessibilityValue(
-            Text(model.isIndeterminate ? "mixed" : (model.isChecked ? "1" : "0"))
-        )
+        .accessibilityValue(Text(model.isChecked ? "1" : "0"))
         #endif
     }
 
     private var checkboxImageName: String {
-        if model.isIndeterminate { return "minus.square.fill" }
         return model.isChecked ? "checkmark.square.fill" : "square"
     }
 }

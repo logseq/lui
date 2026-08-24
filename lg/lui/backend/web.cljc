@@ -18,7 +18,7 @@
                      PlaceholderValue ReadOnly MinLines MaxLines
                      AccessibilityLabel StyleClass HeadingLevel LabelledBy
                      DescribedBy ErrorMessageBy InputType Invalid
-                     Checked Indeterminate
+                     Checked
                      ProgressValue MinValue MaxValue OrientationValue SizeValue IconName
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
@@ -53,7 +53,7 @@
     TextInput "lui-text-input"
     TextArea "lui-text-area"
     Checkbox "lui-checkbox"
-    SwitchControl "lui-switch-control"
+    SwitchControl "lui-switch"
     ProgressControl "lui-progress-control"
     Divider "lui-separator"
     Scroll "lui-scroll"
@@ -62,8 +62,34 @@
     Spinner "lui-spinner"
     Icon "lui-icon"))
 
+(defn- direct-toggle? [kind]
+  (or (= kind Checkbox) (= kind SwitchControl)))
+
+(defn- create-direct-toggle-node [renderer kind]
+  (let [document (:web-document renderer)
+        root (Webapi.Dom.Document.createElement "label" document)
+        control (Webapi.Dom.Document.createElement "input" document)
+        label (Webapi.Dom.Document.createElement "span" document)]
+    (Webapi.Dom.Element.setClassName root (base-class-name kind))
+    (Webapi.Dom.Element.setClassName
+     control
+     (if (= kind Checkbox)
+       "lui-checkbox-control"
+       "lui-switch-control"))
+    (Webapi.Dom.Element.setClassName label "lui-control-label")
+    (Webapi.Dom.Element.setAttribute "type" "checkbox" control)
+    (when (= kind SwitchControl)
+      (Webapi.Dom.Element.setAttribute "role" "switch" control))
+    (Webapi.Dom.Element.appendChild
+     (Webapi.Dom.Element.asNode control) root)
+    (Webapi.Dom.Element.appendChild
+     (Webapi.Dom.Element.asNode label) root)
+    root))
+
 (defn- platform-node [renderer kind]
-  (let [tag
+  (if (direct-toggle? kind)
+    (create-direct-toggle-node renderer kind)
+    (let [tag
         (match kind
           Heading "div"
           Paragraph "p"
@@ -72,8 +98,6 @@
           Button "button"
           TextInput "input"
           TextArea "textarea"
-          Checkbox "input"
-          SwitchControl "button"
           ProgressControl "div"
           Divider "hr"
           _ "div")
@@ -85,18 +109,13 @@
     (when (= kind TextArea)
       (Webapi.Dom.Element.setAttribute
        "style" "field-sizing: content; resize: vertical; overflow-y: auto" node))
-    (when (= kind Checkbox)
-      (Webapi.Dom.Element.setAttribute "type" "checkbox" node))
-    (when (= kind SwitchControl)
-      (Webapi.Dom.Element.setAttribute "type" "button" node)
-      (Webapi.Dom.Element.setAttribute "role" "switch" node))
     (when (= kind ProgressControl)
       (Webapi.Dom.Element.setAttribute "role" "progressbar" node))
     (when (= kind Spinner)
       (Webapi.Dom.Element.setAttribute "role" "progressbar" node))
     (when (= kind Divider)
       (Webapi.Dom.Element.setAttribute "role" "separator" node))
-    node))
+      node)))
 
 (defn- dom-node [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
@@ -110,12 +129,27 @@
       (:platform-node previous)
       (raise (Invalid_argument "unknown DOM node")))))
 
+(defn- child-element [dom-node index]
+  (if-some [child
+            (html-collection/item index (Webapi.Dom.Element.children dom-node))]
+    child
+    (raise (Invalid_argument "DOM node child is missing"))))
+
 (defn- text-control-node [dom-node]
-  (if-some [control
-            (Webapi.Dom.HtmlInputElement.ofNode
-             (Webapi.Dom.Element.asNode dom-node))]
+  (let [candidate
+        (if-some [_control
+                  (Webapi.Dom.HtmlInputElement.ofNode
+                   (Webapi.Dom.Element.asNode dom-node))]
+          dom-node
+          (child-element dom-node 0))]
+    (if-some [control
+              (Webapi.Dom.HtmlInputElement.ofNode
+               (Webapi.Dom.Element.asNode candidate))]
     control
-    (raise (Invalid_argument "DOM node is not a text control"))))
+      (raise (Invalid_argument "DOM node is not a text control")))))
+
+(defn- toggle-label-node [dom-node]
+  (child-element dom-node 1))
 
 (defn- node-dom-id [node]
   (str "lui-node-" node))
@@ -182,21 +216,18 @@
      (Stdlib.ignore true))
    dom-node))
 
-(defn- attach-toggle-event! [renderer node kind dom-node]
+(defn- attach-toggle-event! [renderer node _kind dom-node]
   (Webapi.Dom.Element.addEventListener
-   (if (= kind Checkbox) "change" "click")
+   "change"
    (fn [_event]
      (let [checked
-           (if (= kind Checkbox)
-             (Webapi.Dom.HtmlInputElement.checked
-              (text-control-node dom-node))
-             (not (Webapi.Dom.Element.hasAttribute
-                   "data-checked" dom-node)))]
+           (Webapi.Dom.HtmlInputElement.checked
+            (text-control-node dom-node))]
        (Stdlib.ignore
         ((deref (:web-event-handler renderer))
          (proto/ToggleChanged node checked)))
        (Stdlib.ignore true)))
-   dom-node))
+   (child-element dom-node 0)))
 
 (defn- attach-events! [renderer node kind dom-node]
   (match kind
@@ -306,15 +337,23 @@
       (let [control (text-control-node dom-node)]
         (when (not (= text (Webapi.Dom.HtmlInputElement.value control)))
           (Webapi.Dom.HtmlInputElement.setValue control text)))
-      (when (not (= text (Webapi.Dom.Element.textContent dom-node)))
-        (Webapi.Dom.Element.setTextContent dom-node text)))
+      (let [text-node
+            (if (direct-toggle? kind)
+              (toggle-label-node dom-node)
+              dom-node)]
+        (when (not (= text (Webapi.Dom.Element.textContent text-node)))
+          (Webapi.Dom.Element.setTextContent text-node text))))
 
     (tuple Enabled (BoolValue enabled))
-    (do
+    (let [control-node
+          (if (direct-toggle? kind)
+            (child-element dom-node 0)
+            dom-node)]
       (if enabled
-        (Webapi.Dom.Element.removeAttribute "disabled" dom-node)
-        (Webapi.Dom.Element.setAttribute "disabled" "disabled" dom-node))
-      (when (or (= kind Checkbox) (= kind SwitchControl))
+        (Webapi.Dom.Element.removeAttribute "disabled" control-node)
+        (Webapi.Dom.Element.setAttribute
+         "disabled" "disabled" control-node))
+      (when (direct-toggle? kind)
         (set-state-attribute! dom-node "data-disabled" (not enabled))))
 
     (tuple Gap (IntValue gap))
@@ -396,7 +435,11 @@
      (text-control-node dom-node) read-only)
 
     (tuple AccessibilityLabel (StringValue label))
-    (Webapi.Dom.Element.setAttribute "aria-label" label dom-node)
+    (Webapi.Dom.Element.setAttribute
+     "aria-label" label
+     (if (direct-toggle? kind)
+       (child-element dom-node 0)
+       dom-node))
 
     (tuple StyleClass (StringValue class-name))
     (Webapi.Dom.Element.setClassName
@@ -443,31 +486,12 @@
 
     (tuple Checked (BoolValue checked))
     (do
-      (when (= kind Checkbox)
-        (Webapi.Dom.HtmlInputElement.setChecked
-         (text-control-node dom-node) checked))
+      (Webapi.Dom.HtmlInputElement.setChecked
+       (text-control-node dom-node) checked)
       (set-state-attribute! dom-node "data-checked" checked)
       (Webapi.Dom.Element.setAttribute
-       "aria-checked"
-       (if (and
-            (= kind Checkbox)
-            (Webapi.Dom.HtmlInputElement.indeterminate
-             (text-control-node dom-node)))
-         "mixed"
-         (if checked "true" "false"))
-       dom-node))
-
-    (tuple Indeterminate (BoolValue indeterminate))
-    (let [control (text-control-node dom-node)]
-      (Webapi.Dom.HtmlInputElement.setIndeterminate control indeterminate)
-      (set-state-attribute!
-       dom-node "data-indeterminate" indeterminate)
-      (Webapi.Dom.Element.setAttribute
-       "aria-checked"
-       (if indeterminate
-         "mixed"
-         (if (Webapi.Dom.HtmlInputElement.checked control) "true" "false"))
-       dom-node))
+       "aria-checked" (if checked "true" "false")
+       (child-element dom-node 0)))
 
     (tuple ProgressValue (IntValue _value))
     (update-progress! renderer node dom-node)

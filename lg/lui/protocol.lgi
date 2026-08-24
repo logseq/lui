@@ -79,7 +79,6 @@
   (InputType)
   (Invalid)
   (Checked)
-  (Indeterminate)
   (ProgressValue)
   (MinValue)
   (MaxValue)
@@ -135,7 +134,6 @@
 (signature lui.protocol/node-properties-supported?
   :fn<node-kind;map<property;wire-value>;bool>)
 (signature lui.protocol/can-contain-children? :fn<node-kind;bool>)
-(signature lui.protocol/single-child-container? :fn<node-kind;bool>)
 (signature lui.protocol/create-node-op :fn<int;node-kind;patch-op>)
 (signature lui.protocol/drop-node-op :fn<int;patch-op>)
 (signature lui.protocol/set-prop-op
