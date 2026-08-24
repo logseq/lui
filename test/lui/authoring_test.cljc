@@ -107,8 +107,33 @@
     :on-press callback}
    "Delete"])
 
-(defui default-solid-button [callback]
+(defui default-button [callback]
   [:button {:on-press callback} "Continue"])
+
+(defui retained-vercel-button
+  [text-source disabled-source selected-source autofocus-source on-press on-hold]
+  [:button
+   {:text text-source
+    :variant "primary"
+    :size "lg"
+    :icon "download"
+    :icon-placement "trailing"
+    :disabled disabled-source
+    :selected selected-source
+    :autofocus autofocus-source
+    :label "Download report"
+    :on-press on-press
+    :on-hold on-hold}])
+
+(defui icon-action-button [callback]
+  [:button
+   {:variant "ghost"
+    :size "icon"
+    :icon "plus"
+    :selected true
+    :autofocus true
+    :label "New note"
+    :on-press callback}])
 
 (defui semantic-content []
   [:box {:class "semantic-content"}
@@ -433,9 +458,11 @@
         presses (atom 0)
         root (ui/row! context)
         title (ui/text! context "Signal")
-        save (ui/button! context "Save" (fn [_event]
-                                           (swap! presses inc)
-                                           true))]
+        save (ui/button! context)]
+    (ui/text-property! context save "Save")
+    (ui/on-event! context save (fn [_event]
+                                 (swap! presses inc)
+                                 true))
     (sig/mount! scope)
     (ui/append! context root title)
     (ui/append! context root save)
@@ -939,7 +966,7 @@
     (runtime/flush! application)
     (assert-equal "One\nTwo" (sig/get notes) "text area updates LG state")))
 
-(deftest solid-button-disabled-state-is-signal-controlled
+(deftest button-disabled-state-is-signal-controlled
   (let [scheduler (sig/scheduler)
         renderer (apple/create)
         application (runtime/create scheduler (apple/backend renderer))
@@ -966,30 +993,76 @@
       (assert-equal false enabled "true disabled state disables the button")
       _ (is false "updated button exposes its enabled state"))))
 
-(deftest solid-button-resolves-reference-variants-and-class-order
+(deftest button-retains-the-vercel-native-contract
   (let [scheduler (sig/scheduler)
         renderer (apple/create)
         application (runtime/create scheduler (apple/backend renderer))
-        scope (sig/scope "solid-button-variants")
+        scope (sig/scope "vercel-button-contract")
         context (ui/context application scope)
         disabled (sig/state scheduler false)
-        destructive
-        (controlled-delete-button
-         context (sig/value disabled) (fn [_event] true))
-        default-button (default-solid-button context (fn [_event] true))]
+        selected (sig/state scheduler false)
+        autofocus (sig/state scheduler false)
+        label (sig/state scheduler "Download")
+        presses (atom 0)
+        holds (atom 0)
+        button
+        (retained-vercel-button
+         context
+         (sig/value label)
+         (sig/value disabled)
+         (sig/value selected)
+         (sig/value autofocus)
+         (fn [_event] (swap! presses inc) true)
+         (fn [_event] (swap! holds inc) true))]
     (sig/mount! scope)
     (runtime/flush! application)
-    (match (apple/property renderer destructive proto/StyleClass)
-      (Some (StringValue value))
-      (assert-equal
-       "lui-button--destructive lui-button--sm danger-zone-action"
-       value
-       "application class follows the resolved Solid UI variant classes")
-      _ (is false "destructive button exposes retained style classes"))
-    (match (apple/property renderer default-button proto/StyleClass)
-      (Some (StringValue value))
-      (assert-equal
-       "lui-button--default lui-button--size-default"
-       value
-       "omitted props resolve to Solid UI's default variant and size")
-      _ (is false "default button exposes retained style classes"))))
+    (doseq [property-and-value
+            [(tuple proto/TextValue "Download")
+             (tuple proto/VariantValue "primary")
+             (tuple proto/SizeValue "lg")
+             (tuple proto/InlineIconName "download")
+             (tuple proto/IconPlacementValue "trailing")
+             (tuple proto/AccessibilityLabel "Download report")]]
+      (match property-and-value
+        (tuple property expected)
+        (match (apple/property renderer button property)
+          (Some (StringValue value))
+          (assert-equal expected value "Button string property reaches backend")
+          _ (is false "Button string property is present"))))
+    (runtime/dispatch! application (proto/Press button))
+    (runtime/dispatch! application (proto/Hold button))
+    (runtime/flush! application)
+    (assert-equal 1 @presses "on-press receives only Press")
+    (assert-equal 1 @holds "on-hold receives only Hold")
+    (let [node-count (apple/node-count renderer)]
+      (sig/set! label "Export")
+      (sig/set! selected true)
+      (sig/set! autofocus true)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "Signal patches preserve the retained Button node"))
+    (match (apple/property renderer button proto/TextValue)
+      (Some (StringValue value)) (assert-equal "Export" value "text patches")
+      _ (is false "Button text is present"))
+    (match (apple/property renderer button proto/Selected)
+      (Some (proto/BoolValue value)) (assert-equal true value "selected patches")
+      _ (is false "Button selected state is present"))
+    (match (apple/property renderer button proto/Autofocus)
+      (Some (proto/BoolValue value)) (assert-equal true value "autofocus patches")
+      _ (is false "Button autofocus state is present"))))
+
+(deftest button-supports-literal-icon-action-state
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "icon-action-button")
+        context (ui/context application scope)
+        button (icon-action-button context (fn [_event] true))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (match (apple/property renderer button proto/Selected)
+      (Some (proto/BoolValue value)) (assert-equal true value "literal selected")
+      _ (is false "literal selected is present"))
+    (match (apple/property renderer button proto/Autofocus)
+      (Some (proto/BoolValue value)) (assert-equal true value "literal autofocus")
+      _ (is false "literal autofocus is present"))))

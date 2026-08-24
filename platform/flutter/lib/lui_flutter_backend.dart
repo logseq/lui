@@ -8,6 +8,7 @@ sealed class LUIEvent {
   const LUIEvent();
 
   const factory LUIEvent.press({required int node}) = LUIPressEvent;
+  const factory LUIEvent.hold({required int node}) = LUIHoldEvent;
   const factory LUIEvent.textChanged({
     required int node,
     required String text,
@@ -16,6 +17,17 @@ sealed class LUIEvent {
     required int node,
     required bool checked,
   }) = LUIToggleChangedEvent;
+}
+
+final class LUIHoldEvent extends LUIEvent {
+  const LUIHoldEvent({required this.node});
+  final int node;
+
+  @override
+  bool operator ==(Object other) => other is LUIHoldEvent && other.node == node;
+
+  @override
+  int get hashCode => node.hashCode;
 }
 
 final class LUIPressEvent extends LUIEvent {
@@ -342,6 +354,16 @@ final class LUIFlutterBackend {
     onEvent?.call(LUIEvent.press(node: node));
   }
 
+  void performHold(int node) {
+    final state = _requireState(_states, node);
+    if (state.kind != _NodeKind.button ||
+        state.properties['enabled'] == false ||
+        state.properties['hold-enabled'] != true) {
+      throw LUIBackendException('node $node is not an enabled holdable button');
+    }
+    onEvent?.call(LUIEvent.hold(node: node));
+  }
+
   Widget _buildNode(BuildContext context, int id) {
     final state = _requireState(_states, id);
     final children = state.children
@@ -410,6 +432,15 @@ final class LUIFlutterBackend {
       'lg' => 24.0,
       _ => 18.0,
     };
+    final buttonVariant = state.properties['variant'] as String? ?? 'default';
+    final buttonSize = state.properties['size'] as String? ?? 'default';
+    final buttonIcon = state.properties['icon'] as String?;
+    final buttonIconPlacement =
+        state.properties['icon-placement'] as String? ?? 'leading';
+    final buttonSelected = state.properties['selected'] as bool? ?? false;
+    final buttonAutofocus = state.properties['autofocus'] as bool? ?? false;
+    final buttonHoldEnabled =
+        state.properties['hold-enabled'] as bool? ?? false;
     Widget textControl({required bool multiline}) => SizedBox(
       width: 240,
       child: Semantics(
@@ -451,6 +482,100 @@ final class LUIFlutterBackend {
             : null,
         excludeSemantics: true,
         child: child,
+      );
+    }
+
+    Widget buttonLabel() {
+      final icon = buttonIcon == null
+          ? null
+          : Icon(_iconData(buttonIcon), size: 16);
+      if (text.isEmpty) return icon ?? const SizedBox.shrink();
+      if (icon == null) return Text(text);
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 8,
+        children: buttonIconPlacement == 'trailing'
+            ? [Text(text), icon]
+            : [icon, Text(text)],
+      );
+    }
+
+    ButtonStyle buttonStyle({Color? backgroundColor}) {
+      final dimensions = switch (buttonSize) {
+        'sm' => (const Size(0, 36), const EdgeInsets.symmetric(horizontal: 12)),
+        'lg' => (const Size(0, 44), const EdgeInsets.symmetric(horizontal: 32)),
+        'icon' => (const Size.square(40), EdgeInsets.zero),
+        _ => (const Size(0, 40), const EdgeInsets.symmetric(horizontal: 16)),
+      };
+      return ButtonStyle(
+        minimumSize: WidgetStatePropertyAll(dimensions.$1),
+        padding: WidgetStatePropertyAll(dimensions.$2),
+        foregroundColor: foreground == null
+            ? null
+            : WidgetStatePropertyAll(foreground),
+        backgroundColor: backgroundColor == null
+            ? null
+            : WidgetStatePropertyAll(backgroundColor),
+      );
+    }
+
+    Widget button() {
+      final onPressed = enabled ? () => performAction(id) : null;
+      final onLongPress = enabled && buttonHoldEnabled
+          ? () => performHold(id)
+          : null;
+      final colors = Theme.of(context).colorScheme;
+      final selectedColor = buttonSelected ? colors.secondaryContainer : null;
+      final style = buttonStyle(backgroundColor: selectedColor);
+      final label = buttonLabel();
+      final materialButton = switch (buttonVariant) {
+        'primary' => FilledButton(
+          onPressed: onPressed,
+          onLongPress: onLongPress,
+          autofocus: buttonAutofocus,
+          style: style,
+          child: label,
+        ),
+        'secondary' => FilledButton.tonal(
+          onPressed: onPressed,
+          onLongPress: onLongPress,
+          autofocus: buttonAutofocus,
+          style: style,
+          child: label,
+        ),
+        'outline' => OutlinedButton(
+          onPressed: onPressed,
+          onLongPress: onLongPress,
+          autofocus: buttonAutofocus,
+          style: style,
+          child: label,
+        ),
+        'destructive' => FilledButton(
+          onPressed: onPressed,
+          onLongPress: onLongPress,
+          autofocus: buttonAutofocus,
+          style: buttonStyle(backgroundColor: colors.error),
+          child: label,
+        ),
+        _ => TextButton(
+          onPressed: onPressed,
+          onLongPress: onLongPress,
+          autofocus: buttonAutofocus,
+          style: style,
+          child: label,
+        ),
+      };
+      return Semantics(
+        label: accessibilityLabel?.isNotEmpty ?? false
+            ? accessibilityLabel
+            : (text.isEmpty ? null : text),
+        button: true,
+        selected: buttonSelected,
+        enabled: enabled,
+        onTap: onPressed,
+        onLongPress: onLongPress,
+        excludeSemantics: true,
+        child: materialButton,
       );
     }
 
@@ -532,13 +657,7 @@ final class LUIFlutterBackend {
       ),
       _NodeKind.paragraph => Text(text, style: TextStyle(color: foreground)),
       _NodeKind.label => Text(text, style: TextStyle(color: foreground)),
-      _NodeKind.button => TextButton(
-        onPressed: enabled ? () => performAction(id) : null,
-        style: foreground == null
-            ? null
-            : TextButton.styleFrom(foregroundColor: foreground),
-        child: Text(text),
-      ),
+      _NodeKind.button => button(),
       _NodeKind.textInput => textControl(multiline: false),
       _NodeKind.textArea => textControl(multiline: true),
       _NodeKind.checkbox => toggleSemantics(
@@ -801,12 +920,30 @@ final class LUIFlutterBackend {
       'size' =>
         value is String &&
             _controlSizes.contains(value) &&
-            (kind == _NodeKind.spinner || kind == _NodeKind.icon),
+            (kind == _NodeKind.button ||
+                kind == _NodeKind.spinner ||
+                kind == _NodeKind.icon),
       'name' =>
         value is String &&
             (_iconNames.contains(value) ||
                 _appIconNamePattern.hasMatch(value)) &&
             kind == _NodeKind.icon,
+      'variant' =>
+        value is String &&
+            _buttonVariants.contains(value) &&
+            kind == _NodeKind.button,
+      'icon' =>
+        value is String &&
+            (_iconNames.contains(value) ||
+                _appIconNamePattern.hasMatch(value)) &&
+            kind == _NodeKind.button,
+      'icon-placement' =>
+        value is String &&
+            (value == 'leading' || value == 'trailing') &&
+            kind == _NodeKind.button,
+      'selected' ||
+      'autofocus' ||
+      'hold-enabled' => value is bool && kind == _NodeKind.button,
       'gap' =>
         value is int &&
             value >= 0 &&
@@ -863,7 +1000,8 @@ final class LUIFlutterBackend {
       'read-only' => value is bool && _isTextControl(kind),
       'accessibility-label' =>
         value is String &&
-            (_isTextControl(kind) ||
+            (kind == _NodeKind.button ||
+                _isTextControl(kind) ||
                 kind == _NodeKind.checkbox ||
                 kind == _NodeKind.switchControl ||
                 kind == _NodeKind.progress),
@@ -912,6 +1050,17 @@ final class LUIFlutterBackend {
       if (state.kind == _NodeKind.icon &&
           !state.properties.containsKey('name')) {
         throw const LUIBackendException('icon requires name');
+      }
+      if (state.kind == _NodeKind.button) {
+        final text = state.properties['text'] as String? ?? '';
+        final label = state.properties['accessibility-label'] as String? ?? '';
+        final icon = state.properties['icon'] as String? ?? '';
+        if (text.isEmpty && icon.isNotEmpty && label.isEmpty) {
+          throw const LUIBackendException('icon-only button requires label');
+        }
+        if (text.isEmpty && label.isEmpty) {
+          throw const LUIBackendException('button requires an accessible name');
+        }
       }
     }
   }
@@ -1118,6 +1267,15 @@ final class LUIFlutterBackend {
   static const _crossAlignments = {'stretch', 'start', 'center', 'end'};
 
   static const _controlSizes = {'default', 'sm', 'lg', 'icon'};
+
+  static const _buttonVariants = {
+    'default',
+    'primary',
+    'secondary',
+    'outline',
+    'ghost',
+    'destructive',
+  };
 
   static const _relationshipProperties = {
     'labelled-by',

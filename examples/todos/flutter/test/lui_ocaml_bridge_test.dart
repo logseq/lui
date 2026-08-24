@@ -18,6 +18,7 @@ void main() {
     final backend = LUIFlutterBackend(
       onEvent: (event) => switch (event) {
         LUIPressEvent(:final node) => bridge.press(node),
+        LUIHoldEvent(:final node) => bridge.hold(node),
         LUITextChangedEvent(:final node, :final text) => bridge.textChanged(
           node,
           text,

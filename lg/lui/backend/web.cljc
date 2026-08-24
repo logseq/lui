@@ -20,6 +20,7 @@
                      DescribedBy ErrorMessageBy InputType Invalid
                      Checked
                      ProgressValue MinValue MaxValue OrientationValue SizeValue IconName
+                     VariantValue InlineIconName IconPlacementValue Selected Autofocus HoldEnabled
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
 
@@ -86,8 +87,26 @@
      (Webapi.Dom.Element.asNode label) root)
     root))
 
+(defn- create-button-node [renderer]
+  (let [document (:web-document renderer)
+        root (Webapi.Dom.Document.createElement "button" document)
+        icon (Webapi.Dom.Document.createElement "span" document)
+        label (Webapi.Dom.Document.createElement "span" document)]
+    (Webapi.Dom.Element.setClassName root "lui-button")
+    (Webapi.Dom.Element.setClassName icon "lui-button-icon lui-icon")
+    (Webapi.Dom.Element.setClassName label "lui-button-label")
+    (Webapi.Dom.Element.setAttribute "aria-hidden" "true" icon)
+    (Webapi.Dom.Element.setAttribute "data-variant" "default" root)
+    (Webapi.Dom.Element.setAttribute "data-size" "default" root)
+    (Webapi.Dom.Element.setAttribute "data-icon-placement" "leading" root)
+    (Webapi.Dom.Element.appendChild (Webapi.Dom.Element.asNode icon) root)
+    (Webapi.Dom.Element.appendChild (Webapi.Dom.Element.asNode label) root)
+    root))
+
 (defn- platform-node [renderer kind]
-  (if (direct-toggle? kind)
+  (if (= kind Button)
+    (create-button-node renderer)
+    (if (direct-toggle? kind)
     (create-direct-toggle-node renderer kind)
     (let [tag
         (match kind
@@ -115,7 +134,7 @@
       (Webapi.Dom.Element.setAttribute "role" "progressbar" node))
     (when (= kind Divider)
       (Webapi.Dom.Element.setAttribute "role" "separator" node))
-      node)))
+      node))))
 
 (defn- dom-node [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
@@ -149,6 +168,12 @@
       (raise (Invalid_argument "DOM node is not a text control")))))
 
 (defn- toggle-label-node [dom-node]
+  (child-element dom-node 1))
+
+(defn- button-icon-node [dom-node]
+  (child-element dom-node 0))
+
+(defn- button-label-node [dom-node]
   (child-element dom-node 1))
 
 (defn- node-dom-id [node]
@@ -229,15 +254,88 @@
        (Stdlib.ignore true)))
    (child-element dom-node 0)))
 
-(defn- attach-events! [renderer node kind dom-node]
-  (match kind
-    Button
-    (Webapi.Dom.Element.addEventListener
-     "click"
-     (fn [_event]
-       ((deref (:web-event-handler renderer)) (proto/Press node))
+(defn- attach-button-events! [renderer node dom-node]
+  (let [timer (atom None)
+        suppress-click (atom false)
+        hold-enabled?
+        (fn []
+          (and
+           (Webapi.Dom.Element.hasAttribute "data-hold-enabled" dom-node)
+           (not (Webapi.Dom.Element.hasAttribute "disabled" dom-node))))
+        cancel!
+        (fn []
+          (match (deref timer)
+            (Some timer-id) (Js.Global.clearTimeout timer-id)
+            None (Stdlib.ignore true))
+          (reset! timer None)
+          true)
+        dispatch-hold!
+        (fn [suppress]
+          (when (hold-enabled?)
+            (reset! suppress-click suppress)
+            (Stdlib.ignore
+             ((deref (:web-event-handler renderer)) (proto/Hold node))))
+          true)
+        start!
+        (fn []
+          (cancel!)
+          (when (hold-enabled?)
+            (reset!
+             timer
+             (Some
+              (Js.Global.setTimeout
+               350
+               :f
+               (fn []
+                 (reset! timer None)
+                 (dispatch-hold! true)
+                 (Stdlib.ignore true))))))
+          true)]
+    (Webapi.Dom.Element.addMouseDownEventListener
+     (fn [event]
+       (when (= 0 (Webapi.Dom.MouseEvent.button event)) (start!))
        (Stdlib.ignore true))
      dom-node)
+    (Webapi.Dom.Element.addMouseUpEventListener
+     (fn [_event] (cancel!) (Stdlib.ignore true)) dom-node)
+    (Webapi.Dom.Element.addEventListener
+     "mouseleave"
+     (fn [_event] (cancel!) (Stdlib.ignore true)) dom-node)
+    (Webapi.Dom.Element.addTouchStartEventListener
+     (fn [_event] (start!) (Stdlib.ignore true)) dom-node)
+    (Webapi.Dom.Element.addTouchEndEventListener
+     (fn [_event] (cancel!) (Stdlib.ignore true)) dom-node)
+    (Webapi.Dom.Element.addEventListener
+     "touchcancel"
+     (fn [_event]
+       (cancel!)
+       (reset! suppress-click false)
+       (Stdlib.ignore true))
+     dom-node)
+    (Webapi.Dom.Element.addEventListener
+     "contextmenu"
+     (fn [event]
+       (when (hold-enabled?)
+         (cancel!)
+         (Webapi.Dom.Event.preventDefault event)
+         (Stdlib.ignore (dispatch-hold! false)))
+       (Stdlib.ignore true))
+     dom-node)
+    (Webapi.Dom.Element.addEventListener
+     "click"
+     (fn [event]
+       (if (deref suppress-click)
+         (do
+           (reset! suppress-click false)
+           (Webapi.Dom.Event.preventDefault event))
+         (Stdlib.ignore
+          ((deref (:web-event-handler renderer)) (proto/Press node))))
+       (Stdlib.ignore true))
+     dom-node)))
+
+(defn- attach-events! [renderer node kind dom-node]
+  (match kind
+    Button (attach-button-events! renderer node dom-node)
     TextInput (attach-text-event! renderer node dom-node)
     TextArea (attach-text-event! renderer node dom-node)
     Checkbox (attach-toggle-event! renderer node kind dom-node)
@@ -341,8 +439,12 @@
             (if (direct-toggle? kind)
               (toggle-label-node dom-node)
               dom-node)]
+        (let [text-node
+              (if (= kind Button)
+                (button-label-node dom-node)
+                text-node)]
         (when (not (= text (Webapi.Dom.Element.textContent text-node)))
-          (Webapi.Dom.Element.setTextContent text-node text))))
+          (Webapi.Dom.Element.setTextContent text-node text)))))
 
     (tuple Enabled (BoolValue enabled))
     (let [control-node
@@ -516,6 +618,40 @@
     (do
       (Webapi.Dom.Element.setAttribute "data-name" name dom-node)
       (update-icon-name! renderer dom-node name))
+
+    (tuple VariantValue (StringValue variant))
+    (Webapi.Dom.Element.setAttribute "data-variant" variant dom-node)
+
+    (tuple InlineIconName (StringValue name))
+    (let [icon (button-icon-node dom-node)]
+      (Webapi.Dom.Element.setAttribute "data-name" name icon)
+      (update-icon-name! renderer icon name))
+
+    (tuple IconPlacementValue (StringValue placement))
+    (Webapi.Dom.Element.setAttribute "data-icon-placement" placement dom-node)
+
+    (tuple Selected (BoolValue selected))
+    (do
+      (set-state-attribute! dom-node "data-selected" selected)
+      (Webapi.Dom.Element.setAttribute
+       "aria-pressed" (if selected "true" "false") dom-node))
+
+    (tuple Autofocus (BoolValue autofocus))
+    (if autofocus
+      (do
+        (Webapi.Dom.Element.setAttribute "autofocus" "autofocus" dom-node)
+        (Stdlib.ignore
+         (Js.Global.setTimeout
+          0
+          :f
+          (fn []
+            (Webapi.Dom.HtmlElement.focus
+             (Webapi.Dom.Element.unsafeAsHtmlElement dom-node))
+            (Stdlib.ignore true)))))
+      (Webapi.Dom.Element.removeAttribute "autofocus" dom-node))
+
+    (tuple HoldEnabled (BoolValue enabled))
+    (set-state-attribute! dom-node "data-hold-enabled" enabled)
 
     (tuple MinLines (IntValue lines))
     (do

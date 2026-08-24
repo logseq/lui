@@ -17,6 +17,7 @@
                      ErrorMessageBy InputType Invalid
                      Checked
                      ProgressValue MinValue MaxValue OrientationValue SizeValue IconName
+                     VariantValue InlineIconName IconPlacementValue Selected Autofocus HoldEnabled
                      StringValue BoolValue IntValue FloatValue
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild]]))
@@ -100,7 +101,13 @@
     MaxValue "max-value"
     OrientationValue "orientation"
     SizeValue "size"
-    IconName "name"))
+    IconName "name"
+    VariantValue "variant"
+    InlineIconName "icon"
+    IconPlacementValue "icon-placement"
+    Selected "selected"
+    Autofocus "autofocus"
+    HoldEnabled "hold-enabled"))
 
 (defn- encode-value [value]
   (match value

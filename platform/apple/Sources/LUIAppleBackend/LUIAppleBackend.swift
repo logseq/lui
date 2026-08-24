@@ -53,6 +53,16 @@ final class LUINodeModel: Identifiable {
         properties[.checked]?.boolValue ?? false
     }
 
+    var isSelected: Bool { properties[.selected]?.boolValue ?? false }
+    var requestsAutofocus: Bool { properties[.autofocus]?.boolValue ?? false }
+    var supportsHold: Bool { properties[.holdEnabled]?.boolValue ?? false }
+    var buttonVariant: String { properties[.variant]?.stringValue ?? "default" }
+    var buttonSize: String { properties[.size]?.stringValue ?? "default" }
+    var buttonIconName: String { properties[.icon]?.stringValue ?? "" }
+    var buttonIconPlacement: String {
+        properties[.iconPlacement]?.stringValue ?? "leading"
+    }
+
     var isInvalid: Bool {
         properties[.invalid]?.boolValue ?? false
     }
@@ -248,6 +258,14 @@ public final class LUIAppleBackend {
             throw invalid("node \(node) is not an enabled button")
         }
         onEvent?(.press(node: node))
+    }
+
+    func performHold(node: Int) throws {
+        guard let model = models[node], model.kind == .button,
+              model.isEnabled, model.supportsHold else {
+            throw invalid("node \(node) is not an enabled holdable button")
+        }
+        onEvent?(.hold(node: node))
     }
 
     func performTextChange(node: Int, text: String) throws {

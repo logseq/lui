@@ -187,14 +187,37 @@
     (sig/map (fn [text] (proto/StringValue text)) source))
    callback))
 
-(defn button! [context label callback]
-  (let [node (runtime/create-node! (:ui-application context) proto/Button)]
-    (runtime/set-prop!
-     (:ui-application context) node proto/TextValue
-     (proto/StringValue label))
-    (runtime/on-event!
-     (:ui-scope context) (:ui-application context) node callback)
-    node))
+(defn button! [context]
+  (runtime/create-node! (:ui-application context) proto/Button))
+
+(defn string-property! [context node property value]
+  (runtime/set-prop!
+   (:ui-application context) node property (proto/StringValue value)))
+
+(defn string-property-signal! [context node property source]
+  (do
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context) node property
+     (sig/own-signal!
+      (:ui-scope context)
+      (sig/map (fn [value] (proto/StringValue value)) source)))
+    true))
+
+(defn bool-property! [context node property value]
+  (runtime/set-prop!
+   (:ui-application context) node property (proto/BoolValue value)))
+
+(defn bool-property-signal! [context node property source]
+  (do
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context) node property
+     (sig/own-signal!
+      (:ui-scope context)
+      (sig/map (fn [value] (proto/BoolValue value)) source)))
+    true))
+
+(defn disabled! [context node disabled]
+  (bool-property! context node proto/Enabled (not disabled)))
 
 (defn disabled-signal! [context node source]
   (do

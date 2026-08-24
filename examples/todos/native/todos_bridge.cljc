@@ -43,6 +43,12 @@
   (driver/flush! (app))
   (deref latest-patch))
 
+(defn hold [node]
+  (reset! latest-patch "")
+  (driver/dispatch-event! (app) (proto/Hold node))
+  (driver/flush! (app))
+  (deref latest-patch))
+
 (defn text-changed [node text]
   (reset! latest-patch "")
   (driver/dispatch-event! (app) (proto/TextChanged node text))
@@ -64,6 +70,7 @@
 
 (callback/register "lui_flutter_init" initialize)
 (callback/register "lui_flutter_press" press)
+(callback/register "lui_flutter_hold" hold)
 (callback/register "lui_flutter_text_changed" text-changed)
 (callback/register "lui_flutter_toggle_changed" toggle-changed)
 (callback/register "lui_flutter_dispose" dispose)

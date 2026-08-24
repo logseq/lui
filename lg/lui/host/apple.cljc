@@ -18,6 +18,7 @@
               (cond
                 (= kind 0) (on-event (proto/Press node))
                 (= kind 1) (on-event (proto/TextChanged node text))
+                (= kind 3) (on-event (proto/Hold node))
                 :else
                 (on-event (proto/ToggleChanged node (= text "true")))))))]
     (set-event-callback callback)

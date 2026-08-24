@@ -84,7 +84,13 @@
   (MaxValue)
   (OrientationValue)
   (SizeValue)
-  (IconName))
+  (IconName)
+  (VariantValue)
+  (InlineIconName)
+  (IconPlacementValue)
+  (Selected)
+  (Autofocus)
+  (HoldEnabled))
 
 (type-variant wire-value
   (StringValue :string)
@@ -94,6 +100,7 @@
 
 (type-variant event
   (Press :int)
+  (Hold :int)
   (TextChanged :int :string)
   (ToggleChanged :int :bool))
 
@@ -121,6 +128,8 @@
 (signature lui.protocol/input-type-supported? :fn<string;bool>)
 (signature lui.protocol/orientation-supported? :fn<string;bool>)
 (signature lui.protocol/control-size-supported? :fn<string;bool>)
+(signature lui.protocol/button-variant-supported? :fn<string;bool>)
+(signature lui.protocol/icon-placement-supported? :fn<string;bool>)
 (signature lui.protocol/icon-name-supported? :fn<string;bool>)
 (signature lui.protocol/main-alignment-supported? :fn<string;bool>)
 (signature lui.protocol/cross-alignment-supported? :fn<string;bool>)

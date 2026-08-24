@@ -6,6 +6,7 @@ public enum LUIBackendError: Error, Equatable {
 
 public enum LUIEvent: Equatable, Sendable {
     case press(node: Int)
+    case hold(node: Int)
     case textChanged(node: Int, text: String)
     case toggleChanged(node: Int, checked: Bool)
 }
@@ -51,6 +52,12 @@ enum LUIProperty: String, Decodable, Hashable {
     case orientation
     case size
     case name
+    case variant
+    case icon
+    case iconPlacement = "icon-placement"
+    case selected
+    case autofocus
+    case holdEnabled = "hold-enabled"
 }
 
 struct LUIPatchBatch: Decodable {
@@ -143,6 +150,12 @@ enum LUIWireValue: Decodable, Equatable {
             Self.controlSizes.contains(value)
         case let (.name, .string(value)):
             Self.iconNames.contains(value) || Self.isApplicationIconName(value)
+        case let (.variant, .string(value)): Self.buttonVariants.contains(value)
+        case let (.icon, .string(value)):
+            Self.iconNames.contains(value) || Self.isApplicationIconName(value)
+        case let (.iconPlacement, .string(value)):
+            value == "leading" || value == "trailing"
+        case (.selected, .bool), (.autofocus, .bool), (.holdEnabled, .bool): true
         case let (.main, .string(value)):
             Self.mainAlignments.contains(value)
         case let (.cross, .string(value)):
@@ -185,6 +198,10 @@ enum LUIWireValue: Decodable, Equatable {
 
     private static let controlSizes: Set<String> = [
         "default", "sm", "lg", "icon",
+    ]
+
+    private static let buttonVariants: Set<String> = [
+        "default", "primary", "secondary", "outline", "ghost", "destructive",
     ]
 
     private static let iconNames: Set<String> = [
@@ -333,7 +350,7 @@ struct LUIRetainedTree {
         case .placeholder, .readOnly:
             kind == .textInput || kind == .textArea
         case .accessibilityLabel:
-            kind == .textInput || kind == .textArea || kind == .checkbox ||
+            kind == .button || kind == .textInput || kind == .textArea || kind == .checkbox ||
                 kind == .switchControl || kind == .progress
         case .minLines, .maxLines: kind == .textArea
         case .headingLevel: kind == .heading
@@ -347,8 +364,10 @@ struct LUIRetainedTree {
         case .checked: kind == .checkbox || kind == .switchControl
         case .progressValue, .minValue, .maxValue: kind == .progress
         case .orientation: kind == .divider
-        case .size: kind == .spinner || kind == .icon
+        case .size: kind == .button || kind == .spinner || kind == .icon
         case .name: kind == .icon
+        case .variant, .icon, .iconPlacement, .selected, .autofocus, .holdEnabled:
+            kind == .button
         }
     }
 
@@ -381,6 +400,17 @@ struct LUIRetainedTree {
             }
             if node.kind == .icon, node.properties[.name] == nil {
                 throw invalid("icon requires name")
+            }
+            if node.kind == .button {
+                let text = node.properties[.text]?.stringValue ?? ""
+                let label = node.properties[.accessibilityLabel]?.stringValue ?? ""
+                let icon = node.properties[.icon]?.stringValue ?? ""
+                guard !text.isEmpty || !label.isEmpty else {
+                    throw invalid("button requires an accessible name")
+                }
+                if text.isEmpty && !icon.isEmpty && label.isEmpty {
+                    throw invalid("icon-only button requires label")
+                }
             }
         }
     }

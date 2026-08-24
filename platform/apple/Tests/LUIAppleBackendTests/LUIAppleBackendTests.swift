@@ -1,5 +1,8 @@
 import SwiftUI
 import Testing
+#if os(macOS)
+import AppKit
+#endif
 @testable import LUIAppleBackend
 
 private struct CapturedAppleEvent: Equatable, Sendable {
@@ -21,6 +24,23 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+#if os(macOS)
+    @Test("macOS secondary activation dispatches hold exactly once when enabled")
+    func secondaryActivationDispatchesHold() {
+        let capture = LUISecondaryHoldView()
+        var count = 0
+        capture.onHold = { count += 1 }
+
+        capture.isHoldEnabled = false
+        capture.handleSecondaryActivation()
+        #expect(count == 0)
+
+        capture.isHoldEnabled = true
+        capture.handleSecondaryActivation()
+        #expect(count == 1)
+    }
+#endif
+
     @Test("builds one retained observable tree for SwiftUI")
     func buildsRetainedTree() throws {
         let backend = LUIAppleBackend()
@@ -124,22 +144,91 @@ struct LUISwiftUIBackendTests {
           {"op":"create-node","id":1,"kind":"button"},
           {"op":"create-node","id":2,"kind":"text-input"},
           {"op":"create-node","id":3,"kind":"switch"},
+          {"op":"set-prop","id":1,"property":"text","value":"Continue"},
           {"op":"set-prop","id":1,"property":"enabled","value":true},
+          {"op":"set-prop","id":1,"property":"hold-enabled","value":true},
           {"op":"set-prop","id":3,"property":"checked","value":false}
         ]}
         """)
 
         try backend.performPress(node: 1)
+        try backend.performHold(node: 1)
         try backend.performTextChange(node: 2, text: "Draft")
         try backend.performToggle(node: 3, checked: true)
 
         #expect(events == [
             .press(node: 1),
+            .hold(node: 1),
             .textChanged(node: 2, text: "Draft"),
             .toggleChanged(node: 3, checked: true),
         ])
         #expect(backend.model(id: 2)?.property(.text) == nil)
         #expect(backend.model(id: 3)?.property(.checked) == .bool(false))
+    }
+
+    @Test("maps the complete Vercel Native Button contract to one retained model")
+    func mapsVercelNativeButton() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"button"},
+          {"op":"set-prop","id":1,"property":"text","value":"Download"},
+          {"op":"set-prop","id":1,"property":"variant","value":"primary"},
+          {"op":"set-prop","id":1,"property":"size","value":"lg"},
+          {"op":"set-prop","id":1,"property":"icon","value":"download"},
+          {"op":"set-prop","id":1,"property":"icon-placement","value":"trailing"},
+          {"op":"set-prop","id":1,"property":"selected","value":true},
+          {"op":"set-prop","id":1,"property":"autofocus","value":true},
+          {"op":"set-prop","id":1,"property":"accessibility-label","value":"Download report"},
+          {"op":"set-prop","id":1,"property":"hold-enabled","value":true}
+        ]}
+        """)
+
+        let button = try #require(backend.model(id: 1))
+        let revision = button.revision
+        #expect(button.property(.variant) == .string("primary"))
+        #expect(button.property(.size) == .string("lg"))
+        #expect(button.property(.icon) == .string("download"))
+        #expect(button.property(.iconPlacement) == .string("trailing"))
+        #expect(button.property(.selected) == .bool(true))
+        #expect(button.property(.autofocus) == .bool(true))
+        #expect(button.property(.holdEnabled) == .bool(true))
+        #expect(button.accessibilityLabel(in: backend) == "Download report")
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"text","value":"Export"},
+          {"op":"set-prop","id":1,"property":"autofocus","value":false}
+        ]}
+        """)
+        #expect(backend.model(id: 1) === button)
+        #expect(button.revision == revision + 1)
+        #expect(button.text == "Export")
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":3,"ops":[
+              {"op":"set-prop","id":1,"property":"variant","value":"link"}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 2)
+    }
+
+    @Test("rejects an unnamed icon-only Button")
+    func rejectsUnnamedIconButton() {
+        let backend = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"button"},
+              {"op":"set-prop","id":1,"property":"size","value":"icon"},
+              {"op":"set-prop","id":1,"property":"icon","value":"plus"}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 0)
     }
 
     @Test("maps direct text-bearing checkbox and switch without replacing models")
@@ -537,6 +626,7 @@ struct LUISwiftUIBackendTests {
         let accepted = """
         {"generation":1,"ops":[
           {"op":"create-node","id":1,"kind":"button"},
+          {"op":"set-prop","id":1,"property":"text","value":"Continue"},
           {"op":"set-prop","id":1,"property":"enabled","value":true}
         ]}
         """.withCString(luiAppleApply)

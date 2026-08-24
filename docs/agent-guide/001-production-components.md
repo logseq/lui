@@ -159,8 +159,44 @@ Delivered parity slices:
 - direct text-bearing `checkbox` and `switch` controls with model-owned
   `checked`, `disabled`, `label`, and `on-toggle`; their labels and native
   controls form one hit target and one accessibility node;
+- direct retained `button` controls with the six reference variants, four
+  sizes, inline registry icons, selected/autofocus state, press, 350 ms hold,
+  and immediate desktop secondary hold behavior;
 - stacking containers reject `gap`; `card` supplies the reference 24-point
   default content padding while explicit `padding` overrides it.
+
+### Button contract
+
+`button` follows the pinned Vercel Native control rather than the provisional
+Solid-style implementation. Its public attributes are `text`, `variant`,
+`size`, `icon`, `icon-placement`, `disabled`, `selected`, `autofocus`, `label`,
+`on-press`, and `on-hold`. `icon-placement` is part of the reference schema and
+renderer even though the Button page's generated attribute table omits it.
+
+- `variant` is one of `default`, `primary`, `secondary`, `outline`, `ghost`, or
+  `destructive`; `link` is not a Button variant.
+- `size` is one of `sm`, `default`, `lg`, or `icon`. An icon-sized, icon-only
+  button requires an explicit accessible `label`.
+- `icon` uses the same built-in or `app:<name>` registry as the `icon` leaf,
+  and `icon-placement` is `leading` by default or `trailing`.
+- `selected` is model-owned pressed/selected state. Hover, pointer-down, focus,
+  and other transient interaction state remain backend-owned.
+- `autofocus` is edge-triggered: mount with true or false-to-true requests
+  focus once; retaining true must not steal focus again after another update.
+- A quick primary activation dispatches `on-press`. A pointer held for about
+  350 ms dispatches `on-hold` and suppresses the following press. A desktop
+  secondary activation dispatches hold immediately when the route has no
+  context menu.
+- Literal values and Signal sources share the same attribute names. A Signal
+  change patches the retained Button node and never replaces its enclosing
+  component or the retained node identity.
+
+Web renders one native `button` and backend-owned inline icon content, styled
+through semantic Tailwind selectors and data attributes. SwiftUI renders one
+system `Button` with native label/icon composition, control sizing, focus, and
+accessibility traits. Flutter uses Material button APIs and native gesture,
+focus, semantics, and icon facilities. The internal event-capability bit does
+not become a public LG attribute.
 
 ### Application icon registry
 

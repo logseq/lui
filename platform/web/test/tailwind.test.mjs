@@ -4,14 +4,23 @@ import test from "node:test"
 
 const outputUrl = new URL("../dist/lui.css", import.meta.url)
 
-test("the production stylesheet contains the Solid UI button contract", async () => {
+test("the production stylesheet contains the Vercel Native Button contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 
   assert.match(css, /\.lui-button\{[^}]*display:inline-flex/)
-  assert.match(css, /\.lui-button--default\{[^}]*background-color:var\(--color-primary\)/)
-  assert.match(css, /\.lui-button--default:hover/)
+  assert.match(css, /\.lui-button\[data-variant=primary\]\{[^}]*background-color:var\(--color-primary\)/)
+  assert.match(css, /\.lui-button\[data-variant=default\]/)
+  assert.match(css, /\.lui-button\[data-variant=secondary\]/)
+  assert.match(css, /\.lui-button\[data-variant=outline\]/)
+  assert.match(css, /\.lui-button\[data-variant=ghost\]/)
+  assert.match(css, /\.lui-button\[data-variant=destructive\]/)
+  assert.match(css, /\.lui-button\[data-selected\]/)
   assert.match(css, /\.lui-button:focus-visible/)
-  assert.match(css, /\.lui-button--sm\{[^}]*height:calc\(var\(--spacing\)\*9\)/)
+  assert.match(css, /\.lui-button\[data-size=sm\]\{[^}]*height:calc\(var\(--spacing\)\*9\)/)
+  assert.match(css, /\.lui-button\[data-size=icon\]\{[^}]*width:calc\(var\(--spacing\)\*10\)/)
+  assert.match(css, /\.lui-button-icon\{[^}]*width:calc\(var\(--spacing\)\*4\)/)
+  assert.doesNotMatch(css, /\.lui-button--link/)
+  assert.doesNotMatch(css, /\.lui-button--size-default/)
   assert.doesNotMatch(css, /\.inline-flex\{/)
 })
 

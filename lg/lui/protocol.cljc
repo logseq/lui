@@ -11,12 +11,14 @@
 (defn event-node [event]
   (match event
     (Press node) node
+    (Hold node) node
     (TextChanged node _text) node
     (ToggleChanged node _checked) node))
 
 (defn event-supported? [kind event]
   (match event
     (Press _node) (= kind Button)
+    (Hold _node) (= kind Button)
     (TextChanged _node _text) (or (= kind TextInput) (= kind TextArea))
     (ToggleChanged _node _checked)
     (or (= kind Checkbox) (= kind SwitchControl))))
@@ -55,6 +57,18 @@
    (= value "sm")
    (= value "lg")
    (= value "icon")))
+
+(defn button-variant-supported? [value]
+  (or
+   (= value "default")
+   (= value "primary")
+   (= value "secondary")
+   (= value "outline")
+   (= value "ghost")
+   (= value "destructive")))
+
+(defn icon-placement-supported? [value]
+  (or (= value "leading") (= value "trailing")))
 
 (defn- built-in-icon-name-supported? [value]
   (match value
@@ -127,7 +141,7 @@
     MaxHeight true
     StyleClass true
     AccessibilityLabel
-    (or (= kind TextInput) (= kind TextArea)
+    (or (= kind Button) (= kind TextInput) (= kind TextArea)
         (= kind Checkbox) (= kind SwitchControl) (= kind ProgressControl))
     PlaceholderValue (or (= kind TextInput) (= kind TextArea))
     ReadOnly (or (= kind TextInput) (= kind TextArea))
@@ -149,8 +163,14 @@
     MinValue (= kind ProgressControl)
     MaxValue (= kind ProgressControl)
     OrientationValue (= kind Divider)
-    SizeValue (or (= kind Spinner) (= kind Icon))
+    SizeValue (or (= kind Button) (= kind Spinner) (= kind Icon))
     IconName (= kind Icon)
+    VariantValue (= kind Button)
+    InlineIconName (= kind Button)
+    IconPlacementValue (= kind Button)
+    Selected (= kind Button)
+    Autofocus (= kind Button)
+    HoldEnabled (= kind Button)
     TextValue
     (match kind
       Text true
@@ -227,6 +247,15 @@
     (control-size-supported? value)
     (tuple IconName (StringValue value))
     (icon-name-supported? value)
+    (tuple VariantValue (StringValue value))
+    (button-variant-supported? value)
+    (tuple InlineIconName (StringValue value))
+    (icon-name-supported? value)
+    (tuple IconPlacementValue (StringValue value))
+    (icon-placement-supported? value)
+    (tuple Selected (BoolValue _value)) true
+    (tuple Autofocus (BoolValue _value)) true
+    (tuple HoldEnabled (BoolValue _value)) true
     _ false))
 
 (defn int-property [properties property fallback]
@@ -260,6 +289,25 @@
      (if-some [name (clojure.core/get properties IconName)]
        (property-value-supported? IconName name)
        false)
+     true)
+   (if (= kind Button)
+     (let [text
+           (match (clojure.core/get properties TextValue)
+             (Some (StringValue value)) value
+             _ "")
+           label
+           (match (clojure.core/get properties AccessibilityLabel)
+             (Some (StringValue value)) value
+             _ "")
+           icon
+           (match (clojure.core/get properties InlineIconName)
+             (Some (StringValue value)) value
+             _ "")]
+       (and
+        (or (not (= text "")) (not (= label "")))
+        (if (and (= text "") (not (= icon "")))
+          (not (= label ""))
+          true)))
      true)
    (if (= kind ProgressControl)
      (< (int-property properties MinValue 0)

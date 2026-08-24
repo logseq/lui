@@ -16,13 +16,13 @@
 (deftest patch-batch-encodes-for-native-hosts
   (let [batch
         (record proto/patch-batch
-          (generation 7)
-          (ops [(proto/create-node-op 1 proto/Row)
-                (proto/create-node-op 2 proto/Text)
-                (proto/set-prop-op
-                 2 proto/TextValue
-                 (proto/StringValue "Hello \"LG\"\nUI"))
-                (proto/insert-child-op 1 2 0)]))]
+                (generation 7)
+                (ops [(proto/create-node-op 1 proto/Row)
+                      (proto/create-node-op 2 proto/Text)
+                      (proto/set-prop-op
+                       2 proto/TextValue
+                       (proto/StringValue "Hello \"LG\"\nUI"))
+                      (proto/insert-child-op 1 2 0)]))]
     (assert-equal
      "{\"generation\":7,\"ops\":[{\"op\":\"create-node\",\"id\":1,\"kind\":\"row\"},{\"op\":\"create-node\",\"id\":2,\"kind\":\"text\"},{\"op\":\"set-prop\",\"id\":2,\"property\":\"text\",\"value\":\"Hello \\\"LG\\\"\\nUI\"},{\"op\":\"insert-child\",\"parent\":1,\"child\":2,\"index\":0}]}"
      (wire/encode-batch batch)
@@ -31,12 +31,12 @@
 (deftest semantic-content-patch-uses-closed-wire-names
   (let [batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Box)
-                (proto/create-node-op 2 proto/Heading)
-                (proto/create-node-op 3 proto/Paragraph)
-                (proto/set-prop-op
-                 2 proto/HeadingLevel (proto/IntValue 3))]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Box)
+                      (proto/create-node-op 2 proto/Heading)
+                      (proto/create-node-op 3 proto/Paragraph)
+                      (proto/set-prop-op
+                       2 proto/HeadingLevel (proto/IntValue 3))]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
@@ -51,19 +51,19 @@
 (deftest form-control-patch-uses-closed-wire-names
   (let [batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Label)
-                (proto/create-node-op 2 proto/TextInput)
-                (proto/set-prop-op
-                 2 proto/LabelledBy (proto/IntValue 1))
-                (proto/set-prop-op
-                 2 proto/DescribedBy (proto/IntValue 3))
-                (proto/set-prop-op
-                 2 proto/ErrorMessageBy (proto/IntValue 4))
-                (proto/set-prop-op
-                 2 proto/InputType (proto/StringValue "email"))
-                (proto/set-prop-op
-                 2 proto/Invalid (proto/BoolValue true))]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Label)
+                      (proto/create-node-op 2 proto/TextInput)
+                      (proto/set-prop-op
+                       2 proto/LabelledBy (proto/IntValue 1))
+                      (proto/set-prop-op
+                       2 proto/DescribedBy (proto/IntValue 3))
+                      (proto/set-prop-op
+                       2 proto/ErrorMessageBy (proto/IntValue 4))
+                      (proto/set-prop-op
+                       2 proto/InputType (proto/StringValue "email"))
+                      (proto/set-prop-op
+                       2 proto/Invalid (proto/BoolValue true))]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
@@ -85,17 +85,17 @@
 (deftest toggle-controls-use-closed-wire-names
   (let [batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Checkbox)
-                (proto/create-node-op 2 proto/SwitchControl)
-                (proto/set-prop-op
-                 1 proto/Checked (proto/BoolValue true))
-                (proto/set-prop-op
-                 1 proto/TextValue (proto/StringValue "Select all"))
-                (proto/set-prop-op
-                 2 proto/Checked (proto/BoolValue false))
-                (proto/set-prop-op
-                 2 proto/TextValue (proto/StringValue "Notifications"))]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Checkbox)
+                      (proto/create-node-op 2 proto/SwitchControl)
+                      (proto/set-prop-op
+                       1 proto/Checked (proto/BoolValue true))
+                      (proto/set-prop-op
+                       1 proto/TextValue (proto/StringValue "Select all"))
+                      (proto/set-prop-op
+                       2 proto/Checked (proto/BoolValue false))
+                      (proto/set-prop-op
+                       2 proto/TextValue (proto/StringValue "Notifications"))]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
@@ -130,32 +130,32 @@
 (deftest surface-properties-use-closed-wire-names
   (let [batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Row)
-                (proto/set-prop-op
-                 1 proto/PaddingHorizontal (proto/IntValue 10))
-                (proto/set-prop-op
-                 1 proto/PaddingVertical (proto/IntValue 2))
-                (proto/set-prop-op
-                 1 proto/ForegroundValue (proto/StringValue "foreground"))
-                (proto/set-prop-op
-                 1 proto/BorderColorValue (proto/StringValue "border"))
-                (proto/set-prop-op
-                 1 proto/BorderWidth (proto/IntValue 1))
-                (proto/set-prop-op
-                 1 proto/CornerRadius (proto/IntValue 6))
-                (proto/set-prop-op
-                 1 proto/WidthValue (proto/IntValue 120))
-                (proto/set-prop-op
-                 1 proto/HeightValue (proto/IntValue 24))
-                (proto/set-prop-op
-                 1 proto/MinWidth (proto/IntValue 80))
-                (proto/set-prop-op
-                 1 proto/MaxWidth (proto/IntValue 160))
-                (proto/set-prop-op
-                 1 proto/MinHeight (proto/IntValue 16))
-                (proto/set-prop-op
-                 1 proto/MaxHeight (proto/IntValue 32))]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Row)
+                      (proto/set-prop-op
+                       1 proto/PaddingHorizontal (proto/IntValue 10))
+                      (proto/set-prop-op
+                       1 proto/PaddingVertical (proto/IntValue 2))
+                      (proto/set-prop-op
+                       1 proto/ForegroundValue (proto/StringValue "foreground"))
+                      (proto/set-prop-op
+                       1 proto/BorderColorValue (proto/StringValue "border"))
+                      (proto/set-prop-op
+                       1 proto/BorderWidth (proto/IntValue 1))
+                      (proto/set-prop-op
+                       1 proto/CornerRadius (proto/IntValue 6))
+                      (proto/set-prop-op
+                       1 proto/WidthValue (proto/IntValue 120))
+                      (proto/set-prop-op
+                       1 proto/HeightValue (proto/IntValue 24))
+                      (proto/set-prop-op
+                       1 proto/MinWidth (proto/IntValue 80))
+                      (proto/set-prop-op
+                       1 proto/MaxWidth (proto/IntValue 160))
+                      (proto/set-prop-op
+                       1 proto/MinHeight (proto/IntValue 16))
+                      (proto/set-prop-op
+                       1 proto/MaxHeight (proto/IntValue 32))]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
@@ -190,14 +190,14 @@
 (deftest progress-control-uses-a-closed-range-contract
   (let [batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/ProgressControl)
-                (proto/set-prop-op
-                 1 proto/MinValue (proto/IntValue 0))
-                (proto/set-prop-op
-                 1 proto/MaxValue (proto/IntValue 10))
-                (proto/set-prop-op
-                 1 proto/ProgressValue (proto/IntValue 3))]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/ProgressControl)
+                      (proto/set-prop-op
+                       1 proto/MinValue (proto/IntValue 0))
+                      (proto/set-prop-op
+                       1 proto/MaxValue (proto/IntValue 10))
+                      (proto/set-prop-op
+                       1 proto/ProgressValue (proto/IntValue 3))]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
@@ -214,11 +214,11 @@
 (deftest separator-uses-a-closed-orientation-contract
   (let [batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Divider)
-                (proto/set-prop-op
-                 1 proto/OrientationValue
-                 (proto/StringValue "vertical"))]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Divider)
+                      (proto/set-prop-op
+                       1 proto/OrientationValue
+                       (proto/StringValue "vertical"))]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
@@ -251,12 +251,12 @@
         backend (apple/backend renderer)
         batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/ProgressControl)
-                (proto/set-prop-op
-                 1 proto/MinValue (proto/IntValue 10))
-                (proto/set-prop-op
-                 1 proto/MaxValue (proto/IntValue 10))]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/ProgressControl)
+                      (proto/set-prop-op
+                       1 proto/MinValue (proto/IntValue 10))
+                      (proto/set-prop-op
+                       1 proto/MaxValue (proto/IntValue 10))]))]
     (is (thrown-with-msg?
          Invalid_argument
          #"progress max-value must be greater than min-value"
@@ -312,12 +312,12 @@
             backend (apple/backend renderer)
             batch
             (record proto/patch-batch
-              (generation 1)
-              (ops [(proto/create-node-op 1 proto/Box)
-                    (proto/set-prop-op
-                     1 property-a (proto/IntValue value-a))
-                    (proto/set-prop-op
-                     1 property-b (proto/IntValue value-b))]))]
+                    (generation 1)
+                    (ops [(proto/create-node-op 1 proto/Box)
+                          (proto/set-prop-op
+                           1 property-a (proto/IntValue value-a))
+                          (proto/set-prop-op
+                           1 property-b (proto/IntValue value-b))]))]
         (is (thrown-with-msg?
              Invalid_argument
              #"surface size constraints conflict"
@@ -331,11 +331,11 @@
         backend (apple/backend renderer)
         batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Box)
-                (proto/set-prop-op 1 proto/WidthValue (proto/IntValue 80))
-                (proto/set-prop-op 1 proto/MinWidth (proto/IntValue 80))
-                (proto/set-prop-op 1 proto/MaxWidth (proto/IntValue 80))]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Box)
+                      (proto/set-prop-op 1 proto/WidthValue (proto/IntValue 80))
+                      (proto/set-prop-op 1 proto/MinWidth (proto/IntValue 80))
+                      (proto/set-prop-op 1 proto/MaxWidth (proto/IntValue 80))]))]
     ((:apply-batch backend) batch)
     (assert-equal 1 (apple/node-count renderer)
                   "equal bounds describe a valid fixed size")))
@@ -343,17 +343,17 @@
 (deftest vercel-layout-properties-use-a-closed-wire-contract
   (let [batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Row)
-                (proto/create-node-op 2 proto/Grid)
-                (proto/set-prop-op
-                 1 proto/MainAlignment (proto/StringValue "space_between"))
-                (proto/set-prop-op
-                 1 proto/CrossAlignment (proto/StringValue "center"))
-                (proto/set-prop-op
-                 1 proto/GrowValue (proto/FloatValue 1.0))
-                (proto/set-prop-op
-                 2 proto/GridColumns (proto/IntValue 3))]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Row)
+                      (proto/create-node-op 2 proto/Grid)
+                      (proto/set-prop-op
+                       1 proto/MainAlignment (proto/StringValue "space_between"))
+                      (proto/set-prop-op
+                       1 proto/CrossAlignment (proto/StringValue "center"))
+                      (proto/set-prop-op
+                       1 proto/GrowValue (proto/FloatValue 1.0))
+                      (proto/set-prop-op
+                       2 proto/GridColumns (proto/IntValue 3))]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
@@ -366,7 +366,7 @@
       "{\"op\":\"set-prop\",\"id\":1,"
       "\"property\":\"grow\",\"value\":1.0},"
       "{\"op\":\"set-prop\",\"id\":2,"
-      "\"property\":\"columns\",\"value\":3}]}" )
+      "\"property\":\"columns\",\"value\":3}]}")
      (wire/encode-batch batch)
      "layout names match Vercel Native without CSS vocabulary")))
 
@@ -391,12 +391,12 @@
 (deftest overlay-surfaces-use-direct-closed-node-kinds
   (let [batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Stack)
-                (proto/create-node-op 2 proto/Panel)
-                (proto/create-node-op 3 proto/Card)
-                (proto/insert-child-op 1 2 0)
-                (proto/insert-child-op 1 3 1)]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Stack)
+                      (proto/create-node-op 2 proto/Panel)
+                      (proto/create-node-op 3 proto/Card)
+                      (proto/insert-child-op 1 2 0)
+                      (proto/insert-child-op 1 3 1)]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
@@ -413,9 +413,9 @@
     (let [renderer (apple/create)
           batch
           (record proto/patch-batch
-            (generation 1)
-            (ops [(proto/create-node-op 1 kind)
-                  (proto/set-prop-op 1 proto/Gap (proto/IntValue 8))]))]
+                  (generation 1)
+                  (ops [(proto/create-node-op 1 kind)
+                        (proto/set-prop-op 1 proto/Gap (proto/IntValue 8))]))]
       (is (thrown-with-msg?
            Invalid_argument
            #"unsupported property"
@@ -429,20 +429,20 @@
         backend (apple/backend renderer)
         batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/ListContainer)
-                (proto/create-node-op 2 proto/Scroll)
-                (proto/create-node-op 3 proto/Text)
-                (proto/create-node-op 4 proto/Text)
-                (proto/create-node-op 5 proto/Text)
-                (proto/set-prop-op 1 proto/Gap (proto/IntValue 8))
-                (proto/set-prop-op
-                 1 proto/MainAlignment (proto/StringValue "end"))
-                (proto/set-prop-op
-                 1 proto/CrossAlignment (proto/StringValue "stretch"))
-                (proto/insert-child-op 1 3 0)
-                (proto/insert-child-op 2 4 0)
-                (proto/insert-child-op 2 5 1)]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/ListContainer)
+                      (proto/create-node-op 2 proto/Scroll)
+                      (proto/create-node-op 3 proto/Text)
+                      (proto/create-node-op 4 proto/Text)
+                      (proto/create-node-op 5 proto/Text)
+                      (proto/set-prop-op 1 proto/Gap (proto/IntValue 8))
+                      (proto/set-prop-op
+                       1 proto/MainAlignment (proto/StringValue "end"))
+                      (proto/set-prop-op
+                       1 proto/CrossAlignment (proto/StringValue "stretch"))
+                      (proto/insert-child-op 1 3 0)
+                      (proto/insert-child-op 2 4 0)
+                      (proto/insert-child-op 2 5 1)]))]
     ((:apply-batch backend) batch)
     (assert-equal [3] (apple/children renderer 1)
                   "List retains a vertical flow collection")
@@ -452,8 +452,8 @@
 (deftest list-has-a-closed-wire-node-name
   (let [batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/ListContainer)]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/ListContainer)]))]
     (assert-equal
      "{\"generation\":1,\"ops\":[{\"op\":\"create-node\",\"id\":1,\"kind\":\"list\"}]}"
      (wire/encode-batch batch)
@@ -462,10 +462,10 @@
 (deftest spinner-uses-a-closed-leaf-contract
   (let [batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Spinner)
-                (proto/set-prop-op
-                 1 proto/SizeValue (proto/StringValue "lg"))]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Spinner)
+                      (proto/set-prop-op
+                       1 proto/SizeValue (proto/StringValue "lg"))]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
@@ -499,10 +499,10 @@
 (deftest icon-uses-a-closed-leaf-contract
   (let [batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Icon)
-                (proto/set-prop-op
-                 1 proto/IconName (proto/StringValue "search"))]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Icon)
+                      (proto/set-prop-op
+                       1 proto/IconName (proto/StringValue "search"))]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
@@ -512,16 +512,16 @@
      (wire/encode-batch batch)
      "Icon and name use pinned closed wire names")
     (doseq
-        [name
-         ["alert" "archive" "arrow-down" "arrow-right" "arrow-up"
-          "check" "check-circle" "chevron-down" "chevron-left" "chevron-right"
-          "chevron-up" "circle-dot" "clock" "copy" "download" "edit"
-          "ellipsis" "external-link" "eye" "file-text" "folder" "folder-open"
-          "git-branch" "git-merge" "git-pull-request" "info" "menu" "mic"
-          "moon" "music" "panel-left" "panel-right" "pause" "play" "plus"
-          "refresh-cw" "repeat" "save" "search" "send" "settings" "shuffle"
-          "skip-back" "skip-forward" "sun" "terminal" "trash" "volume"
-          "wrench" "x" "x-circle"]]
+     [name
+      ["alert" "archive" "arrow-down" "arrow-right" "arrow-up"
+       "check" "check-circle" "chevron-down" "chevron-left" "chevron-right"
+       "chevron-up" "circle-dot" "clock" "copy" "download" "edit"
+       "ellipsis" "external-link" "eye" "file-text" "folder" "folder-open"
+       "git-branch" "git-merge" "git-pull-request" "info" "menu" "mic"
+       "moon" "music" "panel-left" "panel-right" "pause" "play" "plus"
+       "refresh-cw" "repeat" "save" "search" "send" "settings" "shuffle"
+       "skip-back" "skip-forward" "sun" "terminal" "trash" "volume"
+       "wrench" "x" "x-circle"]]
       (is (proto/property-value-supported?
            proto/IconName (proto/StringValue name))
           "every Vercel Native built-in icon name is accepted"))
@@ -541,6 +541,78 @@
     (is (proto/property-supported? proto/Icon proto/ForegroundValue)
         "foreground belongs to Icon")
     (is (not (proto/can-contain-children? proto/Icon)) "Icon is a leaf")))
+
+(deftest button-uses-the-closed-vercel-native-contract
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Button)
+                      (proto/set-prop-op
+                       1 proto/TextValue (proto/StringValue "Download"))
+                      (proto/set-prop-op
+                       1 proto/VariantValue (proto/StringValue "primary"))
+                      (proto/set-prop-op
+                       1 proto/SizeValue (proto/StringValue "lg"))
+                      (proto/set-prop-op
+                       1 proto/InlineIconName (proto/StringValue "download"))
+                      (proto/set-prop-op
+                       1 proto/IconPlacementValue (proto/StringValue "trailing"))
+                      (proto/set-prop-op 1 proto/Selected (proto/BoolValue true))
+                      (proto/set-prop-op 1 proto/Autofocus (proto/BoolValue true))
+                      (proto/set-prop-op 1 proto/HoldEnabled (proto/BoolValue true))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"button\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"text\",\"value\":\"Download\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"variant\",\"value\":\"primary\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"size\",\"value\":\"lg\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"icon\",\"value\":\"download\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"icon-placement\",\"value\":\"trailing\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"selected\",\"value\":true},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"autofocus\",\"value\":true},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"hold-enabled\",\"value\":true}]}")
+     (wire/encode-batch batch)
+     "Button properties keep exact closed wire names")
+    (doseq [variant ["default" "primary" "secondary" "outline" "ghost"
+                     "destructive"]]
+      (is (proto/property-value-supported?
+           proto/VariantValue (proto/StringValue variant))
+          "every Vercel Native Button variant is accepted"))
+    (doseq [variant ["link" "danger" ""]]
+      (is (not (proto/property-value-supported?
+                proto/VariantValue (proto/StringValue variant)))
+          "non-reference Button variants are rejected"))
+    (doseq [placement ["leading" "trailing"]]
+      (is (proto/property-value-supported?
+           proto/IconPlacementValue (proto/StringValue placement))
+          "both reference icon placements are accepted"))
+    (doseq [property [proto/VariantValue proto/SizeValue proto/InlineIconName
+                      proto/IconPlacementValue proto/Selected proto/Autofocus
+                      proto/HoldEnabled proto/AccessibilityLabel]]
+      (is (proto/property-supported? proto/Button property)
+          "Button admits every typed contract property"))
+    (is (proto/event-supported? proto/Button (proto/Hold 1))
+        "Button admits Hold events")
+    (is (not (proto/can-contain-children? proto/Button))
+        "Button text remains content rather than a retained child")))
+
+(deftest retained-button-validation-explains-a-missing-accessible-name
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Button)
+                      (proto/set-prop-op
+                       1 proto/SizeValue (proto/StringValue "icon"))
+                      (proto/set-prop-op
+                       1 proto/InlineIconName (proto/StringValue "plus"))]))]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"icon-only button requires an accessibility label"
+         ((:apply-batch backend) batch))
+        "Button accessibility failures report the actionable contract")))
 
 (deftest form-controls-retain-typed-accessibility-relationships
   (let [renderer (apple/create)
@@ -615,8 +687,8 @@
         backend (apple/backend renderer)
         skipped
         (record proto/patch-batch
-          (generation 2)
-          (ops [(proto/create-node-op 1 proto/Text)]))]
+                (generation 2)
+                (ops [(proto/create-node-op 1 proto/Text)]))]
     (is (thrown-with-msg?
          Invalid_argument
          #"expected patch generation 1"
@@ -678,6 +750,8 @@
         first-child (runtime/create-node! application proto/Text)
         second-child (runtime/create-node! application proto/Text)
         third-child (runtime/create-node! application proto/Button)]
+    (runtime/set-prop!
+     application third-child proto/TextValue (proto/StringValue "Move"))
     (runtime/insert-child! application root first-child 0)
     (runtime/insert-child! application root second-child 1)
     (runtime/insert-child! application root third-child 2)
@@ -718,6 +792,8 @@
     (sig/mount! component-scope)
     (runtime/bind-prop!
      component-scope application label proto/TextValue label-value)
+    (runtime/set-prop!
+     application button proto/TextValue (proto/StringValue "Increment"))
     (runtime/on-event!
      component-scope application button
      (fn [event]
@@ -825,9 +901,9 @@
         backend (apple/backend renderer)
         invalid-batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Row)
-                (proto/insert-child-op 1 999 0)]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Row)
+                      (proto/insert-child-op 1 999 0)]))]
     (is (thrown-with-msg?
          Invalid_argument
          #"unknown child"
@@ -845,6 +921,8 @@
         button (runtime/create-node! application proto/Button)
         row (runtime/create-node! application proto/Row)
         checkbox (runtime/create-node! application proto/Checkbox)]
+    (runtime/set-prop!
+     application button proto/TextValue (proto/StringValue "Continue"))
     (is (thrown-with-msg?
          Invalid_argument
          #"invalid property value"
@@ -877,7 +955,7 @@
         "checked state requires a boolean wire value")
     (runtime/flush! application)
     (assert-equal
-     5
+     6
      (count (:ops (nth (apple/batches renderer) 0)))
      "rejected values never enter the patch queue")))
 
@@ -885,11 +963,11 @@
   (let [backend (apple/backend (apple/create))
         invalid-batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Row)
-                (proto/create-node-op 2 proto/Text)
-                (proto/insert-child-op 1 2 0)
-                (proto/drop-node-op 2)]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Row)
+                      (proto/create-node-op 2 proto/Text)
+                      (proto/insert-child-op 1 2 0)
+                      (proto/drop-node-op 2)]))]
     (is (thrown-with-msg?
          Invalid_argument
          #"attached"
@@ -898,11 +976,11 @@
   (let [backend (apple/backend (apple/create))
         invalid-batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Row)
-                (proto/create-node-op 2 proto/Column)
-                (proto/insert-child-op 1 2 0)
-                (proto/insert-child-op 2 1 0)]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Row)
+                      (proto/create-node-op 2 proto/Column)
+                      (proto/insert-child-op 1 2 0)
+                      (proto/insert-child-op 2 1 0)]))]
     (is (thrown-with-msg?
          Invalid_argument
          #"cycle"
@@ -911,10 +989,10 @@
   (let [backend (apple/backend (apple/create))
         invalid-batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Row)
-                (proto/set-prop-op
-                 1 proto/TextValue (proto/StringValue "invalid"))]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Row)
+                      (proto/set-prop-op
+                       1 proto/TextValue (proto/StringValue "invalid"))]))]
     (is (thrown-with-msg?
          Invalid_argument
          #"property"
@@ -923,10 +1001,10 @@
   (let [backend (apple/backend (apple/create))
         invalid-batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/Text)
-                (proto/create-node-op 2 proto/Text)
-                (proto/insert-child-op 1 2 0)]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Text)
+                      (proto/create-node-op 2 proto/Text)
+                      (proto/insert-child-op 1 2 0)]))]
     (is (thrown-with-msg?
          Invalid_argument
          #"cannot contain"
@@ -935,10 +1013,10 @@
   (let [backend (apple/backend (apple/create))
         invalid-batch
         (record proto/patch-batch
-          (generation 1)
-          (ops [(proto/create-node-op 1 proto/SwitchControl)
-                (proto/create-node-op 2 proto/Text)
-                (proto/insert-child-op 1 2 0)]))]
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/SwitchControl)
+                      (proto/create-node-op 2 proto/Text)
+                      (proto/insert-child-op 1 2 0)]))]
     (is (thrown-with-msg?
          Invalid_argument
          #"cannot contain"

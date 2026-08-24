@@ -2,7 +2,7 @@
   (:require [lui.protocol :as proto
              :refer [CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild LabelledBy DescribedBy ErrorMessageBy
-                     ProgressControl MinValue MaxValue IntValue]]))
+                     ProgressControl MinValue MaxValue IntValue StringValue]]))
 
 (defn- empty-batches [] [])
 
@@ -197,6 +197,29 @@
         (raise (Invalid_argument "child is not attached to parent")))
       (raise (Invalid_argument "unknown parent")))))
 
+(defn- string-property [properties property]
+  (match (clojure.core/get properties property)
+    (Some (StringValue value)) value
+    _ ""))
+
+(defn- node-properties-error [current]
+  (let [kind (:semantic-kind current)
+        properties (:retained-properties current)]
+    (if (not (proto/surface-size-supported? properties))
+      "surface size constraints conflict"
+      (if (= kind proto/Button)
+        (let [text (string-property properties proto/TextValue)
+              label (string-property properties proto/AccessibilityLabel)
+              icon (string-property properties proto/InlineIconName)]
+          (if (and (= text "") (not (= icon "")) (= label ""))
+            "icon-only button requires an accessibility label"
+            "button requires text or an accessibility label"))
+        (if (= kind ProgressControl)
+          "progress max-value must be greater than min-value"
+          (if (= kind proto/Icon)
+            "icon requires a valid name"
+            "node properties conflict"))))))
+
 (defn- validate-nodes! [nodes]
   (reduce-kv
    (fn [_valid _node current]
@@ -205,15 +228,7 @@
              (:semantic-kind current) (:retained-properties current)))
        (raise
         (Invalid_argument
-         (if (and
-              (= (:semantic-kind current) ProgressControl)
-              (>=
-               (proto/int-property
-                (:retained-properties current) MinValue 0)
-               (proto/int-property
-                (:retained-properties current) MaxValue 100)))
-           "progress max-value must be greater than min-value"
-           "surface size constraints conflict"))))
+         (node-properties-error current))))
      true)
    true
    nodes))

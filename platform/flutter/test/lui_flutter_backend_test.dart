@@ -21,6 +21,87 @@ void main() {
     expect(events, [const LUIEvent.press(node: 3)]);
   });
 
+  testWidgets('maps the complete Vercel Native Button contract', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"button"},
+        {"op":"set-prop","id":1,"property":"text","value":"Download"},
+        {"op":"set-prop","id":1,"property":"variant","value":"primary"},
+        {"op":"set-prop","id":1,"property":"size","value":"lg"},
+        {"op":"set-prop","id":1,"property":"icon","value":"download"},
+        {"op":"set-prop","id":1,"property":"icon-placement","value":"trailing"},
+        {"op":"set-prop","id":1,"property":"selected","value":true},
+        {"op":"set-prop","id":1,"property":"autofocus","value":true},
+        {"op":"set-prop","id":1,"property":"accessibility-label","value":"Download report"},
+        {"op":"set-prop","id":1,"property":"hold-enabled","value":true}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    final button = tester.widget<FilledButton>(find.byType(FilledButton));
+    expect(button.autofocus, isTrue);
+    expect(find.byIcon(Icons.download), findsOneWidget);
+    expect(
+      tester.getSemantics(find.byType(FilledButton)),
+      matchesSemantics(
+        label: 'Download report',
+        hasSelectedState: true,
+        isButton: true,
+        isSelected: true,
+        isEnabled: true,
+        hasEnabledState: true,
+        hasTapAction: true,
+        hasLongPressAction: true,
+      ),
+    );
+
+    await tester.longPress(find.byType(FilledButton));
+    await tester.pump();
+    expect(events, [const LUIEvent.hold(node: 1)]);
+
+    events.clear();
+    await tester.tap(find.byType(FilledButton));
+    await tester.pump();
+    expect(events, [const LUIEvent.press(node: 1)]);
+    semantics.dispose();
+  });
+
+  test('rejects invalid and unnamed icon-only Buttons atomically', () {
+    final invalidVariant = LUIFlutterBackend();
+    expect(
+      () => invalidVariant.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"button"},
+        {"op":"set-prop","id":1,"property":"text","value":"Link"},
+        {"op":"set-prop","id":1,"property":"variant","value":"link"}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(invalidVariant.generation, 0);
+
+    final unnamed = LUIFlutterBackend();
+    expect(
+      () => unnamed.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"button"},
+        {"op":"set-prop","id":1,"property":"size","value":"icon"},
+        {"op":"set-prop","id":1,"property":"icon","value":"plus"}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(unnamed.generation, 0);
+  });
+
   testWidgets('keyed move preserves the Flutter RenderObject', (tester) async {
     final backend = LUIFlutterBackend()..applyJson(_initialBatch);
 

@@ -431,64 +431,80 @@
     @apply pointer-events-none opacity-50;
   }
 
-  .lui-button svg {
+  .lui-button-icon {
     @apply pointer-events-none size-4 shrink-0;
   }
 
-  .lui-button--default {
-    @apply bg-primary text-primary-foreground;
+  .lui-button-icon:not([data-name]) {
+    @apply hidden;
   }
 
-  .lui-button--default:hover {
-    @apply bg-primary/90;
+  .lui-button[data-icon-placement="trailing"] .lui-button-icon {
+    @apply order-1;
   }
 
-  .lui-button--destructive {
-    @apply bg-destructive text-destructive-foreground;
+  .lui-button[data-variant="default"] {
+    @apply bg-background text-foreground;
   }
 
-  .lui-button--destructive:hover {
-    @apply bg-destructive/90;
-  }
-
-  .lui-button--outline {
-    @apply border border-input;
-  }
-
-  .lui-button--outline:hover,
-  .lui-button--ghost:hover {
+  .lui-button[data-variant="default"]:hover {
     @apply bg-accent text-accent-foreground;
   }
 
-  .lui-button--secondary {
+  .lui-button[data-variant="primary"] {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  .lui-button[data-variant="primary"]:hover {
+    @apply bg-primary/90;
+  }
+
+  .lui-button[data-variant="destructive"] {
+    @apply bg-destructive text-destructive-foreground;
+  }
+
+  .lui-button[data-variant="destructive"]:hover {
+    @apply bg-destructive/90;
+  }
+
+  .lui-button[data-variant="outline"] {
+    @apply border border-input;
+  }
+
+  .lui-button[data-variant="outline"]:hover,
+  .lui-button[data-variant="ghost"]:hover {
+    @apply bg-accent text-accent-foreground;
+  }
+
+  .lui-button[data-variant="secondary"] {
     @apply bg-secondary text-secondary-foreground;
   }
 
-  .lui-button--secondary:hover {
+  .lui-button[data-variant="secondary"]:hover {
     @apply bg-secondary/80;
   }
 
-  .lui-button--link {
-    @apply text-primary underline-offset-4;
+  .lui-button[data-variant="ghost"] {
+    @apply bg-transparent text-foreground;
   }
 
-  .lui-button--link:hover {
-    @apply underline;
+  .lui-button[data-selected] {
+    @apply bg-accent text-accent-foreground;
   }
 
-  .lui-button--size-default {
+  .lui-button[data-size="default"] {
     @apply h-10 px-4 py-2;
   }
 
-  .lui-button--sm {
+  .lui-button[data-size="sm"] {
     @apply h-9 px-3 text-xs;
   }
 
-  .lui-button--lg {
+  .lui-button[data-size="lg"] {
     @apply h-11 px-8;
   }
 
-  .lui-button--icon {
+  .lui-button[data-size="icon"] {
     @apply size-10;
   }
 }

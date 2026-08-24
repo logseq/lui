@@ -47,7 +47,16 @@
   :fn<ui-context;signal<string>;fn<event;bool>;int>)
 (signature lui.ui/text-area-value!
   :fn<ui-context;signal<wire-value>;fn<event;bool>;int>)
-(signature lui.ui/button! :fn<ui-context;string;fn<event;bool>;int>)
+(signature lui.ui/button! :fn<ui-context;int>)
+(signature lui.ui/string-property!
+  :fn<ui-context;int;property;string;bool>)
+(signature lui.ui/string-property-signal!
+  :fn<ui-context;int;property;signal.core/signal<string>;bool>)
+(signature lui.ui/bool-property!
+  :fn<ui-context;int;property;bool;bool>)
+(signature lui.ui/bool-property-signal!
+  :fn<ui-context;int;property;signal.core/signal<bool>;bool>)
+(signature lui.ui/disabled! :fn<ui-context;int;bool;bool>)
 (signature lui.ui/disabled-signal!
   :fn<ui-context;int;signal.core/signal<bool>;bool>)
 (signature lui.ui/invalid-signal!

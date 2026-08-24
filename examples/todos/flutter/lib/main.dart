@@ -38,6 +38,8 @@ class _TodosHostState extends State<TodosHost> {
     switch (event) {
       case LUIPressEvent(:final node):
         _bridge.press(node);
+      case LUIHoldEvent(:final node):
+        _bridge.hold(node);
       case LUITextChangedEvent(:final node, :final text):
         _bridge.textChanged(node, text);
       case LUIToggleChangedEvent(:final node, :final checked):

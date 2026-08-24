@@ -15,30 +15,33 @@
    [:row {:gap 12}
     [:button {:disabled disabled-source :on-press (fn [_event] true)} "Default"]
     [:button
-     {:variant "destructive"
+     {:variant "primary"
+      :icon "download"
       :disabled disabled-source
-      :on-press (fn [_event] true)}
-     "Destructive"]
-    [:button
-     {:variant "outline"
-      :disabled disabled-source
-      :on-press (fn [_event] true)}
-     "Outline"]
+      :on-press (fn [_event] true)
+      :on-hold toggle-disabled}
+     "Primary"]
     [:button
      {:variant "secondary"
       :disabled disabled-source
       :on-press (fn [_event] true)}
      "Secondary"]
     [:button
-     {:variant "ghost"
+     {:variant "outline"
       :disabled disabled-source
       :on-press (fn [_event] true)}
-     "Ghost"]
+     "Outline"]
     [:button
-     {:variant "link"
+     {:variant "ghost"
+      :selected true
       :disabled disabled-source
       :on-press (fn [_event] true)}
-     "Link"]]
+     "Selected"]
+    [:button
+     {:variant "destructive"
+      :disabled disabled-source
+      :on-press (fn [_event] true)}
+     "Destructive"]]
    [:row {:gap 12}
     [:button
      {:size "sm" :disabled disabled-source :on-press (fn [_event] true)}
@@ -47,13 +50,20 @@
      {:disabled disabled-source :on-press (fn [_event] true)}
      "Default"]
     [:button
-     {:size "lg" :disabled disabled-source :on-press (fn [_event] true)}
+     {:size "lg"
+      :icon "chevron-right"
+      :icon-placement "trailing"
+      :disabled disabled-source
+      :on-press (fn [_event] true)}
      "Large"]
     [:button
      {:size "icon"
+      :icon "plus"
+      :label "New note"
       :disabled disabled-source
-      :on-press (fn [_event] true)}
-     "+"]]])
+      :on-press (fn [_event] true)}]]
+   [:paragraph
+    "Press Primary for a normal action; hold it for 350 ms to toggle disabled state."]])
 
 (defui surface-gallery [copy-source]
   [:column {:gap 24 :padding 32}

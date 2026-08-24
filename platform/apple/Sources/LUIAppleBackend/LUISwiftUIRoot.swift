@@ -65,10 +65,7 @@ private struct LUINodeView: View {
             Text(verbatim: model.text)
                 .font(.body)
         case .button:
-            Button(model.text) {
-                try? backend.performPress(node: model.id)
-            }
-            .disabled(!model.isEnabled)
+            LUIButtonView(model: model, backend: backend)
         case .textInput:
             LUITextControlView(model: model, backend: backend, multiline: false)
         case .textArea:
@@ -137,6 +134,195 @@ private struct LUINodeView: View {
 
     private var progressAccessibilityValue: String {
         "\(Int((model.progressFraction * 100).rounded()))%"
+    }
+}
+
+private struct LUIButtonView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    @FocusState private var focused: Bool
+    @State private var held = false
+
+    var body: some View {
+        styledButton
+            .controlSize(controlSize)
+            .frame(
+                width: model.buttonSize == "icon" ? 40 : nil,
+                height: buttonHeight
+            )
+            .disabled(!model.isEnabled)
+            .focused($focused)
+            .onAppear { requestFocusIfNeeded() }
+            .onChange(of: model.requestsAutofocus) { _, requested in
+                if requested { focused = true }
+            }
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.35)
+                    .onEnded { _ in
+                        guard model.supportsHold, model.isEnabled else { return }
+                        held = true
+                        try? backend.performHold(node: model.id)
+                    }
+            )
+            .modifier(
+                LUISecondaryHoldModifier(
+                    enabled: model.supportsHold && model.isEnabled,
+                    action: { try? backend.performHold(node: model.id) }
+                )
+            )
+            .modifier(LUISelectedButtonModifier(selected: model.isSelected))
+    }
+
+    @ViewBuilder
+    private var styledButton: some View {
+        switch model.buttonVariant {
+        case "primary":
+            button.buttonStyle(.borderedProminent)
+        case "secondary", "outline", "default":
+            button.buttonStyle(.bordered)
+        case "destructive":
+            button.buttonStyle(.borderedProminent).tint(.red)
+        default:
+            button.buttonStyle(.plain)
+        }
+    }
+
+    private var button: some View {
+        Button {
+            if held {
+                held = false
+            } else {
+                try? backend.performPress(node: model.id)
+            }
+        } label: {
+            label
+        }
+    }
+
+    @ViewBuilder
+    private var label: some View {
+        if model.buttonIconName.isEmpty {
+            Text(verbatim: model.text)
+        } else if model.text.isEmpty {
+            icon
+        } else if model.buttonIconPlacement == "trailing" {
+            HStack(spacing: 8) {
+                Text(verbatim: model.text)
+                icon
+            }
+        } else {
+            HStack(spacing: 8) {
+                icon
+                Text(verbatim: model.text)
+            }
+        }
+    }
+
+    private var icon: some View {
+        LUIIconImage(source: backend.iconSource(for: model.buttonIconName))
+            .scaledToFit()
+            .frame(width: 16, height: 16)
+    }
+
+    private var controlSize: ControlSize {
+        switch model.buttonSize {
+        case "sm": .small
+        case "lg": .large
+        default: .regular
+        }
+    }
+
+    private var buttonHeight: CGFloat? {
+        switch model.buttonSize {
+        case "sm": 36
+        case "lg": 44
+        case "icon": 40
+        default: 40
+        }
+    }
+
+    private func requestFocusIfNeeded() {
+        if model.requestsAutofocus { focused = true }
+    }
+}
+
+private struct LUISecondaryHoldModifier: ViewModifier {
+    let enabled: Bool
+    let action: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+#if os(macOS)
+        content.overlay {
+            LUISecondaryHoldCapture(enabled: enabled, action: action)
+        }
+#else
+        content
+#endif
+    }
+}
+
+#if os(macOS)
+private struct LUISecondaryHoldCapture: NSViewRepresentable {
+    let enabled: Bool
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> LUISecondaryHoldView {
+        let view = LUISecondaryHoldView()
+        view.isHoldEnabled = enabled
+        view.onHold = action
+        return view
+    }
+
+    func updateNSView(_ view: LUISecondaryHoldView, context: Context) {
+        view.isHoldEnabled = enabled
+        view.onHold = action
+    }
+}
+
+final class LUISecondaryHoldView: NSView {
+    var isHoldEnabled = false
+    var onHold: () -> Void = {}
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard isHoldEnabled, bounds.contains(point), let event = window?.currentEvent else {
+            return nil
+        }
+        if event.type == .rightMouseDown ||
+            (event.type == .leftMouseDown && event.modifierFlags.contains(.control)) {
+            return self
+        }
+        return nil
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        handleSecondaryActivation()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control) {
+            handleSecondaryActivation()
+        } else {
+            super.mouseDown(with: event)
+        }
+    }
+
+    func handleSecondaryActivation() {
+        if isHoldEnabled { onHold() }
+    }
+}
+#endif
+
+private struct LUISelectedButtonModifier: ViewModifier {
+    let selected: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if selected {
+            content.accessibilityAddTraits(.isSelected)
+        } else {
+            content
+        }
     }
 }
 
