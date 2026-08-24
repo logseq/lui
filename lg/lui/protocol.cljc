@@ -102,14 +102,14 @@
   (match property
     MainAlignment (or (= kind Row) (= kind Column) (= kind ListContainer))
     CrossAlignment (or (= kind Row) (= kind Column) (= kind ListContainer))
-    GrowValue true
+    GrowValue (not (= kind Avatar))
     GridColumns (= kind Grid)
-    PaddingValue true
+    PaddingValue (not (= kind Avatar))
     PaddingHorizontal
     (or (= kind Row) (= kind Column) (= kind Grid) (= kind Box))
     PaddingVertical
     (or (= kind Row) (= kind Column) (= kind Grid) (= kind Box))
-    BackgroundValue true
+    BackgroundValue (not (= kind Avatar))
     ForegroundValue
     (match kind
       Text true
@@ -134,22 +134,23 @@
       MenuItem true
       ListItem true
       _ false)
-    BorderColorValue true
-    BorderWidth true
-    CornerRadius true
-    WidthValue true
-    HeightValue true
-    MinWidth true
-    MaxWidth true
-    MinHeight true
-    MaxHeight true
-    StyleClass true
+    BorderColorValue (not (= kind Avatar))
+    BorderWidth (not (= kind Avatar))
+    CornerRadius (not (= kind Avatar))
+    WidthValue (not (= kind Avatar))
+    HeightValue (not (= kind Avatar))
+    MinWidth (not (= kind Avatar))
+    MaxWidth (not (= kind Avatar))
+    MinHeight (not (= kind Avatar))
+    MaxHeight (not (= kind Avatar))
+    StyleClass (not (= kind Avatar))
     AccessibilityLabel
     (or (= kind Button) (= kind ToggleButton)
         (= kind TextField) (= kind Input) (= kind SearchField)
         (= kind Textarea)
         (= kind Checkbox) (= kind SwitchControl)
-        (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider))
+        (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider)
+        (= kind Avatar))
     PlaceholderValue
     (or (= kind TextField) (= kind Input) (= kind SearchField)
         (= kind Textarea) (= kind Select) (= kind Combobox))
@@ -182,6 +183,11 @@
         (= kind ListItem))
     SubmitEnabled (or (= kind Combobox) (= kind ListItem))
     DoublePressEnabled (= kind ListItem)
+    ImageIdValue (= kind Avatar)
+    SourceX (= kind Avatar)
+    SourceY (= kind Avatar)
+    SourceWidth (= kind Avatar)
+    SourceHeight (= kind Avatar)
     AnchorValue (= kind DropdownMenu)
     AnchorAlignmentValue (= kind DropdownMenu)
     AnchorOffset (= kind DropdownMenu)
@@ -205,6 +211,7 @@
       Combobox true
       MenuItem true
       ListItem true
+      Avatar true
       _ false)
     Enabled
     (match kind
@@ -286,6 +293,11 @@
     (tuple PressEnabled (BoolValue _value)) true
     (tuple SubmitEnabled (BoolValue _value)) true
     (tuple DoublePressEnabled (BoolValue _value)) true
+    (tuple ImageIdValue (IntValue value)) (>= value 0)
+    (tuple SourceX (FloatValue value)) (Float.is_finite value)
+    (tuple SourceY (FloatValue value)) (Float.is_finite value)
+    (tuple SourceWidth (FloatValue value)) (Float.is_finite value)
+    (tuple SourceHeight (FloatValue value)) (Float.is_finite value)
     (tuple AnchorValue (StringValue value))
     (or (= value "above") (= value "below"))
     (tuple AnchorAlignmentValue (StringValue value))
@@ -298,6 +310,13 @@
   (if-some [value (clojure.core/get properties property)]
     (match value
       (IntValue number) number
+      _ fallback)
+    fallback))
+
+(defn- float-property [properties property fallback]
+  (if-some [value (clojure.core/get properties property)]
+    (match value
+      (FloatValue number) number
       _ fallback)
     fallback))
 
@@ -365,6 +384,35 @@
      (match (clojure.core/get properties TextValue)
        (Some (StringValue value)) (not (= value ""))
        _ false)
+     true)
+   (if (= kind Avatar)
+     (let [has-image (contains? properties ImageIdValue)
+           has-source-x (contains? properties SourceX)
+           has-source-y (contains? properties SourceY)
+           has-source-width (contains? properties SourceWidth)
+           has-source-height (contains? properties SourceHeight)
+           source-count
+           (+ (if has-source-x 1 0)
+              (if has-source-y 1 0)
+              (if has-source-width 1 0)
+              (if has-source-height 1 0))
+           source-x (float-property properties SourceX 0.0)
+           source-y (float-property properties SourceY 0.0)
+           source-width (float-property properties SourceWidth 0.0)
+           source-height (float-property properties SourceHeight 0.0)]
+       (and
+        (match (clojure.core/get properties TextValue)
+          (Some (StringValue value)) (not (= value ""))
+          _ false)
+        (or (= source-count 0) (= source-count 4))
+        (or (= source-count 0) has-image)
+        (or
+         (= source-count 0)
+         (and
+          (>= source-x 0.0)
+          (>= source-y 0.0)
+          (> source-width 0.0)
+          (> source-height 0.0)))))
      true)
    (if (or (= kind Slider) (= kind Progress))
      (match (clojure.core/get properties ProgressValue)

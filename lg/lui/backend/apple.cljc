@@ -6,7 +6,7 @@
                      Scroll ListContainer Spacer Spinner Icon
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
-                     Select Combobox DropdownMenu MenuItem ListItem]]
+                     Select Combobox DropdownMenu MenuItem ListItem Avatar]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -56,7 +56,8 @@
     Combobox AppleCombobox
     DropdownMenu AppleDropdownMenu
     MenuItem AppleMenuItem
-    ListItem AppleListItem))
+    ListItem AppleListItem
+    Avatar AppleAvatar))
 
 (defn backend-for [renderer operating-system host]
   (record proto/backend

@@ -1,5 +1,6 @@
 import SwiftUI
 import Testing
+import CoreGraphics
 #if os(macOS)
 import AppKit
 #endif
@@ -24,6 +25,24 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    private func image(width: Int = 64, height: Int = 64) throws -> CGImage {
+        let bytes = Data(repeating: 0xff, count: width * height * 4)
+        let provider = try #require(CGDataProvider(data: bytes as CFData))
+        return try #require(CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: true,
+            intent: .defaultIntent
+        ))
+    }
+
 #if os(macOS)
     @Test("macOS secondary activation dispatches hold exactly once when enabled")
     func secondaryActivationDispatchesHold() {
@@ -310,6 +329,96 @@ struct LUISwiftUIBackendTests {
         """)
         #expect(backend.model(id: 2) === item)
         #expect(item.revision == revision + 1)
+    }
+
+    @Test("registering an image invalidates only Avatars that reference its ImageId")
+    func mapsRegisteredAvatarImage() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"row"},
+          {"op":"create-node","id":2,"kind":"avatar"},
+          {"op":"create-node","id":3,"kind":"avatar"},
+          {"op":"set-prop","id":2,"property":"text","value":"ZN"},
+          {"op":"set-prop","id":2,"property":"image","value":7},
+          {"op":"set-prop","id":2,"property":"source-x","value":8.0},
+          {"op":"set-prop","id":2,"property":"source-y","value":4.0},
+          {"op":"set-prop","id":2,"property":"source-width","value":32.0},
+          {"op":"set-prop","id":2,"property":"source-height","value":24.0},
+          {"op":"set-prop","id":2,"property":"accessibility-label","value":"Profile picture"},
+          {"op":"set-prop","id":3,"property":"text","value":"CT"},
+          {"op":"set-prop","id":3,"property":"image","value":8},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let first = try #require(backend.model(id: 2))
+        let second = try #require(backend.model(id: 3))
+        let firstRevision = first.revision
+        let secondRevision = second.revision
+        #expect(first.registeredImage(in: backend) == nil)
+        #expect(first.avatarSourceRect == CGRect(x: 8, y: 4, width: 32, height: 24))
+
+        let registered = try image()
+        try backend.registerImage(id: 7, image: registered)
+        #expect(first.registeredImage(in: backend) === registered)
+        #expect(first.revision == firstRevision + 1)
+        #expect(second.revision == secondRevision)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        backend.unregisterImage(id: 7)
+        #expect(first.registeredImage(in: backend) == nil)
+        #expect(first.revision == firstRevision + 2)
+        #expect(second.revision == secondRevision)
+
+        backend.unregisterImage(id: 7)
+        #expect(first.revision == firstRevision + 2)
+        #expect(throws: LUIBackendError.self) {
+            try backend.registerImage(id: 0, image: registered)
+        }
+    }
+
+    @Test("rejects partial and invalid Avatar source crops atomically")
+    func rejectsInvalidAvatarCrop() throws {
+        let backend = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"avatar"},
+              {"op":"set-prop","id":1,"property":"text","value":"ZN"},
+              {"op":"set-prop","id":1,"property":"image","value":7},
+              {"op":"set-prop","id":1,"property":"source-x","value":0.0}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 0)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"avatar"},
+              {"op":"set-prop","id":1,"property":"text","value":"ZN"},
+              {"op":"set-prop","id":1,"property":"image","value":7},
+              {"op":"set-prop","id":1,"property":"source-x","value":0.0},
+              {"op":"set-prop","id":1,"property":"source-y","value":0.0},
+              {"op":"set-prop","id":1,"property":"source-width","value":-1.0},
+              {"op":"set-prop","id":1,"property":"source-height","value":24.0}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 0)
+
+        let expanded = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try expanded.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"avatar"},
+              {"op":"set-prop","id":1,"property":"text","value":"ZN"},
+              {"op":"set-prop","id":1,"property":"width","value":40}
+            ]}
+            """)
+        }
     }
 
     @Test("maps the complete Vercel Native Button contract to one retained model")

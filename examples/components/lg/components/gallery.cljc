@@ -139,6 +139,17 @@
     [:badge {:variant "error"} "Error"]
     [:badge {:round true} "Round"]]])
 
+(defui avatar-gallery [image-source toggle-image]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Avatar"]
+   [:row {:gap 12 :cross "center"}
+    [:avatar {:image image-source :label "Registered profile image"} "ZN"]
+    [:avatar "CT"]]
+   [:button {:variant "outline" :on-press toggle-image}
+    "Toggle registered image"]
+   [:paragraph
+    "The host owns image resources; changing the ImageId Signal retains the Avatar node."]])
+
 (defui progress-gallery [value-source value-label-source advance]
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "Progress"]
@@ -362,7 +373,8 @@
    open-select open-combobox update-picker-query submit-picker-query
    dismiss-picker select-production select-staging
    report-selected-source checklist-selected-source document-action-source
-   select-report select-checklist open-report open-checklist]
+   select-report select-checklist open-report open-checklist
+   avatar-image-source toggle-avatar-image]
   [:column
    [button-gallery disabled-source toggle-disabled]
    [toggle-button-gallery
@@ -379,6 +391,7 @@
     report-selected-source checklist-selected-source disabled-source
     document-action-source select-report select-checklist open-report
     open-checklist]
+   [avatar-gallery avatar-image-source toggle-avatar-image]
    [text-entry-gallery value-source disabled-source update-value]
    [picker-gallery
     environment-source picker-query-source select-open-source

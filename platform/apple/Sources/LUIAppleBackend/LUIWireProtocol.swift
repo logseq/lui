@@ -111,6 +111,11 @@ enum LUIWireValue: Decodable, Equatable {
              (.holdEnabled, .bool),
              (.changeEnabled, .bool), (.toggleEnabled, .bool), (.pressEnabled, .bool),
              (.submitEnabled, .bool), (.doublePressEnabled, .bool): true
+        case let (.image, .int(value)): value >= 0
+        case let (.sourceX, .double(value)),
+             let (.sourceY, .double(value)),
+             let (.sourceWidth, .double(value)),
+             let (.sourceHeight, .double(value)): value.isFinite
         case let (.anchor, .string(value)):
             value == "above" || value == "below"
         case let (.anchorAlignment, .string(value)):
@@ -284,11 +289,11 @@ struct LUIRetainedTree {
         switch property {
         case .main, .cross:
             kind == .row || kind == .column || kind == .list
-        case .grow: true
+        case .grow: kind != .avatar
         case .columns: kind == .grid
         case .padding, .background, .borderColor, .borderWidth,
              .cornerRadius, .styleClass, .width, .height,
-             .minWidth, .maxWidth, .minHeight, .maxHeight: true
+             .minWidth, .maxWidth, .minHeight, .maxHeight: kind != .avatar
         case .paddingHorizontal, .paddingVertical:
             kind == .row || kind == .column || kind == .grid || kind == .box
         case .foreground:
@@ -302,7 +307,7 @@ struct LUIRetainedTree {
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
                 kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio ||
-                kind == .select || kind == .menuItem || kind == .listItem
+                kind == .select || kind == .menuItem || kind == .listItem || kind == .avatar
         case .enabled:
             kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle ||
@@ -316,7 +321,7 @@ struct LUIRetainedTree {
         case .accessibilityLabel:
             kind == .button || kind == .toggleButton || isTextEntry(kind) || kind == .checkbox ||
                 kind == .switchControl || kind == .toggle ||
-                kind == .radioGroup || kind == .radio || kind == .slider
+                kind == .radioGroup || kind == .radio || kind == .slider || kind == .avatar
         case .headingLevel: kind == .heading
         case .checked:
             kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
@@ -341,6 +346,8 @@ struct LUIRetainedTree {
                 kind == .menuItem || kind == .listItem
         case .submitEnabled: kind == .combobox || kind == .listItem
         case .doublePressEnabled: kind == .listItem
+        case .image, .sourceX, .sourceY, .sourceWidth, .sourceHeight:
+            kind == .avatar
         case .anchor, .anchorAlignment, .anchorOffset: kind == .dropdownMenu
         }
     }
@@ -421,6 +428,35 @@ struct LUIRetainedTree {
                     throw invalid("list-item accepts text or children, not both")
                 }
             }
+            if node.kind == .avatar {
+                guard !(node.properties[.text]?.stringValue ?? "").isEmpty else {
+                    throw invalid("avatar requires initials")
+                }
+                let sourceProperties: [LUIProperty] = [
+                    .sourceX, .sourceY, .sourceWidth, .sourceHeight,
+                ]
+                let sourceCount = sourceProperties.filter {
+                    node.properties[$0] != nil
+                }.count
+                guard sourceCount == 0 || sourceCount == sourceProperties.count else {
+                    throw invalid("avatar source crop requires all four coordinates")
+                }
+                if sourceCount == sourceProperties.count {
+                    guard node.properties[.image]?.intValue != nil else {
+                        throw invalid("avatar source crop requires an image")
+                    }
+                    let x = node.properties[.sourceX]?.doubleValue ?? -1
+                    let y = node.properties[.sourceY]?.doubleValue ?? -1
+                    let width = node.properties[.sourceWidth]?.doubleValue ?? 0
+                    let height = node.properties[.sourceHeight]?.doubleValue ?? 0
+                    guard x >= 0, y >= 0 else {
+                        throw invalid("avatar source crop coordinates must be non-negative")
+                    }
+                    guard width > 0, height > 0 else {
+                        throw invalid("avatar source crop dimensions must be positive")
+                    }
+                }
+            }
         }
     }
 
@@ -450,7 +486,9 @@ struct LUIRetainedTree {
 
 extension LUIWireValue {
     func normalized(for property: LUIProperty) -> LUIWireValue {
-        if property == .grow || property == .anchorOffset,
+        if property == .grow || property == .anchorOffset ||
+            property == .sourceX || property == .sourceY ||
+            property == .sourceWidth || property == .sourceHeight,
            case let .int(value) = self {
             return .double(Double(value))
         }

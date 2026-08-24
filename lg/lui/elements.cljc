@@ -56,6 +56,7 @@
                          (= tag :dropdown-menu)
                          (= tag :menu-item)
                          (= tag :list-item)
+                         (= tag :avatar)
                           (= tag :keyed))
                           (symbol (str "lui.elements/" (name tag)))
                           (symbol (str "lui." (name tag) "/" (name tag))))))))
@@ -182,12 +183,12 @@
 
 (macro-helper-defn float-attribute-expansion
                    [context node value property]
-                   (if (float? value)
-                     [`(lui.ui/float-property! ~context ~node ~property ~value)]
-                     (if value
+                   (if value
+                     (if (float? value)
+                       [`(lui.ui/float-property! ~context ~node ~property ~value)]
                        [`(lui.ui/float-property-signal!
-                          ~context ~node ~property ~value)]
-                       [])))
+                          ~context ~node ~property ~value)])
+                     []))
 
 (macro-helper-defn button-event-expansion [context node attrs]
                    (let [on-press (:on-press attrs)
@@ -739,7 +740,7 @@
           nil)
         child-elements (if literal-text [] children)]
     (if text-source
-      (if (empty? children)
+      (if (= (count children) 0)
         nil
         (throw
          (IllegalArgumentException.
@@ -784,6 +785,48 @@
           (fn [child]
             `(lui.elements/element ~context ~node ~child))
           child-elements)
+       ~node)))
+
+(defelement avatar [context parent attrs & children]
+  (let [node (gensym "node")
+        text-source (:text attrs)
+        image-source (:image attrs)
+        literal-text
+        (if (and (= (count children) 1) (string? (first children)))
+          (first children)
+          nil)]
+    (if text-source
+      (if (empty? children)
+        nil
+        (throw
+         (IllegalArgumentException.
+          "avatar accepts :text or one initials child, not both")))
+      (if literal-text
+        nil
+        (throw
+         (IllegalArgumentException.
+          "avatar requires exactly one initials string"))))
+    `(let [~node (lui.ui/avatar! ~context)]
+       ~@(if text-source
+           [`(lui.ui/text-property-signal! ~context ~node ~text-source)]
+           [`(lui.ui/text-property! ~context ~node ~literal-text)])
+       ~@(if image-source
+           [`(lui.ui/int-property-signal!
+              ~context ~node lui.protocol/ImageIdValue ~image-source)]
+           [])
+       ~@(float-attribute-expansion
+          context node (:source-x attrs) 'lui.protocol/SourceX)
+       ~@(float-attribute-expansion
+          context node (:source-y attrs) 'lui.protocol/SourceY)
+       ~@(float-attribute-expansion
+          context node (:source-width attrs) 'lui.protocol/SourceWidth)
+       ~@(float-attribute-expansion
+          context node (:source-height attrs) 'lui.protocol/SourceHeight)
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
        ~node)))
 
 (defelement conditional [context parent attrs & children]

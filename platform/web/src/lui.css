@@ -126,6 +126,18 @@
     -webkit-mask: var(--lui-icon-image, url("./icons/missing.svg")) center / contain no-repeat;
   }
 
+  .lui-avatar {
+    @apply relative size-10 shrink-0 overflow-hidden rounded-full bg-secondary text-secondary-foreground;
+  }
+
+  .lui-avatar-image {
+    @apply absolute max-w-none;
+  }
+
+  .lui-avatar-initials {
+    @apply flex size-full items-center justify-center text-sm font-medium;
+  }
+
   .lui-scroll {
     @apply grid overflow-auto;
   }

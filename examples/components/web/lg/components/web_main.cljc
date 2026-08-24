@@ -7,6 +7,12 @@
 (defn main [host]
   (let [renderer (web/create host)
         application (components/create (web/backend renderer))]
+    (web/register-image!
+     renderer
+     1
+     "/examples/components/flutter/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_128.png"
+     128.0
+     128.0)
     (web/set-event-handler!
      renderer
      (fn [event]

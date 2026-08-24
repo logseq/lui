@@ -37,6 +37,7 @@ enum _NodeKind {
   dropdownMenu,
   menuItem,
   listItem,
+  avatar,
 }
 
 _NodeKind _decodeNodeKind(Object? value) {
@@ -79,6 +80,7 @@ _NodeKind _decodeNodeKind(Object? value) {
     'dropdown-menu' => _NodeKind.dropdownMenu,
     'menu-item' => _NodeKind.menuItem,
     'list-item' => _NodeKind.listItem,
+    'avatar' => _NodeKind.avatar,
     _ => throw const LUIBackendException('unknown node kind'),
   };
 }

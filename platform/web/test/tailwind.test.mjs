@@ -60,6 +60,16 @@ test("the production stylesheet contains the retained ListItem contract", async 
   assert.match(css, /\.lui-list-item\[data-name\]:{1,2}before\{[^}]*width:calc\(var\(--spacing\)\*4\)/)
 })
 
+test("the production stylesheet contains the registered-image Avatar contract", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-avatar\{[^}]*position:relative/)
+  assert.match(css, /\.lui-avatar\{[^}]*border-radius:3\.40282e38px/)
+  assert.match(css, /\.lui-avatar-image\{[^}]*position:absolute/)
+  assert.match(css, /\.lui-avatar-initials\{[^}]*display:flex/)
+  assert.doesNotMatch(css, /\.lui-avatar\[data-size=/)
+})
+
 test("the production stylesheet contains the direct text-entry contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 

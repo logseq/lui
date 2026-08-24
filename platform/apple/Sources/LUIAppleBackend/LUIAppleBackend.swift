@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import CoreGraphics
 
 public enum LUIAppleIconSource: Equatable, Sendable {
     case systemName(String)
@@ -34,6 +35,10 @@ final class LUINodeModel: Identifiable {
         }
         properties = state.properties
         children = state.children
+        revision += 1
+    }
+
+    func invalidateResource() {
         revision += 1
     }
 
@@ -105,6 +110,29 @@ final class LUINodeModel: Identifiable {
     var iconHeight: Int { surfaceHeight ?? iconExtent }
 
     var iconName: String { properties[.name]?.stringValue ?? "" }
+
+    var avatarSourceRect: CGRect? {
+        guard let x = properties[.sourceX]?.doubleValue,
+              let y = properties[.sourceY]?.doubleValue,
+              let width = properties[.sourceWidth]?.doubleValue,
+              let height = properties[.sourceHeight]?.doubleValue else {
+            return nil
+        }
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    func registeredImage(in backend: LUIAppleBackend) -> CGImage? {
+        guard let imageID = properties[.image]?.intValue, imageID > 0 else {
+            return nil
+        }
+        return backend.registeredImage(id: imageID)
+    }
+
+    func avatarDisplayImage(in backend: LUIAppleBackend) -> CGImage? {
+        guard let image = registeredImage(in: backend) else { return nil }
+        guard let source = avatarSourceRect else { return image }
+        return image.cropping(to: source)
+    }
 
     var iconSystemName: String {
         Self.systemIconName(for: iconName)
@@ -185,6 +213,7 @@ public final class LUIAppleBackend {
 
     private var tree = LUIRetainedTree()
     private var models: [Int: LUINodeModel] = [:]
+    private var images: [Int: CGImage] = [:]
     private let decoder = JSONDecoder()
     private let appIcons: [String: LUIAppleIconSource]
 
@@ -206,6 +235,23 @@ public final class LUIAppleBackend {
 
     func model(id: Int) -> LUINodeModel? {
         models[id]
+    }
+
+    func registeredImage(id: Int) -> CGImage? {
+        images[id]
+    }
+
+    public func registerImage(id: Int, image: CGImage) throws {
+        guard id > 0 else {
+            throw invalid("registered image id must be positive")
+        }
+        images[id] = image
+        invalidateAvatars(imageID: id)
+    }
+
+    public func unregisterImage(id: Int) {
+        guard images.removeValue(forKey: id) != nil else { return }
+        invalidateAvatars(imageID: id)
     }
 
     public func apply(json: String) throws {
@@ -347,6 +393,15 @@ public final class LUIAppleBackend {
                 model.apply(state: state)
             } else {
                 models[id] = LUINodeModel(id: id, state: state)
+            }
+        }
+    }
+
+    private func invalidateAvatars(imageID: Int) {
+        withTransaction(Transaction(animation: nil)) {
+            for model in models.values
+            where model.kind == .avatar && model.property(.image)?.intValue == imageID {
+                model.invalidateResource()
             }
         }
     }

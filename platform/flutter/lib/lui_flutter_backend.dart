@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -299,6 +300,7 @@ final class LUIFlutterBackend {
   final Map<String, IconData> appIcons;
   Map<int, _NodeState> _states = {};
   final Map<int, _NodeHandle> _handles = {};
+  final Map<int, ui.Image> _images = {};
   int generation = 0;
 
   static Key nodeKey(int id) => ValueKey('lui-node-$id');
@@ -319,7 +321,38 @@ final class LUIFlutterBackend {
       handle.dispose();
     }
     _handles.clear();
+    for (final image in _images.values) {
+      image.dispose();
+    }
+    _images.clear();
     _states = {};
+  }
+
+  void registerImage({required int id, required ui.Image image}) {
+    if (id <= 0) {
+      throw const LUIBackendException('registered image id must be positive');
+    }
+    final replacement = image.clone();
+    final previous = _images[id];
+    _images[id] = replacement;
+    previous?.dispose();
+    _invalidateAvatars(id);
+  }
+
+  void unregisterImage(int id) {
+    final image = _images.remove(id);
+    if (image == null) return;
+    image.dispose();
+    _invalidateAvatars(id);
+  }
+
+  void _invalidateAvatars(int imageID) {
+    for (final entry in _states.entries) {
+      if (entry.value.kind == _NodeKind.avatar &&
+          entry.value.properties['image'] == imageID) {
+        _handles[entry.key]?.markChanged();
+      }
+    }
   }
 
   void applyJson(String source) {
@@ -864,6 +897,63 @@ final class LUIFlutterBackend {
           ? () => performSubmit(id)
           : null,
     );
+    Widget avatar() {
+      final imageID = state.properties['image'] as int? ?? 0;
+      final image = imageID == 0 ? null : _images[imageID];
+      final sourceX = (state.properties['source-x'] as num?)?.toDouble();
+      final sourceY = (state.properties['source-y'] as num?)?.toDouble();
+      final sourceWidth = (state.properties['source-width'] as num?)
+          ?.toDouble();
+      final sourceHeight = (state.properties['source-height'] as num?)
+          ?.toDouble();
+      final source = sourceX == null
+          ? null
+          : Rect.fromLTWH(sourceX, sourceY!, sourceWidth!, sourceHeight!);
+      final imageBounds = image == null
+          ? null
+          : Rect.fromLTWH(
+              0,
+              0,
+              image.width.toDouble(),
+              image.height.toDouble(),
+            );
+      final displayImage =
+          source == null ||
+              imageBounds == null ||
+              (source.left >= imageBounds.left &&
+                  source.top >= imageBounds.top &&
+                  source.right <= imageBounds.right &&
+                  source.bottom <= imageBounds.bottom)
+          ? image
+          : null;
+      return Semantics(
+        label: accessibilityLabel ?? text,
+        image: true,
+        excludeSemantics: true,
+        child: ClipOval(
+          child: SizedBox.square(
+            dimension: 40,
+            child: displayImage == null
+                ? ColoredBox(
+                    color: Theme.of(context).colorScheme.secondaryContainer,
+                    child: Center(
+                      child: Text(
+                        text,
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                    ),
+                  )
+                : CustomPaint(
+                    painter: _LUIAvatarPainter(
+                      image: displayImage,
+                      source: source,
+                    ),
+                  ),
+          ),
+        ),
+      );
+    }
+
     final content = switch (state.kind) {
       _NodeKind.row => row(),
       _NodeKind.column || _NodeKind.list => column(),
@@ -898,6 +988,7 @@ final class LUIFlutterBackend {
       _NodeKind.dropdownMenu => dropdownMenu(),
       _NodeKind.menuItem => menuItem(),
       _NodeKind.listItem => listItem(),
+      _NodeKind.avatar => avatar(),
       _NodeKind.toggle => FilterChip(
         label: Text(text),
         selected: checked,
@@ -1167,7 +1258,11 @@ final class LUIFlutterBackend {
             (kind == _NodeKind.row ||
                 kind == _NodeKind.column ||
                 kind == _NodeKind.list),
-      'grow' => value is num && value.isFinite && value >= 0,
+      'grow' =>
+        value is num &&
+            value.isFinite &&
+            value >= 0 &&
+            kind != _NodeKind.avatar,
       'columns' => value is int && value >= 0 && kind == _NodeKind.grid,
       'text' =>
         value is String &&
@@ -1183,7 +1278,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.select ||
                 kind == _NodeKind.menuItem ||
-                kind == _NodeKind.listItem),
+                kind == _NodeKind.listItem ||
+                kind == _NodeKind.avatar),
       'enabled' =>
         value is bool &&
             (_isButtonKind(kind) ||
@@ -1252,6 +1348,9 @@ final class LUIFlutterBackend {
         value is bool &&
             (kind == _NodeKind.combobox || kind == _NodeKind.listItem),
       'double-press-enabled' => value is bool && kind == _NodeKind.listItem,
+      'image' => value is int && value >= 0 && kind == _NodeKind.avatar,
+      'source-x' || 'source-y' || 'source-width' || 'source-height' =>
+        value is num && value.isFinite && kind == _NodeKind.avatar,
       'anchor' =>
         value is String &&
             (value == 'above' || value == 'below') &&
@@ -1270,7 +1369,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.grid ||
                 kind == _NodeKind.list ||
                 kind == _NodeKind.dropdownMenu),
-      'padding' => value is int,
+      'padding' => value is int && kind != _NodeKind.avatar,
       'padding-horizontal' || 'padding-vertical' =>
         value is int &&
             value >= 0 &&
@@ -1278,7 +1377,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.column ||
                 kind == _NodeKind.grid ||
                 kind == _NodeKind.box),
-      'background' => value is String,
+      'background' => value is String && kind != _NodeKind.avatar,
       'foreground' =>
         value is String &&
             (kind == _NodeKind.text ||
@@ -1297,16 +1396,16 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.dropdownMenu ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem),
-      'border-color' => value is String,
-      'border-width' => value is int && value >= 0,
-      'corner-radius' => value is int && value >= 0,
+      'border-color' => value is String && kind != _NodeKind.avatar,
+      'border-width' => value is int && value >= 0 && kind != _NodeKind.avatar,
+      'corner-radius' => value is int && value >= 0 && kind != _NodeKind.avatar,
       'width' ||
       'height' ||
       'min-width' ||
       'max-width' ||
       'min-height' ||
-      'max-height' => value is int && value >= 0,
-      'style-class' => value is String,
+      'max-height' => value is int && value >= 0 && kind != _NodeKind.avatar,
+      'style-class' => value is String && kind != _NodeKind.avatar,
       'checked' =>
         value is bool &&
             (kind == _NodeKind.checkbox ||
@@ -1326,7 +1425,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.toggle ||
                 kind == _NodeKind.radioGroup ||
                 kind == _NodeKind.radio ||
-                kind == _NodeKind.slider),
+                kind == _NodeKind.slider ||
+                kind == _NodeKind.avatar),
       _ => false,
     };
   }
@@ -1399,6 +1499,47 @@ final class LUIFlutterBackend {
           throw const LUIBackendException(
             'list-item accepts text or children, not both',
           );
+        }
+      }
+      if (state.kind == _NodeKind.avatar) {
+        final text = state.properties['text'] as String? ?? '';
+        if (text.isEmpty) {
+          throw const LUIBackendException('avatar requires initials');
+        }
+        const sourceNames = {
+          'source-x',
+          'source-y',
+          'source-width',
+          'source-height',
+        };
+        final sourceCount = sourceNames
+            .where(state.properties.containsKey)
+            .length;
+        if (sourceCount != 0 && sourceCount != sourceNames.length) {
+          throw const LUIBackendException(
+            'avatar source crop requires all four coordinates',
+          );
+        }
+        if (sourceCount == sourceNames.length) {
+          if (!state.properties.containsKey('image')) {
+            throw const LUIBackendException(
+              'avatar source crop requires an image',
+            );
+          }
+          final x = (state.properties['source-x'] as num).toDouble();
+          final y = (state.properties['source-y'] as num).toDouble();
+          final width = (state.properties['source-width'] as num).toDouble();
+          final height = (state.properties['source-height'] as num).toDouble();
+          if (x < 0 || y < 0) {
+            throw const LUIBackendException(
+              'avatar source crop coordinates must be non-negative',
+            );
+          }
+          if (width <= 0 || height <= 0) {
+            throw const LUIBackendException(
+              'avatar source crop dimensions must be positive',
+            );
+          }
         }
       }
     }
@@ -1587,6 +1728,31 @@ final class LUIFlutterBackend {
 extension on _NodeKind {
   bool get isOverlaySurface =>
       this == _NodeKind.panel || this == _NodeKind.card;
+}
+
+final class _LUIAvatarPainter extends CustomPainter {
+  const _LUIAvatarPainter({required this.image, required this.source});
+
+  final ui.Image image;
+  final Rect? source;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final available =
+        source ??
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+    final fitted = applyBoxFit(BoxFit.cover, available.size, size);
+    final sourceRect = Alignment.center.inscribe(fitted.source, available);
+    final destinationRect = Alignment.center.inscribe(
+      fitted.destination,
+      Offset.zero & size,
+    );
+    canvas.drawImageRect(image, sourceRect, destinationRect, Paint());
+  }
+
+  @override
+  bool shouldRepaint(_LUIAvatarPainter oldDelegate) =>
+      oldDelegate.image != image || oldDelegate.source != source;
 }
 
 final class _LUIListItem extends StatefulWidget {

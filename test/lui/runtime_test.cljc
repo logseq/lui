@@ -251,6 +251,102 @@
          ((:apply-batch backend) empty-row))
         "an unnamed empty interactive row is rejected")))
 
+(deftest avatar-uses-a-registered-image-id-with-initials-fallback
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Avatar)
+                      (proto/set-prop-op
+                       1 proto/TextValue (proto/StringValue "ZN"))
+                      (proto/set-prop-op
+                       1 proto/ImageIdValue (proto/IntValue 7))
+                      (proto/set-prop-op
+                       1 proto/SourceX (proto/FloatValue 4.0))
+                      (proto/set-prop-op
+                       1 proto/SourceY (proto/FloatValue 8.0))
+                      (proto/set-prop-op
+                       1 proto/SourceWidth (proto/FloatValue 32.0))
+                      (proto/set-prop-op
+                       1 proto/SourceHeight (proto/FloatValue 24.0))
+                      (proto/set-prop-op
+                       1 proto/AccessibilityLabel
+                       (proto/StringValue "Profile picture"))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"avatar\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"text\","
+      "\"value\":\"ZN\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"image\","
+      "\"value\":7},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"source-x\","
+      "\"value\":4.0},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"source-y\","
+      "\"value\":8.0},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"source-width\","
+      "\"value\":32.0},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"source-height\","
+      "\"value\":24.0},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"accessibility-label\","
+      "\"value\":\"Profile picture\"}]}" )
+     (wire/encode-batch batch)
+     "avatar keeps the pinned registered-image vocabulary"))
+  (doseq [property
+          [proto/TextValue proto/ImageIdValue proto/SourceX proto/SourceY
+           proto/SourceWidth proto/SourceHeight proto/AccessibilityLabel]]
+    (is (proto/property-supported? proto/Avatar property)
+        "avatar admits only its image and fallback contract"))
+  (is (not (proto/can-contain-children? proto/Avatar))
+      "avatar is one retained display leaf")
+  (is (not (proto/property-supported? proto/Avatar proto/WidthValue))
+      "avatar does not inherit extra surface API")
+  (is (not (proto/property-value-supported?
+            proto/ImageIdValue (proto/IntValue -1)))
+      "negative image ids are rejected before a backend sees them"))
+
+(deftest avatar-source-crop-is-an-atomic-valid-rectangle
+  (let [partial-renderer (apple/create)
+        partial-backend (apple/backend partial-renderer)
+        partial
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Avatar)
+                      (proto/set-prop-op
+                       1 proto/TextValue (proto/StringValue "ZN"))
+                      (proto/set-prop-op
+                       1 proto/ImageIdValue (proto/IntValue 7))
+                      (proto/set-prop-op
+                       1 proto/SourceX (proto/FloatValue 4.0))]))]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"avatar source crop requires all four coordinates"
+         ((:apply-batch partial-backend) partial))
+        "partial atlas declarations fail atomically"))
+  (let [invalid-renderer (apple/create)
+        invalid-backend (apple/backend invalid-renderer)
+        invalid
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Avatar)
+                      (proto/set-prop-op
+                       1 proto/TextValue (proto/StringValue "ZN"))
+                      (proto/set-prop-op
+                       1 proto/ImageIdValue (proto/IntValue 7))
+                      (proto/set-prop-op
+                       1 proto/SourceX (proto/FloatValue 0.0))
+                      (proto/set-prop-op
+                       1 proto/SourceY (proto/FloatValue 0.0))
+                      (proto/set-prop-op
+                       1 proto/SourceWidth (proto/FloatValue 0.0))
+                      (proto/set-prop-op
+                       1 proto/SourceHeight (proto/FloatValue 24.0))]))]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"avatar source crop dimensions must be positive"
+         ((:apply-batch invalid-backend) invalid))
+        "zero-area atlas declarations fail atomically")))
+
 (deftest toggle-controls-use-closed-wire-names
   (let [batch
         (record proto/patch-batch

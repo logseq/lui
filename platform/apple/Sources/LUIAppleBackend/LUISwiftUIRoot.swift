@@ -80,6 +80,8 @@ private struct LUINodeView: View {
             LUIMenuItemView(model: model, backend: backend)
         case .listItem:
             LUIListItemView(model: model, backend: backend)
+        case .avatar:
+            LUIAvatarView(model: model, backend: backend)
         case .checkbox:
             LUICheckboxView(model: model, backend: backend)
         case .switchControl:
@@ -172,6 +174,28 @@ private struct LUINodeView: View {
 
     private var progressAccessibilityValue: String {
         "\(Int((model.progressFraction * 100).rounded()))%"
+    }
+}
+
+private struct LUIAvatarView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        ZStack {
+            Color.secondary.opacity(0.16)
+            if let image = model.avatarDisplayImage(in: backend) {
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Text(verbatim: model.text)
+                    .font(.callout.weight(.medium))
+            }
+        }
+        .frame(width: 40, height: 40)
+        .compositingGroup()
+        .clipShape(Circle())
     }
 }
 

@@ -180,6 +180,9 @@
 (defn list-item! [context]
   (runtime/create-node! (:ui-application context) proto/ListItem))
 
+(defn avatar! [context]
+  (runtime/create-node! (:ui-application context) proto/Avatar))
+
 (defn button! [context]
   (runtime/create-node! (:ui-application context) proto/Button))
 
@@ -250,6 +253,15 @@
      (sig/own-signal!
       (:ui-scope context)
       (sig/map (fn [value] (proto/FloatValue value)) source)))
+    true))
+
+(defn int-property-signal! [context node property source]
+  (do
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context) node property
+     (sig/own-signal!
+      (:ui-scope context)
+      (sig/map (fn [value] (proto/IntValue value)) source)))
     true))
 
 (defn disabled! [context node disabled]

@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lui_flutter_backend/lui_flutter_backend.dart';
 import 'package:lui_flutter_backend/lui_ocaml_bridge.dart';
 
@@ -32,6 +35,32 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
     _backend = LUIFlutterBackend(onEvent: _dispatch);
     _bridge = LUIOcamlBridge.open(_libraryPath(), onPatch: _backend.applyJson);
     _bridge.start();
+    unawaited(_registerAvatarImage());
+  }
+
+  Future<void> _registerAvatarImage() async {
+    ui.Codec? codec;
+    ui.Image? image;
+    try {
+      final data = await rootBundle.load(
+        'macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_128.png',
+      );
+      codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+      image = (await codec.getNextFrame()).image;
+      if (mounted) _backend.registerImage(id: 1, image: image);
+    } catch (error, stack) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'LUI component gallery',
+          context: ErrorDescription('while registering the Avatar image'),
+        ),
+      );
+    } finally {
+      image?.dispose();
+      codec?.dispose();
+    }
   }
 
   void _dispatch(LUIEvent event) {

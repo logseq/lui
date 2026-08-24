@@ -59,4 +59,6 @@
    (fn [_event] (send (model/SelectDocument "Quarterly report.md")))
    (fn [_event] (send (model/SelectDocument "Launch checklist.md")))
    (fn [_event] (send (model/OpenDocument "Quarterly report.md")))
-   (fn [_event] (send (model/OpenDocument "Launch checklist.md")))])
+   (fn [_event] (send (model/OpenDocument "Launch checklist.md")))
+   (reactive :gallery-avatar-image model-source)
+   (fn [_event] (send model/ToggleAvatarImage))])

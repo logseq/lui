@@ -5,14 +5,15 @@
                      ToggleButton Toggle RadioGroup Radio Slider TextField
                      Input SearchField Textarea Checkbox SwitchControl Progress
                      Divider Scroll ListContainer Spacer Spinner Icon
-                     Select Combobox DropdownMenu MenuItem ListItem TextValue
-                     Enabled Gap MainAlignment CrossAlignment GrowValue GridColumns
-                     PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue
-                     BorderWidth CornerRadius WidthValue HeightValue MinWidth MaxWidth
-                     MinHeight MaxHeight PlaceholderValue AccessibilityLabel StyleClass HeadingLevel
-                     Checked ProgressValue OrientationValue SizeValue IconName VariantValue
-                     InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled
-                     ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled AnchorValue
+                     Select Combobox DropdownMenu MenuItem ListItem Avatar
+                     TextValue Enabled Gap MainAlignment CrossAlignment GrowValue
+                     GridColumns PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue
+                     BorderColorValue BorderWidth CornerRadius WidthValue HeightValue MinWidth
+                     MaxWidth MinHeight MaxHeight PlaceholderValue AccessibilityLabel StyleClass
+                     HeadingLevel Checked ProgressValue OrientationValue SizeValue IconName
+                     VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter
+                     HoldEnabled ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled
+                     ImageIdValue SourceX SourceY SourceWidth SourceHeight AnchorValue
                      AnchorAlignmentValue AnchorOffset]]))
 
 (defn node-kind-name [kind]
@@ -51,7 +52,8 @@
     Combobox "combobox"
     DropdownMenu "dropdown-menu"
     MenuItem "menu-item"
-    ListItem "list-item"))
+    ListItem "list-item"
+    Avatar "avatar"))
 
 (defn property-name [property]
   (match property
@@ -97,6 +99,11 @@
     PressEnabled "press-enabled"
     SubmitEnabled "submit-enabled"
     DoublePressEnabled "double-press-enabled"
+    ImageIdValue "image"
+    SourceX "source-x"
+    SourceY "source-y"
+    SourceWidth "source-width"
+    SourceHeight "source-height"
     AnchorValue "anchor"
     AnchorAlignmentValue "anchor-alignment"
     AnchorOffset "anchor-offset"))

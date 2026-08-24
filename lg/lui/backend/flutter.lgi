@@ -31,7 +31,8 @@
   (FlutterCombobox)
   (FlutterDropdownMenu)
   (FlutterMenuItem)
-  (FlutterListItem))
+  (FlutterListItem)
+  (FlutterAvatar))
 
 (type-record flutter-renderer
   (flutter-store :retained-store<flutter-node>)

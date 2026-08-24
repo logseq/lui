@@ -13,7 +13,8 @@
              :refer [AppleBox AppleCard AppleCheckbox AppleColumn AppleFormLabel AppleGrid
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput
-                     AppleSelect AppleCombobox AppleDropdownMenu AppleMenuItem AppleListItem]]
+                     AppleSelect AppleCombobox AppleDropdownMenu AppleMenuItem AppleListItem
+                     AppleAvatar]]
             [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
@@ -126,6 +127,18 @@
     [:row {:gap 8}
      [:icon {:name "folder"}]
      [:text "Custom child row"]]]])
+
+(defui retained-avatars [image-id]
+  [:row {:gap 12}
+   [:avatar
+    {:image image-id
+     :source-x 0.0
+     :source-y 0.0
+     :source-width 32.0
+     :source-height 32.0
+     :label "Profile picture"}
+    "ZN"]
+   [:avatar "CT"]])
 
 (defui current-platform-profile []
   (tuple (platform) (host)))
@@ -507,6 +520,39 @@
         (runtime/flush! application)
         (assert-equal node-count (apple/node-count renderer)
                       "selection patches the retained ListItem in place")))))
+
+(deftest avatar-binds-a-model-owned-image-id-without-replacing-its-node
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-avatars")
+        context (ui/context application scope)
+        image-id (sig/state scheduler 0)
+        root (retained-avatars context (sig/value image-id))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [image-avatar (nth (apple/children renderer root) 0)
+          fallback-avatar (nth (apple/children renderer root) 1)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer image-avatar)
+        (Some AppleAvatar) (is true "image avatar is one semantic leaf")
+        _ (is false "image avatar has the native Avatar kind"))
+      (match (apple/property renderer image-avatar proto/ImageIdValue)
+        (Some (proto/IntValue value))
+        (assert-equal 0 value "zero keeps the initials fallback")
+        _ (is false "avatar image id exists"))
+      (match (apple/property renderer fallback-avatar proto/TextValue)
+        (Some (StringValue value))
+        (assert-equal "CT" value "an unbound avatar retains its initials")
+        _ (is false "fallback initials exist"))
+      (sig/set! image-id 7)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "an image Signal patches the retained Avatar in place")
+      (match (apple/property renderer image-avatar proto/ImageIdValue)
+        (Some (proto/IntValue value))
+        (assert-equal 7 value "the registered image id is model owned")
+        _ (is false "patched avatar image id exists")))))
 
 (deftest defelement-adds-a-tag-without-changing-defui
   (let [scheduler (sig/scheduler)

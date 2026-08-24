@@ -24,7 +24,8 @@
                  (gallery-picker-query "")
                  (gallery-open-picker "none")
                  (gallery-document "Quarterly report.md")
-                 (gallery-document-action "Selected Quarterly report.md"))
+                 (gallery-document-action "Selected Quarterly report.md")
+                 (gallery-avatar-image 1))
          model/AdvanceProgress)]
     (assert-equal false (:gallery-disabled initial) "controls start enabled")
     (assert-equal 0.3 (:gallery-progress initial) "progress has a visible start")
@@ -38,6 +39,12 @@
                   "picker menu starts closed")
     (assert-equal "Quarterly report.md" (:gallery-document initial)
                   "list starts with one model-owned selection")
+    (assert-equal 0 (:gallery-avatar-image initial)
+                  "avatar starts on its initials fallback")
+    (assert-equal 1
+                  (:gallery-avatar-image
+                   (model/update initial model/ToggleAvatarImage))
+                  "the shared reducer adopts the host-registered ImageId")
     (assert-equal 0.4 (:gallery-progress advanced) "progress advances by a tenth")
     (assert-equal 0.0 (:gallery-progress wrapped) "progress wraps after completion")
     (assert-equal

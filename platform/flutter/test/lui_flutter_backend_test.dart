@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lui_flutter_backend/lui_flutter_backend.dart';
@@ -455,6 +457,138 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'registering an image invalidates only Avatars that reference its ImageId',
+    (tester) async {
+      final recorder = ui.PictureRecorder();
+      final canvas = ui.Canvas(recorder);
+      canvas.drawColor(const Color(0xff6750a4), BlendMode.src);
+      final image = await recorder.endRecording().toImage(64, 64);
+      addTearDown(image.dispose);
+
+      final backend = LUIFlutterBackend()
+        ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"row"},
+        {"op":"create-node","id":2,"kind":"avatar"},
+        {"op":"create-node","id":3,"kind":"avatar"},
+        {"op":"set-prop","id":2,"property":"text","value":"ZN"},
+        {"op":"set-prop","id":2,"property":"image","value":7},
+        {"op":"set-prop","id":2,"property":"source-x","value":8.0},
+        {"op":"set-prop","id":2,"property":"source-y","value":4.0},
+        {"op":"set-prop","id":2,"property":"source-width","value":32.0},
+        {"op":"set-prop","id":2,"property":"source-height","value":24.0},
+        {"op":"set-prop","id":2,"property":"accessibility-label","value":"Profile picture"},
+        {"op":"set-prop","id":3,"property":"text","value":"CT"},
+        {"op":"set-prop","id":3,"property":"image","value":8},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1}
+      ]}
+      ''');
+
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+      );
+      final firstRevision = backend.debugRevision(2);
+      final secondRevision = backend.debugRevision(3);
+      final retained = tester.renderObject(
+        find.byKey(LUIFlutterBackend.nodeKey(2)),
+      );
+      expect(find.text('ZN'), findsOneWidget);
+      expect(find.text('CT'), findsOneWidget);
+
+      backend.registerImage(id: 7, image: image);
+      await tester.pump();
+      expect(find.text('ZN'), findsNothing);
+      expect(find.text('CT'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(LUIFlutterBackend.nodeKey(2)),
+          matching: find.byType(CustomPaint),
+        ),
+        findsOneWidget,
+      );
+      expect(backend.debugRevision(2), firstRevision + 1);
+      expect(backend.debugRevision(3), secondRevision);
+      expect(
+        tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(2))),
+        same(retained),
+      );
+
+      backend.unregisterImage(7);
+      await tester.pump();
+      expect(find.text('ZN'), findsOneWidget);
+      expect(backend.debugRevision(2), firstRevision + 2);
+      expect(backend.debugRevision(3), secondRevision);
+
+      backend.unregisterImage(7);
+      expect(backend.debugRevision(2), firstRevision + 2);
+      expect(
+        () => backend.registerImage(id: 0, image: image),
+        throwsA(isA<LUIBackendException>()),
+      );
+      backend.dispose();
+    },
+  );
+
+  test('rejects partial and invalid Avatar source crops atomically', () {
+    final partial = LUIFlutterBackend();
+    expect(
+      () => partial.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"avatar"},
+        {"op":"set-prop","id":1,"property":"text","value":"ZN"},
+        {"op":"set-prop","id":1,"property":"image","value":7},
+        {"op":"set-prop","id":1,"property":"source-x","value":0.0}
+      ]}
+      '''),
+      throwsA(
+        isA<LUIBackendException>().having(
+          (error) => error.message,
+          'message',
+          contains('avatar source crop requires all four coordinates'),
+        ),
+      ),
+    );
+    expect(partial.generation, 0);
+
+    final invalid = LUIFlutterBackend();
+    expect(
+      () => invalid.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"avatar"},
+        {"op":"set-prop","id":1,"property":"text","value":"ZN"},
+        {"op":"set-prop","id":1,"property":"image","value":7},
+        {"op":"set-prop","id":1,"property":"source-x","value":0.0},
+        {"op":"set-prop","id":1,"property":"source-y","value":0.0},
+        {"op":"set-prop","id":1,"property":"source-width","value":-1.0},
+        {"op":"set-prop","id":1,"property":"source-height","value":24.0}
+      ]}
+      '''),
+      throwsA(
+        isA<LUIBackendException>().having(
+          (error) => error.message,
+          'message',
+          contains('avatar source crop dimensions must be positive'),
+        ),
+      ),
+    );
+    expect(invalid.generation, 0);
+
+    final expanded = LUIFlutterBackend();
+    expect(
+      () => expanded.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"avatar"},
+        {"op":"set-prop","id":1,"property":"text","value":"ZN"},
+        {"op":"set-prop","id":1,"property":"width","value":40}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(expanded.generation, 0);
+  });
 
   testWidgets('maps semantic content primitives to native Flutter widgets', (
     tester,

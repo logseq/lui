@@ -455,10 +455,38 @@ keeps a native Material `ListTile` and uses a small pointer-release adapter
 only for the reference's immediate-plus-additive click contract. All three
 retain the row and its custom child subtree when a selection Signal changes.
 
-`avatar` is intentionally not approximated with a URL prop. The pinned API
-requires a runtime-registered `u64 ImageId`, initials fallback, and optional
-four-coordinate atlas crop; it will be delivered with the shared image
-registry rather than as a second incompatible image model.
+### Avatar and registered-image contract
+
+`avatar` is a display-only retained leaf. Its exact public component API is
+initials text, `image`, `source-x`, `source-y`, `source-width`,
+`source-height`, and `label`. It deliberately has no URL, loading, error,
+shape, or size prop. The reference's fixed house geometry and circular cover
+crop remain backend presentation details.
+
+`image` accepts a Signal whose non-negative integer value is a model-owned
+`ImageId`; literals are rejected because the resource may become available
+after the view is mounted. `0` is the no-image sentinel. A zero or currently
+unregistered id renders the initials fallback without changing node identity.
+Registering or unregistering an id invalidates only Avatar nodes that reference
+that id, independently of LG patch generations. The registry never becomes
+application state and never owns loading policy.
+
+The host registers an already-decoded platform image under a caller-chosen id:
+Web uses a URL plus decoded pixel dimensions, SwiftUI uses `CGImage`, and
+Flutter uses `dart:ui.Image`. Replacing an existing id is atomic. Unregistering
+removes the registry reference and restores initials on every referencing
+Avatar. Callers retain responsibility for URL/object-URL lifetime on Web and for any
+external references they keep to native image objects. Flutter explicitly
+releases its cloned image handles when the backend is disposed. Apple and Web
+registry references follow the backend or renderer lifetime. On every
+backend, `unregister` immediately removes the registry slot.
+
+Atlas cropping is an all-or-none group. If present, all four source values
+must be finite, `source-x` and `source-y` must be non-negative, and
+`source-width` and `source-height` must be positive. Backends clip the source
+rectangle to the decoded image bounds and draw it with cover fit inside the
+same circular Avatar frame. Supplying only part of the group is rejected
+atomically rather than silently drawing a different image.
 
 ## Showcase
 

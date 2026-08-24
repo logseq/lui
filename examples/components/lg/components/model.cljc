@@ -12,7 +12,8 @@
     (gallery-picker-query "")
     (gallery-open-picker "none")
     (gallery-document "Quarterly report.md")
-    (gallery-document-action "Selected Quarterly report.md")))
+    (gallery-document-action "Selected Quarterly report.md")
+    (gallery-avatar-image 0)))
 
 (defn update [model action]
   (match action
@@ -60,6 +61,11 @@
 
     (OpenDocument document)
     (assoc model :gallery-document-action (str "Opened " document))
+
+    ToggleAvatarImage
+    (assoc model
+           :gallery-avatar-image
+           (if (= (:gallery-avatar-image model) 0) 1 0))
 
     AdvanceProgress
     (assoc

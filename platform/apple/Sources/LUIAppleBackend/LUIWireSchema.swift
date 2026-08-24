@@ -37,6 +37,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case dropdownMenu = "dropdown-menu"
     case menuItem = "menu-item"
     case listItem = "list-item"
+    case avatar = "avatar"
 }
 
 enum LUIProperty: String, Decodable, Hashable {
@@ -82,6 +83,11 @@ enum LUIProperty: String, Decodable, Hashable {
     case pressEnabled = "press-enabled"
     case submitEnabled = "submit-enabled"
     case doublePressEnabled = "double-press-enabled"
+    case image = "image"
+    case sourceX = "source-x"
+    case sourceY = "source-y"
+    case sourceWidth = "source-width"
+    case sourceHeight = "source-height"
     case anchor = "anchor"
     case anchorAlignment = "anchor-alignment"
     case anchorOffset = "anchor-offset"

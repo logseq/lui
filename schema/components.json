@@ -50,7 +50,7 @@
     {"name": "toggle", "status": "supported"},
     {"name": "switch", "status": "supported"},
     {"name": "select", "status": "supported"},
-    {"name": "avatar", "status": "pending"},
+    {"name": "avatar", "status": "supported"},
     {"name": "checkbox", "status": "supported"},
     {"name": "radio", "status": "supported"},
     {"name": "slider", "status": "supported"},
@@ -106,7 +106,8 @@
     {"lg": "Combobox", "wire": "combobox", "dart": "combobox", "swift": "combobox", "container": false},
     {"lg": "DropdownMenu", "wire": "dropdown-menu", "dart": "dropdownMenu", "swift": "dropdownMenu", "container": true},
     {"lg": "MenuItem", "wire": "menu-item", "dart": "menuItem", "swift": "menuItem", "container": false},
-    {"lg": "ListItem", "wire": "list-item", "dart": "listItem", "swift": "listItem", "container": true}
+    {"lg": "ListItem", "wire": "list-item", "dart": "listItem", "swift": "listItem", "container": true},
+    {"lg": "Avatar", "wire": "avatar", "dart": "avatar", "swift": "avatar", "container": false}
   ],
   "properties": [
     {"lg": "TextValue", "wire": "text", "swift": "text"},
@@ -151,6 +152,11 @@
     {"lg": "PressEnabled", "wire": "press-enabled", "swift": "pressEnabled"},
     {"lg": "SubmitEnabled", "wire": "submit-enabled", "swift": "submitEnabled"},
     {"lg": "DoublePressEnabled", "wire": "double-press-enabled", "swift": "doublePressEnabled"},
+    {"lg": "ImageIdValue", "wire": "image", "swift": "image"},
+    {"lg": "SourceX", "wire": "source-x", "swift": "sourceX"},
+    {"lg": "SourceY", "wire": "source-y", "swift": "sourceY"},
+    {"lg": "SourceWidth", "wire": "source-width", "swift": "sourceWidth"},
+    {"lg": "SourceHeight", "wire": "source-height", "swift": "sourceHeight"},
     {"lg": "AnchorValue", "wire": "anchor", "swift": "anchor"},
     {"lg": "AnchorAlignmentValue", "wire": "anchor-alignment", "swift": "anchorAlignment"},
     {"lg": "AnchorOffset", "wire": "anchor-offset", "swift": "anchorOffset"}

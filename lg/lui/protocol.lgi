@@ -36,7 +36,8 @@
   (Combobox)
   (DropdownMenu)
   (MenuItem)
-  (ListItem))
+  (ListItem)
+  (Avatar))
 
 (type-variant operating-system
   (GenericOS)
@@ -100,6 +101,11 @@
   (PressEnabled)
   (SubmitEnabled)
   (DoublePressEnabled)
+  (ImageIdValue)
+  (SourceX)
+  (SourceY)
+  (SourceWidth)
+  (SourceHeight)
   (AnchorValue)
   (AnchorAlignmentValue)
   (AnchorOffset))

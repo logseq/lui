@@ -6,7 +6,7 @@
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
-                     Select Combobox DropdownMenu MenuItem ListItem
+                     Select Combobox DropdownMenu MenuItem ListItem Avatar
                      Scroll ListContainer Spacer Spinner Icon
                      Progress Divider
                      Toggle RadioGroup Radio Slider
@@ -23,6 +23,7 @@
                      VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled
                      ChangeEnabled ToggleEnabled PressEnabled
                      SubmitEnabled DoublePressEnabled
+                     ImageIdValue SourceX SourceY SourceWidth SourceHeight
                      AnchorValue AnchorAlignmentValue AnchorOffset
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
@@ -35,6 +36,7 @@
            (web-document (Webapi.Dom.Element.ownerDocument host))
            (web-event-handler (atom (fn [_event] true)))
            (web-app-icons app-icons)
+           (web-images (atom {}))
            (web-cleanups (atom {})))))
 
 (defn set-event-handler! [renderer handler]
@@ -77,7 +79,8 @@
     Combobox "lui-combobox"
     DropdownMenu "lui-dropdown-menu"
     MenuItem "lui-menu-item"
-    ListItem "lui-list-item"))
+    ListItem "lui-list-item"
+    Avatar "lui-avatar"))
 
 (defn- direct-toggle? [kind]
   (or (= kind Checkbox) (= kind SwitchControl) (= kind Radio)))
@@ -164,6 +167,16 @@
        {"aria-hidden" "true" "data-name" "check"}
        [])])))
 
+(defn- create-avatar-node [renderer]
+  (let [document (:web-document renderer)]
+    (element
+     document "span" "lui-avatar" {}
+     [(element
+       document "img" "lui-avatar-image"
+       {"alt" "" "aria-hidden" "true" "draggable" "false" "hidden" ""}
+       [])
+      (element document "span" "lui-avatar-initials" {} [])])))
+
 (defn- create-simple-node [renderer kind]
   (let [tag
         (match kind
@@ -222,6 +235,7 @@
     Radio (create-direct-toggle-node renderer kind)
     Combobox (create-combobox-node renderer)
     MenuItem (create-menu-item-node renderer)
+    Avatar (create-avatar-node renderer)
     _ (create-simple-node renderer kind)))
 
 (defn- dom-node [renderer node]
@@ -629,6 +643,109 @@
     (Webapi.Dom.Element.setAttribute attribute "" dom-node)
     (Webapi.Dom.Element.removeAttribute attribute dom-node)))
 
+(defn- avatar-float [renderer node property fallback]
+  (match (retained/property (:web-store renderer) node property)
+    (Some (FloatValue value)) value
+    _ fallback))
+
+(defn- registered-avatar-image [renderer node]
+  (match (retained/property (:web-store renderer) node ImageIdValue)
+    (Some (IntValue image-id))
+    (if (= image-id 0)
+      None
+      (clojure.core/get (deref (:web-images renderer)) image-id))
+    _ None))
+
+(defn- update-avatar! [renderer node dom-node]
+  (let [image-node (child-element dom-node 0)
+        initials-node (child-element dom-node 1)]
+    (match (registered-avatar-image renderer node)
+      (Some resource)
+      (let [source-x (avatar-float renderer node SourceX 0.0)
+            source-y (avatar-float renderer node SourceY 0.0)
+            source-width (avatar-float renderer node SourceWidth 0.0)
+            source-height (avatar-float renderer node SourceHeight 0.0)
+            cropped (> source-width 0.0)]
+        (Webapi.Dom.Element.setAttribute
+         "src" (:web-image-url resource) image-node)
+        (set-state-attribute! image-node "hidden" false)
+        (set-state-attribute! initials-node "hidden" true)
+        (if cropped
+          (let [size 40.0
+                scale
+                (max (/ size source-width) (/ size source-height))
+                crop-width (* source-width scale)
+                crop-height (* source-height scale)]
+            (set-style!
+             image-node "width"
+             (str (* (:web-image-width resource) scale) "px"))
+            (set-style!
+             image-node "height"
+             (str (* (:web-image-height resource) scale) "px"))
+            (set-style!
+             image-node "left"
+             (str (+ (* (- source-x) scale)
+                     (/ (- size crop-width) 2.0))
+                  "px"))
+            (set-style!
+             image-node "top"
+             (str (+ (* (- source-y) scale)
+                     (/ (- size crop-height) 2.0))
+                  "px"))
+            (set-style! image-node "object-fit" "fill"))
+          (do
+            (set-style! image-node "width" "100%")
+            (set-style! image-node "height" "100%")
+            (set-style! image-node "left" "0")
+            (set-style! image-node "top" "0")
+            (set-style! image-node "object-fit" "cover"))))
+      None
+      (do
+        (Webapi.Dom.Element.removeAttribute "src" image-node)
+        (set-state-attribute! image-node "hidden" true)
+        (set-state-attribute! initials-node "hidden" false)))))
+
+(defn- refresh-avatar-image-id! [renderer image-id]
+  (reduce-kv
+   (fn [_updated node current]
+     (when
+      (and
+       (= (:semantic-kind current) Avatar)
+       (= (clojure.core/get (:retained-properties current) ImageIdValue)
+          (Some (IntValue image-id))))
+       (update-avatar! renderer node (:platform-node current)))
+     true)
+   true
+   (retained/nodes (:web-store renderer))))
+
+(defn register-image! [renderer image-id url width height]
+  (when (<= image-id 0)
+    (raise (Invalid_argument "registered image id must be positive")))
+  (when
+   (or
+    (not (Float.is_finite width))
+    (not (Float.is_finite height))
+    (<= width 0.0)
+    (<= height 0.0))
+    (raise (Invalid_argument "registered image dimensions must be positive")))
+  (swap!
+   (:web-images renderer)
+   assoc image-id
+   (record web-image-resource
+     (web-image-url url)
+     (web-image-width width)
+     (web-image-height height)))
+  (refresh-avatar-image-id! renderer image-id)
+  true)
+
+(defn unregister-image! [renderer image-id]
+  (when (<= image-id 0)
+    (raise (Invalid_argument "registered image id must be positive")))
+  (when (contains? (deref (:web-images renderer)) image-id)
+    (swap! (:web-images renderer) dissoc image-id)
+    (refresh-avatar-image-id! renderer image-id))
+  true)
+
 (defn- main-alignment-value [alignment]
   (match alignment
     "start" "flex-start"
@@ -673,7 +790,12 @@
 (defn- apply-property! [renderer node kind dom-node property value]
   (match (tuple property value)
     (tuple TextValue (StringValue text))
-    (if (= kind Select)
+    (if (= kind Avatar)
+      (do
+        (Webapi.Dom.Element.setTextContent
+         (child-element dom-node 1) text)
+        (update-avatar! renderer node dom-node))
+      (if (= kind Select)
       (Webapi.Dom.Element.setTextContent
        dom-node (select-display-text renderer node))
       (if (or (= kind TextField) (= kind Input) (= kind SearchField)
@@ -690,7 +812,7 @@
                   (button-label-node dom-node)
                   text-node)]
             (when (not (= text (Webapi.Dom.Element.textContent text-node)))
-              (Webapi.Dom.Element.setTextContent text-node text))))))
+              (Webapi.Dom.Element.setTextContent text-node text)))))))
 
     (tuple Enabled (BoolValue enabled))
     (let [control-node
@@ -893,6 +1015,21 @@
 
     (tuple DoublePressEnabled (BoolValue enabled))
     (set-state-attribute! dom-node "data-double-press-enabled" enabled)
+
+    (tuple ImageIdValue (IntValue _image-id))
+    (update-avatar! renderer node dom-node)
+
+    (tuple SourceX (FloatValue _value))
+    (update-avatar! renderer node dom-node)
+
+    (tuple SourceY (FloatValue _value))
+    (update-avatar! renderer node dom-node)
+
+    (tuple SourceWidth (FloatValue _value))
+    (update-avatar! renderer node dom-node)
+
+    (tuple SourceHeight (FloatValue _value))
+    (update-avatar! renderer node dom-node)
 
     (tuple AnchorValue (StringValue anchor))
     (Webapi.Dom.Element.setAttribute "data-anchor" anchor dom-node)

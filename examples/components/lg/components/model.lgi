@@ -11,7 +11,8 @@
   (gallery-picker-query :string)
   (gallery-open-picker :string)
   (gallery-document :string)
-  (gallery-document-action :string))
+  (gallery-document-action :string)
+  (gallery-avatar-image :int))
 
 (type-variant gallery-action
   (ToggleDisabled)
@@ -26,6 +27,7 @@
   (CommitPickerQuery)
   (SelectDocument :string)
   (OpenDocument :string)
+  (ToggleAvatarImage)
   (AdvanceProgress))
 
 (signature components.model/initial :fn<gallery-model>)
