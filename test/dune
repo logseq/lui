@@ -45,7 +45,7 @@
   (run
    %{bin:lg}
    --target native
-   --compile-files-from %{lib:lg:stdlib/lg_stdlib_native.state}
+   --compile-files-chunk-from %{lib:lg:stdlib/lg_stdlib_native.state}
    %{lib:lg-test.sources:test.cljc}
    %{lib:lg-test.sources:test_native.cljc}
    %{lib:signal-lg.sources:lg/signal/core.lgi}
@@ -152,7 +152,7 @@
   (run
    %{bin:lg}
    --target melange
-   --compile-files-from %{lib:lg:stdlib/lg_stdlib_melange.state}
+   --compile-files-chunk-from %{lib:lg:stdlib/lg_stdlib_melange.state}
    %{lib:lg-test.sources:test.cljc}
    %{lib:lg-test.sources:test_melange.cljc}
    %{lib:signal-lg.sources:lg/signal/core.lgi}
@@ -272,7 +272,7 @@
   (run
    %{bin:lg}
    --target native
-   --compile-files-from %{lib:lg:stdlib/lg_stdlib_native.state}
+   --compile-files-chunk-from %{lib:lg:stdlib/lg_stdlib_native.state}
    %{lib:lg-test.sources:test.cljc}
    %{lib:lg-test.sources:test_native.cljc}
    %{lib:signal-lg.sources:lg/signal/core.lgi}

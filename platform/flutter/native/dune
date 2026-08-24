@@ -1,79 +1,20 @@
 (rule
- (target todos_bridge_chunk.ml)
+ (target todos_bridge.ml)
  (deps
-  %{lib:lg:stdlib/lg_stdlib_native.state}
-  %{lib:signal-lg.sources:lg/signal/core.lgi}
-  %{lib:signal-lg.sources:lg/signal/core.cljc}
-  ../../../lg/lui/protocol.lgi
-  ../../../lg/lui/protocol.cljc
-  ../../../lg/lui/wire.lgi
-  ../../../lg/lui/wire.cljc
-  ../../../lg/lui/runtime.lgi
-  ../../../lg/lui/runtime.cljc
-  ../../../lg/lui/ui.lgi
-  ../../../lg/lui/ui.cljc
-  ../../../lg/lui/app.lgi
-  ../../../lg/lui/app.cljc
-  ../../../lg/lui/elements.cljc
-  ../../../lg/lui/macros.cljc
-  ../../../lg/lui/dynamic.lgi
-  ../../../lg/lui/dynamic.cljc
-  ../../../lg/lui/backend/retained.lgi
-  ../../../lg/lui/backend/retained.cljc
-  ../../../lg/lui/backend/flutter.lgi
-  ../../../lg/lui/backend/flutter.cljc
-  ../../../examples/todos/lg/todos/model.lgi
-  ../../../examples/todos/lg/todos/model.cljc
-  ../../../examples/todos/lg/todos/view.lgi
-  ../../../examples/todos/lg/todos/view.cljc
-  ../../../examples/todos/lg/todos/app.lgi
-  ../../../examples/todos/lg/todos/app.cljc
-  todos_bridge.lgi
-  todos_bridge.cljc
+  ../../../lg/lui/lui_native.state
+  (source_tree ../../../lg/lui/backend)
+  (source_tree ../../../examples/todos/lg/todos)
+  (source_tree .)
   %{bin:lg})
  (action
   (run
    %{bin:lg}
    --target native
-   --compile-files-from %{lib:lg:stdlib/lg_stdlib_native.state}
-   %{lib:signal-lg.sources:lg/signal/core.lgi}
-   %{lib:signal-lg.sources:lg/signal/core.cljc}
-   %{dep:../../../lg/lui/protocol.lgi}
-   %{dep:../../../lg/lui/protocol.cljc}
-   %{dep:../../../lg/lui/wire.lgi}
-   %{dep:../../../lg/lui/wire.cljc}
-   %{dep:../../../lg/lui/runtime.lgi}
-   %{dep:../../../lg/lui/runtime.cljc}
-   %{dep:../../../lg/lui/ui.lgi}
-   %{dep:../../../lg/lui/ui.cljc}
-   %{dep:../../../lg/lui/app.lgi}
-   %{dep:../../../lg/lui/app.cljc}
-   %{dep:../../../lg/lui/elements.cljc}
-   %{dep:../../../lg/lui/macros.cljc}
-   %{dep:../../../lg/lui/dynamic.lgi}
-   %{dep:../../../lg/lui/dynamic.cljc}
-   %{dep:../../../lg/lui/backend/retained.lgi}
-   %{dep:../../../lg/lui/backend/retained.cljc}
-   %{dep:../../../lg/lui/backend/flutter.lgi}
-   %{dep:../../../lg/lui/backend/flutter.cljc}
-   %{dep:../../../examples/todos/lg/todos/model.lgi}
-   %{dep:../../../examples/todos/lg/todos/model.cljc}
-   %{dep:../../../examples/todos/lg/todos/view.lgi}
-   %{dep:../../../examples/todos/lg/todos/view.cljc}
-   %{dep:../../../examples/todos/lg/todos/app.lgi}
-   %{dep:../../../examples/todos/lg/todos/app.cljc}
-   %{dep:todos_bridge.lgi}
-   %{dep:todos_bridge.cljc}
+   --compile-files-from ../../../lg/lui/lui_native.state
+   ../../../lg/lui/backend/retained
+   ../../../lg/lui/backend/flutter
+   ../../../examples/todos/lg/todos
    -o %{target})))
-
-(rule
- (target todos_bridge.ml)
- (deps %{lib:lg:stdlib/lg_stdlib_native.ml} todos_bridge_chunk.ml)
- (action
-  (with-stdout-to %{target}
-   (progn
-    (cat %{lib:lg:stdlib/lg_stdlib_native.ml})
-    (cat %{dep:todos_bridge_chunk.ml})))))
 
 (rule
  (target todos_bridge_complete.o)
