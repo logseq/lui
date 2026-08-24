@@ -276,6 +276,21 @@
            [])
        ~node)))
 
+(defelement separator [context parent attrs & _children]
+  (let [node (gensym "node")
+        orientation
+        (if (:orientation attrs) (:orientation attrs) "horizontal")
+        class-name
+        (if (:class attrs)
+          (str "lui-separator " (:class attrs))
+          "lui-separator")]
+    `(let [~node (lui.ui/separator! ~context ~orientation)]
+       (lui.ui/style-class! ~context ~node ~class-name)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
+
 (defelement text-field [context parent attrs & children]
   (let [node (gensym "node")
         child-nodes (map (fn [_child] (gensym "part")) children)

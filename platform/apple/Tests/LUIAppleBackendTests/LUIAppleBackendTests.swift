@@ -185,6 +185,39 @@ struct LUISwiftUIBackendTests {
         #expect(progress.progressFraction == 1)
     }
 
+    @Test("maps Separator orientation without replacing its SwiftUI model")
+    func mapsSeparatorOrientation() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"divider"},
+          {"op":"set-prop","id":1,"property":"orientation","value":"horizontal"}
+        ]}
+        """)
+
+        let separator = try #require(backend.model(id: 1))
+        let revision = separator.revision
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"orientation","value":"vertical"}
+        ]}
+        """)
+        #expect(backend.model(id: 1) === separator)
+        #expect(separator.revision == revision + 1)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":3,"ops":[
+              {"op":"set-prop","id":1,"property":"orientation","value":"diagonal"}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 2)
+        #expect(separator.revision == revision + 1)
+    }
+
     @Test("C ABI forwards SwiftUI backend events")
     func cABIForwardsEvent() {
         capturedAppleEvent = nil

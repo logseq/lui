@@ -92,3 +92,14 @@ test("the production stylesheet contains the Solid UI Progress contract", async 
   assert.match(css, /\.lui-progress-label,\.lui-progress-value-label\{[^}]*font-size:var\(--text-sm\)/)
   assert.doesNotMatch(css, /\.h-2\{/)
 })
+
+test("the production stylesheet contains the Solid UI Separator contract", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-separator\{[^}]*background-color:var\(--color-border\)/)
+  assert.match(css, /\.lui-separator\[data-orientation=horizontal\]\{[^}]*height:1px/)
+  assert.match(css, /\.lui-separator\[data-orientation=horizontal\]\{[^}]*width:100%/)
+  assert.match(css, /\.lui-separator\[data-orientation=vertical\]\{[^}]*height:100%/)
+  assert.match(css, /\.lui-separator\[data-orientation=vertical\]\{[^}]*width:1px/)
+  assert.doesNotMatch(css, /\.h-px\{/)
+})

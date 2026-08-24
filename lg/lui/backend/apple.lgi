@@ -14,6 +14,7 @@
   (AppleCheckbox)
   (AppleSwitch)
   (AppleProgress)
+  (AppleDivider)
   (AppleScrollView)
   (AppleSpacer))
 

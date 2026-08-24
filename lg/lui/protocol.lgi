@@ -14,6 +14,7 @@
   (Checkbox)
   (SwitchControl)
   (ProgressControl)
+  (Divider)
   (Scroll)
   (Spacer))
 
@@ -64,7 +65,8 @@
   (Indeterminate)
   (ProgressValue)
   (MinValue)
-  (MaxValue))
+  (MaxValue)
+  (OrientationValue))
 
 (type-variant wire-value
   (StringValue :string)
@@ -98,6 +100,7 @@
 (signature lui.protocol/event-node :fn<event;int>)
 (signature lui.protocol/event-supported? :fn<node-kind;event;bool>)
 (signature lui.protocol/input-type-supported? :fn<string;bool>)
+(signature lui.protocol/orientation-supported? :fn<string;bool>)
 (signature lui.protocol/property-supported? :fn<node-kind;property;bool>)
 (signature lui.protocol/property-value-supported?
   :fn<property;wire-value;bool>)

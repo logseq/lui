@@ -80,6 +80,7 @@ enum _NodeKind {
   checkbox,
   switchControl,
   progress,
+  divider,
   scroll,
   spacer,
 }
@@ -236,6 +237,8 @@ final class LUIFlutterBackend {
     final progressValue = state.properties['value'] as int? ?? minimum;
     final progressFraction =
         (progressValue.clamp(minimum, maximum) - minimum) / (maximum - minimum);
+    final orientation =
+        state.properties['orientation'] as String? ?? 'horizontal';
     final foreground = _color(
       context,
       state.properties['foreground'] as String?,
@@ -358,6 +361,10 @@ final class LUIFlutterBackend {
         semanticsLabel: accessibilityLabel,
         semanticsValue: '${(progressFraction * 100).round()}%',
       ),
+      _NodeKind.divider =>
+        orientation == 'vertical'
+            ? const VerticalDivider(width: 1)
+            : const Divider(height: 1),
       _NodeKind.scroll => SingleChildScrollView(
         child: children.isEmpty ? const SizedBox.shrink() : children.single,
       ),
@@ -494,6 +501,10 @@ final class LUIFlutterBackend {
       'value' ||
       'min-value' ||
       'max-value' => value is int && kind == _NodeKind.progress,
+      'orientation' =>
+        value is String &&
+            (value == 'horizontal' || value == 'vertical') &&
+            kind == _NodeKind.divider,
       'gap' =>
         value is int && (kind == _NodeKind.row || kind == _NodeKind.column),
       'padding' => value is int,
@@ -640,6 +651,7 @@ final class LUIFlutterBackend {
     'checkbox' => _NodeKind.checkbox,
     'switch' => _NodeKind.switchControl,
     'progress' => _NodeKind.progress,
+    'divider' => _NodeKind.divider,
     'scroll' => _NodeKind.scroll,
     'spacer' => _NodeKind.spacer,
     _ => throw const LUIBackendException('unknown node kind'),

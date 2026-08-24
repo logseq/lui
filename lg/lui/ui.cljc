@@ -238,6 +238,13 @@
       (sig/map (fn [value] (proto/IntValue value)) source)))
     node))
 
+(defn separator! [context orientation]
+  (let [node (runtime/create-node! (:ui-application context) proto/Divider)]
+    (runtime/set-prop!
+     (:ui-application context) node proto/OrientationValue
+     (proto/StringValue orientation))
+    node))
+
 (defn labelled-by! [context node label]
   (runtime/set-prop!
    (:ui-application context) node proto/LabelledBy (proto/IntValue label)))

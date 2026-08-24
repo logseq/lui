@@ -201,6 +201,24 @@ Numeric surface values are non-negative. These properties apply to retained
 primitives and patch the existing platform object. Component-specific classes
 remain Web-only visual selectors and are not interpreted as native styling.
 
+### Component extension paths
+
+Adding a component and adding a primitive are deliberately different jobs:
+
+1. The default component path changes only its LG composition, semantic Web
+   Tailwind rules, and `examples/components/` gallery. It does not extend the
+   wire protocol or any native backend. Card, Badge, Skeleton and most Solid UI
+   families follow this path.
+2. The primitive path is reserved for a reusable semantic capability that
+   requires a distinct native object, event, accessibility contract or
+   transient state. It extends the closed protocol once and maps that primitive
+   in every backend. Multiple public components must reuse it.
+
+A Web component must not acquire a new protocol node merely to obtain a tag or
+CSS selector. Conversely, the primitive path must not be replaced with an
+arbitrary DOM/JSON escape hatch, because that would remove cross-platform type
+safety and create a second Web-only UI model.
+
 ### Badge contract
 
 Badge proves the composition boundary: it is a retained `Row` containing its
@@ -219,6 +237,31 @@ variant as reusable Surface properties on the Row and foreground styling on
 its text content. Flutter uses `Row`, `Container` decoration and `Text`; Apple
 uses `HStack`, standard shape modifiers and `Text`. Both keep the same LUI node
 identities rather than maintaining another Badge state tree.
+
+### Separator contract
+
+Separator matches Solid UI's single-root family and its horizontal-default
+orientation contract:
+
+```clojure
+[:separator]
+[:separator {:orientation "vertical"}]
+```
+
+The public Separator lowers to the shared `Divider` leaf primitive because
+orientation affects native layout and separator accessibility semantics.
+`OrientationValue` is a closed `"horizontal"` or `"vertical"` property and
+defaults to horizontal. Invalid orientation values reject the complete patch
+batch before any backend state changes. A Divider never accepts children and
+can be reused by future component families.
+
+Web renders a semantic `hr` with `role="separator"`, `aria-orientation`, and a
+matching `data-orientation` style state. Its `lui-separator` Tailwind component
+rule uses a full-width one-pixel horizontal rule or a full-height one-pixel
+vertical rule, matching Solid UI. Apple uses SwiftUI `Divider`, constrained on
+the axis selected by the retained property. Flutter uses `Divider` or
+`VerticalDivider`. Patching orientation updates the existing retained node and
+does not replace its stable LUI identity.
 
 ### Progress contract
 

@@ -168,6 +168,41 @@
      (wire/encode-batch batch)
      "Progress stays inside the typed native wire vocabulary")))
 
+(deftest separator-uses-a-closed-orientation-contract
+  (let [batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Divider)
+                (proto/set-prop-op
+                 1 proto/OrientationValue
+                 (proto/StringValue "vertical"))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"divider\"},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"orientation\",\"value\":\"vertical\"}]}")
+     (wire/encode-batch batch)
+     "Separator stays inside the typed native wire vocabulary")))
+
+(deftest separator-rejects-an-invalid-orientation-before-enqueue
+  (let [renderer (apple/create)
+        application
+        (runtime/create (sig/scheduler) (apple/backend renderer))
+        separator (runtime/create-node! application proto/Divider)]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"invalid property value"
+         (runtime/set-prop!
+          application separator proto/OrientationValue
+          (proto/StringValue "diagonal")))
+        "Separator accepts only horizontal or vertical orientation")
+    (runtime/flush! application)
+    (assert-equal
+     1
+     (count (:ops (nth (apple/batches renderer) 0)))
+     "invalid orientation never enters the patch queue")))
+
 (deftest progress-control-rejects-an-empty-range-atomically
   (let [renderer (apple/create)
         backend (apple/backend renderer)

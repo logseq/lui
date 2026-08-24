@@ -329,6 +329,53 @@ void main() {
     expect(backend.generation, 0);
   });
 
+  testWidgets('maps Separator orientation to retained native dividers', (
+    tester,
+  ) async {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"divider"},
+        {"op":"set-prop","id":1,"property":"orientation","value":"horizontal"}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    final original = tester.renderObject(
+      find.byKey(LUIFlutterBackend.nodeKey(1)),
+    );
+    expect(find.byType(Divider), findsOneWidget);
+    expect(find.byType(VerticalDivider), findsNothing);
+
+    backend.applyJson('''
+    {"generation":2,"ops":[
+      {"op":"set-prop","id":1,"property":"orientation","value":"vertical"}
+    ]}
+    ''');
+    await tester.pump();
+
+    expect(
+      tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(1))),
+      same(original),
+    );
+    expect(find.byType(Divider), findsNothing);
+    expect(find.byType(VerticalDivider), findsOneWidget);
+
+    expect(
+      () => backend.applyJson('''
+      {"generation":3,"ops":[
+        {"op":"set-prop","id":1,"property":"orientation","value":"diagonal"}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 2);
+    expect(backend.debugRevision(1), 1);
+  });
+
   testWidgets('maps text-area sizing to one retained native TextField', (
     tester,
   ) async {

@@ -4,7 +4,7 @@
             [lui.protocol :as proto
              :refer [Row Column Box Text Heading Paragraph Label Button
                      TextInput TextArea Checkbox SwitchControl Scroll Spacer
-                     ProgressControl
+                     ProgressControl Divider
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild TextValue Enabled Gap PaddingValue
                      PaddingHorizontal PaddingVertical
@@ -14,7 +14,7 @@
                      AccessibilityLabel StyleClass HeadingLevel LabelledBy
                      DescribedBy ErrorMessageBy InputType Invalid
                      Checked Indeterminate
-                     ProgressValue MinValue MaxValue
+                     ProgressValue MinValue MaxValue OrientationValue
                      StringValue BoolValue IntValue]]
             [lui.backend.retained :as retained]))
 
@@ -43,6 +43,7 @@
     Checkbox "lui-checkbox"
     SwitchControl "lui-switch-control"
     ProgressControl "lui-progress-control"
+    Divider "lui-separator"
     Scroll "lui-scroll"
     Spacer "lui-spacer"))
 
@@ -59,6 +60,7 @@
           Checkbox "input"
           SwitchControl "button"
           ProgressControl "div"
+          Divider "hr"
           _ "div")
         node
         (Webapi.Dom.Document.createElement tag (:web-document renderer))]
@@ -75,6 +77,8 @@
       (Webapi.Dom.Element.setAttribute "role" "switch" node))
     (when (= kind ProgressControl)
       (Webapi.Dom.Element.setAttribute "role" "progressbar" node))
+    (when (= kind Divider)
+      (Webapi.Dom.Element.setAttribute "role" "separator" node))
     node))
 
 (defn- dom-node [renderer node]
@@ -377,6 +381,13 @@
 
     (tuple MaxValue (IntValue _value))
     (update-progress! renderer node dom-node)
+
+    (tuple OrientationValue (StringValue orientation))
+    (do
+      (Webapi.Dom.Element.setAttribute
+       "data-orientation" orientation dom-node)
+      (Webapi.Dom.Element.setAttribute
+       "aria-orientation" orientation dom-node))
 
     (tuple MinLines (IntValue lines))
     (do

@@ -86,6 +86,16 @@
     [:progress/value-label {:value value-label-source}]]
    [:button {:variant "outline" :on-press advance} "Advance progress"]])
 
+(defui separator-gallery []
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Separator"]
+   [:paragraph "Horizontal"]
+   [:separator]
+   [:row {:gap 12 :class "lui-separator-example-row"}
+    [:text "Left"]
+    [:separator {:orientation "vertical"}]
+    [:text "Right"]]])
+
 (defui text-field-gallery
   [value-source invalid-source disabled-source update-value toggle-invalid]
   [:column {:gap 24 :padding 32}
@@ -157,6 +167,7 @@
   [:column
    [button-gallery disabled-source toggle-disabled]
    [badge-gallery]
+   [separator-gallery]
    [progress-gallery progress-source progress-label-source advance-progress]
    [card-gallery card-copy]
    [text-field-gallery

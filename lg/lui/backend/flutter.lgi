@@ -12,6 +12,7 @@
   (FlutterCheckbox)
   (FlutterSwitch)
   (FlutterProgress)
+  (FlutterDivider)
   (FlutterViewport)
   (FlutterSpacer))
 

@@ -16,6 +16,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case checkbox
     case switchControl = "switch"
     case progress
+    case divider
     case scroll, spacer
 }
 
@@ -42,6 +43,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case progressValue = "value"
     case minValue = "min-value"
     case maxValue = "max-value"
+    case orientation
 }
 
 struct LUIPatchBatch: Decodable {
@@ -125,6 +127,8 @@ enum LUIWireValue: Decodable, Equatable {
         case (.invalid, .bool): true
         case (.checked, .bool), (.indeterminate, .bool): true
         case (.progressValue, .int), (.minValue, .int), (.maxValue, .int): true
+        case let (.orientation, .string(value)):
+            value == "horizontal" || value == "vertical"
         case (.foreground, .string), (.borderColor, .string): true
         case let (.paddingHorizontal, .int(value)),
              let (.paddingVertical, .int(value)),
@@ -279,6 +283,7 @@ struct LUIRetainedTree {
         case .checked: kind == .checkbox || kind == .switchControl
         case .indeterminate: kind == .checkbox
         case .progressValue, .minValue, .maxValue: kind == .progress
+        case .orientation: kind == .divider
         }
     }
 

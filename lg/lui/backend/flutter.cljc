@@ -3,7 +3,7 @@
              :refer [Row Column Box Text Heading Paragraph Label Button
                      TextInput TextArea Scroll Spacer
                      Checkbox SwitchControl
-                     ProgressControl]]
+                     ProgressControl Divider]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -32,6 +32,7 @@
     Checkbox FlutterCheckbox
     SwitchControl FlutterSwitch
     ProgressControl FlutterProgress
+    Divider FlutterDivider
     Scroll FlutterViewport
     Spacer FlutterSpacer))
 

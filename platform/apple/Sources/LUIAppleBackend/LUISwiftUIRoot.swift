@@ -82,6 +82,8 @@ private struct LUINodeView: View {
         case .progress:
             ProgressView(value: model.progressFraction)
                 .accessibilityValue(Text(progressAccessibilityValue))
+        case .divider:
+            LUISeparatorView(model: model)
         case .scroll:
             ScrollView {
                 children
@@ -113,6 +115,23 @@ private struct LUINodeView: View {
 
     private var progressAccessibilityValue: String {
         "\(Int((model.progressFraction * 100).rounded()))%"
+    }
+}
+
+private struct LUISeparatorView: View {
+    let model: LUINodeModel
+
+    @ViewBuilder
+    var body: some View {
+        if model.property(.orientation)?.stringValue == "vertical" {
+            Divider()
+                .frame(maxHeight: .infinity)
+                .frame(width: 1)
+        } else {
+            Divider()
+                .frame(maxWidth: .infinity)
+                .frame(height: 1)
+        }
     }
 }
 

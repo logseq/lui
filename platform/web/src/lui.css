@@ -278,6 +278,18 @@
     width: var(--lui-progress-position);
   }
 
+  .lui-separator {
+    @apply shrink-0 border-0 bg-border;
+  }
+
+  .lui-separator[data-orientation="horizontal"] {
+    @apply h-px w-full;
+  }
+
+  .lui-separator[data-orientation="vertical"] {
+    @apply h-full w-px;
+  }
+
   .lui-card {
     @apply rounded-lg border bg-card text-card-foreground shadow-sm;
   }

@@ -42,3 +42,7 @@ body {
 .lui-switch {
   width: min(24rem, 100%);
 }
+
+.lui-separator-example-row {
+  height: 2rem;
+}

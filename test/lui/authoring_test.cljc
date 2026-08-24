@@ -12,7 +12,8 @@
             [lui.macros :refer [defui state effect platform host]]
             [lui.backend.apple :as apple
              :refer [AppleBox AppleCheckbox AppleColumn AppleFormLabel AppleHeading
-                     AppleParagraph AppleProgress AppleSwitch AppleTextInput]]
+                     AppleDivider AppleParagraph AppleProgress AppleSwitch
+                     AppleTextInput]]
             [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
@@ -100,6 +101,11 @@
    {:value completed :min-value 0 :max-value 10 :class "task-progress"}
    [:progress/label "Processing..."]
    [:progress/value-label {:value completed-label}]])
+
+(defui content-separators []
+  [:column
+   [:separator]
+   [:separator {:orientation "vertical" :class "content-divider"}]])
 
 (defui email-field [value invalid disabled callback]
   [:text-field {:class "account-email"}
@@ -482,6 +488,39 @@
         (Some (proto/IntValue value))
         (assert-equal 8 value "the value Signal patches ProgressControl")
         _ (is false "patched Progress value")))))
+
+(deftest separator-maps-orientation-to-retained-native-leaves
+  (let [renderer (apple/create)
+        application
+        (runtime/create (sig/scheduler) (apple/backend renderer))
+        root
+        (content-separators
+         (ui/context application (sig/scope "content-separators")))]
+    (runtime/flush! application)
+    (let [children (apple/children renderer root)
+          horizontal (nth children 0)
+          vertical (nth children 1)]
+      (assert-equal 2 (count children) "Separator creates one leaf per form")
+      (match (apple/node renderer horizontal)
+        (Some AppleDivider) (is true "horizontal Separator uses Divider")
+        _ (is false "horizontal Separator native mapping"))
+      (match (apple/node renderer vertical)
+        (Some AppleDivider) (is true "vertical Separator uses Divider")
+        _ (is false "vertical Separator native mapping"))
+      (match (apple/property renderer horizontal proto/OrientationValue)
+        (Some (StringValue value))
+        (assert-equal "horizontal" value "Separator defaults to horizontal")
+        _ (is false "horizontal Separator orientation"))
+      (match (apple/property renderer vertical proto/OrientationValue)
+        (Some (StringValue value))
+        (assert-equal "vertical" value "Separator accepts vertical")
+        _ (is false "vertical Separator orientation"))
+      (match (apple/property renderer vertical proto/StyleClass)
+        (Some (StringValue value))
+        (assert-equal
+         "lui-separator content-divider" value
+         "Separator retains its semantic class and override")
+        _ (is false "Separator semantic class")))))
 
 (deftest text-field-composes-semantic-parts-and-patches-invalid-in-place
   (let [scheduler (sig/scheduler)

@@ -46,6 +46,9 @@
    (= value "url")
    (= value "week")))
 
+(defn orientation-supported? [value]
+  (or (= value "horizontal") (= value "vertical")))
+
 (defn property-supported? [kind property]
   (match property
     PaddingValue true
@@ -91,6 +94,7 @@
     ProgressValue (= kind ProgressControl)
     MinValue (= kind ProgressControl)
     MaxValue (= kind ProgressControl)
+    OrientationValue (= kind Divider)
     TextValue
     (match kind
       Text true
@@ -146,6 +150,8 @@
     (tuple ProgressValue (IntValue _value)) true
     (tuple MinValue (IntValue _value)) true
     (tuple MaxValue (IntValue _value)) true
+    (tuple OrientationValue (StringValue value))
+    (orientation-supported? value)
     _ false))
 
 (defn int-property [properties property fallback]
