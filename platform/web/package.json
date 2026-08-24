@@ -1,0 +1,13 @@
+{
+  "name": "@lui/web",
+  "private": true,
+  "scripts": {
+    "build": "tailwindcss -i src/lui.css -o dist/lui.css --minify",
+    "test": "node --test test/*.test.mjs",
+    "check": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.1.4",
+    "tailwindcss": "4.1.4"
+  }
+}

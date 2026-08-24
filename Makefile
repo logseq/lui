@@ -1,4 +1,4 @@
-.PHONY: test test-lg test-apple test-flutter build-apple-app build-web serve-web
+.PHONY: test test-lg test-apple test-flutter build-apple-app build-web build-web-css serve-web
 
 test: test-lg test-apple test-flutter build-web
 
@@ -22,7 +22,13 @@ test-flutter:
 build-apple-app:
 	sh examples/todos/macos-appkit/build-app.sh
 
-build-web:
+platform/web/node_modules/.package-lock.json: platform/web/package.json platform/web/package-lock.json
+	npm --prefix platform/web ci
+
+build-web-css: platform/web/node_modules/.package-lock.json
+	npm --prefix platform/web run check
+
+build-web: build-web-css
 	opam exec -- dune build @web
 
 serve-web: build-web
