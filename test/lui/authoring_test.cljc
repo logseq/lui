@@ -209,6 +209,33 @@
      :text switch-text
      :on-toggle switch-toggle}]])
 
+(defui value-control-batch
+  [checked slider-value disabled toggle-change radio-change slider-change]
+  [:column
+   [:toggle
+    {:checked checked
+     :disabled disabled
+     :label "Bold formatting"
+     :on-toggle toggle-change}
+    "Bold"]
+   [:radio-group {:label "Density"}
+    [:radio
+     {:checked checked
+      :disabled disabled
+      :on-change radio-change}
+     "Comfortable"]
+    [:radio
+     {:selected true
+      :disabled disabled
+      :on-toggle radio-change}
+     "Compact"]]
+   [:slider
+    {:value slider-value
+     :disabled disabled
+     :label "Volume"
+     :on-change slider-change}]
+   [:slider {:value 0.5 :label "Balance"}]])
+
 (deftest platform-profile-flows-through-ui-context
   (let [apple-renderer (apple/create)
         apple-application
@@ -1112,3 +1139,76 @@
       (Some (proto/BoolValue value))
       (assert-equal true value "selected Signal reaches the backend")
       _ (is false "selected property is present"))))
+
+(deftest daily-value-controls-share-one-retained-event-contract
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "value-control-batch")
+        checked (sig/state scheduler false)
+        value (sig/state scheduler 0.25)
+        disabled (sig/state scheduler false)
+        events (atom [])
+        root
+        (value-control-batch
+         (ui/context application scope)
+         (sig/value checked)
+         (sig/value value)
+         (sig/value disabled)
+         (fn [event] (swap! events conj event) true)
+         (fn [event] (swap! events conj event) true)
+         (fn [event] (swap! events conj event) true))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [toggle (nth (apple/children renderer root) 0)
+          group (nth (apple/children renderer root) 1)
+          radio (nth (apple/children renderer group) 0)
+          selected-radio (nth (apple/children renderer group) 1)
+          slider (nth (apple/children renderer root) 2)
+          literal-slider (nth (apple/children renderer root) 3)
+          node-count (apple/node-count renderer)]
+      (is (not (= None (apple/node renderer toggle)))
+          "Toggle creates one retained native node")
+      (is (not (= None (apple/node renderer group)))
+          "RadioGroup creates one retained native group")
+      (is (not (= None (apple/node renderer radio)))
+          "Radio creates one retained native choice")
+      (match (apple/property renderer selected-radio proto/Checked)
+        (Some (proto/BoolValue current))
+        (assert-equal true current "literal Radio selected aliases checked state")
+        _ (is false "Radio selected state is present"))
+      (is (not (= None (apple/node renderer slider)))
+          "Slider creates one retained native value control")
+      (match (apple/property renderer slider proto/ProgressValue)
+        (Some (proto/FloatValue current))
+        (assert-equal 0.25 current "Slider retains a fractional value")
+        _ (is false "Slider fractional value is present"))
+      (match (apple/property renderer literal-slider proto/ProgressValue)
+        (Some (proto/FloatValue current))
+        (assert-equal 0.5 current "Slider accepts a literal fraction")
+        _ (is false "literal Slider fractional value is present"))
+      (runtime/dispatch! application (proto/ToggleChanged toggle true))
+      (runtime/dispatch! application (proto/Change radio))
+      (runtime/dispatch! application (proto/ValueChanged slider 0.75))
+      (runtime/flush! application)
+      (assert-equal
+       [(proto/ToggleChanged toggle true)
+        (proto/Change radio)
+        (proto/ValueChanged slider 0.75)]
+       @events
+       "each control receives only its typed native event")
+      (sig/set! checked true)
+      (sig/set! value 0.75)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "Signal changes patch all controls without replacement")
+      (assert-equal toggle (nth (apple/children renderer root) 0)
+                    "Toggle identity survives a checked patch")
+      (assert-equal radio (nth (apple/children renderer group) 0)
+                    "Radio identity survives group reconciliation")
+      (match (apple/property renderer selected-radio proto/Checked)
+        (Some (proto/BoolValue current))
+        (assert-equal true current "literal Radio selected state remains stable")
+        _ (is false "updated Radio selected state is present"))
+      (assert-equal slider (nth (apple/children renderer root) 2)
+                    "Slider identity survives a value patch"))))

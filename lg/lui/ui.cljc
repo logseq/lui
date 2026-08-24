@@ -193,6 +193,33 @@
 (defn toggle-button! [context]
   (runtime/create-node! (:ui-application context) proto/ToggleButton))
 
+(defn toggle! [context]
+  (runtime/create-node! (:ui-application context) proto/Toggle))
+
+(defn radio-group! [context]
+  (runtime/create-node! (:ui-application context) proto/RadioGroup))
+
+(defn radio! [context]
+  (runtime/create-node! (:ui-application context) proto/Radio))
+
+(defn slider! [context source]
+  (let [node (runtime/create-node! (:ui-application context) proto/Slider)]
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context) node proto/ProgressValue
+     (sig/own-signal!
+      (:ui-scope context)
+      (sig/map
+       (fn [value] (proto/FloatValue value))
+       source)))
+    node))
+
+(defn slider-literal! [context value]
+  (let [node (runtime/create-node! (:ui-application context) proto/Slider)]
+    (runtime/set-prop!
+     (:ui-application context) node proto/ProgressValue
+     (proto/FloatValue value))
+    node))
+
 (defn string-property! [context node property value]
   (runtime/set-prop!
    (:ui-application context) node property (proto/StringValue value)))

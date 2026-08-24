@@ -203,6 +203,37 @@
    [:paragraph
     "Both native controls share one Signal and patch in place."]])
 
+(defui value-control-gallery
+  [checked-source comfortable-source compact-source volume-source
+   volume-label-source disabled-source update-toggle select-comfortable
+   select-compact update-volume]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Toggle, RadioGroup, and Slider"]
+   [:toggle
+    {:checked checked-source
+     :disabled disabled-source
+     :on-toggle update-toggle}
+    "Bold formatting"]
+   [:radio-group {:label "Content density"}
+    [:radio
+     {:checked comfortable-source
+      :disabled disabled-source
+      :on-change select-comfortable}
+     "Comfortable"]
+    [:radio
+     {:checked compact-source
+      :disabled disabled-source
+      :on-change select-compact}
+     "Compact"]]
+   [:paragraph {:value volume-label-source}]
+   [:slider
+    {:value volume-source
+     :disabled disabled-source
+     :label "Volume"
+     :on-change update-volume}]
+   [:paragraph
+    "All controls are model-owned Signals and retain their native node identity."]])
+
 (defui toggle-button-gallery
   [selected-source disabled-source update-selected toggle-disabled]
   [:column {:gap 24 :padding 32}
@@ -235,7 +266,9 @@
   [disabled-source toggle-disabled card-copy
    value-source invalid-source update-value toggle-invalid
    checked-source update-toggle
-   progress-source progress-label-source advance-progress]
+   progress-source progress-label-source advance-progress
+   comfortable-source compact-source volume-source volume-label-source
+   select-comfortable select-compact update-volume]
   [:column
    [button-gallery disabled-source toggle-disabled]
    [toggle-button-gallery
@@ -250,4 +283,8 @@
    [collection-gallery]
    [text-field-gallery
     value-source invalid-source disabled-source update-value toggle-invalid]
-   [toggle-gallery checked-source disabled-source update-toggle]])
+   [toggle-gallery checked-source disabled-source update-toggle]
+   [value-control-gallery
+    checked-source comfortable-source compact-source volume-source
+    volume-label-source disabled-source update-toggle select-comfortable
+    select-compact update-volume]])

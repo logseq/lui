@@ -44,6 +44,10 @@ class _TodosHostState extends State<TodosHost> {
         _bridge.textChanged(node, text);
       case LUIToggleChangedEvent(:final node, :final checked):
         _bridge.toggleChanged(node, checked);
+      case LUIChangeEvent(:final node):
+        _bridge.radioChanged(node);
+      case LUIValueChangedEvent(:final node, :final value):
+        _bridge.sliderChanged(node, value);
     }
   }
 

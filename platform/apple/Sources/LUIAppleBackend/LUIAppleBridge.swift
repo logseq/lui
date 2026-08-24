@@ -69,6 +69,10 @@ private final class LUIAppleBridge {
                 (checked ? "true" : "false").withCString {
                     callback(2, Int32(node), $0)
                 }
+            case let .change(node):
+                "".withCString { callback(4, Int32(node), $0) }
+            case let .valueChanged(node, value):
+                String(value).withCString { callback(5, Int32(node), $0) }
             }
         }
     }

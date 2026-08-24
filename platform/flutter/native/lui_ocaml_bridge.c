@@ -89,6 +89,27 @@ LUI_EXPORT int32_t lui_ocaml_toggle_changed(int64_t node, int32_t checked) {
   CAMLreturnT(int32_t, accepted);
 }
 
+LUI_EXPORT int32_t lui_ocaml_radio_changed(int64_t node) {
+  const value *dispatch = caml_named_value("lui_flutter_radio_changed");
+  if (dispatch == NULL) {
+    return 0;
+  }
+  return emit_patch(caml_callback_exn(*dispatch, Val_long(node)));
+}
+
+LUI_EXPORT int32_t lui_ocaml_slider_changed(int64_t node, double fraction) {
+  CAMLparam0();
+  CAMLlocal2(value_value, result);
+  const value *dispatch = caml_named_value("lui_flutter_slider_changed");
+  if (dispatch == NULL) {
+    CAMLreturnT(int32_t, 0);
+  }
+  value_value = caml_copy_double(fraction);
+  result = caml_callback2_exn(*dispatch, Val_long(node), value_value);
+  int32_t accepted = emit_patch(result);
+  CAMLreturnT(int32_t, accepted);
+}
+
 LUI_EXPORT int32_t lui_ocaml_stop(void) {
   const value *dispose = caml_named_value("lui_flutter_dispose");
   if (dispose == NULL) {

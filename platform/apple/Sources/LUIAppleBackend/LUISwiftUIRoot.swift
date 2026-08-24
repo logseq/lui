@@ -83,6 +83,34 @@ private struct LUINodeView: View {
                 )
             )
             .disabled(!model.isEnabled)
+        case .toggle:
+            Toggle(
+                model.text,
+                isOn: Binding(
+                    get: { model.isChecked },
+                    set: { try? backend.performToggle(node: model.id, checked: $0) }
+                )
+            )
+            .disabled(!model.isEnabled)
+        case .radioGroup:
+            HStack(alignment: .center) { children }
+        case .radio:
+            Button {
+                try? backend.performChange(node: model.id)
+            } label: {
+                Label(model.text, systemImage: model.isChecked ? "circle.inset.filled" : "circle")
+            }
+            .buttonStyle(.plain)
+            .disabled(!model.isEnabled)
+        case .slider:
+            Slider(
+                value: Binding(
+                    get: { min(max(model.sliderValue, 0), 1) },
+                    set: { try? backend.performValueChange(node: model.id, value: $0) }
+                ),
+                in: 0...1
+            )
+            .disabled(!model.isEnabled)
         case .progress:
             ProgressView(value: model.progressFraction)
                 .accessibilityValue(Text(progressAccessibilityValue))

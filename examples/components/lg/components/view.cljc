@@ -1,6 +1,6 @@
 (ns components.view
   (:require [lui.macros :refer [defui reactive]]
-            [lui.protocol :refer [TextChanged ToggleChanged]]
+            [lui.protocol :refer [TextChanged ToggleChanged ValueChanged]]
             [components.gallery :as gallery]
             [components.model :as model]))
 
@@ -28,4 +28,14 @@
        _ true))
    (reactive :gallery-progress model-source)
    (reactive model/progress-label model-source)
-   (fn [_event] (send model/AdvanceProgress))])
+   (fn [_event] (send model/AdvanceProgress))
+   (reactive model/density-comfortable? model-source)
+   (reactive model/density-compact? model-source)
+   (reactive :gallery-volume model-source)
+   (reactive model/volume-label model-source)
+   (fn [_event] (send (model/SetDensity "comfortable")))
+   (fn [_event] (send (model/SetDensity "compact")))
+   (fn [event]
+     (match event
+       (ValueChanged _node value) (send (model/SetVolume value))
+       _ true))])

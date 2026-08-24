@@ -2,16 +2,17 @@
 (ns lui.wire-schema
   (:require [lui.protocol :refer [Row Column Grid Stack Panel Card
                      Box Text Heading Paragraph Label Button
-                     ToggleButton TextInput TextArea Checkbox SwitchControl ProgressControl
-                     Divider Scroll ListContainer Spacer Spinner Icon
-                     TextValue Enabled Gap MainAlignment CrossAlignment GrowValue
-                     GridColumns PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue
-                     BorderColorValue BorderWidth CornerRadius WidthValue HeightValue MinWidth
-                     MaxWidth MinHeight MaxHeight PlaceholderValue ReadOnly AccessibilityLabel
-                     MinLines MaxLines StyleClass HeadingLevel LabelledBy DescribedBy
-                     ErrorMessageBy InputType Invalid Checked ProgressValue MinValue
-                     MaxValue OrientationValue SizeValue IconName VariantValue InlineIconName
-                     IconPlacementValue Selected Autofocus HoldEnabled]]))
+                     ToggleButton Toggle RadioGroup Radio Slider TextInput
+                     TextArea Checkbox SwitchControl ProgressControl Divider Scroll
+                     ListContainer Spacer Spinner Icon TextValue Enabled
+                     Gap MainAlignment CrossAlignment GrowValue GridColumns PaddingValue
+                     PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth
+                     CornerRadius WidthValue HeightValue MinWidth MaxWidth MinHeight
+                     MaxHeight PlaceholderValue ReadOnly AccessibilityLabel MinLines MaxLines
+                     StyleClass HeadingLevel LabelledBy DescribedBy ErrorMessageBy InputType
+                     Invalid Checked ProgressValue MinValue MaxValue OrientationValue
+                     SizeValue IconName VariantValue InlineIconName IconPlacementValue Selected
+                     Autofocus HoldEnabled ChangeEnabled ToggleEnabled PressEnabled]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -28,6 +29,10 @@
     Label "label"
     Button "button"
     ToggleButton "toggle-button"
+    Toggle "toggle"
+    RadioGroup "radio-group"
+    Radio "radio"
+    Slider "slider"
     TextInput "text-input"
     TextArea "text-area"
     Checkbox "checkbox"
@@ -87,4 +92,7 @@
     IconPlacementValue "icon-placement"
     Selected "selected"
     Autofocus "autofocus"
-    HoldEnabled "hold-enabled"))
+    HoldEnabled "hold-enabled"
+    ChangeEnabled "change-enabled"
+    ToggleEnabled "toggle-enabled"
+    PressEnabled "press-enabled"))

@@ -504,6 +504,38 @@
     @apply bg-accent text-accent-foreground;
   }
 
+  .lui-toggle {
+    @apply inline-flex h-9 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground transition-colors;
+  }
+
+  .lui-toggle[aria-pressed="true"] {
+    @apply bg-accent text-accent-foreground;
+  }
+
+  .lui-radio-group {
+    @apply flex items-center gap-2;
+  }
+
+  .lui-radio {
+    @apply inline-flex items-center gap-2 text-sm text-foreground;
+  }
+
+  .lui-radio-control {
+    @apply size-4 appearance-none rounded-full border border-primary bg-background;
+  }
+
+  .lui-radio-control:checked {
+    @apply border-4 border-primary;
+  }
+
+  .lui-radio-control:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2;
+  }
+
+  .lui-slider {
+    @apply w-full cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
   .lui-button[data-size="default"] {
     @apply h-10 px-4 py-2;
   }

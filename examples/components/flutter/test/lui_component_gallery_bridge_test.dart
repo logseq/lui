@@ -33,6 +33,11 @@ void main() {
         ),
         LUIToggleChangedEvent(:final node, :final checked) =>
           bridge.toggleChanged(node, checked),
+        LUIChangeEvent(:final node) => bridge.radioChanged(node),
+        LUIValueChangedEvent(:final node, :final value) => bridge.sliderChanged(
+          node,
+          value,
+        ),
       },
     );
     bridge = LUIOcamlBridge.open(_libraryPath, onPatch: backend.applyJson);

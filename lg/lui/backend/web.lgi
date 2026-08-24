@@ -27,6 +27,10 @@
   :fn<web-renderer;int;node-kind;web-node;unit>)
 (signature lui.backend.web/attach-toggle-event!
   :fn<web-renderer;int;node-kind;web-node;unit>)
+(signature lui.backend.web/attach-radio-event!
+  :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/attach-slider-event!
+  :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/set-state-attribute!
   :fn<web-node;string;bool;unit>)
 (signature lui.backend.web/web-color-value :fn<string;string>)
@@ -40,6 +44,10 @@
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/insert-dom-child!
   :fn<web-node;web-node;int;unit>)
+(signature lui.backend.web/radio-group-ancestor
+  :fn<web-renderer;int;option<int>>)
+(signature lui.backend.web/update-radio-group!
+  :fn<web-renderer;int;unit>)
 (signature lui.backend.web/apply-dom-op!
   :fn<web-renderer;map<int;retained-node<web-node>>;patch-op;unit>)
 (signature lui.backend.web/apply-dom-batch!

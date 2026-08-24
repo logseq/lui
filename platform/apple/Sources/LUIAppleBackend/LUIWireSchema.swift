@@ -15,6 +15,10 @@ enum LUINodeKind: String, Decodable, Equatable {
     case label = "label"
     case button = "button"
     case toggleButton = "toggle-button"
+    case toggle = "toggle"
+    case radioGroup = "radio-group"
+    case radio = "radio"
+    case slider = "slider"
     case textInput = "text-input"
     case textArea = "text-area"
     case checkbox = "checkbox"
@@ -75,4 +79,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case selected = "selected"
     case autofocus = "autofocus"
     case holdEnabled = "hold-enabled"
+    case changeEnabled = "change-enabled"
+    case toggleEnabled = "toggle-enabled"
+    case pressEnabled = "press-enabled"
 }

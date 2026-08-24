@@ -13,15 +13,20 @@
     (Press node) node
     (Hold node) node
     (TextChanged node _text) node
-    (ToggleChanged node _checked) node))
+    (ToggleChanged node _checked) node
+    (Change node) node
+    (ValueChanged node _value) node))
 
 (defn event-supported? [kind event]
   (match event
-    (Press _node) (= kind Button)
+    (Press _node) (or (= kind Button) (= kind Radio))
     (Hold _node) (or (= kind Button) (= kind ToggleButton))
     (TextChanged _node _text) (or (= kind TextInput) (= kind TextArea))
     (ToggleChanged _node _checked)
-    (or (= kind ToggleButton) (= kind Checkbox) (= kind SwitchControl))))
+    (or (= kind ToggleButton) (= kind Checkbox) (= kind SwitchControl)
+        (= kind Toggle) (= kind Radio))
+    (Change _node) (= kind Radio)
+    (ValueChanged _node _value) (= kind Slider)))
 
 (defn input-type-supported? [value]
   (or
@@ -128,6 +133,9 @@
       TextInput true
       TextArea true
       Checkbox true
+      Toggle true
+      Radio true
+      Slider true
       Spinner true
       Icon true
       _ false)
@@ -144,7 +152,8 @@
     AccessibilityLabel
     (or (= kind Button) (= kind ToggleButton)
         (= kind TextInput) (= kind TextArea)
-        (= kind Checkbox) (= kind SwitchControl) (= kind ProgressControl))
+        (= kind Checkbox) (= kind SwitchControl) (= kind ProgressControl)
+        (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider))
     PlaceholderValue (or (= kind TextInput) (= kind TextArea))
     ReadOnly (or (= kind TextInput) (= kind TextArea))
     MinLines (= kind TextArea)
@@ -160,8 +169,9 @@
     InputType (= kind TextInput)
     Invalid
     (or (= kind TextInput) (= kind TextArea))
-    Checked (or (= kind Checkbox) (= kind SwitchControl))
-    ProgressValue (= kind ProgressControl)
+    Checked (or (= kind Checkbox) (= kind SwitchControl)
+                (= kind Toggle) (= kind Radio))
+    ProgressValue (or (= kind ProgressControl) (= kind Slider))
     MinValue (= kind ProgressControl)
     MaxValue (= kind ProgressControl)
     OrientationValue (= kind Divider)
@@ -174,6 +184,9 @@
     Selected (or (= kind Button) (= kind ToggleButton))
     Autofocus (or (= kind Button) (= kind ToggleButton))
     HoldEnabled (or (= kind Button) (= kind ToggleButton))
+    ChangeEnabled (= kind Radio)
+    ToggleEnabled (= kind Radio)
+    PressEnabled (= kind Radio)
     TextValue
     (match kind
       Text true
@@ -186,6 +199,8 @@
       TextArea true
       Checkbox true
       SwitchControl true
+      Toggle true
+      Radio true
       _ false)
     Enabled
     (match kind
@@ -195,6 +210,9 @@
       TextArea true
       Checkbox true
       SwitchControl true
+      Toggle true
+      Radio true
+      Slider true
       _ false)
     Gap
     (match kind
@@ -244,6 +262,7 @@
     (tuple Invalid (BoolValue _value)) true
     (tuple Checked (BoolValue _value)) true
     (tuple ProgressValue (IntValue _value)) true
+    (tuple ProgressValue (FloatValue _value)) true
     (tuple MinValue (IntValue _value)) true
     (tuple MaxValue (IntValue _value)) true
     (tuple OrientationValue (StringValue value))
@@ -261,6 +280,9 @@
     (tuple Selected (BoolValue _value)) true
     (tuple Autofocus (BoolValue _value)) true
     (tuple HoldEnabled (BoolValue _value)) true
+    (tuple ChangeEnabled (BoolValue _value)) true
+    (tuple ToggleEnabled (BoolValue _value)) true
+    (tuple PressEnabled (BoolValue _value)) true
     _ false))
 
 (defn int-property [properties property fallback]
@@ -295,7 +317,7 @@
        (property-value-supported? IconName name)
        false)
      true)
-   (if (or (= kind Button) (= kind ToggleButton))
+   (if (or (= kind Button) (= kind ToggleButton) (= kind Toggle) (= kind Radio))
      (let [text
            (match (clojure.core/get properties TextValue)
              (Some (StringValue value)) value
@@ -317,6 +339,16 @@
    (if (= kind ProgressControl)
      (< (int-property properties MinValue 0)
         (int-property properties MaxValue 100))
+     true)
+   (if (or (= kind RadioGroup) (= kind Slider))
+     (match (clojure.core/get properties AccessibilityLabel)
+       (Some (StringValue value)) (not (= value ""))
+       _ false)
+     true)
+   (if (= kind Slider)
+     (match (clojure.core/get properties ProgressValue)
+       (Some (FloatValue _value)) true
+       _ false)
      true)))
 
 (defn can-contain-children? [kind]
@@ -330,6 +362,7 @@
     Box true
     Scroll true
     ListContainer true
+    RadioGroup true
     _ false))
 
 (defn create-node-op [node kind]

@@ -18,6 +18,34 @@ sealed class LUIEvent {
     required int node,
     required bool checked,
   }) = LUIToggleChangedEvent;
+  const factory LUIEvent.change({required int node}) = LUIChangeEvent;
+  const factory LUIEvent.valueChanged({
+    required int node,
+    required double value,
+  }) = LUIValueChangedEvent;
+}
+
+final class LUIChangeEvent extends LUIEvent {
+  const LUIChangeEvent({required this.node});
+  final int node;
+  @override
+  bool operator ==(Object other) =>
+      other is LUIChangeEvent && other.node == node;
+  @override
+  int get hashCode => node.hashCode;
+}
+
+final class LUIValueChangedEvent extends LUIEvent {
+  const LUIValueChangedEvent({required this.node, required this.value});
+  final int node;
+  final double value;
+  @override
+  bool operator ==(Object other) =>
+      other is LUIValueChangedEvent &&
+      other.node == node &&
+      other.value == value;
+  @override
+  int get hashCode => Object.hash(node, value);
 }
 
 final class LUIHoldEvent extends LUIEvent {
@@ -306,6 +334,15 @@ final class LUIFlutterBackend {
         changedIDs.add(entry.key);
       }
     }
+    for (final source in changedSources) {
+      var parent = next[source]?.parent;
+      while (parent != null) {
+        final ancestor = next[parent];
+        if (ancestor == null) break;
+        if (ancestor.kind == _NodeKind.radioGroup) changedIDs.add(parent);
+        parent = ancestor.parent;
+      }
+    }
     for (final id in changedIDs) {
       _handles[id]?.markChanged();
     }
@@ -341,11 +378,38 @@ final class LUIFlutterBackend {
 
   void performToggle(int node, bool checked) {
     final state = _requireState(_states, node);
-    if (state.kind != _NodeKind.toggleButton ||
+    if (state.kind != _NodeKind.toggleButton &&
+            state.kind != _NodeKind.toggle ||
         state.properties['enabled'] == false) {
       throw LUIBackendException('node $node is not an enabled toggle button');
     }
     onEvent?.call(LUIEvent.toggleChanged(node: node, checked: checked));
+  }
+
+  void performChange(int node) {
+    final state = _requireState(_states, node);
+    if (state.kind != _NodeKind.radio || state.properties['enabled'] == false) {
+      throw LUIBackendException('node $node is not an enabled radio');
+    }
+    if (state.properties['change-enabled'] == true) {
+      if (state.properties['checked'] != true) {
+        onEvent?.call(LUIEvent.change(node: node));
+      }
+    } else if (state.properties['toggle-enabled'] == true) {
+      onEvent?.call(LUIEvent.toggleChanged(node: node, checked: true));
+    } else if (state.properties['press-enabled'] == true) {
+      onEvent?.call(LUIEvent.press(node: node));
+    }
+  }
+
+  void performValueChange(int node, double value) {
+    final state = _requireState(_states, node);
+    if (state.kind != _NodeKind.slider ||
+        state.properties['enabled'] == false ||
+        !value.isFinite) {
+      throw LUIBackendException('node $node is not an enabled slider');
+    }
+    onEvent?.call(LUIEvent.valueChanged(node: node, value: value.clamp(0, 1)));
   }
 
   Widget _buildNode(BuildContext context, int id) {
@@ -377,7 +441,9 @@ final class LUIFlutterBackend {
     final checked = state.properties['checked'] as bool? ?? false;
     final minimum = state.properties['min-value'] as int? ?? 0;
     final maximum = state.properties['max-value'] as int? ?? 100;
-    final progressValue = state.properties['value'] as int? ?? minimum;
+    final progressValue = state.kind == _NodeKind.progress
+        ? state.properties['value'] as int? ?? minimum
+        : minimum;
     final progressFraction =
         (progressValue.clamp(minimum, maximum) - minimum) / (maximum - minimum);
     final orientation =
@@ -665,6 +731,40 @@ final class LUIFlutterBackend {
         onPressed: enabled ? () => performAction(id) : null,
       ),
       _NodeKind.toggleButton => toggleButton(),
+      _NodeKind.toggle => FilterChip(
+        label: Text(text),
+        selected: checked,
+        onSelected: enabled ? (value) => performToggle(id, value) : null,
+      ),
+      _NodeKind.radioGroup => RadioGroup<int>(
+        groupValue: _checkedRadio(state),
+        onChanged: (value) {
+          if (value != null) performChange(value);
+        },
+        child: Row(mainAxisSize: MainAxisSize.min, children: children),
+      ),
+      _NodeKind.radio => MergeSemantics(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Radio<int>(value: id, enabled: enabled),
+            InkWell(
+              onTap: enabled ? () => performChange(id) : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(text),
+              ),
+            ),
+          ],
+        ),
+      ),
+      _NodeKind.slider => Slider(
+        value: ((state.properties['value'] as num?)?.toDouble() ?? 0).clamp(
+          0,
+          1,
+        ),
+        onChanged: enabled ? (value) => performValueChange(id, value) : null,
+      ),
       _NodeKind.textInput => textControl(multiline: false),
       _NodeKind.textArea => textControl(multiline: true),
       _NodeKind.checkbox => toggleSemantics(
@@ -910,16 +1010,22 @@ final class LUIFlutterBackend {
                 _isButtonKind(kind) ||
                 _isTextControl(kind) ||
                 kind == _NodeKind.checkbox ||
-                kind == _NodeKind.switchControl),
+                kind == _NodeKind.switchControl ||
+                kind == _NodeKind.toggle ||
+                kind == _NodeKind.radio),
       'enabled' =>
         value is bool &&
             (_isButtonKind(kind) ||
                 _isTextControl(kind) ||
                 kind == _NodeKind.checkbox ||
-                kind == _NodeKind.switchControl),
-      'value' ||
-      'min-value' ||
-      'max-value' => value is int && kind == _NodeKind.progress,
+                kind == _NodeKind.switchControl ||
+                kind == _NodeKind.toggle ||
+                kind == _NodeKind.radio ||
+                kind == _NodeKind.slider),
+      'value' =>
+        (value is int && kind == _NodeKind.progress) ||
+            (value is num && value.isFinite && kind == _NodeKind.slider),
+      'min-value' || 'max-value' => value is int && kind == _NodeKind.progress,
       'orientation' =>
         value is String &&
             (value == 'horizontal' || value == 'vertical') &&
@@ -951,6 +1057,9 @@ final class LUIFlutterBackend {
       'selected' ||
       'autofocus' ||
       'hold-enabled' => value is bool && _isButtonKind(kind),
+      'change-enabled' ||
+      'toggle-enabled' ||
+      'press-enabled' => value is bool && kind == _NodeKind.radio,
       'gap' =>
         value is int &&
             value >= 0 &&
@@ -977,6 +1086,9 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.textInput ||
                 kind == _NodeKind.textArea ||
                 kind == _NodeKind.checkbox ||
+                kind == _NodeKind.toggle ||
+                kind == _NodeKind.radio ||
+                kind == _NodeKind.slider ||
                 kind == _NodeKind.spinner ||
                 kind == _NodeKind.icon),
       'border-color' => value is String,
@@ -1000,7 +1112,10 @@ final class LUIFlutterBackend {
       'invalid' => value is bool && kind.isTextControl,
       'checked' =>
         value is bool &&
-            (kind == _NodeKind.checkbox || kind == _NodeKind.switchControl),
+            (kind == _NodeKind.checkbox ||
+                kind == _NodeKind.switchControl ||
+                kind == _NodeKind.toggle ||
+                kind == _NodeKind.radio),
       'heading-level' =>
         value is int && value >= 1 && value <= 6 && kind == _NodeKind.heading,
       'placeholder' => value is String && _isTextControl(kind),
@@ -1011,7 +1126,11 @@ final class LUIFlutterBackend {
                 _isTextControl(kind) ||
                 kind == _NodeKind.checkbox ||
                 kind == _NodeKind.switchControl ||
-                kind == _NodeKind.progress),
+                kind == _NodeKind.progress ||
+                kind == _NodeKind.toggle ||
+                kind == _NodeKind.radioGroup ||
+                kind == _NodeKind.radio ||
+                kind == _NodeKind.slider),
       'min-lines' => value is int && value > 0 && kind == _NodeKind.textArea,
       'max-lines' => value is int && value > 0 && kind == _NodeKind.textArea,
       _ => false,
@@ -1069,6 +1188,30 @@ final class LUIFlutterBackend {
           throw const LUIBackendException('button requires an accessible name');
         }
       }
+      if (state.kind == _NodeKind.toggle || state.kind == _NodeKind.radio) {
+        final text = state.properties['text'] as String? ?? '';
+        final label = state.properties['accessibility-label'] as String? ?? '';
+        if (text.isEmpty && label.isEmpty) {
+          throw const LUIBackendException(
+            'value control requires an accessible name',
+          );
+        }
+      }
+      if (state.kind == _NodeKind.radioGroup ||
+          state.kind == _NodeKind.slider) {
+        final label = state.properties['accessibility-label'] as String? ?? '';
+        if (label.isEmpty) {
+          throw const LUIBackendException(
+            'value control requires an accessibility label',
+          );
+        }
+      }
+      if (state.kind == _NodeKind.radio &&
+          !_hasAncestor(states, state.parent, _NodeKind.radioGroup)) {
+        throw const LUIBackendException(
+          'radio must be contained by a radio-group',
+        );
+      }
     }
   }
 
@@ -1095,7 +1238,31 @@ final class LUIFlutterBackend {
       kind == _NodeKind.card ||
       kind == _NodeKind.box ||
       kind == _NodeKind.scroll ||
-      kind == _NodeKind.list;
+      kind == _NodeKind.list ||
+      kind == _NodeKind.radioGroup;
+
+  int? _checkedRadio(_NodeState root) {
+    for (final child in root.children) {
+      final state = _requireState(_states, child);
+      if (state.kind == _NodeKind.radio &&
+          state.properties['checked'] == true) {
+        return child;
+      }
+      final nested = _checkedRadio(state);
+      if (nested != null) return nested;
+    }
+    return null;
+  }
+
+  static bool _hasAncestor(
+    Map<int, _NodeState> states,
+    int? parent,
+    _NodeKind kind,
+  ) {
+    if (parent == null) return false;
+    final state = _requireState(states, parent);
+    return state.kind == kind || _hasAncestor(states, state.parent, kind);
+  }
 
   static bool _isButtonKind(_NodeKind kind) =>
       kind == _NodeKind.button || kind == _NodeKind.toggleButton;

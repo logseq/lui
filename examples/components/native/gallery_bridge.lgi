@@ -10,5 +10,7 @@
 (signature components.flutter-bridge/hold :fn<int;string>)
 (signature components.flutter-bridge/text-changed :fn<int;string;string>)
 (signature components.flutter-bridge/toggle-changed :fn<int;bool;string>)
+(signature components.flutter-bridge/radio-changed :fn<int;string>)
+(signature components.flutter-bridge/slider-changed :fn<int;float;string>)
 (signature components.flutter-bridge/dispose :fn<string>)
 (signature components.flutter-bridge/root-node :fn<int>)

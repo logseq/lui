@@ -15,6 +15,10 @@
   (Label)
   (Button)
   (ToggleButton)
+  (Toggle)
+  (RadioGroup)
+  (Radio)
+  (Slider)
   (TextInput)
   (TextArea)
   (Checkbox)
@@ -92,7 +96,10 @@
   (IconPlacementValue)
   (Selected)
   (Autofocus)
-  (HoldEnabled))
+  (HoldEnabled)
+  (ChangeEnabled)
+  (ToggleEnabled)
+  (PressEnabled))
 
 (type-variant wire-value
   (StringValue :string)
@@ -104,7 +111,9 @@
   (Press :int)
   (Hold :int)
   (TextChanged :int :string)
-  (ToggleChanged :int :bool))
+  (ToggleChanged :int :bool)
+  (Change :int)
+  (ValueChanged :int :float))
 
 (type-variant patch-op
   (CreateNode :int :node-kind)

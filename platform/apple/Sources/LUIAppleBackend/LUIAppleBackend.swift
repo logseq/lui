@@ -56,6 +56,10 @@ final class LUINodeModel: Identifiable {
     var isSelected: Bool { properties[.selected]?.boolValue ?? false }
     var requestsAutofocus: Bool { properties[.autofocus]?.boolValue ?? false }
     var supportsHold: Bool { properties[.holdEnabled]?.boolValue ?? false }
+    var supportsChange: Bool { properties[.changeEnabled]?.boolValue ?? false }
+    var supportsToggle: Bool { properties[.toggleEnabled]?.boolValue ?? false }
+    var supportsPress: Bool { properties[.pressEnabled]?.boolValue ?? false }
+    var sliderValue: Double { properties[.progressValue]?.doubleValue ?? 0 }
     var buttonVariant: String { properties[.variant]?.stringValue ?? "default" }
     var buttonSize: String { properties[.size]?.stringValue ?? "default" }
     var buttonIconName: String { properties[.icon]?.stringValue ?? "" }
@@ -281,11 +285,32 @@ public final class LUIAppleBackend {
     func performToggle(node: Int, checked: Bool) throws {
         guard let model = models[node],
               model.kind == .toggleButton || model.kind == .checkbox ||
-                model.kind == .switchControl,
+                model.kind == .switchControl || model.kind == .toggle,
               model.isEnabled else {
             throw invalid("node \(node) is not an enabled toggle")
         }
         onEvent?(.toggleChanged(node: node, checked: checked))
+    }
+
+    func performChange(node: Int) throws {
+        guard let model = models[node], model.kind == .radio, model.isEnabled else {
+            throw invalid("node \(node) is not an enabled radio")
+        }
+        if model.supportsChange {
+            if !model.isChecked { onEvent?(.change(node: node)) }
+        } else if model.supportsToggle {
+            onEvent?(.toggleChanged(node: node, checked: true))
+        } else if model.supportsPress {
+            onEvent?(.press(node: node))
+        }
+    }
+
+    func performValueChange(node: Int, value: Double) throws {
+        guard let model = models[node], model.kind == .slider, model.isEnabled,
+              value.isFinite else {
+            throw invalid("node \(node) is not an enabled slider")
+        }
+        onEvent?(.valueChanged(node: node, value: min(max(value, 0), 1)))
     }
 
     func performAction(node: Int) throws {
@@ -295,8 +320,10 @@ public final class LUIAppleBackend {
             try performPress(node: node)
         case .toggleButton:
             try performToggle(node: node, checked: !model.isSelected)
-        case .checkbox, .switchControl:
+        case .checkbox, .switchControl, .toggle:
             try performToggle(node: node, checked: !model.isChecked)
+        case .radio:
+            try performChange(node: node)
         default:
             throw invalid("node \(node) has no action")
         }

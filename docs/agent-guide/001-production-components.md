@@ -125,6 +125,29 @@ Examples:
 - `badge` and `skeleton` can be composed if doing so preserves the complete
   public and accessibility contract.
 
+### Shared semantics, native interaction
+
+Cross-platform reuse stops at the semantic boundary. LG/LUI owns the public
+component API, controlled Signal state, validation, retained identity and typed
+events. It does not force every host to reproduce Web interaction from shared
+layout primitives.
+
+- Presentation composites such as Badge and Card may be implemented entirely
+  from LUI primitives.
+- Interactive composites such as Select, Dialog, Menu and Combobox remain
+  semantic retained nodes.
+- SwiftUI and Flutter map those nodes to their platform presentation and
+  control APIs whenever the public contract permits it.
+- Web may combine native HTML APIs with reusable LUI behavior primitives for
+  focus, selection, positioning, typeahead and dismissal.
+- Host-owned transient state includes focus traversal, gestures, animation,
+  menu tracking and interactive dismissal. Controlled values and visibility
+  still flow back through typed events to the shared Signal model.
+
+The consistency target is API, data state, accessibility meaning and core
+behavior. Platform-native gestures, transitions and focus conventions should
+remain native rather than becoming pixel-identical cross-platform emulations.
+
 ## Layout contract
 
 The foundation follows Vercel Native rather than CSS vocabulary:
@@ -268,6 +291,30 @@ semantic label wrapper, SwiftUI uses `Toggle` with the platform checkbox or
 switch style, and Flutter composes its native `Checkbox` or `Switch` with the
 label. A checked or text patch updates that retained node and must not replace
 the platform control.
+
+### Toggle, RadioGroup, Radio and Slider contract
+
+These daily value controls preserve the pinned Vercel Native API:
+
+- `toggle` is text-bearing and accepts `text`, `checked`, `disabled`, `label`
+  and `on-toggle`;
+- `radio-group` accepts the required accessible `label` and owns one logical
+  group across descendant radios at any nesting depth;
+- `radio` accepts `text`, either `checked` or `selected`, `disabled`, `label`,
+  and the reference event fallback order `on-change`, `on-toggle`, then
+  `on-press`;
+- `slider` accepts the model-owned fractional `value` as `float` or
+  `Signal<float>`, plus `disabled`, `label` and `on-change`; rendered values
+  are clamped to `0..1` without changing the model-owned source. Integer
+  values must be written or explicitly converted as floats.
+
+Radio activation emits `on-change` only for a new selection. Activating an
+already selected radio may still reach the legacy toggle or press fallback.
+Web radios share one native input name per retained group so browser focus and
+arrow navigation remain native. Flutter uses `RadioGroup`, and Apple keeps the
+same semantic group while rendering platform controls. Slider drag state stays
+host-owned during interaction; the applied fraction returns through the typed
+event pipeline and the Signal remains the reconciliation source.
 
 ## State ownership
 

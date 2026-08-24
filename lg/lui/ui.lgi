@@ -49,6 +49,11 @@
   :fn<ui-context;signal<wire-value>;fn<event;bool>;int>)
 (signature lui.ui/button! :fn<ui-context;int>)
 (signature lui.ui/toggle-button! :fn<ui-context;int>)
+(signature lui.ui/toggle! :fn<ui-context;int>)
+(signature lui.ui/radio-group! :fn<ui-context;int>)
+(signature lui.ui/radio! :fn<ui-context;int>)
+(signature lui.ui/slider! :fn<ui-context;signal.core/signal<float>;int>)
+(signature lui.ui/slider-literal! :fn<ui-context;float;int>)
 (signature lui.ui/string-property!
   :fn<ui-context;int;property;string;bool>)
 (signature lui.ui/string-property-signal!

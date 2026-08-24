@@ -14,21 +14,35 @@
         wrapped
         (model/update
          (record model/gallery-model
-           (gallery-disabled false)
-           (gallery-field-value "")
-           (gallery-invalid false)
-           (gallery-checked false)
-           (gallery-progress 100))
+                 (gallery-disabled false)
+                 (gallery-field-value "")
+                 (gallery-invalid false)
+                 (gallery-checked false)
+                 (gallery-progress 100)
+                 (gallery-density "comfortable")
+                 (gallery-volume 0.35))
          model/AdvanceProgress)]
     (assert-equal false (:gallery-disabled initial) "controls start enabled")
     (assert-equal 30 (:gallery-progress initial) "progress has a visible start")
+    (assert-equal "comfortable" (:gallery-density initial)
+                  "radio group starts with a visible selection")
+    (assert-equal 0.35 (:gallery-volume initial)
+                  "slider starts with a fractional shared value")
     (assert-equal 40 (:gallery-progress advanced) "progress advances by ten")
     (assert-equal 0 (:gallery-progress wrapped) "progress wraps after completion")
     (assert-equal
      "draft@example.com"
      (:gallery-field-value
       (model/update initial (model/SetFieldValue "draft@example.com")))
-     "text input state is shared across every host")))
+     "text input state is shared across every host")
+    (assert-equal
+     "compact"
+     (:gallery-density (model/update initial (model/SetDensity "compact")))
+     "radio selection is owned by the shared reducer")
+    (assert-equal
+     0.8
+     (:gallery-volume (model/update initial (model/SetVolume 0.8)))
+     "slider value is owned by the shared reducer")))
 
 (deftest native-gallery-app-batches-actions-and-disposes-the-retained-tree
   (let [renderer (flutter/create)

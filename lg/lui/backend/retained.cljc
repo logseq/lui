@@ -2,7 +2,8 @@
   (:require [lui.protocol :as proto
              :refer [CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild LabelledBy DescribedBy ErrorMessageBy
-                     ProgressControl MinValue MaxValue IntValue StringValue]]))
+                     ProgressControl Radio RadioGroup
+                     MinValue MaxValue IntValue StringValue]]))
 
 (defn- empty-batches [] [])
 
@@ -220,9 +221,25 @@
             "icon requires a valid name"
             "node properties conflict"))))))
 
+(defn- has-ancestor-kind? [nodes parent kind]
+  (match parent
+    (Some parent-id)
+    (if-some [parent-node (clojure.core/get nodes parent-id)]
+      (or
+       (= (:semantic-kind parent-node) kind)
+       (has-ancestor-kind? nodes (:retained-parent parent-node) kind))
+      false)
+    None false))
+
 (defn- validate-nodes! [nodes]
   (reduce-kv
    (fn [_valid _node current]
+     (when (and
+            (= (:semantic-kind current) Radio)
+            (not (has-ancestor-kind?
+                  nodes (:retained-parent current) RadioGroup)))
+       (raise
+        (Invalid_argument "radio must be contained by a radio-group")))
      (when (not
             (proto/node-properties-supported?
              (:semantic-kind current) (:retained-properties current)))

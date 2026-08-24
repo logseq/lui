@@ -39,7 +39,10 @@ test('schema summary preserves the pinned public API boundary', () => {
   ]);
   assert.ok(summary.supported.includes('button'));
   assert.ok(summary.supported.includes('toggle-button'));
-  assert.ok(summary.pending.includes('radio'));
+  assert.ok(summary.supported.includes('toggle'));
+  assert.ok(summary.supported.includes('radio-group'));
+  assert.ok(summary.supported.includes('radio'));
+  assert.ok(summary.supported.includes('slider'));
   assert.ok(summary.pending.includes('dialog'));
 });
 
@@ -69,6 +72,7 @@ test('schema validation rejects duplicate wire names before generation', () => {
         },
       ],
       properties: [],
+      events: [],
     }),
   );
 

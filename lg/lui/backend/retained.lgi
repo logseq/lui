@@ -34,6 +34,8 @@
   :fn<map<int;retained-node<platform>>;int;map<int;retained-node<platform>>>)
 (signature lui.backend.retained/descendant? [platform]
   :fn<map<int;retained-node<platform>>;int;int;bool>)
+(signature lui.backend.retained/has-ancestor-kind? [platform]
+  :fn<map<int;retained-node<platform>>;option<int>;node-kind;bool>)
 (signature lui.backend.retained/apply-op [platform]
   :fn<map<int;retained-node<platform>>;fn<node-kind;platform>;patch-op;map<int;retained-node<platform>>>)
 (signature lui.backend.retained/validate-nodes! [platform]

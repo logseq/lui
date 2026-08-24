@@ -8,6 +8,7 @@
                      TextInput TextArea Checkbox SwitchControl
                      Scroll ListContainer Spacer Spinner Icon
                      ProgressControl Divider
+                     Toggle RadioGroup Radio Slider
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild TextValue Enabled Gap MainAlignment
                      CrossAlignment GrowValue GridColumns PaddingValue
@@ -21,6 +22,7 @@
                      Checked
                      ProgressValue MinValue MaxValue OrientationValue SizeValue IconName
                      VariantValue InlineIconName IconPlacementValue Selected Autofocus HoldEnabled
+                     ChangeEnabled ToggleEnabled PressEnabled
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
 
@@ -52,6 +54,10 @@
     Label "lui-label"
     Button "lui-button"
     ToggleButton "lui-button lui-toggle-button"
+    Toggle "lui-toggle"
+    RadioGroup "lui-radio-group"
+    Radio "lui-radio"
+    Slider "lui-slider"
     TextInput "lui-text-input"
     TextArea "lui-text-area"
     Checkbox "lui-checkbox"
@@ -65,10 +71,10 @@
     Icon "lui-icon"))
 
 (defn- direct-toggle? [kind]
-  (or (= kind Checkbox) (= kind SwitchControl)))
+  (or (= kind Checkbox) (= kind SwitchControl) (= kind Radio)))
 
 (defn- button-like? [kind]
-  (or (= kind Button) (= kind ToggleButton)))
+  (or (= kind Button) (= kind ToggleButton) (= kind Toggle)))
 
 (defn- create-direct-toggle-node [renderer kind]
   (let [document (:web-document renderer)
@@ -78,11 +84,14 @@
     (Webapi.Dom.Element.setClassName root (base-class-name kind))
     (Webapi.Dom.Element.setClassName
      control
-     (if (= kind Checkbox)
+     (if (= kind Radio)
+       "lui-radio-control"
+       (if (= kind Checkbox)
        "lui-checkbox-control"
-       "lui-switch-control"))
+       "lui-switch-control")))
     (Webapi.Dom.Element.setClassName label "lui-control-label")
-    (Webapi.Dom.Element.setAttribute "type" "checkbox" control)
+    (Webapi.Dom.Element.setAttribute
+     "type" (if (= kind Radio) "radio" "checkbox") control)
     (when (= kind SwitchControl)
       (Webapi.Dom.Element.setAttribute "role" "switch" control))
     (Webapi.Dom.Element.appendChild
@@ -104,7 +113,7 @@
     (Webapi.Dom.Element.setAttribute "data-size" "default" root)
     (Webapi.Dom.Element.setAttribute "data-icon-placement" "leading" root)
     (Webapi.Dom.Element.setAttribute "type" "button" root)
-    (when (= kind ToggleButton)
+    (when (or (= kind ToggleButton) (= kind Toggle))
       (Webapi.Dom.Element.setAttribute "aria-pressed" "false" root))
     (Webapi.Dom.Element.appendChild (Webapi.Dom.Element.asNode icon) root)
     (Webapi.Dom.Element.appendChild (Webapi.Dom.Element.asNode label) root)
@@ -125,6 +134,7 @@
           TextInput "input"
           TextArea "textarea"
           ProgressControl "div"
+          Slider "input"
           Divider "hr"
           _ "div")
         node
@@ -137,6 +147,14 @@
        "style" "field-sizing: content; resize: vertical; overflow-y: auto" node))
     (when (= kind ProgressControl)
       (Webapi.Dom.Element.setAttribute "role" "progressbar" node))
+    (when (= kind RadioGroup)
+      (Webapi.Dom.Element.setAttribute "role" "radiogroup" node))
+    (when (= kind Slider)
+      (do
+        (Webapi.Dom.Element.setAttribute "type" "range" node)
+        (Webapi.Dom.Element.setAttribute "min" "0" node)
+        (Webapi.Dom.Element.setAttribute "max" "1" node)
+        (Webapi.Dom.Element.setAttribute "step" "any" node)))
     (when (= kind Spinner)
       (Webapi.Dom.Element.setAttribute "role" "progressbar" node))
     (when (= kind Divider)
@@ -261,6 +279,35 @@
        (Stdlib.ignore true)))
    (child-element dom-node 0)))
 
+(defn- attach-radio-event! [renderer node dom-node]
+  (Webapi.Dom.Element.addEventListener
+   "change"
+   (fn [_event]
+     (when (Webapi.Dom.HtmlInputElement.checked (text-control-node dom-node))
+       (Stdlib.ignore
+        ((deref (:web-event-handler renderer))
+         (if (= (retained/property (:web-store renderer) node ChangeEnabled)
+                (Some (BoolValue true)))
+           (proto/Change node)
+           (if (= (retained/property (:web-store renderer) node ToggleEnabled)
+                  (Some (BoolValue true)))
+             (proto/ToggleChanged node true)
+             (proto/Press node))))))
+     (Stdlib.ignore true))
+   (child-element dom-node 0)))
+
+(defn- attach-slider-event! [renderer node dom-node]
+  (Webapi.Dom.Element.addEventListener
+   "input"
+   (fn [_event]
+     (Stdlib.ignore
+      ((deref (:web-event-handler renderer))
+       (proto/ValueChanged
+        node (Webapi.Dom.HtmlInputElement.valueAsNumber
+              (text-control-node dom-node)))))
+     (Stdlib.ignore true))
+   dom-node))
+
 (defn- attach-button-events! [renderer node kind dom-node]
   (let [timer (atom None)
         suppress-click (atom false)
@@ -285,7 +332,7 @@
           true)
         dispatch-primary!
         (fn []
-          (if (= kind ToggleButton)
+          (if (or (= kind ToggleButton) (= kind Toggle))
             (let [selected
                   (match (Webapi.Dom.Element.getAttribute
                           "aria-pressed" dom-node)
@@ -367,6 +414,9 @@
     TextArea (attach-text-event! renderer node dom-node)
     Checkbox (attach-toggle-event! renderer node kind dom-node)
     SwitchControl (attach-toggle-event! renderer node kind dom-node)
+    Toggle (attach-button-events! renderer node kind dom-node)
+    Radio (attach-radio-event! renderer node dom-node)
+    Slider (attach-slider-event! renderer node dom-node)
     _ (Stdlib.ignore true)))
 
 (defn- set-style! [dom-node property value]
@@ -614,16 +664,24 @@
       (update-describedby! dom-node))
 
     (tuple Checked (BoolValue checked))
-    (do
-      (Webapi.Dom.HtmlInputElement.setChecked
-       (text-control-node dom-node) checked)
-      (set-state-attribute! dom-node "data-checked" checked)
-      (Webapi.Dom.Element.setAttribute
-       "aria-checked" (if checked "true" "false")
-       (child-element dom-node 0)))
+    (if (= kind Toggle)
+      (do
+        (set-state-attribute! dom-node "data-checked" checked)
+        (Webapi.Dom.Element.setAttribute
+         "aria-pressed" (if checked "true" "false") dom-node))
+      (do
+        (Webapi.Dom.HtmlInputElement.setChecked
+         (text-control-node dom-node) checked)
+        (set-state-attribute! dom-node "data-checked" checked)
+        (Webapi.Dom.Element.setAttribute
+         "aria-checked" (if checked "true" "false")
+         (child-element dom-node 0))))
 
     (tuple ProgressValue (IntValue _value))
     (update-progress! renderer node dom-node)
+
+    (tuple ProgressValue (FloatValue value))
+    (Webapi.Dom.HtmlInputElement.setValue (text-control-node dom-node) (str value))
 
     (tuple MinValue (IntValue _value))
     (update-progress! renderer node dom-node)
@@ -680,6 +738,15 @@
     (tuple HoldEnabled (BoolValue enabled))
     (set-state-attribute! dom-node "data-hold-enabled" enabled)
 
+    (tuple ChangeEnabled (BoolValue enabled))
+    (set-state-attribute! dom-node "data-change-enabled" enabled)
+
+    (tuple ToggleEnabled (BoolValue enabled))
+    (set-state-attribute! dom-node "data-toggle-enabled" enabled)
+
+    (tuple PressEnabled (BoolValue enabled))
+    (set-state-attribute! dom-node "data-press-enabled" enabled)
+
     (tuple MinLines (IntValue lines))
     (do
       (Webapi.Dom.Element.setAttribute "rows" (str lines) dom-node)
@@ -709,6 +776,26 @@
           (Webapi.Dom.Element.asNode reference)
           parent))
         (raise (Invalid_argument "DOM child index is out of bounds"))))))
+
+(defn- radio-group-ancestor [renderer node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (match (:retained-parent current)
+      (Some parent)
+      (if-some [parent-node (retained/node (:web-store renderer) parent)]
+        (if (= (:semantic-kind parent-node) RadioGroup)
+          (Some parent)
+          (radio-group-ancestor renderer parent))
+        None)
+      None None)
+    None))
+
+(defn- update-radio-group! [renderer node]
+  (match (radio-group-ancestor renderer node)
+    (Some group)
+    (Webapi.Dom.Element.setAttribute
+     "name" (str "lui-radio-group-" group)
+     (child-element (dom-node renderer node) 0))
+    None (Stdlib.ignore true)))
 
 (defn- focused-descendant [renderer dom-node]
   (let [document
@@ -767,8 +854,13 @@
       (raise (Invalid_argument "unknown DOM node")))
 
     (InsertChild parent child index)
-    (insert-dom-child!
-     (dom-node renderer parent) (dom-node renderer child) index)
+    (do
+      (insert-dom-child!
+       (dom-node renderer parent) (dom-node renderer child) index)
+      (if-some [current (retained/node (:web-store renderer) child)]
+        (when (= (:semantic-kind current) Radio)
+          (update-radio-group! renderer child))
+        (Stdlib.ignore true)))
 
     (RemoveChild parent child)
     (Stdlib.ignore

@@ -61,6 +61,18 @@
   (driver/flush! (app))
   (deref latest-patch))
 
+(defn radio-changed [node]
+  (reset! latest-patch "")
+  (driver/dispatch-event! (app) (proto/Change node))
+  (driver/flush! (app))
+  (deref latest-patch))
+
+(defn slider-changed [node value]
+  (reset! latest-patch "")
+  (driver/dispatch-event! (app) (proto/ValueChanged node value))
+  (driver/flush! (app))
+  (deref latest-patch))
+
 (defn dispose []
   (reset! latest-patch "")
   (driver/dispose! (app))
@@ -73,5 +85,7 @@
 (callback/register "lui_flutter_hold" hold)
 (callback/register "lui_flutter_text_changed" text-changed)
 (callback/register "lui_flutter_toggle_changed" toggle-changed)
+(callback/register "lui_flutter_radio_changed" radio-changed)
+(callback/register "lui_flutter_slider_changed" slider-changed)
 (callback/register "lui_flutter_dispose" dispose)
 (callback/register "lui_flutter_root_node" root-node)

@@ -9,9 +9,12 @@ private typealias PatchCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
 private typealias StartFunction = @convention(c) (PatchCallback?, Int32) -> Int32
 private typealias StopFunction = @convention(c) () -> Int32
 private typealias PressFunction = @convention(c) (Int64) -> Int32
+private typealias HoldFunction = @convention(c) (Int64) -> Int32
 private typealias TextChangedFunction =
     @convention(c) (Int64, UnsafePointer<CChar>?) -> Int32
 private typealias ToggleChangedFunction = @convention(c) (Int64, Int32) -> Int32
+private typealias RadioChangedFunction = @convention(c) (Int64) -> Int32
+private typealias SliderChangedFunction = @convention(c) (Int64, Double) -> Int32
 
 nonisolated(unsafe) private var activeHost: TodosHost?
 
@@ -29,8 +32,11 @@ private final class NativeTodosRuntime {
     private let startFunction: StartFunction
     private let stopFunction: StopFunction
     private let pressFunction: PressFunction
+    private let holdFunction: HoldFunction
     private let textChangedFunction: TextChangedFunction
     private let toggleChangedFunction: ToggleChangedFunction
+    private let radioChangedFunction: RadioChangedFunction
+    private let sliderChangedFunction: SliderChangedFunction
 
     init(path: String) throws {
         guard let handle = dlopen(path, RTLD_NOW | RTLD_LOCAL) else {
@@ -40,8 +46,11 @@ private final class NativeTodosRuntime {
         startFunction = try Self.load("lui_ocaml_start", from: handle)
         stopFunction = try Self.load("lui_ocaml_stop", from: handle)
         pressFunction = try Self.load("lui_ocaml_press", from: handle)
+        holdFunction = try Self.load("lui_ocaml_hold", from: handle)
         textChangedFunction = try Self.load("lui_ocaml_text_changed", from: handle)
         toggleChangedFunction = try Self.load("lui_ocaml_toggle_changed", from: handle)
+        radioChangedFunction = try Self.load("lui_ocaml_radio_changed", from: handle)
+        sliderChangedFunction = try Self.load("lui_ocaml_slider_changed", from: handle)
     }
 
     func start() throws {
@@ -58,6 +67,10 @@ private final class NativeTodosRuntime {
         _ = pressFunction(Int64(node))
     }
 
+    func hold(node: Int) {
+        _ = holdFunction(Int64(node))
+    }
+
     func textChanged(node: Int, text: String) {
         text.withCString { source in
             _ = textChangedFunction(Int64(node), source)
@@ -66,6 +79,14 @@ private final class NativeTodosRuntime {
 
     func toggleChanged(node: Int, checked: Bool) {
         _ = toggleChangedFunction(Int64(node), checked ? 1 : 0)
+    }
+
+    func radioChanged(node: Int) {
+        _ = radioChangedFunction(Int64(node))
+    }
+
+    func sliderChanged(node: Int, value: Double) {
+        _ = sliderChangedFunction(Int64(node), value)
     }
 
     private static func load<Function>(
@@ -105,10 +126,16 @@ private final class TodosHost: NSObject, NSApplicationDelegate, NSWindowDelegate
                 switch event {
                 case let .press(node):
                     self?.runtime?.press(node: node)
+                case let .hold(node):
+                    self?.runtime?.hold(node: node)
                 case let .textChanged(node, text):
                     self?.runtime?.textChanged(node: node, text: text)
                 case let .toggleChanged(node, checked):
                     self?.runtime?.toggleChanged(node: node, checked: checked)
+                case let .change(node):
+                    self?.runtime?.radioChanged(node: node)
+                case let .valueChanged(node, value):
+                    self?.runtime?.sliderChanged(node: node, value: value)
                 }
             }
             makeWindow()

@@ -653,6 +653,77 @@ struct LUISwiftUIBackendTests {
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
     }
 
+    @Test("maps the daily value-control batch to retained SwiftUI controls")
+    func mapsDailyValueControls() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"toggle"},
+          {"op":"create-node","id":3,"kind":"radio-group"},
+          {"op":"create-node","id":4,"kind":"radio"},
+          {"op":"create-node","id":5,"kind":"slider"},
+          {"op":"set-prop","id":2,"property":"text","value":"Bold"},
+          {"op":"set-prop","id":2,"property":"checked","value":false},
+          {"op":"set-prop","id":3,"property":"accessibility-label","value":"Density"},
+          {"op":"set-prop","id":4,"property":"text","value":"Comfortable"},
+          {"op":"set-prop","id":4,"property":"checked","value":false},
+          {"op":"set-prop","id":4,"property":"change-enabled","value":true},
+          {"op":"set-prop","id":5,"property":"value","value":0.25},
+          {"op":"set-prop","id":5,"property":"accessibility-label","value":"Volume"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"insert-child","parent":3,"child":4,"index":0},
+          {"op":"insert-child","parent":1,"child":5,"index":2}
+        ]}
+        """)
+
+        let toggle = try #require(backend.model(id: 2))
+        let radio = try #require(backend.model(id: 4))
+        let slider = try #require(backend.model(id: 5))
+        #expect(toggle.kind == .toggle)
+        #expect(radio.kind == .radio)
+        #expect(slider.kind == .slider)
+        #expect(slider.property(.progressValue) == .double(0.25))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.performToggle(node: 2, checked: true)
+        try backend.performChange(node: 4)
+        try backend.performValueChange(node: 5, value: 0.75)
+        #expect(events == [
+            .toggleChanged(node: 2, checked: true),
+            .change(node: 4),
+            .valueChanged(node: 5, value: 0.75),
+        ])
+
+        let sliderRevision = slider.revision
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":2,"property":"checked","value":true},
+          {"op":"set-prop","id":4,"property":"checked","value":true},
+          {"op":"set-prop","id":5,"property":"value","value":0.75}
+        ]}
+        """)
+        #expect(backend.model(id: 2) === toggle)
+        #expect(backend.model(id: 4) === radio)
+        #expect(backend.model(id: 5) === slider)
+        #expect(slider.revision == sliderRevision + 1)
+        try backend.performChange(node: 4)
+        #expect(events.count == 3)
+
+        let ungrouped = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try ungrouped.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"radio"},
+              {"op":"set-prop","id":1,"property":"text","value":"Orphan"}
+            ]}
+            """)
+        }
+    }
+
     @Test("C ABI forwards SwiftUI backend events")
     func cABIForwardsEvent() {
         capturedAppleEvent = nil

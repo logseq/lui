@@ -89,6 +89,17 @@ test("the production stylesheet contains direct Vercel Native toggle controls", 
   assert.doesNotMatch(css, /\.size-4\{/)
 })
 
+test("the production stylesheet contains the daily value-control batch", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-toggle\{[^}]*display:inline-flex/)
+  assert.match(css, /\.lui-toggle\[aria-pressed=true\]/)
+  assert.match(css, /\.lui-radio-group\{[^}]*display:flex/)
+  assert.match(css, /\.lui-radio-control\{[^}]*appearance:none/)
+  assert.match(css, /\.lui-radio-control:checked/)
+  assert.match(css, /\.lui-slider\{[^}]*accent-color:var\(--color-primary\)/)
+})
+
 test("the production stylesheet contains the Solid UI Badge contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 

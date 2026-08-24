@@ -9,6 +9,8 @@ public enum LUIEvent: Equatable, Sendable {
     case hold(node: Int)
     case textChanged(node: Int, text: String)
     case toggleChanged(node: Int, checked: Bool)
+    case change(node: Int)
+    case valueChanged(node: Int, value: Double)
 }
 
 struct LUIPatchBatch: Decodable {
@@ -94,7 +96,8 @@ enum LUIWireValue: Decodable, Equatable {
         case let (.inputType, .string(type)): Self.inputTypes.contains(type)
         case (.invalid, .bool): true
         case (.checked, .bool): true
-        case (.progressValue, .int), (.minValue, .int), (.maxValue, .int): true
+        case (.progressValue, .int), (.progressValue, .double),
+             (.minValue, .int), (.maxValue, .int): true
         case let (.orientation, .string(value)):
             value == "horizontal" || value == "vertical"
         case let (.size, .string(value)):
@@ -106,7 +109,8 @@ enum LUIWireValue: Decodable, Equatable {
             Self.iconNames.contains(value) || Self.isApplicationIconName(value)
         case let (.iconPlacement, .string(value)):
             value == "leading" || value == "trailing"
-        case (.selected, .bool), (.autofocus, .bool), (.holdEnabled, .bool): true
+        case (.selected, .bool), (.autofocus, .bool), (.holdEnabled, .bool),
+             (.changeEnabled, .bool), (.toggleEnabled, .bool), (.pressEnabled, .bool): true
         case let (.main, .string(value)):
             Self.mainAlignments.contains(value)
         case let (.cross, .string(value)):
@@ -289,20 +293,23 @@ struct LUIRetainedTree {
         case .foreground:
             kind == .text || kind == .heading || kind == .paragraph ||
                 kind == .label || kind == .button || kind == .toggleButton || kind == .textInput ||
-                kind == .textArea || kind == .checkbox || kind == .spinner || kind == .icon
+                kind == .textArea || kind == .checkbox || kind == .toggle ||
+                kind == .radio || kind == .slider || kind == .spinner || kind == .icon
         case .text:
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
                 kind == .button || kind == .toggleButton || kind == .textInput || kind == .textArea ||
-                kind == .checkbox || kind == .switchControl
+                kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
         case .enabled:
             kind == .button || kind == .toggleButton || kind == .textInput || kind == .textArea ||
-                kind == .checkbox || kind == .switchControl
+                kind == .checkbox || kind == .switchControl || kind == .toggle ||
+                kind == .radio || kind == .slider
         case .gap: kind == .row || kind == .column || kind == .grid || kind == .list
         case .placeholder, .readOnly:
             kind == .textInput || kind == .textArea
         case .accessibilityLabel:
             kind == .button || kind == .toggleButton || kind == .textInput || kind == .textArea || kind == .checkbox ||
-                kind == .switchControl || kind == .progress
+                kind == .switchControl || kind == .progress || kind == .toggle ||
+                kind == .radioGroup || kind == .radio || kind == .slider
         case .minLines, .maxLines: kind == .textArea
         case .headingLevel: kind == .heading
         case .labelledBy:
@@ -312,20 +319,23 @@ struct LUIRetainedTree {
         case .invalid:
             kind == .textInput || kind == .textArea
         case .inputType: kind == .textInput
-        case .checked: kind == .checkbox || kind == .switchControl
-        case .progressValue, .minValue, .maxValue: kind == .progress
+        case .checked:
+            kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
+        case .progressValue: kind == .progress || kind == .slider
+        case .minValue, .maxValue: kind == .progress
         case .orientation: kind == .divider
         case .size: kind == .button || kind == .toggleButton || kind == .spinner || kind == .icon
         case .name: kind == .icon
         case .variant, .icon, .iconPlacement, .selected, .autofocus, .holdEnabled:
             kind == .button || kind == .toggleButton
+        case .changeEnabled, .toggleEnabled, .pressEnabled: kind == .radio
         }
     }
 
     private static func canContainChildren(_ kind: LUINodeKind) -> Bool {
         kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
-            kind == .list
+            kind == .list || kind == .radioGroup
     }
 
     private func validateNodeProperties() throws {
@@ -352,7 +362,8 @@ struct LUIRetainedTree {
             if node.kind == .icon, node.properties[.name] == nil {
                 throw invalid("icon requires name")
             }
-            if node.kind == .button || node.kind == .toggleButton {
+            if node.kind == .button || node.kind == .toggleButton ||
+                node.kind == .toggle || node.kind == .radio {
                 let text = node.properties[.text]?.stringValue ?? ""
                 let label = node.properties[.accessibilityLabel]?.stringValue ?? ""
                 let icon = node.properties[.icon]?.stringValue ?? ""
@@ -363,7 +374,25 @@ struct LUIRetainedTree {
                     throw invalid("icon-only button requires label")
                 }
             }
+            if node.kind == .radioGroup || node.kind == .slider {
+                guard !(node.properties[.accessibilityLabel]?.stringValue ?? "").isEmpty else {
+                    throw invalid("value control requires an accessibility label")
+                }
+            }
+            if node.kind == .slider {
+                guard case let .double(value)? = node.properties[.progressValue], value.isFinite else {
+                    throw invalid("slider requires a finite fractional value")
+                }
+            }
+            if node.kind == .radio, !hasAncestor(node.parent, kind: .radioGroup) {
+                throw invalid("radio must be contained by a radio-group")
+            }
         }
+    }
+
+    private func hasAncestor(_ parent: Int?, kind: LUINodeKind) -> Bool {
+        guard let parent, let node = nodes[parent] else { return false }
+        return node.kind == kind || hasAncestor(node.parent, kind: kind)
     }
 
     private func validateSizeAxis(

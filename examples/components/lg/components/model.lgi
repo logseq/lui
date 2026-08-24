@@ -5,16 +5,23 @@
   (gallery-field-value :string)
   (gallery-invalid :bool)
   (gallery-checked :bool)
-  (gallery-progress :int))
+  (gallery-progress :int)
+  (gallery-density :string)
+  (gallery-volume :float))
 
 (type-variant gallery-action
   (ToggleDisabled)
   (SetFieldValue :string)
   (ToggleInvalid)
   (SetChecked :bool)
+  (SetDensity :string)
+  (SetVolume :float)
   (AdvanceProgress))
 
 (signature components.model/initial :fn<gallery-model>)
 (signature components.model/update
   :fn<gallery-model;gallery-action;gallery-model>)
 (signature components.model/progress-label :fn<gallery-model;string>)
+(signature components.model/density-comfortable? :fn<gallery-model;bool>)
+(signature components.model/density-compact? :fn<gallery-model;bool>)
+(signature components.model/volume-label :fn<gallery-model;string>)

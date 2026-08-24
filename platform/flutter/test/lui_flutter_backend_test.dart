@@ -1156,6 +1156,105 @@ void main() {
     expect(backend.generation, 2);
     semantics.dispose();
   });
+
+  testWidgets('maps the daily value-control batch to native Flutter widgets', (
+    tester,
+  ) async {
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"toggle"},
+        {"op":"create-node","id":3,"kind":"radio-group"},
+        {"op":"create-node","id":4,"kind":"radio"},
+        {"op":"create-node","id":5,"kind":"slider"},
+        {"op":"set-prop","id":2,"property":"text","value":"Bold"},
+        {"op":"set-prop","id":2,"property":"checked","value":false},
+        {"op":"set-prop","id":3,"property":"accessibility-label","value":"Density"},
+        {"op":"set-prop","id":4,"property":"text","value":"Comfortable"},
+        {"op":"set-prop","id":4,"property":"checked","value":false},
+        {"op":"set-prop","id":4,"property":"change-enabled","value":true},
+        {"op":"set-prop","id":5,"property":"value","value":0.25},
+        {"op":"set-prop","id":5,"property":"accessibility-label","value":"Volume"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":3,"child":4,"index":0},
+        {"op":"insert-child","parent":1,"child":5,"index":2}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    expect(find.byType(FilterChip), findsOneWidget);
+    expect(find.byType(RadioGroup<int>), findsOneWidget);
+    expect(find.byType(Radio<int>), findsOneWidget);
+    expect(find.byType(Slider), findsOneWidget);
+    final originalToggle = tester.renderObject(
+      find.byKey(LUIFlutterBackend.nodeKey(2)),
+    );
+    final originalRadio = tester.renderObject(
+      find.byKey(LUIFlutterBackend.nodeKey(4)),
+    );
+    final originalSlider = tester.renderObject(
+      find.byKey(LUIFlutterBackend.nodeKey(5)),
+    );
+
+    await tester.tap(find.byType(FilterChip));
+    await tester.tap(find.text('Comfortable'));
+    await tester.drag(find.byType(Slider), const Offset(100, 0));
+    await tester.pump();
+
+    expect(events[0], const LUIEvent.toggleChanged(node: 2, checked: true));
+    expect(events[1], const LUIEvent.change(node: 4));
+    final sliderEvent = events.last as LUIValueChangedEvent;
+    expect(sliderEvent.node, 5);
+    expect(sliderEvent.value, greaterThan(0.25));
+
+    backend.applyJson('''
+    {"generation":2,"ops":[
+      {"op":"set-prop","id":2,"property":"checked","value":true},
+      {"op":"set-prop","id":4,"property":"checked","value":true},
+      {"op":"set-prop","id":5,"property":"value","value":0.75}
+    ]}
+    ''');
+    await tester.pump();
+    expect(
+      tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(2))),
+      same(originalToggle),
+    );
+    expect(
+      tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(4))),
+      same(originalRadio),
+    );
+    expect(
+      tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(5))),
+      same(originalSlider),
+    );
+    expect(tester.widget<FilterChip>(find.byType(FilterChip)).selected, isTrue);
+    expect(
+      tester.widget<RadioGroup<int>>(find.byType(RadioGroup<int>)).groupValue,
+      4,
+    );
+    expect(tester.widget<Slider>(find.byType(Slider)).value, 0.75);
+    final eventCount = events.length;
+    await tester.tap(find.text('Comfortable'));
+    await tester.pump();
+    expect(events, hasLength(eventCount));
+
+    final ungrouped = LUIFlutterBackend();
+    expect(
+      () => ungrouped.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"radio"},
+        {"op":"set-prop","id":1,"property":"text","value":"Orphan"}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+  });
 }
 
 const _initialBatch = '''

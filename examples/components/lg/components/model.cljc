@@ -6,7 +6,9 @@
     (gallery-field-value "")
     (gallery-invalid false)
     (gallery-checked false)
-    (gallery-progress 30)))
+    (gallery-progress 30)
+    (gallery-density "comfortable")
+    (gallery-volume 0.35)))
 
 (defn update [model action]
   (match action
@@ -22,6 +24,12 @@
     (SetChecked checked)
     (assoc model :gallery-checked checked)
 
+    (SetDensity density)
+    (assoc model :gallery-density density)
+
+    (SetVolume volume)
+    (assoc model :gallery-volume volume)
+
     AdvanceProgress
     (assoc
      model
@@ -32,3 +40,12 @@
 
 (defn progress-label [model]
   (str (:gallery-progress model) "%"))
+
+(defn density-comfortable? [model]
+  (= (:gallery-density model) "comfortable"))
+
+(defn density-compact? [model]
+  (= (:gallery-density model) "compact"))
+
+(defn volume-label [model]
+  (str "Volume: " (:gallery-volume model)))

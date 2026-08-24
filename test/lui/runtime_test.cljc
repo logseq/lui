@@ -958,7 +958,22 @@
          ((:apply-batch backend) invalid-batch))
         "backend validates patch identities")
     (assert-equal 0 (apple/node-count renderer)
-                  "invalid batches are rejected atomically")))
+                  "invalid batches are rejected atomically"))
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        invalid-batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Radio)
+                      (proto/set-prop-op
+                       1 proto/TextValue (proto/StringValue "Orphan"))]))]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"radio-group"
+         ((:apply-batch backend) invalid-batch))
+        "Radio must have a RadioGroup ancestor")
+    (assert-equal 0 (apple/node-count renderer)
+                  "orphan Radio rejection is atomic")))
 
 (deftest runtime-rejects-property-values-with-the-wrong-wire-type
   (let [renderer (apple/create)

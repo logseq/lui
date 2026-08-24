@@ -38,6 +38,10 @@
                          (= tag :label)
                          (= tag :button)
                          (= tag :toggle-button)
+                         (= tag :toggle)
+                         (= tag :radio-group)
+                         (= tag :radio)
+                         (= tag :slider)
                          (= tag :checkbox)
                          (= tag :switch)
                          (= tag :text-input)
@@ -361,9 +365,8 @@
                             (if literal-text
                               [`(lui.ui/text-property! ~context ~node ~literal-text)]
                               []))
-                        ~@(if (:checked attrs)
-                            [`(lui.ui/checked-signal! ~context ~node ~(:checked attrs))]
-                            [])
+                        ~@(bool-attribute-expansion
+                           context node (:checked attrs) 'lui.protocol/Checked)
                         ~@(if (:on-toggle attrs)
                             [`(lui.ui/on-event! ~context ~node ~(:on-toggle attrs))]
                             [])
@@ -564,6 +567,79 @@
 (defelement switch [context parent attrs & children]
   (direct-toggle-expansion
    'lui.ui/switch-control! context parent attrs children))
+
+(defelement toggle [context parent attrs & children]
+  (direct-toggle-expansion
+   'lui.ui/toggle! context parent attrs children))
+
+(defelement radio-group [context parent attrs & children]
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/radio-group! ~context)]
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
+       ~node)))
+
+(defelement radio [context parent attrs & children]
+  (let [node (gensym "node")
+        text-source (:text attrs)
+        literal-text (first children)
+        selection-source
+        (if (:checked attrs) (:checked attrs) (:selected attrs))
+        on-change (:on-change attrs)
+        on-toggle (:on-toggle attrs)
+        on-press (:on-press attrs)]
+    `(let [~node (lui.ui/radio! ~context)]
+       ~@(if text-source
+           [`(lui.ui/text-property-signal! ~context ~node ~text-source)]
+           (if literal-text
+             [`(lui.ui/text-property! ~context ~node ~literal-text)]
+             []))
+       ~@(bool-attribute-expansion
+          context node selection-source 'lui.protocol/Checked)
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(disabled-attribute-expansion context node attrs)
+       ~@(if on-change
+           [`(lui.ui/bool-property! ~context ~node lui.protocol/ChangeEnabled true)
+            `(lui.ui/on-event! ~context ~node ~on-change)]
+           (if on-toggle
+             [`(lui.ui/bool-property! ~context ~node lui.protocol/ToggleEnabled true)
+              `(lui.ui/on-event! ~context ~node ~on-toggle)]
+             (if on-press
+               [`(lui.ui/bool-property! ~context ~node lui.protocol/PressEnabled true)
+                `(lui.ui/on-event! ~context ~node ~on-press)]
+               [])))
+       ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
+
+(defelement slider [context parent attrs & _children]
+  (let [node (gensym "node")
+        value (:value attrs)
+        constructor
+        (if (float? value) 'lui.ui/slider-literal! 'lui.ui/slider!)]
+    `(let [~node (~constructor ~context ~value)]
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(disabled-attribute-expansion context node attrs)
+       ~@(if (:on-change attrs)
+           [`(lui.ui/on-event! ~context ~node ~(:on-change attrs))]
+           [])
+       ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
 
 (defelement text-input [context parent attrs & _children]
   (let [node (gensym "node")]

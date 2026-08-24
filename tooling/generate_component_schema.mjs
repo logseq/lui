@@ -32,7 +32,7 @@ function validate(schema) {
   if (!schema.reference || typeof schema.reference.revision !== 'string') {
     fail('component schema requires a pinned reference revision');
   }
-  for (const field of ['publicElements', 'nodeKinds', 'properties']) {
+  for (const field of ['publicElements', 'nodeKinds', 'properties', 'events']) {
     if (!Array.isArray(schema[field])) fail(`${field} must be an array`);
   }
   unique(schema.publicElements, 'name', 'public element name');
@@ -43,6 +43,7 @@ function validate(schema) {
   unique(schema.properties, 'lg', 'property LG name');
   unique(schema.properties, 'wire', 'property wire name');
   unique(schema.properties, 'swift', 'property Swift name');
+  unique(schema.events, 'lg', 'event LG name');
 
   const statuses = new Set(['supported', 'partial', 'pending']);
   for (const element of schema.publicElements) {
@@ -67,6 +68,9 @@ function chunks(values, size) {
 function renderProtocol(schema) {
   const nodeKinds = schema.nodeKinds.map(({ lg }) => `  (${lg})`).join('\n');
   const properties = schema.properties.map(({ lg }) => `  (${lg})`).join('\n');
+  const events = schema.events
+    .map(({ lg, fields }) => `  (${[lg, ...fields].join(' ')})`)
+    .join('\n');
   return `${generatedHeader(';;')}(ns lui.protocol)
 
 (type-variant node-kind
@@ -101,10 +105,7 @@ ${properties})
   (FloatValue :float))
 
 (type-variant event
-  (Press :int)
-  (Hold :int)
-  (TextChanged :int :string)
-  (ToggleChanged :int :bool))
+${events})
 
 (type-variant patch-op
   (CreateNode :int :node-kind)

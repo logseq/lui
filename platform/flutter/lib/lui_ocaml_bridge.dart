@@ -22,6 +22,10 @@ typedef _NativeTextChanged = Int32 Function(Int64 node, Pointer<Utf8> text);
 typedef _DartTextChanged = int Function(int node, Pointer<Utf8> text);
 typedef _NativeToggleChanged = Int32 Function(Int64 node, Int32 checked);
 typedef _DartToggleChanged = int Function(int node, int checked);
+typedef _NativeRadioChanged = Int32 Function(Int64 node);
+typedef _DartRadioChanged = int Function(int node);
+typedef _NativeSliderChanged = Int32 Function(Int64 node, Double value);
+typedef _DartSliderChanged = int Function(int node, double value);
 typedef _NativeStop = Int32 Function();
 typedef _DartStop = int Function();
 typedef _NativeNode = Int64 Function();
@@ -44,6 +48,14 @@ final class LUIOcamlBridge {
           .lookupFunction<_NativeToggleChanged, _DartToggleChanged>(
             'lui_ocaml_toggle_changed',
           ),
+      _radioChanged = library
+          .lookupFunction<_NativeRadioChanged, _DartRadioChanged>(
+            'lui_ocaml_radio_changed',
+          ),
+      _sliderChanged = library
+          .lookupFunction<_NativeSliderChanged, _DartSliderChanged>(
+            'lui_ocaml_slider_changed',
+          ),
       _stop = library.lookupFunction<_NativeStop, _DartStop>('lui_ocaml_stop'),
       _rootNode = library.lookupFunction<_NativeNode, _DartNode>(
         'lui_ocaml_root_node',
@@ -61,6 +73,8 @@ final class LUIOcamlBridge {
   final _DartHold _hold;
   final _DartTextChanged _textChanged;
   final _DartToggleChanged _toggleChanged;
+  final _DartRadioChanged _radioChanged;
+  final _DartSliderChanged _sliderChanged;
   final _DartStop _stop;
   final _DartNode _rootNode;
   NativeCallable<_NativePatchCallback>? _patchCallback;
@@ -112,6 +126,18 @@ final class LUIOcamlBridge {
   void toggleChanged(int node, bool checked) {
     if (_toggleChanged(node, checked ? 1 : 0) != 1) {
       throw StateError('OCaml toggle dispatch failed');
+    }
+  }
+
+  void radioChanged(int node) {
+    if (_radioChanged(node) != 1) {
+      throw StateError('OCaml radio dispatch failed');
+    }
+  }
+
+  void sliderChanged(int node, double value) {
+    if (_sliderChanged(node, value) != 1) {
+      throw StateError('OCaml slider dispatch failed');
     }
   }
 
