@@ -136,6 +136,45 @@
           parent))
         (raise (Invalid_argument "DOM child index is out of bounds"))))))
 
+(defn- focused-descendant [renderer dom-node]
+  (let [document
+        (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))]
+    (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
+      (if (Webapi.Dom.Element.contains
+           (Webapi.Dom.Element.asNode focused) dom-node)
+        (Some focused)
+        None)
+      None)))
+
+(defn- focus-element! [element]
+  (Webapi.Dom.HtmlElement.focus
+   (Webapi.Dom.Element.unsafeAsHtmlElement element)))
+
+(defn- document-body-focused? [renderer]
+  (let [document
+        (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))]
+    (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
+      (if-some [body (Webapi.Dom.HtmlDocument.body document)]
+        (Webapi.Dom.Element.isSameNode
+         (Webapi.Dom.Element.asNode body) focused)
+        false)
+      false)))
+
+(defn- restore-focus! [renderer focused]
+  (match focused
+    (Some element)
+    (do
+      (focus-element! element)
+      (Stdlib.ignore
+       (Js.Global.setTimeout
+        0
+        :f
+        (fn []
+          (when (document-body-focused? renderer)
+            (focus-element! element))
+          (Stdlib.ignore true)))))
+    None (Stdlib.ignore true)))
+
 (defn- apply-dom-op! [renderer previous-nodes operation]
   (match operation
     (CreateNode node kind)
@@ -162,11 +201,13 @@
 
     (MoveChild parent child index)
     (let [parent-node (dom-node-before renderer previous-nodes parent)
-          child-node (dom-node-before renderer previous-nodes child)]
+          child-node (dom-node-before renderer previous-nodes child)
+          focused (focused-descendant renderer child-node)]
       (Stdlib.ignore
        (Webapi.Dom.Element.removeChild
         (Webapi.Dom.Element.asNode child-node) parent-node))
-      (insert-dom-child! parent-node child-node index))))
+      (insert-dom-child! parent-node child-node index)
+      (restore-focus! renderer focused))))
 
 (defn- apply-dom-batch! [renderer previous-nodes batch]
   (doseq [operation (:ops batch)]

@@ -113,6 +113,13 @@ focus request and component-specific values. Wire values remain a closed typed
 sum; no arbitrary JSON or dynamic property bag is introduced.
 
 Events are validated against node kind before entering the Signal scheduler.
+
+Text uses intrinsic content measurement by default and updates its measured
+size when content, typography or available width changes. TextArea supports an
+explicit `auto-resize` policy that grows with its content while respecting
+minimum and maximum height or line constraints. Auto-resize uses each
+platform's native text measurement and must preserve selection, composition,
+scroll position and retained control identity.
 Focus, key activation, value changes, selection changes and dismissal use typed
 events. Backends reject invalid property/value and parent/child combinations
 transactionally.

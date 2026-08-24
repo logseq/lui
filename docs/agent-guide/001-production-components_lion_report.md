@@ -88,3 +88,9 @@ Proceed with a provider boundary, not a hard-coded Lion backend:
 Lion's internal Lit tree owns only the implementation of one opaque custom
 element. LG remains the application state owner, and LUI remains responsible
 for retained application identity and cross-platform semantic events.
+
+The keyed-movement prerequisite was subsequently implemented in the retained
+Web backend. It restores the focused descendant after the synchronous move and
+once more after browser click-default processing, but only when focus otherwise
+falls back to the document body. The original browser regression (focused `Up`
+button became `body`) now retains the same focused `Up` button after reorder.
