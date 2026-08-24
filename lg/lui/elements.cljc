@@ -52,6 +52,16 @@
      [`(lui.ui/background! ~context ~node ~(:background attrs))]
      [])))
 
+(macro-helper-defn button-style-class [attrs]
+  (let [variant (if (:variant attrs) (:variant attrs) "default")
+        size (if (:size attrs) (:size attrs) "size-default")
+        size-class (if (= size "default") "size-default" size)
+        resolved
+        (str "lui-button--" variant " lui-button--" size-class)]
+    (if (:class attrs)
+      (str resolved " " (:class attrs))
+      resolved)))
+
 (macro-helper-defn container-expansion
   [constructor context parent attrs children]
   (let [node (gensym "node")]
@@ -101,6 +111,10 @@
     `(let [~node
            (lui.ui/button!
             ~context ~(first children) ~(:on-press attrs))]
+       ~@(if (:disabled attrs)
+           [`(lui.ui/disabled-signal! ~context ~node ~(:disabled attrs))]
+           [])
+       (lui.ui/style-class! ~context ~node ~(button-style-class attrs))
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])

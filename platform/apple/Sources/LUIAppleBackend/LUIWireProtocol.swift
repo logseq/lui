@@ -20,6 +20,7 @@ enum LUIProperty: String, Decodable {
     case accessibilityLabel = "accessibility-label"
     case minLines = "min-lines"
     case maxLines = "max-lines"
+    case styleClass = "style-class"
 }
 
 struct LUIPatchBatch: Decodable {
@@ -100,7 +101,7 @@ enum LUIWireValue: Decodable {
              (.padding, .int), (.background, .string),
              (.placeholder, .string), (.readOnly, .bool),
              (.accessibilityLabel, .string), (.minLines, .int),
-             (.maxLines, .int): true
+             (.maxLines, .int), (.styleClass, .string): true
         default: false
         }
     }
@@ -194,7 +195,7 @@ struct LUIRetainedTree {
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         switch property {
-        case .padding, .background: true
+        case .padding, .background, .styleClass: true
         case .text: kind == .text || kind == .button || kind == .textInput || kind == .textArea
         case .enabled: kind == .button || kind == .textInput || kind == .textArea
         case .gap: kind == .row || kind == .column

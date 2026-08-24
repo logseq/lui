@@ -41,7 +41,8 @@
   (ReadOnly)
   (AccessibilityLabel)
   (MinLines)
-  (MaxLines))
+  (MaxLines)
+  (StyleClass))
 
 (type-variant wire-value
   (StringValue :string)

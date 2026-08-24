@@ -27,6 +27,9 @@
 (signature lui.ui/text-area-value!
   :fn<ui-context;signal<wire-value>;fn<event;bool>;int>)
 (signature lui.ui/button! :fn<ui-context;string;fn<event;bool>;int>)
+(signature lui.ui/disabled-signal!
+  :fn<ui-context;int;signal.core/signal<bool>;bool>)
+(signature lui.ui/style-class! :fn<ui-context;int;string;bool>)
 (signature lui.ui/append! :fn<ui-context;int;int;bool>)
 (signature lui.ui/gap! :fn<ui-context;int;int;bool>)
 (signature lui.ui/padding! :fn<ui-context;int;int;bool>)

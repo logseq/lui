@@ -50,6 +50,18 @@
     :accessibility-label "Todo notes"
     :on-change callback}])
 
+(defui controlled-delete-button [disabled-source callback]
+  [:button
+   {:variant "destructive"
+    :size "sm"
+    :class "danger-zone-action"
+    :disabled disabled-source
+    :on-press callback}
+   "Delete"])
+
+(defui default-solid-button [callback]
+  [:button {:on-press callback} "Continue"])
+
 (deftest platform-profile-flows-through-ui-context
   (let [apple-renderer (apple/create)
         apple-application
@@ -256,3 +268,58 @@
     (runtime/dispatch! application (proto/TextChanged node "One\nTwo"))
     (runtime/flush! application)
     (assert-equal "One\nTwo" (sig/get notes) "text area updates LG state")))
+
+(deftest solid-button-disabled-state-is-signal-controlled
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "controlled-delete-button")
+        context (ui/context application scope)
+        disabled (sig/state scheduler false)
+        button
+        (controlled-delete-button
+         context (sig/value disabled) (fn [_event] true))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (match (apple/property renderer button proto/Enabled)
+      (Some (proto/BoolValue enabled))
+      (assert-equal true enabled "false disabled state enables the button")
+      _ (is false "button exposes its enabled state"))
+    (let [node-count (apple/node-count renderer)]
+      (sig/set! disabled true)
+      (runtime/flush! application)
+      (assert-equal
+       node-count (apple/node-count renderer)
+       "Signal state patches the retained button without replacing it"))
+    (match (apple/property renderer button proto/Enabled)
+      (Some (proto/BoolValue enabled))
+      (assert-equal false enabled "true disabled state disables the button")
+      _ (is false "updated button exposes its enabled state"))))
+
+(deftest solid-button-resolves-reference-variants-and-class-order
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "solid-button-variants")
+        context (ui/context application scope)
+        disabled (sig/state scheduler false)
+        destructive
+        (controlled-delete-button
+         context (sig/value disabled) (fn [_event] true))
+        default-button (default-solid-button context (fn [_event] true))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (match (apple/property renderer destructive proto/StyleClass)
+      (Some (StringValue value))
+      (assert-equal
+       "lui-button--destructive lui-button--sm danger-zone-action"
+       value
+       "application class follows the resolved Solid UI variant classes")
+      _ (is false "destructive button exposes retained style classes"))
+    (match (apple/property renderer default-button proto/StyleClass)
+      (Some (StringValue value))
+      (assert-equal
+       "lui-button--default lui-button--size-default"
+       value
+       "omitted props resolve to Solid UI's default variant and size")
+      _ (is false "default button exposes retained style classes"))))

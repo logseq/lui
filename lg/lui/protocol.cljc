@@ -22,6 +22,7 @@
   (match property
     PaddingValue true
     BackgroundValue true
+    StyleClass true
     AccessibilityLabel (or (= kind TextInput) (= kind TextArea))
     PlaceholderValue (or (= kind TextInput) (= kind TextArea))
     ReadOnly (or (= kind TextInput) (= kind TextArea))
@@ -58,6 +59,7 @@
     (tuple AccessibilityLabel (StringValue _value)) true
     (tuple MinLines (IntValue value)) (> value 0)
     (tuple MaxLines (IntValue value)) (> value 0)
+    (tuple StyleClass (StringValue _value)) true
     _ false))
 
 (defn can-contain-children? [kind]

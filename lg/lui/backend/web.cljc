@@ -6,7 +6,8 @@
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild TextValue Enabled Gap PaddingValue
                      BackgroundValue PlaceholderValue ReadOnly MinLines MaxLines
-                     AccessibilityLabel StringValue BoolValue IntValue]]
+                     AccessibilityLabel StyleClass
+                     StringValue BoolValue IntValue]]
             [lui.backend.retained :as retained]))
 
 (defn create [host]
@@ -19,6 +20,17 @@
   (reset! (:web-event-handler renderer) handler)
   true)
 
+(defn- base-class-name [kind]
+  (match kind
+    Row "lui-row"
+    Column "lui-column"
+    Text "lui-text"
+    Button "lui-button"
+    TextInput "lui-text-input"
+    TextArea "lui-text-area"
+    Scroll "lui-scroll"
+    Spacer "lui-spacer"))
+
 (defn- platform-node [renderer kind]
   (let [tag
         (match kind
@@ -28,18 +40,8 @@
           TextArea "textarea"
           _ "div")
         node
-        (Webapi.Dom.Document.createElement tag (:web-document renderer))
-        class-name
-        (match kind
-          Row "lui-row"
-          Column "lui-column"
-          Text "lui-text"
-          Button "lui-button"
-          TextInput "lui-text-input"
-          TextArea "lui-text-area"
-          Scroll "lui-scroll"
-          Spacer "lui-spacer")]
-    (Webapi.Dom.Element.setClassName node class-name)
+        (Webapi.Dom.Document.createElement tag (:web-document renderer))]
+    (Webapi.Dom.Element.setClassName node (base-class-name kind))
     (when (= kind TextArea)
       (Webapi.Dom.Element.setAttribute
        "style" "field-sizing: content; resize: vertical; overflow-y: auto" node))
@@ -130,6 +132,10 @@
 
     (tuple AccessibilityLabel (StringValue label))
     (Webapi.Dom.Element.setAttribute "aria-label" label dom-node)
+
+    (tuple StyleClass (StringValue class-name))
+    (Webapi.Dom.Element.setClassName
+     dom-node (str (base-class-name kind) " " class-name))
 
     (tuple MinLines (IntValue lines))
     (do

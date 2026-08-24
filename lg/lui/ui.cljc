@@ -100,6 +100,20 @@
      (:ui-scope context) (:ui-application context) node callback)
     node))
 
+(defn disabled-signal! [context node source]
+  (do
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context) node proto/Enabled
+     (sig/own-signal!
+      (:ui-scope context)
+      (sig/map (fn [disabled] (proto/BoolValue (not disabled))) source)))
+    true))
+
+(defn style-class! [context node class-name]
+  (runtime/set-prop!
+   (:ui-application context) node proto/StyleClass
+   (proto/StringValue class-name)))
+
 (defn append! [context parent child]
   (runtime/insert-child!
    (:ui-application context) parent child

@@ -4,6 +4,7 @@
              :refer [Row Column Text Button TextInput TextArea Scroll Spacer
                      TextValue Enabled Gap PaddingValue BackgroundValue
                      PlaceholderValue ReadOnly AccessibilityLabel MinLines MaxLines
+                     StyleClass
                      StringValue BoolValue IntValue
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild]]))
@@ -42,7 +43,8 @@
     ReadOnly "read-only"
     AccessibilityLabel "accessibility-label"
     MinLines "min-lines"
-    MaxLines "max-lines"))
+    MaxLines "max-lines"
+    StyleClass "style-class"))
 
 (defn- encode-value [value]
   (match value

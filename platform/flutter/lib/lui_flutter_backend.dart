@@ -334,6 +334,7 @@ final class LUIFlutterBackend {
         value is int && (kind == _NodeKind.row || kind == _NodeKind.column),
       'padding' => value is int,
       'background' => value is String,
+      'style-class' => value is String,
       'placeholder' => value is String && _isTextControl(kind),
       'read-only' => value is bool && _isTextControl(kind),
       'accessibility-label' => value is String && _isTextControl(kind),
