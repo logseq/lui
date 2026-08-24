@@ -677,4 +677,16 @@
   .lui-tabs > .lui-button[data-selected] {
     @apply bg-background text-foreground shadow-sm;
   }
+
+  .lui-button-group {
+    @apply inline-flex items-center gap-1;
+  }
+
+  .lui-button-group > .lui-button {
+    @apply h-9 px-3;
+  }
+
+  .lui-toggle-group {
+    @apply inline-flex items-center gap-1;
+  }
 }

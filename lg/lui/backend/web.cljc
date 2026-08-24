@@ -7,7 +7,8 @@
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
                      Select Combobox DropdownMenu MenuItem ListItem Avatar
-                     Scroll ListContainer Tabs Spacer Spinner Icon
+                     Scroll ListContainer Tabs ButtonGroup ToggleGroup
+                     Spacer Spinner Icon
                      Progress Divider
                      Toggle RadioGroup Radio Slider
                      CreateNode DropNode SetProp InsertChild RemoveChild
@@ -73,6 +74,8 @@
     Scroll "lui-scroll"
     ListContainer "lui-list"
     Tabs "lui-tabs"
+    ButtonGroup "lui-button-group"
+    ToggleGroup "lui-toggle-group"
     Spacer "lui-spacer"
     Spinner "lui-spinner"
     Icon "lui-icon"
@@ -207,6 +210,8 @@
            "aria-valuemax" "1"}
           RadioGroup {"role" "radiogroup"}
           Tabs {"role" "tablist" "aria-orientation" "horizontal"}
+          ButtonGroup {"role" "group"}
+          ToggleGroup {"role" "group"}
           Slider
           {"type" "range" "min" "0" "max" "1" "step" "any"}
           Spinner {"role" "progressbar"}
@@ -568,6 +573,76 @@
        (Stdlib.ignore true))
      dom-node)))
 
+(defn- horizontal-group-child? [group-kind child-kind]
+  (match group-kind
+    Tabs (= child-kind Button)
+    ButtonGroup (or (= child-kind Button) (= child-kind ToggleButton))
+    ToggleGroup (= child-kind ToggleButton)
+    _ false))
+
+(defn- enabled-node? [renderer node]
+  (not (= (retained/property (:web-store renderer) node Enabled)
+          (Some (BoolValue false)))))
+
+(defn- horizontal-focus-children [renderer node kind]
+  (into
+   []
+   (filter
+    (fn [child]
+      (if-some [current (retained/node (:web-store renderer) child)]
+        (and
+         (horizontal-group-child? kind (:semantic-kind current))
+         (enabled-node? renderer child))
+        false))
+    (retained/children (:web-store renderer) node))))
+
+(defn- focused-child-index [renderer children focused index]
+  (if (>= index (count children))
+    None
+    (if (Webapi.Dom.Element.isSameNode
+         (Webapi.Dom.Element.asNode (dom-node renderer (nth children index)))
+         focused)
+      (Some index)
+      (focused-child-index renderer children focused (+ index 1)))))
+
+(defn- horizontal-focus-index [key current length]
+  (if (= length 0)
+    None
+    (match key
+      "Home" (Some 0)
+      "End" (Some (- length 1))
+      "ArrowRight"
+      (match current
+        (Some index) (Some (mod (+ index 1) length))
+        None (Some 0))
+      "ArrowLeft"
+      (match current
+        (Some index) (Some (mod (+ index length -1) length))
+        None (Some 0))
+      _ None)))
+
+(defn- attach-horizontal-focus! [renderer node kind group-node]
+  (Webapi.Dom.Element.addKeyDownEventListener
+   (fn [event]
+     (let [key (Webapi.Dom.KeyboardEvent.key event)
+           children (horizontal-focus-children renderer node kind)
+           document
+           (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))
+           current
+           (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
+             (focused-child-index renderer children focused 0)
+             None)]
+       (match (horizontal-focus-index key current (count children))
+         (Some index)
+         (do
+           (Webapi.Dom.KeyboardEvent.preventDefault event)
+           (Webapi.Dom.HtmlElement.focus
+            (Webapi.Dom.Element.unsafeAsHtmlElement
+             (dom-node renderer (nth children index)))))
+         None (Stdlib.ignore true))
+       (Stdlib.ignore true)))
+   group-node))
+
 (defn- attach-events! [renderer node kind dom-node]
   (match kind
     Button (attach-button-events! renderer node kind dom-node)
@@ -589,6 +664,9 @@
     Toggle (attach-button-events! renderer node kind dom-node)
     Radio (attach-radio-event! renderer node dom-node)
     Slider (attach-slider-event! renderer node dom-node)
+    Tabs (attach-horizontal-focus! renderer node kind dom-node)
+    ButtonGroup (attach-horizontal-focus! renderer node kind dom-node)
+    ToggleGroup (attach-horizontal-focus! renderer node kind dom-node)
     _ (Stdlib.ignore true)))
 
 (defn- set-style! [dom-node property value]

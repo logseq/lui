@@ -32,6 +32,8 @@
                          (= tag :scroll)
                          (= tag :list)
                          (= tag :tabs)
+                         (= tag :button-group)
+                         (= tag :toggle-group)
                          (= tag :spacer)
                          (= tag :spinner)
                          (= tag :icon)
@@ -380,6 +382,32 @@
 
 (defelement tabs [context parent attrs & children]
   (container-expansion 'lui.ui/tabs! context parent attrs children))
+
+(macro-helper-defn action-group-expansion
+                   [constructor context parent attrs children]
+                   (let [node (gensym "node")]
+                     `(let [~node (~constructor ~context)]
+                        ~@(element-properties context node attrs)
+                        ~@(property-expansions
+                           context node
+                           [[(:accessibility-label attrs)
+                             'lui.ui/accessibility-label!]])
+                        ~@(if parent
+                            [`(lui.ui/append! ~context ~parent ~node)]
+                            [])
+                        ~@(map
+                           (fn [child]
+                             `(lui.elements/element ~context ~node ~child))
+                           children)
+                        ~node)))
+
+(defelement button-group [context parent attrs & children]
+  (action-group-expansion
+   'lui.ui/button-group! context parent attrs children))
+
+(defelement toggle-group [context parent attrs & children]
+  (action-group-expansion
+   'lui.ui/toggle-group! context parent attrs children))
 
 (defelement spacer [context parent _attrs & _children]
   (let [node (gensym "node")]

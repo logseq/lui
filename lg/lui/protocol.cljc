@@ -101,9 +101,11 @@
 (defn property-supported? [kind property]
   (match property
     MainAlignment
-    (or (= kind Row) (= kind Column) (= kind ListContainer) (= kind Tabs))
+    (or (= kind Row) (= kind Column) (= kind ListContainer) (= kind Tabs)
+        (= kind ButtonGroup) (= kind ToggleGroup))
     CrossAlignment
-    (or (= kind Row) (= kind Column) (= kind ListContainer) (= kind Tabs))
+    (or (= kind Row) (= kind Column) (= kind ListContainer) (= kind Tabs)
+        (= kind ButtonGroup) (= kind ToggleGroup))
     GrowValue (not (= kind Avatar))
     GridColumns (= kind Grid)
     PaddingValue (not (= kind Avatar))
@@ -152,6 +154,7 @@
         (= kind Textarea)
         (= kind Checkbox) (= kind SwitchControl)
         (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider)
+        (= kind ButtonGroup) (= kind ToggleGroup)
         (= kind Avatar))
     PlaceholderValue
     (or (= kind TextField) (= kind Input) (= kind SearchField)
@@ -241,6 +244,8 @@
       ListContainer true
       DropdownMenu true
       Tabs true
+      ButtonGroup true
+      ToggleGroup true
       _ false)))
 
 (defn property-value-supported? [property value]
@@ -435,6 +440,8 @@
     Scroll true
     ListContainer true
     Tabs true
+    ButtonGroup true
+    ToggleGroup true
     RadioGroup true
     DropdownMenu true
     ListItem true

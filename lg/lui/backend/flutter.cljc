@@ -3,7 +3,8 @@
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea
-                     Scroll ListContainer Tabs Spacer Spinner Icon
+                     Scroll ListContainer Tabs ButtonGroup ToggleGroup
+                     Spacer Spinner Icon
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
                      Select Combobox DropdownMenu MenuItem ListItem Avatar]]
@@ -50,6 +51,8 @@
     Scroll FlutterViewport
     ListContainer FlutterList
     Tabs FlutterTabs
+    ButtonGroup FlutterButtonGroup
+    ToggleGroup FlutterToggleGroup
     Spacer FlutterSpacer
     Spinner FlutterSpinner
     Icon FlutterIcon

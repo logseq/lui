@@ -361,6 +361,39 @@
    [:paragraph
     "Controlled selection follows one Signal; backend-owned selection survives unrelated patches."]])
 
+(defui action-group-gallery
+  [selected-source disabled-source update-selected toggle-disabled]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "ButtonGroup"]
+   [:button-group {:accessibility-label "Document actions"}
+    [:button
+     {:icon "save" :disabled disabled-source :on-press toggle-disabled}
+     "Save"]
+    [:toggle-button
+     {:icon "check"
+      :selected selected-source
+      :disabled disabled-source
+      :on-toggle update-selected}
+     "Pin"]]
+   [:heading {:level 2} "ToggleGroup"]
+   [:toggle-group {:accessibility-label "View options"}
+    [:toggle-button
+     {:selected selected-source
+      :disabled disabled-source
+      :on-toggle update-selected}
+     "Controlled"]
+    [:toggle-button
+     {:disabled disabled-source :on-toggle (fn [_event] true)}
+     "Multi-select"]
+    [:button
+     {:variant "outline"
+      :selected selected-source
+      :disabled disabled-source
+      :on-press toggle-disabled}
+     "Action chip"]]
+   [:paragraph
+    "Groups own native layout and focus navigation; each child owns its event and selection state."]])
+
 (defui tabs-gallery
   [overview-selected-source activity-selected-source content-source
    disabled-source select-overview select-activity]
@@ -401,6 +434,8 @@
   [:column
    [button-gallery disabled-source toggle-disabled]
    [toggle-button-gallery
+    checked-source disabled-source update-toggle toggle-disabled]
+   [action-group-gallery
     checked-source disabled-source update-toggle toggle-disabled]
    [tabs-gallery
     overview-tab-selected-source activity-tab-selected-source

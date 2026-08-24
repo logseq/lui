@@ -151,6 +151,23 @@
     "Activity"]
    [:toggle-button {:selected false :on-toggle on-toggle} "Pinned"]])
 
+(defui retained-action-groups
+  [primary-selected secondary-selected disabled on-event]
+  [:column
+   [:button-group {:gap 4 :main "start" :cross "center"}
+    [:button {:on-press on-event} "Save"]
+    [:toggle-button
+     {:selected primary-selected :on-toggle on-event}
+     "Pin"]]
+   [:toggle-group {:gap 8 :main "end" :cross "center"}
+    [:toggle-button
+     {:selected secondary-selected :on-toggle on-event}
+     "Comfortable"]
+    [:toggle-button {:on-toggle on-event} "Backend-owned"]
+    [:button
+     {:selected primary-selected :disabled disabled :on-press on-event}
+     "Compact"]]])
+
 (defui current-platform-profile []
   (tuple (platform) (host)))
 
@@ -613,6 +630,79 @@
         (Some (proto/BoolValue value))
         (assert-equal true value "the model selects the second trigger")
         _ (is false "activity selection exists")))))
+
+(deftest action-groups-compose-controlled-and-backend-owned-controls
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-action-groups")
+        context (ui/context application scope)
+        primary-selected (sig/state scheduler false)
+        secondary-selected (sig/state scheduler true)
+        disabled (sig/state scheduler false)
+        received (atom [])
+        callback (fn [event] (swap! received conj event) true)
+        root
+        (retained-action-groups
+         context
+         (sig/value primary-selected)
+         (sig/value secondary-selected)
+         (sig/value disabled)
+         callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [groups (apple/children renderer root)
+          button-group (nth groups 0)
+          toggle-group (nth groups 1)
+          button-children (apple/children renderer button-group)
+          toggle-children (apple/children renderer toggle-group)
+          save (nth button-children 0)
+          pin (nth button-children 1)
+          comfortable (nth toggle-children 0)
+          backend-owned (nth toggle-children 1)
+          compact (nth toggle-children 2)
+          node-count (apple/node-count renderer)]
+      (assert-equal (Some apple/AppleButtonGroup)
+                    (apple/node renderer button-group)
+                    "ButtonGroup has one retained native group node")
+      (assert-equal (Some apple/AppleToggleGroup)
+                    (apple/node renderer toggle-group)
+                    "ToggleGroup has one retained native group node")
+      (assert-equal 2 (count button-children)
+                    "ButtonGroup keeps its direct actions")
+      (assert-equal 3 (count toggle-children)
+                    "ToggleGroup accepts ToggleButtons and plain Buttons")
+      (match (apple/property renderer toggle-group proto/Gap)
+        (Some (proto/IntValue value))
+        (assert-equal 8 value "ToggleGroup keeps explicit layout")
+        _ (is false "ToggleGroup gap exists"))
+      (assert-equal None
+                    (apple/property renderer backend-owned proto/Selected)
+                    "an omitted selection remains backend owned")
+      (runtime/dispatch! application (proto/Press save))
+      (runtime/dispatch! application (proto/ToggleChanged pin true))
+      (runtime/dispatch! application (proto/Press compact))
+      (runtime/flush! application)
+      (assert-equal
+       [(proto/Press save)
+        (proto/ToggleChanged pin true)
+        (proto/Press compact)]
+       @received
+       "group children keep their native Button and ToggleButton events")
+      (sig/set! primary-selected true)
+      (sig/set! secondary-selected false)
+      (sig/set! disabled true)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "Signals patch group children without replacing the tree")
+      (match (apple/property renderer comfortable proto/Selected)
+        (Some (proto/BoolValue value))
+        (assert-equal false value "only the controlled child is patched")
+        _ (is false "controlled selection exists"))
+      (match (apple/property renderer compact proto/Enabled)
+        (Some (proto/BoolValue value))
+        (assert-equal false value "disabled Signal stays child owned")
+        _ (is false "controlled enabled state exists")))))
 
 (deftest defelement-adds-a-tag-without-changing-defui
   (let [scheduler (sig/scheduler)

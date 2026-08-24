@@ -30,6 +30,8 @@
   (Scroll)
   (ListContainer)
   (Tabs)
+  (ButtonGroup)
+  (ToggleGroup)
   (Spacer)
   (Spinner)
   (Icon)

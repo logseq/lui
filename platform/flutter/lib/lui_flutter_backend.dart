@@ -282,14 +282,22 @@ final class _NodeState {
 }
 
 final class _NodeHandle extends ChangeNotifier {
-  _NodeHandle(this.state);
+  _NodeHandle(int id, this.state)
+    : focusNode = FocusNode(debugLabel: 'lui-node-$id');
 
   _NodeState state;
+  final FocusNode focusNode;
   int revision = 0;
 
   void markChanged() {
     revision += 1;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    focusNode.dispose();
+    super.dispose();
   }
 }
 
@@ -391,7 +399,7 @@ final class LUIFlutterBackend {
     for (final entry in next.entries) {
       final handle = _handles[entry.key];
       if (handle == null) {
-        _handles[entry.key] = _NodeHandle(entry.value);
+        _handles[entry.key] = _NodeHandle(entry.key, entry.value);
       } else {
         if (!handle.state.rendersLike(entry.value)) {
           changedIDs.add(entry.key);
@@ -400,7 +408,7 @@ final class LUIFlutterBackend {
       }
     }
     for (final id in removed) {
-      _handles.remove(id);
+      _handles.remove(id)?.dispose();
     }
     _states = next;
     generation = nextGeneration;
@@ -441,6 +449,30 @@ final class LUIFlutterBackend {
       );
     }
     onEvent?.call(LUIEvent.press(node: node));
+  }
+
+  void _moveHorizontalFocus(int groupID, LogicalKeyboardKey key) {
+    final group = _requireState(_states, groupID);
+    final children = group.children
+        .where((childID) {
+          final child = _requireState(_states, childID);
+          return _isHorizontalGroupChild(group.kind, child.kind) &&
+              child.properties['enabled'] != false;
+        })
+        .toList(growable: false);
+    if (children.isEmpty) return;
+
+    final current = children.indexWhere(
+      (childID) => _requireHandle(childID).focusNode.hasFocus,
+    );
+    final targetIndex = switch (key) {
+      LogicalKeyboardKey.home => 0,
+      LogicalKeyboardKey.end => children.length - 1,
+      LogicalKeyboardKey.arrowLeft =>
+        current < 0 ? 0 : (current + children.length - 1) % children.length,
+      _ => current < 0 ? 0 : (current + 1) % children.length,
+    };
+    _requireHandle(children[targetIndex]).focusNode.requestFocus();
   }
 
   void performDoublePress(int node) {
@@ -563,12 +595,12 @@ final class LUIFlutterBackend {
     final cornerRadius = state.properties['corner-radius'] as int?;
     final gap =
         (state.properties['gap'] as int? ??
-                (state.kind == _NodeKind.tabs ? 4 : 0))
+                (_isHorizontalGroupKind(state.kind) ? 4 : 0))
             .toDouble();
     final main = state.properties['main'] as String? ?? 'start';
     final cross =
         state.properties['cross'] as String? ??
-        (state.kind == _NodeKind.tabs ? 'center' : 'stretch');
+        (_isHorizontalGroupKind(state.kind) ? 'center' : 'stretch');
     final headingLevel = state.properties['heading-level'] as int? ?? 1;
     final spinnerExtent = switch (state.properties['size'] as String? ??
         'default') {
@@ -712,6 +744,7 @@ final class LUIFlutterBackend {
               onPressed: onPressed,
               onLongPress: onLongPress,
               autofocus: buttonAutofocus,
+              focusNode: _requireHandle(id).focusNode,
               style: tabStyle,
               child: label,
             )
@@ -720,6 +753,7 @@ final class LUIFlutterBackend {
                 onPressed: onPressed,
                 onLongPress: onLongPress,
                 autofocus: buttonAutofocus,
+                focusNode: _requireHandle(id).focusNode,
                 style: style,
                 child: label,
               ),
@@ -727,6 +761,7 @@ final class LUIFlutterBackend {
                 onPressed: onPressed,
                 onLongPress: onLongPress,
                 autofocus: buttonAutofocus,
+                focusNode: _requireHandle(id).focusNode,
                 style: style,
                 child: label,
               ),
@@ -734,6 +769,7 @@ final class LUIFlutterBackend {
                 onPressed: onPressed,
                 onLongPress: onLongPress,
                 autofocus: buttonAutofocus,
+                focusNode: _requireHandle(id).focusNode,
                 style: style,
                 child: label,
               ),
@@ -741,6 +777,7 @@ final class LUIFlutterBackend {
                 onPressed: onPressed,
                 onLongPress: onLongPress,
                 autofocus: buttonAutofocus,
+                focusNode: _requireHandle(id).focusNode,
                 style: buttonStyle(backgroundColor: colors.error),
                 child: label,
               ),
@@ -748,6 +785,7 @@ final class LUIFlutterBackend {
                 onPressed: onPressed,
                 onLongPress: onLongPress,
                 autofocus: buttonAutofocus,
+                focusNode: _requireHandle(id).focusNode,
                 style: style,
                 child: label,
               ),
@@ -821,26 +859,40 @@ final class LUIFlutterBackend {
         children: children,
       ),
     );
-    Widget tabs() => LayoutBuilder(
-      builder: (context, constraints) {
-        final expandsForAlignment =
-            state.properties.containsKey('main') && constraints.hasBoundedWidth;
-        return Semantics(
-          container: true,
-          child: Row(
-            mainAxisSize: expandsForAlignment
-                ? MainAxisSize.max
-                : MainAxisSize.min,
-            mainAxisAlignment: _mainAxisAlignment(main),
-            crossAxisAlignment: _crossAxisAlignment(
-              cross,
-              canStretch: constraints.hasBoundedHeight,
-            ),
-            spacing: gap,
-            children: children,
-          ),
-        );
+    Widget horizontalGroup() => CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+            _moveHorizontalFocus(id, LogicalKeyboardKey.arrowLeft),
+        const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+            _moveHorizontalFocus(id, LogicalKeyboardKey.arrowRight),
+        const SingleActivator(LogicalKeyboardKey.home): () =>
+            _moveHorizontalFocus(id, LogicalKeyboardKey.home),
+        const SingleActivator(LogicalKeyboardKey.end): () =>
+            _moveHorizontalFocus(id, LogicalKeyboardKey.end),
       },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final expandsForAlignment =
+              state.properties.containsKey('main') &&
+              constraints.hasBoundedWidth;
+          return Semantics(
+            container: true,
+            label: accessibilityLabel,
+            child: Row(
+              mainAxisSize: expandsForAlignment
+                  ? MainAxisSize.max
+                  : MainAxisSize.min,
+              mainAxisAlignment: _mainAxisAlignment(main),
+              crossAxisAlignment: _crossAxisAlignment(
+                cross,
+                canStretch: constraints.hasBoundedHeight,
+              ),
+              spacing: gap,
+              children: children,
+            ),
+          );
+        },
+      ),
     );
     Widget column() => LayoutBuilder(
       builder: (context, constraints) => Column(
@@ -1009,7 +1061,9 @@ final class LUIFlutterBackend {
 
     final content = switch (state.kind) {
       _NodeKind.row => row(),
-      _NodeKind.tabs => tabs(),
+      _NodeKind.tabs ||
+      _NodeKind.buttonGroup ||
+      _NodeKind.toggleGroup => horizontalGroup(),
       _NodeKind.column || _NodeKind.list => column(),
       _NodeKind.grid => grid(),
       _NodeKind.stack => stack(),
@@ -1320,14 +1374,14 @@ final class LUIFlutterBackend {
             (kind == _NodeKind.row ||
                 kind == _NodeKind.column ||
                 kind == _NodeKind.list ||
-                kind == _NodeKind.tabs),
+                _isHorizontalGroupKind(kind)),
       'cross' =>
         value is String &&
             _crossAlignments.contains(value) &&
             (kind == _NodeKind.row ||
                 kind == _NodeKind.column ||
                 kind == _NodeKind.list ||
-                kind == _NodeKind.tabs),
+                _isHorizontalGroupKind(kind)),
       'grow' =>
         value is num &&
             value.isFinite &&
@@ -1439,7 +1493,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.grid ||
                 kind == _NodeKind.list ||
                 kind == _NodeKind.dropdownMenu ||
-                kind == _NodeKind.tabs),
+                _isHorizontalGroupKind(kind)),
       'padding' => value is int && kind != _NodeKind.avatar,
       'padding-horizontal' || 'padding-vertical' =>
         value is int &&
@@ -1495,6 +1549,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.switchControl ||
                 kind == _NodeKind.toggle ||
                 kind == _NodeKind.radioGroup ||
+                kind == _NodeKind.buttonGroup ||
+                kind == _NodeKind.toggleGroup ||
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider ||
                 kind == _NodeKind.avatar),
@@ -1640,7 +1696,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.box ||
       kind == _NodeKind.scroll ||
       kind == _NodeKind.list ||
-      kind == _NodeKind.tabs ||
+      _isHorizontalGroupKind(kind) ||
       kind == _NodeKind.radioGroup ||
       kind == _NodeKind.dropdownMenu ||
       kind == _NodeKind.listItem;
@@ -1670,6 +1726,21 @@ final class LUIFlutterBackend {
 
   static bool _isButtonKind(_NodeKind kind) =>
       kind == _NodeKind.button || kind == _NodeKind.toggleButton;
+
+  static bool _isHorizontalGroupKind(_NodeKind kind) =>
+      kind == _NodeKind.tabs ||
+      kind == _NodeKind.buttonGroup ||
+      kind == _NodeKind.toggleGroup;
+
+  static bool _isHorizontalGroupChild(
+    _NodeKind groupKind,
+    _NodeKind childKind,
+  ) => switch (groupKind) {
+    _NodeKind.tabs => childKind == _NodeKind.button,
+    _NodeKind.buttonGroup => _isButtonKind(childKind),
+    _NodeKind.toggleGroup => childKind == _NodeKind.toggleButton,
+    _ => false,
+  };
 
   static bool _isTextControl(_NodeKind kind) =>
       kind == _NodeKind.textField ||

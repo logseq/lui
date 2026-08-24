@@ -52,6 +52,17 @@
   :fn<web-renderer;int;property;bool>)
 (signature lui.backend.web/attach-list-item-events!
   :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/horizontal-group-child?
+  :fn<node-kind;node-kind;bool>)
+(signature lui.backend.web/enabled-node? :fn<web-renderer;int;bool>)
+(signature lui.backend.web/horizontal-focus-children
+  :fn<web-renderer;int;node-kind;vector<int>>)
+(signature lui.backend.web/focused-child-index
+  :fn<web-renderer;vector<int>;Dom.element;int;option<int>>)
+(signature lui.backend.web/horizontal-focus-index
+  :fn<string;option<int>;int;option<int>>)
+(signature lui.backend.web/attach-horizontal-focus!
+  :fn<web-renderer;int;node-kind;web-node;unit>)
 (signature lui.backend.web/attach-dropdown-events!
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/cleanup-node!

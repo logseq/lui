@@ -42,6 +42,18 @@ test("Tabs is a retained TabsList whose direct Buttons become triggers", async (
   assert.doesNotMatch(css, /\.lui-tab(?:\{|-|\[)/)
 })
 
+test("ButtonGroup and ToggleGroup use compact Tailwind horizontal layouts", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-button-group\{[^}]*display:inline-flex/)
+  assert.match(css, /\.lui-button-group\{[^}]*align-items:center/)
+  assert.match(css, /\.lui-button-group\{[^}]*gap:calc\(var\(--spacing\)\*1\)/)
+  assert.match(css, /\.lui-toggle-group\{[^}]*display:inline-flex/)
+  assert.match(css, /\.lui-toggle-group\{[^}]*align-items:center/)
+  assert.match(css, /\.lui-toggle-group\{[^}]*gap:calc\(var\(--spacing\)\*1\)/)
+  assert.match(css, /\.lui-button-group>\.lui-button\{/)
+})
+
 test("the production stylesheet contains Vercel Native overlay surfaces", async () => {
   const css = await readFile(outputUrl, "utf8")
 

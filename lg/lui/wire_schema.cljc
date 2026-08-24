@@ -4,17 +4,17 @@
                      Box Text Heading Paragraph Label Button
                      ToggleButton Toggle RadioGroup Radio Slider TextField
                      Input SearchField Textarea Checkbox SwitchControl Progress
-                     Divider Scroll ListContainer Tabs Spacer Spinner
-                     Icon Select Combobox DropdownMenu MenuItem ListItem
-                     Avatar TextValue Enabled Gap MainAlignment CrossAlignment
-                     GrowValue GridColumns PaddingValue PaddingHorizontal PaddingVertical BackgroundValue
-                     ForegroundValue BorderColorValue BorderWidth CornerRadius WidthValue HeightValue
-                     MinWidth MaxWidth MinHeight MaxHeight PlaceholderValue AccessibilityLabel
-                     StyleClass HeadingLevel Checked ProgressValue OrientationValue SizeValue
-                     IconName VariantValue InlineIconName IconPlacementValue Selected Autofocus
-                     SubmitOnEnter HoldEnabled ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled
-                     DoublePressEnabled ImageIdValue SourceX SourceY SourceWidth SourceHeight
-                     AnchorValue AnchorAlignmentValue AnchorOffset]]))
+                     Divider Scroll ListContainer Tabs ButtonGroup ToggleGroup
+                     Spacer Spinner Icon Select Combobox DropdownMenu
+                     MenuItem ListItem Avatar TextValue Enabled Gap
+                     MainAlignment CrossAlignment GrowValue GridColumns PaddingValue PaddingHorizontal
+                     PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth CornerRadius
+                     WidthValue HeightValue MinWidth MaxWidth MinHeight MaxHeight
+                     PlaceholderValue AccessibilityLabel StyleClass HeadingLevel Checked ProgressValue
+                     OrientationValue SizeValue IconName VariantValue InlineIconName IconPlacementValue
+                     Selected Autofocus SubmitOnEnter HoldEnabled ChangeEnabled ToggleEnabled
+                     PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue SourceX SourceY
+                     SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -46,6 +46,8 @@
     Scroll "scroll"
     ListContainer "list"
     Tabs "tabs"
+    ButtonGroup "button-group"
+    ToggleGroup "toggle-group"
     Spacer "spacer"
     Spinner "spinner"
     Icon "icon"

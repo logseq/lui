@@ -27,6 +27,8 @@
   (AppleScrollView)
   (AppleList)
   (AppleTabs)
+  (AppleButtonGroup)
+  (AppleToggleGroup)
   (AppleSpacer)
   (AppleSpinner)
   (AppleIcon)

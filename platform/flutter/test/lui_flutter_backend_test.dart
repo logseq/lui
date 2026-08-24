@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lui_flutter_backend/lui_flutter_backend.dart';
 
@@ -51,10 +52,12 @@ void main() {
     );
 
     final tabs = tester.widget<Row>(
-      find.descendant(
-        of: find.byKey(LUIFlutterBackend.nodeKey(1)),
-        matching: find.byType(Row),
-      ).first,
+      find
+          .descendant(
+            of: find.byKey(LUIFlutterBackend.nodeKey(1)),
+            matching: find.byType(Row),
+          )
+          .first,
     );
     expect(tabs.spacing, 4);
     expect(find.text('Overview'), findsOneWidget);
@@ -96,6 +99,146 @@ void main() {
       isTrue,
     );
     semantics.dispose();
+  });
+
+  testWidgets('maps ButtonGroup and ToggleGroup as retained native groups', (
+    tester,
+  ) async {
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"button-group"},
+        {"op":"create-node","id":3,"kind":"toggle-group"},
+        {"op":"create-node","id":4,"kind":"button"},
+        {"op":"create-node","id":5,"kind":"toggle-button"},
+        {"op":"create-node","id":6,"kind":"toggle-button"},
+        {"op":"set-prop","id":2,"property":"gap","value":4},
+        {"op":"set-prop","id":3,"property":"gap","value":8},
+        {"op":"set-prop","id":4,"property":"text","value":"Save"},
+        {"op":"set-prop","id":5,"property":"text","value":"Pin"},
+        {"op":"set-prop","id":5,"property":"selected","value":true},
+        {"op":"set-prop","id":6,"property":"text","value":"Backend-owned"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":2,"child":4,"index":0},
+        {"op":"insert-child","parent":2,"child":5,"index":1},
+        {"op":"insert-child","parent":3,"child":6,"index":0}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    final buttonGroup = tester.widget<Row>(
+      find
+          .descendant(
+            of: find.byKey(LUIFlutterBackend.nodeKey(2)),
+            matching: find.byType(Row),
+          )
+          .first,
+    );
+    final toggleGroup = tester.widget<Row>(
+      find
+          .descendant(
+            of: find.byKey(LUIFlutterBackend.nodeKey(3)),
+            matching: find.byType(Row),
+          )
+          .first,
+    );
+    expect(buttonGroup.spacing, 4);
+    expect(toggleGroup.spacing, 8);
+    expect(find.text('Save'), findsOneWidget);
+    expect(find.text('Backend-owned'), findsOneWidget);
+
+    await tester.tap(find.text('Save'));
+    await tester.tap(find.text('Pin'));
+    await tester.pump();
+    expect(events, const [
+      LUIEvent.press(node: 4),
+      LUIEvent.toggleChanged(node: 5, checked: false),
+    ]);
+
+    final buttonGroupRevision = backend.debugRevision(2);
+    final toggleGroupRevision = backend.debugRevision(3);
+    final pinRevision = backend.debugRevision(5);
+    final backendOwnedRevision = backend.debugRevision(6);
+    backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":5,"property":"selected","value":false},
+        {"op":"remove-child","parent":3,"child":6},
+        {"op":"insert-child","parent":2,"child":6,"index":2}
+      ]}
+      ''');
+    await tester.pump();
+    expect(backend.debugRevision(2), buttonGroupRevision + 1);
+    expect(backend.debugRevision(3), toggleGroupRevision + 1);
+    expect(backend.debugRevision(5), pinRevision + 1);
+    expect(backend.debugRevision(6), backendOwnedRevision + 1);
+    expect(find.text('Backend-owned'), findsOneWidget);
+  });
+
+  testWidgets('horizontal groups wrap focus and skip disabled controls', (
+    tester,
+  ) async {
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"button-group"},
+        {"op":"create-node","id":2,"kind":"button"},
+        {"op":"create-node","id":3,"kind":"button"},
+        {"op":"create-node","id":4,"kind":"toggle-button"},
+        {"op":"set-prop","id":2,"property":"text","value":"First"},
+        {"op":"set-prop","id":2,"property":"autofocus","value":true},
+        {"op":"set-prop","id":3,"property":"text","value":"Disabled"},
+        {"op":"set-prop","id":3,"property":"enabled","value":false},
+        {"op":"set-prop","id":4,"property":"text","value":"Last"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":1,"child":4,"index":2}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    await tester.pump();
+
+    ButtonStyleButton control(String label) => tester.widget<ButtonStyleButton>(
+      find.ancestor(
+        of: find.text(label),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is ButtonStyleButton,
+        ),
+      ),
+    );
+
+    expect(control('First').focusNode?.hasFocus, isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(control('Last').focusNode?.hasFocus, isTrue);
+    expect(events, isEmpty);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(control('First').focusNode?.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(control('Last').focusNode?.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.home);
+    await tester.pump();
+    expect(control('First').focusNode?.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.end);
+    await tester.pump();
+    expect(control('Last').focusNode?.hasFocus, isTrue);
+    expect(control('Disabled').focusNode?.hasFocus, isFalse);
+    expect(events, isEmpty);
   });
 
   test('rejects text on Tabs instead of silently ignoring it', () {

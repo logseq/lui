@@ -210,6 +210,50 @@
   (is (not (proto/event-supported? proto/Tabs (proto/Press 1)))
       "Tabs introduces no container event"))
 
+(deftest button-and-toggle-groups-own-layout-not-selection
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/ButtonGroup)
+                      (proto/create-node-op 2 proto/ToggleGroup)
+                      (proto/create-node-op 3 proto/Button)
+                      (proto/create-node-op 4 proto/ToggleButton)
+                      (proto/set-prop-op 1 proto/Gap (proto/IntValue 4))
+                      (proto/set-prop-op
+                       2 proto/MainAlignment (proto/StringValue "end"))
+                      (proto/insert-child-op 1 3 0)
+                      (proto/insert-child-op 2 4 0)]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"button-group\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"toggle-group\"},"
+      "{\"op\":\"create-node\",\"id\":3,\"kind\":\"button\"},"
+      "{\"op\":\"create-node\",\"id\":4,\"kind\":\"toggle-button\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"gap\",\"value\":4},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"main\","
+      "\"value\":\"end\"},"
+      "{\"op\":\"insert-child\",\"parent\":1,\"child\":3,\"index\":0},"
+      "{\"op\":\"insert-child\",\"parent\":2,\"child\":4,\"index\":0}]}" )
+     (wire/encode-batch batch)
+     "both groups have closed wire kinds without a second control API"))
+  (doseq [kind [proto/ButtonGroup proto/ToggleGroup]]
+    (is (proto/can-contain-children? kind)
+        "action groups retain direct controls")
+    (doseq [property
+            [proto/Gap proto/MainAlignment proto/CrossAlignment
+             proto/PaddingValue proto/GrowValue proto/WidthValue
+             proto/MinWidth proto/MaxWidth]]
+      (is (proto/property-supported? kind property)
+          "groups admit the reference horizontal-container surface"))
+    (doseq [property [proto/TextValue proto/Selected proto/Enabled]]
+      (is (not (proto/property-supported? kind property))
+          "groups do not own control content, selection, or enabled state"))
+    (is (not (proto/event-supported? kind (proto/Press 1)))
+        "groups introduce no press event")
+    (is (not (proto/event-supported? kind (proto/ToggleChanged 1 true)))
+        "groups introduce no toggle event")))
+
 (deftest list-item-has-the-complete-reference-contract
   (let [batch
         (record proto/patch-batch

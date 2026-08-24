@@ -30,6 +30,8 @@ enum LUINodeKind: String, Decodable, Equatable {
     case scroll = "scroll"
     case list = "list"
     case tabs = "tabs"
+    case buttonGroup = "button-group"
+    case toggleGroup = "toggle-group"
     case spacer = "spacer"
     case spinner = "spinner"
     case icon = "icon"

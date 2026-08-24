@@ -25,6 +25,8 @@
   (FlutterViewport)
   (FlutterList)
   (FlutterTabs)
+  (FlutterButtonGroup)
+  (FlutterToggleGroup)
   (FlutterSpacer)
   (FlutterSpinner)
   (FlutterIcon)

@@ -54,6 +54,12 @@
 (defn tabs! [context]
   (runtime/create-node! (:ui-application context) proto/Tabs))
 
+(defn button-group! [context]
+  (runtime/create-node! (:ui-application context) proto/ButtonGroup))
+
+(defn toggle-group! [context]
+  (runtime/create-node! (:ui-application context) proto/ToggleGroup))
+
 (defn spacer! [context]
   (runtime/create-node! (:ui-application context) proto/Spacer))
 

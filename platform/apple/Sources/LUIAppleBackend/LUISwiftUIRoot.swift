@@ -37,8 +37,8 @@ private struct LUINodeView: View {
         switch model.kind {
         case .row:
             LUIRowView(model: model, backend: backend)
-        case .tabs:
-            LUITabsView(model: model, backend: backend)
+        case .tabs, .buttonGroup, .toggleGroup:
+            LUIHorizontalGroupView(model: model, backend: backend)
         case .column, .list:
             LUIColumnView(model: model, backend: backend)
         case .grid:
@@ -548,9 +548,38 @@ private struct LUIButtonView: View {
     }
 }
 
-private struct LUITabsView: View {
+enum LUIHorizontalFocusKey {
+    case left
+    case right
+    case home
+    case end
+}
+
+enum LUIHorizontalFocus {
+    static func nextIndex(
+        current: Int?,
+        key: LUIHorizontalFocusKey,
+        enabled: [Bool]
+    ) -> Int? {
+        let candidates = enabled.indices.filter { enabled[$0] }
+        guard let first = candidates.first, let last = candidates.last else { return nil }
+        switch key {
+        case .home: return first
+        case .end: return last
+        case .left, .right:
+            guard let current, let position = candidates.firstIndex(of: current) else {
+                return first
+            }
+            let offset = key == .right ? 1 : candidates.count - 1
+            return candidates[(position + offset) % candidates.count]
+        }
+    }
+}
+
+private struct LUIHorizontalGroupView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @FocusState private var focusedChild: Int?
 
     var body: some View {
         HStack(
@@ -562,7 +591,7 @@ private struct LUITabsView: View {
             }
             ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
                 if let child = backend.model(id: childID) {
-                    LUINodeView(model: child, backend: backend)
+                    groupChild(child)
                         .frame(
                             maxWidth: child.property(.grow)?.doubleValue ?? 0 > 0
                                 ? .infinity : nil
@@ -578,6 +607,60 @@ private struct LUITabsView: View {
             }
         }
         .accessibilityElement(children: .contain)
+        .onAppear {
+            if focusedChild == nil,
+               let requested = eligibleChildren.first(where: { $0.requestsAutofocus }) {
+                focusedChild = requested.id
+            }
+        }
+        .onKeyPress { press in
+            guard let key = focusKey(press.key) else { return .ignored }
+            let children = eligibleChildren
+            let current = focusedChild.flatMap { focused in
+                children.firstIndex(where: { $0.id == focused })
+            }
+            let target = LUIHorizontalFocus.nextIndex(
+                current: current,
+                key: key,
+                enabled: children.map(\.isEnabled)
+            )
+            guard let target else { return .ignored }
+            focusedChild = children[target].id
+            return .handled
+        }
+    }
+
+    @ViewBuilder
+    private func groupChild(_ child: LUINodeModel) -> some View {
+        if isEligible(child) {
+            LUINodeView(model: child, backend: backend)
+                .focused($focusedChild, equals: child.id)
+        } else {
+            LUINodeView(model: child, backend: backend)
+        }
+    }
+
+    private var eligibleChildren: [LUINodeModel] {
+        model.children.compactMap(backend.model).filter(isEligible)
+    }
+
+    private func isEligible(_ child: LUINodeModel) -> Bool {
+        switch model.kind {
+        case .tabs: child.kind == .button
+        case .buttonGroup: child.kind == .button || child.kind == .toggleButton
+        case .toggleGroup: child.kind == .toggleButton
+        default: false
+        }
+    }
+
+    private func focusKey(_ key: KeyEquivalent) -> LUIHorizontalFocusKey? {
+        switch key {
+        case .leftArrow: .left
+        case .rightArrow: .right
+        case KeyEquivalent(Character("\u{F729}")): .home
+        case KeyEquivalent(Character("\u{F72B}")): .end
+        default: nil
+        }
     }
 
     private var gap: CGFloat {

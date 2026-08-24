@@ -2,11 +2,24 @@
   (:require [clojure.test :refer [deftest is]]
             [lui.app :as driver]
             [lui.backend.flutter :as flutter]
+            [lui.protocol :as proto]
             [components.app :as components]
             [components.model :as model]))
 
 (defmacro assert-equal [expected actual message]
   `(is (= ~expected ~actual) ~message))
+
+(defn creates-kind? [batches expected]
+  (boolean
+   (some
+    (fn [batch]
+      (some
+       (fn [operation]
+         (match operation
+           (proto/CreateNode _node kind) (= kind expected)
+           _ false))
+       (:ops batch)))
+    batches)))
 
 (deftest gallery-model-owns-the-shared-showcase-state
   (let [initial (model/initial)
@@ -105,6 +118,10 @@
     (driver/flush! application)
     (is (> (flutter/node-count renderer) 30)
         "the native gallery mounts the complete shared component source")
+    (is (creates-kind? (flutter/batches renderer) proto/ButtonGroup)
+        "the shared Gallery demonstrates ButtonGroup")
+    (is (creates-kind? (flutter/batches renderer) proto/ToggleGroup)
+        "the shared Gallery demonstrates ToggleGroup")
     (assert-equal 1 (count (flutter/batches renderer)) "mount is one batch")
     (let [mounted-count (flutter/node-count renderer)]
       (driver/send! application model/ToggleDisabled)

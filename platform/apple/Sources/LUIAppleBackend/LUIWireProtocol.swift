@@ -288,7 +288,8 @@ struct LUIRetainedTree {
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         switch property {
         case .main, .cross:
-            kind == .row || kind == .column || kind == .list || kind == .tabs
+            kind == .row || kind == .column || kind == .list ||
+                isHorizontalGroup(kind)
         case .grow: kind != .avatar
         case .columns: kind == .grid
         case .padding, .background, .borderColor, .borderWidth,
@@ -315,13 +316,14 @@ struct LUIRetainedTree {
                 kind == .combobox || kind == .menuItem || kind == .listItem
         case .gap:
             kind == .row || kind == .column || kind == .grid || kind == .list ||
-                kind == .dropdownMenu || kind == .tabs
+                kind == .dropdownMenu || isHorizontalGroup(kind)
         case .placeholder:
             isTextEntry(kind) || kind == .select
         case .accessibilityLabel:
             kind == .button || kind == .toggleButton || isTextEntry(kind) || kind == .checkbox ||
                 kind == .switchControl || kind == .toggle ||
-                kind == .radioGroup || kind == .radio || kind == .slider || kind == .avatar
+                kind == .radioGroup || kind == .buttonGroup || kind == .toggleGroup ||
+                kind == .radio || kind == .slider || kind == .avatar
         case .headingLevel: kind == .heading
         case .checked:
             kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
@@ -360,8 +362,12 @@ struct LUIRetainedTree {
     private static func canContainChildren(_ kind: LUINodeKind) -> Bool {
         kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
-            kind == .list || kind == .tabs || kind == .radioGroup
+            kind == .list || isHorizontalGroup(kind) || kind == .radioGroup
             || kind == .dropdownMenu || kind == .listItem
+    }
+
+    private static func isHorizontalGroup(_ kind: LUINodeKind) -> Bool {
+        kind == .tabs || kind == .buttonGroup || kind == .toggleGroup
     }
 
     private func validateNodeProperties() throws {

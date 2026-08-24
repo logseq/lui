@@ -506,8 +506,39 @@ triggers or selected content. Web maps the strip to a `tablist` and direct
 Button children to `tab` semantics. SwiftUI and Flutter use retained native
 Button controls with platform tab-strip presentation and selected semantics.
 Enter or Space activates the focused trigger through the Button's normal
-platform behavior. Like the pinned reference, Tabs adds no separate arrow-key
-selection protocol or runtime-owned mutual exclusion.
+platform behavior. Left and Right move focus between direct triggers with
+wrapping, while Home and End move to the first and last enabled trigger; focus
+movement does not select or activate it. Like the pinned reference, Tabs adds
+no runtime-owned selection or mutual exclusion.
+
+### ButtonGroup and ToggleGroup contract
+
+`button-group` and `toggle-group` are horizontal grouping containers. They
+introduce no value, selected item, exclusivity rule or group event. The
+application continues to bind each direct `button` or `toggle-button` through
+its existing `selected` Signal and `on-press` or `on-toggle` callback. A
+controlled exclusive chip row is therefore ordinary model logic; an
+uncontrolled ToggleButton keeps its existing backend-owned multi-select state.
+
+Both groups default to the pinned reference's 4px house gap and centered cross
+alignment, hug their children when no main-axis alignment or width is authored,
+and admit the same `gap`, `main`, `cross` and common surface attributes as the
+other horizontal collection containers. An explicit supported layout value
+wins for its field. `button-group` gives direct Button and ToggleButton children
+the platform's grouped-action presentation. `toggle-group` keeps their normal
+Button or ToggleButton presentation; its purpose is semantic grouping and
+navigation, not another selection owner. Arbitrary non-control children remain
+ordinary children and receive no contextual control behavior.
+
+Direct Button children in a ButtonGroup and direct ToggleButton children in
+either group participate in the reference keymap: Left and Right move focus
+with wrapping, while Home and End move to the first and last eligible enabled
+control. Activation remains the child's native Enter or Space behavior and
+does not move selection by itself. The groups do not collapse their children
+to one Tab stop. Web exposes a labelled `group` and implements this keymap by
+delegation; SwiftUI and Flutter use retained native controls plus their native
+focus systems. Reparenting a retained control into or out of a group updates
+only that control's contextual presentation and focus membership.
 
 ## Showcase
 

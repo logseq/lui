@@ -191,6 +191,79 @@ struct LUISwiftUIBackendTests {
         #expect(activity.isSelected)
     }
 
+    @Test("maps ButtonGroup and ToggleGroup without owning child selection")
+    func mapsActionGroups() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"button-group"},
+          {"op":"create-node","id":3,"kind":"toggle-group"},
+          {"op":"create-node","id":4,"kind":"button"},
+          {"op":"create-node","id":5,"kind":"toggle-button"},
+          {"op":"create-node","id":6,"kind":"toggle-button"},
+          {"op":"set-prop","id":2,"property":"gap","value":4},
+          {"op":"set-prop","id":3,"property":"gap","value":8},
+          {"op":"set-prop","id":4,"property":"text","value":"Save"},
+          {"op":"set-prop","id":5,"property":"text","value":"Pin"},
+          {"op":"set-prop","id":5,"property":"selected","value":true},
+          {"op":"set-prop","id":6,"property":"text","value":"Backend-owned"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"insert-child","parent":2,"child":4,"index":0},
+          {"op":"insert-child","parent":2,"child":5,"index":1},
+          {"op":"insert-child","parent":3,"child":6,"index":0}
+        ]}
+        """)
+
+        let buttonGroup = try #require(backend.model(id: 2))
+        let toggleGroup = try #require(backend.model(id: 3))
+        let pin = try #require(backend.model(id: 5))
+        let backendOwned = try #require(backend.model(id: 6))
+        let pinRevision = pin.revision
+        #expect(buttonGroup.kind == .buttonGroup)
+        #expect(toggleGroup.kind == .toggleGroup)
+        #expect(buttonGroup.children == [4, 5])
+        #expect(toggleGroup.children == [6])
+        #expect(pin.isSelected)
+        #expect(backendOwned.property(.selected) == nil)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.performPress(node: 4)
+        try backend.performToggle(node: 5, checked: false)
+        #expect(events == [.press(node: 4), .toggleChanged(node: 5, checked: false)])
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":5,"property":"selected","value":false},
+          {"op":"remove-child","parent":3,"child":6},
+          {"op":"insert-child","parent":2,"child":6,"index":2}
+        ]}
+        """)
+        #expect(backend.model(id: 2) === buttonGroup)
+        #expect(backend.model(id: 3) === toggleGroup)
+        #expect(backend.model(id: 5) === pin)
+        #expect(backend.model(id: 6) === backendOwned)
+        #expect(pin.revision == pinRevision + 1)
+        #expect(buttonGroup.children == [4, 5, 6])
+        #expect(toggleGroup.children.isEmpty)
+    }
+
+    @Test("horizontal focus wraps and skips disabled direct controls")
+    func horizontalFocusNavigation() {
+        let enabled = [true, false, true, true]
+        #expect(LUIHorizontalFocus.nextIndex(current: 0, key: .right, enabled: enabled) == 2)
+        #expect(LUIHorizontalFocus.nextIndex(current: 2, key: .right, enabled: enabled) == 3)
+        #expect(LUIHorizontalFocus.nextIndex(current: 3, key: .right, enabled: enabled) == 0)
+        #expect(LUIHorizontalFocus.nextIndex(current: 0, key: .left, enabled: enabled) == 3)
+        #expect(LUIHorizontalFocus.nextIndex(current: 3, key: .home, enabled: enabled) == 0)
+        #expect(LUIHorizontalFocus.nextIndex(current: 0, key: .end, enabled: enabled) == 3)
+        #expect(LUIHorizontalFocus.nextIndex(current: nil, key: .right, enabled: enabled) == 0)
+        #expect(LUIHorizontalFocus.nextIndex(current: 0, key: .right, enabled: [false, false]) == nil)
+    }
+
     @Test("rejects text on Tabs instead of silently ignoring it")
     func rejectsTextOnTabs() {
         let backend = LUIAppleBackend()
