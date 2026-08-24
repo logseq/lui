@@ -19,6 +19,7 @@
 (signature lui.ui/card! :fn<ui-context;int>)
 (signature lui.ui/box! :fn<ui-context;int>)
 (signature lui.ui/scroll! :fn<ui-context;int>)
+(signature lui.ui/list! :fn<ui-context;int>)
 (signature lui.ui/spacer! :fn<ui-context;int>)
 (signature lui.ui/text! :fn<ui-context;string;int>)
 (signature lui.ui/heading! :fn<ui-context;int;string;int>)

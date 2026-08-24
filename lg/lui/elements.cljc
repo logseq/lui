@@ -28,6 +28,7 @@
         (= tag :card)
         (= tag :box)
         (= tag :scroll)
+        (= tag :list)
         (= tag :spacer)
         (= tag :text)
         (= tag :heading)
@@ -334,6 +335,9 @@
 
 (defelement scroll [context parent attrs & children]
   (container-expansion 'lui.ui/scroll! context parent attrs children))
+
+(defelement list [context parent attrs & children]
+  (container-expansion 'lui.ui/list! context parent attrs children))
 
 (defelement spacer [context parent _attrs & _children]
   (let [node (gensym "node")]

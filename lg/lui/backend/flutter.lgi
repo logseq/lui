@@ -18,6 +18,7 @@
   (FlutterProgress)
   (FlutterDivider)
   (FlutterViewport)
+  (FlutterList)
   (FlutterSpacer))
 
 (type-record flutter-renderer

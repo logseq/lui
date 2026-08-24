@@ -48,6 +48,9 @@
 (defn scroll! [context]
   (runtime/create-node! (:ui-application context) proto/Scroll))
 
+(defn list! [context]
+  (runtime/create-node! (:ui-application context) proto/ListContainer))
+
 (defn spacer! [context]
   (runtime/create-node! (:ui-application context) proto/Spacer))
 

@@ -74,6 +74,20 @@
      [:text "Stack base layer"]]
     [:text {:padding 16} "Overlay layer"]]])
 
+(defui collection-gallery []
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "List and Scroll"]
+   [:list {:gap 8 :cross "stretch" :max-width 480}
+    [:card {:padding 16} [:text "List item one"]]
+    [:card {:padding 16} [:text "List item two"]]
+    [:card {:padding 16} [:text "List item three"]]]
+   [:scroll {:width 320 :height 160}
+    [:list {:gap 8 :cross "stretch"}
+     [:card {:padding 16} [:text "Scrollable item one"]]
+     [:card {:padding 16} [:text "Scrollable item two"]]
+     [:card {:padding 16} [:text "Scrollable item three"]]
+     [:card {:padding 16} [:text "Scrollable item four"]]]]])
+
 (defui badge-gallery []
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "Badge"]
@@ -187,6 +201,7 @@
    [skeleton-gallery]
    [progress-gallery progress-source progress-label-source advance-progress]
    [surface-gallery card-copy]
+   [collection-gallery]
    [text-field-gallery
     value-source invalid-source disabled-source update-value toggle-invalid]
    [toggle-gallery

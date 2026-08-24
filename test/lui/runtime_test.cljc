@@ -405,6 +405,43 @@
       (assert-equal 0 (apple/node-count renderer)
                     "a rejected overlay batch leaves no retained nodes"))))
 
+(deftest list-and-scroll-use-the-reference-containment-contract
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/ListContainer)
+                (proto/create-node-op 2 proto/Scroll)
+                (proto/create-node-op 3 proto/Text)
+                (proto/create-node-op 4 proto/Text)
+                (proto/create-node-op 5 proto/Text)
+                (proto/set-prop-op 1 proto/Gap (proto/IntValue 8))
+                (proto/set-prop-op
+                 1 proto/MainAlignment (proto/StringValue "end"))
+                (proto/set-prop-op
+                 1 proto/CrossAlignment (proto/StringValue "stretch"))
+                (proto/insert-child-op 1 3 0)
+                (proto/insert-child-op 2 4 0)
+                (proto/insert-child-op 2 5 1)]))]
+    ((:apply-batch backend) batch)
+    (assert-equal [3] (apple/children renderer 1)
+                  "List retains a vertical flow collection")
+    (assert-equal [4 5] (apple/children renderer 2)
+                  "Scroll retains multiple overlay children")
+    (assert-equal false (proto/single-child-container? proto/Scroll)
+                  "Scroll is not a one-child wrapper")))
+
+(deftest list-has-a-closed-wire-node-name
+  (let [batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/ListContainer)]))]
+    (assert-equal
+     "{\"generation\":1,\"ops\":[{\"op\":\"create-node\",\"id\":1,\"kind\":\"list\"}]}"
+     (wire/encode-batch batch)
+     "List uses the pinned Vercel Native wire name")))
+
 (deftest form-controls-retain-typed-accessibility-relationships
   (let [renderer (apple/create)
         application
@@ -807,7 +844,7 @@
         invalid-batch
         (record proto/patch-batch
           (generation 1)
-          (ops [(proto/create-node-op 1 proto/Scroll)
+          (ops [(proto/create-node-op 1 proto/SwitchControl)
                 (proto/create-node-op 2 proto/Text)
                 (proto/create-node-op 3 proto/Text)
                 (proto/insert-child-op 1 2 0)
@@ -830,15 +867,15 @@
         "leaf nodes reject children before a batch reaches the backend"))
   (let [application
         (runtime/create (sig/scheduler) (apple/backend (apple/create)))
-        scroll (runtime/create-node! application proto/Scroll)
+        switch-control (runtime/create-node! application proto/SwitchControl)
         first-child (runtime/create-node! application proto/Text)
         second-child (runtime/create-node! application proto/Text)]
-    (runtime/insert-child! application scroll first-child 0)
+    (runtime/insert-child! application switch-control first-child 0)
     (is (thrown-with-msg?
          Invalid_argument
          #"one child"
-         (runtime/insert-child! application scroll second-child 1))
-        "scroll nodes enforce their single-child contract"))
+         (runtime/insert-child! application switch-control second-child 1))
+        "switch controls enforce their single-child contract"))
   (let [application
         (runtime/create (sig/scheduler) (apple/backend (apple/create)))
         root (runtime/create-node! application proto/Column)

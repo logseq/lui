@@ -17,7 +17,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case switchControl = "switch"
     case progress
     case divider
-    case scroll, spacer
+    case scroll, list, spacer
 }
 
 enum LUIProperty: String, Decodable, Hashable {
@@ -279,7 +279,7 @@ struct LUIRetainedTree {
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         switch property {
         case .main, .cross:
-            kind == .row || kind == .column
+            kind == .row || kind == .column || kind == .list
         case .grow: true
         case .columns: kind == .grid
         case .padding, .background, .borderColor, .borderWidth,
@@ -297,7 +297,7 @@ struct LUIRetainedTree {
         case .enabled:
             kind == .button || kind == .textInput || kind == .textArea ||
                 kind == .checkbox || kind == .switchControl
-        case .gap: kind == .row || kind == .column || kind == .grid
+        case .gap: kind == .row || kind == .column || kind == .grid || kind == .list
         case .placeholder, .readOnly:
             kind == .textInput || kind == .textArea
         case .accessibilityLabel:
@@ -324,11 +324,11 @@ struct LUIRetainedTree {
     private static func canContainChildren(_ kind: LUINodeKind) -> Bool {
         kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
-            kind == .switchControl
+            kind == .list || kind == .switchControl
     }
 
     private static func isSingleChildContainer(_ kind: LUINodeKind) -> Bool {
-        kind == .scroll || kind == .switchControl
+        kind == .switchControl
     }
 
     private func validateNodeProperties() throws {

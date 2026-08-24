@@ -86,6 +86,7 @@ enum _NodeKind {
   progress,
   divider,
   scroll,
+  list,
   spacer,
 }
 
@@ -224,7 +225,9 @@ final class LUIFlutterBackend {
     final children = state.children
         .map((child) {
           final childWidget = widget(node: child);
-          if (state.kind != _NodeKind.row && state.kind != _NodeKind.column) {
+          if (state.kind != _NodeKind.row &&
+              state.kind != _NodeKind.column &&
+              state.kind != _NodeKind.list) {
             return childWidget;
           }
           final grow = _states[child]?.properties['grow'] as num? ?? 0;
@@ -354,7 +357,7 @@ final class LUIFlutterBackend {
     );
     final content = switch (state.kind) {
       _NodeKind.row => row(),
-      _NodeKind.column => column(),
+      _NodeKind.column || _NodeKind.list => column(),
       _NodeKind.grid => grid(),
       _NodeKind.stack ||
       _NodeKind.panel ||
@@ -430,7 +433,7 @@ final class LUIFlutterBackend {
             ? const VerticalDivider(width: 1)
             : const Divider(height: 1),
       _NodeKind.scroll => SingleChildScrollView(
-        child: children.isEmpty ? const SizedBox.shrink() : children.single,
+        child: Stack(children: children),
       ),
       _NodeKind.spacer => const SizedBox.shrink(),
     };
@@ -605,11 +608,15 @@ final class LUIFlutterBackend {
       'main' =>
         value is String &&
             _mainAlignments.contains(value) &&
-            (kind == _NodeKind.row || kind == _NodeKind.column),
+            (kind == _NodeKind.row ||
+                kind == _NodeKind.column ||
+                kind == _NodeKind.list),
       'cross' =>
         value is String &&
             _crossAlignments.contains(value) &&
-            (kind == _NodeKind.row || kind == _NodeKind.column),
+            (kind == _NodeKind.row ||
+                kind == _NodeKind.column ||
+                kind == _NodeKind.list),
       'grow' => value is num && value.isFinite && value >= 0,
       'columns' => value is int && value >= 0 && kind == _NodeKind.grid,
       'text' =>
@@ -638,7 +645,8 @@ final class LUIFlutterBackend {
             value >= 0 &&
             (kind == _NodeKind.row ||
                 kind == _NodeKind.column ||
-                kind == _NodeKind.grid),
+                kind == _NodeKind.grid ||
+                kind == _NodeKind.list),
       'padding' => value is int,
       'padding-horizontal' || 'padding-vertical' =>
         value is int &&
@@ -766,13 +774,13 @@ final class LUIFlutterBackend {
       kind == _NodeKind.card ||
       kind == _NodeKind.box ||
       kind == _NodeKind.scroll ||
+      kind == _NodeKind.list ||
       kind == _NodeKind.switchControl;
 
   static bool _isTextControl(_NodeKind kind) =>
       kind == _NodeKind.textInput || kind == _NodeKind.textArea;
 
-  static bool _isSingleChild(_NodeKind kind) =>
-      kind == _NodeKind.scroll || kind == _NodeKind.switchControl;
+  static bool _isSingleChild(_NodeKind kind) => kind == _NodeKind.switchControl;
 
   static bool _isDescendant(
     Map<int, _NodeState> states, {
@@ -817,6 +825,7 @@ final class LUIFlutterBackend {
     'progress' => _NodeKind.progress,
     'divider' => _NodeKind.divider,
     'scroll' => _NodeKind.scroll,
+    'list' => _NodeKind.list,
     'spacer' => _NodeKind.spacer,
     _ => throw const LUIBackendException('unknown node kind'),
   };

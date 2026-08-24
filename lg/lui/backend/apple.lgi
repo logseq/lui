@@ -20,6 +20,7 @@
   (AppleProgress)
   (AppleDivider)
   (AppleScrollView)
+  (AppleList)
   (AppleSpacer))
 
 (type-record apple-renderer

@@ -4,7 +4,8 @@
             [lui.protocol :as proto
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button
-                     TextInput TextArea Checkbox SwitchControl Scroll Spacer
+                     TextInput TextArea Checkbox SwitchControl
+                     Scroll ListContainer Spacer
                      ProgressControl Divider
                      CreateNode DropNode SetProp InsertChild RemoveChild
                      MoveChild TextValue Enabled Gap MainAlignment
@@ -52,6 +53,7 @@
     ProgressControl "lui-progress-control"
     Divider "lui-separator"
     Scroll "lui-scroll"
+    ListContainer "lui-list"
     Spacer "lui-spacer"))
 
 (defn- platform-node [renderer kind]

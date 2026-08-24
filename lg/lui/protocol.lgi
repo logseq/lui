@@ -20,6 +20,7 @@
   (ProgressControl)
   (Divider)
   (Scroll)
+  (ListContainer)
   (Spacer))
 
 (type-variant operating-system

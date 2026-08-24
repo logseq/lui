@@ -31,6 +31,14 @@ test("the production stylesheet contains Vercel Native overlay surfaces", async 
   assert.doesNotMatch(css, /\.lui-card-(?:header|content|footer|title|description)/)
 })
 
+test("the production stylesheet distinguishes List flow from Scroll overlays", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-list[^\{]*\{[^}]*flex-direction:column/)
+  assert.match(css, /\.lui-scroll[^\{]*\{[^}]*overflow:auto/)
+  assert.match(css, /\.lui-scroll>\*\{[^}]*grid-area:1\/1/)
+})
+
 test("the production stylesheet contains the Solid UI TextField contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 

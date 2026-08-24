@@ -65,8 +65,8 @@
 
 (defn property-supported? [kind property]
   (match property
-    MainAlignment (or (= kind Row) (= kind Column))
-    CrossAlignment (or (= kind Row) (= kind Column))
+    MainAlignment (or (= kind Row) (= kind Column) (= kind ListContainer))
+    CrossAlignment (or (= kind Row) (= kind Column) (= kind ListContainer))
     GrowValue true
     GridColumns (= kind Grid)
     PaddingValue true
@@ -144,6 +144,7 @@
       Row true
       Column true
       Grid true
+      ListContainer true
       _ false)))
 
 (defn property-value-supported? [property value]
@@ -235,11 +236,12 @@
     Card true
     Box true
     Scroll true
+    ListContainer true
     SwitchControl true
     _ false))
 
 (defn single-child-container? [kind]
-  (or (= kind Scroll) (= kind SwitchControl)))
+  (= kind SwitchControl))
 
 (defn create-node-op [node kind]
   (CreateNode node kind))

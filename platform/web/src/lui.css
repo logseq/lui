@@ -98,6 +98,18 @@
     grid-auto-columns: minmax(0, 1fr);
   }
 
+  .lui-list {
+    @apply flex flex-col;
+  }
+
+  .lui-scroll {
+    @apply grid overflow-auto;
+  }
+
+  .lui-scroll > * {
+    grid-area: 1 / 1;
+  }
+
   .lui-stack,
   .lui-panel,
   .lui-card {

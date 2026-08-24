@@ -37,7 +37,7 @@ private struct LUINodeView: View {
         switch model.kind {
         case .row:
             LUIRowView(model: model, backend: backend)
-        case .column:
+        case .column, .list:
             LUIColumnView(model: model, backend: backend)
         case .grid:
             LUIGridView(model: model, backend: backend)
@@ -92,7 +92,9 @@ private struct LUINodeView: View {
             LUISeparatorView(model: model)
         case .scroll:
             ScrollView {
-                children
+                ZStack {
+                    children
+                }
             }
         case .spacer:
             Spacer()

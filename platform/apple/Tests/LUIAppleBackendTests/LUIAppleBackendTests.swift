@@ -341,6 +341,35 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 3)?.property(.gap) == nil)
     }
 
+    @Test("maps List flow and multi-child Scroll to retained SwiftUI containers")
+    func mapsListAndScrollContainers() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"row"},
+          {"op":"create-node","id":2,"kind":"list"},
+          {"op":"create-node","id":3,"kind":"scroll"},
+          {"op":"create-node","id":4,"kind":"text"},
+          {"op":"create-node","id":5,"kind":"text"},
+          {"op":"create-node","id":6,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"gap","value":8},
+          {"op":"set-prop","id":2,"property":"main","value":"end"},
+          {"op":"set-prop","id":2,"property":"cross","value":"stretch"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"insert-child","parent":2,"child":4,"index":0},
+          {"op":"insert-child","parent":3,"child":5,"index":0},
+          {"op":"insert-child","parent":3,"child":6,"index":1}
+        ]}
+        """)
+
+        #expect(backend.model(id: 2)?.kind == .list)
+        #expect(backend.model(id: 2)?.property(.gap) == .int(8))
+        #expect(backend.model(id: 2)?.property(.main) == .string("end"))
+        #expect(backend.model(id: 3)?.children == [5, 6])
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+    }
+
     @Test("C ABI forwards SwiftUI backend events")
     func cABIForwardsEvent() {
         capturedAppleEvent = nil

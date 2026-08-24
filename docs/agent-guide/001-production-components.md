@@ -123,9 +123,12 @@ Examples:
 
 The foundation follows Vercel Native rather than CSS vocabulary:
 
-- `row` and `column`: `gap`, `main`, `cross` plus admitted common layout attrs;
+- `row`, `column`, and `list`: `gap`, `main`, `cross` plus admitted common
+  layout attrs;
 - `grid`: `columns` and `gap`;
 - `stack`, `panel` and `card`: overlay containers where `gap` is invalid;
+- `scroll`: one scrolling content box; direct children share that box and
+  overlay, so flowing content uses an explicit `list` or `column` child;
 - `grow`, `padding`, `width`, `height`, `min-width`, and `max-width` retain the
   same meaning and defaults as the reference.
 
@@ -139,6 +142,8 @@ Delivered parity slices:
   and `gap` validation;
 - direct retained `stack`, `panel`, and `card` overlay nodes on Web, SwiftUI,
   and Flutter;
+- direct retained `list` flow nodes and multi-child `scroll` overlay semantics
+  on Web, SwiftUI, and Flutter;
 - stacking containers reject `gap`; `card` supplies the reference 24-point
   default content padding while explicit `padding` overrides it.
 

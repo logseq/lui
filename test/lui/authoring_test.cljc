@@ -15,7 +15,7 @@
             [lui.backend.apple :as apple
              :refer [AppleBox AppleCard AppleCheckbox AppleColumn AppleFormLabel AppleGrid
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSwitch
-                     ApplePanel AppleStack AppleTextInput]]
+                     AppleList ApplePanel AppleScrollView AppleStack AppleTextInput]]
             [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
@@ -62,6 +62,15 @@
     [:text "One"]
     [:text "Two"]
     [:text "Three"]]])
+
+(defui collection-containers [copy-source]
+  [:row {:gap 16}
+   [:list {:gap 6 :main "center" :cross "stretch"}
+    [:text "First item"]
+    [:text "Second item"]]
+   [:scroll {:width 160 :height 80}
+    [:text "Base scroll layer"]
+    [:text {:value copy-source}]]])
 
 (defui current-platform-profile []
   (tuple (platform) (host)))
@@ -349,6 +358,41 @@
            (Some expected)
            (apple/property renderer node property)
            "layout attrs retain the exact Vercel Native vocabulary"))))))
+
+(deftest list-flows-while-scroll-retains-multiple-overlay-children
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        copy (sig/state scheduler "Overlay copy")
+        root
+        (collection-containers
+         (ui/context application (sig/scope "collections")) (sig/value copy))]
+    (runtime/flush! application)
+    (let [containers (apple/children renderer root)
+          list-node (nth containers 0)
+          scroll-node (nth containers 1)
+          overlay-copy (nth (apple/children renderer scroll-node) 1)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer list-node)
+        (Some AppleList) (is true "List is a direct vertical flow node")
+        _ (is false "List must map to List"))
+      (match (apple/node renderer scroll-node)
+        (Some AppleScrollView) (is true "Scroll keeps its native identity")
+        _ (is false "Scroll must map to ScrollView"))
+      (assert-equal 2 (count (apple/children renderer list-node))
+                    "List retains every flow item")
+      (assert-equal 2 (count (apple/children renderer scroll-node))
+                    "Scroll admits multiple overlay children")
+      (assert-equal (Some (proto/IntValue 6))
+                    (apple/property renderer list-node proto/Gap)
+                    "List retains its flow gap")
+      (sig/set! copy "Updated overlay")
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "scroll content patches without replacing containers")
+      (assert-equal (Some (StringValue "Updated overlay"))
+                    (apple/property renderer overlay-copy proto/TextValue)
+                    "the dependent scroll child patches locally"))))
 
 (deftest semantic-builders-produce-retained-ui
   (let [scheduler (sig/scheduler)

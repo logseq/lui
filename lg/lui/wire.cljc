@@ -3,7 +3,7 @@
             [lui.protocol
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button
-                     TextInput TextArea Scroll Spacer
+                     TextInput TextArea Scroll ListContainer Spacer
                      Checkbox SwitchControl
                      ProgressControl Divider
                      TextValue Enabled Gap MainAlignment CrossAlignment
@@ -54,6 +54,7 @@
     ProgressControl "progress"
     Divider "divider"
     Scroll "scroll"
+    ListContainer "list"
     Spacer "spacer"))
 
 (defn- property-name [property]

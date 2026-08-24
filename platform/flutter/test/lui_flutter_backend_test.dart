@@ -465,6 +465,70 @@ void main() {
     expect(backend.generation, 1);
   });
 
+  testWidgets('maps List flow and multi-child Scroll to Flutter widgets', (
+    tester,
+  ) async {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"row"},
+        {"op":"create-node","id":2,"kind":"list"},
+        {"op":"create-node","id":3,"kind":"scroll"},
+        {"op":"create-node","id":4,"kind":"text"},
+        {"op":"create-node","id":5,"kind":"text"},
+        {"op":"create-node","id":6,"kind":"text"},
+        {"op":"set-prop","id":1,"property":"width","value":400},
+        {"op":"set-prop","id":1,"property":"height","value":200},
+        {"op":"set-prop","id":2,"property":"width","value":180},
+        {"op":"set-prop","id":2,"property":"height","value":100},
+        {"op":"set-prop","id":2,"property":"gap","value":8},
+        {"op":"set-prop","id":2,"property":"main","value":"end"},
+        {"op":"set-prop","id":2,"property":"cross","value":"stretch"},
+        {"op":"set-prop","id":3,"property":"width","value":180},
+        {"op":"set-prop","id":3,"property":"height","value":100},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":2,"child":4,"index":0},
+        {"op":"insert-child","parent":3,"child":5,"index":0},
+        {"op":"insert-child","parent":3,"child":6,"index":1}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: backend.widget(node: 1),
+          ),
+        ),
+      ),
+    );
+
+    final list = tester.widget<Column>(
+      find
+          .descendant(
+            of: find.byKey(LUIFlutterBackend.nodeKey(2)),
+            matching: find.byType(Column),
+          )
+          .first,
+    );
+    expect(list.spacing, 8);
+    expect(list.mainAxisAlignment, MainAxisAlignment.end);
+    expect(list.crossAxisAlignment, CrossAxisAlignment.stretch);
+
+    final scroll = tester.widget<SingleChildScrollView>(
+      find
+          .descendant(
+            of: find.byKey(LUIFlutterBackend.nodeKey(3)),
+            matching: find.byType(SingleChildScrollView),
+          )
+          .first,
+    );
+    expect(scroll.child, isA<Stack>());
+    expect((scroll.child! as Stack).children, hasLength(2));
+  });
+
   testWidgets('maps progress ranges to one retained LinearProgressIndicator', (
     tester,
   ) async {

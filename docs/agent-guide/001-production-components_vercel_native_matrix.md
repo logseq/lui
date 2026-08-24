@@ -71,7 +71,7 @@ not substitutes for these elements.
 | --- | --- |
 | `row`, `column` | horizontal and vertical flex flow |
 | `stack`, `panel`, `card` | overlay containers; `gap` is invalid |
-| `scroll` | one scroll region; multiple children are wrapped in flow |
+| `scroll` | one scroll region; direct children share the content box and overlay, so flow content uses an explicit `list` or `column` child |
 | `list`, `grid` | vertical list and equal-cell grid |
 | `resizable`, `split` | runtime-owned resize interactions |
 | `tree` | disclosure tree and roving keyboard focus |
@@ -162,8 +162,9 @@ create a second component language and are therefore not retained.
 
 | Contract | Web | Apple | Flutter |
 | --- | --- | --- | --- |
-| row/column | CSS flex via Tailwind | `HStack`/`VStack` | `Row`/`Column` |
+| row/column/list | CSS flex via Tailwind | `HStack`/`VStack` | `Row`/`Column` |
 | stack/panel/card | CSS overlay/surface | SwiftUI overlay/ZStack | `Stack`/Material surface |
+| scroll | CSS scrolling overlay box | `ScrollView` + `ZStack` | `SingleChildScrollView` + `Stack` |
 | grid | CSS grid | `LazyVGrid` | `GridView` |
 | controls | native HTML first | SwiftUI controls | Flutter widgets |
 | modal/menu | browser platform API when suitable | SwiftUI presentation | Flutter presentation APIs |
