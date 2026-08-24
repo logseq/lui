@@ -1,7 +1,6 @@
 (ns components.gallery
   (:require [lui.macros :refer [defui]]
             [lui.badge]
-            [lui.card :as card]
             [lui.progress :as progress]
             [lui.separator]
             [lui.skeleton]
@@ -57,17 +56,23 @@
       :on-press (fn [_event] true)}
      "+"]]])
 
-(defui card-gallery [copy-source]
+(defui surface-gallery [copy-source]
   [:column {:gap 24 :padding 32}
-   [:heading {:level 2} "Card"]
-   [:card
-    [:card/header
-     [:card/title "Account"]
-     [:card/description "Manage your profile settings."]]
-    [:card/content
-     [:paragraph {:value copy-source}]]
-    [:card/footer
-     [:button {:on-press (fn [_event] true)} "Save changes"]]]])
+   [:heading {:level 2} "Stack, Panel, and Card"]
+   [:grid {:columns 2 :gap 16}
+    [:panel {:padding 16}
+     [:column {:gap 8}
+      [:text "Panel"]
+      [:paragraph "A raised overlay surface with explicit content padding."]]]
+    [:card
+     [:column {:gap 12}
+      [:text "Card"]
+      [:paragraph {:value copy-source}]
+      [:button {:on-press (fn [_event] true)} "Save changes"]]]]
+   [:stack {:width 320 :height 96}
+    [:panel {:padding 16}
+     [:text "Stack base layer"]]
+    [:text {:padding 16} "Overlay layer"]]])
 
 (defui badge-gallery []
   [:column {:gap 24 :padding 32}
@@ -181,7 +186,7 @@
    [separator-gallery]
    [skeleton-gallery]
    [progress-gallery progress-source progress-label-source advance-progress]
-   [card-gallery card-copy]
+   [surface-gallery card-copy]
    [text-field-gallery
     value-source invalid-source disabled-source update-value toggle-invalid]
    [toggle-gallery

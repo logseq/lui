@@ -1,7 +1,8 @@
 (ns lui.wire
   (:require [clojure.string :as string]
             [lui.protocol
-             :refer [Row Column Grid Box Text Heading Paragraph Label Button
+             :refer [Row Column Grid Stack Panel Card Box
+                     Text Heading Paragraph Label Button
                      TextInput TextArea Scroll Spacer
                      Checkbox SwitchControl
                      ProgressControl Divider
@@ -37,6 +38,9 @@
     Row "row"
     Column "column"
     Grid "grid"
+    Stack "stack"
+    Panel "panel"
+    Card "card"
     Box "box"
     Text "text"
     Heading "heading"

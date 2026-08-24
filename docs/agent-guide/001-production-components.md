@@ -133,6 +133,15 @@ There is no public `flex`, `grid/col`, `aspect-ratio`, breakpoint-column or
 column-span component API. Web responsiveness is external style policy, not
 wire protocol vocabulary.
 
+Delivered parity slices:
+
+- `row`, `column`, and `grid`, including `main`, `cross`, `grow`, `columns`,
+  and `gap` validation;
+- direct retained `stack`, `panel`, and `card` overlay nodes on Web, SwiftUI,
+  and Flutter;
+- stacking containers reject `gap`; `card` supplies the reference 24-point
+  default content padding while explicit `padding` overrides it.
+
 ## State ownership
 
 - Controlled values are Signal sources plus the corresponding Vercel Native

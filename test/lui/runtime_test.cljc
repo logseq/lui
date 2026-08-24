@@ -369,6 +369,42 @@
              (runtime/set-prop! application node property value))
             "invalid layout values never enter a patch batch")))))
 
+(deftest overlay-surfaces-use-direct-closed-node-kinds
+  (let [batch
+        (record proto/patch-batch
+          (generation 1)
+          (ops [(proto/create-node-op 1 proto/Stack)
+                (proto/create-node-op 2 proto/Panel)
+                (proto/create-node-op 3 proto/Card)
+                (proto/insert-child-op 1 2 0)
+                (proto/insert-child-op 1 3 1)]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"stack\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"panel\"},"
+      "{\"op\":\"create-node\",\"id\":3,\"kind\":\"card\"},"
+      "{\"op\":\"insert-child\",\"parent\":1,\"child\":2,\"index\":0},"
+      "{\"op\":\"insert-child\",\"parent\":1,\"child\":3,\"index\":1}]}")
+     (wire/encode-batch batch)
+     "overlay surfaces retain Vercel Native node names")))
+
+(deftest overlay-surfaces-reject-flow-gap-atomically
+  (doseq [kind [proto/Stack proto/Panel proto/Card]]
+    (let [renderer (apple/create)
+          batch
+          (record proto/patch-batch
+            (generation 1)
+            (ops [(proto/create-node-op 1 kind)
+                  (proto/set-prop-op 1 proto/Gap (proto/IntValue 8))]))]
+      (is (thrown-with-msg?
+           Invalid_argument
+           #"unsupported property"
+           ((:apply-batch (apple/backend renderer)) batch))
+          "stacking containers reject meaningless gap")
+      (assert-equal 0 (apple/node-count renderer)
+                    "a rejected overlay batch leaves no retained nodes"))))
+
 (deftest form-controls-retain-typed-accessibility-relationships
   (let [renderer (apple/create)
         application

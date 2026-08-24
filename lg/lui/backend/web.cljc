@@ -2,7 +2,8 @@
   (:require [ocaml.package/melange-webapi]
             [ocaml.Webapi.Dom.HtmlCollection :as html-collection]
             [lui.protocol :as proto
-             :refer [Row Column Grid Box Text Heading Paragraph Label Button
+             :refer [Row Column Grid Stack Panel Card Box
+                     Text Heading Paragraph Label Button
                      TextInput TextArea Checkbox SwitchControl Scroll Spacer
                      ProgressControl Divider
                      CreateNode DropNode SetProp InsertChild RemoveChild
@@ -35,6 +36,9 @@
     Row "lui-row"
     Column "lui-column"
     Grid "lui-grid"
+    Stack "lui-stack"
+    Panel "lui-panel"
+    Card "lui-card"
     Box "lui-box"
     Text "lui-text"
     Heading "lui-heading"

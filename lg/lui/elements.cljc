@@ -23,6 +23,9 @@
         (= tag :row)
         (= tag :column)
         (= tag :grid)
+        (= tag :stack)
+        (= tag :panel)
+        (= tag :card)
         (= tag :box)
         (= tag :scroll)
         (= tag :spacer)
@@ -316,6 +319,15 @@
 
 (defelement grid [context parent attrs & children]
   (container-expansion 'lui.ui/grid! context parent attrs children))
+
+(defelement stack [context parent attrs & children]
+  (container-expansion 'lui.ui/stack! context parent attrs children))
+
+(defelement panel [context parent attrs & children]
+  (container-expansion 'lui.ui/panel! context parent attrs children))
+
+(defelement card [context parent attrs & children]
+  (container-expansion 'lui.ui/card! context parent attrs children))
 
 (defelement box [context parent attrs & children]
   (container-expansion 'lui.ui/box! context parent attrs children))

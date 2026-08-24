@@ -230,6 +230,9 @@
     Row true
     Column true
     Grid true
+    Stack true
+    Panel true
+    Card true
     Box true
     Scroll true
     SwitchControl true

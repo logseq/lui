@@ -6,7 +6,6 @@
             [lui.ui :as ui]
             [lui.elements :refer [defcomponent defelement]]
             [lui.badge]
-            [lui.card :as card]
             [lui.progress :as progress]
             [lui.separator]
             [lui.skeleton]
@@ -14,9 +13,9 @@
             [lui.switch :as switch]
             [lui.macros :refer [defui state effect platform host]]
             [lui.backend.apple :as apple
-             :refer [AppleBox AppleCheckbox AppleColumn AppleFormLabel AppleGrid
+             :refer [AppleBox AppleCard AppleCheckbox AppleColumn AppleFormLabel AppleGrid
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSwitch
-                     AppleTextInput]]
+                     ApplePanel AppleStack AppleTextInput]]
             [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
@@ -106,15 +105,12 @@
    [:heading {:level 2 :value source}]
    [:paragraph {:value source}]])
 
-(defui profile-card [callback]
-  [:card {:class "profile-card"}
-   [:card/header
-    [:card/title "Account"]
-    [:card/description "Manage your profile settings."]]
-   [:card/content
-    [:paragraph "Changes stay local until you save them."]]
-   [:card/footer
-    [:button {:on-press callback} "Save changes"]]])
+(defui overlay-surfaces [copy-source]
+  [:stack {:width 320 :height 180}
+   [:panel {:padding 12}
+    [:text "Panel layer"]]
+   [:card
+    [:text {:value copy-source}]]])
 
 (defui status-badges []
   [:column
@@ -437,48 +433,39 @@
         (assert-equal "Updated copy" value "Paragraph patches TextValue")
         _ (is false "Paragraph retains reactive text")))))
 
-(deftest card-composes-public-parts-from-semantic-retained-primitives
+(deftest overlay-surfaces-are-direct-retained-nodes
   (let [renderer (apple/create)
+        scheduler (sig/scheduler)
         application
-        (runtime/create (sig/scheduler) (apple/backend renderer))
-        scope (sig/scope "profile-card")
-        root (profile-card (ui/context application scope) (fn [_event] true))]
+        (runtime/create scheduler (apple/backend renderer))
+        copy (sig/state scheduler "Retained card")
+        scope (sig/scope "overlay-surfaces")
+        root (overlay-surfaces (ui/context application scope) (sig/value copy))]
     (sig/mount! scope)
     (runtime/flush! application)
-    (let [parts (apple/children renderer root)
-          header (nth parts 0)
-          content (nth parts 1)
-          footer (nth parts 2)
-          title (nth (apple/children renderer header) 0)
-          description (nth (apple/children renderer header) 1)]
-      (assert-equal 3 (count parts) "Card retains header, content, and footer")
-      (match (apple/property renderer root proto/StyleClass)
+    (let [layers (apple/children renderer root)
+          panel (nth layers 0)
+          card (nth layers 1)
+          card-copy (nth (apple/children renderer card) 0)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer root)
+        (Some AppleStack) (is true "Stack is a direct overlay node")
+        _ (is false "Stack must map to Stack"))
+      (match (apple/node renderer panel)
+        (Some ApplePanel) (is true "Panel is a direct surface node")
+        _ (is false "Panel must map to Panel"))
+      (match (apple/node renderer card)
+        (Some AppleCard) (is true "Card is a direct surface node")
+        _ (is false "Card must map to Card"))
+      (assert-equal 2 (count layers) "Stack retains both overlay layers")
+      (sig/set! copy "Updated card")
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "reactive card content preserves every retained node")
+      (match (apple/property renderer card-copy proto/TextValue)
         (Some (StringValue value))
-        (assert-equal "lui-card profile-card" value
-                      "application class follows the Card default")
-        _ (is false "Card exposes its resolved class"))
-      (match (apple/property renderer header proto/StyleClass)
-        (Some (StringValue value))
-        (assert-equal "lui-card-header" value "CardHeader class")
-        _ (is false "CardHeader exposes its class"))
-      (match (apple/property renderer content proto/StyleClass)
-        (Some (StringValue value))
-        (assert-equal "lui-card-content" value "CardContent class")
-        _ (is false "CardContent exposes its class"))
-      (match (apple/property renderer footer proto/StyleClass)
-        (Some (StringValue value))
-        (assert-equal "lui-card-footer" value "CardFooter class")
-        _ (is false "CardFooter exposes its class"))
-      (match (apple/node renderer title)
-        (Some AppleHeading) (is true "CardTitle is a semantic heading")
-        _ (is false "CardTitle maps to Heading"))
-      (match (apple/property renderer title proto/HeadingLevel)
-        (Some (proto/IntValue level))
-        (assert-equal 3 level "CardTitle matches Solid UI's h3")
-        _ (is false "CardTitle retains heading level"))
-      (match (apple/node renderer description)
-        (Some AppleParagraph) (is true "CardDescription is a paragraph")
-        _ (is false "CardDescription maps to Paragraph")))))
+        (assert-equal "Updated card" value "Card content patches locally")
+        _ (is false "Card text remains retained")))))
 
 (deftest badge-composes-row-and-text-with-reusable-surface-properties
   (let [renderer (apple/create)

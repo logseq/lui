@@ -309,6 +309,38 @@ struct LUISwiftUIBackendTests {
         #expect(backend.generation == 1)
     }
 
+    @Test("maps Vercel Native overlay surfaces to retained SwiftUI nodes")
+    func mapsOverlaySurfaces() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"stack"},
+          {"op":"create-node","id":2,"kind":"panel"},
+          {"op":"create-node","id":3,"kind":"card"},
+          {"op":"create-node","id":4,"kind":"text"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"insert-child","parent":3,"child":4,"index":0}
+        ]}
+        """)
+
+        #expect(backend.model(id: 1)?.kind == .stack)
+        #expect(backend.model(id: 2)?.kind == .panel)
+        #expect(backend.model(id: 3)?.kind == .card)
+        #expect(backend.model(id: 1)?.children == [2, 3])
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"set-prop","id":3,"property":"gap","value":8}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 1)
+        #expect(backend.model(id: 3)?.property(.gap) == nil)
+    }
+
     @Test("C ABI forwards SwiftUI backend events")
     func cABIForwardsEvent() {
         capturedAppleEvent = nil

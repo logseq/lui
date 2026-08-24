@@ -384,6 +384,87 @@ void main() {
     expect(backend.generation, 1);
   });
 
+  testWidgets('maps Vercel Native overlay surfaces to native Flutter widgets', (
+    tester,
+  ) async {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"stack"},
+        {"op":"create-node","id":2,"kind":"panel"},
+        {"op":"create-node","id":3,"kind":"card"},
+        {"op":"create-node","id":4,"kind":"text"},
+        {"op":"create-node","id":5,"kind":"text"},
+        {"op":"set-prop","id":1,"property":"width","value":320},
+        {"op":"set-prop","id":1,"property":"height","value":180},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":2,"child":4,"index":0},
+        {"op":"insert-child","parent":3,"child":5,"index":0}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: backend.widget(node: 1),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.descendant(
+        of: find.byKey(LUIFlutterBackend.nodeKey(1)),
+        matching: find.byType(Stack),
+      ),
+      findsNWidgets(3),
+    );
+    final panelMaterial = tester.widget<Material>(
+      find
+          .descendant(
+            of: find.byKey(LUIFlutterBackend.nodeKey(2)),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    final cardMaterial = tester.widget<Material>(
+      find
+          .descendant(
+            of: find.byKey(LUIFlutterBackend.nodeKey(3)),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(panelMaterial.elevation, 1);
+    expect(cardMaterial.elevation, 0);
+    expect(
+      find
+          .descendant(
+            of: find.byKey(LUIFlutterBackend.nodeKey(3)),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Padding &&
+                  widget.padding == const EdgeInsets.all(24),
+            ),
+          )
+          .evaluate(),
+      hasLength(1),
+    );
+
+    expect(
+      () => backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":3,"property":"gap","value":8}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 1);
+  });
+
   testWidgets('maps progress ranges to one retained LinearProgressIndicator', (
     tester,
   ) async {

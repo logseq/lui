@@ -21,15 +21,14 @@ test("the production stylesheet stays within the component-library size budget",
   assert.ok(size <= 32_000, `expected at most 32 KB, received ${size} bytes`)
 })
 
-test("the production stylesheet contains the Solid UI Card parts", async () => {
+test("the production stylesheet contains Vercel Native overlay surfaces", async () => {
   const css = await readFile(outputUrl, "utf8")
 
-  assert.match(css, /\.lui-card\{[^}]*border-radius:var\(--radius-lg\)/)
-  assert.match(css, /\.lui-card-header\{[^}]*display:flex/)
-  assert.match(css, /\.lui-card-title\{[^}]*font-size:var\(--text-lg\)/)
-  assert.match(css, /\.lui-card-description\{[^}]*color:var\(--color-muted-foreground\)/)
-  assert.match(css, /\.lui-card-content\{[^}]*padding:calc\(var\(--spacing\)\*6\)/)
-  assert.match(css, /\.lui-card-footer\{[^}]*align-items:center/)
+  assert.match(css, /\.lui-stack[^\{]*\{[^}]*display:grid/)
+  assert.match(css, /\.lui-panel[^\{]*\{[^}]*border-radius:var\(--radius-xl\)/)
+  assert.match(css, /\.lui-card[^\{]*\{[^}]*padding:calc\(var\(--spacing\)\*6\)/)
+  assert.match(css, /\.lui-(?:stack|panel|card)>\*\{[^}]*grid-area:1\/1/)
+  assert.doesNotMatch(css, /\.lui-card-(?:header|content|footer|title|description)/)
 })
 
 test("the production stylesheet contains the Solid UI TextField contract", async () => {

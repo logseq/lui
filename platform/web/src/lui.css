@@ -98,6 +98,26 @@
     grid-auto-columns: minmax(0, 1fr);
   }
 
+  .lui-stack,
+  .lui-panel,
+  .lui-card {
+    @apply grid;
+  }
+
+  .lui-stack > *,
+  .lui-panel > *,
+  .lui-card > * {
+    grid-area: 1 / 1;
+  }
+
+  .lui-panel {
+    @apply rounded-xl border bg-card text-card-foreground shadow-sm;
+  }
+
+  .lui-card {
+    @apply rounded-xl border bg-card p-6 text-card-foreground;
+  }
+
   .lui-label,
   .lui-text-field-label {
     @apply text-sm font-medium leading-none;
@@ -302,30 +322,6 @@
 
   .lui-separator[data-orientation="vertical"] {
     @apply h-full w-px;
-  }
-
-  .lui-card {
-    @apply rounded-lg border bg-card text-card-foreground shadow-sm;
-  }
-
-  .lui-card-header {
-    @apply flex flex-col space-y-1.5 p-6;
-  }
-
-  .lui-card-title {
-    @apply text-lg font-semibold leading-none tracking-tight;
-  }
-
-  .lui-card-description {
-    @apply text-sm text-muted-foreground;
-  }
-
-  .lui-card-content {
-    @apply p-6 pt-0;
-  }
-
-  .lui-card-footer {
-    @apply flex items-center p-6 pt-0;
   }
 
   .lui-skeleton {

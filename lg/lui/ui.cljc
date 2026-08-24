@@ -33,6 +33,15 @@
 (defn grid! [context]
   (runtime/create-node! (:ui-application context) proto/Grid))
 
+(defn stack! [context]
+  (runtime/create-node! (:ui-application context) proto/Stack))
+
+(defn panel! [context]
+  (runtime/create-node! (:ui-application context) proto/Panel))
+
+(defn card! [context]
+  (runtime/create-node! (:ui-application context) proto/Card))
+
 (defn box! [context]
   (runtime/create-node! (:ui-application context) proto/Box))
 

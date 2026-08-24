@@ -11,7 +11,7 @@ public enum LUIEvent: Equatable, Sendable {
 }
 
 enum LUINodeKind: String, Decodable, Equatable {
-    case row, column, grid, box, text, heading, paragraph, label, button
+    case row, column, grid, stack, panel, card, box, text, heading, paragraph, label, button
     case textInput = "text-input", textArea = "text-area"
     case checkbox
     case switchControl = "switch"
@@ -322,7 +322,8 @@ struct LUIRetainedTree {
     }
 
     private static func canContainChildren(_ kind: LUINodeKind) -> Bool {
-        kind == .row || kind == .column || kind == .grid || kind == .box || kind == .scroll ||
+        kind == .row || kind == .column || kind == .grid || kind == .stack ||
+            kind == .panel || kind == .card || kind == .box || kind == .scroll ||
             kind == .switchControl
     }
 

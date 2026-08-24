@@ -152,7 +152,6 @@ names and payload semantics: `on-press`, `on-double-press`, `on-toggle`,
 | compound `:text-field/*` | direct reference text-entry elements |
 | compound `:switch/*` | one text-bearing `:switch` |
 | compound `:progress/*` with integer range | one fractional `:progress` |
-| Solid-style compound `:card/*` | reference overlay `:card` composition |
 | `:padding-horizontal`, `:padding-vertical`, `:max-height` | not public parity attributes |
 | `:class` | Web platform escape hatch, not standard component API |
 

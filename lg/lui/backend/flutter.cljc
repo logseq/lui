@@ -1,6 +1,7 @@
 (ns lui.backend.flutter
   (:require [lui.protocol :as proto
-             :refer [Row Column Grid Box Text Heading Paragraph Label Button
+             :refer [Row Column Grid Stack Panel Card Box
+                     Text Heading Paragraph Label Button
                      TextInput TextArea Scroll Spacer
                      Checkbox SwitchControl
                      ProgressControl Divider]]
@@ -22,6 +23,9 @@
     Row FlutterFlexRow
     Column FlutterFlexColumn
     Grid FlutterGrid
+    Stack FlutterStack
+    Panel FlutterPanel
+    Card FlutterCard
     Box FlutterBox
     Text FlutterParagraph
     Heading FlutterHeading

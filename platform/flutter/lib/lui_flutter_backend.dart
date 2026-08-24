@@ -70,6 +70,9 @@ enum _NodeKind {
   row,
   column,
   grid,
+  stack,
+  panel,
+  card,
   box,
   text,
   heading,
@@ -261,8 +264,8 @@ final class LUIFlutterBackend {
       context,
       state.properties['border-color'] as String?,
     );
-    final borderWidth = state.properties['border-width'] as int? ?? 0;
-    final cornerRadius = state.properties['corner-radius'] as int? ?? 0;
+    final borderWidth = state.properties['border-width'] as int?;
+    final cornerRadius = state.properties['corner-radius'] as int?;
     final accessibilityHint = [
       ?description,
       if (invalid && errorMessage != null) errorMessage,
@@ -353,6 +356,9 @@ final class LUIFlutterBackend {
       _NodeKind.row => row(),
       _NodeKind.column => column(),
       _NodeKind.grid => grid(),
+      _NodeKind.stack ||
+      _NodeKind.panel ||
+      _NodeKind.card => Stack(children: children),
       _NodeKind.box => Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -429,30 +435,56 @@ final class LUIFlutterBackend {
       _NodeKind.spacer => const SizedBox.shrink(),
     };
 
-    final padding = state.properties['padding'] as int? ?? 0;
+    final isSurface = state.kind.isOverlaySurface;
+    final padding =
+        state.properties['padding'] as int? ??
+        (state.kind == _NodeKind.card ? 24 : 0);
     final paddingHorizontal =
         state.properties['padding-horizontal'] as int? ?? padding;
     final paddingVertical =
         state.properties['padding-vertical'] as int? ?? padding;
-    Widget surface = Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: paddingHorizontal.toDouble(),
-        vertical: paddingVertical.toDouble(),
-      ),
-      decoration: BoxDecoration(
-        color: background,
-        border: borderWidth == 0
-            ? null
-            : Border.all(
-                color: borderColor ?? Colors.transparent,
-                width: borderWidth.toDouble(),
-              ),
-        borderRadius: cornerRadius == 0
-            ? null
-            : BorderRadius.circular(cornerRadius.toDouble()),
-      ),
-      child: content,
+    final effectiveBorderWidth = borderWidth ?? (isSurface ? 1 : 0);
+    final effectiveCornerRadius = cornerRadius ?? (isSurface ? 12 : 0);
+    final contentPadding = EdgeInsets.symmetric(
+      horizontal: paddingHorizontal.toDouble(),
+      vertical: paddingVertical.toDouble(),
     );
+    Widget surface = isSurface
+        ? Material(
+            color: background ?? Theme.of(context).colorScheme.surface,
+            elevation: state.kind == _NodeKind.panel ? 1 : 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(
+                effectiveCornerRadius.toDouble(),
+              ),
+              side: effectiveBorderWidth == 0
+                  ? BorderSide.none
+                  : BorderSide(
+                      color:
+                          borderColor ??
+                          Theme.of(context).colorScheme.outlineVariant,
+                      width: effectiveBorderWidth.toDouble(),
+                    ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Padding(padding: contentPadding, child: content),
+          )
+        : Container(
+            padding: contentPadding,
+            decoration: BoxDecoration(
+              color: background,
+              border: effectiveBorderWidth == 0
+                  ? null
+                  : Border.all(
+                      color: borderColor ?? Colors.transparent,
+                      width: effectiveBorderWidth.toDouble(),
+                    ),
+              borderRadius: effectiveCornerRadius == 0
+                  ? null
+                  : BorderRadius.circular(effectiveCornerRadius.toDouble()),
+            ),
+            child: content,
+          );
     final width = state.properties['width'] as int?;
     final height = state.properties['height'] as int?;
     if (width != null || height != null) {
@@ -729,6 +761,9 @@ final class LUIFlutterBackend {
       kind == _NodeKind.row ||
       kind == _NodeKind.column ||
       kind == _NodeKind.grid ||
+      kind == _NodeKind.stack ||
+      kind == _NodeKind.panel ||
+      kind == _NodeKind.card ||
       kind == _NodeKind.box ||
       kind == _NodeKind.scroll ||
       kind == _NodeKind.switchControl;
@@ -766,6 +801,9 @@ final class LUIFlutterBackend {
     'row' => _NodeKind.row,
     'column' => _NodeKind.column,
     'grid' => _NodeKind.grid,
+    'stack' => _NodeKind.stack,
+    'panel' => _NodeKind.panel,
+    'card' => _NodeKind.card,
     'box' => _NodeKind.box,
     'text' => _NodeKind.text,
     'heading' => _NodeKind.heading,
@@ -916,6 +954,9 @@ final class LUIFlutterBackend {
 extension on _NodeKind {
   bool get isTextControl =>
       this == _NodeKind.textInput || this == _NodeKind.textArea;
+
+  bool get isOverlaySurface =>
+      this == _NodeKind.panel || this == _NodeKind.card;
 }
 
 final class _LUITextInput extends StatefulWidget {

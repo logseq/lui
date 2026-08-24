@@ -41,6 +41,10 @@ private struct LUINodeView: View {
             LUIColumnView(model: model, backend: backend)
         case .grid:
             LUIGridView(model: model, backend: backend)
+        case .stack, .panel, .card:
+            ZStack {
+                children
+            }
         case .box:
             VStack(
                 alignment: .leading,
@@ -373,12 +377,19 @@ private struct LUISurfaceModifier: ViewModifier {
     let model: LUINodeModel
 
     func body(content: Content) -> some View {
-        let padding = model.property(.padding)?.intValue ?? 0
+        let isSurface = model.kind == .panel || model.kind == .card
+        let padding = model.property(.padding)?.intValue ?? (model.kind == .card ? 24 : 0)
         let horizontal = model.property(.paddingHorizontal)?.intValue ?? padding
         let vertical = model.property(.paddingVertical)?.intValue ?? padding
-        let radius = CGFloat(model.property(.cornerRadius)?.intValue ?? 0)
-        let borderWidth = CGFloat(model.property(.borderWidth)?.intValue ?? 0)
+        let radius = CGFloat(model.property(.cornerRadius)?.intValue ?? (isSurface ? 12 : 0))
+        let borderWidth = CGFloat(model.property(.borderWidth)?.intValue ?? (isSurface ? 1 : 0))
         let shape = RoundedRectangle(cornerRadius: radius)
+        let background = color(model.property(.background)?.stringValue) ??
+            (isSurface ? systemBackground : .clear)
+        let border = color(model.property(.borderColor)?.stringValue) ??
+            (isSurface ? Color.secondary.opacity(0.35) : .clear)
+        let castsShadow = model.kind == .panel &&
+            model.property(.background)?.stringValue != "transparent"
 
         content
             .padding(.horizontal, CGFloat(horizontal))
@@ -394,13 +405,15 @@ private struct LUISurfaceModifier: ViewModifier {
                 maxHeight: model.surfaceMaxHeight.map(CGFloat.init)
             )
             .foregroundStyle(color(model.property(.foreground)?.stringValue) ?? .primary)
-            .background(
-                color(model.property(.background)?.stringValue) ?? .clear,
-                in: shape
+            .background(background, in: shape)
+            .shadow(
+                color: castsShadow ? .black.opacity(0.12) : .clear,
+                radius: castsShadow ? 4 : 0,
+                y: castsShadow ? 2 : 0
             )
             .overlay {
                 shape.stroke(
-                    color(model.property(.borderColor)?.stringValue) ?? .clear,
+                    border,
                     lineWidth: borderWidth
                 )
             }
