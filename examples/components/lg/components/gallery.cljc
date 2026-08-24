@@ -10,6 +10,8 @@
    [:button
     {:variant "outline" :on-press toggle-disabled}
     "Toggle disabled"]
+   [:if {:test disabled-source}
+    [:paragraph "Controls are disabled."]]
    [:grid {:columns 2 :gap 12}
     [:button {:disabled disabled-source :on-press (fn [_event] true)} "Default"]
     [:button

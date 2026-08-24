@@ -4,6 +4,7 @@
 
 (defn- empty-ops [] [])
 (defn- empty-handlers [] [])
+(defn- empty-dynamic-segments [] (hash-map))
 
 (defn create [scheduler backend]
   (record application
@@ -16,7 +17,9 @@
     (pending-ops (atom (empty-ops)))
     (runtime-generation (atom 0))
     (next-handler-id (atom 0))
-    (event-handlers (atom (hash-map)))))
+    (event-handlers (atom (hash-map)))
+    (next-dynamic-segment-id (atom 0))
+    (dynamic-segments (atom (empty-dynamic-segments)))))
 
 (defn- enqueue! [application operation]
   (swap! (:pending-ops application) conj operation)
@@ -243,3 +246,96 @@
                       (deref (:runtime-children application)) node)]
     children
     (raise (Invalid_argument "unknown parent"))))
+
+(defn- find-dynamic-segment-index [segments segment-id]
+  (loop [index 0]
+    (if (= index (count segments))
+      None
+      (if (= segment-id (:dynamic-segment-id (nth segments index)))
+        (Some index)
+        (recur (inc index))))))
+
+(defn register-dynamic-segment! [application parent]
+  (require-node-kind application parent)
+  (let [segment
+        (record dynamic-segment
+          (dynamic-segment-id
+           (swap! (:next-dynamic-segment-id application) inc))
+          (dynamic-segment-parent parent)
+          (dynamic-segment-base (atom (child-count application parent)))
+          (dynamic-segment-size (atom 0))
+          (dynamic-segment-active (atom true)))
+        current
+        (if-some [segments
+                  (clojure.core/get
+                   (deref (:dynamic-segments application)) parent)]
+          segments
+          [])]
+    (swap! (:dynamic-segments application)
+           assoc parent (conj current segment))
+    segment))
+
+(defn dynamic-segment-index [segment local-index]
+  (when-not (deref (:dynamic-segment-active segment))
+    (raise (Invalid_argument "dynamic segment is inactive")))
+  (let [size (deref (:dynamic-segment-size segment))]
+    (when (or (< local-index 0) (>= local-index size))
+      (raise (Invalid_argument "dynamic segment index is out of bounds"))))
+  (+ (deref (:dynamic-segment-base segment)) local-index))
+
+(defn dynamic-segment-insert-index [segment local-index]
+  (when-not (deref (:dynamic-segment-active segment))
+    (raise (Invalid_argument "dynamic segment is inactive")))
+  (let [size (deref (:dynamic-segment-size segment))]
+    (when (or (< local-index 0) (> local-index size))
+      (raise (Invalid_argument "dynamic segment insert index is out of bounds"))))
+  (+ (deref (:dynamic-segment-base segment)) local-index))
+
+(defn resize-dynamic-segment! [application segment delta]
+  (when-not (deref (:dynamic-segment-active segment))
+    (raise (Invalid_argument "dynamic segment is inactive")))
+  (let [parent (:dynamic-segment-parent segment)
+        segments
+        (if-some [registered
+                  (clojure.core/get
+                   (deref (:dynamic-segments application)) parent)]
+          registered
+          (raise (Invalid_argument "dynamic segment is not registered")))
+        segment-index
+        (match (find-dynamic-segment-index
+                segments (:dynamic-segment-id segment))
+          (Some index) index
+          None (raise (Invalid_argument "dynamic segment is not registered")))
+        next-size (+ (deref (:dynamic-segment-size segment)) delta)]
+    (when (< next-size 0)
+      (raise (Invalid_argument "dynamic segment size cannot be negative")))
+    (reset! (:dynamic-segment-size segment) next-size)
+    (loop [index (inc segment-index)]
+      (when (< index (count segments))
+        (swap! (:dynamic-segment-base (nth segments index)) + delta)
+        (recur (inc index))))
+    true))
+
+(defn unregister-dynamic-segment! [application segment]
+  (if-not (deref (:dynamic-segment-active segment))
+    true
+    (do
+      (when-not (= 0 (deref (:dynamic-segment-size segment)))
+        (raise (Invalid_argument "cannot unregister a non-empty dynamic segment")))
+      (let [parent (:dynamic-segment-parent segment)]
+        (if-some [segments
+                  (clojure.core/get
+                   (deref (:dynamic-segments application)) parent)]
+          (let [remaining
+                (filterv
+                 (fn [current]
+                   (not (= (:dynamic-segment-id current)
+                           (:dynamic-segment-id segment))))
+                 segments)]
+            (if (empty? remaining)
+              (swap! (:dynamic-segments application) dissoc parent)
+              (swap! (:dynamic-segments application) assoc parent remaining))
+            true)
+          true))
+      (reset! (:dynamic-segment-active segment) false)
+      true)))

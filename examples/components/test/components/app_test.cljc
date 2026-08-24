@@ -55,8 +55,8 @@
       (driver/send! application model/ToggleDisabled)
       (driver/flush! application)
       (assert-equal
-       mounted-count (flutter/node-count renderer)
-       "a shared Signal action patches nodes without rebuilding the gallery"))
+       (inc mounted-count) (flutter/node-count renderer)
+       "a shared Signal action mounts only the conditional status node"))
     (assert-equal
      true
      (:gallery-disabled (components/model application))

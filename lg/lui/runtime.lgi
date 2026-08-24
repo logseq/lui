@@ -4,6 +4,13 @@
   (handler-id :int)
   (handler-callback :fn<event;bool>))
 
+(type-record dynamic-segment
+  (dynamic-segment-id :int)
+  (dynamic-segment-parent :int)
+  (dynamic-segment-base :ref<int>)
+  (dynamic-segment-size :ref<int>)
+  (dynamic-segment-active :ref<bool>))
+
 (type-record application
   (runtime-scheduler :scheduler)
   (runtime-backend :backend)
@@ -14,11 +21,15 @@
   (pending-ops :ref<vector<patch-op>>)
   (runtime-generation :ref<int>)
   (next-handler-id :ref<int>)
-  (event-handlers :ref<map<int;vector<event-handler>>>))
+  (event-handlers :ref<map<int;vector<event-handler>>>)
+  (next-dynamic-segment-id :ref<int>)
+  (dynamic-segments :ref<map<int;vector<dynamic-segment>>>))
 
 (signature lui.runtime/create :fn<scheduler;backend;application>)
 (signature lui.runtime/empty-ops :fn<vector<patch-op>>)
 (signature lui.runtime/empty-handlers :fn<vector<event-handler>>)
+(signature lui.runtime/empty-dynamic-segments
+  :fn<map<int;vector<dynamic-segment>>>)
 (signature lui.runtime/enqueue! :fn<application;patch-op;bool>)
 (signature lui.runtime/find-child-index
   :fn<vector<int>;int;option<int>>)
@@ -45,3 +56,15 @@
 (signature lui.runtime/mounted-count :fn<application;int>)
 (signature lui.runtime/child-count :fn<application;int;int>)
 (signature lui.runtime/children :fn<application;int;vector<int>>)
+(signature lui.runtime/find-dynamic-segment-index
+  :fn<vector<dynamic-segment>;int;option<int>>)
+(signature lui.runtime/register-dynamic-segment!
+  :fn<application;int;dynamic-segment>)
+(signature lui.runtime/dynamic-segment-index
+  :fn<dynamic-segment;int;int>)
+(signature lui.runtime/dynamic-segment-insert-index
+  :fn<dynamic-segment;int;int>)
+(signature lui.runtime/resize-dynamic-segment!
+  :fn<application;dynamic-segment;int;bool>)
+(signature lui.runtime/unregister-dynamic-segment!
+  :fn<application;dynamic-segment;bool>)

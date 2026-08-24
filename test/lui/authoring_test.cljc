@@ -30,6 +30,13 @@
    [:spacer]
    [:button {:on-press on-save} "Save"]])
 
+(defui declarative-conditional [visible]
+  [:column
+   [:text "before"]
+   [:if {:test visible}
+    [:text "visible"]]
+   [:text "after"]])
+
 (defelement badge [context parent _attrs & children]
   `(lui.elements/text ~context ~parent {} ~@children))
 
@@ -318,6 +325,27 @@
       (runtime/dispatch! application (proto/Press button))
       (runtime/flush! application)
       (assert-equal 1 @presses "declarative event enters the effect queue"))))
+
+(deftest defui-if-is-a-placeholder-free-retained-conditional
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "declarative-conditional")
+        context (ui/context application scope)
+        visible (sig/state scheduler false)
+        root (declarative-conditional context (sig/value visible))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (assert-equal 2 (count (apple/children renderer root))
+                  "false declarative if has no wrapper or placeholder")
+    (sig/set! visible true)
+    (runtime/flush! application)
+    (assert-equal 3 (count (apple/children renderer root))
+                  "true declarative if inserts one retained child")
+    (sig/set! visible false)
+    (runtime/flush! application)
+    (assert-equal 2 (count (apple/children renderer root))
+                  "declarative if removes its child again")))
 
 (deftest defelement-adds-a-tag-without-changing-defui
   (let [scheduler (sig/scheduler)

@@ -69,6 +69,19 @@ Signal computations may depend on multiple Signals and other computed Signals.
 Only consumers of a changed result are scheduled. Backends update retained
 platform nodes rather than rebuilding an enclosing component tree.
 
+Structural reactivity uses declaration-ordered dynamic segments. `:if`,
+`switch!`, and `:keyed` own only their local child range inside an existing
+parent; they do not add wrapper or placeholder nodes. When an earlier segment
+grows or shrinks, the runtime adjusts the physical base of every later segment
+under that parent. This keeps static siblings and independent dynamic regions
+in declaration order while preserving retained identities outside the changed
+segment.
+
+`[:if {:test visible-signal} child]` is the LG conditional form. It requires
+one `Signal<bool>` and exactly one child. A false branch allocates no retained
+node; a true-to-false transition disposes the branch scope, handlers and
+subtree before releasing its segment.
+
 ## Platform strategy
 
 ### Web
@@ -171,6 +184,9 @@ Delivered parity slices:
   `examples/components/lg`; Web and Flutter hosts reuse it without duplicating
   application state, and the Flutter integration test crosses the real OCaml
   FFI boundary;
+- placeholder-free retained `:if` plus declaration-ordered dynamic segments;
+  interleaved static children, switch branches, keyed collections and multiple
+  dynamic regions preserve their local ordering and disposal boundaries;
 - `row`, `column`, and `grid`, including `main`, `cross`, `grow`, `columns`,
   and `gap` validation;
 - direct retained `stack`, `panel`, and `card` overlay nodes on Web, SwiftUI,
@@ -305,10 +321,10 @@ These daily value controls preserve the pinned Vercel Native API:
 - `radio` accepts `text`, either `checked` or `selected`, `disabled`, `label`,
   and the reference event fallback order `on-change`, `on-toggle`, then
   `on-press`;
-- `slider` accepts the model-owned fractional `value` as `float` or
-  `Signal<float>`, plus `disabled`, `label` and `on-change`; rendered values
-  are clamped to `0..1` without changing the model-owned source. Integer
-  values must be written or explicitly converted as floats.
+- `slider` accepts the model-owned fractional `value` as `number` or
+  `Signal<number>`, plus `disabled`, `label` and `on-change`; rendered values
+  are normalized to the runtime's canonical float representation and clamped
+  to `0..1` without changing the model-owned source.
 
 Radio activation emits `on-change` only for a new selection. Activating an
 already selected radio may still reach the legacy toggle or press fallback.
@@ -321,10 +337,12 @@ event pipeline and the Signal remains the reconciliation source.
 ### Progress contract
 
 `progress` is one display-only retained leaf. It accepts the model-owned
-`value` as `float` or `Signal<float>` and the reference `width` layout
-attribute. Integer values, `min-value`, `max-value`, labels, events and public
-compound parts are not part of its API. Values outside `0..1` remain unchanged
-in the model and are clamped only when a backend renders the fill.
+`value` as `number` or `Signal<number>` and the reference `width` layout
+attribute. Continuous numeric values are normalized to the runtime's canonical
+float representation; callers do not have to spell `1` as `1.0`. `min-value`,
+`max-value`, labels, events and public compound parts are not part of its API.
+Values outside `0..1` remain unchanged in the model and are clamped only when
+a backend renders the fill. Discrete indexes and counts remain integers.
 
 Web updates one retained progressbar DOM node and its CSS fill fraction.
 SwiftUI uses `ProgressView(value:)`, and Flutter uses
@@ -405,7 +423,8 @@ Each large completed wave is committed and pushed independently.
 
 ### 2. Retained runtime hardening
 
-- keyed insert, remove, move and reparent operations;
+- declaration-ordered dynamic segments for placeholder-free conditionals,
+  switches, and keyed insert/remove/move operations;
 - deterministic lifecycle and scope disposal;
 - atomic batch validation and backend failure recovery;
 - precise Signal subscriptions and computed dependency propagation;

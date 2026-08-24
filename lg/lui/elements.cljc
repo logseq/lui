@@ -18,8 +18,10 @@
                    (let [tag-namespace (namespace tag)]
                      (if tag-namespace
                        (symbol (str tag-namespace "/" (name tag)))
-                       (if
-                        (or
+                       (if (= tag :if)
+                         'lui.elements/conditional
+                         (if
+                          (or
                          (= tag :row)
                          (= tag :column)
                          (= tag :grid)
@@ -49,9 +51,9 @@
                          (= tag :input)
                          (= tag :search-field)
                          (= tag :textarea)
-                         (= tag :keyed))
-                         (symbol (str "lui.elements/" (name tag)))
-                         (symbol (str "lui." (name tag) "/" (name tag)))))))
+                          (= tag :keyed))
+                          (symbol (str "lui.elements/" (name tag)))
+                          (symbol (str "lui." (name tag) "/" (name tag))))))))
 
 (defmacro defelement [element-name params & body]
   `(defmacro ~element-name ~params ~@body))
@@ -574,6 +576,26 @@
 (defelement textarea [context parent attrs & children]
   (text-entry-expansion
    'lui.ui/textarea! context parent attrs children))
+
+(defelement conditional [context parent attrs & children]
+  (when (nil? parent)
+    (throw
+     (IllegalArgumentException.
+      "if must be declared inside a retained parent")))
+  (when-not (:test attrs)
+    (throw
+     (IllegalArgumentException.
+      "if requires a :test signal")))
+  (when-not (= 1 (count children))
+    (throw
+     (IllegalArgumentException.
+      "if requires exactly one child")))
+  (let [branch-context (gensym "branch_context")]
+    `(lui.dynamic/conditional!
+      ~context ~parent ~(:test attrs)
+      (fn [~branch-context]
+        (lui.elements/element
+         ~branch-context nil ~(first children))))))
 
 (defelement keyed [context parent attrs & children]
   (let [item-context (gensym "item_context")

@@ -8,8 +8,15 @@
     (dispose-dynamic-switch dispose-callback)
     (switch-node-ref node-ref)))
 
+(defn- segment-disposer [application segment dispose-reactive]
+  (fn []
+    (dispose-reactive)
+    (runtime/unregister-dynamic-segment! application segment)))
+
 (defn switch! [context parent source equal mount]
-  (let [node-ref (atom None)
+  (let [application (:ui-application context)
+        segment (runtime/register-dynamic-segment! application parent)
+        node-ref (atom None)
         switch-value
         (sig/switch
          (:ui-scope context)
@@ -21,19 +28,24 @@
                  node (mount branch-context key)]
              (reset! node-ref (Some node))
              (runtime/insert-child!
-              (:ui-application context) parent node 0)
+              application parent node
+              (runtime/dynamic-segment-insert-index segment 0))
+             (runtime/resize-dynamic-segment! application segment 1)
              (sig/on-unmount!
               branch-scope
               (fn []
-                (runtime/remove-child!
-                 (:ui-application context) parent node)
-                (runtime/drop-subtree! (:ui-application context) node)
+                (runtime/remove-child! application parent node)
+                (runtime/resize-dynamic-segment! application segment -1)
+                (runtime/drop-subtree! application node)
                 (reset! node-ref None)
                 true))
              branch-scope)))]
-    (make-switch
-     (fn [] (sig/dispose-switch! switch-value))
-     node-ref)))
+    (let [dispose-callback
+          (segment-disposer
+           application segment
+           (fn [] (sig/dispose-switch! switch-value)))]
+      (sig/on-dispose! (:ui-scope context) dispose-callback)
+      (make-switch dispose-callback node-ref))))
 
 (defn switch-node [switch-value]
   (match (deref (:switch-node-ref switch-value))
@@ -42,6 +54,54 @@
 
 (defn dispose-switch! [switch-value]
   ((:dispose-dynamic-switch switch-value)))
+
+(defn- make-conditional [dispose-callback node-ref]
+  (record ui-conditional
+    (dispose-dynamic-conditional dispose-callback)
+    (conditional-node-ref node-ref)))
+
+(defn conditional! [context parent source mount]
+  (let [application (:ui-application context)
+        segment (runtime/register-dynamic-segment! application parent)
+        node-ref (atom None)
+        switch-value
+        (sig/switch
+         (:ui-scope context)
+         source
+         (fn [^:bool left ^:bool right] (= left right))
+         (fn [^:bool visible]
+           (let [branch-context (ui/child-context context "conditional-branch")
+                 branch-scope (:ui-scope branch-context)]
+             (when visible
+               (let [node (mount branch-context)]
+                 (reset! node-ref (Some node))
+                 (runtime/insert-child!
+                  application parent node
+                  (runtime/dynamic-segment-insert-index segment 0))
+                 (runtime/resize-dynamic-segment! application segment 1)
+                 (sig/on-unmount!
+                  branch-scope
+                  (fn []
+                    (runtime/remove-child! application parent node)
+                    (runtime/resize-dynamic-segment! application segment -1)
+                    (runtime/drop-subtree! application node)
+                    (reset! node-ref None)
+                    true))))
+             branch-scope)))]
+    (let [dispose-callback
+          (segment-disposer
+           application segment
+           (fn [] (sig/dispose-switch! switch-value)))]
+      (sig/on-dispose! (:ui-scope context) dispose-callback)
+      (make-conditional dispose-callback node-ref))))
+
+(defn conditional-node [conditional-value]
+  (match (deref (:conditional-node-ref conditional-value))
+    (Some node) node
+    None (raise (Invalid_argument "conditional has no active node"))))
+
+(defn dispose-conditional! [conditional-value]
+  ((:dispose-dynamic-conditional conditional-value)))
 
 (defn- find-key-node [nodes key compare]
   (loop [index 0]
@@ -69,7 +129,7 @@
     (key-compare compare)))
 
 (defn- mount-keyed-item!
-  [context parent key-fn compare mount nodes-ref item-source]
+  [context parent segment key-fn compare mount nodes-ref item-source]
   (let [current (sig/sample item-source)
         key (key-fn current)
         item-context (ui/child-context context "keyed-item")
@@ -85,13 +145,17 @@
      (fn []
        (runtime/remove-child!
         (:ui-application context) parent node)
+       (runtime/resize-dynamic-segment!
+        (:ui-application context) segment -1)
        (runtime/drop-subtree! (:ui-application context) node)
        (remove-key-node! nodes-ref key compare)
        true))
     item-scope))
 
 (defn keyed! [context parent source key-fn compare mount]
-  (let [nodes-ref (atom [])
+  (let [application (:ui-application context)
+        segment (runtime/register-dynamic-segment! application parent)
+        nodes-ref (atom [])
         keyed-value
         (sig/keyed
          (:ui-scope context)
@@ -100,25 +164,32 @@
          compare
          (fn [item-source]
            (mount-keyed-item!
-            context parent key-fn compare mount nodes-ref item-source))
+            context parent segment key-fn compare mount nodes-ref item-source))
          (fn [patch]
            (match patch
              (Insert key index)
              (if-some [node (find-key-node
                              (deref nodes-ref) key compare)]
-               (runtime/insert-child!
-                (:ui-application context) parent node index)
+               (do
+                 (runtime/insert-child!
+                  application parent node
+                  (runtime/dynamic-segment-insert-index segment index))
+                 (runtime/resize-dynamic-segment! application segment 1))
                (raise (Invalid_argument "missing inserted keyed node")))
              (Remove _key _index) true
              (Move key _from-index to-index)
              (if-some [node (find-key-node
                              (deref nodes-ref) key compare)]
                (runtime/move-child!
-                (:ui-application context) parent node to-index)
+                application parent node
+                (runtime/dynamic-segment-index segment to-index))
                (raise (Invalid_argument "missing moved keyed node"))))))]
-    (make-keyed
-     (fn [] (sig/dispose-keyed! keyed-value))
-     nodes-ref compare)))
+    (let [dispose-callback
+          (segment-disposer
+           application segment
+           (fn [] (sig/dispose-keyed! keyed-value)))]
+      (sig/on-dispose! (:ui-scope context) dispose-callback)
+      (make-keyed dispose-callback nodes-ref compare))))
 
 (defn keyed-node [keyed-value key]
   (if-some [node (find-key-node

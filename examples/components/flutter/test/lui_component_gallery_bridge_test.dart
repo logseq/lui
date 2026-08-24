@@ -70,6 +70,18 @@ void main() {
     expect(find.text('Input'), findsOneWidget);
     expect(find.text('SearchField'), findsOneWidget);
     expect(find.text('Textarea'), findsOneWidget);
+    expect(find.text('Controls are disabled.'), findsNothing);
+    final toggleDisabled = find.widgetWithText(
+      OutlinedButton,
+      'Toggle disabled',
+    );
+    await tester.ensureVisible(toggleDisabled);
+    await tester.tap(toggleDisabled);
+    await tester.pump();
+    expect(find.text('Controls are disabled.'), findsOneWidget);
+    await tester.tap(toggleDisabled);
+    await tester.pump();
+    expect(find.text('Controls are disabled.'), findsNothing);
     final backendOwnedLabel = find.text('Backend-owned');
     final retainedLabel = tester.renderObject(backendOwnedLabel);
     final backendOwnedSemantics = find.byWidgetPredicate(
