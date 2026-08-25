@@ -1412,6 +1412,29 @@
 
 (defn- attach-dropdown-events! [renderer node _dropdown-node]
   (let [document (:web-document renderer)
+        typeahead-buffer (atom "")
+        typeahead-timer (atom None)
+        cancel-typeahead!
+        (fn []
+          (match (deref typeahead-timer)
+            (Some timer-id) (Js.Global.clearTimeout timer-id)
+            None (Stdlib.ignore true))
+          (reset! typeahead-timer None)
+          true)
+        reset-typeahead-later!
+        (fn []
+          (cancel-typeahead!)
+          (reset!
+           typeahead-timer
+           (Some
+            (Js.Global.setTimeout
+             500
+             :f
+             (fn []
+               (reset! typeahead-timer None)
+               (reset! typeahead-buffer "")
+               (Stdlib.ignore true)))))
+          true)
         refresh-position!
         (fn [_event]
           (Webapi.requestAnimationFrame
@@ -1511,6 +1534,32 @@
                    ((deref (:web-event-handler renderer))
                     (proto/Dismiss node)))))
 
+              (and (= (String.length key) 1)
+                   (not (Webapi.Dom.KeyboardEvent.metaKey event))
+                   (not (Webapi.Dom.KeyboardEvent.ctrlKey event)))
+              (let [query
+                    (String.lowercase_ascii
+                     (str (deref typeahead-buffer) key))
+                    start
+                    (match current-index
+                      (Some index) index
+                      None -1)]
+                (reset! typeahead-buffer query)
+                (reset-typeahead-later!)
+                (loop [offset 1]
+                  (when (<= offset (count items))
+                    (let [index (mod (+ start offset) (count items))
+                          label
+                          (String.lowercase_ascii
+                           (string/trim
+                            (Webapi.Dom.Element.textContent
+                             (dom-node renderer (nth items index)))))]
+                      (if (string/starts-with? label query)
+                        (do
+                          (Webapi.Dom.KeyboardEvent.preventDefault event)
+                          (focus-context-menu-item! renderer node index))
+                        (recur (inc offset)))))))
+
                 :else (Stdlib.ignore true))))
           (Stdlib.ignore true))]
     (Webapi.Dom.Document.addEventListener
@@ -1523,6 +1572,7 @@
      assoc
      node
      (fn []
+       (cancel-typeahead!)
        (Webapi.Dom.Document.removeEventListener
         "pointerdown" pointer-handler document)
        (Webapi.Dom.Document.removeEventListener
@@ -2164,6 +2214,32 @@
     (set-style! tooltip "top" (str top "px"))
     (Stdlib.ignore true)))
 
+(defn- begin-popup-open! [popup]
+  (Webapi.Dom.Element.removeAttribute "data-closed" popup)
+  (Webapi.Dom.Element.removeAttribute "data-ending-style" popup)
+  (Webapi.Dom.Element.setAttribute "data-open" "" popup)
+  (Webapi.Dom.Element.setAttribute "data-starting-style" "" popup)
+  (Webapi.requestAnimationFrame
+   (fn [_time]
+     (Webapi.Dom.Element.removeAttribute "data-starting-style" popup)))
+  true)
+
+(defn- begin-popup-close! [popup]
+  (Webapi.Dom.Element.removeAttribute "data-open" popup)
+  (Webapi.Dom.Element.setAttribute "data-closed" "" popup)
+  (Webapi.Dom.Element.setAttribute "data-ending-style" "" popup)
+  true)
+
+(defn- finish-popup-close-later! [popup duration]
+  (Stdlib.ignore
+   (Js.Global.setTimeout
+    duration
+    :f
+    (fn []
+      (Webapi.Dom.Element.removeAttribute "data-ending-style" popup)
+      (Stdlib.ignore true))))
+  true)
+
 (defn- set-tooltip-open! [renderer node open]
   (let [tooltip (dom-node renderer node)]
     (if open
@@ -2172,15 +2248,18 @@
           (Some previous)
           (when (not (= previous node))
             (if-some [_current (retained/node (:web-store renderer) previous)]
-              (Webapi.Dom.Element.removeAttribute
-               "data-open" (dom-node renderer previous))
+              (let [previous-tooltip (dom-node renderer previous)]
+                (begin-popup-close! previous-tooltip)
+                (Stdlib.ignore
+                 (finish-popup-close-later! previous-tooltip 120)))
               (Stdlib.ignore true)))
           None (Stdlib.ignore true))
         (reset! (:web-open-tooltip renderer) (Some node))
-        (Webapi.Dom.Element.setAttribute "data-open" "" tooltip)
+        (begin-popup-open! tooltip)
         (position-tooltip! renderer node))
       (do
-        (Webapi.Dom.Element.removeAttribute "data-open" tooltip)
+        (begin-popup-close! tooltip)
+        (finish-popup-close-later! tooltip 120)
         (when (= (deref (:web-open-tooltip renderer)) (Some node))
           (Stdlib.ignore
            (reset! (:web-open-tooltip renderer) None)))))
@@ -2277,28 +2356,29 @@
           (reset! origin "")
           true)
         pointer-enter!
-        (fn [_event]
-          (reset! pointer-inside true)
-          (cancel-hide!)
-          (let [delay (if (deref (:web-tooltip-warm renderer))
-                        0
-                        (tooltip-delay renderer node))]
-            (if (= delay 0)
-              (do
-                (show! "pointer")
-                (Stdlib.ignore true))
-              (do
-                (reset!
-                 show-timer
-                 (Some
-                  (Js.Global.setTimeout
-                   delay
-                   :f
-                   (fn []
-                     (reset! show-timer None)
-                     (show! "pointer")
-                     (Stdlib.ignore true)))))
-                (Stdlib.ignore true))))
+        (fn [event]
+          (when (not (= (pointer-type event) "touch"))
+            (reset! pointer-inside true)
+            (cancel-hide!)
+            (let [delay (if (deref (:web-tooltip-warm renderer))
+                          0
+                          (tooltip-delay renderer node))]
+              (if (= delay 0)
+                (do
+                  (show! "pointer")
+                  (Stdlib.ignore true))
+                (do
+                  (reset!
+                   show-timer
+                   (Some
+                    (Js.Global.setTimeout
+                     delay
+                     :f
+                     (fn []
+                       (reset! show-timer None)
+                       (show! "pointer")
+                       (Stdlib.ignore true)))))
+                  (Stdlib.ignore true)))))
           (Stdlib.ignore true))
         pointer-leave!
         (fn [_event]
@@ -3928,13 +4008,13 @@
 (defn- set-dropdown-open! [renderer node open]
   (let [positioner (dom-node renderer node)
         popup (child-element positioner 0)]
-    (set-state-attribute! popup "data-open" open)
-    (when open
-      (Webapi.Dom.Element.setAttribute "data-starting-style" "" popup)
-      (position-dropdown! renderer node)
-      (Webapi.requestAnimationFrame
-       (fn [_time]
-         (Webapi.Dom.Element.removeAttribute "data-starting-style" popup))))
+    (if open
+      (do
+        (begin-popup-open! popup)
+        (position-dropdown! renderer node))
+      (do
+        (begin-popup-close! popup)
+        (Stdlib.ignore (finish-popup-close-later! popup 130))))
     (Stdlib.ignore true)))
 
 (defn- mount-dropdown! [renderer node]
@@ -4193,6 +4273,23 @@
         (Stdlib.ignore true))))
     true))
 
+(defn- remove-dropdown-after-exit! [parent positioner]
+  (let [popup (child-element positioner 0)]
+    (begin-popup-close! popup)
+    (Webapi.Dom.Element.setAttribute "inert" "" popup)
+    (Stdlib.ignore
+     (Js.Global.setTimeout
+      130
+      :f
+      (fn []
+        (when (Webapi.Dom.Element.contains
+               (Webapi.Dom.Element.asNode positioner) parent)
+          (Stdlib.ignore
+           (Webapi.Dom.Element.removeChild
+            (Webapi.Dom.Element.asNode positioner) parent)))
+        (Stdlib.ignore true))))
+    true))
+
 (defn- apply-dom-op! [renderer previous-nodes operation]
   (match operation
     (CreateNode node kind)
@@ -4328,9 +4425,12 @@
              (remove-modal-layer-after-exit!
               parent-node child-node surface (standard-kind previous)))
             (Stdlib.ignore true))
-          (Stdlib.ignore
-           (Webapi.Dom.Element.removeChild
-            (Webapi.Dom.Element.asNode child-node) parent-node))))
+          (if (dropdown-node? previous-nodes child)
+            (Stdlib.ignore
+             (remove-dropdown-after-exit! parent-node child-node))
+            (Stdlib.ignore
+             (Webapi.Dom.Element.removeChild
+              (Webapi.Dom.Element.asNode child-node) parent-node)))))
       (refresh-button-context! renderer child)
       (refresh-structured-children! renderer parent)
       (if-some [previous (clojure.core/get previous-nodes child)]

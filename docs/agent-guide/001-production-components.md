@@ -201,7 +201,10 @@ Delivered parity slices:
   safe-area-aware bottom surface with pointer-identity downward dismissal,
   Context Menu follows the 500 ms/10 px touch long-press contract, and Toast
   uses Pointer Events without stealing gestures from interactive descendants;
-  real-browser E2E covers each behavior;
+  DropdownMenu, Select, Combobox, and Tooltip share the same popup phase
+  helpers, retain an inert visual shell through exit, expose 500 ms menu
+  typeahead, and reject touch-only Tooltip hover; real-browser E2E covers each
+  behavior;
 - placeholder-free retained `:if` plus declaration-ordered dynamic segments;
   interleaved static children, switch branches, keyed collections and multiple
   dynamic regions preserve their local ordering and disposal boundaries;

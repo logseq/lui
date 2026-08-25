@@ -317,8 +317,39 @@ test("Tree is fully operable with one keyboard tab stop", async () => {
   )
 })
 
+test("DropdownMenu typeahead moves focus to the matching enabled item", async () => {
+  await openGalleryPage("DropdownMenu")
+  await evaluate(`[
+    ...document.querySelectorAll('.lui-menu-item'),
+  ].find((item) => item.textContent.trim() === 'Production'
+    && item.getBoundingClientRect().width > 0)?.focus()`)
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Production")
+
+  await evaluate(`document.activeElement?.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 's', bubbles: true, cancelable: true }),
+  )`)
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Staging")
+})
+
 test("Select keyboard navigation enters submenus and restores trigger focus", async () => {
   await openGalleryPage("Select")
+  await evaluate(`(() => {
+    window.__selectStartingObserved = false
+    window.__selectEndingObserved = false
+    new MutationObserver((records) => {
+      for (const record of records) {
+        const popup = record.target?.classList?.contains('lui-dropdown-menu')
+          ? record.target
+          : document.querySelector('.lui-dropdown-menu')
+        if (popup?.hasAttribute('data-starting-style')) window.__selectStartingObserved = true
+        if (popup?.hasAttribute('data-ending-style')) window.__selectEndingObserved = true
+      }
+    }).observe(document.querySelector('.lui-popup-portal'), {
+      attributes: true,
+      childList: true,
+      subtree: true,
+    })
+  })()`)
   await evaluate(`document.querySelector('.lui-select')?.focus()`)
   await browser("press", "Enter")
 
@@ -327,6 +358,7 @@ test("Select keyboard navigation enters submenus and restores trigger focus", as
       expanded: document.querySelector('.lui-select')?.getAttribute('aria-expanded'),
       focus: document.activeElement?.textContent.trim(),
       focusClass: document.activeElement?.className,
+      startingObserved: window.__selectStartingObserved,
       listbox: (() => {
         const trigger = document.querySelector('.lui-select')
         window.__selectPopupID = trigger?.getAttribute('aria-controls')
@@ -337,10 +369,17 @@ test("Select keyboard navigation enters submenus and restores trigger focus", as
       expanded: "true",
       focus: "Production",
       focusClass: "lui-menu-item",
+      startingObserved: true,
       listbox: "listbox",
     },
   )
 
+  await browser("press", "ArrowDown")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Staging")
+  await evaluate(`document.activeElement?.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'p', bubbles: true, cancelable: true }),
+  )`)
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Production")
   await browser("press", "ArrowDown")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Staging")
   await browser("press", "ArrowDown")
@@ -364,14 +403,32 @@ test("Select keyboard navigation enters submenus and restores trigger focus", as
     await state(`({
       expanded: document.querySelector('.lui-select')?.getAttribute('aria-expanded'),
       popupRemoved: document.getElementById(window.__selectPopupID) === null,
+      endingObserved: window.__selectEndingObserved,
       triggerFocused: document.activeElement === document.querySelector('.lui-select'),
     })`),
-    { expanded: "false", popupRemoved: true, triggerFocused: true },
+    { expanded: "false", popupRemoved: true, endingObserved: true, triggerFocused: true },
   )
 })
 
 test("Combobox keeps DOM focus in the input while navigating its listbox", async () => {
   await openGalleryPage("Combobox")
+  await evaluate(`(() => {
+    window.__comboboxStartingObserved = false
+    window.__comboboxEndingObserved = false
+    new MutationObserver((records) => {
+      for (const record of records) {
+        const popup = record.target?.classList?.contains('lui-dropdown-menu')
+          ? record.target
+          : document.querySelector('.lui-dropdown-menu')
+        if (popup?.hasAttribute('data-starting-style')) window.__comboboxStartingObserved = true
+        if (popup?.hasAttribute('data-ending-style')) window.__comboboxEndingObserved = true
+      }
+    }).observe(document.querySelector('.lui-popup-portal'), {
+      attributes: true,
+      childList: true,
+      subtree: true,
+    })
+  })()`)
   const input = '.lui-combobox-control'
   await evaluate(`document.querySelector(${JSON.stringify(input)})?.focus()`)
   await browser("press", "ArrowDown")
@@ -395,6 +452,7 @@ test("Combobox keeps DOM focus in the input while navigating its listbox", async
   assert.equal(comboboxOpened.listboxRole, "listbox")
   assert.equal(comboboxOpened.focusStayed, true)
   assert.equal(comboboxOpened.active, "Production")
+  assert.equal(await state(`window.__comboboxStartingObserved`), true)
 
   await browser("press", "ArrowDown")
   assert.equal(
@@ -410,10 +468,11 @@ test("Combobox keeps DOM focus in the input while navigating its listbox", async
         value: control?.value,
         expanded: control?.getAttribute('aria-expanded'),
         activeDescendant: control?.getAttribute('aria-activedescendant'),
+        endingObserved: window.__comboboxEndingObserved,
         focused: document.activeElement === control,
       }
     })()`),
-    { value: "", expanded: "false", activeDescendant: null, focused: true },
+    { value: "", expanded: "false", activeDescendant: null, endingObserved: true, focused: true },
   )
 })
 
@@ -678,14 +737,33 @@ test("Tooltip owns delayed pointer, immediate focus, Escape, ARIA, and static-la
   })
   assert.ok(initial.describedBy)
 
+  await browser("hover", '[role="heading"]')
+
+  await evaluate(`(() => {
+    window.__tooltipStartingObserved = false
+    window.__tooltipEndingObserved = false
+    const tooltip = document.querySelector('.lui-tooltip[data-anchor]')
+    new MutationObserver(() => {
+      if (tooltip?.hasAttribute('data-starting-style')) window.__tooltipStartingObserved = true
+      if (tooltip?.hasAttribute('data-ending-style')) window.__tooltipEndingObserved = true
+    }).observe(tooltip, { attributes: true })
+    document.querySelector('button[aria-label="Edit document"]')?.dispatchEvent(
+      new PointerEvent('pointerenter', { pointerType: 'touch', pointerId: 71 }),
+    )
+  })()`)
+  await browser("wait", "300")
+  assert.equal(await state(`document.querySelector('.lui-tooltip[data-anchor]')?.hasAttribute('data-open')`), false)
+
   await browser("hover", 'button[aria-label="Edit document"]')
   assert.equal(await state(`document.querySelector('.lui-tooltip[data-anchor]')?.hasAttribute('data-open')`), false)
   await browser("wait", "300")
   assert.equal(await state(`document.querySelector('.lui-tooltip[data-anchor]')?.hasAttribute('data-open')`), true)
+  assert.equal(await state(`window.__tooltipStartingObserved`), true)
 
   await browser("hover", '[role="heading"]')
   await browser("wait", "80")
   assert.equal(await state(`document.querySelector('.lui-tooltip[data-anchor]')?.hasAttribute('data-open')`), false)
+  assert.equal(await state(`window.__tooltipEndingObserved`), true)
   await browser("hover", 'button[aria-label="Edit document"]')
   await browser("wait", "20")
   assert.equal(await state(`document.querySelector('.lui-tooltip[data-anchor]')?.hasAttribute('data-open')`), true)

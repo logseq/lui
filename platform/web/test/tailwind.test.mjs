@@ -269,8 +269,9 @@ test("Tooltip uses the shared portal without taking flow space", async () => {
 
   assert.match(css, /\.lui-tooltip\[data-anchor\]\{[^}]*position:fixed/)
   assert.match(css, /\.lui-tooltip\[data-anchor\]\{[^}]*pointer-events:none/)
-  assert.match(css, /\.lui-tooltip\[data-anchor\]:not\(\[data-open\]\)\{[^}]*display:none/)
+  assert.match(css, /\.lui-tooltip\[data-anchor\]:not\(\[data-open\]\):not\(\[data-ending-style\]\)\{[^}]*display:none/)
   assert.match(css, /\.lui-tooltip\[data-anchor\]\[data-open\]\{[^}]*display:block/)
+  assert.match(css, /\.lui-tooltip\[data-anchor\]\[data-ending-style\]/)
   assert.doesNotMatch(css, /\.lui-tooltip[^\{]*:popover-open/)
 })
 

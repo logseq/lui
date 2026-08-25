@@ -33,6 +33,26 @@ Primary references:
 - [Toolbar](https://base-ui.com/react/components/toolbar)
 - [Slider](https://base-ui.com/react/components/slider)
 
+## Implemented foundation
+
+The Web backend now has one LG-owned popup phase implementation for
+DropdownMenu, Select, Combobox, and Tooltip. Opening exposes `data-open` and a
+one-frame `data-starting-style`; logical close exposes `data-closed` and
+`data-ending-style`, disables pointer interaction, and retains dynamically
+removed dropdown shells until their CSS exit duration completes.
+
+Menu and Select list navigation includes case-insensitive, enabled-item-only
+typeahead with Base UI's 500 ms reset window. Tooltip pointer hover ignores
+touch input while focus remains an immediate accessible opening route. These
+contracts are exercised through the real Gallery browser host rather than a
+mock DOM.
+
+The remaining work in this report is still normative: transition completion
+must move from pinned timeout fallbacks to actual animation completion,
+reduced motion must remove exit shells without delay, touch-open Select and
+Combobox need modality-aware placement and press-release qualification, and
+nested menus still need a pointer grace corridor.
+
 ## Implementation boundary
 
 LUI copies contracts, not framework architecture. LG owns declarative open,
