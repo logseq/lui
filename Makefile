@@ -1,4 +1,4 @@
-.PHONY: test test-schema generate-component-schema test-lg test-apple test-flutter build-apple-app \
+.PHONY: test test-schema generate-component-schema test-lg test-performance test-apple test-flutter build-apple-app \
 	build-components-flutter-macos test-components-flutter-macos \
 	run-components-flutter-macos build-components-ios-simulator \
 	build-components-mobile test-components-ios-e2e build-components-android test-components-android-e2e build-web build-web-css \
@@ -14,6 +14,9 @@ generate-component-schema:
 
 test-lg:
 	opam exec -- dune runtest -j 1
+
+test-performance:
+	tooling/performance/qualify_runtime.sh
 
 test-apple:
 	swift test --package-path platform/apple

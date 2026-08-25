@@ -1085,6 +1085,34 @@ content visually but does not remove it from LUI's retained tree.
 - Web browser matrix, Apple desktop/iOS and Flutter desktop/Android coverage;
 - component gallery parity audit against the pinned reference.
 
+Runtime performance is qualified separately from deterministic correctness
+tests with `make test-performance`. The native retained runtime must keep these
+default warm-build budgets on the reference Apple Silicon development host:
+
+- one local text patch in a 1,000-node tree: 10 ms;
+- 60 local typing patches with 10,000 retained nodes: 250 ms;
+- one 1,000-item keyed reorder or middle edit: 25 ms each;
+- one retained scroll background patch: 10 ms;
+- 10,000 sustained local Signal mutations: 1,000 ms.
+
+The sustained workload also requires constant retained-node pressure and one
+property operation per mutation. CI or slower qualification hosts may override
+an individual ceiling through the corresponding `LUI_PERF_*_MS_MAX`
+environment variable; correctness and incremental-work assertions are never
+disabled.
+
+Reference evidence captured on 2026-08-26 with an Apple M3 MacBook Air,
+macOS 26.4, arm64, and OCaml 5.5.0:
+
+| Workload | Result | Budget |
+| --- | ---: | ---: |
+| local text patch in 1,000 nodes | 0.174 ms | 10 ms |
+| 60 typing patches in 10,000 nodes | 68.136 ms | 250 ms |
+| keyed 1,000-item reorder | 0.878 ms | 25 ms |
+| keyed 1,000-item middle edit | 0.910 ms | 25 ms |
+| scroll background patch | 0.002 ms | 10 ms |
+| 10,000 sustained local mutations | 13.945 ms | 1,000 ms |
+
 ## Definition of done
 
 The goal is complete only when:

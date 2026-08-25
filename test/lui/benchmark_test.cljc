@@ -44,7 +44,7 @@
     (let [started (system-time)]
       (sig/set! target-state "after")
       (runtime/flush! application)
-      (println "benchmark 1k local text ms"
+      (println "LUI_PERF" "local_text_1k_ms"
                (- (system-time) started)))
     (let [batch (nth (apple/batches renderer)
                      (dec (count (apple/batches renderer))))]
@@ -77,7 +77,7 @@
           (sig/set! target-state update)
           (runtime/flush! application)
           (recur (inc update))))
-      (println "benchmark 10k nodes 60 updates ms"
+      (println "LUI_PERF" "typing_10k_nodes_60_updates_ms"
                (- (system-time) started)))
     (assert-equal 61 (count (apple/batches renderer))
                   "typing workload emits one initial and 60 local batches")
@@ -112,7 +112,7 @@
           started (system-time)]
       (sig/set! items reordered)
       (runtime/flush! application)
-      (println "benchmark keyed 1k reorder ms"
+      (println "LUI_PERF" "keyed_reorder_1k_ms"
                (- (system-time) started))
       (assert-equal last-node (nth (apple/children renderer root) 0)
                     "1k reorder preserves moved node identity")
@@ -128,7 +128,7 @@
             started-edit (system-time)]
         (sig/set! items edited)
         (runtime/flush! application)
-        (println "benchmark keyed middle edit ms"
+        (println "LUI_PERF" "keyed_middle_edit_1k_ms"
                  (- (system-time) started-edit))
         (let [batch (nth (apple/batches renderer)
                          (dec (count (apple/batches renderer))))]
@@ -157,7 +157,7 @@
           started (system-time)]
       (sig/set! color "black")
       (runtime/flush! application)
-      (println "benchmark scroll background ms"
+      (println "LUI_PERF" "scroll_background_ms"
                (- (system-time) started))
       (assert-equal children-before (apple/children renderer scroll)
                     "background update preserves scroll children")
@@ -165,3 +165,43 @@
                        (dec (count (apple/batches renderer))))]
         (assert-equal 1 (count (:ops batch))
                       "scroll background update emits one SetProp")))))
+
+(deftest benchmark-10k-sustained-local-mutations
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "sustained-local-mutations")
+        context (ui/context application scope)
+        value-state (sig/state scheduler 0)
+        text-value
+        (sig/own-signal!
+         scope
+         (sig/map
+          (fn [value] (proto/StringValue (str value)))
+          (sig/value value-state)))
+        root (ui/column! context)
+        label (ui/text-value! context text-value)]
+    (ui/append! context root label)
+    (runtime/flush! application)
+    (let [started (system-time)]
+      (loop [update 1]
+        (when (<= update 10000)
+          (sig/set! value-state update)
+          (runtime/flush! application)
+          (recur (inc update))))
+      (println "LUI_PERF" "sustained_local_mutations_10k_ms"
+               (- (system-time) started)))
+    (assert-equal 2 (apple/node-count renderer)
+                  "sustained local updates allocate no retained nodes")
+    (assert-equal 10001 (count (apple/batches renderer))
+                  "each sustained mutation emits one batch")
+    (assert-equal 1
+                  (count (:ops (nth (apple/batches renderer) 10000)))
+                  "the final sustained mutation remains one patch")
+    (assert-equal 2
+                  (:flush-mounted-node-count
+                   (runtime/diagnostics application))
+                  "runtime diagnostics preserve constant node pressure")
+    (assert-equal (Some (proto/StringValue "10000"))
+                  (apple/property renderer label proto/TextValue)
+                  "the final sustained mutation reaches the retained node")))
