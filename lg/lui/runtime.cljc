@@ -24,6 +24,20 @@
     (runtime-parents (atom (hash-map)))
     (pending-ops (atom (empty-ops)))
     (runtime-generation (atom 0))
+    (runtime-diagnostics
+     (atom
+      (record flush-diagnostics
+        (flush-status NotFlushed)
+        (flush-generation 0)
+        (flush-operation-count 0)
+        (flush-pending-operation-count 0)
+        (flush-mounted-node-count 0)
+        (flush-handler-count 0)
+        (flush-dynamic-segment-count 0)
+        (flush-signal-generation 0)
+        (flush-signal-round-count 0)
+        (flush-signal-effect-count 0)
+        (flush-signal-dirty-task-count 0))))
     (next-handler-id (atom 0))
     (event-handlers (atom (hash-map)))
     (next-dynamic-segment-id (atom 0))
@@ -411,21 +425,77 @@
      true
      (deref (:runtime-extension-nodes application)))))
 
+(defn- handler-count [application]
+  (reduce-kv
+   (fn [total _node handlers]
+     (+ total (count handlers)))
+   0
+   (deref (:event-handlers application))))
+
+(defn- dynamic-segment-count [application]
+  (reduce-kv
+   (fn [total _parent segments]
+     (+ total (count segments)))
+   0
+   (deref (:dynamic-segments application))))
+
+(defn- record-diagnostics!
+  [application status operation-count pending-operation-count]
+  (let [signal-diagnostics
+        (sig/last-stabilization (:runtime-scheduler application))]
+    (reset!
+     (:runtime-diagnostics application)
+     (record flush-diagnostics
+       (flush-status status)
+       (flush-generation (deref (:runtime-generation application)))
+       (flush-operation-count operation-count)
+       (flush-pending-operation-count pending-operation-count)
+       (flush-mounted-node-count (mounted-count application))
+       (flush-handler-count (handler-count application))
+       (flush-dynamic-segment-count (dynamic-segment-count application))
+       (flush-signal-generation
+        (:stabilization-generation signal-diagnostics))
+       (flush-signal-round-count
+        (:stabilization-rounds signal-diagnostics))
+       (flush-signal-effect-count
+        (:stabilization-effects signal-diagnostics))
+       (flush-signal-dirty-task-count
+        (:stabilization-dirty-tasks signal-diagnostics))))
+    true))
+
+(defn- apply-pending-batch!
+  [application batch operation-count next-generation]
+  (try
+    (do
+      (when-not ((:apply-batch (:runtime-backend application)) batch)
+        (raise (Invalid_argument "backend rejected patch batch")))
+      (reset! (:pending-ops application) (empty-ops))
+      (reset! (:runtime-generation application) next-generation)
+      (record-diagnostics! application Applied operation-count 0))
+    (catch (Invalid_argument message)
+      (do
+        (record-diagnostics!
+         application Rejected operation-count
+         (count (deref (:pending-ops application))))
+        (raise (Invalid_argument message))
+        false))))
+
 (defn flush! [application]
   (sig/stabilize! (:runtime-scheduler application))
   (validate-extension-nodes! application)
   (let [operations (deref (:pending-ops application))]
     (if (empty? operations)
-      true
+      (record-diagnostics! application NoBatch 0 0)
       (let [next-generation (inc (deref (:runtime-generation application)))
             batch
             (record proto/patch-batch
               (generation next-generation)
               (ops operations))]
-        ((:apply-batch (:runtime-backend application)) batch)
-        (reset! (:pending-ops application) (empty-ops))
-        (reset! (:runtime-generation application) next-generation)
-        true))))
+        (apply-pending-batch!
+         application batch (count operations) next-generation)))))
+
+(defn diagnostics [application]
+  (deref (:runtime-diagnostics application)))
 
 (defn generation [application]
   (deref (:runtime-generation application)))

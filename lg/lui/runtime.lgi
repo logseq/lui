@@ -11,6 +11,25 @@
   (dynamic-segment-size :ref<int>)
   (dynamic-segment-active :ref<bool>))
 
+(type-variant flush-status
+  (NotFlushed)
+  (NoBatch)
+  (Applied)
+  (Rejected))
+
+(type-record flush-diagnostics
+  (flush-status :flush-status)
+  (flush-generation :int)
+  (flush-operation-count :int)
+  (flush-pending-operation-count :int)
+  (flush-mounted-node-count :int)
+  (flush-handler-count :int)
+  (flush-dynamic-segment-count :int)
+  (flush-signal-generation :int)
+  (flush-signal-round-count :int)
+  (flush-signal-effect-count :int)
+  (flush-signal-dirty-task-count :int))
+
 (type-record application
   (runtime-scheduler :scheduler)
   (runtime-backend :backend)
@@ -24,6 +43,7 @@
   (runtime-parents :ref<map<int;int>>)
   (pending-ops :ref<vector<patch-op>>)
   (runtime-generation :ref<int>)
+  (runtime-diagnostics :ref<flush-diagnostics>)
   (next-handler-id :ref<int>)
   (event-handlers :ref<map<int;vector<event-handler>>>)
   (next-dynamic-segment-id :ref<int>)
@@ -79,7 +99,14 @@
   :fn<application;int;int;bool>)
 (signature lui.runtime/dispatch! :fn<application;event;bool>)
 (signature lui.runtime/validate-extension-nodes! :fn<application;bool>)
+(signature lui.runtime/handler-count :fn<application;int>)
+(signature lui.runtime/dynamic-segment-count :fn<application;int>)
+(signature lui.runtime/record-diagnostics!
+  :fn<application;flush-status;int;int;bool>)
+(signature lui.runtime/apply-pending-batch!
+  :fn<application;patch-batch;int;int;bool>)
 (signature lui.runtime/flush! :fn<application;bool>)
+(signature lui.runtime/diagnostics :fn<application;flush-diagnostics>)
 (signature lui.runtime/generation :fn<application;int>)
 (signature lui.runtime/mounted-count :fn<application;int>)
 (signature lui.runtime/child-count :fn<application;int;int>)
