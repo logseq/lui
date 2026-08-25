@@ -40,7 +40,9 @@
   (AppleMenuItem)
   (AppleListItem)
   (AppleAvatar)
-  (AppleDialog))
+  (AppleDialog)
+  (AppleDrawer)
+  (AppleSheet))
 
 (type-record apple-renderer
   (apple-store :retained-store<apple-node>)

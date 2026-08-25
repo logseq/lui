@@ -28,7 +28,7 @@ private struct LUINodeView: View {
     @ViewBuilder
     var body: some View {
         let _ = model.revision
-        if model.kind == .dialog {
+        if model.kind.isModalSurface {
             content
         } else {
             content
@@ -83,8 +83,8 @@ private struct LUINodeView: View {
             LUIComboboxView(model: model, backend: backend)
         case .dropdownMenu:
             LUIDropdownMenuView(model: model, backend: backend)
-        case .dialog:
-            LUIDialogView(model: model, backend: backend)
+        case .dialog, .drawer, .sheet:
+            LUIModalPresenter(model: model, backend: backend)
         case .menuItem:
             LUIMenuItemView(model: model, backend: backend)
         case .listItem:
@@ -186,40 +186,98 @@ private struct LUINodeView: View {
     }
 }
 
-private struct LUIDialogView: View {
+private struct LUIModalPresenter: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @State private var isPresented = false
 
+    @ViewBuilder
     var body: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .onAppear { isPresented = true }
-            .sheet(isPresented: $isPresented) {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(verbatim: model.text)
-                        .font(.headline)
-                        .accessibilityAddTraits(.isHeader)
-                    ZStack {
-                        ForEach(model.children, id: \.self) { childID in
-                            if let child = backend.model(id: childID) {
-                                LUINodeView(model: child, backend: backend)
-                            }
-                        }
+        Group {
+            switch model.kind {
+            case .dialog, .drawer:
+                presentationAnchor
+                    .sheet(isPresented: $isPresented) {
+                        LUIModalSurfaceContent(model: model, backend: backend)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                .padding(CGFloat(model.property(.padding)?.intValue ?? 24))
-                .frame(
-                    width: CGFloat(model.property(.width)?.intValue ?? 420),
-                    height: CGFloat(model.property(.height)?.intValue ?? 220)
-                )
+            case .sheet:
+                presentationAnchor
+                    .inspector(isPresented: $isPresented) {
+                        LUIModalSurfaceContent(model: model, backend: backend)
+                            .inspectorColumnWidth(
+                                CGFloat(model.property(.width)?.intValue ?? 320)
+                            )
+                    }
+            default:
+                EmptyView()
             }
-            .onChange(of: isPresented) { _, presented in
-                if !presented {
-                    try? backend.performDismiss(node: model.id)
+        }
+        .onAppear { isPresented = true }
+        .onChange(of: isPresented) { _, presented in
+            if !presented {
+                try? backend.performDismiss(node: model.id)
+            }
+        }
+    }
+
+    private var presentationAnchor: some View {
+        Color.clear.frame(width: 0, height: 0)
+    }
+}
+
+private struct LUIModalSurfaceContent: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        let _ = model.revision
+        VStack(alignment: .leading, spacing: 16) {
+            Text(verbatim: model.text)
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+            ZStack {
+                ForEach(model.children, id: \.self) { childID in
+                    if let child = backend.model(id: childID) {
+                        LUINodeView(model: child, backend: backend)
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(CGFloat(model.property(.padding)?.intValue ?? 24))
+        .frame(width: surfaceWidth, height: surfaceHeight)
+    }
+
+    private var surfaceWidth: CGFloat? {
+        switch model.kind {
+        case .dialog:
+            CGFloat(model.property(.width)?.intValue ?? 420)
+        case .sheet:
+            CGFloat(model.property(.width)?.intValue ?? 320)
+        case .drawer:
+            model.property(.width).map { CGFloat($0.intValue ?? 0) }
+        default:
+            nil
+        }
+    }
+
+    private var surfaceHeight: CGFloat? {
+        switch model.kind {
+        case .dialog:
+            CGFloat(model.property(.height)?.intValue ?? 220)
+        case .drawer:
+            CGFloat(model.property(.height)?.intValue ?? 260)
+        case .sheet:
+            model.property(.height).map { CGFloat($0.intValue ?? 0) }
+        default:
+            nil
+        }
+    }
+}
+
+private extension LUINodeKind {
+    var isModalSurface: Bool {
+        self == .dialog || self == .drawer || self == .sheet
     }
 }
 

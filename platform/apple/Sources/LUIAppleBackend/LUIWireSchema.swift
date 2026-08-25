@@ -44,6 +44,8 @@ enum LUINodeKind: String, Decodable, Equatable {
     case breadcrumb = "breadcrumb"
     case pagination = "pagination"
     case dialog = "dialog"
+    case drawer = "drawer"
+    case sheet = "sheet"
 }
 
 enum LUIProperty: String, Decodable, Hashable {

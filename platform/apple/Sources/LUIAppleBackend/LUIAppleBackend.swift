@@ -367,7 +367,8 @@ public final class LUIAppleBackend {
     func performDismiss(node: Int) throws {
         guard let model = models[node],
               model.kind == .select || model.kind == .combobox ||
-                model.kind == .dropdownMenu || model.kind == .dialog else {
+                model.kind == .dropdownMenu || model.kind == .dialog ||
+                model.kind == .drawer || model.kind == .sheet else {
             throw invalid("node \(node) is not dismissible")
         }
         onEvent?(.dismiss(node: node))

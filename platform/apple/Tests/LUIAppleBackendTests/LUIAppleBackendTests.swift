@@ -1119,6 +1119,67 @@ struct LUISwiftUIBackendTests {
         }
     }
 
+    @Test("maps Drawer and Sheet to retained adaptive SwiftUI presentations")
+    func mapsDrawerAndSheet() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"drawer"},
+          {"op":"create-node","id":3,"kind":"input"},
+          {"op":"create-node","id":4,"kind":"sheet"},
+          {"op":"create-node","id":5,"kind":"input"},
+          {"op":"set-prop","id":2,"property":"text","value":"Filters"},
+          {"op":"set-prop","id":2,"property":"height","value":260},
+          {"op":"set-prop","id":2,"property":"padding","value":24},
+          {"op":"set-prop","id":4,"property":"text","value":"Share"},
+          {"op":"set-prop","id":4,"property":"width","value":320},
+          {"op":"set-prop","id":4,"property":"padding","value":20},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":1,"child":4,"index":1},
+          {"op":"insert-child","parent":4,"child":5,"index":0}
+        ]}
+        """)
+
+        let drawer = try #require(backend.model(id: 2))
+        let sheet = try #require(backend.model(id: 4))
+        #expect(drawer.kind == .drawer)
+        #expect(drawer.children == [3])
+        #expect(drawer.property(.text) == .string("Filters"))
+        #expect(drawer.property(.height) == .int(260))
+        #expect(sheet.kind == .sheet)
+        #expect(sheet.children == [5])
+        #expect(sheet.property(.width) == .int(320))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":2,"property":"height","value":300},
+          {"op":"set-prop","id":4,"property":"text","value":"Share link"}
+        ]}
+        """)
+        #expect(backend.model(id: 2) === drawer)
+        #expect(backend.model(id: 4) === sheet)
+        #expect(drawer.property(.height) == .int(300))
+        #expect(sheet.property(.text) == .string("Share link"))
+
+        try backend.performDismiss(node: 2)
+        try backend.performDismiss(node: 4)
+        #expect(events == [.dismiss(node: 2), .dismiss(node: 4)])
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":3,"ops":[
+              {"op":"set-prop","id":2,"property":"gap","value":8}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 2)
+    }
+
     @Test("maps List flow and multi-child Scroll to retained SwiftUI containers")
     func mapsListAndScrollContainers() throws {
         let backend = LUIAppleBackend()

@@ -60,6 +60,8 @@
                          (= tag :combobox)
                          (= tag :dropdown-menu)
                          (= tag :dialog)
+                         (= tag :drawer)
+                         (= tag :sheet)
                          (= tag :menu-item)
                          (= tag :list-item)
                          (= tag :avatar)
@@ -772,9 +774,10 @@
           children)
        ~node)))
 
-(defelement dialog [context parent attrs & children]
+(macro-helper-defn modal-surface-expansion
+                   [constructor context parent attrs children]
   (let [node (gensym "node")]
-    `(let [~node (lui.ui/dialog! ~context)]
+    `(let [~node (~constructor ~context)]
        ~@(string-attribute-expansion
           context node (:text attrs) 'lui.protocol/TextValue)
        ~@(property-expansions
@@ -791,6 +794,18 @@
             `(lui.elements/element ~context ~node ~child))
           children)
        ~node)))
+
+(defelement dialog [context parent attrs & children]
+  (modal-surface-expansion
+   'lui.ui/dialog! context parent attrs children))
+
+(defelement drawer [context parent attrs & children]
+  (modal-surface-expansion
+   'lui.ui/drawer! context parent attrs children))
+
+(defelement sheet [context parent attrs & children]
+  (modal-surface-expansion
+   'lui.ui/sheet! context parent attrs children))
 
 (defelement menu-item [context parent attrs & children]
   (let [node (gensym "node")

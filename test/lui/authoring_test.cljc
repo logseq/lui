@@ -14,7 +14,7 @@
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput
                      AppleSelect AppleCombobox AppleDropdownMenu AppleMenuItem AppleListItem
-                     AppleAvatar AppleDialog]]
+                     AppleAvatar AppleDialog AppleDrawer AppleSheet]]
             [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
@@ -79,6 +79,18 @@
      [:column
       [:input {:placeholder "Name"}]
       [:button "Save"]]]]])
+
+(defui controlled-edge-surfaces [drawer-open sheet-open on-dismiss]
+  [:column
+   [:text "Outside"]
+   [:if {:test drawer-open}
+    [:drawer
+     {:text "Filters" :height 260 :padding 24 :on-dismiss on-dismiss}
+     [:column [:checkbox "Only unread"]]]]
+   [:if {:test sheet-open}
+    [:sheet
+     {:text "Share" :width 320 :padding 24 :on-dismiss on-dismiss}
+     [:column [:input {:placeholder "Share link"}]]]]])
 
 (defelement badge [context parent _attrs & children]
   `(lui.elements/text ~context ~parent {} ~@children))
@@ -578,6 +590,58 @@
       (runtime/flush! application)
       (assert-equal 1 (count (apple/children renderer root))
                     "model state removes the dialog subtree"))))
+
+(deftest edge-surfaces-are-model-owned-root-modals-with-retained-content
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "controlled-edge-surfaces")
+        context (ui/context application scope)
+        drawer-open (sig/state scheduler false)
+        sheet-open (sig/state scheduler false)
+        received (atom [])
+        on-dismiss (fn [event] (swap! received conj event) true)
+        root
+        (controlled-edge-surfaces
+         context (sig/value drawer-open) (sig/value sheet-open) on-dismiss)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (assert-equal 1 (count (apple/children renderer root))
+                  "closed edge surfaces leave no retained placeholders")
+    (sig/set! drawer-open true)
+    (runtime/flush! application)
+    (let [drawer (nth (apple/children renderer root) 1)]
+      (match (apple/node renderer drawer)
+        (Some AppleDrawer) (is true "drawer is one semantic retained node")
+        _ (is false "drawer maps to the native bottom surface"))
+      (assert-equal (Some (StringValue "Filters"))
+                    (apple/property renderer drawer proto/TextValue)
+                    "drawer title is retained")
+      (assert-equal (Some (proto/IntValue 260))
+                    (apple/property renderer drawer proto/HeightValue)
+                    "drawer height is retained")
+      (runtime/dispatch! application (proto/Dismiss drawer))
+      (runtime/flush! application))
+    (sig/set! sheet-open true)
+    (runtime/flush! application)
+    (let [sheet (nth (apple/children renderer root) 2)]
+      (match (apple/node renderer sheet)
+        (Some AppleSheet) (is true "sheet is one semantic retained node")
+        _ (is false "sheet maps to the native trailing surface"))
+      (assert-equal (Some (proto/IntValue 320))
+                    (apple/property renderer sheet proto/WidthValue)
+                    "sheet width is retained")
+      (runtime/dispatch! application (proto/Dismiss sheet))
+      (runtime/flush! application)
+      (assert-equal [(proto/Dismiss (nth (apple/children renderer root) 1))
+                     (proto/Dismiss sheet)]
+                    @received
+                    "both native dismissals reach the authored handler once"))
+    (sig/set! drawer-open false)
+    (sig/set! sheet-open false)
+    (runtime/flush! application)
+    (assert-equal 1 (count (apple/children renderer root))
+                  "model state removes both edge-surface subtrees")))
 
 (deftest list-item-supports-text-or-custom-children-and-additive-actions
   (let [scheduler (sig/scheduler)

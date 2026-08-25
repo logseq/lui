@@ -192,6 +192,12 @@
 (defn dialog! [context]
   (runtime/create-node! (:ui-application context) proto/Dialog))
 
+(defn drawer! [context]
+  (runtime/create-node! (:ui-application context) proto/Drawer))
+
+(defn sheet! [context]
+  (runtime/create-node! (:ui-application context) proto/Sheet))
+
 (defn menu-item! [context]
   (runtime/create-node! (:ui-application context) proto/MenuItem))
 

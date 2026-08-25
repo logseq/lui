@@ -35,8 +35,8 @@
     {"name": "bubble", "status": "pending"},
     {"name": "reactions", "status": "pending"},
     {"name": "dialog", "status": "supported"},
-    {"name": "drawer", "status": "pending"},
-    {"name": "sheet", "status": "pending"},
+    {"name": "drawer", "status": "supported"},
+    {"name": "sheet", "status": "supported"},
     {"name": "tooltip", "status": "pending"},
     {"name": "context-menu", "status": "pending"},
     {"name": "text", "status": "supported"},
@@ -113,7 +113,9 @@
     {"lg": "Avatar", "wire": "avatar", "dart": "avatar", "swift": "avatar", "container": false},
     {"lg": "Breadcrumb", "wire": "breadcrumb", "dart": "breadcrumb", "swift": "breadcrumb", "container": true},
     {"lg": "Pagination", "wire": "pagination", "dart": "pagination", "swift": "pagination", "container": true},
-    {"lg": "Dialog", "wire": "dialog", "dart": "dialog", "swift": "dialog", "container": true}
+    {"lg": "Dialog", "wire": "dialog", "dart": "dialog", "swift": "dialog", "container": true},
+    {"lg": "Drawer", "wire": "drawer", "dart": "drawer", "swift": "drawer", "container": true},
+    {"lg": "Sheet", "wire": "sheet", "dart": "sheet", "swift": "sheet", "container": true}
   ],
   "properties": [
     {"lg": "TextValue", "wire": "text", "swift": "text"},

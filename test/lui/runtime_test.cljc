@@ -217,6 +217,63 @@
       (assert-equal 0 (apple/node-count renderer)
                     "an invalid dialog batch is atomic"))))
 
+(deftest drawer-and-sheet-have-the-pinned-edge-surface-contract
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Drawer)
+                      (proto/set-prop-op
+                       1 proto/TextValue (proto/StringValue "Filters"))
+                      (proto/set-prop-op 1 proto/HeightValue (proto/IntValue 260))
+                      (proto/set-prop-op 1 proto/PaddingValue (proto/IntValue 24))
+                      (proto/create-node-op 2 proto/Sheet)
+                      (proto/set-prop-op
+                       2 proto/TextValue (proto/StringValue "Share"))
+                      (proto/set-prop-op 2 proto/WidthValue (proto/IntValue 320))
+                      (proto/set-prop-op 2 proto/PaddingValue (proto/IntValue 24))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"drawer\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"text\","
+      "\"value\":\"Filters\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"height\",\"value\":260},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"padding\",\"value\":24},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"sheet\"},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"text\","
+      "\"value\":\"Share\"},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"width\",\"value\":320},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"padding\",\"value\":24}]}")
+     (wire/encode-batch batch)
+     "edge surfaces use the pinned closed wire vocabulary")
+    (doseq [kind [proto/Drawer proto/Sheet]]
+      (doseq [property
+              [proto/TextValue proto/WidthValue proto/HeightValue proto/PaddingValue]]
+        (is (proto/property-supported? kind property)
+            "edge surfaces admit the exact Vercel Native attributes"))
+      (doseq [property [proto/Gap proto/MainAlignment proto/CrossAlignment
+                        proto/Selected proto/Enabled]]
+        (is (not (proto/property-supported? kind property))
+            "edge surfaces reject flow and control state"))
+      (is (proto/can-contain-children? kind)
+          "edge surfaces retain stacking content")
+      (is (proto/event-supported? kind (proto/Dismiss 1))
+          "edge surfaces report native dismissal"))
+    (let [renderer (apple/create)
+          invalid
+          (record proto/patch-batch
+                  (generation 1)
+                  (ops [(proto/create-node-op 1 proto/Drawer)
+                        (proto/set-prop-op 1 proto/Gap (proto/IntValue 8))
+                        (proto/create-node-op 2 proto/Sheet)]))]
+      (is (thrown-with-msg?
+           Invalid_argument
+           #"unsupported property value|property is not supported|node properties conflict"
+           ((:apply-batch (apple/backend renderer)) invalid))
+          "missing titles and gap are rejected atomically")
+      (assert-equal 0 (apple/node-count renderer)
+                    "an invalid edge-surface batch leaves no retained nodes"))))
+
 (deftest tabs-is-a-controlled-horizontal-trigger-container
   (let [batch
         (record proto/patch-batch

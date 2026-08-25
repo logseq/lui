@@ -40,7 +40,9 @@
                  (gallery-document-action "Selected Quarterly report.md")
                  (gallery-avatar-image 1)
                  (gallery-tab "overview")
-                 (gallery-dialog-open false))
+                 (gallery-dialog-open false)
+                 (gallery-drawer-open false)
+                 (gallery-sheet-open false))
          model/AdvanceProgress)]
     (assert-equal false (:gallery-disabled initial) "controls start enabled")
     (assert-equal 0.3 (:gallery-progress initial) "progress has a visible start")
@@ -60,6 +62,10 @@
                   "Tabs starts with one model-owned selection")
     (assert-equal false (:gallery-dialog-open initial)
                   "Dialog starts closed without a retained placeholder")
+    (assert-equal false (:gallery-drawer-open initial)
+                  "Drawer starts closed without a retained placeholder")
+    (assert-equal false (:gallery-sheet-open initial)
+                  "Sheet starts closed without a retained placeholder")
     (assert-equal true
                   (:gallery-dialog-open
                    (model/update initial model/OpenDialog))
@@ -70,6 +76,26 @@
                     (model/update initial model/OpenDialog)
                     model/CloseDialog))
                   "native dismissal closes Dialog through the reducer")
+    (assert-equal true
+                  (:gallery-drawer-open
+                   (model/update initial model/OpenDrawer))
+                  "the shared reducer owns Drawer presentation")
+    (assert-equal false
+                  (:gallery-drawer-open
+                   (model/update
+                    (model/update initial model/OpenDrawer)
+                    model/CloseDrawer))
+                  "native dismissal closes Drawer through the reducer")
+    (assert-equal true
+                  (:gallery-sheet-open
+                   (model/update initial model/OpenSheet))
+                  "the shared reducer owns Sheet presentation")
+    (assert-equal false
+                  (:gallery-sheet-open
+                   (model/update
+                    (model/update initial model/OpenSheet)
+                    model/CloseSheet))
+                  "native dismissal closes Sheet through the reducer")
     (let [activity (model/update initial (model/SelectTab "activity"))]
       (assert-equal true (model/activity-tab-selected? activity)
                     "the shared reducer controls the selected trigger")
@@ -180,6 +206,28 @@
       (driver/flush! application)
       (assert-equal mounted-count (flutter/node-count renderer)
                     "closing removes the Dialog subtree without placeholders"))
+    (let [mounted-count (flutter/node-count renderer)]
+      (driver/send! application model/OpenDrawer)
+      (driver/flush! application)
+      (is (creates-kind? (flutter/batches renderer) proto/Drawer)
+          "the shared Gallery mounts the semantic Drawer node")
+      (is (> (flutter/node-count renderer) mounted-count)
+          "opening mounts only the Drawer retained subtree")
+      (driver/send! application model/CloseDrawer)
+      (driver/flush! application)
+      (assert-equal mounted-count (flutter/node-count renderer)
+                    "closing removes the Drawer subtree without placeholders"))
+    (let [mounted-count (flutter/node-count renderer)]
+      (driver/send! application model/OpenSheet)
+      (driver/flush! application)
+      (is (creates-kind? (flutter/batches renderer) proto/Sheet)
+          "the shared Gallery mounts the semantic Sheet node")
+      (is (> (flutter/node-count renderer) mounted-count)
+          "opening mounts only the Sheet retained subtree")
+      (driver/send! application model/CloseSheet)
+      (driver/flush! application)
+      (assert-equal mounted-count (flutter/node-count renderer)
+                    "closing removes the Sheet subtree without placeholders"))
     (driver/dispose! application)
     (assert-equal 0 (flutter/node-count renderer) "dispose drops every retained node")
     (is (driver/disposed? application) "the native gallery lifecycle terminates")))

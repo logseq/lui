@@ -7,7 +7,7 @@
                      Spacer Spinner Icon
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
-                     Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog]]
+                     Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -64,7 +64,9 @@
     MenuItem AppleMenuItem
     ListItem AppleListItem
     Avatar AppleAvatar
-    Dialog AppleDialog))
+    Dialog AppleDialog
+    Drawer AppleDrawer
+    Sheet AppleSheet))
 
 (defn backend-for [renderer operating-system host]
   (record proto/backend

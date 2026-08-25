@@ -665,6 +665,35 @@ moves focus into the dialog, traps traversal while it is modal, and restores
 the previously focused control after removal. Nested declaration must not make
 ordinary parent layout or unrelated retained nodes rebuild.
 
+#### Drawer and Sheet contract
+
+`drawer` and `sheet` extend the same model-owned modal contract as `dialog`.
+Their public attributes are exactly `text`, `width`, `height`, `padding`, and
+`on-dismiss`; neither surface accepts `gap` or backend-specific presentation
+options. A `drawer` is the bottom-edge variant and a `sheet` is the right-edge
+variant in the pinned Vercel Native vocabulary. Both are root-relative even
+when authored under a nested layout container, and their children stack in one
+retained content box beneath platform title chrome. Application state controls
+existence through `:if`; native dismissal emits `Dismiss` once and never mutates
+the model directly.
+
+Backends preserve those semantic edges while using the closest native
+presentation available. Web reuses the native `dialog` top layer, focus trap,
+backdrop and focus restoration, with Tailwind styles docking the surface to the
+bottom or right. SwiftUI uses the system sheet presentation for Drawer and the
+adaptive system inspector presentation for Sheet; compact Apple environments
+may adapt the inspector to a sheet while keeping the same public API and event
+contract. Flutter uses the Material modal bottom-sheet route for Drawer and a
+modal route containing the native Material Drawer widget for Sheet. Platform
+adaptation must not leak additional public attributes.
+
+While a surface is open, changing its title, dimensions, padding, or retained
+descendants updates only that presented subtree. It must not replace stable
+child controls or re-present the route. Removing the source node closes the
+native presentation without emitting a second dismissal. Escape, platform
+back, swipe dismissal, or backdrop press target only the topmost presented
+surface and restore focus according to the host platform.
+
 ### 7. Media and data display
 
 - image and media surfaces;

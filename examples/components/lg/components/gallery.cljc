@@ -103,6 +103,39 @@
        [:button {:variant "ghost" :on-press close-dialog} "Cancel"]
        [:button {:variant "primary" :on-press close-dialog} "Save"]]]]]])
 
+(defui edge-surface-gallery
+  [drawer-open-source open-drawer close-drawer
+   sheet-open-source open-sheet close-sheet]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Drawer and Sheet"]
+   [:row {:gap 12}
+    [:button {:variant "outline" :on-press open-drawer} "Open drawer"]
+    [:button {:variant "outline" :on-press open-sheet} "Open sheet"]]
+   [:paragraph
+    "Drawer is the bottom-edge surface; Sheet is the adaptive trailing-edge surface."]
+   [:if {:test drawer-open-source}
+    [:drawer
+     {:text "Filters"
+      :height 260
+      :padding 24
+      :on-dismiss close-drawer}
+     [:column {:gap 12}
+      [:box {:height 24}]
+      [:checkbox "Only unread"]
+      [:switch "Compact rows"]
+      [:button {:variant "primary" :on-press close-drawer} "Apply filters"]]]]
+   [:if {:test sheet-open-source}
+    [:sheet
+     {:text "Share"
+      :width 320
+      :padding 24
+      :on-dismiss close-sheet}
+     [:column {:gap 12}
+      [:box {:height 24}]
+      [:paragraph "Anyone with the link can view this showcase."]
+      [:input {:placeholder "Share link"}]
+      [:button {:variant "primary" :on-press close-sheet} "Done"]]]]])
+
 (defui collection-gallery []
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "List and Scroll"]
@@ -487,7 +520,9 @@
    avatar-image-source toggle-avatar-image
    overview-tab-selected-source activity-tab-selected-source
    tab-content-source select-overview-tab select-activity-tab
-   dialog-open-source open-dialog close-dialog]
+   dialog-open-source open-dialog close-dialog
+   drawer-open-source open-drawer close-drawer
+   sheet-open-source open-sheet close-sheet]
   [:column
    [button-gallery disabled-source toggle-disabled]
    [toggle-button-gallery
@@ -509,6 +544,9 @@
    [progress-gallery progress-source progress-label-source advance-progress]
    [surface-gallery card-copy]
    [dialog-gallery dialog-open-source open-dialog close-dialog]
+   [edge-surface-gallery
+    drawer-open-source open-drawer close-drawer
+    sheet-open-source open-sheet close-sheet]
    [collection-gallery]
    [list-item-gallery
     report-selected-source checklist-selected-source disabled-source

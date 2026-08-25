@@ -15,7 +15,7 @@
   (web-app-icons :map<string;string>)
   (web-images :ref<map<int;web-image-resource>>)
   (web-cleanups :ref<map<int;fn<unit>>>)
-  (web-dialog-stack :ref<vector<int>>))
+  (web-modal-stack :ref<vector<int>>))
 
 (signature lui.backend.web/create
   :overload<fn<Dom.element;web-renderer>;fn<Dom.element;map<string;string>;web-renderer>>)

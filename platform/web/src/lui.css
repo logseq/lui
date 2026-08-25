@@ -190,6 +190,46 @@
     grid-area: 1 / 1;
   }
 
+  .lui-drawer {
+    @apply fixed bottom-0 left-0 right-0 top-auto m-0 grid w-full max-w-none rounded-t-xl border bg-card text-card-foreground shadow-lg;
+  }
+
+  .lui-drawer::backdrop {
+    @apply bg-black/50;
+  }
+
+  .lui-drawer-title {
+    @apply text-lg font-semibold;
+  }
+
+  .lui-drawer-body {
+    @apply grid;
+  }
+
+  .lui-drawer-body > * {
+    grid-area: 1 / 1;
+  }
+
+  .lui-sheet {
+    @apply fixed bottom-0 left-auto right-0 top-0 m-0 grid h-full max-h-none rounded-l-xl border bg-card text-card-foreground shadow-lg;
+  }
+
+  .lui-sheet::backdrop {
+    @apply bg-black/50;
+  }
+
+  .lui-sheet-title {
+    @apply text-lg font-semibold;
+  }
+
+  .lui-sheet-body {
+    @apply grid;
+  }
+
+  .lui-sheet-body > * {
+    grid-area: 1 / 1;
+  }
+
   .lui-label {
     @apply text-sm font-medium leading-none;
   }

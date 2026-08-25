@@ -90,6 +90,32 @@ test("Dialog uses the browser top layer and compact Tailwind surface styling", a
   assert.doesNotMatch(css, /\.lui-dialog-(?:header|content|footer|description)/)
 })
 
+test("Drawer uses the browser top layer and docks to the viewport bottom", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-drawer\{[^}]*position:fixed/)
+  assert.match(css, /\.lui-drawer\{[^}]*bottom:(?:0|calc\(var\(--spacing\)\*0\))/)
+  assert.match(css, /\.lui-drawer\{[^}]*top:auto/)
+  assert.match(css, /\.lui-drawer\{[^}]*width:100%/)
+  assert.match(css, /\.lui-drawer::backdrop\{[^}]*background-color:/)
+  assert.match(css, /\.lui-drawer-title\{[^}]*font-weight:/)
+  assert.match(css, /\.lui-drawer-body\{[^}]*display:grid/)
+  assert.doesNotMatch(css, /\.lui-drawer-(?:header|content|footer|description)/)
+})
+
+test("Sheet uses the browser top layer and docks to the viewport right", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-sheet\{[^}]*position:fixed/)
+  assert.match(css, /\.lui-sheet\{[^}]*right:(?:0|calc\(var\(--spacing\)\*0\))/)
+  assert.match(css, /\.lui-sheet\{[^}]*left:auto/)
+  assert.match(css, /\.lui-sheet\{[^}]*height:100%/)
+  assert.match(css, /\.lui-sheet::backdrop\{[^}]*background-color:/)
+  assert.match(css, /\.lui-sheet-title\{[^}]*font-weight:/)
+  assert.match(css, /\.lui-sheet-body\{[^}]*display:grid/)
+  assert.doesNotMatch(css, /\.lui-sheet-(?:header|content|footer|description)/)
+})
+
 test("the production stylesheet distinguishes List flow from Scroll overlays", async () => {
   const css = await readFile(outputUrl, "utf8")
 

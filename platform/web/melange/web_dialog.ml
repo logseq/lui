@@ -2,12 +2,12 @@ let install : unit -> unit =
   [%raw
     {|
     function () {
-      const observerKey = Symbol.for("lui.web.dialog-observer");
+      const observerKey = Symbol.for("lui.web.modal-observer");
       if (globalThis[observerKey]) return;
-      const sync = (dialog) => {
-        const state = dialog.getAttribute("data-lui-modal-state");
-        if (state === "open" && !dialog.open) dialog.showModal();
-        if (state === "closed" && dialog.open) dialog.close();
+      const sync = (surface) => {
+        const state = surface.getAttribute("data-lui-modal-state");
+        if (state === "open" && !surface.open) surface.showModal();
+        if (state === "closed" && surface.open) surface.close();
       };
       const observer = new MutationObserver((records) => {
         for (const record of records) {

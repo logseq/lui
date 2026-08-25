@@ -290,13 +290,13 @@ struct LUIRetainedTree {
         case .main, .cross:
             kind == .row || kind == .column || kind == .list ||
                 isHorizontalGroup(kind)
-        case .grow: kind != .avatar && kind != .dialog
+        case .grow: kind != .avatar && !isModalSurface(kind)
         case .columns: kind == .grid
         case .padding, .width, .height: kind != .avatar
         case .background, .borderColor, .borderWidth,
              .cornerRadius, .styleClass,
              .minWidth, .maxWidth, .minHeight, .maxHeight:
-            kind != .avatar && kind != .dialog
+            kind != .avatar && !isModalSurface(kind)
         case .paddingHorizontal, .paddingVertical:
             kind == .row || kind == .column || kind == .grid || kind == .box
         case .foreground:
@@ -311,7 +311,7 @@ struct LUIRetainedTree {
                 kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio ||
                 kind == .select || kind == .menuItem || kind == .listItem || kind == .avatar ||
-                kind == .dialog
+                isModalSurface(kind)
         case .enabled:
             kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle ||
@@ -367,7 +367,11 @@ struct LUIRetainedTree {
         kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
             kind == .list || isHorizontalGroup(kind) || kind == .radioGroup
-            || kind == .dropdownMenu || kind == .listItem || kind == .dialog
+            || kind == .dropdownMenu || kind == .listItem || isModalSurface(kind)
+    }
+
+    private static func isModalSurface(_ kind: LUINodeKind) -> Bool {
+        kind == .dialog || kind == .drawer || kind == .sheet
     }
 
     private static func isHorizontalGroup(_ kind: LUINodeKind) -> Bool {
@@ -429,9 +433,9 @@ struct LUIRetainedTree {
                     throw invalid("menu-item requires text")
                 }
             }
-            if node.kind == .dialog {
+            if Self.isModalSurface(node.kind) {
                 guard !(node.properties[.text]?.stringValue ?? "").isEmpty else {
-                    throw invalid("dialog requires text")
+                    throw invalid("modal surface requires text")
                 }
             }
             if node.kind == .listItem {

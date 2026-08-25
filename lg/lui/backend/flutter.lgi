@@ -38,7 +38,9 @@
   (FlutterMenuItem)
   (FlutterListItem)
   (FlutterAvatar)
-  (FlutterDialog))
+  (FlutterDialog)
+  (FlutterDrawer)
+  (FlutterSheet))
 
 (type-record flutter-renderer
   (flutter-store :retained-store<flutter-node>)

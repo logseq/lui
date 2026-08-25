@@ -20,6 +20,9 @@
     (Dismiss node) node
     (DoublePress node) node))
 
+(defn- modal-surface? [kind]
+  (or (= kind Dialog) (= kind Drawer) (= kind Sheet)))
+
 (defn event-supported? [kind event]
   (match event
     (Press _node)
@@ -39,7 +42,7 @@
     (ValueChanged _node _value) (= kind Slider)
     (Dismiss _node)
     (or (= kind Select) (= kind Combobox) (= kind DropdownMenu)
-        (= kind Dialog))
+        (modal-surface? kind))
     (DoublePress _node) (= kind ListItem)))
 
 (defn orientation-supported? [value]
@@ -114,14 +117,14 @@
     CrossAlignment
     (or (= kind Row) (= kind Column) (= kind ListContainer)
         (horizontal-container? kind))
-    GrowValue (and (not (= kind Avatar)) (not (= kind Dialog)))
+    GrowValue (and (not (= kind Avatar)) (not (modal-surface? kind)))
     GridColumns (= kind Grid)
     PaddingValue (not (= kind Avatar))
     PaddingHorizontal
     (or (= kind Row) (= kind Column) (= kind Grid) (= kind Box))
     PaddingVertical
     (or (= kind Row) (= kind Column) (= kind Grid) (= kind Box))
-    BackgroundValue (and (not (= kind Avatar)) (not (= kind Dialog)))
+    BackgroundValue (and (not (= kind Avatar)) (not (modal-surface? kind)))
     ForegroundValue
     (match kind
       Text true
@@ -146,16 +149,16 @@
       MenuItem true
       ListItem true
       _ false)
-    BorderColorValue (and (not (= kind Avatar)) (not (= kind Dialog)))
-    BorderWidth (and (not (= kind Avatar)) (not (= kind Dialog)))
-    CornerRadius (and (not (= kind Avatar)) (not (= kind Dialog)))
+    BorderColorValue (and (not (= kind Avatar)) (not (modal-surface? kind)))
+    BorderWidth (and (not (= kind Avatar)) (not (modal-surface? kind)))
+    CornerRadius (and (not (= kind Avatar)) (not (modal-surface? kind)))
     WidthValue (not (= kind Avatar))
     HeightValue (not (= kind Avatar))
-    MinWidth (and (not (= kind Avatar)) (not (= kind Dialog)))
-    MaxWidth (and (not (= kind Avatar)) (not (= kind Dialog)))
-    MinHeight (and (not (= kind Avatar)) (not (= kind Dialog)))
-    MaxHeight (and (not (= kind Avatar)) (not (= kind Dialog)))
-    StyleClass (and (not (= kind Avatar)) (not (= kind Dialog)))
+    MinWidth (and (not (= kind Avatar)) (not (modal-surface? kind)))
+    MaxWidth (and (not (= kind Avatar)) (not (modal-surface? kind)))
+    MinHeight (and (not (= kind Avatar)) (not (modal-surface? kind)))
+    MaxHeight (and (not (= kind Avatar)) (not (modal-surface? kind)))
+    StyleClass (and (not (= kind Avatar)) (not (modal-surface? kind)))
     AccessibilityLabel
     (or (= kind Button) (= kind ToggleButton)
         (= kind TextField) (= kind Input) (= kind SearchField)
@@ -226,6 +229,8 @@
       ListItem true
       Avatar true
       Dialog true
+      Drawer true
+      Sheet true
       _ false)
     Enabled
     (match kind
@@ -395,7 +400,7 @@
        (Some (StringValue value)) (not (= value ""))
        _ false)
      true)
-   (if (= kind Dialog)
+   (if (modal-surface? kind)
      (match (clojure.core/get properties TextValue)
        (Some (StringValue value)) (not (= value ""))
        _ false)
@@ -452,6 +457,8 @@
       DropdownMenu true
       ListItem true
       Dialog true
+      Drawer true
+      Sheet true
       _ false)))
 
 (defn create-node-op [node kind]

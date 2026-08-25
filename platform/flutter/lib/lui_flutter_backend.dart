@@ -551,7 +551,7 @@ final class LUIFlutterBackend {
     if (state.kind != _NodeKind.select &&
         state.kind != _NodeKind.combobox &&
         state.kind != _NodeKind.dropdownMenu &&
-        state.kind != _NodeKind.dialog) {
+        !state.kind.isModalSurface) {
       throw LUIBackendException('node $node is not dismissible');
     }
     onEvent?.call(LUIEvent.dismiss(node: node));
@@ -1118,7 +1118,9 @@ final class LUIFlutterBackend {
       _NodeKind.select => select(),
       _NodeKind.combobox => textControl(kind: state.kind),
       _NodeKind.dropdownMenu => dropdownMenu(),
-      _NodeKind.dialog => _LUIDialogPresenter(backend: this, node: id),
+      _NodeKind.dialog ||
+      _NodeKind.drawer ||
+      _NodeKind.sheet => _LUIModalPresenter(backend: this, node: id),
       _NodeKind.menuItem => menuItem(),
       _NodeKind.listItem => listItem(),
       _NodeKind.avatar => avatar(),
@@ -1214,7 +1216,7 @@ final class LUIFlutterBackend {
       ),
     };
 
-    if (state.kind == _NodeKind.dialog) return content;
+    if (state.kind.isModalSurface) return content;
 
     final isSurface = state.kind.isOverlaySurface;
     final padding =
@@ -1414,7 +1416,7 @@ final class LUIFlutterBackend {
             value.isFinite &&
             value >= 0 &&
             kind != _NodeKind.avatar &&
-            kind != _NodeKind.dialog,
+            !kind.isModalSurface,
       'columns' => value is int && value >= 0 && kind == _NodeKind.grid,
       'text' =>
         value is String &&
@@ -1432,7 +1434,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
                 kind == _NodeKind.avatar ||
-                kind == _NodeKind.dialog),
+                kind.isModalSurface),
       'enabled' =>
         value is bool &&
             (_isButtonKind(kind) ||
@@ -1533,7 +1535,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.grid ||
                 kind == _NodeKind.box),
       'background' =>
-        value is String && kind != _NodeKind.avatar && kind != _NodeKind.dialog,
+        value is String && kind != _NodeKind.avatar && !kind.isModalSurface,
       'foreground' =>
         value is String &&
             (kind == _NodeKind.text ||
@@ -1553,26 +1555,26 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem),
       'border-color' =>
-        value is String && kind != _NodeKind.avatar && kind != _NodeKind.dialog,
+        value is String && kind != _NodeKind.avatar && !kind.isModalSurface,
       'border-width' =>
         value is int &&
             value >= 0 &&
             kind != _NodeKind.avatar &&
-            kind != _NodeKind.dialog,
+            !kind.isModalSurface,
       'corner-radius' =>
         value is int &&
             value >= 0 &&
             kind != _NodeKind.avatar &&
-            kind != _NodeKind.dialog,
+            !kind.isModalSurface,
       'width' ||
       'height' => value is int && value >= 0 && kind != _NodeKind.avatar,
       'min-width' || 'max-width' || 'min-height' || 'max-height' =>
         value is int &&
             value >= 0 &&
             kind != _NodeKind.avatar &&
-            kind != _NodeKind.dialog,
+            !kind.isModalSurface,
       'style-class' =>
-        value is String && kind != _NodeKind.avatar && kind != _NodeKind.dialog,
+        value is String && kind != _NodeKind.avatar && !kind.isModalSurface,
       'checked' =>
         value is bool &&
             (kind == _NodeKind.checkbox ||
@@ -1658,9 +1660,9 @@ final class LUIFlutterBackend {
           (state.properties['text'] as String? ?? '').isEmpty) {
         throw const LUIBackendException('menu-item requires text');
       }
-      if (state.kind == _NodeKind.dialog &&
+      if (state.kind.isModalSurface &&
           (state.properties['text'] as String? ?? '').isEmpty) {
-        throw const LUIBackendException('dialog requires text');
+        throw const LUIBackendException('modal surface requires text');
       }
       if (state.kind == _NodeKind.listItem) {
         final hasText = (state.properties['text'] as String? ?? '').isNotEmpty;
@@ -1748,7 +1750,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.radioGroup ||
       kind == _NodeKind.dropdownMenu ||
       kind == _NodeKind.listItem ||
-      kind == _NodeKind.dialog;
+      kind.isModalSurface;
 
   int? _checkedRadio(_NodeState root) {
     for (final child in root.children) {
@@ -1891,32 +1893,52 @@ final class LUIFlutterBackend {
     };
   }
 
-  Widget _dialogSurface(BuildContext context, int node) {
+  Widget _modalSurface(BuildContext context, int node) {
     final state = _requireState(_states, node);
+    final width = (state.properties['width'] as int?)?.toDouble();
+    final height = (state.properties['height'] as int?)?.toDouble();
+    return switch (state.kind) {
+      _NodeKind.dialog => Dialog(
+        child: SizedBox(
+          key: ValueKey('lui-dialog-surface-$node'),
+          width: width ?? 420,
+          height: height ?? 220,
+          child: _modalSurfaceBody(context, state),
+        ),
+      ),
+      _NodeKind.drawer => SizedBox(
+        key: ValueKey('lui-drawer-surface-$node'),
+        width: width ?? double.infinity,
+        height: height ?? 260,
+        child: _modalSurfaceBody(context, state),
+      ),
+      _NodeKind.sheet => Drawer(
+        key: ValueKey('lui-sheet-surface-$node'),
+        width: width ?? 320,
+        child: SafeArea(child: _modalSurfaceBody(context, state)),
+      ),
+      _ => throw const LUIBackendException('node is not a modal surface'),
+    };
+  }
+
+  Widget _modalSurfaceBody(BuildContext context, _NodeState state) {
     final children = state.children
         .map((child) => widget(node: child))
         .toList(growable: false);
-    return Dialog(
-      child: SizedBox(
-        key: ValueKey('lui-dialog-surface-$node'),
-        width: (state.properties['width'] as int? ?? 420).toDouble(),
-        height: (state.properties['height'] as int? ?? 220).toDouble(),
-        child: Padding(
-          padding: EdgeInsets.all(
-            (state.properties['padding'] as int? ?? 24).toDouble(),
+    return Padding(
+      padding: EdgeInsets.all(
+        (state.properties['padding'] as int? ?? 24).toDouble(),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            state.properties['text'] as String? ?? '',
+            style: Theme.of(context).textTheme.titleLarge,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                state.properties['text'] as String? ?? '',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 16),
-              Expanded(child: Stack(children: children)),
-            ],
-          ),
-        ),
+          const SizedBox(height: 16),
+          Expanded(child: Stack(children: children)),
+        ],
       ),
     );
   }
@@ -1954,19 +1976,19 @@ final class LUIFlutterBackend {
   };
 }
 
-class _LUIDialogPresenter extends StatefulWidget {
-  const _LUIDialogPresenter({required this.backend, required this.node});
+class _LUIModalPresenter extends StatefulWidget {
+  const _LUIModalPresenter({required this.backend, required this.node});
 
   final LUIFlutterBackend backend;
   final int node;
 
   @override
-  State<_LUIDialogPresenter> createState() => _LUIDialogPresenterState();
+  State<_LUIModalPresenter> createState() => _LUIModalPresenterState();
 }
 
-class _LUIDialogPresenterState extends State<_LUIDialogPresenter> {
+class _LUIModalPresenterState extends State<_LUIModalPresenter> {
   NavigatorState? _navigator;
-  DialogRoute<void>? _route;
+  Route<void>? _route;
 
   @override
   void initState() {
@@ -1977,16 +1999,7 @@ class _LUIDialogPresenterState extends State<_LUIDialogPresenter> {
   void _present() {
     if (!mounted || _route != null) return;
     final navigator = Navigator.of(context, rootNavigator: true);
-    final route = DialogRoute<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      builder: (context) => ListenableBuilder(
-        listenable: widget.backend._requireHandle(widget.node),
-        builder: (context, _) =>
-            widget.backend._dialogSurface(context, widget.node),
-      ),
-    );
+    final route = _modalRoute(navigator);
     _navigator = navigator;
     _route = route;
     navigator.push(route).whenComplete(() {
@@ -1994,6 +2007,56 @@ class _LUIDialogPresenterState extends State<_LUIDialogPresenter> {
       _route = null;
       widget.backend.performDismiss(widget.node);
     });
+  }
+
+  Route<void> _modalRoute(NavigatorState navigator) {
+    final state = LUIFlutterBackend._requireState(
+      widget.backend._states,
+      widget.node,
+    );
+    final localizations = MaterialLocalizations.of(context);
+    Widget surface(BuildContext context) => ListenableBuilder(
+      listenable: widget.backend._requireHandle(widget.node),
+      builder: (context, _) =>
+          widget.backend._modalSurface(context, widget.node),
+    );
+    return switch (state.kind) {
+      _NodeKind.drawer => ModalBottomSheetRoute<void>(
+        builder: surface,
+        capturedThemes: InheritedTheme.capture(
+          from: context,
+          to: navigator.context,
+        ),
+        isScrollControlled: true,
+        barrierLabel: localizations.scrimLabel,
+        barrierOnTapHint: localizations.scrimOnTapHint(
+          localizations.bottomSheetLabel,
+        ),
+        isDismissible: true,
+        enableDrag: true,
+        useSafeArea: true,
+      ),
+      _NodeKind.sheet => RawDialogRoute<void>(
+        barrierDismissible: true,
+        barrierLabel: localizations.modalBarrierDismissLabel,
+        pageBuilder: (context, _, _) =>
+            Align(alignment: Alignment.centerRight, child: surface(context)),
+        transitionBuilder: (context, animation, _, child) => SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          child: child,
+        ),
+      ),
+      _NodeKind.dialog => DialogRoute<void>(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: localizations.modalBarrierDismissLabel,
+        builder: surface,
+      ),
+      _ => throw const LUIBackendException('node is not a modal surface'),
+    };
   }
 
   @override
@@ -2011,6 +2074,11 @@ class _LUIDialogPresenterState extends State<_LUIDialogPresenter> {
 }
 
 extension on _NodeKind {
+  bool get isModalSurface =>
+      this == _NodeKind.dialog ||
+      this == _NodeKind.drawer ||
+      this == _NodeKind.sheet;
+
   bool get isOverlaySurface =>
       this == _NodeKind.panel || this == _NodeKind.card;
 }

@@ -44,6 +44,8 @@ enum _NodeKind {
   breadcrumb,
   pagination,
   dialog,
+  drawer,
+  sheet,
 }
 
 _NodeKind _decodeNodeKind(Object? value) {
@@ -93,6 +95,8 @@ _NodeKind _decodeNodeKind(Object? value) {
     'breadcrumb' => _NodeKind.breadcrumb,
     'pagination' => _NodeKind.pagination,
     'dialog' => _NodeKind.dialog,
+    'drawer' => _NodeKind.drawer,
+    'sheet' => _NodeKind.sheet,
     _ => throw const LUIBackendException('unknown node kind'),
   };
 }
