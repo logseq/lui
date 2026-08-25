@@ -2230,14 +2230,73 @@
   (Webapi.Dom.Element.setAttribute "data-ending-style" "" popup)
   true)
 
-(defn- finish-popup-close-later! [popup duration]
-  (Stdlib.ignore
-   (Js.Global.setTimeout
-    duration
-    :f
-    (fn []
-      (Webapi.Dom.Element.removeAttribute "data-ending-style" popup)
-      (Stdlib.ignore true))))
+(defn- prefers-reduced-motion? [document]
+  (let [html-document (Webapi.Dom.Document.unsafeAsHtmlDocument document)]
+    (if-some [window (Webapi.Dom.HtmlDocument.defaultView html-document)]
+      (match (js-dict/get
+              (obj/magic
+               (Webapi.Dom.Window.matchMedia
+                "(prefers-reduced-motion: reduce)" window))
+              "matches")
+        (Some matches) matches
+        None false)
+      false)))
+
+(defn- transition-event-from? [target event]
+  (Webapi.Dom.Element.isSameNode
+   (Webapi.Dom.Element.asNode
+    (Webapi.Dom.EventTarget.unsafeAsElement
+     (Webapi.Dom.Event.target event)))
+   target))
+
+(defn- after-transition! [document target fallback-duration complete!]
+  (if (prefers-reduced-motion? document)
+    (do
+      (complete!)
+      true)
+    (let [finished (atom false)
+          timer (atom None)
+          finish-ref (atom (fn [] true))
+          transition-handler
+          (fn [event]
+            (when (transition-event-from? target event)
+              (Stdlib.ignore ((deref finish-ref))))
+            (Stdlib.ignore true))
+          finish!
+          (fn []
+            (when (not (deref finished))
+              (reset! finished true)
+              (match (deref timer)
+                (Some timer-id) (Js.Global.clearTimeout timer-id)
+                None (Stdlib.ignore true))
+              (Webapi.Dom.Element.removeEventListener
+               "transitionend" transition-handler target)
+              (Webapi.Dom.Element.removeEventListener
+               "transitioncancel" transition-handler target)
+              (complete!))
+            true)]
+      (reset! finish-ref finish!)
+      (Webapi.Dom.Element.addEventListener
+       "transitionend" transition-handler target)
+      (Webapi.Dom.Element.addEventListener
+       "transitioncancel" transition-handler target)
+      (reset! timer
+              (Some
+               (Js.Global.setTimeout
+                fallback-duration
+                :f
+                (fn [] (Stdlib.ignore (finish!))))))
+      true)))
+
+(defn- finish-popup-close-after-transition! [document popup duration]
+  (after-transition!
+   document popup duration
+   (fn []
+     (when (= (Webapi.Dom.Element.getAttribute
+               "data-ending-style" popup)
+              (Some ""))
+       (Webapi.Dom.Element.removeAttribute "data-ending-style" popup))
+     true))
   true)
 
 (defn- set-tooltip-open! [renderer node open]
@@ -2251,7 +2310,8 @@
               (let [previous-tooltip (dom-node renderer previous)]
                 (begin-popup-close! previous-tooltip)
                 (Stdlib.ignore
-                 (finish-popup-close-later! previous-tooltip 120)))
+                 (finish-popup-close-after-transition!
+                  (:web-document renderer) previous-tooltip 120)))
               (Stdlib.ignore true)))
           None (Stdlib.ignore true))
         (reset! (:web-open-tooltip renderer) (Some node))
@@ -2259,7 +2319,8 @@
         (position-tooltip! renderer node))
       (do
         (begin-popup-close! tooltip)
-        (finish-popup-close-later! tooltip 120)
+        (finish-popup-close-after-transition!
+         (:web-document renderer) tooltip 120)
         (when (= (deref (:web-open-tooltip renderer)) (Some node))
           (Stdlib.ignore
            (reset! (:web-open-tooltip renderer) None)))))
@@ -4014,7 +4075,9 @@
         (position-dropdown! renderer node))
       (do
         (begin-popup-close! popup)
-        (Stdlib.ignore (finish-popup-close-later! popup 130))))
+        (Stdlib.ignore
+         (finish-popup-close-after-transition!
+          (:web-document renderer) popup 130))))
     (Stdlib.ignore true)))
 
 (defn- mount-dropdown! [renderer node]
@@ -4257,38 +4320,35 @@
       _ (Stdlib.ignore true))
     (Stdlib.ignore true)))
 
-(defn- remove-modal-layer-after-exit! [parent layer surface kind]
-  (let [duration (if (= kind Sheet) 470 170)]
-    (Stdlib.ignore
-     (Js.Global.setTimeout
-      duration
-      :f
-      (fn []
-        (when (Webapi.Dom.Element.contains
-               (Webapi.Dom.Element.asNode layer) parent)
-          (Stdlib.ignore
-           (Webapi.Dom.Element.removeChild
-            (Webapi.Dom.Element.asNode layer) parent)))
-        (Webapi.Dom.Element.removeAttribute "data-ending-style" surface)
-        (Stdlib.ignore true))))
-    true))
+(defn- remove-modal-layer-after-exit!
+  [document parent layer surface kind]
+  (let [transition-target
+        (if (= kind Sheet) surface (child-element layer 0))
+        duration (if (= kind Sheet) 470 170)]
+    (after-transition!
+     document transition-target duration
+     (fn []
+       (when (Webapi.Dom.Element.contains
+              (Webapi.Dom.Element.asNode layer) parent)
+         (Stdlib.ignore
+          (Webapi.Dom.Element.removeChild
+           (Webapi.Dom.Element.asNode layer) parent)))
+       (Webapi.Dom.Element.removeAttribute "data-ending-style" surface)
+       true))))
 
-(defn- remove-dropdown-after-exit! [parent positioner]
+(defn- remove-dropdown-after-exit! [document parent positioner]
   (let [popup (child-element positioner 0)]
     (begin-popup-close! popup)
     (Webapi.Dom.Element.setAttribute "inert" "" popup)
-    (Stdlib.ignore
-     (Js.Global.setTimeout
-      130
-      :f
-      (fn []
-        (when (Webapi.Dom.Element.contains
-               (Webapi.Dom.Element.asNode positioner) parent)
-          (Stdlib.ignore
-           (Webapi.Dom.Element.removeChild
-            (Webapi.Dom.Element.asNode positioner) parent)))
-        (Stdlib.ignore true))))
-    true))
+    (after-transition!
+     document popup 130
+     (fn []
+       (when (Webapi.Dom.Element.contains
+              (Webapi.Dom.Element.asNode positioner) parent)
+         (Stdlib.ignore
+          (Webapi.Dom.Element.removeChild
+           (Webapi.Dom.Element.asNode positioner) parent)))
+       true))))
 
 (defn- apply-dom-op! [renderer previous-nodes operation]
   (match operation
@@ -4423,11 +4483,13 @@
           (if-some [previous (clojure.core/get previous-nodes child)]
             (Stdlib.ignore
              (remove-modal-layer-after-exit!
+              (:web-document renderer)
               parent-node child-node surface (standard-kind previous)))
             (Stdlib.ignore true))
           (if (dropdown-node? previous-nodes child)
             (Stdlib.ignore
-             (remove-dropdown-after-exit! parent-node child-node))
+             (remove-dropdown-after-exit!
+              (:web-document renderer) parent-node child-node))
             (Stdlib.ignore
              (Webapi.Dom.Element.removeChild
               (Webapi.Dom.Element.asNode child-node) parent-node)))))

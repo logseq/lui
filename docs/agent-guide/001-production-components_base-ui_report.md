@@ -1,6 +1,6 @@
 # Base UI Web interaction and motion report
 
-Status: implementation input
+Status: implementation in progress
 
 ## Scope and reference
 
@@ -39,7 +39,12 @@ The Web backend now has one LG-owned popup phase implementation for
 DropdownMenu, Select, Combobox, and Tooltip. Opening exposes `data-open` and a
 one-frame `data-starting-style`; logical close exposes `data-closed` and
 `data-ending-style`, disables pointer interaction, and retains dynamically
-removed dropdown shells until their CSS exit duration completes.
+removed popup shells until their CSS transition completes. A shared one-shot
+coordinator listens for both `transitionend` and `transitioncancel`, ignores
+bubbled child transitions, removes its listeners and fallback timer exactly
+once, and completes synchronously when the platform requests reduced motion.
+The bounded timer remains only as a safety path for browsers or test hosts that
+do not emit transition events.
 
 Menu and Select list navigation includes case-insensitive, enabled-item-only
 typeahead with Base UI's 500 ms reset window. Tooltip pointer hover ignores
@@ -47,11 +52,15 @@ touch input while focus remains an immediate accessible opening route. These
 contracts are exercised through the real Gallery browser host rather than a
 mock DOM.
 
-The remaining work in this report is still normative: transition completion
-must move from pinned timeout fallbacks to actual animation completion,
-reduced motion must remove exit shells without delay, touch-open Select and
-Combobox need modality-aware placement and press-release qualification, and
-nested menus still need a pointer grace corridor.
+Dialog and Sheet now use the same coordinator to remove their visual portal
+shells while releasing modal ownership and restoring focus immediately.
+Interrupted retained Tooltip and submenu exits cannot clear a reopened
+component's open phase.
+
+The remaining work in this report is still normative: touch-open Select and
+Combobox need modality-aware placement and press-release qualification, nested
+menus still need a pointer grace corridor, and anchored popups need shared
+collision-aware positioning.
 
 ## Implementation boundary
 
@@ -85,10 +94,11 @@ its current visual value. LUI should use the same lifecycle:
    and application ownership immediately.
 4. Keep only the visual DOM shell mounted with `data-closed` and
    `data-ending-style`. It is inert and cannot receive pointer events or focus.
-5. Wait for the element's current Web Animations API animations to settle,
-   including replacements and cancellation, then remove the shell.
-6. Use a computed-duration fallback for browsers or tests without
-   `getAnimations()`. Reduced motion resolves immediately.
+5. Complete on the transition target's own `transitionend` or
+   `transitioncancel`, then remove the shell. Ignore bubbled transitions from
+   descendants and make completion one-shot.
+6. Keep a bounded duration fallback for browsers or tests that do not emit a
+   transition event. Reduced motion resolves immediately.
 
 The retained store must not keep a logically deleted node alive. The renderer
 owns a small detached exit record containing the DOM shell, completion token,

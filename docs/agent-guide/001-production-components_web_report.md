@@ -88,6 +88,13 @@ and incremental diagnostics part of one cross-platform component contract.
 13. Measure generated LUI JavaScript and CSS from the component gallery and fail
     production builds when agreed budgets regress.
 
+The shared transition lifecycle is now implemented for Dialog, Sheet,
+DropdownMenu, Select, Combobox, and Tooltip. Exit shells complete from their
+own `transitionend` or `transitioncancel` event, with one-shot cleanup, a
+bounded no-event fallback, and immediate completion under reduced motion.
+Retained popup reopening removes the stale ending phase without replacing its
+DOM identity.
+
 ## Base UI parity scope
 
 Behavioral parity applies to LUI components that overlap Base UI: Accordion,

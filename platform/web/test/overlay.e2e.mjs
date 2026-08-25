@@ -26,6 +26,7 @@ async function evaluate(source) {
 }
 
 async function openGalleryPage(name) {
+  await browser("set", "media", "light")
   await browser("set", "viewport", "1280", "900")
   await browser("open", `${origin}/examples/components/web/index.html`)
   await browser("wait", "--load", "networkidle")
@@ -106,7 +107,24 @@ test("Dialog is a portaled modal with model-owned dismissal and focus restoratio
       if (layer?.hasAttribute('data-ending-style')) window.__luiDialogExitObserved = true
     }).observe(layer, { attributes: true })
   })()`)
-  await browser("press", "Escape")
+  const dialogExit = await state(`(() => {
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    )
+    const layer = document.querySelector('.lui-modal-layer[data-ending-style]')
+    const endingObserved = Boolean(layer)
+    layer?.querySelector('.lui-modal-backdrop')?.dispatchEvent(
+      new TransitionEvent('transitionend', {
+        bubbles: true,
+        propertyName: 'opacity',
+      }),
+    )
+    return {
+      endingObserved,
+      remainingLayers: document.querySelectorAll('.lui-modal-layer').length,
+    }
+  })()`)
+  assert.deepEqual(dialogExit, { endingObserved: true, remainingLayers: 0 })
   assert.deepEqual(
     await state(`({
       openLayers: document.querySelectorAll('.lui-modal-layer[data-open]').length,
@@ -116,7 +134,6 @@ test("Dialog is a portaled modal with model-owned dismissal and focus restoratio
     })`),
     { openLayers: 0, exitObserved: true, hostInert: false, focus: "Open dialog" },
   )
-  await browser("wait", "180")
   assert.equal(await state(`document.querySelectorAll('.lui-modal-layer').length`), 0)
 
   await clickButton("Open dialog")
@@ -147,16 +164,43 @@ test("Sheet uses the same modal lifecycle with its own native surface", async ()
     { layers: 1, className: "lui-sheet", modal: "true", hostInert: true, open: true },
   )
 
-  await browser("press", "Escape")
   assert.deepEqual(
-    await state(`({
-      open: document.querySelectorAll('.lui-modal-layer[data-open]').length,
-      ending: document.querySelectorAll('.lui-modal-layer[data-ending-style]').length,
-    })`),
-    { open: 0, ending: 1 },
+    await state(`(() => {
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      )
+      const layer = document.querySelector('.lui-modal-layer[data-ending-style]')
+      const endingObserved = Boolean(layer)
+      layer?.querySelector('.lui-sheet')?.dispatchEvent(
+        new TransitionEvent('transitioncancel', {
+          bubbles: true,
+          propertyName: 'transform',
+        }),
+      )
+      return {
+        endingObserved,
+        remainingLayers: document.querySelectorAll('.lui-modal-layer').length,
+      }
+    })()`),
+    { endingObserved: true, remainingLayers: 0 },
   )
-  await browser("wait", "500")
-  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer').length`), 0)
+})
+
+test("Reduced motion removes a closing Dialog without waiting for a fallback", async () => {
+  await openGalleryPage("Dialog")
+  await browser("set", "media", "light", "reduced-motion")
+  await clickButton("Open dialog")
+
+  assert.equal(
+    await state(`(() => {
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      )
+      return document.querySelectorAll('.lui-modal-layer').length
+    })()`),
+    0,
+  )
+  await browser("set", "media", "light")
 })
 
 test("Compact Sheet dismisses downward touch swipes and snaps back below threshold", async () => {
@@ -396,9 +440,20 @@ test("Select keyboard navigation enters submenus and restores trigger focus", as
     { focus: "Production region", submenuExpanded: "true" },
   )
 
-  await browser("press", "Escape")
+  await evaluate(`document.activeElement?.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+  )`)
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "More environments")
-  await browser("press", "Escape")
+  await evaluate(`(() => {
+    const popup = document.getElementById(window.__selectPopupID)
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    )
+    popup?.dispatchEvent(new TransitionEvent('transitionend', {
+      bubbles: true,
+      propertyName: 'opacity',
+    }))
+  })()`)
   assert.deepEqual(
     await state(`({
       expanded: document.querySelector('.lui-select')?.getAttribute('aria-expanded'),
@@ -460,7 +515,17 @@ test("Combobox keeps DOM focus in the input while navigating its listbox", async
       ?.getAttribute('aria-activedescendant'))?.textContent.trim()`),
     "Staging",
   )
-  await browser("press", "Escape")
+  await evaluate(`(() => {
+    const control = document.querySelector(${JSON.stringify(input)})
+    const popup = document.getElementById(control?.getAttribute('aria-controls'))
+    control?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    )
+    popup?.dispatchEvent(new TransitionEvent('transitionend', {
+      bubbles: true,
+      propertyName: 'opacity',
+    }))
+  })()`)
   assert.deepEqual(
     await state(`(() => {
       const control = document.querySelector(${JSON.stringify(input)})
@@ -766,7 +831,20 @@ test("Tooltip owns delayed pointer, immediate focus, Escape, ARIA, and static-la
   assert.equal(await state(`window.__tooltipEndingObserved`), true)
   await browser("hover", 'button[aria-label="Edit document"]')
   await browser("wait", "20")
-  assert.equal(await state(`document.querySelector('.lui-tooltip[data-anchor]')?.hasAttribute('data-open')`), true)
+  assert.deepEqual(
+    await state(`(() => {
+      const tooltip = document.querySelector('.lui-tooltip[data-anchor]')
+      tooltip?.dispatchEvent(new TransitionEvent('transitioncancel', {
+        bubbles: true,
+        propertyName: 'opacity',
+      }))
+      return {
+        open: tooltip?.hasAttribute('data-open'),
+        ending: tooltip?.hasAttribute('data-ending-style'),
+      }
+    })()`),
+    { open: true, ending: false },
+  )
 
   await browser("press", "Escape")
   assert.equal(await state(`document.querySelector('.lui-tooltip[data-anchor]')?.hasAttribute('data-open')`), false)
