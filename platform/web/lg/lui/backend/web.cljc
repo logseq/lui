@@ -307,6 +307,16 @@
        {"type" "button" "aria-label" "Open menu"}
        [])])))
 
+(defn- create-select-node [renderer]
+  (element
+   (:web-document renderer) "button" "lui-select"
+   {"type" "button"
+    "role" "combobox"
+    "aria-haspopup" "listbox"
+    "aria-expanded" "false"}
+   [(element
+     (:web-document renderer) "span" "lui-select-value" {} [])]))
+
 (defn- create-menu-item-node [renderer]
   (let [document (:web-document renderer)
         hidden {"aria-hidden" "true"}]
@@ -523,6 +533,7 @@
     Checkbox (create-direct-toggle-node renderer kind)
     SwitchControl (create-direct-toggle-node renderer kind)
     Radio (create-direct-toggle-node renderer kind)
+    Select (create-select-node renderer)
     Combobox (create-combobox-node renderer)
     DropdownMenu (create-dropdown-node renderer)
     MenuItem (create-menu-item-node renderer)
@@ -645,6 +656,17 @@
          false))
      (:retained-children current))
     []))
+
+(defn- picker-selected-index [renderer dropdown]
+  (let [items (picker-menu-items renderer dropdown)]
+    (loop [index 0]
+      (if (= index (count items))
+        0
+        (if (= (retained/property
+                (:web-store renderer) (nth items index) Selected)
+               (Some (BoolValue true)))
+          index
+          (recur (inc index)))))))
 
 (defn- combobox-active-index [renderer picker items]
   (if-some [value
@@ -832,7 +854,10 @@
     (Webapi.Dom.Element.addEventListener
      "pointerdown"
      (fn [event]
-       (reset! current-pointer-type (pointer-type event))
+       (let [method (pointer-type event)]
+         (reset! current-pointer-type method)
+         (Webapi.Dom.Element.setAttribute
+          "data-lui-open-method" method dom-node))
        (Stdlib.ignore true))
      dom-node)
     (Webapi.Dom.Element.addEventListener
@@ -840,6 +865,8 @@
      (fn [event]
        (when (= (Webapi.Dom.MouseEvent.button
                  (pointer-mouse-event event)) 0)
+         (Webapi.Dom.Element.setAttribute
+          "data-lui-open-method" (deref current-pointer-type) dom-node)
          (when (= (deref current-pointer-type) "touch")
            (Webapi.Dom.Event.preventDefault event))
          (reset! suppress-click true)
@@ -858,7 +885,10 @@
      (fn [_event]
        (if (deref suppress-click)
          (Stdlib.ignore (reset! suppress-click false))
-         (Stdlib.ignore (press!)))
+         (do
+           (Webapi.Dom.Element.setAttribute
+            "data-lui-open-method" "keyboard" dom-node)
+           (Stdlib.ignore (press!))))
        (Stdlib.ignore true))
      dom-node)))
 
@@ -3671,7 +3701,7 @@
       (update-avatar! renderer node dom-node))
     Select
     (Webapi.Dom.Element.setTextContent
-     dom-node (select-display-text renderer node))
+     (child-element dom-node 0) (select-display-text renderer node))
     TextField (set-text-control-value! dom-node text)
     Input (set-text-control-value! dom-node text)
     SearchField (set-text-control-value! dom-node text)
@@ -4202,6 +4232,80 @@
 (defn- dropdown-listbox? [renderer node]
   (not (= (picker-for-dropdown renderer node) None)))
 
+(defn- align-select-item-with-trigger!
+  [renderer dropdown positioner popup anchor anchor-bounds]
+  (match (picker-for-dropdown renderer dropdown)
+    (Some picker)
+    (if-some [picker-node (retained/node (:web-store renderer) picker)]
+      (let [control (picker-control-element renderer picker)
+            open-method
+            (match (Webapi.Dom.Element.getAttribute
+                    "data-lui-open-method" control)
+              (Some value) value
+              None "keyboard")
+            items (picker-menu-items renderer dropdown)]
+        (if (and (standard-kind? picker-node Select)
+                 (not (= open-method "touch"))
+                 (not (empty? items)))
+          (let [root
+                (Webapi.Dom.Document.documentElement (:web-document renderer))
+                viewport-width
+                (Stdlib.float_of_int (Webapi.Dom.Element.clientWidth root))
+                viewport-height
+                (Stdlib.float_of_int (Webapi.Dom.Element.clientHeight root))
+                edge-threshold 20.0]
+            (if (or (< (Webapi.Dom.DomRect.top anchor-bounds) edge-threshold)
+                    (> (Webapi.Dom.DomRect.bottom anchor-bounds)
+                       (- viewport-height edge-threshold)))
+              false
+              (do
+                (set-style! popup "transition" "none")
+                (set-style! popup "transform" "none")
+                (let [selected
+                      (dom-node
+                       renderer (nth items (picker-selected-index renderer dropdown)))
+                      value (child-element anchor 0)
+                      label (child-element selected 1)
+                      positioner-bounds
+                      (Webapi.Dom.Element.getBoundingClientRect positioner)
+                      popup-bounds (Webapi.Dom.Element.getBoundingClientRect popup)
+                      value-bounds (Webapi.Dom.Element.getBoundingClientRect value)
+                      label-bounds (Webapi.Dom.Element.getBoundingClientRect label)
+                      value-center
+                      (+ (Webapi.Dom.DomRect.top value-bounds)
+                         (/ (Webapi.Dom.DomRect.height value-bounds) 2.0))
+                      label-center
+                      (+ (Webapi.Dom.DomRect.top label-bounds)
+                         (/ (Webapi.Dom.DomRect.height label-bounds) 2.0))
+                      left
+                      (+ (Webapi.Dom.DomRect.left positioner-bounds)
+                         (- (Webapi.Dom.DomRect.left value-bounds)
+                            (Webapi.Dom.DomRect.left label-bounds)))
+                      top
+                      (+ (Webapi.Dom.DomRect.top positioner-bounds)
+                         (- value-center label-center))
+                      fits
+                      (and (>= left 8.0)
+                           (<= (+ left (Webapi.Dom.DomRect.width popup-bounds))
+                               (- viewport-width 8.0))
+                           (>= top 8.0)
+                           (<= (+ top (Webapi.Dom.DomRect.height popup-bounds))
+                               (- viewport-height 8.0)))]
+                  (set-style! popup "transform" "")
+                  (set-style! popup "transition" "")
+                  (if fits
+                    (do
+                      (Webapi.Dom.Element.setAttribute
+                       "data-side" "none" positioner)
+                      (Webapi.Dom.Element.setAttribute "data-side" "none" popup)
+                      (set-style! positioner "left" (str left "px"))
+                      (set-style! positioner "top" (str top "px"))
+                      true)
+                    false)))))
+          false))
+      false)
+    None false))
+
 (defn- position-dropdown! [renderer node]
   (let [positioner (dom-node renderer node)
         popup (child-element positioner 0)
@@ -4221,7 +4325,10 @@
               None "start")]
         (position-anchored!
          (:web-document renderer) positioner popup anchor-bounds
-         side alignment offset)))
+         side alignment offset)
+        (Stdlib.ignore
+         (align-select-item-with-trigger!
+          renderer node positioner popup anchor anchor-bounds))))
     (Stdlib.ignore true)))
 
 (defn- point-in-triangle?
@@ -4455,7 +4562,8 @@
                       (fn []
                         (if-some [_menu
                                   (retained/node (:web-store renderer) node)]
-                          (focus-context-menu-item! renderer node 0)
+                          (focus-context-menu-item!
+                           renderer node (picker-selected-index renderer node))
                           (Stdlib.ignore true))
                         (Stdlib.ignore true)))))
                   (Stdlib.ignore true))

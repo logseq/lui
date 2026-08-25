@@ -219,6 +219,12 @@ selects, and outside dismissal must not run before the target click commits.
 All compact interactive rows have at least a 44 px touch target without
 inflating desktop density.
 
+The Select portion of this policy is implemented on Web. Keyboard and mouse
+opening focus the selected enabled item and align its label with the retained
+trigger value. Touch opening opts out, and triggers within 20 px of a viewport
+edge use the ordinary flip-and-shift path. The implementation remains internal
+to the Web backend and does not expand the cross-platform Select API.
+
 ## Test gates before implementation is accepted
 
 Tests should assert behavior and lifecycle, not only screenshots:

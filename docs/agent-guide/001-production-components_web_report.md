@@ -109,6 +109,13 @@ actual post-collision side, the trigger leave point, and the popup edge. Pointer
 movement toward the popup refreshes close intent; movement away preserves the
 normal close delay. Browser tests cover both right-side and flipped-left paths.
 
+Select now records the opening modality without adding a public property.
+Mouse and keyboard opening focus the current selected item and align its text
+center and inline start with the trigger value, matching Base UI's default
+selected-item placement. Touch keeps ordinary anchored placement. Alignment
+falls back to shared collision placement near viewport edges or whenever the
+exact aligned popup would leave the 8 px viewport gutter.
+
 ## Base UI parity scope
 
 Behavioral parity applies to LUI components that overlap Base UI: Accordion,

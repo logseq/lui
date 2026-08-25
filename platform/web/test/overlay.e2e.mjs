@@ -649,6 +649,126 @@ test("Select keyboard navigation enters submenus and restores trigger focus", as
   )
 })
 
+test("Select reopens on the selected item and aligns it with the trigger", async () => {
+  await openGalleryPage("Select")
+  await clickButton("Production")
+  await browser("wait", "30")
+  await evaluate(`[
+    ...document.querySelectorAll('.lui-menu-item'),
+  ].find((item) => item.textContent.trim() === 'Staging'
+    && item.getBoundingClientRect().width > 0)?.click()`)
+  await browser("wait", "180")
+
+  await evaluate(`document.querySelector('.lui-select')?.focus()`)
+  await browser("press", "Enter")
+  await browser("wait", "180")
+
+  assert.deepEqual(
+    await state(`(() => {
+      const trigger = document.querySelector('.lui-select')
+      const popup = document.getElementById(trigger?.getAttribute('aria-controls'))
+      const selected = popup?.querySelector('[aria-selected="true"]')
+      const label = selected?.querySelector('.lui-menu-item-label')
+      const value = trigger?.querySelector('.lui-select-value')
+      const triggerBounds = trigger?.getBoundingClientRect()
+      const labelBounds = label?.getBoundingClientRect()
+      const valueBounds = value?.getBoundingClientRect()
+      return {
+        triggerText: trigger?.textContent.trim(),
+        focus: document.activeElement?.textContent.trim(),
+        side: popup?.parentElement?.getAttribute('data-side'),
+        inlineStartAligned: Math.abs(
+          (valueBounds?.left ?? -1) - (labelBounds?.left ?? 1),
+        ) < 1,
+        centersAligned: Math.abs(
+          ((triggerBounds?.top ?? 0) + (triggerBounds?.height ?? 0) / 2)
+            - ((labelBounds?.top ?? 0) + (labelBounds?.height ?? 0) / 2),
+        ) < 1,
+      }
+    })()`),
+    {
+      triggerText: "Staging",
+      focus: "Staging",
+      side: "none",
+      inlineStartAligned: true,
+      centersAligned: true,
+    },
+  )
+})
+
+test("Select falls back to anchored positioning near a viewport edge", async () => {
+  await openGalleryPage("Select")
+  await browser("set", "viewport", "390", "844")
+  await evaluate(`(() => {
+    const trigger = document.querySelector('.lui-select')
+    Object.assign(trigger.style, {
+      position: 'fixed',
+      left: '8px',
+      top: '4px',
+      width: '180px',
+      zIndex: '1',
+    })
+    trigger.focus()
+  })()`)
+  await browser("press", "Enter")
+  await browser("wait", "30")
+
+  assert.deepEqual(
+    await state(`(() => {
+      const trigger = document.querySelector('.lui-select')
+      const popup = document.getElementById(trigger?.getAttribute('aria-controls'))
+      const triggerBounds = trigger?.getBoundingClientRect()
+      const popupBounds = popup?.getBoundingClientRect()
+      return {
+        side: popup?.parentElement?.getAttribute('data-side'),
+        anchoredBelow: (popupBounds?.top ?? 0) >= (triggerBounds?.bottom ?? 1),
+        insideTop: (popupBounds?.top ?? -1) >= 8,
+      }
+    })()`),
+    { side: "below", anchoredBelow: true, insideTop: true },
+  )
+})
+
+test("Select touch opening keeps ordinary anchored positioning", async () => {
+  await openGalleryPage("Select")
+  await clickButton("Production")
+  await browser("wait", "30")
+  await evaluate(`[
+    ...document.querySelectorAll('.lui-menu-item'),
+  ].find((item) => item.textContent.trim() === 'Staging'
+    && item.getBoundingClientRect().width > 0)?.click()`)
+  await browser("wait", "180")
+
+  assert.deepEqual(
+    await state(`(() => {
+      const trigger = document.querySelector('.lui-select')
+      trigger.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        pointerType: 'touch',
+        pointerId: 82,
+        button: 0,
+        buttons: 1,
+      }))
+      trigger.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        buttons: 1,
+      }))
+      const popup = document.getElementById(trigger?.getAttribute('aria-controls'))
+      const triggerBounds = trigger?.getBoundingClientRect()
+      const popupBounds = popup?.getBoundingClientRect()
+      return {
+        selected: popup?.querySelector('[aria-selected="true"]')?.textContent.trim(),
+        side: popup?.parentElement?.getAttribute('data-side'),
+        anchoredBelow: (popupBounds?.top ?? 0) >= (triggerBounds?.bottom ?? 1),
+      }
+    })()`),
+    { selected: "Staging", side: "below", anchoredBelow: true },
+  )
+})
+
 test("Select touch press opens safely and flips inside a compact viewport", async () => {
   await openGalleryPage("Select")
   await browser("set", "viewport", "390", "844")
