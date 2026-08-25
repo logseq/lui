@@ -2081,6 +2081,36 @@
     (assert-equal 0 (apple/node-count renderer)
                   "rejected generations do not mutate retained nodes")))
 
+(deftest one-signal-fans-out-to-multiple-retained-properties
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        component-scope (sig/scope "signal-fan-out")
+        query-state (sig/state scheduler "")
+        query-source
+        (sig/map (fn [value] value) (sig/value query-state))
+        first-label (runtime/create-node! application proto/Text)
+        second-label (runtime/create-node! application proto/Text)]
+    (sig/mount! component-scope)
+    (runtime/bind-prop!
+     component-scope application first-label proto/TextValue
+     (sig/map (fn [value] (proto/StringValue value)) query-source))
+    (runtime/bind-prop!
+     component-scope application second-label proto/TextValue
+     (sig/map (fn [value] (proto/StringValue value)) query-source))
+    (runtime/flush! application)
+    (sig/set! query-state "中文")
+    (runtime/flush! application)
+    (doseq [label [first-label second-label]]
+      (match (apple/property renderer label proto/TextValue)
+        (Some (StringValue value))
+        (assert-equal "中文" value "every retained consumer receives the update")
+        _ (is false "fan-out consumer has a text property")))
+    (assert-equal
+     2
+     (count (:ops (nth (apple/batches renderer) 1)))
+     "one source update patches both consumers exactly once")))
+
 (deftest reactive-property-produces-local-patch
   (let [scheduler (sig/scheduler)
         renderer (apple/create)

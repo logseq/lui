@@ -65,6 +65,14 @@
      (fn [child] (heading-count-under renderer kinds child))
      (flutter/children renderer node)))))
 
+(defn required-node [candidate message]
+  (match candidate
+    (Some node) node
+    None
+    (do
+      (is false message)
+      0)))
+
 (def gallery-page-contract
   ["Row" "Column" "Grid" "Text" "Spacer"
    "Button" "ToggleButton" "ButtonGroup" "ToggleGroup"
@@ -338,6 +346,62 @@
     (driver/dispose! application)
     (assert-equal 0 (flutter/node-count renderer) "dispose drops every retained node")
     (is (driver/disposed? application) "the native gallery lifecycle terminates")))
+
+(deftest gallery-combobox-query-fans-out-to-control-and-showcase-text
+  (let [registry (extensions/registry)
+        renderer (flutter/create-with-extensions registry)
+        application
+        (components/create-with-extensions
+         (flutter/backend-for-profile
+          renderer (proto/profile proto/WebOS proto/WebHost))
+         registry)]
+    (driver/start! application)
+    (driver/flush! application)
+    (let [operations (mapcat :ops (flutter/batches renderer))
+          combobox
+          (some
+           (fn [operation]
+             (match operation
+               (proto/CreateNode node kind)
+               (when (= kind proto/Combobox) node)
+               _ nil))
+           operations)
+          mirror
+          (some
+           (fn [operation]
+             (match operation
+               (proto/SetProp node property (proto/StringValue value))
+               (when (and (= property proto/StyleClass)
+                          (= value "lui-combobox-query-value"))
+                 node)
+               _ nil))
+           operations)
+          combobox-node
+          (required-node combobox "the Gallery mounts the Combobox control")
+          mirror-node
+          (required-node mirror "the Gallery mounts the shared query mirror")]
+      (driver/dispatch-event!
+       application (proto/TextChanged combobox-node "中文"))
+      (driver/flush! application)
+      (assert-equal
+       "中文"
+       (:gallery-picker-query (components/model application))
+       "the Combobox event updates the shared query state")
+      (assert-equal
+       "combobox"
+       (:gallery-open-picker (components/model application))
+       "typing opens the controlled Combobox menu")
+      (match (flutter/property renderer combobox-node proto/TextValue)
+        (Some (proto/StringValue value))
+        (assert-equal
+         "中文" value "the Combobox receives the shared query patch")
+        _ (is false "the Combobox receives the shared query patch"))
+      (match (flutter/property renderer mirror-node proto/TextValue)
+        (Some (proto/StringValue value))
+        (assert-equal
+         "中文" value "the showcase text receives the shared query patch")
+        _ (is false "the showcase text receives the shared query patch")))
+    (driver/dispose! application)))
 
 (deftest gallery-has-one-page-for-every-public-component
   (let [renderer (flutter/create)

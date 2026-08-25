@@ -570,12 +570,15 @@
     (raise (Invalid_argument "DOM node child is missing"))))
 
 (defn- text-control-node [dom-node]
-  (let [candidate
-        (if-some [_control
-                  (Webapi.Dom.HtmlInputElement.ofNode
-                   (Webapi.Dom.Element.asNode dom-node))]
+  (let [tag-name (Webapi.Dom.Element.tagName dom-node)
+        candidate
+        (if (or (= tag-name "INPUT") (= tag-name "TEXTAREA"))
           dom-node
-          (child-element dom-node 0))]
+          (child-element dom-node 0))
+        candidate-tag-name (Webapi.Dom.Element.tagName candidate)]
+    (when-not
+     (or (= candidate-tag-name "INPUT") (= candidate-tag-name "TEXTAREA"))
+     (raise (Invalid_argument "DOM node is not a text control")))
     (if-some [control
               (Webapi.Dom.HtmlInputElement.ofNode
                (Webapi.Dom.Element.asNode candidate))]
@@ -706,90 +709,127 @@
    (Webapi.Dom.Element.unsafeAsHtmlElement (dom-node renderer item))))
 
 (defn- attach-text-events! [renderer node kind dom-node]
-  (Webapi.Dom.Element.addEventListener
-   "input"
-   (fn [_event]
-     (Stdlib.ignore
-      ((deref (:web-event-handler renderer))
-       (proto/TextChanged
-        node (Webapi.Dom.HtmlInputElement.value
-              (text-control-node dom-node)))))
-     (Stdlib.ignore true))
-   dom-node)
-  (Webapi.Dom.Element.addKeyDownEventListener
-   (fn [event]
-     (let [enter (= "Enter" (Webapi.Dom.KeyboardEvent.key event))
-           shift (Webapi.Dom.KeyboardEvent.shiftKey event)
-           primary
-           (or (Webapi.Dom.KeyboardEvent.metaKey event)
-               (Webapi.Dom.KeyboardEvent.ctrlKey event))
-           submit
-           (if enter
-             (if (= kind Textarea)
-               (if (submit-on-enter? renderer node)
-                 (not shift)
-                 primary)
-               true)
-             false)]
-       (when (and submit (not (= kind Combobox)))
-         (Webapi.Dom.KeyboardEvent.preventDefault event)
-         (Stdlib.ignore
-          ((deref (:web-event-handler renderer)) (proto/Submit node))))
-       (when (= kind Combobox)
-         (let [key (Webapi.Dom.KeyboardEvent.key event)
-               dropdown (picker-dropdown renderer node)]
-           (cond
-             (or (= key "ArrowDown") (= key "ArrowUp"))
+  (let [composing (atom false)
+        committed-composition (atom None)
+        value!
+        (fn []
+          (Webapi.Dom.HtmlInputElement.value (text-control-node dom-node)))
+        emit!
+        (fn [value]
+          (Stdlib.ignore
+           ((deref (:web-event-handler renderer))
+            (proto/TextChanged node value)))
+          true)]
+    (Webapi.Dom.Element.addEventListener
+     "compositionstart"
+     (fn [_event]
+       (reset! composing true)
+       (reset! committed-composition None)
+       (Stdlib.ignore true))
+     dom-node)
+    (Webapi.Dom.Element.addEventListener
+     "compositionend"
+     (fn [_event]
+       (let [value (value!)]
+         (reset! composing false)
+         (reset! committed-composition (Some value))
+         (Stdlib.ignore (emit! value)))
+       (Stdlib.ignore true))
+     dom-node)
+    (Webapi.Dom.Element.addEventListener
+     "input"
+     (fn [_event]
+       (when-not (deref composing)
+         (let [value (value!)]
+           (match (deref committed-composition)
+             (Some committed)
              (do
-               (Webapi.Dom.KeyboardEvent.preventDefault event)
-               (match dropdown
-                 (Some menu)
-                 (let [items (picker-menu-items renderer menu)
-                       current (combobox-active-index renderer node items)
-                       navigation-key
-                       (if (= key "ArrowDown") "ArrowRight" "ArrowLeft")]
-                   (match (horizontal-focus-index
-                           navigation-key current (count items))
-                     (Some index) (set-combobox-active! renderer node menu index)
-                     None (Stdlib.ignore true)))
-                 None
-                 (Stdlib.ignore
-                  ((deref (:web-event-handler renderer)) (proto/Press node)))))
-
-             (= key "Enter")
-             (do
-               (Webapi.Dom.KeyboardEvent.preventDefault event)
-               (match dropdown
-                 (Some menu)
-                 (let [items (picker-menu-items renderer menu)
-                       current
-                       (combobox-active-index renderer node items)]
-                   (match current
-                     (Some index)
-                     (activate-menu-item! renderer (nth items index))
-                     None
-                     (when (not (empty? items))
-                       (set-combobox-active! renderer node menu 0))))
-                 None
-                 (Stdlib.ignore
-                  ((deref (:web-event-handler renderer))
-                   (if (submit-enabled? renderer node)
-                     (proto/Submit node)
-                     (proto/Press node))))))
-
-             (= key "Escape")
-             (match dropdown
-               (Some menu)
+               (reset! committed-composition None)
+               (when-not (= value committed)
+                 (Stdlib.ignore (emit! value))))
+             None (Stdlib.ignore (emit! value)))))
+       (Stdlib.ignore true))
+     dom-node)
+    (Webapi.Dom.Element.addKeyDownEventListener
+     (fn [event]
+       (let [composing?
+             (or (deref composing)
+                 (Webapi.Dom.KeyboardEvent.isComposing event))
+             enter (= "Enter" (Webapi.Dom.KeyboardEvent.key event))
+             shift (Webapi.Dom.KeyboardEvent.shiftKey event)
+             primary
+             (or (Webapi.Dom.KeyboardEvent.metaKey event)
+                 (Webapi.Dom.KeyboardEvent.ctrlKey event))
+             submit
+             (and
+              (not composing?)
+              (if enter
+                (if (= kind Textarea)
+                  (if (submit-on-enter? renderer node)
+                    (not shift)
+                    primary)
+                  true)
+                false))]
+         (when (and submit (not (= kind Combobox)))
+           (Webapi.Dom.KeyboardEvent.preventDefault event)
+           (Stdlib.ignore
+            ((deref (:web-event-handler renderer)) (proto/Submit node))))
+         (when (and (= kind Combobox) (not composing?))
+           (let [key (Webapi.Dom.KeyboardEvent.key event)
+                 dropdown (picker-dropdown renderer node)]
+             (cond
+               (or (= key "ArrowDown") (= key "ArrowUp"))
                (do
                  (Webapi.Dom.KeyboardEvent.preventDefault event)
-                 (Stdlib.ignore
-                  ((deref (:web-event-handler renderer))
-                   (proto/Dismiss menu))))
-               None (Stdlib.ignore true))
+                 (match dropdown
+                   (Some menu)
+                   (let [items (picker-menu-items renderer menu)
+                         current (combobox-active-index renderer node items)
+                         navigation-key
+                         (if (= key "ArrowDown") "ArrowRight" "ArrowLeft")]
+                     (match (horizontal-focus-index
+                             navigation-key current (count items))
+                       (Some index)
+                       (set-combobox-active! renderer node menu index)
+                       None (Stdlib.ignore true)))
+                   None
+                   (Stdlib.ignore
+                    ((deref (:web-event-handler renderer)) (proto/Press node)))))
 
-             :else (Stdlib.ignore true))))
-       (Stdlib.ignore true)))
-   dom-node))
+               (= key "Enter")
+               (do
+                 (Webapi.Dom.KeyboardEvent.preventDefault event)
+                 (match dropdown
+                   (Some menu)
+                   (let [items (picker-menu-items renderer menu)
+                         current
+                         (combobox-active-index renderer node items)]
+                     (match current
+                       (Some index)
+                       (activate-menu-item! renderer (nth items index))
+                       None
+                       (when (not (empty? items))
+                         (set-combobox-active! renderer node menu 0))))
+                   None
+                   (Stdlib.ignore
+                    ((deref (:web-event-handler renderer))
+                     (if (submit-enabled? renderer node)
+                       (proto/Submit node)
+                       (proto/Press node))))))
+
+               (= key "Escape")
+               (match dropdown
+                 (Some menu)
+                 (do
+                   (Webapi.Dom.KeyboardEvent.preventDefault event)
+                   (Stdlib.ignore
+                    ((deref (:web-event-handler renderer))
+                     (proto/Dismiss menu))))
+                 None (Stdlib.ignore true))
+
+               :else (Stdlib.ignore true))))
+         (Stdlib.ignore true)))
+     dom-node)))
 
 (defn- attach-toggle-event! [renderer node _kind dom-node]
   (Webapi.Dom.Element.addEventListener

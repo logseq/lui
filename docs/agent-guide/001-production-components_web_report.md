@@ -116,6 +116,13 @@ selected-item placement. Touch keeps ordinary anchored placement. Alignment
 falls back to shared collision placement near viewport edges or whenever the
 exact aligned popup would leave the 8 px viewport gutter.
 
+Text controls now keep native IME composition local until `compositionend`.
+Combobox navigation and dismissal keys do not run while composition is active,
+the retained input keeps its DOM identity and focus, and the final committed
+value fans out through the shared Signal before ordinary option navigation
+resumes. The Web backend resolves wrapped controls by their actual `INPUT` or
+`TEXTAREA` tag instead of relying on melange-webapi's generic Element cast.
+
 ## Base UI parity scope
 
 Behavioral parity applies to LUI components that overlap Base UI: Accordion,

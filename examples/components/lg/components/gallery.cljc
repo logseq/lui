@@ -705,6 +705,9 @@
      [environment-menu
       production-selected-source staging-selected-source disabled-source
       select-production select-staging dismiss]]]
+   [:row {:gap 8 :cross "center"}
+    [:text "Shared query:"]
+    [:text {:value query-source :class "lui-combobox-query-value"}]]
    [:paragraph
     "The query and menu visibility are shared Signals."]])
 

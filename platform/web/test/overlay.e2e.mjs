@@ -965,6 +965,153 @@ test("Combobox keeps DOM focus in the input while navigating its listbox", async
   )
 })
 
+test("Combobox leaves composition text and navigation keys owned by the IME", async () => {
+  await openGalleryPage("Combobox")
+  const result = await state(`(() => {
+    const control = document.querySelector('.lui-combobox-control')
+    control.focus()
+    control.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+    )
+    const originalControl = control
+    const initialActive = control.getAttribute('aria-activedescendant')
+
+    control.dispatchEvent(new CompositionEvent('compositionstart', {
+      bubbles: true,
+      data: '',
+    }))
+    control.value = '中'
+    control.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      cancelable: false,
+      data: '中',
+      inputType: 'insertCompositionText',
+      isComposing: true,
+    }))
+
+    const composingKeys = ['ArrowDown', 'Enter', 'Escape'].map((key) => {
+      const event = new KeyboardEvent('keydown', {
+        key,
+        bubbles: true,
+        cancelable: true,
+        isComposing: true,
+      })
+      control.dispatchEvent(event)
+      return {
+        key,
+        expanded: control.getAttribute('aria-expanded'),
+        activeUnchanged: control.getAttribute('aria-activedescendant') === initialActive,
+        value: control.value,
+      }
+    })
+
+    return {
+      sameControl: document.querySelector('.lui-combobox-control') === originalControl,
+      focused: document.activeElement === originalControl,
+      value: originalControl.value,
+      expanded: originalControl.getAttribute('aria-expanded'),
+      activeUnchanged: originalControl.getAttribute('aria-activedescendant') === initialActive,
+      composingKeys,
+    }
+  })()`)
+
+  assert.deepEqual(result, {
+    sameControl: true,
+    focused: true,
+    value: "中",
+    expanded: "true",
+    activeUnchanged: true,
+    composingKeys: [
+      { key: "ArrowDown", expanded: "true", activeUnchanged: true, value: "中" },
+      { key: "Enter", expanded: "true", activeUnchanged: true, value: "中" },
+      { key: "Escape", expanded: "true", activeUnchanged: true, value: "中" },
+    ],
+  })
+  await browser("wait", "30")
+  assert.equal(
+    await state(`document.querySelector('.lui-combobox-query-value')?.textContent`),
+    "",
+  )
+})
+
+test("Combobox commits the final composition and resumes normal option selection", async () => {
+  await openGalleryPage("Combobox")
+  assert.deepEqual(
+    await state(`(() => {
+      const control = document.querySelector('.lui-combobox-control')
+      const originalControl = control
+      control.focus()
+      control.dispatchEvent(new CompositionEvent('compositionstart', {
+        bubbles: true,
+        data: '',
+      }))
+      control.value = '中文'
+      control.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        data: '文',
+        inputType: 'insertCompositionText',
+        isComposing: true,
+      }))
+      control.dispatchEvent(new CompositionEvent('compositionend', {
+        bubbles: true,
+        data: '中文',
+      }))
+      control.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        data: '中文',
+        inputType: 'insertFromComposition',
+        isComposing: false,
+      }))
+      return {
+        sameControl: document.querySelector('.lui-combobox-control') === originalControl,
+        focused: document.activeElement === originalControl,
+        value: originalControl.value,
+        expanded: originalControl.getAttribute('aria-expanded'),
+      }
+    })()`),
+    {
+      sameControl: true,
+      focused: true,
+      value: "中文",
+      expanded: "true",
+    },
+  )
+  await browser("wait", "30")
+  assert.equal(
+    await state(`document.querySelector('.lui-combobox-query-value')?.textContent`),
+    "中文",
+  )
+
+  await evaluate(`[
+    ...document.querySelectorAll('nav button'),
+  ].find((node) => node.textContent === 'Button')?.click()`)
+  await evaluate(`[
+    ...document.querySelectorAll('nav button'),
+  ].find((node) => node.textContent === 'Combobox')?.click()`)
+  await browser("wait", "30")
+  assert.equal(await state(`document.querySelector('.lui-combobox-control')?.value`), "中文")
+
+  await evaluate(`document.querySelector('.lui-combobox-control')?.focus()`)
+  await browser("press", "ArrowDown")
+  await browser("wait", "30")
+  await browser("press", "Enter")
+  assert.deepEqual(
+    await state(`(() => {
+      const control = document.querySelector('.lui-combobox-control')
+      return {
+        value: control?.value,
+        expanded: control?.getAttribute('aria-expanded'),
+        focused: document.activeElement === control,
+      }
+    })()`),
+    { value: "Staging", expanded: "false", focused: true },
+  )
+  assert.equal(
+    await state(`document.querySelector('.lui-combobox-query-value')?.textContent`),
+    "Staging",
+  )
+})
+
 test("Combobox touch trigger opens without moving input focus and stays onscreen", async () => {
   await openGalleryPage("Combobox")
   await browser("set", "viewport", "390", "844")
