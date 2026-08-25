@@ -703,7 +703,20 @@ private struct LUITooltipHost<Content: View>: View {
         content
             .focused($isFocused)
             .onHover(perform: hoverChanged)
-            .simultaneousGesture(TapGesture().onEnded(dismissForPress))
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.5)
+                    .exclusively(before: TapGesture())
+                    .onEnded { gesture in
+                        switch gesture {
+                        case .first:
+                            cancelReveal()
+                            intent.longPress()
+                            syncPresentation()
+                        case .second:
+                            dismissForPress()
+                        }
+                    }
+            )
             .onChange(of: isFocused) { _, focused in
                 cancelReveal()
                 if focused {
@@ -1421,11 +1434,20 @@ private struct LUIListItemView: View {
 
     var body: some View {
         Button {
-            if model.supportsPress {
+            if model.isTreeItem {
+                try? backend.performTreeTap(node: model.id)
+            } else if model.supportsPress {
                 try? backend.performPress(node: model.id)
             }
         } label: {
             HStack(spacing: 8) {
+                if model.isTreeItem, model.supportsToggle {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .rotationEffect(.degrees(model.isExpanded == true ? 90 : 0))
+                        .animation(.snappy, value: model.isExpanded)
+                        .accessibilityHidden(true)
+                }
                 if !model.buttonIconName.isEmpty {
                     LUIIconImage(source: backend.iconSource(for: model.buttonIconName))
                         .frame(width: 16, height: 16)

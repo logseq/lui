@@ -43,8 +43,58 @@ appId: dev.lui.components
 - tapOn: "Components"
 - scrollUntilVisible:
     element:
-      id: "component-row-TextField"
+      id: "component-row-Sheet"
+    direction: UP
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Sheet"
+    point: "50%,90%"
+- tapOn: "Open sheet"
+- assertVisible: "Anyone with the link can view this showcase."
+- tapOn: "Done"
+- assertNotVisible: "Anyone with the link can view this showcase."
+- tapOn: "Components"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Tree"
     direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Tree"
+    point: "50%,90%"
+- assertVisible: "Documents"
+- assertNotVisible: "Quarterly report.md"
+- tapOn: "Documents"
+- assertVisible: "Quarterly report.md"
+- tapOn: "Launch checklist.md"
+- assertVisible:
+    text: "Launch checklist.md"
+    selected: true
+- tapOn: "Components"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Tooltip"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Tooltip"
+    point: "50%,90%"
+- longPressOn: "Edit document"
+- assertVisible: "Edit this document"
+- tapOn:
+    point: "80%,80%"
+- assertNotVisible: "Edit this document"
+- tapOn: "Components"
+- scrollUntilVisible:
+    element:
+      id: "component-row-TextField"
+    direction: UP
     speed: 80
     timeout: 30000
     centerElement: true
@@ -55,6 +105,53 @@ appId: dev.lui.components
 - inputText: "LUI iOS"
 - inputText: "中文输入"
 - assertVisible: "LUI iOS中文输入"
+- tapOn: "Components"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Select"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Select"
+    point: "50%,90%"
+- tapOn: "Production"
+- assertVisible: "Development"
+- tapOn: "Staging"
+- assertVisible: "Staging"
+- assertNotVisible: "Development"
+- tapOn: "Components"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Combobox"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Combobox"
+    point: "50%,90%"
+- tapOn: "Search environments"
+- eraseText: 50
+- inputText: "sta"
+- assertVisible: "sta"
+- tapOn: "Components"
+- scrollUntilVisible:
+    element:
+      id: "component-row-DropdownMenu"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-DropdownMenu"
+    point: "50%,90%"
+- assertVisible: "Development"
+- tapOn: "Production"
+- assertVisible:
+    text: "Production"
+    selected: true
 - tapOn: "Components"
 - scrollUntilVisible:
     element:

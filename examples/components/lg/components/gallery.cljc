@@ -573,10 +573,10 @@
        :anchor-alignment "end"
        :anchor-offset 8.0
        :tooltip-delay 250}
-      "Edit document"]]
+      "Edit this document"]]
     [:tooltip "Saved"]]
    [:paragraph
-    "Hover or focus the icon to reveal the native anchored Tooltip; the second Tooltip is a static status label."]])
+    "Hover, focus, or long-press the icon to reveal the native anchored Tooltip; the second Tooltip is a static status label."]])
 
 (defui toolbar-gallery []
   [:column {:gap 16 :padding 32}

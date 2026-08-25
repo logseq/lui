@@ -954,6 +954,12 @@ struct LUISwiftUIBackendTests {
         events.removeAll()
         #expect(try backend.performTreeKey(tree: 1, node: 3, key: .activate) == 3)
         #expect(events == [.press(node: 3)])
+        events.removeAll()
+        try backend.performTreeTap(node: 2)
+        #expect(events == [
+            .press(node: 2),
+            .toggleChanged(node: 2, checked: false),
+        ])
 
         try backend.apply(json: """
         {"generation":2,"ops":[
@@ -1844,6 +1850,12 @@ struct LUISwiftUIBackendTests {
         #expect(cold.isPresented)
         cold.escape()
         #expect(!cold.isPresented)
+
+        let touch = LUITooltipIntent(session: session)
+        touch.longPress()
+        #expect(touch.isPresented)
+        touch.press()
+        #expect(!touch.isPresented)
     }
 
     @Test("maps Stepper and Timeline to stable native semantic compositions")

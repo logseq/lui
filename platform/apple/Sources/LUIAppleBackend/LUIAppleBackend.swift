@@ -564,6 +564,21 @@ public final class LUIAppleBackend {
         }
     }
 
+    func performTreeTap(node: Int) throws {
+        guard let model = models[node], model.isTreeItem, model.isEnabled else {
+            throw invalid("node \(node) is not an enabled tree item")
+        }
+        let nextExpanded = !(model.isExpanded ?? false)
+        if model.supportsPress {
+            try performPress(node: node)
+        } else if model.supportsChange {
+            try performChange(node: node)
+        }
+        if model.supportsToggle {
+            try performToggle(node: node, checked: nextExpanded)
+        }
+    }
+
     func treeItemIDs(tree treeID: Int) throws -> [Int] {
         guard models[treeID]?.kind == .tree else {
             throw invalid("node \(treeID) is not a tree")
@@ -733,6 +748,7 @@ final class LUITooltipIntent {
     private enum Origin {
         case pointer
         case focus
+        case touch
     }
 
     private let session: LUITooltipSession
@@ -770,6 +786,11 @@ final class LUITooltipIntent {
 
     func focusLeft() {
         dismiss()
+    }
+
+    func longPress() {
+        session.clear()
+        reveal(origin: .touch)
     }
 
     func press() {
