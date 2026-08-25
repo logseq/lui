@@ -67,6 +67,10 @@ private struct LUINodeView: View {
             ZStack {
                 children
             }
+        case .alert:
+            LUIAlertView(model: model, backend: backend)
+        case .bubble:
+            LUIBubbleView(model: model, backend: backend)
         case .box:
             VStack(
                 alignment: .leading,
@@ -191,6 +195,12 @@ private struct LUINodeView: View {
                     width: CGFloat(model.iconWidth),
                     height: CGFloat(model.iconHeight)
                 )
+        case .statusBar:
+            Text(verbatim: model.text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(messageTextAlignment)
+                .frame(maxWidth: .infinity, alignment: messageFrameAlignment)
         }
     }
 
@@ -220,6 +230,115 @@ private struct LUINodeView: View {
 
     private var progressAccessibilityValue: String {
         "\(Int((model.progressFraction * 100).rounded()))%"
+    }
+
+    private var messageTextAlignment: TextAlignment {
+        switch model.property(.textAlignment)?.stringValue {
+        case "center": .center
+        case "end": .trailing
+        default: .leading
+        }
+    }
+
+    private var messageFrameAlignment: Alignment {
+        switch model.property(.textAlignment)?.stringValue {
+        case "center": .center
+        case "end": .trailing
+        default: .leading
+        }
+    }
+}
+
+private struct LUIAlertView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !model.text.isEmpty {
+                Text(verbatim: model.text)
+                    .font(.headline)
+            }
+            ZStack {
+                ForEach(model.children, id: \.self) { childID in
+                    if let child = backend.model(id: childID) {
+                        LUINodeView(model: child, backend: backend)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct LUIBubbleView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        LUIBubbleWidthLayout(isCapped: isCapped) {
+            ZStack(alignment: reactionAlignment) {
+                ZStack {
+                    ForEach(model.children, id: \.self) { childID in
+                        if let child = backend.model(id: childID) {
+                            LUINodeView(model: child, backend: backend)
+                        }
+                    }
+                }
+                if !model.text.isEmpty {
+                    Text(verbatim: model.text)
+                        .font(.caption2)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(.regularMaterial, in: Capsule())
+                        .overlay { Capsule().stroke(.separator, lineWidth: 1) }
+                }
+            }
+        }
+    }
+
+    private var isCapped: Bool {
+        model.property(.variant)?.stringValue != "ghost" && model.surfaceWidth == nil
+    }
+
+    private var reactionAlignment: Alignment {
+        switch model.property(.textAlignment)?.stringValue {
+        case "start": .bottomLeading
+        case "center": .bottom
+        default: .bottomTrailing
+        }
+    }
+}
+
+private struct LUIBubbleWidthLayout: Layout {
+    let isCapped: Bool
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        guard let subview = subviews.first else { return .zero }
+        let maximum = isCapped ? proposal.width.map { $0 * 0.8 } : proposal.width
+        let size = subview.sizeThatFits(
+            ProposedViewSize(width: maximum, height: proposal.height)
+        )
+        return CGSize(
+            width: maximum.map { min(size.width, $0) } ?? size.width,
+            height: size.height
+        )
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        subviews.first?.place(
+            at: bounds.origin,
+            anchor: .topLeading,
+            proposal: ProposedViewSize(width: bounds.width, height: bounds.height)
+        )
     }
 }
 
@@ -1632,9 +1751,15 @@ private struct LUISurfaceModifier: ViewModifier {
     let model: LUINodeModel
 
     func body(content: Content) -> some View {
-        let isSurface = model.kind == .panel || model.kind == .card || model.kind == .resizable
+        let isSurface = model.kind == .panel || model.kind == .card ||
+            model.kind == .resizable || model.kind == .alert || model.kind == .bubble
         let isTabs = model.kind == .tabs
-        let defaultPadding = model.kind == .card ? 24 : (isTabs ? 2 : 0)
+        let defaultPadding = switch model.kind {
+        case .card: 24
+        case .alert: 16
+        case .bubble: 12
+        default: isTabs ? 2 : 0
+        }
         let padding = model.property(.padding)?.intValue ?? defaultPadding
         let horizontal = model.property(.paddingHorizontal)?.intValue ?? padding
         let vertical = model.property(.paddingVertical)?.intValue ?? padding
@@ -1644,7 +1769,7 @@ private struct LUISurfaceModifier: ViewModifier {
         let borderWidth = CGFloat(model.property(.borderWidth)?.intValue ?? (isSurface ? 1 : 0))
         let shape = RoundedRectangle(cornerRadius: radius)
         let background = color(model.property(.background)?.stringValue) ??
-            (isSurface ? systemBackground : (isTabs ? Color.secondary.opacity(0.12) : .clear))
+            defaultBackground(isSurface: isSurface, isTabs: isTabs)
         let border = color(model.property(.borderColor)?.stringValue) ??
             (isSurface ? Color.secondary.opacity(0.35) : .clear)
         let castsShadow = model.kind == .panel &&
@@ -1663,7 +1788,9 @@ private struct LUISurfaceModifier: ViewModifier {
                 minHeight: model.surfaceMinHeight.map(CGFloat.init),
                 maxHeight: model.surfaceMaxHeight.map(CGFloat.init)
             )
-            .foregroundStyle(color(model.property(.foreground)?.stringValue) ?? .primary)
+            .foregroundStyle(
+                color(model.property(.foreground)?.stringValue) ?? defaultForeground
+            )
             .background(background, in: shape)
             .shadow(
                 color: castsShadow ? .black.opacity(0.12) : .clear,
@@ -1703,6 +1830,29 @@ private struct LUISurfaceModifier: ViewModifier {
         case "green": .green
         default: .clear
         }
+    }
+
+    private func defaultBackground(isSurface: Bool, isTabs: Bool) -> Color {
+        if model.kind == .bubble && model.property(.variant)?.stringValue == "primary" {
+            return .accentColor
+        }
+        if model.kind == .bubble && model.property(.variant)?.stringValue == "ghost" {
+            return .clear
+        }
+        if model.kind == .alert && model.property(.variant)?.stringValue == "destructive" {
+            return .red.opacity(0.1)
+        }
+        return isSurface ? systemBackground : (isTabs ? .secondary.opacity(0.12) : .clear)
+    }
+
+    private var defaultForeground: Color {
+        if model.kind == .bubble && model.property(.variant)?.stringValue == "primary" {
+            return .white
+        }
+        if model.kind == .alert && model.property(.variant)?.stringValue == "destructive" {
+            return .red
+        }
+        return .primary
     }
 
     private var systemBackground: Color {

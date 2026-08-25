@@ -203,6 +203,12 @@
         "the shared Gallery demonstrates controlled two-pane Split geometry")
     (is (creates-kind? (flutter/batches renderer) proto/ContextMenu)
         "the shared Gallery demonstrates retained ContextMenu metadata")
+    (is (creates-kind? (flutter/batches renderer) proto/Alert)
+        "the shared Gallery demonstrates Alert")
+    (is (creates-kind? (flutter/batches renderer) proto/Bubble)
+        "the shared Gallery demonstrates Bubble and Reactions chrome")
+    (is (creates-kind? (flutter/batches renderer) proto/StatusBar)
+        "the shared Gallery demonstrates StatusBar")
     (assert-equal 1 (count (flutter/batches renderer)) "mount is one batch")
     (let [mounted-count (flutter/node-count renderer)]
       (driver/send! application model/ToggleDisabled)

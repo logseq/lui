@@ -1,6 +1,6 @@
 (ns lui.backend.flutter
   (:require [lui.protocol :as proto
-             :refer [Row Column Grid Stack Panel Card Box
+             :refer [Row Column Grid Stack Panel Card Alert Bubble Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
@@ -8,7 +8,7 @@
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
                      Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip
-                     Accordion Table TableRow TableCell Tree Resizable Split]]
+                     Accordion Table TableRow TableCell Tree Resizable Split StatusBar]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -30,6 +30,8 @@
     Stack FlutterStack
     Panel FlutterPanel
     Card FlutterCard
+    Alert FlutterAlert
+    Bubble FlutterBubble
     Box FlutterBox
     Text FlutterParagraph
     Heading FlutterHeading
@@ -76,7 +78,8 @@
     TableCell FlutterTableCell
     Tree FlutterTree
     Resizable FlutterResizable
-    Split FlutterSplit))
+    Split FlutterSplit
+    StatusBar FlutterStatusBar))
 
 (defn backend-for [renderer operating-system]
   (record proto/backend

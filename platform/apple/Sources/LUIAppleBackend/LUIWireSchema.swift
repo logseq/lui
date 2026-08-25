@@ -8,6 +8,8 @@ enum LUINodeKind: String, Decodable, Equatable {
     case stack = "stack"
     case panel = "panel"
     case card = "card"
+    case alert = "alert"
+    case bubble = "bubble"
     case box = "box"
     case text = "text"
     case heading = "heading"
@@ -55,6 +57,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case drawer = "drawer"
     case sheet = "sheet"
     case tooltip = "tooltip"
+    case statusBar = "status-bar"
 }
 
 enum LUIProperty: String, Decodable, Hashable {

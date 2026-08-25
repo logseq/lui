@@ -42,6 +42,12 @@
 (defn card! [context]
   (runtime/create-node! (:ui-application context) proto/Card))
 
+(defn alert! [context]
+  (runtime/create-node! (:ui-application context) proto/Alert))
+
+(defn bubble! [context]
+  (runtime/create-node! (:ui-application context) proto/Bubble))
+
 (defn box! [context]
   (runtime/create-node! (:ui-application context) proto/Box))
 
@@ -96,6 +102,9 @@
      (:ui-application context) node proto/ProgressValue
      (proto/FloatValue value))
     node))
+
+(defn status-bar! [context]
+  (runtime/create-node! (:ui-application context) proto/StatusBar))
 
 (defn spacer! [context]
   (runtime/create-node! (:ui-application context) proto/Spacer))

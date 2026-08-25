@@ -8,6 +8,8 @@
   (Stack)
   (Panel)
   (Card)
+  (Alert)
+  (Bubble)
   (Box)
   (Text)
   (Heading)
@@ -54,7 +56,8 @@
   (Dialog)
   (Drawer)
   (Sheet)
-  (Tooltip))
+  (Tooltip)
+  (StatusBar))
 
 (type-variant operating-system
   (GenericOS)

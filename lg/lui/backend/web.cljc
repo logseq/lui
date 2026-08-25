@@ -3,11 +3,11 @@
             [clojure.string :as string]
             [ocaml.Webapi.Dom.HtmlCollection :as html-collection]
             [lui.protocol :as proto
-             :refer [Row Column Grid Stack Panel Card Box
+             :refer [Row Column Grid Stack Panel Card Alert Bubble Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
                      Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip Accordion
-                     Table TableRow TableCell Tree Resizable Split
+                     Table TableRow TableCell Tree Resizable Split StatusBar
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
                      Progress Divider
@@ -61,6 +61,8 @@
     Stack "lui-stack"
     Panel "lui-panel"
     Card "lui-card"
+    Alert "lui-alert"
+    Bubble "lui-bubble"
     Box "lui-box"
     Text "lui-text"
     Heading "lui-heading"
@@ -107,7 +109,8 @@
     TableCell "lui-table-cell"
     Tree "lui-tree"
     Resizable "lui-resizable"
-    Split "lui-split"))
+    Split "lui-split"
+    StatusBar "lui-status-bar"))
 
 (defn- create-split-node [renderer]
   (element
@@ -291,6 +294,7 @@
            "data-anchor-alignment" "start"}
           ContextMenu {"role" "menu" "tabindex" "-1"}
           Tooltip {"role" "tooltip"}
+          StatusBar {"role" "status"}
           _ {})]
     (element
      (:web-document renderer) tag (base-class-name kind) attributes [])))
@@ -305,6 +309,22 @@
       (element
        (:web-document renderer) "div" (str class-name "-body") {} [])])))
 
+(defn- create-alert-node [renderer]
+  (let [document (:web-document renderer)]
+    (element
+     document "section" "lui-alert"
+     {"role" "alert" "data-variant" "default"}
+     [(element document "div" "lui-alert-title" {} [])
+      (element document "div" "lui-alert-content" {} [])])))
+
+(defn- create-bubble-node [renderer]
+  (let [document (:web-document renderer)]
+    (element
+     document "div" "lui-bubble"
+     {"data-variant" "default" "data-reactions-alignment" "end"}
+     [(element document "div" "lui-bubble-content" {} [])
+      (element document "span" "lui-bubble-reactions" {} [])])))
+
 (defn- platform-node [renderer kind]
   (match kind
     Button (create-button-node renderer kind)
@@ -317,6 +337,8 @@
     MenuItem (create-menu-item-node renderer)
     Avatar (create-avatar-node renderer)
     Accordion (create-accordion-node renderer)
+    Alert (create-alert-node renderer)
+    Bubble (create-bubble-node renderer)
     Dialog (create-modal-node renderer kind)
     Drawer (create-modal-node renderer kind)
     Sheet (create-modal-node renderer kind)
@@ -393,13 +415,13 @@
            (or (Webapi.Dom.KeyboardEvent.metaKey event)
                (Webapi.Dom.KeyboardEvent.ctrlKey event))
            submit
-           (and
-            enter
-            (if (= kind Textarea)
-              (if (submit-on-enter? renderer node)
-                (not shift)
-                primary)
-              true))]
+           (if enter
+             (if (= kind Textarea)
+               (if (submit-on-enter? renderer node)
+                 (not shift)
+                 primary)
+               true)
+             false)]
        (when (and submit (not (= kind Combobox)))
          (Webapi.Dom.KeyboardEvent.preventDefault event)
          (Stdlib.ignore
@@ -1453,9 +1475,9 @@
               current
               (split-base-fraction source))
             current)]
-      (swap!
-       (:web-splits renderer) assoc node
-       (record web-split-state
+       (swap!
+        (:web-splits renderer) assoc node
+        (record web-split-state
          (web-split-source source)
          (web-split-current next-current)))
       (render-split! renderer node root next-current source-changed))
@@ -1470,8 +1492,8 @@
                            (split-base-fraction source))
             None (split-base-fraction source))]
       (swap!
-       (:web-splits renderer) assoc node
-       (record web-split-state
+        (:web-splits renderer) assoc node
+        (record web-split-state
          (web-split-source source)
          (web-split-current start)))
       (render-split! renderer node root start false)
@@ -1522,9 +1544,9 @@
                   (match (retained/property (:web-store renderer) node ProgressValue)
                     (Some (FloatValue value)) value
                     _ 0.0)]
-              (swap!
-               (:web-splits renderer) assoc node
-               (record web-split-state
+             (swap!
+              (:web-splits renderer) assoc node
+              (record web-split-state
                  (web-split-source source)
                  (web-split-current current)))
               (render-split! renderer node root current false)
@@ -1548,9 +1570,9 @@
                 (match (retained/property (:web-store renderer) node ProgressValue)
                   (Some (FloatValue value)) value
                   _ 0.0)]
-            (swap!
-             (:web-splits renderer) assoc node
-             (record web-split-state
+           (swap!
+            (:web-splits renderer) assoc node
+            (record web-split-state
                (web-split-source source)
                (web-split-current next)))
             (render-split! renderer node root next false)
@@ -1848,37 +1870,54 @@
      (string/trim
       (str (base-class-name kind) " " tree-class " " style-class)))))
 
+(defn- set-text-control-value! [dom-node text]
+  (let [control (text-control-node dom-node)]
+    (when (not (= text (Webapi.Dom.HtmlInputElement.value control)))
+      (Webapi.Dom.HtmlInputElement.setValue control text))))
+
+(defn- set-visible-text! [kind dom-node text]
+  (let [target
+        (if (direct-toggle? kind)
+          (toggle-label-node dom-node)
+          (if (or (button-like? kind) (= kind MenuItem))
+            (button-label-node dom-node)
+            dom-node))]
+    (when (not (= text (Webapi.Dom.Element.textContent target)))
+      (Webapi.Dom.Element.setTextContent target text))))
+
+(defn- apply-text-value! [renderer node kind dom-node text]
+  (match kind
+    Alert
+    (Webapi.Dom.Element.setTextContent (child-element dom-node 0) text)
+    Bubble
+    (Webapi.Dom.Element.setTextContent (child-element dom-node 1) text)
+    Accordion
+    (Webapi.Dom.Element.setTextContent
+     (child-element (child-element dom-node 0) 0) text)
+    Dialog
+    (Webapi.Dom.Element.setTextContent (child-element dom-node 0) text)
+    Drawer
+    (Webapi.Dom.Element.setTextContent (child-element dom-node 0) text)
+    Sheet
+    (Webapi.Dom.Element.setTextContent (child-element dom-node 0) text)
+    Avatar
+    (do
+      (Webapi.Dom.Element.setTextContent (child-element dom-node 1) text)
+      (update-avatar! renderer node dom-node))
+    Select
+    (Webapi.Dom.Element.setTextContent
+     dom-node (select-display-text renderer node))
+    TextField (set-text-control-value! dom-node text)
+    Input (set-text-control-value! dom-node text)
+    SearchField (set-text-control-value! dom-node text)
+    Textarea (set-text-control-value! dom-node text)
+    Combobox (set-text-control-value! dom-node text)
+    _ (set-visible-text! kind dom-node text)))
+
 (defn- apply-property! [renderer node kind dom-node property value]
   (match (tuple property value)
     (tuple TextValue (StringValue text))
-    (if (= kind Accordion)
-      (Webapi.Dom.Element.setTextContent
-       (child-element (child-element dom-node 0) 0) text)
-      (if (modal-surface? kind)
-      (Webapi.Dom.Element.setTextContent (child-element dom-node 0) text)
-      (if (= kind Avatar)
-      (do
-        (Webapi.Dom.Element.setTextContent
-         (child-element dom-node 1) text)
-        (update-avatar! renderer node dom-node))
-      (if (= kind Select)
-      (Webapi.Dom.Element.setTextContent
-       dom-node (select-display-text renderer node))
-      (if (or (= kind TextField) (= kind Input) (= kind SearchField)
-              (= kind Textarea) (= kind Combobox))
-        (let [control (text-control-node dom-node)]
-          (when (not (= text (Webapi.Dom.HtmlInputElement.value control)))
-            (Webapi.Dom.HtmlInputElement.setValue control text)))
-        (let [text-node
-              (if (direct-toggle? kind)
-                (toggle-label-node dom-node)
-                dom-node)]
-          (let [text-node
-                (if (or (button-like? kind) (= kind MenuItem))
-                  (button-label-node dom-node)
-                  text-node)]
-            (when (not (= text (Webapi.Dom.Element.textContent text-node)))
-              (Webapi.Dom.Element.setTextContent text-node text)))))))))
+    (apply-text-value! renderer node kind dom-node text)
 
     (tuple Enabled (BoolValue enabled))
     (let [control-node
@@ -1961,7 +2000,10 @@
     (set-style! dom-node "border-radius" (str radius "px"))
 
     (tuple WidthValue (IntValue width))
-    (set-style! dom-node "width" (str width "px"))
+    (do
+      (set-style! dom-node "width" (str width "px"))
+      (when (= kind Bubble)
+        (Webapi.Dom.Element.setAttribute "data-width" "explicit" dom-node)))
 
     (tuple HeightValue (IntValue height))
     (set-style! dom-node "height" (str height "px"))
@@ -2185,7 +2227,10 @@
      "data-tooltip-delay" (str delay) dom-node)
 
     (tuple TextAlignment (StringValue alignment))
-    (set-style! dom-node "text-align" alignment)
+    (if (= kind Bubble)
+      (Webapi.Dom.Element.setAttribute
+       "data-reactions-alignment" alignment dom-node)
+      (set-style! dom-node "text-align" alignment))
 
     _ (raise (Invalid_argument "invalid DOM property value"))))
 
@@ -2235,9 +2280,13 @@
 (defn- content-container [kind dom-node]
   (if (= kind Split)
     (child-element dom-node 0)
-    (if (or (= kind Accordion) (modal-surface? kind))
+    (if (= kind Alert)
       (child-element dom-node 1)
-      dom-node)))
+      (if (= kind Bubble)
+        (child-element dom-node 0)
+        (if (or (= kind Accordion) (modal-surface? kind))
+          (child-element dom-node 1)
+          dom-node)))))
 
 (defn- dom-child-container [renderer node dom-node]
   (if-some [current (retained/node (:web-store renderer) node)]

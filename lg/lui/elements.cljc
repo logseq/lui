@@ -17,6 +17,31 @@
 (macro-helper-defn context-menu-form? [form]
                    (and (vector? form) (= (first form) :context-menu)))
 
+(macro-helper-defn reactions-form? [form]
+                   (and (vector? form) (= (first form) :reactions)))
+
+(macro-helper-defn reactions-children [children]
+                   (loop [remaining children
+                          result []]
+                     (if (empty? remaining)
+                       result
+                       (recur
+                        (next remaining)
+                        (if (reactions-form? (first remaining))
+                          (conj result (first remaining))
+                          result)))))
+
+(macro-helper-defn message-children [children]
+                   (loop [remaining children
+                          result []]
+                     (if (empty? remaining)
+                       result
+                       (recur
+                        (next remaining)
+                        (if (reactions-form? (first remaining))
+                          result
+                          (conj result (first remaining)))))))
+
 (macro-helper-defn context-menu-children [children]
                    (loop [remaining children
                           result []]
@@ -73,6 +98,8 @@
                          (= tag :stack)
                          (= tag :panel)
                          (= tag :card)
+                         (= tag :alert)
+                         (= tag :bubble)
                          (= tag :box)
                          (= tag :scroll)
                          (= tag :list)
@@ -119,6 +146,8 @@
                          (= tag :menu-item)
                          (= tag :list-item)
                          (= tag :avatar)
+                         (= tag :reactions)
+                         (= tag :status-bar)
                           (= tag :keyed))
                           (symbol (str "lui.elements/" (name tag)))
                           (symbol (str "lui." (name tag) "/" (name tag))))))))
@@ -530,6 +559,97 @@
 (defelement card [context parent attrs & children]
   (container-expansion 'lui.ui/card! context parent attrs children))
 
+(defelement alert [context parent attrs & children]
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/alert! ~context)]
+       ~@(string-attribute-expansion
+          context node (:text attrs) 'lui.protocol/TextValue)
+       ~@(string-attribute-expansion
+          context node (:variant attrs) 'lui.protocol/VariantValue)
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
+       ~node)))
+
+(macro-helper-defn reactions-expansions [context node form]
+                   (let [attrs (element-attrs form)
+                         children (element-children form)
+                         value (:value attrs)
+                         literal-text
+                         (if (and (= (count children) 1)
+                                  (string? (first children)))
+                           (first children)
+                           nil)]
+                     (when (and value (if (empty? children) false true))
+                       (throw
+                        (IllegalArgumentException.
+                         "reactions accepts :value or one text child, not both")))
+                     (when (and (if value false true)
+                                (if literal-text false true))
+                       (throw
+                        (IllegalArgumentException.
+                         "reactions requires exactly one non-empty text value")))
+                     (when (and literal-text (= literal-text ""))
+                       (throw
+                        (IllegalArgumentException.
+                         "reactions requires exactly one non-empty text value")))
+                     (concat
+                      (if value
+                        [`(lui.ui/text-property-signal!
+                           ~context ~node ~value)]
+                        [`(lui.ui/text-property!
+                           ~context ~node ~literal-text)])
+                      (string-attribute-expansion
+                       context node
+                       (if (:text-alignment attrs)
+                         (:text-alignment attrs)
+                         "end")
+                       'lui.protocol/TextAlignment))))
+
+(defelement bubble [context parent attrs & children]
+  (when (:text attrs)
+    (throw
+     (IllegalArgumentException.
+      "bubble text is reserved for reactions; use a text child")))
+  (let [reaction-forms (reactions-children children)
+        visible (message-children children)
+        node (gensym "node")]
+    (when (if (empty? reaction-forms)
+            false
+            (if (= (count reaction-forms) 1) false true))
+      (throw
+       (IllegalArgumentException.
+        "bubble accepts at most one reactions child")))
+    `(let [~node (lui.ui/bubble! ~context)]
+       ~@(string-attribute-expansion
+          context node (:variant attrs) 'lui.protocol/VariantValue)
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(if (empty? reaction-forms)
+           []
+           (reactions-expansions context node (first reaction-forms)))
+       ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          visible)
+       ~node)))
+
+(defelement reactions [_context _parent _attrs & _children]
+  (throw
+   (IllegalArgumentException.
+    "reactions is only allowed as a direct child of bubble")))
+
 (defelement box [context parent attrs & children]
   (container-expansion 'lui.ui/box! context parent attrs children))
 
@@ -704,6 +824,33 @@
          ~node))
     (throw
      (IllegalArgumentException. "split requires exactly two children"))))
+
+(defelement status-bar [context parent attrs & children]
+  (let [value (:value attrs)
+        literal-text
+        (if (and (= (count children) 1) (string? (first children)))
+          (first children)
+          nil)
+        node (gensym "node")]
+    (when (and value (if (empty? children) false true))
+      (throw
+       (IllegalArgumentException.
+        "status-bar accepts :value or one text child, not both")))
+    (when (and (if value false true) (if literal-text false true))
+      (throw
+       (IllegalArgumentException.
+        "status-bar requires exactly one text value")))
+    `(let [~node (lui.ui/status-bar! ~context)]
+       ~@(if value
+           [`(lui.ui/text-property-signal! ~context ~node ~value)]
+           [`(lui.ui/text-property! ~context ~node ~literal-text)])
+       ~@(string-attribute-expansion
+          context node (:text-alignment attrs) 'lui.protocol/TextAlignment)
+       ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
 
 (defelement spacer [context parent _attrs & _children]
   (let [node (gensym "node")]

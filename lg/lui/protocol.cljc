@@ -201,6 +201,9 @@
       TableCell true
       Resizable true
       Split true
+      Alert true
+      Bubble true
+      StatusBar true
       _ false)
     BorderColorValue
     (and (not (= kind Avatar)) (not (modal-surface? kind))
@@ -236,6 +239,7 @@
         (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider)
         (labelled-horizontal-container? kind)
         (= kind Avatar) (= kind Tree) (= kind Resizable) (= kind Split)
+        (= kind Alert) (= kind Bubble)
         (tree-row-kind? kind))
     PlaceholderValue
     (or (= kind TextField) (= kind Input) (= kind SearchField)
@@ -249,7 +253,9 @@
     (or (= kind Button) (= kind ToggleButton) (= kind Spinner) (= kind Icon)
         (= kind TableCell))
     IconName (= kind Icon)
-    VariantValue (or (= kind Button) (= kind ToggleButton))
+    VariantValue
+    (or (= kind Button) (= kind ToggleButton)
+        (= kind Alert) (= kind Bubble))
     InlineIconName
     (or (= kind Button) (= kind ToggleButton) (= kind MenuItem)
         (= kind ListItem))
@@ -280,7 +286,8 @@
     AnchorAlignmentValue (or (= kind DropdownMenu) (= kind Tooltip))
     AnchorOffset (or (= kind DropdownMenu) (= kind Tooltip))
     TooltipDelay (= kind Tooltip)
-    TextAlignment (= kind TableCell)
+    TextAlignment
+    (or (= kind TableCell) (= kind Bubble) (= kind StatusBar))
     RoleValue (tree-row-kind? kind)
     TreeLevel (tree-row-kind? kind)
     Expanded (tree-row-kind? kind)
@@ -313,6 +320,9 @@
       Sheet true
       Tooltip true
       TableCell true
+      Alert true
+      Bubble true
+      StatusBar true
       _ false)
     Enabled
     (match kind
@@ -617,6 +627,8 @@
       Tree true
       Resizable true
       Split true
+      Alert true
+      Bubble true
       _ false)))
 
 (defn child-kind-supported? [parent-kind child-kind]

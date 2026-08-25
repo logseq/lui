@@ -1849,6 +1849,48 @@ struct LUISwiftUIBackendTests {
         #expect(backend.generation == 1)
     }
 
+    @Test("maps message and status surfaces as retained native compositions")
+    func mapsMessageSurfaces() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"alert"},
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"create-node","id":4,"kind":"bubble"},
+          {"op":"create-node","id":5,"kind":"text"},
+          {"op":"create-node","id":6,"kind":"status-bar"},
+          {"op":"set-prop","id":2,"property":"text","value":"Sync paused"},
+          {"op":"set-prop","id":3,"property":"text","value":"Reconnect to continue"},
+          {"op":"set-prop","id":4,"property":"variant","value":"primary"},
+          {"op":"set-prop","id":4,"property":"text","value":"2 reactions"},
+          {"op":"set-prop","id":4,"property":"text-alignment","value":"start"},
+          {"op":"set-prop","id":5,"property":"text","value":"Shipped"},
+          {"op":"set-prop","id":6,"property":"text","value":"3 items"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":1,"child":4,"index":1},
+          {"op":"insert-child","parent":4,"child":5,"index":0},
+          {"op":"insert-child","parent":1,"child":6,"index":2}
+        ]}
+        """)
+
+        #expect(backend.model(id: 2) != nil)
+        #expect(backend.model(id: 4)?.children == [5])
+        #expect(backend.model(id: 4)?.property(.text) == .string("2 reactions"))
+        #expect(backend.model(id: 6)?.property(.text) == .string("3 items"))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"set-prop","id":4,"property":"gap","value":8}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 1)
+    }
+
     @Test("C ABI forwards SwiftUI backend events")
     func cABIForwardsEvent() {
         capturedAppleEvent = nil

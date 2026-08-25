@@ -8,6 +8,8 @@ enum _NodeKind {
   stack,
   panel,
   card,
+  alert,
+  bubble,
   box,
   text,
   heading,
@@ -55,6 +57,7 @@ enum _NodeKind {
   drawer,
   sheet,
   tooltip,
+  statusBar,
 }
 
 _NodeKind _decodeNodeKind(Object? value) {
@@ -68,6 +71,8 @@ _NodeKind _decodeNodeKind(Object? value) {
     'stack' => _NodeKind.stack,
     'panel' => _NodeKind.panel,
     'card' => _NodeKind.card,
+    'alert' => _NodeKind.alert,
+    'bubble' => _NodeKind.bubble,
     'box' => _NodeKind.box,
     'text' => _NodeKind.text,
     'heading' => _NodeKind.heading,
@@ -115,6 +120,7 @@ _NodeKind _decodeNodeKind(Object? value) {
     'drawer' => _NodeKind.drawer,
     'sheet' => _NodeKind.sheet,
     'tooltip' => _NodeKind.tooltip,
+    'status-bar' => _NodeKind.statusBar,
     _ => throw const LUIBackendException('unknown node kind'),
   };
 }

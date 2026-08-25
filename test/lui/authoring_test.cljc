@@ -10,7 +10,8 @@
             [lui.skeleton]
             [lui.macros :refer [defui state effect platform host]]
             [lui.backend.apple :as apple
-             :refer [AppleBox AppleCard AppleCheckbox AppleColumn AppleFormLabel AppleGrid
+             :refer [AppleBox AppleCard AppleAlert AppleBubble AppleStatusBar
+                     AppleCheckbox AppleColumn AppleFormLabel AppleGrid
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput
                      AppleSelect AppleCombobox AppleDropdownMenu AppleContextMenu AppleMenuItem AppleListItem
@@ -234,6 +235,16 @@
    "More"
    [:context-menu
     [:menu-item {:on-press on-action} "Duplicate"]]])
+
+(defui retained-message-surfaces
+  [title-source message-source reactions-source status-source]
+  [:column {:gap 16}
+   [:alert {:text title-source :variant "secondary" :padding 12}
+    [:text "Reconnect to continue"]]
+   [:bubble {:variant "primary" :padding 12}
+    [:text {:value message-source}]
+    [:reactions {:value reactions-source :text-alignment "start"}]]
+   [:status-bar {:value status-source :text-alignment "end"}]])
 
 (defui retained-avatars [image-id]
   [:row {:gap 12}
@@ -1106,6 +1117,58 @@
         _ (is false "leaf host ContextMenu mapping exists"))
       (assert-equal 3 (apple/node-count renderer)
                     "metadata adds no visible wrapper nodes"))))
+
+(deftest message-surface-signals-patch-retained-native-nodes
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "message-surfaces")
+        title (sig/state scheduler "Sync paused")
+        message (sig/state scheduler "Shipped")
+        reactions (sig/state scheduler "2 reactions")
+        status (sig/state scheduler "3 items")
+        root
+        (retained-message-surfaces
+         (ui/context application scope)
+         (sig/value title)
+         (sig/value message)
+         (sig/value reactions)
+         (sig/value status))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [alert (nth (apple/children renderer root) 0)
+          bubble (nth (apple/children renderer root) 1)
+          status-bar (nth (apple/children renderer root) 2)
+          message-node (nth (apple/children renderer bubble) 0)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer alert)
+        (Some AppleAlert) (is true "Alert maps directly")
+        _ (is false "Alert native mapping exists"))
+      (match (apple/node renderer bubble)
+        (Some AppleBubble) (is true "Bubble maps directly")
+        _ (is false "Bubble native mapping exists"))
+      (match (apple/node renderer status-bar)
+        (Some AppleStatusBar) (is true "StatusBar maps directly")
+        _ (is false "StatusBar native mapping exists"))
+      (assert-equal [message-node] (apple/children renderer bubble)
+                    "Reactions adds no layout node")
+      (assert-equal
+       (Some (proto/StringValue "2 reactions"))
+       (apple/property renderer bubble proto/TextValue)
+       "Reactions lowers onto Bubble chrome text")
+      (sig/set! reactions "4 reactions")
+      (sig/set! status "5 items")
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "message text patches allocate no nodes")
+      (assert-equal
+       (Some (proto/StringValue "4 reactions"))
+       (apple/property renderer bubble proto/TextValue)
+       "Reactions Signal patches only Bubble chrome")
+      (assert-equal
+       (Some (proto/StringValue "5 items"))
+       (apple/property renderer status-bar proto/TextValue)
+       "StatusBar Signal patches the same leaf"))))
 
 (deftest avatar-binds-a-model-owned-image-id-without-replacing-its-node
   (let [scheduler (sig/scheduler)

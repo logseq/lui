@@ -689,12 +689,19 @@ final class LUIFlutterBackend {
         .where((child) => child != contextMenuID)
         .map((child) {
           final childWidget = widget(node: child);
+          final childState = _states[child];
+          if (state.kind == _NodeKind.row &&
+              childState?.kind == _NodeKind.bubble &&
+              childState?.properties['variant'] != 'ghost' &&
+              childState?.properties.containsKey('width') == false) {
+            return Flexible(child: childWidget);
+          }
           if (state.kind != _NodeKind.row &&
               state.kind != _NodeKind.column &&
               state.kind != _NodeKind.list) {
             return childWidget;
           }
-          final grow = _states[child]?.properties['grow'] as num? ?? 0;
+          final grow = childState?.properties['grow'] as num? ?? 0;
           if (grow <= 0) return childWidget;
           final scaled = (grow * 1000).round();
           return Expanded(flex: scaled < 1 ? 1 : scaled, child: childWidget);
@@ -1262,6 +1269,61 @@ final class LUIFlutterBackend {
           : null,
       children: children,
     );
+    Widget alert() => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 8,
+      children: [
+        if (text.isNotEmpty)
+          Text(text, style: Theme.of(context).textTheme.titleSmall),
+        Stack(children: children),
+      ],
+    );
+    Widget bubble() {
+      final reactionAlignment = switch (state.properties['text-alignment']) {
+        'start' => Alignment.centerLeft,
+        'center' => Alignment.center,
+        _ => Alignment.centerRight,
+      };
+      return IntrinsicWidth(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Stack(children: children),
+            if (text.isNotEmpty)
+              Align(
+                alignment: reactionAlignment,
+                child: Chip(
+                  label: Text(text),
+                  labelStyle: Theme.of(context).textTheme.labelSmall,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
+    Widget statusBar() => Align(
+      alignment: switch (state.properties['text-alignment']) {
+        'center' => Alignment.center,
+        'end' => Alignment.centerRight,
+        _ => Alignment.centerLeft,
+      },
+      child: Text(
+        text,
+        textAlign: switch (state.properties['text-alignment']) {
+          'center' => TextAlign.center,
+          'end' => TextAlign.end,
+          _ => TextAlign.start,
+        },
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: foreground ?? Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
     Widget textNode() {
       final label = Text(
         text,
@@ -1359,6 +1421,8 @@ final class LUIFlutterBackend {
       _NodeKind.panel ||
       _NodeKind.card ||
       _NodeKind.resizable => Stack(children: children),
+      _NodeKind.alert => alert(),
+      _NodeKind.bubble => bubble(),
       _NodeKind.split => _LUISplit(
         sourceFraction: (state.properties['value'] as double?) ?? 0,
         gap: (state.properties['gap'] as int? ?? 9).toDouble(),
@@ -1507,6 +1571,7 @@ final class LUIFlutterBackend {
         size: iconExtent,
         color: foreground,
       ),
+      _NodeKind.statusBar => statusBar(),
     };
 
     if (state.kind.isModalSurface) return content;
@@ -1516,6 +1581,10 @@ final class LUIFlutterBackend {
         state.properties['padding'] as int? ??
         (state.kind == _NodeKind.card
             ? 24
+            : state.kind == _NodeKind.alert
+            ? 16
+            : state.kind == _NodeKind.bubble
+            ? 12
             : state.kind == _NodeKind.tabs
             ? 4
             : 0);
@@ -1537,7 +1606,16 @@ final class LUIFlutterBackend {
     );
     Widget surface = isSurface
         ? Material(
-            color: background ?? Theme.of(context).colorScheme.surface,
+            color:
+                background ??
+                (state.kind == _NodeKind.bubble && buttonVariant == 'primary'
+                    ? Theme.of(context).colorScheme.primary
+                    : state.kind == _NodeKind.bubble && buttonVariant == 'ghost'
+                    ? Colors.transparent
+                    : state.kind == _NodeKind.alert &&
+                          buttonVariant == 'destructive'
+                    ? Theme.of(context).colorScheme.errorContainer
+                    : Theme.of(context).colorScheme.surface),
             elevation: state.kind == _NodeKind.panel ? 1 : 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(
@@ -1575,6 +1653,21 @@ final class LUIFlutterBackend {
             ),
             child: content,
           );
+    if (state.kind == _NodeKind.bubble &&
+        buttonVariant != 'ghost' &&
+        !state.properties.containsKey('width')) {
+      final bubbleSurface = surface;
+      surface = LayoutBuilder(
+        builder: (context, constraints) => constraints.hasBoundedWidth
+            ? ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: constraints.maxWidth * 0.8,
+                ),
+                child: bubbleSurface,
+              )
+            : bubbleSurface,
+      );
+    }
     if (state.kind == _NodeKind.resizable) {
       surface = _LUIResizable(
         initialWidth: (state.properties['width'] as int?)?.toDouble(),
@@ -1857,6 +1950,9 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.tableCell ||
                 kind == _NodeKind.avatar ||
                 kind == _NodeKind.tooltip ||
+                kind == _NodeKind.alert ||
+                kind == _NodeKind.bubble ||
+                kind == _NodeKind.statusBar ||
                 kind.isModalSurface),
       'enabled' =>
         value is bool &&
@@ -1909,7 +2005,9 @@ final class LUIFlutterBackend {
       'variant' =>
         value is String &&
             _buttonVariants.contains(value) &&
-            _isButtonKind(kind),
+            (_isButtonKind(kind) ||
+                kind == _NodeKind.alert ||
+                kind == _NodeKind.bubble),
       'icon' =>
         value is String &&
             (_iconNames.contains(value) ||
@@ -2014,7 +2112,10 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.listItem ||
                 kind == _NodeKind.tableCell ||
                 kind == _NodeKind.resizable ||
-                kind == _NodeKind.split),
+                kind == _NodeKind.split ||
+                kind == _NodeKind.alert ||
+                kind == _NodeKind.bubble ||
+                kind == _NodeKind.statusBar),
       'border-color' =>
         value is String &&
             kind != _NodeKind.avatar &&
@@ -2076,11 +2177,15 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.tree ||
                 kind == _NodeKind.resizable ||
                 kind == _NodeKind.split ||
+                kind == _NodeKind.alert ||
+                kind == _NodeKind.bubble ||
                 _isTreeRowKind(kind)),
       'text-alignment' =>
         value is String &&
             _textAlignments.contains(value) &&
-            kind == _NodeKind.tableCell,
+            (kind == _NodeKind.tableCell ||
+                kind == _NodeKind.bubble ||
+                kind == _NodeKind.statusBar),
       'role' => value == 'treeitem' && value is String && _isTreeRowKind(kind),
       'tree-level' => value is int && value > 0 && _isTreeRowKind(kind),
       'expanded' => value is bool && _isTreeRowKind(kind),
@@ -2354,6 +2459,8 @@ final class LUIFlutterBackend {
       kind == _NodeKind.tree ||
       kind == _NodeKind.resizable ||
       kind == _NodeKind.split ||
+      kind == _NodeKind.alert ||
+      kind == _NodeKind.bubble ||
       _isContextMenuLeafHost(kind) ||
       kind.isModalSurface;
 
@@ -2801,6 +2908,8 @@ extension on _NodeKind {
   bool get isOverlaySurface =>
       this == _NodeKind.panel ||
       this == _NodeKind.card ||
+      this == _NodeKind.alert ||
+      this == _NodeKind.bubble ||
       this == _NodeKind.resizable;
 }
 

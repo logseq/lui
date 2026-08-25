@@ -83,6 +83,17 @@
      [:text "Stack base layer"]]
     [:text {:padding 16} "Overlay layer"]]])
 
+(defui message-surface-gallery [copy-source]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Alert, Bubble, Reactions, and StatusBar"]
+   [:alert {:text "Sync paused" :variant "secondary"}
+    [:paragraph "Reconnect to resume model-owned updates."]]
+   [:row {:main "end"}
+    [:bubble {:variant "primary"}
+     [:paragraph {:value copy-source}]
+     [:reactions {:text-alignment "end"} "2 reactions"]]]
+   [:status-bar {:value copy-source :text-alignment "end"}]])
+
 (defui resizable-gallery []
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "Resizable"]
@@ -689,6 +700,7 @@
    [icon-gallery]
    [progress-gallery progress-source progress-label-source advance-progress]
    [surface-gallery card-copy]
+   [message-surface-gallery card-copy]
    [resizable-gallery]
    [split-gallery split-fraction-source set-split-fraction]
    [dialog-gallery dialog-open-source open-dialog close-dialog]

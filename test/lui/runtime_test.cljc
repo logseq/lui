@@ -1500,6 +1500,96 @@
     (assert-equal 0 (apple/node-count renderer)
                   "invalid visible children remain atomic")))
 
+(deftest message-surfaces-use-the-pinned-retained-contract
+  (let [batch
+        (record
+         proto/patch-batch
+         (generation 1)
+         (ops [(proto/create-node-op 1 proto/Column)
+               (proto/create-node-op 2 proto/Alert)
+               (proto/create-node-op 3 proto/Text)
+               (proto/create-node-op 4 proto/Bubble)
+               (proto/create-node-op 5 proto/Text)
+               (proto/create-node-op 6 proto/StatusBar)
+               (proto/set-prop-op
+                2 proto/TextValue (proto/StringValue "Sync paused"))
+               (proto/set-prop-op
+                4 proto/VariantValue (proto/StringValue "primary"))
+               (proto/set-prop-op
+                4 proto/TextValue (proto/StringValue "2 reactions"))
+               (proto/set-prop-op
+                4 proto/TextAlignment (proto/StringValue "start"))
+               (proto/set-prop-op
+                6 proto/TextValue (proto/StringValue "3 items"))
+               (proto/insert-child-op 1 2 0)
+               (proto/insert-child-op 2 3 0)
+               (proto/insert-child-op 1 4 1)
+               (proto/insert-child-op 4 5 0)
+               (proto/insert-child-op 1 6 2)]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"column\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"alert\"},"
+      "{\"op\":\"create-node\",\"id\":3,\"kind\":\"text\"},"
+      "{\"op\":\"create-node\",\"id\":4,\"kind\":\"bubble\"},"
+      "{\"op\":\"create-node\",\"id\":5,\"kind\":\"text\"},"
+      "{\"op\":\"create-node\",\"id\":6,\"kind\":\"status-bar\"},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"text\","
+      "\"value\":\"Sync paused\"},"
+      "{\"op\":\"set-prop\",\"id\":4,\"property\":\"variant\","
+      "\"value\":\"primary\"},"
+      "{\"op\":\"set-prop\",\"id\":4,\"property\":\"text\","
+      "\"value\":\"2 reactions\"},"
+      "{\"op\":\"set-prop\",\"id\":4,"
+      "\"property\":\"text-alignment\",\"value\":\"start\"},"
+      "{\"op\":\"set-prop\",\"id\":6,\"property\":\"text\","
+      "\"value\":\"3 items\"},"
+      "{\"op\":\"insert-child\",\"parent\":1,\"child\":2,\"index\":0},"
+      "{\"op\":\"insert-child\",\"parent\":2,\"child\":3,\"index\":0},"
+      "{\"op\":\"insert-child\",\"parent\":1,\"child\":4,\"index\":1},"
+      "{\"op\":\"insert-child\",\"parent\":4,\"child\":5,\"index\":0},"
+      "{\"op\":\"insert-child\",\"parent\":1,\"child\":6,\"index\":2}]}")
+     (wire/encode-batch batch)
+     "message surfaces keep closed native wire names")
+    (doseq [kind [proto/Alert proto/Bubble]]
+      (is (proto/can-contain-children? kind)
+          "message surfaces retain stacked content")
+      (is (not (proto/property-supported? kind proto/Gap))
+          "stacking message surfaces reject gap"))
+    (is (not (proto/can-contain-children? proto/StatusBar))
+        "StatusBar remains a text leaf")
+    (is (proto/property-supported? proto/Alert proto/TextValue)
+        "Alert admits its chrome title")
+    (is (proto/property-supported? proto/Bubble proto/TextValue)
+        "Bubble carries lowered Reactions text internally")
+    (is (proto/property-supported? proto/Bubble proto/TextAlignment)
+        "Bubble carries the Reactions dock internally")
+    (is (proto/property-supported? proto/StatusBar proto/TextValue)
+        "StatusBar admits plain text")
+    (let [renderer (apple/create)
+          apply-batch (:apply-batch (apple/backend renderer))]
+      (is (apply-batch batch))
+      (assert-equal [2 4 6] (apple/children renderer 1)
+                    "native adapters retain all three surfaces")
+      (assert-equal [3] (apple/children renderer 2)
+                    "Alert content stays retained")
+      (assert-equal [5] (apple/children renderer 4)
+                    "Bubble message stays retained")))
+  (doseq [kind [proto/Alert proto/Bubble]]
+    (let [renderer (apple/create)
+          apply-batch (:apply-batch (apple/backend renderer))]
+      (is (thrown? Invalid_argument
+                   (apply-batch
+                    (record
+                     proto/patch-batch
+                     (generation 1)
+                     (ops [(proto/create-node-op 1 kind)
+                           (proto/set-prop-op
+                            1 proto/Gap (proto/IntValue 8))])))))
+      (assert-equal 0 (apple/node-count renderer)
+                    "invalid surface batches remain atomic"))))
+
 (deftest table-family-has-the-pinned-closed-contract
   (let [batch
         (record proto/patch-batch

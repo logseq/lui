@@ -80,6 +80,19 @@ test("the production stylesheet contains Vercel Native overlay surfaces", async 
   assert.doesNotMatch(css, /\.lui-card-(?:header|content|footer|title|description)/)
 })
 
+test("message surfaces use compact Tailwind chrome without Reactions layout nodes", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-alert\{[^}]*border-radius:var\(--radius-xl\)/)
+  assert.match(css, /\.lui-alert-title\{[^}]*font-weight:/)
+  assert.match(css, /\.lui-alert-content\{[^}]*display:grid/)
+  assert.match(css, /\.lui-bubble\{[^}]*position:relative/)
+  assert.match(css, /\.lui-bubble:not\(\[data-variant=ghost\]\):not\(\[data-width\]\)\{[^}]*max-width:80%/)
+  assert.match(css, /\.lui-bubble-reactions\{[^}]*position:absolute/)
+  assert.match(css, /\.lui-status-bar\{[^}]*font-size:/)
+  assert.doesNotMatch(css, /\.lui-reactions\{/)
+})
+
 test("Dialog uses the browser top layer and compact Tailwind surface styling", async () => {
   const css = await readFile(outputUrl, "utf8")
 

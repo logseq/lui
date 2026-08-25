@@ -747,6 +747,40 @@ retained MenuItem's existing typed `Press` event; dismissal and presentation
 remain backend-owned and never enter the LG model. ContextMenu and item Signal
 patches preserve the host and its visible content identities.
 
+#### Alert, Bubble, Reactions, and StatusBar contract
+
+`alert` and `bubble` are distinct retained surface containers. Their direct
+children stack in one content box; authors use an explicit `column` or `row`
+when message content should flow. Consequently `gap` is invalid on both.
+Alert may carry its chrome title through `text`; Bubble must reject `text`
+because that internal channel belongs exclusively to its optional Reactions
+pill. Both admit the pinned common surface dimensions, padding, appearance,
+variant, and accessibility label. Alert title and all descendants remain
+identity-preserving under Signal patches.
+
+`bubble` hugs its message content and caps its implicit width at 80% of the
+available conversation width. The `ghost` variant is exempt from that cap,
+and an explicit `width` remains authoritative. This is a layout default, not a
+public alignment or sender-direction property; callers arrange incoming and
+outgoing bubbles with ordinary Row/Column composition.
+
+`reactions` is retained Bubble chrome metadata rather than a visible child or
+a separately laid-out widget. A Bubble accepts at most one direct Reactions
+declaration. It contains exactly one non-empty plain-text run and admits only
+`text-alignment` with `start`, `center`, or `end`; `end` is the default dock.
+The pill straddles the Bubble's bottom edge without changing the identity or
+child indices of the message subtree. Reactions outside Bubble, nested
+elements, events, keys, and layout attributes are invalid. Its literal or
+Signal text lowers onto Bubble's closed internal text property at the native
+wire boundary, matching the pinned reference rather than minting a public
+Bubble `text` attribute.
+
+`status-bar` is one retained plain-text leaf. It accepts exactly one literal
+text child or a reactive text source, never element children. It maps to the
+platform's subdued status surface and exposes text semantics; its content and
+text alignment patch the same retained node. It is not a desktop window
+status API and owns no application state or dismissal behavior.
+
 #### Table contract
 
 `table`, `table-row`, and `table-cell` are three retained semantic nodes. A

@@ -7,6 +7,8 @@
   (FlutterStack)
   (FlutterPanel)
   (FlutterCard)
+  (FlutterAlert)
+  (FlutterBubble)
   (FlutterBox)
   (FlutterParagraph)
   (FlutterHeading)
@@ -49,7 +51,8 @@
   (FlutterTableCell)
   (FlutterTree)
   (FlutterResizable)
-  (FlutterSplit))
+  (FlutterSplit)
+  (FlutterStatusBar))
 
 (type-record flutter-renderer
   (flutter-store :retained-store<flutter-node>)
