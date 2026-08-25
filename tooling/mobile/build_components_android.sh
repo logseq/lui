@@ -23,7 +23,7 @@ jni_library="$repo_root/examples/components/flutter/android/app/src/main/jniLibs
 
 [[ -x $target_prefix/bin/ocamlopt.opt ]] || {
   echo "error: shared Android OCaml toolchain is missing: $target_prefix" >&2
-  echo "run 'lg mobile setup --target android' or set LG_ANDROID_OCAML_PREFIX" >&2
+  echo "run 'lg mobile setup android' or set LG_ANDROID_OCAML_PREFIX" >&2
   exit 1
 }
 
@@ -55,7 +55,7 @@ gallery_object=${LUI_GALLERY_OCAML_OBJECT:-}
 if [[ -z $gallery_object ]]; then
   native_root="$repo_root/_build/mobile-components/lg-android"
   "$repo_root/tooling/mobile/build_components_lg.sh" \
-    --target android \
+    android \
     --output-dir "$native_root" >/dev/null
   gallery_object="$native_root/android/$android_abi/mobile_app_complete.o"
 fi

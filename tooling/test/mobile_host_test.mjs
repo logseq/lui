@@ -8,12 +8,13 @@ async function source(path) {
   return readFile(new URL(path, root), "utf8");
 }
 
-test("one LG command builds shared development mobile objects", async () => {
+test("the Gallery names each LG mobile target explicitly", async () => {
   const mobile = await source("tooling/mobile/build_components_mobile.sh");
   const lg = await source("tooling/mobile/build_components_lg.sh");
 
   assert.match(mobile, /build_components_lg\.sh/);
-  assert.match(mobile, /--profile development/);
+  assert.match(mobile, /build_components_lg\.sh" \\\n  ios simulator/);
+  assert.match(mobile, /build_components_lg\.sh" \\\n  android/);
   assert.match(mobile, /build_components_ios_simulator\.sh/);
   assert.match(mobile, /build_components_android\.sh/);
   assert.match(lg, /lg mobile build/);

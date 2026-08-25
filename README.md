@@ -63,10 +63,10 @@ Build the iOS Simulator app and Android arm64 APK together with:
 make build-components-mobile
 ```
 
-The command asks LG to cross-compile the shared Gallery once for the
-development mobile profile, then links the two host applications. Shared
-toolchains are installed once with `lg mobile setup --profile development`;
-LUI does not clone OCaml or keep per-project cross-toolchain scripts.
+The command invokes the explicit `ios simulator` and `android` LG targets,
+then links the two host applications. Shared toolchains are installed once
+with `lg mobile setup ios simulator` and `lg mobile setup android`; LUI does
+not clone OCaml or keep per-project cross-toolchain scripts.
 
 ## Declarative UI
 
