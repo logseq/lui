@@ -405,6 +405,9 @@ struct LUIRetainedTree {
         child: Int,
         registry: LUIAppleExtensionRegistry
     ) throws {
+        if nodes[child]?.kind == .root {
+            throw invalid("runtime root cannot be nested")
+        }
         if let childNode = extensionNodes[child],
            let registration = registry.registration(childNode.identifier),
            registration.isTweak {
@@ -493,6 +496,7 @@ struct LUIRetainedTree {
     }
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
+        if kind == .root { return false }
         if kind == .contextMenu { return false }
         if kind == .accordion {
             return property == .text || property == .selected ||
@@ -629,7 +633,7 @@ struct LUIRetainedTree {
     }
 
     private static func canContainChildren(_ kind: LUINodeKind) -> Bool {
-        kind == .row || kind == .column || kind == .grid || kind == .stack ||
+        kind == .root || kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
             kind == .list || isHorizontalGroup(kind) || kind == .radioGroup
             || kind == .dropdownMenu || kind == .contextMenu || kind == .listItem || isModalSurface(kind)
@@ -643,7 +647,7 @@ struct LUIRetainedTree {
     }
 
     private static func acceptsExtensionChildren(_ kind: LUINodeKind) -> Bool {
-        kind == .row || kind == .column || kind == .grid || kind == .stack ||
+        kind == .root || kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
             kind == .list || kind == .listItem || kind == .dialog ||
             kind == .sheet || kind == .accordion || kind == .resizable || kind == .split ||
@@ -676,6 +680,14 @@ struct LUIRetainedTree {
         extensionRegistry: LUIAppleExtensionRegistry
     ) throws {
         for node in nodes.values {
+            if node.kind == .root {
+                guard node.parent == nil else {
+                    throw invalid("runtime root cannot have a parent")
+                }
+                guard node.children.count == 1 else {
+                    throw invalid("runtime root requires exactly one child")
+                }
+            }
             try validateSizeAxis(
                 node,
                 fixed: .width,

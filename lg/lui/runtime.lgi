@@ -30,6 +30,21 @@
   (flush-signal-effect-count :int)
   (flush-signal-dirty-task-count :int))
 
+(type-record runtime-checkpoint
+  (checkpoint-generation :int)
+  (checkpoint-next-node-id :int)
+  (checkpoint-mounted-nodes :map<int;node-kind>)
+  (checkpoint-extension-nodes :map<int;string>)
+  (checkpoint-properties :map<int;map<property;wire-value>>)
+  (checkpoint-extension-properties :map<int;map<string;wire-value>>)
+  (checkpoint-children :map<int;vector<int>>)
+  (checkpoint-parents :map<int;int>)
+  (checkpoint-pending-ops :vector<patch-op>)
+  (checkpoint-next-handler-id :int)
+  (checkpoint-event-handlers :map<int;vector<event-handler>>)
+  (checkpoint-next-dynamic-segment-id :int)
+  (checkpoint-dynamic-segments :map<int;vector<dynamic-segment>>))
+
 (type-record application
   (runtime-scheduler :scheduler)
   (runtime-backend :backend)
@@ -52,6 +67,8 @@
 (signature lui.runtime/create :fn<scheduler;backend;application>)
 (signature lui.runtime/create-with-extensions
   :fn<scheduler;backend;extension-registry;application>)
+(signature lui.runtime/checkpoint :fn<application;runtime-checkpoint>)
+(signature lui.runtime/restore! :fn<application;runtime-checkpoint;bool>)
 (signature lui.runtime/empty-ops :fn<vector<patch-op>>)
 (signature lui.runtime/empty-handlers :fn<vector<event-handler>>)
 (signature lui.runtime/empty-dynamic-segments

@@ -2,6 +2,7 @@
 (ns lui.protocol)
 
 (type-variant node-kind
+  (Root)
   (Row)
   (Column)
   (Grid)

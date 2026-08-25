@@ -92,6 +92,10 @@ body {
 }
 
 @layer components {
+  .lui-root {
+    display: contents;
+  }
+
   .lui-row {
     @apply flex flex-row;
   }

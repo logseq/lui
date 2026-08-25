@@ -5,6 +5,13 @@
   (Disposing)
   (Disposed))
 
+(type-record reloadable-view-state [model action]
+  (reload-model-source :signal<model>)
+  (reload-view-scope :ref<scope>)
+  (reload-view-node :ref<int>)
+  (reload-session
+   :hot-reload-session<fn<ui-context;signal<model>;fn<action;bool>;int>>))
+
 (type-record reducer-app [model action]
   (app-scheduler :scheduler)
   (app-runtime :application)
@@ -12,7 +19,8 @@
   (app-read-model :fn<model>)
   (app-send-action :fn<action;bool>)
   (app-root-node :int)
-  (app-lifecycle-state :ref<app-lifecycle>))
+  (app-lifecycle-state :ref<app-lifecycle>)
+  (app-reload-state :option<reloadable-view-state<model;action>>))
 
 (signature lui.app/reduce! [model action]
   :fn<state<model>;fn<model;action;model>;action;bool>)
@@ -30,3 +38,7 @@
   :fn<reducer-app<model;action>;application>)
 (signature lui.app/dispatch-event! [model action]
   :fn<reducer-app<model;action>;event;bool>)
+(signature lui.app/request-reload! [model action]
+  :fn<reducer-app<model;action>;int>)
+(signature lui.app/reload-view! [model action]
+  :fn<reducer-app<model;action>;int;string;string;fn<ui-context;signal<model>;fn<action;bool>;int>;int;reload-status>)

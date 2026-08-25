@@ -2,6 +2,7 @@
 import Foundation
 
 enum LUINodeKind: String, Decodable, Equatable {
+    case root = "root"
     case row = "row"
     case column = "column"
     case grid = "grid"

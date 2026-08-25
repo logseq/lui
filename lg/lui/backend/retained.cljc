@@ -135,16 +135,18 @@
             (extension-schema registry parent-identifier))
            child-identifier))))
     (StandardSemantic child-kind)
-    (match (:semantic-kind parent)
-      (StandardSemantic parent-kind)
-      (and
-       (proto/can-contain-children? parent-kind)
-       (proto/child-kind-supported? parent-kind child-kind))
-      (ExtensionSemantic parent-identifier _parent-fingerprint)
-      (if (ext/tweak? registry parent-identifier)
-        (empty? (:retained-children parent))
-        (:extension-standard-children
-         (extension-schema registry parent-identifier))))))
+    (if (= child-kind proto/Root)
+      false
+      (match (:semantic-kind parent)
+        (StandardSemantic parent-kind)
+        (and
+         (proto/can-contain-children? parent-kind)
+         (proto/child-kind-supported? parent-kind child-kind))
+        (ExtensionSemantic parent-identifier _parent-fingerprint)
+        (if (ext/tweak? registry parent-identifier)
+          (empty? (:retained-children parent))
+          (:extension-standard-children
+           (extension-schema registry parent-identifier)))))))
 
 (defn- unsupported-child-message [parent child]
   (match (tuple (:semantic-kind parent) (:semantic-kind child))
@@ -561,6 +563,13 @@
     (when (not (= (count (:retained-children current)) 2))
       (raise (Invalid_argument "split requires exactly two children")))))
 
+(defn- validate-root! [current]
+  (when (standard-kind? current proto/Root)
+    (when-not (= (:retained-parent current) None)
+      (raise (Invalid_argument "runtime root cannot have a parent")))
+    (when-not (= (count (:retained-children current)) 1)
+      (raise (Invalid_argument "runtime root requires exactly one child")))))
+
 (defn- validate-nodes! [nodes registry]
   (reduce-kv
    (fn [_valid _node current]
@@ -581,6 +590,7 @@
          (validate-input-group! nodes current)
          (validate-tree-item! nodes current)
          (validate-split! current)
+         (validate-root! current)
          (when-not
           (proto/node-properties-supported?
            kind (:retained-properties current))

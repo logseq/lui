@@ -7,6 +7,73 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lui_flutter_backend/lui_flutter_backend.dart';
 
 void main() {
+  testWidgets('keeps one transparent runtime root while replacing its child', (
+    tester,
+  ) async {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"root"},
+        {"op":"create-node","id":2,"kind":"text"},
+        {"op":"set-prop","id":2,"property":"text","value":"Before"},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    final rootElement = tester.element(
+      find.byKey(LUIFlutterBackend.nodeKey(1)),
+    );
+    expect(find.text('Before'), findsOneWidget);
+
+    backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"create-node","id":3,"kind":"text"},
+        {"op":"set-prop","id":3,"property":"text","value":"After"},
+        {"op":"remove-child","parent":1,"child":2},
+        {"op":"insert-child","parent":1,"child":3,"index":0},
+        {"op":"drop-node","id":2}
+      ]}
+      ''');
+    await tester.pump();
+
+    expect(
+      identical(
+        rootElement,
+        tester.element(find.byKey(LUIFlutterBackend.nodeKey(1))),
+      ),
+      isTrue,
+    );
+    expect(find.text('Before'), findsNothing);
+    expect(find.text('After'), findsOneWidget);
+    expect(backend.containsNode(2), isFalse);
+  });
+
+  test('rejects a runtime root with more than one child', () {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"root"},
+        {"op":"create-node","id":2,"kind":"text"},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ]}
+      ''');
+
+    expect(
+      () => backend.applyJson('''
+        {"generation":2,"ops":[
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 1);
+    expect(backend.containsNode(3), isFalse);
+  });
+
   testWidgets('registered extensions retain identity and validate events', (
     tester,
   ) async {

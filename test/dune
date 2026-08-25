@@ -10,6 +10,8 @@
   ../examples/components/test/components/app_test.cljc
   ../examples/todos/test/todos/app_test.cljc
   lui/runtime_test.cljc
+  lui/hot_reload_test.cljc
+  lui/hot_reload_view_test.cljc
   lui/authoring_test.cljc
   lui/dynamic_test.cljc
   lui/extension_test.cljc
@@ -33,6 +35,8 @@
    %{dep:../examples/components/test/components/app_test.cljc}
    %{dep:../examples/todos/test/todos/app_test.cljc}
    %{dep:lui/runtime_test.cljc}
+   %{dep:lui/hot_reload_test.cljc}
+   %{dep:lui/hot_reload_view_test.cljc}
    %{dep:lui/authoring_test.cljc}
    %{dep:lui/dynamic_test.cljc}
    %{dep:lui/extension_test.cljc}
@@ -64,6 +68,8 @@
   ../examples/components/test/components/app_test.cljc
   ../examples/todos/test/todos/app_test.cljc
   lui/runtime_test.cljc
+  lui/hot_reload_test.cljc
+  lui/hot_reload_view_test.cljc
   lui/authoring_test.cljc
   lui/dynamic_test.cljc
   lui/extension_test.cljc
@@ -87,6 +93,8 @@
    %{dep:../examples/components/test/components/app_test.cljc}
    %{dep:../examples/todos/test/todos/app_test.cljc}
    %{dep:lui/runtime_test.cljc}
+   %{dep:lui/hot_reload_test.cljc}
+   %{dep:lui/hot_reload_view_test.cljc}
    %{dep:lui/authoring_test.cljc}
    %{dep:lui/dynamic_test.cljc}
    %{dep:lui/extension_test.cljc}
@@ -120,6 +128,49 @@
   (progn
    (run %{exe:lui_runtime_native.exe})
    (run node %{dep:lui-runtime-melange/test/lui_runtime_melange.js}))))
+
+(rule
+ (target hot_reload_native.ml)
+ (deps
+  ../lg/lui/lui_native.state
+  (source_tree ../lg/lui/backend)
+  %{lib:lg-test.sources:test.cljc}
+  %{lib:lg-test.sources:test_native.cljc}
+  lui/hot_reload_test.cljc
+  lui/hot_reload_view_test.cljc
+  %{lib:lg-test.sources:run.cljc}
+  %{lib:lg-test.runtime:lg_test_runtime.cmi}
+  %{lib:lg-test.alcotest:lg_test_alcotest.cmi}
+  %{bin:lg})
+ (action
+  (run
+   %{bin:lg}
+   --target native
+   --compile-files-from ../lg/lui/lui_native.state
+   ../lg/lui/backend/retained
+   ../lg/lui/backend/apple
+   %{lib:lg-test.sources:test.cljc}
+   %{lib:lg-test.sources:test_native.cljc}
+   %{dep:lui/hot_reload_test.cljc}
+   %{dep:lui/hot_reload_view_test.cljc}
+   %{lib:lg-test.sources:run.cljc}
+   -o %{target})))
+
+(executable
+ (name hot_reload_native)
+ (modules hot_reload_native)
+ (flags (:standard -w -27-32-37-39-69))
+ (libraries
+  lg.edn-backend.native
+  lg.runtime
+  lg.rrbvec
+  lg-test.runtime
+  lg-test.alcotest))
+
+(rule
+ (alias hot-reload-test)
+ (deps hot_reload_native.exe)
+ (action (run %{exe:hot_reload_native.exe})))
 
 (rule
  (target apple_bridge_native.ml)

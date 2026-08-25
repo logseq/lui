@@ -1,6 +1,6 @@
 (ns lui.backend.apple
   (:require [lui.protocol :as proto
-             :refer [Row Column Grid Stack Panel Card Alert Bubble Box
+             :refer [Root Row Column Grid Stack Panel Card Alert Bubble Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
@@ -30,6 +30,7 @@
 
 (defn- platform-node [kind]
   (match kind
+    Root AppleRoot
     Row AppleRow
     Column AppleColumn
     Grid AppleGrid

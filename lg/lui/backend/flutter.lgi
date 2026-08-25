@@ -1,6 +1,7 @@
 (ns lui.backend.flutter)
 
 (type-variant flutter-node
+  (FlutterRoot)
   (FlutterFlexRow)
   (FlutterFlexColumn)
   (FlutterGrid)

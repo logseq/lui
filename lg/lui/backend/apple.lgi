@@ -1,6 +1,7 @@
 (ns lui.backend.apple)
 
 (type-variant apple-node
+  (AppleRoot)
   (AppleRow)
   (AppleColumn)
   (AppleGrid)

@@ -1,30 +1,31 @@
 ;; Generated from schema/components.json. Do not edit by hand.
 (ns lui.wire-schema
-  (:require [lui.protocol :refer [Row Column Grid Stack Panel Card
-                     Alert Bubble Box Text Heading Paragraph
-                     Label Button ToggleButton Toggle RadioGroup Radio
-                     Slider TextField Input SearchField Textarea Checkbox
-                     SwitchControl Progress Divider Scroll ListContainer Tabs
-                     ButtonGroup ToggleGroup Spacer Spinner Icon Select
-                     Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar
-                     Image MediaSurface Stepper Step Timeline TimelineItem
-                     InputGroup InputGroupActions Breadcrumb Pagination Accordion Table
-                     TableRow TableCell Tree Resizable Split Dialog
-                     Sheet Tooltip Toast Toolbar StatusBar TextValue
-                     Enabled Gap MainAlignment CrossAlignment GrowValue GridColumns
-                     PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue
-                     BorderWidth CornerRadius WidthValue HeightValue MinWidth MaxWidth
-                     MinHeight MaxHeight PlaceholderValue AccessibilityLabel StyleClass HeadingLevel
-                     Checked ProgressValue OrientationValue SizeValue IconName VariantValue
-                     InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled
-                     ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue
-                     SurfaceIdValue ActiveIndex TitleValue DescriptionValue MetaValue IndicatorValue
-                     Connector SourceX SourceY SourceWidth SourceHeight AnchorValue
-                     AnchorAlignmentValue AnchorOffset TooltipDelay DurationValue TextAlignment RoleValue
-                     TreeLevel Expanded ResizeDuration ResizeEasing ResizeOrigin]]))
+  (:require [lui.protocol :refer [Root Row Column Grid Stack Panel
+                     Card Alert Bubble Box Text Heading
+                     Paragraph Label Button ToggleButton Toggle RadioGroup
+                     Radio Slider TextField Input SearchField Textarea
+                     Checkbox SwitchControl Progress Divider Scroll ListContainer
+                     Tabs ButtonGroup ToggleGroup Spacer Spinner Icon
+                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem
+                     Avatar Image MediaSurface Stepper Step Timeline
+                     TimelineItem InputGroup InputGroupActions Breadcrumb Pagination Accordion
+                     Table TableRow TableCell Tree Resizable Split
+                     Dialog Sheet Tooltip Toast Toolbar StatusBar
+                     TextValue Enabled Gap MainAlignment CrossAlignment GrowValue
+                     GridColumns PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue
+                     BorderColorValue BorderWidth CornerRadius WidthValue HeightValue MinWidth
+                     MaxWidth MinHeight MaxHeight PlaceholderValue AccessibilityLabel StyleClass
+                     HeadingLevel Checked ProgressValue OrientationValue SizeValue IconName
+                     VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter
+                     HoldEnabled ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled
+                     ImageIdValue SurfaceIdValue ActiveIndex TitleValue DescriptionValue MetaValue
+                     IndicatorValue Connector SourceX SourceY SourceWidth SourceHeight
+                     AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay DurationValue TextAlignment
+                     RoleValue TreeLevel Expanded ResizeDuration ResizeEasing ResizeOrigin]]))
 
 (defn node-kind-name [kind]
   (match kind
+    Root "root"
     Row "row"
     Column "column"
     Grid "grid"
@@ -93,6 +94,7 @@
 
 (defn standard-node-name? [name]
   (match name
+    "root" true
     "row" true
     "column" true
     "grid" true

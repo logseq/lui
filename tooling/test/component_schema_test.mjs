@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -112,6 +112,25 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.ok(!summary.pending.includes('timeline-item'));
   assert.ok(!summary.pending.includes('input-group'));
   assert.ok(!summary.pending.includes('input-group-actions'));
+});
+
+test('schema reserves one internal transparent root node', () => {
+  const schema = JSON.parse(
+    readFileSync(join(repository, 'schema/components.json'), 'utf8'),
+  );
+  const root = schema.nodeKinds.find((kind) => kind.wire === 'root');
+
+  assert.deepEqual(root, {
+    lg: 'Root',
+    wire: 'root',
+    dart: 'root',
+    swift: 'root',
+    container: true,
+  });
+  assert.ok(
+    !schema.publicElements.some((element) => element.name === 'root'),
+    'the runtime root must not become an authorable UI element',
+  );
 });
 
 test('schema validation rejects duplicate wire names before generation', () => {

@@ -252,7 +252,7 @@
 
 (defn standard-container-supported? [kind]
   (or
-   (= kind proto/Row) (= kind proto/Column) (= kind proto/Grid)
+   (= kind proto/Root) (= kind proto/Row) (= kind proto/Column) (= kind proto/Grid)
    (= kind proto/Stack) (= kind proto/Panel) (= kind proto/Card)
    (= kind proto/Box) (= kind proto/Scroll) (= kind proto/ListContainer)
    (= kind proto/ListItem) (= kind proto/Dialog)

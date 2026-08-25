@@ -355,6 +355,7 @@
 
 (defn property-supported? [kind property]
   (match kind
+    Root false
     ContextMenu false
     Toast
     (or (= property DurationValue) (= property AccessibilityLabel)
@@ -674,6 +675,7 @@
        (context-menu-leaf-host-kind? kind))
     true
     (match kind
+      Root true
       Row true
       Column true
       Grid true
@@ -706,10 +708,14 @@
       _ false)))
 
 (defn child-kind-supported? [parent-kind child-kind]
-  (if (= parent-kind MenuItem)
+  (cond
+    (= child-kind Root) false
+    (= parent-kind Root) true
+    (= parent-kind MenuItem)
     (or (= child-kind ContextMenu) (= child-kind DropdownMenu))
-    (if (context-menu-leaf-host-kind? parent-kind)
+    (context-menu-leaf-host-kind? parent-kind)
     (= child-kind ContextMenu)
+    :else
     (match parent-kind
       Table (= child-kind TableRow)
       TableRow (= child-kind TableCell)
@@ -728,7 +734,7 @@
           (= child-kind SearchField) (= child-kind Divider))
       DropdownMenu (or (= child-kind MenuItem) (= child-kind Divider))
       ContextMenu (or (= child-kind MenuItem) (= child-kind Divider))
-      _ true))))
+      _ true)))
 
 (defn create-node-op [node kind]
   (CreateNode node kind))

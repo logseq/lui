@@ -83,6 +83,61 @@ struct LUISwiftUIBackendTests {
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
     }
 
+    @Test("keeps one transparent runtime root while replacing its child")
+    func keepsStableRuntimeRoot() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"root"},
+          {"op":"create-node","id":2,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"text","value":"Before"},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+        let root = try #require(backend.model(id: 1))
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"set-prop","id":3,"property":"text","value":"After"},
+          {"op":"remove-child","parent":1,"child":2},
+          {"op":"insert-child","parent":1,"child":3,"index":0},
+          {"op":"drop-node","id":2}
+        ]}
+        """)
+
+        #expect(backend.rootIDs == [1])
+        #expect(backend.model(id: 1) === root)
+        #expect(root.kind == .root)
+        #expect(root.children == [3])
+        #expect(backend.model(id: 2) == nil)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+    }
+
+    @Test("rejects a runtime root with more than one child")
+    func rejectsMultipleRuntimeRootChildren() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"root"},
+          {"op":"create-node","id":2,"kind":"text"},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"create-node","id":3,"kind":"text"},
+              {"op":"insert-child","parent":1,"child":3,"index":1}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 1)
+        #expect(backend.model(id: 1)?.children == [2])
+        #expect(backend.model(id: 3) == nil)
+    }
+
     @Test("projects direct retained children as Gallery sections")
     func projectsRootSections() throws {
         let backend = LUIAppleBackend()

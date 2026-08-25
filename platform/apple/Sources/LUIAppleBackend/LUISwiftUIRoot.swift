@@ -52,7 +52,9 @@ private struct LUINodeView: View {
     var body: some View {
         let _ = model.revision
         Group {
-            if model.kind.isModalSurface {
+            if model.kind == .root {
+                content
+            } else if model.kind.isModalSurface {
                 content
             } else if model.kind == .resizable {
                 content
@@ -75,6 +77,10 @@ private struct LUINodeView: View {
     @ViewBuilder
     private var content: some View {
         switch model.kind {
+        case .root:
+            if let childID = model.children.first {
+                LUIAnyNodeView(nodeID: childID, backend: backend)
+            }
         case .row:
             LUIRowView(model: model, backend: backend)
         case .tabs, .buttonGroup, .toggleGroup, .breadcrumb, .pagination:

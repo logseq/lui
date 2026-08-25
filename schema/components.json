@@ -73,6 +73,7 @@
     {"name": "input-group-actions", "status": "supported"}
   ],
   "nodeKinds": [
+    {"lg": "Root", "wire": "root", "dart": "root", "swift": "root", "container": true},
     {"lg": "Row", "wire": "row", "dart": "row", "swift": "row", "container": true},
     {"lg": "Column", "wire": "column", "dart": "column", "swift": "column", "container": true},
     {"lg": "Grid", "wire": "grid", "dart": "grid", "swift": "grid", "container": true},

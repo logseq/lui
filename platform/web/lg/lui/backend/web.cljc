@@ -157,6 +157,7 @@
 
 (defn- base-class-name [kind]
   (match kind
+    Root "lui-root"
     Row "lui-row"
     Column "lui-column"
     Grid "lui-grid"

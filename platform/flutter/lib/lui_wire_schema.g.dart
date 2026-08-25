@@ -2,6 +2,7 @@
 part of 'lui_flutter_backend.dart';
 
 enum _NodeKind {
+  root,
   row,
   column,
   grid,
@@ -74,6 +75,7 @@ _NodeKind _decodeNodeKind(Object? value) {
     throw const LUIBackendException('kind must be a string');
   }
   return switch (value) {
+    'root' => _NodeKind.root,
     'row' => _NodeKind.row,
     'column' => _NodeKind.column,
     'grid' => _NodeKind.grid,

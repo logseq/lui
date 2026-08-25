@@ -4,6 +4,12 @@ import test from "node:test"
 
 const outputUrl = new URL("../dist/lui.css", import.meta.url)
 
+test("the internal runtime root is layout-transparent", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-root\{[^}]*display:contents/)
+})
+
 test("the production stylesheet contains the Vercel Native Button contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 

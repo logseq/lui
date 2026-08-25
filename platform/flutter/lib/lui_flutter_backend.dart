@@ -1935,6 +1935,7 @@ final class LUIFlutterBackend {
     );
 
     final content = switch (state.kind) {
+      _NodeKind.root => children.single,
       _NodeKind.row => row(),
       _NodeKind.tabs ||
       _NodeKind.buttonGroup ||
@@ -2150,7 +2151,9 @@ final class LUIFlutterBackend {
       _NodeKind.statusBar => statusBar(),
     };
 
-    if (state.kind.isModalSurface) return content;
+    if (state.kind == _NodeKind.root || state.kind.isModalSurface) {
+      return content;
+    }
 
     final isSurface = state.kind.isOverlaySurface;
     final padding =
@@ -2526,6 +2529,9 @@ final class LUIFlutterBackend {
     int parentID,
     int childID,
   ) {
+    if (states[childID]?.kind == _NodeKind.root) {
+      throw const LUIBackendException('runtime root cannot be nested');
+    }
     final transparentChild = extensions[childID];
     if (transparentChild != null &&
         _extensionRegistry
@@ -2646,6 +2652,7 @@ final class LUIFlutterBackend {
   }
 
   static bool _supports(_NodeKind kind, String property, Object? value) {
+    if (kind == _NodeKind.root) return false;
     if (kind == _NodeKind.contextMenu) return false;
     if (kind == _NodeKind.accordion) {
       return switch (property) {
@@ -3006,6 +3013,18 @@ final class LUIFlutterBackend {
 
   static void _validateStates(Map<int, _NodeState> states) {
     for (final state in states.values) {
+      if (state.kind == _NodeKind.root) {
+        if (state.parent != null) {
+          throw const LUIBackendException(
+            'runtime root cannot have a parent',
+          );
+        }
+        if (state.children.length != 1) {
+          throw const LUIBackendException(
+            'runtime root requires exactly one child',
+          );
+        }
+      }
       _validateSizeAxis(state, 'width', 'min-width', 'max-width');
       _validateSizeAxis(state, 'height', 'min-height', 'max-height');
       if (state.kind == _NodeKind.icon &&
@@ -3359,6 +3378,7 @@ final class LUIFlutterBackend {
   }
 
   static bool _canContainChildren(_NodeKind kind) =>
+      kind == _NodeKind.root ||
       kind == _NodeKind.row ||
       kind == _NodeKind.column ||
       kind == _NodeKind.grid ||
@@ -3391,6 +3411,7 @@ final class LUIFlutterBackend {
       kind.isModalSurface;
 
   static bool _acceptsExtensionChildren(_NodeKind kind) =>
+      kind == _NodeKind.root ||
       kind == _NodeKind.row ||
       kind == _NodeKind.column ||
       kind == _NodeKind.grid ||

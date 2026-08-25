@@ -46,6 +46,46 @@
 (defn create [scheduler backend]
   (create-with-extensions scheduler backend (ext/registry)))
 
+(defn checkpoint [application]
+  (record runtime-checkpoint
+    (checkpoint-generation (deref (:runtime-generation application)))
+    (checkpoint-next-node-id (deref (:next-node-id application)))
+    (checkpoint-mounted-nodes (deref (:mounted-nodes application)))
+    (checkpoint-extension-nodes
+     (deref (:runtime-extension-nodes application)))
+    (checkpoint-properties (deref (:runtime-properties application)))
+    (checkpoint-extension-properties
+     (deref (:runtime-extension-properties application)))
+    (checkpoint-children (deref (:runtime-children application)))
+    (checkpoint-parents (deref (:runtime-parents application)))
+    (checkpoint-pending-ops (deref (:pending-ops application)))
+    (checkpoint-next-handler-id (deref (:next-handler-id application)))
+    (checkpoint-event-handlers (deref (:event-handlers application)))
+    (checkpoint-next-dynamic-segment-id
+     (deref (:next-dynamic-segment-id application)))
+    (checkpoint-dynamic-segments (deref (:dynamic-segments application)))))
+
+(defn restore! [application saved]
+  (when-not (= (deref (:runtime-generation application))
+               (:checkpoint-generation saved))
+    (raise (Invalid_argument "cannot restore a stale runtime checkpoint")))
+  (reset! (:next-node-id application) (:checkpoint-next-node-id saved))
+  (reset! (:mounted-nodes application) (:checkpoint-mounted-nodes saved))
+  (reset! (:runtime-extension-nodes application)
+          (:checkpoint-extension-nodes saved))
+  (reset! (:runtime-properties application) (:checkpoint-properties saved))
+  (reset! (:runtime-extension-properties application)
+          (:checkpoint-extension-properties saved))
+  (reset! (:runtime-children application) (:checkpoint-children saved))
+  (reset! (:runtime-parents application) (:checkpoint-parents saved))
+  (reset! (:pending-ops application) (:checkpoint-pending-ops saved))
+  (reset! (:next-handler-id application) (:checkpoint-next-handler-id saved))
+  (reset! (:event-handlers application) (:checkpoint-event-handlers saved))
+  (reset! (:next-dynamic-segment-id application)
+          (:checkpoint-next-dynamic-segment-id saved))
+  (reset! (:dynamic-segments application) (:checkpoint-dynamic-segments saved))
+  true)
+
 (defn- enqueue! [application operation]
   (swap! (:pending-ops application) conj operation)
   true)
@@ -255,18 +295,20 @@
               None false)
             false)))
       (if-some [child-kind (clojure.core/get standard-nodes child)]
-        (if-some [parent-kind (clojure.core/get standard-nodes parent)]
-          (and
-           (proto/can-contain-children? parent-kind)
-           (proto/child-kind-supported? parent-kind child-kind))
-          (if-some [parent-identifier (clojure.core/get extension-nodes parent)]
-            (match (ext/schema registry parent-identifier)
-              (Some schema)
-              (if (ext/tweak? registry parent-identifier)
-                (empty? (children application parent))
-                (:extension-standard-children schema))
-              None false)
-            false))
+        (if (= child-kind proto/Root)
+          false
+          (if-some [parent-kind (clojure.core/get standard-nodes parent)]
+            (and
+             (proto/can-contain-children? parent-kind)
+             (proto/child-kind-supported? parent-kind child-kind))
+            (if-some [parent-identifier (clojure.core/get extension-nodes parent)]
+              (match (ext/schema registry parent-identifier)
+                (Some schema)
+                (if (ext/tweak? registry parent-identifier)
+                  (empty? (children application parent))
+                  (:extension-standard-children schema))
+                None false)
+              false)))
         false))))
 
 (defn insert-child! [application parent child index]
@@ -287,6 +329,7 @@
                 (= parent-kind proto/TableRow)
                 "table-row can contain only table-cell"
                 (= parent-kind proto/Tree) "tree accepts only row containers"
+                (= child-kind proto/Root) "runtime root cannot be nested"
                 :else "unsupported child kind")))))
         (when-not (child-supported? application parent child)
           (raise (Invalid_argument "unsupported child kind"))))
