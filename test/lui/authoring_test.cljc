@@ -14,7 +14,8 @@
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput
                      AppleSelect AppleCombobox AppleDropdownMenu AppleMenuItem AppleListItem
-                     AppleAvatar AppleDialog AppleDrawer AppleSheet AppleTooltip]]
+                     AppleAvatar AppleDialog AppleDrawer AppleSheet AppleTooltip
+                     AppleAccordion]]
             [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
@@ -103,6 +104,14 @@
       :anchor-offset 8.0
       :tooltip-delay delay-source}]]
    [:tooltip "Copied!"]])
+
+(defui retained-accordion [title-source selected-source on-toggle]
+  [:accordion
+   {:text title-source
+    :selected selected-source
+    :height 180
+    :on-toggle on-toggle}
+   [:column [:text "Retained disclosure content"]]])
 
 (defelement badge [context parent _attrs & children]
   `(lui.elements/text ~context ~parent {} ~@children))
@@ -700,6 +709,48 @@
        (Some (proto/IntValue 0))
        (apple/property renderer anchored proto/TooltipDelay)
        "delay patches locally"))))
+
+(deftest accordion-properties-patch-one-retained-native-container
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-accordion")
+        title (sig/state scheduler "Details")
+        selected (sig/state scheduler false)
+        received (atom [])
+        callback (fn [event] (swap! received conj event) true)
+        root
+        (retained-accordion
+         (ui/context application scope)
+         (sig/value title) (sig/value selected) callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [accordion root
+          content (nth (apple/children renderer accordion) 0)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer accordion)
+        (Some AppleAccordion) (is true "Accordion maps to one native node")
+        _ (is false "Accordion native mapping exists"))
+      (assert-equal
+       (Some (StringValue "Details"))
+       (apple/property renderer accordion proto/TextValue)
+       "header text reaches the retained node")
+      (runtime/dispatch! application (proto/ToggleChanged accordion true))
+      (runtime/flush! application)
+      (assert-equal [(proto/ToggleChanged accordion true)] @received
+                    "native expansion intent reaches on-toggle once")
+      (sig/set! title "Advanced details")
+      (sig/set! selected true)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "Accordion patches allocate no nodes")
+      (assert-equal accordion root "Accordion identity survives Signal patches")
+      (assert-equal content (nth (apple/children renderer accordion) 0)
+                    "collapsed content retains its identity")
+      (assert-equal
+       (Some (proto/BoolValue true))
+       (apple/property renderer accordion proto/Selected)
+       "selected patches locally"))))
 
 (deftest list-item-supports-text-or-custom-children-and-additive-actions
   (let [scheduler (sig/scheduler)

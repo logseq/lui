@@ -287,7 +287,11 @@ struct LUIRetainedTree {
     }
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
-        switch property {
+        if kind == .accordion {
+            return property == .text || property == .selected ||
+                property == .toggleEnabled || property == .height
+        }
+        return switch property {
         case .main, .cross:
             kind == .row || kind == .column || kind == .list ||
                 isHorizontalGroup(kind)
@@ -372,6 +376,7 @@ struct LUIRetainedTree {
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
             kind == .list || isHorizontalGroup(kind) || kind == .radioGroup
             || kind == .dropdownMenu || kind == .listItem || isModalSurface(kind)
+            || kind == .accordion
     }
 
     private static func isModalSurface(_ kind: LUINodeKind) -> Bool {
@@ -449,6 +454,10 @@ struct LUIRetainedTree {
                 if node.properties[.tooltipDelay] != nil, node.properties[.anchor] == nil {
                     throw invalid("tooltip-delay requires anchor")
                 }
+            }
+            if node.kind == .accordion,
+               (node.properties[.text]?.stringValue ?? "").isEmpty {
+                throw invalid("accordion requires text")
             }
             if node.kind == .dropdownMenu || node.kind == .tooltip {
                 if node.properties[.anchorAlignment] != nil, node.properties[.anchor] == nil {

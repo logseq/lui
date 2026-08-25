@@ -1272,6 +1272,59 @@ struct LUISwiftUIBackendTests {
         #expect(!cold.isPresented)
     }
 
+    @Test("maps Accordion to a controlled retained SwiftUI disclosure")
+    func mapsAccordion() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"accordion"},
+          {"op":"create-node","id":2,"kind":"column"},
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"set-prop","id":1,"property":"text","value":"Details"},
+          {"op":"set-prop","id":1,"property":"selected","value":false},
+          {"op":"set-prop","id":1,"property":"toggle-enabled","value":true},
+          {"op":"set-prop","id":1,"property":"height","value":180},
+          {"op":"set-prop","id":3,"property":"text","value":"Retained content"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0}
+        ]}
+        """)
+
+        let accordion = try #require(backend.model(id: 1))
+        let content = try #require(backend.model(id: 2))
+        #expect(accordion.kind == .accordion)
+        #expect(accordion.text == "Details")
+        #expect(accordion.property(.selected) == .bool(false))
+        #expect(accordion.property(.height) == .int(180))
+        #expect(accordion.children == [2])
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.performToggle(node: 1, checked: true)
+        #expect(events == [.toggleChanged(node: 1, checked: true)])
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"text","value":"Advanced details"},
+          {"op":"set-prop","id":1,"property":"selected","value":true}
+        ]}
+        """)
+        #expect(backend.model(id: 1) === accordion)
+        #expect(backend.model(id: 2) === content)
+        #expect(accordion.text == "Advanced details")
+        #expect(accordion.isSelected)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":3,"ops":[
+              {"op":"set-prop","id":1,"property":"padding","value":8}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 2)
+    }
+
     @Test("maps List flow and multi-child Scroll to retained SwiftUI containers")
     func mapsListAndScrollContainers() throws {
         let backend = LUIAppleBackend()

@@ -42,7 +42,8 @@
                  (gallery-tab "overview")
                  (gallery-dialog-open false)
                  (gallery-drawer-open false)
-                 (gallery-sheet-open false))
+                 (gallery-sheet-open false)
+                 (gallery-accordion-open false))
          model/AdvanceProgress)]
     (assert-equal false (:gallery-disabled initial) "controls start enabled")
     (assert-equal 0.3 (:gallery-progress initial) "progress has a visible start")
@@ -66,6 +67,12 @@
                   "Drawer starts closed without a retained placeholder")
     (assert-equal false (:gallery-sheet-open initial)
                   "Sheet starts closed without a retained placeholder")
+    (assert-equal false (:gallery-accordion-open initial)
+                  "Accordion starts collapsed under model control")
+    (assert-equal true
+                  (:gallery-accordion-open
+                   (model/update initial (model/SetAccordionOpen true)))
+                  "Accordion expansion is owned by the shared reducer")
     (assert-equal true
                   (:gallery-dialog-open
                    (model/update initial model/OpenDialog))
@@ -167,6 +174,8 @@
         "the shared Gallery demonstrates Pagination composition")
     (is (creates-kind? (flutter/batches renderer) proto/Tooltip)
         "the shared Gallery demonstrates static and anchored Tooltip")
+    (is (creates-kind? (flutter/batches renderer) proto/Accordion)
+        "the shared Gallery demonstrates controlled Accordion")
     (assert-equal 1 (count (flutter/batches renderer)) "mount is one batch")
     (let [mounted-count (flutter/node-count renderer)]
       (driver/send! application model/ToggleDisabled)

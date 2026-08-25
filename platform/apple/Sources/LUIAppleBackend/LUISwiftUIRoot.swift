@@ -87,6 +87,8 @@ private struct LUINodeView: View {
             LUIDropdownMenuView(model: model, backend: backend)
         case .tooltip:
             LUITooltipLabel(model: model)
+        case .accordion:
+            LUIAccordionView(model: model, backend: backend)
         case .dialog, .drawer, .sheet:
             LUIModalPresenter(model: model, backend: backend)
         case .menuItem:
@@ -187,6 +189,29 @@ private struct LUINodeView: View {
 
     private var progressAccessibilityValue: String {
         "\(Int((model.progressFraction * 100).rounded()))%"
+    }
+}
+
+private struct LUIAccordionView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        DisclosureGroup(
+            isExpanded: Binding(
+                get: { model.isSelected },
+                set: { try? backend.performToggle(node: model.id, checked: $0) }
+            )
+        ) {
+            ForEach(model.children, id: \.self) { childID in
+                if let child = backend.model(id: childID) {
+                    LUINodeView(model: child, backend: backend)
+                }
+            }
+        } label: {
+            Text(verbatim: model.text)
+        }
+        .disabled(!model.supportsToggle)
     }
 }
 

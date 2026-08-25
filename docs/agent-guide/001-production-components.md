@@ -218,6 +218,9 @@ Delivered parity slices:
 - direct retained `tooltip` text leaves with static and runtime-owned anchored
   modes, native focus/hover presentation, delayed hover intent, and a shared
   warm window that never enters application state;
+- direct retained `accordion` disclosure containers with the exact
+  `text`/`selected`/`on-toggle`/`height` contract, model-owned expansion,
+  retained collapsed children, and native Web, SwiftUI, and Flutter controls;
 - direct retained `list-item` rows with text-or-children content, inline
   registry icons, model-owned selection, disabled state, immediate press,
   additive double press, Enter submit, and identity-preserving Signal patches;
@@ -727,6 +730,26 @@ trigger subtree and the platform popover/help accessibility path. Flutter
 wraps the retained trigger subtree with its native `Tooltip` presentation and a
 shared intent coordinator. Placement may auto-flip or adapt at host edges, but
 the public edge preference and state boundary stay identical.
+
+#### Accordion contract
+
+`accordion` is one retained disclosure container. Its complete public API is
+`text`, `selected`, `on-toggle`, and `height`, matching the pinned Vercel Native
+contract. `text` is the required header label, `selected` is the model-owned
+expanded state, and `on-toggle` receives the requested next state. Children are
+the disclosure content; they stay retained while collapsed so reopening never
+recreates the subtree. `height` is the sole sizing override and otherwise the
+control uses its native intrinsic size. Accordion does not introduce item,
+template, group, animation, or multi-selection APIs: a group is ordinary
+`column` composition and one-open-at-a-time behavior belongs in the model.
+
+Each backend keeps native disclosure semantics and controlled state. Web uses
+`details` and `summary`; summary activation emits one `ToggleChanged` event and
+the model's subsequent `selected` patch controls `open`. SwiftUI uses
+`DisclosureGroup` with a model-backed binding. Flutter uses `ExpansionTile`
+with model-owned expansion and a stable retained key. Property patches update
+the same native node and never remount its child models. Collapsing hides
+content visually but does not remove it from LUI's retained tree.
 
 ### 7. Media and data display
 

@@ -17,7 +17,8 @@
     (gallery-tab "overview")
     (gallery-dialog-open false)
     (gallery-drawer-open false)
-    (gallery-sheet-open false)))
+    (gallery-sheet-open false)
+    (gallery-accordion-open false)))
 
 (defn update [model action]
   (match action
@@ -91,6 +92,9 @@
 
     CloseSheet
     (assoc model :gallery-sheet-open false)
+
+    (SetAccordionOpen open)
+    (assoc model :gallery-accordion-open open)
 
     AdvanceProgress
     (assoc

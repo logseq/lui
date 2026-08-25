@@ -75,4 +75,9 @@
    (fn [_event] (send model/CloseDrawer))
    (reactive :gallery-sheet-open model-source)
    (fn [_event] (send model/OpenSheet))
-   (fn [_event] (send model/CloseSheet))])
+   (fn [_event] (send model/CloseSheet))
+   (reactive :gallery-accordion-open model-source)
+   (fn [event]
+     (match event
+       (ToggleChanged _node open) (send (model/SetAccordionOpen open))
+       _ true))])

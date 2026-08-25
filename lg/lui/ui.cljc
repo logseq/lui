@@ -201,6 +201,9 @@
 (defn tooltip! [context]
   (runtime/create-node! (:ui-application context) proto/Tooltip))
 
+(defn accordion! [context]
+  (runtime/create-node! (:ui-application context) proto/Accordion))
+
 (defn menu-item! [context]
   (runtime/create-node! (:ui-application context) proto/MenuItem))
 

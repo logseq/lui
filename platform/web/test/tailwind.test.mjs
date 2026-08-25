@@ -175,6 +175,16 @@ test("Tooltip uses the browser top layer without taking flow space", async () =>
   assert.match(css, /\.lui-tooltip:popover-open\{[^}]*display:block/)
 })
 
+test("Accordion styles the native details and summary disclosure", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-accordion\{[^}]*border-bottom-width:1px/)
+  assert.match(css, /\.lui-accordion-summary\{[^}]*cursor:pointer/)
+  assert.match(css, /\.lui-accordion-summary::-webkit-details-marker\{[^}]*display:none/)
+  assert.match(css, /\.lui-accordion-chevron\{[^}]*transition-property:transform/)
+  assert.match(css, /\.lui-accordion\[open\] \.lui-accordion-chevron\{[^}]*rotate:180deg/)
+})
+
 test("the production stylesheet contains direct Vercel Native toggle controls", async () => {
   const css = await readFile(outputUrl, "utf8")
 

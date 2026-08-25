@@ -173,6 +173,30 @@
     @apply block;
   }
 
+  .lui-accordion {
+    @apply border-b;
+  }
+
+  .lui-accordion-summary {
+    @apply flex cursor-pointer list-none items-center justify-between py-4 text-sm font-medium;
+  }
+
+  .lui-accordion-summary::-webkit-details-marker {
+    @apply hidden;
+  }
+
+  .lui-accordion-chevron {
+    @apply size-4 shrink-0 transition-transform duration-200;
+  }
+
+  .lui-accordion[open] .lui-accordion-chevron {
+    @apply rotate-180;
+  }
+
+  .lui-accordion-content {
+    @apply pb-4 pt-0 text-sm;
+  }
+
   .lui-stack > *,
   .lui-panel > *,
   .lui-card > * {

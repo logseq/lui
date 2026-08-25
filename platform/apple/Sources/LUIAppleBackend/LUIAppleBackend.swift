@@ -337,8 +337,10 @@ public final class LUIAppleBackend {
     func performToggle(node: Int, checked: Bool) throws {
         guard let model = models[node],
               model.kind == .toggleButton || model.kind == .checkbox ||
-                model.kind == .switchControl || model.kind == .toggle,
-              model.isEnabled else {
+                model.kind == .switchControl || model.kind == .toggle ||
+                model.kind == .accordion,
+              model.isEnabled,
+              model.kind != .accordion || model.supportsToggle else {
             throw invalid("node \(node) is not an enabled toggle")
         }
         onEvent?(.toggleChanged(node: node, checked: checked))
@@ -384,6 +386,8 @@ public final class LUIAppleBackend {
             try performToggle(node: node, checked: !model.isSelected)
         case .checkbox, .switchControl, .toggle:
             try performToggle(node: node, checked: !model.isChecked)
+        case .accordion:
+            try performToggle(node: node, checked: !model.isSelected)
         case .radio:
             try performChange(node: node)
         default:

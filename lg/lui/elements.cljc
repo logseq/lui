@@ -63,6 +63,7 @@
                          (= tag :drawer)
                          (= tag :sheet)
                          (= tag :tooltip)
+                         (= tag :accordion)
                          (= tag :menu-item)
                          (= tag :list-item)
                          (= tag :avatar)
@@ -235,6 +236,20 @@
                               ~(if on-toggle `(~on-toggle ~'event) true)
                               (lui.protocol/Hold ~'_node)
                               ~(if on-hold `(~on-hold ~'event) true)
+                              ~'_ true)))]
+                       [])))
+
+(macro-helper-defn accordion-event-expansion [context node attrs]
+                   (let [on-toggle (:on-toggle attrs)]
+                     (if on-toggle
+                       [`(lui.ui/bool-property!
+                          ~context ~node lui.protocol/ToggleEnabled true)
+                        `(lui.ui/on-event!
+                          ~context ~node
+                          (fn [~'event]
+                            (match ~'event
+                              (lui.protocol/ToggleChanged ~'_node ~'_selected)
+                              (~on-toggle ~'event)
                               ~'_ true)))]
                        [])))
 
@@ -851,6 +866,29 @@
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])
+       ~node)))
+
+(defelement accordion [context parent attrs & children]
+  (let [node (gensym "node")
+        text-source (:text attrs)]
+    (if text-source
+      nil
+      (throw (IllegalArgumentException. "accordion requires :text")))
+    `(let [~node (lui.ui/accordion! ~context)]
+       ~@(string-attribute-expansion
+          context node text-source 'lui.protocol/TextValue)
+       ~@(bool-attribute-expansion
+          context node (:selected attrs) 'lui.protocol/Selected)
+       ~@(int-attribute-expansion
+          context node (:height attrs) 'lui.protocol/HeightValue)
+       ~@(accordion-event-expansion context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
        ~node)))
 
 (defelement menu-item [context parent attrs & children]

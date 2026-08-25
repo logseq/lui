@@ -249,6 +249,49 @@
       (assert-equal 0 (apple/node-count renderer)
                     "dependent-property failure is atomic"))))
 
+(deftest accordion-has-the-pinned-controlled-disclosure-contract
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Accordion)
+                      (proto/set-prop-op
+                       1 proto/TextValue (proto/StringValue "Details"))
+                      (proto/set-prop-op
+                       1 proto/Selected (proto/BoolValue true))
+                      (proto/set-prop-op
+                       1 proto/ToggleEnabled (proto/BoolValue true))
+                      (proto/set-prop-op
+                       1 proto/HeightValue (proto/IntValue 180))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"accordion\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"text\","
+      "\"value\":\"Details\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"selected\","
+      "\"value\":true},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"toggle-enabled\",\"value\":true},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"height\","
+      "\"value\":180}]}" )
+     (wire/encode-batch batch)
+     "Accordion uses only the pinned four-property wire vocabulary")
+    (doseq [property
+            [proto/TextValue proto/Selected proto/ToggleEnabled
+             proto/HeightValue]]
+      (is (proto/property-supported? proto/Accordion property)
+          "Accordion admits its exact public state"))
+    (doseq [property
+            [proto/Gap proto/PaddingValue proto/WidthValue proto/Enabled
+             proto/StyleClass]]
+      (is (not (proto/property-supported? proto/Accordion property))
+          "Accordion rejects API beyond the reference contract"))
+    (is (proto/can-contain-children? proto/Accordion)
+        "Accordion retains disclosure content")
+    (is (proto/event-supported?
+         proto/Accordion (proto/ToggleChanged 1 false))
+        "Accordion requests model-owned state through on-toggle")))
+
 (deftest dialog-has-the-pinned-modal-surface-contract
   (let [batch
         (record proto/patch-batch

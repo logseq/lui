@@ -55,6 +55,7 @@
 (signature lui.ui/drawer! :fn<ui-context;int>)
 (signature lui.ui/sheet! :fn<ui-context;int>)
 (signature lui.ui/tooltip! :fn<ui-context;int>)
+(signature lui.ui/accordion! :fn<ui-context;int>)
 (signature lui.ui/menu-item! :fn<ui-context;int>)
 (signature lui.ui/list-item! :fn<ui-context;int>)
 (signature lui.ui/avatar! :fn<ui-context;int>)

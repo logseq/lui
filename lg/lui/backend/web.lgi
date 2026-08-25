@@ -49,6 +49,8 @@
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/attach-picker-press-event!
   :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/attach-accordion-event!
+  :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/attach-pressable-text-events!
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/event-capability?
@@ -83,6 +85,8 @@
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/insert-dom-child!
   :fn<web-node;web-node;int;unit>)
+(signature lui.backend.web/content-container
+  :fn<node-kind;web-node;web-node>)
 (signature lui.backend.web/radio-group-ancestor
   :fn<web-renderer;int;option<int>>)
 (signature lui.backend.web/update-radio-group!

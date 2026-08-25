@@ -37,7 +37,7 @@
         (= kind Textarea) (= kind Combobox) (= kind ListItem))
     (ToggleChanged _node _checked)
     (or (= kind ToggleButton) (= kind Checkbox) (= kind SwitchControl)
-        (= kind Toggle) (= kind Radio))
+        (= kind Toggle) (= kind Radio) (= kind Accordion))
     (Change _node) (= kind Radio)
     (ValueChanged _node _value) (= kind Slider)
     (Dismiss _node)
@@ -110,7 +110,10 @@
   (and (horizontal-container? kind) (not (= kind Tabs))))
 
 (defn property-supported? [kind property]
-  (match property
+  (if (= kind Accordion)
+    (or (= property TextValue) (= property Selected)
+        (= property ToggleEnabled) (= property HeightValue))
+    (match property
     MainAlignment
     (or (= kind Row) (= kind Column) (= kind ListContainer)
         (horizontal-container? kind))
@@ -275,7 +278,7 @@
     Gap
     (or (= kind Row) (= kind Column) (= kind Grid)
         (= kind ListContainer) (= kind DropdownMenu)
-        (horizontal-container? kind))))
+        (horizontal-container? kind)))))
 
 (defn property-value-supported? [property value]
   (match (tuple property value)
@@ -423,6 +426,11 @@
        (Some (StringValue value)) (not (= value ""))
        _ false)
      true)
+   (if (= kind Accordion)
+     (match (clojure.core/get properties TextValue)
+       (Some (StringValue value)) (not (= value ""))
+       _ false)
+     true)
    (if (modal-surface? kind)
      (match (clojure.core/get properties TextValue)
        (Some (StringValue value)) (not (= value ""))
@@ -497,6 +505,7 @@
       Dialog true
       Drawer true
       Sheet true
+      Accordion true
       _ false)))
 
 (defn create-node-op [node kind]

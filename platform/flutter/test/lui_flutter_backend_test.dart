@@ -800,6 +800,67 @@ void main() {
   );
 
   testWidgets(
+    'maps Accordion to a controlled retained native disclosure',
+    (tester) async {
+      final events = <LUIEvent>[];
+      final backend = LUIFlutterBackend(onEvent: events.add)
+        ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"accordion"},
+        {"op":"create-node","id":2,"kind":"text"},
+        {"op":"set-prop","id":1,"property":"text","value":"Details"},
+        {"op":"set-prop","id":1,"property":"selected","value":false},
+        {"op":"set-prop","id":1,"property":"toggle-enabled","value":true},
+        {"op":"set-prop","id":1,"property":"height","value":180},
+        {"op":"set-prop","id":2,"property":"text","value":"Retained content"},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ]}
+      ''');
+
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+      );
+      final tile = tester.widget<ExpansionTile>(find.byType(ExpansionTile));
+      expect(tile.title, isA<Text>());
+      expect((tile.title as Text).data, 'Details');
+      expect(tile.initiallyExpanded, isFalse);
+      expect(tile.maintainState, isTrue);
+      final retainedContent = tester.element(
+        find.text('Retained content', skipOffstage: false),
+      );
+
+      await tester.tap(find.text('Details'));
+      await tester.pumpAndSettle();
+      expect(events, const [LUIEvent.toggleChanged(node: 1, checked: true)]);
+      expect(find.text('Retained content'), findsNothing);
+
+      backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":1,"property":"text","value":"Advanced details"},
+        {"op":"set-prop","id":1,"property":"selected","value":true}
+      ]}
+      ''');
+      await tester.pumpAndSettle();
+      expect(find.text('Advanced details'), findsOneWidget);
+      expect(find.text('Retained content'), findsOneWidget);
+      expect(
+        tester.element(find.text('Retained content', skipOffstage: false)),
+        same(retainedContent),
+      );
+
+      expect(
+        () => backend.applyJson('''
+        {"generation":3,"ops":[
+          {"op":"set-prop","id":1,"property":"padding","value":8}
+        ]}
+        '''),
+        throwsA(isA<LUIBackendException>()),
+      );
+      expect(backend.generation, 2);
+    },
+  );
+
+  testWidgets(
     'maps ListItem text and custom children to retained native rows',
     (tester) async {
       final events = <LUIEvent>[];

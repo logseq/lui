@@ -519,9 +519,14 @@ final class LUIFlutterBackend {
 
   void performToggle(int node, bool checked) {
     final state = _requireState(_states, node);
-    if (state.kind != _NodeKind.toggleButton &&
-            state.kind != _NodeKind.toggle ||
-        state.properties['enabled'] == false) {
+    final isToggle =
+        state.kind == _NodeKind.toggleButton ||
+        state.kind == _NodeKind.toggle ||
+        state.kind == _NodeKind.accordion;
+    final hasHandler =
+        state.kind != _NodeKind.accordion ||
+        state.properties['toggle-enabled'] == true;
+    if (!isToggle || state.properties['enabled'] == false || !hasHandler) {
       throw LUIBackendException('node $node is not an enabled toggle button');
     }
     onEvent?.call(LUIEvent.toggleChanged(node: node, checked: checked));
@@ -1047,6 +1052,14 @@ final class LUIFlutterBackend {
           ? () => performSubmit(id)
           : null,
     );
+    Widget accordion() => _LUIAccordion(
+      expanded: buttonSelected,
+      title: text,
+      onToggle: state.properties['toggle-enabled'] == true
+          ? (value) => performToggle(id, value)
+          : null,
+      children: children,
+    );
     Widget textNode() {
       final label = Text(text, style: TextStyle(color: foreground));
       if (state.properties['press-enabled'] != true) return label;
@@ -1158,6 +1171,7 @@ final class LUIFlutterBackend {
       _NodeKind.combobox => textControl(kind: state.kind),
       _NodeKind.dropdownMenu => dropdownMenu(),
       _NodeKind.tooltip => Text(text),
+      _NodeKind.accordion => accordion(),
       _NodeKind.dialog ||
       _NodeKind.drawer ||
       _NodeKind.sheet => _LUIModalPresenter(backend: this, node: id),
@@ -1436,6 +1450,14 @@ final class LUIFlutterBackend {
   }
 
   static bool _supports(_NodeKind kind, String property, Object? value) {
+    if (kind == _NodeKind.accordion) {
+      return switch (property) {
+        'text' => value is String,
+        'selected' || 'toggle-enabled' => value is bool,
+        'height' => value is int && value >= 0,
+        _ => false,
+      };
+    }
     return switch (property) {
       'main' =>
         value is String &&
@@ -1738,6 +1760,10 @@ final class LUIFlutterBackend {
           throw const LUIBackendException('tooltip-delay requires anchor');
         }
       }
+      if (state.kind == _NodeKind.accordion &&
+          (state.properties['text'] as String? ?? '').isEmpty) {
+        throw const LUIBackendException('accordion requires text');
+      }
       if (state.kind == _NodeKind.dropdownMenu ||
           state.kind == _NodeKind.tooltip) {
         if (state.properties.containsKey('anchor-alignment') &&
@@ -1835,6 +1861,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.radioGroup ||
       kind == _NodeKind.dropdownMenu ||
       kind == _NodeKind.listItem ||
+      kind == _NodeKind.accordion ||
       kind.isModalSurface;
 
   int? _checkedRadio(_NodeState root) {
@@ -2191,6 +2218,66 @@ final class _LUIAvatarPainter extends CustomPainter {
   @override
   bool shouldRepaint(_LUIAvatarPainter oldDelegate) =>
       oldDelegate.image != image || oldDelegate.source != source;
+}
+
+final class _LUIAccordion extends StatefulWidget {
+  const _LUIAccordion({
+    required this.expanded,
+    required this.title,
+    required this.onToggle,
+    required this.children,
+  });
+
+  final bool expanded;
+  final String title;
+  final ValueChanged<bool>? onToggle;
+  final List<Widget> children;
+
+  @override
+  State<_LUIAccordion> createState() => _LUIAccordionState();
+}
+
+final class _LUIAccordionState extends State<_LUIAccordion> {
+  final ExpansibleController _controller = ExpansibleController();
+  bool _syncing = false;
+
+  @override
+  void didUpdateWidget(_LUIAccordion oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.expanded != widget.expanded) _scheduleSync();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _scheduleSync() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _controller.isExpanded == widget.expanded) return;
+      _syncing = true;
+      widget.expanded ? _controller.expand() : _controller.collapse();
+      _syncing = false;
+    });
+  }
+
+  void _expansionChanged(bool expanded) {
+    if (_syncing) return;
+    widget.onToggle?.call(expanded);
+    _scheduleSync();
+  }
+
+  @override
+  Widget build(BuildContext context) => ExpansionTile(
+    controller: _controller,
+    initiallyExpanded: widget.expanded,
+    maintainState: true,
+    enabled: widget.onToggle != null,
+    title: Text(widget.title),
+    onExpansionChanged: _expansionChanged,
+    children: widget.children,
+  );
 }
 
 final class _LUIListItem extends StatefulWidget {

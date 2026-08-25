@@ -6,7 +6,7 @@
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
-                     Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip
+                     Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip Accordion
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
                      Progress Divider
@@ -94,7 +94,8 @@
     Dialog "lui-dialog"
     Drawer "lui-drawer"
     Sheet "lui-sheet"
-    Tooltip "lui-tooltip"))
+    Tooltip "lui-tooltip"
+    Accordion "lui-accordion"))
 
 (defn- direct-toggle? [kind]
   (or (= kind Checkbox) (= kind SwitchControl) (= kind Radio)))
@@ -191,6 +192,19 @@
        [])
       (element document "span" "lui-avatar-initials" {} [])])))
 
+(defn- create-accordion-node [renderer]
+  (let [document (:web-document renderer)]
+    (element
+     document "details" "lui-accordion" {}
+     [(element
+       document "summary" "lui-accordion-summary"
+       {"aria-expanded" "false"}
+       [(element document "span" "lui-accordion-label" {} [])
+        (element
+         document "span" "lui-accordion-chevron lui-icon"
+         {"aria-hidden" "true" "data-name" "chevron-down"} [])])
+      (element document "div" "lui-accordion-content" {} [])])))
+
 (defn- create-simple-node [renderer kind]
   (let [tag
         (match kind
@@ -267,6 +281,7 @@
     Combobox (create-combobox-node renderer)
     MenuItem (create-menu-item-node renderer)
     Avatar (create-avatar-node renderer)
+    Accordion (create-accordion-node renderer)
     Dialog (create-modal-node renderer kind)
     Drawer (create-modal-node renderer kind)
     Sheet (create-modal-node renderer kind)
@@ -421,6 +436,22 @@
       ((deref (:web-event-handler renderer)) (proto/Press node)))
      (Stdlib.ignore true))
    dom-node))
+
+(defn- attach-accordion-event! [renderer node dom-node]
+  (Webapi.Dom.Element.addEventListener
+   "click"
+   (fn [event]
+     (Webapi.Dom.Event.preventDefault event)
+     (when (= (retained/property (:web-store renderer) node ToggleEnabled)
+              (Some (BoolValue true)))
+       (let [selected
+             (= (retained/property (:web-store renderer) node Selected)
+                (Some (BoolValue true)))]
+         (Stdlib.ignore
+          ((deref (:web-event-handler renderer))
+           (proto/ToggleChanged node (not selected))))))
+     (Stdlib.ignore true))
+   (child-element dom-node 0)))
 
 (defn- event-capability? [renderer node property]
   (= (retained/property (:web-store renderer) node property)
@@ -793,6 +824,7 @@
     ToggleGroup (attach-horizontal-focus! renderer node kind dom-node)
     Breadcrumb (attach-horizontal-focus! renderer node kind dom-node)
     Pagination (attach-horizontal-focus! renderer node kind dom-node)
+    Accordion (attach-accordion-event! renderer node dom-node)
     _ (Stdlib.ignore true)))
 
 (defn- set-style! [dom-node property value]
@@ -1034,7 +1066,10 @@
 (defn- apply-property! [renderer node kind dom-node property value]
   (match (tuple property value)
     (tuple TextValue (StringValue text))
-    (if (modal-surface? kind)
+    (if (= kind Accordion)
+      (Webapi.Dom.Element.setTextContent
+       (child-element (child-element dom-node 0) 0) text)
+      (if (modal-surface? kind)
       (Webapi.Dom.Element.setTextContent (child-element dom-node 0) text)
       (if (= kind Avatar)
       (do
@@ -1058,7 +1093,7 @@
                   (button-label-node dom-node)
                   text-node)]
             (when (not (= text (Webapi.Dom.Element.textContent text-node)))
-              (Webapi.Dom.Element.setTextContent text-node text))))))))
+              (Webapi.Dom.Element.setTextContent text-node text)))))))))
 
     (tuple Enabled (BoolValue enabled))
     (let [control-node
@@ -1221,13 +1256,19 @@
     (Webapi.Dom.Element.setAttribute "data-icon-placement" placement dom-node)
 
     (tuple Selected (BoolValue selected))
-    (do
-      (set-state-attribute! dom-node "data-selected" selected)
-      (Webapi.Dom.Element.setAttribute
-       (if (or (= kind MenuItem) (direct-tab-trigger? renderer node))
-         "aria-selected"
-         "aria-pressed")
-       (if selected "true" "false") dom-node))
+    (if (= kind Accordion)
+      (do
+        (set-state-attribute! dom-node "open" selected)
+        (Webapi.Dom.Element.setAttribute
+         "aria-expanded" (if selected "true" "false")
+         (child-element dom-node 0)))
+      (do
+        (set-state-attribute! dom-node "data-selected" selected)
+        (Webapi.Dom.Element.setAttribute
+         (if (or (= kind MenuItem) (direct-tab-trigger? renderer node))
+           "aria-selected"
+           "aria-pressed")
+         (if selected "true" "false") dom-node)))
 
     (tuple Autofocus (BoolValue autofocus))
     (if autofocus
@@ -1328,23 +1369,22 @@
           parent))
         (raise (Invalid_argument "DOM child index is out of bounds"))))))
 
+(defn- content-container [kind dom-node]
+  (if (or (= kind Accordion) (modal-surface? kind))
+    (child-element dom-node 1)
+    dom-node))
+
 (defn- dom-child-container [renderer node dom-node]
   (if-some [current (retained/node (:web-store renderer) node)]
-    (if (modal-surface? (:semantic-kind current))
-      (child-element dom-node 1)
-      dom-node)
+    (content-container (:semantic-kind current) dom-node)
     dom-node))
 
 (defn- dom-child-container-before
   [renderer previous-nodes node dom-node]
   (if-some [current (retained/node (:web-store renderer) node)]
-    (if (modal-surface? (:semantic-kind current))
-      (child-element dom-node 1)
-      dom-node)
+    (content-container (:semantic-kind current) dom-node)
     (if-some [previous (clojure.core/get previous-nodes node)]
-      (if (modal-surface? (:semantic-kind previous))
-        (child-element dom-node 1)
-        dom-node)
+      (content-container (:semantic-kind previous) dom-node)
       dom-node)))
 
 (defn- open-modal! [renderer node dom-node]

@@ -16,7 +16,8 @@
   (gallery-tab :string)
   (gallery-dialog-open :bool)
   (gallery-drawer-open :bool)
-  (gallery-sheet-open :bool))
+  (gallery-sheet-open :bool)
+  (gallery-accordion-open :bool))
 
 (type-variant gallery-action
   (ToggleDisabled)
@@ -39,6 +40,7 @@
   (CloseDrawer)
   (OpenSheet)
   (CloseSheet)
+  (SetAccordionOpen :bool)
   (AdvanceProgress))
 
 (signature components.model/initial :fn<gallery-model>)

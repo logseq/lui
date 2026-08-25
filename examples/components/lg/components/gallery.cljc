@@ -305,6 +305,18 @@
    [:paragraph
     "Hover or focus the icon to reveal the native anchored Tooltip; the second Tooltip is a static status label."]])
 
+(defui accordion-gallery [open-source set-open]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Accordion"]
+   [:accordion
+    {:text "Do collapsed children stay retained?"
+     :selected open-source
+     :on-toggle set-open}
+    [:paragraph
+     "Yes. The native disclosure hides this content while LUI preserves its node identity."]]
+   [:paragraph
+    "The shared Signal owns expansion while each backend uses its native disclosure widget."]])
+
 (defui environment-menu
   [production-selected-source staging-selected-source disabled-source
    select-production select-staging dismiss]
@@ -543,7 +555,8 @@
    tab-content-source select-overview-tab select-activity-tab
    dialog-open-source open-dialog close-dialog
    drawer-open-source open-drawer close-drawer
-   sheet-open-source open-sheet close-sheet]
+   sheet-open-source open-sheet close-sheet
+   accordion-open-source set-accordion-open]
   [:column
    [button-gallery disabled-source toggle-disabled]
    [toggle-button-gallery
@@ -576,6 +589,7 @@
    [avatar-gallery avatar-image-source toggle-avatar-image]
    [text-entry-gallery value-source disabled-source update-value]
    [tooltip-gallery]
+   [accordion-gallery accordion-open-source set-accordion-open]
    [picker-gallery
     environment-source picker-query-source select-open-source
     combobox-open-source production-selected-source staging-selected-source

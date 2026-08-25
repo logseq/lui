@@ -7,7 +7,8 @@
                      Spacer Spinner Icon
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
-                     Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip]]
+                     Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip
+                     Accordion]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -67,7 +68,8 @@
     Dialog FlutterDialog
     Drawer FlutterDrawer
     Sheet FlutterSheet
-    Tooltip FlutterTooltip))
+    Tooltip FlutterTooltip
+    Accordion FlutterAccordion))
 
 (defn backend-for [renderer operating-system]
   (record proto/backend
