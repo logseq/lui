@@ -8,44 +8,30 @@ async function source(path) {
   return readFile(new URL(path, root), "utf8");
 }
 
-test("mobile OCaml toolchains use the official compiler without cross switches", async () => {
-  const ios = await source("tooling/mobile/bootstrap_ios_ocaml.sh");
-  const android = await source("tooling/mobile/bootstrap_android_ocaml.sh");
+test("one LG command builds shared development mobile objects", async () => {
+  const mobile = await source("tooling/mobile/build_components_mobile.sh");
+  const lg = await source("tooling/mobile/build_components_lg.sh");
 
-  for (const script of [ios, android]) {
-    assert.match(script, /https:\/\/github\.com\/ocaml\/ocaml\.git/);
-    assert.match(script, /make crossopt/);
-    assert.match(script, /make installcross/);
-    assert.doesNotMatch(script, /opam switch|opam-cross|cross-ios|cross-android/);
-    assert.match(script, /opam_root\/lg-ocaml-toolchains/);
-    assert.match(script, /LG_OCAML_TOOLCHAIN_ROOT/);
-    assert.match(script, /version_root\/host/);
-    assert.match(script, /version_root\/targets/);
+  assert.match(mobile, /build_components_lg\.sh/);
+  assert.match(mobile, /--profile development/);
+  assert.match(mobile, /build_components_ios_simulator\.sh/);
+  assert.match(mobile, /build_components_android\.sh/);
+  assert.match(lg, /lg mobile build/);
+  assert.match(lg, /--from "?\$repo_root\/_build\/default\/lg\/lui\/lui_native\.state"?/);
+  for (const script of [mobile, lg]) {
+    assert.doesNotMatch(script, /git clone|make crossopt|make installcross/);
   }
 });
 
-test("normal mobile builds never bootstrap or clone a toolchain", async () => {
-  const ios = await source("tooling/mobile/build_components_ios_simulator.sh");
-  const android = await source("tooling/mobile/build_components_android.sh");
-
-  for (const script of [ios, android]) {
-    assert.doesNotMatch(script, /^\s*(?:"?\$repo_root\/tooling\/mobile\/)?bootstrap_.*ocaml\.sh/m);
-    assert.doesNotMatch(script, /git clone/);
-    assert.match(script, /LG_OCAML_TOOLCHAIN_ROOT/);
-  }
-});
-
-test("Android scripts ignore incomplete SDK manager NDK directories", async () => {
-  const bootstrap = await source("tooling/mobile/bootstrap_android_ocaml.sh");
+test("Android packaging ignores incomplete SDK manager NDK directories", async () => {
   const build = await source("tooling/mobile/build_components_android.sh");
 
-  for (const script of [bootstrap, build]) {
-    assert.match(
-      script,
-      /\[\[ -x \$candidate\/toolchains\/llvm\/prebuilt\/\$ndk_host\/bin\/clang \]\]/,
-    );
-    assert.doesNotMatch(script, /\[\[ -d \$candidate \]\] && ndk_root=\$candidate/);
-  }
+  assert.match(
+    build,
+    /\[\[ -x \$candidate\/toolchains\/llvm\/prebuilt\/\$ndk_host\/bin\/clang \]\]/,
+  );
+  assert.doesNotMatch(build, /ANDROID_NDK_HOME does not contain a complete NDK toolchain/);
+  assert.doesNotMatch(build, /\[\[ -d \$candidate \]\] && ndk_root=\$candidate/);
 });
 
 test("Android Gallery packages the OCaml runtime as a Flutter jniLib", async () => {
@@ -63,13 +49,11 @@ test("Android Gallery packages the OCaml runtime as a Flutter jniLib", async () 
 
 test("Apple Gallery is a SwiftUI host linked to the retained Apple backend", async () => {
   const build = await source("tooling/mobile/build_components_ios_simulator.sh");
-  const objectBuild = await source("tooling/mobile/build_gallery_ocaml_object.sh");
   const packageManifest = await source("examples/components/ios-swiftui/Package.swift");
   const main = await source("examples/components/ios-swiftui/Sources/LUIComponentsApp/LUIComponentsApp.swift");
 
   assert.match(build, /arm64-apple-ios\$\{deployment_target\}-simulator/);
-  assert.match(build, /build_gallery_ocaml_object\.sh/);
-  assert.match(objectBuild, /gallery_bridge_complete\.o/);
+  assert.match(build, /build_components_lg\.sh/);
   assert.match(packageManifest, /LUIAppleBackend/);
   assert.match(main, /import SwiftUI/);
   assert.match(main, /LUIAppleBackend/);
@@ -88,6 +72,7 @@ test("Flutter Gallery derives adaptive one-page navigation from retained section
 test("Makefile exposes explicit mobile Gallery build targets", async () => {
   const makefile = await source("Makefile");
 
+  assert.match(makefile, /build-components-mobile:/);
   assert.match(makefile, /build-components-ios-simulator:/);
   assert.match(makefile, /test-components-ios-e2e:/);
   assert.match(makefile, /build-components-android:/);

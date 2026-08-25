@@ -17,16 +17,23 @@ clang=$(xcrun --sdk iphonesimulator --find clang)
 
 [[ -x $target_prefix/bin/ocamlopt.opt ]] || {
   echo "error: shared iOS OCaml toolchain is missing: $target_prefix" >&2
-  echo "run tooling/mobile/bootstrap_ios_ocaml.sh explicitly or set LG_IOS_OCAML_PREFIX" >&2
+  echo "run 'lg mobile setup --target ios-simulator' or set LG_IOS_OCAML_PREFIX" >&2
   exit 1
 }
 
-opam exec -- dune build -j 1 examples/components/native/gallery_bridge.ml
 mkdir -p "$build_dir"
-gallery_bridge_complete_o=$(
-  "$repo_root/tooling/mobile/build_gallery_ocaml_object.sh" \
-    "$target_prefix" "$build_dir/ocaml"
-)
+gallery_bridge_complete_o=${LUI_GALLERY_OCAML_OBJECT:-}
+if [[ -z $gallery_bridge_complete_o ]]; then
+  native_root="$repo_root/_build/mobile-components/lg-ios-simulator"
+  "$repo_root/tooling/mobile/build_components_lg.sh" \
+    --target ios-simulator \
+    --output-dir "$native_root" >/dev/null
+  gallery_bridge_complete_o="$native_root/ios-simulator/mobile_app_complete.o"
+fi
+[[ -f $gallery_bridge_complete_o ]] || {
+  echo "error: LG mobile object is missing: $gallery_bridge_complete_o" >&2
+  exit 1
+}
 
 "$clang" \
   -target "$triple" \

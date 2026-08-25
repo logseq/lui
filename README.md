@@ -57,6 +57,17 @@ Signal reducer and component tree as the native hosts. The Flutter host and its
 real OCaml FFI integration test are documented in
 [`examples/components/README.md`](examples/components/README.md).
 
+Build the iOS Simulator app and Android arm64 APK together with:
+
+```sh
+make build-components-mobile
+```
+
+The command asks LG to cross-compile the shared Gallery once for the
+development mobile profile, then links the two host applications. Shared
+toolchains are installed once with `lg mobile setup --profile development`;
+LUI does not clone OCaml or keep per-project cross-toolchain scripts.
+
 ## Declarative UI
 
 Applications define views with `defui`. Views receive reactive model signals

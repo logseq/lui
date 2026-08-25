@@ -1,7 +1,7 @@
 .PHONY: test test-schema generate-component-schema test-lg test-apple test-flutter build-apple-app \
 	build-components-flutter-macos test-components-flutter-macos \
 	run-components-flutter-macos build-components-ios-simulator \
-	test-components-ios-e2e build-components-android build-web build-web-css \
+	build-components-mobile test-components-ios-e2e build-components-android build-web build-web-css \
 	build-web-release serve-web
 
 test: test-schema test-lg test-apple test-flutter build-web
@@ -45,6 +45,9 @@ test-components-flutter-macos:
 
 run-components-flutter-macos: build-components-flutter-macos
 	cd examples/components/flutter && flutter run -d macos
+
+build-components-mobile:
+	tooling/mobile/build_components_mobile.sh
 
 build-components-ios-simulator:
 	tooling/mobile/build_components_ios_simulator.sh

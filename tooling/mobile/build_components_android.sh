@@ -23,7 +23,7 @@ jni_library="$repo_root/examples/components/flutter/android/app/src/main/jniLibs
 
 [[ -x $target_prefix/bin/ocamlopt.opt ]] || {
   echo "error: shared Android OCaml toolchain is missing: $target_prefix" >&2
-  echo "run tooling/mobile/bootstrap_android_ocaml.sh explicitly or set LG_ANDROID_OCAML_PREFIX" >&2
+  echo "run 'lg mobile setup --target android' or set LG_ANDROID_OCAML_PREFIX" >&2
   exit 1
 }
 
@@ -34,13 +34,11 @@ case "$(uname -s)" in
 esac
 
 ndk_root=
-if [[ -n ${ANDROID_NDK_HOME:-} ]]; then
-  [[ -x $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$ndk_host/bin/clang ]] || {
-    echo "error: ANDROID_NDK_HOME does not contain a complete NDK toolchain" >&2
-    exit 1
-  }
+if [[ -n ${ANDROID_NDK_HOME:-} \
+      && -x $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$ndk_host/bin/clang ]]; then
   ndk_root=$ANDROID_NDK_HOME
-else
+fi
+if [[ -z $ndk_root ]]; then
   for candidate in "$android_home"/ndk/*; do
     [[ -x $candidate/toolchains/llvm/prebuilt/$ndk_host/bin/clang ]] \
       && ndk_root=$candidate
@@ -52,12 +50,19 @@ fi
 }
 ndk_bin="$ndk_root/toolchains/llvm/prebuilt/$ndk_host/bin"
 
-opam exec -- dune build -j 1 examples/components/native/gallery_bridge.ml
 mkdir -p "$build_dir" "$(dirname "$jni_library")"
-gallery_object=$(
-  "$repo_root/tooling/mobile/build_gallery_ocaml_object.sh" \
-    "$target_prefix" "$build_dir/ocaml" pic
-)
+gallery_object=${LUI_GALLERY_OCAML_OBJECT:-}
+if [[ -z $gallery_object ]]; then
+  native_root="$repo_root/_build/mobile-components/lg-android"
+  "$repo_root/tooling/mobile/build_components_lg.sh" \
+    --target android \
+    --output-dir "$native_root" >/dev/null
+  gallery_object="$native_root/android/$android_abi/mobile_app_complete.o"
+fi
+[[ -f $gallery_object ]] || {
+  echo "error: LG mobile object is missing: $gallery_object" >&2
+  exit 1
+}
 
 "$ndk_bin/clang" \
   --target="$target" \
