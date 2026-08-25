@@ -136,6 +136,9 @@ appId: dev.lui.components
 - eraseText: 50
 - inputText: "sta"
 - assertVisible: "sta"
+- assertVisible: "Development"
+- tapOn: "Staging"
+- assertNotVisible: "Development"
 - tapOn: "Components"
 - scrollUntilVisible:
     element:
@@ -148,6 +151,12 @@ appId: dev.lui.components
     id: "component-row-DropdownMenu"
     point: "50%,90%"
 - assertVisible: "Development"
+- tapOn: "More environments"
+- assertVisible: "Production region"
+- tapOn: "Staging region"
+- assertVisible:
+    text: "Staging"
+    selected: true
 - tapOn: "Production"
 - assertVisible:
     text: "Production"

@@ -648,6 +648,22 @@
      :disabled disabled-source
      :on-press select-staging}
     "Staging"]
+   [:menu-item {:disabled disabled-source}
+    "More environments"
+    [:dropdown-menu
+     {:anchor "right"
+      :anchor-alignment "start"
+      :anchor-offset 4.0
+      :min-width 180
+      :on-dismiss dismiss}
+     [:menu-item
+      {:selected production-selected-source
+       :on-press select-production}
+      "Production region"]
+     [:menu-item
+      {:selected staging-selected-source
+       :on-press select-staging}
+      "Staging region"]]]
    [:menu-item {:disabled true} "Development"]])
 
 (defui select-gallery

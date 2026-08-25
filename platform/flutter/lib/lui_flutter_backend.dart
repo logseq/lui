@@ -1301,13 +1301,20 @@ final class LUIFlutterBackend {
         );
       }
       return _LUIAnchoredStack(
-        groupID: id,
         anchor: menuState?.properties['anchor'] as String? ?? 'below',
         alignment:
             menuState?.properties['anchor-alignment'] as String? ?? 'start',
         offset:
             (menuState?.properties['anchor-offset'] as num?)?.toDouble() ?? 0,
-        menu: menuID == null ? null : widget(node: menuID),
+        menuID: menuID,
+        menuChildren:
+            menuState?.children
+                .map((childID) => widget(node: childID))
+                .toList(growable: false) ??
+            const <Widget>[],
+        minimumWidth: (menuState?.properties['min-width'] as num?)?.toDouble(),
+        maximumWidth: (menuState?.properties['max-width'] as num?)?.toDouble(),
+        onDismiss: menuID == null ? null : () => performDismiss(menuID),
         trigger: trigger,
       );
     }
@@ -1354,14 +1361,37 @@ final class LUIFlutterBackend {
         ),
       ),
     );
-    Widget menuItem() => MenuItemButton(
-      onPressed: enabled ? () => performAction(id) : null,
-      leadingIcon: buttonIcon == null
+    Widget menuItem() {
+      final submenuID = state.children.cast<int?>().firstWhere(
+        (childID) =>
+            childID != null && _states[childID]?.kind == _NodeKind.dropdownMenu,
+        orElse: () => null,
+      );
+      final leadingIcon = buttonIcon == null
           ? null
-          : Icon(_iconData(buttonIcon), size: 16),
-      trailingIcon: buttonSelected ? const Icon(Icons.check) : null,
-      child: Text(text),
-    );
+          : Icon(_iconData(buttonIcon), size: 16);
+      if (submenuID != null) {
+        final submenu = _requireState(_states, submenuID);
+        return SubmenuButton(
+          useRootOverlay: true,
+          animated: true,
+          leadingIcon: leadingIcon,
+          menuChildren: enabled
+              ? submenu.children
+                    .map((childID) => widget(node: childID))
+                    .toList(growable: false)
+              : const <Widget>[],
+          child: Text(text),
+        );
+      }
+      return MenuItemButton(
+        onPressed: enabled ? () => performAction(id) : null,
+        leadingIcon: leadingIcon,
+        trailingIcon: buttonSelected ? const Icon(Icons.check) : null,
+        child: Text(text),
+      );
+    }
+
     Widget listItem() => _LUIListItem(
       enabled: enabled,
       focusable: state.properties['role'] != 'treeitem',
@@ -4476,19 +4506,25 @@ final class _LUIListItemState extends State<_LUIListItem> {
 
 final class _LUIAnchoredStack extends StatefulWidget {
   const _LUIAnchoredStack({
-    required this.groupID,
     required this.anchor,
     required this.alignment,
     required this.offset,
-    required this.menu,
+    required this.menuID,
+    required this.menuChildren,
+    required this.minimumWidth,
+    required this.maximumWidth,
+    required this.onDismiss,
     required this.trigger,
   });
 
-  final int groupID;
   final String anchor;
   final String alignment;
   final double offset;
-  final Widget? menu;
+  final int? menuID;
+  final List<Widget> menuChildren;
+  final double? minimumWidth;
+  final double? maximumWidth;
+  final VoidCallback? onDismiss;
   final Widget trigger;
 
   @override
@@ -4496,73 +4532,88 @@ final class _LUIAnchoredStack extends StatefulWidget {
 }
 
 final class _LUIAnchoredStackState extends State<_LUIAnchoredStack> {
-  final LayerLink _link = LayerLink();
-  final OverlayPortalController _overlay = OverlayPortalController();
+  final MenuController _menu = MenuController();
+  bool _closingForModel = false;
 
   @override
   void initState() {
     super.initState();
-    _syncOverlay();
+    _syncMenu();
   }
 
   @override
   void didUpdateWidget(_LUIAnchoredStack oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if ((oldWidget.menu == null) != (widget.menu == null)) _syncOverlay();
+    if (oldWidget.menuID != widget.menuID) _syncMenu();
   }
 
-  void _syncOverlay() {
+  void _syncMenu() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (widget.menu == null) {
-        _overlay.hide();
-      } else {
-        _overlay.show();
+      if (widget.menuID == null) {
+        if (_menu.isOpen) {
+          _closingForModel = true;
+          _menu.close();
+        }
+      } else if (!_menu.isOpen && widget.menuChildren.isNotEmpty) {
+        _menu.open();
       }
     });
   }
 
-  Alignment get _horizontalAnchor => switch (widget.alignment) {
-    'center' => Alignment.bottomCenter,
-    'end' => Alignment.bottomRight,
-    _ => Alignment.bottomLeft,
+  AlignmentGeometry get _menuAlignment => switch (widget.anchor) {
+    'above' => switch (widget.alignment) {
+      'center' => Alignment.topCenter,
+      'end' => AlignmentDirectional.topEnd,
+      _ => AlignmentDirectional.topStart,
+    },
+    'left' => AlignmentDirectional.centerStart,
+    'right' => AlignmentDirectional.centerEnd,
+    _ => switch (widget.alignment) {
+      'center' => Alignment.bottomCenter,
+      'end' => AlignmentDirectional.bottomEnd,
+      _ => AlignmentDirectional.bottomStart,
+    },
   };
 
-  Alignment get _targetAnchor => widget.anchor == 'above'
-      ? Alignment(_horizontalAnchor.x, -1)
-      : _horizontalAnchor;
+  Offset get _alignmentOffset => switch (widget.anchor) {
+    'above' => Offset(0, -widget.offset),
+    'left' => Offset(-widget.offset, 0),
+    'right' => Offset(widget.offset, 0),
+    _ => Offset(0, widget.offset),
+  };
 
-  Alignment get _followerAnchor => widget.anchor == 'above'
-      ? Alignment(_horizontalAnchor.x, 1)
-      : Alignment(_horizontalAnchor.x, -1);
+  void _menuClosed() {
+    if (_closingForModel) {
+      _closingForModel = false;
+      if (widget.menuID != null) _syncMenu();
+      return;
+    }
+    widget.onDismiss?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return CompositedTransformTarget(
-      link: _link,
-      child: OverlayPortal(
-        controller: _overlay,
-        overlayChildBuilder: (context) => CompositedTransformFollower(
-          link: _link,
-          showWhenUnlinked: false,
-          targetAnchor: _targetAnchor,
-          followerAnchor: _followerAnchor,
-          offset: Offset(
-            0,
-            widget.anchor == 'above' ? -widget.offset : widget.offset,
-          ),
-          child: TapRegion(
-            groupId: widget.groupID,
-            child: SizedBox(
-              width: widget.alignment == 'stretch'
-                  ? _link.leaderSize?.width
-                  : null,
-              child: widget.menu ?? const SizedBox.shrink(),
-            ),
-          ),
-        ),
-        child: TapRegion(groupId: widget.groupID, child: widget.trigger),
+    return MenuAnchor(
+      controller: _menu,
+      useRootOverlay: true,
+      animated: true,
+      crossAxisUnconstrained: widget.alignment != 'stretch',
+      alignmentOffset: _alignmentOffset,
+      style: MenuStyle(
+        alignment: _menuAlignment,
+        minimumSize: widget.minimumWidth == null
+            ? null
+            : WidgetStatePropertyAll(Size(widget.minimumWidth!, 0)),
+        maximumSize: widget.maximumWidth == null
+            ? null
+            : WidgetStatePropertyAll(
+                Size(widget.maximumWidth!, double.infinity),
+              ),
       ),
+      onClose: _menuClosed,
+      menuChildren: widget.menuChildren,
+      child: widget.trigger,
     );
   }
 }

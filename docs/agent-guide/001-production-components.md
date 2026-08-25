@@ -459,11 +459,12 @@ composition explicit:
 - `combobox` is an editable leaf with `text`, `placeholder`, `disabled`,
   `on-input`, `on-submit`, `on-press`, and `on-dismiss`;
 - `dropdown-menu` is a sibling of its trigger inside `stack`. It accepts
-  `anchor` (`above` or `below`), `anchor-alignment` (`start`, `center`, `end`,
+  `anchor` (`above`, `below`, `left`, or `right`), `anchor-alignment` (`start`, `center`, `end`,
   or `stretch`), floating-point `anchor-offset`, admitted common size props,
   and `on-dismiss`;
-- `menu-item` is a text-bearing leaf with `icon`, `selected`, `disabled`, and
-  `on-press`.
+- `menu-item` is a text-bearing row with `icon`, `selected`, `disabled`, and
+  `on-press`. Instead of an action it may retain one nested `dropdown-menu`;
+  nesting is recursive and remains ordinary retained structure.
 
 The application owns selected value, combobox query, and open menu identity as
 Signals. A menu is mounted with `:if` only while open, so dismissal disposes
@@ -471,13 +472,19 @@ that dynamic segment without replacing the trigger or unrelated siblings.
 Selected value and host-owned keyboard highlight are separate state: a native
 focus move does not commit model selection until activation.
 
-Web uses retained native DOM controls, Tailwind component selectors, anchored
-positioning, Escape handling, and outside-pointer dismissal. Flutter uses
-Material controls plus a composited `OverlayPortal`; the stack keeps one stable
-widget shape while the portal is shown or hidden, preserving the trigger and
-text controller identities. Apple uses SwiftUI controls and material menu
-surfaces in the same retained node model. Platform-native focus, animation,
-menu tracking, and input composition remain backend-owned.
+Web uses retained native DOM controls, Tailwind component selectors, the shared
+Base UI-aligned portal, collision handling, keyboard traversal, and pointer
+corridors for nested menus. Flutter keeps one stable `MenuAnchor` around the
+trigger before and after the model mounts its menu, and maps nested rows to
+Material `SubmenuButton`; Material owns overlay placement, focus traversal,
+animation, collision handling, and outside dismissal. Apple keeps an equally
+stable SwiftUI host. Select and action menus use a native popover, while the
+editable Combobox uses a small SwiftUI `Layout` overlay because presenting a
+popover resigns the iPhone text field and breaks IME composition. That platform
+tweak stays inside the same retained host and changes only the menu child, so
+typing never remounts the trigger. SwiftUI `Menu` owns recursive submenu
+interaction. Application Signals still own selected value, query, and whether
+the retained menu subtree exists on every platform.
 
 ### ListItem contract
 

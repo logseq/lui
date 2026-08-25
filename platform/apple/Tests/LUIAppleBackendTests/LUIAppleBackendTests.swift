@@ -539,6 +539,9 @@ struct LUISwiftUIBackendTests {
           {"op":"create-node","id":3,"kind":"combobox"},
           {"op":"create-node","id":4,"kind":"dropdown-menu"},
           {"op":"create-node","id":5,"kind":"menu-item"},
+          {"op":"create-node","id":6,"kind":"menu-item"},
+          {"op":"create-node","id":7,"kind":"dropdown-menu"},
+          {"op":"create-node","id":8,"kind":"menu-item"},
           {"op":"set-prop","id":2,"property":"text","value":"Production"},
           {"op":"set-prop","id":2,"property":"press-enabled","value":true},
           {"op":"set-prop","id":3,"property":"placeholder","value":"Search"},
@@ -549,9 +552,16 @@ struct LUISwiftUIBackendTests {
           {"op":"set-prop","id":5,"property":"text","value":"Production"},
           {"op":"set-prop","id":5,"property":"selected","value":true},
           {"op":"set-prop","id":5,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":6,"property":"text","value":"More"},
+          {"op":"set-prop","id":7,"property":"anchor","value":"right"},
+          {"op":"set-prop","id":8,"property":"text","value":"Archive"},
+          {"op":"set-prop","id":8,"property":"press-enabled","value":true},
           {"op":"insert-child","parent":1,"child":2,"index":0},
           {"op":"insert-child","parent":1,"child":4,"index":1},
-          {"op":"insert-child","parent":4,"child":5,"index":0}
+          {"op":"insert-child","parent":4,"child":5,"index":0},
+          {"op":"insert-child","parent":4,"child":6,"index":1},
+          {"op":"insert-child","parent":6,"child":7,"index":0},
+          {"op":"insert-child","parent":7,"child":8,"index":0}
         ]}
         """)
 
@@ -561,11 +571,13 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 3)?.kind == .combobox)
         #expect(menu.kind == .dropdownMenu)
         #expect(backend.model(id: 5)?.kind == .menuItem)
-        #expect(menu.children == [5])
+        #expect(menu.children == [5, 6])
         #expect(menu.property(.anchor) == .string("below"))
         #expect(menu.property(.anchorAlignment) == .string("stretch"))
         #expect(menu.property(.anchorOffset) == .double(6))
         #expect(backend.model(id: 5)?.isSelected == true)
+        #expect(backend.model(id: 6)?.children == [7])
+        #expect(backend.model(id: 7)?.children == [8])
 
         try backend.performAction(node: 2)
         try backend.performTextChange(node: 3, text: "sol")

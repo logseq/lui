@@ -383,7 +383,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     ButtonStyleButton control(String label) => tester.widget<ButtonStyleButton>(
       find.ancestor(
@@ -839,6 +839,9 @@ void main() {
         {"op":"create-node","id":4,"kind":"dropdown-menu"},
         {"op":"create-node","id":5,"kind":"menu-item"},
         {"op":"create-node","id":6,"kind":"stack"},
+        {"op":"create-node","id":7,"kind":"menu-item"},
+        {"op":"create-node","id":8,"kind":"dropdown-menu"},
+        {"op":"create-node","id":9,"kind":"menu-item"},
         {"op":"set-prop","id":1,"property":"cross","value":"start"},
         {"op":"set-prop","id":2,"property":"text","value":"Production"},
         {"op":"set-prop","id":2,"property":"press-enabled","value":true},
@@ -850,11 +853,17 @@ void main() {
         {"op":"set-prop","id":5,"property":"text","value":"Production"},
         {"op":"set-prop","id":5,"property":"selected","value":true},
         {"op":"set-prop","id":5,"property":"press-enabled","value":true},
+        {"op":"set-prop","id":7,"property":"text","value":"More"},
+        {"op":"set-prop","id":8,"property":"anchor","value":"right"},
+        {"op":"set-prop","id":9,"property":"text","value":"Archive"},
+        {"op":"set-prop","id":9,"property":"press-enabled","value":true},
         {"op":"insert-child","parent":1,"child":6,"index":0},
         {"op":"insert-child","parent":1,"child":3,"index":1},
         {"op":"insert-child","parent":6,"child":2,"index":0},
-        {"op":"insert-child","parent":6,"child":4,"index":1},
-        {"op":"insert-child","parent":4,"child":5,"index":0}
+        {"op":"insert-child","parent":4,"child":5,"index":0},
+        {"op":"insert-child","parent":4,"child":7,"index":1},
+        {"op":"insert-child","parent":7,"child":8,"index":0},
+        {"op":"insert-child","parent":8,"child":9,"index":0}
       ]}
       ''');
 
@@ -865,18 +874,48 @@ void main() {
 
     expect(find.widgetWithText(OutlinedButton, 'Production'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
-    expect(find.byType(MenuItemButton), findsOneWidget);
-    expect(find.byIcon(Icons.check), findsOneWidget);
-
+    final retainedSelect = tester.renderObject(
+      find.byKey(LUIFlutterBackend.nodeKey(2)),
+    );
     await tester.tap(find.widgetWithText(OutlinedButton, 'Production'));
-    await tester.tap(find.byType(MenuItemButton));
-    await tester.pump();
-    backend.performDismiss(4);
     backend.applyJson('''
       {"generation":2,"ops":[
+        {"op":"insert-child","parent":6,"child":4,"index":1}
+      ]}
+      ''');
+    await tester.pumpAndSettle();
+
+    final rootMenuFinder = find.byWidgetPredicate(
+      (widget) => widget is MenuAnchor && widget.menuChildren.length == 2,
+    );
+    expect(rootMenuFinder, findsOneWidget);
+    expect(find.byType(SubmenuButton), findsOneWidget);
+    final nativeMenu = tester.widget<MenuAnchor>(rootMenuFinder);
+    expect(nativeMenu.useRootOverlay, isTrue);
+    expect(nativeMenu.animated, isTrue);
+    expect(find.byType(MenuItemButton), findsOneWidget);
+    expect(find.byIcon(Icons.check), findsOneWidget);
+    expect(
+      tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(2))),
+      same(retainedSelect),
+    );
+
+    await tester.tap(find.byType(SubmenuButton));
+    await tester.pumpAndSettle();
+    expect(find.text('Archive'), findsOneWidget);
+    await tester.tap(find.text('Archive'));
+    await tester.pumpAndSettle();
+    backend.applyJson('''
+      {"generation":3,"ops":[
         {"op":"remove-child","parent":6,"child":4},
         {"op":"remove-child","parent":4,"child":5},
+        {"op":"remove-child","parent":4,"child":7},
+        {"op":"remove-child","parent":7,"child":8},
+        {"op":"remove-child","parent":8,"child":9},
         {"op":"drop-node","id":5},
+        {"op":"drop-node","id":9},
+        {"op":"drop-node","id":8},
+        {"op":"drop-node","id":7},
         {"op":"drop-node","id":4}
       ]}
       ''');
@@ -887,7 +926,7 @@ void main() {
 
     expect(events, [
       const LUIPressEvent(node: 2),
-      const LUIPressEvent(node: 5),
+      const LUIPressEvent(node: 9),
       const LUIDismissEvent(node: 4),
       const LUITextChangedEvent(node: 3, text: 'sol'),
       const LUISubmitEvent(node: 3),

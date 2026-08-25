@@ -637,13 +637,23 @@ private struct LUIStackView: View {
 
     @ViewBuilder
     var body: some View {
-        if let tooltip = anchoredTooltip {
-            LUITooltipHost(model: tooltip, session: backend.tooltipSession) {
-                stackChildren(excluding: tooltip.id)
+        if hasComboboxTrigger {
+            LUIAnchoredComboboxMenuHost(model: anchoredMenu, backend: backend) {
+                triggerContent(excludingMenu: anchoredMenu?.id)
+            }
+        } else if hasSelectTrigger || anchoredMenu != nil {
+            LUIAnchoredMenuHost(model: anchoredMenu, backend: backend) {
+                triggerContent(excludingMenu: anchoredMenu?.id)
             }
         } else {
-            stackChildren(excluding: nil)
+            triggerContent(excludingMenu: nil)
         }
+    }
+
+    private var anchoredMenu: LUINodeModel? {
+        model.children
+            .compactMap(backend.model)
+            .first { $0.kind == .dropdownMenu && $0.property(.anchor) != nil }
     }
 
     private var anchoredTooltip: LUINodeModel? {
@@ -652,11 +662,241 @@ private struct LUIStackView: View {
             .first { $0.kind == .tooltip && $0.property(.anchor) != nil }
     }
 
-    private func stackChildren(excluding tooltipID: Int?) -> some View {
+    private var hasComboboxTrigger: Bool {
+        model.children
+            .compactMap(backend.model)
+            .contains { $0.kind == .combobox }
+    }
+
+    private var hasSelectTrigger: Bool {
+        model.children
+            .compactMap(backend.model)
+            .contains { $0.kind == .select }
+    }
+
+    @ViewBuilder
+    private func triggerContent(excludingMenu menuID: Int?) -> some View {
+        if let tooltip = anchoredTooltip {
+            LUITooltipHost(model: tooltip, session: backend.tooltipSession) {
+                stackChildren(excluding: [menuID, tooltip.id].compactMap { $0 })
+            }
+        } else {
+            stackChildren(excluding: menuID.map { [$0] } ?? [])
+        }
+    }
+
+    private func stackChildren(excluding excludedIDs: [Int]) -> some View {
         ZStack {
-            ForEach(model.children.filter { $0 != tooltipID }, id: \.self) { childID in
+            ForEach(model.children.filter { !excludedIDs.contains($0) }, id: \.self) { childID in
                 LUIAnyNodeView(nodeID: childID, backend: backend)
             }
+        }
+    }
+}
+
+private struct LUIAnchoredComboboxMenuHost<Content: View>: View {
+    let model: LUINodeModel?
+    let backend: LUIAppleBackend
+    let content: Content
+
+    init(
+        model: LUINodeModel?,
+        backend: LUIAppleBackend,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.model = model
+        self.backend = backend
+        self.content = content()
+    }
+
+    var body: some View {
+        LUIAnchoredComboboxMenuLayout(
+            anchor: model?.property(.anchor)?.stringValue ?? "below",
+            alignment: model?.property(.anchorAlignment)?.stringValue ?? "start",
+            offset: CGFloat(model?.property(.anchorOffset)?.doubleValue ?? 0)
+        ) {
+            content
+            if let model {
+                LUIDropdownMenuView(model: model, backend: backend)
+                    .zIndex(1)
+            }
+        }
+    }
+}
+
+private struct LUIAnchoredComboboxMenuLayout: Layout {
+    let anchor: String
+    let alignment: String
+    let offset: CGFloat
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        subviews.first?.sizeThatFits(proposal) ?? .zero
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        guard let trigger = subviews.first else { return }
+        let triggerSize = trigger.sizeThatFits(proposal)
+        trigger.place(
+            at: bounds.origin,
+            anchor: .topLeading,
+            proposal: ProposedViewSize(triggerSize)
+        )
+        guard subviews.count == 2 else { return }
+
+        let menu = subviews[1]
+        let menuProposal = ProposedViewSize(
+            width: alignment == "stretch" ? triggerSize.width : nil,
+            height: nil
+        )
+        let menuSize = menu.sizeThatFits(menuProposal)
+        menu.place(
+            at: menuOrigin(
+                bounds: bounds,
+                triggerSize: triggerSize,
+                menuSize: menuSize
+            ),
+            anchor: .topLeading,
+            proposal: menuProposal
+        )
+    }
+
+    private func menuOrigin(
+        bounds: CGRect,
+        triggerSize: CGSize,
+        menuSize: CGSize
+    ) -> CGPoint {
+        switch anchor {
+        case "above":
+            return CGPoint(
+                x: horizontalOrigin(bounds: bounds, menuWidth: menuSize.width),
+                y: bounds.minY - menuSize.height - offset
+            )
+        case "left":
+            return CGPoint(
+                x: bounds.minX - menuSize.width - offset,
+                y: verticalOrigin(bounds: bounds, menuHeight: menuSize.height)
+            )
+        case "right":
+            return CGPoint(
+                x: bounds.minX + triggerSize.width + offset,
+                y: verticalOrigin(bounds: bounds, menuHeight: menuSize.height)
+            )
+        default:
+            return CGPoint(
+                x: horizontalOrigin(bounds: bounds, menuWidth: menuSize.width),
+                y: bounds.minY + triggerSize.height + offset
+            )
+        }
+    }
+
+    private func horizontalOrigin(bounds: CGRect, menuWidth: CGFloat) -> CGFloat {
+        switch alignment {
+        case "center": bounds.midX - menuWidth / 2
+        case "end": bounds.maxX - menuWidth
+        default: bounds.minX
+        }
+    }
+
+    private func verticalOrigin(bounds: CGRect, menuHeight: CGFloat) -> CGFloat {
+        switch alignment {
+        case "center": bounds.midY - menuHeight / 2
+        case "end": bounds.maxY - menuHeight
+        default: bounds.minY
+        }
+    }
+}
+
+private struct LUIAnchoredMenuHost<Content: View>: View {
+    let model: LUINodeModel?
+    let backend: LUIAppleBackend
+    let content: Content
+
+    @State private var isPresented = false
+
+    init(
+        model: LUINodeModel?,
+        backend: LUIAppleBackend,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.model = model
+        self.backend = backend
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .popover(
+                isPresented: Binding(
+                    get: { isPresented },
+                    set: { presented in
+                        isPresented = presented
+                        if !presented, let model {
+                            try? backend.performDismiss(node: model.id)
+                        }
+                    }
+                ),
+                attachmentAnchor: .point(attachmentPoint),
+                arrowEdge: arrowEdge
+            ) {
+                if let model {
+                    LUIDropdownMenuView(
+                        model: model,
+                        backend: backend,
+                        isPresented: true
+                    )
+                    .presentationCompactAdaptation(.popover)
+                }
+            }
+            .onChange(of: model?.id, initial: true) { _, menuID in
+                isPresented = menuID != nil
+            }
+    }
+
+    private var attachmentPoint: UnitPoint {
+        let alignment = model?.property(.anchorAlignment)?.stringValue ?? "start"
+        switch model?.property(.anchor)?.stringValue ?? "below" {
+        case "left":
+            return UnitPoint(x: 0, y: verticalAlignment(alignment))
+        case "right":
+            return UnitPoint(x: 1, y: verticalAlignment(alignment))
+        case "above":
+            return UnitPoint(x: horizontalAlignment(alignment), y: 0)
+        default:
+            return UnitPoint(x: horizontalAlignment(alignment), y: 1)
+        }
+    }
+
+    private var arrowEdge: Edge {
+        switch model?.property(.anchor)?.stringValue ?? "below" {
+        case "above": .bottom
+        case "left": .trailing
+        case "right": .leading
+        default: .top
+        }
+    }
+
+    private func horizontalAlignment(_ alignment: String) -> CGFloat {
+        switch alignment {
+        case "center", "stretch": 0.5
+        case "end": 1
+        default: 0
+        }
+    }
+
+    private func verticalAlignment(_ alignment: String) -> CGFloat {
+        switch alignment {
+        case "center", "stretch": 0.5
+        case "end": 1
+        default: 0
         }
     }
 }
@@ -1347,6 +1587,7 @@ private struct LUIComboboxView: View {
                 Image(systemName: "chevron.down")
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Show options")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -1362,25 +1603,31 @@ private struct LUIComboboxView: View {
 private struct LUIDropdownMenuView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    var isPresented = false
 
+    @ViewBuilder
     var body: some View {
+        if isPresented {
+            menuItems
+        } else {
+            menuItems
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .shadow(radius: 8, y: 4)
+        }
+    }
+
+    private var menuItems: some View {
         VStack(alignment: .leading, spacing: CGFloat(model.property(.gap)?.intValue ?? 2)) {
             ForEach(model.children, id: \.self) { childID in
-                if let child = backend.model(id: childID) {
-                    LUINodeView(model: child, backend: backend)
-                }
+                LUIAnyNodeView(nodeID: childID, backend: backend)
             }
         }
         .padding(4)
         .frame(
             minWidth: model.surfaceMinWidth.map(CGFloat.init),
-            maxWidth: isStretch ? .infinity : nil,
+            maxWidth: model.surfaceMaxWidth.map(CGFloat.init) ?? (isStretch ? .infinity : nil),
             alignment: .leading
         )
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        .shadow(radius: 8, y: 4)
-        .offset(y: anchorDisplacement)
-        .zIndex(1)
 #if os(macOS)
         .onExitCommand {
             try? backend.performDismiss(node: model.id)
@@ -1391,40 +1638,61 @@ private struct LUIDropdownMenuView: View {
     private var isStretch: Bool {
         model.property(.anchorAlignment)?.stringValue == "stretch"
     }
-
-    private var anchorDisplacement: CGFloat {
-        let offset = CGFloat(model.property(.anchorOffset)?.doubleValue ?? 0)
-        return (model.property(.anchor)?.stringValue ?? "below") == "above"
-            ? -(40 + offset)
-            : 40 + offset
-    }
 }
 
 private struct LUIMenuItemView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
 
+    @ViewBuilder
     var body: some View {
-        Button {
-            try? backend.performPress(node: model.id)
-        } label: {
-            HStack(spacing: 8) {
-                if !model.buttonIconName.isEmpty {
-                    LUIIconImage(source: backend.iconSource(for: model.buttonIconName))
-                        .frame(width: 16, height: 16)
+        if let submenu {
+            Menu {
+                ForEach(submenu.children, id: \.self) { childID in
+                    if let child = backend.model(id: childID) {
+                        if child.kind == .divider {
+                            Divider()
+                        } else if child.kind == .menuItem {
+                            LUIMenuItemView(model: child, backend: backend)
+                        }
+                    }
                 }
-                Text(verbatim: model.text)
-                Spacer(minLength: 12)
-                if model.isSelected {
-                    Image(systemName: "checkmark")
-                }
+            } label: {
+                itemLabel
             }
-            .contentShape(Rectangle())
+            .disabled(!model.isEnabled)
+        } else {
+            Button {
+                try? backend.performPress(node: model.id)
+            } label: {
+                itemLabel
+            }
+            .buttonStyle(.plain)
+            .disabled(!model.isEnabled)
         }
-        .buttonStyle(.plain)
+    }
+
+    private var submenu: LUINodeModel? {
+        model.children
+            .compactMap(backend.model)
+            .first { $0.kind == .dropdownMenu }
+    }
+
+    private var itemLabel: some View {
+        HStack(spacing: 8) {
+            if !model.buttonIconName.isEmpty {
+                LUIIconImage(source: backend.iconSource(for: model.buttonIconName))
+                    .frame(width: 16, height: 16)
+            }
+            Text(verbatim: model.text)
+            Spacer(minLength: 12)
+            if model.isSelected {
+                Image(systemName: "checkmark")
+            }
+        }
+        .contentShape(Rectangle())
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .disabled(!model.isEnabled)
     }
 }
 
