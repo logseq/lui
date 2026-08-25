@@ -14,6 +14,7 @@
     (gallery-document "Quarterly report.md")
     (gallery-document-action "Selected Quarterly report.md")
     (gallery-avatar-image 0)
+    (gallery-media-surface 1)
     (gallery-tab "overview")
     (gallery-dialog-open false)
     (gallery-drawer-open false)

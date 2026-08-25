@@ -116,7 +116,7 @@ enum LUIWireValue: Decodable, Equatable {
              (.holdEnabled, .bool),
              (.changeEnabled, .bool), (.toggleEnabled, .bool), (.pressEnabled, .bool),
              (.submitEnabled, .bool), (.doublePressEnabled, .bool): true
-        case let (.image, .int(value)): value >= 0
+        case let (.image, .int(value)), let (.surface, .int(value)): value >= 0
         case let (.sourceX, .double(value)),
              let (.sourceY, .double(value)),
              let (.sourceWidth, .double(value)),
@@ -371,7 +371,8 @@ struct LUIRetainedTree {
                 kind == .switchControl || kind == .toggle ||
                 kind == .radioGroup || kind == .buttonGroup || kind == .toggleGroup ||
                 kind == .breadcrumb || kind == .pagination ||
-                kind == .radio || kind == .slider || kind == .avatar || kind == .tree ||
+                kind == .radio || kind == .slider || kind == .avatar || kind == .image ||
+                kind == .mediaSurface || kind == .tree ||
                 kind == .resizable || kind == .split || kind == .alert || kind == .bubble ||
                 isTreeRow(kind)
         case .headingLevel: kind == .heading
@@ -404,8 +405,12 @@ struct LUIRetainedTree {
                 || kind == .tableCell || isTreeRow(kind)
         case .submitEnabled: kind == .combobox || kind == .listItem
         case .doublePressEnabled: kind == .listItem
-        case .image, .sourceX, .sourceY, .sourceWidth, .sourceHeight:
-            kind == .avatar
+        case .image:
+            kind == .avatar || kind == .image
+        case .surface:
+            kind == .mediaSurface
+        case .sourceX, .sourceY, .sourceWidth, .sourceHeight:
+            kind == .avatar || kind == .image
         case .anchor, .anchorAlignment, .anchorOffset:
             kind == .dropdownMenu || kind == .tooltip
         case .tooltipDelay: kind == .tooltip
@@ -594,9 +599,13 @@ struct LUIRetainedTree {
                     throw invalid("list-item accepts text or children, not both")
                 }
             }
-            if node.kind == .avatar {
-                guard !(node.properties[.text]?.stringValue ?? "").isEmpty else {
+            if node.kind == .avatar || node.kind == .image {
+                if node.kind == .avatar,
+                   (node.properties[.text]?.stringValue ?? "").isEmpty {
                     throw invalid("avatar requires initials")
+                }
+                if node.kind == .image, node.properties[.image]?.intValue == nil {
+                    throw invalid("image requires image")
                 }
                 let sourceProperties: [LUIProperty] = [
                     .sourceX, .sourceY, .sourceWidth, .sourceHeight,
@@ -605,7 +614,7 @@ struct LUIRetainedTree {
                     node.properties[$0] != nil
                 }.count
                 guard sourceCount == 0 || sourceCount == sourceProperties.count else {
-                    throw invalid("avatar source crop requires all four coordinates")
+                    throw invalid("\(node.kind == .avatar ? "avatar" : "image") source crop requires all four coordinates")
                 }
                 if sourceCount == sourceProperties.count {
                     guard node.properties[.image]?.intValue != nil else {
@@ -616,12 +625,15 @@ struct LUIRetainedTree {
                     let width = node.properties[.sourceWidth]?.doubleValue ?? 0
                     let height = node.properties[.sourceHeight]?.doubleValue ?? 0
                     guard x >= 0, y >= 0 else {
-                        throw invalid("avatar source crop coordinates must be non-negative")
+                        throw invalid("\(node.kind == .avatar ? "avatar" : "image") source crop coordinates must be non-negative")
                     }
                     guard width > 0, height > 0 else {
-                        throw invalid("avatar source crop dimensions must be positive")
+                        throw invalid("\(node.kind == .avatar ? "avatar" : "image") source crop dimensions must be positive")
                     }
                 }
+            }
+            if node.kind == .mediaSurface, node.properties[.surface]?.intValue == nil {
+                throw invalid("media-surface requires surface")
             }
         }
     }

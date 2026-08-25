@@ -128,6 +128,10 @@ private struct LUINodeView: View {
             LUITableCellView(model: model, backend: backend)
         case .avatar:
             LUIAvatarView(model: model, backend: backend)
+        case .image:
+            LUIImageView(model: model, backend: backend)
+        case .mediaSurface:
+            LUIMediaSurfaceView(model: model, backend: backend)
         case .checkbox:
             LUICheckboxView(model: model, backend: backend)
         case .switchControl:
@@ -877,6 +881,43 @@ private struct LUIAvatarView: View {
         .frame(width: 40, height: 40)
         .compositingGroup()
         .clipShape(Circle())
+    }
+}
+
+private struct LUIImageView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    @ViewBuilder
+    var body: some View {
+        if let image = model.imageDisplayImage(in: backend) {
+            Image(decorative: image, scale: 1)
+                .resizable()
+        } else {
+            Color.clear
+        }
+    }
+}
+
+private struct LUIMediaSurfaceView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    @ViewBuilder
+    var body: some View {
+        if let frame = model.mediaSurfaceFrame(in: backend) {
+            Image(decorative: frame, scale: 1)
+                .resizable()
+        } else if model.mediaSurfaceID == 0 {
+            Color.clear
+        } else {
+            let components = model.mediaSurfacePlaceholderComponents
+            Color(
+                red: Double(components[0]) / 255,
+                green: Double(components[1]) / 255,
+                blue: Double(components[2]) / 255
+            )
+        }
     }
 }
 

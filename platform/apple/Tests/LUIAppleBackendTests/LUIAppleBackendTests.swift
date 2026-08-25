@@ -967,6 +967,92 @@ struct LUISwiftUIBackendTests {
         }
     }
 
+    @Test("Image and MediaSurface keep stable resource ids and invalidate only dependents")
+    func mapsRetainedMediaResources() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"row"},
+          {"op":"create-node","id":2,"kind":"image"},
+          {"op":"create-node","id":3,"kind":"image"},
+          {"op":"create-node","id":4,"kind":"media-surface"},
+          {"op":"create-node","id":5,"kind":"media-surface"},
+          {"op":"set-prop","id":2,"property":"image","value":7},
+          {"op":"set-prop","id":2,"property":"source-x","value":8.0},
+          {"op":"set-prop","id":2,"property":"source-y","value":4.0},
+          {"op":"set-prop","id":2,"property":"source-width","value":40.0},
+          {"op":"set-prop","id":2,"property":"source-height","value":24.0},
+          {"op":"set-prop","id":3,"property":"image","value":8},
+          {"op":"set-prop","id":4,"property":"surface","value":11},
+          {"op":"set-prop","id":5,"property":"surface","value":12},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"insert-child","parent":1,"child":4,"index":2},
+          {"op":"insert-child","parent":1,"child":5,"index":3}
+        ]}
+        """)
+
+        let imageNode = try #require(backend.model(id: 2))
+        let otherImage = try #require(backend.model(id: 3))
+        let surfaceNode = try #require(backend.model(id: 4))
+        let otherSurface = try #require(backend.model(id: 5))
+        let revisions = (
+            imageNode.revision,
+            otherImage.revision,
+            surfaceNode.revision,
+            otherSurface.revision
+        )
+        let frame = try image()
+        #expect(surfaceNode.mediaSurfacePlaceholderComponents == [87, 115, 81])
+
+        try backend.registerImage(id: 7, image: frame)
+        #expect(imageNode.registeredImage(in: backend) === frame)
+        #expect(imageNode.imageSourceRect == CGRect(x: 8, y: 4, width: 40, height: 24))
+        #expect(imageNode.revision == revisions.0 + 1)
+        #expect(otherImage.revision == revisions.1)
+
+        try backend.presentMediaSurfaceFrame(id: 11, image: frame)
+        #expect(surfaceNode.mediaSurfaceFrame(in: backend) === frame)
+        #expect(surfaceNode.revision == revisions.2 + 1)
+        #expect(otherSurface.revision == revisions.3)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        backend.unregisterMediaSurface(id: 11)
+        #expect(surfaceNode.mediaSurfaceFrame(in: backend) == nil)
+        #expect(surfaceNode.revision == revisions.2 + 2)
+        #expect(otherSurface.revision == revisions.3)
+        #expect(throws: LUIBackendError.self) {
+            try backend.presentMediaSurfaceFrame(id: 0, image: frame)
+        }
+    }
+
+    @Test("Image and MediaSurface reject missing ids and partial crops atomically")
+    func rejectsInvalidMediaLeaves() throws {
+        for kind in ["image", "media-surface"] {
+            let backend = LUIAppleBackend()
+            #expect(throws: LUIBackendError.self) {
+                try backend.apply(json: """
+                {"generation":1,"ops":[
+                  {"op":"create-node","id":1,"kind":"\(kind)"}
+                ]}
+                """)
+            }
+            #expect(backend.generation == 0)
+        }
+
+        let partial = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try partial.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"image"},
+              {"op":"set-prop","id":1,"property":"image","value":7},
+              {"op":"set-prop","id":1,"property":"source-x","value":0.0}
+            ]}
+            """)
+        }
+        #expect(partial.generation == 0)
+    }
+
     @Test("rejects partial and invalid Avatar source crops atomically")
     func rejectsInvalidAvatarCrop() throws {
         let backend = LUIAppleBackend()

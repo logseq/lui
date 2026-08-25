@@ -43,6 +43,8 @@
   (AppleMenuItem)
   (AppleListItem)
   (AppleAvatar)
+  (AppleImage)
+  (AppleMediaSurface)
   (AppleDialog)
   (AppleDrawer)
   (AppleSheet)

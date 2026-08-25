@@ -12,7 +12,9 @@ From the repository root:
 make serve-web
 ```
 
-Open <http://127.0.0.1:8765/examples/components/web/index.html>.
+The Node host listens on all network interfaces. Open
+<http://127.0.0.1:8765/examples/components/web/index.html> locally, or replace
+`127.0.0.1` with the computer's LAN address when opening it from a phone.
 
 ## Flutter desktop
 

@@ -324,6 +324,25 @@
    [:paragraph
     "The host owns image resources; changing the ImageId Signal retains the Avatar node."]])
 
+(defui media-gallery [resource-source]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Image and MediaSurface"]
+   [:row {:gap 16 :cross "center"}
+    [:image
+     {:image resource-source
+      :width 160
+      :height 96
+      :corner-radius 12
+      :label "Registered application icon"}]
+    [:media-surface
+     {:surface resource-source
+      :width 160
+      :height 96
+      :corner-radius 12
+      :label "Producer-owned preview frame"}]]
+   [:paragraph
+    "Image shares the host image registry; MediaSurface keeps one SurfaceId while its producer replaces frames."]])
+
 (defui progress-gallery [value-source value-label-source advance]
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "Progress"]
@@ -672,7 +691,7 @@
    report-selected-source checklist-selected-source document-action-source
    select-report select-checklist open-report open-checklist
    rename-document archive-document
-   avatar-image-source toggle-avatar-image
+   avatar-image-source media-surface-source toggle-avatar-image
    overview-tab-selected-source activity-tab-selected-source
    tab-content-source select-overview-tab select-activity-tab
    dialog-open-source open-dialog close-dialog
@@ -721,6 +740,7 @@
     accordion-open-source report-selected-source checklist-selected-source
     set-accordion-open select-report select-checklist]
    [avatar-gallery avatar-image-source toggle-avatar-image]
+   [media-gallery media-surface-source]
    [text-entry-gallery value-source disabled-source update-value]
    [tooltip-gallery]
    [accordion-gallery accordion-open-source set-accordion-open]

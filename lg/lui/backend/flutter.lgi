@@ -41,6 +41,8 @@
   (FlutterMenuItem)
   (FlutterListItem)
   (FlutterAvatar)
+  (FlutterImage)
+  (FlutterMediaSurface)
   (FlutterDialog)
   (FlutterDrawer)
   (FlutterSheet)

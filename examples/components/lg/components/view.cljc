@@ -63,6 +63,7 @@
    (fn [_event] (send (model/PerformContextAction "Rename")))
    (fn [_event] (send (model/PerformContextAction "Archive")))
    (reactive :gallery-avatar-image model-source)
+   (reactive :gallery-media-surface model-source)
    (fn [_event] (send model/ToggleAvatarImage))
    (reactive model/overview-tab-selected? model-source)
    (reactive model/activity-tab-selected? model-source)

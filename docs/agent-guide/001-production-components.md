@@ -508,6 +508,48 @@ rectangle to the decoded image bounds and draw it with cover fit inside the
 same circular Avatar frame. Supplying only part of the group is rejected
 atomically rather than silently drawing a different image.
 
+### Image and media-surface contract
+
+`image` and `media-surface` are display-only retained leaves. They accept no
+children or events, have no intrinsic size, and admit the common surface
+layout and style attributes so callers can size, grow, clip, and round them.
+Both accept the pictorial `label`; an empty label explicitly marks decorative
+content, while the authoring diagnostics warn when the label is omitted. Their
+resource identifiers are model data and therefore must be Signals rather than
+markup literals. Updating either Signal patches the same retained node.
+
+`image` requires `image`, a Signal containing a non-negative model-owned
+`ImageId`. It uses the same host image registry and id namespace as Avatar;
+`0` or an unregistered id draws nothing. The optional `source-x`, `source-y`,
+`source-width`, and `source-height` attributes select a decoded-pixel atlas
+region. The crop is the same all-or-none, finite, non-negative-origin,
+positive-size group as Avatar. Unlike Avatar, Image preserves the selected
+pixels by stretching them into the authored frame and has no initials fallback
+or fixed shape. This is the pinned reference's default ImageFit; Image adds no
+fit-mode prop.
+
+`media-surface` requires `surface`, a Signal containing a non-negative
+model-owned `SurfaceId`; `0` is unbound and draws nothing. A nonzero id without
+a submitted frame draws a subdued deterministic id-derived placeholder, so
+snapshots do not depend on producer timing. Surface ids occupy
+an independent registry from image ids. A host producer submits an already
+decoded platform frame under a stable id: Web supplies a URL plus decoded
+pixel dimensions, SwiftUI a `CGImage`, and Flutter a `dart:ui.Image`.
+Submitting another frame atomically replaces the pending frame for that id;
+native presentation consumes the latest frame and invalidates only retained
+MediaSurface nodes that reference it. Unregistering the surface removes its
+frame and returns those nodes to the deterministic placeholder. Submitted
+frames stretch into the authored frame, matching the reference's ordinary
+producer-owned surface behavior; specialized video composition may add its own
+contain fitting above this primitive. The registry is a
+presentation resource boundary, not application state, and the producer
+retains loading, decoding, pacing, and external-resource lifetime policy.
+
+Live frame contents are intentionally outside deterministic snapshots and
+session replay. Tests and Gallery use a fixed registered frame, while
+production video, camera, or renderer integrations keep one SurfaceId and
+submit replacement frames without emitting LG patch batches.
+
 ### Tabs contract
 
 `tabs` is the reference's horizontal TabsList container, not a page-content

@@ -17,6 +17,7 @@
                      AppleSelect AppleCombobox AppleDropdownMenu AppleContextMenu AppleMenuItem AppleListItem
                      AppleTable AppleTableRow AppleTableCell AppleTree AppleResizable AppleSplit
                      AppleAvatar AppleDialog AppleDrawer AppleSheet AppleTooltip
+                     AppleImage AppleMediaSurface
                      AppleAccordion]]
             [lui.backend.flutter :as flutter]))
 
@@ -257,6 +258,25 @@
      :label "Profile picture"}
     "ZN"]
    [:avatar "CT"]])
+
+(defui retained-media [image-id surface-id]
+  [:row {:gap 12}
+   [:image
+    {:image image-id
+     :source-x 8.0
+     :source-y 4.0
+     :source-width 40.0
+     :source-height 24.0
+     :width 160
+     :height 96
+     :corner-radius 12
+     :label "Cover art"}]
+   [:media-surface
+    {:surface surface-id
+     :grow 1.0
+     :height 96
+     :corner-radius 12
+     :label "Camera preview"}]])
 
 (defui retained-tabs
   [overview-selected activity-selected on-overview on-activity on-toggle]
@@ -1202,6 +1222,44 @@
         (Some (proto/IntValue value))
         (assert-equal 7 value "the registered image id is model owned")
         _ (is false "patched avatar image id exists")))))
+
+(deftest image-and-media-surface-signals-patch-retained-leaves
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-media")
+        image-id (sig/state scheduler 0)
+        surface-id (sig/state scheduler 0)
+        root
+        (retained-media
+         (ui/context application scope)
+         (sig/value image-id)
+         (sig/value surface-id))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [image-node (nth (apple/children renderer root) 0)
+          surface-node (nth (apple/children renderer root) 1)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer image-node)
+        (Some AppleImage) (is true "Image is one retained native leaf")
+        _ (is false "Image keeps its semantic native kind"))
+      (match (apple/node renderer surface-node)
+        (Some AppleMediaSurface)
+        (is true "MediaSurface is one retained native leaf")
+        _ (is false "MediaSurface keeps its semantic native kind"))
+      (sig/set! image-id 7)
+      (sig/set! surface-id 11)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "resource Signals allocate no retained nodes")
+      (assert-equal
+       (Some (proto/IntValue 7))
+       (apple/property renderer image-node proto/ImageIdValue)
+       "ImageId patches the same Image node")
+      (assert-equal
+       (Some (proto/IntValue 11))
+       (apple/property renderer surface-node proto/SurfaceIdValue)
+       "SurfaceId patches the same MediaSurface node"))))
 
 (deftest tabs-composes-controlled-buttons-without-owning-selection
   (let [scheduler (sig/scheduler)

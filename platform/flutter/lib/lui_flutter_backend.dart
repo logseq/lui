@@ -261,6 +261,13 @@ IconData _materialIcon(String name) => switch (name) {
   _ => Icons.question_mark,
 };
 
+Color _mediaSurfacePlaceholderColor(int id) => Color.fromARGB(
+  0xff,
+  64 + (id * 37) % 64,
+  64 + (id * 57) % 64,
+  64 + (id * 83) % 64,
+);
+
 final class _NodeState {
   _NodeState(this.kind);
   _NodeState.copy(_NodeState other)
@@ -311,6 +318,7 @@ final class LUIFlutterBackend {
   Map<int, _NodeState> _states = {};
   final Map<int, _NodeHandle> _handles = {};
   final Map<int, ui.Image> _images = {};
+  final Map<int, ui.Image> _mediaSurfaces = {};
   int generation = 0;
 
   static Key nodeKey(int id) => ValueKey('lui-node-$id');
@@ -335,6 +343,10 @@ final class LUIFlutterBackend {
       image.dispose();
     }
     _images.clear();
+    for (final image in _mediaSurfaces.values) {
+      image.dispose();
+    }
+    _mediaSurfaces.clear();
     _states = {};
   }
 
@@ -358,8 +370,36 @@ final class LUIFlutterBackend {
 
   void _invalidateAvatars(int imageID) {
     for (final entry in _states.entries) {
-      if (entry.value.kind == _NodeKind.avatar &&
+      if ((entry.value.kind == _NodeKind.avatar ||
+              entry.value.kind == _NodeKind.image) &&
           entry.value.properties['image'] == imageID) {
+        _handles[entry.key]?.markChanged();
+      }
+    }
+  }
+
+  void presentMediaSurfaceFrame({required int id, required ui.Image image}) {
+    if (id <= 0) {
+      throw const LUIBackendException('media surface id must be positive');
+    }
+    final replacement = image.clone();
+    final previous = _mediaSurfaces[id];
+    _mediaSurfaces[id] = replacement;
+    previous?.dispose();
+    _invalidateMediaSurfaces(id);
+  }
+
+  void unregisterMediaSurface(int id) {
+    final image = _mediaSurfaces.remove(id);
+    if (image == null) return;
+    image.dispose();
+    _invalidateMediaSurfaces(id);
+  }
+
+  void _invalidateMediaSurfaces(int surfaceID) {
+    for (final entry in _states.entries) {
+      if (entry.value.kind == _NodeKind.mediaSurface &&
+          entry.value.properties['surface'] == surfaceID) {
         _handles[entry.key]?.markChanged();
       }
     }
@@ -1408,6 +1448,60 @@ final class LUIFlutterBackend {
       );
     }
 
+    Rect? imageSource(ui.Image? image) {
+      if (image == null || !state.properties.containsKey('source-x')) {
+        return null;
+      }
+      final requested = Rect.fromLTWH(
+        (state.properties['source-x'] as num).toDouble(),
+        (state.properties['source-y'] as num).toDouble(),
+        (state.properties['source-width'] as num).toDouble(),
+        (state.properties['source-height'] as num).toDouble(),
+      );
+      final bounds = Rect.fromLTWH(
+        0,
+        0,
+        image.width.toDouble(),
+        image.height.toDouble(),
+      );
+      final clipped = requested.intersect(bounds);
+      return clipped.isEmpty ? null : clipped;
+    }
+
+    Widget image() {
+      final imageID = state.properties['image'] as int;
+      final pixels = imageID == 0 ? null : _images[imageID];
+      final source = imageSource(pixels);
+      final hasDrawablePixels =
+          pixels != null &&
+          (!state.properties.containsKey('source-x') || source != null);
+      return Semantics(
+        label: accessibilityLabel,
+        image: accessibilityLabel != null,
+        excludeSemantics: true,
+        child: !hasDrawablePixels
+            ? const SizedBox.expand()
+            : CustomPaint(
+                painter: _LUIImagePainter(image: pixels, source: source),
+              ),
+      );
+    }
+
+    Widget mediaSurface() {
+      final surfaceID = state.properties['surface'] as int;
+      final frame = surfaceID == 0 ? null : _mediaSurfaces[surfaceID];
+      return Semantics(
+        label: accessibilityLabel,
+        image: accessibilityLabel != null,
+        excludeSemantics: true,
+        child: frame == null
+            ? surfaceID == 0
+                  ? const SizedBox.expand()
+                  : ColoredBox(color: _mediaSurfacePlaceholderColor(surfaceID))
+            : RawImage(image: frame, fit: BoxFit.fill),
+      );
+    }
+
     final content = switch (state.kind) {
       _NodeKind.row => row(),
       _NodeKind.tabs ||
@@ -1481,6 +1575,8 @@ final class LUIFlutterBackend {
       _NodeKind.tableRow => tableRow(),
       _NodeKind.tableCell => tableCell(),
       _NodeKind.avatar => avatar(),
+      _NodeKind.image => image(),
+      _NodeKind.mediaSurface => mediaSurface(),
       _NodeKind.toggle => FilterChip(
         label: Text(text),
         selected: checked,
@@ -2046,9 +2142,15 @@ final class LUIFlutterBackend {
         value is bool &&
             (kind == _NodeKind.combobox || kind == _NodeKind.listItem),
       'double-press-enabled' => value is bool && kind == _NodeKind.listItem,
-      'image' => value is int && value >= 0 && kind == _NodeKind.avatar,
+      'image' =>
+        value is int &&
+            value >= 0 &&
+            (kind == _NodeKind.avatar || kind == _NodeKind.image),
+      'surface' => value is int && value >= 0 && kind == _NodeKind.mediaSurface,
       'source-x' || 'source-y' || 'source-width' || 'source-height' =>
-        value is num && value.isFinite && kind == _NodeKind.avatar,
+        value is num &&
+            value.isFinite &&
+            (kind == _NodeKind.avatar || kind == _NodeKind.image),
       'anchor' =>
         value is String &&
             (value == 'above' || value == 'below') &&
@@ -2174,6 +2276,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider ||
                 kind == _NodeKind.avatar ||
+                kind == _NodeKind.image ||
+                kind == _NodeKind.mediaSurface ||
                 kind == _NodeKind.tree ||
                 kind == _NodeKind.resizable ||
                 kind == _NodeKind.split ||
@@ -2380,10 +2484,14 @@ final class LUIFlutterBackend {
           );
         }
       }
-      if (state.kind == _NodeKind.avatar) {
+      if (state.kind == _NodeKind.avatar || state.kind == _NodeKind.image) {
         final text = state.properties['text'] as String? ?? '';
-        if (text.isEmpty) {
+        if (state.kind == _NodeKind.avatar && text.isEmpty) {
           throw const LUIBackendException('avatar requires initials');
+        }
+        if (state.kind == _NodeKind.image &&
+            !state.properties.containsKey('image')) {
+          throw const LUIBackendException('image requires image');
         }
         const sourceNames = {
           'source-x',
@@ -2394,15 +2502,16 @@ final class LUIFlutterBackend {
         final sourceCount = sourceNames
             .where(state.properties.containsKey)
             .length;
+        final mediaKind = state.kind == _NodeKind.avatar ? 'avatar' : 'image';
         if (sourceCount != 0 && sourceCount != sourceNames.length) {
-          throw const LUIBackendException(
-            'avatar source crop requires all four coordinates',
+          throw LUIBackendException(
+            '$mediaKind source crop requires all four coordinates',
           );
         }
         if (sourceCount == sourceNames.length) {
           if (!state.properties.containsKey('image')) {
-            throw const LUIBackendException(
-              'avatar source crop requires an image',
+            throw LUIBackendException(
+              '$mediaKind source crop requires an image',
             );
           }
           final x = (state.properties['source-x'] as num).toDouble();
@@ -2410,16 +2519,20 @@ final class LUIFlutterBackend {
           final width = (state.properties['source-width'] as num).toDouble();
           final height = (state.properties['source-height'] as num).toDouble();
           if (x < 0 || y < 0) {
-            throw const LUIBackendException(
-              'avatar source crop coordinates must be non-negative',
+            throw LUIBackendException(
+              '$mediaKind source crop coordinates must be non-negative',
             );
           }
           if (width <= 0 || height <= 0) {
-            throw const LUIBackendException(
-              'avatar source crop dimensions must be positive',
+            throw LUIBackendException(
+              '$mediaKind source crop dimensions must be positive',
             );
           }
         }
+      }
+      if (state.kind == _NodeKind.mediaSurface &&
+          !state.properties.containsKey('surface')) {
+        throw const LUIBackendException('media-surface requires surface');
       }
     }
   }
@@ -3214,6 +3327,31 @@ final class _LUIAvatarPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_LUIAvatarPainter oldDelegate) =>
+      oldDelegate.image != image || oldDelegate.source != source;
+}
+
+final class _LUIImagePainter extends CustomPainter {
+  const _LUIImagePainter({required this.image, required this.source});
+
+  final ui.Image image;
+  final Rect? source;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final available =
+        source ??
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+    final fitted = applyBoxFit(BoxFit.fill, available.size, size);
+    final sourceRect = Alignment.center.inscribe(fitted.source, available);
+    final destinationRect = Alignment.center.inscribe(
+      fitted.destination,
+      Offset.zero & size,
+    );
+    canvas.drawImageRect(image, sourceRect, destinationRect, Paint());
+  }
+
+  @override
+  bool shouldRepaint(_LUIImagePainter oldDelegate) =>
       oldDelegate.image != image || oldDelegate.source != source;
 }
 

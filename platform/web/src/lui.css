@@ -189,6 +189,20 @@
     @apply flex size-full items-center justify-center text-sm font-medium;
   }
 
+  .lui-image,
+  .lui-media-surface {
+    @apply relative block overflow-hidden;
+  }
+
+  .lui-image-pixels,
+  .lui-media-surface-frame {
+    @apply absolute max-w-none;
+  }
+
+  .lui-media-surface-frame {
+    @apply inset-0 size-full object-fill;
+  }
+
   .lui-scroll {
     @apply grid overflow-auto;
   }

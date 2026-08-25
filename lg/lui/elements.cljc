@@ -146,6 +146,8 @@
                          (= tag :menu-item)
                          (= tag :list-item)
                          (= tag :avatar)
+                         (= tag :image)
+                         (= tag :media-surface)
                          (= tag :reactions)
                          (= tag :status-bar)
                           (= tag :keyed))
@@ -1428,6 +1430,51 @@
           context node (:source-height attrs) 'lui.protocol/SourceHeight)
        ~@(string-attribute-expansion
           context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
+
+(defelement image [context parent attrs & children]
+  (when (if (empty? children) false true)
+    (throw (IllegalArgumentException. "image does not accept children")))
+  (when-not (:image attrs)
+    (throw (IllegalArgumentException. "image requires an :image signal")))
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/image! ~context)]
+       (lui.ui/int-property-signal!
+        ~context ~node lui.protocol/ImageIdValue ~(:image attrs))
+       ~@(float-attribute-expansion
+          context node (:source-x attrs) 'lui.protocol/SourceX)
+       ~@(float-attribute-expansion
+          context node (:source-y attrs) 'lui.protocol/SourceY)
+       ~@(float-attribute-expansion
+          context node (:source-width attrs) 'lui.protocol/SourceWidth)
+       ~@(float-attribute-expansion
+          context node (:source-height attrs) 'lui.protocol/SourceHeight)
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
+
+(defelement media-surface [context parent attrs & children]
+  (when (if (empty? children) false true)
+    (throw
+     (IllegalArgumentException. "media-surface does not accept children")))
+  (when-not (:surface attrs)
+    (throw
+     (IllegalArgumentException.
+      "media-surface requires a :surface signal")))
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/media-surface! ~context)]
+       (lui.ui/int-property-signal!
+        ~context ~node lui.protocol/SurfaceIdValue ~(:surface attrs))
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(element-properties context node attrs)
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])

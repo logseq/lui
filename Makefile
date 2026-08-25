@@ -5,7 +5,7 @@
 test: test-schema test-lg test-apple test-flutter build-web
 
 test-schema:
-	node --test tooling/test/component_schema_test.mjs
+	node --test tooling/test/*.mjs
 
 generate-component-schema:
 	node tooling/generate_component_schema.mjs
@@ -57,4 +57,4 @@ build-web: build-web-css
 	opam exec -- dune build @web -j 1
 
 serve-web: build-web
-	python3 -m http.server 8765
+	node tooling/serve_web.mjs

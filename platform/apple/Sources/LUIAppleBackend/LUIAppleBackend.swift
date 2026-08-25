@@ -124,7 +124,7 @@ final class LUINodeModel: Identifiable {
 
     var iconName: String { properties[.name]?.stringValue ?? "" }
 
-    var avatarSourceRect: CGRect? {
+    var imageSourceRect: CGRect? {
         guard let x = properties[.sourceX]?.doubleValue,
               let y = properties[.sourceY]?.doubleValue,
               let width = properties[.sourceWidth]?.doubleValue,
@@ -133,6 +133,8 @@ final class LUINodeModel: Identifiable {
         }
         return CGRect(x: x, y: y, width: width, height: height)
     }
+
+    var avatarSourceRect: CGRect? { imageSourceRect }
 
     func registeredImage(in backend: LUIAppleBackend) -> CGImage? {
         guard let imageID = properties[.image]?.intValue, imageID > 0 else {
@@ -143,8 +145,38 @@ final class LUINodeModel: Identifiable {
 
     func avatarDisplayImage(in backend: LUIAppleBackend) -> CGImage? {
         guard let image = registeredImage(in: backend) else { return nil }
-        guard let source = avatarSourceRect else { return image }
-        return image.cropping(to: source)
+        return croppedImage(image, source: avatarSourceRect)
+    }
+
+    func imageDisplayImage(in backend: LUIAppleBackend) -> CGImage? {
+        guard let image = registeredImage(in: backend) else { return nil }
+        return croppedImage(image, source: imageSourceRect)
+    }
+
+    private func croppedImage(_ image: CGImage, source: CGRect?) -> CGImage? {
+        guard let source else { return image }
+        let bounds = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        let clipped = source.intersection(bounds)
+        guard !clipped.isNull, !clipped.isEmpty else { return nil }
+        return image.cropping(to: clipped)
+    }
+
+    func mediaSurfaceFrame(in backend: LUIAppleBackend) -> CGImage? {
+        guard mediaSurfaceID > 0 else {
+            return nil
+        }
+        return backend.mediaSurfaceFrame(id: mediaSurfaceID)
+    }
+
+    var mediaSurfaceID: Int { properties[.surface]?.intValue ?? 0 }
+
+    var mediaSurfacePlaceholderComponents: [Int] {
+        let surfaceID = mediaSurfaceID
+        return [
+            64 + (surfaceID * 37) % 64,
+            64 + (surfaceID * 57) % 64,
+            64 + (surfaceID * 83) % 64,
+        ]
     }
 
     var iconSystemName: String {
@@ -227,6 +259,7 @@ public final class LUIAppleBackend {
     private var tree = LUIRetainedTree()
     private var models: [Int: LUINodeModel] = [:]
     private var images: [Int: CGImage] = [:]
+    private var mediaSurfaces: [Int: CGImage] = [:]
     private let decoder = JSONDecoder()
     private let appIcons: [String: LUIAppleIconSource]
     let tooltipSession = LUITooltipSession()
@@ -255,6 +288,10 @@ public final class LUIAppleBackend {
         images[id]
     }
 
+    func mediaSurfaceFrame(id: Int) -> CGImage? {
+        mediaSurfaces[id]
+    }
+
     public func registerImage(id: Int, image: CGImage) throws {
         guard id > 0 else {
             throw invalid("registered image id must be positive")
@@ -266,6 +303,19 @@ public final class LUIAppleBackend {
     public func unregisterImage(id: Int) {
         guard images.removeValue(forKey: id) != nil else { return }
         invalidateAvatars(imageID: id)
+    }
+
+    public func presentMediaSurfaceFrame(id: Int, image: CGImage) throws {
+        guard id > 0 else {
+            throw invalid("media surface id must be positive")
+        }
+        mediaSurfaces[id] = image
+        invalidateMediaSurfaces(surfaceID: id)
+    }
+
+    public func unregisterMediaSurface(id: Int) {
+        guard mediaSurfaces.removeValue(forKey: id) != nil else { return }
+        invalidateMediaSurfaces(surfaceID: id)
     }
 
     public func apply(json: String) throws {
@@ -512,7 +562,18 @@ public final class LUIAppleBackend {
     private func invalidateAvatars(imageID: Int) {
         withTransaction(Transaction(animation: nil)) {
             for model in models.values
-            where model.kind == .avatar && model.property(.image)?.intValue == imageID {
+            where (model.kind == .avatar || model.kind == .image) &&
+                model.property(.image)?.intValue == imageID {
+                model.invalidateResource()
+            }
+        }
+    }
+
+    private func invalidateMediaSurfaces(surfaceID: Int) {
+        withTransaction(Transaction(animation: nil)) {
+            for model in models.values
+            where model.kind == .mediaSurface &&
+                model.property(.surface)?.intValue == surfaceID {
                 model.invalidateResource()
             }
         }

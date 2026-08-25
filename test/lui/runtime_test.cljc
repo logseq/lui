@@ -717,6 +717,111 @@
          ((:apply-batch invalid-backend) invalid))
         "zero-area atlas declarations fail atomically")))
 
+(deftest image-and-media-surface-use-stable-resource-identities
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Row)
+                      (proto/create-node-op 2 proto/Image)
+                      (proto/create-node-op 3 proto/MediaSurface)
+                      (proto/set-prop-op
+                       2 proto/ImageIdValue (proto/IntValue 7))
+                      (proto/set-prop-op
+                       2 proto/SourceX (proto/FloatValue 8.0))
+                      (proto/set-prop-op
+                       2 proto/SourceY (proto/FloatValue 4.0))
+                      (proto/set-prop-op
+                       2 proto/SourceWidth (proto/FloatValue 40.0))
+                      (proto/set-prop-op
+                       2 proto/SourceHeight (proto/FloatValue 24.0))
+                      (proto/set-prop-op
+                       2 proto/WidthValue (proto/IntValue 160))
+                      (proto/set-prop-op
+                       2 proto/HeightValue (proto/IntValue 96))
+                      (proto/set-prop-op
+                       3 proto/SurfaceIdValue (proto/IntValue 11))
+                      (proto/set-prop-op
+                       3 proto/GrowValue (proto/FloatValue 1.0))
+                      (proto/set-prop-op
+                       3 proto/HeightValue (proto/IntValue 96))
+                      (proto/insert-child-op 1 2 0)
+                      (proto/insert-child-op 1 3 1)]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"row\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"image\"},"
+      "{\"op\":\"create-node\",\"id\":3,\"kind\":\"media-surface\"},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"image\",\"value\":7},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"source-x\",\"value\":8.0},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"source-y\",\"value\":4.0},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"source-width\",\"value\":40.0},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"source-height\",\"value\":24.0},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"width\",\"value\":160},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"height\",\"value\":96},"
+      "{\"op\":\"set-prop\",\"id\":3,\"property\":\"surface\",\"value\":11},"
+      "{\"op\":\"set-prop\",\"id\":3,\"property\":\"grow\",\"value\":1.0},"
+      "{\"op\":\"set-prop\",\"id\":3,\"property\":\"height\",\"value\":96},"
+      "{\"op\":\"insert-child\",\"parent\":1,\"child\":2,\"index\":0},"
+      "{\"op\":\"insert-child\",\"parent\":1,\"child\":3,\"index\":1}]}" )
+     (wire/encode-batch batch)
+     "media leaves keep the pinned resource vocabulary"))
+  (doseq [kind [proto/Image proto/MediaSurface]]
+    (is (not (proto/can-contain-children? kind))
+        "media elements are display-only leaves")
+    (doseq [property
+            [proto/GrowValue proto/WidthValue proto/HeightValue
+             proto/CornerRadius proto/AccessibilityLabel]]
+      (is (proto/property-supported? kind property)
+          "media leaves admit common surface layout and styling")))
+  (doseq [property
+          [proto/ImageIdValue proto/SourceX proto/SourceY
+           proto/SourceWidth proto/SourceHeight]]
+    (is (proto/property-supported? proto/Image property)
+        "Image admits registered pixels and an atlas crop"))
+  (is (proto/property-supported? proto/MediaSurface proto/SurfaceIdValue)
+      "MediaSurface admits only its producer rendezvous id")
+  (is (not (proto/property-supported? proto/MediaSurface proto/ImageIdValue))
+      "resource namespaces remain distinct")
+  (is (not (proto/property-supported? proto/Image proto/SurfaceIdValue))
+      "Image cannot bind a live surface"))
+
+(deftest media-leaf-required-resources-and-image-crops-validate-atomically
+  (doseq [kind [proto/Image proto/MediaSurface]]
+    (let [renderer (apple/create)
+          backend (apple/backend renderer)
+          batch
+          (record proto/patch-batch
+                  (generation 1)
+                  (ops [(proto/create-node-op 1 kind)]))]
+      (is (thrown-with-msg?
+           Invalid_argument
+           #"requires (image|surface)"
+           ((:apply-batch backend) batch))
+          "a resource-less media leaf is dead markup")
+      (assert-equal 0 (apple/node-count renderer)
+                    "a rejected media batch remains atomic")))
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        partial
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Image)
+                      (proto/set-prop-op
+                       1 proto/ImageIdValue (proto/IntValue 7))
+                      (proto/set-prop-op
+                       1 proto/SourceX (proto/FloatValue 0.0))]))]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"image source crop requires all four coordinates"
+         ((:apply-batch backend) partial))
+        "partial Image atlas declarations fail atomically")
+    (assert-equal 0 (apple/node-count renderer)
+                  "the rejected crop commits no retained nodes"))
+  (is (not (proto/property-value-supported?
+            proto/SurfaceIdValue (proto/IntValue -1)))
+      "negative surface ids are rejected at the wire boundary"))
+
 (deftest toggle-controls-use-closed-wire-names
   (let [batch
         (record proto/patch-batch

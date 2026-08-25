@@ -1493,6 +1493,147 @@ void main() {
     },
   );
 
+  testWidgets(
+    'Image and MediaSurface retain nodes and invalidate only resource dependents',
+    (tester) async {
+      final recorder = ui.PictureRecorder();
+      final canvas = ui.Canvas(recorder);
+      canvas.drawColor(const Color(0xff6750a4), BlendMode.src);
+      final frame = await recorder.endRecording().toImage(64, 48);
+      addTearDown(frame.dispose);
+
+      final backend = LUIFlutterBackend()
+        ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"row"},
+        {"op":"create-node","id":2,"kind":"image"},
+        {"op":"create-node","id":3,"kind":"image"},
+        {"op":"create-node","id":4,"kind":"media-surface"},
+        {"op":"create-node","id":5,"kind":"media-surface"},
+        {"op":"set-prop","id":2,"property":"image","value":7},
+        {"op":"set-prop","id":2,"property":"source-x","value":8.0},
+        {"op":"set-prop","id":2,"property":"source-y","value":4.0},
+        {"op":"set-prop","id":2,"property":"source-width","value":40.0},
+        {"op":"set-prop","id":2,"property":"source-height","value":24.0},
+        {"op":"set-prop","id":2,"property":"width","value":160},
+        {"op":"set-prop","id":2,"property":"height","value":96},
+        {"op":"set-prop","id":3,"property":"image","value":8},
+        {"op":"set-prop","id":3,"property":"width","value":160},
+        {"op":"set-prop","id":3,"property":"height","value":96},
+        {"op":"set-prop","id":4,"property":"surface","value":11},
+        {"op":"set-prop","id":4,"property":"width","value":160},
+        {"op":"set-prop","id":4,"property":"height","value":96},
+        {"op":"set-prop","id":5,"property":"surface","value":12},
+        {"op":"set-prop","id":5,"property":"width","value":160},
+        {"op":"set-prop","id":5,"property":"height","value":96},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":1,"child":4,"index":2},
+        {"op":"insert-child","parent":1,"child":5,"index":3}
+      ]}
+      ''');
+
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+      );
+      final imageRevision = backend.debugRevision(2);
+      final otherImageRevision = backend.debugRevision(3);
+      final surfaceRevision = backend.debugRevision(4);
+      final otherSurfaceRevision = backend.debugRevision(5);
+      final retainedImage = tester.element(
+        find.byKey(LUIFlutterBackend.nodeKey(2)),
+      );
+      final retainedSurface = tester.element(
+        find.byKey(LUIFlutterBackend.nodeKey(4)),
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LUIFlutterBackend.nodeKey(4)),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is ColoredBox && widget.color == const Color(0xff577351),
+          ),
+        ),
+        findsOneWidget,
+      );
+
+      backend.registerImage(id: 7, image: frame);
+      backend.presentMediaSurfaceFrame(id: 11, image: frame);
+      await tester.pump();
+      expect(backend.debugRevision(2), imageRevision + 1);
+      expect(backend.debugRevision(3), otherImageRevision);
+      expect(backend.debugRevision(4), surfaceRevision + 1);
+      expect(backend.debugRevision(5), otherSurfaceRevision);
+      expect(
+        tester.element(find.byKey(LUIFlutterBackend.nodeKey(2))),
+        same(retainedImage),
+      );
+      expect(
+        tester.element(find.byKey(LUIFlutterBackend.nodeKey(4))),
+        same(retainedSurface),
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LUIFlutterBackend.nodeKey(2)),
+          matching: find.byType(CustomPaint),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LUIFlutterBackend.nodeKey(4)),
+          matching: find.byType(RawImage),
+        ),
+        findsOneWidget,
+      );
+
+      backend.unregisterImage(7);
+      backend.unregisterMediaSurface(11);
+      await tester.pump();
+      expect(backend.debugRevision(2), imageRevision + 2);
+      expect(backend.debugRevision(4), surfaceRevision + 2);
+      expect(
+        () => backend.presentMediaSurfaceFrame(id: 0, image: frame),
+        throwsA(isA<LUIBackendException>()),
+      );
+      backend.dispose();
+    },
+  );
+
+  test('rejects missing media ids and partial Image crops atomically', () {
+    for (final kind in ['image', 'media-surface']) {
+      final backend = LUIFlutterBackend();
+      expect(
+        () => backend.applyJson('''
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"$kind"}
+        ]}
+        '''),
+        throwsA(isA<LUIBackendException>()),
+      );
+      expect(backend.generation, 0);
+    }
+
+    final partial = LUIFlutterBackend();
+    expect(
+      () => partial.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"image"},
+        {"op":"set-prop","id":1,"property":"image","value":7},
+        {"op":"set-prop","id":1,"property":"source-x","value":0.0}
+      ]}
+      '''),
+      throwsA(
+        isA<LUIBackendException>().having(
+          (error) => error.message,
+          'message',
+          contains('image source crop requires all four coordinates'),
+        ),
+      ),
+    );
+    expect(partial.generation, 0);
+  });
+
   test('rejects partial and invalid Avatar source crops atomically', () {
     final partial = LUIFlutterBackend();
     expect(

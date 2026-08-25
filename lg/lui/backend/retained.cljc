@@ -290,47 +290,61 @@
              (Invalid_argument "context-menu separator accepts no attributes"))))
         (raise (Invalid_argument "unknown context-menu child"))))))
 
-(defn- validate-avatar! [current]
-  (when (= (:semantic-kind current) proto/Avatar)
-    (let [properties (:retained-properties current)
-          has-source-x (contains? properties proto/SourceX)
-          has-source-y (contains? properties proto/SourceY)
-          has-source-width (contains? properties proto/SourceWidth)
-          has-source-height (contains? properties proto/SourceHeight)
-          source-count
-          (+ (if has-source-x 1 0)
-             (if has-source-y 1 0)
-             (if has-source-width 1 0)
-             (if has-source-height 1 0))]
-      (when (and (> source-count 0) (< source-count 4))
-        (raise
-         (Invalid_argument
-          "avatar source crop requires all four coordinates")))
-      (when (= source-count 4)
-        (let [x
-              (match (clojure.core/get properties proto/SourceX)
-                (Some (proto/FloatValue value)) value
-                _ -1.0)
-              y
-              (match (clojure.core/get properties proto/SourceY)
-                (Some (proto/FloatValue value)) value
-                _ -1.0)
-              width
-              (match (clojure.core/get properties proto/SourceWidth)
-                (Some (proto/FloatValue value)) value
-                _ 0.0)
-              height
-              (match (clojure.core/get properties proto/SourceHeight)
-                (Some (proto/FloatValue value)) value
-                _ 0.0)]
-          (when (or (< x 0.0) (< y 0.0))
-            (raise
-             (Invalid_argument
-              "avatar source crop coordinates must be non-negative")))
-          (when (or (<= width 0.0) (<= height 0.0))
-            (raise
-             (Invalid_argument
-              "avatar source crop dimensions must be positive"))))))))
+(defn- validate-image-source! [current]
+  (let [kind (:semantic-kind current)]
+    (when (or (= kind proto/Avatar) (= kind proto/Image))
+      (let [properties (:retained-properties current)
+            has-source-x (contains? properties proto/SourceX)
+            has-source-y (contains? properties proto/SourceY)
+            has-source-width (contains? properties proto/SourceWidth)
+            has-source-height (contains? properties proto/SourceHeight)
+            source-count
+            (+ (if has-source-x 1 0)
+               (if has-source-y 1 0)
+               (if has-source-width 1 0)
+               (if has-source-height 1 0))]
+        (when (and (> source-count 0) (< source-count 4))
+          (raise
+           (Invalid_argument
+            (str (if (= kind proto/Avatar) "avatar" "image")
+                 " source crop requires all four coordinates"))))
+        (when (= source-count 4)
+          (let [x
+                (match (clojure.core/get properties proto/SourceX)
+                  (Some (proto/FloatValue value)) value
+                  _ -1.0)
+                y
+                (match (clojure.core/get properties proto/SourceY)
+                  (Some (proto/FloatValue value)) value
+                  _ -1.0)
+                width
+                (match (clojure.core/get properties proto/SourceWidth)
+                  (Some (proto/FloatValue value)) value
+                  _ 0.0)
+                height
+                (match (clojure.core/get properties proto/SourceHeight)
+                  (Some (proto/FloatValue value)) value
+                  _ 0.0)]
+            (when (or (< x 0.0) (< y 0.0))
+              (raise
+               (Invalid_argument
+                (str (if (= kind proto/Avatar) "avatar" "image")
+                     " source crop coordinates must be non-negative"))))
+            (when (or (<= width 0.0) (<= height 0.0))
+              (raise
+               (Invalid_argument
+                (str (if (= kind proto/Avatar) "avatar" "image")
+                     " source crop dimensions must be positive"))))))))))
+
+(defn- validate-media-resource! [current]
+  (let [kind (:semantic-kind current)
+        properties (:retained-properties current)]
+    (when (and (= kind proto/Image)
+               (not (contains? properties proto/ImageIdValue)))
+      (raise (Invalid_argument "image requires image")))
+    (when (and (= kind proto/MediaSurface)
+               (not (contains? properties proto/SurfaceIdValue)))
+      (raise (Invalid_argument "media-surface requires surface")))))
 
 (defn- has-ancestor-kind? [nodes parent kind]
   (match parent
@@ -367,7 +381,8 @@
         (Invalid_argument "radio must be contained by a radio-group")))
      (validate-list-item-content! nodes current)
      (validate-context-menu! nodes current)
-     (validate-avatar! current)
+     (validate-image-source! current)
+     (validate-media-resource! current)
      (validate-tree-item! nodes current)
      (validate-split! current)
      (when (not

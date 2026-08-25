@@ -35,10 +35,10 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
     _backend = LUIFlutterBackend(onEvent: _dispatch);
     _bridge = LUIOcamlBridge.open(_libraryPath(), onPatch: _backend.applyJson);
     _bridge.start();
-    unawaited(_registerAvatarImage());
+    unawaited(_registerGalleryMedia());
   }
 
-  Future<void> _registerAvatarImage() async {
+  Future<void> _registerGalleryMedia() async {
     ui.Codec? codec;
     ui.Image? image;
     try {
@@ -47,14 +47,17 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
       );
       codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
       image = (await codec.getNextFrame()).image;
-      if (mounted) _backend.registerImage(id: 1, image: image);
+      if (mounted) {
+        _backend.registerImage(id: 1, image: image);
+        _backend.presentMediaSurfaceFrame(id: 1, image: image);
+      }
     } catch (error, stack) {
       FlutterError.reportError(
         FlutterErrorDetails(
           exception: error,
           stack: stack,
           library: 'LUI component gallery',
-          context: ErrorDescription('while registering the Avatar image'),
+          context: ErrorDescription('while registering Gallery media'),
         ),
       );
     } finally {

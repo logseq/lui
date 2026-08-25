@@ -13,6 +13,7 @@
   (gallery-document :string)
   (gallery-document-action :string)
   (gallery-avatar-image :int)
+  (gallery-media-surface :int)
   (gallery-tab :string)
   (gallery-dialog-open :bool)
   (gallery-drawer-open :bool)

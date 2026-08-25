@@ -256,6 +256,12 @@
 (defn avatar! [context]
   (runtime/create-node! (:ui-application context) proto/Avatar))
 
+(defn image! [context]
+  (runtime/create-node! (:ui-application context) proto/Image))
+
+(defn media-surface! [context]
+  (runtime/create-node! (:ui-application context) proto/MediaSurface))
+
 (defn button! [context]
   (runtime/create-node! (:ui-application context) proto/Button))
 

@@ -18,6 +18,7 @@
   (web-event-handler :ref<fn<event;bool>>)
   (web-app-icons :map<string;string>)
   (web-images :ref<map<int;web-image-resource>>)
+  (web-media-surfaces :ref<map<int;web-image-resource>>)
   (web-cleanups :ref<map<int;fn<unit>>>)
   (web-modal-stack :ref<vector<int>>)
   (web-open-context-menu :ref<option<int>>)
@@ -31,13 +32,27 @@
   :fn<web-renderer;int;string;float;float;bool>)
 (signature lui.backend.web/unregister-image!
   :fn<web-renderer;int;bool>)
+(signature lui.backend.web/present-media-surface-frame!
+  :fn<web-renderer;int;string;float;float;bool>)
+(signature lui.backend.web/unregister-media-surface!
+  :fn<web-renderer;int;bool>)
 (signature lui.backend.web/avatar-float
   :fn<web-renderer;int;property;float;float>)
 (signature lui.backend.web/registered-avatar-image
   :fn<web-renderer;int;option<web-image-resource>>)
+(signature lui.backend.web/media-size
+  :fn<web-renderer;int;property;float;float>)
+(signature lui.backend.web/registered-image
+  :fn<web-renderer;int;option<web-image-resource>>)
 (signature lui.backend.web/update-avatar!
   :fn<web-renderer;int;web-node;unit>)
-(signature lui.backend.web/refresh-avatar-image-id!
+(signature lui.backend.web/refresh-image-id!
+  :fn<web-renderer;int;bool>)
+(signature lui.backend.web/update-image!
+  :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/update-media-surface!
+  :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/refresh-media-surface-id!
   :fn<web-renderer;int;bool>)
 (signature lui.backend.web/platform-node :fn<web-renderer;node-kind;web-node>)
 (signature lui.backend.web/create-split-node :fn<web-renderer;web-node>)

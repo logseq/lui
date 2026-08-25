@@ -6,7 +6,7 @@
              :refer [Row Column Grid Stack Panel Card Alert Bubble Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
-                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip Accordion
+                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Dialog Drawer Sheet Tooltip Accordion
                      Table TableRow TableCell Tree Resizable Split StatusBar
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
@@ -26,7 +26,7 @@
                      VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled
                      ChangeEnabled ToggleEnabled PressEnabled
                      SubmitEnabled DoublePressEnabled
-                     ImageIdValue SourceX SourceY SourceWidth SourceHeight
+                     ImageIdValue SurfaceIdValue SourceX SourceY SourceWidth SourceHeight
                      AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay
                      TextAlignment RoleValue TreeLevel Expanded
                      StringValue BoolValue IntValue FloatValue]]
@@ -41,6 +41,7 @@
            (web-event-handler (atom (fn [_event] true)))
            (web-app-icons app-icons)
            (web-images (atom {}))
+           (web-media-surfaces (atom {}))
            (web-cleanups (atom {}))
            (web-modal-stack (atom []))
            (web-open-context-menu (atom None))
@@ -99,6 +100,8 @@
     MenuItem "lui-menu-item"
     ListItem "lui-list-item"
     Avatar "lui-avatar"
+    Image "lui-image"
+    MediaSurface "lui-media-surface"
     Dialog "lui-dialog"
     Drawer "lui-drawer"
     Sheet "lui-sheet"
@@ -221,6 +224,19 @@
        [])
       (element document "span" "lui-avatar-initials" {} [])])))
 
+(defn- create-media-node [renderer kind]
+  (let [class-name (base-class-name kind)
+        pixels-class
+        (if (= kind Image)
+          "lui-image-pixels"
+          "lui-media-surface-frame")]
+    (element
+     (:web-document renderer) "span" class-name {}
+     [(element
+       (:web-document renderer) "img" pixels-class
+       {"alt" "" "aria-hidden" "true" "draggable" "false" "hidden" ""}
+       [])])))
+
 (defn- create-accordion-node [renderer]
   (let [document (:web-document renderer)]
     (element
@@ -336,6 +352,8 @@
     Combobox (create-combobox-node renderer)
     MenuItem (create-menu-item-node renderer)
     Avatar (create-avatar-node renderer)
+    Image (create-media-node renderer kind)
+    MediaSurface (create-media-node renderer kind)
     Accordion (create-accordion-node renderer)
     Alert (create-alert-node renderer)
     Bubble (create-bubble-node renderer)
@@ -1683,12 +1701,7 @@
     _ fallback))
 
 (defn- registered-avatar-image [renderer node]
-  (match (retained/property (:web-store renderer) node ImageIdValue)
-    (Some (IntValue image-id))
-    (if (= image-id 0)
-      None
-      (clojure.core/get (deref (:web-images renderer)) image-id))
-    _ None))
+  (registered-image renderer node))
 
 (defn- update-avatar! [renderer node dom-node]
   (let [image-node (child-element dom-node 0)
@@ -1739,15 +1752,107 @@
         (set-state-attribute! image-node "hidden" true)
         (set-state-attribute! initials-node "hidden" false)))))
 
-(defn- refresh-avatar-image-id! [renderer image-id]
+(defn- media-size [renderer node property fallback]
+  (match (retained/property (:web-store renderer) node property)
+    (Some (IntValue value)) (Stdlib.float_of_int value)
+    _ fallback))
+
+(defn- registered-image [renderer node]
+  (match (retained/property (:web-store renderer) node ImageIdValue)
+    (Some (IntValue image-id))
+    (if (= image-id 0)
+      None
+      (clojure.core/get (deref (:web-images renderer)) image-id))
+    _ None))
+
+(defn- update-image! [renderer node dom-node]
+  (let [pixels (child-element dom-node 0)]
+    (match (registered-image renderer node)
+      (Some resource)
+      (let [source-x (avatar-float renderer node SourceX 0.0)
+            source-y (avatar-float renderer node SourceY 0.0)
+            source-width (avatar-float renderer node SourceWidth 0.0)
+            source-height (avatar-float renderer node SourceHeight 0.0)
+            cropped (> source-width 0.0)]
+        (Webapi.Dom.Element.setAttribute
+         "src" (:web-image-url resource) pixels)
+        (set-state-attribute! pixels "hidden" false)
+        (if cropped
+          (let [target-width
+                (media-size renderer node WidthValue source-width)
+                target-height
+                (media-size renderer node HeightValue source-height)
+                scale-x (/ target-width source-width)
+                scale-y (/ target-height source-height)]
+            (set-style!
+             pixels "width"
+             (str (* (:web-image-width resource) scale-x) "px"))
+            (set-style!
+             pixels "height"
+             (str (* (:web-image-height resource) scale-y) "px"))
+            (set-style!
+             pixels "left"
+             (str (* (- source-x) scale-x) "px"))
+            (set-style!
+             pixels "top"
+             (str (* (- source-y) scale-y) "px"))
+            (set-style! pixels "object-fit" "fill"))
+          (do
+            (set-style! pixels "width" "100%")
+            (set-style! pixels "height" "100%")
+            (set-style! pixels "left" "0")
+            (set-style! pixels "top" "0")
+            (set-style! pixels "object-fit" "fill"))))
+      None
+      (do
+        (Webapi.Dom.Element.removeAttribute "src" pixels)
+        (set-state-attribute! pixels "hidden" true)))))
+
+(defn- update-media-surface! [renderer node dom-node]
+  (let [frame (child-element dom-node 0)]
+    (match (retained/property (:web-store renderer) node SurfaceIdValue)
+      (Some (IntValue surface-id))
+      (match (if (= surface-id 0)
+               None
+               (clojure.core/get
+                (deref (:web-media-surfaces renderer)) surface-id))
+        (Some resource)
+        (do
+          (set-style! dom-node "background-color" "transparent")
+          (Webapi.Dom.Element.setAttribute
+           "src" (:web-image-url resource) frame)
+          (set-state-attribute! frame "hidden" false))
+        None
+        (do
+          (set-style!
+           dom-node "background-color"
+           (if (= surface-id 0)
+             "transparent"
+             (str
+              "rgb("
+              (+ 64 (mod (* surface-id 37) 64)) ", "
+              (+ 64 (mod (* surface-id 57) 64)) ", "
+              (+ 64 (mod (* surface-id 83) 64)) ")")))
+          (Webapi.Dom.Element.removeAttribute "src" frame)
+          (set-state-attribute! frame "hidden" true)))
+      _
+      (do
+        (set-style! dom-node "background-color" "transparent")
+        (Webapi.Dom.Element.removeAttribute "src" frame)
+        (set-state-attribute! frame "hidden" true)))))
+
+(defn- refresh-image-id! [renderer image-id]
   (reduce-kv
    (fn [_updated node current]
      (when
       (and
-       (= (:semantic-kind current) Avatar)
+       (or (= (:semantic-kind current) Avatar)
+           (= (:semantic-kind current) Image))
        (= (clojure.core/get (:retained-properties current) ImageIdValue)
           (Some (IntValue image-id))))
-       (update-avatar! renderer node (:platform-node current)))
+       (if (= (:semantic-kind current) Avatar)
+         (update-avatar! renderer node (:platform-node current))
+         (update-image! renderer node (:platform-node current))))
      true)
    true
    (retained/nodes (:web-store renderer))))
@@ -1769,7 +1874,7 @@
      (web-image-url url)
      (web-image-width width)
      (web-image-height height)))
-  (refresh-avatar-image-id! renderer image-id)
+  (refresh-image-id! renderer image-id)
   true)
 
 (defn unregister-image! [renderer image-id]
@@ -1777,7 +1882,48 @@
     (raise (Invalid_argument "registered image id must be positive")))
   (when (contains? (deref (:web-images renderer)) image-id)
     (swap! (:web-images renderer) dissoc image-id)
-    (refresh-avatar-image-id! renderer image-id))
+    (refresh-image-id! renderer image-id))
+  true)
+
+(defn- refresh-media-surface-id! [renderer surface-id]
+  (reduce-kv
+   (fn [_updated node current]
+     (when
+      (and
+       (= (:semantic-kind current) MediaSurface)
+       (= (clojure.core/get (:retained-properties current) SurfaceIdValue)
+          (Some (IntValue surface-id))))
+       (update-media-surface! renderer node (:platform-node current)))
+     true)
+   true
+   (retained/nodes (:web-store renderer))))
+
+(defn present-media-surface-frame! [renderer surface-id url width height]
+  (when (<= surface-id 0)
+    (raise (Invalid_argument "media surface id must be positive")))
+  (when
+   (or
+    (not (Float.is_finite width))
+    (not (Float.is_finite height))
+    (<= width 0.0)
+    (<= height 0.0))
+    (raise (Invalid_argument "media surface dimensions must be positive")))
+  (swap!
+   (:web-media-surfaces renderer)
+   assoc surface-id
+   (record web-image-resource
+     (web-image-url url)
+     (web-image-width width)
+     (web-image-height height)))
+  (refresh-media-surface-id! renderer surface-id)
+  true)
+
+(defn unregister-media-surface! [renderer surface-id]
+  (when (<= surface-id 0)
+    (raise (Invalid_argument "media surface id must be positive")))
+  (when (contains? (deref (:web-media-surfaces renderer)) surface-id)
+    (swap! (:web-media-surfaces renderer) dissoc surface-id)
+    (refresh-media-surface-id! renderer surface-id))
   true)
 
 (defn- main-alignment-value [alignment]
@@ -2002,11 +2148,14 @@
     (tuple WidthValue (IntValue width))
     (do
       (set-style! dom-node "width" (str width "px"))
+      (when (= kind Image) (update-image! renderer node dom-node))
       (when (= kind Bubble)
         (Webapi.Dom.Element.setAttribute "data-width" "explicit" dom-node)))
 
     (tuple HeightValue (IntValue height))
-    (set-style! dom-node "height" (str height "px"))
+    (do
+      (set-style! dom-node "height" (str height "px"))
+      (when (= kind Image) (update-image! renderer node dom-node)))
 
     (tuple MinWidth (IntValue width))
     (set-style! dom-node "min-width" (str width "px"))
@@ -2189,19 +2338,32 @@
     (set-state-attribute! dom-node "data-double-press-enabled" enabled)
 
     (tuple ImageIdValue (IntValue _image-id))
-    (update-avatar! renderer node dom-node)
+    (if (= kind Avatar)
+      (update-avatar! renderer node dom-node)
+      (update-image! renderer node dom-node))
+
+    (tuple SurfaceIdValue (IntValue _surface-id))
+    (update-media-surface! renderer node dom-node)
 
     (tuple SourceX (FloatValue _value))
-    (update-avatar! renderer node dom-node)
+    (if (= kind Avatar)
+      (update-avatar! renderer node dom-node)
+      (update-image! renderer node dom-node))
 
     (tuple SourceY (FloatValue _value))
-    (update-avatar! renderer node dom-node)
+    (if (= kind Avatar)
+      (update-avatar! renderer node dom-node)
+      (update-image! renderer node dom-node))
 
     (tuple SourceWidth (FloatValue _value))
-    (update-avatar! renderer node dom-node)
+    (if (= kind Avatar)
+      (update-avatar! renderer node dom-node)
+      (update-image! renderer node dom-node))
 
     (tuple SourceHeight (FloatValue _value))
-    (update-avatar! renderer node dom-node)
+    (if (= kind Avatar)
+      (update-avatar! renderer node dom-node)
+      (update-image! renderer node dom-node))
 
     (tuple AnchorValue (StringValue anchor))
     (do

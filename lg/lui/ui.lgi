@@ -70,6 +70,8 @@
 (signature lui.ui/menu-item! :fn<ui-context;int>)
 (signature lui.ui/list-item! :fn<ui-context;int>)
 (signature lui.ui/avatar! :fn<ui-context;int>)
+(signature lui.ui/image! :fn<ui-context;int>)
+(signature lui.ui/media-surface! :fn<ui-context;int>)
 (signature lui.ui/button! :fn<ui-context;int>)
 (signature lui.ui/toggle-button! :fn<ui-context;int>)
 (signature lui.ui/toggle! :fn<ui-context;int>)

@@ -200,6 +200,15 @@ test("the production stylesheet contains the registered-image Avatar contract", 
   assert.doesNotMatch(css, /\.lui-avatar\[data-size=/)
 })
 
+test("the production stylesheet contains retained Image and MediaSurface leaves", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-image,\.lui-media-surface\{[^}]*position:relative/)
+  assert.match(css, /\.lui-image,\.lui-media-surface\{[^}]*overflow:hidden/)
+  assert.match(css, /\.lui-image-pixels,\.lui-media-surface-frame\{[^}]*position:absolute/)
+  assert.match(css, /\.lui-media-surface-frame\{[^}]*object-fit:fill/)
+})
+
 test("the production stylesheet contains the direct text-entry contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 
