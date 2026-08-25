@@ -148,6 +148,10 @@
                          (= tag :avatar)
                          (= tag :image)
                          (= tag :media-surface)
+                         (= tag :stepper)
+                         (= tag :step)
+                         (= tag :timeline)
+                         (= tag :timeline-item)
                          (= tag :reactions)
                          (= tag :status-bar)
                           (= tag :keyed))
@@ -1475,6 +1479,102 @@
        ~@(string-attribute-expansion
           context node (:label attrs) 'lui.protocol/AccessibilityLabel)
        ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
+
+(defelement stepper [context parent attrs & children]
+  (when-not (:active attrs)
+    (throw (IllegalArgumentException. "stepper requires an :active signal")))
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/stepper! ~context)]
+       (lui.ui/int-property-signal!
+        ~context ~node lui.protocol/ActiveIndex ~(:active attrs))
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
+       ~node)))
+
+(defelement step [context parent attrs & children]
+  (let [text-source (:text attrs)
+        literal-text
+        (if (and (= (count children) 1) (string? (first children)))
+          (first children)
+          nil)
+        node (gensym "node")]
+    (when (and text-source (if (empty? children) false true))
+      (throw
+       (IllegalArgumentException.
+        "step accepts :text or one label child, not both")))
+    (when (and (if text-source false true)
+               (if literal-text false true))
+      (throw
+       (IllegalArgumentException.
+        "step requires exactly one non-empty label")))
+    (when (and literal-text (= literal-text ""))
+      (throw
+       (IllegalArgumentException.
+        "step requires exactly one non-empty label")))
+    `(let [~node (lui.ui/step! ~context)]
+       ~@(if text-source
+           [`(lui.ui/text-property-signal! ~context ~node ~text-source)]
+           [`(lui.ui/text-property! ~context ~node ~literal-text)])
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
+
+(defelement timeline [context parent attrs & children]
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/timeline! ~context)]
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
+       ~node)))
+
+(defelement timeline-item [context parent attrs & children]
+  (when (if (empty? children) false true)
+    (throw
+     (IllegalArgumentException. "timeline-item does not accept children")))
+  (when-not (:title attrs)
+    (throw (IllegalArgumentException. "timeline-item requires :title")))
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/timeline-item! ~context)]
+       ~@(string-attribute-expansion
+          context node (:title attrs) 'lui.protocol/TitleValue)
+       ~@(string-attribute-expansion
+          context node (:description attrs) 'lui.protocol/DescriptionValue)
+       ~@(string-attribute-expansion
+          context node (:meta attrs) 'lui.protocol/MetaValue)
+       ~@(string-attribute-expansion
+          context node (:indicator attrs) 'lui.protocol/IndicatorValue)
+       ~@(string-attribute-expansion
+          context node (:icon attrs) 'lui.protocol/InlineIconName)
+       ~@(string-attribute-expansion
+          context node (:variant attrs) 'lui.protocol/VariantValue)
+       ~@(bool-attribute-expansion
+          context node (:connector attrs) 'lui.protocol/Connector)
+       ~@(bool-attribute-expansion
+          context node (:selected attrs) 'lui.protocol/Selected)
+       ~@(if (:on-press attrs)
+           [`(lui.ui/bool-property!
+              ~context ~node lui.protocol/PressEnabled true)
+            `(lui.ui/on-event! ~context ~node ~(:on-press attrs))]
+           [])
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])

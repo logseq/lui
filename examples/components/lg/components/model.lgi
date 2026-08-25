@@ -5,6 +5,7 @@
   (gallery-field-value :string)
   (gallery-checked :bool)
   (gallery-progress :float)
+  (gallery-active-step :int)
   (gallery-density :string)
   (gallery-volume :float)
   (gallery-environment :string)
@@ -45,7 +46,8 @@
   (CloseSheet)
   (SetAccordionOpen :bool)
   (SetSplitFraction :float)
-  (AdvanceProgress))
+  (AdvanceProgress)
+  (AdvanceStep))
 
 (signature components.model/initial :fn<gallery-model>)
 (signature components.model/update

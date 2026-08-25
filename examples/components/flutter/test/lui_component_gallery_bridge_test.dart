@@ -79,6 +79,9 @@ void main() {
     expect(find.text('Documents'), findsOneWidget);
     expect(find.text('Avatar'), findsOneWidget);
     expect(find.text('Image and MediaSurface'), findsOneWidget);
+    expect(find.text('Stepper and Timeline'), findsOneWidget);
+    expect(find.text('Review'), findsOneWidget);
+    expect(find.text('Validated'), findsOneWidget);
     expect(find.text('ZN'), findsOneWidget);
     final listItems = find.byWidgetPredicate(
       (widget) => widget is ListTile && widget.shape is RoundedRectangleBorder,

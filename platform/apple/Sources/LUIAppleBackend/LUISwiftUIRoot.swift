@@ -132,6 +132,14 @@ private struct LUINodeView: View {
             LUIImageView(model: model, backend: backend)
         case .mediaSurface:
             LUIMediaSurfaceView(model: model, backend: backend)
+        case .stepper:
+            LUIStepperView(model: model, backend: backend)
+        case .step:
+            Text(verbatim: model.text)
+        case .timeline:
+            LUITimelineView(model: model, backend: backend)
+        case .timelineItem:
+            LUITimelineItemView(model: model, backend: backend)
         case .checkbox:
             LUICheckboxView(model: model, backend: backend)
         case .switchControl:
@@ -917,6 +925,165 @@ private struct LUIMediaSurfaceView: View {
                 green: Double(components[1]) / 255,
                 blue: Double(components[2]) / 255
             )
+        }
+    }
+}
+
+private struct LUIStepperView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
+                if let step = backend.model(id: childID) {
+                    LUIStepView(
+                        model: step,
+                        index: index,
+                        count: model.children.count,
+                        active: model.activeStepIndex
+                    )
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct LUIStepView: View {
+    let model: LUINodeModel
+    let index: Int
+    let count: Int
+    let active: Int
+
+    private var state: String {
+        if index < active { return "completed" }
+        if index == active { return "active" }
+        return "pending"
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ZStack {
+                Circle()
+                    .fill(state == "pending" ? Color.clear : Color.accentColor)
+                    .stroke(state == "pending" ? Color.secondary : Color.accentColor)
+                if state == "completed" {
+                    Image(systemName: "checkmark")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                } else {
+                    Text(verbatim: "\(index + 1)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(state == "active" ? .white : .secondary)
+                }
+            }
+            .frame(width: 24, height: 24)
+            Text(verbatim: model.text)
+                .fontWeight(state == "active" ? .semibold : .regular)
+                .foregroundStyle(state == "pending" ? .secondary : .primary)
+            if index + 1 < count {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.35))
+                    .frame(minWidth: 20, maxWidth: .infinity, maxHeight: 1)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(model.text) (\(state))")
+    }
+}
+
+private struct LUITimelineView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: CGFloat(model.property(.gap)?.intValue ?? 0)) {
+            ForEach(model.children, id: \.self) { childID in
+                if let child = backend.model(id: childID) {
+                    LUINodeView(model: child, backend: backend)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct LUITimelineItemView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    @ViewBuilder
+    var body: some View {
+        if model.supportsPress {
+            Button { try? backend.performPress(node: model.id) } label: { content }
+                .buttonStyle(.plain)
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(spacing: 4) {
+                indicator
+                if model.timelineConnector {
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.35))
+                        .frame(width: 1, height: 24)
+                }
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: model.timelineTitle).fontWeight(.semibold)
+                if !model.timelineDescription.isEmpty {
+                    Text(verbatim: model.timelineDescription)
+                        .foregroundStyle(.secondary)
+                }
+                if !model.timelineMeta.isEmpty {
+                    Text(verbatim: model.timelineMeta)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if model.supportsPress {
+                LUIIconImage(source: backend.iconSource(for: "chevron-right"))
+                    .frame(width: 14, height: 14)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(8)
+        .background(model.isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(model.timelineTitle)
+    }
+
+    @ViewBuilder
+    private var indicator: some View {
+        if !model.buttonIconName.isEmpty {
+            LUIIconImage(source: backend.iconSource(for: model.buttonIconName))
+                .frame(width: 16, height: 16)
+                .padding(4)
+                .background(indicatorColor.opacity(0.16), in: Circle())
+                .foregroundStyle(indicatorColor)
+        } else if !model.timelineIndicator.isEmpty {
+            Text(verbatim: model.timelineIndicator)
+                .font(.caption2.weight(.semibold))
+                .frame(width: 24, height: 24)
+                .background(indicatorColor.opacity(0.16), in: Circle())
+                .foregroundStyle(indicatorColor)
+        } else {
+            Circle().fill(indicatorColor).frame(width: 10, height: 10).padding(7)
+        }
+    }
+
+    private var indicatorColor: Color {
+        switch model.buttonVariant {
+        case "primary": .accentColor
+        case "destructive": .red
+        default: .secondary
         }
     }
 }

@@ -27,6 +27,8 @@
    (reactive :gallery-progress model-source)
    (reactive model/progress-label model-source)
    (fn [_event] (send model/AdvanceProgress))
+   (reactive :gallery-active-step model-source)
+   (fn [_event] (send model/AdvanceStep))
    (reactive model/density-comfortable? model-source)
    (reactive model/density-compact? model-source)
    (reactive :gallery-volume model-source)

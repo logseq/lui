@@ -7,19 +7,21 @@
                      SwitchControl Progress Divider Scroll ListContainer Tabs
                      ButtonGroup ToggleGroup Spacer Spinner Icon Select
                      Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar
-                     Image MediaSurface Breadcrumb Pagination Accordion Table
-                     TableRow TableCell Tree Resizable Split Dialog
-                     Drawer Sheet Tooltip StatusBar TextValue Enabled
-                     Gap MainAlignment CrossAlignment GrowValue GridColumns PaddingValue
-                     PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth
-                     CornerRadius WidthValue HeightValue MinWidth MaxWidth MinHeight
-                     MaxHeight PlaceholderValue AccessibilityLabel StyleClass HeadingLevel Checked
-                     ProgressValue OrientationValue SizeValue IconName VariantValue InlineIconName
-                     IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled ChangeEnabled
-                     ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue SurfaceIdValue
-                     SourceX SourceY SourceWidth SourceHeight AnchorValue AnchorAlignmentValue
-                     AnchorOffset TooltipDelay TextAlignment RoleValue TreeLevel Expanded
-                     ResizeDuration ResizeEasing ResizeOrigin]]))
+                     Image MediaSurface Stepper Step Timeline TimelineItem
+                     Breadcrumb Pagination Accordion Table TableRow TableCell
+                     Tree Resizable Split Dialog Drawer Sheet
+                     Tooltip StatusBar TextValue Enabled Gap MainAlignment
+                     CrossAlignment GrowValue GridColumns PaddingValue PaddingHorizontal PaddingVertical
+                     BackgroundValue ForegroundValue BorderColorValue BorderWidth CornerRadius WidthValue
+                     HeightValue MinWidth MaxWidth MinHeight MaxHeight PlaceholderValue
+                     AccessibilityLabel StyleClass HeadingLevel Checked ProgressValue OrientationValue
+                     SizeValue IconName VariantValue InlineIconName IconPlacementValue Selected
+                     Autofocus SubmitOnEnter HoldEnabled ChangeEnabled ToggleEnabled PressEnabled
+                     SubmitEnabled DoublePressEnabled ImageIdValue SurfaceIdValue ActiveIndex TitleValue
+                     DescriptionValue MetaValue IndicatorValue Connector SourceX SourceY
+                     SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay
+                     TextAlignment RoleValue TreeLevel Expanded ResizeDuration ResizeEasing
+                     ResizeOrigin]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -67,6 +69,10 @@
     Avatar "avatar"
     Image "image"
     MediaSurface "media-surface"
+    Stepper "stepper"
+    Step "step"
+    Timeline "timeline"
+    TimelineItem "timeline-item"
     Breadcrumb "breadcrumb"
     Pagination "pagination"
     Accordion "accordion"
@@ -128,6 +134,12 @@
     DoublePressEnabled "double-press-enabled"
     ImageIdValue "image"
     SurfaceIdValue "surface"
+    ActiveIndex "active"
+    TitleValue "title"
+    DescriptionValue "description"
+    MetaValue "meta"
+    IndicatorValue "indicator"
+    Connector "connector"
     SourceX "source-x"
     SourceY "source-y"
     SourceWidth "source-width"

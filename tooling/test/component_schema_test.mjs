@@ -55,6 +55,10 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.ok(summary.supported.includes('avatar'));
   assert.ok(summary.supported.includes('image'));
   assert.ok(summary.supported.includes('media-surface'));
+  assert.ok(summary.supported.includes('stepper'));
+  assert.ok(summary.supported.includes('step'));
+  assert.ok(summary.supported.includes('timeline'));
+  assert.ok(summary.supported.includes('timeline-item'));
   assert.ok(summary.supported.includes('tabs'));
   assert.ok(summary.supported.includes('button-group'));
   assert.ok(summary.supported.includes('toggle-group'));
@@ -95,6 +99,10 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.ok(!summary.pending.includes('status-bar'));
   assert.ok(!summary.pending.includes('image'));
   assert.ok(!summary.pending.includes('media-surface'));
+  assert.ok(!summary.pending.includes('stepper'));
+  assert.ok(!summary.pending.includes('step'));
+  assert.ok(!summary.pending.includes('timeline'));
+  assert.ok(!summary.pending.includes('timeline-item'));
 });
 
 test('schema validation rejects duplicate wire names before generation', () => {

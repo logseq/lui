@@ -48,7 +48,7 @@
     (Press _node)
     (or (= kind Button) (= kind Radio) (= kind Select)
         (= kind Combobox) (= kind MenuItem) (= kind ListItem) (= kind Text)
-        (= kind TableCell))
+        (= kind TableCell) (= kind TimelineItem))
     (Hold _node) (or (= kind Button) (= kind ToggleButton))
     (TextChanged _node _text)
     (or (= kind TextField) (= kind Input) (= kind SearchField)
@@ -150,13 +150,8 @@
 (defn- labelled-horizontal-container? [kind]
   (and (horizontal-container? kind) (not (= kind Tabs))))
 
-(defn property-supported? [kind property]
-  (if (= kind ContextMenu)
-    false
-    (if (= kind Accordion)
-    (or (= property TextValue) (= property Selected)
-        (= property ToggleEnabled) (= property HeightValue))
-    (match property
+(defn- common-property-supported? [kind property]
+  (match property
     MainAlignment
     (or (= kind Row) (= kind Column) (= kind ListContainer)
         (horizontal-container? kind))
@@ -344,11 +339,37 @@
       MenuItem true
       ListItem true
       _ false)
+    ActiveIndex false
+    TitleValue false
+    DescriptionValue false
+    MetaValue false
+    IndicatorValue false
+    Connector false
     Gap
     (or (= kind Row) (= kind Column) (= kind Grid)
         (= kind ListContainer) (= kind DropdownMenu) (= kind TableRow)
         (= kind Tree) (= kind Split)
-        (horizontal-container? kind))))))
+        (horizontal-container? kind))))
+
+(defn property-supported? [kind property]
+  (match kind
+    ContextMenu false
+    Accordion
+    (or (= property TextValue) (= property Selected)
+        (= property ToggleEnabled) (= property HeightValue))
+    Stepper
+    (or (= property ActiveIndex) (= property AccessibilityLabel))
+    Step (= property TextValue)
+    Timeline
+    (or (= property Gap) (= property GrowValue)
+        (= property AccessibilityLabel))
+    TimelineItem
+    (or (= property TitleValue) (= property DescriptionValue)
+        (= property MetaValue) (= property IndicatorValue)
+        (= property InlineIconName) (= property VariantValue)
+        (= property Connector) (= property Selected)
+        (= property PressEnabled))
+    _ (common-property-supported? kind property)))
 
 (defn property-value-supported? [property value]
   (match (tuple property value)
@@ -405,6 +426,12 @@
     (tuple DoublePressEnabled (BoolValue _value)) true
     (tuple ImageIdValue (IntValue value)) (>= value 0)
     (tuple SurfaceIdValue (IntValue value)) (>= value 0)
+    (tuple ActiveIndex (IntValue value)) (>= value 0)
+    (tuple TitleValue (StringValue _value)) true
+    (tuple DescriptionValue (StringValue _value)) true
+    (tuple MetaValue (StringValue _value)) true
+    (tuple IndicatorValue (StringValue _value)) true
+    (tuple Connector (BoolValue _value)) true
     (tuple SourceX (FloatValue value)) (Float.is_finite value)
     (tuple SourceY (FloatValue value)) (Float.is_finite value)
     (tuple SourceWidth (FloatValue value)) (Float.is_finite value)
@@ -577,6 +604,19 @@
    (if (= kind MediaSurface)
      (contains? properties SurfaceIdValue)
      true)
+   (if (= kind Stepper)
+     (contains? properties ActiveIndex)
+     true)
+   (if (= kind Step)
+     (match (clojure.core/get properties TextValue)
+       (Some (StringValue value)) (not (= value ""))
+       _ false)
+     true)
+   (if (= kind TimelineItem)
+     (match (clojure.core/get properties TitleValue)
+       (Some (StringValue value)) (not (= value ""))
+       _ false)
+     true)
    (if (or (= kind Slider) (= kind Progress))
      (match (clojure.core/get properties ProgressValue)
        (Some (FloatValue _value)) true
@@ -635,6 +675,8 @@
       Tree true
       Resizable true
       Split true
+      Stepper true
+      Timeline true
       Alert true
       Bubble true
       _ false)))
@@ -646,6 +688,8 @@
       Table (= child-kind TableRow)
       TableRow (= child-kind TableCell)
       Tree (tree-row-kind? child-kind)
+      Stepper (= child-kind Step)
+      Timeline (= child-kind TimelineItem)
       DropdownMenu (or (= child-kind MenuItem) (= child-kind Divider))
       ContextMenu (or (= child-kind MenuItem) (= child-kind Divider))
       _ true)))

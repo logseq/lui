@@ -18,6 +18,7 @@
                      AppleTable AppleTableRow AppleTableCell AppleTree AppleResizable AppleSplit
                      AppleAvatar AppleDialog AppleDrawer AppleSheet AppleTooltip
                      AppleImage AppleMediaSurface
+                     AppleStepper AppleStep AppleTimeline AppleTimelineItem
                      AppleAccordion]]
             [lui.backend.flutter :as flutter]))
 
@@ -277,6 +278,26 @@
      :height 96
      :corner-radius 12
      :label "Camera preview"}]])
+
+(defui retained-progress-structures
+  [active step-label item-title connector selected on-open]
+  [:column
+   [:stepper {:active active :label "Release progress"}
+    [:step "Draft"]
+    [:step {:text step-label}]
+    [:step "Ship"]]
+   [:timeline {:gap 6 :grow 1.0 :label "Release activity"}
+    [:timeline-item
+     {:title item-title
+      :description "Checks completed"
+      :meta "CI · 2m"
+      :indicator "2"
+      :variant "primary"
+      :connector connector
+      :selected selected
+      :on-press on-open}]
+    [:timeline-item
+     {:title "Published" :icon "check" :connector false}]]])
 
 (defui retained-tabs
   [overview-selected activity-selected on-overview on-activity on-toggle]
@@ -1260,6 +1281,81 @@
        (Some (proto/IntValue 11))
        (apple/property renderer surface-node proto/SurfaceIdValue)
        "SurfaceId patches the same MediaSurface node"))))
+
+(deftest stepper-and-timeline-patch-their-retained-semantic-nodes
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-progress-structures")
+        active (sig/state scheduler 1)
+        step-label (sig/state scheduler "Review")
+        item-title (sig/state scheduler "Validated")
+        connector (sig/state scheduler true)
+        selected (sig/state scheduler false)
+        received (atom [])
+        callback (fn [event] (swap! received conj event) true)
+        root
+        (retained-progress-structures
+         (ui/context application scope)
+         (sig/value active)
+         (sig/value step-label)
+         (sig/value item-title)
+         (sig/value connector)
+         (sig/value selected)
+         callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [stepper (nth (apple/children renderer root) 0)
+          timeline (nth (apple/children renderer root) 1)
+          steps (apple/children renderer stepper)
+          items (apple/children renderer timeline)
+          review (nth steps 1)
+          validated (nth items 0)
+          node-count (apple/node-count renderer)]
+      (assert-equal (Some AppleStepper) (apple/node renderer stepper)
+                    "Stepper is one semantic retained node")
+      (assert-equal (Some AppleStep) (apple/node renderer review)
+                    "Step labels remain semantic retained leaves")
+      (assert-equal (Some AppleTimeline) (apple/node renderer timeline)
+                    "Timeline is one semantic retained list")
+      (assert-equal (Some AppleTimelineItem) (apple/node renderer validated)
+                    "TimelineItem owns one retained native composition")
+      (assert-equal (Some (proto/IntValue 1))
+                    (apple/property renderer stepper proto/ActiveIndex)
+                    "the model owns the active Step index")
+      (assert-equal (Some (proto/StringValue "Review"))
+                    (apple/property renderer review proto/TextValue)
+                    "a Step label may be Signal-backed")
+      (assert-equal (Some (proto/StringValue "Validated"))
+                    (apple/property renderer validated proto/TitleValue)
+                    "TimelineItem title is retained state")
+      (runtime/dispatch! application (proto/Press validated))
+      (runtime/flush! application)
+      (assert-equal [(proto/Press validated)] @received
+                    "TimelineItem binds one root Press event")
+      (sig/set! active 2)
+      (sig/set! step-label "Approve")
+      (sig/set! item-title "Deployed")
+      (sig/set! connector false)
+      (sig/set! selected true)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "progress Signals patch without rebuilding nodes")
+      (assert-equal (Some (proto/IntValue 2))
+                    (apple/property renderer stepper proto/ActiveIndex)
+                    "active index patches the retained Stepper")
+      (assert-equal (Some (proto/StringValue "Approve"))
+                    (apple/property renderer review proto/TextValue)
+                    "Step copy patches only its retained leaf")
+      (assert-equal (Some (proto/StringValue "Deployed"))
+                    (apple/property renderer validated proto/TitleValue)
+                    "Timeline title patches the same native item")
+      (assert-equal (Some (proto/BoolValue false))
+                    (apple/property renderer validated proto/Connector)
+                    "connector state stays controlled")
+      (assert-equal (Some (proto/BoolValue true))
+                    (apple/property renderer validated proto/Selected)
+                    "selection patches the item in place"))))
 
 (deftest tabs-composes-controlled-buttons-without-owning-selection
   (let [scheduler (sig/scheduler)

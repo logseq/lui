@@ -805,6 +805,115 @@ void main() {
     },
   );
 
+  testWidgets('maps Stepper and Timeline to stable native compositions', (
+    tester,
+  ) async {
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"stepper"},
+        {"op":"set-prop","id":2,"property":"active","value":1},
+        {"op":"set-prop","id":2,"property":"accessibility-label","value":"Release progress"},
+        {"op":"create-node","id":3,"kind":"step"},
+        {"op":"set-prop","id":3,"property":"text","value":"Draft"},
+        {"op":"create-node","id":4,"kind":"step"},
+        {"op":"set-prop","id":4,"property":"text","value":"Review"},
+        {"op":"insert-child","parent":2,"child":3,"index":0},
+        {"op":"insert-child","parent":2,"child":4,"index":1},
+        {"op":"create-node","id":5,"kind":"timeline"},
+        {"op":"set-prop","id":5,"property":"gap","value":6},
+        {"op":"set-prop","id":5,"property":"accessibility-label","value":"Release activity"},
+        {"op":"create-node","id":6,"kind":"timeline-item"},
+        {"op":"set-prop","id":6,"property":"title","value":"Validated"},
+        {"op":"set-prop","id":6,"property":"description","value":"Checks completed"},
+        {"op":"set-prop","id":6,"property":"meta","value":"CI · 2m"},
+        {"op":"set-prop","id":6,"property":"indicator","value":"2"},
+        {"op":"set-prop","id":6,"property":"variant","value":"primary"},
+        {"op":"set-prop","id":6,"property":"connector","value":true},
+        {"op":"set-prop","id":6,"property":"selected","value":false},
+        {"op":"set-prop","id":6,"property":"press-enabled","value":true},
+        {"op":"insert-child","parent":5,"child":6,"index":0},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":5,"index":1}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    expect(find.text('Draft'), findsOneWidget);
+    expect(find.text('Review'), findsOneWidget);
+    expect(find.text('Validated'), findsOneWidget);
+    expect(find.text('Checks completed'), findsOneWidget);
+    expect(find.text('CI · 2m'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(LUIFlutterBackend.nodeKey(6)),
+        matching: find.text('2'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.check), findsOneWidget);
+
+    final retainedStepper = tester.renderObject(
+      find.byKey(LUIFlutterBackend.nodeKey(2)),
+    );
+    final retainedItem = tester.renderObject(
+      find.byKey(LUIFlutterBackend.nodeKey(6)),
+    );
+    await tester.tap(find.text('Validated'));
+    expect(events, [const LUIPressEvent(node: 6)]);
+
+    backend.applyJson('''
+    {"generation":2,"ops":[
+      {"op":"set-prop","id":2,"property":"active","value":2},
+      {"op":"set-prop","id":4,"property":"text","value":"Approve"},
+      {"op":"set-prop","id":6,"property":"title","value":"Deployed"},
+      {"op":"set-prop","id":6,"property":"connector","value":false},
+      {"op":"set-prop","id":6,"property":"selected","value":true}
+    ]}
+    ''');
+    await tester.pump();
+    expect(
+      tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(2))),
+      same(retainedStepper),
+    );
+    expect(
+      tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(6))),
+      same(retainedItem),
+    );
+    expect(find.text('Approve'), findsOneWidget);
+    expect(find.text('Deployed'), findsOneWidget);
+    expect(find.byIcon(Icons.check), findsNWidgets(2));
+  });
+
+  test('rejects incomplete Stepper and TimelineItem batches atomically', () {
+    final backend = LUIFlutterBackend();
+    expect(
+      () => backend.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"stepper"}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 0);
+    expect(backend.containsNode(1), isFalse);
+
+    expect(
+      () => backend.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"timeline-item"}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 0);
+    expect(backend.containsNode(1), isFalse);
+  });
+
   testWidgets('maps Accordion to a controlled retained native disclosure', (
     tester,
   ) async {

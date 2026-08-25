@@ -677,11 +677,35 @@
    [:paragraph
     "Tabs owns layout and platform presentation; Signals own selection and content."]])
 
+(defui progress-structure-gallery [active-source advance-step]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Stepper and Timeline"]
+   [:stepper {:active active-source :label "Release progress"}
+    [:step "Draft"]
+    [:step "Review"]
+    [:step "Ship"]]
+   [:button {:variant "outline" :on-press advance-step} "Advance stage"]
+   [:timeline {:gap 4 :label "Release activity"}
+    [:timeline-item
+     {:title "Validated"
+      :description "All platform checks passed"
+      :meta "CI · 2m"
+      :icon "check"
+      :variant "primary"
+      :on-press advance-step}]
+    [:timeline-item
+     {:title "Published"
+      :description "Waiting for the next model action"
+      :connector false}]]
+   [:paragraph
+    "The active Signal patches existing Step nodes; timeline rows remain retained."]])
+
 (defui component-gallery
   [disabled-source toggle-disabled card-copy
    value-source update-value
    checked-source update-toggle
    progress-source progress-label-source advance-progress
+   active-step-source advance-step
    comfortable-source compact-source volume-source volume-label-source
    select-comfortable select-compact update-volume
    environment-source picker-query-source select-open-source
@@ -718,6 +742,7 @@
    [spinner-gallery]
    [icon-gallery]
    [progress-gallery progress-source progress-label-source advance-progress]
+   [progress-structure-gallery active-step-source advance-step]
    [surface-gallery card-copy]
    [message-surface-gallery card-copy]
    [resizable-gallery]

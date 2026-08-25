@@ -209,6 +209,24 @@ test("the production stylesheet contains retained Image and MediaSurface leaves"
   assert.match(css, /\.lui-media-surface-frame\{[^}]*object-fit:fill/)
 })
 
+test("Stepper and Timeline use compact semantic Tailwind compositions", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-stepper\{[^}]*display:flex/)
+  assert.match(css, /\.lui-stepper\{[^}]*align-items:center/)
+  assert.match(css, /\.lui-step-indicator\{[^}]*border-radius:3\.40282e38px/)
+  assert.match(css, /\.lui-step\[data-state=active\] \.lui-step-label\{[^}]*font-weight:/)
+  assert.match(css, /\.lui-step\[data-state=pending\] \.lui-step-label\{[^}]*color:var\(--color-muted-foreground\)/)
+  assert.match(css, /\.lui-step-connector\{[^}]*height:1px/)
+  assert.match(css, /\.lui-timeline\{[^}]*display:flex/)
+  assert.match(css, /\.lui-timeline\{[^}]*flex-direction:column/)
+  assert.match(css, /\.lui-timeline-item\{[^}]*display:grid/)
+  assert.match(css, /\.lui-timeline-item\[data-selected\]/)
+  assert.match(css, /\.lui-timeline-item\[data-pressable\]\{[^}]*cursor:pointer/)
+  assert.match(css, /\.lui-timeline-item-title\{[^}]*font-weight:/)
+  assert.match(css, /\.lui-timeline-item-description,\.lui-timeline-item-meta\{[^}]*color:var\(--color-muted-foreground\)/)
+})
+
 test("the production stylesheet contains the direct text-entry contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 

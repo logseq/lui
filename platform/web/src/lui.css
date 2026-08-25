@@ -203,6 +203,106 @@
     @apply inset-0 size-full object-fill;
   }
 
+  .lui-stepper {
+    @apply flex items-center gap-2;
+  }
+
+  .lui-step {
+    @apply flex min-w-0 flex-1 items-center gap-1.5 text-sm;
+  }
+
+  .lui-step-indicator {
+    @apply flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold;
+  }
+
+  .lui-step[data-state="active"] .lui-step-indicator,
+  .lui-step[data-state="completed"] .lui-step-indicator {
+    @apply border-primary bg-primary text-primary-foreground;
+  }
+
+  .lui-step[data-state="active"] .lui-step-label {
+    @apply font-semibold;
+  }
+
+  .lui-step[data-state="pending"] .lui-step-label {
+    @apply text-muted-foreground;
+  }
+
+  .lui-step-connector {
+    @apply h-px min-w-5 flex-1 bg-border;
+  }
+
+  .lui-step-indicator[data-name],
+  .lui-timeline-item-indicator[data-name] {
+    @apply bg-current;
+    mask-image: var(--lui-icon-image);
+    mask-position: center;
+    mask-repeat: no-repeat;
+    mask-size: 14px;
+    -webkit-mask-image: var(--lui-icon-image);
+    -webkit-mask-position: center;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-size: 14px;
+  }
+
+  .lui-timeline {
+    @apply flex flex-col;
+  }
+
+  .lui-timeline-item {
+    @apply grid grid-cols-[24px_minmax(0,1fr)_18px] gap-2.5 rounded-lg p-2 text-sm;
+  }
+
+  .lui-timeline-item[data-selected] {
+    @apply bg-accent text-accent-foreground;
+  }
+
+  .lui-timeline-item[data-pressable] {
+    @apply cursor-pointer outline-none;
+  }
+
+  .lui-timeline-item[data-pressable]:focus-visible {
+    @apply ring-2 ring-ring ring-offset-2;
+  }
+
+  .lui-timeline-item-lead,
+  .lui-timeline-item-content {
+    @apply flex flex-col items-center;
+  }
+
+  .lui-timeline-item-content {
+    @apply items-start gap-0.5;
+  }
+
+  .lui-timeline-item-indicator {
+    @apply flex size-6 items-center justify-center rounded-full border text-xs font-semibold;
+  }
+
+  .lui-timeline-item-indicator:empty:not([data-name]) {
+    @apply m-1.5 size-2.5 border-0 bg-current;
+  }
+
+  .lui-timeline-item-connector {
+    @apply mt-1 min-h-6 w-px flex-1 bg-border;
+  }
+
+  .lui-timeline-item-title {
+    @apply font-semibold;
+  }
+
+  .lui-timeline-item-description,
+  .lui-timeline-item-meta {
+    @apply text-muted-foreground;
+  }
+
+  .lui-timeline-item-meta {
+    @apply text-xs;
+  }
+
+  .lui-timeline-item-chevron {
+    @apply text-muted-foreground;
+  }
+
   .lui-scroll {
     @apply grid overflow-auto;
   }

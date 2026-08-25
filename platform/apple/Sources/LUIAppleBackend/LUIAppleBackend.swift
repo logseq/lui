@@ -169,6 +169,12 @@ final class LUINodeModel: Identifiable {
     }
 
     var mediaSurfaceID: Int { properties[.surface]?.intValue ?? 0 }
+    var activeStepIndex: Int { properties[.active]?.intValue ?? 0 }
+    var timelineTitle: String { properties[.title]?.stringValue ?? "" }
+    var timelineDescription: String { properties[.description]?.stringValue ?? "" }
+    var timelineMeta: String { properties[.meta]?.stringValue ?? "" }
+    var timelineIndicator: String { properties[.indicator]?.stringValue ?? "" }
+    var timelineConnector: Bool { properties[.connector]?.boolValue ?? true }
 
     var mediaSurfacePlaceholderComponents: [Int] {
         let surfaceID = mediaSurfaceID
@@ -352,7 +358,9 @@ public final class LUIAppleBackend {
                 (model.kind == .tableCell && model.supportsPress) ||
                 model.kind == .select ||
                 model.kind == .combobox || model.kind == .menuItem ||
-                model.kind == .listItem || (model.isTreeItem && model.supportsPress),
+                model.kind == .listItem ||
+                (model.kind == .timelineItem && model.supportsPress) ||
+                (model.isTreeItem && model.supportsPress),
               model.isEnabled else {
             throw invalid("node \(node) is not an enabled pressable control")
         }
@@ -447,7 +455,7 @@ public final class LUIAppleBackend {
             return
         }
         switch model.kind {
-        case .button, .select, .combobox, .menuItem, .listItem:
+        case .button, .select, .combobox, .menuItem, .listItem, .timelineItem:
             try performPress(node: node)
         case .toggleButton:
             try performToggle(node: node, checked: !model.isSelected)

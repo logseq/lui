@@ -117,6 +117,9 @@ enum LUIWireValue: Decodable, Equatable {
              (.changeEnabled, .bool), (.toggleEnabled, .bool), (.pressEnabled, .bool),
              (.submitEnabled, .bool), (.doublePressEnabled, .bool): true
         case let (.image, .int(value)), let (.surface, .int(value)): value >= 0
+        case let (.active, .int(value)): value >= 0
+        case (.title, .string), (.description, .string), (.meta, .string),
+             (.indicator, .string), (.connector, .bool): true
         case let (.sourceX, .double(value)),
              let (.sourceY, .double(value)),
              let (.sourceWidth, .double(value)),
@@ -267,6 +270,12 @@ struct LUIRetainedTree {
             if parentNode.kind == .tree, !Self.isTreeRow(childNode.kind) {
                 throw invalid("tree accepts only row containers")
             }
+            if parentNode.kind == .stepper, childNode.kind != .step {
+                throw invalid("stepper accepts only step children")
+            }
+            if parentNode.kind == .timeline, childNode.kind != .timelineItem {
+                throw invalid("timeline accepts only timeline-item children")
+            }
             if parentNode.kind == .dropdownMenu,
                childNode.kind != .menuItem, childNode.kind != .divider {
                 throw invalid("dropdown-menu accepts only menu-item or separator children")
@@ -323,6 +332,21 @@ struct LUIRetainedTree {
         if kind == .accordion {
             return property == .text || property == .selected ||
                 property == .toggleEnabled || property == .height
+        }
+        if kind == .stepper {
+            return property == .active || property == .accessibilityLabel
+        }
+        if kind == .step { return property == .text }
+        if kind == .timeline {
+            return property == .gap || property == .grow ||
+                property == .accessibilityLabel
+        }
+        if kind == .timelineItem {
+            return property == .title || property == .description ||
+                property == .meta || property == .indicator ||
+                property == .icon || property == .variant ||
+                property == .connector || property == .selected ||
+                property == .pressEnabled
         }
         return switch property {
         case .main, .cross:
@@ -416,6 +440,7 @@ struct LUIRetainedTree {
         case .tooltipDelay: kind == .tooltip
         case .textAlignment: kind == .tableCell || kind == .bubble || kind == .statusBar
         case .role, .treeLevel, .expanded: isTreeRow(kind)
+        case .active, .title, .description, .meta, .indicator, .connector: false
         }
     }
 
@@ -432,6 +457,7 @@ struct LUIRetainedTree {
             || kind == .accordion
             || kind == .table || kind == .tableRow || kind == .tree || kind == .resizable
             || kind == .split || kind == .alert || kind == .bubble ||
+            kind == .stepper || kind == .timeline ||
             isContextMenuLeafHost(kind)
     }
 
@@ -634,6 +660,23 @@ struct LUIRetainedTree {
             }
             if node.kind == .mediaSurface, node.properties[.surface]?.intValue == nil {
                 throw invalid("media-surface requires surface")
+            }
+            if node.kind == .stepper, node.properties[.active]?.intValue == nil {
+                throw invalid("stepper requires active")
+            }
+            if node.kind == .step {
+                guard !(node.properties[.text]?.stringValue ?? "").isEmpty,
+                      let parent = node.parent, nodes[parent]?.kind == .stepper else {
+                    throw invalid("step requires text and a direct stepper parent")
+                }
+            }
+            if node.kind == .timelineItem {
+                guard !(node.properties[.title]?.stringValue ?? "").isEmpty else {
+                    throw invalid("timeline-item requires title")
+                }
+                guard let parent = node.parent, nodes[parent]?.kind == .timeline else {
+                    throw invalid("timeline-item requires a direct timeline parent")
+                }
             }
         }
     }

@@ -56,6 +56,8 @@
   :fn<web-renderer;int;bool>)
 (signature lui.backend.web/platform-node :fn<web-renderer;node-kind;web-node>)
 (signature lui.backend.web/create-split-node :fn<web-renderer;web-node>)
+(signature lui.backend.web/create-step-node :fn<web-renderer;web-node>)
+(signature lui.backend.web/create-timeline-item-node :fn<web-renderer;web-node>)
 (signature lui.backend.web/dom-node :fn<web-renderer;int;web-node>)
 (signature lui.backend.web/dom-node-before
   :fn<web-renderer;map<int;retained-node<web-node>>;int;web-node>)
@@ -130,6 +132,14 @@
   :fn<web-renderer;int;float>)
 (signature lui.backend.web/update-progress!
   :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/string-property
+  :fn<web-renderer;int;property;string>)
+(signature lui.backend.web/update-stepper! :fn<web-renderer;int;unit>)
+(signature lui.backend.web/update-stepper-parent! :fn<web-renderer;int;unit>)
+(signature lui.backend.web/update-timeline! :fn<web-renderer;int;unit>)
+(signature lui.backend.web/set-optional-text! :fn<web-node;string;unit>)
+(signature lui.backend.web/update-timeline-indicator!
+  :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/split-base-fraction :fn<float;float>)
 (signature lui.backend.web/split-int-property
   :fn<web-renderer;int;property;int;int>)
@@ -152,6 +162,8 @@
 (signature lui.backend.web/radio-group-ancestor
   :fn<web-renderer;int;option<int>>)
 (signature lui.backend.web/update-radio-group!
+  :fn<web-renderer;int;unit>)
+(signature lui.backend.web/refresh-structured-children!
   :fn<web-renderer;int;unit>)
 (signature lui.backend.web/apply-dom-op!
   :fn<web-renderer;map<int;retained-node<web-node>>;patch-op;unit>)

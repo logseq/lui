@@ -31,6 +31,7 @@
                  (gallery-field-value "")
                  (gallery-checked false)
                  (gallery-progress 1.0)
+                 (gallery-active-step 1)
                  (gallery-density "comfortable")
                  (gallery-volume 0.35)
                  (gallery-environment "Production")
@@ -126,6 +127,10 @@
                    (model/update initial model/ToggleAvatarImage))
                   "the shared reducer adopts the host-registered ImageId")
     (assert-equal 0.4 (:gallery-progress advanced) "progress advances by a tenth")
+    (assert-equal
+     2
+     (:gallery-active-step (model/update initial model/AdvanceStep))
+     "Stepper progress is owned by the shared reducer")
     (assert-equal 0.0 (:gallery-progress wrapped) "progress wraps after completion")
     (assert-equal
      "draft@example.com"
@@ -216,6 +221,14 @@
         "the shared Gallery demonstrates registered Image pixels")
     (is (creates-kind? (flutter/batches renderer) proto/MediaSurface)
         "the shared Gallery demonstrates a producer-owned media frame")
+    (is (creates-kind? (flutter/batches renderer) proto/Stepper)
+        "the shared Gallery demonstrates controlled stage progress")
+    (is (creates-kind? (flutter/batches renderer) proto/Step)
+        "the shared Gallery demonstrates semantic Step labels")
+    (is (creates-kind? (flutter/batches renderer) proto/Timeline)
+        "the shared Gallery demonstrates a retained activity list")
+    (is (creates-kind? (flutter/batches renderer) proto/TimelineItem)
+        "the shared Gallery demonstrates pressable TimelineItem rows")
     (assert-equal 1 (count (flutter/batches renderer)) "mount is one batch")
     (let [mounted-count (flutter/node-count renderer)]
       (driver/send! application model/ToggleDisabled)

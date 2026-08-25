@@ -2413,6 +2413,88 @@
          (runtime/insert-child! application child root 0))
         "runtime prevents retained-tree cycles")))
 
+(deftest progress-structures-have-closed-properties-and-child-shapes
+  (doseq [property [proto/ActiveIndex proto/AccessibilityLabel]]
+    (is (proto/property-supported? proto/Stepper property)
+        "Stepper exposes only controlled progress and its label"))
+  (is (proto/property-supported? proto/Step proto/TextValue)
+      "Step owns only its label")
+  (doseq [property [proto/Gap proto/GrowValue proto/AccessibilityLabel]]
+    (is (proto/property-supported? proto/Timeline property)
+        "Timeline exposes the reference list layout API"))
+  (doseq [property
+          [proto/TitleValue proto/DescriptionValue proto/MetaValue
+           proto/IndicatorValue proto/InlineIconName proto/VariantValue
+           proto/Connector proto/Selected proto/PressEnabled]]
+    (is (proto/property-supported? proto/TimelineItem property)
+        "TimelineItem exposes the pinned reference fields"))
+  (is (proto/child-kind-supported? proto/Stepper proto/Step)
+      "Stepper accepts Step children")
+  (is (not (proto/child-kind-supported? proto/Stepper proto/Text))
+      "Stepper rejects ordinary visible children")
+  (is (proto/child-kind-supported? proto/Timeline proto/TimelineItem)
+      "Timeline accepts TimelineItem children")
+  (is (not (proto/child-kind-supported? proto/Timeline proto/ListItem))
+      "Timeline rejects generic list rows")
+  (is (not (proto/can-contain-children? proto/Step))
+      "Step is a semantic text leaf")
+  (is (not (proto/can-contain-children? proto/TimelineItem))
+      "TimelineItem internal composition stays backend-owned")
+  (is (proto/event-supported? proto/TimelineItem (proto/Press 9))
+      "TimelineItem supports a single root Press event")
+  (is (not (proto/event-supported? proto/TimelineItem (proto/Submit 9)))
+      "TimelineItem has no extra interaction API")
+  (is (proto/property-value-supported?
+       proto/ActiveIndex (proto/IntValue 0))
+      "the first Step is a valid active index")
+  (is (not (proto/property-value-supported?
+            proto/ActiveIndex (proto/IntValue -1)))
+      "active index cannot be negative"))
+
+(deftest retained-progress-structures-reject-incomplete-or-invalid-batches
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        missing-active
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Stepper)]))]
+    (is (thrown-with-msg?
+         Invalid_argument #"stepper requires active"
+         ((:apply-batch backend) missing-active))
+        "Stepper cannot silently invent model state")
+    (assert-equal 0 (apple/node-count renderer)
+                  "missing active is rejected atomically"))
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        missing-title
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/TimelineItem)]))]
+    (is (thrown-with-msg?
+         Invalid_argument #"timeline-item requires title"
+         ((:apply-batch backend) missing-title))
+        "TimelineItem requires visible content")
+    (assert-equal 0 (apple/node-count renderer)
+                  "missing title is rejected atomically"))
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        wrong-child
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Stepper)
+                      (proto/set-prop-op
+                       1 proto/ActiveIndex (proto/IntValue 0))
+                      (proto/create-node-op 2 proto/Text)
+                      (proto/set-prop-op
+                       2 proto/TextValue (proto/StringValue "Wrong"))
+                      (proto/insert-child-op 1 2 0)]))]
+    (is (thrown-with-msg?
+         Invalid_argument #"unsupported child kind"
+         ((:apply-batch backend) wrong-child))
+        "Stepper accepts only semantic Steps")
+    (assert-equal 0 (apple/node-count renderer)
+                  "invalid Stepper structure is rejected atomically")))
+
 (deftest platform-bridge-receives-one-call-per-batch
   (let [scheduler (sig/scheduler)
         calls (atom 0)

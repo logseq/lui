@@ -262,6 +262,18 @@
 (defn media-surface! [context]
   (runtime/create-node! (:ui-application context) proto/MediaSurface))
 
+(defn stepper! [context]
+  (runtime/create-node! (:ui-application context) proto/Stepper))
+
+(defn step! [context]
+  (runtime/create-node! (:ui-application context) proto/Step))
+
+(defn timeline! [context]
+  (runtime/create-node! (:ui-application context) proto/Timeline))
+
+(defn timeline-item! [context]
+  (runtime/create-node! (:ui-application context) proto/TimelineItem))
+
 (defn button! [context]
   (runtime/create-node! (:ui-application context) proto/Button))
 

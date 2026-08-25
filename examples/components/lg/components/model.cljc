@@ -6,6 +6,7 @@
     (gallery-field-value "")
     (gallery-checked false)
     (gallery-progress 0.3)
+    (gallery-active-step 1)
     (gallery-density "comfortable")
     (gallery-volume 0.35)
     (gallery-environment "Production")
@@ -110,7 +111,14 @@
      :gallery-progress
      (if (>= (:gallery-progress model) 1.0)
        0.0
-       (+ (:gallery-progress model) 0.1)))))
+       (+ (:gallery-progress model) 0.1)))
+
+    AdvanceStep
+    (assoc model
+           :gallery-active-step
+           (if (>= (:gallery-active-step model) 3)
+             0
+             (inc (:gallery-active-step model))))))
 
 (defn progress-label [model]
   (str "Progress fraction: " (:gallery-progress model)))

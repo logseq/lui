@@ -492,6 +492,8 @@ final class LUIFlutterBackend {
         state.kind == _NodeKind.combobox ||
         state.kind == _NodeKind.menuItem ||
         state.kind == _NodeKind.listItem ||
+        (state.kind == _NodeKind.timelineItem &&
+            state.properties['press-enabled'] == true) ||
         (treeItem && state.properties['press-enabled'] == true) ||
         (state.kind == _NodeKind.tableCell &&
             state.properties['press-enabled'] == true) ||
@@ -1502,6 +1504,185 @@ final class LUIFlutterBackend {
       );
     }
 
+    Widget step() {
+      final parent = state.parent == null ? null : _states[state.parent];
+      final index = parent?.children.indexOf(id) ?? 0;
+      final count = parent?.children.length ?? 1;
+      final active = parent?.properties['active'] as int? ?? 0;
+      final stepState = index < active
+          ? 'completed'
+          : index == active
+          ? 'active'
+          : 'pending';
+      final activeColor = Theme.of(context).colorScheme.primary;
+      return Semantics(
+        label: '$text ($stepState)',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: stepState == 'pending' ? null : activeColor,
+                border: Border.all(
+                  color: stepState == 'pending'
+                      ? Theme.of(context).colorScheme.outline
+                      : activeColor,
+                ),
+              ),
+              child: stepState == 'completed'
+                  ? Icon(
+                      Icons.check,
+                      size: 14,
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    )
+                  : Text(
+                      '${index + 1}',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: stepState == 'active'
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              text,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: stepState == 'pending'
+                    ? Theme.of(context).colorScheme.onSurfaceVariant
+                    : null,
+                fontWeight: stepState == 'active'
+                    ? FontWeight.w600
+                    : FontWeight.normal,
+              ),
+            ),
+            if (index + 1 < count) ...[
+              const SizedBox(width: 8),
+              Container(
+                width: 24,
+                height: 1,
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+              const SizedBox(width: 8),
+            ],
+          ],
+        ),
+      );
+    }
+
+    Widget timelineItem() {
+      final title = state.properties['title'] as String? ?? '';
+      final description = state.properties['description'] as String? ?? '';
+      final meta = state.properties['meta'] as String? ?? '';
+      final indicator = state.properties['indicator'] as String? ?? '';
+      final icon = state.properties['icon'] as String? ?? '';
+      final connector = state.properties['connector'] as bool? ?? true;
+      final pressable = state.properties['press-enabled'] == true;
+      final variantColor = switch (buttonVariant) {
+        'primary' => Theme.of(context).colorScheme.primary,
+        'destructive' => Theme.of(context).colorScheme.error,
+        _ => Theme.of(context).colorScheme.outline,
+      };
+      Widget marker;
+      if (icon.isNotEmpty) {
+        marker = Icon(_iconData(icon), size: 16, color: variantColor);
+      } else if (indicator.isNotEmpty) {
+        marker = Text(
+          indicator,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: variantColor,
+            fontWeight: FontWeight.w600,
+          ),
+        );
+      } else {
+        marker = Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: variantColor,
+          ),
+        );
+      }
+      final row = Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: buttonSelected
+              ? Theme.of(context).colorScheme.secondaryContainer
+              : null,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 24,
+              child: Column(
+                children: [
+                  SizedBox(width: 24, height: 24, child: Center(child: marker)),
+                  if (connector)
+                    Container(
+                      width: 1,
+                      height: 28,
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  if (description.isNotEmpty)
+                    Text(
+                      description,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  if (meta.isNotEmpty)
+                    Text(
+                      meta,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            if (pressable)
+              Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+          ],
+        ),
+      );
+      return Semantics(
+        label: title,
+        selected: buttonSelected,
+        button: pressable,
+        child: pressable
+            ? GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => performAction(id),
+                child: row,
+              )
+            : row,
+      );
+    }
+
     final content = switch (state.kind) {
       _NodeKind.row => row(),
       _NodeKind.tabs ||
@@ -1577,6 +1758,20 @@ final class LUIFlutterBackend {
       _NodeKind.avatar => avatar(),
       _NodeKind.image => image(),
       _NodeKind.mediaSurface => mediaSurface(),
+      _NodeKind.stepper => Semantics(
+        label: accessibilityLabel,
+        child: Row(mainAxisSize: MainAxisSize.min, children: children),
+      ),
+      _NodeKind.step => step(),
+      _NodeKind.timeline => Semantics(
+        label: accessibilityLabel,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: gap,
+          children: children,
+        ),
+      ),
+      _NodeKind.timelineItem => timelineItem(),
       _NodeKind.toggle => FilterChip(
         label: Text(text),
         selected: checked,
@@ -1957,6 +2152,15 @@ final class LUIFlutterBackend {
         if (parent.kind == _NodeKind.tree && !_isTreeRowKind(child.kind)) {
           throw const LUIBackendException('tree accepts only row containers');
         }
+        if (parent.kind == _NodeKind.stepper && child.kind != _NodeKind.step) {
+          throw const LUIBackendException('stepper accepts only step children');
+        }
+        if (parent.kind == _NodeKind.timeline &&
+            child.kind != _NodeKind.timelineItem) {
+          throw const LUIBackendException(
+            'timeline accepts only timeline-item children',
+          );
+        }
         if (index < 0 || index > parent.children.length) {
           throw const LUIBackendException('child index is out of bounds');
         }
@@ -2002,6 +2206,36 @@ final class LUIFlutterBackend {
         'text' => value is String,
         'selected' || 'toggle-enabled' => value is bool,
         'height' => value is int && value >= 0,
+        _ => false,
+      };
+    }
+    if (kind == _NodeKind.stepper) {
+      return switch (property) {
+        'active' => value is int && value >= 0,
+        'accessibility-label' => value is String,
+        _ => false,
+      };
+    }
+    if (kind == _NodeKind.step) {
+      return property == 'text' && value is String;
+    }
+    if (kind == _NodeKind.timeline) {
+      return switch (property) {
+        'gap' => value is int && value >= 0,
+        'grow' => value is num && value.isFinite && value >= 0,
+        'accessibility-label' => value is String,
+        _ => false,
+      };
+    }
+    if (kind == _NodeKind.timelineItem) {
+      return switch (property) {
+        'title' || 'description' || 'meta' || 'indicator' => value is String,
+        'icon' =>
+          value is String &&
+              (_iconNames.contains(value) ||
+                  _appIconNamePattern.hasMatch(value)),
+        'variant' => value is String && _buttonVariants.contains(value),
+        'connector' || 'selected' || 'press-enabled' => value is bool,
         _ => false,
       };
     }
@@ -2534,6 +2768,30 @@ final class LUIFlutterBackend {
           !state.properties.containsKey('surface')) {
         throw const LUIBackendException('media-surface requires surface');
       }
+      if (state.kind == _NodeKind.stepper &&
+          !state.properties.containsKey('active')) {
+        throw const LUIBackendException('stepper requires active');
+      }
+      if (state.kind == _NodeKind.step) {
+        if ((state.properties['text'] as String? ?? '').isEmpty ||
+            state.parent == null ||
+            states[state.parent]?.kind != _NodeKind.stepper) {
+          throw const LUIBackendException(
+            'step requires text and a direct stepper parent',
+          );
+        }
+      }
+      if (state.kind == _NodeKind.timelineItem) {
+        if ((state.properties['title'] as String? ?? '').isEmpty) {
+          throw const LUIBackendException('timeline-item requires title');
+        }
+        if (state.parent == null ||
+            states[state.parent]?.kind != _NodeKind.timeline) {
+          throw const LUIBackendException(
+            'timeline-item requires a direct timeline parent',
+          );
+        }
+      }
     }
   }
 
@@ -2574,6 +2832,8 @@ final class LUIFlutterBackend {
       kind == _NodeKind.split ||
       kind == _NodeKind.alert ||
       kind == _NodeKind.bubble ||
+      kind == _NodeKind.stepper ||
+      kind == _NodeKind.timeline ||
       _isContextMenuLeafHost(kind) ||
       kind.isModalSurface;
 

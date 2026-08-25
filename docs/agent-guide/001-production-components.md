@@ -550,6 +550,56 @@ session replay. Tests and Gallery use a fixed registered frame, while
 production video, camera, or renderer integrations keep one SurfaceId and
 submit replacement frames without emitting LG patch batches.
 
+### Stepper contract
+
+`stepper` is the reference's display-only stage indicator. Its complete public
+API is required `active` plus optional `label`; it accepts only direct `step`
+children. `active` is a Signal containing a non-negative whole-number index.
+Steps before that index are completed, the step at that index is active, and
+steps after it are pending. An index equal to or greater than the child count
+marks every step completed. Stepper owns no navigation event or mutable
+selection state.
+
+`step` has no attributes and contains exactly one non-empty literal label or a
+single text Signal. It is legal only as a direct Stepper child. Its position is
+structural identity for stage-state derivation, while the retained node id is
+still preserved across an `active` patch. Inserting, moving, or removing a Step
+recomputes only the affected Stepper's derived presentation and list position
+metadata.
+
+The backend presents one horizontal native row with list semantics, numbered
+or completed indicators, labels, and connectors. Web uses semantic list items
+and Tailwind component selectors; SwiftUI uses retained `HStack` composition;
+Flutter uses retained `Row` widgets. Patching `active` updates the existing
+Stepper and direct Step presentations without rebuilding their child models or
+unrelated nodes.
+
+### Timeline contract
+
+`timeline` is the reference's display-only activity list. Its complete public
+API is `gap`, `grow`, and `label`; only direct `timeline-item` children are
+legal. It owns no collection model, selection rule, or events. Dynamic and
+keyed items remain ordinary LG retained structure, and list semantics and
+position metadata derive from the current direct-child order.
+
+`timeline-item` is a retained leaf with required `title` and optional
+`description`, `meta`, `indicator`, `icon`, `variant`, `connector`, `selected`,
+and `on-press`. These names and defaults match the pinned reference:
+`description`, `meta`, and `indicator` default to empty text, `variant` defaults
+to `outline`, `connector` defaults to true, and `selected` defaults to false.
+`icon`, when present, uses the shared closed icon vocabulary. An empty
+indicator and absent icon render a small status dot. `connector` controls the
+hairline below that item's indicator; callers clear it on the final item when
+they do not want a trailing line. A pressable item binds one event to its root
+and adds platform affordance without duplicating handlers on its text.
+
+Web renders one semantic list-item row with Tailwind component selectors.
+SwiftUI composes native labels, shapes, and Button behavior; Flutter composes
+Material text, icon, and InkWell behavior. Each backend keeps the semantic
+TimelineItem as one stable backend node: property Signals patch its internal
+native composition in place, and selection or copy changes never reconstruct
+the Timeline, sibling items, or application component.
+
 ### Tabs contract
 
 `tabs` is the reference's horizontal TabsList container, not a page-content

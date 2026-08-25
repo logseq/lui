@@ -6,7 +6,7 @@
              :refer [Row Column Grid Stack Panel Card Alert Bubble Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
-                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Dialog Drawer Sheet Tooltip Accordion
+                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem Dialog Drawer Sheet Tooltip Accordion
                      Table TableRow TableCell Tree Resizable Split StatusBar
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
@@ -26,7 +26,7 @@
                      VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled
                      ChangeEnabled ToggleEnabled PressEnabled
                      SubmitEnabled DoublePressEnabled
-                     ImageIdValue SurfaceIdValue SourceX SourceY SourceWidth SourceHeight
+                     ImageIdValue SurfaceIdValue ActiveIndex TitleValue DescriptionValue MetaValue IndicatorValue Connector SourceX SourceY SourceWidth SourceHeight
                      AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay
                      TextAlignment RoleValue TreeLevel Expanded
                      StringValue BoolValue IntValue FloatValue]]
@@ -102,6 +102,10 @@
     Avatar "lui-avatar"
     Image "lui-image"
     MediaSurface "lui-media-surface"
+    Stepper "lui-stepper"
+    Step "lui-step"
+    Timeline "lui-timeline"
+    TimelineItem "lui-timeline-item"
     Dialog "lui-dialog"
     Drawer "lui-drawer"
     Sheet "lui-sheet"
@@ -237,6 +241,39 @@
        {"alt" "" "aria-hidden" "true" "draggable" "false" "hidden" ""}
        [])])))
 
+(defn- create-step-node [renderer]
+  (let [document (:web-document renderer)]
+    (element
+     document "div" "lui-step" {"role" "listitem"}
+     [(element document "span" "lui-step-indicator"
+               {"aria-hidden" "true"} [])
+      (element document "span" "lui-step-label" {} [])
+      (element document "span" "lui-step-connector"
+               {"aria-hidden" "true"} [])])))
+
+(defn- create-timeline-item-node [renderer]
+  (let [document (:web-document renderer)]
+    (element
+     document "div" "lui-timeline-item"
+     {"role" "listitem" "data-variant" "outline"}
+     [(element
+       document "div" "lui-timeline-item-lead" {"aria-hidden" "true"}
+       [(element document "span"
+                 "lui-timeline-item-indicator" {} [])
+        (element document "span" "lui-timeline-item-connector" {} [])])
+      (element
+       document "div" "lui-timeline-item-content" {}
+       [(element document "div" "lui-timeline-item-title" {} [])
+        (element document "div" "lui-timeline-item-description"
+                 {"hidden" ""} [])
+        (element document "div" "lui-timeline-item-meta"
+                 {"hidden" ""} [])])
+      (element document "span" "lui-timeline-item-chevron lui-icon"
+               {"aria-hidden" "true"
+                "data-name" "chevron-right"
+                "hidden" ""}
+               [])])))
+
 (defn- create-accordion-node [renderer]
   (let [document (:web-document renderer)]
     (element
@@ -266,6 +303,8 @@
           Table "table"
           TableRow "tr"
           TableCell "td"
+          Stepper "div"
+          Timeline "div"
           Tree "div"
           Tooltip "span"
           Slider "input"
@@ -304,6 +343,8 @@
           TableRow {"role" "row" "aria-selected" "false"}
           TableCell {"role" "gridcell"}
           Tree {"role" "tree"}
+          Stepper {"role" "list"}
+          Timeline {"role" "list"}
           DropdownMenu
           {"role" "listbox"
            "data-anchor" "below"
@@ -354,6 +395,8 @@
     Avatar (create-avatar-node renderer)
     Image (create-media-node renderer kind)
     MediaSurface (create-media-node renderer kind)
+    Step (create-step-node renderer)
+    TimelineItem (create-timeline-item-node renderer)
     Accordion (create-accordion-node renderer)
     Alert (create-alert-node renderer)
     Bubble (create-bubble-node renderer)
@@ -1403,6 +1446,7 @@
     Pagination (attach-horizontal-focus! renderer node kind dom-node)
     Accordion (attach-accordion-event! renderer node dom-node)
     TableCell (attach-pressable-text-events! renderer node dom-node)
+    TimelineItem (attach-pressable-text-events! renderer node dom-node)
     _ (Stdlib.ignore true)))
 
 (defn- set-style! [dom-node property value]
@@ -1942,6 +1986,99 @@
     "end" "flex-end"
     _ (raise (Invalid_argument "invalid cross alignment"))))
 
+(defn- string-property [renderer node property]
+  (match (retained/property (:web-store renderer) node property)
+    (Some (StringValue value)) value
+    _ ""))
+
+(defn- update-stepper! [renderer node]
+  (let [children (retained/children (:web-store renderer) node)
+        active (proto/int-property
+                (:retained-properties
+                 (match (retained/node (:web-store renderer) node)
+                   (Some current) current
+                   None (raise (Invalid_argument "unknown Stepper"))))
+                ActiveIndex 0)
+        count (count children)]
+    (loop [index 0]
+      (when (< index count)
+        (let [child (nth children index)
+              step (dom-node renderer child)
+              indicator (child-element step 0)
+              label (string-property renderer child TextValue)
+              state
+              (if (< index active)
+                "completed"
+                (if (= index active) "active" "pending"))]
+          (Webapi.Dom.Element.setAttribute "data-state" state step)
+          (Webapi.Dom.Element.setAttribute
+           "aria-label" (str label " (" state ")") step)
+          (Webapi.Dom.Element.setAttribute "aria-posinset" (str (inc index)) step)
+          (Webapi.Dom.Element.setAttribute "aria-setsize" (str count) step)
+          (if (= state "active")
+            (Webapi.Dom.Element.setAttribute "aria-current" "step" step)
+            (Webapi.Dom.Element.removeAttribute "aria-current" step))
+          (if (= state "completed")
+            (do
+              (Webapi.Dom.Element.setTextContent indicator "")
+              (Webapi.Dom.Element.setAttribute "data-name" "check" indicator)
+              (update-icon-name! renderer indicator "check"))
+            (do
+              (Webapi.Dom.Element.removeAttribute "data-name" indicator)
+              (set-style! indicator "--lui-icon-image" "none")
+              (Webapi.Dom.Element.setTextContent indicator (str (inc index)))))
+          (if (= index (dec count))
+            (Webapi.Dom.Element.setAttribute "hidden" "" (child-element step 2))
+            (Webapi.Dom.Element.removeAttribute "hidden" (child-element step 2)))
+          (recur (inc index)))))
+    (Stdlib.ignore true)))
+
+(defn- update-stepper-parent! [renderer node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (match (:retained-parent current)
+      (Some parent)
+      (if-some [parent-node (retained/node (:web-store renderer) parent)]
+        (when (= (:semantic-kind parent-node) Stepper)
+          (update-stepper! renderer parent))
+        (Stdlib.ignore true))
+      None (Stdlib.ignore true))
+    (Stdlib.ignore true)))
+
+(defn- update-timeline! [renderer node]
+  (let [children (retained/children (:web-store renderer) node)
+        count (count children)]
+    (loop [index 0]
+      (when (< index count)
+        (let [item (dom-node renderer (nth children index))]
+          (Webapi.Dom.Element.setAttribute
+           "aria-posinset" (str (inc index)) item)
+          (Webapi.Dom.Element.setAttribute "aria-setsize" (str count) item)
+          (recur (inc index)))))
+    (Stdlib.ignore true)))
+
+(defn- set-optional-text! [element value]
+  (Webapi.Dom.Element.setTextContent element value)
+  (if (= value "")
+    (Webapi.Dom.Element.setAttribute "hidden" "" element)
+    (Webapi.Dom.Element.removeAttribute "hidden" element)))
+
+(defn- update-timeline-indicator! [renderer node dom-node]
+  (let [indicator (child-element (child-element dom-node 0) 0)
+        icon (string-property renderer node InlineIconName)
+        text (string-property renderer node IndicatorValue)]
+    (if (not (= icon ""))
+      (do
+        (Webapi.Dom.Element.setTextContent indicator "")
+        (Webapi.Dom.Element.setAttribute "data-name" icon indicator)
+        (update-icon-name! renderer indicator icon))
+      (do
+        (Webapi.Dom.Element.removeAttribute "data-name" indicator)
+        (set-style! indicator "--lui-icon-image" "none")
+        (Webapi.Dom.Element.setTextContent indicator text)
+        (if (= text "")
+          (Webapi.Dom.Element.setAttribute "data-dot" "" indicator)
+          (Webapi.Dom.Element.removeAttribute "data-dot" indicator))))))
+
 (defn- progress-float [renderer node]
   (match (retained/property (:web-store renderer) node ProgressValue)
     (Some (FloatValue value)) value
@@ -2040,6 +2177,10 @@
     Accordion
     (Webapi.Dom.Element.setTextContent
      (child-element (child-element dom-node 0) 0) text)
+    Step
+    (do
+      (Webapi.Dom.Element.setTextContent (child-element dom-node 1) text)
+      (update-stepper-parent! renderer node))
     Dialog
     (Webapi.Dom.Element.setTextContent (child-element dom-node 0) text)
     Drawer
@@ -2242,12 +2383,14 @@
     (Webapi.Dom.Element.setAttribute "data-variant" variant dom-node)
 
     (tuple InlineIconName (StringValue name))
-    (let [icon
-          (if (= kind ListItem)
-            dom-node
-            (button-icon-node dom-node))]
-      (Webapi.Dom.Element.setAttribute "data-name" name icon)
-      (update-icon-name! renderer icon name))
+    (if (= kind TimelineItem)
+      (update-timeline-indicator! renderer node dom-node)
+      (let [icon
+            (if (= kind ListItem)
+              dom-node
+              (button-icon-node dom-node))]
+        (Webapi.Dom.Element.setAttribute "data-name" name icon)
+        (update-icon-name! renderer icon name)))
 
     (tuple IconPlacementValue (StringValue placement))
     (Webapi.Dom.Element.setAttribute "data-icon-placement" placement dom-node)
@@ -2259,7 +2402,8 @@
         (Webapi.Dom.Element.setAttribute
          "aria-expanded" (if selected "true" "false")
          (child-element dom-node 0)))
-      (if (or (= kind TableRow) (treeitem? renderer node))
+      (if (or (= kind TableRow) (= kind TimelineItem)
+              (treeitem? renderer node))
         (do
           (set-state-attribute! dom-node "data-selected" selected)
           (Webapi.Dom.Element.setAttribute
@@ -2314,7 +2458,18 @@
         (set-state-attribute! dom-node "data-pressable" enabled)
         (if enabled
           (Webapi.Dom.Element.setAttribute "tabindex" "0" dom-node)
-          (Webapi.Dom.Element.removeAttribute "tabindex" dom-node))))
+          (Webapi.Dom.Element.removeAttribute "tabindex" dom-node)))
+      (when (= kind TimelineItem)
+        (set-state-attribute! dom-node "data-pressable" enabled)
+        (if enabled
+          (do
+            (Webapi.Dom.Element.setAttribute "tabindex" "0" dom-node)
+            (Webapi.Dom.Element.removeAttribute
+             "hidden" (child-element dom-node 2)))
+          (do
+            (Webapi.Dom.Element.removeAttribute "tabindex" dom-node)
+            (Webapi.Dom.Element.setAttribute
+             "hidden" "" (child-element dom-node 2))))))
 
     (tuple RoleValue (StringValue role))
     (do
@@ -2344,6 +2499,30 @@
 
     (tuple SurfaceIdValue (IntValue _surface-id))
     (update-media-surface! renderer node dom-node)
+
+    (tuple ActiveIndex (IntValue _active))
+    (update-stepper! renderer node)
+
+    (tuple TitleValue (StringValue title))
+    (do
+      (Webapi.Dom.Element.setTextContent
+       (child-element (child-element dom-node 1) 0) title)
+      (Webapi.Dom.Element.setAttribute "aria-label" title dom-node))
+
+    (tuple DescriptionValue (StringValue description))
+    (set-optional-text!
+     (child-element (child-element dom-node 1) 1) description)
+
+    (tuple MetaValue (StringValue meta))
+    (set-optional-text!
+     (child-element (child-element dom-node 1) 2) meta)
+
+    (tuple IndicatorValue (StringValue _indicator))
+    (update-timeline-indicator! renderer node dom-node)
+
+    (tuple Connector (BoolValue connector))
+    (set-state-attribute!
+     (child-element (child-element dom-node 0) 1) "hidden" (not connector))
 
     (tuple SourceX (FloatValue _value))
     (if (= kind Avatar)
@@ -2547,6 +2726,14 @@
           (Stdlib.ignore true)))))
     None (Stdlib.ignore true)))
 
+(defn- refresh-structured-children! [renderer parent]
+  (if-some [current (retained/node (:web-store renderer) parent)]
+    (match (:semantic-kind current)
+      Stepper (update-stepper! renderer parent)
+      Timeline (update-timeline! renderer parent)
+      _ (Stdlib.ignore true))
+    (Stdlib.ignore true)))
+
 (defn- apply-dom-op! [renderer previous-nodes operation]
   (match operation
     (CreateNode node kind)
@@ -2584,6 +2771,7 @@
       (update-split! renderer parent)
       (refresh-button-context! renderer child)
       (update-split! renderer parent)
+      (refresh-structured-children! renderer parent)
       (if-some [current (retained/node (:web-store renderer) child)]
         (do
           (when (= (:semantic-kind current) MenuItem)
@@ -2616,6 +2804,7 @@
            renderer previous-nodes parent
            (dom-node-before renderer previous-nodes parent)))))
       (refresh-button-context! renderer child)
+      (refresh-structured-children! renderer parent)
       (if-some [previous (clojure.core/get previous-nodes child)]
         (when (= (:semantic-kind previous) DropdownMenu)
           (update-picker-expanded! renderer parent false))
@@ -2640,6 +2829,7 @@
         (insert-dom-child!
          parent-node child-node (visible-child-index renderer parent index)))
       (update-split! renderer parent)
+      (refresh-structured-children! renderer parent)
       (restore-focus! renderer focused))))
 
 (defn- apply-dom-batch! [renderer previous-nodes batch]

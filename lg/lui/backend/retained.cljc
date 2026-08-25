@@ -346,6 +346,16 @@
                (not (contains? properties proto/SurfaceIdValue)))
       (raise (Invalid_argument "media-surface requires surface")))))
 
+(defn- validate-progress-structure! [current]
+  (let [kind (:semantic-kind current)
+        properties (:retained-properties current)]
+    (when (and (= kind proto/Stepper)
+               (not (contains? properties proto/ActiveIndex)))
+      (raise (Invalid_argument "stepper requires active")))
+    (when (and (= kind proto/TimelineItem)
+               (not (contains? properties proto/TitleValue)))
+      (raise (Invalid_argument "timeline-item requires title")))))
+
 (defn- has-ancestor-kind? [nodes parent kind]
   (match parent
     (Some parent-id)
@@ -383,6 +393,7 @@
      (validate-context-menu! nodes current)
      (validate-image-source! current)
      (validate-media-resource! current)
+     (validate-progress-structure! current)
      (validate-tree-item! nodes current)
      (validate-split! current)
      (when (not
