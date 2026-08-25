@@ -14,7 +14,7 @@
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput
                      AppleSelect AppleCombobox AppleDropdownMenu AppleMenuItem AppleListItem
-                     AppleTable AppleTableRow AppleTableCell AppleTree AppleResizable
+                     AppleTable AppleTableRow AppleTableCell AppleTree AppleResizable AppleSplit
                      AppleAvatar AppleDialog AppleDrawer AppleSheet AppleTooltip
                      AppleAccordion]]
             [lui.backend.flutter :as flutter]))
@@ -212,6 +212,14 @@
    {:width width-source :min-width 180 :padding 12
     :label "Resizable sidebar"}
    [:panel [:text "Sidebar content"]]])
+
+(defui retained-split [fraction-source on-resize]
+  [:split
+   {:value fraction-source :gap 8 :grow 1.0
+    :resize-duration 180 :resize-easing "standard" :resize-origin 0.1
+    :label "Workspace panes" :on-resize on-resize}
+   [:panel {:min-width 180 :padding 12} [:text "Sidebar"]]
+   [:panel {:min-width 320 :padding 12} [:text "Content"]]])
 
 (defui retained-avatars [image-id]
   [:row {:gap 12}
@@ -974,6 +982,49 @@
        (Some (proto/IntValue 280))
        (apple/property renderer root proto/WidthValue)
        "changed source width patches only the retained surface"))))
+
+(deftest split-fraction-and-resize-events-remain-model-owned
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-split")
+        fraction (sig/state scheduler 0.35)
+        received (atom [])
+        callback (fn [event] (swap! received conj event) true)
+        root
+        (retained-split
+         (ui/context application scope) (sig/value fraction) callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [first-pane (nth (apple/children renderer root) 0)
+          second-pane (nth (apple/children renderer root) 1)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer root)
+        (Some AppleSplit) (is true "Split maps to one retained native layout")
+        _ (is false "Split native mapping exists"))
+      (assert-equal
+       (Some (proto/FloatValue 0.35))
+       (apple/property renderer root proto/ProgressValue)
+       "bound value seeds the controlled first-pane fraction")
+      (assert-equal
+       (Some (proto/IntValue 180))
+       (apple/property renderer root proto/ResizeDuration)
+       "animation duration lowers through the direct element API")
+      (runtime/dispatch! application (proto/ValueChanged root 0.42))
+      (runtime/flush! application)
+      (assert-equal [(proto/ValueChanged root 0.42)] @received
+                    "on-resize receives the typed effective fraction")
+      (sig/set! fraction 0.42)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "fraction echoes allocate no retained nodes")
+      (assert-equal [first-pane second-pane]
+                    (apple/children renderer root)
+                    "both pane identities survive a fraction patch")
+      (assert-equal
+       (Some (proto/FloatValue 0.42))
+       (apple/property renderer root proto/ProgressValue)
+       "the model echo patches only the retained Split"))))
 
 (deftest avatar-binds-a-model-owned-image-id-without-replacing-its-node
   (let [scheduler (sig/scheduler)

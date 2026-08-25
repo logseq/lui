@@ -6,10 +6,10 @@
             [lui.wire :as wire]
             [lui.runtime :as runtime]
             [lui.backend.apple :as apple
-             :refer [AppleRow AppleLabel AppleTextInput AppleResizable]]
+             :refer [AppleRow AppleLabel AppleTextInput AppleResizable AppleSplit]]
             [lui.backend.flutter :as flutter
              :refer [FlutterFlexRow FlutterParagraph FlutterWidgetIsland
-                     FlutterResizable]]))
+                     FlutterResizable FlutterSplit]]))
 
 (defmacro assert-equal [expected actual message]
   `(is (= ~expected ~actual) ~message))
@@ -1260,6 +1260,102 @@
         "flow gap is rejected instead of ignored")
     (assert-equal 0 (flutter/node-count renderer)
                   "invalid Resizable batches remain atomic")))
+
+(deftest split-owns-one-controlled-two-pane-fraction
+  (doseq [property
+          [proto/ProgressValue proto/ResizeDuration proto/ResizeEasing
+           proto/ResizeOrigin proto/Gap proto/GrowValue proto/PaddingValue
+           proto/BackgroundValue proto/ForegroundValue proto/BorderColorValue
+           proto/BorderWidth proto/CornerRadius proto/WidthValue
+           proto/HeightValue proto/MinWidth proto/MaxWidth proto/MinHeight
+           proto/MaxHeight proto/AccessibilityLabel proto/StyleClass]]
+    (is (proto/property-supported? proto/Split property)
+        "Split admits only its model, divider, animation, and surface vocabulary"))
+  (doseq [property [proto/MainAlignment proto/CrossAlignment proto/Selected]]
+    (is (not (proto/property-supported? proto/Split property))
+        "Split owns neither flow alignment nor selection"))
+  (is (proto/can-contain-children? proto/Split)
+      "Split contains its two pane roots")
+  (is (proto/event-supported? proto/Split (proto/ValueChanged 1 0.4))
+      "Split reports effective fractions through ValueChanged")
+  (is (proto/property-value-supported?
+       proto/ResizeEasing (proto/StringValue "spring"))
+      "the final reference easing rung is accepted")
+  (is (not (proto/property-value-supported?
+            proto/ResizeEasing (proto/StringValue "bounce")))
+      "unknown easing names are rejected")
+  (is (not
+       (proto/node-properties-supported?
+        proto/Split
+        {proto/ResizeEasing (proto/StringValue "standard")}))
+      "resize easing without a nonzero duration is invalid")
+  (is (not
+       (proto/node-properties-supported?
+        proto/Split
+        {proto/ResizeDuration (proto/IntValue 0)
+         proto/ResizeOrigin (proto/FloatValue 0.1)}))
+      "resize origin beside a zero duration is invalid")
+  (is
+   (proto/node-properties-supported?
+    proto/Split
+    {proto/ProgressValue (proto/FloatValue 0.35)
+     proto/ResizeDuration (proto/IntValue 180)
+     proto/ResizeEasing (proto/StringValue "emphasized")
+     proto/ResizeOrigin (proto/FloatValue 0.1)})
+   "a complete animated Split declaration is valid")
+  (let [operations
+        [(proto/create-node-op 1 proto/Split)
+         (proto/create-node-op 2 proto/Panel)
+         (proto/create-node-op 3 proto/Panel)
+         (proto/set-prop-op
+          1 proto/ProgressValue (proto/FloatValue 0.35))
+         (proto/set-prop-op 1 proto/Gap (proto/IntValue 8))
+         (proto/set-prop-op 1 proto/ResizeDuration (proto/IntValue 180))
+         (proto/set-prop-op
+          1 proto/ResizeEasing (proto/StringValue "standard"))
+         (proto/set-prop-op
+          1 proto/ResizeOrigin (proto/FloatValue 0.1))
+         (proto/insert-child-op 1 2 0)
+         (proto/insert-child-op 1 3 1)]]
+    (let [renderer (apple/create)
+          backend (:apply-batch (apple/backend renderer))]
+      (is (backend
+           (record proto/patch-batch (generation 1) (ops operations)))
+          "valid Apple Split batch applies")
+      (match (apple/node renderer 1)
+        (Some AppleSplit) (is true "Split maps to Apple native layout")
+        _ (is false "Apple Split mapping exists"))
+      (assert-equal [2 3] (apple/children renderer 1)
+                    "Apple retains the two pane identities"))
+    (let [renderer (flutter/create)
+          backend (:apply-batch (flutter/backend renderer))]
+      (is (backend
+           (record proto/patch-batch (generation 1) (ops operations)))
+          "valid Flutter Split batch applies")
+      (match (flutter/node renderer 1)
+        (Some FlutterSplit) (is true "Split maps to Flutter native layout")
+        _ (is false "Flutter Split mapping exists"))))
+  (doseq [operations
+          [[(proto/create-node-op 1 proto/Split)
+            (proto/create-node-op 2 proto/Panel)
+            (proto/insert-child-op 1 2 0)]
+           [(proto/create-node-op 1 proto/Split)
+            (proto/create-node-op 2 proto/Panel)
+            (proto/create-node-op 3 proto/Panel)
+            (proto/create-node-op 4 proto/Panel)
+            (proto/insert-child-op 1 2 0)
+            (proto/insert-child-op 1 3 1)
+            (proto/insert-child-op 1 4 2)]]]
+    (let [renderer (apple/create)
+          backend (:apply-batch (apple/backend renderer))]
+      (is (thrown? Invalid_argument
+                   (backend
+                    (record proto/patch-batch
+                            (generation 1)
+                            (ops operations))))
+          "Split rejects every child count except exactly two")
+      (assert-equal 0 (apple/node-count renderer)
+                    "malformed Split batches remain atomic"))))
 
 (deftest table-family-has-the-pinned-closed-contract
   (let [batch

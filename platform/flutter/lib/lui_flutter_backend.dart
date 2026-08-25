@@ -658,10 +658,10 @@ final class LUIFlutterBackend {
 
   void performValueChange(int node, double value) {
     final state = _requireState(_states, node);
-    if (state.kind != _NodeKind.slider ||
+    if ((state.kind != _NodeKind.slider && state.kind != _NodeKind.split) ||
         state.properties['enabled'] == false ||
         !value.isFinite) {
-      throw LUIBackendException('node $node is not an enabled slider');
+      throw LUIBackendException('node $node is not an enabled value control');
     }
     onEvent?.call(LUIEvent.valueChanged(node: node, value: value.clamp(0, 1)));
   }
@@ -1352,6 +1352,25 @@ final class LUIFlutterBackend {
       _NodeKind.panel ||
       _NodeKind.card ||
       _NodeKind.resizable => Stack(children: children),
+      _NodeKind.split => _LUISplit(
+        sourceFraction: (state.properties['value'] as double?) ?? 0,
+        gap: (state.properties['gap'] as int? ?? 9).toDouble(),
+        firstMinimum:
+            (_states[state.children[0]]?.properties['min-width'] as int? ?? 0)
+                .toDouble(),
+        secondMinimum:
+            (_states[state.children[1]]?.properties['min-width'] as int? ?? 0)
+                .toDouble(),
+        duration: Duration(
+          milliseconds: state.properties['resize-duration'] as int? ?? 0,
+        ),
+        easing: state.properties['resize-easing'] as String? ?? 'standard',
+        origin: state.properties['resize-origin'] as double?,
+        label: accessibilityLabel ?? 'Split',
+        onChanged: (value) => performValueChange(id, value),
+        first: children[0],
+        second: children[1],
+      ),
       _NodeKind.box => Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1796,7 +1815,22 @@ final class LUIFlutterBackend {
       'value' =>
         value is double &&
             value.isFinite &&
-            (kind == _NodeKind.progress || kind == _NodeKind.slider),
+            (kind == _NodeKind.progress ||
+                kind == _NodeKind.slider ||
+                kind == _NodeKind.split),
+      'resize-duration' =>
+        value is int && value >= 0 && kind == _NodeKind.split,
+      'resize-easing' =>
+        value is String &&
+            const {
+              'linear',
+              'standard',
+              'emphasized',
+              'spring',
+            }.contains(value) &&
+            kind == _NodeKind.split,
+      'resize-origin' =>
+        value is double && value.isFinite && kind == _NodeKind.split,
       'orientation' =>
         value is String &&
             (value == 'horizontal' || value == 'vertical') &&
@@ -1886,6 +1920,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.dropdownMenu ||
                 kind == _NodeKind.tableRow ||
                 kind == _NodeKind.tree ||
+                kind == _NodeKind.split ||
                 _isHorizontalGroupKind(kind)),
       'padding' =>
         value is int && kind != _NodeKind.avatar && kind != _NodeKind.tooltip,
@@ -1920,7 +1955,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
                 kind == _NodeKind.tableCell ||
-                kind == _NodeKind.resizable),
+                kind == _NodeKind.resizable ||
+                kind == _NodeKind.split),
       'border-color' =>
         value is String &&
             kind != _NodeKind.avatar &&
@@ -1981,6 +2017,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.avatar ||
                 kind == _NodeKind.tree ||
                 kind == _NodeKind.resizable ||
+                kind == _NodeKind.split ||
                 _isTreeRowKind(kind)),
       'text-alignment' =>
         value is String &&
@@ -2027,6 +2064,27 @@ final class LUIFlutterBackend {
         if (label.isEmpty) {
           throw const LUIBackendException(
             'value control requires an accessibility label',
+          );
+        }
+      }
+      if (state.kind == _NodeKind.split) {
+        if (state.children.length != 2) {
+          throw const LUIBackendException(
+            'split requires exactly two children',
+          );
+        }
+        final value = state.properties['value'];
+        if (value is! double || !value.isFinite) {
+          throw const LUIBackendException(
+            'split requires a finite fractional value',
+          );
+        }
+        final duration = state.properties['resize-duration'] as int? ?? 0;
+        if ((state.properties.containsKey('resize-easing') ||
+                state.properties.containsKey('resize-origin')) &&
+            duration <= 0) {
+          throw const LUIBackendException(
+            'split animation options require a positive duration',
           );
         }
       }
@@ -2190,6 +2248,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.tableRow ||
       kind == _NodeKind.tree ||
       kind == _NodeKind.resizable ||
+      kind == _NodeKind.split ||
       kind.isModalSurface;
 
   int? _checkedRadio(_NodeState root) {
@@ -2587,6 +2646,197 @@ extension on _NodeKind {
       this == _NodeKind.panel ||
       this == _NodeKind.card ||
       this == _NodeKind.resizable;
+}
+
+final class _LUISplit extends StatefulWidget {
+  const _LUISplit({
+    required this.sourceFraction,
+    required this.gap,
+    required this.firstMinimum,
+    required this.secondMinimum,
+    required this.duration,
+    required this.easing,
+    required this.origin,
+    required this.label,
+    required this.onChanged,
+    required this.first,
+    required this.second,
+  });
+
+  final double sourceFraction;
+  final double gap;
+  final double firstMinimum;
+  final double secondMinimum;
+  final Duration duration;
+  final String easing;
+  final double? origin;
+  final String label;
+  final ValueChanged<double> onChanged;
+  final Widget first;
+  final Widget second;
+
+  @override
+  State<_LUISplit> createState() => _LUISplitState();
+}
+
+final class _LUISplitState extends State<_LUISplit>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late double _fraction;
+  Animation<double>? _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _fraction = _normalize(
+      widget.duration > Duration.zero
+          ? widget.origin ?? widget.sourceFraction
+          : widget.sourceFraction,
+    );
+    _controller = AnimationController(vsync: this, duration: widget.duration)
+      ..addListener(() {
+        final animation = _animation;
+        if (animation == null) return;
+        setState(() => _fraction = animation.value);
+        widget.onChanged(_fraction);
+      });
+    if (widget.origin != null && widget.duration > Duration.zero) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _animateTo(widget.sourceFraction);
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _LUISplit oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _controller.duration = widget.duration;
+    if (widget.sourceFraction == oldWidget.sourceFraction) return;
+    final next = _normalize(widget.sourceFraction);
+    if ((next - _fraction).abs() <= 0.000001) return;
+    _animateTo(next);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  double _normalize(double value) =>
+      value.isFinite && value > 0 ? value.clamp(0, 1).toDouble() : 0.5;
+
+  double _effective(
+    double value,
+    double available,
+    double firstMinimum,
+    double secondMinimum,
+  ) {
+    if (!available.isFinite || available <= 0) return 0.5;
+    final base = _normalize(value);
+    final low = firstMinimum.clamp(0, double.infinity) / available;
+    final high = 1 - secondMinimum.clamp(0, double.infinity) / available;
+    if (low > high) {
+      return low / (low + (1 - high)).clamp(0.0001, double.infinity);
+    }
+    return base.clamp(low, high).toDouble();
+  }
+
+  Curve get _curve => switch (widget.easing) {
+    'linear' => Curves.linear,
+    'emphasized' => const Cubic(0.2, 0, 0, 1),
+    'spring' => Curves.easeOutBack,
+    _ => Curves.easeInOut,
+  };
+
+  void _animateTo(double target) {
+    final next = _normalize(target);
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (widget.duration == Duration.zero || disableAnimations) {
+      _controller.stop();
+      setState(() => _fraction = next);
+      return;
+    }
+    _controller.stop();
+    _animation = Tween<double>(
+      begin: _fraction,
+      end: next,
+    ).animate(CurvedAnimation(parent: _controller, curve: _curve));
+    _controller.forward(from: 0);
+  }
+
+  void _updateUser(
+    double value,
+    double available,
+    double firstMinimum,
+    double secondMinimum,
+  ) {
+    _controller.stop();
+    final next = _effective(value, available, firstMinimum, secondMinimum);
+    setState(() => _fraction = next);
+    widget.onChanged(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final gap = widget.gap.clamp(0, constraints.maxWidth).toDouble();
+        final available = (constraints.maxWidth - gap)
+            .clamp(0, double.infinity)
+            .toDouble();
+        final effective = _effective(
+          _fraction,
+          available,
+          widget.firstMinimum,
+          widget.secondMinimum,
+        );
+        final firstWidth = available * effective;
+        final secondWidth = available - firstWidth;
+        return Row(
+          children: [
+            SizedBox(width: firstWidth, child: widget.first),
+            Semantics(
+              label: '${widget.label} divider',
+              value: '${(effective * 100).round()}%',
+              increasedValue:
+                  '${((_effective(effective + 0.05, available, widget.firstMinimum, widget.secondMinimum)) * 100).round()}%',
+              decreasedValue:
+                  '${((_effective(effective - 0.05, available, widget.firstMinimum, widget.secondMinimum)) * 100).round()}%',
+              onIncrease: () => _updateUser(
+                effective + 0.05,
+                available,
+                widget.firstMinimum,
+                widget.secondMinimum,
+              ),
+              onDecrease: () => _updateUser(
+                effective - 0.05,
+                available,
+                widget.firstMinimum,
+                widget.secondMinimum,
+              ),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.resizeLeftRight,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragUpdate: (details) => _updateUser(
+                    effective +
+                        details.delta.dx / available.clamp(1, double.infinity),
+                    available,
+                    widget.firstMinimum,
+                    widget.secondMinimum,
+                  ),
+                  child: SizedBox(width: gap, height: double.infinity),
+                ),
+              ),
+            ),
+            SizedBox(width: secondWidth, child: widget.second),
+          ],
+        );
+      },
+    );
+  }
 }
 
 final class _LUIResizable extends StatefulWidget {

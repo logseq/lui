@@ -49,6 +49,7 @@
   (TableCell)
   (Tree)
   (Resizable)
+  (Split)
   (Dialog)
   (Drawer)
   (Sheet)
@@ -128,7 +129,10 @@
   (TextAlignment)
   (RoleValue)
   (TreeLevel)
-  (Expanded))
+  (Expanded)
+  (ResizeDuration)
+  (ResizeEasing)
+  (ResizeOrigin))
 
 (type-variant wire-value
   (StringValue :string)

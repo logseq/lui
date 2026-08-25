@@ -113,6 +113,8 @@ private struct LUINodeView: View {
             LUITreeView(model: model, backend: backend)
         case .resizable:
             LUIResizableView(model: model, backend: backend)
+        case .split:
+            LUISplitView(model: model, backend: backend)
         case .tableRow:
             LUITableRowView(model: model, backend: backend, isLast: true)
         case .tableCell:
@@ -1669,6 +1671,198 @@ private struct LUISurfaceModifier: ViewModifier {
         #else
         Color(uiColor: .systemBackground)
         #endif
+    }
+}
+
+enum LUISplitGeometry {
+    static func effectiveFraction(
+        value: Double,
+        available: Double,
+        firstMinimum: Double,
+        secondMinimum: Double
+    ) -> Double {
+        guard available > 0, available.isFinite else { return 0.5 }
+        let base = value.isFinite && value > 0 ? min(value, 1) : 0.5
+        let low = max(firstMinimum, 0) / available
+        let high = 1 - (max(secondMinimum, 0) / available)
+        if low > high {
+            return low / max(low + (1 - high), 0.0001)
+        }
+        return min(max(base, low), high)
+    }
+}
+
+struct LUISplitFractionState: Equatable {
+    private(set) var sourceFraction: Double
+    private(set) var fraction: Double
+
+    init(sourceFraction: Double) {
+        let normalized = Self.normalized(sourceFraction)
+        self.sourceFraction = sourceFraction
+        fraction = normalized
+    }
+
+    mutating func applyUserFraction(_ value: Double) {
+        fraction = Self.normalized(value)
+    }
+
+    mutating func reconcile(sourceFraction: Double) {
+        if sourceFraction == self.sourceFraction { return }
+        self.sourceFraction = sourceFraction
+        if abs(Self.normalized(sourceFraction) - fraction) > 0.000_001 {
+            fraction = Self.normalized(sourceFraction)
+        }
+    }
+
+    private static func normalized(_ value: Double) -> Double {
+        value.isFinite && value > 0 ? min(value, 1) : 0.5
+    }
+}
+
+private struct LUISplitView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var fractionState: LUISplitFractionState
+    @State private var dragStartFraction: Double?
+
+    init(model: LUINodeModel, backend: LUIAppleBackend) {
+        self.model = model
+        self.backend = backend
+        _fractionState = State(
+            initialValue: LUISplitFractionState(
+                sourceFraction: model.splitResizeOrigin ?? model.splitFraction
+            )
+        )
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let gap = max(CGFloat(model.splitGap), 0)
+            let available = max(geometry.size.width - gap, 0)
+            let firstModel = model.children.first.flatMap(backend.model(id:))
+            let secondModel = model.children.dropFirst().first.flatMap(backend.model(id:))
+            let fraction = LUISplitGeometry.effectiveFraction(
+                value: fractionState.fraction,
+                available: Double(available),
+                firstMinimum: Double(firstModel?.surfaceMinWidth ?? 0),
+                secondMinimum: Double(secondModel?.surfaceMinWidth ?? 0)
+            )
+            let firstWidth = available * CGFloat(fraction)
+            let secondWidth = available - firstWidth
+
+            ZStack(alignment: .leading) {
+                HStack(spacing: gap) {
+                    if let firstModel {
+                        LUINodeView(model: firstModel, backend: backend)
+                            .frame(width: firstWidth)
+                    }
+                    if let secondModel {
+                        LUINodeView(model: secondModel, backend: backend)
+                            .frame(width: secondWidth)
+                    }
+                }
+
+                Color.clear
+                    .frame(width: gap, height: geometry.size.height)
+                    .contentShape(Rectangle())
+                    .offset(x: firstWidth)
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                let start = dragStartFraction ?? fraction
+                                dragStartFraction = start
+                                updateFraction(
+                                    start + Double(value.translation.width / max(available, 1)),
+                                    available: available,
+                                    firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                                    secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                                )
+                            }
+                            .onEnded { _ in dragStartFraction = nil }
+                    )
+                    .focusable()
+                    .onKeyPress(.leftArrow) {
+                        adjust(
+                            by: -0.05,
+                            available: available,
+                            firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                            secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                        )
+                    }
+                    .onKeyPress(.rightArrow) {
+                        adjust(
+                            by: 0.05,
+                            available: available,
+                            firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                            secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                        )
+                    }
+                    .accessibilityElement()
+                    .accessibilityLabel(
+                        Text("\(model.property(.accessibilityLabel)?.stringValue ?? "Split") divider")
+                    )
+                    .accessibilityValue(Text("\(Int((fraction * 100).rounded()))%"))
+                    .accessibilityAdjustableAction { direction in
+                        _ = adjust(
+                            by: direction == .increment ? 0.05 : -0.05,
+                            available: available,
+                            firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                            secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                        )
+                    }
+            }
+        }
+        .onAppear { reconcile(sourceFraction: model.splitFraction) }
+        .onChange(of: model.splitFraction) { _, value in reconcile(sourceFraction: value) }
+    }
+
+    private var splitAnimation: Animation? {
+        guard !reduceMotion, model.splitResizeDuration > 0 else { return nil }
+        let duration = Double(model.splitResizeDuration) / 1_000
+        switch model.splitResizeEasing {
+        case "linear": return .linear(duration: duration)
+        case "emphasized": return .timingCurve(0.2, 0, 0, 1, duration: duration)
+        case "spring": return .spring(duration: duration, bounce: 0.25)
+        default: return .easeInOut(duration: duration)
+        }
+    }
+
+    private func reconcile(sourceFraction: Double) {
+        withAnimation(splitAnimation) {
+            fractionState.reconcile(sourceFraction: sourceFraction)
+        }
+    }
+
+    private func adjust(
+        by delta: Double,
+        available: CGFloat,
+        firstMinimum: Int,
+        secondMinimum: Int
+    ) -> KeyPress.Result {
+        updateFraction(
+            fractionState.fraction + delta,
+            available: available,
+            firstMinimum: firstMinimum,
+            secondMinimum: secondMinimum
+        )
+        return .handled
+    }
+
+    private func updateFraction(
+        _ value: Double,
+        available: CGFloat,
+        firstMinimum: Int,
+        secondMinimum: Int
+    ) {
+        let effective = LUISplitGeometry.effectiveFraction(
+            value: value,
+            available: Double(available),
+            firstMinimum: Double(firstMinimum),
+            secondMinimum: Double(secondMinimum)
+        )
+        fractionState.applyUserFraction(effective)
+        try? backend.performValueChange(node: model.id, value: effective)
     }
 }
 

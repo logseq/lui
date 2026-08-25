@@ -7,7 +7,7 @@
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
                      Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip Accordion
-                     Table TableRow TableCell Tree Resizable
+                     Table TableRow TableCell Tree Resizable Split
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
                      Progress Divider
@@ -21,7 +21,8 @@
                      WidthValue HeightValue MinWidth MaxWidth MinHeight MaxHeight
                      PlaceholderValue AccessibilityLabel StyleClass HeadingLevel
                      Checked
-                     ProgressValue OrientationValue SizeValue IconName
+                     ProgressValue ResizeDuration ResizeEasing ResizeOrigin
+                     OrientationValue SizeValue IconName
                      VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled
                      ChangeEnabled ToggleEnabled PressEnabled
                      SubmitEnabled DoublePressEnabled
@@ -41,7 +42,8 @@
            (web-app-icons app-icons)
            (web-images (atom {}))
            (web-cleanups (atom {}))
-           (web-modal-stack (atom [])))))
+           (web-modal-stack (atom []))
+           (web-splits (atom {})))))
 
 (defn- modal-surface? [kind]
   (or (= kind Dialog) (= kind Drawer) (= kind Sheet)))
@@ -102,7 +104,22 @@
     TableRow "lui-table-row"
     TableCell "lui-table-cell"
     Tree "lui-tree"
-    Resizable "lui-resizable"))
+    Resizable "lui-resizable"
+    Split "lui-split"))
+
+(defn- create-split-node [renderer]
+  (element
+   (:web-document renderer) "div" "lui-split" {}
+   [(element (:web-document renderer) "div" "lui-split-panes" {} [])
+    (element
+     (:web-document renderer) "div" "lui-split-divider"
+     {"role" "separator"
+      "aria-orientation" "vertical"
+      "aria-valuemin" "0"
+      "aria-valuemax" "1"
+      "aria-valuenow" "0.5"
+      "tabindex" "0"}
+     [])]))
 
 (defn- direct-toggle? [kind]
   (or (= kind Checkbox) (= kind SwitchControl) (= kind Radio)))
@@ -300,6 +317,7 @@
     Dialog (create-modal-node renderer kind)
     Drawer (create-modal-node renderer kind)
     Sheet (create-modal-node renderer kind)
+    Split (create-split-node renderer)
     _ (create-simple-node renderer kind)))
 
 (defn- dom-node [renderer node]
@@ -1067,6 +1085,7 @@
     Toggle (attach-button-events! renderer node kind dom-node)
     Radio (attach-radio-event! renderer node dom-node)
     Slider (attach-slider-event! renderer node dom-node)
+    Split (attach-split-events! renderer node dom-node)
     Tabs (attach-horizontal-focus! renderer node kind dom-node)
     ButtonGroup (attach-horizontal-focus! renderer node kind dom-node)
     ToggleGroup (attach-horizontal-focus! renderer node kind dom-node)
@@ -1082,6 +1101,233 @@
          (Webapi.Dom.Element.unsafeAsHtmlElement dom-node))]
     (Webapi.Dom.CssStyleDeclaration.setProperty
      property value "" element-style)))
+
+(defn- split-base-fraction [value]
+  (if (and (Float.is_finite value) (> value 0.0))
+    (min value 1.0)
+    0.5))
+
+(defn- split-int-property [renderer node property fallback]
+  (match (retained/property (:web-store renderer) node property)
+    (Some (IntValue value)) value
+    _ fallback))
+
+(defn- split-child-minimum [renderer node index]
+  (let [children (retained/children (:web-store renderer) node)]
+    (if (< index (count children))
+      (split-int-property renderer (nth children index) MinWidth 0)
+      0)))
+
+(defn- effective-split-fraction [renderer node value]
+  (let [root (dom-node renderer node)
+        gap (split-int-property renderer node Gap 9)
+        available
+        (- (Webapi.Dom.Element.clientWidth root) gap)
+        first-minimum (split-child-minimum renderer node 0)
+        second-minimum (split-child-minimum renderer node 1)]
+    (if (<= available 0)
+      0.5
+      (let [available-float (Stdlib.float_of_int available)
+            low (/ (Stdlib.float_of_int first-minimum) available-float)
+            high
+            (- 1.0 (/ (Stdlib.float_of_int second-minimum) available-float))]
+        (if (> low high)
+          (/ low (max (+ low (- 1.0 high)) 0.0001))
+          (min (max (split-base-fraction value) low) high))))))
+
+(defn- split-timing-function [renderer node]
+  (match (retained/property (:web-store renderer) node ResizeEasing)
+    (Some (StringValue "linear")) "linear"
+    (Some (StringValue "emphasized")) "cubic-bezier(0.2, 0, 0, 1)"
+    (Some (StringValue "spring")) "cubic-bezier(0.16, 1.2, 0.3, 1)"
+    _ "ease-in-out"))
+
+(defn- render-split! [renderer node root value animated]
+  (let [fraction (effective-split-fraction renderer node value)
+        gap (split-int-property renderer node Gap 9)
+        gap-float (Stdlib.float_of_int gap)
+        first-minimum (split-child-minimum renderer node 0)
+        second-minimum (split-child-minimum renderer node 1)
+        panes (child-element root 0)
+        divider (child-element root 1)
+        duration
+        (if animated
+          (split-int-property renderer node ResizeDuration 0)
+          0)]
+    (set-style!
+     panes "grid-template-columns"
+     (str
+      "minmax(" first-minimum "px, " fraction "fr) "
+      "minmax(" second-minimum "px, " (- 1.0 fraction) "fr)"))
+    (set-style! panes "column-gap" (str gap "px"))
+    (set-style!
+     divider "left"
+     (str "calc(" (* fraction 100.0) "% - " (* fraction gap-float) "px)"))
+    (set-style! divider "width" (str gap "px"))
+    (set-style! panes "transition-property" "grid-template-columns")
+    (set-style! divider "transition-property" "left")
+    (set-style! panes "transition-duration" (str duration "ms"))
+    (set-style! divider "transition-duration" (str duration "ms"))
+    (set-style! panes "transition-timing-function" (split-timing-function renderer node))
+    (set-style! divider "transition-timing-function" (split-timing-function renderer node))
+    (Webapi.Dom.Element.setAttribute "aria-valuenow" (str fraction) divider)
+    (Stdlib.ignore true)))
+
+(defn- reconcile-split! [renderer node root source]
+  (if-some [state (clojure.core/get (deref (:web-splits renderer)) node)]
+    (let [source-changed (not (= source (:web-split-source state)))
+          current (:web-split-current state)
+          next-current
+          (if source-changed
+            (if (< (Float.abs (- (split-base-fraction source) current)) 0.000001)
+              current
+              (split-base-fraction source))
+            current)]
+      (swap!
+       (:web-splits renderer) assoc node
+       (record web-split-state
+         (web-split-source source)
+         (web-split-current next-current)))
+      (render-split! renderer node root next-current source-changed))
+    (let [duration (split-int-property renderer node ResizeDuration 0)
+          origin
+          (match (retained/property (:web-store renderer) node ResizeOrigin)
+            (Some (FloatValue value)) (Some value)
+            _ None)
+          start
+          (match origin
+            (Some value) (if (> duration 0) (split-base-fraction value)
+                           (split-base-fraction source))
+            None (split-base-fraction source))]
+      (swap!
+       (:web-splits renderer) assoc node
+       (record web-split-state
+         (web-split-source source)
+         (web-split-current start)))
+      (render-split! renderer node root start false)
+      (when (and (> duration 0) (not (= start (split-base-fraction source))))
+        (Webapi.requestAnimationFrame
+         (fn [_time]
+           (swap!
+            (:web-splits renderer) assoc node
+            (record web-split-state
+              (web-split-source source)
+              (web-split-current (split-base-fraction source))))
+           (render-split! renderer node root (split-base-fraction source) true)))))))
+
+(defn- update-split! [renderer node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (when (= (:semantic-kind current) Split)
+      (let [source
+            (match (retained/property (:web-store renderer) node ProgressValue)
+              (Some (FloatValue value)) value
+              _ 0.0)]
+        (reconcile-split! renderer node (:platform-node current) source)))
+    (Stdlib.ignore true)))
+
+(defn- update-splits-under! [renderer node]
+  (update-split! renderer node)
+  (doseq [child (retained/children (:web-store renderer) node)]
+    (update-splits-under! renderer child))
+  (Stdlib.ignore true))
+
+(defn- attach-split-events! [renderer node root]
+  (let [divider (child-element root 1)
+        document (:web-document renderer)
+        dragging (atom false)
+        move!
+        (fn [event]
+          (when (deref dragging)
+            (let [bounds (Webapi.Dom.Element.getBoundingClientRect root)
+                  gap (split-int-property renderer node Gap 9)
+                  available (- (Webapi.Dom.DomRect.width bounds)
+                               (Stdlib.float_of_int gap))
+                  pointer (- (Stdlib.float_of_int
+                              (Webapi.Dom.MouseEvent.clientX event))
+                             (Webapi.Dom.DomRect.left bounds))
+                  raw (/ (- pointer (/ (Stdlib.float_of_int gap) 2.0))
+                         (max available 1.0))
+                  current (effective-split-fraction renderer node raw)
+                  source
+                  (match (retained/property (:web-store renderer) node ProgressValue)
+                    (Some (FloatValue value)) value
+                    _ 0.0)]
+              (swap!
+               (:web-splits renderer) assoc node
+               (record web-split-state
+                 (web-split-source source)
+                 (web-split-current current)))
+              (render-split! renderer node root current false)
+              (Stdlib.ignore
+               ((deref (:web-event-handler renderer))
+                (proto/ValueChanged node current)))))
+          (Stdlib.ignore true))
+        stop!
+        (fn [_event]
+          (reset! dragging false)
+          (Stdlib.ignore true))
+        adjust!
+        (fn [delta]
+          (let [current
+                (if-some [state (clojure.core/get
+                                 (deref (:web-splits renderer)) node)]
+                  (:web-split-current state)
+                  0.5)
+                next (effective-split-fraction renderer node (+ current delta))
+                source
+                (match (retained/property (:web-store renderer) node ProgressValue)
+                  (Some (FloatValue value)) value
+                  _ 0.0)]
+            (swap!
+             (:web-splits renderer) assoc node
+             (record web-split-state
+               (web-split-source source)
+               (web-split-current next)))
+            (render-split! renderer node root next false)
+            (Stdlib.ignore
+             ((deref (:web-event-handler renderer))
+              (proto/ValueChanged node next)))))
+        resize-observer
+        (Webapi.ResizeObserver.make
+         (fn [_entries]
+           (if-some [state (clojure.core/get
+                            (deref (:web-splits renderer)) node)]
+             (render-split!
+              renderer node root (:web-split-current state) false)
+             (Stdlib.ignore true))))]
+    (Webapi.Dom.Element.addMouseDownEventListener
+     (fn [event]
+       (when (= 0 (Webapi.Dom.MouseEvent.button event))
+         (Webapi.Dom.MouseEvent.preventDefault event)
+         (reset! dragging true))
+       (Stdlib.ignore true))
+     divider)
+    (Webapi.Dom.Document.addMouseMoveEventListener move! document)
+    (Webapi.Dom.Document.addMouseUpEventListener stop! document)
+    (Webapi.ResizeObserver.observe resize-observer root)
+    (Webapi.Dom.Element.addKeyDownEventListener
+     (fn [event]
+       (match (Webapi.Dom.KeyboardEvent.key event)
+         "ArrowLeft"
+         (do (Webapi.Dom.KeyboardEvent.preventDefault event) (adjust! -0.05))
+         "ArrowRight"
+         (do (Webapi.Dom.KeyboardEvent.preventDefault event) (adjust! 0.05))
+         "Home"
+         (do (Webapi.Dom.KeyboardEvent.preventDefault event) (adjust! -1.0))
+         "End"
+         (do (Webapi.Dom.KeyboardEvent.preventDefault event) (adjust! 1.0))
+         _ (Stdlib.ignore true))
+       (Stdlib.ignore true))
+     divider)
+    (swap!
+     (:web-cleanups renderer) assoc node
+     (fn []
+       (Webapi.Dom.Document.removeMouseMoveEventListener move! document)
+       (Webapi.Dom.Document.removeMouseUpEventListener stop! document)
+       (Webapi.ResizeObserver.disconnect resize-observer)
+       (swap! (:web-splits renderer) dissoc node)
+       (Stdlib.ignore true)))
+    (Stdlib.ignore true)))
 
 (defn- css-url [url]
   (str
@@ -1389,7 +1635,9 @@
 
     (tuple Gap (IntValue gap))
     (do
-      (set-style! dom-node "gap" (str gap "px"))
+      (if (= kind Split)
+        (update-split! renderer node)
+        (set-style! dom-node "gap" (str gap "px")))
       (when (= kind TableRow)
         (set-style! dom-node "--lui-table-gap" (str gap "px"))))
 
@@ -1468,11 +1716,14 @@
        (text-control-node dom-node) placeholder))
 
     (tuple AccessibilityLabel (StringValue label))
-    (Webapi.Dom.Element.setAttribute
-     "aria-label" label
-     (if (direct-toggle? kind)
-       (child-element dom-node 0)
-       dom-node))
+    (if (= kind Split)
+      (Webapi.Dom.Element.setAttribute
+       "aria-label" (str label " divider") (child-element dom-node 1))
+      (Webapi.Dom.Element.setAttribute
+       "aria-label" label
+       (if (direct-toggle? kind)
+         (child-element dom-node 0)
+         dom-node)))
 
     (tuple StyleClass (StringValue _class-name))
     (refresh-node-class! renderer node kind dom-node)
@@ -1495,10 +1746,21 @@
          (child-element dom-node 0))))
 
     (tuple ProgressValue (FloatValue value))
-    (if (= kind Progress)
-      (update-progress! renderer node dom-node)
-      (Webapi.Dom.HtmlInputElement.setValue
-       (text-control-node dom-node) (str value)))
+    (if (= kind Split)
+      (reconcile-split! renderer node dom-node value)
+      (if (= kind Progress)
+        (update-progress! renderer node dom-node)
+        (Webapi.Dom.HtmlInputElement.setValue
+         (text-control-node dom-node) (str value))))
+
+    (tuple ResizeDuration (IntValue _duration))
+    (update-split! renderer node)
+
+    (tuple ResizeEasing (StringValue _easing))
+    (update-split! renderer node)
+
+    (tuple ResizeOrigin (FloatValue _origin))
+    (update-split! renderer node)
 
     (tuple OrientationValue (StringValue orientation))
     (do
@@ -1672,9 +1934,11 @@
         (raise (Invalid_argument "DOM child index is out of bounds"))))))
 
 (defn- content-container [kind dom-node]
-  (if (or (= kind Accordion) (modal-surface? kind))
-    (child-element dom-node 1)
-    dom-node))
+  (if (= kind Split)
+    (child-element dom-node 0)
+    (if (or (= kind Accordion) (modal-surface? kind))
+      (child-element dom-node 1)
+      dom-node)))
 
 (defn- dom-child-container [renderer node dom-node]
   (if-some [current (retained/node (:web-store renderer) node)]
@@ -1785,9 +2049,14 @@
 
     (SetProp node property value)
     (if-some [current (retained/node (:web-store renderer) node)]
-      (apply-property!
-       renderer node (:semantic-kind current) (:platform-node current)
-       property value)
+      (do
+        (apply-property!
+         renderer node (:semantic-kind current) (:platform-node current)
+         property value)
+        (match (:retained-parent current)
+          (Some parent)
+          (when (= property MinWidth) (update-split! renderer parent))
+          None (Stdlib.ignore true)))
       (raise (Invalid_argument "unknown DOM node")))
 
     (InsertChild parent child index)
@@ -1795,7 +2064,9 @@
       (insert-dom-child!
        (dom-child-container renderer parent (dom-node renderer parent))
        (dom-node renderer child) index)
+      (update-split! renderer parent)
       (refresh-button-context! renderer child)
+      (update-split! renderer parent)
       (if-some [current (retained/node (:web-store renderer) child)]
         (match (:semantic-kind current)
           Radio (update-radio-group! renderer child)
@@ -1832,6 +2103,7 @@
        (Webapi.Dom.Element.removeChild
         (Webapi.Dom.Element.asNode child-node) parent-node))
       (insert-dom-child! parent-node child-node index)
+      (update-split! renderer parent)
       (restore-focus! renderer focused))))
 
 (defn- apply-dom-batch! [renderer previous-nodes batch]
@@ -1856,7 +2128,8 @@
 
 (defn mount! [renderer root host]
   (Webapi.Dom.Element.appendChild
-   (Webapi.Dom.Element.asNode (dom-node renderer root)) host))
+   (Webapi.Dom.Element.asNode (dom-node renderer root)) host)
+  (update-splits-under! renderer root))
 
 (defn- some-node [value]
   (Some value))

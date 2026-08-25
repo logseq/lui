@@ -73,6 +73,11 @@ final class LUINodeModel: Identifiable {
         properties[.doublePressEnabled]?.boolValue ?? false
     }
     var sliderValue: Double { properties[.progressValue]?.doubleValue ?? 0 }
+    var splitFraction: Double { properties[.progressValue]?.doubleValue ?? 0 }
+    var splitGap: Int { properties[.gap]?.intValue ?? 9 }
+    var splitResizeDuration: Int { properties[.resizeDuration]?.intValue ?? 0 }
+    var splitResizeEasing: String { properties[.resizeEasing]?.stringValue ?? "standard" }
+    var splitResizeOrigin: Double? { properties[.resizeOrigin]?.doubleValue }
     var buttonVariant: String { properties[.variant]?.stringValue ?? "default" }
     var buttonSize: String { properties[.size]?.stringValue ?? "default" }
     var buttonIconName: String { properties[.icon]?.stringValue ?? "" }
@@ -366,9 +371,11 @@ public final class LUIAppleBackend {
     }
 
     func performValueChange(node: Int, value: Double) throws {
-        guard let model = models[node], model.kind == .slider, model.isEnabled,
+        guard let model = models[node],
+              model.kind == .slider || model.kind == .split,
+              model.isEnabled,
               value.isFinite else {
-            throw invalid("node \(node) is not an enabled slider")
+            throw invalid("node \(node) is not an enabled value control")
         }
         onEvent?(.valueChanged(node: node, value: min(max(value, 0), 1)))
     }

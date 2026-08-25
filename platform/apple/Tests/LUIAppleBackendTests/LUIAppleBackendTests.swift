@@ -700,6 +700,115 @@ struct LUISwiftUIBackendTests {
         #expect(backend.rootIDs.isEmpty)
     }
 
+    @Test("Split retains two panes and reconciles one controlled fraction")
+    func mapsSplit() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"split"},
+          {"op":"create-node","id":2,"kind":"panel"},
+          {"op":"create-node","id":3,"kind":"panel"},
+          {"op":"set-prop","id":1,"property":"value","value":0.35},
+          {"op":"set-prop","id":1,"property":"gap","value":8},
+          {"op":"set-prop","id":1,"property":"resize-duration","value":180},
+          {"op":"set-prop","id":1,"property":"resize-easing","value":"standard"},
+          {"op":"set-prop","id":1,"property":"resize-origin","value":0.1},
+          {"op":"set-prop","id":1,"property":"accessibility-label","value":"Workspace panes"},
+          {"op":"set-prop","id":2,"property":"min-width","value":180},
+          {"op":"set-prop","id":3,"property":"min-width","value":320},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let split = try #require(backend.model(id: 1))
+        let first = try #require(backend.model(id: 2))
+        let second = try #require(backend.model(id: 3))
+        #expect(split.kind == .split)
+        #expect(split.children == [2, 3])
+        #expect(split.property(.resizeDuration) == .int(180))
+        #expect(split.property(.resizeEasing) == .string("standard"))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        #expect(LUISplitGeometry.effectiveFraction(
+            value: 0,
+            available: 792,
+            firstMinimum: 180,
+            secondMinimum: 320
+        ) == 0.5)
+        #expect(LUISplitGeometry.effectiveFraction(
+            value: 0.9,
+            available: 792,
+            firstMinimum: 180,
+            secondMinimum: 320
+        ) == 1 - (320.0 / 792.0))
+        #expect(LUISplitGeometry.effectiveFraction(
+            value: 0.2,
+            available: 800,
+            firstMinimum: 500,
+            secondMinimum: 500
+        ) == 0.5)
+
+        var state = LUISplitFractionState(sourceFraction: 0.35)
+        state.applyUserFraction(0.42)
+        state.reconcile(sourceFraction: 0.35)
+        #expect(state.fraction == 0.42)
+        state.reconcile(sourceFraction: 0.42)
+        #expect(state.fraction == 0.42)
+        state.reconcile(sourceFraction: 0.55)
+        #expect(state.fraction == 0.55)
+
+        try backend.performValueChange(node: 1, value: 0.42)
+        #expect(events == [.valueChanged(node: 1, value: 0.42)])
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"value","value":0.42}
+        ]}
+        """)
+        #expect(backend.model(id: 1) === split)
+        #expect(backend.model(id: 2) === first)
+        #expect(backend.model(id: 3) === second)
+    }
+
+    @Test("Split rejects malformed child counts and inert animation options")
+    func rejectsMalformedSplit() throws {
+        for operations in [
+            """
+            {"op":"create-node","id":1,"kind":"split"},
+            {"op":"create-node","id":2,"kind":"panel"},
+            {"op":"insert-child","parent":1,"child":2,"index":0}
+            """,
+            """
+            {"op":"create-node","id":1,"kind":"split"},
+            {"op":"create-node","id":2,"kind":"panel"},
+            {"op":"create-node","id":3,"kind":"panel"},
+            {"op":"create-node","id":4,"kind":"panel"},
+            {"op":"insert-child","parent":1,"child":2,"index":0},
+            {"op":"insert-child","parent":1,"child":3,"index":1},
+            {"op":"insert-child","parent":1,"child":4,"index":2}
+            """,
+            """
+            {"op":"create-node","id":1,"kind":"split"},
+            {"op":"create-node","id":2,"kind":"panel"},
+            {"op":"create-node","id":3,"kind":"panel"},
+            {"op":"set-prop","id":1,"property":"resize-easing","value":"spring"},
+            {"op":"insert-child","parent":1,"child":2,"index":0},
+            {"op":"insert-child","parent":1,"child":3,"index":1}
+            """,
+        ] {
+            let backend = LUIAppleBackend()
+            #expect(throws: LUIBackendError.self) {
+                try backend.apply(json: """
+                {"generation":1,"ops":[\(operations)]}
+                """)
+            }
+            #expect(backend.generation == 0)
+            #expect(backend.rootIDs.isEmpty)
+        }
+    }
+
     @Test("maps Tree rows to one retained native focus set")
     func mapsTree() throws {
         let backend = LUIAppleBackend()

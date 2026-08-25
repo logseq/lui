@@ -16,7 +16,7 @@
     {"name": "list", "status": "supported"},
     {"name": "grid", "status": "supported"},
     {"name": "resizable", "status": "supported"},
-    {"name": "split", "status": "pending"},
+    {"name": "split", "status": "supported"},
     {"name": "tree", "status": "supported"},
     {"name": "tabs", "status": "supported"},
     {"name": "toggle-group", "status": "supported"},
@@ -119,6 +119,7 @@
     {"lg": "TableCell", "wire": "table-cell", "dart": "tableCell", "swift": "tableCell", "container": false},
     {"lg": "Tree", "wire": "tree", "dart": "tree", "swift": "tree", "container": true},
     {"lg": "Resizable", "wire": "resizable", "dart": "resizable", "swift": "resizable", "container": true},
+    {"lg": "Split", "wire": "split", "dart": "split", "swift": "split", "container": true},
     {"lg": "Dialog", "wire": "dialog", "dart": "dialog", "swift": "dialog", "container": true},
     {"lg": "Drawer", "wire": "drawer", "dart": "drawer", "swift": "drawer", "container": true},
     {"lg": "Sheet", "wire": "sheet", "dart": "sheet", "swift": "sheet", "container": true},
@@ -179,7 +180,10 @@
     {"lg": "TextAlignment", "wire": "text-alignment", "swift": "textAlignment"},
     {"lg": "RoleValue", "wire": "role", "swift": "role"},
     {"lg": "TreeLevel", "wire": "tree-level", "swift": "treeLevel"},
-    {"lg": "Expanded", "wire": "expanded", "swift": "expanded"}
+    {"lg": "Expanded", "wire": "expanded", "swift": "expanded"},
+    {"lg": "ResizeDuration", "wire": "resize-duration", "swift": "resizeDuration"},
+    {"lg": "ResizeEasing", "wire": "resize-easing", "swift": "resizeEasing"},
+    {"lg": "ResizeOrigin", "wire": "resize-origin", "swift": "resizeOrigin"}
   ],
   "events": [
     {"lg": "Press", "fields": [":int"]},

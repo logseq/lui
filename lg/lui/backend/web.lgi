@@ -8,6 +8,10 @@
   (web-image-width :float)
   (web-image-height :float))
 
+(type-record web-split-state
+  (web-split-source :float)
+  (web-split-current :float))
+
 (type-record web-renderer
   (web-store :retained-store<web-node>)
   (web-document :Dom.document)
@@ -15,7 +19,8 @@
   (web-app-icons :map<string;string>)
   (web-images :ref<map<int;web-image-resource>>)
   (web-cleanups :ref<map<int;fn<unit>>>)
-  (web-modal-stack :ref<vector<int>>))
+  (web-modal-stack :ref<vector<int>>)
+  (web-splits :ref<map<int;web-split-state>>))
 
 (signature lui.backend.web/create
   :overload<fn<Dom.element;web-renderer>;fn<Dom.element;map<string;string>;web-renderer>>)
@@ -34,6 +39,7 @@
 (signature lui.backend.web/refresh-avatar-image-id!
   :fn<web-renderer;int;bool>)
 (signature lui.backend.web/platform-node :fn<web-renderer;node-kind;web-node>)
+(signature lui.backend.web/create-split-node :fn<web-renderer;web-node>)
 (signature lui.backend.web/dom-node :fn<web-renderer;int;web-node>)
 (signature lui.backend.web/dom-node-before
   :fn<web-renderer;map<int;retained-node<web-node>>;int;web-node>)
@@ -46,6 +52,8 @@
 (signature lui.backend.web/attach-radio-event!
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/attach-slider-event!
+  :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/attach-split-events!
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/attach-picker-press-event!
   :fn<web-renderer;int;web-node;unit>)
@@ -106,6 +114,21 @@
   :fn<web-renderer;int;float>)
 (signature lui.backend.web/update-progress!
   :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/split-base-fraction :fn<float;float>)
+(signature lui.backend.web/split-int-property
+  :fn<web-renderer;int;property;int;int>)
+(signature lui.backend.web/split-child-minimum
+  :fn<web-renderer;int;int;int>)
+(signature lui.backend.web/split-timing-function
+  :fn<web-renderer;int;string>)
+(signature lui.backend.web/effective-split-fraction
+  :fn<web-renderer;int;float;float>)
+(signature lui.backend.web/render-split!
+  :fn<web-renderer;int;web-node;float;bool;unit>)
+(signature lui.backend.web/reconcile-split!
+  :fn<web-renderer;int;web-node;float;unit>)
+(signature lui.backend.web/update-split! :fn<web-renderer;int;unit>)
+(signature lui.backend.web/update-splits-under! :fn<web-renderer;int;unit>)
 (signature lui.backend.web/insert-dom-child!
   :fn<web-node;web-node;int;unit>)
 (signature lui.backend.web/content-container

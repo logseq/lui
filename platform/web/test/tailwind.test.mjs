@@ -167,6 +167,16 @@ test("Resizable uses the browser-owned horizontal resize affordance", async () =
   assert.match(css, /\.lui-resizable\{[^}]*border-radius:/)
 })
 
+test("Split exposes one accessible horizontal divider band", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-split[^\{]*\{[^}]*display:grid/)
+  assert.match(css, /\.lui-split[^\{]*\{[^}]*overflow:hidden/)
+  assert.match(css, /\.lui-split-divider\{[^}]*cursor:col-resize/)
+  assert.match(css, /\.lui-split-divider\{[^}]*touch-action:none/)
+  assert.match(css, /\.lui-split-divider:focus-visible/)
+})
+
 test("the production stylesheet contains the registered-image Avatar contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 

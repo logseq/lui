@@ -209,6 +209,34 @@
     resize: horizontal;
   }
 
+  .lui-split {
+    @apply relative grid overflow-hidden;
+  }
+
+  .lui-split-panes {
+    @apply grid size-full;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .lui-split-divider {
+    @apply absolute inset-y-0 z-10 cursor-col-resize touch-none outline-none;
+  }
+
+  .lui-split-divider::after {
+    @apply absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border content-[''];
+  }
+
+  .lui-split-divider:focus-visible::after {
+    @apply w-0.5 bg-ring;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lui-split-panes,
+    .lui-split-divider {
+      transition-duration: 0ms !important;
+    }
+  }
+
   .lui-stack {
     @apply relative;
   }

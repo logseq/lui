@@ -231,6 +231,10 @@ Delivered parity slices:
 - direct retained `resizable` stacking surfaces with source-width
   reconciliation, backend-owned drag state, bounded assistive resizing, and
   identity-preserving children on Web, SwiftUI, and Flutter;
+- direct retained `split` layouts with exactly two identity-preserving panes,
+  a model-owned fraction, pane minimums, native animation and reduced-motion
+  handling, plus pointer, keyboard, and assistive resizing on every applicable
+  host;
 - direct retained `list-item` rows with text-or-children content, inline
   registry icons, model-owned selection, disabled state, immediate press,
   additive double press, Enter submit, and identity-preserving Signal patches;
@@ -682,6 +686,37 @@ painting, child, or sibling patches do not. Keyboard or assistive increment and
 decrement resize by a platform step without creating an LG event. Every backend
 clamps the width to `min-width`, retains child identity while dragging, and
 disposes its gesture/focus state with the retained node.
+
+#### Split contract
+
+`split` is one retained horizontal two-pane container with exactly two direct
+element children and one backend-owned divider. `value` is the model-owned
+first-pane fraction; a non-finite or non-positive value lays out at `0.5`, and
+positive values clamp to `1.0` before pane minimums are applied. `on-resize`
+receives `ValueChanged` with the effective fraction after pointer drag,
+keyboard adjustment, or assistive increment. Applications echo that fraction
+back into the bound `value`; the backend never inserts divider state into the
+LG model. `gap` is the divider hit-band width and defaults to 9 pixels. Each
+pane root's `min-width` bounds the effective divider position, including the
+degenerate case where the two minimums exceed available width.
+
+The Split-specific animation vocabulary matches the pinned reference:
+`resize-duration` is a non-negative millisecond duration, `resize-easing` is
+`linear`, `standard`, `emphasized`, or `spring`, and `resize-origin` is the
+first mounted fraction. Easing and origin are invalid without a nonzero
+duration. A changed bound value snaps when duration is absent or zero; with a
+duration it becomes a native animation target, emits the same effective
+resize values during presentation, and snaps when the host reports reduced
+motion. A direct drag cancels an active animation before applying its value.
+
+The remaining admitted Split attributes are the reference container surface
+vocabulary: `grow`, padding, colors, border, radius, width and height bounds,
+style class, and accessible label. Flow alignment and selection are invalid.
+Web uses a semantic separator with pointer capture, ArrowLeft/ArrowRight and
+Home/End. SwiftUI uses a `DragGesture` and adjustable separator semantics;
+Flutter uses a `GestureDetector`, resize cursor, and adjustable semantics.
+All hosts retain both pane identities across value patches and user resizing,
+and reject batches with fewer or more than two children atomically.
 
 #### Table contract
 

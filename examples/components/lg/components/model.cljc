@@ -18,7 +18,8 @@
     (gallery-dialog-open false)
     (gallery-drawer-open false)
     (gallery-sheet-open false)
-    (gallery-accordion-open false)))
+    (gallery-accordion-open false)
+    (gallery-split-fraction 0.35)))
 
 (defn update [model action]
   (match action
@@ -95,6 +96,9 @@
 
     (SetAccordionOpen open)
     (assoc model :gallery-accordion-open open)
+
+    (SetSplitFraction fraction)
+    (assoc model :gallery-split-fraction fraction)
 
     AdvanceProgress
     (assoc

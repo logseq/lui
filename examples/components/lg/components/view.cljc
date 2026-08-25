@@ -80,4 +80,9 @@
    (fn [event]
      (match event
        (ToggleChanged _node open) (send (model/SetAccordionOpen open))
+       _ true))
+   (reactive :gallery-split-fraction model-source)
+   (fn [event]
+     (match event
+       (ValueChanged _node fraction) (send (model/SetSplitFraction fraction))
        _ true))])

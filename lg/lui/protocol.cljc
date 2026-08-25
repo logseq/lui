@@ -44,7 +44,7 @@
     (or (= kind ToggleButton) (= kind Checkbox) (= kind SwitchControl)
         (= kind Toggle) (= kind Radio) (= kind Accordion))
     (Change _node) (= kind Radio)
-    (ValueChanged _node _value) (= kind Slider)
+    (ValueChanged _node _value) (or (= kind Slider) (= kind Split))
     (Dismiss _node)
     (or (= kind Select) (= kind Combobox) (= kind DropdownMenu)
         (modal-surface? kind))
@@ -182,6 +182,7 @@
       ListItem true
       TableCell true
       Resizable true
+      Split true
       _ false)
     BorderColorValue
     (and (not (= kind Avatar)) (not (modal-surface? kind))
@@ -216,7 +217,7 @@
         (= kind Checkbox) (= kind SwitchControl)
         (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider)
         (labelled-horizontal-container? kind)
-        (= kind Avatar) (= kind Tree) (= kind Resizable)
+        (= kind Avatar) (= kind Tree) (= kind Resizable) (= kind Split)
         (tree-row-kind? kind))
     PlaceholderValue
     (or (= kind TextField) (= kind Input) (= kind SearchField)
@@ -224,7 +225,7 @@
     HeadingLevel (= kind Heading)
     Checked (or (= kind Checkbox) (= kind SwitchControl)
                 (= kind Toggle) (= kind Radio))
-    ProgressValue (or (= kind Progress) (= kind Slider))
+    ProgressValue (or (= kind Progress) (= kind Slider) (= kind Split))
     OrientationValue (= kind Divider)
     SizeValue
     (or (= kind Button) (= kind ToggleButton) (= kind Spinner) (= kind Icon)
@@ -265,6 +266,9 @@
     RoleValue (tree-row-kind? kind)
     TreeLevel (tree-row-kind? kind)
     Expanded (tree-row-kind? kind)
+    ResizeDuration (= kind Split)
+    ResizeEasing (= kind Split)
+    ResizeOrigin (= kind Split)
     TextValue
     (match kind
       Text true
@@ -313,7 +317,7 @@
     Gap
     (or (= kind Row) (= kind Column) (= kind Grid)
         (= kind ListContainer) (= kind DropdownMenu) (= kind TableRow)
-        (= kind Tree)
+        (= kind Tree) (= kind Split)
         (horizontal-container? kind)))))
 
 (defn property-value-supported? [property value]
@@ -386,6 +390,11 @@
     (tuple RoleValue (StringValue value)) (= value "treeitem")
     (tuple TreeLevel (IntValue value)) (> value 0)
     (tuple Expanded (BoolValue _value)) true
+    (tuple ResizeDuration (IntValue value)) (>= value 0)
+    (tuple ResizeEasing (StringValue value))
+    (or (= value "linear") (= value "standard")
+        (= value "emphasized") (= value "spring"))
+    (tuple ResizeOrigin (FloatValue value)) (Float.is_finite value)
     _ false))
 
 (defn property-value-supported-for-kind? [kind property value]
@@ -542,6 +551,12 @@
        (Some (StringValue value)) (not (= value ""))
        _ false)
      true)
+   (if (= kind Split)
+     (let [duration (int-property properties ResizeDuration 0)]
+       (and
+        (if (contains? properties ResizeEasing) (> duration 0) true)
+        (if (contains? properties ResizeOrigin) (> duration 0) true)))
+     true)
    (if (tree-row-kind? kind)
      (let [treeitem (treeitem-properties? properties)
            has-tree-metadata
@@ -580,6 +595,7 @@
       TableRow true
       Tree true
       Resizable true
+      Split true
       _ false)))
 
 (defn child-kind-supported? [parent-kind child-kind]

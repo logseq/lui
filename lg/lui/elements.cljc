@@ -41,6 +41,7 @@
                          (= tag :table-cell)
                          (= tag :tree)
                          (= tag :resizable)
+                         (= tag :split)
                          (= tag :spacer)
                          (= tag :spinner)
                          (= tag :icon)
@@ -608,6 +609,43 @@
             `(lui.elements/element ~context ~node ~child))
           children)
        ~node)))
+
+(defelement split [context parent attrs & children]
+  (if (= (count children) 2)
+    (let [node (gensym "node")
+          value (:value attrs)
+          resolved-value (if value value 0.0)
+          constructor
+          (if (float? resolved-value)
+            'lui.ui/split-literal!
+            'lui.ui/split!)]
+      `(let [~node (~constructor ~context ~resolved-value)]
+         ~@(int-attribute-expansion
+            context node (:resize-duration attrs)
+            'lui.protocol/ResizeDuration)
+         ~@(string-attribute-expansion
+            context node (:resize-easing attrs)
+            'lui.protocol/ResizeEasing)
+         ~@(float-attribute-expansion
+            context node (:resize-origin attrs)
+            'lui.protocol/ResizeOrigin)
+         ~@(string-attribute-expansion
+            context node (:label attrs)
+            'lui.protocol/AccessibilityLabel)
+         ~@(if (:on-resize attrs)
+             [`(lui.ui/on-event! ~context ~node ~(:on-resize attrs))]
+             [])
+         ~@(element-properties context node attrs)
+         ~@(if parent
+             [`(lui.ui/append! ~context ~parent ~node)]
+             [])
+         ~@(map
+            (fn [child]
+              `(lui.elements/element ~context ~node ~child))
+            children)
+         ~node))
+    (throw
+     (IllegalArgumentException. "split requires exactly two children"))))
 
 (defelement spacer [context parent _attrs & _children]
   (let [node (gensym "node")]

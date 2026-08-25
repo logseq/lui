@@ -30,6 +30,8 @@
 (signature lui.ui/table-cell! :fn<ui-context;int>)
 (signature lui.ui/tree! :fn<ui-context;int>)
 (signature lui.ui/resizable! :fn<ui-context;int>)
+(signature lui.ui/split! :fn<ui-context;signal.core/signal<float>;int>)
+(signature lui.ui/split-literal! :fn<ui-context;float;int>)
 (signature lui.ui/spacer! :fn<ui-context;int>)
 (signature lui.ui/spinner! :fn<ui-context;int>)
 (signature lui.ui/icon! :fn<ui-context;string;int>)

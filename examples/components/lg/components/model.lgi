@@ -17,7 +17,8 @@
   (gallery-dialog-open :bool)
   (gallery-drawer-open :bool)
   (gallery-sheet-open :bool)
-  (gallery-accordion-open :bool))
+  (gallery-accordion-open :bool)
+  (gallery-split-fraction :float))
 
 (type-variant gallery-action
   (ToggleDisabled)
@@ -41,6 +42,7 @@
   (OpenSheet)
   (CloseSheet)
   (SetAccordionOpen :bool)
+  (SetSplitFraction :float)
   (AdvanceProgress))
 
 (signature components.model/initial :fn<gallery-model>)

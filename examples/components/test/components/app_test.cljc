@@ -43,7 +43,8 @@
                  (gallery-dialog-open false)
                  (gallery-drawer-open false)
                  (gallery-sheet-open false)
-                 (gallery-accordion-open false))
+                 (gallery-accordion-open false)
+                 (gallery-split-fraction 0.35))
          model/AdvanceProgress)]
     (assert-equal false (:gallery-disabled initial) "controls start enabled")
     (assert-equal 0.3 (:gallery-progress initial) "progress has a visible start")
@@ -69,6 +70,8 @@
                   "Sheet starts closed without a retained placeholder")
     (assert-equal false (:gallery-accordion-open initial)
                   "Accordion starts collapsed under model control")
+    (assert-equal 0.35 (:gallery-split-fraction initial)
+                  "Split starts with a controlled first-pane fraction")
     (assert-equal true
                   (:gallery-accordion-open
                    (model/update initial (model/SetAccordionOpen true)))
@@ -130,6 +133,11 @@
      (:gallery-volume (model/update initial (model/SetVolume 0.8)))
      "slider value is owned by the shared reducer")
     (assert-equal
+     0.42
+     (:gallery-split-fraction
+      (model/update initial (model/SetSplitFraction 0.42)))
+     "Split resize echoes remain in the shared reducer")
+    (assert-equal
      "select"
      (:gallery-open-picker
       (model/update initial (model/OpenPicker "select")))
@@ -186,6 +194,8 @@
         "the shared Gallery demonstrates retained Tree navigation")
     (is (creates-kind? (flutter/batches renderer) proto/Resizable)
         "the shared Gallery demonstrates backend-owned Resizable geometry")
+    (is (creates-kind? (flutter/batches renderer) proto/Split)
+        "the shared Gallery demonstrates controlled two-pane Split geometry")
     (assert-equal 1 (count (flutter/batches renderer)) "mount is one batch")
     (let [mounted-count (flutter/node-count renderer)]
       (driver/send! application model/ToggleDisabled)

@@ -1129,6 +1129,155 @@ void main() {
     expect(backend.containsNode(1), isFalse);
   });
 
+  testWidgets('Split drags one controlled divider without replacing panes', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"split"},
+        {"op":"create-node","id":2,"kind":"panel"},
+        {"op":"create-node","id":3,"kind":"panel"},
+        {"op":"set-prop","id":1,"property":"value","value":0.0},
+        {"op":"set-prop","id":1,"property":"gap","value":8},
+        {"op":"set-prop","id":1,"property":"width","value":800},
+        {"op":"set-prop","id":1,"property":"height","value":200},
+        {"op":"set-prop","id":1,"property":"accessibility-label","value":"Workspace panes"},
+        {"op":"set-prop","id":2,"property":"min-width","value":180},
+        {"op":"set-prop","id":3,"property":"min-width","value":320},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: backend.widget(node: 1),
+          ),
+        ),
+      ),
+    );
+
+    final first = find.byKey(LUIFlutterBackend.nodeKey(2));
+    final second = find.byKey(LUIFlutterBackend.nodeKey(3));
+    final firstElement = tester.element(first);
+    final secondElement = tester.element(second);
+    expect(tester.getSize(first).width, 396);
+    expect(tester.getSize(second).width, 396);
+    final divider = find.bySemanticsLabel('Workspace panes divider');
+    final semanticsData = tester.getSemantics(divider).getSemanticsData();
+    expect(semanticsData.hasAction(ui.SemanticsAction.increase), isTrue);
+    expect(semanticsData.hasAction(ui.SemanticsAction.decrease), isTrue);
+
+    await tester.drag(divider, const Offset(100, 0));
+    await tester.pump();
+    expect(tester.getSize(first).width, closeTo(472, 0.001));
+    expect(tester.getSize(second).width, closeTo(320, 0.001));
+    final resizeEvent = events.last as LUIValueChangedEvent;
+    expect(resizeEvent.node, 1);
+    expect(resizeEvent.value, closeTo(472 / 792, 0.0001));
+
+    backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":1,"property":"value","value":${472 / 792}}
+      ]}
+      ''');
+    await tester.pump();
+    expect(tester.getSize(first).width, closeTo(472, 0.001));
+    expect(tester.element(first), same(firstElement));
+    expect(tester.element(second), same(secondElement));
+
+    backend.applyJson('''
+      {"generation":3,"ops":[
+        {"op":"set-prop","id":1,"property":"value","value":0.3}
+      ]}
+      ''');
+    await tester.pump();
+    expect(tester.getSize(first).width, closeTo(237.6, 0.01));
+    expect(tester.getSize(second).width, closeTo(554.4, 0.01));
+    semantics.dispose();
+  });
+
+  testWidgets('Split animates a changed model target and echoes presentation', (
+    tester,
+  ) async {
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"split"},
+        {"op":"create-node","id":2,"kind":"panel"},
+        {"op":"create-node","id":3,"kind":"panel"},
+        {"op":"set-prop","id":1,"property":"value","value":0.3},
+        {"op":"set-prop","id":1,"property":"gap","value":8},
+        {"op":"set-prop","id":1,"property":"width","value":800},
+        {"op":"set-prop","id":1,"property":"height","value":200},
+        {"op":"set-prop","id":1,"property":"resize-duration","value":200},
+        {"op":"set-prop","id":1,"property":"resize-easing","value":"linear"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1}
+      ]}
+      ''');
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    final first = find.byKey(LUIFlutterBackend.nodeKey(2));
+    expect(tester.getSize(first).width, closeTo(237.6, 0.01));
+
+    backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":1,"property":"value","value":0.7}
+      ]}
+      ''');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.getSize(first).width, closeTo(396, 2));
+    expect(events, isNotEmpty);
+    expect(events.last, isA<LUIValueChangedEvent>());
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.getSize(first).width, closeTo(554.4, 0.01));
+  });
+
+  test('rejects malformed Split structure and animation dependencies', () {
+    for (final operations in [
+      '''
+        {"op":"create-node","id":1,"kind":"split"},
+        {"op":"create-node","id":2,"kind":"panel"},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ''',
+      '''
+        {"op":"create-node","id":1,"kind":"split"},
+        {"op":"create-node","id":2,"kind":"panel"},
+        {"op":"create-node","id":3,"kind":"panel"},
+        {"op":"create-node","id":4,"kind":"panel"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":1,"child":4,"index":2}
+      ''',
+      '''
+        {"op":"create-node","id":1,"kind":"split"},
+        {"op":"create-node","id":2,"kind":"panel"},
+        {"op":"create-node","id":3,"kind":"panel"},
+        {"op":"set-prop","id":1,"property":"resize-origin","value":0.1},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1}
+      ''',
+    ]) {
+      final backend = LUIFlutterBackend();
+      expect(
+        () => backend.applyJson('{"generation":1,"ops":[$operations]}'),
+        throwsA(isA<LUIBackendException>()),
+      );
+      expect(backend.generation, 0);
+      expect(backend.containsNode(1), isFalse);
+    }
+  });
+
   testWidgets('maps Tree rows to one retained native roving focus set', (
     tester,
   ) async {

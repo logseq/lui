@@ -96,6 +96,10 @@ enum LUIWireValue: Decodable, Equatable {
         case let (.headingLevel, .int(level)): (1...6).contains(level)
         case (.checked, .bool): true
         case (.progressValue, .double): true
+        case let (.resizeDuration, .int(value)): value >= 0
+        case let (.resizeEasing, .string(value)):
+            ["linear", "standard", "emphasized", "spring"].contains(value)
+        case let (.resizeOrigin, .double(value)): value.isFinite
         case let (.orientation, .string(value)):
             value == "horizontal" || value == "vertical"
         case let (.size, .string(value)):
@@ -331,7 +335,7 @@ struct LUIRetainedTree {
                 kind == .radio || kind == .slider || kind == .spinner || kind == .icon
                 || kind == .select || kind == .combobox || kind == .dropdownMenu
                 || kind == .menuItem || kind == .listItem
-                || kind == .tableCell || kind == .resizable
+                || kind == .tableCell || kind == .resizable || kind == .split
         case .text:
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
                 kind == .button || kind == .toggleButton || isTextEntry(kind) ||
@@ -347,7 +351,7 @@ struct LUIRetainedTree {
                 kind == .combobox || kind == .menuItem || kind == .listItem
         case .gap:
             kind == .row || kind == .column || kind == .grid || kind == .list ||
-                kind == .dropdownMenu || isHorizontalGroup(kind)
+                kind == .dropdownMenu || isHorizontalGroup(kind) || kind == .split
                 || kind == .tableRow || kind == .tree
         case .placeholder:
             isTextEntry(kind) || kind == .select
@@ -357,11 +361,12 @@ struct LUIRetainedTree {
                 kind == .radioGroup || kind == .buttonGroup || kind == .toggleGroup ||
                 kind == .breadcrumb || kind == .pagination ||
                 kind == .radio || kind == .slider || kind == .avatar || kind == .tree ||
-                kind == .resizable || isTreeRow(kind)
+                kind == .resizable || kind == .split || isTreeRow(kind)
         case .headingLevel: kind == .heading
         case .checked:
             kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
-        case .progressValue: kind == .progress || kind == .slider
+        case .progressValue: kind == .progress || kind == .slider || kind == .split
+        case .resizeDuration, .resizeEasing, .resizeOrigin: kind == .split
         case .orientation: kind == .divider
         case .size:
             kind == .button || kind == .toggleButton || kind == .spinner ||
@@ -407,6 +412,7 @@ struct LUIRetainedTree {
             || kind == .dropdownMenu || kind == .listItem || isModalSurface(kind)
             || kind == .accordion
             || kind == .table || kind == .tableRow || kind == .tree || kind == .resizable
+            || kind == .split
     }
 
     private static func isModalSurface(_ kind: LUINodeKind) -> Bool {
@@ -460,6 +466,21 @@ struct LUIRetainedTree {
             if node.kind == .slider || node.kind == .progress {
                 guard case let .double(value)? = node.properties[.progressValue], value.isFinite else {
                     throw invalid("value control requires a finite fractional value")
+                }
+            }
+            if node.kind == .split {
+                guard node.children.count == 2 else {
+                    throw invalid("split requires exactly two children")
+                }
+                guard case let .double(value)? = node.properties[.progressValue],
+                      value.isFinite else {
+                    throw invalid("split requires a finite fractional value")
+                }
+                let duration = node.properties[.resizeDuration]?.intValue ?? 0
+                if node.properties[.resizeEasing] != nil || node.properties[.resizeOrigin] != nil {
+                    guard duration > 0 else {
+                        throw invalid("split animation options require a positive duration")
+                    }
                 }
             }
             if node.kind == .radio, !hasAncestor(node.parent, kind: .radioGroup) {

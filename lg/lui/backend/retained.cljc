@@ -280,6 +280,11 @@
       (raise
        (Invalid_argument "treeitem must be contained by a tree")))))
 
+(defn- validate-split! [current]
+  (when (= (:semantic-kind current) proto/Split)
+    (when (not (= (count (:retained-children current)) 2))
+      (raise (Invalid_argument "split requires exactly two children")))))
+
 (defn- validate-nodes! [nodes]
   (reduce-kv
    (fn [_valid _node current]
@@ -292,6 +297,7 @@
      (validate-list-item! current)
      (validate-avatar! current)
      (validate-tree-item! nodes current)
+     (validate-split! current)
      (when (not
             (proto/node-properties-supported?
              (:semantic-kind current) (:retained-properties current)))

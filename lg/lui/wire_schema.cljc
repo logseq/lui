@@ -7,17 +7,18 @@
                      Divider Scroll ListContainer Tabs ButtonGroup ToggleGroup
                      Spacer Spinner Icon Select Combobox DropdownMenu
                      MenuItem ListItem Avatar Breadcrumb Pagination Accordion
-                     Table TableRow TableCell Tree Resizable Dialog
-                     Drawer Sheet Tooltip TextValue Enabled Gap
-                     MainAlignment CrossAlignment GrowValue GridColumns PaddingValue PaddingHorizontal
-                     PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth CornerRadius
-                     WidthValue HeightValue MinWidth MaxWidth MinHeight MaxHeight
-                     PlaceholderValue AccessibilityLabel StyleClass HeadingLevel Checked ProgressValue
-                     OrientationValue SizeValue IconName VariantValue InlineIconName IconPlacementValue
-                     Selected Autofocus SubmitOnEnter HoldEnabled ChangeEnabled ToggleEnabled
-                     PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue SourceX SourceY
-                     SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay
-                     TextAlignment RoleValue TreeLevel Expanded]]))
+                     Table TableRow TableCell Tree Resizable Split
+                     Dialog Drawer Sheet Tooltip TextValue Enabled
+                     Gap MainAlignment CrossAlignment GrowValue GridColumns PaddingValue
+                     PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth
+                     CornerRadius WidthValue HeightValue MinWidth MaxWidth MinHeight
+                     MaxHeight PlaceholderValue AccessibilityLabel StyleClass HeadingLevel Checked
+                     ProgressValue OrientationValue SizeValue IconName VariantValue InlineIconName
+                     IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled ChangeEnabled
+                     ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue SourceX
+                     SourceY SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset
+                     TooltipDelay TextAlignment RoleValue TreeLevel Expanded ResizeDuration
+                     ResizeEasing ResizeOrigin]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -68,6 +69,7 @@
     TableCell "table-cell"
     Tree "tree"
     Resizable "resizable"
+    Split "split"
     Dialog "dialog"
     Drawer "drawer"
     Sheet "sheet"
@@ -129,4 +131,7 @@
     TextAlignment "text-alignment"
     RoleValue "role"
     TreeLevel "tree-level"
-    Expanded "expanded"))
+    Expanded "expanded"
+    ResizeDuration "resize-duration"
+    ResizeEasing "resize-easing"
+    ResizeOrigin "resize-origin"))

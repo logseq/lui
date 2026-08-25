@@ -97,6 +97,24 @@
    [:paragraph
     "Width seeds backend-owned geometry; a changed width source explicitly resets it."]])
 
+(defui split-gallery [fraction-source set-fraction]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Split"]
+   [:split
+    {:value fraction-source :gap 8 :height 220
+     :resize-duration 180 :resize-easing "standard"
+     :label "Gallery workspace" :on-resize set-fraction}
+    [:panel {:min-width 180 :padding 16}
+     [:column {:gap 8}
+      [:text "Sidebar"]
+      [:paragraph "Drag, use arrow keys, or adjust with assistive controls."]]]
+    [:panel {:min-width 320 :padding 16}
+     [:column {:gap 8}
+      [:text "Content"]
+      [:paragraph "The shared model echoes the effective pane fraction."]]]]
+   [:paragraph
+    "Exactly two retained panes share one model-owned divider fraction."]])
+
 (defui dialog-gallery [open-source open-dialog close-dialog]
   [:column {:gap 16 :padding 32}
    [:heading {:level 2} "Dialog"]
@@ -631,7 +649,8 @@
    dialog-open-source open-dialog close-dialog
    drawer-open-source open-drawer close-drawer
    sheet-open-source open-sheet close-sheet
-   accordion-open-source set-accordion-open]
+   accordion-open-source set-accordion-open
+   split-fraction-source set-split-fraction]
   [:column
    [button-gallery disabled-source toggle-disabled]
    [toggle-button-gallery
@@ -653,6 +672,7 @@
    [progress-gallery progress-source progress-label-source advance-progress]
    [surface-gallery card-copy]
    [resizable-gallery]
+   [split-gallery split-fraction-source set-split-fraction]
    [dialog-gallery dialog-open-source open-dialog close-dialog]
    [edge-surface-gallery
     drawer-open-source open-drawer close-drawer

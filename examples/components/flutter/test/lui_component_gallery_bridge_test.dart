@@ -75,6 +75,7 @@ void main() {
     expect(find.text('Controls are disabled.'), findsNothing);
     expect(find.text('ListItem'), findsOneWidget);
     expect(find.text('Tree'), findsOneWidget);
+    expect(find.text('Split'), findsOneWidget);
     expect(find.text('Documents'), findsOneWidget);
     expect(find.text('Avatar'), findsOneWidget);
     expect(find.text('ZN'), findsOneWidget);

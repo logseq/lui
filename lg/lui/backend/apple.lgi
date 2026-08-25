@@ -49,7 +49,8 @@
   (AppleTableRow)
   (AppleTableCell)
   (AppleTree)
-  (AppleResizable))
+  (AppleResizable)
+  (AppleSplit))
 
 (type-record apple-renderer
   (apple-store :retained-store<apple-node>)

@@ -81,6 +81,22 @@
 (defn resizable! [context]
   (runtime/create-node! (:ui-application context) proto/Resizable))
 
+(defn split! [context source]
+  (let [node (runtime/create-node! (:ui-application context) proto/Split)]
+    (runtime/bind-prop!
+     (:ui-scope context) (:ui-application context) node proto/ProgressValue
+     (sig/own-signal!
+      (:ui-scope context)
+      (sig/map (fn [value] (proto/FloatValue value)) source)))
+    node))
+
+(defn split-literal! [context value]
+  (let [node (runtime/create-node! (:ui-application context) proto/Split)]
+    (runtime/set-prop!
+     (:ui-application context) node proto/ProgressValue
+     (proto/FloatValue value))
+    node))
+
 (defn spacer! [context]
   (runtime/create-node! (:ui-application context) proto/Spacer))
 
