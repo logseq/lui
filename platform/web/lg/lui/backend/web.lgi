@@ -47,6 +47,12 @@
   :overload<fn<Dom.element;web-renderer>;fn<Dom.element;map<string;string>;web-renderer>>)
 (signature lui.backend.web/create-with-extensions
   :fn<Dom.element;map<string;string>;extension-registry;map<string;web-extension-adapter>;web-renderer>)
+(signature lui.backend.web/pointer-mouse-event
+  :fn<Dom.event_like<Dom._baseClass>;Dom.mouseEvent>)
+(signature lui.backend.web/pointer-type
+  :fn<Dom.event_like<Dom._baseClass>;string>)
+(signature lui.backend.web/pointer-id
+  :fn<Dom.event_like<Dom._baseClass>;int>)
 (signature lui.backend.web/standard-kind [platform]
   :fn<retained-node<platform>;node-kind>)
 (signature lui.backend.web/standard-kind? [platform]
@@ -133,6 +139,8 @@
   :fn<web-renderer;map<int;retained-node<web-node>>;int;web-node>)
 (signature lui.backend.web/attach-events!
   :fn<web-renderer;int;node-kind;web-node;unit>)
+(signature lui.backend.web/attach-modal-events!
+  :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/attach-text-events!
   :fn<web-renderer;int;node-kind;web-node;unit>)
 (signature lui.backend.web/attach-toggle-event!

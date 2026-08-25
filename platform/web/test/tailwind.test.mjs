@@ -281,7 +281,7 @@ test("Toast uses one application-level viewport with stacked interactive surface
   assert.match(css, /\.lui-toast-viewport\{[^}]*pointer-events:none/)
   assert.match(css, /\.lui-toast\{[^}]*pointer-events:auto/)
   assert.match(css, /\.lui-toast\{[^}]*transition-property:/)
-  assert.match(css, /\.lui-toast\[data-swipe=move\]/)
+  assert.match(css, /\.lui-toast\[data-swiping\]/)
   assert.match(css, /@media ?\(prefers-reduced-motion:reduce\)/)
 })
 

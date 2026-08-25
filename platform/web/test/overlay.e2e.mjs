@@ -26,6 +26,7 @@ async function evaluate(source) {
 }
 
 async function openGalleryPage(name) {
+  await browser("set", "viewport", "1280", "900")
   await browser("open", `${origin}/examples/components/web/index.html`)
   await browser("wait", "--load", "networkidle")
   await evaluate(`
@@ -79,6 +80,7 @@ test("Dialog is a portaled modal with model-owned dismissal and focus restoratio
         hostInert: document.querySelector('#app')?.hasAttribute('inert'),
         focusInside: Boolean(surface?.contains(document.activeElement)),
         focusedPlaceholder: document.activeElement?.getAttribute('placeholder'),
+        open: layer?.hasAttribute('data-open'),
       }
     })()`),
     {
@@ -88,6 +90,7 @@ test("Dialog is a portaled modal with model-owned dismissal and focus restoratio
       hostInert: true,
       focusInside: true,
       focusedPlaceholder: "Note name",
+      open: true,
     },
   )
 
@@ -96,18 +99,29 @@ test("Dialog is a portaled modal with model-owned dismissal and focus restoratio
   await browser("press", "Tab")
   assert.equal(await state(`document.activeElement?.getAttribute('placeholder')`), "Note name")
 
+  await evaluate(`(() => {
+    window.__luiDialogExitObserved = false
+    const layer = document.querySelector('.lui-modal-layer')
+    new MutationObserver(() => {
+      if (layer?.hasAttribute('data-ending-style')) window.__luiDialogExitObserved = true
+    }).observe(layer, { attributes: true })
+  })()`)
   await browser("press", "Escape")
   assert.deepEqual(
     await state(`({
-      layers: document.querySelectorAll('.lui-modal-layer:not([hidden])').length,
+      openLayers: document.querySelectorAll('.lui-modal-layer[data-open]').length,
+      exitObserved: window.__luiDialogExitObserved,
       hostInert: document.querySelector('#app')?.hasAttribute('inert'),
       focus: document.activeElement?.textContent?.trim(),
     })`),
-    { layers: 0, hostInert: false, focus: "Open dialog" },
+    { openLayers: 0, exitObserved: true, hostInert: false, focus: "Open dialog" },
   )
+  await browser("wait", "180")
+  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer').length`), 0)
 
   await clickButton("Open dialog")
   await evaluate(`document.querySelector('.lui-modal-backdrop')?.click()`)
+  await browser("wait", "180")
   assert.equal(
     await state(`document.querySelectorAll('.lui-modal-layer:not([hidden])').length`),
     0,
@@ -127,16 +141,103 @@ test("Sheet uses the same modal lifecycle with its own native surface", async ()
         className: surface?.className,
         modal: surface?.getAttribute('aria-modal'),
         hostInert: document.querySelector('#app')?.hasAttribute('inert'),
+        open: layer?.hasAttribute('data-open'),
       }
     })()`),
-    { layers: 1, className: "lui-sheet", modal: "true", hostInert: true },
+    { layers: 1, className: "lui-sheet", modal: "true", hostInert: true, open: true },
   )
 
   await browser("press", "Escape")
-  assert.equal(
-    await state(`document.querySelectorAll('.lui-modal-layer:not([hidden])').length`),
-    0,
+  assert.deepEqual(
+    await state(`({
+      open: document.querySelectorAll('.lui-modal-layer[data-open]').length,
+      ending: document.querySelectorAll('.lui-modal-layer[data-ending-style]').length,
+    })`),
+    { open: 0, ending: 1 },
   )
+  await browser("wait", "500")
+  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer').length`), 0)
+})
+
+test("Compact Sheet dismisses downward touch swipes and snaps back below threshold", async () => {
+  await openGalleryPage("Sheet")
+  await browser("set", "viewport", "390", "844")
+  await clickButton("Open sheet")
+  await browser("wait", "50")
+
+  const compactSheet = await state(`(() => {
+      const sheet = document.querySelector('.lui-sheet')
+      const bounds = sheet?.getBoundingClientRect()
+      return {
+        bottomAligned: Math.abs((bounds?.bottom ?? 0) - innerHeight) < 1,
+        fullWidth: Math.abs((bounds?.width ?? 0) - innerWidth) < 1,
+        height: Math.round(bounds?.height ?? 0),
+        viewportHeight: innerHeight,
+      }
+    })()`)
+  assert.equal(compactSheet.bottomAligned, true)
+  assert.equal(compactSheet.fullWidth, true)
+  assert.ok(compactSheet.height > 0 && compactSheet.height < compactSheet.viewportHeight)
+
+  await evaluate(`(() => {
+    const sheet = document.querySelector('.lui-sheet')
+    const dispatch = (type, y) => sheet.dispatchEvent(new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      isPrimary: true,
+      pointerId: 41,
+      pointerType: 'touch',
+      clientX: 190,
+      clientY: y,
+      button: 0,
+      buttons: type === 'pointerup' ? 0 : 1,
+    }))
+    dispatch('pointerdown', 200)
+    dispatch('pointermove', 235)
+    dispatch('pointerup', 235)
+  })()`)
+  assert.equal(await state(`document.querySelector('.lui-sheet')?.hasAttribute('data-swiping')`), false)
+  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 1)
+
+  await evaluate(`(() => {
+    const sheet = document.querySelector('.lui-sheet')
+    const dispatch = (type, y) => sheet.dispatchEvent(new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      isPrimary: true,
+      pointerId: 42,
+      pointerType: 'touch',
+      clientX: 190,
+      clientY: y,
+      button: 0,
+      buttons: type === 'pointerup' ? 0 : 1,
+    }))
+    dispatch('pointerdown', 180)
+    dispatch('pointermove', 520)
+    dispatch('pointercancel', 560)
+  })()`)
+  assert.equal(await state(`document.querySelector('.lui-sheet')?.hasAttribute('data-swiping')`), false)
+  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 1)
+
+  await evaluate(`(() => {
+    const sheet = document.querySelector('.lui-sheet')
+    const dispatch = (type, y) => sheet.dispatchEvent(new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      isPrimary: true,
+      pointerId: 43,
+      pointerType: 'touch',
+      clientX: 190,
+      clientY: y,
+      button: 0,
+      buttons: type === 'pointerup' ? 0 : 1,
+    }))
+    dispatch('pointerdown', 180)
+    dispatch('pointermove', 520)
+    dispatch('pointerup', 560)
+  })()`)
+  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 0)
+  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-ending-style]').length`), 1)
 })
 
 test("Tree click toggles disclosure and keeps selection model-owned", async () => {
@@ -341,6 +442,45 @@ test("ContextMenu opens from the keyboard and returns focus on Escape", async ()
   )
 })
 
+test("ContextMenu long press follows the touch point and cancels after movement", async () => {
+  await openGalleryPage("ContextMenu")
+  await browser("set", "viewport", "390", "844")
+
+  await evaluate(`(() => {
+    const host = document.querySelector('.lui-list-item')
+    const pointer = (type, x, y) => new PointerEvent(type, {
+      bubbles: true, cancelable: true, isPrimary: true, pointerId: 1,
+      pointerType: 'touch', clientX: x, clientY: y, button: 0,
+      buttons: type === 'pointerup' ? 0 : 1,
+    })
+    host.dispatchEvent(pointer('pointerdown', 80, 180))
+    host.dispatchEvent(pointer('pointermove', 100, 180))
+  })()`)
+  await browser("wait", "550")
+  assert.equal(await state(`document.querySelector('.lui-context-menu')?.hasAttribute('data-open')`), false)
+
+  await evaluate(`(() => {
+    const host = document.querySelector('.lui-list-item')
+    host.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true, cancelable: true, isPrimary: true, pointerId: 2,
+      pointerType: 'touch', clientX: 84, clientY: 220, button: 0, buttons: 1,
+    }))
+  })()`)
+  await browser("wait", "550")
+  assert.deepEqual(
+    await state(`(() => {
+      const menu = document.querySelector('.lui-context-menu')
+      const bounds = menu?.getBoundingClientRect()
+      return {
+        open: menu?.hasAttribute('data-open'),
+        left: Math.round(bounds?.left ?? 0),
+        top: Math.round(bounds?.top ?? 0),
+      }
+    })()`),
+    { open: true, left: 84, top: 220 },
+  )
+})
+
 test("Toolbar exposes orientation-aware roving focus over composed controls", async () => {
   await openGalleryPage("Toolbar")
 
@@ -394,7 +534,7 @@ test("Toolbar exposes orientation-aware roving focus over composed controls", as
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Link")
 })
 
-test("Toast portals stable updates and supports pause, F6, close, and swipe dismissal", async () => {
+test("Toast portals stable updates and supports pause, F6, close, and touch swipe dismissal", async () => {
   await openGalleryPage("Toast")
   await clickButton("Show notifications")
 
@@ -457,14 +597,58 @@ test("Toast portals stable updates and supports pause, F6, close, and swipe dism
   await clickButton("Show notifications")
   await evaluate(`(() => {
     const toast = document.querySelector('[role=status]')
-    const event = (name, x) => new MouseEvent(name, {
+    const action = [...toast.querySelectorAll('button')]
+      .find((button) => button.textContent.trim() === 'Update notification')
+    const event = (name, x, pointerId = 7) => new PointerEvent(name, {
       bubbles: true,
+      cancelable: true,
       clientX: x,
       clientY: 20,
+      isPrimary: true,
+      pointerId,
+      pointerType: 'touch',
+      button: 0,
+      buttons: name === 'pointerup' ? 0 : 1,
     })
-    toast.dispatchEvent(event('mousedown', 20))
-    toast.dispatchEvent(event('mousemove', 180))
-    toast.dispatchEvent(event('mouseup', 180))
+    action.dispatchEvent(event('pointerdown', 20))
+    action.dispatchEvent(event('pointermove', 180))
+    action.dispatchEvent(event('pointerup', 180))
+  })()`)
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 2)
+  await evaluate(`(() => {
+    const toast = document.querySelector('[role=status]')
+    const event = (name, x) => new PointerEvent(name, {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: 20,
+      isPrimary: true,
+      pointerId: 8,
+      pointerType: 'touch',
+      button: 0,
+      buttons: name === 'pointerup' ? 0 : 1,
+    })
+    toast.dispatchEvent(event('pointerdown', 20))
+    toast.dispatchEvent(event('pointermove', 180))
+    toast.dispatchEvent(event('pointercancel', 180))
+  })()`)
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 2)
+  await evaluate(`(() => {
+    const toast = document.querySelector('[role=status]')
+    const event = (name, x) => new PointerEvent(name, {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: 20,
+      isPrimary: true,
+      pointerId: 9,
+      pointerType: 'touch',
+      button: 0,
+      buttons: name === 'pointerup' ? 0 : 1,
+    })
+    toast.dispatchEvent(event('pointerdown', 20))
+    toast.dispatchEvent(event('pointermove', 180))
+    toast.dispatchEvent(event('pointerup', 180))
   })()`)
   assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 0)
 })

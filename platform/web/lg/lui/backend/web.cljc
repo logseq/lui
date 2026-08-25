@@ -1,5 +1,7 @@
 (ns lui.backend.web
   (:require [ocaml.package/melange-webapi]
+            [ocaml.Js.Dict :as js-dict]
+            [ocaml.Obj :as obj]
             [clojure.string :as string]
             [ocaml.Webapi.Dom.HtmlCollection :as html-collection]
             [ocaml.Webapi.Dom.NodeList :as node-list]
@@ -35,6 +37,19 @@
                      TextAlignment RoleValue TreeLevel Expanded
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
+
+(defn- pointer-mouse-event [event]
+  (obj/magic event))
+
+(defn- pointer-type [event]
+  (match (js-dict/get (obj/magic event) "pointerType")
+    (Some value) value
+    None ""))
+
+(defn- pointer-id [event]
+  (match (js-dict/get (obj/magic event) "pointerId")
+    (Some value) value
+    None 0))
 
 (defn- standard-kind [current]
   (match (retained/standard-kind current)
@@ -1182,12 +1197,50 @@
         index
         (recur (inc index))))))
 
+(defn- swipe-ignored-target? [target boundary]
+  (if (Webapi.Dom.Element.isSameNode
+       (Webapi.Dom.Element.asNode target) boundary)
+    false
+    (let [role (Webapi.Dom.Element.getAttribute "role" target)
+          class-name (Webapi.Dom.Element.getAttribute "class" target)
+          ignored
+          (or (Webapi.Dom.Element.hasAttribute
+               "data-lui-swipe-ignore" target)
+              (Webapi.Dom.Element.hasAttribute "type" target)
+              (Webapi.Dom.Element.hasAttribute "href" target)
+              (= role (Some "button"))
+              (match class-name
+                (Some value)
+                (or (string/includes? value "lui-textarea")
+                    (string/includes? value "lui-input"))
+                None false))]
+      (if ignored
+        true
+        (if-some [parent (Webapi.Dom.Element.parentElement target)]
+          (swipe-ignored-target? parent boundary)
+          false)))))
+
 (defn- attach-modal-events! [renderer node dom-node]
   (let [document (:web-document renderer)
         html-document (Webapi.Dom.Document.unsafeAsHtmlDocument document)
         previous-focus (Webapi.Dom.HtmlDocument.activeElement html-document)
         layer (modal-layer-node dom-node)
         backdrop (child-element layer 0)
+        sheet?
+        (if-some [current (retained/node (:web-store renderer) node)]
+          (standard-kind? current Sheet)
+          false)
+        swipe-pointer (atom None)
+        swipe-start-x (atom 0.0)
+        swipe-start-y (atom 0.0)
+        swipe-current-y (atom 0.0)
+        reset-swipe!
+        (fn []
+          (reset! swipe-pointer None)
+          (Webapi.Dom.Element.removeAttribute "data-swiping" dom-node)
+          (Webapi.Dom.Element.removeAttribute "data-swipe-direction" dom-node)
+          (set-style! dom-node "--drawer-swipe-movement-y" "0px")
+          true)
         dismiss!
         (fn []
           (when (and
@@ -1198,6 +1251,89 @@
             (Stdlib.ignore
              ((deref (:web-event-handler renderer)) (proto/Dismiss node))))
           true)
+        pointer-down!
+        (fn [event]
+          (let [target
+                (Webapi.Dom.EventTarget.unsafeAsElement
+                 (Webapi.Dom.Event.target event))
+                root (Webapi.Dom.Document.documentElement document)
+                compact (<= (Webapi.Dom.Element.clientWidth root) 640)
+                ignored (swipe-ignored-target? target dom-node)]
+            (when (and sheet? compact
+                       (= (pointer-type event) "touch")
+                       (= (Webapi.Dom.MouseEvent.button
+                           (pointer-mouse-event event)) 0)
+                       (not ignored))
+              (let [x (Stdlib.float_of_int
+                       (Webapi.Dom.MouseEvent.clientX
+                        (pointer-mouse-event event)))
+                    y (Stdlib.float_of_int
+                       (Webapi.Dom.MouseEvent.clientY
+                        (pointer-mouse-event event)))]
+                (reset! swipe-pointer (Some (pointer-id event)))
+                (reset! swipe-start-x x)
+                (reset! swipe-start-y y)
+                (reset! swipe-current-y y)
+                (Stdlib.ignore true))))
+          (Stdlib.ignore true))
+        pointer-move!
+        (fn [event]
+          (match (deref swipe-pointer)
+            (Some active-pointer-id)
+            (when (= active-pointer-id (pointer-id event))
+              (let [delta-x
+                    (Float.abs
+                     (- (Stdlib.float_of_int
+                         (Webapi.Dom.MouseEvent.clientX
+                          (pointer-mouse-event event)))
+                        (deref swipe-start-x)))
+                    delta-y
+                    (max 0.0
+                         (- (Stdlib.float_of_int
+                             (Webapi.Dom.MouseEvent.clientY
+                              (pointer-mouse-event event)))
+                            (deref swipe-start-y)))]
+                (when (and (> delta-y 4.0) (> delta-y delta-x))
+                  (Webapi.Dom.Event.preventDefault event)
+                  (reset!
+                   swipe-current-y
+                   (Stdlib.float_of_int
+                    (Webapi.Dom.MouseEvent.clientY
+                     (pointer-mouse-event event))))
+                  (Webapi.Dom.Element.setAttribute "data-swiping" "" dom-node)
+                  (Webapi.Dom.Element.setAttribute
+                   "data-swipe-direction" "down" dom-node)
+                  (set-style!
+                   dom-node "--drawer-swipe-movement-y"
+                   (str delta-y "px")))))
+            None (Stdlib.ignore true))
+          (Stdlib.ignore true))
+        pointer-end!
+        (fn [event]
+          (match (deref swipe-pointer)
+            (Some active-pointer-id)
+            (when (= active-pointer-id (pointer-id event))
+              (let [delta
+                    (max 0.0
+                         (- (deref swipe-current-y) (deref swipe-start-y)))
+                    threshold
+                    (max 96.0
+                         (* 0.25
+                            (Stdlib.float_of_int
+                             (Webapi.Dom.Element.clientHeight dom-node))))]
+                (reset-swipe!)
+                (when (> delta threshold)
+                  (Stdlib.ignore (dismiss!)))))
+            None (Stdlib.ignore true))
+          (Stdlib.ignore true))
+        pointer-cancel!
+        (fn [event]
+          (match (deref swipe-pointer)
+            (Some active-pointer-id)
+            (when (= active-pointer-id (pointer-id event))
+              (Stdlib.ignore (reset-swipe!)))
+            None (Stdlib.ignore true))
+          (Stdlib.ignore true))
         click-handler
         (fn [_event]
           (dismiss!)
@@ -1232,6 +1368,12 @@
                   true))))
           (Stdlib.ignore true))]
     (Webapi.Dom.Element.addEventListener "click" click-handler backdrop)
+    (when sheet?
+      (Webapi.Dom.Element.addEventListener "pointerdown" pointer-down! dom-node)
+      (Webapi.Dom.Element.addEventListener "pointermove" pointer-move! dom-node)
+      (Webapi.Dom.Element.addEventListener "pointerup" pointer-end! dom-node)
+      (Webapi.Dom.Element.addEventListener
+       "pointercancel" pointer-cancel! dom-node))
     (Webapi.Dom.Document.addKeyDownEventListener key-handler document)
     (swap!
      (:web-cleanups renderer)
@@ -1240,9 +1382,25 @@
        (remove-modal-from-stack! renderer node)
        (Webapi.Dom.Element.setAttribute
         "data-lui-modal-state" "closed" layer)
-       (Webapi.Dom.Element.setAttribute "hidden" "" layer)
+       (Webapi.Dom.Element.removeAttribute "data-open" layer)
+       (Webapi.Dom.Element.setAttribute "data-closed" "" layer)
+       (Webapi.Dom.Element.setAttribute "data-ending-style" "" layer)
+       (Webapi.Dom.Element.removeAttribute "data-open" dom-node)
+       (Webapi.Dom.Element.setAttribute "data-closed" "" dom-node)
+       (Webapi.Dom.Element.setAttribute "data-ending-style" "" dom-node)
+       (Webapi.Dom.Element.setAttribute "inert" "" layer)
        (refresh-modal-host-inert! renderer)
        (Webapi.Dom.Element.removeEventListener "click" click-handler backdrop)
+       (when sheet?
+         (reset-swipe!)
+         (Webapi.Dom.Element.removeEventListener
+          "pointerdown" pointer-down! dom-node)
+         (Webapi.Dom.Element.removeEventListener
+          "pointermove" pointer-move! dom-node)
+         (Webapi.Dom.Element.removeEventListener
+          "pointerup" pointer-end! dom-node)
+         (Webapi.Dom.Element.removeEventListener
+          "pointercancel" pointer-cancel! dom-node))
        (Webapi.Dom.Document.removeKeyDownEventListener key-handler document)
        (match previous-focus
          (Some element)
@@ -1745,12 +1903,18 @@
 (defn- attach-context-host-events! [renderer node host-node]
   (let [timer (atom None)
         suppress-click (atom false)
+        touch-pointer (atom None)
+        touch-origin-x (atom None)
+        touch-origin-y (atom None)
         cancel!
         (fn []
           (match (deref timer)
             (Some timer-id) (Js.Global.clearTimeout timer-id)
             None (Stdlib.ignore true))
           (reset! timer None)
+          (reset! touch-pointer None)
+          (reset! touch-origin-x None)
+          (reset! touch-origin-y None)
           true)]
     (Webapi.Dom.Element.addMouseDownEventListener
      (fn [event]
@@ -1768,54 +1932,80 @@
            None (Stdlib.ignore true)))
        (Stdlib.ignore true))
      host-node)
-    (Webapi.Dom.Element.addTouchStartEventListener
+    (Webapi.Dom.Element.addEventListener
+     "pointerdown"
      (fn [event]
-       (match (direct-context-menu renderer node)
-         (Some menu)
-         (do
-           (cancel!)
-           (Webapi.Dom.TouchEvent.stopImmediatePropagation event)
-           (reset!
-            timer
-            (Some
-             (Js.Global.setTimeout
-              500
-              :f
-              (fn []
-                (let [bounds
-                      (Webapi.Dom.Element.getBoundingClientRect host-node)
-                      menu-node (dom-node renderer menu)]
+       (when (and (= (pointer-type event) "touch")
+                  (= (Webapi.Dom.MouseEvent.button
+                      (pointer-mouse-event event)) 0))
+         (match (direct-context-menu renderer node)
+           (Some menu)
+           (let [x (Webapi.Dom.MouseEvent.clientX
+                    (pointer-mouse-event event))
+                 y (Webapi.Dom.MouseEvent.clientY
+                    (pointer-mouse-event event))]
+             (cancel!)
+             (reset! touch-pointer (Some (pointer-id event)))
+             (reset! touch-origin-x (Some x))
+             (reset! touch-origin-y (Some y))
+             (reset!
+              timer
+              (Some
+               (Js.Global.setTimeout
+                500
+                :f
+                (fn []
                   (reset! timer None)
+                  (reset! touch-origin-x None)
+                  (reset! touch-origin-y None)
                   (reset! suppress-click true)
-                  (hide-context-menu! renderer)
-                  (set-context-position!
-                   menu-node "left"
-                   (str (Webapi.Dom.DomRect.left bounds) "px"))
-                  (set-context-position!
-                   menu-node "top"
-                   (str (Webapi.Dom.DomRect.bottom bounds) "px"))
-                  (Webapi.Dom.Element.setAttribute
-                   "data-open" "" menu-node)
-                  (reset! (:web-open-context-menu renderer) (Some menu))
-                  (focus-context-menu-item! renderer menu 0))
-                (Stdlib.ignore true)))))
-           (Stdlib.ignore true))
-         None (Stdlib.ignore true)))
+                  (show-context-menu! renderer menu x y)
+                  (Stdlib.ignore true)))))
+             (Stdlib.ignore true))
+           None (Stdlib.ignore true)))
+       (Stdlib.ignore true))
      host-node)
-    (Webapi.Dom.Element.addTouchEndEventListener
+    (Webapi.Dom.Element.addEventListener
+     "pointermove"
      (fn [event]
-       (match (direct-context-menu renderer node)
-         (Some _menu)
-         (do
-           (Webapi.Dom.TouchEvent.stopImmediatePropagation event)
+       (match (deref touch-pointer)
+         (Some active-pointer-id)
+         (when (= active-pointer-id (pointer-id event))
+           (match (deref touch-origin-x)
+             (Some origin-x)
+             (match (deref touch-origin-y)
+               (Some origin-y)
+               (let [delta-x
+                     (abs (- (Webapi.Dom.MouseEvent.clientX
+                              (pointer-mouse-event event)) origin-x))
+                     delta-y
+                     (abs (- (Webapi.Dom.MouseEvent.clientY
+                              (pointer-mouse-event event)) origin-y))]
+                 (when (or (> delta-x 10) (> delta-y 10))
+                   (Stdlib.ignore (cancel!))))
+               None (Stdlib.ignore true))
+             None (Stdlib.ignore true)))
+         None (Stdlib.ignore true))
+       (Stdlib.ignore true))
+     host-node)
+    (Webapi.Dom.Element.addEventListener
+     "pointerup"
+     (fn [event]
+       (match (deref touch-pointer)
+         (Some active-pointer-id)
+         (when (= active-pointer-id (pointer-id event))
            (Stdlib.ignore (cancel!)))
          None (Stdlib.ignore true))
        (Stdlib.ignore true))
      host-node)
     (Webapi.Dom.Element.addEventListener
-     "touchcancel"
-     (fn [_event]
-       (cancel!)
+     "pointercancel"
+     (fn [event]
+       (match (deref touch-pointer)
+         (Some active-pointer-id)
+         (when (= active-pointer-id (pointer-id event))
+           (Stdlib.ignore (cancel!)))
+         None (Stdlib.ignore true))
        (Stdlib.ignore true))
      host-node)
     (Webapi.Dom.Element.addEventListener
@@ -2202,8 +2392,17 @@
         timer (atom None)
         pointer-inside (atom false)
         focus-inside (atom false)
+        active-pointer (atom None)
         start-x (atom None)
         current-x (atom 0)
+        reset-toast-swipe!
+        (fn []
+          (reset! active-pointer None)
+          (reset! start-x None)
+          (Webapi.Dom.Element.removeAttribute "data-swiping" toast)
+          (Webapi.Dom.Element.removeAttribute "data-swipe-direction" toast)
+          (set-style! toast "--toast-swipe-movement-x" "0px")
+          true)
         cancel!
         (fn []
           (match (deref timer)
@@ -2261,35 +2460,66 @@
           (Stdlib.ignore true))
         pointer-down!
         (fn [event]
-          (let [x (Webapi.Dom.MouseEvent.clientX event)]
-            (reset! start-x (Some x))
-            (reset! current-x x)
-            (cancel!))
+          (let [target
+                (Webapi.Dom.EventTarget.unsafeAsElement
+                 (Webapi.Dom.Event.target event))
+                interactive (swipe-ignored-target? target toast)]
+            (when (and (= (Webapi.Dom.MouseEvent.button
+                           (pointer-mouse-event event)) 0)
+                       (not interactive))
+              (let [x (Webapi.Dom.MouseEvent.clientX
+                       (pointer-mouse-event event))]
+                (reset! active-pointer (Some (pointer-id event)))
+                (reset! start-x (Some x))
+                (reset! current-x x)
+                (cancel!))))
           (Stdlib.ignore true))
         pointer-move!
         (fn [event]
-          (match (deref start-x)
-            (Some origin)
-            (let [x (Webapi.Dom.MouseEvent.clientX event)
-                  delta (- x origin)]
-              (reset! current-x x)
-              (Webapi.Dom.Element.setAttribute "data-swipe" "move" toast)
-              (set-style! toast "transform" (str "translateX(" delta "px)")))
+          (match (deref active-pointer)
+            (Some active-pointer-id)
+            (when (= active-pointer-id (pointer-id event))
+              (match (deref start-x)
+              (Some origin)
+              (let [x (Webapi.Dom.MouseEvent.clientX
+                       (pointer-mouse-event event))
+                    delta (- x origin)]
+                (reset! current-x x)
+                (Webapi.Dom.Event.preventDefault event)
+                (Webapi.Dom.Element.setAttribute "data-swiping" "" toast)
+                (Webapi.Dom.Element.setAttribute
+                 "data-swipe-direction" (if (< delta 0) "left" "right") toast)
+                (set-style!
+                 toast "--toast-swipe-movement-x" (str delta "px")))
+                None (Stdlib.ignore true)))
             None (Stdlib.ignore true))
           (Stdlib.ignore true))
         pointer-up!
-        (fn [_event]
-          (match (deref start-x)
-            (Some origin)
-            (let [delta (- (deref current-x) origin)]
-              (reset! start-x None)
-              (Stdlib.ignore
-               (if (or (> delta 80) (< delta -80))
-                 (dismiss!)
-                 (do
-                   (Webapi.Dom.Element.removeAttribute "data-swipe" toast)
-                   (set-style! toast "transform" "")
-                   (resume!)))))
+        (fn [event]
+          (match (deref active-pointer)
+            (Some active-pointer-id)
+            (when (= active-pointer-id (pointer-id event))
+              (match (deref start-x)
+              (Some origin)
+              (let [delta (- (deref current-x) origin)]
+                (reset! active-pointer None)
+                (reset! start-x None)
+                (Stdlib.ignore
+                 (if (or (> delta 80) (< delta -80))
+                   (dismiss!)
+                   (do
+                     (reset-toast-swipe!)
+                     (resume!)))))
+                None (Stdlib.ignore true)))
+            None (Stdlib.ignore true))
+          (Stdlib.ignore true))
+        pointer-cancel!
+        (fn [event]
+          (match (deref active-pointer)
+            (Some active-pointer-id)
+            (when (= active-pointer-id (pointer-id event))
+              (reset-toast-swipe!)
+              (Stdlib.ignore (resume!)))
             None (Stdlib.ignore true))
           (Stdlib.ignore true))
         key!
@@ -2307,9 +2537,10 @@
     (Webapi.Dom.Element.addEventListener "pointerleave" pointer-leave! toast)
     (Webapi.Dom.Element.addEventListener "focusin" focus-in! toast)
     (Webapi.Dom.Element.addEventListener "focusout" focus-out! toast)
-    (Webapi.Dom.Element.addMouseDownEventListener pointer-down! toast)
-    (Webapi.Dom.Element.addMouseMoveEventListener pointer-move! toast)
-    (Webapi.Dom.Element.addMouseUpEventListener pointer-up! toast)
+    (Webapi.Dom.Element.addEventListener "pointerdown" pointer-down! toast)
+    (Webapi.Dom.Element.addEventListener "pointermove" pointer-move! toast)
+    (Webapi.Dom.Element.addEventListener "pointerup" pointer-up! toast)
+    (Webapi.Dom.Element.addEventListener "pointercancel" pointer-cancel! toast)
     (Webapi.Dom.Document.addKeyDownEventListener key! document)
     (swap!
      (:web-cleanups renderer) assoc node
@@ -2324,9 +2555,11 @@
         "pointerleave" pointer-leave! toast)
        (Webapi.Dom.Element.removeEventListener "focusin" focus-in! toast)
        (Webapi.Dom.Element.removeEventListener "focusout" focus-out! toast)
-       (Webapi.Dom.Element.removeMouseDownEventListener pointer-down! toast)
-       (Webapi.Dom.Element.removeMouseMoveEventListener pointer-move! toast)
-       (Webapi.Dom.Element.removeMouseUpEventListener pointer-up! toast)
+       (Webapi.Dom.Element.removeEventListener "pointerdown" pointer-down! toast)
+       (Webapi.Dom.Element.removeEventListener "pointermove" pointer-move! toast)
+       (Webapi.Dom.Element.removeEventListener "pointerup" pointer-up! toast)
+       (Webapi.Dom.Element.removeEventListener
+        "pointercancel" pointer-cancel! toast)
        (Webapi.Dom.Document.removeKeyDownEventListener key! document)
        (Stdlib.ignore true)))
     (Stdlib.ignore true)))
@@ -3839,12 +4072,25 @@
                  "data-lui-modal-state" layer)
                 (Some "open")))
       (Webapi.Dom.Element.removeAttribute "hidden" layer)
+      (Webapi.Dom.Element.removeAttribute "inert" layer)
+      (Webapi.Dom.Element.removeAttribute "data-closed" layer)
+      (Webapi.Dom.Element.removeAttribute "data-ending-style" layer)
+      (Webapi.Dom.Element.setAttribute "data-open" "" layer)
+      (Webapi.Dom.Element.setAttribute "data-starting-style" "" layer)
+      (Webapi.Dom.Element.removeAttribute "data-closed" dom-node)
+      (Webapi.Dom.Element.removeAttribute "data-ending-style" dom-node)
+      (Webapi.Dom.Element.setAttribute "data-open" "" dom-node)
+      (Webapi.Dom.Element.setAttribute "data-starting-style" "" dom-node)
       (Webapi.Dom.Element.setAttribute
        "data-lui-modal-state" "open" layer)
       (swap! (:web-modal-stack renderer) conj node)
       (refresh-modal-host-inert! renderer)
       (Webapi.Dom.HtmlElement.focus
-       (Webapi.Dom.Element.unsafeAsHtmlElement dom-node)))
+       (Webapi.Dom.Element.unsafeAsHtmlElement dom-node))
+      (Webapi.requestAnimationFrame
+       (fn [_time]
+         (Webapi.Dom.Element.removeAttribute "data-starting-style" layer)
+         (Webapi.Dom.Element.removeAttribute "data-starting-style" dom-node))))
     (Stdlib.ignore true)))
 
 (defn- radio-group-ancestor [renderer node]
@@ -3930,6 +4176,22 @@
       (Some Timeline) (update-timeline! renderer parent)
       _ (Stdlib.ignore true))
     (Stdlib.ignore true)))
+
+(defn- remove-modal-layer-after-exit! [parent layer surface kind]
+  (let [duration (if (= kind Sheet) 470 170)]
+    (Stdlib.ignore
+     (Js.Global.setTimeout
+      duration
+      :f
+      (fn []
+        (when (Webapi.Dom.Element.contains
+               (Webapi.Dom.Element.asNode layer) parent)
+          (Stdlib.ignore
+           (Webapi.Dom.Element.removeChild
+            (Webapi.Dom.Element.asNode layer) parent)))
+        (Webapi.Dom.Element.removeAttribute "data-ending-style" surface)
+        (Stdlib.ignore true))))
+    true))
 
 (defn- apply-dom-op! [renderer previous-nodes operation]
   (match operation
@@ -4045,24 +4307,30 @@
 
     (RemoveChild parent child)
     (do
-      (Stdlib.ignore
-       (Webapi.Dom.Element.removeChild
-        (Webapi.Dom.Element.asNode
-         (if (modal-node? previous-nodes child)
-           (modal-layer-node
-            (dom-node-before renderer previous-nodes child))
-           (dom-node-before renderer previous-nodes child)))
-        (if (toast-node? previous-nodes child)
-          (:web-toast-viewport renderer)
-          (if (or (dropdown-node? previous-nodes child)
-                  (modal-node? previous-nodes child)
-                  (anchored-tooltip-node? previous-nodes child))
-            (:web-portal-root renderer)
-            (if (context-menu-node? previous-nodes child)
-              (document-body renderer)
-              (dom-child-container-before
-               renderer previous-nodes parent
-               (dom-node-before renderer previous-nodes parent)))))))
+      (let [surface (dom-node-before renderer previous-nodes child)
+            modal (modal-node? previous-nodes child)
+            child-node (if modal (modal-layer-node surface) surface)
+            parent-node
+            (if (toast-node? previous-nodes child)
+              (:web-toast-viewport renderer)
+              (if (or (dropdown-node? previous-nodes child)
+                      modal
+                      (anchored-tooltip-node? previous-nodes child))
+                (:web-portal-root renderer)
+                (if (context-menu-node? previous-nodes child)
+                  (document-body renderer)
+                  (dom-child-container-before
+                   renderer previous-nodes parent
+                   (dom-node-before renderer previous-nodes parent)))))]
+        (if modal
+          (if-some [previous (clojure.core/get previous-nodes child)]
+            (Stdlib.ignore
+             (remove-modal-layer-after-exit!
+              parent-node child-node surface (standard-kind previous)))
+            (Stdlib.ignore true))
+          (Stdlib.ignore
+           (Webapi.Dom.Element.removeChild
+            (Webapi.Dom.Element.asNode child-node) parent-node))))
       (refresh-button-context! renderer child)
       (refresh-structured-children! renderer parent)
       (if-some [previous (clojure.core/get previous-nodes child)]

@@ -18,6 +18,10 @@ live in
 `001-production-components_vercel_native_matrix.md`. The source-level runtime,
 backend and Web research behind the implementation strategy lives in
 `001-production-components_vercel_native_architecture_report.md`.
+Base UI motion, keyboard, pointer, touch, and popup lifecycle contracts for the
+Web backend are pinned in
+`001-production-components_base-ui_report.md`; implementation must follow that
+report before visual tuning.
 
 ## Non-negotiable API boundary
 
@@ -191,6 +195,13 @@ Delivered parity slices:
   RadioGroup, and Slider interaction through Maestro; stable destination
   identifiers belong to the complete Material navigation item so accessibility
   automation does not depend on merged implementation children;
+- one pinned Base UI Web interaction and motion report plus a first mobile
+  parity slice: Dialog and Sheet expose enter/exit state attributes and retain
+  inert visual shells through CSS transitions, compact Sheet becomes a
+  safe-area-aware bottom surface with pointer-identity downward dismissal,
+  Context Menu follows the 500 ms/10 px touch long-press contract, and Toast
+  uses Pointer Events without stealing gestures from interactive descendants;
+  real-browser E2E covers each behavior;
 - placeholder-free retained `:if` plus declaration-ordered dynamic segments;
   interleaved static children, switch branches, keyed collections and multiple
   dynamic regions preserve their local ordering and disposal boundaries;
