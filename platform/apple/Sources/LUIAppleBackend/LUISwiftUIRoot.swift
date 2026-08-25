@@ -24,17 +24,27 @@ public struct LUISwiftUIRoot: View {
 private struct LUINodeView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.luiTreeContext) private var treeContext
 
     @ViewBuilder
     var body: some View {
         let _ = model.revision
-        if model.kind.isModalSurface {
-            content
-        } else {
-            content
-                .modifier(LUISurfaceModifier(model: model))
-                .modifier(LUIAccessibilityModifier(model: model, backend: backend))
+        Group {
+            if model.kind.isModalSurface {
+                content
+            } else {
+                content
+                    .modifier(LUISurfaceModifier(model: model))
+                    .modifier(LUIAccessibilityModifier(model: model, backend: backend))
+            }
         }
+        .modifier(
+            LUITreeItemModifier(
+                model: model,
+                backend: backend,
+                context: treeContext
+            )
+        )
     }
 
     @ViewBuilder
@@ -97,6 +107,8 @@ private struct LUINodeView: View {
             LUIListItemView(model: model, backend: backend)
         case .table:
             LUITableView(model: model, backend: backend)
+        case .tree:
+            LUITreeView(model: model, backend: backend)
         case .tableRow:
             LUITableRowView(model: model, backend: backend, isLast: true)
         case .tableCell:
@@ -195,6 +207,91 @@ private struct LUINodeView: View {
 
     private var progressAccessibilityValue: String {
         "\(Int((model.progressFraction * 100).rounded()))%"
+    }
+}
+
+private struct LUITreeContext: @unchecked Sendable {
+    let treeID: Int
+    let focus: FocusState<Int?>.Binding
+}
+
+private struct LUITreeContextKey: EnvironmentKey {
+    static let defaultValue: LUITreeContext? = nil
+}
+
+private extension EnvironmentValues {
+    var luiTreeContext: LUITreeContext? {
+        get { self[LUITreeContextKey.self] }
+        set { self[LUITreeContextKey.self] = newValue }
+    }
+}
+
+private struct LUITreeView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    @FocusState private var focusedNode: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: CGFloat(model.property(.gap)?.intValue ?? 0)) {
+            ForEach(model.children, id: \.self) { childID in
+                if let child = backend.model(id: childID) {
+                    LUINodeView(model: child, backend: backend)
+                }
+            }
+        }
+        .environment(
+            \.luiTreeContext,
+            LUITreeContext(treeID: model.id, focus: $focusedNode)
+        )
+        .accessibilityElement(children: .contain)
+        .onAppear {
+            guard focusedNode == nil,
+                  let items = try? backend.treeItemIDs(tree: model.id) else { return }
+            let enabled = items.filter { backend.model(id: $0)?.isEnabled == true }
+            focusedNode = enabled.first { backend.model(id: $0)?.isSelected == true }
+                ?? enabled.first
+        }
+    }
+}
+
+private struct LUITreeItemModifier: ViewModifier {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    let context: LUITreeContext?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if model.isTreeItem, let context {
+            content
+                .focusable(model.isEnabled)
+                .focused(context.focus, equals: model.id)
+                .onKeyPress(.upArrow) { handle(.up, context: context) }
+                .onKeyPress(.downArrow) { handle(.down, context: context) }
+                .onKeyPress(.leftArrow) { handle(.left, context: context) }
+                .onKeyPress(.rightArrow) { handle(.right, context: context) }
+                .accessibilityAddTraits(model.isSelected ? .isSelected : [])
+                .accessibilityValue(Text(accessibilityValue))
+        } else {
+            content
+        }
+    }
+
+    private var accessibilityValue: String {
+        switch model.isExpanded {
+        case true: "expanded"
+        case false: "collapsed"
+        case nil: ""
+        }
+    }
+
+    private func handle(_ key: LUITreeKey, context: LUITreeContext) -> KeyPress.Result {
+        guard let target = try? backend.performTreeKey(
+            tree: context.treeID,
+            node: model.id,
+            key: key
+        ) else { return .ignored }
+        context.focus.wrappedValue = target
+        return .handled
     }
 }
 

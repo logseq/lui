@@ -47,6 +47,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case table = "table"
     case tableRow = "table-row"
     case tableCell = "table-cell"
+    case tree = "tree"
     case dialog = "dialog"
     case drawer = "drawer"
     case sheet = "sheet"
@@ -106,4 +107,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case anchorOffset = "anchor-offset"
     case tooltipDelay = "tooltip-delay"
     case textAlignment = "text-alignment"
+    case role = "role"
+    case treeLevel = "tree-level"
+    case expanded = "expanded"
 }

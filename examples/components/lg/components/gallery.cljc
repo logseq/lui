@@ -206,6 +206,41 @@
    [:paragraph
     "Press an invoice cell to patch only the selected retained rows."]])
 
+(defui tree-gallery
+  [open-source report-selected-source checklist-selected-source
+   set-open select-report select-checklist]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Tree"]
+   [:tree {:gap 2 :label "Project files" :max-width 480}
+    [:list-item
+     {:role "treeitem"
+      :tree-level 1
+      :icon "folder-open"
+      :expanded open-source
+      :on-toggle set-open
+      :on-change select-report
+      :on-press select-report}
+     "Documents"]
+    [:if {:test open-source}
+     [:column {:padding-horizontal 20}
+      [:list-item
+       {:role "treeitem"
+        :tree-level 2
+        :icon "file-text"
+        :selected report-selected-source
+        :on-change select-report
+        :on-press select-report}
+       "Quarterly report.md"]
+      [:list-item
+       {:role "treeitem"
+        :tree-level 2
+        :selected checklist-selected-source
+        :on-change select-checklist
+        :on-press select-checklist}
+       "Launch checklist.md"]]]]
+   [:paragraph
+    "Arrow keys move one native focus set; Signals own disclosure and selection."]])
+
 (defui badge-gallery []
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "Badge"]
@@ -615,6 +650,9 @@
    [table-gallery
     overview-tab-selected-source activity-tab-selected-source
     select-overview-tab select-activity-tab]
+   [tree-gallery
+    accordion-open-source report-selected-source checklist-selected-source
+    set-accordion-open select-report select-checklist]
    [avatar-gallery avatar-image-source toggle-avatar-image]
    [text-entry-gallery value-source disabled-source update-value]
    [tooltip-gallery]

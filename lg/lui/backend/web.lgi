@@ -55,6 +55,27 @@
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/event-capability?
   :fn<web-renderer;int;property;bool>)
+(signature lui.backend.web/treeitem? :fn<web-renderer;int;bool>)
+(signature lui.backend.web/tree-ancestor
+  :fn<web-renderer;int;option<int>>)
+(signature lui.backend.web/tree-items-under
+  :fn<web-renderer;int;vector<int>>)
+(signature lui.backend.web/tree-focus-items-under
+  :fn<web-renderer;int;vector<int>>)
+(signature lui.backend.web/derived-tree-item-level
+  :fn<web-renderer;int;int;int;int>)
+(signature lui.backend.web/tree-item-level
+  :fn<web-renderer;int;int;int>)
+(signature lui.backend.web/update-tree-roving!
+  :fn<web-renderer;int;unit>)
+(signature lui.backend.web/refresh-tree-item-accessibility!
+  :fn<web-renderer;int;int;unit>)
+(signature lui.backend.web/update-all-tree-roving!
+  :fn<web-renderer;bool>)
+(signature lui.backend.web/dispatch-tree-selection!
+  :fn<web-renderer;int;unit>)
+(signature lui.backend.web/attach-tree-item-events!
+  :fn<web-renderer;int;node-kind;web-node;unit>)
 (signature lui.backend.web/attach-list-item-events!
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/horizontal-group-child?
@@ -77,6 +98,8 @@
 (signature lui.backend.web/web-color-value :fn<string;string>)
 (signature lui.backend.web/update-icon-name!
   :fn<web-renderer;web-node;string;unit>)
+(signature lui.backend.web/refresh-node-class!
+  :fn<web-renderer;int;node-kind;web-node;unit>)
 (signature lui.backend.web/apply-property!
   :fn<web-renderer;int;node-kind;web-node;property;wire-value;unit>)
 (signature lui.backend.web/progress-float

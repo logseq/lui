@@ -445,12 +445,14 @@ final class LUIFlutterBackend {
 
   void performAction(int node) {
     final state = _requireState(_states, node);
+    final treeItem = state.properties['role'] == 'treeitem';
     final pressable =
         state.kind == _NodeKind.button ||
         state.kind == _NodeKind.select ||
         state.kind == _NodeKind.combobox ||
         state.kind == _NodeKind.menuItem ||
         state.kind == _NodeKind.listItem ||
+        (treeItem && state.properties['press-enabled'] == true) ||
         (state.kind == _NodeKind.tableCell &&
             state.properties['press-enabled'] == true) ||
         (state.kind == _NodeKind.text &&
@@ -487,6 +489,106 @@ final class LUIFlutterBackend {
     _requireHandle(children[targetIndex]).focusNode.requestFocus();
   }
 
+  int? _treeAncestor(int node) {
+    var parent = _states[node]?.parent;
+    while (parent != null) {
+      final state = _states[parent];
+      if (state == null) return null;
+      if (state.kind == _NodeKind.tree) return parent;
+      parent = state.parent;
+    }
+    return null;
+  }
+
+  List<int> _treeItems(int tree) {
+    final result = <int>[];
+    void visit(int node) {
+      final state = _requireState(_states, node);
+      if (state.properties['role'] == 'treeitem' &&
+          state.properties['enabled'] != false) {
+        result.add(node);
+      }
+      for (final child in state.children) {
+        visit(child);
+      }
+    }
+
+    for (final child in _requireState(_states, tree).children) {
+      visit(child);
+    }
+    return result;
+  }
+
+  int _treeLevel(int tree, int node) {
+    final explicit = _states[node]?.properties['tree-level'] as int?;
+    if (explicit != null) return explicit;
+    var level = 1;
+    var parent = _states[node]?.parent;
+    while (parent != null && parent != tree) {
+      if (_states[parent]?.properties['role'] == 'treeitem') level += 1;
+      parent = _states[parent]?.parent;
+    }
+    return level;
+  }
+
+  int? _treeTabstop(int tree) {
+    final items = _treeItems(tree);
+    if (items.isEmpty) return null;
+    return items.firstWhere(
+      (node) => _states[node]?.properties['selected'] == true,
+      orElse: () => items.first,
+    );
+  }
+
+  void _selectTreeItem(int node) {
+    final state = _requireState(_states, node);
+    _requireHandle(node).focusNode.requestFocus();
+    if (state.properties['change-enabled'] == true) {
+      performChange(node);
+    } else if (state.properties['press-enabled'] == true) {
+      performAction(node);
+    }
+  }
+
+  void _performTreeKey(int tree, int node, LogicalKeyboardKey key) {
+    final items = _treeItems(tree);
+    final index = items.indexOf(node);
+    if (index < 0) return;
+    if (key == LogicalKeyboardKey.arrowUp && index > 0) {
+      _selectTreeItem(items[index - 1]);
+    } else if (key == LogicalKeyboardKey.arrowDown &&
+        index + 1 < items.length) {
+      _selectTreeItem(items[index + 1]);
+    } else if (key == LogicalKeyboardKey.home) {
+      _selectTreeItem(items.first);
+    } else if (key == LogicalKeyboardKey.end) {
+      _selectTreeItem(items.last);
+    } else if (key == LogicalKeyboardKey.arrowLeft) {
+      final state = _requireState(_states, node);
+      if (state.properties['expanded'] == true &&
+          state.properties['toggle-enabled'] == true) {
+        performToggle(node, false);
+        return;
+      }
+      final level = _treeLevel(tree, node);
+      for (var candidate = index - 1; candidate >= 0; candidate -= 1) {
+        if (_treeLevel(tree, items[candidate]) == level - 1) {
+          _selectTreeItem(items[candidate]);
+          return;
+        }
+      }
+    } else if (key == LogicalKeyboardKey.arrowRight) {
+      final state = _requireState(_states, node);
+      if (state.properties['expanded'] == false &&
+          state.properties['toggle-enabled'] == true) {
+        performToggle(node, true);
+      } else if (index + 1 < items.length &&
+          _treeLevel(tree, items[index + 1]) == _treeLevel(tree, node) + 1) {
+        _selectTreeItem(items[index + 1]);
+      }
+    }
+  }
+
   void performDoublePress(int node) {
     final state = _requireState(_states, node);
     if (state.kind != _NodeKind.listItem ||
@@ -521,12 +623,14 @@ final class LUIFlutterBackend {
 
   void performToggle(int node, bool checked) {
     final state = _requireState(_states, node);
+    final treeItem = state.properties['role'] == 'treeitem';
     final isToggle =
         state.kind == _NodeKind.toggleButton ||
         state.kind == _NodeKind.toggle ||
-        state.kind == _NodeKind.accordion;
+        state.kind == _NodeKind.accordion ||
+        treeItem;
     final hasHandler =
-        state.kind != _NodeKind.accordion ||
+        (state.kind != _NodeKind.accordion && !treeItem) ||
         state.properties['toggle-enabled'] == true;
     if (!isToggle || state.properties['enabled'] == false || !hasHandler) {
       throw LUIBackendException('node $node is not an enabled toggle button');
@@ -536,8 +640,10 @@ final class LUIFlutterBackend {
 
   void performChange(int node) {
     final state = _requireState(_states, node);
-    if (state.kind != _NodeKind.radio || state.properties['enabled'] == false) {
-      throw LUIBackendException('node $node is not an enabled radio');
+    if ((state.kind != _NodeKind.radio &&
+            state.properties['role'] != 'treeitem') ||
+        state.properties['enabled'] == false) {
+      throw LUIBackendException('node $node is not an enabled change control');
     }
     if (state.properties['change-enabled'] == true) {
       if (state.properties['checked'] != true) {
@@ -1035,6 +1141,7 @@ final class LUIFlutterBackend {
     );
     Widget listItem() => _LUIListItem(
       enabled: enabled,
+      focusable: state.properties['role'] != 'treeitem',
       selected: buttonSelected,
       leading: buttonIcon == null
           ? null
@@ -1058,6 +1165,18 @@ final class LUIFlutterBackend {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: children,
+    );
+    Widget tree() => FocusTraversalGroup(
+      child: Semantics(
+        container: true,
+        label: accessibilityLabel,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: gap,
+          children: children,
+        ),
+      ),
     );
     Widget tableRow() {
       final columnWidths = <int, TableColumnWidth>{};
@@ -1265,6 +1384,7 @@ final class LUIFlutterBackend {
       _NodeKind.menuItem => menuItem(),
       _NodeKind.listItem => listItem(),
       _NodeKind.table => table(),
+      _NodeKind.tree => tree(),
       _NodeKind.tableRow => tableRow(),
       _NodeKind.tableCell => tableCell(),
       _NodeKind.avatar => avatar(),
@@ -1453,6 +1573,47 @@ final class LUIFlutterBackend {
         child: surface,
       );
     }
+    if (state.properties['role'] == 'treeitem') {
+      final tree = _treeAncestor(id)!;
+      final shortcuts = <ShortcutActivator, VoidCallback>{
+        for (final key in const [
+          LogicalKeyboardKey.arrowUp,
+          LogicalKeyboardKey.arrowDown,
+          LogicalKeyboardKey.arrowLeft,
+          LogicalKeyboardKey.arrowRight,
+          LogicalKeyboardKey.home,
+          LogicalKeyboardKey.end,
+        ])
+          SingleActivator(key): () => _performTreeKey(tree, id, key),
+      };
+      if (state.properties['press-enabled'] == true) {
+        shortcuts[const SingleActivator(LogicalKeyboardKey.enter)] = () =>
+            performAction(id);
+        shortcuts[const SingleActivator(LogicalKeyboardKey.space)] = () =>
+            performAction(id);
+        if (state.kind != _NodeKind.listItem) {
+          surface = GestureDetector(
+            onTap: () => performAction(id),
+            child: surface,
+          );
+        }
+      }
+      surface = Semantics(
+        container: true,
+        selected: buttonSelected,
+        expanded: state.properties['expanded'] as bool?,
+        enabled: enabled,
+        child: CallbackShortcuts(
+          bindings: shortcuts,
+          child: Focus(
+            focusNode: _requireHandle(id).focusNode,
+            canRequestFocus: enabled,
+            skipTraversal: id != _treeTabstop(tree),
+            child: surface,
+          ),
+        ),
+      );
+    }
     return surface;
   }
 
@@ -1510,6 +1671,9 @@ final class LUIFlutterBackend {
           throw const LUIBackendException(
             'table-row can contain only table-cell',
           );
+        }
+        if (parent.kind == _NodeKind.tree && !_isTreeRowKind(child.kind)) {
+          throw const LUIBackendException('tree accepts only row containers');
         }
         if (index < 0 || index > parent.children.length) {
           throw const LUIBackendException('child index is out of bounds');
@@ -1653,13 +1817,14 @@ final class LUIFlutterBackend {
             (_isButtonKind(kind) ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
-                kind == _NodeKind.tableRow),
+                kind == _NodeKind.tableRow ||
+                _isTreeRowKind(kind)),
       'hold-enabled' => value is bool && _isButtonKind(kind),
       'autofocus' =>
         value is bool && (_isButtonKind(kind) || _isTextControl(kind)),
       'submit-on-enter' => value is bool && kind == _NodeKind.textarea,
-      'change-enabled' ||
-      'toggle-enabled' => value is bool && kind == _NodeKind.radio,
+      'change-enabled' || 'toggle-enabled' =>
+        value is bool && (kind == _NodeKind.radio || _isTreeRowKind(kind)),
       'press-enabled' =>
         value is bool &&
             (kind == _NodeKind.text ||
@@ -1668,7 +1833,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.combobox ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
-                kind == _NodeKind.tableCell),
+                kind == _NodeKind.tableCell ||
+                _isTreeRowKind(kind)),
       'submit-enabled' =>
         value is bool &&
             (kind == _NodeKind.combobox || kind == _NodeKind.listItem),
@@ -1702,6 +1868,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.list ||
                 kind == _NodeKind.dropdownMenu ||
                 kind == _NodeKind.tableRow ||
+                kind == _NodeKind.tree ||
                 _isHorizontalGroupKind(kind)),
       'padding' =>
         value is int && kind != _NodeKind.avatar && kind != _NodeKind.tooltip,
@@ -1793,11 +1960,16 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.pagination ||
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider ||
-                kind == _NodeKind.avatar),
+                kind == _NodeKind.avatar ||
+                kind == _NodeKind.tree ||
+                _isTreeRowKind(kind)),
       'text-alignment' =>
         value is String &&
             _textAlignments.contains(value) &&
             kind == _NodeKind.tableCell,
+      'role' => value == 'treeitem' && value is String && _isTreeRowKind(kind),
+      'tree-level' => value is int && value > 0 && _isTreeRowKind(kind),
+      'expanded' => value is bool && _isTreeRowKind(kind),
       _ => false,
     };
   }
@@ -1874,6 +2046,28 @@ final class LUIFlutterBackend {
       if (state.kind == _NodeKind.accordion &&
           (state.properties['text'] as String? ?? '').isEmpty) {
         throw const LUIBackendException('accordion requires text');
+      }
+      if (state.kind == _NodeKind.tree &&
+          (state.properties['accessibility-label'] as String? ?? '').isEmpty) {
+        throw const LUIBackendException('tree requires an accessibility label');
+      }
+      final hasTreeMetadata =
+          state.properties.containsKey('role') ||
+          state.properties.containsKey('tree-level') ||
+          state.properties.containsKey('expanded');
+      if (hasTreeMetadata) {
+        if (state.properties['role'] != 'treeitem' ||
+            !_hasAncestor(states, state.parent, _NodeKind.tree)) {
+          throw const LUIBackendException(
+            'tree row metadata requires a treeitem inside tree',
+          );
+        }
+        if (state.properties.containsKey('expanded') &&
+            state.properties['toggle-enabled'] != true) {
+          throw const LUIBackendException(
+            'expanded treeitem requires toggle support',
+          );
+        }
       }
       if (state.kind == _NodeKind.dropdownMenu ||
           state.kind == _NodeKind.tooltip) {
@@ -1975,6 +2169,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.accordion ||
       kind == _NodeKind.table ||
       kind == _NodeKind.tableRow ||
+      kind == _NodeKind.tree ||
       kind.isModalSurface;
 
   int? _checkedRadio(_NodeState root) {
@@ -2009,6 +2204,14 @@ final class LUIFlutterBackend {
       kind == _NodeKind.toggleGroup ||
       kind == _NodeKind.breadcrumb ||
       kind == _NodeKind.pagination;
+
+  static bool _isTreeRowKind(_NodeKind kind) =>
+      kind == _NodeKind.row ||
+      kind == _NodeKind.column ||
+      kind == _NodeKind.panel ||
+      kind == _NodeKind.card ||
+      kind == _NodeKind.box ||
+      kind == _NodeKind.listItem;
 
   static int _horizontalGroupDefaultGap(_NodeKind kind) =>
       kind == _NodeKind.pagination ? 2 : 4;
@@ -2452,6 +2655,7 @@ final class _LUIAccordionState extends State<_LUIAccordion> {
 final class _LUIListItem extends StatefulWidget {
   const _LUIListItem({
     required this.enabled,
+    required this.focusable,
     required this.selected,
     required this.leading,
     required this.content,
@@ -2461,6 +2665,7 @@ final class _LUIListItem extends StatefulWidget {
   });
 
   final bool enabled;
+  final bool focusable;
   final bool selected;
   final Widget? leading;
   final Widget content;
@@ -2543,7 +2748,8 @@ final class _LUIListItemState extends State<_LUIListItem> {
       child: CallbackShortcuts(
         bindings: bindings,
         child: Focus(
-          canRequestFocus: widget.enabled,
+          canRequestFocus: widget.enabled && widget.focusable,
+          skipTraversal: !widget.focusable,
           child: Listener(
             behavior: HitTestBehavior.opaque,
             onPointerDown: _handlePointerDown,

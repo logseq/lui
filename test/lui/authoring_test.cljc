@@ -14,7 +14,7 @@
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput
                      AppleSelect AppleCombobox AppleDropdownMenu AppleMenuItem AppleListItem
-                     AppleTable AppleTableRow AppleTableCell
+                     AppleTable AppleTableRow AppleTableCell AppleTree
                      AppleAvatar AppleDialog AppleDrawer AppleSheet AppleTooltip
                      AppleAccordion]]
             [lui.backend.flutter :as flutter]))
@@ -190,6 +190,22 @@
     [:table-cell {:grow 1.0 :on-press on-open} "INV-002"]
     [:table-cell
      {:text amount-source :grow 1.0 :text-alignment "end"}]]])
+
+(defui retained-tree
+  [expanded-source folder-selected-source file-selected-source
+   on-folder-toggle on-folder-change on-folder-press on-file-change]
+  [:tree {:gap 2 :label "Project files"}
+   [:list-item
+    {:role "treeitem" :tree-level 1 :icon "folder-open"
+     :expanded expanded-source :selected folder-selected-source
+     :on-toggle on-folder-toggle :on-change on-folder-change
+     :on-press on-folder-press}
+    "src"]
+   [:row {:padding-horizontal 20}
+    [:panel
+     {:role "treeitem" :tree-level 2 :selected file-selected-source
+      :label "main.cljc" :on-change on-file-change}
+     [:text "main.cljc"]]]])
 
 (defui retained-avatars [image-id]
   [:row {:gap 12}
@@ -859,6 +875,67 @@
        (Some (proto/StringValue "$175.00"))
        (apple/property renderer amount-cell proto/TextValue)
        "amount patches only the retained cell"))))
+
+(deftest tree-signals-and-events-retain-ordinary-row-nodes
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-tree")
+        expanded (sig/state scheduler false)
+        folder-selected (sig/state scheduler true)
+        file-selected (sig/state scheduler false)
+        received (atom [])
+        callback (fn [event] (swap! received conj event) true)
+        root
+        (retained-tree
+         (ui/context application scope)
+         (sig/value expanded) (sig/value folder-selected)
+         (sig/value file-selected) callback callback callback callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [folder (nth (apple/children renderer root) 0)
+          indent (nth (apple/children renderer root) 1)
+          file (nth (apple/children renderer indent) 0)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer root)
+        (Some AppleTree) (is true "Tree maps to one semantic native node")
+        _ (is false "Tree native mapping exists"))
+      (assert-equal
+       (Some (proto/StringValue "treeitem"))
+       (apple/property renderer folder proto/RoleValue)
+       "ListItem keeps its treeitem role")
+      (assert-equal
+       (Some (proto/IntValue 2))
+       (apple/property renderer file proto/TreeLevel)
+       "a composite Panel row keeps its flat logical level")
+      (runtime/dispatch! application (proto/Press folder))
+      (runtime/dispatch! application (proto/Change folder))
+      (runtime/dispatch! application (proto/ToggleChanged folder true))
+      (runtime/dispatch! application (proto/Change file))
+      (runtime/flush! application)
+      (assert-equal
+       [(proto/Press folder) (proto/Change folder)
+        (proto/ToggleChanged folder true) (proto/Change file)]
+       @received
+       "Tree row event capabilities coexist without overwriting callbacks")
+      (sig/set! expanded true)
+      (sig/set! folder-selected false)
+      (sig/set! file-selected true)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "Tree Signal patches allocate no retained nodes")
+      (assert-equal folder (nth (apple/children renderer root) 0)
+                    "folder row identity is stable")
+      (assert-equal file (nth (apple/children renderer indent) 0)
+                    "composite file row identity is stable")
+      (assert-equal
+       (Some (proto/BoolValue true))
+       (apple/property renderer folder proto/Expanded)
+       "expanded patches only the retained folder row")
+      (assert-equal
+       (Some (proto/BoolValue true))
+       (apple/property renderer file proto/Selected)
+       "selection patches only the retained file row"))))
 
 (deftest avatar-binds-a-model-owned-image-id-without-replacing-its-node
   (let [scheduler (sig/scheduler)

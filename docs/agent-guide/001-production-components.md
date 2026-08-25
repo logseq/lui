@@ -224,6 +224,10 @@ Delivered parity slices:
 - direct retained `table`, `table-row`, and `table-cell` nodes with strict
   structural nesting, aligned columns, model-owned row selection, pressable
   cells, and identity-preserving text and selection patches;
+- direct retained `tree` navigation over ordinary row nodes, with strict
+  role/hierarchy metadata, one native roving focus set, model-owned selection
+  and disclosure, ARIA keyboard behavior, and local Signal patches on Web,
+  SwiftUI, and Flutter;
 - direct retained `list-item` rows with text-or-children content, inline
   registry icons, model-owned selection, disabled state, immediate press,
   additive double press, Enter submit, and identity-preserving Signal patches;
@@ -679,6 +683,42 @@ retained per-row `Table` widgets so a row or cell patch does not rebuild an
 enclosing application component. The final row has no divider, selectable rows
 receive a full-width highlight, and an enabled pressable cell is one keyboard
 and accessibility activation target.
+
+#### Tree contract
+
+`tree` is one retained vertical disclosure container. It introduces no public
+`tree-item` element: matching the pinned Vercel Native API, ordinary retained
+descendants become rows with `role="treeitem"`. `list-item` is the normal row
+surface, while layout containers such as `row` and `panel` may carry the same
+role when a composite row is needed. All tree-item descendants, including rows
+inside ordinary indentation wrappers, participate in one focus set owned by
+their nearest Tree ancestor.
+
+The complete Tree vocabulary is `role`, `tree-level`, `expanded`, `selected`,
+`on-toggle`, `on-change`, `on-press`, `gap`, and `label`. `role` is exactly
+`treeitem` for rows in this slice. `tree-level` is a positive one-based whole
+number for flat sibling rows; when omitted, hierarchy derives from retained
+widget nesting. `expanded` and `selected` are model-owned Signals. Expandable
+rows opt into `on-toggle`; selection follows focus through `on-change` when it
+is present, otherwise keyboard activation uses `on-press`. Leaf rows omit
+`expanded` and `on-toggle`. A tree item, its hierarchy metadata, and its event
+capabilities are invalid without a nearest Tree ancestor, and malformed batches
+are rejected atomically.
+
+Keyboard behavior follows the ARIA tree pattern. Up and Down move through
+visible tree items, Home and End move to the edges, Left collapses an expanded
+row or moves to its logical parent, Right expands a collapsed row or moves to
+its first logical child, and Enter or Space activates the focused row. Disabled
+rows are skipped. Pointer activation does not create backend-owned selection;
+every selection and disclosure change must return through LG and patch the same
+retained row.
+
+Web uses `role="tree"` and `role="treeitem"` with roving `tabindex`. SwiftUI
+uses one retained focus coordinator around native row content and exposes the
+same tree/list accessibility semantics on macOS and iOS. Flutter uses a native
+`FocusTraversalGroup` plus `Focus`/`Actions` around retained row widgets. None
+of the backends creates a parallel tree model or replaces the enclosing LG
+component when focus, selection, disclosure, or keyed row order changes.
 
 #### Dialog contract
 

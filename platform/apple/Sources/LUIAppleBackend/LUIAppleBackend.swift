@@ -59,6 +59,10 @@ final class LUINodeModel: Identifiable {
     }
 
     var isSelected: Bool { properties[.selected]?.boolValue ?? false }
+    var role: String? { properties[.role]?.stringValue }
+    var treeLevel: Int? { properties[.treeLevel]?.intValue }
+    var isExpanded: Bool? { properties[.expanded]?.boolValue }
+    var isTreeItem: Bool { role == "treeitem" }
     var requestsAutofocus: Bool { properties[.autofocus]?.boolValue ?? false }
     var supportsHold: Bool { properties[.holdEnabled]?.boolValue ?? false }
     var supportsChange: Bool { properties[.changeEnabled]?.boolValue ?? false }
@@ -293,7 +297,7 @@ public final class LUIAppleBackend {
                 (model.kind == .tableCell && model.supportsPress) ||
                 model.kind == .select ||
                 model.kind == .combobox || model.kind == .menuItem ||
-                model.kind == .listItem,
+                model.kind == .listItem || (model.isTreeItem && model.supportsPress),
               model.isEnabled else {
             throw invalid("node \(node) is not an enabled pressable control")
         }
@@ -339,17 +343,18 @@ public final class LUIAppleBackend {
         guard let model = models[node],
               model.kind == .toggleButton || model.kind == .checkbox ||
                 model.kind == .switchControl || model.kind == .toggle ||
-                model.kind == .accordion,
+                model.kind == .accordion || model.isTreeItem,
               model.isEnabled,
-              model.kind != .accordion || model.supportsToggle else {
+              (model.kind != .accordion && !model.isTreeItem) || model.supportsToggle else {
             throw invalid("node \(node) is not an enabled toggle")
         }
         onEvent?(.toggleChanged(node: node, checked: checked))
     }
 
     func performChange(node: Int) throws {
-        guard let model = models[node], model.kind == .radio, model.isEnabled else {
-            throw invalid("node \(node) is not an enabled radio")
+        guard let model = models[node],
+              model.kind == .radio || model.isTreeItem, model.isEnabled else {
+            throw invalid("node \(node) is not an enabled change control")
         }
         if model.supportsChange {
             if !model.isChecked { onEvent?(.change(node: node)) }
@@ -380,6 +385,10 @@ public final class LUIAppleBackend {
 
     func performAction(node: Int) throws {
         guard let model = models[node] else { throw invalid("unknown node") }
+        if model.isTreeItem {
+            if model.supportsPress { try performPress(node: node) }
+            return
+        }
         switch model.kind {
         case .button, .select, .combobox, .menuItem, .listItem:
             try performPress(node: node)
@@ -393,6 +402,90 @@ public final class LUIAppleBackend {
             try performChange(node: node)
         default:
             throw invalid("node \(node) has no action")
+        }
+    }
+
+    func treeItemIDs(tree treeID: Int) throws -> [Int] {
+        guard models[treeID]?.kind == .tree else {
+            throw invalid("node \(treeID) is not a tree")
+        }
+        var result: [Int] = []
+        func visit(_ id: Int) {
+            guard let model = models[id] else { return }
+            if model.isTreeItem { result.append(id) }
+            for child in model.children { visit(child) }
+        }
+        for child in models[treeID]?.children ?? [] { visit(child) }
+        return result
+    }
+
+    private func treeLevel(tree: Int, node: Int) -> Int {
+        if let level = models[node]?.treeLevel { return level }
+        var level = 1
+        var parent = models[node]?.parent
+        while let parentID = parent, parentID != tree {
+            if models[parentID]?.isTreeItem == true { level += 1 }
+            parent = models[parentID]?.parent
+        }
+        return level
+    }
+
+    @discardableResult
+    func performTreeKey(tree treeID: Int, node nodeID: Int, key: LUITreeKey) throws -> Int {
+        let items = try treeItemIDs(tree: treeID).filter {
+            models[$0]?.isEnabled == true
+        }
+        guard let index = items.firstIndex(of: nodeID),
+              let node = models[nodeID], node.isEnabled else {
+            throw invalid("node \(nodeID) is not an enabled item in tree \(treeID)")
+        }
+
+        func select(_ target: Int) throws -> Int {
+            let model = models[target]
+            if model?.supportsChange == true {
+                try performChange(node: target)
+            } else if model?.supportsPress == true {
+                try performPress(node: target)
+            }
+            return target
+        }
+
+        switch key {
+        case .up:
+            return try index > 0 ? select(items[index - 1]) : nodeID
+        case .down:
+            return try index + 1 < items.count ? select(items[index + 1]) : nodeID
+        case .home:
+            return try select(items[0])
+        case .end:
+            return try select(items[items.count - 1])
+        case .left:
+            if node.isExpanded == true, node.supportsToggle {
+                try performToggle(node: nodeID, checked: false)
+                return nodeID
+            }
+            let level = treeLevel(tree: treeID, node: nodeID)
+            guard level > 1 else { return nodeID }
+            for candidate in items[..<index].reversed()
+            where treeLevel(tree: treeID, node: candidate) == level - 1 {
+                return try select(candidate)
+            }
+            return nodeID
+        case .right:
+            if node.isExpanded == false, node.supportsToggle {
+                try performToggle(node: nodeID, checked: true)
+                return nodeID
+            }
+            let next = index + 1
+            if next < items.count,
+               treeLevel(tree: treeID, node: items[next]) ==
+                treeLevel(tree: treeID, node: nodeID) + 1 {
+                return try select(items[next])
+            }
+            return nodeID
+        case .activate:
+            if node.supportsPress { try performPress(node: nodeID) }
+            return nodeID
         }
     }
 
@@ -426,6 +519,16 @@ public final class LUIAppleBackend {
         kind == .textField || kind == .input || kind == .searchField || kind == .textarea ||
             kind == .combobox
     }
+}
+
+enum LUITreeKey {
+    case up
+    case down
+    case left
+    case right
+    case home
+    case end
+    case activate
 }
 
 @MainActor

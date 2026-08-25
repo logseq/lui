@@ -125,6 +125,9 @@ enum LUIWireValue: Decodable, Equatable {
         case let (.tooltipDelay, .int(value)): (0...Int(Int32.max)).contains(value)
         case let (.textAlignment, .string(value)):
             Self.textAlignments.contains(value)
+        case let (.role, .string(value)): value == "treeitem"
+        case let (.treeLevel, .int(value)): value > 0
+        case (.expanded, .bool): true
         case let (.main, .string(value)):
             Self.mainAlignments.contains(value)
         case let (.cross, .string(value)):
@@ -257,6 +260,9 @@ struct LUIRetainedTree {
             if parentNode.kind == .tableRow, childNode.kind != .tableCell {
                 throw invalid("table-row can contain only table-cell")
             }
+            if parentNode.kind == .tree, !Self.isTreeRow(childNode.kind) {
+                throw invalid("tree accepts only row containers")
+            }
             if parentNode.kind == .dropdownMenu,
                childNode.kind != .menuItem, childNode.kind != .divider {
                 throw invalid("dropdown-menu accepts only menu-item or separator children")
@@ -342,7 +348,7 @@ struct LUIRetainedTree {
         case .gap:
             kind == .row || kind == .column || kind == .grid || kind == .list ||
                 kind == .dropdownMenu || isHorizontalGroup(kind)
-                || kind == .tableRow
+                || kind == .tableRow || kind == .tree
         case .placeholder:
             isTextEntry(kind) || kind == .select
         case .accessibilityLabel:
@@ -350,7 +356,8 @@ struct LUIRetainedTree {
                 kind == .switchControl || kind == .toggle ||
                 kind == .radioGroup || kind == .buttonGroup || kind == .toggleGroup ||
                 kind == .breadcrumb || kind == .pagination ||
-                kind == .radio || kind == .slider || kind == .avatar
+                kind == .radio || kind == .slider || kind == .avatar || kind == .tree ||
+                isTreeRow(kind)
         case .headingLevel: kind == .heading
         case .checked:
             kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
@@ -367,15 +374,15 @@ struct LUIRetainedTree {
                 kind == .listItem
         case .selected:
             kind == .button || kind == .toggleButton || kind == .menuItem ||
-                kind == .listItem || kind == .tableRow
+                kind == .listItem || kind == .tableRow || isTreeRow(kind)
         case .autofocus:
             kind == .button || kind == .toggleButton || isTextEntry(kind)
         case .submitOnEnter: kind == .textarea
-        case .changeEnabled, .toggleEnabled: kind == .radio
+        case .changeEnabled, .toggleEnabled: kind == .radio || isTreeRow(kind)
         case .pressEnabled:
             kind == .text || kind == .radio || kind == .select || kind == .combobox ||
                 kind == .menuItem || kind == .listItem
-                || kind == .tableCell
+                || kind == .tableCell || isTreeRow(kind)
         case .submitEnabled: kind == .combobox || kind == .listItem
         case .doublePressEnabled: kind == .listItem
         case .image, .sourceX, .sourceY, .sourceWidth, .sourceHeight:
@@ -384,6 +391,7 @@ struct LUIRetainedTree {
             kind == .dropdownMenu || kind == .tooltip
         case .tooltipDelay: kind == .tooltip
         case .textAlignment: kind == .tableCell
+        case .role, .treeLevel, .expanded: isTreeRow(kind)
         }
     }
 
@@ -398,7 +406,7 @@ struct LUIRetainedTree {
             kind == .list || isHorizontalGroup(kind) || kind == .radioGroup
             || kind == .dropdownMenu || kind == .listItem || isModalSurface(kind)
             || kind == .accordion
-            || kind == .table || kind == .tableRow
+            || kind == .table || kind == .tableRow || kind == .tree
     }
 
     private static func isModalSurface(_ kind: LUINodeKind) -> Bool {
@@ -408,6 +416,11 @@ struct LUIRetainedTree {
     private static func isHorizontalGroup(_ kind: LUINodeKind) -> Bool {
         kind == .tabs || kind == .buttonGroup || kind == .toggleGroup ||
             kind == .breadcrumb || kind == .pagination
+    }
+
+    private static func isTreeRow(_ kind: LUINodeKind) -> Bool {
+        kind == .row || kind == .column || kind == .panel || kind == .card ||
+            kind == .box || kind == .listItem
     }
 
     private func validateNodeProperties() throws {
@@ -480,6 +493,22 @@ struct LUIRetainedTree {
             if node.kind == .accordion,
                (node.properties[.text]?.stringValue ?? "").isEmpty {
                 throw invalid("accordion requires text")
+            }
+            if node.kind == .tree,
+               (node.properties[.accessibilityLabel]?.stringValue ?? "").isEmpty {
+                throw invalid("tree requires an accessibility label")
+            }
+            let hasTreeMetadata = node.properties[.role] != nil ||
+                node.properties[.treeLevel] != nil || node.properties[.expanded] != nil
+            if hasTreeMetadata {
+                guard node.properties[.role]?.stringValue == "treeitem",
+                      hasAncestor(node.parent, kind: .tree) else {
+                    throw invalid("tree row metadata requires a treeitem inside tree")
+                }
+                if node.properties[.expanded] != nil,
+                   node.properties[.toggleEnabled]?.boolValue != true {
+                    throw invalid("expanded treeitem requires toggle support")
+                }
             }
             if node.kind == .dropdownMenu || node.kind == .tooltip {
                 if node.properties[.anchorAlignment] != nil, node.properties[.anchor] == nil {

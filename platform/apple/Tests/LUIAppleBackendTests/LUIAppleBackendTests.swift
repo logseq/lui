@@ -631,6 +631,116 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 1) == nil)
     }
 
+    @Test("maps Tree rows to one retained native focus set")
+    func mapsTree() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"tree"},
+          {"op":"create-node","id":2,"kind":"list-item"},
+          {"op":"create-node","id":3,"kind":"list-item"},
+          {"op":"create-node","id":4,"kind":"panel"},
+          {"op":"create-node","id":5,"kind":"text"},
+          {"op":"set-prop","id":1,"property":"gap","value":2},
+          {"op":"set-prop","id":1,"property":"accessibility-label","value":"Project files"},
+          {"op":"set-prop","id":2,"property":"text","value":"src"},
+          {"op":"set-prop","id":2,"property":"role","value":"treeitem"},
+          {"op":"set-prop","id":2,"property":"tree-level","value":1},
+          {"op":"set-prop","id":2,"property":"expanded","value":true},
+          {"op":"set-prop","id":2,"property":"selected","value":true},
+          {"op":"set-prop","id":2,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":2,"property":"change-enabled","value":true},
+          {"op":"set-prop","id":2,"property":"toggle-enabled","value":true},
+          {"op":"set-prop","id":3,"property":"text","value":"main.cljc"},
+          {"op":"set-prop","id":3,"property":"role","value":"treeitem"},
+          {"op":"set-prop","id":3,"property":"tree-level","value":2},
+          {"op":"set-prop","id":3,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":3,"property":"change-enabled","value":true},
+          {"op":"set-prop","id":4,"property":"role","value":"treeitem"},
+          {"op":"set-prop","id":4,"property":"tree-level","value":1},
+          {"op":"set-prop","id":4,"property":"change-enabled","value":true},
+          {"op":"set-prop","id":5,"property":"text","value":"README"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"insert-child","parent":1,"child":4,"index":2},
+          {"op":"insert-child","parent":4,"child":5,"index":0}
+        ]}
+        """)
+
+        let tree = try #require(backend.model(id: 1))
+        let folder = try #require(backend.model(id: 2))
+        let file = try #require(backend.model(id: 3))
+        let treeRevision = tree.revision
+        let folderRevision = folder.revision
+        #expect(tree.kind == .tree)
+        #expect(folder.property(.role) == .string("treeitem"))
+        #expect(folder.property(.treeLevel) == .int(1))
+        #expect(folder.property(.expanded) == .bool(true))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        #expect(try backend.performTreeKey(tree: 1, node: 2, key: .down) == 3)
+        #expect(events == [.change(node: 3)])
+        events.removeAll()
+        #expect(try backend.performTreeKey(tree: 1, node: 3, key: .left) == 2)
+        #expect(events == [.change(node: 2)])
+        events.removeAll()
+        #expect(try backend.performTreeKey(tree: 1, node: 2, key: .left) == 2)
+        #expect(events == [.toggleChanged(node: 2, checked: false)])
+        events.removeAll()
+        #expect(try backend.performTreeKey(tree: 1, node: 3, key: .activate) == 3)
+        #expect(events == [.press(node: 3)])
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":2,"property":"expanded","value":false},
+          {"op":"set-prop","id":2,"property":"selected","value":false},
+          {"op":"set-prop","id":3,"property":"selected","value":true}
+        ]}
+        """)
+        #expect(backend.model(id: 1) === tree)
+        #expect(backend.model(id: 2) === folder)
+        #expect(backend.model(id: 3) === file)
+        #expect(tree.revision == treeRevision)
+        #expect(folder.revision == folderRevision + 1)
+        #expect(file.isSelected)
+    }
+
+    @Test("rejects orphaned or malformed Tree metadata atomically")
+    func rejectsMalformedTreeMetadata() throws {
+        for operations in [
+            """
+            {"op":"create-node","id":1,"kind":"column"},
+            {"op":"create-node","id":2,"kind":"list-item"},
+            {"op":"set-prop","id":2,"property":"role","value":"treeitem"},
+            {"op":"insert-child","parent":1,"child":2,"index":0}
+            """,
+            """
+            {"op":"create-node","id":1,"kind":"tree"},
+            {"op":"create-node","id":2,"kind":"list-item"},
+            {"op":"set-prop","id":2,"property":"expanded","value":true},
+            {"op":"insert-child","parent":1,"child":2,"index":0}
+            """,
+            """
+            {"op":"create-node","id":1,"kind":"tree"},
+            {"op":"create-node","id":2,"kind":"list-item"},
+            {"op":"set-prop","id":2,"property":"role","value":"treeitem"},
+            {"op":"set-prop","id":2,"property":"tree-level","value":0},
+            {"op":"insert-child","parent":1,"child":2,"index":0}
+            """,
+        ] {
+            let backend = LUIAppleBackend()
+            #expect(throws: LUIBackendError.self) {
+                try backend.apply(json: """
+                {"generation":1,"ops":[\(operations)]}
+                """)
+            }
+            #expect(backend.generation == 0)
+            #expect(backend.rootIDs.isEmpty)
+        }
+    }
+
     @Test("registering an image invalidates only Avatars that reference its ImageId")
     func mapsRegisteredAvatarImage() throws {
         let backend = LUIAppleBackend()

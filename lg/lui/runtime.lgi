@@ -16,6 +16,7 @@
   (runtime-backend :backend)
   (next-node-id :ref<int>)
   (mounted-nodes :ref<map<int;node-kind>>)
+  (runtime-properties :ref<map<int;map<property;wire-value>>>)
   (runtime-children :ref<map<int;vector<int>>>)
   (runtime-parents :ref<map<int;int>>)
   (pending-ops :ref<vector<patch-op>>)

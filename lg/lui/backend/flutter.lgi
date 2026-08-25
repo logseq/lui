@@ -45,7 +45,8 @@
   (FlutterAccordion)
   (FlutterTable)
   (FlutterTableRow)
-  (FlutterTableCell))
+  (FlutterTableCell)
+  (FlutterTree))
 
 (type-record flutter-renderer
   (flutter-store :retained-store<flutter-node>)

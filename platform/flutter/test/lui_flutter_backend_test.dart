@@ -1042,6 +1042,146 @@ void main() {
     expect(backend.containsNode(1), isFalse);
   });
 
+  testWidgets('maps Tree rows to one retained native roving focus set', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"tree"},
+        {"op":"create-node","id":2,"kind":"list-item"},
+        {"op":"create-node","id":3,"kind":"list-item"},
+        {"op":"create-node","id":4,"kind":"panel"},
+        {"op":"create-node","id":5,"kind":"text"},
+        {"op":"set-prop","id":1,"property":"gap","value":2},
+        {"op":"set-prop","id":1,"property":"accessibility-label","value":"Project files"},
+        {"op":"set-prop","id":2,"property":"text","value":"src"},
+        {"op":"set-prop","id":2,"property":"role","value":"treeitem"},
+        {"op":"set-prop","id":2,"property":"tree-level","value":1},
+        {"op":"set-prop","id":2,"property":"expanded","value":true},
+        {"op":"set-prop","id":2,"property":"selected","value":true},
+        {"op":"set-prop","id":2,"property":"press-enabled","value":true},
+        {"op":"set-prop","id":2,"property":"change-enabled","value":true},
+        {"op":"set-prop","id":2,"property":"toggle-enabled","value":true},
+        {"op":"set-prop","id":3,"property":"text","value":"main.cljc"},
+        {"op":"set-prop","id":3,"property":"role","value":"treeitem"},
+        {"op":"set-prop","id":3,"property":"tree-level","value":2},
+        {"op":"set-prop","id":3,"property":"press-enabled","value":true},
+        {"op":"set-prop","id":3,"property":"change-enabled","value":true},
+        {"op":"set-prop","id":4,"property":"role","value":"treeitem"},
+        {"op":"set-prop","id":4,"property":"tree-level","value":1},
+        {"op":"set-prop","id":4,"property":"change-enabled","value":true},
+        {"op":"set-prop","id":5,"property":"text","value":"README"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":1,"child":4,"index":2},
+        {"op":"insert-child","parent":4,"child":5,"index":0}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    expect(
+      find.descendant(
+        of: find.byKey(LUIFlutterBackend.nodeKey(1)),
+        matching: find.byType(FocusTraversalGroup),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('src'), findsOneWidget);
+    expect(find.text('main.cljc'), findsOneWidget);
+    expect(find.text('README'), findsOneWidget);
+    final retainedFile = tester.element(find.text('main.cljc'));
+    final selectedSemantics = tester.widget<Semantics>(
+      find
+          .descendant(
+            of: find.byKey(LUIFlutterBackend.nodeKey(2)),
+            matching: find.byType(Semantics),
+          )
+          .first,
+    );
+    expect(selectedSemantics.properties.selected, isTrue);
+    expect(selectedSemantics.properties.expanded, isTrue);
+
+    final folderFocus = find
+        .descendant(
+          of: find.byKey(LUIFlutterBackend.nodeKey(2)),
+          matching: find.byType(Focus),
+        )
+        .evaluate()
+        .map((element) => element.widget as Focus)
+        .firstWhere((focus) => focus.focusNode != null);
+    folderFocus.focusNode!.requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(events, const [LUIEvent.change(node: 3)]);
+    expect(
+      FocusManager.instance.primaryFocus?.context
+          ?.findAncestorWidgetOfExactType<ListenableBuilder>(),
+      isNotNull,
+    );
+
+    events.clear();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(events, const [LUIEvent.change(node: 2)]);
+    events.clear();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(events, const [LUIEvent.toggleChanged(node: 2, checked: false)]);
+
+    backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":2,"property":"expanded","value":false},
+        {"op":"set-prop","id":2,"property":"selected","value":false},
+        {"op":"set-prop","id":3,"property":"selected","value":true}
+      ]}
+      ''');
+    await tester.pump();
+    expect(tester.element(find.text('main.cljc')), same(retainedFile));
+    expect(backend.debugRevision(1), 0);
+    expect(backend.debugRevision(2), 1);
+    expect(backend.debugRevision(3), 1);
+    semantics.dispose();
+  });
+
+  test('rejects orphaned or malformed Tree metadata atomically', () {
+    for (final operations in [
+      '''
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"list-item"},
+        {"op":"set-prop","id":2,"property":"role","value":"treeitem"},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ''',
+      '''
+        {"op":"create-node","id":1,"kind":"tree"},
+        {"op":"create-node","id":2,"kind":"list-item"},
+        {"op":"set-prop","id":2,"property":"expanded","value":true},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ''',
+      '''
+        {"op":"create-node","id":1,"kind":"tree"},
+        {"op":"create-node","id":2,"kind":"list-item"},
+        {"op":"set-prop","id":2,"property":"role","value":"treeitem"},
+        {"op":"set-prop","id":2,"property":"tree-level","value":0},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ''',
+    ]) {
+      final backend = LUIFlutterBackend();
+      expect(
+        () => backend.applyJson('{"generation":1,"ops":[$operations]}'),
+        throwsA(isA<LUIBackendException>()),
+      );
+      expect(backend.generation, 0);
+      expect(backend.containsNode(1), isFalse);
+    }
+  });
+
   testWidgets(
     'registering an image invalidates only Avatars that reference its ImageId',
     (tester) async {

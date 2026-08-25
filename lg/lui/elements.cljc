@@ -39,6 +39,7 @@
                          (= tag :table)
                          (= tag :table-row)
                          (= tag :table-cell)
+                         (= tag :tree)
                          (= tag :spacer)
                          (= tag :spinner)
                          (= tag :icon)
@@ -304,11 +305,58 @@
                               ~'_ true)))]
                        [])))
 
+(macro-helper-defn tree-item-event-expansion [context node attrs]
+                   (let [on-press (:on-press attrs)
+                         on-change (:on-change attrs)
+                         on-toggle (:on-toggle attrs)]
+                     (if (or on-press on-change on-toggle)
+                       [`(lui.ui/on-event!
+                          ~context ~node
+                          (fn [~'event]
+                            (match ~'event
+                              (lui.protocol/Press ~'_node)
+                              ~(if on-press `(~on-press ~'event) true)
+                              (lui.protocol/Change ~'_node)
+                              ~(if on-change `(~on-change ~'event) true)
+                              (lui.protocol/ToggleChanged ~'_node ~'_expanded)
+                              ~(if on-toggle `(~on-toggle ~'event) true)
+                              ~'_ true)))]
+                       [])))
+
+(macro-helper-defn tree-item-property-expansions [context node attrs]
+                   (concat
+                    (string-attribute-expansion
+                     context node (:role attrs) 'lui.protocol/RoleValue)
+                    (int-attribute-expansion
+                     context node (:tree-level attrs) 'lui.protocol/TreeLevel)
+                    (bool-attribute-expansion
+                     context node (:expanded attrs) 'lui.protocol/Expanded)
+                    (bool-attribute-expansion
+                     context node (:selected attrs) 'lui.protocol/Selected)
+                    (string-attribute-expansion
+                     context node (:label attrs)
+                     'lui.protocol/AccessibilityLabel)
+                    (if (:on-press attrs)
+                      [`(lui.ui/bool-property!
+                         ~context ~node lui.protocol/PressEnabled true)]
+                      [])
+                    (if (:on-change attrs)
+                      [`(lui.ui/bool-property!
+                         ~context ~node lui.protocol/ChangeEnabled true)]
+                      [])
+                    (if (:on-toggle attrs)
+                      [`(lui.ui/bool-property!
+                         ~context ~node lui.protocol/ToggleEnabled true)]
+                      [])))
+
 (macro-helper-defn list-item-event-expansion [context node attrs]
                    (let [on-press (:on-press attrs)
                          on-double-press (:on-double-press attrs)
-                         on-submit (:on-submit attrs)]
-                     (if (or on-press on-double-press on-submit)
+                         on-submit (:on-submit attrs)
+                         on-change (:on-change attrs)
+                         on-toggle (:on-toggle attrs)]
+                     (if (or on-press on-double-press on-submit
+                             on-change on-toggle)
                        [`(lui.ui/on-event!
                           ~context ~node
                           (fn [~'event]
@@ -321,6 +369,10 @@
                                  true)
                               (lui.protocol/Submit ~'_node)
                               ~(if on-submit `(~on-submit ~'event) true)
+                              (lui.protocol/Change ~'_node)
+                              ~(if on-change `(~on-change ~'event) true)
+                              (lui.protocol/ToggleChanged ~'_node ~'_expanded)
+                              ~(if on-toggle `(~on-toggle ~'event) true)
                               ~'_ true)))]
                        [])))
 
@@ -388,6 +440,8 @@
                    [constructor context parent attrs children]
                    (let [node (gensym "node")]
                      `(let [~node (~constructor ~context)]
+                        ~@(tree-item-property-expansions context node attrs)
+                        ~@(tree-item-event-expansion context node attrs)
                         ~@(element-properties context node attrs)
                         ~@(if parent
                             [`(lui.ui/append! ~context ~parent ~node)]
@@ -520,6 +574,21 @@
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])
+       ~node)))
+
+(defelement tree [context parent attrs & children]
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/tree! ~context)]
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
        ~node)))
 
 (defelement spacer [context parent _attrs & _children]
@@ -966,13 +1035,8 @@
              []))
        ~@(string-attribute-expansion
           context node (:icon attrs) 'lui.protocol/InlineIconName)
-       ~@(bool-attribute-expansion
-          context node (:selected attrs) 'lui.protocol/Selected)
+       ~@(tree-item-property-expansions context node attrs)
        ~@(disabled-attribute-expansion context node attrs)
-       ~@(if (:on-press attrs)
-           [`(lui.ui/bool-property!
-              ~context ~node lui.protocol/PressEnabled true)]
-           [])
        ~@(picker-event-expansion context node attrs)
        ~@(element-properties context node attrs)
        ~@(if parent
@@ -1010,13 +1074,8 @@
              []))
        ~@(string-attribute-expansion
           context node (:icon attrs) 'lui.protocol/InlineIconName)
-       ~@(bool-attribute-expansion
-          context node (:selected attrs) 'lui.protocol/Selected)
+       ~@(tree-item-property-expansions context node attrs)
        ~@(disabled-attribute-expansion context node attrs)
-       ~@(if (:on-press attrs)
-           [`(lui.ui/bool-property!
-              ~context ~node lui.protocol/PressEnabled true)]
-           [])
        ~@(if (:on-double-press attrs)
            [`(lui.ui/bool-property!
               ~context ~node lui.protocol/DoublePressEnabled true)]

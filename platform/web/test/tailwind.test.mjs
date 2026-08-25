@@ -147,6 +147,17 @@ test("Table uses semantic retained rows and cells with native interaction chrome
   assert.match(css, /\.lui-table-cell\[data-pressable\]:focus-visible/)
 })
 
+test("Tree uses retained roving rows with native selection and disclosure chrome", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-tree\{[^}]*display:flex/)
+  assert.match(css, /\.lui-tree\{[^}]*flex-direction:column/)
+  assert.match(css, /\.lui-tree-item\{[^}]*outline-width:0/)
+  assert.match(css, /\.lui-tree-item\[data-selected\]\{[^}]*background-color:/)
+  assert.match(css, /\.lui-tree-item:focus-visible\{[^}]*outline-width:2px/)
+  assert.match(css, /\.lui-tree-item\[aria-disabled=true\]\{[^}]*opacity:/)
+})
+
 test("the production stylesheet contains the registered-image Avatar contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 

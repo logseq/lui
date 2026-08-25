@@ -182,6 +182,8 @@
         "the shared Gallery demonstrates retained TableRow")
     (is (creates-kind? (flutter/batches renderer) proto/TableCell)
         "the shared Gallery demonstrates pressable TableCell")
+    (is (creates-kind? (flutter/batches renderer) proto/Tree)
+        "the shared Gallery demonstrates retained Tree navigation")
     (assert-equal 1 (count (flutter/batches renderer)) "mount is one batch")
     (let [mounted-count (flutter/node-count renderer)]
       (driver/send! application model/ToggleDisabled)

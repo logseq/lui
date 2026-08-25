@@ -127,7 +127,10 @@ ${events})
   :fn<operating-system;host-kind;platform-profile>)
 (signature lui.protocol/generic-profile :fn<platform-profile>)
 (signature lui.protocol/event-node :fn<event;int>)
+(signature lui.protocol/tree-row-kind? :fn<node-kind;bool>)
 (signature lui.protocol/event-supported? :fn<node-kind;event;bool>)
+(signature lui.protocol/event-supported-for-properties?
+  :fn<node-kind;map<property;wire-value>;event;bool>)
 (signature lui.protocol/orientation-supported? :fn<string;bool>)
 (signature lui.protocol/control-size-supported? :fn<string;bool>)
 (signature lui.protocol/button-variant-supported? :fn<string;bool>)
@@ -138,6 +141,8 @@ ${events})
 (signature lui.protocol/property-supported? :fn<node-kind;property;bool>)
 (signature lui.protocol/property-value-supported?
   :fn<property;wire-value;bool>)
+(signature lui.protocol/property-value-supported-for-kind?
+  :fn<node-kind;property;wire-value;bool>)
 (signature lui.protocol/int-property
   :fn<map<property;wire-value>;property;int;int>)
 (signature lui.protocol/surface-size-supported?
@@ -145,6 +150,7 @@ ${events})
 (signature lui.protocol/node-properties-supported?
   :fn<node-kind;map<property;wire-value>;bool>)
 (signature lui.protocol/can-contain-children? :fn<node-kind;bool>)
+(signature lui.protocol/child-kind-supported? :fn<node-kind;node-kind;bool>)
 (signature lui.protocol/create-node-op :fn<int;node-kind;patch-op>)
 (signature lui.protocol/drop-node-op :fn<int;patch-op>)
 (signature lui.protocol/set-prop-op

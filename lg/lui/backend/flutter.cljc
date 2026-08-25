@@ -8,7 +8,7 @@
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
                      Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip
-                     Accordion Table TableRow TableCell]]
+                     Accordion Table TableRow TableCell Tree]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -72,7 +72,8 @@
     Accordion FlutterAccordion
     Table FlutterTable
     TableRow FlutterTableRow
-    TableCell FlutterTableCell))
+    TableCell FlutterTableCell
+    Tree FlutterTree))
 
 (defn backend-for [renderer operating-system]
   (record proto/backend

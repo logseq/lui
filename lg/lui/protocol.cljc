@@ -23,6 +23,10 @@
 (defn- modal-surface? [kind]
   (or (= kind Dialog) (= kind Drawer) (= kind Sheet)))
 
+(defn tree-row-kind? [kind]
+  (or (= kind Row) (= kind Column) (= kind Panel) (= kind Card)
+      (= kind Box) (= kind ListItem)))
+
 (defn event-supported? [kind event]
   (match event
     (Press _node)
@@ -45,6 +49,26 @@
     (or (= kind Select) (= kind Combobox) (= kind DropdownMenu)
         (modal-surface? kind))
     (DoublePress _node) (= kind ListItem)))
+
+(defn- true-property? [properties property]
+  (match (clojure.core/get properties property)
+    (Some (BoolValue true)) true
+    _ false))
+
+(defn- treeitem-properties? [properties]
+  (match (clojure.core/get properties RoleValue)
+    (Some (StringValue "treeitem")) true
+    _ false))
+
+(defn event-supported-for-properties? [kind properties event]
+  (if (treeitem-properties? properties)
+    (match event
+      (Press _node) (true-property? properties PressEnabled)
+      (Change _node) (true-property? properties ChangeEnabled)
+      (ToggleChanged _node _checked)
+      (true-property? properties ToggleEnabled)
+      _ (event-supported? kind event))
+    (event-supported? kind event)))
 
 (defn orientation-supported? [value]
   (or (= value "horizontal") (= value "vertical")))
@@ -191,7 +215,7 @@
         (= kind Checkbox) (= kind SwitchControl)
         (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider)
         (labelled-horizontal-container? kind)
-        (= kind Avatar))
+        (= kind Avatar) (= kind Tree) (tree-row-kind? kind))
     PlaceholderValue
     (or (= kind TextField) (= kind Input) (= kind SearchField)
         (= kind Textarea) (= kind Select) (= kind Combobox))
@@ -211,18 +235,19 @@
     IconPlacementValue (or (= kind Button) (= kind ToggleButton))
     Selected
     (or (= kind Button) (= kind ToggleButton) (= kind MenuItem)
-        (= kind ListItem) (= kind TableRow))
+        (= kind ListItem) (= kind TableRow) (tree-row-kind? kind))
     Autofocus
     (or (= kind Button) (= kind ToggleButton)
         (= kind TextField) (= kind Input) (= kind SearchField)
         (= kind Textarea))
     SubmitOnEnter (= kind Textarea)
     HoldEnabled (or (= kind Button) (= kind ToggleButton))
-    ChangeEnabled (= kind Radio)
-    ToggleEnabled (= kind Radio)
+    ChangeEnabled (or (= kind Radio) (tree-row-kind? kind))
+    ToggleEnabled (or (= kind Radio) (tree-row-kind? kind))
     PressEnabled
     (or (= kind Text) (= kind Radio) (= kind Select) (= kind Combobox)
-        (= kind MenuItem) (= kind ListItem) (= kind TableCell))
+        (= kind MenuItem) (= kind ListItem) (= kind TableCell)
+        (tree-row-kind? kind))
     SubmitEnabled (or (= kind Combobox) (= kind ListItem))
     DoublePressEnabled (= kind ListItem)
     ImageIdValue (= kind Avatar)
@@ -235,6 +260,9 @@
     AnchorOffset (or (= kind DropdownMenu) (= kind Tooltip))
     TooltipDelay (= kind Tooltip)
     TextAlignment (= kind TableCell)
+    RoleValue (tree-row-kind? kind)
+    TreeLevel (tree-row-kind? kind)
+    Expanded (tree-row-kind? kind)
     TextValue
     (match kind
       Text true
@@ -283,6 +311,7 @@
     Gap
     (or (= kind Row) (= kind Column) (= kind Grid)
         (= kind ListContainer) (= kind DropdownMenu) (= kind TableRow)
+        (= kind Tree)
         (horizontal-container? kind)))))
 
 (defn property-value-supported? [property value]
@@ -352,6 +381,9 @@
     (and (>= value 0) (<= value 2147483647))
     (tuple TextAlignment (StringValue value))
     (or (= value "start") (= value "center") (= value "end"))
+    (tuple RoleValue (StringValue value)) (= value "treeitem")
+    (tuple TreeLevel (IntValue value)) (> value 0)
+    (tuple Expanded (BoolValue _value)) true
     _ false))
 
 (defn property-value-supported-for-kind? [kind property value]
@@ -502,6 +534,24 @@
      (match (clojure.core/get properties ProgressValue)
        (Some (FloatValue _value)) true
        _ false)
+     true)
+   (if (= kind Tree)
+     (match (clojure.core/get properties AccessibilityLabel)
+       (Some (StringValue value)) (not (= value ""))
+       _ false)
+     true)
+   (if (tree-row-kind? kind)
+     (let [treeitem (treeitem-properties? properties)
+           has-tree-metadata
+           (or (contains? properties TreeLevel)
+               (contains? properties Expanded)
+               (contains? properties ChangeEnabled)
+               (contains? properties ToggleEnabled))]
+       (and
+        (or (not has-tree-metadata) treeitem)
+        (if (contains? properties Expanded)
+          (true-property? properties ToggleEnabled)
+          true)))
      true)))
 
 (defn can-contain-children? [kind]
@@ -526,12 +576,14 @@
       Accordion true
       Table true
       TableRow true
+      Tree true
       _ false)))
 
 (defn child-kind-supported? [parent-kind child-kind]
   (match parent-kind
     Table (= child-kind TableRow)
     TableRow (= child-kind TableCell)
+    Tree (tree-row-kind? child-kind)
     _ true))
 
 (defn create-node-op [node kind]

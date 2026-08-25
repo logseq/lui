@@ -47,7 +47,8 @@
   (AppleAccordion)
   (AppleTable)
   (AppleTableRow)
-  (AppleTableCell))
+  (AppleTableCell)
+  (AppleTree))
 
 (type-record apple-renderer
   (apple-store :retained-store<apple-node>)

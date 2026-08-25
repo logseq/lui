@@ -138,9 +138,14 @@
             (:semantic-kind parent-node) (:semantic-kind child-node)))
           (raise
            (Invalid_argument
-            (if (= (:semantic-kind parent-node) proto/Table)
+            (cond
+              (= (:semantic-kind parent-node) proto/Table)
               "table can contain only table-row"
-              "table-row can contain only table-cell")))
+              (= (:semantic-kind parent-node) proto/TableRow)
+              "table-row can contain only table-cell"
+              (= (:semantic-kind parent-node) proto/Tree)
+              "tree accepts only row containers"
+              :else "unsupported child kind")))
           (descendant? nodes child parent)
           (raise (Invalid_argument "child insertion would create a cycle"))
           (match (:retained-parent child-node)
@@ -266,6 +271,15 @@
       false)
     None false))
 
+(defn- validate-tree-item! [nodes current]
+  (when
+   (= (string-property (:retained-properties current) proto/RoleValue)
+      "treeitem")
+    (when (not (has-ancestor-kind?
+                nodes (:retained-parent current) proto/Tree))
+      (raise
+       (Invalid_argument "treeitem must be contained by a tree")))))
+
 (defn- validate-nodes! [nodes]
   (reduce-kv
    (fn [_valid _node current]
@@ -277,6 +291,7 @@
         (Invalid_argument "radio must be contained by a radio-group")))
      (validate-list-item! current)
      (validate-avatar! current)
+     (validate-tree-item! nodes current)
      (when (not
             (proto/node-properties-supported?
              (:semantic-kind current) (:retained-properties current)))

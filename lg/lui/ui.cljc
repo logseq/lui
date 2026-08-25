@@ -75,6 +75,9 @@
 (defn table-cell! [context]
   (runtime/create-node! (:ui-application context) proto/TableCell))
 
+(defn tree! [context]
+  (runtime/create-node! (:ui-application context) proto/Tree))
+
 (defn spacer! [context]
   (runtime/create-node! (:ui-application context) proto/Spacer))
 

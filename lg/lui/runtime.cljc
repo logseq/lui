@@ -12,6 +12,7 @@
     (runtime-backend backend)
     (next-node-id (atom 0))
     (mounted-nodes (atom (hash-map)))
+    (runtime-properties (atom (hash-map)))
     (runtime-children (atom (hash-map)))
     (runtime-parents (atom (hash-map)))
     (pending-ops (atom (empty-ops)))
@@ -84,6 +85,7 @@
 (defn create-node! [application kind]
   (let [node (swap! (:next-node-id application) inc)]
     (swap! (:mounted-nodes application) assoc node kind)
+    (swap! (:runtime-properties application) assoc node (hash-map))
     (swap! (:runtime-children application) assoc node [])
     (enqueue! application (proto/create-node-op node kind))
     node))
@@ -95,6 +97,7 @@
   (when (not (empty? (children application node)))
     (raise (Invalid_argument "cannot drop a node with children")))
   (swap! (:mounted-nodes application) dissoc node)
+  (swap! (:runtime-properties application) dissoc node)
   (swap! (:runtime-children application) dissoc node)
   (swap! (:runtime-parents application) dissoc node)
   (enqueue! application (proto/drop-node-op node)))
@@ -115,6 +118,7 @@
       (raise (Invalid_argument "property is unsupported by node kind")))
     (when (not (proto/property-value-supported-for-kind? kind property value))
       (raise (Invalid_argument "invalid property value"))))
+  (swap! (:runtime-properties application) update node assoc property value)
   (enqueue! application (proto/set-prop-op node property value)))
 
 (defn insert-child! [application parent child index]
@@ -207,8 +211,14 @@
 
 (defn dispatch! [application event]
   (let [node (proto/event-node event)
-        kind (require-node-kind application node)]
-    (when (not (proto/event-supported? kind event))
+        kind (require-node-kind application node)
+        properties
+        (if-some [current (clojure.core/get
+                           (deref (:runtime-properties application)) node)]
+          current
+          (hash-map))]
+    (when (not (proto/event-supported-for-properties?
+                kind properties event))
       (raise (Invalid_argument "event is unsupported by node kind")))
     (if-some [handlers (clojure.core/get
                         (deref (:event-handlers application)) node)]

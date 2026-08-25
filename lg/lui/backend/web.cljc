@@ -7,7 +7,7 @@
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
                      Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip Accordion
-                     Table TableRow TableCell
+                     Table TableRow TableCell Tree
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
                      Progress Divider
@@ -27,7 +27,7 @@
                      SubmitEnabled DoublePressEnabled
                      ImageIdValue SourceX SourceY SourceWidth SourceHeight
                      AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay
-                     TextAlignment
+                     TextAlignment RoleValue TreeLevel Expanded
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
 
@@ -100,7 +100,8 @@
     Accordion "lui-accordion"
     Table "lui-table"
     TableRow "lui-table-row"
-    TableCell "lui-table-cell"))
+    TableCell "lui-table-cell"
+    Tree "lui-tree"))
 
 (defn- direct-toggle? [kind]
   (or (= kind Checkbox) (= kind SwitchControl) (= kind Radio)))
@@ -226,6 +227,7 @@
           Table "table"
           TableRow "tr"
           TableCell "td"
+          Tree "div"
           Tooltip "span"
           Slider "input"
           Divider "hr"
@@ -262,6 +264,7 @@
           Table {"role" "grid"}
           TableRow {"role" "row" "aria-selected" "false"}
           TableCell {"role" "gridcell"}
+          Tree {"role" "tree"}
           DropdownMenu
           {"role" "listbox"
            "data-anchor" "below"
@@ -467,6 +470,237 @@
 (defn- event-capability? [renderer node property]
   (= (retained/property (:web-store renderer) node property)
      (Some (BoolValue true))))
+
+(defn- treeitem? [renderer node]
+  (= (retained/property (:web-store renderer) node RoleValue)
+     (Some (StringValue "treeitem"))))
+
+(defn- tree-ancestor [renderer node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (match (:retained-parent current)
+      (Some parent)
+      (if-some [parent-node (retained/node (:web-store renderer) parent)]
+        (if (= (:semantic-kind parent-node) Tree)
+          (Some parent)
+          (tree-ancestor renderer parent))
+        None)
+      None None)
+    None))
+
+(defn- tree-items-under [renderer parent]
+  (reduce
+   (fn [items child]
+     (let [with-child (if (treeitem? renderer child)
+                        (conj items child)
+                        items)]
+       (into with-child (tree-items-under renderer child))))
+   []
+   (retained/children (:web-store renderer) parent)))
+
+(defn- tree-focus-items-under [renderer parent]
+  (filterv
+   (fn [node] (enabled-node? renderer node))
+   (tree-items-under renderer parent)))
+
+(defn- derived-tree-item-level [renderer tree current level]
+  (if-some [state (retained/node (:web-store renderer) current)]
+    (match (:retained-parent state)
+      (Some parent)
+      (if (= parent tree)
+        level
+        (derived-tree-item-level
+         renderer tree parent
+         (if (treeitem? renderer parent) (inc level) level)))
+      None level)
+    level))
+
+(defn- tree-item-level [renderer tree node]
+  (match (retained/property (:web-store renderer) node TreeLevel)
+    (Some (IntValue level)) level
+    _ (derived-tree-item-level renderer tree node 1)))
+
+(defn- node-index [nodes node]
+  (loop [index 0]
+    (if (= index (count nodes))
+      -1
+      (if (= (nth nodes index) node)
+        index
+        (recur (inc index))))))
+
+(defn- logical-tree-parent [renderer tree items node]
+  (let [index (node-index items node)
+        level (tree-item-level renderer tree node)]
+    (loop [candidate (dec index)]
+      (if (< candidate 0)
+        None
+        (let [candidate-node (nth items candidate)
+              candidate-level (tree-item-level renderer tree candidate-node)]
+          (if (= candidate-level (dec level))
+            (Some candidate-node)
+            (recur (dec candidate))))))))
+
+(defn- logical-tree-child [renderer tree items node]
+  (let [index (node-index items node)
+        next-index (inc index)]
+    (if (< next-index (count items))
+      (let [candidate (nth items next-index)]
+        (if (= (tree-item-level renderer tree candidate)
+               (inc (tree-item-level renderer tree node)))
+          (Some candidate)
+          None))
+      None)))
+
+(defn- set-tree-tabstop! [renderer items target]
+  (doseq [item items]
+    (Webapi.Dom.Element.setAttribute
+     "tabindex" (if (= item target) "0" "-1")
+     (dom-node renderer item))))
+
+(defn- dispatch-tree-selection! [renderer node]
+  (Stdlib.ignore
+   ((deref (:web-event-handler renderer))
+    (if (event-capability? renderer node ChangeEnabled)
+      (proto/Change node)
+      (proto/Press node)))))
+
+(defn- focus-tree-item! [renderer tree items node]
+  (set-tree-tabstop! renderer items node)
+  (Webapi.Dom.HtmlElement.focus
+   (Webapi.Dom.Element.unsafeAsHtmlElement (dom-node renderer node)))
+  (dispatch-tree-selection! renderer node))
+
+(defn- refresh-tree-item-accessibility! [renderer tree node]
+  (let [element (dom-node renderer node)]
+    (Webapi.Dom.Element.setAttribute
+     "aria-level" (str (tree-item-level renderer tree node)) element)
+    (Webapi.Dom.Element.setAttribute
+     "aria-disabled" (if (enabled-node? renderer node) "false" "true") element)
+    (match (retained/property (:web-store renderer) node Selected)
+      (Some (BoolValue selected))
+      (Webapi.Dom.Element.setAttribute
+       "aria-selected" (if selected "true" "false") element)
+      _ (Webapi.Dom.Element.removeAttribute "aria-selected" element))
+    (match (retained/property (:web-store renderer) node Expanded)
+      (Some (BoolValue expanded))
+      (Webapi.Dom.Element.setAttribute
+       "aria-expanded" (if expanded "true" "false") element)
+      _ (Webapi.Dom.Element.removeAttribute "aria-expanded" element))))
+
+(defn- update-tree-roving! [renderer tree]
+  (let [all-items (tree-items-under renderer tree)
+        items (tree-focus-items-under renderer tree)]
+    (doseq [item all-items]
+      (refresh-tree-item-accessibility! renderer tree item)
+      (Webapi.Dom.Element.setAttribute "tabindex" "-1" (dom-node renderer item)))
+    (when (not (empty? items))
+      (let [selected
+            (loop [index 0]
+              (if (= index (count items))
+                (nth items 0)
+                (let [item (nth items index)]
+                  (if (= (retained/property
+                          (:web-store renderer) item Selected)
+                         (Some (BoolValue true)))
+                    item
+                    (recur (inc index))))))
+            document
+            (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))
+            active-index
+            (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
+              (focused-child-index renderer items focused 0)
+              None)
+            target
+            (match active-index
+              (Some index) (nth items index)
+              None selected)]
+        (set-tree-tabstop! renderer items target)))))
+
+(defn- update-all-tree-roving! [renderer]
+  (reduce-kv
+   (fn [_updated node current]
+     (when (= (:semantic-kind current) Tree)
+       (update-tree-roving! renderer node))
+     true)
+   true
+   (retained/nodes (:web-store renderer))))
+
+(defn- attach-tree-item-events! [renderer node kind dom-node]
+  (when (not (= kind ListItem))
+    (Webapi.Dom.Element.addEventListener
+     "click"
+     (fn [_event]
+       (when (and (treeitem? renderer node)
+                  (event-capability? renderer node PressEnabled))
+         (Stdlib.ignore
+          ((deref (:web-event-handler renderer)) (proto/Press node))))
+       (Stdlib.ignore true))
+     dom-node))
+  (Webapi.Dom.Element.addKeyDownEventListener
+   (fn [event]
+     (when (treeitem? renderer node)
+       (match (tree-ancestor renderer node)
+         (Some tree)
+         (let [items (tree-focus-items-under renderer tree)
+               index (node-index items node)
+               key (Webapi.Dom.KeyboardEvent.key event)
+               target
+               (cond
+                 (= key "ArrowUp")
+                 (if (> index 0) (Some (nth items (dec index))) None)
+                 (= key "ArrowDown")
+                 (if (< (inc index) (count items))
+                   (Some (nth items (inc index))) None)
+                 (= key "Home") (Some (nth items 0))
+                 (= key "End") (Some (nth items (dec (count items))))
+                 :else None)]
+           (if-some [target-node target]
+             (do
+               (Webapi.Dom.KeyboardEvent.preventDefault event)
+               (focus-tree-item! renderer tree items target-node))
+             (cond
+               (= key "ArrowLeft")
+               (do
+                 (Webapi.Dom.KeyboardEvent.preventDefault event)
+                 (if (and
+                      (= (retained/property
+                          (:web-store renderer) node Expanded)
+                         (Some (BoolValue true)))
+                      (event-capability? renderer node ToggleEnabled))
+                   (Stdlib.ignore
+                    ((deref (:web-event-handler renderer))
+                     (proto/ToggleChanged node false)))
+                   (match (logical-tree-parent renderer tree items node)
+                     (Some parent)
+                     (focus-tree-item! renderer tree items parent)
+                     None (Stdlib.ignore true))))
+               (= key "ArrowRight")
+               (do
+                 (Webapi.Dom.KeyboardEvent.preventDefault event)
+                 (if (and
+                      (= (retained/property
+                          (:web-store renderer) node Expanded)
+                         (Some (BoolValue false)))
+                      (event-capability? renderer node ToggleEnabled))
+                   (Stdlib.ignore
+                    ((deref (:web-event-handler renderer))
+                     (proto/ToggleChanged node true)))
+                   (match (logical-tree-child renderer tree items node)
+                     (Some child)
+                     (focus-tree-item! renderer tree items child)
+                     None (Stdlib.ignore true))))
+               (and
+                (not (= kind ListItem))
+                (or (= key "Enter") (= key " ")))
+               (do
+                 (Webapi.Dom.KeyboardEvent.preventDefault event)
+                 (when (event-capability? renderer node PressEnabled)
+                   (Stdlib.ignore
+                    ((deref (:web-event-handler renderer))
+                     (proto/Press node)))))
+               :else (Stdlib.ignore true))))
+         None (Stdlib.ignore true)))
+     (Stdlib.ignore true))
+   dom-node))
 
 (defn- attach-pressable-text-events! [renderer node dom-node]
   (Webapi.Dom.Element.addEventListener
@@ -806,6 +1040,8 @@
    group-node))
 
 (defn- attach-events! [renderer node kind dom-node]
+  (when (proto/tree-row-kind? kind)
+    (attach-tree-item-events! renderer node kind dom-node))
   (match kind
     Text (attach-pressable-text-events! renderer node dom-node)
     Button (attach-button-events! renderer node kind dom-node)
@@ -1084,6 +1320,17 @@
               _ (Webapi.Dom.Element.removeAttribute "aria-pressed" element))))))
     (Stdlib.ignore true)))
 
+(defn- refresh-node-class! [renderer node kind dom-node]
+  (let [style-class
+        (match (retained/property (:web-store renderer) node StyleClass)
+          (Some (StringValue value)) value
+          _ "")
+        tree-class (if (treeitem? renderer node) "lui-tree-item" "")]
+    (Webapi.Dom.Element.setClassName
+     dom-node
+     (string/trim
+      (str (base-class-name kind) " " tree-class " " style-class)))))
+
 (defn- apply-property! [renderer node kind dom-node property value]
   (match (tuple property value)
     (tuple TextValue (StringValue text))
@@ -1134,7 +1381,10 @@
             (Webapi.Dom.Element.setAttribute "disabled" "disabled" trigger))
           (set-state-attribute! dom-node "data-disabled" (not enabled))))
       (when (direct-toggle? kind)
-        (set-state-attribute! dom-node "data-disabled" (not enabled))))
+        (set-state-attribute! dom-node "data-disabled" (not enabled)))
+      (when (treeitem? renderer node)
+        (Webapi.Dom.Element.setAttribute
+         "aria-disabled" (if enabled "false" "true") dom-node)))
 
     (tuple Gap (IntValue gap))
     (do
@@ -1223,9 +1473,8 @@
        (child-element dom-node 0)
        dom-node))
 
-    (tuple StyleClass (StringValue class-name))
-    (Webapi.Dom.Element.setClassName
-     dom-node (str (base-class-name kind) " " class-name))
+    (tuple StyleClass (StringValue _class-name))
+    (refresh-node-class! renderer node kind dom-node)
 
     (tuple HeadingLevel (IntValue level))
     (Webapi.Dom.Element.setAttribute "aria-level" (str level) dom-node)
@@ -1286,7 +1535,7 @@
         (Webapi.Dom.Element.setAttribute
          "aria-expanded" (if selected "true" "false")
          (child-element dom-node 0)))
-      (if (= kind TableRow)
+      (if (or (= kind TableRow) (treeitem? renderer node))
         (do
           (set-state-attribute! dom-node "data-selected" selected)
           (Webapi.Dom.Element.setAttribute
@@ -1342,6 +1591,21 @@
         (if enabled
           (Webapi.Dom.Element.setAttribute "tabindex" "0" dom-node)
           (Webapi.Dom.Element.removeAttribute "tabindex" dom-node))))
+
+    (tuple RoleValue (StringValue role))
+    (do
+      (Webapi.Dom.Element.setAttribute "role" role dom-node)
+      (Webapi.Dom.Element.removeAttribute "aria-pressed" dom-node)
+      (refresh-node-class! renderer node kind dom-node))
+
+    (tuple TreeLevel (IntValue level))
+    (Webapi.Dom.Element.setAttribute "aria-level" (str level) dom-node)
+
+    (tuple Expanded (BoolValue expanded))
+    (do
+      (set-state-attribute! dom-node "data-expanded" expanded)
+      (Webapi.Dom.Element.setAttribute
+       "aria-expanded" (if expanded "true" "false") dom-node))
 
     (tuple SubmitEnabled (BoolValue enabled))
     (set-state-attribute! dom-node "data-submit-enabled" enabled)
@@ -1572,6 +1836,7 @@
 (defn- apply-dom-batch! [renderer previous-nodes batch]
   (doseq [operation (:ops batch)]
     (apply-dom-op! renderer previous-nodes operation))
+  (update-all-tree-roving! renderer)
   (Stdlib.ignore true))
 
 (defn backend [renderer]

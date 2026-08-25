@@ -8,7 +8,7 @@
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
                      Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip
-                     Accordion Table TableRow TableCell]]
+                     Accordion Table TableRow TableCell Tree]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -72,7 +72,8 @@
     Accordion AppleAccordion
     Table AppleTable
     TableRow AppleTableRow
-    TableCell AppleTableCell))
+    TableCell AppleTableCell
+    Tree AppleTree))
 
 (defn backend-for [renderer operating-system host]
   (record proto/backend

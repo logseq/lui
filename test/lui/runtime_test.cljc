@@ -1075,6 +1075,124 @@
      (wire/encode-batch batch)
      "List uses the pinned Vercel Native wire name")))
 
+(deftest tree-has-the-pinned-role-driven-contract
+  (let [properties
+        (hash-map
+         proto/RoleValue (proto/StringValue "treeitem")
+         proto/TreeLevel (proto/IntValue 2)
+         proto/Expanded (proto/BoolValue true)
+         proto/Selected (proto/BoolValue false)
+         proto/PressEnabled (proto/BoolValue true)
+         proto/ChangeEnabled (proto/BoolValue true)
+         proto/ToggleEnabled (proto/BoolValue true))
+        batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Tree)
+                      (proto/create-node-op 2 proto/ListItem)
+                      (proto/set-prop-op
+                       1 proto/Gap (proto/IntValue 2))
+                      (proto/set-prop-op
+                       1 proto/AccessibilityLabel
+                       (proto/StringValue "Project files"))
+                      (proto/set-prop-op
+                       2 proto/RoleValue (proto/StringValue "treeitem"))
+                      (proto/set-prop-op
+                       2 proto/TreeLevel (proto/IntValue 2))
+                      (proto/set-prop-op
+                       2 proto/Expanded (proto/BoolValue true))
+                      (proto/set-prop-op
+                       2 proto/Selected (proto/BoolValue false))
+                      (proto/insert-child-op 1 2 0)]))]
+    (is (proto/property-supported? proto/Tree proto/Gap)
+        "Tree is a vertical gap container")
+    (is (proto/property-supported? proto/Tree proto/AccessibilityLabel)
+        "Tree accepts its accessible label")
+    (is (not (proto/child-kind-supported? proto/Tree proto/Text))
+        "Tree contains row containers rather than anonymous leaf content")
+    (doseq [kind [proto/ListItem proto/Row proto/Panel]]
+      (doseq [property
+              [proto/RoleValue proto/TreeLevel proto/Expanded proto/Selected
+               proto/PressEnabled proto/ChangeEnabled proto/ToggleEnabled]]
+        (is (proto/property-supported? kind property)
+            "ordinary retained rows admit the Tree row vocabulary"))
+      (is (proto/event-supported-for-properties?
+           kind properties (proto/Press 2))
+          "a Tree row can activate")
+      (is (proto/event-supported-for-properties?
+           kind properties (proto/Change 2))
+          "a Tree row can select while focus moves")
+      (is (proto/event-supported-for-properties?
+           kind properties (proto/ToggleChanged 2 false))
+          "an expandable Tree row can request disclosure"))
+    (is (proto/property-value-supported?
+         proto/RoleValue (proto/StringValue "treeitem"))
+        "treeitem is the closed role value")
+    (doseq [role ["tree" "listitem" "row" ""]]
+      (is (not (proto/property-value-supported?
+                proto/RoleValue (proto/StringValue role)))
+          "unimplemented or invalid roles are rejected"))
+    (is (proto/property-value-supported?
+         proto/TreeLevel (proto/IntValue 1))
+        "Tree levels are one-based")
+    (is (not (proto/property-value-supported?
+              proto/TreeLevel (proto/IntValue 0)))
+        "zero cannot masquerade as a declared Tree level")
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"tree\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"list-item\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"gap\",\"value\":2},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"accessibility-label\",\"value\":\"Project files\"},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"role\","
+      "\"value\":\"treeitem\"},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"tree-level\","
+      "\"value\":2},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"expanded\","
+      "\"value\":true},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"selected\","
+      "\"value\":false},"
+      "{\"op\":\"insert-child\",\"parent\":1,\"child\":2,\"index\":0}]}" )
+     (wire/encode-batch batch)
+     "Tree uses the pinned public wire vocabulary")))
+
+(deftest tree-role-metadata-is-validated-atomically
+  (doseq [operations
+          [[(proto/create-node-op 1 proto/Column)
+            (proto/create-node-op 2 proto/ListItem)
+            (proto/set-prop-op
+             2 proto/RoleValue (proto/StringValue "treeitem"))
+            (proto/insert-child-op 1 2 0)]
+           [(proto/create-node-op 1 proto/Tree)
+            (proto/create-node-op 2 proto/ListItem)
+            (proto/set-prop-op 2 proto/Expanded (proto/BoolValue true))
+            (proto/insert-child-op 1 2 0)]
+           [(proto/create-node-op 1 proto/Tree)
+            (proto/create-node-op 2 proto/ListItem)
+            (proto/set-prop-op
+             2 proto/RoleValue (proto/StringValue "treeitem"))
+            (proto/set-prop-op 2 proto/TreeLevel (proto/IntValue 0))
+            (proto/insert-child-op 1 2 0)]
+           [(proto/create-node-op 1 proto/Tree)
+            (proto/create-node-op 2 proto/Text)
+            (proto/set-prop-op
+             1 proto/AccessibilityLabel (proto/StringValue "Project files"))
+            (proto/set-prop-op
+             2 proto/TextValue (proto/StringValue "orphaned leaf"))
+            (proto/insert-child-op 1 2 0)]]]
+    (let [renderer (apple/create)
+          backend (:apply-batch (apple/backend renderer))]
+      (is (thrown? Invalid_argument
+                   (backend
+                    (record proto/patch-batch
+                            (generation 1)
+                            (ops operations))))
+          "malformed Tree metadata rejects the entire batch")
+      (assert-equal 0 (apple/node-count renderer)
+                    "a rejected Tree batch commits no nodes"))))
+
 (deftest table-family-has-the-pinned-closed-contract
   (let [batch
         (record proto/patch-batch

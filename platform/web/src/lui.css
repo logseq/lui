@@ -156,6 +156,27 @@
     @apply outline-none ring-2 ring-inset ring-ring;
   }
 
+  .lui-tree {
+    @apply flex flex-col;
+  }
+
+  .lui-tree-item {
+    @apply rounded-md outline-0 transition-colors;
+  }
+
+  .lui-tree-item:hover,
+  .lui-tree-item[data-selected] {
+    @apply bg-accent text-accent-foreground;
+  }
+
+  .lui-tree-item:focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+
+  .lui-tree-item[aria-disabled="true"] {
+    @apply cursor-not-allowed opacity-50;
+  }
+
   .lui-avatar {
     @apply relative size-10 shrink-0 overflow-hidden rounded-full bg-secondary text-secondary-foreground;
   }
