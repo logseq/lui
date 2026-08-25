@@ -820,6 +820,48 @@
      (Stdlib.ignore true))
    dom-node))
 
+(defn- attach-picker-trigger-events! [renderer node dom-node]
+  (let [current-pointer-type (atom "mouse")
+        suppress-click (atom false)
+        press!
+        (fn []
+          (when (event-capability? renderer node PressEnabled)
+            (Stdlib.ignore
+             ((deref (:web-event-handler renderer)) (proto/Press node))))
+          true)]
+    (Webapi.Dom.Element.addEventListener
+     "pointerdown"
+     (fn [event]
+       (reset! current-pointer-type (pointer-type event))
+       (Stdlib.ignore true))
+     dom-node)
+    (Webapi.Dom.Element.addEventListener
+     "mousedown"
+     (fn [event]
+       (when (= (Webapi.Dom.MouseEvent.button
+                 (pointer-mouse-event event)) 0)
+         (when (= (deref current-pointer-type) "touch")
+           (Webapi.Dom.Event.preventDefault event))
+         (reset! suppress-click true)
+         (Stdlib.ignore
+          (Js.Global.setTimeout
+           0
+           :f
+           (fn []
+             (reset! suppress-click false)
+             (Stdlib.ignore true))))
+         (Stdlib.ignore (press!)))
+       (Stdlib.ignore true))
+     dom-node)
+    (Webapi.Dom.Element.addEventListener
+     "click"
+     (fn [_event]
+       (if (deref suppress-click)
+         (Stdlib.ignore (reset! suppress-click false))
+         (Stdlib.ignore (press!)))
+       (Stdlib.ignore true))
+     dom-node)))
+
 (defn- attach-accordion-event! [renderer node dom-node]
   (Webapi.Dom.Element.addEventListener
    "click"
@@ -1412,6 +1454,9 @@
 
 (defn- attach-dropdown-events! [renderer node _dropdown-node]
   (let [document (:web-document renderer)
+        window
+        (Webapi.Dom.HtmlDocument.defaultView
+         (Webapi.Dom.Document.unsafeAsHtmlDocument document))
         typeahead-buffer (atom "")
         typeahead-timer (atom None)
         cancel-typeahead!
@@ -1566,6 +1611,11 @@
      "pointerdown" pointer-handler document)
     (Webapi.Dom.Document.addEventListener
      "click" refresh-position! document)
+    (match window
+      (Some current-window)
+      (Webapi.Dom.Window.addEventListener
+       "resize" refresh-position! current-window)
+      None (Stdlib.ignore true))
     (Webapi.Dom.Document.addKeyDownEventListener key-handler document)
     (swap!
      (:web-cleanups renderer)
@@ -1577,6 +1627,11 @@
         "pointerdown" pointer-handler document)
        (Webapi.Dom.Document.removeEventListener
         "click" refresh-position! document)
+       (match window
+         (Some current-window)
+         (Webapi.Dom.Window.removeEventListener
+          "resize" refresh-position! current-window)
+         None (Stdlib.ignore true))
        (Webapi.Dom.Document.removeKeyDownEventListener key-handler document)
        (Stdlib.ignore true)))
     (Stdlib.ignore true)))
@@ -2182,37 +2237,126 @@
     (Some (IntValue delay)) delay
     _ 600))
 
+(defn- clamp-popup-axis [value size viewport-size]
+  (let [edge 8.0
+        maximum (max edge (- viewport-size size edge))]
+    (max edge (min value maximum))))
+
+(defn- resolved-popup-side
+  [preferred anchor-bounds popup-width popup-height
+   viewport-width viewport-height offset]
+  (let [above-space
+        (- (Webapi.Dom.DomRect.top anchor-bounds) offset 8.0)
+        below-space
+        (- viewport-height
+           (Webapi.Dom.DomRect.bottom anchor-bounds) offset 8.0)
+        left-space
+        (- (Webapi.Dom.DomRect.left anchor-bounds) offset 8.0)
+        right-space
+        (- viewport-width
+           (Webapi.Dom.DomRect.right anchor-bounds) offset 8.0)]
+    (match preferred
+      "above"
+      (if (or (<= popup-height above-space)
+              (>= above-space below-space))
+        "above" "below")
+      "left"
+      (if (or (<= popup-width left-space)
+              (>= left-space right-space))
+        "left" "right")
+      "right"
+      (if (or (<= popup-width right-space)
+              (>= right-space left-space))
+        "right" "left")
+      _
+      (if (or (<= popup-height below-space)
+              (>= below-space above-space))
+        "below" "above"))))
+
+(defn- position-anchored!
+  [document positioner popup anchor-bounds preferred alignment offset]
+  (let [root (Webapi.Dom.Document.documentElement document)
+        viewport-width
+        (Stdlib.float_of_int (Webapi.Dom.Element.clientWidth root))
+        viewport-height
+        (Stdlib.float_of_int (Webapi.Dom.Element.clientHeight root))
+        popup-bounds (Webapi.Dom.Element.getBoundingClientRect popup)
+        popup-element (Webapi.Dom.Element.unsafeAsHtmlElement popup)
+        popup-width
+        (+ 1.0
+           (max
+            (Stdlib.float_of_int
+             (Webapi.Dom.HtmlElement.offsetWidth popup-element))
+            (Webapi.Dom.DomRect.width popup-bounds)))
+        popup-height
+        (+ 1.0
+           (max
+            (Stdlib.float_of_int
+             (Webapi.Dom.HtmlElement.offsetHeight popup-element))
+            (Webapi.Dom.DomRect.height popup-bounds)))
+        side
+        (resolved-popup-side
+         preferred anchor-bounds popup-width popup-height
+         viewport-width viewport-height offset)
+        vertical (or (= side "above") (= side "below"))
+        aligned-left
+        (match alignment
+          "center"
+          (- (+ (Webapi.Dom.DomRect.left anchor-bounds)
+                (/ (Webapi.Dom.DomRect.width anchor-bounds) 2.0))
+             (/ popup-width 2.0))
+          "end"
+          (- (Webapi.Dom.DomRect.right anchor-bounds) popup-width)
+          _ (Webapi.Dom.DomRect.left anchor-bounds))
+        aligned-top
+        (match alignment
+          "center"
+          (- (+ (Webapi.Dom.DomRect.top anchor-bounds)
+                (/ (Webapi.Dom.DomRect.height anchor-bounds) 2.0))
+             (/ popup-height 2.0))
+          "end"
+          (- (Webapi.Dom.DomRect.bottom anchor-bounds) popup-height)
+          _ (Webapi.Dom.DomRect.top anchor-bounds))
+        left
+        (clamp-popup-axis
+         (if vertical
+           aligned-left
+           (if (= side "left")
+             (- (Webapi.Dom.DomRect.left anchor-bounds)
+                popup-width offset)
+             (+ (Webapi.Dom.DomRect.right anchor-bounds) offset)))
+         popup-width viewport-width)
+        top
+        (clamp-popup-axis
+         (if vertical
+           (if (= side "above")
+             (- (Webapi.Dom.DomRect.top anchor-bounds)
+                popup-height offset)
+             (+ (Webapi.Dom.DomRect.bottom anchor-bounds) offset))
+           aligned-top)
+         popup-height viewport-height)]
+    (Webapi.Dom.Element.setAttribute "data-side" side positioner)
+    (when (not (Webapi.Dom.Element.isSameNode
+                (Webapi.Dom.Element.asNode popup) positioner))
+      (Webapi.Dom.Element.setAttribute "data-side" side popup))
+    (set-style! positioner "left" (str left "px"))
+    (set-style! positioner "top" (str top "px"))
+    (Stdlib.ignore true)))
+
 (defn- position-tooltip! [renderer node]
   (let [tooltip (dom-node renderer node)
         anchor (dropdown-anchor-node renderer node)
         anchor-bounds (Webapi.Dom.Element.getBoundingClientRect anchor)
-        tooltip-bounds (Webapi.Dom.Element.getBoundingClientRect tooltip)
         offset (dropdown-offset renderer node)
         side (dropdown-side tooltip)
         alignment
         (match (Webapi.Dom.Element.getAttribute
                 "data-anchor-alignment" tooltip)
           (Some value) value
-          None "start")
-        left
-        (match alignment
-          "center"
-          (- (+ (Webapi.Dom.DomRect.left anchor-bounds)
-                (/ (Webapi.Dom.DomRect.width anchor-bounds) 2.0))
-             (/ (Webapi.Dom.DomRect.width tooltip-bounds) 2.0))
-          "end"
-          (- (Webapi.Dom.DomRect.right anchor-bounds)
-             (Webapi.Dom.DomRect.width tooltip-bounds))
-          _ (Webapi.Dom.DomRect.left anchor-bounds))
-        top
-        (if (= side "above")
-          (- (Webapi.Dom.DomRect.top anchor-bounds)
-             (Webapi.Dom.DomRect.height tooltip-bounds)
-             offset)
-          (+ (Webapi.Dom.DomRect.bottom anchor-bounds) offset))]
-    (set-style! tooltip "left" (str left "px"))
-    (set-style! tooltip "top" (str top "px"))
-    (Stdlib.ignore true)))
+          None "start")]
+    (position-anchored!
+     (:web-document renderer) tooltip tooltip anchor-bounds
+     side alignment offset)))
 
 (defn- begin-popup-open! [popup]
   (Webapi.Dom.Element.removeAttribute "data-closed" popup)
@@ -2316,7 +2460,12 @@
           None (Stdlib.ignore true))
         (reset! (:web-open-tooltip renderer) (Some node))
         (begin-popup-open! tooltip)
-        (position-tooltip! renderer node))
+        (position-tooltip! renderer node)
+        (Webapi.requestAnimationFrame
+         (fn [_time]
+           (if-some [_current (retained/node (:web-store renderer) node)]
+             (position-tooltip! renderer node)
+             (Stdlib.ignore true)))))
       (do
         (begin-popup-close! tooltip)
         (finish-popup-close-after-transition!
@@ -2350,6 +2499,9 @@
 
 (defn- mount-tooltip! [renderer node tooltip]
   (let [document (:web-document renderer)
+        window
+        (Webapi.Dom.HtmlDocument.defaultView
+         (Webapi.Dom.Document.unsafeAsHtmlDocument document))
         trigger (dropdown-anchor-node renderer node)
         tooltip-id (node-dom-id node)
         pointer-inside (atom false)
@@ -2487,6 +2639,11 @@
             (Webapi.Dom.KeyboardEvent.preventDefault event)
             (cancel-warm!)
             (hide! false))
+          (Stdlib.ignore true))
+        refresh-position!
+        (fn [_event]
+          (when (= (deref (:web-open-tooltip renderer)) (Some node))
+            (position-tooltip! renderer node))
           (Stdlib.ignore true))]
     (add-tooltip-description! trigger tooltip-id)
     (Webapi.Dom.Element.addEventListener "pointerenter" pointer-enter! trigger)
@@ -2494,6 +2651,11 @@
     (Webapi.Dom.Element.addEventListener "focusin" focus-in! trigger)
     (Webapi.Dom.Element.addEventListener "focusout" focus-out! trigger)
     (Webapi.Dom.Element.addEventListener "pointerdown" press! trigger)
+    (match window
+      (Some current-window)
+      (Webapi.Dom.Window.addEventListener
+       "resize" refresh-position! current-window)
+      None (Stdlib.ignore true))
     (Webapi.Dom.Document.addKeyDownEventListener key! document)
     (swap!
      (:web-cleanups renderer) assoc node
@@ -2512,6 +2674,11 @@
        (Webapi.Dom.Element.removeEventListener "focusin" focus-in! trigger)
        (Webapi.Dom.Element.removeEventListener "focusout" focus-out! trigger)
        (Webapi.Dom.Element.removeEventListener "pointerdown" press! trigger)
+       (match window
+         (Some current-window)
+         (Webapi.Dom.Window.removeEventListener
+          "resize" refresh-position! current-window)
+         None (Stdlib.ignore true))
        (Webapi.Dom.Document.removeKeyDownEventListener key! document)
        (Stdlib.ignore true)))
     (Stdlib.ignore true)))
@@ -2720,11 +2887,11 @@
     Input (attach-text-events! renderer node kind dom-node)
     SearchField (attach-text-events! renderer node kind dom-node)
     Textarea (attach-text-events! renderer node kind dom-node)
-    Select (attach-picker-press-event! renderer node dom-node)
+    Select (attach-picker-trigger-events! renderer node dom-node)
     Combobox
     (do
       (attach-text-events! renderer node kind dom-node)
-      (attach-picker-press-event! renderer node (child-element dom-node 1)))
+      (attach-picker-trigger-events! renderer node (child-element dom-node 1)))
     DropdownMenu
     (attach-dropdown-events! renderer node (child-element dom-node 0))
     ContextMenu (attach-context-menu-events! renderer node dom-node)
@@ -4045,25 +4212,16 @@
             (> (Webapi.Dom.DomRect.height anchor-bounds) 0.0))]
     (set-state-attribute! positioner "hidden" (not visible))
     (when visible
-      (let [popup-bounds (Webapi.Dom.Element.getBoundingClientRect popup)
-            offset (dropdown-offset renderer node)
+      (let [offset (dropdown-offset renderer node)
             side (dropdown-side positioner)
-            left
-            (if (= side "right")
-              (+ (Webapi.Dom.DomRect.right anchor-bounds) offset)
-              (if (= side "left")
-                (- (Webapi.Dom.DomRect.left anchor-bounds)
-                   (Webapi.Dom.DomRect.width popup-bounds) offset)
-                (Webapi.Dom.DomRect.left anchor-bounds)))
-            top
-            (if (= side "above")
-              (- (Webapi.Dom.DomRect.top anchor-bounds)
-                 (Webapi.Dom.DomRect.height popup-bounds) offset)
-              (if (or (= side "left") (= side "right"))
-                (Webapi.Dom.DomRect.top anchor-bounds)
-                (+ (Webapi.Dom.DomRect.bottom anchor-bounds) offset)))]
-        (set-style! positioner "left" (str left "px"))
-        (set-style! positioner "top" (str top "px"))))
+            alignment
+            (match (Webapi.Dom.Element.getAttribute
+                    "data-anchor-alignment" positioner)
+              (Some value) value
+              None "start")]
+        (position-anchored!
+         (:web-document renderer) positioner popup anchor-bounds
+         side alignment offset)))
     (Stdlib.ignore true)))
 
 (defn- set-dropdown-open! [renderer node open]
@@ -4072,7 +4230,12 @@
     (if open
       (do
         (begin-popup-open! popup)
-        (position-dropdown! renderer node))
+        (position-dropdown! renderer node)
+        (Webapi.requestAnimationFrame
+         (fn [_time]
+           (if-some [_current (retained/node (:web-store renderer) node)]
+             (position-dropdown! renderer node)
+             (Stdlib.ignore true)))))
       (do
         (begin-popup-close! popup)
         (Stdlib.ignore

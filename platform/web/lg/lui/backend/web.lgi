@@ -98,6 +98,12 @@
   :fn<web-renderer;int;unit>)
 (signature lui.backend.web/refresh-modal-host-inert! :fn<web-renderer;bool>)
 (signature lui.backend.web/tooltip-delay :fn<web-renderer;int;int>)
+(signature lui.backend.web/clamp-popup-axis
+  :fn<float;float;float;float>)
+(signature lui.backend.web/resolved-popup-side
+  :fn<string;Dom.domRect;float;float;float;float;float;string>)
+(signature lui.backend.web/position-anchored!
+  :fn<Dom.document;web-node;web-node;Dom.domRect;string;string;float;unit>)
 (signature lui.backend.web/position-tooltip! :fn<web-renderer;int;unit>)
 (signature lui.backend.web/set-tooltip-open! :fn<web-renderer;int;bool;unit>)
 (signature lui.backend.web/mount-tooltip! :fn<web-renderer;int;web-node;unit>)
@@ -152,6 +158,8 @@
 (signature lui.backend.web/attach-split-events!
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/attach-picker-press-event!
+  :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/attach-picker-trigger-events!
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/attach-accordion-event!
   :fn<web-renderer;int;web-node;unit>)

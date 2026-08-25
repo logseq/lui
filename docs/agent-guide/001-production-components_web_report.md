@@ -95,6 +95,14 @@ bounded no-event fallback, and immediate completion under reduced motion.
 Retained popup reopening removes the stale ending phase without replacing its
 DOM identity.
 
+Anchored popups also share collision placement now: requested top/bottom or
+left/right placement flips when necessary, both axes shift to an 8 px viewport
+gutter, the rendered side is exposed for motion styling, and an open popup
+tracks viewport resize. Select and Combobox triggers open on primary mousedown
+with the following click deduplicated, while MenuItem still requires a complete
+click. This keeps touch opening responsive without allowing the opening release
+to commit an option that was not present at press start.
+
 ## Base UI parity scope
 
 Behavioral parity applies to LUI components that overlap Base UI: Accordion,

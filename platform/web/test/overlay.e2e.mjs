@@ -465,6 +465,126 @@ test("Select keyboard navigation enters submenus and restores trigger focus", as
   )
 })
 
+test("Select touch press opens safely and flips inside a compact viewport", async () => {
+  await openGalleryPage("Select")
+  await browser("set", "viewport", "390", "844")
+
+  const opened = await state(`(() => {
+    const trigger = document.querySelector('.lui-select')
+    Object.assign(trigger.style, {
+      position: 'fixed',
+      right: '4px',
+      bottom: '4px',
+      width: '180px',
+      zIndex: '1',
+    })
+    trigger.focus()
+    trigger.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      pointerType: 'touch',
+      pointerId: 81,
+      button: 0,
+      buttons: 1,
+    }))
+    trigger.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      buttons: 1,
+    }))
+    return trigger.getAttribute('aria-expanded')
+  })()`)
+  assert.equal(opened, "true")
+  await browser("wait", "30")
+
+  assert.deepEqual(
+    await state(`(() => {
+      const trigger = document.querySelector('.lui-select')
+      const popup = document.getElementById(trigger?.getAttribute('aria-controls'))
+      const positioner = popup?.parentElement
+      const options = [...(popup?.querySelectorAll('.lui-menu-item') ?? [])]
+      const staging = options.find((option) => option.textContent.trim() === 'Staging')
+
+      staging?.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+        cancelable: true,
+        pointerType: 'touch',
+        pointerId: 81,
+        button: 0,
+        buttons: 0,
+      }))
+      staging?.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        buttons: 0,
+      }))
+
+      const bounds = popup?.getBoundingClientRect()
+      return {
+        expanded: trigger?.getAttribute('aria-expanded'),
+        side: positioner?.getAttribute('data-side'),
+        insideLeft: (bounds?.left ?? -1) >= 8,
+        insideRight: (bounds?.right ?? innerWidth + 1) <= innerWidth - 8,
+        insideTop: (bounds?.top ?? -1) >= 8,
+        insideBottom: (bounds?.bottom ?? innerHeight + 1) <= innerHeight - 8,
+        productionSelected: options
+          .find((option) => option.textContent.trim() === 'Production')
+          ?.getAttribute('aria-selected'),
+        stagingSelected: staging?.getAttribute('aria-selected'),
+      }
+    })()`),
+    {
+      expanded: "true",
+      side: "above",
+      insideLeft: true,
+      insideRight: true,
+      insideTop: true,
+      insideBottom: true,
+      productionSelected: "true",
+      stagingSelected: "false",
+    },
+  )
+})
+
+test("Open Select tracks anchor movement on viewport resize", async () => {
+  await openGalleryPage("Select")
+  await browser("set", "viewport", "480", "720")
+  await clickButton("Production")
+  await browser("wait", "30")
+
+  await evaluate(`(() => {
+    const trigger = document.querySelector('.lui-select')
+    Object.assign(trigger.style, {
+      position: 'fixed',
+      right: '4px',
+      bottom: '4px',
+      width: '180px',
+      zIndex: '1',
+    })
+    window.dispatchEvent(new Event('resize'))
+  })()`)
+  await browser("wait", "30")
+
+  assert.deepEqual(
+    await state(`(() => {
+      const trigger = document.querySelector('.lui-select')
+      const popup = document.getElementById(trigger?.getAttribute('aria-controls'))
+      const triggerBounds = trigger?.getBoundingClientRect()
+      const bounds = popup?.getBoundingClientRect()
+      return {
+        side: popup?.parentElement?.getAttribute('data-side'),
+        insideRight: (bounds?.right ?? innerWidth + 1) <= innerWidth - 8,
+        insideBottom: (bounds?.bottom ?? innerHeight + 1) <= innerHeight - 8,
+        followsAnchor: (bounds?.bottom ?? innerHeight + 1) <= (triggerBounds?.top ?? -1)
+          && Math.abs((bounds?.right ?? 0) - (innerWidth - 8)) <= 2,
+      }
+    })()`),
+    { side: "above", insideRight: true, insideBottom: true, followsAnchor: true },
+  )
+})
+
 test("Combobox keeps DOM focus in the input while navigating its listbox", async () => {
   await openGalleryPage("Combobox")
   await evaluate(`(() => {
@@ -538,6 +658,60 @@ test("Combobox keeps DOM focus in the input while navigating its listbox", async
       }
     })()`),
     { value: "", expanded: "false", activeDescendant: null, endingObserved: true, focused: true },
+  )
+})
+
+test("Combobox touch trigger opens without moving input focus and stays onscreen", async () => {
+  await openGalleryPage("Combobox")
+  await browser("set", "viewport", "390", "844")
+
+  assert.deepEqual(
+    await state(`(() => {
+      const root = document.querySelector('.lui-combobox')
+      const input = root?.querySelector('.lui-combobox-control')
+      const trigger = root?.querySelector('.lui-combobox-trigger')
+      Object.assign(root.style, {
+        position: 'fixed',
+        right: '4px',
+        bottom: '4px',
+        width: '200px',
+        zIndex: '1',
+      })
+      input?.focus()
+      trigger?.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        pointerType: 'touch',
+        pointerId: 82,
+        button: 0,
+        buttons: 1,
+      }))
+      trigger?.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        buttons: 1,
+      }))
+
+      const popup = document.getElementById(input?.getAttribute('aria-controls'))
+      const bounds = popup?.getBoundingClientRect()
+      return {
+        expanded: input?.getAttribute('aria-expanded'),
+        inputFocused: document.activeElement === input,
+        side: popup?.parentElement?.getAttribute('data-side'),
+        insideLeft: (bounds?.left ?? -1) >= 8,
+        insideRight: (bounds?.right ?? innerWidth + 1) <= innerWidth - 8,
+        insideBottom: (bounds?.bottom ?? innerHeight + 1) <= innerHeight - 8,
+      }
+    })()`),
+    {
+      expanded: "true",
+      inputFocused: true,
+      side: "above",
+      insideLeft: true,
+      insideRight: true,
+      insideBottom: true,
+    },
   )
 })
 
@@ -863,4 +1037,43 @@ test("Tooltip owns delayed pointer, immediate focus, Escape, ARIA, and static-la
   await evaluate(`document.querySelector('button[aria-label="Edit document"]')?.blur()`)
   await browser("wait", "80")
   assert.equal(await state(`document.querySelector('.lui-tooltip[data-anchor]')?.hasAttribute('data-open')`), false)
+})
+
+test("Tooltip flips and shifts inside compact viewport edges", async () => {
+  await openGalleryPage("Tooltip")
+  await browser("set", "viewport", "320", "640")
+  await evaluate(`(() => {
+    const trigger = document.querySelector('button[aria-label="Edit document"]')
+    Object.assign(trigger.style, {
+      position: 'fixed',
+      right: '2px',
+      top: '2px',
+      zIndex: '1',
+    })
+    trigger.focus()
+  })()`)
+  await browser("wait", "30")
+
+  assert.deepEqual(
+    await state(`(() => {
+      const tooltip = document.querySelector('.lui-tooltip[data-anchor]')
+      const bounds = tooltip?.getBoundingClientRect()
+      return {
+        open: tooltip?.hasAttribute('data-open'),
+        side: tooltip?.getAttribute('data-side'),
+        insideLeft: (bounds?.left ?? -1) >= 8,
+        insideRight: (bounds?.right ?? innerWidth + 1) <= innerWidth - 8,
+        insideTop: (bounds?.top ?? -1) >= 8,
+        insideBottom: (bounds?.bottom ?? innerHeight + 1) <= innerHeight - 8,
+      }
+    })()`),
+    {
+      open: true,
+      side: "below",
+      insideLeft: true,
+      insideRight: true,
+      insideTop: true,
+      insideBottom: true,
+    },
+  )
 })

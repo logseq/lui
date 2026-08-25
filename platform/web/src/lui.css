@@ -741,6 +741,8 @@ body {
   .lui-popup-positioner {
     --lui-anchor-offset: 0px;
     position: absolute;
+    width: max-content;
+    max-width: calc(100vw - 1rem);
     pointer-events: none;
   }
 
@@ -748,6 +750,7 @@ body {
     position: relative;
     display: flex;
     max-height: min(18rem, calc(100vh - 1rem));
+    max-width: calc(100vw - 1rem);
     min-width: 10rem;
     flex-direction: column;
     overflow: auto;

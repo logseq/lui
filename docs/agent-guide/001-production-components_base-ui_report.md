@@ -57,10 +57,18 @@ shells while releasing modal ownership and restoring focus immediately.
 Interrupted retained Tooltip and submenu exits cannot clear a reopened
 component's open phase.
 
-The remaining work in this report is still normative: touch-open Select and
-Combobox need modality-aware placement and press-release qualification, nested
-menus still need a pointer grace corridor, and anchored popups need shared
-collision-aware positioning.
+Anchored DropdownMenu, Select, Combobox, and Tooltip surfaces now share one
+viewport-aware placement helper. It preserves the requested side when it fits,
+flips to the opposite side when that has more usable space, shifts both axes to
+an 8 px viewport gutter, exposes the rendered `data-side`, and recomputes after
+viewport resize. Picker triggers open on the primary press while their click is
+deduplicated; MenuItem activation remains click-qualified, so the release of an
+opening touch cannot select an item that appeared beneath it. A touch-opened
+Combobox keeps its native input focused.
+
+The remaining work in this report is still normative: nested menus need a
+pointer grace corridor, Select needs selected-item alignment for non-touch
+input, and Combobox needs explicit empty-result semantics and live status.
 
 ## Implementation boundary
 
