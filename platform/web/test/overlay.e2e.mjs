@@ -78,10 +78,23 @@ test("Dialog is a portaled modal with model-owned dismissal and focus restoratio
         className: surface?.className,
         hostInert: document.querySelector('#app')?.hasAttribute('inert'),
         focusInside: Boolean(surface?.contains(document.activeElement)),
+        focusedPlaceholder: document.activeElement?.getAttribute('placeholder'),
       }
     })()`),
-    { layers: 1, modal: "true", className: "lui-dialog", hostInert: true, focusInside: true },
+    {
+      layers: 1,
+      modal: "true",
+      className: "lui-dialog",
+      hostInert: true,
+      focusInside: true,
+      focusedPlaceholder: "Note name",
+    },
   )
+
+  await browser("press", "Shift+Tab")
+  assert.equal(await state(`document.activeElement?.textContent?.trim()`), "Save")
+  await browser("press", "Tab")
+  assert.equal(await state(`document.activeElement?.getAttribute('placeholder')`), "Note name")
 
   await browser("press", "Escape")
   assert.deepEqual(
@@ -158,6 +171,173 @@ test("Tree click toggles disclosure and keeps selection model-owned", async () =
       labels: ["Documents", "Quarterly report.md", "Launch checklist.md"],
       selected: ["Quarterly report.md"],
     },
+  )
+})
+
+test("Tree is fully operable with one keyboard tab stop", async () => {
+  await openGalleryPage("Tree")
+  await evaluate(`document.querySelector('[role=treeitem]')?.focus()`)
+
+  await browser("press", "ArrowRight")
+  assert.deepEqual(
+    await state(`(() => {
+      const items = [...document.querySelectorAll('[role=treeitem]')]
+      return {
+        labels: items.map((item) => item.textContent.trim()),
+        tabStops: items.filter((item) => item.tabIndex === 0).map((item) => item.textContent.trim()),
+        focus: document.activeElement?.textContent.trim(),
+      }
+    })()`),
+    {
+      labels: ["Documents", "Quarterly report.md", "Launch checklist.md"],
+      tabStops: ["Documents"],
+      focus: "Documents",
+    },
+  )
+
+  await browser("press", "ArrowRight")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Quarterly report.md")
+  await browser("press", "ArrowDown")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Launch checklist.md")
+  await browser("press", "Home")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Documents")
+  await browser("press", "End")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Launch checklist.md")
+  await browser("press", "ArrowLeft")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Documents")
+  await browser("press", "ArrowLeft")
+  assert.deepEqual(
+    await state(`({
+      expanded: document.querySelector('[role=treeitem]')?.getAttribute('aria-expanded'),
+      children: document.querySelectorAll('[role=treeitem]').length,
+      focus: document.activeElement?.textContent.trim(),
+    })`),
+    { expanded: "false", children: 1, focus: "Documents" },
+  )
+})
+
+test("Select keyboard navigation enters submenus and restores trigger focus", async () => {
+  await openGalleryPage("Select")
+  await evaluate(`document.querySelector('.lui-select')?.focus()`)
+  await browser("press", "Enter")
+
+  assert.deepEqual(
+    await state(`({
+      expanded: document.querySelector('.lui-select')?.getAttribute('aria-expanded'),
+      focus: document.activeElement?.textContent.trim(),
+      focusClass: document.activeElement?.className,
+      listbox: (() => {
+        const trigger = document.querySelector('.lui-select')
+        window.__selectPopupID = trigger?.getAttribute('aria-controls')
+        return document.getElementById(window.__selectPopupID)?.getAttribute('role')
+      })(),
+    })`),
+    {
+      expanded: "true",
+      focus: "Production",
+      focusClass: "lui-menu-item",
+      listbox: "listbox",
+    },
+  )
+
+  await browser("press", "ArrowDown")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Staging")
+  await browser("press", "ArrowDown")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "More environments")
+  await browser("press", "ArrowRight")
+  assert.deepEqual(
+    await state(`({
+      focus: document.activeElement?.textContent.trim(),
+      submenuExpanded: [...document.getElementById(window.__selectPopupID)
+        .querySelectorAll('.lui-menu-item')]
+        .find((item) => item.textContent.includes('More environments'))
+        ?.getAttribute('aria-expanded'),
+    })`),
+    { focus: "Production region", submenuExpanded: "true" },
+  )
+
+  await browser("press", "Escape")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "More environments")
+  await browser("press", "Escape")
+  assert.deepEqual(
+    await state(`({
+      expanded: document.querySelector('.lui-select')?.getAttribute('aria-expanded'),
+      popupRemoved: document.getElementById(window.__selectPopupID) === null,
+      triggerFocused: document.activeElement === document.querySelector('.lui-select'),
+    })`),
+    { expanded: "false", popupRemoved: true, triggerFocused: true },
+  )
+})
+
+test("Combobox keeps DOM focus in the input while navigating its listbox", async () => {
+  await openGalleryPage("Combobox")
+  const input = '.lui-combobox-control'
+  await evaluate(`document.querySelector(${JSON.stringify(input)})?.focus()`)
+  await browser("press", "ArrowDown")
+
+  const comboboxOpened = await state(`(() => {
+    const control = document.querySelector(${JSON.stringify(input)})
+    const active = document.getElementById(control?.getAttribute('aria-activedescendant'))
+    const listbox = document.getElementById(control?.getAttribute('aria-controls'))
+    return {
+      expanded: control?.getAttribute('aria-expanded'),
+      controls: control?.getAttribute('aria-controls'),
+      listbox: listbox?.id,
+      listboxRole: listbox?.getAttribute('role'),
+      focusStayed: document.activeElement === control,
+      active: active?.textContent.trim(),
+    }
+  })()`)
+  assert.equal(comboboxOpened.expanded, "true")
+  assert.ok(comboboxOpened.controls)
+  assert.equal(comboboxOpened.listbox, comboboxOpened.controls)
+  assert.equal(comboboxOpened.listboxRole, "listbox")
+  assert.equal(comboboxOpened.focusStayed, true)
+  assert.equal(comboboxOpened.active, "Production")
+
+  await browser("press", "ArrowDown")
+  assert.equal(
+    await state(`document.getElementById(document.querySelector(${JSON.stringify(input)})
+      ?.getAttribute('aria-activedescendant'))?.textContent.trim()`),
+    "Staging",
+  )
+  await browser("press", "Escape")
+  assert.deepEqual(
+    await state(`(() => {
+      const control = document.querySelector(${JSON.stringify(input)})
+      return {
+        value: control?.value,
+        expanded: control?.getAttribute('aria-expanded'),
+        activeDescendant: control?.getAttribute('aria-activedescendant'),
+        focused: document.activeElement === control,
+      }
+    })()`),
+    { value: "", expanded: "false", activeDescendant: null, focused: true },
+  )
+})
+
+test("ContextMenu opens from the keyboard and returns focus on Escape", async () => {
+  await openGalleryPage("ContextMenu")
+  const host = '.lui-list-item'
+  await evaluate(`document.querySelector(${JSON.stringify(host)})?.focus()`)
+  await browser("press", "Shift+F10")
+
+  assert.deepEqual(
+    await state(`({
+      open: document.querySelector('.lui-context-menu')?.hasAttribute('data-open'),
+      focus: document.activeElement?.textContent.trim(),
+    })`),
+    { open: true, focus: "Rename" },
+  )
+  await browser("press", "ArrowDown")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Archive")
+  await browser("press", "Escape")
+  assert.deepEqual(
+    await state(`({
+      open: document.querySelector('.lui-context-menu')?.hasAttribute('data-open'),
+      hostFocused: document.activeElement === document.querySelector(${JSON.stringify(host)}),
+    })`),
+    { open: false, hostFocused: true },
   )
 })
 

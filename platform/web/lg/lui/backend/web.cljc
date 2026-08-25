@@ -2,6 +2,7 @@
   (:require [ocaml.package/melange-webapi]
             [clojure.string :as string]
             [ocaml.Webapi.Dom.HtmlCollection :as html-collection]
+            [ocaml.Webapi.Dom.NodeList :as node-list]
             [lui.extension :as ext]
             [lui.protocol :as proto
              :refer [Row Column Grid Stack Panel Card Alert Bubble Box
@@ -574,6 +575,98 @@
   (= (retained/property (:web-store renderer) node SubmitEnabled)
      (Some (BoolValue true))))
 
+(defn- picker-dropdown [renderer picker]
+  (if-some [current (retained/node (:web-store renderer) picker)]
+    (match (:retained-parent current)
+      (Some parent)
+      (loop [children (retained/children (:web-store renderer) parent)
+             index 0]
+        (if (= index (count children))
+          None
+          (let [child (nth children index)]
+            (if-some [child-node (retained/node (:web-store renderer) child)]
+              (if (standard-kind? child-node DropdownMenu)
+                (Some child)
+                (recur children (inc index)))
+              (recur children (inc index))))))
+      None None)
+    None))
+
+(defn- picker-under-parent [renderer parent]
+  (loop [children (retained/children (:web-store renderer) parent)
+         index 0]
+    (if (= index (count children))
+      None
+      (let [child (nth children index)]
+        (if-some [child-node (retained/node (:web-store renderer) child)]
+          (if (or (standard-kind? child-node Select)
+                  (standard-kind? child-node Combobox))
+            (Some child)
+            (recur children (inc index)))
+          (recur children (inc index)))))))
+
+(defn- picker-for-dropdown [renderer dropdown]
+  (if-some [current (retained/node (:web-store renderer) dropdown)]
+    (match (:retained-parent current)
+      (Some parent) (picker-under-parent renderer parent)
+      None None)
+    None))
+
+(defn- picker-control-element [renderer picker]
+  (let [picker-element (dom-node renderer picker)]
+    (if-some [current (retained/node (:web-store renderer) picker)]
+      (if (standard-kind? current Combobox)
+        (child-element picker-element 0)
+        picker-element)
+      (raise (Invalid_argument "unknown picker node")))))
+
+(defn- picker-menu-items [renderer dropdown]
+  (if-some [current (retained/node (:web-store renderer) dropdown)]
+    (filterv
+     (fn [child]
+       (if-some [child-node (retained/node (:web-store renderer) child)]
+         (and (standard-kind? child-node MenuItem)
+              (enabled-node? renderer child))
+         false))
+     (:retained-children current))
+    []))
+
+(defn- combobox-active-index [renderer picker items]
+  (if-some [value
+            (Webapi.Dom.Element.getAttribute
+             "data-lui-active-index"
+             (picker-control-element renderer picker))]
+    (if-some [index (parse-long value)]
+      (if (and (>= index 0) (< index (count items)))
+        (Some index)
+        None)
+      None)
+    None))
+
+(defn- set-combobox-active! [renderer picker dropdown index]
+  (let [items (picker-menu-items renderer dropdown)
+        control (picker-control-element renderer picker)]
+    (doseq [item items]
+      (Webapi.Dom.Element.removeAttribute "data-highlighted"
+                                          (dom-node renderer item)))
+    (when (and (not (empty? items)) (>= index 0) (< index (count items)))
+      (let [item (nth items index)
+            element (dom-node renderer item)]
+        (Webapi.Dom.Element.setAttribute
+         "data-lui-active-index" (str index) control)
+        (Webapi.Dom.Element.setAttribute "data-highlighted" "" element)
+        (Webapi.Dom.Element.setAttribute
+         "aria-activedescendant" (node-dom-id item) control)))))
+
+(defn- clear-combobox-active! [renderer picker]
+  (let [control (picker-control-element renderer picker)]
+    (Webapi.Dom.Element.removeAttribute "data-lui-active-index" control)
+    (Webapi.Dom.Element.removeAttribute "aria-activedescendant" control)))
+
+(defn- activate-menu-item! [renderer item]
+  (Webapi.Dom.HtmlElement.click
+   (Webapi.Dom.Element.unsafeAsHtmlElement (dom-node renderer item))))
+
 (defn- attach-text-events! [renderer node kind dom-node]
   (Webapi.Dom.Element.addEventListener
    "input"
@@ -604,21 +697,59 @@
          (Webapi.Dom.KeyboardEvent.preventDefault event)
          (Stdlib.ignore
           ((deref (:web-event-handler renderer)) (proto/Submit node))))
-       (when (and enter (= kind Combobox))
-         (Webapi.Dom.KeyboardEvent.preventDefault event)
-         (Stdlib.ignore
-          ((deref (:web-event-handler renderer))
-           (if (submit-enabled? renderer node)
-             (proto/Submit node)
-             (proto/Press node)))))
-       (when (and
-              (= kind Combobox)
-              (or
-               (= "ArrowDown" (Webapi.Dom.KeyboardEvent.key event))
-               (= "ArrowUp" (Webapi.Dom.KeyboardEvent.key event))))
-         (Webapi.Dom.KeyboardEvent.preventDefault event)
-         (Stdlib.ignore
-          ((deref (:web-event-handler renderer)) (proto/Press node))))
+       (when (= kind Combobox)
+         (let [key (Webapi.Dom.KeyboardEvent.key event)
+               dropdown (picker-dropdown renderer node)]
+           (cond
+             (or (= key "ArrowDown") (= key "ArrowUp"))
+             (do
+               (Webapi.Dom.KeyboardEvent.preventDefault event)
+               (match dropdown
+                 (Some menu)
+                 (let [items (picker-menu-items renderer menu)
+                       current (combobox-active-index renderer node items)
+                       navigation-key
+                       (if (= key "ArrowDown") "ArrowRight" "ArrowLeft")]
+                   (match (horizontal-focus-index
+                           navigation-key current (count items))
+                     (Some index) (set-combobox-active! renderer node menu index)
+                     None (Stdlib.ignore true)))
+                 None
+                 (Stdlib.ignore
+                  ((deref (:web-event-handler renderer)) (proto/Press node)))))
+
+             (= key "Enter")
+             (do
+               (Webapi.Dom.KeyboardEvent.preventDefault event)
+               (match dropdown
+                 (Some menu)
+                 (let [items (picker-menu-items renderer menu)
+                       current
+                       (combobox-active-index renderer node items)]
+                   (match current
+                     (Some index)
+                     (activate-menu-item! renderer (nth items index))
+                     None
+                     (when (not (empty? items))
+                       (set-combobox-active! renderer node menu 0))))
+                 None
+                 (Stdlib.ignore
+                  ((deref (:web-event-handler renderer))
+                   (if (submit-enabled? renderer node)
+                     (proto/Submit node)
+                     (proto/Press node))))))
+
+             (= key "Escape")
+             (match dropdown
+               (Some menu)
+               (do
+                 (Webapi.Dom.KeyboardEvent.preventDefault event)
+                 (Stdlib.ignore
+                  ((deref (:web-event-handler renderer))
+                   (proto/Dismiss menu))))
+               None (Stdlib.ignore true))
+
+             :else (Stdlib.ignore true))))
        (Stdlib.ignore true)))
    dom-node))
 
@@ -1022,6 +1153,35 @@
    (:web-host renderer) "inert" (not (empty? (deref (:web-modal-stack renderer)))))
   true)
 
+(defn- modal-focus-items [renderer parent]
+  (let [nodes
+        (Webapi.Dom.Element.querySelectorAll
+         (str
+          "button:not([disabled]):not([hidden]),"
+          "input:not([disabled]):not([hidden]),"
+          "textarea:not([disabled]):not([hidden]),"
+          "select:not([disabled]):not([hidden]),"
+          "[tabindex]:not([tabindex=\"-1\"]):not([disabled]):not([hidden])")
+         (dom-node renderer parent))]
+    (loop [index 0
+           result []]
+      (if (= index (node-list/length nodes))
+        result
+        (if-some [candidate (node-list/item index nodes)]
+          (if-some [candidate-element (Webapi.Dom.Element.ofNode candidate)]
+            (recur (inc index) (conj result candidate-element))
+            (recur (inc index) result))
+          (recur (inc index) result))))))
+
+(defn- focused-element-index [elements focused]
+  (loop [index 0]
+    (if (= index (count elements))
+      -1
+      (if (Webapi.Dom.Element.isSameNode
+           (Webapi.Dom.Element.asNode (nth elements index)) focused)
+        index
+        (recur (inc index))))))
+
 (defn- attach-modal-events! [renderer node dom-node]
   (let [document (:web-document renderer)
         html-document (Webapi.Dom.Document.unsafeAsHtmlDocument document)
@@ -1044,11 +1204,32 @@
           (Stdlib.ignore true))
         key-handler
         (fn [event]
-          (when (and
-                 (= "Escape" (Webapi.Dom.KeyboardEvent.key event))
-                 (topmost-modal? renderer node))
-            (Webapi.Dom.KeyboardEvent.preventDefault event)
-            (dismiss!))
+          (when (topmost-modal? renderer node)
+            (let [key (Webapi.Dom.KeyboardEvent.key event)]
+              (if (= "Escape" key)
+                (do
+                  (Webapi.Dom.KeyboardEvent.preventDefault event)
+                  (dismiss!))
+                (do
+                  (when (= "Tab" key)
+                    (let [items (modal-focus-items renderer node)
+                          focused
+                          (Webapi.Dom.EventTarget.unsafeAsElement
+                           (Webapi.Dom.KeyboardEvent.target event))
+                          index (focused-element-index items focused)
+                          backwards (Webapi.Dom.KeyboardEvent.shiftKey event)]
+                      (when (and
+                             (not (empty? items))
+                             (or (= index -1)
+                                 (and backwards (= index 0))
+                                 (and (not backwards)
+                                      (= index (dec (count items))))))
+                        (Webapi.Dom.KeyboardEvent.preventDefault event)
+                        (focus-element!
+                         (if backwards
+                           (nth items (dec (count items)))
+                           (nth items 0))))))
+                  true))))
           (Stdlib.ignore true))]
     (Webapi.Dom.Element.addEventListener "click" click-handler backdrop)
     (Webapi.Dom.Document.addKeyDownEventListener key-handler document)
@@ -1656,6 +1837,24 @@
            (Webapi.Dom.Event.stopImmediatePropagation event))
          None (Stdlib.ignore true))
        (Stdlib.ignore true))
+     host-node)
+    (Webapi.Dom.Element.addKeyDownEventListener
+     (fn [event]
+       (let [key (Webapi.Dom.KeyboardEvent.key event)]
+         (when (or (= key "ContextMenu")
+                   (and (= key "F10")
+                        (Webapi.Dom.KeyboardEvent.shiftKey event)))
+           (match (direct-context-menu renderer node)
+             (Some menu)
+             (let [bounds (Webapi.Dom.Element.getBoundingClientRect host-node)]
+               (Webapi.Dom.KeyboardEvent.preventDefault event)
+               (Stdlib.ignore
+                (show-context-menu!
+                 renderer menu
+                 (int (Webapi.Dom.DomRect.left bounds))
+                 (int (Webapi.Dom.DomRect.bottom bounds)))))
+             None (Stdlib.ignore true)))
+         (Stdlib.ignore true)))
      host-node)))
 
 (defn- attach-context-menu-events! [renderer node dom-node]
@@ -1694,14 +1893,13 @@
                       (if (= key "ArrowDown")
                         "ArrowRight"
                         (if (= key "ArrowUp") "ArrowLeft" key))]
-                  (match
-                   (horizontal-focus-index
-                    navigation-key current (count items))
-                    (Some index)
+                  (if-some [index
+                            (horizontal-focus-index
+                             navigation-key current (count items))]
                     (do
                       (Webapi.Dom.KeyboardEvent.preventDefault event)
                       (focus-context-menu-item! renderer node index))
-                    None (Stdlib.ignore true))))))
+                    (Stdlib.ignore true))))))
           (Stdlib.ignore true))
         focus-handler
         (fn [event]
@@ -3402,14 +3600,14 @@
   (if (= kind DropdownMenu)
     (child-element dom-node 0)
     (if (= kind Split)
-    (child-element dom-node 0)
-    (if (= kind Alert)
-      (child-element dom-node 1)
-      (if (= kind Bubble)
-        (child-element dom-node 0)
-        (if (or (= kind Accordion) (modal-surface? kind))
-          (child-element dom-node 1)
-          dom-node))))))
+      (child-element dom-node 0)
+      (if (= kind Alert)
+        (child-element dom-node 1)
+        (if (= kind Bubble)
+          (child-element dom-node 0)
+          (if (or (= kind Accordion) (modal-surface? kind))
+            (child-element dom-node 1)
+            dom-node))))))
 
 (defn- retained-content-container [current dom-node]
   (match (retained/standard-kind current)
@@ -3461,28 +3659,7 @@
     _ 0.0))
 
 (defn- dropdown-listbox? [renderer node]
-  (if-some [current (retained/node (:web-store renderer) node)]
-    (match (:retained-parent current)
-      (Some parent)
-      (if-some [parent-node (retained/node (:web-store renderer) parent)]
-        (let [children (:retained-children parent-node)]
-          (loop [index 0
-               picker false]
-            (if (= index (count children))
-              false
-              (let [child (nth children index)]
-              (if (= child node)
-                picker
-                (if-some [child-node
-                          (retained/node (:web-store renderer) child)]
-                  (recur
-                   (inc index)
-                   (or (standard-kind? child-node Select)
-                       (standard-kind? child-node Combobox)))
-                  (recur (inc index) picker)))))))
-        false)
-      None false)
-    false))
+  (not (= (picker-for-dropdown renderer node) None)))
 
 (defn- position-dropdown! [renderer node]
   (let [positioner (dom-node renderer node)
@@ -3530,9 +3707,12 @@
 (defn- mount-dropdown! [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
     (do
-      (Webapi.Dom.Element.setAttribute
-       "role" (if (dropdown-listbox? renderer node) "listbox" "menu")
-       (child-element (:platform-node current) 0))
+      (let [popup (child-element (:platform-node current) 0)]
+        (Webapi.Dom.Element.setAttribute
+         "role" (if (dropdown-listbox? renderer node) "listbox" "menu")
+         popup)
+        (Webapi.Dom.Element.setAttribute
+         "id" (str (node-dom-id node) "-popup") popup))
       (match (:retained-parent current)
       (Some parent)
       (if-some [parent-node (retained/node (:web-store renderer) parent)]
@@ -3602,7 +3782,52 @@
                 "mouseleave" close! popup)
                (Stdlib.ignore true)))
             (position-dropdown! renderer node))
-          (set-dropdown-open! renderer node true))
+          (do
+            (set-dropdown-open! renderer node true)
+            (match (picker-for-dropdown renderer node)
+              (Some picker)
+              (let [control (picker-control-element renderer picker)
+                    popup-id (str (node-dom-id node) "-popup")
+                    previous-cleanup
+                    (clojure.core/get (deref (:web-cleanups renderer)) node)]
+                (Webapi.Dom.Element.setAttribute "aria-controls" popup-id control)
+                (if-some [picker-node
+                          (retained/node (:web-store renderer) picker)]
+                  (if (standard-kind? picker-node Combobox)
+                    (Stdlib.ignore
+                     (Js.Global.setTimeout
+                      0 :f
+                      (fn []
+                        (if-some [_menu
+                                  (retained/node (:web-store renderer) node)]
+                          (set-combobox-active! renderer picker node 0)
+                          (Stdlib.ignore true))
+                        (Stdlib.ignore true))))
+                    (Stdlib.ignore
+                     (Js.Global.setTimeout
+                      0 :f
+                      (fn []
+                        (if-some [_menu
+                                  (retained/node (:web-store renderer) node)]
+                          (focus-context-menu-item! renderer node 0)
+                          (Stdlib.ignore true))
+                        (Stdlib.ignore true)))))
+                  (Stdlib.ignore true))
+                (Stdlib.ignore
+                 (swap!
+                  (:web-cleanups renderer) assoc node
+                  (fn []
+                    (match previous-cleanup
+                      (Some cleanup) (cleanup)
+                      None (Stdlib.ignore true))
+                    (Webapi.Dom.Element.removeAttribute "aria-controls" control)
+                    (Webapi.Dom.Element.removeAttribute
+                     "data-lui-active-index" control)
+                    (Webapi.Dom.Element.removeAttribute
+                     "aria-activedescendant" control)
+                    (focus-element! control)
+                    (Stdlib.ignore true)))))
+              None (Stdlib.ignore true))))
         (raise (Invalid_argument "dropdown parent is unavailable")))
       None (raise (Invalid_argument "dropdown requires an anchor parent"))))
     (raise (Invalid_argument "unknown dropdown node"))))
@@ -3643,19 +3868,21 @@
     None (Stdlib.ignore true)))
 
 (defn- update-picker-expanded! [renderer parent expanded]
-  (doseq [child (retained/children (:web-store renderer) parent)]
-    (if-some [current (retained/node (:web-store renderer) child)]
-      (match (standard-kind current)
-        Select
-        (Webapi.Dom.Element.setAttribute
-         "aria-expanded" (if expanded "true" "false")
-         (:platform-node current))
-        Combobox
-        (Webapi.Dom.Element.setAttribute
-         "aria-expanded" (if expanded "true" "false")
-         (child-element (:platform-node current) 0))
-        _ (Stdlib.ignore true))
-      (Stdlib.ignore true))))
+  (if-some [parent-node (retained/node (:web-store renderer) parent)]
+    (doseq [child (:retained-children parent-node)]
+      (if-some [current (retained/node (:web-store renderer) child)]
+        (match (standard-kind current)
+          Select
+          (Webapi.Dom.Element.setAttribute
+           "aria-expanded" (if expanded "true" "false")
+           (:platform-node current))
+          Combobox
+          (Webapi.Dom.Element.setAttribute
+           "aria-expanded" (if expanded "true" "false")
+           (child-element (:platform-node current) 0))
+          _ (Stdlib.ignore true))
+        (Stdlib.ignore true)))
+    (Stdlib.ignore true)))
 
 (defn- focused-descendant [renderer dom-node]
   (let [document
@@ -3788,11 +4015,11 @@
                 (standard-kind? parent-node ContextMenu)
                 (and
                  (standard-kind? parent-node DropdownMenu)
-                 (not (dropdown-listbox? renderer parent))))
+                 (not (dropdown-listbox? renderer parent)))
                 (Webapi.Dom.Element.setAttribute
                  "role" "menuitem" (:platform-node current))
                 (Webapi.Dom.Element.removeAttribute
-                 "aria-selected" (:platform-node current)))
+                 "aria-selected" (:platform-node current))))
               (Stdlib.ignore true)))
           (match (retained/standard-kind current)
             (Some Radio) (update-radio-group! renderer child)

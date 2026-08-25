@@ -1101,6 +1101,12 @@ an individual ceiling through the corresponding `LUI_PERF_*_MS_MAX`
 environment variable; correctness and incremental-work assertions are never
 disabled.
 
+The Web gallery also has a real-browser keyboard-only qualification suite. It
+covers modal focus containment and restoration, Tree disclosure and roving
+focus, Select and Combobox listbox navigation, recursive menus, keyboard-opened
+ContextMenu, Toolbar roving focus, Tooltip hover/focus/Escape behavior, and
+Toast focus, pause, close, and swipe interactions.
+
 Reference evidence captured on 2026-08-26 with an Apple M3 MacBook Air,
 macOS 26.4, arm64, and OCaml 5.5.0:
 
