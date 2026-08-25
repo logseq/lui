@@ -83,6 +83,20 @@
      [:text "Stack base layer"]]
     [:text {:padding 16} "Overlay layer"]]])
 
+(defui resizable-gallery []
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Resizable"]
+   [:row {:height 180}
+    [:resizable
+     {:width 260 :min-width 180 :max-width 480 :padding 12
+      :label "Resizable sidebar"}
+     [:column
+      [:text {:foreground "muted-foreground"} "Sidebar"]
+      [:paragraph
+       "Drag the right edge; unrelated Signal patches keep its native width."]]]]
+   [:paragraph
+    "Width seeds backend-owned geometry; a changed width source explicitly resets it."]])
+
 (defui dialog-gallery [open-source open-dialog close-dialog]
   [:column {:gap 16 :padding 32}
    [:heading {:level 2} "Dialog"]
@@ -638,6 +652,7 @@
    [icon-gallery]
    [progress-gallery progress-source progress-label-source advance-progress]
    [surface-gallery card-copy]
+   [resizable-gallery]
    [dialog-gallery dialog-open-source open-dialog close-dialog]
    [edge-surface-gallery
     drawer-open-source open-drawer close-drawer

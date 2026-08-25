@@ -1349,7 +1349,9 @@ final class LUIFlutterBackend {
       _NodeKind.column || _NodeKind.list => column(),
       _NodeKind.grid => grid(),
       _NodeKind.stack => stack(),
-      _NodeKind.panel || _NodeKind.card => Stack(children: children),
+      _NodeKind.panel ||
+      _NodeKind.card ||
+      _NodeKind.resizable => Stack(children: children),
       _NodeKind.box => Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1546,7 +1548,18 @@ final class LUIFlutterBackend {
             ),
             child: content,
           );
-    final width = state.properties['width'] as int?;
+    if (state.kind == _NodeKind.resizable) {
+      surface = _LUIResizable(
+        initialWidth: (state.properties['width'] as int?)?.toDouble(),
+        minimumWidth: (state.properties['min-width'] as int?)?.toDouble(),
+        maximumWidth: (state.properties['max-width'] as int?)?.toDouble(),
+        label: accessibilityLabel ?? 'Resizable',
+        child: surface,
+      );
+    }
+    final width = state.kind == _NodeKind.resizable
+        ? null
+        : state.properties['width'] as int?;
     final height = state.properties['height'] as int?;
     if (width != null || height != null) {
       surface = SizedBox(
@@ -1555,8 +1568,12 @@ final class LUIFlutterBackend {
         child: surface,
       );
     }
-    final minWidth = state.properties['min-width'] as int?;
-    final maxWidth = state.properties['max-width'] as int?;
+    final minWidth = state.kind == _NodeKind.resizable
+        ? null
+        : state.properties['min-width'] as int?;
+    final maxWidth = state.kind == _NodeKind.resizable
+        ? null
+        : state.properties['max-width'] as int?;
     final minHeight = state.properties['min-height'] as int?;
     final maxHeight = state.properties['max-height'] as int?;
     if (minWidth != null ||
@@ -1902,7 +1919,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.dropdownMenu ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
-                kind == _NodeKind.tableCell),
+                kind == _NodeKind.tableCell ||
+                kind == _NodeKind.resizable),
       'border-color' =>
         value is String &&
             kind != _NodeKind.avatar &&
@@ -1962,6 +1980,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.slider ||
                 kind == _NodeKind.avatar ||
                 kind == _NodeKind.tree ||
+                kind == _NodeKind.resizable ||
                 _isTreeRowKind(kind)),
       'text-alignment' =>
         value is String &&
@@ -2170,6 +2189,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.table ||
       kind == _NodeKind.tableRow ||
       kind == _NodeKind.tree ||
+      kind == _NodeKind.resizable ||
       kind.isModalSurface;
 
   int? _checkedRadio(_NodeState root) {
@@ -2564,7 +2584,97 @@ extension on _NodeKind {
       this == _NodeKind.sheet;
 
   bool get isOverlaySurface =>
-      this == _NodeKind.panel || this == _NodeKind.card;
+      this == _NodeKind.panel ||
+      this == _NodeKind.card ||
+      this == _NodeKind.resizable;
+}
+
+final class _LUIResizable extends StatefulWidget {
+  const _LUIResizable({
+    required this.initialWidth,
+    required this.minimumWidth,
+    required this.maximumWidth,
+    required this.label,
+    required this.child,
+  });
+
+  final double? initialWidth;
+  final double? minimumWidth;
+  final double? maximumWidth;
+  final String label;
+  final Widget child;
+
+  @override
+  State<_LUIResizable> createState() => _LUIResizableState();
+}
+
+final class _LUIResizableState extends State<_LUIResizable> {
+  double? _width;
+
+  @override
+  void initState() {
+    super.initState();
+    _width = _clamp(widget.initialWidth);
+  }
+
+  @override
+  void didUpdateWidget(covariant _LUIResizable oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialWidth != oldWidget.initialWidth) {
+      _width = _clamp(widget.initialWidth);
+    } else if (widget.minimumWidth != oldWidget.minimumWidth ||
+        widget.maximumWidth != oldWidget.maximumWidth) {
+      _width = _clamp(_width);
+    }
+  }
+
+  double? _clamp(double? width) {
+    if (width == null) return null;
+    return width.clamp(
+      widget.minimumWidth ?? 0,
+      widget.maximumWidth ?? double.infinity,
+    );
+  }
+
+  void _resize(double delta, double fallbackWidth) {
+    setState(() {
+      _width = _clamp((_width ?? fallbackWidth) + delta);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      label: widget.label,
+      onIncrease: () => _resize(16, context.size?.width ?? 0),
+      onDecrease: () => _resize(-16, context.size?.width ?? 0),
+      child: SizedBox(
+        width: _width,
+        child: Stack(
+          fit: StackFit.passthrough,
+          children: [
+            widget.child,
+            Positioned(
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: 12,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.resizeLeftRight,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragUpdate: (details) =>
+                      _resize(details.delta.dx, context.size?.width ?? 0),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 final class _LUIAvatarPainter extends CustomPainter {

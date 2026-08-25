@@ -7,17 +7,17 @@
                      Divider Scroll ListContainer Tabs ButtonGroup ToggleGroup
                      Spacer Spinner Icon Select Combobox DropdownMenu
                      MenuItem ListItem Avatar Breadcrumb Pagination Accordion
-                     Table TableRow TableCell Tree Dialog Drawer
-                     Sheet Tooltip TextValue Enabled Gap MainAlignment
-                     CrossAlignment GrowValue GridColumns PaddingValue PaddingHorizontal PaddingVertical
-                     BackgroundValue ForegroundValue BorderColorValue BorderWidth CornerRadius WidthValue
-                     HeightValue MinWidth MaxWidth MinHeight MaxHeight PlaceholderValue
-                     AccessibilityLabel StyleClass HeadingLevel Checked ProgressValue OrientationValue
-                     SizeValue IconName VariantValue InlineIconName IconPlacementValue Selected
-                     Autofocus SubmitOnEnter HoldEnabled ChangeEnabled ToggleEnabled PressEnabled
-                     SubmitEnabled DoublePressEnabled ImageIdValue SourceX SourceY SourceWidth
-                     SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay TextAlignment
-                     RoleValue TreeLevel Expanded]]))
+                     Table TableRow TableCell Tree Resizable Dialog
+                     Drawer Sheet Tooltip TextValue Enabled Gap
+                     MainAlignment CrossAlignment GrowValue GridColumns PaddingValue PaddingHorizontal
+                     PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth CornerRadius
+                     WidthValue HeightValue MinWidth MaxWidth MinHeight MaxHeight
+                     PlaceholderValue AccessibilityLabel StyleClass HeadingLevel Checked ProgressValue
+                     OrientationValue SizeValue IconName VariantValue InlineIconName IconPlacementValue
+                     Selected Autofocus SubmitOnEnter HoldEnabled ChangeEnabled ToggleEnabled
+                     PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue SourceX SourceY
+                     SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay
+                     TextAlignment RoleValue TreeLevel Expanded]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -67,6 +67,7 @@
     TableRow "table-row"
     TableCell "table-cell"
     Tree "tree"
+    Resizable "resizable"
     Dialog "dialog"
     Drawer "drawer"
     Sheet "sheet"

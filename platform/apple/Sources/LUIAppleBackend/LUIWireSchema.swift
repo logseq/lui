@@ -48,6 +48,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case tableRow = "table-row"
     case tableCell = "table-cell"
     case tree = "tree"
+    case resizable = "resizable"
     case dialog = "dialog"
     case drawer = "drawer"
     case sheet = "sheet"

@@ -40,6 +40,7 @@
                          (= tag :table-row)
                          (= tag :table-cell)
                          (= tag :tree)
+                         (= tag :resizable)
                          (= tag :spacer)
                          (= tag :spinner)
                          (= tag :icon)
@@ -582,6 +583,23 @@
        ~@(string-attribute-expansion
           context node (:label attrs) 'lui.protocol/AccessibilityLabel)
        ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
+       ~node)))
+
+(defelement resizable [context parent attrs & children]
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/resizable! ~context)]
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(int-attribute-expansion
+          context node (:width attrs) 'lui.protocol/WidthValue)
+       ~@(element-properties context node (assoc attrs :width nil))
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])

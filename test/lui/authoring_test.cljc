@@ -14,7 +14,7 @@
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput
                      AppleSelect AppleCombobox AppleDropdownMenu AppleMenuItem AppleListItem
-                     AppleTable AppleTableRow AppleTableCell AppleTree
+                     AppleTable AppleTableRow AppleTableCell AppleTree AppleResizable
                      AppleAvatar AppleDialog AppleDrawer AppleSheet AppleTooltip
                      AppleAccordion]]
             [lui.backend.flutter :as flutter]))
@@ -206,6 +206,12 @@
      {:role "treeitem" :tree-level 2 :selected file-selected-source
       :label "main.cljc" :on-change on-file-change}
      [:text "main.cljc"]]]])
+
+(defui retained-resizable [width-source]
+  [:resizable
+   {:width width-source :min-width 180 :padding 12
+    :label "Resizable sidebar"}
+   [:panel [:text "Sidebar content"]]])
 
 (defui retained-avatars [image-id]
   [:row {:gap 12}
@@ -936,6 +942,38 @@
        (Some (proto/BoolValue true))
        (apple/property renderer file proto/Selected)
        "selection patches only the retained file row"))))
+
+(deftest resizable-source-width-reconciles-without-replacing-native-state
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-resizable")
+        width (sig/state scheduler 240)
+        root
+        (retained-resizable
+         (ui/context application scope) (sig/value width))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [content (nth (apple/children renderer root) 0)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer root)
+        (Some AppleResizable)
+        (is true "Resizable maps to one retained native surface")
+        _ (is false "Resizable native mapping exists"))
+      (assert-equal
+       (Some (proto/IntValue 240))
+       (apple/property renderer root proto/WidthValue)
+       "source width seeds native geometry")
+      (sig/set! width 280)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "width reconciliation allocates no retained nodes")
+      (assert-equal content (nth (apple/children renderer root) 0)
+                    "stacked child identity survives a width reset")
+      (assert-equal
+       (Some (proto/IntValue 280))
+       (apple/property renderer root proto/WidthValue)
+       "changed source width patches only the retained surface"))))
 
 (deftest avatar-binds-a-model-owned-image-id-without-replacing-its-node
   (let [scheduler (sig/scheduler)

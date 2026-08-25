@@ -7,7 +7,7 @@
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
                      Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip Accordion
-                     Table TableRow TableCell Tree
+                     Table TableRow TableCell Tree Resizable
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
                      Progress Divider
@@ -101,7 +101,8 @@
     Table "lui-table"
     TableRow "lui-table-row"
     TableCell "lui-table-cell"
-    Tree "lui-tree"))
+    Tree "lui-tree"
+    Resizable "lui-resizable"))
 
 (defn- direct-toggle? [kind]
   (or (= kind Checkbox) (= kind SwitchControl) (= kind Radio)))

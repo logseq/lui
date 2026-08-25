@@ -631,6 +631,75 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 1) == nil)
     }
 
+    @Test("Resizable preserves dragged width until its source width changes")
+    func mapsResizable() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"resizable"},
+          {"op":"create-node","id":2,"kind":"panel"},
+          {"op":"set-prop","id":1,"property":"width","value":240},
+          {"op":"set-prop","id":1,"property":"min-width","value":180},
+          {"op":"set-prop","id":1,"property":"max-width","value":480},
+          {"op":"set-prop","id":1,"property":"accessibility-label","value":"Resizable sidebar"},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+
+        let resizable = try #require(backend.model(id: 1))
+        let child = try #require(backend.model(id: 2))
+        let childRevision = child.revision
+        #expect(resizable.kind == .resizable)
+        #expect(resizable.surfaceWidth == 240)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        var width = LUIResizableWidthState(
+            sourceWidth: 240,
+            minimumWidth: 180,
+            maximumWidth: 480
+        )
+        width.drag(by: 80, fallbackWidth: 240)
+        #expect(width.width == 320)
+        width.reconcile(sourceWidth: 240, minimumWidth: 180, maximumWidth: 480)
+        #expect(width.width == 320)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"background","value":"secondary"}
+        ]}
+        """)
+        #expect(backend.model(id: 1) === resizable)
+        #expect(backend.model(id: 2) === child)
+        #expect(child.revision == childRevision)
+        width.reconcile(sourceWidth: 240, minimumWidth: 180, maximumWidth: 480)
+        #expect(width.width == 320)
+
+        try backend.apply(json: """
+        {"generation":3,"ops":[
+          {"op":"set-prop","id":1,"property":"width","value":260}
+        ]}
+        """)
+        width.reconcile(sourceWidth: 260, minimumWidth: 180, maximumWidth: 480)
+        #expect(width.width == 260)
+        width.drag(by: -200, fallbackWidth: 260)
+        #expect(width.width == 180)
+    }
+
+    @Test("rejects flow properties on Resizable atomically")
+    func rejectsMalformedResizable() throws {
+        let backend = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"resizable"},
+              {"op":"set-prop","id":1,"property":"gap","value":8}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 0)
+        #expect(backend.rootIDs.isEmpty)
+    }
+
     @Test("maps Tree rows to one retained native focus set")
     func mapsTree() throws {
         let backend = LUIAppleBackend()

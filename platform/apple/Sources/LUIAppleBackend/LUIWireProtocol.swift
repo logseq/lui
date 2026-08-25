@@ -331,7 +331,7 @@ struct LUIRetainedTree {
                 kind == .radio || kind == .slider || kind == .spinner || kind == .icon
                 || kind == .select || kind == .combobox || kind == .dropdownMenu
                 || kind == .menuItem || kind == .listItem
-                || kind == .tableCell
+                || kind == .tableCell || kind == .resizable
         case .text:
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
                 kind == .button || kind == .toggleButton || isTextEntry(kind) ||
@@ -357,7 +357,7 @@ struct LUIRetainedTree {
                 kind == .radioGroup || kind == .buttonGroup || kind == .toggleGroup ||
                 kind == .breadcrumb || kind == .pagination ||
                 kind == .radio || kind == .slider || kind == .avatar || kind == .tree ||
-                isTreeRow(kind)
+                kind == .resizable || isTreeRow(kind)
         case .headingLevel: kind == .heading
         case .checked:
             kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
@@ -406,7 +406,7 @@ struct LUIRetainedTree {
             kind == .list || isHorizontalGroup(kind) || kind == .radioGroup
             || kind == .dropdownMenu || kind == .listItem || isModalSurface(kind)
             || kind == .accordion
-            || kind == .table || kind == .tableRow || kind == .tree
+            || kind == .table || kind == .tableRow || kind == .tree || kind == .resizable
     }
 
     private static func isModalSurface(_ kind: LUINodeKind) -> Bool {

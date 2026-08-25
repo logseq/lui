@@ -1042,6 +1042,93 @@ void main() {
     expect(backend.containsNode(1), isFalse);
   });
 
+  testWidgets('Resizable keeps drag width in retained native state', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"resizable"},
+        {"op":"create-node","id":2,"kind":"text"},
+        {"op":"set-prop","id":1,"property":"width","value":240},
+        {"op":"set-prop","id":1,"property":"min-width","value":180},
+        {"op":"set-prop","id":1,"property":"max-width","value":480},
+        {"op":"set-prop","id":1,"property":"accessibility-label","value":"Resizable sidebar"},
+        {"op":"set-prop","id":2,"property":"text","value":"Content"},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: backend.widget(node: 1),
+          ),
+        ),
+      ),
+    );
+
+    final node = find.byKey(LUIFlutterBackend.nodeKey(1));
+    final retainedContent = tester.element(find.text('Content'));
+    expect(tester.getSize(node).width, 240);
+    final semanticsNode = tester.getSemantics(
+      find.bySemanticsLabel('Resizable sidebar'),
+    );
+    final semanticsData = semanticsNode.getSemanticsData();
+    expect(semanticsData.hasAction(ui.SemanticsAction.increase), isTrue);
+    expect(semanticsData.hasAction(ui.SemanticsAction.decrease), isTrue);
+
+    final center = tester.getCenter(node);
+    final right = tester.getTopRight(node).dx;
+    await tester.dragFrom(Offset(right - 2, center.dy), const Offset(60, 0));
+    await tester.pump();
+    expect(tester.getSize(node).width, 300);
+    expect(backend.debugRevision(1), 0);
+    expect(tester.element(find.text('Content')), same(retainedContent));
+
+    backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":1,"property":"background","value":"secondary"}
+      ]}
+      ''');
+    await tester.pump();
+    expect(tester.getSize(node).width, 300);
+    expect(tester.element(find.text('Content')), same(retainedContent));
+
+    backend.applyJson('''
+      {"generation":3,"ops":[
+        {"op":"set-prop","id":1,"property":"width","value":260}
+      ]}
+      ''');
+    await tester.pump();
+    expect(tester.getSize(node).width, 260);
+    await tester.dragFrom(
+      Offset(tester.getTopRight(node).dx - 2, tester.getCenter(node).dy),
+      const Offset(-200, 0),
+    );
+    await tester.pump();
+    expect(tester.getSize(node).width, 180);
+    semantics.dispose();
+  });
+
+  test('rejects flow properties on Resizable atomically', () {
+    final backend = LUIFlutterBackend();
+    expect(
+      () => backend.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"resizable"},
+        {"op":"set-prop","id":1,"property":"gap","value":8}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 0);
+    expect(backend.containsNode(1), isFalse);
+  });
+
   testWidgets('maps Tree rows to one retained native roving focus set', (
     tester,
   ) async {

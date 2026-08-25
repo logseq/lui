@@ -6,9 +6,10 @@
             [lui.wire :as wire]
             [lui.runtime :as runtime]
             [lui.backend.apple :as apple
-             :refer [AppleRow AppleLabel AppleTextInput]]
+             :refer [AppleRow AppleLabel AppleTextInput AppleResizable]]
             [lui.backend.flutter :as flutter
-             :refer [FlutterFlexRow FlutterParagraph FlutterWidgetIsland]]))
+             :refer [FlutterFlexRow FlutterParagraph FlutterWidgetIsland
+                     FlutterResizable]]))
 
 (defmacro assert-equal [expected actual message]
   `(is (= ~expected ~actual) ~message))
@@ -1192,6 +1193,73 @@
           "malformed Tree metadata rejects the entire batch")
       (assert-equal 0 (apple/node-count renderer)
                     "a rejected Tree batch commits no nodes"))))
+
+(deftest resizable-keeps-native-width-behind-a-closed-stacking-contract
+  (doseq [property
+          [proto/WidthValue proto/HeightValue proto/MinWidth proto/MaxWidth
+           proto/MinHeight proto/MaxHeight proto/GrowValue proto/PaddingValue
+           proto/BackgroundValue proto/ForegroundValue proto/BorderColorValue
+           proto/BorderWidth proto/CornerRadius proto/AccessibilityLabel
+           proto/StyleClass]]
+    (is (proto/property-supported? proto/Resizable property)
+        "Resizable admits its reference surface vocabulary"))
+  (doseq [property
+          [proto/Gap proto/MainAlignment proto/CrossAlignment proto/Selected]]
+    (is (not (proto/property-supported? proto/Resizable property))
+        "Resizable is a stacking surface without flow or model resize state"))
+  (is (proto/can-contain-children? proto/Resizable)
+      "Resizable retains stacked child content")
+  (is (not (proto/event-supported? proto/Resizable (proto/ValueChanged 1 0.5)))
+      "native resizing does not add an application event")
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        valid
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Resizable)
+                      (proto/create-node-op 2 proto/Panel)
+                      (proto/set-prop-op
+                       1 proto/WidthValue (proto/IntValue 240))
+                      (proto/set-prop-op
+                       1 proto/MinWidth (proto/IntValue 180))
+                      (proto/set-prop-op
+                       1 proto/AccessibilityLabel
+                       (proto/StringValue "Resizable sidebar"))
+                      (proto/insert-child-op 1 2 0)]))]
+    (is ((:apply-batch backend) valid) "valid Resizable batch applies")
+    (match (apple/node renderer 1)
+      (Some AppleResizable) (is true "Resizable maps to Apple native surface")
+      _ (is false "Apple Resizable mapping exists"))
+    (assert-equal
+     (Some (proto/IntValue 240))
+     (apple/property renderer 1 proto/WidthValue)
+     "initial width is retained for native reconciliation"))
+  (let [renderer (flutter/create)
+        backend (flutter/backend renderer)
+        valid
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Resizable)
+                      (proto/create-node-op 2 proto/Panel)
+                      (proto/set-prop-op
+                       1 proto/WidthValue (proto/IntValue 240))
+                      (proto/insert-child-op 1 2 0)]))]
+    (is ((:apply-batch backend) valid) "valid Flutter Resizable batch applies")
+    (match (flutter/node renderer 1)
+      (Some FlutterResizable)
+      (is true "Resizable maps to Flutter native surface")
+      _ (is false "Flutter Resizable mapping exists")))
+  (let [renderer (flutter/create)
+        backend (flutter/backend renderer)
+        invalid
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Resizable)
+                      (proto/set-prop-op 1 proto/Gap (proto/IntValue 8))]))]
+    (is (thrown? Invalid_argument ((:apply-batch backend) invalid))
+        "flow gap is rejected instead of ignored")
+    (assert-equal 0 (flutter/node-count renderer)
+                  "invalid Resizable batches remain atomic")))
 
 (deftest table-family-has-the-pinned-closed-contract
   (let [batch

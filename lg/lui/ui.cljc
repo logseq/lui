@@ -78,6 +78,9 @@
 (defn tree! [context]
   (runtime/create-node! (:ui-application context) proto/Tree))
 
+(defn resizable! [context]
+  (runtime/create-node! (:ui-application context) proto/Resizable))
+
 (defn spacer! [context]
   (runtime/create-node! (:ui-application context) proto/Spacer))
 

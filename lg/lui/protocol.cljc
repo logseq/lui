@@ -181,6 +181,7 @@
       MenuItem true
       ListItem true
       TableCell true
+      Resizable true
       _ false)
     BorderColorValue
     (and (not (= kind Avatar)) (not (modal-surface? kind))
@@ -215,7 +216,8 @@
         (= kind Checkbox) (= kind SwitchControl)
         (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider)
         (labelled-horizontal-container? kind)
-        (= kind Avatar) (= kind Tree) (tree-row-kind? kind))
+        (= kind Avatar) (= kind Tree) (= kind Resizable)
+        (tree-row-kind? kind))
     PlaceholderValue
     (or (= kind TextField) (= kind Input) (= kind SearchField)
         (= kind Textarea) (= kind Select) (= kind Combobox))
@@ -577,6 +579,7 @@
       Table true
       TableRow true
       Tree true
+      Resizable true
       _ false)))
 
 (defn child-kind-supported? [parent-kind child-kind]

@@ -32,6 +32,8 @@ private struct LUINodeView: View {
         Group {
             if model.kind.isModalSurface {
                 content
+            } else if model.kind == .resizable {
+                content
             } else {
                 content
                     .modifier(LUISurfaceModifier(model: model))
@@ -109,6 +111,8 @@ private struct LUINodeView: View {
             LUITableView(model: model, backend: backend)
         case .tree:
             LUITreeView(model: model, backend: backend)
+        case .resizable:
+            LUIResizableView(model: model, backend: backend)
         case .tableRow:
             LUITableRowView(model: model, backend: backend, isLast: true)
         case .tableCell:
@@ -1586,7 +1590,7 @@ private struct LUISurfaceModifier: ViewModifier {
     let model: LUINodeModel
 
     func body(content: Content) -> some View {
-        let isSurface = model.kind == .panel || model.kind == .card
+        let isSurface = model.kind == .panel || model.kind == .card || model.kind == .resizable
         let isTabs = model.kind == .tabs
         let defaultPadding = model.kind == .card ? 24 : (isTabs ? 2 : 0)
         let padding = model.property(.padding)?.intValue ?? defaultPadding
@@ -1608,12 +1612,12 @@ private struct LUISurfaceModifier: ViewModifier {
             .padding(.horizontal, CGFloat(horizontal))
             .padding(.vertical, CGFloat(vertical))
             .frame(
-                width: model.surfaceWidth.map(CGFloat.init),
+                width: model.kind == .resizable ? nil : model.surfaceWidth.map(CGFloat.init),
                 height: model.surfaceHeight.map(CGFloat.init)
             )
             .frame(
-                minWidth: model.surfaceMinWidth.map(CGFloat.init),
-                maxWidth: model.surfaceMaxWidth.map(CGFloat.init),
+                minWidth: model.kind == .resizable ? nil : model.surfaceMinWidth.map(CGFloat.init),
+                maxWidth: model.kind == .resizable ? nil : model.surfaceMaxWidth.map(CGFloat.init),
                 minHeight: model.surfaceMinHeight.map(CGFloat.init),
                 maxHeight: model.surfaceMaxHeight.map(CGFloat.init)
             )
@@ -1665,6 +1669,113 @@ private struct LUISurfaceModifier: ViewModifier {
         #else
         Color(uiColor: .systemBackground)
         #endif
+    }
+}
+
+struct LUIResizableWidthState: Equatable {
+    private(set) var sourceWidth: Int?
+    private(set) var minimumWidth: Int?
+    private(set) var maximumWidth: Int?
+    private(set) var width: CGFloat?
+
+    init(sourceWidth: Int?, minimumWidth: Int?, maximumWidth: Int?) {
+        self.sourceWidth = sourceWidth
+        self.minimumWidth = minimumWidth
+        self.maximumWidth = maximumWidth
+        width = Self.clamp(sourceWidth.map(CGFloat.init), minimumWidth, maximumWidth)
+    }
+
+    mutating func reconcile(
+        sourceWidth: Int?,
+        minimumWidth: Int?,
+        maximumWidth: Int?
+    ) {
+        let sourceChanged = self.sourceWidth != sourceWidth
+        self.sourceWidth = sourceWidth
+        self.minimumWidth = minimumWidth
+        self.maximumWidth = maximumWidth
+        width = Self.clamp(
+            sourceChanged ? sourceWidth.map(CGFloat.init) : width,
+            minimumWidth,
+            maximumWidth
+        )
+    }
+
+    mutating func drag(by delta: CGFloat, fallbackWidth: CGFloat) {
+        width = Self.clamp((width ?? fallbackWidth) + delta, minimumWidth, maximumWidth)
+    }
+
+    private static func clamp(_ width: CGFloat?, _ minimum: Int?, _ maximum: Int?) -> CGFloat? {
+        guard var width else { return nil }
+        if let minimum { width = max(width, CGFloat(minimum)) }
+        if let maximum { width = min(width, CGFloat(maximum)) }
+        return width
+    }
+}
+
+private struct LUIResizableView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    @State private var widthState: LUIResizableWidthState
+    @State private var previousTranslation: CGFloat = 0
+
+    init(model: LUINodeModel, backend: LUIAppleBackend) {
+        self.model = model
+        self.backend = backend
+        _widthState = State(
+            initialValue: LUIResizableWidthState(
+                sourceWidth: model.surfaceWidth,
+                minimumWidth: model.surfaceMinWidth,
+                maximumWidth: model.surfaceMaxWidth
+            )
+        )
+    }
+
+    var body: some View {
+        ZStack {
+            ForEach(model.children, id: \.self) { childID in
+                if let child = backend.model(id: childID) {
+                    LUINodeView(model: child, backend: backend)
+                }
+            }
+        }
+        .modifier(LUISurfaceModifier(model: model))
+        .frame(width: widthState.width)
+        .overlay(alignment: .trailing) {
+            GeometryReader { geometry in
+                Color.clear
+                    .frame(width: 12)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                let delta = value.translation.width - previousTranslation
+                                previousTranslation = value.translation.width
+                                widthState.drag(by: delta, fallbackWidth: geometry.size.width)
+                            }
+                            .onEnded { _ in previousTranslation = 0 }
+                    )
+            }
+        }
+        .accessibilityLabel(model.property(.accessibilityLabel)?.stringValue ?? "Resizable")
+        .accessibilityAdjustableAction { direction in
+            widthState.drag(
+                by: direction == .increment ? 16 : -16,
+                fallbackWidth: CGFloat(model.surfaceWidth ?? model.surfaceMinWidth ?? 0)
+            )
+        }
+        .onChange(of: model.surfaceWidth) { _, value in reconcile(sourceWidth: value) }
+        .onChange(of: model.surfaceMinWidth) { _, _ in reconcile(sourceWidth: model.surfaceWidth) }
+        .onChange(of: model.surfaceMaxWidth) { _, _ in reconcile(sourceWidth: model.surfaceWidth) }
+    }
+
+    private func reconcile(sourceWidth: Int?) {
+        widthState.reconcile(
+            sourceWidth: sourceWidth,
+            minimumWidth: model.surfaceMinWidth,
+            maximumWidth: model.surfaceMaxWidth
+        )
     }
 }
 

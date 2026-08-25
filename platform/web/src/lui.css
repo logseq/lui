@@ -199,8 +199,14 @@
 
   .lui-stack,
   .lui-panel,
-  .lui-card {
+  .lui-card,
+  .lui-resizable {
     @apply grid;
+  }
+
+  .lui-resizable {
+    @apply relative overflow-auto rounded-lg border border-border bg-background;
+    resize: horizontal;
   }
 
   .lui-stack {
@@ -251,6 +257,10 @@
   .lui-stack > *,
   .lui-panel > *,
   .lui-card > * {
+    grid-area: 1 / 1;
+  }
+
+  .lui-resizable > * {
     grid-area: 1 / 1;
   }
 

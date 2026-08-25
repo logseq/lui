@@ -228,6 +228,9 @@ Delivered parity slices:
   role/hierarchy metadata, one native roving focus set, model-owned selection
   and disclosure, ARIA keyboard behavior, and local Signal patches on Web,
   SwiftUI, and Flutter;
+- direct retained `resizable` stacking surfaces with source-width
+  reconciliation, backend-owned drag state, bounded assistive resizing, and
+  identity-preserving children on Web, SwiftUI, and Flutter;
 - direct retained `list-item` rows with text-or-children content, inline
   registry icons, model-owned selection, disabled state, immediate press,
   additive double press, Enter submit, and identity-preserving Signal patches;
@@ -659,6 +662,26 @@ Each large completed wave is committed and pushed independently.
 - dropdown and context menus, accordion and tooltip;
 - dialog, drawer, sheet, resizable and split;
 - native platform presentation, dismissal, focus restoration and drag behavior.
+
+#### Resizable contract
+
+`resizable` is one retained stacking surface with a backend-owned horizontal
+drag edge. It is not a one-pane `split`: no resize event or model fraction is
+exposed. `width` supplies the initial width and a later changed `width` value
+resets the native width; unrelated retained patches preserve the user's dragged
+width. `min-width` clamps both pointer and assistive resizing. The remaining
+admitted attributes are the reference surface vocabulary (`grow`, height and
+size bounds, padding, colors, border, radius, style class, and accessible
+label). `gap`, flow alignment, selection, and application resize callbacks are
+invalid. Children stack; authors put an explicit row or column inside for flow.
+
+Web uses the browser's horizontal resize affordance and Tailwind surface
+chrome. SwiftUI and Flutter keep drag width in identity-preserving native view
+state keyed by the retained node. A changed source width reconciles that state;
+painting, child, or sibling patches do not. Keyboard or assistive increment and
+decrement resize by a platform step without creating an LG event. Every backend
+clamps the width to `min-width`, retains child identity while dragging, and
+disposes its gesture/focus state with the retained node.
 
 #### Table contract
 

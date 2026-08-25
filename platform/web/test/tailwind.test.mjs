@@ -76,7 +76,7 @@ test("the production stylesheet contains Vercel Native overlay surfaces", async 
   assert.match(css, /\.lui-stack[^\{]*\{[^}]*display:grid/)
   assert.match(css, /\.lui-panel[^\{]*\{[^}]*border-radius:var\(--radius-xl\)/)
   assert.match(css, /\.lui-card[^\{]*\{[^}]*padding:calc\(var\(--spacing\)\*6\)/)
-  assert.match(css, /\.lui-(?:stack|panel|card)>\*\{[^}]*grid-area:1\/1/)
+  assert.match(css, /\.lui-(?:stack|panel|card)>\*[^\{]*\{[^}]*grid-area:1\/1/)
   assert.doesNotMatch(css, /\.lui-card-(?:header|content|footer|title|description)/)
 })
 
@@ -156,6 +156,15 @@ test("Tree uses retained roving rows with native selection and disclosure chrome
   assert.match(css, /\.lui-tree-item\[data-selected\]\{[^}]*background-color:/)
   assert.match(css, /\.lui-tree-item:focus-visible\{[^}]*outline-width:2px/)
   assert.match(css, /\.lui-tree-item\[aria-disabled=true\]\{[^}]*opacity:/)
+})
+
+test("Resizable uses the browser-owned horizontal resize affordance", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-resizable\{[^}]*resize:horizontal/)
+  assert.match(css, /\.lui-resizable\{[^}]*overflow:auto/)
+  assert.match(css, /\.lui-resizable\{[^}]*position:relative/)
+  assert.match(css, /\.lui-resizable\{[^}]*border-radius:/)
 })
 
 test("the production stylesheet contains the registered-image Avatar contract", async () => {
