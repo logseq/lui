@@ -6,7 +6,7 @@
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
-                     Select Combobox DropdownMenu MenuItem ListItem Avatar
+                     Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
                      Progress Divider
@@ -38,7 +38,8 @@
            (web-event-handler (atom (fn [_event] true)))
            (web-app-icons app-icons)
            (web-images (atom {}))
-           (web-cleanups (atom {})))))
+           (web-cleanups (atom {}))
+           (web-dialog-stack (atom [])))))
 
 (defn set-event-handler! [renderer handler]
   (reset! (:web-event-handler renderer) handler)
@@ -86,7 +87,8 @@
     DropdownMenu "lui-dropdown-menu"
     MenuItem "lui-menu-item"
     ListItem "lui-list-item"
-    Avatar "lui-avatar"))
+    Avatar "lui-avatar"
+    Dialog "lui-dialog"))
 
 (defn- direct-toggle? [kind]
   (or (= kind Checkbox) (= kind SwitchControl) (= kind Radio)))
@@ -236,6 +238,17 @@
     (element
      (:web-document renderer) tag (base-class-name kind) attributes [])))
 
+(defn- create-dialog-node [renderer]
+  (let [node
+        (element
+         (:web-document renderer) "dialog" "lui-dialog"
+         {"role" "dialog" "aria-modal" "true" "tabindex" "-1"}
+         [(element
+           (:web-document renderer) "div" "lui-dialog-title" {} [])
+          (element
+           (:web-document renderer) "div" "lui-dialog-body" {} [])])]
+    node))
+
 (defn- platform-node [renderer kind]
   (match kind
     Button (create-button-node renderer kind)
@@ -247,6 +260,7 @@
     Combobox (create-combobox-node renderer)
     MenuItem (create-menu-item-node renderer)
     Avatar (create-avatar-node renderer)
+    Dialog (create-dialog-node renderer)
     _ (create-simple-node renderer kind)))
 
 (defn- dom-node [renderer node]
@@ -471,6 +485,76 @@
       (Stdlib.ignore (swap! (:web-cleanups renderer) dissoc node)))
     (Stdlib.ignore true)))
 
+(defn- topmost-dialog? [renderer node]
+  (let [stack (deref (:web-dialog-stack renderer))]
+    (and (not (empty? stack)) (= node (nth stack (dec (count stack)))))))
+
+(defn- remove-dialog-from-stack! [renderer node]
+  (swap!
+   (:web-dialog-stack renderer)
+   (fn [stack]
+     (into [] (filter (fn [current] (not (= current node))) stack)))))
+
+(defn- attach-dialog-events! [renderer node dom-node]
+  (let [document (:web-document renderer)
+        html-document (Webapi.Dom.Document.unsafeAsHtmlDocument document)
+        previous-focus (Webapi.Dom.HtmlDocument.activeElement html-document)
+        dismiss!
+        (fn []
+          (when (and
+                 (topmost-dialog? renderer node)
+                 (Webapi.Dom.Element.hasAttribute "open" dom-node))
+            (Webapi.Dom.Element.setAttribute
+             "data-lui-modal-state" "closed" dom-node)
+            (remove-dialog-from-stack! renderer node)
+            (Stdlib.ignore
+             ((deref (:web-event-handler renderer)) (proto/Dismiss node))))
+          true)
+        cancel-handler
+        (fn [event]
+          (Webapi.Dom.Event.preventDefault event)
+          (dismiss!)
+          (Stdlib.ignore true))
+        click-handler
+        (fn [event]
+          (let [target
+                (Webapi.Dom.EventTarget.unsafeAsElement
+                 (Webapi.Dom.Event.target event))]
+            (when
+             (Webapi.Dom.Element.isSameNode
+              (Webapi.Dom.Element.asNode target) dom-node)
+              (dismiss!)))
+          (Stdlib.ignore true))
+        key-handler
+        (fn [event]
+          (when (and
+                 (= "Escape" (Webapi.Dom.KeyboardEvent.key event))
+                 (topmost-dialog? renderer node))
+            (Webapi.Dom.KeyboardEvent.preventDefault event)
+            (dismiss!))
+          (Stdlib.ignore true))]
+    (Webapi.Dom.Element.addEventListener "cancel" cancel-handler dom-node)
+    (Webapi.Dom.Element.addEventListener "click" click-handler dom-node)
+    (Webapi.Dom.Document.addKeyDownEventListener key-handler document)
+    (swap!
+     (:web-cleanups renderer)
+     assoc node
+     (fn []
+       (remove-dialog-from-stack! renderer node)
+       (when (Webapi.Dom.Element.hasAttribute "open" dom-node)
+         (Webapi.Dom.Element.setAttribute
+          "data-lui-modal-state" "closed" dom-node))
+       (Webapi.Dom.Element.removeEventListener "cancel" cancel-handler dom-node)
+       (Webapi.Dom.Element.removeEventListener "click" click-handler dom-node)
+       (Webapi.Dom.Document.removeKeyDownEventListener key-handler document)
+       (match previous-focus
+         (Some element)
+         (Webapi.Dom.HtmlElement.focus
+          (Webapi.Dom.Element.unsafeAsHtmlElement element))
+         None (Stdlib.ignore true))
+       (Stdlib.ignore true)))
+    (Stdlib.ignore true)))
+
 (defn- attach-dropdown-events! [renderer node _dom-node]
   (let [document (:web-document renderer)
         pointer-handler
@@ -685,6 +769,7 @@
       (attach-text-events! renderer node kind dom-node)
       (attach-picker-press-event! renderer node (child-element dom-node 1)))
     DropdownMenu (attach-dropdown-events! renderer node dom-node)
+    Dialog (attach-dialog-events! renderer node dom-node)
     MenuItem (attach-picker-press-event! renderer node dom-node)
     ListItem (attach-list-item-events! renderer node dom-node)
     Checkbox (attach-toggle-event! renderer node kind dom-node)
@@ -938,7 +1023,9 @@
 (defn- apply-property! [renderer node kind dom-node property value]
   (match (tuple property value)
     (tuple TextValue (StringValue text))
-    (if (= kind Avatar)
+    (if (= kind Dialog)
+      (Webapi.Dom.Element.setTextContent (child-element dom-node 0) text)
+      (if (= kind Avatar)
       (do
         (Webapi.Dom.Element.setTextContent
          (child-element dom-node 1) text)
@@ -960,7 +1047,7 @@
                   (button-label-node dom-node)
                   text-node)]
             (when (not (= text (Webapi.Dom.Element.textContent text-node)))
-              (Webapi.Dom.Element.setTextContent text-node text)))))))
+              (Webapi.Dom.Element.setTextContent text-node text))))))))
 
     (tuple Enabled (BoolValue enabled))
     (let [control-node
@@ -1217,6 +1304,35 @@
           parent))
         (raise (Invalid_argument "DOM child index is out of bounds"))))))
 
+(defn- dom-child-container [renderer node dom-node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (if (= (:semantic-kind current) Dialog)
+      (child-element dom-node 1)
+      dom-node)
+    dom-node))
+
+(defn- dom-child-container-before
+  [renderer previous-nodes node dom-node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (if (= (:semantic-kind current) Dialog)
+      (child-element dom-node 1)
+      dom-node)
+    (if-some [previous (clojure.core/get previous-nodes node)]
+      (if (= (:semantic-kind previous) Dialog)
+        (child-element dom-node 1)
+        dom-node)
+      dom-node)))
+
+(defn- open-dialog! [renderer node dom-node]
+  (when (not (=
+              (Webapi.Dom.Element.getAttribute
+               "data-lui-modal-state" dom-node)
+              (Some "open")))
+    (Webapi.Dom.Element.setAttribute
+     "data-lui-modal-state" "open" dom-node)
+    (swap! (:web-dialog-stack renderer) conj node))
+  (Stdlib.ignore true))
+
 (defn- radio-group-ancestor [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
     (match (:retained-parent current)
@@ -1311,12 +1427,14 @@
     (InsertChild parent child index)
     (do
       (insert-dom-child!
-       (dom-node renderer parent) (dom-node renderer child) index)
+       (dom-child-container renderer parent (dom-node renderer parent))
+       (dom-node renderer child) index)
       (refresh-button-context! renderer child)
       (if-some [current (retained/node (:web-store renderer) child)]
         (match (:semantic-kind current)
           Radio (update-radio-group! renderer child)
           DropdownMenu (update-picker-expanded! renderer parent true)
+          Dialog (open-dialog! renderer child (:platform-node current))
           _ (Stdlib.ignore true))
         (Stdlib.ignore true)))
 
@@ -1326,7 +1444,9 @@
        (Webapi.Dom.Element.removeChild
         (Webapi.Dom.Element.asNode
          (dom-node-before renderer previous-nodes child))
-        (dom-node-before renderer previous-nodes parent)))
+        (dom-child-container-before
+         renderer previous-nodes parent
+         (dom-node-before renderer previous-nodes parent))))
       (refresh-button-context! renderer child)
       (if-some [previous (clojure.core/get previous-nodes child)]
         (when (= (:semantic-kind previous) DropdownMenu)
@@ -1334,7 +1454,10 @@
         (Stdlib.ignore true)))
 
     (MoveChild parent child index)
-    (let [parent-node (dom-node-before renderer previous-nodes parent)
+    (let [parent-node
+          (dom-child-container-before
+           renderer previous-nodes parent
+           (dom-node-before renderer previous-nodes parent))
           child-node (dom-node-before renderer previous-nodes child)
           focused (focused-descendant renderer child-node)]
       (Stdlib.ignore

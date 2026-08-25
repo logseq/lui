@@ -170,6 +170,26 @@
     @apply rounded-xl border bg-card p-6 text-card-foreground;
   }
 
+  .lui-dialog {
+    @apply fixed inset-0 m-auto grid rounded-xl border bg-card text-card-foreground shadow-lg;
+  }
+
+  .lui-dialog::backdrop {
+    @apply bg-black/50;
+  }
+
+  .lui-dialog-title {
+    @apply text-lg font-semibold;
+  }
+
+  .lui-dialog-body {
+    @apply grid;
+  }
+
+  .lui-dialog-body > * {
+    grid-area: 1 / 1;
+  }
+
   .lui-label {
     @apply text-sm font-medium leading-none;
   }

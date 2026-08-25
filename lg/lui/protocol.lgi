@@ -42,7 +42,8 @@
   (ListItem)
   (Avatar)
   (Breadcrumb)
-  (Pagination))
+  (Pagination)
+  (Dialog))
 
 (type-variant operating-system
   (GenericOS)

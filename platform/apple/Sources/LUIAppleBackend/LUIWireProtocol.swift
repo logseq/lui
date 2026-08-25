@@ -290,11 +290,13 @@ struct LUIRetainedTree {
         case .main, .cross:
             kind == .row || kind == .column || kind == .list ||
                 isHorizontalGroup(kind)
-        case .grow: kind != .avatar
+        case .grow: kind != .avatar && kind != .dialog
         case .columns: kind == .grid
-        case .padding, .background, .borderColor, .borderWidth,
-             .cornerRadius, .styleClass, .width, .height,
-             .minWidth, .maxWidth, .minHeight, .maxHeight: kind != .avatar
+        case .padding, .width, .height: kind != .avatar
+        case .background, .borderColor, .borderWidth,
+             .cornerRadius, .styleClass,
+             .minWidth, .maxWidth, .minHeight, .maxHeight:
+            kind != .avatar && kind != .dialog
         case .paddingHorizontal, .paddingVertical:
             kind == .row || kind == .column || kind == .grid || kind == .box
         case .foreground:
@@ -308,7 +310,8 @@ struct LUIRetainedTree {
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
                 kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio ||
-                kind == .select || kind == .menuItem || kind == .listItem || kind == .avatar
+                kind == .select || kind == .menuItem || kind == .listItem || kind == .avatar ||
+                kind == .dialog
         case .enabled:
             kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle ||
@@ -364,7 +367,7 @@ struct LUIRetainedTree {
         kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
             kind == .list || isHorizontalGroup(kind) || kind == .radioGroup
-            || kind == .dropdownMenu || kind == .listItem
+            || kind == .dropdownMenu || kind == .listItem || kind == .dialog
     }
 
     private static func isHorizontalGroup(_ kind: LUINodeKind) -> Bool {
@@ -424,6 +427,11 @@ struct LUIRetainedTree {
             if node.kind == .menuItem {
                 guard !(node.properties[.text]?.stringValue ?? "").isEmpty else {
                     throw invalid("menu-item requires text")
+                }
+            }
+            if node.kind == .dialog {
+                guard !(node.properties[.text]?.stringValue ?? "").isEmpty else {
+                    throw invalid("dialog requires text")
                 }
             }
             if node.kind == .listItem {

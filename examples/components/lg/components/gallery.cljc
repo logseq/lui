@@ -83,6 +83,26 @@
      [:text "Stack base layer"]]
     [:text {:padding 16} "Overlay layer"]]])
 
+(defui dialog-gallery [open-source open-dialog close-dialog]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Dialog"]
+   [:button {:variant "outline" :on-press open-dialog} "Open dialog"]
+   [:paragraph
+    "The same model-owned conditional drives the native modal on every host."]
+   [:if {:test open-source}
+    [:dialog
+     {:text "Rename note"
+      :width 380
+      :height 240
+     :padding 24
+      :on-dismiss close-dialog}
+     [:column {:gap 16}
+      [:box {:height 24}]
+      [:input {:placeholder "Note name" :autofocus true}]
+      [:row {:gap 8 :main "end"}
+       [:button {:variant "ghost" :on-press close-dialog} "Cancel"]
+       [:button {:variant "primary" :on-press close-dialog} "Save"]]]]]])
+
 (defui collection-gallery []
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "List and Scroll"]
@@ -466,7 +486,8 @@
    select-report select-checklist open-report open-checklist
    avatar-image-source toggle-avatar-image
    overview-tab-selected-source activity-tab-selected-source
-   tab-content-source select-overview-tab select-activity-tab]
+   tab-content-source select-overview-tab select-activity-tab
+   dialog-open-source open-dialog close-dialog]
   [:column
    [button-gallery disabled-source toggle-disabled]
    [toggle-button-gallery
@@ -487,6 +508,7 @@
    [icon-gallery]
    [progress-gallery progress-source progress-label-source advance-progress]
    [surface-gallery card-copy]
+   [dialog-gallery dialog-open-source open-dialog close-dialog]
    [collection-gallery]
    [list-item-gallery
     report-selected-source checklist-selected-source disabled-source

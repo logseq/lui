@@ -1213,6 +1213,74 @@ void main() {
     expect(backend.generation, 1);
   });
 
+  testWidgets(
+    'maps Dialog to a native modal route with model-owned dismissal',
+    (tester) async {
+      final events = <LUIEvent>[];
+      final backend = LUIFlutterBackend(onEvent: events.add)
+        ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"dialog"},
+        {"op":"create-node","id":3,"kind":"input"},
+        {"op":"set-prop","id":2,"property":"text","value":"Rename note"},
+        {"op":"set-prop","id":2,"property":"width","value":380},
+        {"op":"set-prop","id":2,"property":"height","value":240},
+        {"op":"set-prop","id":2,"property":"padding","value":24},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":2,"child":3,"index":0}
+      ]}
+      ''');
+
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.text('Rename note'), findsOneWidget);
+      expect(find.byKey(LUIFlutterBackend.nodeKey(3)), findsOneWidget);
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('lui-dialog-surface-2')))
+            .width,
+        380,
+      );
+      final inputRenderObject = tester.renderObject(
+        find.byKey(LUIFlutterBackend.nodeKey(3)),
+      );
+
+      backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":2,"property":"text","value":"Renamed note"},
+        {"op":"set-prop","id":2,"property":"width","value":400}
+      ]}
+      ''');
+      await tester.pump();
+      expect(find.text('Renamed note'), findsOneWidget);
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('lui-dialog-surface-2')))
+            .width,
+        400,
+      );
+      expect(
+        tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(3))),
+        same(inputRenderObject),
+      );
+
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
+      expect(events, const [LUIEvent.dismiss(node: 2)]);
+      expect(find.byType(Dialog), findsNothing);
+
+      expect(
+        () => backend.performDismiss(1),
+        throwsA(isA<LUIBackendException>()),
+      );
+    },
+  );
+
   testWidgets('maps List flow and multi-child Scroll to Flutter widgets', (
     tester,
   ) async {

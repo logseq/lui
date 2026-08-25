@@ -171,6 +171,52 @@
        proto/AnchorAlignmentValue (proto/StringValue "stretch"))
       "stretch is a legal anchored alignment"))
 
+(deftest dialog-has-the-pinned-modal-surface-contract
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Dialog)
+                      (proto/set-prop-op
+                       1 proto/TextValue (proto/StringValue "Rename note"))
+                      (proto/set-prop-op 1 proto/WidthValue (proto/IntValue 380))
+                      (proto/set-prop-op 1 proto/HeightValue (proto/IntValue 240))
+                      (proto/set-prop-op 1 proto/PaddingValue (proto/IntValue 24))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"dialog\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"text\","
+      "\"value\":\"Rename note\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"width\",\"value\":380},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"height\",\"value\":240},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"padding\",\"value\":24}]}" )
+     (wire/encode-batch batch)
+     "dialog uses the pinned closed wire vocabulary")
+    (doseq [property
+            [proto/TextValue proto/WidthValue proto/HeightValue proto/PaddingValue]]
+      (is (proto/property-supported? proto/Dialog property)
+          "dialog admits only its authored surface state"))
+    (doseq [property [proto/Gap proto/MainAlignment proto/CrossAlignment
+                      proto/Selected proto/Enabled]]
+      (is (not (proto/property-supported? proto/Dialog property))
+          "dialog rejects flow and control state"))
+    (is (proto/can-contain-children? proto/Dialog)
+        "dialog stacks retained content children")
+    (is (proto/event-supported? proto/Dialog (proto/Dismiss 1))
+        "dialog reports native dismissal")
+    (let [renderer (apple/create)
+          invalid
+          (record proto/patch-batch
+                  (generation 1)
+                  (ops [(proto/create-node-op 1 proto/Dialog)]))]
+      (is (thrown-with-msg?
+           Invalid_argument
+           #"node properties conflict"
+           ((:apply-batch (apple/backend renderer)) invalid))
+          "dialog requires a non-empty accessible title")
+      (assert-equal 0 (apple/node-count renderer)
+                    "an invalid dialog batch is atomic"))))
+
 (deftest tabs-is-a-controlled-horizontal-trigger-container
   (let [batch
         (record proto/patch-batch

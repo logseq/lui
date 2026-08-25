@@ -7,7 +7,7 @@
                      Spacer Spinner Icon
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
-                     Select Combobox DropdownMenu MenuItem ListItem Avatar]]
+                     Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
 
@@ -63,7 +63,8 @@
     DropdownMenu FlutterDropdownMenu
     MenuItem FlutterMenuItem
     ListItem FlutterListItem
-    Avatar FlutterAvatar))
+    Avatar FlutterAvatar
+    Dialog FlutterDialog))
 
 (defn backend-for [renderer operating-system]
   (record proto/backend

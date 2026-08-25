@@ -25,11 +25,16 @@ private struct LUINodeView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
 
+    @ViewBuilder
     var body: some View {
         let _ = model.revision
-        content
-            .modifier(LUISurfaceModifier(model: model))
-            .modifier(LUIAccessibilityModifier(model: model, backend: backend))
+        if model.kind == .dialog {
+            content
+        } else {
+            content
+                .modifier(LUISurfaceModifier(model: model))
+                .modifier(LUIAccessibilityModifier(model: model, backend: backend))
+        }
     }
 
     @ViewBuilder
@@ -78,6 +83,8 @@ private struct LUINodeView: View {
             LUIComboboxView(model: model, backend: backend)
         case .dropdownMenu:
             LUIDropdownMenuView(model: model, backend: backend)
+        case .dialog:
+            LUIDialogView(model: model, backend: backend)
         case .menuItem:
             LUIMenuItemView(model: model, backend: backend)
         case .listItem:
@@ -176,6 +183,43 @@ private struct LUINodeView: View {
 
     private var progressAccessibilityValue: String {
         "\(Int((model.progressFraction * 100).rounded()))%"
+    }
+}
+
+private struct LUIDialogView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    @State private var isPresented = false
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onAppear { isPresented = true }
+            .sheet(isPresented: $isPresented) {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(verbatim: model.text)
+                        .font(.headline)
+                        .accessibilityAddTraits(.isHeader)
+                    ZStack {
+                        ForEach(model.children, id: \.self) { childID in
+                            if let child = backend.model(id: childID) {
+                                LUINodeView(model: child, backend: backend)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .padding(CGFloat(model.property(.padding)?.intValue ?? 24))
+                .frame(
+                    width: CGFloat(model.property(.width)?.intValue ?? 420),
+                    height: CGFloat(model.property(.height)?.intValue ?? 220)
+                )
+            }
+            .onChange(of: isPresented) { _, presented in
+                if !presented {
+                    try? backend.performDismiss(node: model.id)
+                }
+            }
     }
 }
 

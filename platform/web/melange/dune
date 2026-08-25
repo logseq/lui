@@ -1,0 +1,7 @@
+(library
+ (name lui_web_dom)
+ (public_name lui.web.dom)
+ (wrapped false)
+ (modes melange)
+ (libraries melange-webapi)
+ (preprocess (pps melange.ppx)))

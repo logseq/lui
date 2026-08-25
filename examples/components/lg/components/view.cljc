@@ -66,4 +66,7 @@
    (reactive model/activity-tab-selected? model-source)
    (reactive model/tab-content model-source)
    (fn [_event] (send (model/SelectTab "overview")))
-   (fn [_event] (send (model/SelectTab "activity")))])
+   (fn [_event] (send (model/SelectTab "activity")))
+   (reactive :gallery-dialog-open model-source)
+   (fn [_event] (send model/OpenDialog))
+   (fn [_event] (send model/CloseDialog))])

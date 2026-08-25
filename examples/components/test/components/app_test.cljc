@@ -39,7 +39,8 @@
                  (gallery-document "Quarterly report.md")
                  (gallery-document-action "Selected Quarterly report.md")
                  (gallery-avatar-image 1)
-                 (gallery-tab "overview"))
+                 (gallery-tab "overview")
+                 (gallery-dialog-open false))
          model/AdvanceProgress)]
     (assert-equal false (:gallery-disabled initial) "controls start enabled")
     (assert-equal 0.3 (:gallery-progress initial) "progress has a visible start")
@@ -57,6 +58,18 @@
                   "avatar starts on its initials fallback")
     (assert-equal "overview" (:gallery-tab initial)
                   "Tabs starts with one model-owned selection")
+    (assert-equal false (:gallery-dialog-open initial)
+                  "Dialog starts closed without a retained placeholder")
+    (assert-equal true
+                  (:gallery-dialog-open
+                   (model/update initial model/OpenDialog))
+                  "the shared reducer owns Dialog presentation")
+    (assert-equal false
+                  (:gallery-dialog-open
+                   (model/update
+                    (model/update initial model/OpenDialog)
+                    model/CloseDialog))
+                  "native dismissal closes Dialog through the reducer")
     (let [activity (model/update initial (model/SelectTab "activity"))]
       (assert-equal true (model/activity-tab-selected? activity)
                     "the shared reducer controls the selected trigger")
@@ -156,6 +169,17 @@
       (assert-equal
        "activity" (:gallery-tab (components/model application))
        "the shared reducer owns tab selection across hosts"))
+    (let [mounted-count (flutter/node-count renderer)]
+      (driver/send! application model/OpenDialog)
+      (driver/flush! application)
+      (is (creates-kind? (flutter/batches renderer) proto/Dialog)
+          "the shared Gallery mounts the semantic Dialog node")
+      (is (> (flutter/node-count renderer) mounted-count)
+          "opening mounts only the Dialog retained subtree")
+      (driver/send! application model/CloseDialog)
+      (driver/flush! application)
+      (assert-equal mounted-count (flutter/node-count renderer)
+                    "closing removes the Dialog subtree without placeholders"))
     (driver/dispose! application)
     (assert-equal 0 (flutter/node-count renderer) "dispose drops every retained node")
     (is (driver/disposed? application) "the native gallery lifecycle terminates")))

@@ -29,4 +29,5 @@
   lg.edn-backend.melange
   lg.runtime
   lg.rrbvec
+  lui.web.dom
   melange-webapi))

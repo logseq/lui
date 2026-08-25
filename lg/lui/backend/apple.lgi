@@ -39,7 +39,8 @@
   (AppleDropdownMenu)
   (AppleMenuItem)
   (AppleListItem)
-  (AppleAvatar))
+  (AppleAvatar)
+  (AppleDialog))
 
 (type-record apple-renderer
   (apple-store :retained-store<apple-node>)

@@ -189,6 +189,9 @@
 (defn dropdown-menu! [context]
   (runtime/create-node! (:ui-application context) proto/DropdownMenu))
 
+(defn dialog! [context]
+  (runtime/create-node! (:ui-application context) proto/Dialog))
+
 (defn menu-item! [context]
   (runtime/create-node! (:ui-application context) proto/MenuItem))
 

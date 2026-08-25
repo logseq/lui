@@ -80,6 +80,16 @@ test("the production stylesheet contains Vercel Native overlay surfaces", async 
   assert.doesNotMatch(css, /\.lui-card-(?:header|content|footer|title|description)/)
 })
 
+test("Dialog uses the browser top layer and compact Tailwind surface styling", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-dialog\{[^}]*position:fixed/)
+  assert.match(css, /\.lui-dialog\{[^}]*border-radius:var\(--radius-xl\)/)
+  assert.match(css, /\.lui-dialog::backdrop\{[^}]*background-color:/)
+  assert.match(css, /\.lui-dialog-title\{[^}]*font-weight:/)
+  assert.doesNotMatch(css, /\.lui-dialog-(?:header|content|footer|description)/)
+})
+
 test("the production stylesheet distinguishes List flow from Scroll overlays", async () => {
   const css = await readFile(outputUrl, "utf8")
 

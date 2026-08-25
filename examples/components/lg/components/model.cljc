@@ -14,7 +14,8 @@
     (gallery-document "Quarterly report.md")
     (gallery-document-action "Selected Quarterly report.md")
     (gallery-avatar-image 0)
-    (gallery-tab "overview")))
+    (gallery-tab "overview")
+    (gallery-dialog-open false)))
 
 (defn update [model action]
   (match action
@@ -70,6 +71,12 @@
 
     (SelectTab tab)
     (assoc model :gallery-tab tab)
+
+    OpenDialog
+    (assoc model :gallery-dialog-open true)
+
+    CloseDialog
+    (assoc model :gallery-dialog-open false)
 
     AdvanceProgress
     (assoc

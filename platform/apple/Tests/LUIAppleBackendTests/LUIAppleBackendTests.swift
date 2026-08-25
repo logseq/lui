@@ -1086,6 +1086,39 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 3)?.property(.gap) == nil)
     }
 
+    @Test("maps Dialog to a retained native SwiftUI modal")
+    func mapsDialog() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"dialog"},
+          {"op":"create-node","id":3,"kind":"input"},
+          {"op":"set-prop","id":2,"property":"text","value":"Rename note"},
+          {"op":"set-prop","id":2,"property":"width","value":380},
+          {"op":"set-prop","id":2,"property":"height","value":240},
+          {"op":"set-prop","id":2,"property":"padding","value":24},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0}
+        ]}
+        """)
+
+        let dialog = try #require(backend.model(id: 2))
+        #expect(dialog.kind == .dialog)
+        #expect(dialog.children == [3])
+        #expect(dialog.property(.text) == .string("Rename note"))
+        #expect(dialog.property(.width) == .int(380))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.performDismiss(node: 2)
+        #expect(events == [.dismiss(node: 2)])
+        #expect(throws: LUIBackendError.self) {
+            try backend.performDismiss(node: 1)
+        }
+    }
+
     @Test("maps List flow and multi-child Scroll to retained SwiftUI containers")
     func mapsListAndScrollContainers() throws {
         let backend = LUIAppleBackend()

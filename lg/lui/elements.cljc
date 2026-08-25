@@ -59,6 +59,7 @@
                          (= tag :select)
                          (= tag :combobox)
                          (= tag :dropdown-menu)
+                         (= tag :dialog)
                          (= tag :menu-item)
                          (= tag :list-item)
                          (= tag :avatar)
@@ -258,6 +259,18 @@
                               ~(if on-submit `(~on-submit ~'event) true)
                               (lui.protocol/Dismiss ~'_node)
                               ~(if on-dismiss `(~on-dismiss ~'event) true)
+                              ~'_ true)))]
+                       [])))
+
+(macro-helper-defn dismiss-event-expansion [context node attrs]
+                   (let [on-dismiss (:on-dismiss attrs)]
+                     (if on-dismiss
+                       [`(lui.ui/on-event!
+                          ~context ~node
+                          (fn [~'event]
+                            (match ~'event
+                              (lui.protocol/Dismiss ~'_node)
+                              (~on-dismiss ~'event)
                               ~'_ true)))]
                        [])))
 
@@ -750,6 +763,26 @@
           context node (:anchor-offset attrs) 'lui.protocol/AnchorOffset)
        ~@(picker-event-expansion context node attrs)
        ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
+       ~node)))
+
+(defelement dialog [context parent attrs & children]
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/dialog! ~context)]
+       ~@(string-attribute-expansion
+          context node (:text attrs) 'lui.protocol/TextValue)
+       ~@(property-expansions
+          context node
+          [[(:width attrs) 'lui.ui/width!]
+           [(:height attrs) 'lui.ui/height!]
+           [(:padding attrs) 'lui.ui/padding!]])
+       ~@(dismiss-event-expansion context node attrs)
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])

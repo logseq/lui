@@ -3,6 +3,7 @@ let show_error host message =
   Webapi.Dom.Element.setAttribute "data-error" "true" host
 
 let () =
+  Web_dialog.install ();
   match Webapi.Dom.Document.querySelector "#app" Webapi.Dom.document with
   | None -> ()
   | Some host -> (

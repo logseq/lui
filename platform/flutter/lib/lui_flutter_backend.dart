@@ -550,7 +550,8 @@ final class LUIFlutterBackend {
     final state = _requireState(_states, node);
     if (state.kind != _NodeKind.select &&
         state.kind != _NodeKind.combobox &&
-        state.kind != _NodeKind.dropdownMenu) {
+        state.kind != _NodeKind.dropdownMenu &&
+        state.kind != _NodeKind.dialog) {
       throw LUIBackendException('node $node is not dismissible');
     }
     onEvent?.call(LUIEvent.dismiss(node: node));
@@ -1117,6 +1118,7 @@ final class LUIFlutterBackend {
       _NodeKind.select => select(),
       _NodeKind.combobox => textControl(kind: state.kind),
       _NodeKind.dropdownMenu => dropdownMenu(),
+      _NodeKind.dialog => _LUIDialogPresenter(backend: this, node: id),
       _NodeKind.menuItem => menuItem(),
       _NodeKind.listItem => listItem(),
       _NodeKind.avatar => avatar(),
@@ -1211,6 +1213,8 @@ final class LUIFlutterBackend {
         color: foreground,
       ),
     };
+
+    if (state.kind == _NodeKind.dialog) return content;
 
     final isSurface = state.kind.isOverlaySurface;
     final padding =
@@ -1409,7 +1413,8 @@ final class LUIFlutterBackend {
         value is num &&
             value.isFinite &&
             value >= 0 &&
-            kind != _NodeKind.avatar,
+            kind != _NodeKind.avatar &&
+            kind != _NodeKind.dialog,
       'columns' => value is int && value >= 0 && kind == _NodeKind.grid,
       'text' =>
         value is String &&
@@ -1426,7 +1431,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.select ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
-                kind == _NodeKind.avatar),
+                kind == _NodeKind.avatar ||
+                kind == _NodeKind.dialog),
       'enabled' =>
         value is bool &&
             (_isButtonKind(kind) ||
@@ -1526,7 +1532,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.column ||
                 kind == _NodeKind.grid ||
                 kind == _NodeKind.box),
-      'background' => value is String && kind != _NodeKind.avatar,
+      'background' =>
+        value is String && kind != _NodeKind.avatar && kind != _NodeKind.dialog,
       'foreground' =>
         value is String &&
             (kind == _NodeKind.text ||
@@ -1545,16 +1552,27 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.dropdownMenu ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem),
-      'border-color' => value is String && kind != _NodeKind.avatar,
-      'border-width' => value is int && value >= 0 && kind != _NodeKind.avatar,
-      'corner-radius' => value is int && value >= 0 && kind != _NodeKind.avatar,
+      'border-color' =>
+        value is String && kind != _NodeKind.avatar && kind != _NodeKind.dialog,
+      'border-width' =>
+        value is int &&
+            value >= 0 &&
+            kind != _NodeKind.avatar &&
+            kind != _NodeKind.dialog,
+      'corner-radius' =>
+        value is int &&
+            value >= 0 &&
+            kind != _NodeKind.avatar &&
+            kind != _NodeKind.dialog,
       'width' ||
-      'height' ||
-      'min-width' ||
-      'max-width' ||
-      'min-height' ||
-      'max-height' => value is int && value >= 0 && kind != _NodeKind.avatar,
-      'style-class' => value is String && kind != _NodeKind.avatar,
+      'height' => value is int && value >= 0 && kind != _NodeKind.avatar,
+      'min-width' || 'max-width' || 'min-height' || 'max-height' =>
+        value is int &&
+            value >= 0 &&
+            kind != _NodeKind.avatar &&
+            kind != _NodeKind.dialog,
+      'style-class' =>
+        value is String && kind != _NodeKind.avatar && kind != _NodeKind.dialog,
       'checked' =>
         value is bool &&
             (kind == _NodeKind.checkbox ||
@@ -1639,6 +1657,10 @@ final class LUIFlutterBackend {
       if (state.kind == _NodeKind.menuItem &&
           (state.properties['text'] as String? ?? '').isEmpty) {
         throw const LUIBackendException('menu-item requires text');
+      }
+      if (state.kind == _NodeKind.dialog &&
+          (state.properties['text'] as String? ?? '').isEmpty) {
+        throw const LUIBackendException('dialog requires text');
       }
       if (state.kind == _NodeKind.listItem) {
         final hasText = (state.properties['text'] as String? ?? '').isNotEmpty;
@@ -1725,7 +1747,8 @@ final class LUIFlutterBackend {
       _isHorizontalGroupKind(kind) ||
       kind == _NodeKind.radioGroup ||
       kind == _NodeKind.dropdownMenu ||
-      kind == _NodeKind.listItem;
+      kind == _NodeKind.listItem ||
+      kind == _NodeKind.dialog;
 
   int? _checkedRadio(_NodeState root) {
     for (final child in root.children) {
@@ -1868,6 +1891,36 @@ final class LUIFlutterBackend {
     };
   }
 
+  Widget _dialogSurface(BuildContext context, int node) {
+    final state = _requireState(_states, node);
+    final children = state.children
+        .map((child) => widget(node: child))
+        .toList(growable: false);
+    return Dialog(
+      child: SizedBox(
+        key: ValueKey('lui-dialog-surface-$node'),
+        width: (state.properties['width'] as int? ?? 420).toDouble(),
+        height: (state.properties['height'] as int? ?? 220).toDouble(),
+        child: Padding(
+          padding: EdgeInsets.all(
+            (state.properties['padding'] as int? ?? 24).toDouble(),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                state.properties['text'] as String? ?? '',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 16),
+              Expanded(child: Stack(children: children)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   static MainAxisAlignment _mainAxisAlignment(String value) => switch (value) {
     'center' => MainAxisAlignment.center,
     'end' => MainAxisAlignment.end,
@@ -1899,6 +1952,62 @@ final class LUIFlutterBackend {
     'ghost',
     'destructive',
   };
+}
+
+class _LUIDialogPresenter extends StatefulWidget {
+  const _LUIDialogPresenter({required this.backend, required this.node});
+
+  final LUIFlutterBackend backend;
+  final int node;
+
+  @override
+  State<_LUIDialogPresenter> createState() => _LUIDialogPresenterState();
+}
+
+class _LUIDialogPresenterState extends State<_LUIDialogPresenter> {
+  NavigatorState? _navigator;
+  DialogRoute<void>? _route;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _present());
+  }
+
+  void _present() {
+    if (!mounted || _route != null) return;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final route = DialogRoute<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      builder: (context) => ListenableBuilder(
+        listenable: widget.backend._requireHandle(widget.node),
+        builder: (context, _) =>
+            widget.backend._dialogSurface(context, widget.node),
+      ),
+    );
+    _navigator = navigator;
+    _route = route;
+    navigator.push(route).whenComplete(() {
+      if (!mounted || _route != route) return;
+      _route = null;
+      widget.backend.performDismiss(widget.node);
+    });
+  }
+
+  @override
+  void dispose() {
+    final route = _route;
+    if (route != null) {
+      _route = null;
+      _navigator?.removeRoute(route);
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 extension on _NodeKind {

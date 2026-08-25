@@ -14,7 +14,7 @@
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput
                      AppleSelect AppleCombobox AppleDropdownMenu AppleMenuItem AppleListItem
-                     AppleAvatar]]
+                     AppleAvatar AppleDialog]]
             [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
@@ -65,6 +65,20 @@
      :on-input on-input
      :on-submit on-submit
      :on-press on-open}]])
+
+(defui controlled-dialog [open on-dismiss]
+  [:column
+   [:text "Outside"]
+   [:if {:test open}
+    [:dialog
+     {:text "Rename note"
+      :width 380
+      :height 240
+      :padding 24
+      :on-dismiss on-dismiss}
+     [:column
+      [:input {:placeholder "Name"}]
+      [:button "Save"]]]]])
 
 (defelement badge [context parent _attrs & children]
   `(lui.elements/text ~context ~parent {} ~@children))
@@ -526,6 +540,44 @@
         (runtime/flush! application)
         (assert-equal (proto/Dismiss menu) (nth @received 4)
                       "native menu dismissal returns through on-dismiss")))))
+
+(deftest dialog-is-a-model-owned-root-modal-with-retained-content
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "controlled-dialog")
+        context (ui/context application scope)
+        open (sig/state scheduler false)
+        received (atom [])
+        on-dismiss (fn [event] (swap! received conj event) true)
+        root (controlled-dialog context (sig/value open) on-dismiss)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (assert-equal 1 (count (apple/children renderer root))
+                  "closed dialog leaves no retained placeholder")
+    (sig/set! open true)
+    (runtime/flush! application)
+    (let [dialog (nth (apple/children renderer root) 1)
+          content (nth (apple/children renderer dialog) 0)]
+      (match (apple/node renderer dialog)
+        (Some AppleDialog) (is true "dialog is one semantic retained node")
+        _ (is false "dialog maps to the native modal node"))
+      (assert-equal 2 (count (apple/children renderer content))
+                    "dialog content remains a retained subtree")
+      (assert-equal (Some (StringValue "Rename note"))
+                    (apple/property renderer dialog proto/TextValue)
+                    "dialog title is retained as surface chrome")
+      (assert-equal (Some (proto/IntValue 380))
+                    (apple/property renderer dialog proto/WidthValue)
+                    "dialog width is retained")
+      (runtime/dispatch! application (proto/Dismiss dialog))
+      (runtime/flush! application)
+      (assert-equal [(proto/Dismiss dialog)] @received
+                    "native dismissal reaches on-dismiss exactly once")
+      (sig/set! open false)
+      (runtime/flush! application)
+      (assert-equal 1 (count (apple/children renderer root))
+                    "model state removes the dialog subtree"))))
 
 (deftest list-item-supports-text-or-custom-children-and-additive-actions
   (let [scheduler (sig/scheduler)

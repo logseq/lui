@@ -51,6 +51,7 @@
 (signature lui.ui/select! :fn<ui-context;int>)
 (signature lui.ui/combobox! :fn<ui-context;int>)
 (signature lui.ui/dropdown-menu! :fn<ui-context;int>)
+(signature lui.ui/dialog! :fn<ui-context;int>)
 (signature lui.ui/menu-item! :fn<ui-context;int>)
 (signature lui.ui/list-item! :fn<ui-context;int>)
 (signature lui.ui/avatar! :fn<ui-context;int>)

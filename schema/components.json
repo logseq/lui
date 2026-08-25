@@ -34,7 +34,7 @@
     {"name": "alert", "status": "pending"},
     {"name": "bubble", "status": "pending"},
     {"name": "reactions", "status": "pending"},
-    {"name": "dialog", "status": "pending"},
+    {"name": "dialog", "status": "supported"},
     {"name": "drawer", "status": "pending"},
     {"name": "sheet", "status": "pending"},
     {"name": "tooltip", "status": "pending"},
@@ -112,7 +112,8 @@
     {"lg": "ListItem", "wire": "list-item", "dart": "listItem", "swift": "listItem", "container": true},
     {"lg": "Avatar", "wire": "avatar", "dart": "avatar", "swift": "avatar", "container": false},
     {"lg": "Breadcrumb", "wire": "breadcrumb", "dart": "breadcrumb", "swift": "breadcrumb", "container": true},
-    {"lg": "Pagination", "wire": "pagination", "dart": "pagination", "swift": "pagination", "container": true}
+    {"lg": "Pagination", "wire": "pagination", "dart": "pagination", "swift": "pagination", "container": true},
+    {"lg": "Dialog", "wire": "dialog", "dart": "dialog", "swift": "dialog", "container": true}
   ],
   "properties": [
     {"lg": "TextValue", "wire": "text", "swift": "text"},

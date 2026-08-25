@@ -38,7 +38,8 @@
     (Change _node) (= kind Radio)
     (ValueChanged _node _value) (= kind Slider)
     (Dismiss _node)
-    (or (= kind Select) (= kind Combobox) (= kind DropdownMenu))
+    (or (= kind Select) (= kind Combobox) (= kind DropdownMenu)
+        (= kind Dialog))
     (DoublePress _node) (= kind ListItem)))
 
 (defn orientation-supported? [value]
@@ -113,14 +114,14 @@
     CrossAlignment
     (or (= kind Row) (= kind Column) (= kind ListContainer)
         (horizontal-container? kind))
-    GrowValue (not (= kind Avatar))
+    GrowValue (and (not (= kind Avatar)) (not (= kind Dialog)))
     GridColumns (= kind Grid)
     PaddingValue (not (= kind Avatar))
     PaddingHorizontal
     (or (= kind Row) (= kind Column) (= kind Grid) (= kind Box))
     PaddingVertical
     (or (= kind Row) (= kind Column) (= kind Grid) (= kind Box))
-    BackgroundValue (not (= kind Avatar))
+    BackgroundValue (and (not (= kind Avatar)) (not (= kind Dialog)))
     ForegroundValue
     (match kind
       Text true
@@ -145,16 +146,16 @@
       MenuItem true
       ListItem true
       _ false)
-    BorderColorValue (not (= kind Avatar))
-    BorderWidth (not (= kind Avatar))
-    CornerRadius (not (= kind Avatar))
+    BorderColorValue (and (not (= kind Avatar)) (not (= kind Dialog)))
+    BorderWidth (and (not (= kind Avatar)) (not (= kind Dialog)))
+    CornerRadius (and (not (= kind Avatar)) (not (= kind Dialog)))
     WidthValue (not (= kind Avatar))
     HeightValue (not (= kind Avatar))
-    MinWidth (not (= kind Avatar))
-    MaxWidth (not (= kind Avatar))
-    MinHeight (not (= kind Avatar))
-    MaxHeight (not (= kind Avatar))
-    StyleClass (not (= kind Avatar))
+    MinWidth (and (not (= kind Avatar)) (not (= kind Dialog)))
+    MaxWidth (and (not (= kind Avatar)) (not (= kind Dialog)))
+    MinHeight (and (not (= kind Avatar)) (not (= kind Dialog)))
+    MaxHeight (and (not (= kind Avatar)) (not (= kind Dialog)))
+    StyleClass (and (not (= kind Avatar)) (not (= kind Dialog)))
     AccessibilityLabel
     (or (= kind Button) (= kind ToggleButton)
         (= kind TextField) (= kind Input) (= kind SearchField)
@@ -224,6 +225,7 @@
       MenuItem true
       ListItem true
       Avatar true
+      Dialog true
       _ false)
     Enabled
     (match kind
@@ -393,6 +395,11 @@
        (Some (StringValue value)) (not (= value ""))
        _ false)
      true)
+   (if (= kind Dialog)
+     (match (clojure.core/get properties TextValue)
+       (Some (StringValue value)) (not (= value ""))
+       _ false)
+     true)
    (if (= kind Avatar)
      (let [has-image (contains? properties ImageIdValue)
            has-source-x (contains? properties SourceX)
@@ -444,6 +451,7 @@
       RadioGroup true
       DropdownMenu true
       ListItem true
+      Dialog true
       _ false)))
 
 (defn create-node-op [node kind]

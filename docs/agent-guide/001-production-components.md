@@ -647,6 +647,24 @@ Each large completed wave is committed and pushed independently.
 - dialog, drawer, sheet, resizable and split;
 - native platform presentation, dismissal, focus restoration and drag behavior.
 
+#### Dialog contract
+
+`dialog` follows the pinned Vercel Native surface contract instead of exposing
+backend-specific presentation options. Its public attributes are `text`,
+`width`, `height`, `padding`, and `on-dismiss`. Application state owns whether
+the node exists, normally through `:if`; dismissal is an event, not an implicit
+mutation of application state. Dialog children stack inside the content area,
+while the title is rendered by the platform surface chrome.
+
+Every backend presents a dialog relative to the root rather than its declaring
+layout container. Web uses the native `dialog` top layer, SwiftUI uses one
+declarative modal presentation path for both Apple platforms, and Flutter uses
+the platform modal route/widget API. Escape or the platform back action and a
+backdrop press emit one `Dismiss` event for the topmost dialog. Presentation
+moves focus into the dialog, traps traversal while it is modal, and restores
+the previously focused control after removal. Nested declaration must not make
+ordinary parent layout or unrelated retained nodes rebuild.
+
 ### 7. Media and data display
 
 - image and media surfaces;

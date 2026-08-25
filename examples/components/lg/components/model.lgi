@@ -13,7 +13,8 @@
   (gallery-document :string)
   (gallery-document-action :string)
   (gallery-avatar-image :int)
-  (gallery-tab :string))
+  (gallery-tab :string)
+  (gallery-dialog-open :bool))
 
 (type-variant gallery-action
   (ToggleDisabled)
@@ -30,6 +31,8 @@
   (OpenDocument :string)
   (ToggleAvatarImage)
   (SelectTab :string)
+  (OpenDialog)
+  (CloseDialog)
   (AdvanceProgress))
 
 (signature components.model/initial :fn<gallery-model>)
