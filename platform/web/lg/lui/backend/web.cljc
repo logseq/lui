@@ -47,19 +47,32 @@
 
 (defn create-with-extensions
   [host app-icons registry adapters]
-   (record web-renderer
-           (web-store (retained/create-store))
-           (web-document (Webapi.Dom.Element.ownerDocument host))
-           (web-event-handler (atom (fn [_event] true)))
-           (web-app-icons app-icons)
-           (web-images (atom {}))
-           (web-media-surfaces (atom {}))
-           (web-cleanups (atom {}))
-           (web-modal-stack (atom []))
-           (web-open-context-menu (atom None))
-           (web-splits (atom {}))
-           (web-extension-registry registry)
-           (web-extension-adapters adapters)))
+  (let [document (Webapi.Dom.Element.ownerDocument host)
+        portal-root (Webapi.Dom.Document.createElement "div" document)
+        html-document (Webapi.Dom.Document.unsafeAsHtmlDocument document)]
+    (Webapi.Dom.Element.setClassName portal-root "lui-popup-portal")
+    (Webapi.Dom.Element.setAttribute "data-lui-root" "" host)
+    (if-some [body (Webapi.Dom.HtmlDocument.body html-document)]
+      (Webapi.Dom.Element.appendChild
+       (Webapi.Dom.Element.asNode portal-root) body)
+      (raise (Invalid_argument "document body is unavailable")))
+    (record web-renderer
+            (web-store (retained/create-store))
+            (web-document document)
+            (web-host host)
+            (web-portal-root portal-root)
+            (web-event-handler (atom (fn [_event] true)))
+            (web-app-icons app-icons)
+            (web-images (atom {}))
+            (web-media-surfaces (atom {}))
+            (web-cleanups (atom {}))
+            (web-modal-stack (atom []))
+            (web-open-tooltip (atom None))
+            (web-tooltip-warm (atom false))
+            (web-open-context-menu (atom None))
+            (web-splits (atom {}))
+            (web-extension-registry registry)
+            (web-extension-adapters adapters))))
 
 (defn create
   ([host] (create host {}))
@@ -282,6 +295,16 @@
        {"aria-hidden" "true" "data-name" "check"}
        [])])))
 
+(defn- create-dropdown-node [renderer]
+  (let [document (:web-document renderer)]
+    (element
+     document "div" "lui-popup-positioner"
+     {"data-anchor" "below" "data-anchor-alignment" "start"}
+     [(element
+       document "div" "lui-dropdown-menu"
+       {"role" "listbox" "tabindex" "-1"}
+       [])])))
+
 (defn- create-avatar-node [renderer]
   (let [document (:web-document renderer)]
     (element
@@ -424,14 +447,23 @@
      (:web-document renderer) tag (base-class-name kind) attributes [])))
 
 (defn- create-modal-node [renderer kind]
-  (let [class-name (base-class-name kind)]
-    (element
-     (:web-document renderer) "dialog" class-name
-     {"role" "dialog" "aria-modal" "true" "tabindex" "-1"}
-     [(element
-       (:web-document renderer) "div" (str class-name "-title") {} [])
-      (element
-       (:web-document renderer) "div" (str class-name "-body") {} [])])))
+  (let [document (:web-document renderer)
+        class-name (base-class-name kind)
+        layer
+        (element
+         document "div" "lui-modal-layer"
+         {"data-lui-modal-state" "closed" "hidden" ""} [])
+        backdrop
+        (element document "div" "lui-modal-backdrop" {"aria-hidden" "true"} [])
+        surface
+        (element
+         document "section" class-name
+         {"role" "dialog" "aria-modal" "true" "tabindex" "-1"}
+         [(element document "div" (str class-name "-title") {} [])
+          (element document "div" (str class-name "-body") {} [])])]
+    (Webapi.Dom.Element.appendChild (Webapi.Dom.Element.asNode backdrop) layer)
+    (Webapi.Dom.Element.appendChild (Webapi.Dom.Element.asNode surface) layer)
+    surface))
 
 (defn- create-alert-node [renderer]
   (let [document (:web-document renderer)]
@@ -458,6 +490,7 @@
     SwitchControl (create-direct-toggle-node renderer kind)
     Radio (create-direct-toggle-node renderer kind)
     Combobox (create-combobox-node renderer)
+    DropdownMenu (create-dropdown-node renderer)
     MenuItem (create-menu-item-node renderer)
     Avatar (create-avatar-node renderer)
     Image (create-media-node renderer kind)
@@ -617,8 +650,9 @@
   (Webapi.Dom.Element.addEventListener
    "click"
    (fn [_event]
-     (Stdlib.ignore
-      ((deref (:web-event-handler renderer)) (proto/Press node)))
+     (when (event-capability? renderer node PressEnabled)
+       (Stdlib.ignore
+        ((deref (:web-event-handler renderer)) (proto/Press node))))
      (Stdlib.ignore true))
    dom-node))
 
@@ -901,6 +935,15 @@
      (when (event-capability? renderer node PressEnabled)
        (Stdlib.ignore
         ((deref (:web-event-handler renderer)) (proto/Press node))))
+     (when (and
+            (treeitem? renderer node)
+            (event-capability? renderer node ToggleEnabled))
+       (match (retained/property (:web-store renderer) node Expanded)
+         (Some (BoolValue expanded))
+         (Stdlib.ignore
+          ((deref (:web-event-handler renderer))
+           (proto/ToggleChanged node (not expanded))))
+         _ (Stdlib.ignore true)))
      (Stdlib.ignore true))
    dom-node)
   (Webapi.Dom.Element.addEventListener
@@ -924,14 +967,19 @@
 
 (defn- dropdown-group-contains-event? [renderer node event]
   (if-some [current (retained/node (:web-store renderer) node)]
-    (match (:retained-parent current)
-      (Some parent)
-      (Webapi.Dom.Element.contains
-       (Webapi.Dom.Element.asNode
-        (Webapi.Dom.EventTarget.unsafeAsElement
-         (Webapi.Dom.Event.target event)))
-       (dom-node renderer parent))
-      None false)
+    (let [target
+          (Webapi.Dom.EventTarget.unsafeAsElement
+           (Webapi.Dom.Event.target event))]
+      (or
+       (Webapi.Dom.Element.contains
+        (Webapi.Dom.Element.asNode target)
+        (:platform-node current))
+       (match (:retained-parent current)
+         (Some parent)
+         (Webapi.Dom.Element.contains
+          (Webapi.Dom.Element.asNode target)
+          (dom-node renderer parent))
+         None false)))
     false))
 
 (defn- cleanup-node! [renderer node]
@@ -951,35 +999,30 @@
    (fn [stack]
      (into [] (filter (fn [current] (not (= current node))) stack)))))
 
+(defn- refresh-modal-host-inert! [renderer]
+  (set-state-attribute!
+   (:web-host renderer) "inert" (not (empty? (deref (:web-modal-stack renderer)))))
+  true)
+
 (defn- attach-modal-events! [renderer node dom-node]
   (let [document (:web-document renderer)
         html-document (Webapi.Dom.Document.unsafeAsHtmlDocument document)
         previous-focus (Webapi.Dom.HtmlDocument.activeElement html-document)
+        layer (modal-layer-node dom-node)
+        backdrop (child-element layer 0)
         dismiss!
         (fn []
           (when (and
                  (topmost-modal? renderer node)
-                 (Webapi.Dom.Element.hasAttribute "open" dom-node))
-            (Webapi.Dom.Element.setAttribute
-             "data-lui-modal-state" "closed" dom-node)
-            (remove-modal-from-stack! renderer node)
+                 (= (Webapi.Dom.Element.getAttribute
+                     "data-lui-modal-state" layer)
+                    (Some "open")))
             (Stdlib.ignore
              ((deref (:web-event-handler renderer)) (proto/Dismiss node))))
           true)
-        cancel-handler
-        (fn [event]
-          (Webapi.Dom.Event.preventDefault event)
-          (dismiss!)
-          (Stdlib.ignore true))
         click-handler
-        (fn [event]
-          (let [target
-                (Webapi.Dom.EventTarget.unsafeAsElement
-                 (Webapi.Dom.Event.target event))]
-            (when
-             (Webapi.Dom.Element.isSameNode
-              (Webapi.Dom.Element.asNode target) dom-node)
-              (dismiss!)))
+        (fn [_event]
+          (dismiss!)
           (Stdlib.ignore true))
         key-handler
         (fn [event]
@@ -989,19 +1032,18 @@
             (Webapi.Dom.KeyboardEvent.preventDefault event)
             (dismiss!))
           (Stdlib.ignore true))]
-    (Webapi.Dom.Element.addEventListener "cancel" cancel-handler dom-node)
-    (Webapi.Dom.Element.addEventListener "click" click-handler dom-node)
+    (Webapi.Dom.Element.addEventListener "click" click-handler backdrop)
     (Webapi.Dom.Document.addKeyDownEventListener key-handler document)
     (swap!
      (:web-cleanups renderer)
      assoc node
      (fn []
        (remove-modal-from-stack! renderer node)
-       (when (Webapi.Dom.Element.hasAttribute "open" dom-node)
-         (Webapi.Dom.Element.setAttribute
-          "data-lui-modal-state" "closed" dom-node))
-       (Webapi.Dom.Element.removeEventListener "cancel" cancel-handler dom-node)
-       (Webapi.Dom.Element.removeEventListener "click" click-handler dom-node)
+       (Webapi.Dom.Element.setAttribute
+        "data-lui-modal-state" "closed" layer)
+       (Webapi.Dom.Element.setAttribute "hidden" "" layer)
+       (refresh-modal-host-inert! renderer)
+       (Webapi.Dom.Element.removeEventListener "click" click-handler backdrop)
        (Webapi.Dom.Document.removeKeyDownEventListener key-handler document)
        (match previous-focus
          (Some element)
@@ -1011,23 +1053,113 @@
        (Stdlib.ignore true)))
     (Stdlib.ignore true)))
 
-(defn- attach-dropdown-events! [renderer node _dom-node]
+(defn- attach-dropdown-events! [renderer node _dropdown-node]
   (let [document (:web-document renderer)
+        refresh-position!
+        (fn [_event]
+          (Webapi.requestAnimationFrame
+           (fn [_time]
+             (if-some [_current
+                       (retained/node (:web-store renderer) node)]
+               (position-dropdown! renderer node)
+               (Stdlib.ignore true))))
+          (Stdlib.ignore true))
         pointer-handler
         (fn [event]
           (when (not (dropdown-group-contains-event? renderer node event))
             (Stdlib.ignore
              ((deref (:web-event-handler renderer)) (proto/Dismiss node))))
+          (refresh-position! event)
           (Stdlib.ignore true))
         key-handler
         (fn [event]
-          (when (= "Escape" (Webapi.Dom.KeyboardEvent.key event))
-            (Webapi.Dom.KeyboardEvent.preventDefault event)
-            (Stdlib.ignore
-             ((deref (:web-event-handler renderer)) (proto/Dismiss node))))
+          (let [key (Webapi.Dom.KeyboardEvent.key event)
+                items (context-menu-focus-items renderer node)
+                event-target
+                (Webapi.Dom.EventTarget.unsafeAsElement
+                 (Webapi.Dom.KeyboardEvent.target event))
+                current-index
+                (focused-child-index renderer items event-target 0)
+                parent
+                (if-some [current
+                          (retained/node (:web-store renderer) node)]
+                  (:retained-parent current)
+                  None)
+                submenu-trigger
+                (match parent
+                  (Some candidate)
+                  (if-some [candidate-node
+                            (retained/node (:web-store renderer) candidate)]
+                    (if (standard-kind? candidate-node MenuItem)
+                      (Some candidate)
+                      None)
+                    None)
+                  None None)]
+            (when (not (= current-index None))
+              (cond
+              (or (= key "ArrowDown") (= key "ArrowUp")
+                  (= key "Home") (= key "End"))
+              (let [navigation-key
+                    (if (= key "ArrowDown")
+                      "ArrowRight"
+                      (if (= key "ArrowUp") "ArrowLeft" key))]
+                (match
+                 (horizontal-focus-index
+                  navigation-key current-index (count items))
+                  (Some index)
+                  (do
+                    (Webapi.Dom.KeyboardEvent.preventDefault event)
+                    (focus-context-menu-item! renderer node index))
+                  None (Stdlib.ignore true)))
+
+              (= key "ArrowRight")
+              (match current-index
+                (Some index)
+                (match (direct-dropdown-menu renderer (nth items index))
+                  (Some submenu)
+                  (do
+                    (Webapi.Dom.KeyboardEvent.preventDefault event)
+                    (set-dropdown-open! renderer submenu true)
+                    (focus-context-menu-item! renderer submenu 0))
+                  None (Stdlib.ignore true))
+                None (Stdlib.ignore true))
+
+              (and (= key "ArrowLeft") (not (= submenu-trigger None)))
+              (match submenu-trigger
+                (Some trigger)
+                (do
+                  (Webapi.Dom.KeyboardEvent.preventDefault event)
+                  (Webapi.Dom.HtmlElement.focus
+                   (Webapi.Dom.Element.unsafeAsHtmlElement
+                    (dom-node renderer trigger)))
+                  (set-dropdown-open! renderer node false)
+                  (Webapi.Dom.Element.setAttribute
+                   "aria-expanded" "false" (dom-node renderer trigger)))
+                None (Stdlib.ignore true))
+
+              (= key "Escape")
+              (do
+                (Webapi.Dom.KeyboardEvent.preventDefault event)
+                (match submenu-trigger
+                  (Some trigger)
+                  (do
+                    (Webapi.Dom.HtmlElement.focus
+                     (Webapi.Dom.Element.unsafeAsHtmlElement
+                      (dom-node renderer trigger)))
+                    (set-dropdown-open! renderer node false)
+                    (Webapi.Dom.Element.setAttribute
+                     "aria-expanded" "false" (dom-node renderer trigger)))
+                  None
+                  (Stdlib.ignore
+                   ((deref (:web-event-handler renderer))
+                    (proto/Dismiss node)))))
+
+                :else (Stdlib.ignore true))))
           (Stdlib.ignore true))]
     (Webapi.Dom.Document.addEventListener
      "pointerdown" pointer-handler document)
+    (Webapi.Dom.Document.addEventListener
+     "click" refresh-position! document)
     (Webapi.Dom.Document.addKeyDownEventListener key-handler document)
     (swap!
      (:web-cleanups renderer)
@@ -1036,6 +1168,8 @@
      (fn []
        (Webapi.Dom.Document.removeEventListener
         "pointerdown" pointer-handler document)
+       (Webapi.Dom.Document.removeEventListener
+        "click" refresh-position! document)
        (Webapi.Dom.Document.removeKeyDownEventListener key-handler document)
        (Stdlib.ignore true)))
     (Stdlib.ignore true)))
@@ -1231,6 +1365,19 @@
             (recur (inc index))))))
     None))
 
+(defn- direct-dropdown-menu [renderer node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (loop [index 0]
+      (if (= index (count (:retained-children current)))
+        None
+        (let [child (nth (:retained-children current) index)]
+          (if-some [child-node (retained/node (:web-store renderer) child)]
+            (if (standard-kind? child-node DropdownMenu)
+              (Some child)
+              (recur (inc index)))
+            (recur (inc index))))))
+    None))
+
 (defn- hide-context-menu! [renderer]
   (match (deref (:web-open-context-menu renderer))
     (Some menu)
@@ -1412,17 +1559,16 @@
                 (Webapi.Dom.KeyboardEvent.preventDefault event)
                 (hide-context-menu! renderer)
                 (focus-context-menu-host! renderer node))
-              (when
-               (or
-                (= key "ArrowDown") (= key "ArrowUp")
-                (= key "Home") (= key "End"))
+              (when (or
+                     (= key "ArrowDown") (= key "ArrowUp")
+                     (= key "Home") (= key "End"))
                 (let [items (context-menu-focus-items renderer node)
                       html-document
                       (Webapi.Dom.Document.unsafeAsHtmlDocument document)
                       current
-                      (if-some
-                       [focused
-                        (Webapi.Dom.HtmlDocument.activeElement html-document)]
+                      (if-some [focused
+                                (Webapi.Dom.HtmlDocument.activeElement
+                                 html-document)]
                         (focused-child-index renderer items focused 0)
                         None)
                       navigation-key
@@ -1448,8 +1594,8 @@
               (= (deref (:web-open-context-menu renderer)) (Some node))
               (not
                (Webapi.Dom.Element.contains
-                (Webapi.Dom.Element.asNode target) dom-node)))
-              (hide-context-menu! renderer)))
+                (Webapi.Dom.Element.asNode target) dom-node))
+              (hide-context-menu! renderer))))
           (Stdlib.ignore true))
         click-handler
         (fn [_event]
@@ -1474,6 +1620,254 @@
           (reset! (:web-open-context-menu renderer) None))
         (Stdlib.ignore true))))))
 
+(defn- tooltip-delay [renderer node]
+  (match (retained/property (:web-store renderer) node TooltipDelay)
+    (Some (IntValue delay)) delay
+    _ 600))
+
+(defn- position-tooltip! [renderer node]
+  (let [tooltip (dom-node renderer node)
+        anchor (dropdown-anchor-node renderer node)
+        anchor-bounds (Webapi.Dom.Element.getBoundingClientRect anchor)
+        tooltip-bounds (Webapi.Dom.Element.getBoundingClientRect tooltip)
+        offset (dropdown-offset renderer node)
+        side (dropdown-side tooltip)
+        alignment
+        (match (Webapi.Dom.Element.getAttribute
+                "data-anchor-alignment" tooltip)
+          (Some value) value
+          None "start")
+        left
+        (match alignment
+          "center"
+          (- (+ (Webapi.Dom.DomRect.left anchor-bounds)
+                (/ (Webapi.Dom.DomRect.width anchor-bounds) 2.0))
+             (/ (Webapi.Dom.DomRect.width tooltip-bounds) 2.0))
+          "end"
+          (- (Webapi.Dom.DomRect.right anchor-bounds)
+             (Webapi.Dom.DomRect.width tooltip-bounds))
+          _ (Webapi.Dom.DomRect.left anchor-bounds))
+        top
+        (if (= side "above")
+          (- (Webapi.Dom.DomRect.top anchor-bounds)
+             (Webapi.Dom.DomRect.height tooltip-bounds)
+             offset)
+          (+ (Webapi.Dom.DomRect.bottom anchor-bounds) offset))]
+    (set-style! tooltip "left" (str left "px"))
+    (set-style! tooltip "top" (str top "px"))
+    (Stdlib.ignore true)))
+
+(defn- set-tooltip-open! [renderer node open]
+  (let [tooltip (dom-node renderer node)]
+    (if open
+      (do
+        (match (deref (:web-open-tooltip renderer))
+          (Some previous)
+          (when (not (= previous node))
+            (if-some [_current (retained/node (:web-store renderer) previous)]
+              (Webapi.Dom.Element.removeAttribute
+               "data-open" (dom-node renderer previous))
+              (Stdlib.ignore true)))
+          None (Stdlib.ignore true))
+        (reset! (:web-open-tooltip renderer) (Some node))
+        (Webapi.Dom.Element.setAttribute "data-open" "" tooltip)
+        (position-tooltip! renderer node))
+      (do
+        (Webapi.Dom.Element.removeAttribute "data-open" tooltip)
+        (when (= (deref (:web-open-tooltip renderer)) (Some node))
+          (Stdlib.ignore
+           (reset! (:web-open-tooltip renderer) None)))))
+    (Stdlib.ignore true)))
+
+(defn- add-tooltip-description! [trigger tooltip-id]
+  (match (Webapi.Dom.Element.getAttribute "aria-describedby" trigger)
+    (Some current)
+    (when (not (string/includes? (str " " current " ")
+                                 (str " " tooltip-id " ")))
+      (Webapi.Dom.Element.setAttribute
+       "aria-describedby" (str current " " tooltip-id) trigger))
+    None
+    (Webapi.Dom.Element.setAttribute
+     "aria-describedby" tooltip-id trigger))
+  true)
+
+(defn- remove-tooltip-description! [trigger tooltip-id]
+  (match (Webapi.Dom.Element.getAttribute "aria-describedby" trigger)
+    (Some current)
+    (let [next (string/trim (string/replace current tooltip-id ""))]
+      (if (= next "")
+        (Webapi.Dom.Element.removeAttribute "aria-describedby" trigger)
+        (Webapi.Dom.Element.setAttribute "aria-describedby" next trigger)))
+    None (Stdlib.ignore true))
+  true)
+
+(defn- mount-tooltip! [renderer node tooltip]
+  (let [document (:web-document renderer)
+        trigger (dropdown-anchor-node renderer node)
+        tooltip-id (node-dom-id node)
+        pointer-inside (atom false)
+        origin (atom "")
+        show-timer (atom None)
+        hide-timer (atom None)
+        warm-timer (atom None)
+        cancel-show!
+        (fn []
+          (match (deref show-timer)
+            (Some timer-id) (Js.Global.clearTimeout timer-id)
+            None (Stdlib.ignore true))
+          (reset! show-timer None)
+          true)
+        cancel-hide!
+        (fn []
+          (match (deref hide-timer)
+            (Some timer-id) (Js.Global.clearTimeout timer-id)
+            None (Stdlib.ignore true))
+          (reset! hide-timer None)
+          true)
+        cancel-warm-timer!
+        (fn []
+          (match (deref warm-timer)
+            (Some timer-id) (Js.Global.clearTimeout timer-id)
+            None (Stdlib.ignore true))
+          (reset! warm-timer None)
+          true)
+        cancel!
+        (fn []
+          (cancel-show!)
+          (cancel-hide!)
+          true)
+        cancel-warm!
+        (fn []
+          (cancel-warm-timer!)
+          (reset! (:web-tooltip-warm renderer) false)
+          true)
+        warm!
+        (fn []
+          (cancel-warm!)
+          (reset! (:web-tooltip-warm renderer) true)
+          (reset!
+           warm-timer
+           (Some
+            (Js.Global.setTimeout
+             400
+             :f
+             (fn []
+               (reset! warm-timer None)
+               (reset! (:web-tooltip-warm renderer) false)
+               (Stdlib.ignore true)))))
+          true)
+        show!
+        (fn [next-origin]
+          (cancel!)
+          (reset! origin next-origin)
+          (set-tooltip-open! renderer node true)
+          true)
+        hide!
+        (fn [warm]
+          (cancel!)
+          (when (and warm (= (deref origin) "pointer")) (warm!))
+          (set-tooltip-open! renderer node false)
+          (reset! origin "")
+          true)
+        pointer-enter!
+        (fn [_event]
+          (reset! pointer-inside true)
+          (cancel-hide!)
+          (let [delay (if (deref (:web-tooltip-warm renderer))
+                        0
+                        (tooltip-delay renderer node))]
+            (if (= delay 0)
+              (do
+                (show! "pointer")
+                (Stdlib.ignore true))
+              (do
+                (reset!
+                 show-timer
+                 (Some
+                  (Js.Global.setTimeout
+                   delay
+                   :f
+                   (fn []
+                     (reset! show-timer None)
+                     (show! "pointer")
+                     (Stdlib.ignore true)))))
+                (Stdlib.ignore true))))
+          (Stdlib.ignore true))
+        pointer-leave!
+        (fn [_event]
+          (reset! pointer-inside false)
+          (cancel-show!)
+          (reset!
+           hide-timer
+           (Some
+            (Js.Global.setTimeout
+             50
+             :f
+             (fn []
+               (reset! hide-timer None)
+               (hide! true)
+               (Stdlib.ignore true)))))
+          (Stdlib.ignore true))
+        focus-in!
+        (fn [_event]
+          (show! "focus")
+          (Stdlib.ignore true))
+        focus-out!
+        (fn [_event]
+          (cancel-hide!)
+          (reset!
+           hide-timer
+           (Some
+            (Js.Global.setTimeout
+             0
+             :f
+             (fn []
+               (reset! hide-timer None)
+               (when (not (deref pointer-inside)) (hide! false))
+               (Stdlib.ignore true)))))
+          (Stdlib.ignore true))
+        press!
+        (fn [_event]
+          (cancel-warm!)
+          (hide! false)
+          (Stdlib.ignore true))
+        key!
+        (fn [event]
+          (when (and
+                 (= (Webapi.Dom.KeyboardEvent.key event) "Escape")
+                 (= (deref (:web-open-tooltip renderer)) (Some node)))
+            (Webapi.Dom.KeyboardEvent.preventDefault event)
+            (cancel-warm!)
+            (hide! false))
+          (Stdlib.ignore true))]
+    (add-tooltip-description! trigger tooltip-id)
+    (Webapi.Dom.Element.addEventListener "pointerenter" pointer-enter! trigger)
+    (Webapi.Dom.Element.addEventListener "pointerleave" pointer-leave! trigger)
+    (Webapi.Dom.Element.addEventListener "focusin" focus-in! trigger)
+    (Webapi.Dom.Element.addEventListener "focusout" focus-out! trigger)
+    (Webapi.Dom.Element.addEventListener "pointerdown" press! trigger)
+    (Webapi.Dom.Document.addKeyDownEventListener key! document)
+    (swap!
+     (:web-cleanups renderer) assoc node
+     (fn []
+       (cancel!)
+       (cancel-warm!)
+       (Webapi.Dom.Element.removeAttribute "data-open" tooltip)
+       (when (= (deref (:web-open-tooltip renderer)) (Some node))
+         (Stdlib.ignore
+          (reset! (:web-open-tooltip renderer) None)))
+       (remove-tooltip-description! trigger tooltip-id)
+       (Webapi.Dom.Element.removeEventListener
+        "pointerenter" pointer-enter! trigger)
+       (Webapi.Dom.Element.removeEventListener
+        "pointerleave" pointer-leave! trigger)
+       (Webapi.Dom.Element.removeEventListener "focusin" focus-in! trigger)
+       (Webapi.Dom.Element.removeEventListener "focusout" focus-out! trigger)
+       (Webapi.Dom.Element.removeEventListener "pointerdown" press! trigger)
+       (Webapi.Dom.Document.removeKeyDownEventListener key! document)
+       (Stdlib.ignore true)))
+    (Stdlib.ignore true)))
+
 (defn- attach-events! [renderer node kind dom-node]
   (when (not (= kind ContextMenu))
     (attach-context-host-events! renderer node dom-node))
@@ -1492,11 +1886,26 @@
     (do
       (attach-text-events! renderer node kind dom-node)
       (attach-picker-press-event! renderer node (child-element dom-node 1)))
-    DropdownMenu (attach-dropdown-events! renderer node dom-node)
+    DropdownMenu
+    (attach-dropdown-events! renderer node (child-element dom-node 0))
     ContextMenu (attach-context-menu-events! renderer node dom-node)
     Dialog (attach-modal-events! renderer node dom-node)
     Sheet (attach-modal-events! renderer node dom-node)
-    MenuItem (attach-picker-press-event! renderer node dom-node)
+    MenuItem
+    (do
+      (attach-picker-press-event! renderer node dom-node)
+      (Webapi.Dom.Element.addEventListener
+       "focusin"
+       (fn [_event]
+         (Webapi.Dom.Element.setAttribute "data-highlighted" "" dom-node)
+         (Stdlib.ignore true))
+       dom-node)
+      (Webapi.Dom.Element.addEventListener
+       "focusout"
+       (fn [_event]
+         (Webapi.Dom.Element.removeAttribute "data-highlighted" dom-node)
+         (Stdlib.ignore true))
+       dom-node))
     ListItem (attach-list-item-events! renderer node dom-node)
     Checkbox (attach-toggle-event! renderer node kind dom-node)
     SwitchControl (attach-toggle-event! renderer node kind dom-node)
@@ -1602,11 +2011,11 @@
               current
               (split-base-fraction source))
             current)]
-       (swap!
-        (:web-splits renderer) assoc node
-        (record web-split-state
-         (web-split-source source)
-         (web-split-current next-current)))
+      (swap!
+       (:web-splits renderer) assoc node
+       (record web-split-state
+               (web-split-source source)
+               (web-split-current next-current)))
       (render-split! renderer node root next-current source-changed))
     (let [duration (split-int-property renderer node ResizeDuration 0)
           origin
@@ -1616,13 +2025,13 @@
           start
           (match origin
             (Some value) (if (> duration 0) (split-base-fraction value)
-                           (split-base-fraction source))
+                             (split-base-fraction source))
             None (split-base-fraction source))]
       (swap!
-        (:web-splits renderer) assoc node
-        (record web-split-state
-         (web-split-source source)
-         (web-split-current start)))
+       (:web-splits renderer) assoc node
+       (record web-split-state
+               (web-split-source source)
+               (web-split-current start)))
       (render-split! renderer node root start false)
       (when (and (> duration 0) (not (= start (split-base-fraction source))))
         (Webapi.requestAnimationFrame
@@ -1630,8 +2039,8 @@
            (swap!
             (:web-splits renderer) assoc node
             (record web-split-state
-              (web-split-source source)
-              (web-split-current (split-base-fraction source))))
+                    (web-split-source source)
+                    (web-split-current (split-base-fraction source))))
            (render-split! renderer node root (split-base-fraction source) true)))))))
 
 (defn- update-split! [renderer node]
@@ -1671,11 +2080,11 @@
                   (match (retained/property (:web-store renderer) node ProgressValue)
                     (Some (FloatValue value)) value
                     _ 0.0)]
-             (swap!
-              (:web-splits renderer) assoc node
-              (record web-split-state
-                 (web-split-source source)
-                 (web-split-current current)))
+              (swap!
+               (:web-splits renderer) assoc node
+               (record web-split-state
+                       (web-split-source source)
+                       (web-split-current current)))
               (render-split! renderer node root current false)
               (Stdlib.ignore
                ((deref (:web-event-handler renderer))
@@ -1697,11 +2106,11 @@
                 (match (retained/property (:web-store renderer) node ProgressValue)
                   (Some (FloatValue value)) value
                   _ 0.0)]
-           (swap!
-            (:web-splits renderer) assoc node
-            (record web-split-state
-               (web-split-source source)
-               (web-split-current next)))
+            (swap!
+             (:web-splits renderer) assoc node
+             (record web-split-state
+                     (web-split-source source)
+                     (web-split-current next)))
             (render-split! renderer node root next false)
             (Stdlib.ignore
              ((deref (:web-event-handler renderer))
@@ -1958,10 +2367,10 @@
        (or (standard-kind? current Avatar)
            (standard-kind? current Image))
        (= (clojure.core/get (:retained-properties current) ImageIdValue)
-          (Some (IntValue image-id))))
+          (Some (IntValue image-id)))
        (if (standard-kind? current Avatar)
          (update-avatar! renderer node (:platform-node current))
-         (update-image! renderer node (:platform-node current))))
+         (update-image! renderer node (:platform-node current)))))
      true)
    true
    (retained/nodes (:web-store renderer))))
@@ -1975,14 +2384,14 @@
     (not (Float.is_finite height))
     (<= width 0.0)
     (<= height 0.0))
-    (raise (Invalid_argument "registered image dimensions must be positive")))
+   (raise (Invalid_argument "registered image dimensions must be positive")))
   (swap!
    (:web-images renderer)
    assoc image-id
    (record web-image-resource
-     (web-image-url url)
-     (web-image-width width)
-     (web-image-height height)))
+           (web-image-url url)
+           (web-image-width width)
+           (web-image-height height)))
   (refresh-image-id! renderer image-id)
   true)
 
@@ -2001,8 +2410,8 @@
       (and
        (standard-kind? current MediaSurface)
        (= (clojure.core/get (:retained-properties current) SurfaceIdValue)
-          (Some (IntValue surface-id))))
-       (update-media-surface! renderer node (:platform-node current)))
+          (Some (IntValue surface-id)))
+       (update-media-surface! renderer node (:platform-node current))))
      true)
    true
    (retained/nodes (:web-store renderer))))
@@ -2016,14 +2425,14 @@
     (not (Float.is_finite height))
     (<= width 0.0)
     (<= height 0.0))
-    (raise (Invalid_argument "media surface dimensions must be positive")))
+   (raise (Invalid_argument "media surface dimensions must be positive")))
   (swap!
    (:web-media-surfaces renderer)
    assoc surface-id
    (record web-image-resource
-     (web-image-url url)
-     (web-image-width width)
-     (web-image-height height)))
+           (web-image-url url)
+           (web-image-width width)
+           (web-image-height height)))
   (refresh-media-surface-id! renderer surface-id)
   true)
 
@@ -2214,7 +2623,7 @@
           _ "")
         tree-class (if (treeitem? renderer node) "lui-tree-item" "")]
     (Webapi.Dom.Element.setClassName
-     dom-node
+     (if (= kind DropdownMenu) (child-element dom-node 0) dom-node)
      (string/trim
       (str (base-class-name kind) " " tree-class " " style-class)))))
 
@@ -2611,7 +3020,6 @@
     (do
       (Webapi.Dom.Element.setAttribute "data-anchor" anchor dom-node)
       (when (= kind Tooltip)
-        (Webapi.Dom.Element.setAttribute "popover" "manual" dom-node)
         (Webapi.Dom.Element.setAttribute
          "data-anchor-alignment" "start" dom-node)))
 
@@ -2664,6 +3072,33 @@
     (standard-kind? current ContextMenu)
     false))
 
+(defn- dropdown-node? [nodes node]
+  (if-some [current (clojure.core/get nodes node)]
+    (standard-kind? current DropdownMenu)
+    false))
+
+(defn- modal-node? [nodes node]
+  (if-some [current (clojure.core/get nodes node)]
+    (if-some [kind (retained/standard-kind current)]
+      (modal-surface? kind)
+      false)
+    false))
+
+(defn- modal-layer-node [surface]
+  (if-some [layer (Webapi.Dom.Element.parentElement surface)]
+    layer
+    (raise (Invalid_argument "modal surface requires a portal layer"))))
+
+(defn- anchored-tooltip? [current]
+  (and
+   (standard-kind? current Tooltip)
+   (contains? (:retained-properties current) AnchorValue)))
+
+(defn- anchored-tooltip-node? [nodes node]
+  (if-some [current (clojure.core/get nodes node)]
+    (anchored-tooltip? current)
+    false))
+
 (defn- visible-child-index [renderer parent index]
   (if-some [current (retained/node (:web-store renderer) parent)]
     (loop [source-index 0
@@ -2675,14 +3110,21 @@
            (inc source-index)
            (if-some [child-node
                      (retained/node (:web-store renderer) child)]
-             (if (standard-kind? child-node ContextMenu)
+             (if (or (standard-kind? child-node ContextMenu)
+                     (standard-kind? child-node DropdownMenu)
+                     (anchored-tooltip? child-node)
+                     (if-some [kind (retained/standard-kind child-node)]
+                       (modal-surface? kind)
+                       false))
                result
                (inc result))
              result)))))
     index))
 
 (defn- content-container [kind dom-node]
-  (if (= kind Split)
+  (if (= kind DropdownMenu)
+    (child-element dom-node 0)
+    (if (= kind Split)
     (child-element dom-node 0)
     (if (= kind Alert)
       (child-element dom-node 1)
@@ -2690,7 +3132,7 @@
         (child-element dom-node 0)
         (if (or (= kind Accordion) (modal-surface? kind))
           (child-element dom-node 1)
-          dom-node)))))
+          dom-node))))))
 
 (defn- retained-content-container [current dom-node]
   (match (retained/standard-kind current)
@@ -2710,15 +3152,198 @@
       (retained-content-container previous dom-node)
       dom-node)))
 
+(defn- dropdown-anchor-node [renderer node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (match (:retained-parent current)
+      (Some parent)
+      (if-some [parent-node (retained/node (:web-store renderer) parent)]
+        (if (standard-kind? parent-node MenuItem)
+          (:platform-node parent-node)
+          (let [container
+                (retained-content-container
+                 parent-node (:platform-node parent-node))
+                children (Webapi.Dom.Element.children container)
+                length (html-collection/length children)]
+            (if (> length 0)
+              (if-some [anchor (html-collection/item (dec length) children)]
+                anchor
+                container)
+              container)))
+        (raise (Invalid_argument "dropdown parent is unavailable")))
+      None (raise (Invalid_argument "dropdown requires an anchor parent")))
+    (raise (Invalid_argument "unknown dropdown node"))))
+
+(defn- dropdown-side [dom-node]
+  (match (Webapi.Dom.Element.getAttribute "data-anchor" dom-node)
+    (Some value) value
+    None "below"))
+
+(defn- dropdown-offset [renderer node]
+  (match (retained/property (:web-store renderer) node AnchorOffset)
+    (Some (FloatValue value)) value
+    _ 0.0))
+
+(defn- dropdown-listbox? [renderer node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (match (:retained-parent current)
+      (Some parent)
+      (if-some [parent-node (retained/node (:web-store renderer) parent)]
+        (let [children (:retained-children parent-node)]
+          (loop [index 0
+               picker false]
+            (if (= index (count children))
+              false
+              (let [child (nth children index)]
+              (if (= child node)
+                picker
+                (if-some [child-node
+                          (retained/node (:web-store renderer) child)]
+                  (recur
+                   (inc index)
+                   (or (standard-kind? child-node Select)
+                       (standard-kind? child-node Combobox)))
+                  (recur (inc index) picker)))))))
+        false)
+      None false)
+    false))
+
+(defn- position-dropdown! [renderer node]
+  (let [positioner (dom-node renderer node)
+        popup (child-element positioner 0)
+        anchor (dropdown-anchor-node renderer node)
+        anchor-bounds (Webapi.Dom.Element.getBoundingClientRect anchor)
+        visible
+        (or (> (Webapi.Dom.DomRect.width anchor-bounds) 0.0)
+            (> (Webapi.Dom.DomRect.height anchor-bounds) 0.0))]
+    (set-state-attribute! positioner "hidden" (not visible))
+    (when visible
+      (let [popup-bounds (Webapi.Dom.Element.getBoundingClientRect popup)
+            offset (dropdown-offset renderer node)
+            side (dropdown-side positioner)
+            left
+            (if (= side "right")
+              (+ (Webapi.Dom.DomRect.right anchor-bounds) offset)
+              (if (= side "left")
+                (- (Webapi.Dom.DomRect.left anchor-bounds)
+                   (Webapi.Dom.DomRect.width popup-bounds) offset)
+                (Webapi.Dom.DomRect.left anchor-bounds)))
+            top
+            (if (= side "above")
+              (- (Webapi.Dom.DomRect.top anchor-bounds)
+                 (Webapi.Dom.DomRect.height popup-bounds) offset)
+              (if (or (= side "left") (= side "right"))
+                (Webapi.Dom.DomRect.top anchor-bounds)
+                (+ (Webapi.Dom.DomRect.bottom anchor-bounds) offset)))]
+        (set-style! positioner "left" (str left "px"))
+        (set-style! positioner "top" (str top "px"))))
+    (Stdlib.ignore true)))
+
+(defn- set-dropdown-open! [renderer node open]
+  (let [positioner (dom-node renderer node)
+        popup (child-element positioner 0)]
+    (set-state-attribute! popup "data-open" open)
+    (when open
+      (Webapi.Dom.Element.setAttribute "data-starting-style" "" popup)
+      (position-dropdown! renderer node)
+      (Webapi.requestAnimationFrame
+       (fn [_time]
+         (Webapi.Dom.Element.removeAttribute "data-starting-style" popup))))
+    (Stdlib.ignore true)))
+
+(defn- mount-dropdown! [renderer node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (do
+      (Webapi.Dom.Element.setAttribute
+       "role" (if (dropdown-listbox? renderer node) "listbox" "menu")
+       (child-element (:platform-node current) 0))
+      (match (:retained-parent current)
+      (Some parent)
+      (if-some [parent-node (retained/node (:web-store renderer) parent)]
+        (if (standard-kind? parent-node MenuItem)
+          (let [trigger (:platform-node parent-node)
+                popup (child-element (:platform-node current) 0)
+                close-timer (atom None)
+                cancel-close!
+                (fn []
+                  (match (deref close-timer)
+                    (Some timer) (Js.Global.clearTimeout timer)
+                    None (Stdlib.ignore true))
+                  (reset! close-timer None)
+                  true)
+                open!
+                (fn [_event]
+                  (cancel-close!)
+                  (Webapi.Dom.Element.setAttribute
+                   "aria-expanded" "true" trigger)
+                  (set-dropdown-open! renderer node true))
+                close!
+                (fn [_event]
+                  (cancel-close!)
+                  (reset!
+                   close-timer
+                   (Some
+                    (Js.Global.setTimeout
+                     120
+                     :f
+                     (fn []
+                       (reset! close-timer None)
+                       (Webapi.Dom.Element.setAttribute
+                        "aria-expanded" "false" trigger)
+                       (set-dropdown-open! renderer node false)))))
+                  (Stdlib.ignore true))
+                previous-cleanup
+                (clojure.core/get (deref (:web-cleanups renderer)) node)]
+            (Webapi.Dom.Element.setAttribute
+             "data-submenu-trigger" "" trigger)
+            (Webapi.Dom.Element.setAttribute "aria-haspopup" "menu" trigger)
+            (Webapi.Dom.Element.setAttribute "aria-expanded" "false" trigger)
+            (Webapi.Dom.Element.setAttribute
+             "data-submenu" "" (:platform-node current))
+            (Webapi.Dom.Element.setAttribute
+             "role" "menu" (child-element (:platform-node current) 0))
+            (Webapi.Dom.Element.addEventListener "mouseenter" open! trigger)
+            (Webapi.Dom.Element.addEventListener "focusin" open! trigger)
+            (Webapi.Dom.Element.addEventListener "mouseleave" close! trigger)
+            (Webapi.Dom.Element.addEventListener "mouseenter" open! popup)
+            (Webapi.Dom.Element.addEventListener "mouseleave" close! popup)
+            (swap!
+             (:web-cleanups renderer) assoc node
+             (fn []
+               (match previous-cleanup
+                 (Some cleanup) (cleanup)
+                 None (Stdlib.ignore true))
+               (cancel-close!)
+               (Webapi.Dom.Element.removeEventListener
+                "mouseenter" open! trigger)
+               (Webapi.Dom.Element.removeEventListener
+                "focusin" open! trigger)
+               (Webapi.Dom.Element.removeEventListener
+                "mouseleave" close! trigger)
+               (Webapi.Dom.Element.removeEventListener
+                "mouseenter" open! popup)
+               (Webapi.Dom.Element.removeEventListener
+                "mouseleave" close! popup)
+               (Stdlib.ignore true)))
+            (position-dropdown! renderer node))
+          (set-dropdown-open! renderer node true))
+        (raise (Invalid_argument "dropdown parent is unavailable")))
+      None (raise (Invalid_argument "dropdown requires an anchor parent"))))
+    (raise (Invalid_argument "unknown dropdown node"))))
+
 (defn- open-modal! [renderer node dom-node]
-  (when (not (=
-              (Webapi.Dom.Element.getAttribute
-               "data-lui-modal-state" dom-node)
-              (Some "open")))
-    (Webapi.Dom.Element.setAttribute
-     "data-lui-modal-state" "open" dom-node)
-    (swap! (:web-modal-stack renderer) conj node))
-  (Stdlib.ignore true))
+  (let [layer (modal-layer-node dom-node)]
+    (when (not (=
+                (Webapi.Dom.Element.getAttribute
+                 "data-lui-modal-state" layer)
+                (Some "open")))
+      (Webapi.Dom.Element.removeAttribute "hidden" layer)
+      (Webapi.Dom.Element.setAttribute
+       "data-lui-modal-state" "open" layer)
+      (swap! (:web-modal-stack renderer) conj node)
+      (refresh-modal-host-inert! renderer)
+      (Webapi.Dom.HtmlElement.focus
+       (Webapi.Dom.Element.unsafeAsHtmlElement dom-node)))
+    (Stdlib.ignore true)))
 
 (defn- radio-group-ancestor [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
@@ -2839,14 +3464,32 @@
     (InsertChild parent child index)
     (do
       (if-some [current (retained/node (:web-store renderer) child)]
-        (if (standard-kind? current ContextMenu)
+        (if (standard-kind? current DropdownMenu)
           (Webapi.Dom.Element.appendChild
            (Webapi.Dom.Element.asNode (dom-node renderer child))
-           (document-body renderer))
-          (insert-dom-child!
-           (dom-child-container renderer parent (dom-node renderer parent))
-           (dom-node renderer child)
-           (visible-child-index renderer parent index)))
+           (:web-portal-root renderer))
+          (if (anchored-tooltip? current)
+            (Webapi.Dom.Element.appendChild
+             (Webapi.Dom.Element.asNode (dom-node renderer child))
+             (:web-portal-root renderer))
+            (if-some [kind (retained/standard-kind current)]
+            (if (modal-surface? kind)
+              (Webapi.Dom.Element.appendChild
+               (Webapi.Dom.Element.asNode
+                (modal-layer-node (dom-node renderer child)))
+               (:web-portal-root renderer))
+              (if (= kind ContextMenu)
+                (Webapi.Dom.Element.appendChild
+                 (Webapi.Dom.Element.asNode (dom-node renderer child))
+                 (document-body renderer))
+                (insert-dom-child!
+                 (dom-child-container renderer parent (dom-node renderer parent))
+                 (dom-node renderer child)
+                 (visible-child-index renderer parent index))))
+            (insert-dom-child!
+             (dom-child-container renderer parent (dom-node renderer parent))
+             (dom-node renderer child)
+             (visible-child-index renderer parent index)))))
         (raise (Invalid_argument "unknown DOM child")))
       (update-split! renderer parent)
       (refresh-button-context! renderer child)
@@ -2857,7 +3500,12 @@
           (when (standard-kind? current MenuItem)
             (if-some [parent-node
                       (retained/node (:web-store renderer) parent)]
-              (when (standard-kind? parent-node ContextMenu)
+              (when
+               (or
+                (standard-kind? parent-node ContextMenu)
+                (and
+                 (standard-kind? parent-node DropdownMenu)
+                 (not (dropdown-listbox? renderer parent))))
                 (Webapi.Dom.Element.setAttribute
                  "role" "menuitem" (:platform-node current))
                 (Webapi.Dom.Element.removeAttribute
@@ -2866,12 +3514,21 @@
           (match (retained/standard-kind current)
             (Some Radio) (update-radio-group! renderer child)
             (Some DropdownMenu)
-            (update-picker-expanded! renderer parent true)
+            (do
+              (update-picker-expanded! renderer parent true)
+              (mount-dropdown! renderer child))
             (Some Dialog)
             (open-modal! renderer child (:platform-node current))
             (Some Sheet)
             (open-modal! renderer child (:platform-node current))
+            (Some Tooltip)
+            (when (anchored-tooltip? current)
+              (mount-tooltip! renderer child (:platform-node current)))
             _ (Stdlib.ignore true)))
+        (Stdlib.ignore true))
+      (if-some [parent-node (retained/node (:web-store renderer) parent)]
+        (when (standard-kind? parent-node DropdownMenu)
+          (position-dropdown! renderer parent))
         (Stdlib.ignore true)))
 
     (RemoveChild parent child)
@@ -2879,39 +3536,65 @@
       (Stdlib.ignore
        (Webapi.Dom.Element.removeChild
         (Webapi.Dom.Element.asNode
-         (dom-node-before renderer previous-nodes child))
-        (if (context-menu-node? previous-nodes child)
-          (document-body renderer)
-          (dom-child-container-before
-           renderer previous-nodes parent
-           (dom-node-before renderer previous-nodes parent)))))
+         (if (modal-node? previous-nodes child)
+           (modal-layer-node
+            (dom-node-before renderer previous-nodes child))
+           (dom-node-before renderer previous-nodes child)))
+        (if (or (dropdown-node? previous-nodes child)
+                (modal-node? previous-nodes child)
+                (anchored-tooltip-node? previous-nodes child))
+          (:web-portal-root renderer)
+          (if (context-menu-node? previous-nodes child)
+            (document-body renderer)
+            (dom-child-container-before
+             renderer previous-nodes parent
+             (dom-node-before renderer previous-nodes parent))))))
       (refresh-button-context! renderer child)
       (refresh-structured-children! renderer parent)
       (if-some [previous (clojure.core/get previous-nodes child)]
         (when (standard-kind? previous DropdownMenu)
-          (update-picker-expanded! renderer parent false))
+          (update-picker-expanded! renderer parent false)
+          (if-some [parent-node (clojure.core/get previous-nodes parent)]
+            (when (standard-kind? parent-node MenuItem)
+              (Webapi.Dom.Element.removeAttribute
+               "data-submenu-trigger" (:platform-node parent-node))
+              (Webapi.Dom.Element.removeAttribute
+               "aria-haspopup" (:platform-node parent-node))
+              (Webapi.Dom.Element.removeAttribute
+               "aria-expanded" (:platform-node parent-node)))
+            (Stdlib.ignore true)))
         (Stdlib.ignore true)))
 
     (MoveChild parent child index)
-    (let [metadata (context-menu-node? previous-nodes child)
+    (let [dropdown (dropdown-node? previous-nodes child)
+          modal (modal-node? previous-nodes child)
+          tooltip (anchored-tooltip-node? previous-nodes child)
+          metadata (context-menu-node? previous-nodes child)
           parent-node
-          (if metadata
-            (document-body renderer)
-            (dom-child-container-before
-             renderer previous-nodes parent
-             (dom-node-before renderer previous-nodes parent)))
-          child-node (dom-node-before renderer previous-nodes child)
-          focused (focused-descendant renderer child-node)]
+          (if (or dropdown modal tooltip)
+            (:web-portal-root renderer)
+            (if metadata
+              (document-body renderer)
+              (dom-child-container-before
+               renderer previous-nodes parent
+               (dom-node-before renderer previous-nodes parent))))
+          surface-node (dom-node-before renderer previous-nodes child)
+          child-node (if modal (modal-layer-node surface-node) surface-node)
+          focused (focused-descendant renderer surface-node)]
       (Stdlib.ignore
        (Webapi.Dom.Element.removeChild
         (Webapi.Dom.Element.asNode child-node) parent-node))
-      (if metadata
+      (if (or dropdown modal tooltip metadata)
         (Webapi.Dom.Element.appendChild
          (Webapi.Dom.Element.asNode child-node) parent-node)
         (insert-dom-child!
          parent-node child-node (visible-child-index renderer parent index)))
       (update-split! renderer parent)
       (refresh-structured-children! renderer parent)
+      (when dropdown (position-dropdown! renderer child))
+      (when (and tooltip
+                 (Webapi.Dom.Element.hasAttribute "data-open" surface-node))
+        (position-tooltip! renderer child))
       (restore-focus! renderer focused))))
 
 (defn- apply-dom-batch! [renderer previous-nodes batch]
@@ -2980,8 +3663,8 @@
            (conj
             result
             (record root-section
-              (root-section-node page)
-              (root-section-title title)))))))))
+                    (root-section-node page)
+                    (root-section-title title)))))))))
 
 (defn- some-node [value]
   (Some value))

@@ -16,9 +16,8 @@ Apple and Flutter use one JSON object per atomic `PatchBatch` at their native
 host boundaries. `lui.wire` encodes the closed LG protocol directly; it does
 not erase values into a dynamic representation. The Web backend runs in the
 same Melange module as the LG application and applies typed patches directly
-to DOM nodes, so it has no JSON bridge or JavaScript UI framework. A small
-Melange host binding activates browser APIs that are not yet exposed by
-`melange-webapi`, such as the native Dialog top layer.
+to DOM nodes, so it has no JSON bridge, JavaScript UI framework, or
+component-specific JavaScript coordinator.
 
 ## Test
 
@@ -49,7 +48,8 @@ make serve-web
 
 Then open <http://127.0.0.1:8765/examples/todos/web/index.html>. The page loads the
 Melange output from `_build`; the renderer and Todos entrypoint are LG source
-under `lg/lui/backend/web.cljc` and `examples/todos/web/lg/todos/web_main.cljc`.
+under `platform/web/lg/lui/backend/web.cljc` and
+`examples/todos/web/lg/todos/web_main.cljc`.
 
 The component showcase is at
 <http://127.0.0.1:8765/examples/components/web/index.html>. It uses the same LG

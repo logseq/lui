@@ -2,7 +2,7 @@
 	build-components-flutter-macos test-components-flutter-macos \
 	run-components-flutter-macos build-components-ios-simulator \
 	build-components-mobile test-components-ios-e2e build-components-android build-web build-web-css \
-	build-web-release serve-web
+	test-web-e2e build-web-release serve-web
 
 test: test-schema test-lg test-apple test-flutter build-web
 
@@ -70,6 +70,9 @@ build-web-css: platform/web/node_modules/.package-lock.json
 
 build-web: build-web-css
 	opam exec -- dune build @web -j 1
+
+test-web-e2e: build-web
+	node --test platform/web/test/overlay.e2e.mjs
 
 build-web-release: build-web
 	node tooling/build_web_release.mjs

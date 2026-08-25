@@ -150,6 +150,8 @@
         "menu item admits row state"))
   (is (proto/can-contain-children? proto/DropdownMenu)
       "dropdown menu retains menu item children")
+  (is (proto/child-kind-supported? proto/MenuItem proto/DropdownMenu)
+      "menu items admit one declarative submenu")
   (doseq [kind [proto/Select proto/Combobox proto/MenuItem]]
     (is (proto/can-contain-children? kind)
         "picker leaves may retain ContextMenu metadata")

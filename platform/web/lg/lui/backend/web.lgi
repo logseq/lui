@@ -27,12 +27,16 @@
 (type-record web-renderer
   (web-store :retained-store<web-node>)
   (web-document :Dom.document)
+  (web-host :web-node)
+  (web-portal-root :web-node)
   (web-event-handler :ref<fn<event;bool>>)
   (web-app-icons :map<string;string>)
   (web-images :ref<map<int;web-image-resource>>)
   (web-media-surfaces :ref<map<int;web-image-resource>>)
   (web-cleanups :ref<map<int;fn<unit>>>)
   (web-modal-stack :ref<vector<int>>)
+  (web-open-tooltip :ref<option<int>>)
+  (web-tooltip-warm :ref<bool>)
   (web-open-context-menu :ref<option<int>>)
   (web-splits :ref<map<int;web-split-state>>)
   (web-extension-registry :extension-registry)
@@ -58,6 +62,36 @@
   :fn<web-renderer;map<int;retained-node<web-node>>;int;unit>)
 (signature lui.backend.web/set-event-handler!
   :fn<web-renderer;fn<event;bool>;bool>)
+(signature lui.backend.web/create-dropdown-node
+  :fn<web-renderer;web-node>)
+(signature lui.backend.web/dropdown-node?
+  :fn<map<int;retained-node<web-node>>;int;bool>)
+(signature lui.backend.web/modal-node?
+  :fn<map<int;retained-node<web-node>>;int;bool>)
+(signature lui.backend.web/modal-layer-node :fn<web-node;web-node>)
+(signature lui.backend.web/anchored-tooltip?
+  :fn<retained-node<web-node>;bool>)
+(signature lui.backend.web/anchored-tooltip-node?
+  :fn<map<int;retained-node<web-node>>;int;bool>)
+(signature lui.backend.web/dropdown-anchor-node
+  :fn<web-renderer;int;web-node>)
+(signature lui.backend.web/dropdown-side
+  :fn<web-node;string>)
+(signature lui.backend.web/dropdown-offset
+  :fn<web-renderer;int;float>)
+(signature lui.backend.web/dropdown-listbox?
+  :fn<web-renderer;int;bool>)
+(signature lui.backend.web/position-dropdown!
+  :fn<web-renderer;int;unit>)
+(signature lui.backend.web/set-dropdown-open!
+  :fn<web-renderer;int;bool;unit>)
+(signature lui.backend.web/mount-dropdown!
+  :fn<web-renderer;int;unit>)
+(signature lui.backend.web/refresh-modal-host-inert! :fn<web-renderer;bool>)
+(signature lui.backend.web/tooltip-delay :fn<web-renderer;int;int>)
+(signature lui.backend.web/position-tooltip! :fn<web-renderer;int;unit>)
+(signature lui.backend.web/set-tooltip-open! :fn<web-renderer;int;bool;unit>)
+(signature lui.backend.web/mount-tooltip! :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/register-image!
   :fn<web-renderer;int;string;float;float;bool>)
 (signature lui.backend.web/unregister-image!
@@ -147,6 +181,12 @@
   :fn<web-renderer;int;node-kind;web-node;unit>)
 (signature lui.backend.web/attach-dropdown-events!
   :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/direct-dropdown-menu
+  :fn<web-renderer;int;option<int>>)
+(signature lui.backend.web/context-menu-focus-items
+  :fn<web-renderer;int;vector<int>>)
+(signature lui.backend.web/focus-context-menu-item!
+  :fn<web-renderer;int;int;unit>)
 (signature lui.backend.web/cleanup-node!
   :fn<web-renderer;int;unit>)
 (signature lui.backend.web/set-state-attribute!

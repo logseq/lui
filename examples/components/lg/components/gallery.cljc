@@ -293,6 +293,11 @@
    [:dropdown-menu {:min-width 200}
     [:menu-item {:icon "edit" :on-press rename-document} "Rename"]
     [:menu-item
+     "Share"
+     [:dropdown-menu {:anchor "right" :anchor-offset 6.0}
+      [:menu-item {:on-press rename-document} "Copy link"]
+      [:menu-item {:on-press archive-document} "Export"]]]
+    [:menu-item
      {:disabled disabled-source :on-press archive-document}
      "Archive"]]])
 

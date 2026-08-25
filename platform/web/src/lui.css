@@ -54,6 +54,14 @@
   --ring: oklch(0.439 0 0);
 }
 
+body {
+  position: relative;
+}
+
+[data-lui-root] {
+  isolation: isolate;
+}
+
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -360,15 +368,15 @@
   }
 
   .lui-tooltip[data-anchor] {
-    @apply fixed z-50 m-0 max-w-xs border-0;
+    @apply pointer-events-none fixed z-50 m-0 max-w-xs border-0;
     inset: auto;
   }
 
-  .lui-tooltip[data-anchor]:not(:popover-open) {
+  .lui-tooltip[data-anchor]:not([data-open]) {
     @apply hidden;
   }
 
-  .lui-tooltip:popover-open {
+  .lui-tooltip[data-anchor][data-open] {
     @apply block;
   }
 
@@ -489,12 +497,17 @@
     @apply rounded-md bg-secondary px-3 py-1.5 text-xs text-secondary-foreground;
   }
 
-  .lui-dialog {
-    @apply fixed inset-0 m-auto grid rounded-xl border bg-card text-card-foreground shadow-lg;
+  .lui-modal-layer {
+    @apply fixed inset-0 isolate;
+    z-index: 1000;
   }
 
-  .lui-dialog::backdrop {
-    @apply bg-black/50;
+  .lui-modal-backdrop {
+    @apply absolute inset-0 bg-black/50;
+  }
+
+  .lui-dialog {
+    @apply fixed inset-0 m-auto grid rounded-xl border bg-card text-card-foreground shadow-lg;
   }
 
   .lui-dialog-title {
@@ -511,10 +524,6 @@
 
   .lui-sheet {
     @apply fixed bottom-0 left-auto right-0 top-0 m-0 grid h-full max-h-none rounded-l-xl border bg-card text-card-foreground shadow-lg;
-  }
-
-  .lui-sheet::backdrop {
-    @apply bg-black/50;
   }
 
   .lui-sheet-title {
@@ -632,30 +641,47 @@
     @apply inline-flex h-full items-center justify-center px-2;
   }
 
-  .lui-dropdown-menu {
+  .lui-popup-portal {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    pointer-events: none;
+  }
+
+  .lui-popup-positioner {
     --lui-anchor-offset: 0px;
-    @apply absolute z-50 flex max-h-72 min-w-full flex-col overflow-auto rounded-md border bg-card p-1 text-card-foreground shadow-md;
+    position: absolute;
+    pointer-events: none;
   }
 
-  .lui-dropdown-menu[data-anchor="below"] {
-    top: calc(100% + var(--lui-anchor-offset));
+  .lui-dropdown-menu {
+    position: relative;
+    display: flex;
+    max-height: min(18rem, calc(100vh - 1rem));
+    min-width: 10rem;
+    flex-direction: column;
+    overflow: auto;
+    border: 1px solid var(--foreground);
+    border-radius: 0;
+    background: var(--background);
+    color: var(--foreground);
+    padding: 0.25rem;
+    box-shadow: 0.25rem 0.25rem 0 var(--foreground);
+    pointer-events: auto;
+    transform-origin: top left;
+    transition-property: opacity, transform;
+    transition-duration: 120ms;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
   }
 
-  .lui-dropdown-menu[data-anchor="above"] {
-    bottom: calc(100% + var(--lui-anchor-offset));
+  .lui-dropdown-menu:not([data-open]) {
+    display: none;
   }
 
-  .lui-dropdown-menu[data-anchor-alignment="start"] {
-    left: 0;
-  }
-
-  .lui-dropdown-menu[data-anchor-alignment="end"] {
-    right: 0;
-  }
-
-  .lui-dropdown-menu[data-anchor-alignment="stretch"] {
-    left: 0;
-    right: 0;
+  .lui-dropdown-menu[data-starting-style],
+  .lui-dropdown-menu[data-ending-style] {
+    opacity: 0;
+    transform: scale(0.96);
   }
 
   .lui-context-menu {
@@ -668,12 +694,22 @@
   }
 
   .lui-menu-item {
-    @apply relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none;
+    @apply relative flex w-full cursor-default select-none items-center gap-2 px-2 py-1.5 text-left text-sm outline-none;
+    min-height: 2rem;
+    border-radius: 0;
   }
 
   .lui-menu-item:hover,
-  .lui-menu-item:focus-visible {
+  .lui-menu-item:focus-visible,
+  .lui-menu-item[data-highlighted] {
     @apply bg-accent text-accent-foreground;
+  }
+
+  .lui-menu-item[data-submenu-trigger]::after {
+    content: "›";
+    margin-left: auto;
+    font-size: 1rem;
+    line-height: 1;
   }
 
   .lui-menu-item:disabled {

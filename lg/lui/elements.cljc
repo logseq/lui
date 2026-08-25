@@ -17,6 +17,17 @@
 (macro-helper-defn context-menu-form? [form]
                    (and (vector? form) (= (first form) :context-menu)))
 
+(macro-helper-defn dropdown-menu-form? [form]
+                   (and (vector? form) (= (first form) :dropdown-menu)))
+
+(macro-helper-defn menu-item-submenu? [form]
+                   (loop [children (element-children form)]
+                     (if (empty? children)
+                       false
+                       (if (dropdown-menu-form? (first children))
+                         true
+                         (recur (next children))))))
+
 (macro-helper-defn reactions-form? [form]
                    (and (vector? form) (= (first form) :reactions)))
 
@@ -80,7 +91,8 @@
                        (let [child (first remaining)]
                          (if (and
                               (= (first child) :menu-item)
-                              (if (:on-press (element-attrs child)) false true))
+                              (if (:on-press (element-attrs child)) false true)
+                              (not (menu-item-submenu? child)))
                            true
                            (recur (next remaining)))))))
 
@@ -1562,7 +1574,21 @@
 (defelement menu-item [context parent attrs & children]
   (let [node (gensym "node")
         text-source (:text attrs)
-        literal-text (first children)]
+        literal-text (if (string? (first children)) (first children) nil)
+        child-elements (if literal-text (vec (next children)) children)]
+    (when (and text-source literal-text)
+      (throw
+       (IllegalArgumentException.
+        "menu-item accepts :text or one text child, not both")))
+    (loop [remaining child-elements]
+      (if (empty? remaining)
+        nil
+        (if (or (dropdown-menu-form? (first remaining))
+                (context-menu-form? (first remaining)))
+          (recur (next remaining))
+          (throw
+           (IllegalArgumentException.
+            "menu-item children must be dropdown-menu or context-menu")))))
     `(let [~node (lui.ui/menu-item! ~context)]
        ~@(if text-source
            [`(lui.ui/text-property-signal! ~context ~node ~text-source)]
@@ -1582,6 +1608,10 @@
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          child-elements)
        ~node)))
 
 (defelement list-item [context parent attrs & children]

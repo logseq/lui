@@ -93,26 +93,32 @@ test("message surfaces use compact Tailwind chrome without Reactions layout node
   assert.doesNotMatch(css, /\.lui-reactions\{/)
 })
 
-test("Dialog uses the browser top layer and compact Tailwind surface styling", async () => {
+test("Dialog uses the shared portal layer and compact modal surface styling", async () => {
   const css = await readFile(outputUrl, "utf8")
 
+  assert.match(css, /\.lui-modal-layer\{[^}]*position:fixed/)
+  assert.match(css, /\.lui-modal-layer\{[^}]*isolation:isolate/)
+  assert.match(css, /\.lui-modal-backdrop\{[^}]*position:absolute/)
+  assert.match(css, /\.lui-modal-backdrop\{[^}]*background-color:/)
   assert.match(css, /\.lui-dialog\{[^}]*position:fixed/)
   assert.match(css, /\.lui-dialog\{[^}]*border-radius:var\(--radius-xl\)/)
-  assert.match(css, /\.lui-dialog::backdrop\{[^}]*background-color:/)
   assert.match(css, /\.lui-dialog-title\{[^}]*font-weight:/)
+  assert.doesNotMatch(css, /\.lui-dialog::backdrop/)
   assert.doesNotMatch(css, /\.lui-dialog-(?:header|content|footer|description)/)
 })
 
-test("Sheet uses the browser top layer and docks to the viewport right", async () => {
+test("Sheet reuses the shared portal layer and docks to the viewport right", async () => {
   const css = await readFile(outputUrl, "utf8")
 
+  assert.match(css, /\.lui-modal-layer\{[^}]*position:fixed/)
+  assert.match(css, /\.lui-modal-backdrop\{[^}]*background-color:/)
   assert.match(css, /\.lui-sheet\{[^}]*position:fixed/)
   assert.match(css, /\.lui-sheet\{[^}]*right:(?:0|calc\(var\(--spacing\)\*0\))/)
   assert.match(css, /\.lui-sheet\{[^}]*left:auto/)
   assert.match(css, /\.lui-sheet\{[^}]*height:100%/)
-  assert.match(css, /\.lui-sheet::backdrop\{[^}]*background-color:/)
   assert.match(css, /\.lui-sheet-title\{[^}]*font-weight:/)
   assert.match(css, /\.lui-sheet-body\{[^}]*display:grid/)
+  assert.doesNotMatch(css, /\.lui-sheet::backdrop/)
   assert.doesNotMatch(css, /\.lui-sheet-(?:header|content|footer|description)/)
 })
 
@@ -238,27 +244,34 @@ test("InputGroup presents one focus-within composer field", async () => {
   assert.match(css, /\.lui-input-group-actions\{[^}]*align-items:center/)
 })
 
-test("the production stylesheet contains the retained picker contract", async () => {
+test("menus use the Base UI popup and transition contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 
   assert.match(css, /\.lui-select\{[^}]*min-width:calc\(var\(--spacing\)\*40\)/)
   assert.match(css, /\.lui-combobox\{[^}]*display:flex/)
-  assert.match(css, /\.lui-dropdown-menu\{[^}]*position:absolute/)
-  assert.match(css, /\.lui-dropdown-menu\[data-anchor=above\]\{[^}]*bottom:calc\(100% \+ var\(--lui-anchor-offset\)\)/)
-  assert.match(css, /\.lui-dropdown-menu\[data-anchor-alignment=stretch\]/)
+  assert.match(css, /\.lui-popup-portal\{[^}]*position:fixed/)
+  assert.match(css, /\.lui-dropdown-menu\{[^}]*position:relative/)
+  assert.match(css, /\.lui-dropdown-menu\{[^}]*border-radius:0/)
+  assert.match(css, /\.lui-dropdown-menu\{[^}]*transition-property:[^}]*opacity[^}]*transform/)
+  assert.match(css, /\.lui-dropdown-menu\[data-starting-style\]/)
+  assert.match(css, /\.lui-dropdown-menu\[data-ending-style\]/)
   assert.match(css, /\.lui-context-menu\{[^}]*position:fixed/)
   assert.match(css, /\.lui-context-menu\{[^}]*display:none/)
   assert.match(css, /\.lui-context-menu\[data-open\]\{[^}]*display:flex/)
   assert.match(css, /\.lui-menu-item\{[^}]*display:flex/)
+  assert.match(css, /\.lui-menu-item\[data-highlighted\]/)
+  assert.match(css, /\.lui-menu-item\[data-submenu-trigger\]/)
   assert.match(css, /\.lui-menu-item:not\(\[data-selected\]\) \.lui-menu-item-check/)
 })
 
-test("Tooltip uses the browser top layer without taking flow space", async () => {
+test("Tooltip uses the shared portal without taking flow space", async () => {
   const css = await readFile(outputUrl, "utf8")
 
   assert.match(css, /\.lui-tooltip\[data-anchor\]\{[^}]*position:fixed/)
-  assert.match(css, /\.lui-tooltip\[data-anchor\]:not\(:popover-open\)\{[^}]*display:none/)
-  assert.match(css, /\.lui-tooltip:popover-open\{[^}]*display:block/)
+  assert.match(css, /\.lui-tooltip\[data-anchor\]\{[^}]*pointer-events:none/)
+  assert.match(css, /\.lui-tooltip\[data-anchor\]:not\(\[data-open\]\)\{[^}]*display:none/)
+  assert.match(css, /\.lui-tooltip\[data-anchor\]\[data-open\]\{[^}]*display:block/)
+  assert.doesNotMatch(css, /\.lui-tooltip[^\{]*:popover-open/)
 })
 
 test("Accordion styles the native details and summary disclosure", async () => {

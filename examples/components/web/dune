@@ -3,6 +3,7 @@
  (deps
   ../../../lg/lui/lui_melange.state
   (source_tree ../../../lg/lui/backend)
+  (source_tree ../../../platform/web/lg/lui/backend)
   (source_tree ../lg/components)
   (source_tree lg/components)
   %{bin:lg})
@@ -12,7 +13,7 @@
    --target melange
    --compile-files-from ../../../lg/lui/lui_melange.state
    ../../../lg/lui/backend/retained
-   ../../../lg/lui/backend/web
+   ../../../platform/web/lg/lui/backend/web
    ../lg/components
    lg/components
    -o %{target})))

@@ -385,23 +385,29 @@
     (doseq [child-id (:retained-children current)]
       (if-some [child (clojure.core/get nodes child-id)]
         (let [properties (:retained-properties child)]
-          (when (and (standard-kind? child proto/MenuItem)
-                     (not (bool-property-true? properties proto/PressEnabled)))
+          (when (and
+                 (standard-kind? child proto/MenuItem)
+                 (not (bool-property-true? properties proto/PressEnabled))
+                 (not
+                  (some
+                   (fn [nested-id]
+                     (if-some [nested (clojure.core/get nodes nested-id)]
+                       (standard-kind? nested proto/DropdownMenu)
+                       false))
+                   (:retained-children child))))
             (raise
              (Invalid_argument "context-menu menu-item requires press support")))
-          (when (and (standard-kind? child proto/MenuItem)
-                     (not (empty? (:retained-children child))))
+          (when (and
+                 (standard-kind? child proto/MenuItem)
+                 (some
+                  (fn [nested-id]
+                    (if-some [nested (clojure.core/get nodes nested-id)]
+                      (standard-kind? nested proto/ContextMenu)
+                      false))
+                  (:retained-children child)))
             (raise
-             (Invalid_argument "context-menu does not support nested menus")))
-          (when (and (standard-kind? child proto/MenuItem)
-                     (some
-                      (fn [property]
-                        (not (or (= property proto/TextValue)
-                                 (= property proto/Enabled)
-                                 (= property proto/PressEnabled))))
-                      (keys properties)))
-            (raise
-             (Invalid_argument "context-menu menu-item has unsupported metadata")))
+             (Invalid_argument
+              "context-menu submenu must use dropdown-menu")))
           (when (and
                  (standard-kind? child proto/Divider)
                  (not

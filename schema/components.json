@@ -110,7 +110,7 @@
     {"lg": "Combobox", "wire": "combobox", "dart": "combobox", "swift": "combobox", "container": false},
     {"lg": "DropdownMenu", "wire": "dropdown-menu", "dart": "dropdownMenu", "swift": "dropdownMenu", "container": true},
     {"lg": "ContextMenu", "wire": "context-menu", "dart": "contextMenu", "swift": "contextMenu", "container": true},
-    {"lg": "MenuItem", "wire": "menu-item", "dart": "menuItem", "swift": "menuItem", "container": false},
+    {"lg": "MenuItem", "wire": "menu-item", "dart": "menuItem", "swift": "menuItem", "container": true},
     {"lg": "ListItem", "wire": "list-item", "dart": "listItem", "swift": "listItem", "container": true},
     {"lg": "Avatar", "wire": "avatar", "dart": "avatar", "swift": "avatar", "container": false},
     {"lg": "Image", "wire": "image", "dart": "image", "swift": "image", "container": false},

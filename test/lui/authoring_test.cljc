@@ -84,7 +84,14 @@
       :on-dismiss on-dismiss}
      [:column
       [:input {:placeholder "Name"}]
-      [:button "Save"]]]]])
+     [:button "Save"]]]]])
+
+(defui nested-dropdown-menu [on-pick]
+  [:dropdown-menu
+   [:menu-item
+    "Share"
+    [:dropdown-menu {:anchor "right" :anchor-offset 4.0}
+     [:menu-item {:on-press on-pick} "Copy link"]]]])
 
 (defui controlled-sheet [sheet-open on-dismiss]
   [:column
@@ -701,6 +708,25 @@
         (runtime/flush! application)
         (assert-equal (proto/Dismiss menu) (nth @received 4)
                       "native menu dismissal returns through on-dismiss")))))
+
+(deftest menu-items-compose-arbitrarily-nested-dropdowns
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "nested-dropdown-menu")
+        context (ui/context application scope)
+        root (nested-dropdown-menu context (fn [_event] true))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [trigger (nth (apple/children renderer root) 0)
+          submenu (nth (apple/children renderer trigger) 0)
+          nested-item (nth (apple/children renderer submenu) 0)]
+      (match (apple/node renderer submenu)
+        (Some AppleDropdownMenu) (is true "submenu is a retained menu")
+        _ (is false "submenu maps to its semantic native node"))
+      (match (apple/node renderer nested-item)
+        (Some AppleMenuItem) (is true "nested item preserves its identity")
+        _ (is false "nested item maps to a menu row")))))
 
 (deftest dialog-is-a-model-owned-root-modal-with-retained-content
   (let [scheduler (sig/scheduler)

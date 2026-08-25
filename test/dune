@@ -56,6 +56,7 @@
  (deps
   ../lg/lui/lui_melange.state
   (source_tree ../lg/lui/backend)
+  (source_tree ../platform/web/lg/lui/backend)
   %{lib:lg-test.sources:test.cljc}
   %{lib:lg-test.sources:test_melange.cljc}
   (source_tree ../examples/todos/lg/todos)
@@ -78,7 +79,7 @@
    ../lg/lui/backend/retained
    ../lg/lui/backend/apple
    ../lg/lui/backend/flutter
-   ../lg/lui/backend/web
+   ../platform/web/lg/lui/backend/web
    %{lib:lg-test.sources:test.cljc}
    %{lib:lg-test.sources:test_melange.cljc}
    ../examples/todos/lg/todos

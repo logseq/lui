@@ -443,7 +443,8 @@
     (tuple SourceWidth (FloatValue value)) (Float.is_finite value)
     (tuple SourceHeight (FloatValue value)) (Float.is_finite value)
     (tuple AnchorValue (StringValue value))
-    (or (= value "above") (= value "below"))
+    (or (= value "above") (= value "below")
+        (= value "left") (= value "right"))
     (tuple AnchorAlignmentValue (StringValue value))
     (or (= value "start") (= value "end") (= value "stretch"))
     (tuple AnchorOffset (FloatValue _value)) true
@@ -689,7 +690,9 @@
       _ false)))
 
 (defn child-kind-supported? [parent-kind child-kind]
-  (if (context-menu-leaf-host-kind? parent-kind)
+  (if (= parent-kind MenuItem)
+    (or (= child-kind ContextMenu) (= child-kind DropdownMenu))
+    (if (context-menu-leaf-host-kind? parent-kind)
     (= child-kind ContextMenu)
     (match parent-kind
       Table (= child-kind TableRow)
@@ -701,7 +704,7 @@
       (or (= child-kind Textarea) (= child-kind InputGroupActions))
       DropdownMenu (or (= child-kind MenuItem) (= child-kind Divider))
       ContextMenu (or (= child-kind MenuItem) (= child-kind Divider))
-      _ true)))
+      _ true))))
 
 (defn create-node-op [node kind]
   (CreateNode node kind))
