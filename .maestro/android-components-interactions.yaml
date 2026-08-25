@@ -1,0 +1,59 @@
+appId: dev.lui.lui_component_gallery
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Row"
+    timeout: 30000
+- tapOn: "Open navigation menu"
+- tapOn:
+    id: "component-row-Button"
+- tapOn: "Toggle disabled"
+- assertVisible: "Controls are disabled."
+- tapOn: "Toggle disabled"
+- assertNotVisible: "Controls are disabled."
+- tapOn: "Open navigation menu"
+- repeat:
+    times: 3
+    commands:
+      - swipe:
+          start: "50%,80%"
+          end: "50%,20%"
+          duration: 500
+- tapOn:
+    id: "component-row-Tree"
+- assertNotVisible: "Quarterly report.md"
+- tapOn: "Documents"
+- assertVisible: "Quarterly report.md"
+- tapOn: "Open navigation menu"
+- repeat:
+    times: 3
+    commands:
+      - swipe:
+          start: "50%,80%"
+          end: "50%,20%"
+          duration: 500
+- tapOn:
+    id: "component-row-TextField"
+- tapOn: "Project name"
+- inputText: "LUI Android"
+- assertVisible: "LUI Android"
+- hideKeyboard
+- tapOn: "Open navigation menu"
+- repeat:
+    times: 4
+    commands:
+      - swipe:
+          start: "50%,80%"
+          end: "50%,20%"
+          duration: 500
+- tapOn:
+    id: "component-row-DropdownMenu"
+- tapOn: "Production"
+- assertVisible: "Development"
+- tapOn: "More environments"
+- assertVisible: "Production region"
+- tapOn: "Staging region"
+- assertVisible:
+    text: "Staging"
+    selected: true

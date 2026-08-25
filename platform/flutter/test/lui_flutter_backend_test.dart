@@ -829,6 +829,7 @@ void main() {
   testWidgets('maps picker primitives to native retained widgets and events', (
     tester,
   ) async {
+    final semantics = tester.ensureSemantics();
     final events = <LUIEvent>[];
     final backend = LUIFlutterBackend(onEvent: events.add)
       ..applyJson('''
@@ -895,6 +896,17 @@ void main() {
     expect(nativeMenu.animated, isTrue);
     expect(find.byType(MenuItemButton), findsOneWidget);
     expect(find.byIcon(Icons.check), findsOneWidget);
+    final selectedMenuLabel = find.descendant(
+      of: find.byType(MenuItemButton),
+      matching: find.text('Production'),
+    );
+    expect(
+      tester
+          .getSemantics(selectedMenuLabel)
+          .flagsCollection
+          .isSelected,
+      ui.Tristate.isTrue,
+    );
     expect(
       tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(2))),
       same(retainedSelect),
@@ -931,6 +943,7 @@ void main() {
       const LUITextChangedEvent(node: 3, text: 'sol'),
       const LUISubmitEvent(node: 3),
     ]);
+    semantics.dispose();
   });
 
   testWidgets(
@@ -987,6 +1000,21 @@ void main() {
       await tester.pump();
       expect(events, const [LUIEvent.press(node: 3)]);
       expect(find.text('Bold the selection'), findsNothing);
+      await mouse.removePointer();
+
+      final touch = await tester.startGesture(
+        tester.getCenter(find.text('Bold')),
+        kind: ui.PointerDeviceKind.touch,
+      );
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 100));
+      expect(find.text('Bold the selection'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.text('Bold the selection'), findsOneWidget);
+      await touch.up();
+      await tester.pump();
+      expect(find.text('Bold the selection'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.text('Bold the selection'), findsOneWidget);
 
       backend.applyJson('''
       {"generation":2,"ops":[
@@ -1007,8 +1035,6 @@ void main() {
         tester.widget<Tooltip>(find.byType(Tooltip)).waitDuration,
         Duration.zero,
       );
-      await mouse.removePointer();
-
       expect(
         () => backend.applyJson('''
         {"generation":3,"ops":[
@@ -1859,6 +1885,14 @@ void main() {
     );
     expect(selectedSemantics.properties.selected, isTrue);
     expect(selectedSemantics.properties.expanded, isTrue);
+
+    await tester.tap(find.text('src'));
+    await tester.pump();
+    expect(events, const [
+      LUIEvent.press(node: 2),
+      LUIEvent.toggleChanged(node: 2, checked: false),
+    ]);
+    events.clear();
 
     final folderFocus = find
         .descendant(

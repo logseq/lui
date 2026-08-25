@@ -130,7 +130,7 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
       home: LayoutBuilder(
         builder: (context, constraints) => constraints.maxWidth >= 720
             ? _wideGallery(sections, selected)
-            : _compactGallery(sections, selected),
+            : _compactGallery(context, sections, selected),
       ),
     );
   }
@@ -152,7 +152,7 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
                 NavigationRailDestination(
                   icon: const Icon(Icons.widgets_outlined),
                   selectedIcon: const Icon(Icons.widgets),
-                  label: Text(section.title),
+                  label: _sectionLabel(section),
                 ),
             ],
           ),
@@ -164,6 +164,7 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
   }
 
   Widget _compactGallery(
+    BuildContext context,
     List<LUIRootSection> sections,
     LUIRootSection selected,
   ) {
@@ -184,7 +185,7 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
             NavigationDrawerDestination(
               icon: const Icon(Icons.widgets_outlined),
               selectedIcon: const Icon(Icons.widgets),
-              label: Text(section.title),
+              label: _sectionLabel(section),
             ),
         ],
       ),
@@ -198,6 +199,13 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
         alignment: Alignment.topLeft,
         child: _backend.widget(node: section.id),
       ),
+    );
+  }
+
+  Widget _sectionLabel(LUIRootSection section) {
+    return Semantics(
+      identifier: 'component-row-${section.title}',
+      child: Text(section.title),
     );
   }
 

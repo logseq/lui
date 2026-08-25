@@ -60,3 +60,34 @@ swift build --target LUIComponentsApp
 
 The iOS Simulator build additionally requires the shared LG OCaml iOS
 toolchain described by the repository bootstrap scripts.
+
+Run the iOS interaction suite against a booted simulator:
+
+```sh
+make test-components-ios-e2e
+```
+
+## Android
+
+Build the shared LG runtime and arm64 debug APK in one command:
+
+```sh
+make build-components-android
+```
+
+Run the real interaction suite against the only connected Android device or
+emulator:
+
+```sh
+make test-components-android-e2e
+```
+
+When more than one device is connected, select it explicitly:
+
+```sh
+LUI_ANDROID_DEVICE_ID=emulator-5554 make test-components-android-e2e
+```
+
+The runner builds the shared OCaml/JNI library and APK, installs it, drives the
+adaptive Material Gallery with Maestro, and writes the final screenshot to
+`_build/mobile-components/android-e2e/final.png`.

@@ -184,6 +184,10 @@ Delivered parity slices:
   `examples/components/lg`; Web and Flutter hosts reuse it without duplicating
   application state, and the Flutter integration test crosses the real OCaml
   FFI boundary;
+- one real Android emulator qualification path builds the shared OCaml/JNI
+  library and Flutter APK, installs it, and drives adaptive navigation, touch
+  disclosure, retained text input, recursive menus, and selected accessibility
+  semantics through Maestro;
 - placeholder-free retained `:if` plus declaration-ordered dynamic segments;
   interleaved static children, switch branches, keyed collections and multiple
   dynamic regions preserve their local ordering and disposal boundaries;

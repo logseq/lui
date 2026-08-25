@@ -755,6 +755,19 @@ final class LUIFlutterBackend {
     }
   }
 
+  void _performTreeTap(int node) {
+    final state = _requireState(_states, node);
+    if (state.properties['enabled'] == false) return;
+    if (state.properties['press-enabled'] == true) {
+      performAction(node);
+    } else if (state.properties['change-enabled'] == true) {
+      performChange(node);
+    }
+    if (state.properties['toggle-enabled'] == true) {
+      performToggle(node, state.properties['expanded'] != true);
+    }
+  }
+
   void _performTreeKey(int tree, int node, LogicalKeyboardKey key) {
     final items = _treeItems(tree);
     final index = items.indexOf(node);
@@ -1384,11 +1397,16 @@ final class LUIFlutterBackend {
           child: Text(text),
         );
       }
-      return MenuItemButton(
-        onPressed: enabled ? () => performAction(id) : null,
-        leadingIcon: leadingIcon,
-        trailingIcon: buttonSelected ? const Icon(Icons.check) : null,
-        child: Text(text),
+      return MergeSemantics(
+        child: Semantics(
+          selected: buttonSelected,
+          child: MenuItemButton(
+            onPressed: enabled ? () => performAction(id) : null,
+            leadingIcon: leadingIcon,
+            trailingIcon: buttonSelected ? const Icon(Icons.check) : null,
+            child: Text(text),
+          ),
+        ),
       );
     }
 
@@ -1404,7 +1422,13 @@ final class LUIFlutterBackend {
           : children.length == 1
           ? children.single
           : Row(children: children),
-      onPress: state.properties['press-enabled'] == true
+      onPress:
+          state.properties['role'] == 'treeitem' &&
+              (state.properties['press-enabled'] == true ||
+                  state.properties['change-enabled'] == true ||
+                  state.properties['toggle-enabled'] == true)
+          ? () => _performTreeTap(id)
+          : state.properties['press-enabled'] == true
           ? () => performAction(id)
           : null,
       onDoublePress: state.properties['double-press-enabled'] == true
@@ -2282,10 +2306,17 @@ final class LUIFlutterBackend {
             performAction(id);
         if (state.kind != _NodeKind.listItem) {
           surface = GestureDetector(
-            onTap: () => performAction(id),
+            onTap: () => _performTreeTap(id),
             child: surface,
           );
         }
+      } else if (state.kind != _NodeKind.listItem &&
+          (state.properties['change-enabled'] == true ||
+              state.properties['toggle-enabled'] == true)) {
+        surface = GestureDetector(
+          onTap: () => _performTreeTap(id),
+          child: surface,
+        );
       }
       surface = Semantics(
         container: true,
@@ -4727,20 +4758,30 @@ final class _LUIRetainedTooltipState extends State<_LUIRetainedTooltip>
         onFocusChange: _focusChanged,
         child: Listener(
           behavior: HitTestBehavior.translucent,
-          onPointerDown: (_) => _dismissCold(),
-          child: Tooltip(
-            key: _tooltipKey,
-            message: widget.message,
-            waitDuration: widget.waitDuration,
-            exitDuration: widget.exitDuration,
-            preferBelow: widget.preferBelow,
-            verticalOffset: widget.verticalOffset,
-            enableTapToDismiss: widget.enableTapToDismiss,
-            onTriggered: _triggered,
-            child: MouseRegion(
-              onEnter: _pointerEntered,
-              onExit: _pointerExited,
-              child: widget.child,
+          onPointerDown: (event) {
+            if (event.kind == PointerDeviceKind.mouse) _dismissCold();
+          },
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onLongPress: () {
+              _triggered();
+              _tooltipKey.currentState?.ensureTooltipVisible();
+            },
+            child: Tooltip(
+              key: _tooltipKey,
+              message: widget.message,
+              waitDuration: widget.waitDuration,
+              exitDuration: widget.exitDuration,
+              preferBelow: widget.preferBelow,
+              verticalOffset: widget.verticalOffset,
+              enableTapToDismiss: widget.enableTapToDismiss,
+              triggerMode: TooltipTriggerMode.manual,
+              onTriggered: _triggered,
+              child: MouseRegion(
+                onEnter: _pointerEntered,
+                onExit: _pointerExited,
+                child: widget.child,
+              ),
             ),
           ),
         ),

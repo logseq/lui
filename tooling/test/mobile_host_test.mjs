@@ -98,6 +98,29 @@ test("iOS Gallery has a real interaction E2E flow", async () => {
   assert.match(runner, /simctl io.*screenshot/s);
 });
 
+test("Android Gallery has a real interaction E2E flow", async () => {
+  const makefile = await source("Makefile");
+
+  assert.match(makefile, /test-components-android-e2e:/);
+
+  const flow = await source(".maestro/android-components-interactions.yaml");
+  const runner = await source("tooling/mobile/test_components_android_e2e.sh");
+  const main = await source("examples/components/flutter/lib/main.dart");
+
+  assert.match(flow, /tapOn: "Toggle disabled"/);
+  assert.match(flow, /inputText: "LUI Android"/);
+  assert.match(flow, /tapOn: "More environments"/);
+  assert.match(flow, /id: "component-row-Button"/);
+  assert.match(main, /Semantics\(/);
+  assert.match(main, /identifier: 'component-row-\$\{section\.title\}'/);
+  assert.match(main, /_compactGallery\(context, sections, selected\)/);
+  assert.match(runner, /build_components_android\.sh/);
+  assert.match(runner, /flutter build apk/);
+  assert.match(runner, /adb -s "\$device" install -r/);
+  assert.match(runner, /maestro.*--device "\$device" test/s);
+  assert.match(runner, /adb -s "\$device" exec-out screencap -p/);
+});
+
 test("iOS Gallery uses an adaptive Apple-native shell", async () => {
   const gallery = await source("examples/components/lg/components/gallery.cljc");
   const main = await source("examples/components/ios-swiftui/Sources/LUIComponentsApp/LUIComponentsApp.swift");
