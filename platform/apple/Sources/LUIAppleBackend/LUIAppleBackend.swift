@@ -336,11 +336,21 @@ public final class LUIAppleBackend {
         )
     }
 
+    func anyNodeView(nodeID: Int) -> AnyView {
+        AnyView(LUIAnyNodeView(nodeID: nodeID, backend: self))
+    }
+
     private func firstSectionTitle(nodeID: Int) -> String? {
-        guard let node = models[nodeID] else { return nil }
-        if (node.kind == .heading || node.kind == .text), !node.text.isEmpty {
-            return node.text
+        if let node = models[nodeID] {
+            if (node.kind == .heading || node.kind == .text), !node.text.isEmpty {
+                return node.text
+            }
+            for child in node.children {
+                if let title = firstSectionTitle(nodeID: child) { return title }
+            }
+            return nil
         }
+        guard let node = extensionModels[nodeID] else { return nil }
         for child in node.children {
             if let title = firstSectionTitle(nodeID: child) { return title }
         }

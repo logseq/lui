@@ -83,6 +83,7 @@ public struct LUIAppleExtension {
     public let childIdentifiers: [String]
     public let properties: [LUIExtensionProperty]
     public let events: [LUIExtensionEvent]
+    let isTweak: Bool
     let viewFactory: ViewFactory
 
     public init(
@@ -100,7 +101,47 @@ public struct LUIAppleExtension {
         self.childIdentifiers = childIdentifiers
         self.properties = properties
         self.events = events
+        isTweak = false
         self.viewFactory = viewFactory
+    }
+
+    init(
+        identifier: String,
+        fingerprint: String,
+        properties: [LUIExtensionProperty],
+        isTweak: Bool,
+        viewFactory: @escaping ViewFactory
+    ) {
+        self.identifier = identifier
+        self.fingerprint = fingerprint
+        acceptsStandardChildren = true
+        childIdentifiers = []
+        self.properties = properties
+        events = []
+        self.isTweak = isTweak
+        self.viewFactory = viewFactory
+    }
+}
+
+@MainActor
+public struct LUIAppleTweak {
+    public typealias Modifier = @MainActor (AnyView, LUIAppleExtensionViewContext) -> AnyView
+
+    public let identifier: String
+    public let fingerprint: String
+    public let properties: [LUIExtensionProperty]
+    let modifier: Modifier
+
+    public init(
+        identifier: String,
+        fingerprint: String,
+        properties: [LUIExtensionProperty] = [],
+        modifier: @escaping Modifier
+    ) {
+        self.identifier = identifier
+        self.fingerprint = fingerprint
+        self.properties = properties
+        self.modifier = modifier
     }
 }
 
@@ -151,6 +192,18 @@ public final class LUIAppleExtensionRegistry {
             }
         }
         registrations[registration.identifier] = registration
+    }
+
+    public func registerTweak(_ tweak: LUIAppleTweak) throws {
+        let registration = LUIAppleExtension(
+            identifier: tweak.identifier,
+            fingerprint: tweak.fingerprint,
+            properties: tweak.properties,
+            isTweak: true
+        ) { context in
+            tweak.modifier(context.content, context)
+        }
+        try register(registration)
     }
 
     static func frozenEmpty() -> LUIAppleExtensionRegistry {
@@ -205,6 +258,11 @@ public struct LUIAppleExtensionViewContext {
 
     public var childIDs: [Int] {
         backend.extensionModel(id: nodeID)?.children ?? []
+    }
+
+    public var content: AnyView {
+        guard childIDs.count == 1 else { return AnyView(EmptyView()) }
+        return backend.anyNodeView(nodeID: childIDs[0])
     }
 
     public func childProperty(node childID: Int, _ name: String) -> LUIExtensionValue? {

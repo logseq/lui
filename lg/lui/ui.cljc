@@ -27,6 +27,9 @@
 (defn extension! [context identifier]
   (runtime/create-extension-node! (:ui-application context) identifier))
 
+(defn platform-tweak! [context identifier]
+  (runtime/create-tweak-node! (:ui-application context) identifier))
+
 (defn extension-property! [context node property value]
   (runtime/set-extension-prop!
    (:ui-application context) node property value))

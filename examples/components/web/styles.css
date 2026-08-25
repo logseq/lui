@@ -78,6 +78,10 @@ body {
   transform: translateY(-2px);
 }
 
+.lui-gallery-accent {
+  @apply rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sky-950 shadow-sm;
+}
+
 @media (max-width: 44.999rem) {
   .lui-gallery-shell {
     grid-template-columns: minmax(0, 1fr);

@@ -31,6 +31,7 @@
 
 (type-record extension-registry
   (extension-schemas :ref<map<string;extension-component-schema>>)
+  (extension-tweak-identifiers :ref<map<string;bool>>)
   (extension-registry-frozen :ref<bool>))
 
 (signature lui.extension/property
@@ -41,6 +42,8 @@
   :fn<string;vector<extension-event-field-schema>;extension-event-schema>)
 (signature lui.extension/component
   :fn<string;vector<platform-profile>;bool;vector<string>;vector<extension-property-schema>;vector<extension-event-schema>;extension-component-schema>)
+(signature lui.extension/tweak
+  :fn<string;vector<platform-profile>;vector<extension-property-schema>;extension-component-schema>)
 (signature lui.extension/scalar-value-supported?
   :fn<scalar-kind;wire-value;bool>)
 (signature lui.extension/scalar-kind-name :fn<scalar-kind;string>)
@@ -60,13 +63,18 @@
   :fn<extension-event-field-schema;string>)
 (signature lui.extension/event-token :fn<extension-event-schema;string>)
 (signature lui.extension/fingerprint :fn<extension-component-schema;string>)
+(signature lui.extension/tweak-fingerprint
+  :fn<extension-component-schema;string>)
 (signature lui.extension/registry :fn<extension-registry>)
 (signature lui.extension/register-component!
+  :fn<extension-registry;extension-component-schema;bool>)
+(signature lui.extension/register-tweak!
   :fn<extension-registry;extension-component-schema;bool>)
 (signature lui.extension/freeze! :fn<extension-registry;bool>)
 (signature lui.extension/frozen? :fn<extension-registry;bool>)
 (signature lui.extension/schema
   :fn<extension-registry;string;option<extension-component-schema>>)
+(signature lui.extension/tweak? :fn<extension-registry;string;bool>)
 (signature lui.extension/profile-supported?
   :fn<extension-component-schema;platform-profile;bool>)
 (signature lui.extension/standard-container-supported? :fn<node-kind;bool>)

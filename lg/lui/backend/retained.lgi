@@ -48,7 +48,7 @@
 (signature lui.backend.retained/extension-schema
   :fn<extension-registry;string;extension-component-schema>)
 (signature lui.backend.retained/retained-child-supported? [platform]
-  :fn<extension-registry;retained-node<platform>;retained-node<platform>;bool>)
+  :fn<extension-registry;map<int;retained-node<platform>>;retained-node<platform>;retained-node<platform>;bool>)
 (signature lui.backend.retained/unsupported-child-message [platform]
   :fn<retained-node<platform>;retained-node<platform>;string>)
 (signature lui.backend.retained/apply-op-with-extensions [platform]

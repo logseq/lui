@@ -79,6 +79,9 @@
     (extension-properties properties)
     (extension-events events)))
 
+(defn tweak [identifier profiles properties]
+  (component identifier profiles true [] properties []))
+
 (defn- scalar-kind-name [kind]
   (match kind
     StringScalar "string"
@@ -171,9 +174,20 @@
      "|properties:" (string/join "," properties)
      "|events:" (string/join "," events))))
 
+(defn tweak-fingerprint [schema]
+  (let [profiles
+        (sorted-strings (mapv profile-token (:extension-profiles schema)))
+        properties
+        (sorted-strings (mapv property-token (:extension-properties schema)))]
+    (str
+     "lui-tweak-v1|" (token (:extension-identifier schema))
+     "|profiles:" (string/join "," profiles)
+     "|properties:" (string/join "," properties))))
+
 (defn registry []
   (record extension-registry
     (extension-schemas (atom (hash-map)))
+    (extension-tweak-identifiers (atom (hash-map)))
     (extension-registry-frozen (atom false))))
 
 (defn register-component! [registry schema]
@@ -185,6 +199,23 @@
     (when (contains? (deref (:extension-schemas registry)) identifier)
       (raise (Invalid_argument "extension identifier is already registered")))
     (swap! (:extension-schemas registry) assoc identifier schema)
+    true))
+
+(defn register-tweak! [registry schema]
+  (when (deref (:extension-registry-frozen registry))
+    (raise (Invalid_argument "extension registry is frozen")))
+  (let [identifier (:extension-identifier schema)]
+    (when (wire-schema/standard-node-name? identifier)
+      (raise (Invalid_argument "tweak shadows a standard element")))
+    (when (contains? (deref (:extension-schemas registry)) identifier)
+      (raise (Invalid_argument "extension identifier is already registered")))
+    (when (or
+           (not (:extension-standard-children schema))
+           (not (empty? (:extension-child-identifiers schema)))
+           (not (empty? (:extension-events schema))))
+      (raise (Invalid_argument "invalid tweak schema")))
+    (swap! (:extension-schemas registry) assoc identifier schema)
+    (swap! (:extension-tweak-identifiers registry) assoc identifier true)
     true))
 
 (defn freeze! [registry]
@@ -207,6 +238,9 @@
 
 (defn schema [registry identifier]
   (clojure.core/get (deref (:extension-schemas registry)) identifier))
+
+(defn tweak? [registry identifier]
+  (contains? (deref (:extension-tweak-identifiers registry)) identifier))
 
 (defn profile-supported? [schema profile]
   (loop [index 0]

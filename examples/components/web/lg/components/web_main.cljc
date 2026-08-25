@@ -42,6 +42,19 @@
          (Stdlib.ignore true))))
     (web-extension-cleanup (fn [_node] (Stdlib.ignore true)))))
 
+(defn- gallery-accent-adapter []
+  (record web/web-extension-adapter
+    (web-extension-create
+     (fn [_node document _emit]
+       (let [element (Webapi.Dom.Document.createElement "div" document)]
+         (Webapi.Dom.Element.setClassName element "lui-gallery-accent")
+         element)))
+    (web-extension-set-property
+     (fn [_node _property _value] (Stdlib.ignore true)))
+    (web-extension-remove-property
+     (fn [_node _property] (Stdlib.ignore true)))
+    (web-extension-cleanup (fn [_node] (Stdlib.ignore true)))))
+
 (defn- append! [parent child]
   (Webapi.Dom.Element.appendChild (Webapi.Dom.Element.asNode child) parent))
 
@@ -104,7 +117,9 @@
   (let [registry (extensions/registry)
         renderer
         (web/create-with-extensions
-         host {} registry {"native-card" (native-card-adapter)})
+         host {} registry
+         {"native-card" (native-card-adapter)
+          "gallery-accent" (gallery-accent-adapter)})
         application
         (components/create-with-extensions (web/backend renderer) registry)]
     (web/register-image!

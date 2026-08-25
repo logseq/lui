@@ -6,4 +6,6 @@
   :fn<extension-component-schema>)
 (signature components.extensions/native-card-schema
   :fn<extension-component-schema>)
+(signature components.extensions/gallery-accent-schema
+  :fn<extension-component-schema>)
 (signature components.extensions/registry :fn<extension-registry>)

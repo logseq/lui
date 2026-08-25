@@ -114,25 +114,37 @@
     (Some schema) schema
     None (raise (Invalid_argument "unknown extension identifier"))))
 
-(defn- retained-child-supported? [registry parent child]
-  (match (tuple (:semantic-kind parent) (:semantic-kind child))
-    (tuple (StandardSemantic parent-kind) (StandardSemantic child-kind))
-    (and
-     (proto/can-contain-children? parent-kind)
-     (proto/child-kind-supported? parent-kind child-kind))
-    (tuple (StandardSemantic parent-kind)
-           (ExtensionSemantic _child-identifier _child-fingerprint))
-    (ext/standard-container-supported? parent-kind)
-    (tuple (ExtensionSemantic parent-identifier _parent-fingerprint)
-           (StandardSemantic _child-kind))
-    (:extension-standard-children
-     (extension-schema registry parent-identifier))
-    (tuple (ExtensionSemantic parent-identifier _parent-fingerprint)
-           (ExtensionSemantic child-identifier _child-fingerprint))
-    (ext/identifier-allowed?
-     (:extension-child-identifiers
-      (extension-schema registry parent-identifier))
-     child-identifier)))
+(defn- retained-child-supported? [registry nodes parent child]
+  (match (:semantic-kind child)
+    (ExtensionSemantic child-identifier _child-fingerprint)
+    (if (ext/tweak? registry child-identifier)
+      (let [children (:retained-children child)]
+        (and
+         (= 1 (count children))
+         (if-some [inner-child (clojure.core/get nodes (nth children 0))]
+           (retained-child-supported? registry nodes parent inner-child)
+           false)))
+      (match (:semantic-kind parent)
+        (StandardSemantic parent-kind)
+        (ext/standard-container-supported? parent-kind)
+        (ExtensionSemantic parent-identifier _parent-fingerprint)
+        (if (ext/tweak? registry parent-identifier)
+          (empty? (:retained-children parent))
+          (ext/identifier-allowed?
+           (:extension-child-identifiers
+            (extension-schema registry parent-identifier))
+           child-identifier))))
+    (StandardSemantic child-kind)
+    (match (:semantic-kind parent)
+      (StandardSemantic parent-kind)
+      (and
+       (proto/can-contain-children? parent-kind)
+       (proto/child-kind-supported? parent-kind child-kind))
+      (ExtensionSemantic parent-identifier _parent-fingerprint)
+      (if (ext/tweak? registry parent-identifier)
+        (empty? (:retained-children parent))
+        (:extension-standard-children
+         (extension-schema registry parent-identifier))))))
 
 (defn- unsupported-child-message [parent child]
   (match (tuple (:semantic-kind parent) (:semantic-kind child))
@@ -166,7 +178,11 @@
     (if (contains? nodes node)
       (raise (Invalid_argument "node already exists"))
       (let [schema (extension-schema registry identifier)]
-        (when-not (= fingerprint (ext/fingerprint schema))
+        (let [expected
+              (if (ext/tweak? registry identifier)
+                (ext/tweak-fingerprint schema)
+                (ext/fingerprint schema))]
+        (when-not (= fingerprint expected)
           (raise (Invalid_argument "extension fingerprint mismatch")))
         (assoc
          nodes node
@@ -176,7 +192,7 @@
            (retained-parent None)
            (retained-properties (hash-map))
            (retained-extension-properties (hash-map))
-           (retained-children [])))))
+           (retained-children []))))))
 
     (DropNode node)
     (if-some [current (clojure.core/get nodes node)]
@@ -240,7 +256,7 @@
     (if-some [parent-node (clojure.core/get nodes parent)]
       (if-some [child-node (clojure.core/get nodes child)]
         (cond
-          (not (retained-child-supported? registry parent-node child-node))
+          (not (retained-child-supported? registry nodes parent-node child-node))
           (raise (Invalid_argument
                   (unsupported-child-message parent-node child-node)))
           (descendant? nodes child parent)
@@ -564,11 +580,16 @@
            kind (:retained-properties current))
            (raise (Invalid_argument (node-properties-error current)))))
        (ExtensionSemantic identifier _fingerprint)
-       (when-not
-        (ext/properties-supported?
-         (extension-schema registry identifier)
-         (:retained-extension-properties current))
-         (raise (Invalid_argument "extension properties are incomplete"))))
+       (do
+         (when-not
+          (ext/properties-supported?
+           (extension-schema registry identifier)
+           (:retained-extension-properties current))
+           (raise (Invalid_argument "extension properties are incomplete")))
+         (when (and
+                (ext/tweak? registry identifier)
+                (not (= 1 (count (:retained-children current)))))
+           (raise (Invalid_argument "platform tweak requires exactly one child")))))
      true)
    true
    nodes))

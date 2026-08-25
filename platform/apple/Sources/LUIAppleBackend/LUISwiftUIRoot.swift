@@ -19,7 +19,7 @@ public struct LUISwiftUIRoot: View {
     }
 }
 
-private struct LUIAnyNodeView: View {
+struct LUIAnyNodeView: View {
     let nodeID: Int
     let backend: LUIAppleBackend
 

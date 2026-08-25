@@ -135,6 +135,28 @@
        (proto/create-extension-op node identifier (ext/fingerprint schema)))
       node)))
 
+(defn create-tweak-node! [application identifier]
+  (let [registry (:runtime-extension-registry application)]
+    (when-not (ext/tweak? registry identifier)
+      (raise (Invalid_argument "unknown platform tweak")))
+    (let [schema
+          (match (ext/schema registry identifier)
+            (Some current) current
+            None (raise (Invalid_argument "unknown platform tweak")))]
+      (when-not
+       (ext/profile-supported?
+        schema (:backend-profile (:runtime-backend application)))
+       (raise (Invalid_argument "tweak is unsupported by backend profile")))
+      (let [node (swap! (:next-node-id application) inc)]
+        (swap! (:runtime-extension-nodes application) assoc node identifier)
+        (swap! (:runtime-extension-properties application) assoc node (hash-map))
+        (swap! (:runtime-children application) assoc node [])
+        (enqueue!
+         application
+         (proto/create-extension-op
+          node identifier (ext/tweak-fingerprint schema)))
+        node))))
+
 (defn drop-node! [application node]
   (require-node! application node)
   (when (contains? (deref (:runtime-parents application)) node)
@@ -200,27 +222,37 @@
 
 (defn- child-supported? [application parent child]
   (let [standard-nodes (deref (:mounted-nodes application))
-        extension-nodes (deref (:runtime-extension-nodes application))]
-    (if-some [parent-kind (clojure.core/get standard-nodes parent)]
+        extension-nodes (deref (:runtime-extension-nodes application))
+        registry (:runtime-extension-registry application)]
+    (if-some [child-identifier (clojure.core/get extension-nodes child)]
+      (if (ext/tweak? registry child-identifier)
+        (let [tweak-children (children application child)]
+          (and (= 1 (count tweak-children))
+               (child-supported? application parent (nth tweak-children 0))))
+        (if-some [parent-kind (clojure.core/get standard-nodes parent)]
+          (standard-extension-container? parent-kind)
+          (if-some [parent-identifier (clojure.core/get extension-nodes parent)]
+            (match (ext/schema registry parent-identifier)
+              (Some schema)
+              (if (ext/tweak? registry parent-identifier)
+                (empty? (children application parent))
+                (identifier-allowed?
+                 (:extension-child-identifiers schema) child-identifier))
+              None false)
+            false)))
       (if-some [child-kind (clojure.core/get standard-nodes child)]
-        (and
-         (proto/can-contain-children? parent-kind)
-         (proto/child-kind-supported? parent-kind child-kind))
-        (and
-         (contains? extension-nodes child)
-         (standard-extension-container? parent-kind)))
-      (if-some [parent-identifier (clojure.core/get extension-nodes parent)]
-        (match (ext/schema
-                (:runtime-extension-registry application) parent-identifier)
-          (Some schema)
-          (if (contains? standard-nodes child)
-            (:extension-standard-children schema)
-            (if-some [child-identifier
-                      (clojure.core/get extension-nodes child)]
-              (identifier-allowed?
-               (:extension-child-identifiers schema) child-identifier)
-              false))
-          None false)
+        (if-some [parent-kind (clojure.core/get standard-nodes parent)]
+          (and
+           (proto/can-contain-children? parent-kind)
+           (proto/child-kind-supported? parent-kind child-kind))
+          (if-some [parent-identifier (clojure.core/get extension-nodes parent)]
+            (match (ext/schema registry parent-identifier)
+              (Some schema)
+              (if (ext/tweak? registry parent-identifier)
+                (empty? (children application parent))
+                (:extension-standard-children schema))
+              None false)
+            false))
         false))))
 
 (defn insert-child! [application parent child index]
@@ -369,6 +401,12 @@
                (hash-map))]
          (when-not (ext/properties-supported? schema values)
            (raise (Invalid_argument "extension properties are incomplete")))
+         (when (and
+                (ext/tweak?
+                 (:runtime-extension-registry application)
+                 (:extension-identifier schema))
+                (not (= 1 (count (children application node)))))
+           (raise (Invalid_argument "platform tweak requires exactly one child")))
          true))
      true
      (deref (:runtime-extension-nodes application)))))

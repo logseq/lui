@@ -123,6 +123,43 @@ void main() {
     );
   });
 
+  testWidgets('registered platform tweaks wrap exactly one retained child', (
+    tester,
+  ) async {
+    final registry = LUIFlutterExtensionRegistry()
+      ..registerTweak(
+        LUIFlutterTweak(
+          identifier: 'material-card',
+          fingerprint: 'material-card-v1',
+          builder: (content, _) =>
+              Padding(padding: const EdgeInsets.all(8), child: content),
+        ),
+      );
+    final backend = LUIFlutterBackend(extensionRegistry: registry)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-extension","id":1,"identifier":"material-card","fingerprint":"material-card-v1"},
+        {"op":"create-node","id":2,"kind":"button"},
+        {"op":"set-prop","id":2,"property":"text","value":"Save"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"create-node","id":3,"kind":"tabs"},
+        {"op":"insert-child","parent":3,"child":1,"index":0}
+      ]}
+      ''');
+
+    await tester.pumpWidget(MaterialApp(home: backend.widget(node: 3)));
+    expect(find.widgetWithText(TextButton, 'Save'), findsOneWidget);
+    expect(
+      () => backend.applyJson('''
+        {"generation":2,"ops":[
+          {"op":"create-extension","id":4,"identifier":"material-card","fingerprint":"material-card-v1"}
+        ]}
+        '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 1);
+  });
+
   test('projects each direct retained root child as one Gallery section', () {
     final backend = LUIFlutterBackend()
       ..applyJson('''

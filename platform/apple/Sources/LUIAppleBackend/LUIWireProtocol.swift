@@ -404,6 +404,15 @@ struct LUIRetainedTree {
         child: Int,
         registry: LUIAppleExtensionRegistry
     ) throws {
+        if let childNode = extensionNodes[child],
+           let registration = registry.registration(childNode.identifier),
+           registration.isTweak {
+            guard childNode.children.count == 1, let innerChild = childNode.children.first else {
+                throw invalid("platform tweak requires exactly one child")
+            }
+            try validateChild(parent: parent, child: innerChild, registry: registry)
+            return
+        }
         if let parentNode = nodes[parent], let childNode = nodes[child] {
             guard Self.canContainChildren(parentNode.kind) else {
                 throw invalid("parent cannot contain children")
@@ -450,6 +459,12 @@ struct LUIRetainedTree {
         guard let parentNode = extensionNodes[parent],
               let registration = registry.registration(parentNode.identifier) else {
             throw invalid("unknown extension parent")
+        }
+        if registration.isTweak {
+            guard parentNode.children.isEmpty else {
+                throw invalid("platform tweak requires exactly one child")
+            }
+            return
         }
         if nodes[child] != nil {
             guard registration.acceptsStandardChildren else {
@@ -854,6 +869,9 @@ struct LUIRetainedTree {
         for node in extensionNodes.values {
             guard let registration = extensionRegistry.registration(node.identifier) else {
                 throw invalid("unknown extension identifier")
+            }
+            if registration.isTweak, node.children.count != 1 {
+                throw invalid("platform tweak requires exactly one child")
             }
             for property in registration.properties where property.isRequired {
                 guard node.properties[property.name] != nil else {

@@ -371,14 +371,22 @@ final class LUIFlutterBackend {
 
   String? _firstSectionTitle(int node) {
     final state = _states[node];
-    if (state == null) return null;
-    final text = state.properties['text'];
-    if ((state.kind == _NodeKind.heading || state.kind == _NodeKind.text) &&
-        text is String &&
-        text.isNotEmpty) {
-      return text;
+    if (state != null) {
+      final text = state.properties['text'];
+      if ((state.kind == _NodeKind.heading || state.kind == _NodeKind.text) &&
+          text is String &&
+          text.isNotEmpty) {
+        return text;
+      }
+      for (final child in state.children) {
+        final title = _firstSectionTitle(child);
+        if (title != null) return title;
+      }
+      return null;
     }
-    for (final child in state.children) {
+    final extension = _extensionStates[node];
+    if (extension == null) return null;
+    for (final child in extension.children) {
       final title = _firstSectionTitle(child);
       if (title != null) return title;
     }
@@ -2424,6 +2432,24 @@ final class LUIFlutterBackend {
     int parentID,
     int childID,
   ) {
+    final transparentChild = extensions[childID];
+    if (transparentChild != null &&
+        _extensionRegistry
+            ._registration(transparentChild.identifier)!
+            .isTweak) {
+      if (transparentChild.children.length != 1) {
+        throw const LUIBackendException(
+          'platform tweak requires exactly one child',
+        );
+      }
+      _validateChildRelationship(
+        states,
+        extensions,
+        parentID,
+        transparentChild.children.single,
+      );
+      return;
+    }
     final parent = states[parentID];
     final child = states[childID];
     if (parent != null && child == null) {
@@ -2440,6 +2466,14 @@ final class LUIFlutterBackend {
       final registration = _extensionRegistry._registration(
         extensionParent.identifier,
       )!;
+      if (registration.isTweak) {
+        if (extensionParent.children.isNotEmpty) {
+          throw const LUIBackendException(
+            'platform tweak requires exactly one child',
+          );
+        }
+        return;
+      }
       if (child != null) {
         if (!registration.acceptsStandardChildren) {
           throw const LUIBackendException(
@@ -3144,6 +3178,11 @@ final class LUIFlutterBackend {
       if (registration == null ||
           registration.fingerprint != state.fingerprint) {
         throw const LUIBackendException('invalid extension registration');
+      }
+      if (registration.isTweak && state.children.length != 1) {
+        throw const LUIBackendException(
+          'platform tweak requires exactly one child',
+        );
       }
       final properties = {
         for (final property in registration.properties) property.name: property,

@@ -12,6 +12,7 @@
 (signature lui.ui/platform :fn<ui-context;operating-system>)
 (signature lui.ui/host :fn<ui-context;host-kind>)
 (signature lui.ui/extension! :fn<ui-context;string;int>)
+(signature lui.ui/platform-tweak! :fn<ui-context;string;int>)
 (signature lui.ui/extension-property!
   :fn<ui-context;int;string;wire-value;bool>)
 (signature lui.ui/extension-property-signal!

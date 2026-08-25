@@ -68,7 +68,17 @@ final class LUIFlutterExtension {
     this.childIdentifiers = const [],
     this.properties = const [],
     this.events = const [],
-  });
+  }) : isTweak = false;
+
+  const LUIFlutterExtension._tweak({
+    required this.identifier,
+    required this.fingerprint,
+    required this.builder,
+    required this.properties,
+  }) : acceptsStandardChildren = true,
+       childIdentifiers = const [],
+       events = const [],
+       isTweak = true;
 
   final String identifier;
   final String fingerprint;
@@ -76,7 +86,26 @@ final class LUIFlutterExtension {
   final List<String> childIdentifiers;
   final List<LUIExtensionProperty> properties;
   final List<LUIExtensionEventSchema> events;
+  final bool isTweak;
   final LUIExtensionWidgetBuilder builder;
+}
+
+typedef LUITweakWidgetBuilder =
+    Widget Function(Widget content, LUIFlutterExtensionContext context);
+
+@immutable
+final class LUIFlutterTweak {
+  const LUIFlutterTweak({
+    required this.identifier,
+    required this.fingerprint,
+    required this.builder,
+    this.properties = const [],
+  });
+
+  final String identifier;
+  final String fingerprint;
+  final List<LUIExtensionProperty> properties;
+  final LUITweakWidgetBuilder builder;
 }
 
 final class LUIFlutterExtensionRegistry {
@@ -134,6 +163,17 @@ final class LUIFlutterExtensionRegistry {
       }
     }
     _registrations[registration.identifier] = registration;
+  }
+
+  void registerTweak(LUIFlutterTweak tweak) {
+    register(
+      LUIFlutterExtension._tweak(
+        identifier: tweak.identifier,
+        fingerprint: tweak.fingerprint,
+        properties: tweak.properties,
+        builder: (context) => tweak.builder(context.content, context),
+      ),
+    );
   }
 
   void _freeze() {
@@ -201,6 +241,13 @@ final class LUIFlutterExtensionContext {
 
   List<int> get childIDs =>
       List.unmodifiable(_backend._requireExtensionState(nodeID).children);
+
+  Widget get content {
+    final children = childIDs;
+    return children.length == 1
+        ? _backend.widget(node: children.single)
+        : const SizedBox.shrink();
+  }
 
   Object? childProperty(int childID, String name) =>
       _backend._requireExtensionState(childID).properties[name];

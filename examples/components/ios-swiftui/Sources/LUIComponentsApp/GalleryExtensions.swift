@@ -33,6 +33,22 @@ func galleryExtensionRegistry() throws -> LUIAppleExtensionRegistry {
             AnyView(EmptyView())
         }
     )
+    try registry.registerTweak(
+        LUIAppleTweak(
+            identifier: "gallery-accent",
+            fingerprint: "lui-tweak-v1|14:gallery-accent|profiles:android/flutter,ios/flutter,ios/swiftui,linux/flutter,macos/flutter,macos/swiftui,web/web,windows/flutter|properties:"
+        ) { content, _ in
+            AnyView(
+                content
+                    .padding(12)
+                    .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(.blue.opacity(0.2))
+                    }
+            )
+        }
+    )
     return registry
 }
 

@@ -40,11 +40,25 @@
    [(ext/property "title" ext/StringScalar true None)]
    []))
 
+(defn gallery-accent-schema []
+  (ext/tweak
+   "gallery-accent"
+   [(proto/profile proto/WebOS proto/WebHost)
+    (proto/profile proto/IOS proto/SwiftUIHost)
+    (proto/profile proto/MacOS proto/SwiftUIHost)
+    (proto/profile proto/MacOS proto/FlutterHost)
+    (proto/profile proto/IOS proto/FlutterHost)
+    (proto/profile proto/AndroidOS proto/FlutterHost)
+    (proto/profile proto/LinuxOS proto/FlutterHost)
+    (proto/profile proto/WindowsOS proto/FlutterHost)]
+   []))
+
 (defn registry []
   (let [result (ext/registry)]
     (ext/register-component! result (apple-map-schema))
     (ext/register-component! result (apple-map-marker-schema))
     (ext/register-component! result (native-card-schema))
+    (ext/register-tweak! result (gallery-accent-schema))
     result))
 
 (defextension apple-map
@@ -88,4 +102,8 @@
    [:heading {:level 2} "NativeExtension"]
    [native-extension-content]
    [:paragraph
+    {:ios [:gallery-accent]
+     :macos [:gallery-accent]
+     :android [:gallery-accent]
+     :web [:gallery-accent]}
     "The host factory owns native interaction while LUI retains the node."]])

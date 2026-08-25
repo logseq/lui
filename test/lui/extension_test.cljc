@@ -22,6 +22,21 @@
    [:lui.extension-test/native-view
     {:title title-source :on-activate on-activate}]])
 
+(defui platform-tweak-example []
+  [:button
+   {:ios [[:glass-card {:prominent true}]
+          :glass-card]}
+   "Save"])
+
+(defui tweaked-tab-example []
+  [:tabs
+   [:button {:ios [:glass-card] :selected true} "Overview"]])
+
+(defui reactive-platform-tweak-example [prominent]
+  [:button
+   {:ios [[:glass-card {:prominent prominent}]]}
+   "Save"])
+
 (defmacro recording-backend [profile batches]
   `(record proto/backend
      (backend-profile ~profile)
@@ -71,6 +86,13 @@
    [(ext/property "title" ext/StringScalar true None)]
    [(ext/event "activate" [])]))
 
+(defn ios-tweak-schema []
+  (ext/tweak
+   "glass-card"
+   [(proto/profile proto/IOS proto/SwiftUIHost)]
+   [(ext/property "prominent" ext/BoolScalar false
+                  (Some (proto/BoolValue false)))]))
+
 (defn runtime-extension-property [application node property]
   (match (clojure.core/get
           (deref (:runtime-extension-properties application)) node)
@@ -84,6 +106,18 @@
   (is (not (= (ext/fingerprint (map-schema))
               (ext/fingerprint (marker-schema))))
       "different manifests cannot share a fingerprint"))
+
+(deftest tweak-schemas-share-the-registry-with-a-distinct-identity
+  (let [registry (ext/registry)
+        schema (ios-tweak-schema)]
+    (ext/register-tweak! registry schema)
+    (is (ext/tweak? registry "glass-card"))
+    (is (= (Some schema) (ext/schema registry "glass-card")))
+    (is (not (= (ext/tweak-fingerprint schema) (ext/fingerprint schema))))
+    (is (thrown?
+         Invalid_argument
+         (ext/register-component! registry schema))
+        "a tweak and component cannot reuse one identifier")))
 
 (deftest registry-validates-identities-and-freezes-at-startup
   (let [registry (ext/registry)]
@@ -405,3 +439,87 @@
        application (proto/ExtensionEvent node "native-view" "activate" {}))
       (sig/stabilize! scheduler)
       (is (= 1 (count (deref received)))))))
+
+(deftest platform-attributes-lower-only-the-selected-ordered-tweaks
+  (let [registry (ext/registry)
+        _registered (ext/register-tweak! registry (ios-tweak-schema))
+        batches (atom [])
+        scheduler (sig/scheduler)
+        application
+        (runtime/create-with-extensions
+         scheduler
+         (recording-backend
+          (proto/profile proto/IOS proto/SwiftUIHost) batches)
+         registry)
+        scope (sig/scope "tweak-authoring")
+        root (platform-tweak-example (ui/context application scope))]
+    (sig/mount! scope)
+    (is (= "glass-card"
+           (match (clojure.core/get
+                   (deref (:runtime-extension-nodes application)) root)
+             (Some identifier) identifier
+             None "")))
+    (let [inner (nth (runtime/children application root) 0)
+          button (nth (runtime/children application inner) 0)]
+      (is (= "glass-card"
+             (match (clojure.core/get
+                     (deref (:runtime-extension-nodes application)) inner)
+               (Some identifier) identifier
+               None "")))
+      (is (= (Some (proto/BoolValue true))
+             (runtime-extension-property application inner "prominent")))
+      (is (= (Some proto/Button)
+             (clojure.core/get (deref (:mounted-nodes application)) button)))))
+  (let [registry (ext/registry)
+        _registered (ext/register-tweak! registry (ios-tweak-schema))
+        scheduler (sig/scheduler)
+        application
+        (runtime/create-with-extensions
+         scheduler
+         (recording-backend
+          (proto/profile proto/AndroidOS proto/FlutterHost) (atom []))
+         registry)
+        scope (sig/scope "inactive-tweak")
+        root (platform-tweak-example (ui/context application scope))]
+    (sig/mount! scope)
+    (is (= (Some proto/Button)
+           (clojure.core/get (deref (:mounted-nodes application)) root)))
+    (is (= 1 (runtime/mounted-count application))
+        "non-matching platform keys create no decorator nodes"))
+  (let [registry (ext/registry)
+        _registered (ext/register-tweak! registry (ios-tweak-schema))
+        scheduler (sig/scheduler)
+        application
+        (runtime/create-with-extensions
+         scheduler
+         (recording-backend
+          (proto/profile proto/IOS proto/SwiftUIHost) (atom []))
+         registry)
+        scope (sig/scope "transparent-tweak")]
+    (sig/mount! scope)
+    (is (int? (tweaked-tab-example (ui/context application scope)))
+        "a tweak is transparent to the parent's child-kind contract"))
+  (let [registry (ext/registry)
+        _registered (ext/register-tweak! registry (ios-tweak-schema))
+        scheduler (sig/scheduler)
+        application
+        (runtime/create-with-extensions
+         scheduler
+         (recording-backend
+          (proto/profile proto/IOS proto/SwiftUIHost) (atom []))
+         registry)
+        scope (sig/scope "reactive-tweak")
+        prominent (sig/state scheduler (proto/BoolValue false))
+        root
+        (reactive-platform-tweak-example
+         (ui/context application scope) (sig/value prominent))]
+    (sig/mount! scope)
+    (let [tweak-node root]
+      (is (= (Some (proto/BoolValue false))
+             (runtime-extension-property application tweak-node "prominent")))
+      (sig/set! prominent (proto/BoolValue true))
+      (sig/stabilize! scheduler)
+      (is (= (Some (proto/BoolValue true))
+             (runtime-extension-property application tweak-node "prominent")))
+      (is (= root tweak-node)
+          "reactive tweak properties preserve decorator identity"))))

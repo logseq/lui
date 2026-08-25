@@ -54,6 +54,7 @@
 (signature lui.runtime/create-node! :fn<application;node-kind;int>)
 (signature lui.runtime/create-extension-node!
   :fn<application;string;int>)
+(signature lui.runtime/create-tweak-node! :fn<application;string;int>)
 (signature lui.runtime/drop-node! :fn<application;int;bool>)
 (signature lui.runtime/drop-subtree! :fn<application;int;bool>)
 (signature lui.runtime/set-prop! :fn<application;int;property;wire-value;bool>)

@@ -191,6 +191,95 @@
                            (second entry)
                            (recur (next remaining)))))))
 
+(macro-helper-defn platform-tweak-entries [attrs]
+                   (loop [remaining
+                          [[:ios 'lui.protocol/IOS]
+                           [:macos 'lui.protocol/MacOS]
+                           [:android 'lui.protocol/AndroidOS]
+                           [:web 'lui.protocol/WebOS]]
+                          result []]
+                     (if (empty? remaining)
+                       result
+                       (let [entry (first remaining)
+                             specs (macro-map-value attrs (first entry))]
+                         (recur
+                          (next remaining)
+                          (if specs
+                            (conj result [(second entry) specs])
+                            result))))))
+
+(macro-helper-defn tweak-spec-name [spec]
+                   (if (keyword? spec) (name spec) (name (first spec))))
+
+(macro-helper-defn tweak-spec-properties [spec]
+                   (if (keyword? spec)
+                     []
+                     (if (empty? (next spec))
+                       []
+                       (if (map? (second spec)) (second spec) []))))
+
+(macro-helper-defn inferred-wire-value [value]
+                   (cond
+                     (string? value) `(lui.protocol/StringValue ~value)
+                     (or (= value true) (= value false))
+                     `(lui.protocol/BoolValue ~value)
+                     (int? value) `(lui.protocol/IntValue ~value)
+                     (float? value) `(lui.protocol/FloatValue ~value)
+                     :else nil))
+
+(macro-helper-defn tweak-property-expansions [context node properties]
+                   (loop [remaining properties
+                          result []]
+                     (if (empty? remaining)
+                       result
+                       (let [entry (first remaining)
+                             property-name (name (first entry))
+                             value (second entry)
+                             literal (inferred-wire-value value)]
+                         (recur
+                          (next remaining)
+                          (conj
+                           result
+                           (if literal
+                             `(lui.ui/extension-property!
+                               ~context ~node ~property-name ~literal)
+                             `(lui.ui/extension-property-signal!
+                               ~context ~node ~property-name ~value))))))))
+
+(macro-helper-defn tweak-chain-expansion [context base specs]
+                   (if (empty? specs)
+                     base
+                     (let [spec (first specs)
+                           node (gensym "platform_tweak")]
+                       `(let [~node
+                              (lui.ui/platform-tweak!
+                               ~context ~(tweak-spec-name spec))]
+                          ~@(tweak-property-expansions
+                             context node (tweak-spec-properties spec))
+                          (lui.ui/append! ~context ~node ~base)
+                          ~(tweak-chain-expansion context node (next specs))))))
+
+(macro-helper-defn tweak-condition-branches [context base entries]
+                   (loop [remaining entries
+                          result []]
+                     (if (empty? remaining)
+                       result
+                       (let [entry (first remaining)]
+                         (recur
+                          (next remaining)
+                          (concat
+                           result
+                           [`(= (lui.ui/platform ~context) ~(first entry))
+                            (tweak-chain-expansion
+                             context base (second entry))]))))))
+
+(macro-helper-defn selected-tweak-expansion [context base entries]
+                   (if (empty? entries)
+                     base
+                     `(cond
+                        ~@(tweak-condition-branches context base entries)
+                        :else ~base)))
+
 (macro-helper-defn extension-property-expansions
                    [context node properties attrs]
                    (loop [remaining properties
@@ -316,18 +405,41 @@
         metadata-children (context-menu-children children)
         visible-children (visible-children children)]
     (if (keyword? tag)
-      (if (empty? metadata-children)
-        `(~(element-expander-symbol tag)
-          ~context ~parent ~attrs ~@children)
-        (let [node (gensym "metadata_host")]
-          `(let [~node
-                 (~(element-expander-symbol tag)
-                  ~context ~parent ~attrs ~@visible-children)]
-             ~@(map
-                (fn [child]
-                  `(lui.elements/element ~context ~node ~child))
-                metadata-children)
-             ~node)))
+      (let [entries (platform-tweak-entries attrs)]
+        (if (empty? entries)
+          (if (empty? metadata-children)
+            `(~(element-expander-symbol tag)
+              ~context ~parent ~attrs ~@children)
+            (let [node (gensym "metadata_host")]
+              `(let [~node
+                     (~(element-expander-symbol tag)
+                      ~context ~parent ~attrs ~@visible-children)]
+                 ~@(map
+                    (fn [child]
+                      `(lui.elements/element ~context ~node ~child))
+                    metadata-children)
+                 ~node)))
+          (let [base-node (gensym "tweak_base")
+                result-node (gensym "tweak_result")
+                base
+                (if (empty? metadata-children)
+                  `(~(element-expander-symbol tag)
+                    ~context nil ~attrs ~@children)
+                  `(let [~base-node
+                         (~(element-expander-symbol tag)
+                          ~context nil ~attrs ~@visible-children)]
+                     ~@(map
+                        (fn [child]
+                          `(lui.elements/element ~context ~base-node ~child))
+                        metadata-children)
+                     ~base-node))]
+            `(let [~base-node ~base
+                   ~result-node
+                   ~(selected-tweak-expansion context base-node entries)]
+               ~@(if parent
+                   [`(lui.ui/append! ~context ~parent ~result-node)]
+                   [])
+               ~result-node))))
       (let [component-context (gensym "component_context")
             node (gensym "component_node")]
         `(let [~component-context

@@ -2351,6 +2351,41 @@ struct LUISwiftUIBackendTests {
         }
     }
 
+    @Test("registered platform tweaks wrap exactly one retained child")
+    func platformTweaksAreUnaryDecorators() throws {
+        let registry = LUIAppleExtensionRegistry()
+        try registry.registerTweak(
+            LUIAppleTweak(
+                identifier: "glass-card",
+                fingerprint: "glass-card-v1"
+            ) { content, _ in
+                AnyView(content.padding(8))
+            }
+        )
+        let backend = try LUIAppleBackend(extensionRegistry: registry)
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-extension","id":1,"identifier":"glass-card","fingerprint":"glass-card-v1"},
+          {"op":"create-node","id":2,"kind":"button"},
+          {"op":"set-prop","id":2,"property":"text","value":"Save"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"create-node","id":3,"kind":"tabs"},
+          {"op":"insert-child","parent":3,"child":1,"index":0}
+        ]}
+        """)
+        #expect(backend.extensionModel(id: 1)?.children == [2])
+        #expect(backend.model(id: 3)?.children == [1])
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"create-extension","id":4,"identifier":"glass-card","fingerprint":"glass-card-v1"}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 1)
+    }
+
     @Test("C ABI forwards SwiftUI backend events")
     func cABIForwardsEvent() {
         capturedAppleEvent = nil
