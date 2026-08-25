@@ -64,6 +64,8 @@
   (Dialog)
   (Sheet)
   (Tooltip)
+  (Toast)
+  (Toolbar)
   (StatusBar))
 
 (type-variant operating-system
@@ -144,6 +146,7 @@
   (AnchorAlignmentValue)
   (AnchorOffset)
   (TooltipDelay)
+  (DurationValue)
   (TextAlignment)
   (RoleValue)
   (TreeLevel)

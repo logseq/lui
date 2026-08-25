@@ -64,6 +64,8 @@ enum LUINodeKind: String, Decodable, Equatable {
     case dialog = "dialog"
     case sheet = "sheet"
     case tooltip = "tooltip"
+    case toast = "toast"
+    case toolbar = "toolbar"
     case statusBar = "status-bar"
 }
 
@@ -126,6 +128,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case anchorAlignment = "anchor-alignment"
     case anchorOffset = "anchor-offset"
     case tooltipDelay = "tooltip-delay"
+    case duration = "duration"
     case textAlignment = "text-alignment"
     case role = "role"
     case treeLevel = "tree-level"

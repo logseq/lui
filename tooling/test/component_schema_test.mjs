@@ -71,6 +71,8 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.ok(!summary.supported.includes('drawer'));
   assert.ok(summary.supported.includes('sheet'));
   assert.ok(summary.supported.includes('tooltip'));
+  assert.ok(summary.supported.includes('toast'));
+  assert.ok(summary.supported.includes('toolbar'));
   assert.ok(summary.supported.includes('accordion'));
   assert.ok(summary.supported.includes('table'));
   assert.ok(summary.supported.includes('table-row'));
@@ -88,6 +90,8 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.ok(!summary.pending.includes('drawer'));
   assert.ok(!summary.pending.includes('sheet'));
   assert.ok(!summary.pending.includes('tooltip'));
+  assert.ok(!summary.pending.includes('toast'));
+  assert.ok(!summary.pending.includes('toolbar'));
   assert.ok(!summary.pending.includes('accordion'));
   assert.ok(!summary.pending.includes('table'));
   assert.ok(!summary.pending.includes('table-row'));

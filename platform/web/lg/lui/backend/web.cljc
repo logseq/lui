@@ -7,7 +7,7 @@
              :refer [Row Column Grid Stack Panel Card Alert Bubble Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
-                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Sheet Tooltip Accordion
+                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Sheet Tooltip Toast Toolbar Accordion
                      Table TableRow TableCell Tree Resizable Split StatusBar
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
@@ -30,7 +30,7 @@
                      ChangeEnabled ToggleEnabled PressEnabled
                      SubmitEnabled DoublePressEnabled
                      ImageIdValue SurfaceIdValue ActiveIndex TitleValue DescriptionValue MetaValue IndicatorValue Connector SourceX SourceY SourceWidth SourceHeight
-                     AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay
+                     AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay DurationValue
                      TextAlignment RoleValue TreeLevel Expanded
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
@@ -49,8 +49,16 @@
   [host app-icons registry adapters]
   (let [document (Webapi.Dom.Element.ownerDocument host)
         portal-root (Webapi.Dom.Document.createElement "div" document)
+        toast-viewport (Webapi.Dom.Document.createElement "div" document)
         html-document (Webapi.Dom.Document.unsafeAsHtmlDocument document)]
     (Webapi.Dom.Element.setClassName portal-root "lui-popup-portal")
+    (Webapi.Dom.Element.setClassName toast-viewport "lui-toast-viewport")
+    (Webapi.Dom.Element.setAttribute "role" "region" toast-viewport)
+    (Webapi.Dom.Element.setAttribute
+     "aria-label" "Notifications" toast-viewport)
+    (Webapi.Dom.Element.setAttribute "tabindex" "-1" toast-viewport)
+    (Webapi.Dom.Element.appendChild
+     (Webapi.Dom.Element.asNode toast-viewport) portal-root)
     (Webapi.Dom.Element.setAttribute "data-lui-root" "" host)
     (if-some [body (Webapi.Dom.HtmlDocument.body html-document)]
       (Webapi.Dom.Element.appendChild
@@ -61,6 +69,7 @@
             (web-document document)
             (web-host host)
             (web-portal-root portal-root)
+            (web-toast-viewport toast-viewport)
             (web-event-handler (atom (fn [_event] true)))
             (web-app-icons app-icons)
             (web-images (atom {}))
@@ -187,6 +196,8 @@
     Dialog "lui-dialog"
     Sheet "lui-sheet"
     Tooltip "lui-tooltip"
+    Toast "lui-toast"
+    Toolbar "lui-toolbar"
     Accordion "lui-accordion"
     Table "lui-table"
     TableRow "lui-table-row"
@@ -396,6 +407,8 @@
           InputGroupActions "div"
           Tree "div"
           Tooltip "span"
+          Toast "div"
+          Toolbar "div"
           Slider "input"
           Divider "hr"
           _ "div")
@@ -441,6 +454,11 @@
            "data-anchor-alignment" "start"}
           ContextMenu {"role" "menu" "tabindex" "-1"}
           Tooltip {"role" "tooltip"}
+          Toast
+          {"role" "status" "aria-atomic" "true" "tabindex" "0"
+           "data-state" "open"}
+          Toolbar
+          {"role" "toolbar" "aria-orientation" "horizontal"}
           StatusBar {"role" "status"}
           _ {})]
     (element
@@ -1344,6 +1362,107 @@
        (Stdlib.ignore true)))
    group-node))
 
+(defn- toolbar-item-kind? [kind]
+  (or (= kind Button) (= kind ToggleButton) (= kind Toggle)
+      (= kind Checkbox) (= kind SwitchControl) (= kind Radio)
+      (= kind Select) (= kind Combobox) (= kind TextField)
+      (= kind Input) (= kind SearchField)))
+
+(defn- toolbar-all-items-under [renderer parent]
+  (reduce
+   (fn [items child]
+     (if-some [current (retained/node (:web-store renderer) child)]
+       (if (toolbar-item-kind? (standard-kind current))
+         (conj items child)
+         (into items (toolbar-all-items-under renderer child)))
+       items))
+   []
+   (retained/children (:web-store renderer) parent)))
+
+(defn- toolbar-items-under [renderer parent]
+  (into
+   []
+   (filter
+    (fn [item] (enabled-node? renderer item))
+    (toolbar-all-items-under renderer parent))))
+
+(defn- refresh-toolbar-roving! [renderer toolbar]
+  (let [all-items (toolbar-all-items-under renderer toolbar)
+        items (toolbar-items-under renderer toolbar)
+        document
+        (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))
+        active
+        (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
+          (focused-child-index renderer items focused 0)
+          None)
+        target
+        (match active
+          (Some index) index
+          None 0)]
+    (loop [index 0]
+      (when (< index (count all-items))
+        (Webapi.Dom.Element.setAttribute
+         "tabindex" "-1" (dom-node renderer (nth all-items index)))
+        (recur (inc index))))
+    (loop [index 0]
+      (when (< index (count items))
+        (Webapi.Dom.Element.setAttribute
+         "tabindex" (if (= index target) "0" "-1")
+         (dom-node renderer (nth items index)))
+        (recur (inc index))))
+    true))
+
+(defn- update-all-toolbar-roving! [renderer]
+  (reduce-kv
+   (fn [_updated node current]
+     (when (standard-kind? current Toolbar)
+       (refresh-toolbar-roving! renderer node))
+     true)
+   true
+   (retained/nodes (:web-store renderer))))
+
+(defn- attach-toolbar-events! [renderer node toolbar-node]
+  (Webapi.Dom.Element.addKeyDownEventListener
+   (fn [event]
+     (let [key (Webapi.Dom.KeyboardEvent.key event)
+           orientation
+           (match (retained/property
+                   (:web-store renderer) node OrientationValue)
+             (Some (StringValue value)) value
+             _ "horizontal")
+           navigation-key
+           (if (= orientation "vertical")
+             (match key
+               "ArrowDown" "ArrowRight"
+               "ArrowUp" "ArrowLeft"
+               "Home" "Home"
+               "End" "End"
+               _ "")
+             (match key
+               "ArrowRight" "ArrowRight"
+               "ArrowLeft" "ArrowLeft"
+               "Home" "Home"
+               "End" "End"
+               _ ""))
+           items (toolbar-items-under renderer node)
+           document
+           (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))
+           current
+           (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
+             (focused-child-index renderer items focused 0)
+             None)]
+       (when (not (= navigation-key ""))
+         (match (horizontal-focus-index navigation-key current (count items))
+           (Some index)
+           (do
+             (Webapi.Dom.KeyboardEvent.preventDefault event)
+             (Webapi.Dom.HtmlElement.focus
+              (Webapi.Dom.Element.unsafeAsHtmlElement
+               (dom-node renderer (nth items index)))))
+           None (Stdlib.ignore true)))
+       (Stdlib.ignore true)))
+   toolbar-node))
+
 (defn- direct-context-menu [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
     (loop [index 0]
@@ -1868,11 +1987,159 @@
        (Stdlib.ignore true)))
     (Stdlib.ignore true)))
 
+(defn- toast-duration [renderer node]
+  (match (retained/property (:web-store renderer) node DurationValue)
+    (Some (IntValue duration)) duration
+    _ 5000))
+
+(defn- first-toast-node? [renderer toast]
+  (let [children (Webapi.Dom.Element.children (:web-toast-viewport renderer))]
+    (if-some [first-toast (html-collection/item 0 children)]
+      (Webapi.Dom.Element.isSameNode
+       (Webapi.Dom.Element.asNode first-toast) toast)
+      false)))
+
+(defn- mount-toast! [renderer node toast]
+  (let [document (:web-document renderer)
+        timer (atom None)
+        pointer-inside (atom false)
+        focus-inside (atom false)
+        start-x (atom None)
+        current-x (atom 0)
+        cancel!
+        (fn []
+          (match (deref timer)
+            (Some timer-id) (Js.Global.clearTimeout timer-id)
+            None (Stdlib.ignore true))
+          (reset! timer None)
+          true)
+        dismiss!
+        (fn []
+          (cancel!)
+          (Stdlib.ignore
+           ((deref (:web-event-handler renderer)) (proto/Dismiss node)))
+          true)
+        schedule!
+        (fn []
+          (cancel!)
+          (let [duration (toast-duration renderer node)]
+            (when (> duration 0)
+              (reset!
+               timer
+               (Some
+                (Js.Global.setTimeout
+                 duration
+                 :f
+                 (fn []
+                   (reset! timer None)
+                   (dismiss!)
+                   (Stdlib.ignore true)))))))
+          true)
+        resume!
+        (fn []
+          (when (and (not (deref pointer-inside))
+                     (not (deref focus-inside)))
+            (schedule!))
+          true)
+        pointer-enter!
+        (fn [_event]
+          (reset! pointer-inside true)
+          (cancel!)
+          (Stdlib.ignore true))
+        pointer-leave!
+        (fn [_event]
+          (reset! pointer-inside false)
+          (resume!)
+          (Stdlib.ignore true))
+        focus-in!
+        (fn [_event]
+          (reset! focus-inside true)
+          (cancel!)
+          (Stdlib.ignore true))
+        focus-out!
+        (fn [_event]
+          (reset! focus-inside false)
+          (resume!)
+          (Stdlib.ignore true))
+        pointer-down!
+        (fn [event]
+          (let [x (Webapi.Dom.MouseEvent.clientX event)]
+            (reset! start-x (Some x))
+            (reset! current-x x)
+            (cancel!))
+          (Stdlib.ignore true))
+        pointer-move!
+        (fn [event]
+          (match (deref start-x)
+            (Some origin)
+            (let [x (Webapi.Dom.MouseEvent.clientX event)
+                  delta (- x origin)]
+              (reset! current-x x)
+              (Webapi.Dom.Element.setAttribute "data-swipe" "move" toast)
+              (set-style! toast "transform" (str "translateX(" delta "px)")))
+            None (Stdlib.ignore true))
+          (Stdlib.ignore true))
+        pointer-up!
+        (fn [_event]
+          (match (deref start-x)
+            (Some origin)
+            (let [delta (- (deref current-x) origin)]
+              (reset! start-x None)
+              (Stdlib.ignore
+               (if (or (> delta 80) (< delta -80))
+                 (dismiss!)
+                 (do
+                   (Webapi.Dom.Element.removeAttribute "data-swipe" toast)
+                   (set-style! toast "transform" "")
+                   (resume!)))))
+            None (Stdlib.ignore true))
+          (Stdlib.ignore true))
+        key!
+        (fn [event]
+          (when (and (= (Webapi.Dom.KeyboardEvent.key event) "F6")
+                     (first-toast-node? renderer toast))
+            (Webapi.Dom.KeyboardEvent.preventDefault event)
+            (Webapi.Dom.HtmlElement.focus
+             (Webapi.Dom.Element.unsafeAsHtmlElement toast)))
+          (Stdlib.ignore true))
+        previous-cleanup
+        (clojure.core/get (deref (:web-cleanups renderer)) node)]
+    (schedule!)
+    (Webapi.Dom.Element.addEventListener "pointerenter" pointer-enter! toast)
+    (Webapi.Dom.Element.addEventListener "pointerleave" pointer-leave! toast)
+    (Webapi.Dom.Element.addEventListener "focusin" focus-in! toast)
+    (Webapi.Dom.Element.addEventListener "focusout" focus-out! toast)
+    (Webapi.Dom.Element.addMouseDownEventListener pointer-down! toast)
+    (Webapi.Dom.Element.addMouseMoveEventListener pointer-move! toast)
+    (Webapi.Dom.Element.addMouseUpEventListener pointer-up! toast)
+    (Webapi.Dom.Document.addKeyDownEventListener key! document)
+    (swap!
+     (:web-cleanups renderer) assoc node
+     (fn []
+       (match previous-cleanup
+         (Some cleanup) (cleanup)
+         None (Stdlib.ignore true))
+       (cancel!)
+       (Webapi.Dom.Element.removeEventListener
+        "pointerenter" pointer-enter! toast)
+       (Webapi.Dom.Element.removeEventListener
+        "pointerleave" pointer-leave! toast)
+       (Webapi.Dom.Element.removeEventListener "focusin" focus-in! toast)
+       (Webapi.Dom.Element.removeEventListener "focusout" focus-out! toast)
+       (Webapi.Dom.Element.removeMouseDownEventListener pointer-down! toast)
+       (Webapi.Dom.Element.removeMouseMoveEventListener pointer-move! toast)
+       (Webapi.Dom.Element.removeMouseUpEventListener pointer-up! toast)
+       (Webapi.Dom.Document.removeKeyDownEventListener key! document)
+       (Stdlib.ignore true)))
+    (Stdlib.ignore true)))
+
 (defn- attach-events! [renderer node kind dom-node]
   (when (not (= kind ContextMenu))
     (attach-context-host-events! renderer node dom-node))
   (when (proto/tree-row-kind? kind)
     (attach-tree-item-events! renderer node kind dom-node))
+  (when (= kind Toolbar)
+    (attach-toolbar-events! renderer node dom-node))
   (match kind
     Text (attach-pressable-text-events! renderer node dom-node)
     Button (attach-button-events! renderer node kind dom-node)
@@ -3038,6 +3305,10 @@
     (Webapi.Dom.Element.setAttribute
      "data-tooltip-delay" (str delay) dom-node)
 
+    (tuple DurationValue (IntValue duration))
+    (Webapi.Dom.Element.setAttribute
+     "data-duration" (str duration) dom-node)
+
     (tuple TextAlignment (StringValue alignment))
     (if (= kind Bubble)
       (Webapi.Dom.Element.setAttribute
@@ -3084,6 +3355,11 @@
       false)
     false))
 
+(defn- toast-node? [nodes node]
+  (if-some [current (clojure.core/get nodes node)]
+    (standard-kind? current Toast)
+    false))
+
 (defn- modal-layer-node [surface]
   (if-some [layer (Webapi.Dom.Element.parentElement surface)]
     layer
@@ -3112,6 +3388,7 @@
                      (retained/node (:web-store renderer) child)]
              (if (or (standard-kind? child-node ContextMenu)
                      (standard-kind? child-node DropdownMenu)
+                     (standard-kind? child-node Toast)
                      (anchored-tooltip? child-node)
                      (if-some [kind (retained/standard-kind child-node)]
                        (modal-surface? kind)
@@ -3464,32 +3741,38 @@
     (InsertChild parent child index)
     (do
       (if-some [current (retained/node (:web-store renderer) child)]
-        (if (standard-kind? current DropdownMenu)
-          (Webapi.Dom.Element.appendChild
-           (Webapi.Dom.Element.asNode (dom-node renderer child))
-           (:web-portal-root renderer))
-          (if (anchored-tooltip? current)
+        (if-some [kind (retained/standard-kind current)]
+          (cond
+            (= kind Toast)
+            (Webapi.Dom.Element.appendChild
+             (Webapi.Dom.Element.asNode (dom-node renderer child))
+             (:web-toast-viewport renderer))
+            (= kind DropdownMenu)
             (Webapi.Dom.Element.appendChild
              (Webapi.Dom.Element.asNode (dom-node renderer child))
              (:web-portal-root renderer))
-            (if-some [kind (retained/standard-kind current)]
-            (if (modal-surface? kind)
-              (Webapi.Dom.Element.appendChild
-               (Webapi.Dom.Element.asNode
-                (modal-layer-node (dom-node renderer child)))
-               (:web-portal-root renderer))
-              (if (= kind ContextMenu)
-                (Webapi.Dom.Element.appendChild
-                 (Webapi.Dom.Element.asNode (dom-node renderer child))
-                 (document-body renderer))
-                (insert-dom-child!
-                 (dom-child-container renderer parent (dom-node renderer parent))
-                 (dom-node renderer child)
-                 (visible-child-index renderer parent index))))
+            (anchored-tooltip? current)
+            (Webapi.Dom.Element.appendChild
+             (Webapi.Dom.Element.asNode (dom-node renderer child))
+             (:web-portal-root renderer))
+            (modal-surface? kind)
+            (Webapi.Dom.Element.appendChild
+             (Webapi.Dom.Element.asNode
+              (modal-layer-node (dom-node renderer child)))
+             (:web-portal-root renderer))
+            (= kind ContextMenu)
+            (Webapi.Dom.Element.appendChild
+             (Webapi.Dom.Element.asNode (dom-node renderer child))
+             (document-body renderer))
+            :else
             (insert-dom-child!
              (dom-child-container renderer parent (dom-node renderer parent))
              (dom-node renderer child)
-             (visible-child-index renderer parent index)))))
+             (visible-child-index renderer parent index)))
+          (insert-dom-child!
+           (dom-child-container renderer parent (dom-node renderer parent))
+           (dom-node renderer child)
+           (visible-child-index renderer parent index)))
         (raise (Invalid_argument "unknown DOM child")))
       (update-split! renderer parent)
       (refresh-button-context! renderer child)
@@ -3524,6 +3807,8 @@
             (Some Tooltip)
             (when (anchored-tooltip? current)
               (mount-tooltip! renderer child (:platform-node current)))
+            (Some Toast)
+            (mount-toast! renderer child (:platform-node current))
             _ (Stdlib.ignore true)))
         (Stdlib.ignore true))
       (if-some [parent-node (retained/node (:web-store renderer) parent)]
@@ -3540,15 +3825,17 @@
            (modal-layer-node
             (dom-node-before renderer previous-nodes child))
            (dom-node-before renderer previous-nodes child)))
-        (if (or (dropdown-node? previous-nodes child)
-                (modal-node? previous-nodes child)
-                (anchored-tooltip-node? previous-nodes child))
-          (:web-portal-root renderer)
-          (if (context-menu-node? previous-nodes child)
-            (document-body renderer)
-            (dom-child-container-before
-             renderer previous-nodes parent
-             (dom-node-before renderer previous-nodes parent))))))
+        (if (toast-node? previous-nodes child)
+          (:web-toast-viewport renderer)
+          (if (or (dropdown-node? previous-nodes child)
+                  (modal-node? previous-nodes child)
+                  (anchored-tooltip-node? previous-nodes child))
+            (:web-portal-root renderer)
+            (if (context-menu-node? previous-nodes child)
+              (document-body renderer)
+              (dom-child-container-before
+               renderer previous-nodes parent
+               (dom-node-before renderer previous-nodes parent)))))))
       (refresh-button-context! renderer child)
       (refresh-structured-children! renderer parent)
       (if-some [previous (clojure.core/get previous-nodes child)]
@@ -3569,22 +3856,25 @@
     (let [dropdown (dropdown-node? previous-nodes child)
           modal (modal-node? previous-nodes child)
           tooltip (anchored-tooltip-node? previous-nodes child)
+          toast (toast-node? previous-nodes child)
           metadata (context-menu-node? previous-nodes child)
           parent-node
-          (if (or dropdown modal tooltip)
-            (:web-portal-root renderer)
-            (if metadata
-              (document-body renderer)
-              (dom-child-container-before
-               renderer previous-nodes parent
-               (dom-node-before renderer previous-nodes parent))))
+          (if toast
+            (:web-toast-viewport renderer)
+            (if (or dropdown modal tooltip)
+              (:web-portal-root renderer)
+              (if metadata
+                (document-body renderer)
+                (dom-child-container-before
+                 renderer previous-nodes parent
+                 (dom-node-before renderer previous-nodes parent)))))
           surface-node (dom-node-before renderer previous-nodes child)
           child-node (if modal (modal-layer-node surface-node) surface-node)
           focused (focused-descendant renderer surface-node)]
       (Stdlib.ignore
        (Webapi.Dom.Element.removeChild
         (Webapi.Dom.Element.asNode child-node) parent-node))
-      (if (or dropdown modal tooltip metadata)
+      (if (or dropdown modal tooltip toast metadata)
         (Webapi.Dom.Element.appendChild
          (Webapi.Dom.Element.asNode child-node) parent-node)
         (insert-dom-child!
@@ -3601,6 +3891,7 @@
   (doseq [operation (:ops batch)]
     (apply-dom-op! renderer previous-nodes operation))
   (update-all-tree-roving! renderer)
+  (update-all-toolbar-roving! renderer)
   (Stdlib.ignore true))
 
 (defn backend [renderer]

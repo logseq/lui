@@ -37,6 +37,8 @@
     {"name": "dialog", "status": "supported"},
     {"name": "sheet", "status": "supported"},
     {"name": "tooltip", "status": "supported"},
+    {"name": "toast", "status": "supported"},
+    {"name": "toolbar", "status": "supported"},
     {"name": "context-menu", "status": "supported"},
     {"name": "text", "status": "supported"},
     {"name": "badge", "status": "supported"},
@@ -133,6 +135,8 @@
     {"lg": "Dialog", "wire": "dialog", "dart": "dialog", "swift": "dialog", "container": true},
     {"lg": "Sheet", "wire": "sheet", "dart": "sheet", "swift": "sheet", "container": true},
     {"lg": "Tooltip", "wire": "tooltip", "dart": "tooltip", "swift": "tooltip", "container": false},
+    {"lg": "Toast", "wire": "toast", "dart": "toast", "swift": "toast", "container": true},
+    {"lg": "Toolbar", "wire": "toolbar", "dart": "toolbar", "swift": "toolbar", "container": true},
     {"lg": "StatusBar", "wire": "status-bar", "dart": "statusBar", "swift": "statusBar", "container": false}
   ],
   "properties": [
@@ -194,6 +198,7 @@
     {"lg": "AnchorAlignmentValue", "wire": "anchor-alignment", "swift": "anchorAlignment"},
     {"lg": "AnchorOffset", "wire": "anchor-offset", "swift": "anchorOffset"},
     {"lg": "TooltipDelay", "wire": "tooltip-delay", "swift": "tooltipDelay"},
+    {"lg": "DurationValue", "wire": "duration", "swift": "duration"},
     {"lg": "TextAlignment", "wire": "text-alignment", "swift": "textAlignment"},
     {"lg": "RoleValue", "wire": "role", "swift": "role"},
     {"lg": "TreeLevel", "wire": "tree-level", "swift": "treeLevel"},

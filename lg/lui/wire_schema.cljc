@@ -10,18 +10,18 @@
                      Image MediaSurface Stepper Step Timeline TimelineItem
                      InputGroup InputGroupActions Breadcrumb Pagination Accordion Table
                      TableRow TableCell Tree Resizable Split Dialog
-                     Sheet Tooltip StatusBar TextValue Enabled Gap
-                     MainAlignment CrossAlignment GrowValue GridColumns PaddingValue PaddingHorizontal
-                     PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth CornerRadius
-                     WidthValue HeightValue MinWidth MaxWidth MinHeight MaxHeight
-                     PlaceholderValue AccessibilityLabel StyleClass HeadingLevel Checked ProgressValue
-                     OrientationValue SizeValue IconName VariantValue InlineIconName IconPlacementValue
-                     Selected Autofocus SubmitOnEnter HoldEnabled ChangeEnabled ToggleEnabled
-                     PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue SurfaceIdValue ActiveIndex
-                     TitleValue DescriptionValue MetaValue IndicatorValue Connector SourceX
-                     SourceY SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset
-                     TooltipDelay TextAlignment RoleValue TreeLevel Expanded ResizeDuration
-                     ResizeEasing ResizeOrigin]]))
+                     Sheet Tooltip Toast Toolbar StatusBar TextValue
+                     Enabled Gap MainAlignment CrossAlignment GrowValue GridColumns
+                     PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue
+                     BorderWidth CornerRadius WidthValue HeightValue MinWidth MaxWidth
+                     MinHeight MaxHeight PlaceholderValue AccessibilityLabel StyleClass HeadingLevel
+                     Checked ProgressValue OrientationValue SizeValue IconName VariantValue
+                     InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled
+                     ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue
+                     SurfaceIdValue ActiveIndex TitleValue DescriptionValue MetaValue IndicatorValue
+                     Connector SourceX SourceY SourceWidth SourceHeight AnchorValue
+                     AnchorAlignmentValue AnchorOffset TooltipDelay DurationValue TextAlignment RoleValue
+                     TreeLevel Expanded ResizeDuration ResizeEasing ResizeOrigin]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -87,6 +87,8 @@
     Dialog "dialog"
     Sheet "sheet"
     Tooltip "tooltip"
+    Toast "toast"
+    Toolbar "toolbar"
     StatusBar "status-bar"))
 
 (defn standard-node-name? [name]
@@ -153,6 +155,8 @@
     "dialog" true
     "sheet" true
     "tooltip" true
+    "toast" true
+    "toolbar" true
     "status-bar" true
     _ false))
 
@@ -216,6 +220,7 @@
     AnchorAlignmentValue "anchor-alignment"
     AnchorOffset "anchor-offset"
     TooltipDelay "tooltip-delay"
+    DurationValue "duration"
     TextAlignment "text-alignment"
     RoleValue "role"
     TreeLevel "tree-level"

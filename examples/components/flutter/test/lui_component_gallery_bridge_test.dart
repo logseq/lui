@@ -49,13 +49,24 @@ void main() {
         ),
       },
     );
-    bridge = LUIOcamlBridge.open(_libraryPath, onPatch: backend.applyJson);
+    Object? patchError;
+    bridge = LUIOcamlBridge.open(
+      _libraryPath,
+      onPatch: (json) {
+        try {
+          backend.applyJson(json);
+        } catch (error) {
+          patchError = error;
+        }
+      },
+    );
     addTearDown(() {
       bridge.close();
       backend.dispose();
     });
 
     bridge.start();
+    expect(patchError, isNull);
     expect(backend.generation, 1);
     final sections = backend.rootSections(bridge.rootNode);
     final sectionsByTitle = {

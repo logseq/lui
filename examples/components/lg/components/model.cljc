@@ -19,6 +19,8 @@
     (gallery-tab "overview")
     (gallery-dialog-open false)
     (gallery-sheet-open false)
+    (gallery-toast-open false)
+    (gallery-toast-message "Saved")
     (gallery-accordion-open false)
     (gallery-split-fraction 0.35)))
 
@@ -92,6 +94,15 @@
     CloseSheet
     (assoc model :gallery-sheet-open false)
 
+    ShowToasts
+    (assoc model :gallery-toast-open true :gallery-toast-message "Saved")
+
+    UpdateToast
+    (assoc model :gallery-toast-message "Updated")
+
+    CloseToasts
+    (assoc model :gallery-toast-open false)
+
     (SetAccordionOpen open)
     (assoc model :gallery-accordion-open open)
 
@@ -153,3 +164,8 @@
   (if (activity-tab-selected? model)
     "Recent retained updates"
     "Signal updates remain local"))
+
+(defn toast-description [model]
+  (if (= (:gallery-toast-message model) "Updated")
+    "Draft remains the same retained toast"
+    "Draft saved locally"))

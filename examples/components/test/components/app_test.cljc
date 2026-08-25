@@ -76,7 +76,7 @@
    "ListItem" "ContextMenu" "MenuItem" "Table" "TableRow" "TableCell"
    "Tree" "Avatar" "Image" "MediaSurface"
    "TextField" "Input" "SearchField" "Textarea"
-   "InputGroup" "InputGroupActions" "Tooltip" "Accordion"
+   "InputGroup" "InputGroupActions" "Tooltip" "Toast" "Toolbar" "Accordion"
    "Select" "Combobox" "DropdownMenu" "Checkbox" "Switch"
    "Toggle" "RadioGroup" "Radio" "Slider"])
 
@@ -103,6 +103,8 @@
                  (gallery-tab "overview")
                  (gallery-dialog-open false)
                  (gallery-sheet-open false)
+                 (gallery-toast-open false)
+                 (gallery-toast-message "Saved")
                  (gallery-accordion-open false)
                  (gallery-split-fraction 0.35))
          model/AdvanceProgress)]
@@ -128,6 +130,8 @@
                   "Dialog starts closed without a retained placeholder")
     (assert-equal false (:gallery-sheet-open initial)
                   "Sheet starts closed without a retained placeholder")
+    (assert-equal false (:gallery-toast-open initial)
+                  "Toast viewport starts empty")
     (assert-equal false (:gallery-accordion-open initial)
                   "Accordion starts collapsed under model control")
     (assert-equal 0.35 (:gallery-split-fraction initial)

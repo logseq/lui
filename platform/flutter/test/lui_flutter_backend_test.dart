@@ -982,6 +982,79 @@ void main() {
     },
   );
 
+  testWidgets('maps Toast and Toolbar to retained native widgets', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"toolbar"},
+        {"op":"create-node","id":3,"kind":"button"},
+        {"op":"create-node","id":4,"kind":"toast"},
+        {"op":"create-node","id":5,"kind":"text"},
+        {"op":"set-prop","id":2,"property":"orientation","value":"horizontal"},
+        {"op":"set-prop","id":2,"property":"accessibility-label","value":"Formatting"},
+        {"op":"set-prop","id":2,"property":"gap","value":4},
+        {"op":"set-prop","id":3,"property":"text","value":"Bold"},
+        {"op":"set-prop","id":4,"property":"duration","value":100},
+        {"op":"set-prop","id":4,"property":"accessibility-label","value":"Saved"},
+        {"op":"set-prop","id":5,"property":"text","value":"Draft saved"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":2,"child":3,"index":0},
+        {"op":"insert-child","parent":1,"child":4,"index":1},
+        {"op":"insert-child","parent":4,"child":5,"index":0}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics && widget.properties.label == 'Formatting',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Semantics && widget.properties.label == 'Saved',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(Dismissible), findsOneWidget);
+    expect(find.text('Draft saved'), findsOneWidget);
+    final toolbarRenderObject = tester.renderObject(
+      find.byKey(LUIFlutterBackend.nodeKey(2)),
+    );
+    final toastRenderObject = tester.renderObject(
+      find.byKey(LUIFlutterBackend.nodeKey(4)),
+    );
+
+    backend.applyJson('''
+    {"generation":2,"ops":[
+      {"op":"set-prop","id":5,"property":"text","value":"Draft updated"}
+    ]}
+    ''');
+    await tester.pump();
+    expect(
+      tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(2))),
+      same(toolbarRenderObject),
+    );
+    expect(
+      tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(4))),
+      same(toastRenderObject),
+    );
+    expect(find.text('Draft updated'), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(events, const [LUIEvent.dismiss(node: 4)]);
+    semantics.dispose();
+  });
+
   testWidgets('maps Stepper and Timeline to stable native compositions', (
     tester,
   ) async {

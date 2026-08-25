@@ -1141,6 +1141,61 @@
       (assert-equal 0 (apple/node-count renderer)
                     "a rejected overlay batch leaves no retained nodes"))))
 
+(deftest toast-and-toolbar-use-closed-retained-contracts
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Toolbar)
+                      (proto/create-node-op 2 proto/Button)
+                      (proto/create-node-op 3 proto/Toast)
+                      (proto/create-node-op 4 proto/Text)
+                      (proto/set-prop-op
+                       1 proto/OrientationValue
+                       (proto/StringValue "horizontal"))
+                      (proto/set-prop-op
+                       3 proto/DurationValue
+                       (proto/IntValue 1200))
+                      (proto/insert-child-op 1 2 0)
+                      (proto/insert-child-op 3 4 0)]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"toolbar\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"button\"},"
+      "{\"op\":\"create-node\",\"id\":3,\"kind\":\"toast\"},"
+      "{\"op\":\"create-node\",\"id\":4,\"kind\":\"text\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"orientation\","
+      "\"value\":\"horizontal\"},"
+      "{\"op\":\"set-prop\",\"id\":3,\"property\":\"duration\","
+      "\"value\":1200},"
+      "{\"op\":\"insert-child\",\"parent\":1,\"child\":2,\"index\":0},"
+      "{\"op\":\"insert-child\",\"parent\":3,\"child\":4,\"index\":0}]}")
+     (wire/encode-batch batch)
+     "Toast and Toolbar use stable native wire names")
+    (is (proto/property-supported? proto/Toolbar proto/OrientationValue)
+        "Toolbar owns orientation")
+    (is (proto/property-supported? proto/Toast proto/DurationValue)
+        "Toast owns its timeout")
+    (is (proto/child-kind-supported? proto/Toolbar proto/Button)
+        "Toolbar composes existing controls")
+    (is (proto/child-kind-supported? proto/Toast proto/Text)
+        "Toast composes ordinary content")
+    (is (proto/event-supported? proto/Toast (proto/Dismiss 3))
+        "Toast supports model-owned dismissal")
+    (is (not (proto/event-supported? proto/Toolbar (proto/Dismiss 1)))
+        "Toolbar has no component-specific events")))
+
+(deftest toast-duration-rejects-negative-values-before-commit
+  (let [application
+        (runtime/create (sig/scheduler) (apple/backend (apple/create)))
+        toast (runtime/create-node! application proto/Toast)]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"invalid property value"
+         (runtime/set-prop!
+          application toast proto/DurationValue (proto/IntValue -1)))
+        "negative Toast durations never enter a patch batch")))
+
 (deftest list-and-scroll-use-the-reference-containment-contract
   (let [renderer (apple/create)
         backend (apple/backend renderer)

@@ -18,6 +18,8 @@
   (gallery-tab :string)
   (gallery-dialog-open :bool)
   (gallery-sheet-open :bool)
+  (gallery-toast-open :bool)
+  (gallery-toast-message :string)
   (gallery-accordion-open :bool)
   (gallery-split-fraction :float))
 
@@ -41,6 +43,9 @@
   (CloseDialog)
   (OpenSheet)
   (CloseSheet)
+  (ShowToasts)
+  (UpdateToast)
+  (CloseToasts)
   (SetAccordionOpen :bool)
   (SetSplitFraction :float)
   (AdvanceProgress)
@@ -62,3 +67,4 @@
 (signature components.model/overview-tab-selected? :fn<gallery-model;bool>)
 (signature components.model/activity-tab-selected? :fn<gallery-model;bool>)
 (signature components.model/tab-content :fn<gallery-model;string>)
+(signature components.model/toast-description :fn<gallery-model;string>)

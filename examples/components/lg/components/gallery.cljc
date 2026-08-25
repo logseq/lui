@@ -578,6 +578,44 @@
    [:paragraph
     "Hover or focus the icon to reveal the native anchored Tooltip; the second Tooltip is a static status label."]])
 
+(defui toolbar-gallery []
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Toolbar"]
+   [:toolbar {:orientation "horizontal" :label "Formatting" :gap 4}
+    [:button {:variant "ghost"} "Bold"]
+    [:button {:variant "ghost"} "Italic"]
+    [:button {:variant "ghost" :disabled true} "Redo"]
+    [:button {:variant "ghost"} "More"]]
+   [:toolbar {:orientation "vertical" :label "Insert" :gap 4}
+    [:button {:variant "ghost"} "Link"]
+    [:button {:variant "ghost"} "Image"]]
+   [:paragraph
+    "Toolbar composes ordinary controls and owns only orientation-aware roving focus."]])
+
+(defui toast-gallery
+  [open-source message-source description-source
+   show-toasts update-toast close-toasts]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Toast"]
+   [:button {:variant "outline" :on-press show-toasts}
+    "Show notifications"]
+   [:if {:test open-source}
+    [:column
+     [:toast {:duration 2000 :label "Draft saved" :on-dismiss close-toasts}
+      [:column {:gap 2}
+       [:text {:value message-source}]
+       [:paragraph {:value description-source}]]
+      [:button {:variant "outline" :on-press update-toast}
+       "Update notification"]
+      [:button {:variant "ghost" :on-press close-toasts} "Close"]]
+     [:toast {:duration 0 :label "Changes synced" :on-dismiss close-toasts}
+      [:column {:gap 2}
+       [:text "Synced"]
+       [:paragraph "Changes are available on every device"]]
+      [:button {:variant "ghost" :on-press close-toasts} "Close"]]]]
+   [:paragraph
+    "Toasts share one application viewport, pause on interaction, and dismiss by timer or swipe."]])
+
 (defui accordion-gallery [open-source set-open]
   [:column {:gap 16 :padding 32}
    [:heading {:level 2} "Accordion"]
@@ -935,6 +973,8 @@
    tab-content-source select-overview-tab select-activity-tab
    dialog-open-source open-dialog close-dialog
    sheet-open-source open-sheet close-sheet
+   toast-open-source toast-message-source toast-description-source
+   show-toasts update-toast close-toasts
    accordion-open-source set-accordion-open
   split-fraction-source set-split-fraction extension-enabled-source]
   [:column
@@ -1006,6 +1046,10 @@
    [input-group-gallery value-source disabled-source update-value]
    [input-group-actions-gallery value-source disabled-source update-value]
    [tooltip-gallery]
+   [toast-gallery
+    toast-open-source toast-message-source toast-description-source
+    show-toasts update-toast close-toasts]
+   [toolbar-gallery]
    [accordion-gallery accordion-open-source set-accordion-open]
    [select-gallery
     environment-source select-open-source

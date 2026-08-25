@@ -354,7 +354,8 @@ body {
 
   @media (prefers-reduced-motion: reduce) {
     .lui-split-panes,
-    .lui-split-divider {
+    .lui-split-divider,
+    .lui-toast {
       transition-duration: 0ms !important;
     }
   }
@@ -378,6 +379,28 @@ body {
 
   .lui-tooltip[data-anchor][data-open] {
     @apply block;
+  }
+
+  .lui-toast-viewport {
+    @apply pointer-events-none fixed bottom-4 right-4 z-50 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2 outline-none;
+  }
+
+  .lui-toast {
+    @apply pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-lg outline-none transition-[transform,opacity,margin] duration-200;
+    touch-action: pan-y;
+  }
+
+  .lui-toast:focus-visible {
+    @apply ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  .lui-toast-viewport:not(:hover):not(:focus-within) > .lui-toast:not(:last-child) {
+    margin-bottom: -3rem;
+    transform: translateY(0.5rem) scale(0.96);
+  }
+
+  .lui-toast[data-swipe="move"] {
+    transition: none;
   }
 
   .lui-accordion {
@@ -1085,6 +1108,27 @@ body {
 
   .lui-tabs {
     @apply inline-flex items-center gap-1 rounded-lg bg-secondary p-1 text-secondary-foreground;
+  }
+
+  .lui-toolbar {
+    @apply inline-flex w-fit items-center rounded-lg border border-border bg-card p-1 text-card-foreground outline-none transition-colors;
+    gap: var(--lui-gap, 0px);
+  }
+
+  .lui-toolbar[aria-orientation="horizontal"] {
+    @apply flex-row;
+  }
+
+  .lui-toolbar[aria-orientation="vertical"] {
+    @apply flex-col items-stretch;
+  }
+
+  .lui-toolbar:focus-within {
+    @apply border-ring/50;
+  }
+
+  .lui-toolbar[aria-orientation="horizontal"] > .lui-separator {
+    @apply mx-1 h-6 w-px;
   }
 
   .lui-tabs > .lui-button {

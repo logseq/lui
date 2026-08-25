@@ -64,7 +64,7 @@
     (ValueChanged _node _value) (or (= kind Slider) (= kind Split))
     (Dismiss _node)
     (or (= kind Select) (= kind Combobox) (= kind DropdownMenu)
-        (modal-surface? kind))
+        (= kind Toast) (modal-surface? kind))
     (DoublePress _node) (= kind ListItem)
     (ExtensionEvent _node _identifier _name _values) false))
 
@@ -285,6 +285,7 @@
     AnchorAlignmentValue (or (= kind DropdownMenu) (= kind Tooltip))
     AnchorOffset (or (= kind DropdownMenu) (= kind Tooltip))
     TooltipDelay (= kind Tooltip)
+    DurationValue false
     TextAlignment
     (or (= kind TableCell) (= kind Bubble) (= kind StatusBar))
     RoleValue (tree-row-kind? kind)
@@ -355,6 +356,12 @@
 (defn property-supported? [kind property]
   (match kind
     ContextMenu false
+    Toast
+    (or (= property DurationValue) (= property AccessibilityLabel)
+        (= property StyleClass))
+    Toolbar
+    (or (= property OrientationValue) (= property AccessibilityLabel)
+        (= property Gap) (= property StyleClass))
     Accordion
     (or (= property TextValue) (= property Selected)
         (= property ToggleEnabled) (= property HeightValue))
@@ -449,6 +456,8 @@
     (or (= value "start") (= value "end") (= value "stretch"))
     (tuple AnchorOffset (FloatValue _value)) true
     (tuple TooltipDelay (IntValue value))
+    (and (>= value 0) (<= value 2147483647))
+    (tuple DurationValue (IntValue value))
     (and (>= value 0) (<= value 2147483647))
     (tuple TextAlignment (StringValue value))
     (or (= value "start") (= value "center") (= value "end"))
@@ -632,6 +641,11 @@
    (if (= kind Tree)
      (match (clojure.core/get properties AccessibilityLabel)
        (Some (StringValue value)) (not (= value ""))
+     _ false)
+     true)
+   (if (= kind Toolbar)
+     (match (clojure.core/get properties AccessibilityLabel)
+       (Some (StringValue value)) (not (= value ""))
        _ false)
      true)
    (if (= kind Split)
@@ -685,6 +699,8 @@
       Timeline true
       InputGroup true
       InputGroupActions true
+      Toast true
+      Toolbar true
       Alert true
       Bubble true
       _ false)))
@@ -702,6 +718,14 @@
       Timeline (= child-kind TimelineItem)
       InputGroup
       (or (= child-kind Textarea) (= child-kind InputGroupActions))
+      Toolbar
+      (or (= child-kind Button) (= child-kind ToggleButton)
+          (= child-kind ButtonGroup) (= child-kind ToggleGroup)
+          (= child-kind Checkbox) (= child-kind SwitchControl)
+          (= child-kind Toggle) (= child-kind RadioGroup)
+          (= child-kind Select) (= child-kind Combobox)
+          (= child-kind TextField) (= child-kind Input)
+          (= child-kind SearchField) (= child-kind Divider))
       DropdownMenu (or (= child-kind MenuItem) (= child-kind Divider))
       ContextMenu (or (= child-kind MenuItem) (= child-kind Divider))
       _ true))))

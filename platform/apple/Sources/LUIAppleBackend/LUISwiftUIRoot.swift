@@ -128,6 +128,10 @@ private struct LUINodeView: View {
             EmptyView()
         case .tooltip:
             LUITooltipLabel(model: model)
+        case .toast:
+            LUIToastView(model: model, backend: backend)
+        case .toolbar:
+            LUIToolbarView(model: model, backend: backend)
         case .accordion:
             LUIAccordionView(model: model, backend: backend)
         case .dialog, .sheet:
@@ -888,6 +892,90 @@ private struct LUIModalSurfaceContent: View {
 private extension LUINodeKind {
     var isModalSurface: Bool {
         self == .dialog || self == .sheet
+    }
+}
+
+private struct LUIToolbarView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    @ViewBuilder
+    var body: some View {
+        if model.property(.orientation)?.stringValue == "vertical" {
+            VStack(alignment: .leading, spacing: spacing) {
+                children
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(accessibilityLabel)
+        } else {
+            HStack(spacing: spacing) {
+                children
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(accessibilityLabel)
+        }
+    }
+
+    @ViewBuilder
+    private var children: some View {
+        ForEach(model.children, id: \.self) { childID in
+            LUIAnyNodeView(nodeID: childID, backend: backend)
+        }
+    }
+
+    private var spacing: CGFloat {
+        CGFloat(model.property(.gap)?.intValue ?? 0)
+    }
+
+    private var accessibilityLabel: Text {
+        Text(verbatim: model.property(.accessibilityLabel)?.stringValue ?? "Toolbar")
+    }
+}
+
+private struct LUIToastView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var dragOffset: CGFloat = 0
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ForEach(model.children, id: \.self) { childID in
+                LUIAnyNodeView(nodeID: childID, backend: backend)
+            }
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .shadow(radius: 8, y: 4)
+        .offset(x: dragOffset)
+        .gesture(dismissGesture)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(
+            Text(verbatim: model.property(.accessibilityLabel)?.stringValue ?? "Notification")
+        )
+        .task(id: model.property(.duration)?.intValue) {
+            let duration = model.property(.duration)?.intValue ?? 0
+            guard duration > 0 else { return }
+            try? await Task.sleep(for: .milliseconds(duration))
+            guard !Task.isCancelled else { return }
+            try? backend.performDismiss(node: model.id)
+        }
+    }
+
+    private var dismissGesture: some Gesture {
+        DragGesture(minimumDistance: 10)
+            .onChanged { value in
+                dragOffset = value.translation.width
+            }
+            .onEnded { value in
+                if abs(value.translation.width) >= 80 {
+                    try? backend.performDismiss(node: model.id)
+                } else {
+                    withAnimation(reduceMotion ? nil : .snappy) {
+                        dragOffset = 0
+                    }
+                }
+            }
     }
 }
 

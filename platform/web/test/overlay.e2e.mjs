@@ -161,6 +161,134 @@ test("Tree click toggles disclosure and keeps selection model-owned", async () =
   )
 })
 
+test("Toolbar exposes orientation-aware roving focus over composed controls", async () => {
+  await openGalleryPage("Toolbar")
+
+  assert.deepEqual(
+    await state(`(() => {
+      const toolbars = [...document.querySelectorAll('[role=toolbar]')]
+      return toolbars.map((toolbar) => ({
+        label: toolbar.getAttribute('aria-label'),
+        orientation: toolbar.getAttribute('aria-orientation'),
+        controls: [...toolbar.querySelectorAll('button')].map((button) => ({
+          label: button.textContent.trim(),
+          tabIndex: button.tabIndex,
+          disabled: button.disabled,
+        })),
+      }))
+    })()`),
+    [
+      {
+        label: "Formatting",
+        orientation: "horizontal",
+        controls: [
+          { label: "Bold", tabIndex: 0, disabled: false },
+          { label: "Italic", tabIndex: -1, disabled: false },
+          { label: "Redo", tabIndex: -1, disabled: true },
+          { label: "More", tabIndex: -1, disabled: false },
+        ],
+      },
+      {
+        label: "Insert",
+        orientation: "vertical",
+        controls: [
+          { label: "Link", tabIndex: 0, disabled: false },
+          { label: "Image", tabIndex: -1, disabled: false },
+        ],
+      },
+    ],
+  )
+
+  await evaluate(`document.querySelector('[aria-label="Formatting"] button')?.focus()`)
+  await browser("press", "ArrowRight")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Italic")
+  await browser("press", "ArrowRight")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "More")
+  await browser("press", "Home")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Bold")
+
+  await evaluate(`document.querySelector('[aria-label="Insert"] button')?.focus()`)
+  await browser("press", "ArrowDown")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Image")
+  await browser("press", "ArrowUp")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Link")
+})
+
+test("Toast portals stable updates and supports pause, F6, close, and swipe dismissal", async () => {
+  await openGalleryPage("Toast")
+  await clickButton("Show notifications")
+
+  assert.deepEqual(
+    await state(`(() => {
+      const viewport = document.querySelector('.lui-toast-viewport')
+      const toasts = [...(viewport?.querySelectorAll('[role=status]') ?? [])]
+      window.__firstToast = toasts[0]
+      return {
+        label: viewport?.getAttribute('aria-label') ?? null,
+        portaled: Boolean(viewport?.parentElement?.classList.contains('lui-popup-portal')),
+        messages: toasts.map((toast) =>
+          [...toast.querySelectorAll('.lui-text, .lui-paragraph, button')]
+            .map((node) => node.textContent.trim()),
+        ),
+      }
+    })()`),
+    {
+      label: "Notifications",
+      portaled: true,
+      messages: [
+        ["Saved", "Draft saved locally", "Update notification", "Close"],
+        ["Synced", "Changes are available on every device", "Close"],
+      ],
+    },
+  )
+
+  await clickButton("Update notification")
+  assert.deepEqual(
+    await state(`({
+      stable: window.__firstToast === document.querySelector('[role=status]'),
+      message: document.querySelector('[role=status] .lui-text')?.textContent.trim(),
+      description: document.querySelector('[role=status] .lui-paragraph')?.textContent.trim(),
+    })`),
+    {
+      stable: true,
+      message: "Updated",
+      description: "Draft remains the same retained toast",
+    },
+  )
+
+  await browser("press", "F6")
+  assert.equal(
+    await state(`document.querySelector('.lui-toast-viewport')?.contains(document.activeElement)`),
+    true,
+  )
+  await evaluate(`document.activeElement?.blur()`)
+
+  await browser("hover", ".lui-toast:first-child")
+  await browser("wait", "2100")
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 2)
+  await browser("hover", '[role="heading"]')
+  await browser("wait", "2100")
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 0)
+
+  await clickButton("Show notifications")
+  await clickButton("Close")
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 0)
+
+  await clickButton("Show notifications")
+  await evaluate(`(() => {
+    const toast = document.querySelector('[role=status]')
+    const event = (name, x) => new MouseEvent(name, {
+      bubbles: true,
+      clientX: x,
+      clientY: 20,
+    })
+    toast.dispatchEvent(event('mousedown', 20))
+    toast.dispatchEvent(event('mousemove', 180))
+    toast.dispatchEvent(event('mouseup', 180))
+  })()`)
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 0)
+})
+
 test("Tooltip owns delayed pointer, immediate focus, Escape, ARIA, and static-label behavior", async () => {
   await openGalleryPage("Tooltip")
 

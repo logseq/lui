@@ -153,6 +153,8 @@
                          (= tag :dialog)
                          (= tag :sheet)
                          (= tag :tooltip)
+                         (= tag :toast)
+                         (= tag :toolbar)
                          (= tag :accordion)
                          (= tag :menu-item)
                          (= tag :list-item)
@@ -1546,6 +1548,45 @@
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])
+       ~node)))
+
+(defelement toast [context parent attrs & children]
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/toast! ~context)]
+       ~@(int-attribute-expansion
+          context node (:duration attrs) 'lui.protocol/DurationValue)
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(string-attribute-expansion
+          context node (:class attrs) 'lui.protocol/StyleClass)
+       ~@(dismiss-event-expansion context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
+       ~node)))
+
+(defelement toolbar [context parent attrs & children]
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/toolbar! ~context)]
+       ~@(string-attribute-expansion
+          context node (:orientation attrs) 'lui.protocol/OrientationValue)
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(int-attribute-expansion
+          context node (:gap attrs) 'lui.protocol/Gap)
+       ~@(string-attribute-expansion
+          context node (:class attrs) 'lui.protocol/StyleClass)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
        ~node)))
 
 (defelement accordion [context parent attrs & children]

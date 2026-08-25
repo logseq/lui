@@ -122,6 +122,9 @@
 (defn status-bar! [context]
   (runtime/create-node! (:ui-application context) proto/StatusBar))
 
+(defn toolbar! [context]
+  (runtime/create-node! (:ui-application context) proto/Toolbar))
+
 (defn spacer! [context]
   (runtime/create-node! (:ui-application context) proto/Spacer))
 
@@ -256,6 +259,9 @@
 
 (defn tooltip! [context]
   (runtime/create-node! (:ui-application context) proto/Tooltip))
+
+(defn toast! [context]
+  (runtime/create-node! (:ui-application context) proto/Toast))
 
 (defn accordion! [context]
   (runtime/create-node! (:ui-application context) proto/Accordion))

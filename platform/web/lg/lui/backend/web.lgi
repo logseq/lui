@@ -29,6 +29,7 @@
   (web-document :Dom.document)
   (web-host :web-node)
   (web-portal-root :web-node)
+  (web-toast-viewport :web-node)
   (web-event-handler :ref<fn<event;bool>>)
   (web-app-icons :map<string;string>)
   (web-images :ref<map<int;web-image-resource>>)
@@ -68,6 +69,8 @@
   :fn<map<int;retained-node<web-node>>;int;bool>)
 (signature lui.backend.web/modal-node?
   :fn<map<int;retained-node<web-node>>;int;bool>)
+(signature lui.backend.web/toast-node?
+  :fn<map<int;retained-node<web-node>>;int;bool>)
 (signature lui.backend.web/modal-layer-node :fn<web-node;web-node>)
 (signature lui.backend.web/anchored-tooltip?
   :fn<retained-node<web-node>;bool>)
@@ -92,6 +95,9 @@
 (signature lui.backend.web/position-tooltip! :fn<web-renderer;int;unit>)
 (signature lui.backend.web/set-tooltip-open! :fn<web-renderer;int;bool;unit>)
 (signature lui.backend.web/mount-tooltip! :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/toast-duration :fn<web-renderer;int;int>)
+(signature lui.backend.web/first-toast-node? :fn<web-renderer;web-node;bool>)
+(signature lui.backend.web/mount-toast! :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/register-image!
   :fn<web-renderer;int;string;float;float;bool>)
 (signature lui.backend.web/unregister-image!
@@ -179,6 +185,17 @@
   :fn<string;option<int>;int;option<int>>)
 (signature lui.backend.web/attach-horizontal-focus!
   :fn<web-renderer;int;node-kind;web-node;unit>)
+(signature lui.backend.web/toolbar-item-kind? :fn<node-kind;bool>)
+(signature lui.backend.web/toolbar-all-items-under
+  :fn<web-renderer;int;vector<int>>)
+(signature lui.backend.web/toolbar-items-under
+  :fn<web-renderer;int;vector<int>>)
+(signature lui.backend.web/refresh-toolbar-roving!
+  :fn<web-renderer;int;bool>)
+(signature lui.backend.web/update-all-toolbar-roving!
+  :fn<web-renderer;bool>)
+(signature lui.backend.web/attach-toolbar-events!
+  :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/attach-dropdown-events!
   :fn<web-renderer;int;web-node;unit>)
 (signature lui.backend.web/direct-dropdown-menu

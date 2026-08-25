@@ -274,6 +274,26 @@ test("Tooltip uses the shared portal without taking flow space", async () => {
   assert.doesNotMatch(css, /\.lui-tooltip[^\{]*:popover-open/)
 })
 
+test("Toast uses one application-level viewport with stacked interactive surfaces", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-toast-viewport\{[^}]*position:fixed/)
+  assert.match(css, /\.lui-toast-viewport\{[^}]*pointer-events:none/)
+  assert.match(css, /\.lui-toast\{[^}]*pointer-events:auto/)
+  assert.match(css, /\.lui-toast\{[^}]*transition-property:/)
+  assert.match(css, /\.lui-toast\[data-swipe=move\]/)
+  assert.match(css, /@media ?\(prefers-reduced-motion:reduce\)/)
+})
+
+test("Toolbar composes existing controls with horizontal and vertical roving layouts", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-toolbar\{[^}]*display:inline-flex/)
+  assert.match(css, /\.lui-toolbar\[aria-orientation=horizontal\]\{[^}]*flex-direction:row/)
+  assert.match(css, /\.lui-toolbar\[aria-orientation=vertical\]\{[^}]*flex-direction:column/)
+  assert.match(css, /\.lui-toolbar:focus-within/)
+})
+
 test("Accordion styles the native details and summary disclosure", async () => {
   const css = await readFile(outputUrl, "utf8")
 

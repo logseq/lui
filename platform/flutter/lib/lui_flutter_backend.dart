@@ -876,6 +876,7 @@ final class LUIFlutterBackend {
     if (state.kind != _NodeKind.select &&
         state.kind != _NodeKind.combobox &&
         state.kind != _NodeKind.dropdownMenu &&
+        state.kind != _NodeKind.toast &&
         !state.kind.isModalSurface) {
       throw LUIBackendException('node $node is not dismissible');
     }
@@ -1941,9 +1942,42 @@ final class LUIFlutterBackend {
       _NodeKind.dropdownMenu => dropdownMenu(),
       _NodeKind.contextMenu => const SizedBox.shrink(),
       _NodeKind.tooltip => Text(text),
+      _NodeKind.toast => _LUIToast(
+        node: id,
+        duration: Duration(
+          milliseconds: state.properties['duration'] as int? ?? 0,
+        ),
+        label: accessibilityLabel ?? 'Notification',
+        onDismiss: () => performDismiss(id),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              spacing: 12,
+              children: children,
+            ),
+          ),
+        ),
+      ),
+      _NodeKind.toolbar => Semantics(
+        container: true,
+        label: accessibilityLabel,
+        child: orientation == 'vertical'
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                spacing: gap,
+                children: children,
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                spacing: gap,
+                children: children,
+              ),
+      ),
       _NodeKind.accordion => accordion(),
-      _NodeKind.dialog || _NodeKind.sheet =>
-        _LUIModalPresenter(backend: this, node: id),
+      _NodeKind.dialog ||
+      _NodeKind.sheet => _LUIModalPresenter(backend: this, node: id),
       _NodeKind.menuItem => menuItem(),
       _NodeKind.listItem => listItem(),
       _NodeKind.table => table(),
@@ -2503,7 +2537,15 @@ final class LUIFlutterBackend {
         'menu accepts only menu-item or separator children',
       );
     }
-    if (_isContextMenuLeafHost(parent.kind) &&
+    if (parent.kind == _NodeKind.menuItem &&
+        child.kind != _NodeKind.contextMenu &&
+        child.kind != _NodeKind.dropdownMenu) {
+      throw const LUIBackendException(
+        'menu-item accepts only nested menu metadata',
+      );
+    }
+    if (parent.kind != _NodeKind.menuItem &&
+        _isContextMenuLeafHost(parent.kind) &&
         child.kind != _NodeKind.contextMenu) {
       throw const LUIBackendException(
         'interactive leaf accepts only context-menu metadata',
@@ -2533,6 +2575,11 @@ final class LUIFlutterBackend {
         child.kind != _NodeKind.inputGroupActions) {
       throw const LUIBackendException(
         'input-group accepts only textarea and input-group-actions children',
+      );
+    }
+    if (parent.kind == _NodeKind.toolbar && !_isToolbarChild(child.kind)) {
+      throw const LUIBackendException(
+        'toolbar accepts only interactive controls and dividers',
       );
     }
   }
@@ -2587,6 +2634,22 @@ final class LUIFlutterBackend {
     }
     if (kind == _NodeKind.inputGroupActions) {
       return property == 'gap' && value is int && value >= 0;
+    }
+    if (kind == _NodeKind.toast) {
+      return switch (property) {
+        'duration' => value is int && value >= 0 && value <= 0x7fffffff,
+        'accessibility-label' || 'style-class' => value is String,
+        _ => false,
+      };
+    }
+    if (kind == _NodeKind.toolbar) {
+      return switch (property) {
+        'orientation' =>
+          value is String && (value == 'horizontal' || value == 'vertical'),
+        'gap' => value is int && value >= 0,
+        'accessibility-label' || 'style-class' => value is String,
+        _ => false,
+      };
     }
     return switch (property) {
       'main' =>
@@ -2736,7 +2799,7 @@ final class LUIFlutterBackend {
             (kind == _NodeKind.avatar || kind == _NodeKind.image),
       'anchor' =>
         value is String &&
-            (value == 'above' || value == 'below') &&
+            const {'above', 'below', 'left', 'right'}.contains(value) &&
             (kind == _NodeKind.dropdownMenu || kind == _NodeKind.tooltip),
       'anchor-alignment' =>
         value is String &&
@@ -3022,6 +3085,12 @@ final class LUIFlutterBackend {
           (state.properties['accessibility-label'] as String? ?? '').isEmpty) {
         throw const LUIBackendException('tree requires an accessibility label');
       }
+      if (state.kind == _NodeKind.toolbar &&
+          (state.properties['accessibility-label'] as String? ?? '').isEmpty) {
+        throw const LUIBackendException(
+          'toolbar requires an accessibility label',
+        );
+      }
       final hasTreeMetadata =
           state.properties.containsKey('role') ||
           state.properties.containsKey('tree-level') ||
@@ -3255,6 +3324,8 @@ final class LUIFlutterBackend {
       kind == _NodeKind.timeline ||
       kind == _NodeKind.inputGroup ||
       kind == _NodeKind.inputGroupActions ||
+      kind == _NodeKind.toast ||
+      kind == _NodeKind.toolbar ||
       _isContextMenuLeafHost(kind) ||
       kind.isModalSurface;
 
@@ -3275,7 +3346,25 @@ final class LUIFlutterBackend {
       kind == _NodeKind.resizable ||
       kind == _NodeKind.split ||
       kind == _NodeKind.alert ||
-      kind == _NodeKind.bubble;
+      kind == _NodeKind.bubble ||
+      kind == _NodeKind.toast ||
+      kind == _NodeKind.toolbar;
+
+  static bool _isToolbarChild(_NodeKind kind) =>
+      kind == _NodeKind.button ||
+      kind == _NodeKind.toggleButton ||
+      kind == _NodeKind.buttonGroup ||
+      kind == _NodeKind.toggleGroup ||
+      kind == _NodeKind.checkbox ||
+      kind == _NodeKind.switchControl ||
+      kind == _NodeKind.toggle ||
+      kind == _NodeKind.radioGroup ||
+      kind == _NodeKind.select ||
+      kind == _NodeKind.combobox ||
+      kind == _NodeKind.textField ||
+      kind == _NodeKind.input ||
+      kind == _NodeKind.searchField ||
+      kind == _NodeKind.divider;
 
   static bool _isContextMenuLeafHost(_NodeKind kind) {
     const kinds = {
@@ -3629,6 +3718,78 @@ final class LUIFlutterBackend {
     'ghost',
     'destructive',
   };
+}
+
+final class _LUIToast extends StatefulWidget {
+  const _LUIToast({
+    required this.node,
+    required this.duration,
+    required this.label,
+    required this.onDismiss,
+    required this.child,
+  });
+
+  final int node;
+  final Duration duration;
+  final String label;
+  final VoidCallback onDismiss;
+  final Widget child;
+
+  @override
+  State<_LUIToast> createState() => _LUIToastState();
+}
+
+final class _LUIToastState extends State<_LUIToast> {
+  Timer? _timer;
+  var _dismissed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleDismissal();
+  }
+
+  @override
+  void didUpdateWidget(_LUIToast oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.duration != widget.duration) _scheduleDismissal();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    container: true,
+    liveRegion: true,
+    label: widget.label,
+    child: MouseRegion(
+      onEnter: (_) => _timer?.cancel(),
+      onExit: (_) => _scheduleDismissal(),
+      child: Dismissible(
+        key: ValueKey('lui-toast-${widget.node}'),
+        direction: DismissDirection.horizontal,
+        onDismissed: (_) => _dismiss(),
+        child: widget.child,
+      ),
+    ),
+  );
+
+  void _scheduleDismissal() {
+    _timer?.cancel();
+    if (_dismissed || widget.duration == Duration.zero) return;
+    _timer = Timer(widget.duration, _dismiss);
+  }
+
+  void _dismiss() {
+    if (_dismissed) return;
+    _dismissed = true;
+    _timer?.cancel();
+    widget.onDismiss();
+  }
 }
 
 final class _LUITableRowSurface extends StatefulWidget {

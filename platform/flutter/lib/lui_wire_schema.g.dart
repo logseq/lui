@@ -64,6 +64,8 @@ enum _NodeKind {
   dialog,
   sheet,
   tooltip,
+  toast,
+  toolbar,
   statusBar,
 }
 
@@ -134,6 +136,8 @@ _NodeKind _decodeNodeKind(Object? value) {
     'dialog' => _NodeKind.dialog,
     'sheet' => _NodeKind.sheet,
     'tooltip' => _NodeKind.tooltip,
+    'toast' => _NodeKind.toast,
+    'toolbar' => _NodeKind.toolbar,
     'status-bar' => _NodeKind.statusBar,
     _ => throw const LUIBackendException('unknown node kind'),
   };

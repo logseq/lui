@@ -79,6 +79,12 @@
    (reactive :gallery-sheet-open model-source)
    (fn [_event] (send model/OpenSheet))
    (fn [_event] (send model/CloseSheet))
+   (reactive :gallery-toast-open model-source)
+   (reactive :gallery-toast-message model-source)
+   (reactive model/toast-description model-source)
+   (fn [_event] (send model/ShowToasts))
+   (fn [_event] (send model/UpdateToast))
+   (fn [_event] (send model/CloseToasts))
    (reactive :gallery-accordion-open model-source)
    (fn [event]
      (match event

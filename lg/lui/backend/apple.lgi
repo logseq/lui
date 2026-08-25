@@ -55,6 +55,8 @@
   (AppleDrawer)
   (AppleSheet)
   (AppleTooltip)
+  (AppleToast)
+  (AppleToolbar)
   (AppleAccordion)
   (AppleTable)
   (AppleTableRow)

@@ -1763,6 +1763,53 @@ struct LUISwiftUIBackendTests {
         #expect(backend.generation == 2)
     }
 
+    @Test("maps Toast and Toolbar to retained native SwiftUI compositions")
+    func mapsToastAndToolbar() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"toolbar"},
+          {"op":"create-node","id":3,"kind":"button"},
+          {"op":"create-node","id":4,"kind":"toast"},
+          {"op":"create-node","id":5,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"orientation","value":"horizontal"},
+          {"op":"set-prop","id":2,"property":"accessibility-label","value":"Formatting"},
+          {"op":"set-prop","id":2,"property":"gap","value":4},
+          {"op":"set-prop","id":3,"property":"text","value":"Bold"},
+          {"op":"set-prop","id":4,"property":"duration","value":1200},
+          {"op":"set-prop","id":4,"property":"accessibility-label","value":"Saved"},
+          {"op":"set-prop","id":5,"property":"text","value":"Draft saved"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":1,"child":4,"index":1},
+          {"op":"insert-child","parent":4,"child":5,"index":0}
+        ]}
+        """)
+
+        let toolbar = try #require(backend.model(id: 2))
+        let toast = try #require(backend.model(id: 4))
+        #expect(toolbar.children == [3])
+        #expect(toolbar.property(.orientation) == .string("horizontal"))
+        #expect(toast.children == [5])
+        #expect(toast.property(.duration) == .int(1200))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":5,"property":"text","value":"Draft updated"}
+        ]}
+        """)
+        #expect(backend.model(id: 2) === toolbar)
+        #expect(backend.model(id: 4) === toast)
+        #expect(backend.model(id: 5)?.text == "Draft updated")
+
+        try backend.performDismiss(node: 4)
+        #expect(events == [.dismiss(node: 4)])
+    }
+
     @Test("Tooltip hover intent delays, warms only on pointer leave, and resets on press")
     func tooltipIntentLifecycle() {
         let session = LUITooltipSession()

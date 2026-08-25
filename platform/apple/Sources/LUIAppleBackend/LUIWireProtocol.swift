@@ -151,11 +151,12 @@ enum LUIWireValue: Decodable, Equatable {
              let (.sourceWidth, .double(value)),
              let (.sourceHeight, .double(value)): value.isFinite
         case let (.anchor, .string(value)):
-            value == "above" || value == "below"
+            ["above", "below", "left", "right"].contains(value)
         case let (.anchorAlignment, .string(value)):
             ["start", "end", "stretch"].contains(value)
         case let (.anchorOffset, .double(value)): value.isFinite
         case let (.tooltipDelay, .int(value)): (0...Int(Int32.max)).contains(value)
+        case let (.duration, .int(value)): (0...Int(Int32.max)).contains(value)
         case let (.textAlignment, .string(value)):
             Self.textAlignments.contains(value)
         case let (.role, .string(value)): value == "treeitem"
@@ -444,7 +445,15 @@ struct LUIRetainedTree {
                childNode.kind != .menuItem, childNode.kind != .divider {
                 throw invalid("context-menu accepts only menu-item or separator children")
             }
-            if Self.isContextMenuLeafHost(parentNode.kind),
+            if parentNode.kind == .toolbar, !Self.isToolbarChild(childNode.kind) {
+                throw invalid("toolbar accepts only interactive controls and dividers")
+            }
+            if parentNode.kind == .menuItem,
+               childNode.kind != .contextMenu, childNode.kind != .dropdownMenu {
+                throw invalid("menu-item accepts only nested menu metadata")
+            }
+            if parentNode.kind != .menuItem,
+               Self.isContextMenuLeafHost(parentNode.kind),
                childNode.kind != .contextMenu {
                 throw invalid("interactive leaf accepts only context-menu metadata")
             }
@@ -509,6 +518,14 @@ struct LUIRetainedTree {
                 property == .height || property == .minWidth || property == .grow
         }
         if kind == .inputGroupActions { return property == .gap }
+        if kind == .toast {
+            return property == .duration || property == .accessibilityLabel ||
+                property == .styleClass
+        }
+        if kind == .toolbar {
+            return property == .orientation || property == .accessibilityLabel ||
+                property == .gap || property == .styleClass
+        }
         return switch property {
         case .main, .cross:
             kind == .row || kind == .column || kind == .list ||
@@ -599,6 +616,7 @@ struct LUIRetainedTree {
         case .anchor, .anchorAlignment, .anchorOffset:
             kind == .dropdownMenu || kind == .tooltip
         case .tooltipDelay: kind == .tooltip
+        case .duration: false
         case .textAlignment: kind == .tableCell || kind == .bubble || kind == .statusBar
         case .role, .treeLevel, .expanded: isTreeRow(kind)
         case .active, .title, .description, .meta, .indicator, .connector: false
@@ -620,6 +638,7 @@ struct LUIRetainedTree {
             || kind == .split || kind == .alert || kind == .bubble ||
             kind == .stepper || kind == .timeline ||
             kind == .inputGroup || kind == .inputGroupActions ||
+            kind == .toast || kind == .toolbar ||
             isContextMenuLeafHost(kind)
     }
 
@@ -628,7 +647,7 @@ struct LUIRetainedTree {
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
             kind == .list || kind == .listItem || kind == .dialog ||
             kind == .sheet || kind == .accordion || kind == .resizable || kind == .split ||
-            kind == .alert || kind == .bubble
+            kind == .alert || kind == .bubble || kind == .toast || kind == .toolbar
     }
 
     private static func isModalSurface(_ kind: LUINodeKind) -> Bool {
@@ -638,6 +657,14 @@ struct LUIRetainedTree {
     private static func isHorizontalGroup(_ kind: LUINodeKind) -> Bool {
         kind == .tabs || kind == .buttonGroup || kind == .toggleGroup ||
             kind == .breadcrumb || kind == .pagination
+    }
+
+    private static func isToolbarChild(_ kind: LUINodeKind) -> Bool {
+        kind == .button || kind == .toggleButton || kind == .buttonGroup ||
+            kind == .toggleGroup || kind == .checkbox || kind == .switchControl ||
+            kind == .toggle || kind == .radioGroup || kind == .select ||
+            kind == .combobox || kind == .textField || kind == .input ||
+            kind == .searchField || kind == .divider
     }
 
     private static func isTreeRow(_ kind: LUINodeKind) -> Bool {
@@ -766,6 +793,10 @@ struct LUIRetainedTree {
             if node.kind == .tree,
                (node.properties[.accessibilityLabel]?.stringValue ?? "").isEmpty {
                 throw invalid("tree requires an accessibility label")
+            }
+            if node.kind == .toolbar,
+               (node.properties[.accessibilityLabel]?.stringValue ?? "").isEmpty {
+                throw invalid("toolbar requires an accessibility label")
             }
             let hasTreeMetadata = node.properties[.role] != nil ||
                 node.properties[.treeLevel] != nil || node.properties[.expanded] != nil

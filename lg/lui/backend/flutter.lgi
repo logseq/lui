@@ -53,6 +53,8 @@
   (FlutterDrawer)
   (FlutterSheet)
   (FlutterTooltip)
+  (FlutterToast)
+  (FlutterToolbar)
   (FlutterAccordion)
   (FlutterTable)
   (FlutterTableRow)

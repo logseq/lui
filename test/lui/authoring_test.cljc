@@ -16,7 +16,7 @@
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput AppleTextArea
                      AppleSelect AppleCombobox AppleDropdownMenu AppleContextMenu AppleMenuItem AppleListItem
                      AppleTable AppleTableRow AppleTableCell AppleTree AppleResizable AppleSplit
-                     AppleAvatar AppleDialog AppleSheet AppleTooltip
+                     AppleAvatar AppleDialog AppleSheet AppleTooltip AppleToast AppleToolbar
                      AppleImage AppleMediaSurface
                      AppleStepper AppleStep AppleTimeline AppleTimelineItem
                      AppleInputGroup AppleInputGroupActions
@@ -112,6 +112,19 @@
       :anchor-offset 8.0
       :tooltip-delay delay-source}]]
    [:tooltip "Copied!"]])
+
+(defui retained-notification-controls
+  [message-source orientation-source on-dismiss]
+  [:column
+   [:toolbar
+    {:orientation orientation-source :label "Formatting" :gap 4}
+    [:button "Bold"]
+    [:separator]
+    [:button "Italic"]]
+   [:toast
+    {:duration 1200 :label "Draft notification" :on-dismiss on-dismiss}
+    [:text {:value message-source}]
+    [:button "Close"]]])
 
 (defui retained-accordion [title-source selected-source on-toggle]
   [:accordion
@@ -1748,6 +1761,53 @@
     (runtime/dispatch! application (proto/Press save))
     (runtime/flush! application)
     (assert-equal 1 @presses "semantic button dispatches through effects")))
+
+(deftest toast-and-toolbar-retain-identity-through-signal-patches
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "notification-controls")
+        message (sig/state scheduler "Saved")
+        orientation (sig/state scheduler "horizontal")
+        dismissals (atom 0)
+        root
+        (retained-notification-controls
+         (ui/context application scope)
+         (sig/value message)
+         (sig/value orientation)
+         (fn [_event] (swap! dismissals inc) true))]
+    (runtime/flush! application)
+    (let [children (apple/children renderer root)
+          toolbar (nth children 0)
+          toast (nth children 1)
+          toast-text (nth (apple/children renderer toast) 0)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer toolbar)
+        (Some AppleToolbar) (is true "Toolbar has one retained native identity")
+        _ (is false "Toolbar maps directly to the native backend"))
+      (match (apple/node renderer toast)
+        (Some AppleToast) (is true "Toast has one retained native identity")
+        _ (is false "Toast maps directly to the native backend"))
+      (assert-equal (Some (StringValue "horizontal"))
+                    (apple/property renderer toolbar proto/OrientationValue)
+                    "Toolbar retains orientation")
+      (assert-equal (Some (proto/IntValue 1200))
+                    (apple/property renderer toast proto/DurationValue)
+                    "Toast retains its dismissal duration")
+      (sig/set! message "Updated")
+      (sig/set! orientation "vertical")
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "Toast and Toolbar Signal patches allocate no nodes")
+      (assert-equal (Some (StringValue "Updated"))
+                    (apple/property renderer toast-text proto/TextValue)
+                    "Toast copy patches its retained Text child")
+      (assert-equal (Some (StringValue "vertical"))
+                    (apple/property renderer toolbar proto/OrientationValue)
+                    "Toolbar orientation patches in place")
+      (runtime/dispatch! application (proto/Dismiss toast))
+      (runtime/flush! application)
+      (assert-equal 1 @dismissals "Toast dismissal dispatches through effects"))))
 
 (deftest semantic-content-primitives-retain-structure-and-heading-level
   (let [renderer (apple/create)
