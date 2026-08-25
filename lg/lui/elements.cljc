@@ -14,6 +14,51 @@
                        (vec (next (next form)))
                        (vec (next form)))))
 
+(macro-helper-defn context-menu-form? [form]
+                   (and (vector? form) (= (first form) :context-menu)))
+
+(macro-helper-defn context-menu-children [children]
+                   (loop [remaining children
+                          result []]
+                     (if (empty? remaining)
+                       result
+                       (recur
+                        (next remaining)
+                        (if (context-menu-form? (first remaining))
+                          (conj result (first remaining))
+                          result)))))
+
+(macro-helper-defn visible-list-item-children [children]
+                   (loop [remaining children
+                          result []]
+                     (if (empty? remaining)
+                       result
+                       (recur
+                        (next remaining)
+                        (if (context-menu-form? (first remaining))
+                          result
+                          (conj result (first remaining)))))))
+
+(macro-helper-defn context-menu-has-item? [children]
+                   (loop [remaining children]
+                     (if (empty? remaining)
+                       false
+                       (let [tag (first (first remaining))]
+                         (if (or (= tag :menu-item) (= tag :if))
+                           true
+                           (recur (next remaining)))))))
+
+(macro-helper-defn context-menu-item-missing-press? [children]
+                   (loop [remaining children]
+                     (if (empty? remaining)
+                       false
+                       (let [child (first remaining)]
+                         (if (and
+                              (= (first child) :menu-item)
+                              (if (:on-press (element-attrs child)) false true))
+                           true
+                           (recur (next remaining)))))))
+
 (macro-helper-defn element-expander-symbol [tag]
                    (let [tag-namespace (namespace tag)]
                      (if tag-namespace
@@ -65,6 +110,7 @@
                          (= tag :select)
                          (= tag :combobox)
                          (= tag :dropdown-menu)
+                         (= tag :context-menu)
                          (= tag :dialog)
                          (= tag :drawer)
                          (= tag :sheet)
@@ -987,6 +1033,31 @@
           children)
        ~node)))
 
+(defelement context-menu [context parent attrs & children]
+  (if (empty? attrs)
+    nil
+    (throw (IllegalArgumentException. "context-menu accepts no attributes")))
+  (if (context-menu-item-missing-press? children)
+    (throw
+     (IllegalArgumentException.
+      "context-menu menu-item requires :on-press"))
+    nil)
+  (if (context-menu-has-item? children)
+    nil
+    (throw
+     (IllegalArgumentException.
+      "context-menu requires at least one menu-item")))
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/context-menu! ~context)]
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
+       ~node)))
+
 (macro-helper-defn modal-surface-expansion
                    [constructor context parent attrs children]
   (let [node (gensym "node")]
@@ -1094,6 +1165,10 @@
        ~@(tree-item-property-expansions context node attrs)
        ~@(disabled-attribute-expansion context node attrs)
        ~@(picker-event-expansion context node attrs)
+       ~@(if (:on-press attrs)
+           [`(lui.ui/bool-property!
+              ~context ~node lui.protocol/PressEnabled true)]
+           [])
        ~@(element-properties context node attrs)
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
@@ -1103,20 +1178,26 @@
 (defelement list-item [context parent attrs & children]
   (let [node (gensym "node")
         text-source (:text attrs)
+        metadata-children
+        (context-menu-children children)
+        visible-children
+        (visible-list-item-children children)
         literal-text
-        (if (and (= (count children) 1) (string? (first children)))
-          (first children)
+        (if (and (= (count visible-children) 1)
+                 (string? (first visible-children)))
+          (first visible-children)
           nil)
-        child-elements (if literal-text [] children)]
+        child-elements
+        (if literal-text metadata-children children)]
     (if text-source
-      (if (= (count children) 0)
+      (if (= (count visible-children) 0)
         nil
         (throw
          (IllegalArgumentException.
           "list-item accepts :text or children, not both")))
       nil)
-    (if (string? (first children))
-      (if (= (count children) 1)
+    (if (string? (first visible-children))
+      (if (= (count visible-children) 1)
         nil
         (throw
          (IllegalArgumentException.
@@ -1206,6 +1287,10 @@
     (throw
      (IllegalArgumentException.
       "if requires exactly one child")))
+  (when (= (first (first children)) :context-menu)
+    (throw
+     (IllegalArgumentException.
+      "context-menu shape is static; put conditional items inside it")))
   (let [branch-context (gensym "branch_context")]
     `(lui.dynamic/conditional!
       ~context ~parent ~(:test attrs)

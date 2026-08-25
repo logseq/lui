@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lui_flutter_backend/lui_flutter_backend.dart';
@@ -2578,6 +2579,51 @@ void main() {
       '''),
       throwsA(isA<LUIBackendException>()),
     );
+  });
+  testWidgets('maps ContextMenu to secondary-click and retained menu actions', (
+    tester,
+  ) async {
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"list-item"},
+        {"op":"create-node","id":2,"kind":"context-menu"},
+        {"op":"create-node","id":3,"kind":"menu-item"},
+        {"op":"create-node","id":4,"kind":"divider"},
+        {"op":"create-node","id":5,"kind":"menu-item"},
+        {"op":"set-prop","id":1,"property":"text","value":"Document"},
+        {"op":"set-prop","id":3,"property":"text","value":"Rename"},
+        {"op":"set-prop","id":3,"property":"press-enabled","value":true},
+        {"op":"set-prop","id":5,"property":"text","value":"Archive"},
+        {"op":"set-prop","id":5,"property":"press-enabled","value":true},
+        {"op":"set-prop","id":5,"property":"enabled","value":false},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":2,"child":3,"index":0},
+        {"op":"insert-child","parent":2,"child":4,"index":1},
+        {"op":"insert-child","parent":2,"child":5,"index":2}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    expect(find.text('Document'), findsOneWidget);
+    expect(find.text('Rename'), findsNothing);
+    final host = find.byKey(LUIFlutterBackend.nodeKey(1));
+    await tester.tapAt(tester.getCenter(host), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Rename'), findsOneWidget);
+    expect(find.text('Archive'), findsOneWidget);
+    expect(
+      tester
+          .widget<PopupMenuItem<int>>(find.byType(PopupMenuItem<int>).last)
+          .enabled,
+      isFalse,
+    );
+    await tester.tap(find.text('Rename'));
+    await tester.pumpAndSettle();
+    expect(events, const [LUIEvent.press(node: 3)]);
   });
 }
 

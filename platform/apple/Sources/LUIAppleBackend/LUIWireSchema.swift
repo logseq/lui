@@ -38,6 +38,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case select = "select"
     case combobox = "combobox"
     case dropdownMenu = "dropdown-menu"
+    case contextMenu = "context-menu"
     case menuItem = "menu-item"
     case listItem = "list-item"
     case avatar = "avatar"

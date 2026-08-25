@@ -68,6 +68,9 @@
     (OpenDocument document)
     (assoc model :gallery-document-action (str "Opened " document))
 
+    (PerformContextAction action)
+    (assoc model :gallery-document-action (str "Context action: " action))
+
     ToggleAvatarImage
     (assoc model
            :gallery-avatar-image

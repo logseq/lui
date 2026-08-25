@@ -83,7 +83,7 @@ void main() {
       (widget) => widget is ListTile && widget.shape is RoundedRectangleBorder,
       description: 'LUI ListItem rows',
     );
-    expect(listItems, findsNWidgets(4));
+    expect(listItems, findsNWidgets(5));
     final toggleDisabled = find.widgetWithText(
       OutlinedButton,
       'Toggle disabled',
@@ -191,12 +191,12 @@ void main() {
     final retainedChecklist = tester.renderObject(checklist);
     await tester.tap(checklist);
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('Selected Launch checklist.md'), findsOneWidget);
+    expect(find.text('Selected Launch checklist.md'), findsNWidgets(2));
     expect(tester.renderObject(checklist), same(retainedChecklist));
     await tester.tap(checklist);
     await tester.pump(const Duration(milliseconds: 40));
     await tester.tap(checklist);
     await tester.pump();
-    expect(find.text('Opened Launch checklist.md'), findsOneWidget);
+    expect(find.text('Opened Launch checklist.md'), findsNWidgets(2));
   });
 }

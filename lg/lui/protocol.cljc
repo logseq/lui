@@ -27,6 +27,14 @@
   (or (= kind Row) (= kind Column) (= kind Panel) (= kind Card)
       (= kind Box) (= kind ListItem)))
 
+(defn context-menu-host-kind? [kind]
+  (or
+   (= kind Button) (= kind ToggleButton) (= kind Toggle) (= kind Radio)
+   (= kind Slider) (= kind TextField) (= kind Input) (= kind SearchField)
+   (= kind Textarea) (= kind Checkbox) (= kind SwitchControl)
+   (= kind Select) (= kind Combobox) (= kind MenuItem) (= kind ListItem)
+   (= kind Accordion) (= kind Text) (= kind TableCell)))
+
 (defn event-supported? [kind event]
   (match event
     (Press _node)
@@ -135,7 +143,9 @@
   (and (horizontal-container? kind) (not (= kind Tabs))))
 
 (defn property-supported? [kind property]
-  (if (= kind Accordion)
+  (if (= kind ContextMenu)
+    false
+    (if (= kind Accordion)
     (or (= property TextValue) (= property Selected)
         (= property ToggleEnabled) (= property HeightValue))
     (match property
@@ -318,7 +328,7 @@
     (or (= kind Row) (= kind Column) (= kind Grid)
         (= kind ListContainer) (= kind DropdownMenu) (= kind TableRow)
         (= kind Tree) (= kind Split)
-        (horizontal-container? kind)))))
+        (horizontal-container? kind))))))
 
 (defn property-value-supported? [property value]
   (match (tuple property value)
@@ -586,6 +596,7 @@
       ListContainer true
       RadioGroup true
       DropdownMenu true
+      ContextMenu true
       ListItem true
       Dialog true
       Drawer true
@@ -603,6 +614,8 @@
     Table (= child-kind TableRow)
     TableRow (= child-kind TableCell)
     Tree (tree-row-kind? child-kind)
+    DropdownMenu (or (= child-kind MenuItem) (= child-kind Divider))
+    ContextMenu (or (= child-kind MenuItem) (= child-kind Divider))
     _ true))
 
 (defn create-node-op [node kind]

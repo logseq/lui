@@ -206,18 +206,85 @@
           "icon requires a valid name"
           "node properties conflict")))))
 
-(defn- validate-list-item! [current]
+(defn- context-menu-child? [nodes child]
+  (if-some [current (clojure.core/get nodes child)]
+    (= (:semantic-kind current) proto/ContextMenu)
+    false))
+
+(defn- validate-list-item-content! [nodes current]
   (when (= (:semantic-kind current) proto/ListItem)
     (let [text
           (string-property (:retained-properties current) proto/TextValue)
-          has-text (not (= text ""))
-          has-children (not (empty? (:retained-children current)))]
-      (when (and has-text has-children)
+          visible-children
+          (filterv
+           (fn [child] (not (context-menu-child? nodes child)))
+           (:retained-children current))]
+      (when (and (not (= text "")) (not (empty? visible-children)))
         (raise
          (Invalid_argument "list-item accepts text or children, not both")))
-      (when (and (not has-text) (not has-children))
+      (when (and (= text "") (empty? visible-children))
         (raise
          (Invalid_argument "list-item requires text or children"))))))
+
+(defn- bool-property-true? [properties property]
+  (match (clojure.core/get properties property)
+    (Some (proto/BoolValue true)) true
+    _ false))
+
+(defn- interactive-context-menu-host? [current]
+  (let [kind (:semantic-kind current)
+        properties (:retained-properties current)]
+    (or
+     (proto/context-menu-host-kind? kind)
+     (bool-property-true? properties proto/PressEnabled)
+     (bool-property-true? properties proto/DoublePressEnabled)
+     (bool-property-true? properties proto/ToggleEnabled)
+     (bool-property-true? properties proto/HoldEnabled))))
+
+(defn- validate-context-menu! [nodes current]
+  (let [context-children
+        (filterv
+         (fn [child] (context-menu-child? nodes child))
+         (:retained-children current))]
+    (when (> (count context-children) 1)
+      (raise (Invalid_argument "host accepts at most one context-menu")))
+    (when (and (not (empty? context-children))
+               (not (interactive-context-menu-host? current)))
+      (raise (Invalid_argument "context-menu host must be interactive"))))
+  (when (= (:semantic-kind current) proto/ContextMenu)
+    (match (:retained-parent current)
+      None (raise (Invalid_argument "context-menu requires a direct host"))
+      _ nil)
+    (doseq [child-id (:retained-children current)]
+      (if-some [child (clojure.core/get nodes child-id)]
+        (let [kind (:semantic-kind child)
+              properties (:retained-properties child)]
+          (when (and (= kind proto/MenuItem)
+                     (not (bool-property-true? properties proto/PressEnabled)))
+            (raise
+             (Invalid_argument "context-menu menu-item requires press support")))
+          (when (and (= kind proto/MenuItem)
+                     (some
+                      (fn [property]
+                        (not (or (= property proto/TextValue)
+                                 (= property proto/Enabled)
+                                 (= property proto/PressEnabled))))
+                      (keys properties)))
+            (raise
+             (Invalid_argument "context-menu menu-item has unsupported metadata")))
+          (when (and
+                 (= kind proto/Divider)
+                 (not
+                  (or
+                   (empty? properties)
+                   (= properties
+                      {proto/OrientationValue
+                       (proto/StringValue "horizontal")
+                       proto/StyleClass
+                       (proto/StringValue "lui-separator")}))))
+            (raise
+             (Invalid_argument "context-menu separator accepts no attributes"))))
+        (raise (Invalid_argument "unknown context-menu child"))))))
 
 (defn- validate-avatar! [current]
   (when (= (:semantic-kind current) proto/Avatar)
@@ -294,7 +361,8 @@
                   nodes (:retained-parent current) RadioGroup)))
        (raise
         (Invalid_argument "radio must be contained by a radio-group")))
-     (validate-list-item! current)
+     (validate-list-item-content! nodes current)
+     (validate-context-menu! nodes current)
      (validate-avatar! current)
      (validate-tree-item! nodes current)
      (validate-split! current)

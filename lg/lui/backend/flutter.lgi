@@ -35,6 +35,7 @@
   (FlutterSelect)
   (FlutterCombobox)
   (FlutterDropdownMenu)
+  (FlutterContextMenu)
   (FlutterMenuItem)
   (FlutterListItem)
   (FlutterAvatar)

@@ -6,7 +6,7 @@
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
-                     Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip Accordion
+                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip Accordion
                      Table TableRow TableCell Tree Resizable Split
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
@@ -43,6 +43,7 @@
            (web-images (atom {}))
            (web-cleanups (atom {}))
            (web-modal-stack (atom []))
+           (web-open-context-menu (atom None))
            (web-splits (atom {})))))
 
 (defn- modal-surface? [kind]
@@ -92,6 +93,7 @@
     Select "lui-select"
     Combobox "lui-combobox"
     DropdownMenu "lui-dropdown-menu"
+    ContextMenu "lui-context-menu"
     MenuItem "lui-menu-item"
     ListItem "lui-list-item"
     Avatar "lui-avatar"
@@ -287,6 +289,7 @@
           {"role" "listbox"
            "data-anchor" "below"
            "data-anchor-alignment" "start"}
+          ContextMenu {"role" "menu" "tabindex" "-1"}
           Tooltip {"role" "tooltip"}
           _ {})]
     (element
@@ -1058,7 +1061,199 @@
        (Stdlib.ignore true)))
    group-node))
 
+(defn- direct-context-menu [renderer node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (loop [index 0]
+      (if (= index (count (:retained-children current)))
+        None
+        (let [child (nth (:retained-children current) index)]
+          (if-some [child-node (retained/node (:web-store renderer) child)]
+            (if (and
+                 (= (:semantic-kind child-node) ContextMenu)
+                 (some
+                  (fn [item]
+                    (if-some [item-node
+                              (retained/node (:web-store renderer) item)]
+                      (= (:semantic-kind item-node) MenuItem)
+                      false))
+                  (:retained-children child-node)))
+              (Some child)
+              (recur (inc index)))
+            (recur (inc index))))))
+    None))
+
+(defn- hide-context-menu! [renderer]
+  (match (deref (:web-open-context-menu renderer))
+    (Some menu)
+    (do
+      (Webapi.Dom.Element.removeAttribute "data-open" (dom-node renderer menu))
+      (Stdlib.ignore (reset! (:web-open-context-menu renderer) None)))
+    None (Stdlib.ignore true)))
+
+(defn- set-context-position! [dom-node property value]
+  (Webapi.Dom.CssStyleDeclaration.setProperty
+   property value ""
+   (Webapi.Dom.HtmlElement.style
+    (Webapi.Dom.Element.unsafeAsHtmlElement dom-node))))
+
+(defn- show-context-menu! [renderer menu x y]
+  (hide-context-menu! renderer)
+  (let [menu-node (dom-node renderer menu)]
+    (Webapi.Dom.Element.setAttribute "data-open" "" menu-node)
+    (let [width (Webapi.Dom.Element.clientWidth menu-node)
+          height (Webapi.Dom.Element.clientHeight menu-node)
+          document-root
+          (Webapi.Dom.Document.documentElement (:web-document renderer))
+          viewport-width (Webapi.Dom.Element.clientWidth document-root)
+          viewport-height (Webapi.Dom.Element.clientHeight document-root)
+          left (max 8 (min x (- viewport-width width 8)))
+          top (max 8 (min y (- viewport-height height 8)))]
+      (set-context-position! menu-node "left" (str left "px"))
+      (set-context-position! menu-node "top" (str top "px")))
+    (reset! (:web-open-context-menu renderer) (Some menu))
+    (Webapi.Dom.HtmlElement.focus
+     (Webapi.Dom.Element.unsafeAsHtmlElement menu-node)))
+  true)
+
+(defn- attach-context-host-events! [renderer node host-node]
+  (let [timer (atom None)
+        suppress-click (atom false)
+        cancel!
+        (fn []
+          (match (deref timer)
+            (Some timer-id) (Js.Global.clearTimeout timer-id)
+            None (Stdlib.ignore true))
+          (reset! timer None)
+          true)]
+    (Webapi.Dom.Element.addMouseDownEventListener
+     (fn [event]
+       (when (= 2 (Webapi.Dom.MouseEvent.button event))
+         (match (direct-context-menu renderer node)
+           (Some menu)
+           (do
+             (Webapi.Dom.MouseEvent.preventDefault event)
+             (Webapi.Dom.MouseEvent.stopImmediatePropagation event)
+             (Stdlib.ignore
+              (show-context-menu!
+               renderer menu
+               (Webapi.Dom.MouseEvent.clientX event)
+               (Webapi.Dom.MouseEvent.clientY event))))
+           None (Stdlib.ignore true)))
+       (Stdlib.ignore true))
+     host-node)
+    (Webapi.Dom.Element.addTouchStartEventListener
+     (fn [event]
+       (match (direct-context-menu renderer node)
+         (Some menu)
+         (do
+           (cancel!)
+           (Webapi.Dom.TouchEvent.stopImmediatePropagation event)
+           (reset!
+            timer
+            (Some
+             (Js.Global.setTimeout
+              500
+              :f
+              (fn []
+                (let [bounds
+                      (Webapi.Dom.Element.getBoundingClientRect host-node)
+                      menu-node (dom-node renderer menu)]
+                  (reset! timer None)
+                  (reset! suppress-click true)
+                  (hide-context-menu! renderer)
+                  (set-context-position!
+                   menu-node "left"
+                   (str (Webapi.Dom.DomRect.left bounds) "px"))
+                  (set-context-position!
+                   menu-node "top"
+                   (str (Webapi.Dom.DomRect.bottom bounds) "px"))
+                  (Webapi.Dom.Element.setAttribute
+                   "data-open" "" menu-node)
+                  (reset! (:web-open-context-menu renderer) (Some menu))
+                  (Webapi.Dom.HtmlElement.focus
+                   (Webapi.Dom.Element.unsafeAsHtmlElement menu-node)))
+                (Stdlib.ignore true)))))
+           (Stdlib.ignore true))
+         None (Stdlib.ignore true)))
+     host-node)
+    (Webapi.Dom.Element.addTouchEndEventListener
+     (fn [event]
+       (match (direct-context-menu renderer node)
+         (Some _menu)
+         (do
+           (Webapi.Dom.TouchEvent.stopImmediatePropagation event)
+           (Stdlib.ignore (cancel!)))
+         None (Stdlib.ignore true))
+       (Stdlib.ignore true))
+     host-node)
+    (Webapi.Dom.Element.addEventListener
+     "touchcancel"
+     (fn [_event]
+       (cancel!)
+       (Stdlib.ignore true))
+     host-node)
+    (Webapi.Dom.Element.addEventListener
+     "click"
+     (fn [event]
+       (when (deref suppress-click)
+         (reset! suppress-click false)
+         (Webapi.Dom.Event.preventDefault event)
+         (Webapi.Dom.Event.stopImmediatePropagation event))
+       (Stdlib.ignore true))
+     host-node)
+    (Webapi.Dom.Element.addEventListener
+     "contextmenu"
+     (fn [event]
+       (match (direct-context-menu renderer node)
+         (Some _menu)
+         (do
+           (Webapi.Dom.Event.preventDefault event)
+           (Webapi.Dom.Event.stopImmediatePropagation event))
+         None (Stdlib.ignore true))
+       (Stdlib.ignore true))
+     host-node)))
+
+(defn- attach-context-menu-events! [renderer node dom-node]
+  (let [document (:web-document renderer)
+        pointer-handler
+        (fn [event]
+          (let [target
+                (Webapi.Dom.EventTarget.unsafeAsElement
+                 (Webapi.Dom.Event.target event))]
+            (when (not
+                   (Webapi.Dom.Element.contains
+                    (Webapi.Dom.Element.asNode target) dom-node))
+              (hide-context-menu! renderer)))
+          (Stdlib.ignore true))
+        key-handler
+        (fn [event]
+          (when (= "Escape" (Webapi.Dom.KeyboardEvent.key event))
+            (Webapi.Dom.KeyboardEvent.preventDefault event)
+            (hide-context-menu! renderer))
+          (Stdlib.ignore true))
+        click-handler
+        (fn [_event]
+          (hide-context-menu! renderer)
+          (Stdlib.ignore true))]
+    (Webapi.Dom.Document.addEventListener
+     "pointerdown" pointer-handler document)
+    (Webapi.Dom.Document.addKeyDownEventListener key-handler document)
+    (Webapi.Dom.Element.addEventListener "click" click-handler dom-node)
+    (Stdlib.ignore
+     (swap!
+      (:web-cleanups renderer) assoc node
+      (fn []
+        (Webapi.Dom.Document.removeEventListener
+         "pointerdown" pointer-handler document)
+        (Webapi.Dom.Document.removeKeyDownEventListener key-handler document)
+        (Webapi.Dom.Element.removeEventListener "click" click-handler dom-node)
+        (when (= (deref (:web-open-context-menu renderer)) (Some node))
+          (reset! (:web-open-context-menu renderer) None))
+        (Stdlib.ignore true))))))
+
 (defn- attach-events! [renderer node kind dom-node]
+  (when (not (= kind ContextMenu))
+    (attach-context-host-events! renderer node dom-node))
   (when (proto/tree-row-kind? kind)
     (attach-tree-item-events! renderer node kind dom-node))
   (match kind
@@ -1075,6 +1270,7 @@
       (attach-text-events! renderer node kind dom-node)
       (attach-picker-press-event! renderer node (child-element dom-node 1)))
     DropdownMenu (attach-dropdown-events! renderer node dom-node)
+    ContextMenu (attach-context-menu-events! renderer node dom-node)
     Dialog (attach-modal-events! renderer node dom-node)
     Drawer (attach-modal-events! renderer node dom-node)
     Sheet (attach-modal-events! renderer node dom-node)
@@ -1933,6 +2129,35 @@
           parent))
         (raise (Invalid_argument "DOM child index is out of bounds"))))))
 
+(defn- document-body [renderer]
+  (let [document
+        (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))]
+    (if-some [body (Webapi.Dom.HtmlDocument.body document)]
+      body
+      (raise (Invalid_argument "document body is unavailable")))))
+
+(defn- context-menu-node? [nodes node]
+  (if-some [current (clojure.core/get nodes node)]
+    (= (:semantic-kind current) ContextMenu)
+    false))
+
+(defn- visible-child-index [renderer parent index]
+  (if-some [current (retained/node (:web-store renderer) parent)]
+    (loop [source-index 0
+           result 0]
+      (if (= source-index index)
+        result
+        (let [child (nth (:retained-children current) source-index)]
+          (recur
+           (inc source-index)
+           (if-some [child-node
+                     (retained/node (:web-store renderer) child)]
+             (if (= (:semantic-kind child-node) ContextMenu)
+               result
+               (inc result))
+             result)))))
+    index))
+
 (defn- content-container [kind dom-node]
   (if (= kind Split)
     (child-element dom-node 0)
@@ -2061,20 +2286,37 @@
 
     (InsertChild parent child index)
     (do
-      (insert-dom-child!
-       (dom-child-container renderer parent (dom-node renderer parent))
-       (dom-node renderer child) index)
+      (if-some [current (retained/node (:web-store renderer) child)]
+        (if (= (:semantic-kind current) ContextMenu)
+          (Webapi.Dom.Element.appendChild
+           (Webapi.Dom.Element.asNode (dom-node renderer child))
+           (document-body renderer))
+          (insert-dom-child!
+           (dom-child-container renderer parent (dom-node renderer parent))
+           (dom-node renderer child)
+           (visible-child-index renderer parent index)))
+        (raise (Invalid_argument "unknown DOM child")))
       (update-split! renderer parent)
       (refresh-button-context! renderer child)
       (update-split! renderer parent)
       (if-some [current (retained/node (:web-store renderer) child)]
-        (match (:semantic-kind current)
-          Radio (update-radio-group! renderer child)
-          DropdownMenu (update-picker-expanded! renderer parent true)
-          Dialog (open-modal! renderer child (:platform-node current))
-          Drawer (open-modal! renderer child (:platform-node current))
-          Sheet (open-modal! renderer child (:platform-node current))
-          _ (Stdlib.ignore true))
+        (do
+          (when (= (:semantic-kind current) MenuItem)
+            (if-some [parent-node
+                      (retained/node (:web-store renderer) parent)]
+              (when (= (:semantic-kind parent-node) ContextMenu)
+                (Webapi.Dom.Element.setAttribute
+                 "role" "menuitem" (:platform-node current))
+                (Webapi.Dom.Element.removeAttribute
+                 "aria-selected" (:platform-node current)))
+              (Stdlib.ignore true)))
+          (match (:semantic-kind current)
+            Radio (update-radio-group! renderer child)
+            DropdownMenu (update-picker-expanded! renderer parent true)
+            Dialog (open-modal! renderer child (:platform-node current))
+            Drawer (open-modal! renderer child (:platform-node current))
+            Sheet (open-modal! renderer child (:platform-node current))
+            _ (Stdlib.ignore true)))
         (Stdlib.ignore true)))
 
     (RemoveChild parent child)
@@ -2083,9 +2325,11 @@
        (Webapi.Dom.Element.removeChild
         (Webapi.Dom.Element.asNode
          (dom-node-before renderer previous-nodes child))
-        (dom-child-container-before
-         renderer previous-nodes parent
-         (dom-node-before renderer previous-nodes parent))))
+        (if (context-menu-node? previous-nodes child)
+          (document-body renderer)
+          (dom-child-container-before
+           renderer previous-nodes parent
+           (dom-node-before renderer previous-nodes parent)))))
       (refresh-button-context! renderer child)
       (if-some [previous (clojure.core/get previous-nodes child)]
         (when (= (:semantic-kind previous) DropdownMenu)
@@ -2093,16 +2337,23 @@
         (Stdlib.ignore true)))
 
     (MoveChild parent child index)
-    (let [parent-node
-          (dom-child-container-before
-           renderer previous-nodes parent
-           (dom-node-before renderer previous-nodes parent))
+    (let [metadata (context-menu-node? previous-nodes child)
+          parent-node
+          (if metadata
+            (document-body renderer)
+            (dom-child-container-before
+             renderer previous-nodes parent
+             (dom-node-before renderer previous-nodes parent)))
           child-node (dom-node-before renderer previous-nodes child)
           focused (focused-descendant renderer child-node)]
       (Stdlib.ignore
        (Webapi.Dom.Element.removeChild
         (Webapi.Dom.Element.asNode child-node) parent-node))
-      (insert-dom-child! parent-node child-node index)
+      (if metadata
+        (Webapi.Dom.Element.appendChild
+         (Webapi.Dom.Element.asNode child-node) parent-node)
+        (insert-dom-child!
+         parent-node child-node (visible-child-index renderer parent index)))
       (update-split! renderer parent)
       (restore-focus! renderer focused))))
 

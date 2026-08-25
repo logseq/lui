@@ -679,7 +679,14 @@ final class LUIFlutterBackend {
 
   Widget _buildNode(BuildContext context, int id) {
     final state = _requireState(_states, id);
+    final contextMenuID = state.children.cast<int?>().firstWhere(
+      (childID) =>
+          childID != null &&
+          _requireState(_states, childID).kind == _NodeKind.contextMenu,
+      orElse: () => null,
+    );
     final children = state.children
+        .where((child) => child != contextMenuID)
         .map((child) {
           final childWidget = widget(node: child);
           if (state.kind != _NodeKind.row &&
@@ -1397,6 +1404,7 @@ final class LUIFlutterBackend {
       _NodeKind.select => select(),
       _NodeKind.combobox => textControl(kind: state.kind),
       _NodeKind.dropdownMenu => dropdownMenu(),
+      _NodeKind.contextMenu => const SizedBox.shrink(),
       _NodeKind.tooltip => Text(text),
       _NodeKind.accordion => accordion(),
       _NodeKind.dialog ||
@@ -1650,6 +1658,42 @@ final class LUIFlutterBackend {
         ),
       );
     }
+    if (contextMenuID != null) {
+      final menu = _requireState(_states, contextMenuID);
+      Future<void> showContextMenu(Offset position) async {
+        final selected = await showMenu<int>(
+          context: context,
+          position: RelativeRect.fromLTRB(
+            position.dx,
+            position.dy,
+            position.dx,
+            position.dy,
+          ),
+          items: menu.children
+              .map<PopupMenuEntry<int>>((childID) {
+                final child = _requireState(_states, childID);
+                if (child.kind == _NodeKind.divider) {
+                  return const PopupMenuDivider();
+                }
+                return PopupMenuItem<int>(
+                  value: childID,
+                  enabled: child.properties['enabled'] as bool? ?? true,
+                  child: Text(child.properties['text'] as String? ?? ''),
+                );
+              })
+              .toList(growable: false),
+        );
+        if (selected != null) performAction(selected);
+      }
+
+      surface = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onSecondaryTapDown: (details) =>
+            showContextMenu(details.globalPosition),
+        onLongPressStart: (details) => showContextMenu(details.globalPosition),
+        child: surface,
+      );
+    }
     return surface;
   }
 
@@ -1696,6 +1740,13 @@ final class LUIFlutterBackend {
             child.kind != _NodeKind.divider) {
           throw const LUIBackendException(
             'dropdown-menu accepts only menu-item or separator children',
+          );
+        }
+        if (parent.kind == _NodeKind.contextMenu &&
+            child.kind != _NodeKind.menuItem &&
+            child.kind != _NodeKind.divider) {
+          throw const LUIBackendException(
+            'context-menu accepts only menu-item or separator children',
           );
         }
         if (parent.kind == _NodeKind.table &&
@@ -1750,6 +1801,7 @@ final class LUIFlutterBackend {
   }
 
   static bool _supports(_NodeKind kind, String property, Object? value) {
+    if (kind == _NodeKind.contextMenu) return false;
     if (kind == _NodeKind.accordion) {
       return switch (property) {
         'text' => value is String,
@@ -2107,6 +2159,45 @@ final class LUIFlutterBackend {
           (state.properties['text'] as String? ?? '').isEmpty) {
         throw const LUIBackendException('menu-item requires text');
       }
+      if (state.kind == _NodeKind.contextMenu) {
+        final parent = state.parent == null ? null : states[state.parent];
+        if (parent == null || !_isContextMenuHost(parent)) {
+          throw const LUIBackendException(
+            'context-menu requires an interactive direct host',
+          );
+        }
+        final count = parent.children
+            .where((child) => states[child]?.kind == _NodeKind.contextMenu)
+            .length;
+        if (count != 1) {
+          throw const LUIBackendException(
+            'host accepts at most one context-menu',
+          );
+        }
+        for (final childID in state.children) {
+          final child = _requireState(states, childID);
+          if (child.kind == _NodeKind.menuItem) {
+            if (child.properties['press-enabled'] != true) {
+              throw const LUIBackendException(
+                'context-menu menu-item requires press support',
+              );
+            }
+            const allowed = {'text', 'enabled', 'press-enabled'};
+            if (!child.properties.keys.every(allowed.contains)) {
+              throw const LUIBackendException(
+                'context-menu menu-item has unsupported metadata',
+              );
+            }
+          } else if (child.properties.isNotEmpty &&
+              !(child.properties.length == 2 &&
+                  child.properties['orientation'] == 'horizontal' &&
+                  child.properties['style-class'] == 'lui-separator')) {
+            throw const LUIBackendException(
+              'context-menu separator accepts no attributes',
+            );
+          }
+        }
+      }
       if (state.kind.isModalSurface &&
           (state.properties['text'] as String? ?? '').isEmpty) {
         throw const LUIBackendException('modal surface requires text');
@@ -2159,7 +2250,9 @@ final class LUIFlutterBackend {
       }
       if (state.kind == _NodeKind.listItem) {
         final hasText = (state.properties['text'] as String? ?? '').isNotEmpty;
-        final hasChildren = state.children.isNotEmpty;
+        final hasChildren = state.children.any(
+          (child) => states[child]?.kind != _NodeKind.contextMenu,
+        );
         if (!hasText && !hasChildren) {
           throw const LUIBackendException(
             'list-item requires text or children',
@@ -2242,6 +2335,7 @@ final class LUIFlutterBackend {
       _isHorizontalGroupKind(kind) ||
       kind == _NodeKind.radioGroup ||
       kind == _NodeKind.dropdownMenu ||
+      kind == _NodeKind.contextMenu ||
       kind == _NodeKind.listItem ||
       kind == _NodeKind.accordion ||
       kind == _NodeKind.table ||
@@ -2250,6 +2344,34 @@ final class LUIFlutterBackend {
       kind == _NodeKind.resizable ||
       kind == _NodeKind.split ||
       kind.isModalSurface;
+
+  static bool _isContextMenuHost(_NodeState state) {
+    const inherent = {
+      _NodeKind.button,
+      _NodeKind.toggleButton,
+      _NodeKind.toggle,
+      _NodeKind.radio,
+      _NodeKind.slider,
+      _NodeKind.textField,
+      _NodeKind.input,
+      _NodeKind.searchField,
+      _NodeKind.textarea,
+      _NodeKind.checkbox,
+      _NodeKind.switchControl,
+      _NodeKind.select,
+      _NodeKind.combobox,
+      _NodeKind.menuItem,
+      _NodeKind.listItem,
+      _NodeKind.accordion,
+      _NodeKind.text,
+      _NodeKind.tableCell,
+    };
+    return inherent.contains(state.kind) ||
+        state.properties['press-enabled'] == true ||
+        state.properties['double-press-enabled'] == true ||
+        state.properties['toggle-enabled'] == true ||
+        state.properties['hold-enabled'] == true;
+  }
 
   int? _checkedRadio(_NodeState root) {
     for (final child in root.children) {

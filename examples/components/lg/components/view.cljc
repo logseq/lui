@@ -60,6 +60,8 @@
    (fn [_event] (send (model/SelectDocument "Launch checklist.md")))
    (fn [_event] (send (model/OpenDocument "Quarterly report.md")))
    (fn [_event] (send (model/OpenDocument "Launch checklist.md")))
+   (fn [_event] (send (model/PerformContextAction "Rename")))
+   (fn [_event] (send (model/PerformContextAction "Archive")))
    (reactive :gallery-avatar-image model-source)
    (fn [_event] (send model/ToggleAvatarImage))
    (reactive model/overview-tab-selected? model-source)

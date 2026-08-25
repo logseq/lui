@@ -718,6 +718,35 @@ Flutter uses a `GestureDetector`, resize cursor, and adjustable semantics.
 All hosts retain both pane identities across value patches and user resizing,
 and reject batches with fewer or more than two children atomically.
 
+#### ContextMenu contract
+
+`context-menu` is retained metadata on its direct interactive parent, not a
+flow child and not a visible widget of its own. It takes no attributes. Its
+children are a flat ordered list of `menu-item` and bare `separator` elements;
+every menu item has exactly one text label, requires `on-press`, and may only
+add `disabled`. Icons, selection, nested menus, arbitrary content, and submenu
+state are invalid. A host accepts at most one direct ContextMenu. Static menus
+must contain a menu item, while dynamic item segments may temporarily produce
+an empty menu; in that state a secondary activation has nothing to present.
+
+The ContextMenu attaches to the element that receives the secondary click.
+Reference hit-target components are eligible directly; a normally passive
+component is eligible only when an admitted interaction handler makes it a hit
+target. Conditional content belongs inside the ContextMenu. Conditionally
+mounting the ContextMenu itself is invalid because it changes metadata shape
+instead of its item list. The deepest eligible retained host on the hit route
+wins.
+
+Web presents an anchored menu surface at the pointer, clips it to the viewport,
+supports native menu keyboard traversal, and dismisses on Escape, outside
+press, item selection, blur, or a newer invocation. SwiftUI uses the system
+`contextMenu` presentation. Flutter uses the platform Material popup-menu path
+at the secondary-click or long-press position. Disabled items and separators
+preserve their declared slots. Selecting an enabled item dispatches that
+retained MenuItem's existing typed `Press` event; dismissal and presentation
+remain backend-owned and never enter the LG model. ContextMenu and item Signal
+patches preserve the host and its visible content identities.
+
 #### Table contract
 
 `table`, `table-row`, and `table-cell` are three retained semantic nodes. A

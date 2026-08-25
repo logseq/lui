@@ -33,6 +33,7 @@
   (CommitPickerQuery)
   (SelectDocument :string)
   (OpenDocument :string)
+  (PerformContextAction :string)
   (ToggleAvatarImage)
   (SelectTab :string)
   (OpenDialog)

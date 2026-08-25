@@ -1797,6 +1797,44 @@ struct LUISwiftUIBackendTests {
         }
     }
 
+    @Test("maps ContextMenu metadata to native SwiftUI actions")
+    func mapsContextMenu() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"list-item"},
+          {"op":"create-node","id":2,"kind":"context-menu"},
+          {"op":"create-node","id":3,"kind":"menu-item"},
+          {"op":"create-node","id":4,"kind":"divider"},
+          {"op":"create-node","id":5,"kind":"menu-item"},
+          {"op":"set-prop","id":1,"property":"text","value":"Document"},
+          {"op":"set-prop","id":3,"property":"text","value":"Rename"},
+          {"op":"set-prop","id":3,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":5,"property":"text","value":"Archive"},
+          {"op":"set-prop","id":5,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":5,"property":"enabled","value":false},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":2,"child":4,"index":1},
+          {"op":"insert-child","parent":2,"child":5,"index":2}
+        ]}
+        """)
+
+        let host = try #require(backend.model(id: 1))
+        let menu = try #require(backend.model(id: 2))
+        #expect(menu.kind == .contextMenu)
+        #expect(host.children == [2])
+        #expect(menu.children == [3, 4, 5])
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+        try backend.performPress(node: 3)
+        #expect(events == [.press(node: 3)])
+        #expect(throws: LUIBackendError.self) {
+            try backend.performPress(node: 5)
+        }
+    }
+
     @Test("C ABI forwards SwiftUI backend events")
     func cABIForwardsEvent() {
         capturedAppleEvent = nil

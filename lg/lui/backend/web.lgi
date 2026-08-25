@@ -20,6 +20,7 @@
   (web-images :ref<map<int;web-image-resource>>)
   (web-cleanups :ref<map<int;fn<unit>>>)
   (web-modal-stack :ref<vector<int>>)
+  (web-open-context-menu :ref<option<int>>)
   (web-splits :ref<map<int;web-split-state>>))
 
 (signature lui.backend.web/create

@@ -6,10 +6,11 @@
             [lui.wire :as wire]
             [lui.runtime :as runtime]
             [lui.backend.apple :as apple
-             :refer [AppleRow AppleLabel AppleTextInput AppleResizable AppleSplit]]
+             :refer [AppleRow AppleLabel AppleTextInput AppleResizable AppleSplit
+                     AppleContextMenu]]
             [lui.backend.flutter :as flutter
              :refer [FlutterFlexRow FlutterParagraph FlutterWidgetIsland
-                     FlutterResizable FlutterSplit]]))
+                     FlutterResizable FlutterSplit FlutterContextMenu]]))
 
 (defmacro assert-equal [expected actual message]
   `(is (= ~expected ~actual) ~message))
@@ -1356,6 +1357,80 @@
           "Split rejects every child count except exactly two")
       (assert-equal 0 (apple/node-count renderer)
                     "malformed Split batches remain atomic"))))
+
+(deftest context-menu-is-retained-host-metadata
+  (is (proto/can-contain-children? proto/ContextMenu)
+      "ContextMenu retains its flat item identities")
+  (doseq [property [proto/TextValue proto/Enabled proto/Gap proto/StyleClass]]
+    (is (not (proto/property-supported? proto/ContextMenu property))
+        "ContextMenu has no public attributes"))
+  (is (proto/child-kind-supported? proto/ContextMenu proto/MenuItem)
+      "ContextMenu accepts MenuItem")
+  (is (proto/child-kind-supported? proto/ContextMenu proto/Divider)
+      "ContextMenu accepts separators")
+  (is (not (proto/child-kind-supported? proto/ContextMenu proto/Text))
+      "ContextMenu rejects arbitrary content")
+  (let [operations
+        [(proto/create-node-op 1 proto/ListItem)
+         (proto/create-node-op 2 proto/ContextMenu)
+         (proto/create-node-op 3 proto/MenuItem)
+         (proto/create-node-op 4 proto/Divider)
+         (proto/create-node-op 5 proto/MenuItem)
+         (proto/set-prop-op 1 proto/TextValue (proto/StringValue "Document"))
+         (proto/set-prop-op 3 proto/TextValue (proto/StringValue "Rename"))
+         (proto/set-prop-op 3 proto/PressEnabled (proto/BoolValue true))
+         (proto/set-prop-op 5 proto/TextValue (proto/StringValue "Archive"))
+         (proto/set-prop-op 5 proto/PressEnabled (proto/BoolValue true))
+         (proto/set-prop-op 5 proto/Enabled (proto/BoolValue false))
+         (proto/insert-child-op 1 2 0)
+         (proto/insert-child-op 2 3 0)
+         (proto/insert-child-op 2 4 1)
+         (proto/insert-child-op 2 5 2)]]
+    (let [renderer (apple/create)
+          apply-batch (:apply-batch (apple/backend renderer))]
+      (is (apply-batch
+           (record proto/patch-batch (generation 1) (ops operations))))
+      (match (apple/node renderer 2)
+        (Some AppleContextMenu) (is true "Apple maps ContextMenu metadata")
+        _ (is false "Apple ContextMenu mapping exists"))
+      (assert-equal [2] (apple/children renderer 1)
+                    "the host retains one metadata child")
+      (assert-equal [3 4 5] (apple/children renderer 2)
+                    "menu item and separator slots retain order"))
+    (let [renderer (flutter/create)
+          apply-batch (:apply-batch (flutter/backend renderer))]
+      (is (apply-batch
+           (record proto/patch-batch (generation 1) (ops operations))))
+      (match (flutter/node renderer 2)
+        (Some FlutterContextMenu) (is true "Flutter maps ContextMenu metadata")
+        _ (is false "Flutter ContextMenu mapping exists"))))
+  (doseq [operations
+          [[(proto/create-node-op 1 proto/ContextMenu)
+            (proto/create-node-op 2 proto/Text)
+            (proto/set-prop-op 2 proto/TextValue (proto/StringValue "No"))
+            (proto/insert-child-op 1 2 0)]
+           [(proto/create-node-op 1 proto/ListItem)
+            (proto/create-node-op 2 proto/ContextMenu)
+            (proto/create-node-op 3 proto/ContextMenu)
+            (proto/set-prop-op 1 proto/TextValue (proto/StringValue "Host"))
+            (proto/insert-child-op 1 2 0)
+            (proto/insert-child-op 1 3 1)]
+           [(proto/create-node-op 1 proto/ListItem)
+            (proto/create-node-op 2 proto/ContextMenu)
+            (proto/create-node-op 3 proto/MenuItem)
+            (proto/set-prop-op 1 proto/TextValue (proto/StringValue "Host"))
+            (proto/set-prop-op 3 proto/TextValue (proto/StringValue "Missing handler"))
+            (proto/insert-child-op 1 2 0)
+            (proto/insert-child-op 2 3 0)]]]
+    (let [renderer (apple/create)
+          apply-batch (:apply-batch (apple/backend renderer))]
+      (is (thrown? Invalid_argument
+                   (apply-batch
+                    (record proto/patch-batch
+                            (generation 1)
+                            (ops operations)))))
+      (assert-equal 0 (apple/node-count renderer)
+                    "invalid ContextMenu batches remain atomic"))))
 
 (deftest table-family-has-the-pinned-closed-contract
   (let [batch

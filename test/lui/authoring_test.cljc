@@ -13,7 +13,7 @@
              :refer [AppleBox AppleCard AppleCheckbox AppleColumn AppleFormLabel AppleGrid
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput
-                     AppleSelect AppleCombobox AppleDropdownMenu AppleMenuItem AppleListItem
+                     AppleSelect AppleCombobox AppleDropdownMenu AppleContextMenu AppleMenuItem AppleListItem
                      AppleTable AppleTableRow AppleTableCell AppleTree AppleResizable AppleSplit
                      AppleAvatar AppleDialog AppleDrawer AppleSheet AppleTooltip
                      AppleAccordion]]
@@ -220,6 +220,14 @@
     :label "Workspace panes" :on-resize on-resize}
    [:panel {:min-width 180 :padding 12} [:text "Sidebar"]]
    [:panel {:min-width 320 :padding 12} [:text "Content"]]])
+
+(defui retained-context-menu [archive-disabled on-rename on-archive]
+  [:list-item
+   "Document"
+   [:context-menu
+    [:menu-item {:on-press on-rename} "Rename"]
+    [:separator]
+    [:menu-item {:disabled archive-disabled :on-press on-archive} "Archive"]]])
 
 (defui retained-avatars [image-id]
   [:row {:gap 12}
@@ -1025,6 +1033,50 @@
        (Some (proto/FloatValue 0.42))
        (apple/property renderer root proto/ProgressValue)
        "the model echo patches only the retained Split"))))
+
+(deftest context-menu-metadata-and-signals-remain-retained
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-context-menu")
+        archive-disabled (sig/state scheduler false)
+        received (atom [])
+        callback (fn [event] (swap! received conj event) true)
+        root
+        (retained-context-menu
+         (ui/context application scope)
+         (sig/value archive-disabled)
+         callback
+         callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [menu (nth (apple/children renderer root) 0)
+          rename (nth (apple/children renderer menu) 0)
+          archive (nth (apple/children renderer menu) 2)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer menu)
+        (Some AppleContextMenu)
+        (is true "ContextMenu is retained as non-layout metadata")
+        _ (is false "ContextMenu native mapping exists"))
+      (assert-equal
+       (Some (proto/BoolValue true))
+       (apple/property renderer rename proto/PressEnabled)
+       "on-press declares the item interaction capability")
+      (runtime/dispatch! application (proto/Press rename))
+      (runtime/flush! application)
+      (assert-equal [(proto/Press rename)] @received
+                    "menu selection reuses the typed Press event")
+      (sig/set! archive-disabled true)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "disabled Signal patches allocate no retained nodes")
+      (assert-equal [rename (nth (apple/children renderer menu) 1) archive]
+                    (apple/children renderer menu)
+                    "all menu slots preserve identity")
+      (assert-equal
+       (Some (proto/BoolValue false))
+       (apple/property renderer archive proto/Enabled)
+       "the Signal patches only the retained menu item"))))
 
 (deftest avatar-binds-a-model-owned-image-id-without-replacing-its-node
   (let [scheduler (sig/scheduler)

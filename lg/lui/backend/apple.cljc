@@ -7,7 +7,7 @@
                      Spacer Spinner Icon
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
-                     Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip
+                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip
                      Accordion Table TableRow TableCell Tree Resizable Split]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
@@ -62,6 +62,7 @@
     Select AppleSelect
     Combobox AppleCombobox
     DropdownMenu AppleDropdownMenu
+    ContextMenu AppleContextMenu
     MenuItem AppleMenuItem
     ListItem AppleListItem
     Avatar AppleAvatar

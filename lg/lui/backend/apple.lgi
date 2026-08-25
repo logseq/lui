@@ -37,6 +37,7 @@
   (AppleSelect)
   (AppleCombobox)
   (AppleDropdownMenu)
+  (AppleContextMenu)
   (AppleMenuItem)
   (AppleListItem)
   (AppleAvatar)

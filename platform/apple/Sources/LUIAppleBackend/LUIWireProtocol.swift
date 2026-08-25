@@ -271,6 +271,10 @@ struct LUIRetainedTree {
                childNode.kind != .menuItem, childNode.kind != .divider {
                 throw invalid("dropdown-menu accepts only menu-item or separator children")
             }
+            if parentNode.kind == .contextMenu,
+               childNode.kind != .menuItem, childNode.kind != .divider {
+                throw invalid("context-menu accepts only menu-item or separator children")
+            }
             guard childNode.parent == nil else { throw invalid("child is already attached") }
             guard index >= 0 && index <= parentNode.children.count else {
                 throw invalid("child index is out of bounds")
@@ -311,6 +315,7 @@ struct LUIRetainedTree {
     }
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
+        if kind == .contextMenu { return false }
         if kind == .accordion {
             return property == .text || property == .selected ||
                 property == .toggleEnabled || property == .height
@@ -409,7 +414,7 @@ struct LUIRetainedTree {
         kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
             kind == .list || isHorizontalGroup(kind) || kind == .radioGroup
-            || kind == .dropdownMenu || kind == .listItem || isModalSurface(kind)
+            || kind == .dropdownMenu || kind == .contextMenu || kind == .listItem || isModalSurface(kind)
             || kind == .accordion
             || kind == .table || kind == .tableRow || kind == .tree || kind == .resizable
             || kind == .split
@@ -498,6 +503,33 @@ struct LUIRetainedTree {
                     throw invalid("menu-item requires text")
                 }
             }
+            if node.kind == .contextMenu {
+                guard let parentID = node.parent, let parent = nodes[parentID],
+                      Self.isContextMenuHost(parent.kind, properties: parent.properties) else {
+                    throw invalid("context-menu requires an interactive direct host")
+                }
+                let menuCount = parent.children.filter { nodes[$0]?.kind == .contextMenu }.count
+                guard menuCount == 1 else {
+                    throw invalid("host accepts at most one context-menu")
+                }
+                for childID in node.children {
+                    guard let child = nodes[childID] else { continue }
+                    if child.kind == .menuItem {
+                        guard child.properties[.pressEnabled]?.boolValue == true else {
+                            throw invalid("context-menu menu-item requires press support")
+                        }
+                        let allowed: Set<LUIProperty> = [.text, .enabled, .pressEnabled]
+                        guard child.properties.keys.allSatisfy(allowed.contains) else {
+                            throw invalid("context-menu menu-item has unsupported metadata")
+                        }
+                    } else if !child.properties.isEmpty && child.properties != [
+                        .orientation: .string("horizontal"),
+                        .styleClass: .string("lui-separator"),
+                    ] {
+                        throw invalid("context-menu separator accepts no attributes")
+                    }
+                }
+            }
             if Self.isModalSurface(node.kind) {
                 guard !(node.properties[.text]?.stringValue ?? "").isEmpty else {
                     throw invalid("modal surface requires text")
@@ -541,7 +573,7 @@ struct LUIRetainedTree {
             }
             if node.kind == .listItem {
                 let hasText = !(node.properties[.text]?.stringValue ?? "").isEmpty
-                let hasChildren = !node.children.isEmpty
+                let hasChildren = node.children.contains { nodes[$0]?.kind != .contextMenu }
                 guard hasText || hasChildren else {
                     throw invalid("list-item requires text or children")
                 }
@@ -579,6 +611,23 @@ struct LUIRetainedTree {
                 }
             }
         }
+    }
+
+    private static func isContextMenuHost(
+        _ kind: LUINodeKind,
+        properties: [LUIProperty: LUIWireValue]
+    ) -> Bool {
+        let inherent: Set<LUINodeKind> = [
+            .button, .toggleButton, .toggle, .radio, .slider, .textField,
+            .input, .searchField, .textarea, .checkbox, .switchControl,
+            .select, .combobox, .menuItem, .listItem, .accordion, .text,
+            .tableCell,
+        ]
+        return inherent.contains(kind) ||
+            properties[.pressEnabled]?.boolValue == true ||
+            properties[.doublePressEnabled]?.boolValue == true ||
+            properties[.toggleEnabled]?.boolValue == true ||
+            properties[.holdEnabled]?.boolValue == true
     }
 
     private func hasAncestor(_ parent: Int?, kind: LUINodeKind) -> Bool {

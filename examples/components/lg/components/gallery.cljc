@@ -212,6 +212,23 @@
    [:paragraph
     "Click selects immediately; double click and Enter run the primary action without replacing a row."]])
 
+(defui context-menu-gallery
+  [disabled-source action-source rename-document archive-document]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "ContextMenu"]
+   [:list {:gap 2 :cross "stretch" :max-width 480}
+    [:list-item
+     "Quarterly report.md"
+     [:context-menu
+      [:menu-item {:on-press rename-document} "Rename"]
+      [:separator]
+      [:menu-item
+       {:disabled disabled-source :on-press archive-document}
+       "Archive"]]]]
+   [:paragraph {:value action-source}]
+   [:paragraph
+    "Right click on desktop or long press on touch platforms; the deepest retained host owns the native menu."]])
+
 (defui table-gallery
   [invoice-two-selected-source invoice-three-selected-source
    select-invoice-two select-invoice-three]
@@ -643,6 +660,7 @@
    dismiss-picker select-production select-staging
    report-selected-source checklist-selected-source document-action-source
    select-report select-checklist open-report open-checklist
+   rename-document archive-document
    avatar-image-source toggle-avatar-image
    overview-tab-selected-source activity-tab-selected-source
    tab-content-source select-overview-tab select-activity-tab
@@ -682,6 +700,8 @@
     report-selected-source checklist-selected-source disabled-source
     document-action-source select-report select-checklist open-report
     open-checklist]
+   [context-menu-gallery
+    disabled-source document-action-source rename-document archive-document]
    [table-gallery
     overview-tab-selected-source activity-tab-selected-source
     select-overview-tab select-activity-tab]

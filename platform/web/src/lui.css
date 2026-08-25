@@ -467,6 +467,15 @@
     right: 0;
   }
 
+  .lui-context-menu {
+    @apply fixed z-50 hidden max-h-72 min-w-40 flex-col overflow-auto rounded-md border bg-card p-1 text-card-foreground shadow-md;
+    max-width: calc(100vw - 1rem);
+  }
+
+  .lui-context-menu[data-open] {
+    @apply flex;
+  }
+
   .lui-menu-item {
     @apply relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none;
   }

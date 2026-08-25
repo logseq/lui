@@ -47,6 +47,7 @@ private struct LUINodeView: View {
                 context: treeContext
             )
         )
+        .modifier(LUIContextMenuModifier(model: model, backend: backend))
     }
 
     @ViewBuilder
@@ -97,6 +98,8 @@ private struct LUINodeView: View {
             LUIComboboxView(model: model, backend: backend)
         case .dropdownMenu:
             LUIDropdownMenuView(model: model, backend: backend)
+        case .contextMenu:
+            EmptyView()
         case .tooltip:
             LUITooltipLabel(model: model)
         case .accordion:
@@ -193,11 +196,15 @@ private struct LUINodeView: View {
 
     @ViewBuilder
     private var children: some View {
-        ForEach(model.children, id: \.self) { childID in
+        ForEach(visibleChildren, id: \.self) { childID in
             if let child = backend.model(id: childID) {
                 LUINodeView(model: child, backend: backend)
             }
         }
+    }
+
+    private var visibleChildren: [Int] {
+        model.children.filter { backend.model(id: $0)?.kind != .contextMenu }
     }
 
     private var headingFont: Font {
@@ -213,6 +220,35 @@ private struct LUINodeView: View {
 
     private var progressAccessibilityValue: String {
         "\(Int((model.progressFraction * 100).rounded()))%"
+    }
+}
+
+private struct LUIContextMenuModifier: ViewModifier {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let menu = model.children.compactMap({ backend.model(id: $0) })
+            .first(where: { $0.kind == .contextMenu }),
+           menu.children.contains(where: { backend.model(id: $0)?.kind == .menuItem }) {
+            content.contextMenu {
+                ForEach(menu.children, id: \.self) { childID in
+                    if let child = backend.model(id: childID) {
+                        if child.kind == .divider {
+                            Divider()
+                        } else if child.kind == .menuItem {
+                            Button(child.text) {
+                                try? backend.performPress(node: child.id)
+                            }
+                            .disabled(!child.isEnabled)
+                        }
+                    }
+                }
+            }
+        } else {
+            content
+        }
     }
 }
 
@@ -875,10 +911,10 @@ private struct LUIListItemView: View {
                     LUIIconImage(source: backend.iconSource(for: model.buttonIconName))
                         .frame(width: 16, height: 16)
                 }
-                if model.children.isEmpty {
+                if visibleChildren.isEmpty {
                     Text(verbatim: model.text)
                 } else {
-                    ForEach(model.children, id: \.self) { childID in
+                    ForEach(visibleChildren, id: \.self) { childID in
                         if let child = backend.model(id: childID) {
                             LUINodeView(model: child, backend: backend)
                         }
@@ -910,6 +946,10 @@ private struct LUIListItemView: View {
         }
         .accessibilityAddTraits(model.isSelected ? .isSelected : [])
         .disabled(!model.isEnabled)
+    }
+
+    private var visibleChildren: [Int] {
+        model.children.filter { backend.model(id: $0)?.kind != .contextMenu }
     }
 }
 

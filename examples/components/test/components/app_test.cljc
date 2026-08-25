@@ -72,6 +72,11 @@
                   "Accordion starts collapsed under model control")
     (assert-equal 0.35 (:gallery-split-fraction initial)
                   "Split starts with a controlled first-pane fraction")
+    (assert-equal
+     "Context action: Rename"
+     (:gallery-document-action
+      (model/update initial (model/PerformContextAction "Rename")))
+     "ContextMenu selection is owned by the shared reducer")
     (assert-equal true
                   (:gallery-accordion-open
                    (model/update initial (model/SetAccordionOpen true)))
@@ -196,6 +201,8 @@
         "the shared Gallery demonstrates backend-owned Resizable geometry")
     (is (creates-kind? (flutter/batches renderer) proto/Split)
         "the shared Gallery demonstrates controlled two-pane Split geometry")
+    (is (creates-kind? (flutter/batches renderer) proto/ContextMenu)
+        "the shared Gallery demonstrates retained ContextMenu metadata")
     (assert-equal 1 (count (flutter/batches renderer)) "mount is one batch")
     (let [mounted-count (flutter/node-count renderer)]
       (driver/send! application model/ToggleDisabled)

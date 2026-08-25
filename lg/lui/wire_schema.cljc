@@ -6,19 +6,19 @@
                      Input SearchField Textarea Checkbox SwitchControl Progress
                      Divider Scroll ListContainer Tabs ButtonGroup ToggleGroup
                      Spacer Spinner Icon Select Combobox DropdownMenu
-                     MenuItem ListItem Avatar Breadcrumb Pagination Accordion
-                     Table TableRow TableCell Tree Resizable Split
-                     Dialog Drawer Sheet Tooltip TextValue Enabled
-                     Gap MainAlignment CrossAlignment GrowValue GridColumns PaddingValue
-                     PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth
-                     CornerRadius WidthValue HeightValue MinWidth MaxWidth MinHeight
-                     MaxHeight PlaceholderValue AccessibilityLabel StyleClass HeadingLevel Checked
-                     ProgressValue OrientationValue SizeValue IconName VariantValue InlineIconName
-                     IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled ChangeEnabled
-                     ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue SourceX
-                     SourceY SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset
-                     TooltipDelay TextAlignment RoleValue TreeLevel Expanded ResizeDuration
-                     ResizeEasing ResizeOrigin]]))
+                     ContextMenu MenuItem ListItem Avatar Breadcrumb Pagination
+                     Accordion Table TableRow TableCell Tree Resizable
+                     Split Dialog Drawer Sheet Tooltip TextValue
+                     Enabled Gap MainAlignment CrossAlignment GrowValue GridColumns
+                     PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue
+                     BorderWidth CornerRadius WidthValue HeightValue MinWidth MaxWidth
+                     MinHeight MaxHeight PlaceholderValue AccessibilityLabel StyleClass HeadingLevel
+                     Checked ProgressValue OrientationValue SizeValue IconName VariantValue
+                     InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled
+                     ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue
+                     SourceX SourceY SourceWidth SourceHeight AnchorValue AnchorAlignmentValue
+                     AnchorOffset TooltipDelay TextAlignment RoleValue TreeLevel Expanded
+                     ResizeDuration ResizeEasing ResizeOrigin]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -58,6 +58,7 @@
     Select "select"
     Combobox "combobox"
     DropdownMenu "dropdown-menu"
+    ContextMenu "context-menu"
     MenuItem "menu-item"
     ListItem "list-item"
     Avatar "avatar"

@@ -38,6 +38,7 @@
   (Select)
   (Combobox)
   (DropdownMenu)
+  (ContextMenu)
   (MenuItem)
   (ListItem)
   (Avatar)
