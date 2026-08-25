@@ -275,6 +275,10 @@ struct LUIRetainedTree {
                childNode.kind != .menuItem, childNode.kind != .divider {
                 throw invalid("context-menu accepts only menu-item or separator children")
             }
+            if Self.isContextMenuLeafHost(parentNode.kind),
+               childNode.kind != .contextMenu {
+                throw invalid("interactive leaf accepts only context-menu metadata")
+            }
             guard childNode.parent == nil else { throw invalid("child is already attached") }
             guard index >= 0 && index <= parentNode.children.count else {
                 throw invalid("child index is out of bounds")
@@ -417,7 +421,7 @@ struct LUIRetainedTree {
             || kind == .dropdownMenu || kind == .contextMenu || kind == .listItem || isModalSurface(kind)
             || kind == .accordion
             || kind == .table || kind == .tableRow || kind == .tree || kind == .resizable
-            || kind == .split
+            || kind == .split || isContextMenuLeafHost(kind)
     }
 
     private static func isModalSurface(_ kind: LUINodeKind) -> Bool {
@@ -517,6 +521,9 @@ struct LUIRetainedTree {
                     if child.kind == .menuItem {
                         guard child.properties[.pressEnabled]?.boolValue == true else {
                             throw invalid("context-menu menu-item requires press support")
+                        }
+                        guard child.children.isEmpty else {
+                            throw invalid("context-menu does not support nested menus")
                         }
                         let allowed: Set<LUIProperty> = [.text, .enabled, .pressEnabled]
                         guard child.properties.keys.allSatisfy(allowed.contains) else {
@@ -628,6 +635,15 @@ struct LUIRetainedTree {
             properties[.doublePressEnabled]?.boolValue == true ||
             properties[.toggleEnabled]?.boolValue == true ||
             properties[.holdEnabled]?.boolValue == true
+    }
+
+    private static func isContextMenuLeafHost(_ kind: LUINodeKind) -> Bool {
+        let kinds: Set<LUINodeKind> = [
+            .button, .toggleButton, .toggle, .radio, .slider, .textField,
+            .input, .searchField, .textarea, .checkbox, .switchControl,
+            .select, .combobox, .menuItem, .text, .tableCell,
+        ]
+        return kinds.contains(kind)
     }
 
     private func hasAncestor(_ parent: Int?, kind: LUINodeKind) -> Bool {

@@ -264,6 +264,10 @@
             (raise
              (Invalid_argument "context-menu menu-item requires press support")))
           (when (and (= kind proto/MenuItem)
+                     (not (empty? (:retained-children child))))
+            (raise
+             (Invalid_argument "context-menu does not support nested menus")))
+          (when (and (= kind proto/MenuItem)
                      (some
                       (fn [property]
                         (not (or (= property proto/TextValue)

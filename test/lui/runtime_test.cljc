@@ -151,8 +151,10 @@
   (is (proto/can-contain-children? proto/DropdownMenu)
       "dropdown menu retains menu item children")
   (doseq [kind [proto/Select proto/Combobox proto/MenuItem]]
-    (is (not (proto/can-contain-children? kind))
-        "picker triggers and rows are retained leaves"))
+    (is (proto/can-contain-children? kind)
+        "picker leaves may retain ContextMenu metadata")
+    (is (not (proto/child-kind-supported? kind proto/Text))
+        "picker visible content remains property-owned"))
   (is (proto/event-supported? proto/Select (proto/Press 1))
       "select activation opens through on-press")
   (is (proto/event-supported? proto/Combobox (proto/TextChanged 2 "q"))
@@ -757,7 +759,9 @@
         "direct controls accept the accessibility-only label")
     (is (not (proto/property-supported? kind proto/PlaceholderValue))
         "text-entry properties stay off toggle controls")
-    (is (not (proto/can-contain-children? kind))
+    (is (proto/can-contain-children? kind)
+        "direct controls may retain ContextMenu metadata")
+    (is (not (proto/child-kind-supported? kind proto/Text))
         "backend-owned control parts never enter the retained tree")))
 
 (deftest surface-properties-use-closed-wire-names
@@ -1421,7 +1425,21 @@
             (proto/set-prop-op 1 proto/TextValue (proto/StringValue "Host"))
             (proto/set-prop-op 3 proto/TextValue (proto/StringValue "Missing handler"))
             (proto/insert-child-op 1 2 0)
-            (proto/insert-child-op 2 3 0)]]]
+            (proto/insert-child-op 2 3 0)]
+           [(proto/create-node-op 1 proto/Button)
+            (proto/create-node-op 2 proto/ContextMenu)
+            (proto/create-node-op 3 proto/MenuItem)
+            (proto/create-node-op 4 proto/ContextMenu)
+            (proto/create-node-op 5 proto/MenuItem)
+            (proto/set-prop-op 1 proto/TextValue (proto/StringValue "Host"))
+            (proto/set-prop-op 3 proto/TextValue (proto/StringValue "Parent"))
+            (proto/set-prop-op 3 proto/PressEnabled (proto/BoolValue true))
+            (proto/set-prop-op 5 proto/TextValue (proto/StringValue "Nested"))
+            (proto/set-prop-op 5 proto/PressEnabled (proto/BoolValue true))
+            (proto/insert-child-op 1 2 0)
+            (proto/insert-child-op 2 3 0)
+            (proto/insert-child-op 3 4 0)
+            (proto/insert-child-op 4 5 0)]]]
     (let [renderer (apple/create)
           apply-batch (:apply-batch (apple/backend renderer))]
       (is (thrown? Invalid_argument
@@ -1431,6 +1449,56 @@
                             (ops operations)))))
       (assert-equal 0 (apple/node-count renderer)
                     "invalid ContextMenu batches remain atomic"))))
+
+(deftest context-menu-leaf-hosts-accept-only-metadata-children
+  (doseq [kind
+          [proto/Button proto/ToggleButton proto/Toggle proto/Radio
+           proto/Slider proto/TextField proto/Input proto/SearchField
+           proto/Textarea proto/Checkbox proto/SwitchControl proto/Select
+           proto/Combobox proto/MenuItem proto/Text proto/TableCell]]
+    (is (proto/can-contain-children? kind)
+        "interactive leaves can retain direct ContextMenu metadata")
+    (is (proto/child-kind-supported? kind proto/ContextMenu)
+        "interactive leaves accept ContextMenu metadata")
+    (is (not (proto/child-kind-supported? kind proto/Text))
+        "interactive leaves reject visible child nodes"))
+  (let [valid
+        [(proto/create-node-op 1 proto/Button)
+         (proto/create-node-op 2 proto/ContextMenu)
+         (proto/create-node-op 3 proto/MenuItem)
+         (proto/set-prop-op 1 proto/TextValue (proto/StringValue "More"))
+         (proto/set-prop-op 3 proto/TextValue (proto/StringValue "Duplicate"))
+         (proto/set-prop-op 3 proto/PressEnabled (proto/BoolValue true))
+         (proto/insert-child-op 1 2 0)
+         (proto/insert-child-op 2 3 0)]]
+    (let [renderer (apple/create)
+          apply-batch (:apply-batch (apple/backend renderer))]
+      (is (apply-batch
+           (record proto/patch-batch (generation 1) (ops valid))))
+      (assert-equal [2] (apple/children renderer 1)
+                    "Apple retains leaf-host metadata"))
+    (let [renderer (flutter/create)
+          apply-batch (:apply-batch (flutter/backend renderer))]
+      (is (apply-batch
+           (record proto/patch-batch (generation 1) (ops valid))))
+      (assert-equal [2] (flutter/children renderer 1)
+                    "Flutter retains leaf-host metadata")))
+  (let [renderer (apple/create)
+        apply-batch (:apply-batch (apple/backend renderer))]
+    (is (thrown? Invalid_argument
+                 (apply-batch
+                  (record
+                   proto/patch-batch
+                   (generation 1)
+                   (ops [(proto/create-node-op 1 proto/Button)
+                         (proto/create-node-op 2 proto/Text)
+                         (proto/set-prop-op
+                          1 proto/TextValue (proto/StringValue "More"))
+                         (proto/set-prop-op
+                          2 proto/TextValue (proto/StringValue "Visible"))
+                         (proto/insert-child-op 1 2 0)])))))
+    (assert-equal 0 (apple/node-count renderer)
+                  "invalid visible children remain atomic")))
 
 (deftest table-family-has-the-pinned-closed-contract
   (let [batch
@@ -1483,8 +1551,10 @@
       "Table retains rows")
   (is (proto/can-contain-children? proto/TableRow)
       "TableRow retains cells")
-  (is (not (proto/can-contain-children? proto/TableCell))
-      "TableCell is a text leaf")
+  (is (proto/can-contain-children? proto/TableCell)
+      "TableCell may retain ContextMenu metadata")
+  (is (not (proto/child-kind-supported? proto/TableCell proto/Text))
+      "TableCell visible text remains property-owned")
   (is (proto/event-supported? proto/TableCell (proto/Press 3))
       "TableCell dispatches on-press")
   (doseq [alignment ["start" "center" "end"]]
@@ -1673,7 +1743,9 @@
           "Button admits every typed contract property"))
     (is (proto/event-supported? proto/Button (proto/Hold 1))
         "Button admits Hold events")
-    (is (not (proto/can-contain-children? proto/Button))
+    (is (proto/can-contain-children? proto/Button)
+        "Button may retain ContextMenu metadata")
+    (is (not (proto/child-kind-supported? proto/Button proto/Text))
         "Button text remains content rather than a retained child")))
 
 (deftest retained-button-validation-explains-a-missing-accessible-name
@@ -1724,7 +1796,9 @@
                       proto/Enabled proto/AccessibilityLabel]]
       (is (proto/property-supported? proto/ToggleButton property)
           "ToggleButton admits the exact shared control properties"))
-    (is (not (proto/can-contain-children? proto/ToggleButton))
+    (is (proto/can-contain-children? proto/ToggleButton)
+        "ToggleButton may retain ContextMenu metadata")
+    (is (not (proto/child-kind-supported? proto/ToggleButton proto/Text))
         "ToggleButton content is one text run")
     (is (=
          (str
@@ -2092,7 +2166,7 @@
                       (proto/insert-child-op 1 2 0)]))]
     (is (thrown-with-msg?
          Invalid_argument
-         #"cannot contain"
+         #"unsupported child kind"
          ((:apply-batch backend) invalid-batch))
         "backend rejects children on leaf nodes"))
   (let [backend (apple/backend (apple/create))
@@ -2104,7 +2178,7 @@
                       (proto/insert-child-op 1 2 0)]))]
     (is (thrown-with-msg?
          Invalid_argument
-         #"cannot contain"
+         #"unsupported child kind"
          ((:apply-batch backend) invalid-batch))
         "backend keeps native switch implementation parts off-tree")))
 
@@ -2115,7 +2189,7 @@
         child (runtime/create-node! application proto/Text)]
     (is (thrown-with-msg?
          Invalid_argument
-         #"cannot contain"
+         #"unsupported child kind"
          (runtime/insert-child! application label child 0))
         "leaf nodes reject children before a batch reaches the backend"))
   (let [application
@@ -2125,7 +2199,7 @@
         _second-child (runtime/create-node! application proto/Text)]
     (is (thrown-with-msg?
          Invalid_argument
-         #"cannot contain"
+         #"unsupported child kind"
          (runtime/insert-child! application switch-control first-child 0))
         "switch controls are direct retained leaves"))
   (let [application

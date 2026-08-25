@@ -1749,6 +1749,12 @@ final class LUIFlutterBackend {
             'context-menu accepts only menu-item or separator children',
           );
         }
+        if (_isContextMenuLeafHost(parent.kind) &&
+            child.kind != _NodeKind.contextMenu) {
+          throw const LUIBackendException(
+            'interactive leaf accepts only context-menu metadata',
+          );
+        }
         if (parent.kind == _NodeKind.table &&
             child.kind != _NodeKind.tableRow) {
           throw const LUIBackendException('table can contain only table-row');
@@ -2182,6 +2188,11 @@ final class LUIFlutterBackend {
                 'context-menu menu-item requires press support',
               );
             }
+            if (child.children.isNotEmpty) {
+              throw const LUIBackendException(
+                'context-menu does not support nested menus',
+              );
+            }
             const allowed = {'text', 'enabled', 'press-enabled'};
             if (!child.properties.keys.every(allowed.contains)) {
               throw const LUIBackendException(
@@ -2343,7 +2354,30 @@ final class LUIFlutterBackend {
       kind == _NodeKind.tree ||
       kind == _NodeKind.resizable ||
       kind == _NodeKind.split ||
+      _isContextMenuLeafHost(kind) ||
       kind.isModalSurface;
+
+  static bool _isContextMenuLeafHost(_NodeKind kind) {
+    const kinds = {
+      _NodeKind.button,
+      _NodeKind.toggleButton,
+      _NodeKind.toggle,
+      _NodeKind.radio,
+      _NodeKind.slider,
+      _NodeKind.textField,
+      _NodeKind.input,
+      _NodeKind.searchField,
+      _NodeKind.textarea,
+      _NodeKind.checkbox,
+      _NodeKind.switchControl,
+      _NodeKind.select,
+      _NodeKind.combobox,
+      _NodeKind.menuItem,
+      _NodeKind.text,
+      _NodeKind.tableCell,
+    };
+    return kinds.contains(kind);
+  }
 
   static bool _isContextMenuHost(_NodeState state) {
     const inherent = {

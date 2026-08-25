@@ -130,9 +130,11 @@
     (when (not (proto/child-kind-supported? parent-kind child-kind))
       (raise
        (Invalid_argument
-        (if (= parent-kind proto/Table)
-          "table can contain only table-row"
-          "table-row can contain only table-cell"))))
+        (cond
+          (= parent-kind proto/Table) "table can contain only table-row"
+          (= parent-kind proto/TableRow)
+          "table-row can contain only table-cell"
+          :else "unsupported child kind"))))
     (when (contains? (deref (:runtime-parents application)) child)
       (raise (Invalid_argument "child is already attached")))
     (when (or (< index 0) (> index (count children)))

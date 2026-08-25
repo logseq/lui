@@ -28,7 +28,7 @@
                           (conj result (first remaining))
                           result)))))
 
-(macro-helper-defn visible-list-item-children [children]
+(macro-helper-defn visible-children [children]
                    (loop [remaining children
                           result []]
                      (if (empty? remaining)
@@ -152,10 +152,22 @@
 (defmacro element [context parent form]
   (let [tag (first form)
         attrs (element-attrs form)
-        children (element-children form)]
+        children (element-children form)
+        metadata-children (context-menu-children children)
+        visible-children (visible-children children)]
     (if (keyword? tag)
-      `(~(element-expander-symbol tag)
-        ~context ~parent ~attrs ~@children)
+      (if (empty? metadata-children)
+        `(~(element-expander-symbol tag)
+          ~context ~parent ~attrs ~@children)
+        (let [node (gensym "metadata_host")]
+          `(let [~node
+                 (~(element-expander-symbol tag)
+                  ~context ~parent ~attrs ~@visible-children)]
+             ~@(map
+                (fn [child]
+                  `(lui.elements/element ~context ~node ~child))
+                metadata-children)
+             ~node)))
       (let [component-context (gensym "component_context")
             node (gensym "component_node")]
         `(let [~component-context
@@ -1181,7 +1193,7 @@
         metadata-children
         (context-menu-children children)
         visible-children
-        (visible-list-item-children children)
+        (visible-children children)
         literal-text
         (if (and (= (count visible-children) 1)
                  (string? (first visible-children)))

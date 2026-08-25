@@ -2587,7 +2587,7 @@ void main() {
     final backend = LUIFlutterBackend(onEvent: events.add)
       ..applyJson('''
       {"generation":1,"ops":[
-        {"op":"create-node","id":1,"kind":"list-item"},
+        {"op":"create-node","id":1,"kind":"button"},
         {"op":"create-node","id":2,"kind":"context-menu"},
         {"op":"create-node","id":3,"kind":"menu-item"},
         {"op":"create-node","id":4,"kind":"divider"},
@@ -2624,6 +2624,20 @@ void main() {
     await tester.tap(find.text('Rename'));
     await tester.pumpAndSettle();
     expect(events, const [LUIEvent.press(node: 3)]);
+    expect(
+      () => backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"create-node","id":6,"kind":"context-menu"},
+        {"op":"create-node","id":7,"kind":"menu-item"},
+        {"op":"set-prop","id":7,"property":"text","value":"Nested"},
+        {"op":"set-prop","id":7,"property":"press-enabled","value":true},
+        {"op":"insert-child","parent":3,"child":6,"index":0},
+        {"op":"insert-child","parent":6,"child":7,"index":0}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 1);
   });
 }
 

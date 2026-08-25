@@ -35,6 +35,14 @@
    (= kind Select) (= kind Combobox) (= kind MenuItem) (= kind ListItem)
    (= kind Accordion) (= kind Text) (= kind TableCell)))
 
+(defn context-menu-leaf-host-kind? [kind]
+  (or
+   (= kind Button) (= kind ToggleButton) (= kind Toggle) (= kind Radio)
+   (= kind Slider) (= kind TextField) (= kind Input) (= kind SearchField)
+   (= kind Textarea) (= kind Checkbox) (= kind SwitchControl)
+   (= kind Select) (= kind Combobox) (= kind MenuItem) (= kind Text)
+   (= kind TableCell)))
+
 (defn event-supported? [kind event]
   (match event
     (Press _node)
@@ -582,7 +590,9 @@
      true)))
 
 (defn can-contain-children? [kind]
-  (if (horizontal-container? kind)
+  (if (or
+       (horizontal-container? kind)
+       (context-menu-leaf-host-kind? kind))
     true
     (match kind
       Row true
@@ -610,13 +620,15 @@
       _ false)))
 
 (defn child-kind-supported? [parent-kind child-kind]
-  (match parent-kind
-    Table (= child-kind TableRow)
-    TableRow (= child-kind TableCell)
-    Tree (tree-row-kind? child-kind)
-    DropdownMenu (or (= child-kind MenuItem) (= child-kind Divider))
-    ContextMenu (or (= child-kind MenuItem) (= child-kind Divider))
-    _ true))
+  (if (context-menu-leaf-host-kind? parent-kind)
+    (= child-kind ContextMenu)
+    (match parent-kind
+      Table (= child-kind TableRow)
+      TableRow (= child-kind TableCell)
+      Tree (tree-row-kind? child-kind)
+      DropdownMenu (or (= child-kind MenuItem) (= child-kind Divider))
+      ContextMenu (or (= child-kind MenuItem) (= child-kind Divider))
+      _ true)))
 
 (defn create-node-op [node kind]
   (CreateNode node kind))

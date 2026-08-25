@@ -1090,6 +1090,34 @@
       (Stdlib.ignore (reset! (:web-open-context-menu renderer) None)))
     None (Stdlib.ignore true)))
 
+(defn- context-menu-focus-items [renderer menu]
+  (if-some [current (retained/node (:web-store renderer) menu)]
+    (filterv
+     (fn [child]
+       (if-some [child-node (retained/node (:web-store renderer) child)]
+         (and
+          (= (:semantic-kind child-node) MenuItem)
+          (enabled-node? renderer child))
+         false))
+     (:retained-children current))
+    []))
+
+(defn- focus-context-menu-item! [renderer menu index]
+  (let [items (context-menu-focus-items renderer menu)]
+    (when (not (empty? items))
+      (Webapi.Dom.HtmlElement.focus
+       (Webapi.Dom.Element.unsafeAsHtmlElement
+        (dom-node renderer (nth items index)))))))
+
+(defn- focus-context-menu-host! [renderer menu]
+  (if-some [current (retained/node (:web-store renderer) menu)]
+    (match (:retained-parent current)
+      (Some host)
+      (Webapi.Dom.HtmlElement.focus
+       (Webapi.Dom.Element.unsafeAsHtmlElement (dom-node renderer host)))
+      None (Stdlib.ignore true))
+    (Stdlib.ignore true)))
+
 (defn- set-context-position! [dom-node property value]
   (Webapi.Dom.CssStyleDeclaration.setProperty
    property value ""
@@ -1111,8 +1139,11 @@
       (set-context-position! menu-node "left" (str left "px"))
       (set-context-position! menu-node "top" (str top "px")))
     (reset! (:web-open-context-menu renderer) (Some menu))
-    (Webapi.Dom.HtmlElement.focus
-     (Webapi.Dom.Element.unsafeAsHtmlElement menu-node)))
+    (let [items (context-menu-focus-items renderer menu)]
+      (if (empty? items)
+        (Webapi.Dom.HtmlElement.focus
+         (Webapi.Dom.Element.unsafeAsHtmlElement menu-node))
+        (focus-context-menu-item! renderer menu 0))))
   true)
 
 (defn- attach-context-host-events! [renderer node host-node]
@@ -1170,8 +1201,7 @@
                   (Webapi.Dom.Element.setAttribute
                    "data-open" "" menu-node)
                   (reset! (:web-open-context-menu renderer) (Some menu))
-                  (Webapi.Dom.HtmlElement.focus
-                   (Webapi.Dom.Element.unsafeAsHtmlElement menu-node)))
+                  (focus-context-menu-item! renderer menu 0))
                 (Stdlib.ignore true)))))
            (Stdlib.ignore true))
          None (Stdlib.ignore true)))
@@ -1227,9 +1257,50 @@
           (Stdlib.ignore true))
         key-handler
         (fn [event]
-          (when (= "Escape" (Webapi.Dom.KeyboardEvent.key event))
-            (Webapi.Dom.KeyboardEvent.preventDefault event)
-            (hide-context-menu! renderer))
+          (let [key (Webapi.Dom.KeyboardEvent.key event)]
+            (if (= "Escape" key)
+              (do
+                (Webapi.Dom.KeyboardEvent.preventDefault event)
+                (hide-context-menu! renderer)
+                (focus-context-menu-host! renderer node))
+              (when
+               (or
+                (= key "ArrowDown") (= key "ArrowUp")
+                (= key "Home") (= key "End"))
+                (let [items (context-menu-focus-items renderer node)
+                      html-document
+                      (Webapi.Dom.Document.unsafeAsHtmlDocument document)
+                      current
+                      (if-some
+                       [focused
+                        (Webapi.Dom.HtmlDocument.activeElement html-document)]
+                        (focused-child-index renderer items focused 0)
+                        None)
+                      navigation-key
+                      (if (= key "ArrowDown")
+                        "ArrowRight"
+                        (if (= key "ArrowUp") "ArrowLeft" key))]
+                  (match
+                   (horizontal-focus-index
+                    navigation-key current (count items))
+                    (Some index)
+                    (do
+                      (Webapi.Dom.KeyboardEvent.preventDefault event)
+                      (focus-context-menu-item! renderer node index))
+                    None (Stdlib.ignore true))))))
+          (Stdlib.ignore true))
+        focus-handler
+        (fn [event]
+          (let [target
+                (Webapi.Dom.EventTarget.unsafeAsElement
+                 (Webapi.Dom.Event.target event))]
+            (when
+             (and
+              (= (deref (:web-open-context-menu renderer)) (Some node))
+              (not
+               (Webapi.Dom.Element.contains
+                (Webapi.Dom.Element.asNode target) dom-node)))
+              (hide-context-menu! renderer)))
           (Stdlib.ignore true))
         click-handler
         (fn [_event]
@@ -1238,6 +1309,7 @@
     (Webapi.Dom.Document.addEventListener
      "pointerdown" pointer-handler document)
     (Webapi.Dom.Document.addKeyDownEventListener key-handler document)
+    (Webapi.Dom.Document.addEventListener "focusin" focus-handler document)
     (Webapi.Dom.Element.addEventListener "click" click-handler dom-node)
     (Stdlib.ignore
      (swap!
@@ -1246,6 +1318,8 @@
         (Webapi.Dom.Document.removeEventListener
          "pointerdown" pointer-handler document)
         (Webapi.Dom.Document.removeKeyDownEventListener key-handler document)
+        (Webapi.Dom.Document.removeEventListener
+         "focusin" focus-handler document)
         (Webapi.Dom.Element.removeEventListener "click" click-handler dom-node)
         (when (= (deref (:web-open-context-menu renderer)) (Some node))
           (reset! (:web-open-context-menu renderer) None))

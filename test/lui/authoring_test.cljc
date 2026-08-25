@@ -229,6 +229,12 @@
     [:separator]
     [:menu-item {:disabled archive-disabled :on-press on-archive} "Archive"]]])
 
+(defui retained-leaf-context-menus [on-action]
+  [:button {:on-press on-action}
+   "More"
+   [:context-menu
+    [:menu-item {:on-press on-action} "Duplicate"]]])
+
 (defui retained-avatars [image-id]
   [:row {:gap 12}
    [:avatar
@@ -1077,6 +1083,29 @@
        (Some (proto/BoolValue false))
        (apple/property renderer archive proto/Enabled)
        "the Signal patches only the retained menu item"))))
+
+(deftest context-menu-attaches-to-retained-leaf-hosts
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "leaf-context-menus")
+        callback (fn [_event] true)
+        root
+        (retained-leaf-context-menus
+         (ui/context application scope) callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [button-menu (nth (apple/children renderer root) 0)]
+      (assert-equal
+       (Some (proto/StringValue "More"))
+       (apple/property renderer root proto/TextValue)
+       "Button text remains its visible content")
+      (match (apple/node renderer button-menu)
+        (Some AppleContextMenu)
+        (is true "leaf hosts retain ContextMenu as metadata")
+        _ (is false "leaf host ContextMenu mapping exists"))
+      (assert-equal 3 (apple/node-count renderer)
+                    "metadata adds no visible wrapper nodes"))))
 
 (deftest avatar-binds-a-model-owned-image-id-without-replacing-its-node
   (let [scheduler (sig/scheduler)

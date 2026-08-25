@@ -1804,7 +1804,7 @@ struct LUISwiftUIBackendTests {
         backend.onEvent = { events.append($0) }
         try backend.apply(json: """
         {"generation":1,"ops":[
-          {"op":"create-node","id":1,"kind":"list-item"},
+          {"op":"create-node","id":1,"kind":"button"},
           {"op":"create-node","id":2,"kind":"context-menu"},
           {"op":"create-node","id":3,"kind":"menu-item"},
           {"op":"create-node","id":4,"kind":"divider"},
@@ -1824,6 +1824,7 @@ struct LUISwiftUIBackendTests {
 
         let host = try #require(backend.model(id: 1))
         let menu = try #require(backend.model(id: 2))
+        #expect(host.kind == .button)
         #expect(menu.kind == .contextMenu)
         #expect(host.children == [2])
         #expect(menu.children == [3, 4, 5])
@@ -1833,6 +1834,19 @@ struct LUISwiftUIBackendTests {
         #expect(throws: LUIBackendError.self) {
             try backend.performPress(node: 5)
         }
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"create-node","id":6,"kind":"context-menu"},
+              {"op":"create-node","id":7,"kind":"menu-item"},
+              {"op":"set-prop","id":7,"property":"text","value":"Nested"},
+              {"op":"set-prop","id":7,"property":"press-enabled","value":true},
+              {"op":"insert-child","parent":3,"child":6,"index":0},
+              {"op":"insert-child","parent":6,"child":7,"index":0}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 1)
     }
 
     @Test("C ABI forwards SwiftUI backend events")
