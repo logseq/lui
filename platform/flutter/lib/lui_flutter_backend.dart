@@ -2431,6 +2431,15 @@ final class LUIFlutterBackend {
           );
         }
         node.properties[property] = value!;
+      case 'remove-prop':
+        final node = _requireState(states, _integer(operation['id'], 'id'));
+        final property = _string(operation['property'], 'property');
+        if (!node.properties.containsKey(property)) {
+          throw LUIBackendException(
+            'unsupported property: ${node.kind.name}.$property',
+          );
+        }
+        node.properties.remove(property);
       case 'set-extension-prop':
         final node = _requireExtensionStateFrom(
           extensions,
@@ -3015,9 +3024,7 @@ final class LUIFlutterBackend {
     for (final state in states.values) {
       if (state.kind == _NodeKind.root) {
         if (state.parent != null) {
-          throw const LUIBackendException(
-            'runtime root cannot have a parent',
-          );
+          throw const LUIBackendException('runtime root cannot have a parent');
         }
         if (state.children.length != 1) {
           throw const LUIBackendException(

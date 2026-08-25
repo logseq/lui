@@ -4,9 +4,18 @@
   (ui-application :application)
   (ui-scheduler :scheduler)
   (ui-scope :scope)
+  (ui-state-scope :scope)
+  (ui-state-scopes :ref<map<string;scope>>)
+  (ui-state-path :string)
   (ui-profile :platform-profile))
 
 (signature lui.ui/context :fn<application;scope;ui-context>)
+(signature lui.ui/make-context
+  :fn<application;scope;scope;ref<map<string;scope>>;string;ui-context>)
+(signature lui.ui/context-with-state-scope
+  :fn<application;scope;scope;ui-context>)
+(signature lui.ui/context-with-state-registry
+  :fn<application;scope;scope;ref<map<string;scope>>;ui-context>)
 (signature lui.ui/child-context :fn<ui-context;string;ui-context>)
 (signature lui.ui/profile :fn<ui-context;platform-profile>)
 (signature lui.ui/platform :fn<ui-context;operating-system>)

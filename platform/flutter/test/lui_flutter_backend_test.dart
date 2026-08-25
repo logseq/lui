@@ -7,6 +7,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lui_flutter_backend/lui_flutter_backend.dart';
 
 void main() {
+  test('removes a retained property without replacing its node', () {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"set-prop","id":1,"property":"padding","value":24}
+      ]}
+      ''');
+
+    backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"remove-prop","id":1,"property":"padding"}
+      ]}
+      ''');
+
+    expect(backend.generation, 2);
+    expect(backend.containsNode(1), isTrue);
+  });
+
   testWidgets('keeps one transparent runtime root while replacing its child', (
     tester,
   ) async {
@@ -968,10 +987,7 @@ void main() {
       matching: find.text('Production'),
     );
     expect(
-      tester
-          .getSemantics(selectedMenuLabel)
-          .flagsCollection
-          .isSelected,
+      tester.getSemantics(selectedMenuLabel).flagsCollection.isSelected,
       ui.Tristate.isTrue,
     );
     expect(

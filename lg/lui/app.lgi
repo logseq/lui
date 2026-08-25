@@ -8,6 +8,8 @@
 (type-record reloadable-view-state [model action]
   (reload-model-source :signal<model>)
   (reload-view-scope :ref<scope>)
+  (reload-state-scope :scope)
+  (reload-state-scopes :ref<map<string;scope>>)
   (reload-view-node :ref<int>)
   (reload-session
    :hot-reload-session<fn<ui-context;signal<model>;fn<action;bool>;int>>))

@@ -13,7 +13,7 @@
           slot-label (str component-name ":" slot-name)]
       [`(signal.core/state-at
          (:ui-scheduler ~'ui-context)
-         (:ui-scope ~'ui-context)
+         (:ui-state-scope ~'ui-context)
          ~slot-name
        ~(second form))
        [[slot-name slot-label]]

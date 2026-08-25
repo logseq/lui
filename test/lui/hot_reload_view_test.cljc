@@ -3,6 +3,7 @@
             [signal.core :as sig]
             [lui.app :as app]
             [lui.hot-reload :as hot]
+            [lui.macros :refer [defui state]]
             [lui.protocol :as proto]
             [lui.runtime :as runtime]
             [lui.ui :as ui]
@@ -37,6 +38,69 @@
 
 (defn invalid-counter-view [context _model-source _send]
   (runtime/create-node! (:ui-application context) proto/Root))
+
+(defui local-count-state []
+  (state 0))
+
+(defn stateful-view [context prefix]
+  (let [local-count (local-count-state context)
+        root (ui/column! context)
+        label
+        (ui/text-signal!
+         context
+         (sig/own-signal!
+          (:ui-scope context)
+          (sig/map
+           (fn [^:int value] (str prefix value))
+           (sig/value local-count))))
+        button (ui/button! context)]
+    (ui/text-property! context button "Local increment")
+    (ui/on-event!
+     context button
+     (fn [_event]
+       (sig/update! local-count (fn [^:int value] (inc value)))))
+    (ui/append! context root label)
+    (ui/append! context root button)
+    root))
+
+(defn initial-stateful-view [context _model-source _send]
+  (stateful-view
+   (ui/child-context context "local-counter") "Before local "))
+
+(defn replacement-stateful-view [context _model-source _send]
+  (stateful-view
+   (ui/child-context context "local-counter") "After local "))
+
+(defn decorated-view [context _model-source _send]
+  (let [root (ui/column! context)
+        label (ui/text! context "Decorated")]
+    (ui/padding! context root 24)
+    (ui/append! context root label)
+    root))
+
+(defn plain-view [context _model-source _send]
+  (let [root (ui/column! context)
+        label (ui/text! context "Plain")]
+    (ui/append! context root label)
+    root))
+
+(defn text-field-view [context _model-source _send]
+  (let [root (ui/column! context)
+        stable-label (ui/text! context "Stable")
+        editor (ui/text-field! context)]
+    (ui/accessibility-label! context editor "Draft")
+    (ui/append! context root stable-label)
+    (ui/append! context root editor)
+    root))
+
+(defn textarea-view [context _model-source _send]
+  (let [root (ui/column! context)
+        stable-label (ui/text! context "Stable after")
+        editor (ui/textarea! context)]
+    (ui/accessibility-label! context editor "Draft")
+    (ui/append! context root stable-label)
+    (ui/append! context root editor)
+    root))
 
 (defn add-action [model action]
   (+ model action))
@@ -131,16 +195,17 @@
               (nth (apple/children renderer replacement-view) 0)
               replacement-button
               (nth (apple/children renderer replacement-view) 1)]
-          (is (not (= initial-view replacement-view))
-              "the candidate subtree replaces the old subtree")
+          (assert-equal initial-view replacement-view
+                        "matching root containers retain native identity")
+          (assert-equal initial-label replacement-label
+                        "matching child nodes retain native identity")
+          (assert-equal initial-button replacement-button
+                        "matching controls retain focus-bearing identity")
           (match (apple/property renderer replacement-label proto/TextValue)
             (Some (proto/StringValue text))
             (assert-equal "After 3" text
                           "the replacement renders the preserved model")
             _ (is false "the replacement label has text"))
-          (match (apple/node renderer initial-label)
-            None (is true "the previous subtree is released")
-            _ (is false "the previous subtree must not remain"))
           (app/dispatch-event! application (proto/Press replacement-button))
           (app/flush! application)
           (assert-equal 13 (app/model application)
@@ -237,3 +302,94 @@
           (assert-equal 1 (runtime/handler-count (app/runtime application))
                         "only the current generation handler remains")
           (recur (inc index)))))))
+
+(deftest reload-reuses-compatible-positions-and-replaces-only-kind-changes
+  (let [renderer (apple/create)
+        application
+        (app/create-reloadable
+         (apple/backend renderer) "source-a" "contract-a"
+         0 add-action text-field-view)]
+    (app/start! application)
+    (app/flush! application)
+    (let [stable-root (app/root-node application)
+          layout (nth (apple/children renderer stable-root) 0)
+          label (nth (apple/children renderer layout) 0)
+          text-field (nth (apple/children renderer layout) 1)
+          request (app/request-reload! application)]
+      (assert-equal
+       (hot/ReloadApplied request)
+       (app/reload-view!
+        application request "source-b" "contract-a" textarea-view 2)
+       "the mixed compatible candidate is applied")
+      (let [next-layout (nth (apple/children renderer stable-root) 0)
+            next-label (nth (apple/children renderer next-layout) 0)
+            textarea (nth (apple/children renderer next-layout) 1)]
+        (assert-equal layout next-layout
+                      "the compatible parent retains identity")
+        (assert-equal label next-label
+                      "the compatible sibling retains identity")
+        (is (not (= text-field textarea))
+            "an incompatible control kind receives a new identity")
+        (assert-equal (Some apple/AppleTextArea) (apple/node renderer textarea)
+                      "the replacement control has the candidate kind")))))
+
+(deftest reload-removes-properties-that-disappear-from-the-candidate
+  (let [renderer (apple/create)
+        application
+        (app/create-reloadable
+         (apple/backend renderer) "source-a" "contract-a"
+         0 add-action decorated-view)]
+    (app/start! application)
+    (app/flush! application)
+    (let [stable-root (app/root-node application)
+          layout (nth (apple/children renderer stable-root) 0)
+          request (app/request-reload! application)]
+      (assert-equal (Some (proto/IntValue 24))
+                    (apple/property renderer layout proto/PaddingValue)
+                    "the committed view starts with padding")
+      (assert-equal
+       (hot/ReloadApplied request)
+       (app/reload-view!
+        application request "source-b" "contract-a" plain-view 2)
+       "the property-removal candidate is applied")
+      (assert-equal layout (nth (apple/children renderer stable-root) 0)
+                    "property removal does not replace the layout node")
+      (assert-equal None (apple/property renderer layout proto/PaddingValue)
+                    "properties absent from the candidate are removed"))))
+
+(deftest reload-preserves-view-local-state-at-a-compatible-component-slot
+  (let [renderer (apple/create)
+        application
+        (app/create-reloadable
+         (apple/backend renderer) "source-a" "contract-a"
+         0 add-action initial-stateful-view)]
+    (app/start! application)
+    (app/flush! application)
+    (let [stable-root (app/root-node application)
+          layout (nth (apple/children renderer stable-root) 0)
+          label (nth (apple/children renderer layout) 0)
+          button (nth (apple/children renderer layout) 1)]
+      (app/dispatch-event! application (proto/Press button))
+      (app/flush! application)
+      (match (apple/property renderer label proto/TextValue)
+        (Some (proto/StringValue text))
+        (assert-equal "Before local 1" text "local state updates before reload")
+        _ (is false "the local-state label has text"))
+      (let [request (app/request-reload! application)]
+        (assert-equal
+         (hot/ReloadApplied request)
+         (app/reload-view!
+          application request "source-b" "contract-a"
+          replacement-stateful-view 2)
+         "the stateful candidate is applied")
+        (let [next-layout (nth (apple/children renderer stable-root) 0)
+              next-label (nth (apple/children renderer next-layout) 0)]
+          (assert-equal layout next-layout
+                        "the stateful component root retains identity")
+          (assert-equal label next-label
+                        "the stateful label retains identity")
+          (match (apple/property renderer next-label proto/TextValue)
+            (Some (proto/StringValue text))
+            (assert-equal "After local 1" text
+                          "the compatible state slot retains its value")
+            _ (is false "the reloaded local-state label has text")))))))

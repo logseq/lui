@@ -3,7 +3,7 @@
             [lui.wire-schema :as schema]
             [lui.protocol
              :refer [StringValue BoolValue IntValue FloatValue
-                     CreateNode DropNode SetProp InsertChild RemoveChild
+                     CreateNode DropNode SetProp RemoveProp InsertChild RemoveChild
                      MoveChild CreateExtension SetExtensionProp
                      RemoveExtensionProp]]))
 
@@ -48,6 +48,9 @@
     (str "{\"op\":\"set-prop\",\"id\":" node
          ",\"property\":" (quoted (schema/property-name property))
          ",\"value\":" (encode-value value) "}")
+    (RemoveProp node property)
+    (str "{\"op\":\"remove-prop\",\"id\":" node
+         ",\"property\":" (quoted (schema/property-name property)) "}")
     (SetExtensionProp node property value)
     (str "{\"op\":\"set-extension-prop\",\"id\":" node
          ",\"property\":" (quoted property)

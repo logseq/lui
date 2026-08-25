@@ -748,6 +748,9 @@
 (defn set-prop-op [node property value]
   (SetProp node property value))
 
+(defn remove-prop-op [node property]
+  (RemoveProp node property))
+
 (defn set-extension-prop-op [node property value]
   (SetExtensionProp node property value))
 

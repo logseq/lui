@@ -55,6 +55,8 @@
         application (gensym "application")
         scope (gensym "scope")
         view-scope (gensym "view_scope")
+        state-scope (gensym "state_scope")
+        state-scopes (gensym "state_scopes")
         context (gensym "context")
         model-state (gensym "model_state")
         lifecycle (gensym "lifecycle")
@@ -70,7 +72,11 @@
               `(lui.runtime/create ~scheduler ~backend))
            ~scope (signal.core/scope "app")
            ~view-scope (signal.core/scope "app-view-0" ~scope)
-           ~context (lui.ui/context ~application ~view-scope)
+           ~state-scope (signal.core/scope "app-view-state" ~scope)
+           ~state-scopes (atom (hash-map))
+           ~context
+           (lui.ui/context-with-state-registry
+            ~application ~view-scope ~state-scope ~state-scopes)
            ~model-state (signal.core/state ~scheduler ~initial-model)
            ~lifecycle (atom lui.app/Running)
            ~send-action
@@ -96,6 +102,8 @@
            (record lui.app/reloadable-view-state
              (reload-model-source (signal.core/value ~model-state))
              (reload-view-scope (atom ~view-scope))
+             (reload-state-scope ~state-scope)
+             (reload-state-scopes ~state-scopes)
              (reload-view-node (atom ~view-node))
              (reload-session ~session))))))))
 
@@ -121,7 +129,10 @@
     (do
       (sig/mount! (:app-scope app))
       (match (:app-reload-state app)
-        (Some state) (sig/mount! (deref (:reload-view-scope state)))
+        (Some state)
+        (do
+          (sig/mount! (:reload-state-scope state))
+          (sig/mount! (deref (:reload-view-scope state))))
         None true))
     false))
 
@@ -203,14 +214,19 @@
               candidate-node (atom None)
               failure
               (try
-                (let [context (ui/context application candidate-scope)
+                (let [context
+                      (ui/context-with-state-registry
+                       application candidate-scope
+                       (:reload-state-scope state)
+                       (:reload-state-scopes state))
                       node
                       (view context (:reload-model-source state)
                             (:app-send-action app))]
-                  (reset! candidate-node (Some node))
-                  (runtime/remove-child! application (:app-root-node app) old-view)
-                  (runtime/insert-child! application (:app-root-node app) node 0)
-                  (runtime/drop-subtree! application old-view)
+                  (reset!
+                   candidate-node
+                   (Some
+                    (runtime/reconcile-subtree!
+                     application saved (:app-root-node app) old-view node)))
                   (runtime/flush! application)
                   None)
                 (catch (Invalid_argument message)

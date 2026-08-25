@@ -1,6 +1,6 @@
 (ns lui.backend.retained
   (:require [lui.protocol :as proto
-             :refer [CreateNode DropNode SetProp InsertChild RemoveChild
+             :refer [CreateNode DropNode SetProp RemoveProp InsertChild RemoveChild
                      MoveChild CreateExtension SetExtensionProp
                      RemoveExtensionProp Radio RadioGroup StringValue]]
             [lui.extension :as ext]))
@@ -221,6 +221,20 @@
            (:retained-extension-properties current)
            (:retained-children current))
           (raise (Invalid_argument "unsupported property value")))
+        None (raise (Invalid_argument "standard property targets extension")))
+      (raise (Invalid_argument "unknown node")))
+
+    (RemoveProp node property)
+    (if-some [current (clojure.core/get nodes node)]
+      (match (standard-kind current)
+        (Some kind)
+        (if (proto/property-supported? kind property)
+          (update-node
+           nodes node current
+           (dissoc (:retained-properties current) property)
+           (:retained-extension-properties current)
+           (:retained-children current))
+          (raise (Invalid_argument "unsupported property")))
         None (raise (Invalid_argument "standard property targets extension")))
       (raise (Invalid_argument "unknown node")))
 

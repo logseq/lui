@@ -32,6 +32,7 @@ enum LUIPatchOperation: Decodable {
     case createExtension(id: Int, identifier: String, fingerprint: String)
     case dropNode(id: Int)
     case setProp(id: Int, property: LUIProperty, value: LUIWireValue)
+    case removeProp(id: Int, property: LUIProperty)
     case setExtensionProp(id: Int, property: String, value: LUIWireValue)
     case removeExtensionProp(id: Int, property: String)
     case insertChild(parent: Int, child: Int, index: Int)
@@ -63,6 +64,11 @@ enum LUIPatchOperation: Decodable {
                 id: try values.decode(Int.self, forKey: .id),
                 property: try values.decode(LUIProperty.self, forKey: .property),
                 value: try values.decode(LUIWireValue.self, forKey: .value)
+            )
+        case "remove-prop":
+            self = .removeProp(
+                id: try values.decode(Int.self, forKey: .id),
+                property: try values.decode(LUIProperty.self, forKey: .property)
             )
         case "set-extension-prop":
             self = .setExtensionProp(
@@ -309,6 +315,13 @@ struct LUIRetainedTree {
                 throw invalid("unsupported property value")
             }
             node.properties[property] = normalizedValue
+            nodes[id] = node
+        case let .removeProp(id, property):
+            guard var node = nodes[id] else { throw invalid("unknown node") }
+            guard Self.supports(property, on: node.kind) else {
+                throw invalid("unsupported property")
+            }
+            node.properties[property] = nil
             nodes[id] = node
         case let .setExtensionProp(id, property, value):
             guard var node = extensionNodes[id] else { throw invalid("unknown extension node") }

@@ -114,6 +114,27 @@ struct LUISwiftUIBackendTests {
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
     }
 
+    @Test("removes a property without replacing the retained model")
+    func removesPropertyInPlace() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"set-prop","id":1,"property":"padding","value":24}
+        ]}
+        """)
+        let model = try #require(backend.model(id: 1))
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"remove-prop","id":1,"property":"padding"}
+        ]}
+        """)
+
+        #expect(backend.model(id: 1) === model)
+        #expect(model.property(.padding) == nil)
+    }
+
     @Test("rejects a runtime root with more than one child")
     func rejectsMultipleRuntimeRootChildren() throws {
         let backend = LUIAppleBackend()

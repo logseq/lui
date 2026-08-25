@@ -30,6 +30,16 @@
      (wire/encode-batch batch)
      "LG emits the native host wire format without dynamic values")))
 
+(deftest property-removal-uses-a-closed-wire-operation
+  (let [batch
+        (record proto/patch-batch
+          (generation 2)
+          (ops [(proto/remove-prop-op 7 proto/PaddingValue)]))]
+    (assert-equal
+     "{\"generation\":2,\"ops\":[{\"op\":\"remove-prop\",\"id\":7,\"property\":\"padding\"}]}"
+     (wire/encode-batch batch)
+     "hot reconciliation can remove a property without replacing its node")))
+
 (deftest semantic-content-patch-uses-closed-wire-names
   (let [batch
         (record proto/patch-batch

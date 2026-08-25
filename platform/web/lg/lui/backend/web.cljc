@@ -16,7 +16,7 @@
                      Spacer Spinner Icon
                      Progress Divider
                      Toggle RadioGroup Radio Slider
-                     CreateNode CreateExtension DropNode SetProp
+                     CreateNode CreateExtension DropNode SetProp RemoveProp
                      SetExtensionProp RemoveExtensionProp
                      InsertChild RemoveChild MoveChild
                      TextValue Enabled Gap MainAlignment
@@ -4769,6 +4769,52 @@
            (Webapi.Dom.Element.asNode positioner) parent)))
        true))))
 
+(defn- remove-property! [renderer node property]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (let [kind (standard-kind current)
+          dom-node (:platform-node current)]
+      (match property
+        TextValue (apply-text-value! renderer node kind dom-node "")
+        Enabled
+        (apply-property!
+         renderer node kind dom-node Enabled (BoolValue true))
+        Gap (set-style! dom-node "gap" "")
+        MainAlignment (set-style! dom-node "justify-content" "")
+        CrossAlignment (set-style! dom-node "align-items" "")
+        GrowValue (set-style! dom-node "flex-grow" "")
+        GridColumns
+        (do
+          (set-style! dom-node "grid-auto-flow" "")
+          (set-style! dom-node "grid-auto-columns" "")
+          (set-style! dom-node "grid-template-columns" ""))
+        PaddingValue (set-style! dom-node "padding" "")
+        PaddingHorizontal (set-style! dom-node "padding-inline" "")
+        PaddingVertical (set-style! dom-node "padding-block" "")
+        BackgroundValue (set-style! dom-node "background" "")
+        ForegroundValue (set-style! dom-node "color" "")
+        BorderColorValue (set-style! dom-node "border-color" "")
+        BorderWidth
+        (do
+          (set-style! dom-node "border-style" "")
+          (set-style! dom-node "border-width" ""))
+        CornerRadius (set-style! dom-node "border-radius" "")
+        WidthValue (set-style! dom-node "width" "")
+        HeightValue (set-style! dom-node "height" "")
+        MinWidth (set-style! dom-node "min-width" "")
+        MaxWidth (set-style! dom-node "max-width" "")
+        MinHeight (set-style! dom-node "min-height" "")
+        MaxHeight (set-style! dom-node "max-height" "")
+        PlaceholderValue
+        (Webapi.Dom.HtmlInputElement.setPlaceholder
+         (text-control-node dom-node) "")
+        AccessibilityLabel
+        (Webapi.Dom.Element.removeAttribute
+         "aria-label"
+         (if (direct-toggle? kind) (child-element dom-node 0) dom-node))
+        StyleClass (refresh-node-class! renderer node kind dom-node)
+        _ (Stdlib.ignore true)))
+    (raise (Invalid_argument "unknown DOM node"))))
+
 (defn- apply-dom-op! [renderer previous-nodes operation]
   (match operation
     (CreateNode node kind)
@@ -4796,6 +4842,9 @@
           (when (= property MinWidth) (update-split! renderer parent))
           None (Stdlib.ignore true)))
       (raise (Invalid_argument "unknown DOM node")))
+
+    (RemoveProp node property)
+    (remove-property! renderer node property)
 
     (SetExtensionProp node property value)
     (apply-extension-property! renderer node property value)

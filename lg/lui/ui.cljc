@@ -3,17 +3,39 @@
             [lui.protocol :as proto]
             [lui.runtime :as runtime]))
 
-(defn context [application scope]
+(defn- make-context
+  [application scope state-scope state-scopes state-path]
   (record ui-context
     (ui-application application)
     (ui-scheduler (:runtime-scheduler application))
     (ui-scope scope)
+    (ui-state-scope state-scope)
+    (ui-state-scopes state-scopes)
+    (ui-state-path state-path)
     (ui-profile (:backend-profile (:runtime-backend application)))))
 
+(defn context [application scope]
+  (make-context application scope scope (atom (hash-map)) ""))
+
+(defn context-with-state-scope [application scope state-scope]
+  (make-context application scope state-scope (atom (hash-map)) ""))
+
+(defn context-with-state-registry
+  [application scope state-scope state-scopes]
+  (make-context application scope state-scope state-scopes ""))
+
 (defn child-context [parent name]
-  (context
-   (:ui-application parent)
-   (sig/scope name (:ui-scope parent))))
+  (let [scope (sig/scope name (:ui-scope parent))
+        path (str (:ui-state-path parent) "/" name)
+        state-scopes (:ui-state-scopes parent)
+        state-scope
+        (if-some [existing (clojure.core/get (deref state-scopes) path)]
+          existing
+          (let [created (sig/scope name (:ui-state-scope parent))]
+            (swap! state-scopes assoc path created)
+            created))]
+    (make-context
+     (:ui-application parent) scope state-scope state-scopes path)))
 
 (defn profile [context]
   (:ui-profile context))
