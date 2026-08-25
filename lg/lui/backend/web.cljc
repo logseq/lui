@@ -2,6 +2,7 @@
   (:require [ocaml.package/melange-webapi]
             [clojure.string :as string]
             [ocaml.Webapi.Dom.HtmlCollection :as html-collection]
+            [lui.extension :as ext]
             [lui.protocol :as proto
              :refer [Row Column Grid Stack Panel Card Alert Bubble Box
                      Text Heading Paragraph Label Button ToggleButton
@@ -12,8 +13,10 @@
                      Spacer Spinner Icon
                      Progress Divider
                      Toggle RadioGroup Radio Slider
-                     CreateNode DropNode SetProp InsertChild RemoveChild
-                     MoveChild TextValue Enabled Gap MainAlignment
+                     CreateNode CreateExtension DropNode SetProp
+                     SetExtensionProp RemoveExtensionProp
+                     InsertChild RemoveChild MoveChild
+                     TextValue Enabled Gap MainAlignment
                      CrossAlignment GrowValue GridColumns PaddingValue
                      PaddingHorizontal PaddingVertical
                      BackgroundValue ForegroundValue BorderColorValue
@@ -32,9 +35,18 @@
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
 
-(defn create
-  ([host] (create host {}))
-  ([host app-icons]
+(defn- standard-kind [current]
+  (match (retained/standard-kind current)
+    (Some kind) kind
+    None (raise (Invalid_argument "expected standard DOM node"))))
+
+(defn- standard-kind? [current expected]
+  (match (retained/standard-kind current)
+    (Some kind) (= kind expected)
+    None false))
+
+(defn create-with-extensions
+  [host app-icons registry adapters]
    (record web-renderer
            (web-store (retained/create-store))
            (web-document (Webapi.Dom.Element.ownerDocument host))
@@ -45,7 +57,58 @@
            (web-cleanups (atom {}))
            (web-modal-stack (atom []))
            (web-open-context-menu (atom None))
-           (web-splits (atom {})))))
+           (web-splits (atom {}))
+           (web-extension-registry registry)
+           (web-extension-adapters adapters)))
+
+(defn create
+  ([host] (create host {}))
+  ([host app-icons]
+   (create-with-extensions host app-icons (ext/registry) {})))
+
+(defn- extension-adapter [renderer identifier]
+  (if-some [adapter
+            (clojure.core/get (:web-extension-adapters renderer) identifier)]
+    adapter
+    (raise (Invalid_argument "web extension adapter is not registered"))))
+
+(defn- extension-platform-node [renderer node identifier]
+  (let [adapter (extension-adapter renderer identifier)
+        emit
+        (fn [name values]
+          (Stdlib.ignore
+           ((deref (:web-event-handler renderer))
+            (proto/ExtensionEvent node identifier name values))))]
+    ((:web-extension-create adapter) node (:web-document renderer) emit)))
+
+(defn- apply-extension-property! [renderer node property value]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (match (retained/extension-identity current)
+      (Some (tuple identifier _fingerprint))
+      ((:web-extension-set-property (extension-adapter renderer identifier))
+       (:platform-node current) property value)
+      None
+      (raise (Invalid_argument "extension property targets standard DOM node")))
+    (raise (Invalid_argument "unknown DOM node"))))
+
+(defn- remove-extension-property! [renderer node property]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (match (retained/extension-identity current)
+      (Some (tuple identifier _fingerprint))
+      ((:web-extension-remove-property (extension-adapter renderer identifier))
+       (:platform-node current) property)
+      None
+      (raise (Invalid_argument "extension property targets standard DOM node")))
+    (raise (Invalid_argument "unknown DOM node"))))
+
+(defn- cleanup-extension-node! [renderer previous-nodes node]
+  (if-some [current (clojure.core/get previous-nodes node)]
+    (match (retained/extension-identity current)
+      (Some (tuple identifier _fingerprint))
+      ((:web-extension-cleanup (extension-adapter renderer identifier))
+       (:platform-node current))
+      None (Stdlib.ignore true))
+    (Stdlib.ignore true)))
 
 (defn- modal-surface? [kind]
   (or (= kind Dialog) (= kind Drawer) (= kind Sheet)))
@@ -590,7 +653,7 @@
     (match (:retained-parent current)
       (Some parent)
       (if-some [parent-node (retained/node (:web-store renderer) parent)]
-        (if (= (:semantic-kind parent-node) Tree)
+        (if (standard-kind? parent-node Tree)
           (Some parent)
           (tree-ancestor renderer parent))
         None)
@@ -728,7 +791,7 @@
 (defn- update-all-tree-roving! [renderer]
   (reduce-kv
    (fn [_updated node current]
-     (when (= (:semantic-kind current) Tree)
+     (when (standard-kind? current Tree)
        (update-tree-roving! renderer node))
      true)
    true
@@ -1097,7 +1160,7 @@
     (fn [child]
       (if-some [current (retained/node (:web-store renderer) child)]
         (and
-         (horizontal-group-child? kind (:semantic-kind current))
+         (horizontal-group-child? kind (standard-kind current))
          (enabled-node? renderer child))
         false))
     (retained/children (:web-store renderer) node))))
@@ -1157,12 +1220,12 @@
         (let [child (nth (:retained-children current) index)]
           (if-some [child-node (retained/node (:web-store renderer) child)]
             (if (and
-                 (= (:semantic-kind child-node) ContextMenu)
+                 (standard-kind? child-node ContextMenu)
                  (some
                   (fn [item]
                     (if-some [item-node
                               (retained/node (:web-store renderer) item)]
-                      (= (:semantic-kind item-node) MenuItem)
+                      (standard-kind? item-node MenuItem)
                       false))
                   (:retained-children child-node)))
               (Some child)
@@ -1184,7 +1247,7 @@
      (fn [child]
        (if-some [child-node (retained/node (:web-store renderer) child)]
          (and
-          (= (:semantic-kind child-node) MenuItem)
+          (standard-kind? child-node MenuItem)
           (enabled-node? renderer child))
          false))
      (:retained-children current))
@@ -1576,7 +1639,7 @@
 
 (defn- update-split! [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
-    (when (= (:semantic-kind current) Split)
+    (when (standard-kind? current Split)
       (let [source
             (match (retained/property (:web-store renderer) node ProgressValue)
               (Some (FloatValue value)) value
@@ -1895,11 +1958,11 @@
    (fn [_updated node current]
      (when
       (and
-       (or (= (:semantic-kind current) Avatar)
-           (= (:semantic-kind current) Image))
+       (or (standard-kind? current Avatar)
+           (standard-kind? current Image))
        (= (clojure.core/get (:retained-properties current) ImageIdValue)
           (Some (IntValue image-id))))
-       (if (= (:semantic-kind current) Avatar)
+       (if (standard-kind? current Avatar)
          (update-avatar! renderer node (:platform-node current))
          (update-image! renderer node (:platform-node current))))
      true)
@@ -1939,7 +2002,7 @@
    (fn [_updated node current]
      (when
       (and
-       (= (:semantic-kind current) MediaSurface)
+       (standard-kind? current MediaSurface)
        (= (clojure.core/get (:retained-properties current) SurfaceIdValue)
           (Some (IntValue surface-id))))
        (update-media-surface! renderer node (:platform-node current)))
@@ -2043,7 +2106,7 @@
     (match (:retained-parent current)
       (Some parent)
       (if-some [parent-node (retained/node (:web-store renderer) parent)]
-        (when (= (:semantic-kind parent-node) Stepper)
+        (when (standard-kind? parent-node Stepper)
           (update-stepper! renderer parent))
         (Stdlib.ignore true))
       None (Stdlib.ignore true))
@@ -2112,11 +2175,11 @@
 (defn- direct-tab-trigger? [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
     (and
-     (= (:semantic-kind current) Button)
+     (standard-kind? current Button)
      (match (:retained-parent current)
        (Some parent)
        (if-some [parent-node (retained/node (:web-store renderer) parent)]
-         (= (:semantic-kind parent-node) Tabs)
+         (standard-kind? parent-node Tabs)
          false)
        None false))
     false))
@@ -2128,7 +2191,7 @@
 
 (defn- refresh-button-context! [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
-    (when (= (:semantic-kind current) Button)
+    (when (standard-kind? current Button)
       (let [element (:platform-node current)
             selected (selected-property renderer node)]
         (if (direct-tab-trigger? renderer node)
@@ -2603,7 +2666,7 @@
 
 (defn- context-menu-node? [nodes node]
   (if-some [current (clojure.core/get nodes node)]
-    (= (:semantic-kind current) ContextMenu)
+    (standard-kind? current ContextMenu)
     false))
 
 (defn- visible-child-index [renderer parent index]
@@ -2617,7 +2680,7 @@
            (inc source-index)
            (if-some [child-node
                      (retained/node (:web-store renderer) child)]
-             (if (= (:semantic-kind child-node) ContextMenu)
+             (if (standard-kind? child-node ContextMenu)
                result
                (inc result))
              result)))))
@@ -2634,17 +2697,22 @@
           (child-element dom-node 1)
           dom-node)))))
 
+(defn- retained-content-container [current dom-node]
+  (match (retained/standard-kind current)
+    (Some kind) (content-container kind dom-node)
+    None dom-node))
+
 (defn- dom-child-container [renderer node dom-node]
   (if-some [current (retained/node (:web-store renderer) node)]
-    (content-container (:semantic-kind current) dom-node)
+    (retained-content-container current dom-node)
     dom-node))
 
 (defn- dom-child-container-before
   [renderer previous-nodes node dom-node]
   (if-some [current (retained/node (:web-store renderer) node)]
-    (content-container (:semantic-kind current) dom-node)
+    (retained-content-container current dom-node)
     (if-some [previous (clojure.core/get previous-nodes node)]
-      (content-container (:semantic-kind previous) dom-node)
+      (retained-content-container previous dom-node)
       dom-node)))
 
 (defn- open-modal! [renderer node dom-node]
@@ -2662,7 +2730,7 @@
     (match (:retained-parent current)
       (Some parent)
       (if-some [parent-node (retained/node (:web-store renderer) parent)]
-        (if (= (:semantic-kind parent-node) RadioGroup)
+        (if (standard-kind? parent-node RadioGroup)
           (Some parent)
           (radio-group-ancestor renderer parent))
         None)
@@ -2680,7 +2748,7 @@
 (defn- update-picker-expanded! [renderer parent expanded]
   (doseq [child (retained/children (:web-store renderer) parent)]
     (if-some [current (retained/node (:web-store renderer) child)]
-      (match (:semantic-kind current)
+      (match (standard-kind current)
         Select
         (Webapi.Dom.Element.setAttribute
          "aria-expanded" (if expanded "true" "false")
@@ -2733,9 +2801,9 @@
 
 (defn- refresh-structured-children! [renderer parent]
   (if-some [current (retained/node (:web-store renderer) parent)]
-    (match (:semantic-kind current)
-      Stepper (update-stepper! renderer parent)
-      Timeline (update-timeline! renderer parent)
+    (match (retained/standard-kind current)
+      (Some Stepper) (update-stepper! renderer parent)
+      (Some Timeline) (update-timeline! renderer parent)
       _ (Stdlib.ignore true))
     (Stdlib.ignore true)))
 
@@ -2746,14 +2814,20 @@
       (Webapi.Dom.Element.setAttribute "id" (node-dom-id node) created)
       (attach-events! renderer node kind created))
 
+    (CreateExtension node _identifier _fingerprint)
+    (Webapi.Dom.Element.setAttribute
+     "id" (node-dom-id node) (dom-node renderer node))
+
     (DropNode node)
-    (cleanup-node! renderer node)
+    (do
+      (cleanup-extension-node! renderer previous-nodes node)
+      (cleanup-node! renderer node))
 
     (SetProp node property value)
     (if-some [current (retained/node (:web-store renderer) node)]
       (do
         (apply-property!
-         renderer node (:semantic-kind current) (:platform-node current)
+         renderer node (standard-kind current) (:platform-node current)
          property value)
         (match (:retained-parent current)
           (Some parent)
@@ -2761,10 +2835,16 @@
           None (Stdlib.ignore true)))
       (raise (Invalid_argument "unknown DOM node")))
 
+    (SetExtensionProp node property value)
+    (apply-extension-property! renderer node property value)
+
+    (RemoveExtensionProp node property)
+    (remove-extension-property! renderer node property)
+
     (InsertChild parent child index)
     (do
       (if-some [current (retained/node (:web-store renderer) child)]
-        (if (= (:semantic-kind current) ContextMenu)
+        (if (standard-kind? current ContextMenu)
           (Webapi.Dom.Element.appendChild
            (Webapi.Dom.Element.asNode (dom-node renderer child))
            (document-body renderer))
@@ -2779,21 +2859,25 @@
       (refresh-structured-children! renderer parent)
       (if-some [current (retained/node (:web-store renderer) child)]
         (do
-          (when (= (:semantic-kind current) MenuItem)
+          (when (standard-kind? current MenuItem)
             (if-some [parent-node
                       (retained/node (:web-store renderer) parent)]
-              (when (= (:semantic-kind parent-node) ContextMenu)
+              (when (standard-kind? parent-node ContextMenu)
                 (Webapi.Dom.Element.setAttribute
                  "role" "menuitem" (:platform-node current))
                 (Webapi.Dom.Element.removeAttribute
                  "aria-selected" (:platform-node current)))
               (Stdlib.ignore true)))
-          (match (:semantic-kind current)
-            Radio (update-radio-group! renderer child)
-            DropdownMenu (update-picker-expanded! renderer parent true)
-            Dialog (open-modal! renderer child (:platform-node current))
-            Drawer (open-modal! renderer child (:platform-node current))
-            Sheet (open-modal! renderer child (:platform-node current))
+          (match (retained/standard-kind current)
+            (Some Radio) (update-radio-group! renderer child)
+            (Some DropdownMenu)
+            (update-picker-expanded! renderer parent true)
+            (Some Dialog)
+            (open-modal! renderer child (:platform-node current))
+            (Some Drawer)
+            (open-modal! renderer child (:platform-node current))
+            (Some Sheet)
+            (open-modal! renderer child (:platform-node current))
             _ (Stdlib.ignore true)))
         (Stdlib.ignore true)))
 
@@ -2811,7 +2895,7 @@
       (refresh-button-context! renderer child)
       (refresh-structured-children! renderer parent)
       (if-some [previous (clojure.core/get previous-nodes child)]
-        (when (= (:semantic-kind previous) DropdownMenu)
+        (when (standard-kind? previous DropdownMenu)
           (update-picker-expanded! renderer parent false))
         (Stdlib.ignore true)))
 
@@ -2850,9 +2934,13 @@
            (fn [batch]
              (let [previous-nodes
                    (retained/nodes (:web-store renderer))]
-               (retained/apply-batch!
+               (retained/apply-batch-with-extensions!
                 (:web-store renderer)
                 (fn [kind] (platform-node renderer kind))
+                (fn [node identifier]
+                  (extension-platform-node renderer node identifier))
+                (:web-extension-registry renderer)
+                (fn [_batch] true)
                 batch)
                (apply-dom-batch! renderer previous-nodes batch)
                true)))))
@@ -2864,7 +2952,7 @@
 
 (defn- first-section-title [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
-    (let [kind (:semantic-kind current)
+    (let [kind (standard-kind current)
           title (retained/property (:web-store renderer) node TextValue)]
       (if (and
            (or (= kind Heading) (= kind Text))

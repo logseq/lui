@@ -8,7 +8,8 @@
    model-state
    (fn [current] (reducer current action))))
 
-(defmacro create [backend initial-model reducer view]
+(macro-helper-defn reducer-app-expansion
+  [backend registry initial-model reducer view]
   (let [scheduler (gensym "scheduler")
         application (gensym "application")
         scope (gensym "scope")
@@ -17,7 +18,11 @@
         lifecycle (gensym "lifecycle")
         root (gensym "root")]
     `(let [~scheduler (signal.core/scheduler)
-           ~application (lui.runtime/create ~scheduler ~backend)
+           ~application
+           ~(if registry
+              `(lui.runtime/create-with-extensions
+                ~scheduler ~backend ~registry)
+              `(lui.runtime/create ~scheduler ~backend))
            ~scope (signal.core/scope "app")
            ~context (lui.ui/context ~application ~scope)
            ~model-state (signal.core/state ~scheduler ~initial-model)
@@ -40,6 +45,13 @@
               false)))
          (app-root-node ~root)
          (app-lifecycle-state ~lifecycle)))))
+
+(defmacro create [backend initial-model reducer view]
+  (reducer-app-expansion backend nil initial-model reducer view))
+
+(defmacro create-with-extensions
+  [backend registry initial-model reducer view]
+  (reducer-app-expansion backend registry initial-model reducer view))
 
 (defn start! [app]
   (if (= (deref (:app-lifecycle-state app)) Running)

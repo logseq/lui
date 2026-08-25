@@ -11,6 +11,11 @@
 (signature lui.ui/profile :fn<ui-context;platform-profile>)
 (signature lui.ui/platform :fn<ui-context;operating-system>)
 (signature lui.ui/host :fn<ui-context;host-kind>)
+(signature lui.ui/extension! :fn<ui-context;string;int>)
+(signature lui.ui/extension-property!
+  :fn<ui-context;int;string;wire-value;bool>)
+(signature lui.ui/extension-property-signal!
+  :fn<ui-context;int;string;signal<wire-value>;bool>)
 (signature lui.ui/row! :fn<ui-context;int>)
 (signature lui.ui/column! :fn<ui-context;int>)
 (signature lui.ui/grid! :fn<ui-context;int>)

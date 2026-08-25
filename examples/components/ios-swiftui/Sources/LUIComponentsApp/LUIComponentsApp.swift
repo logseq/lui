@@ -10,7 +10,11 @@ import AppKit
 private typealias PatchCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
 
 @_silgen_name("lui_ocaml_start")
-private func luiOCamlStart(_ callback: PatchCallback?, _ platform: Int32) -> Int32
+private func luiOCamlStart(
+    _ callback: PatchCallback?,
+    _ platform: Int32,
+    _ host: Int32
+) -> Int32
 @_silgen_name("lui_ocaml_stop")
 private func luiOCamlStop() -> Int32
 @_silgen_name("lui_ocaml_press")
@@ -45,12 +49,19 @@ nonisolated(unsafe) private let receivePatch: PatchCallback = { source in
 @Observable
 @MainActor
 private final class GalleryHost {
-    let backend = LUIAppleBackend()
+    let backend: LUIAppleBackend
     private(set) var rootID: Int?
     private(set) var sections: [LUIRootSection] = []
     private var started = false
 
     init() {
+        do {
+            backend = try LUIAppleBackend(
+                extensionRegistry: galleryExtensionRegistry()
+            )
+        } catch {
+            fatalError("Invalid Gallery extension registry: \(error)")
+        }
         backend.onEvent = { event in
             switch event {
             case let .press(node): _ = luiOCamlPress(Int64(node))
@@ -65,6 +76,8 @@ private final class GalleryHost {
             case let .change(node): _ = luiOCamlRadioChanged(Int64(node))
             case let .valueChanged(node, value):
                 _ = luiOCamlSliderChanged(Int64(node), value)
+            case .extension:
+                assertionFailure("Gallery extensions do not declare LG events")
             }
         }
     }
@@ -72,7 +85,7 @@ private final class GalleryHost {
     func start() {
         guard !started else { return }
         activeHost = self
-        guard luiOCamlStart(receivePatch, 2) == 1 else {
+        guard luiOCamlStart(receivePatch, 2, 2) == 1 else {
             fatalError("LG Gallery initialization failed")
         }
         started = true

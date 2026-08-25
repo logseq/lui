@@ -105,12 +105,16 @@ ${properties})
   (FloatValue :float))
 
 (type-variant event
-${events})
+${events}
+  (ExtensionEvent :int :string :string :map<string;wire-value>))
 
 (type-variant patch-op
   (CreateNode :int :node-kind)
+  (CreateExtension :int :string :string)
   (DropNode :int)
   (SetProp :int :property :wire-value)
+  (SetExtensionProp :int :string :wire-value)
+  (RemoveExtensionProp :int :string)
   (InsertChild :int :int :int)
   (RemoveChild :int :int)
   (MoveChild :int :int :int))
@@ -152,9 +156,15 @@ ${events})
 (signature lui.protocol/can-contain-children? :fn<node-kind;bool>)
 (signature lui.protocol/child-kind-supported? :fn<node-kind;node-kind;bool>)
 (signature lui.protocol/create-node-op :fn<int;node-kind;patch-op>)
+(signature lui.protocol/create-extension-op
+  :fn<int;string;string;patch-op>)
 (signature lui.protocol/drop-node-op :fn<int;patch-op>)
 (signature lui.protocol/set-prop-op
   :fn<int;property;wire-value;patch-op>)
+(signature lui.protocol/set-extension-prop-op
+  :fn<int;string;wire-value;patch-op>)
+(signature lui.protocol/remove-extension-prop-op
+  :fn<int;string;patch-op>)
 (signature lui.protocol/insert-child-op :fn<int;int;int;patch-op>)
 (signature lui.protocol/remove-child-op :fn<int;int;patch-op>)
 (signature lui.protocol/move-child-op :fn<int;int;int;patch-op>)
@@ -169,6 +179,9 @@ function renderLGWire(schema) {
   const kindCases = schema.nodeKinds
     .map(({ lg, wire }) => `    ${lg} "${wire}"`)
     .join('\n');
+  const standardNameCases = schema.nodeKinds
+    .map(({ wire }) => `    "${wire}" true`)
+    .join('\n');
   const propertyCases = schema.properties
     .map(({ lg, wire }) => `    ${lg} "${wire}"`)
     .join('\n');
@@ -178,6 +191,11 @@ function renderLGWire(schema) {
 (defn node-kind-name [kind]
   (match kind
 ${kindCases}))
+
+(defn standard-node-name? [name]
+  (match name
+${standardNameCases}
+    _ false))
 
 (defn property-name [property]
   (match property
@@ -189,6 +207,7 @@ function renderLGWireSignature() {
   return `${generatedHeader(';;')}(ns lui.wire-schema)
 
 (signature lui.wire-schema/node-kind-name :fn<node-kind;string>)
+(signature lui.wire-schema/standard-node-name? :fn<string;bool>)
 (signature lui.wire-schema/property-name :fn<property;string>)
 `;
 }

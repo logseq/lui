@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:lui_flutter_backend/lui_flutter_backend.dart';
 import 'package:lui_flutter_backend/lui_ocaml_bridge.dart';
 
+import 'gallery_extensions.dart';
+
 LUIOcamlBridge _openBridge(void Function(String json) onPatch) {
   const configured = String.fromEnvironment('LUI_NATIVE_LIBRARY');
   if (configured.isNotEmpty) {
@@ -44,7 +46,10 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
   @override
   void initState() {
     super.initState();
-    _backend = LUIFlutterBackend(onEvent: _dispatch);
+    _backend = LUIFlutterBackend(
+      extensionRegistry: galleryExtensionRegistry(),
+      onEvent: _dispatch,
+    );
     _bridge = _openBridge(_applyPatch);
     _bridge.start();
     unawaited(_registerGalleryMedia());
@@ -103,6 +108,8 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
         _bridge.radioChanged(node);
       case LUIValueChangedEvent(:final node, :final value):
         _bridge.sliderChanged(node, value);
+      case LUIExtensionComponentEvent():
+        throw StateError('Gallery extensions do not declare LG events');
     }
   }
 

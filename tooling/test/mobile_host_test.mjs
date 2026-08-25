@@ -35,6 +35,19 @@ test("normal mobile builds never bootstrap or clone a toolchain", async () => {
   }
 });
 
+test("Android scripts ignore incomplete SDK manager NDK directories", async () => {
+  const bootstrap = await source("tooling/mobile/bootstrap_android_ocaml.sh");
+  const build = await source("tooling/mobile/build_components_android.sh");
+
+  for (const script of [bootstrap, build]) {
+    assert.match(
+      script,
+      /\[\[ -x \$candidate\/toolchains\/llvm\/prebuilt\/\$ndk_host\/bin\/clang \]\]/,
+    );
+    assert.doesNotMatch(script, /\[\[ -d \$candidate \]\] && ndk_root=\$candidate/);
+  }
+});
+
 test("Android Gallery packages the OCaml runtime as a Flutter jniLib", async () => {
   const build = await source("tooling/mobile/build_components_android.sh");
   const main = await source("examples/components/flutter/lib/main.dart");
@@ -52,7 +65,7 @@ test("Apple Gallery is a SwiftUI host linked to the retained Apple backend", asy
   const build = await source("tooling/mobile/build_components_ios_simulator.sh");
   const objectBuild = await source("tooling/mobile/build_gallery_ocaml_object.sh");
   const packageManifest = await source("examples/components/ios-swiftui/Package.swift");
-  const main = await source("examples/components/ios-swiftui/Sources/LUIComponentsApp/main.swift");
+  const main = await source("examples/components/ios-swiftui/Sources/LUIComponentsApp/LUIComponentsApp.swift");
 
   assert.match(build, /arm64-apple-ios\$\{deployment_target\}-simulator/);
   assert.match(build, /build_gallery_ocaml_object\.sh/);
@@ -101,7 +114,7 @@ test("iOS Gallery has a real interaction E2E flow", async () => {
 
 test("iOS Gallery uses an adaptive Apple-native shell", async () => {
   const gallery = await source("examples/components/lg/components/gallery.cljc");
-  const main = await source("examples/components/ios-swiftui/Sources/LUIComponentsApp/main.swift");
+  const main = await source("examples/components/ios-swiftui/Sources/LUIComponentsApp/LUIComponentsApp.swift");
 
   assert.doesNotMatch(gallery, /\[:table \{:width 520\}/);
   assert.match(gallery, /\[:table \{[^}]*:max-width 520/);
@@ -113,14 +126,12 @@ test("iOS Gallery uses an adaptive Apple-native shell", async () => {
   assert.doesNotMatch(main, /section\.nodeIDs/);
 });
 
-test("iOS Gallery E2E targets centered component rows by stable identifiers", async () => {
+test("iOS Gallery E2E targets component rows by stable identifiers", async () => {
   const flow = await source(".maestro/ios-components-interactions.yaml");
 
   assert.match(flow, /id: "component-row-TextField"/);
   assert.match(flow, /centerElement: true/);
-  assert.match(
-    flow,
-    /id: "component-row-TextField"[\s\S]*swipe:[\s\S]*start: "50%,30%"[\s\S]*end: "50%,60%"[\s\S]*tapOn:\n\s+id: "component-row-TextField"/,
-  );
+  assert.match(flow, /id: "component-row-Dialog"[\s\S]*swipe:/);
+  assert.match(flow, /id: "component-row-TextField"[\s\S]*tapOn:\n\s+id: "component-row-TextField"/);
   assert.doesNotMatch(flow, /- tapOn: "TextField"/);
 });

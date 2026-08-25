@@ -29,25 +29,26 @@ target_prefix="$version_root/targets/$target"
 host_source="$version_root/sources/host"
 target_source="$version_root/sources/$target"
 
-if [[ -d ${ANDROID_NDK_HOME:-} ]]; then
-  ndk_root=$ANDROID_NDK_HOME
-else
-  ndk_root=
-  for candidate in "$android_home"/ndk/*; do
-    [[ -d $candidate ]] && ndk_root=$candidate
-  done
-fi
-[[ -n ${ndk_root:-} && -d $ndk_root ]] \
-  || die "Android NDK is not installed under $android_home/ndk"
-
 case "$(uname -s)" in
   Darwin) ndk_host=darwin-x86_64 ;;
   Linux) ndk_host=linux-x86_64 ;;
   *) die "unsupported build host: $(uname -s)" ;;
 esac
 
+ndk_root=
+if [[ -n ${ANDROID_NDK_HOME:-} ]]; then
+  [[ -x $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$ndk_host/bin/clang ]] \
+    || die "ANDROID_NDK_HOME does not contain a complete NDK toolchain"
+  ndk_root=$ANDROID_NDK_HOME
+else
+  for candidate in "$android_home"/ndk/*; do
+    [[ -x $candidate/toolchains/llvm/prebuilt/$ndk_host/bin/clang ]] \
+      && ndk_root=$candidate
+  done
+fi
+[[ -n $ndk_root ]] || die "Android NDK is not installed under $android_home/ndk"
+
 ndk_bin="$ndk_root/toolchains/llvm/prebuilt/$ndk_host/bin"
-[[ -x $ndk_bin/clang ]] || die "Android NDK clang was not found"
 mkdir -p "$version_root/sources" "$version_root/targets"
 
 clone_release() {

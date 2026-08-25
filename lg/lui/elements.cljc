@@ -163,6 +163,129 @@
 (defmacro defelement [element-name params & body]
   `(defmacro ~element-name ~params ~@body))
 
+(macro-helper-defn extension-value-constructor [kind]
+                   (cond
+                     (= kind :string) 'lui.protocol/StringValue
+                     (= kind :bool) 'lui.protocol/BoolValue
+                     (= kind :int) 'lui.protocol/IntValue
+                     (= kind :float) 'lui.protocol/FloatValue
+                     :else
+                     (throw
+                      (IllegalArgumentException.
+                       (str "unknown extension property kind " kind)))))
+
+(macro-helper-defn extension-literal? [kind value]
+                   (cond
+                     (= kind :string) (string? value)
+                     (= kind :bool) (or (= value true) (= value false))
+                     (= kind :int) (int? value)
+                     (= kind :float) (float? value)
+                     :else false))
+
+(macro-helper-defn macro-map-value [values key]
+                   (loop [remaining values]
+                     (if (empty? remaining)
+                       nil
+                       (let [entry (first remaining)]
+                         (if (= (first entry) key)
+                           (second entry)
+                           (recur (next remaining)))))))
+
+(macro-helper-defn extension-property-expansions
+                   [context node properties attrs]
+                   (loop [remaining properties
+                          result []]
+                     (if (empty? remaining)
+                       result
+                       (let [entry (first remaining)
+                             property (first entry)
+                             kind (second entry)]
+                         (recur
+                          (next remaining)
+                          (let [value (macro-map-value attrs property)]
+                            (if (or value (= value false))
+                              (let [
+                                  constructor
+                                  (extension-value-constructor kind)
+                                  property-name (name property)]
+                                (conj
+                                 result
+                                 (if (extension-literal? kind value)
+                                   `(lui.ui/extension-property!
+                                     ~context ~node ~property-name
+                                     (~constructor ~value))
+                                   `(lui.ui/extension-property-signal!
+                                     ~context ~node ~property-name
+                                     (signal.core/own-signal!
+                                      (:ui-scope ~context)
+                                      (signal.core/map
+                                       (fn [~'value] (~constructor ~'value))
+                                       ~value))))))
+                              result)))))))
+
+(macro-helper-defn extension-event-branches [events attrs event-name event]
+                   (loop [remaining events
+                          result []]
+                     (if (empty? remaining)
+                       result
+                       (let [entry (first remaining)
+                             name-key (first entry)
+                             attribute (second entry)
+                             handler (macro-map-value attrs attribute)]
+                         (recur
+                          (next remaining)
+                          (if handler
+                            (concat
+                             result
+                             [`(= ~event-name ~(name name-key))
+                              `(~handler ~event)])
+                            result))))))
+
+(macro-helper-defn extension-event-expansion
+                   [context node events attrs]
+                   (let [event-name (gensym "extension_event_name")
+                         event (gensym "extension_event")
+                         branches
+                         (extension-event-branches events attrs event-name event)]
+                     (if (empty? branches)
+                       []
+                       [`(lui.ui/on-event!
+                          ~context ~node
+                          (fn [~event]
+                            (match ~event
+                              (lui.protocol/ExtensionEvent
+                               ~'_node ~'_identifier ~event-name ~'_values)
+                              (cond ~@branches :else true)
+                              ~'_ true)))])))
+
+(macro-helper-defn extension-expansion
+                   [definition context parent attrs children]
+                   (let [identifier (:identifier definition)
+                         properties (:properties definition)
+                         events (:events definition)
+                         node (gensym "extension_node")]
+                     (when-not (string? identifier)
+                       (throw
+                        (IllegalArgumentException.
+                         "defextension requires a string :identifier")))
+                     `(let [~node (lui.ui/extension! ~context ~identifier)]
+                        ~@(extension-property-expansions
+                           context node properties attrs)
+                        ~@(extension-event-expansion context node events attrs)
+                        ~@(if parent
+                            [`(lui.ui/append! ~context ~parent ~node)]
+                            [])
+                        ~@(map
+                           (fn [child]
+                             `(lui.elements/element ~context ~node ~child))
+                           children)
+                        ~node)))
+
+(defmacro defextension [element-name definition]
+  `(defmacro ~element-name [~'context ~'parent ~'attrs & ~'children]
+     (lui.elements/extension-expansion
+      ~definition ~'context ~'parent ~'attrs ~'children)))
+
 (macro-helper-defn component-attrs [defaults attrs]
                    (let [default-class (:class defaults)
                          caller-class (:class attrs)

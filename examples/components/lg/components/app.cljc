@@ -7,5 +7,10 @@
 (defn create [backend]
   (app/create backend (model/initial) model/update view/gallery-view))
 
+(defn create-with-extensions [backend registry]
+  (app/create-with-extensions
+   backend registry (model/initial) model/update
+   view/gallery-view-with-extensions))
+
 (defn model [application]
   (app/model application))

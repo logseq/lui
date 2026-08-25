@@ -4,6 +4,7 @@
             [lui.backend.flutter :as flutter]
             [lui.protocol :as proto]
             [components.app :as components]
+            [components.extensions :as extensions]
             [components.model :as model]))
 
 (defmacro assert-equal [expected actual message]
@@ -379,4 +380,22 @@
         (fn [page] (= 1 (heading-count-under renderer kinds page)))
         pages)
        "each direct Gallery page contains exactly one component heading"))
+    (driver/dispose! application)))
+
+(deftest extended-gallery-adds-one-platform-native-page
+  (let [registry (extensions/registry)
+        renderer (flutter/create-with-extensions registry)
+        application
+        (components/create-with-extensions
+         (flutter/backend-for renderer proto/AndroidOS) registry)]
+    (driver/start! application)
+    (driver/flush! application)
+    (assert-equal
+     (conj gallery-page-contract "NativeExtension")
+     (gallery-page-titles (flutter/batches renderer))
+     "the platform host adds one extension page without merging standard pages")
+    (assert-equal
+     (inc (count gallery-page-contract))
+     (count (flutter/children renderer (driver/root-node application)))
+     "the native extension is a direct selectable Gallery page")
     (driver/dispose! application)))

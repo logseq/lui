@@ -14,6 +14,12 @@ public enum LUIEvent: Equatable, Sendable {
     case valueChanged(node: Int, value: Double)
     case dismiss(node: Int)
     case doublePress(node: Int)
+    case `extension`(
+        node: Int,
+        identifier: String,
+        name: String,
+        values: [String: LUIExtensionValue]
+    )
 }
 
 struct LUIPatchBatch: Decodable {
@@ -23,14 +29,17 @@ struct LUIPatchBatch: Decodable {
 
 enum LUIPatchOperation: Decodable {
     case createNode(id: Int, kind: LUINodeKind)
+    case createExtension(id: Int, identifier: String, fingerprint: String)
     case dropNode(id: Int)
     case setProp(id: Int, property: LUIProperty, value: LUIWireValue)
+    case setExtensionProp(id: Int, property: String, value: LUIWireValue)
+    case removeExtensionProp(id: Int, property: String)
     case insertChild(parent: Int, child: Int, index: Int)
     case removeChild(parent: Int, child: Int)
     case moveChild(parent: Int, child: Int, index: Int)
 
     private enum CodingKeys: String, CodingKey {
-        case op, id, kind, property, value, parent, child, index
+        case op, id, kind, identifier, fingerprint, property, value, parent, child, index
     }
 
     init(from decoder: Decoder) throws {
@@ -41,6 +50,12 @@ enum LUIPatchOperation: Decodable {
                 id: try values.decode(Int.self, forKey: .id),
                 kind: try values.decode(LUINodeKind.self, forKey: .kind)
             )
+        case "create-extension":
+            self = .createExtension(
+                id: try values.decode(Int.self, forKey: .id),
+                identifier: try values.decode(String.self, forKey: .identifier),
+                fingerprint: try values.decode(String.self, forKey: .fingerprint)
+            )
         case "drop-node":
             self = .dropNode(id: try values.decode(Int.self, forKey: .id))
         case "set-prop":
@@ -48,6 +63,17 @@ enum LUIPatchOperation: Decodable {
                 id: try values.decode(Int.self, forKey: .id),
                 property: try values.decode(LUIProperty.self, forKey: .property),
                 value: try values.decode(LUIWireValue.self, forKey: .value)
+            )
+        case "set-extension-prop":
+            self = .setExtensionProp(
+                id: try values.decode(Int.self, forKey: .id),
+                property: try values.decode(String.self, forKey: .property),
+                value: try values.decode(LUIWireValue.self, forKey: .value)
+            )
+        case "remove-extension-prop":
+            self = .removeExtensionProp(
+                id: try values.decode(Int.self, forKey: .id),
+                property: try values.decode(String.self, forKey: .property)
             )
         case "insert-child":
             self = .insertChild(
@@ -213,38 +239,67 @@ struct LUINodeState {
     var properties: [LUIProperty: LUIWireValue]
 }
 
+@MainActor
 struct LUIRetainedTree {
     private(set) var nodes: [Int: LUINodeState] = [:]
+    private(set) var extensionNodes: [Int: LUIExtensionNodeState] = [:]
 
     var rootIDs: [Int] {
-        nodes.compactMap { id, node in node.parent == nil ? id : nil }
+        nodes.compactMap { id, node in node.parent == nil ? id : nil } +
+            extensionNodes.compactMap { id, node in node.parent == nil ? id : nil }
     }
 
-    func applying(_ operations: [LUIPatchOperation]) throws -> Self {
+    func applying(
+        _ operations: [LUIPatchOperation],
+        extensionRegistry: LUIAppleExtensionRegistry
+    ) throws -> Self {
         var next = self
         for operation in operations {
-            try next.apply(operation)
+            try next.apply(operation, extensionRegistry: extensionRegistry)
         }
-        try next.validateNodeProperties()
+        try next.validateNodeProperties(extensionRegistry: extensionRegistry)
         return next
     }
 
-    private mutating func apply(_ operation: LUIPatchOperation) throws {
+    private mutating func apply(
+        _ operation: LUIPatchOperation,
+        extensionRegistry: LUIAppleExtensionRegistry
+    ) throws {
         switch operation {
         case let .createNode(id, kind):
-            guard nodes[id] == nil else { throw invalid("node already exists") }
+            guard !contains(id) else { throw invalid("node already exists") }
             nodes[id] = LUINodeState(
                 kind: kind,
                 parent: nil,
                 children: [],
                 properties: [:]
             )
+        case let .createExtension(id, identifier, fingerprint):
+            guard !contains(id) else { throw invalid("node already exists") }
+            guard let registration = extensionRegistry.registration(identifier) else {
+                throw invalid("unknown extension identifier")
+            }
+            guard registration.fingerprint == fingerprint else {
+                throw invalid("extension fingerprint mismatch")
+            }
+            extensionNodes[id] = LUIExtensionNodeState(
+                identifier: identifier,
+                fingerprint: fingerprint,
+                parent: nil,
+                children: [],
+                properties: Dictionary(
+                    uniqueKeysWithValues: registration.properties.compactMap { property in
+                        property.defaultValue.map { (property.name, $0.wireValue) }
+                    }
+                )
+            )
         case let .dropNode(id):
-            guard let node = nodes[id] else { throw invalid("unknown node") }
-            guard node.parent == nil && node.children.isEmpty else {
+            guard contains(id) else { throw invalid("unknown node") }
+            guard parent(of: id) == nil, children(of: id)?.isEmpty == true else {
                 throw invalid("cannot drop an attached node")
             }
             nodes[id] = nil
+            extensionNodes[id] = nil
         case let .setProp(id, property, value):
             guard var node = nodes[id] else { throw invalid("unknown node") }
             let normalizedValue = value.normalized(for: property)
@@ -254,10 +309,102 @@ struct LUIRetainedTree {
             }
             node.properties[property] = normalizedValue
             nodes[id] = node
+        case let .setExtensionProp(id, property, value):
+            guard var node = extensionNodes[id] else { throw invalid("unknown extension node") }
+            guard let registration = extensionRegistry.registration(node.identifier),
+                  let schema = registration.properties.first(where: { $0.name == property }),
+                  schema.kind.accepts(value) else {
+                throw invalid("unsupported extension property value")
+            }
+            node.properties[property] = schema.kind.normalize(value)
+            extensionNodes[id] = node
+        case let .removeExtensionProp(id, property):
+            guard var node = extensionNodes[id] else { throw invalid("unknown extension node") }
+            guard extensionRegistry.registration(node.identifier)?.properties.contains(
+                where: { $0.name == property }
+            ) == true else {
+                throw invalid("unknown extension property")
+            }
+            node.properties[property] = nil
+            extensionNodes[id] = node
         case let .insertChild(parent, child, index):
-            guard var parentNode = nodes[parent], var childNode = nodes[child] else {
+            guard contains(parent), contains(child) else {
                 throw invalid("unknown parent or child")
             }
+            try validateChild(parent: parent, child: child, registry: extensionRegistry)
+            guard self.parent(of: child) == nil else {
+                throw invalid("child is already attached")
+            }
+            var parentChildren = children(of: parent) ?? []
+            guard index >= 0 && index <= parentChildren.count else {
+                throw invalid("child index is out of bounds")
+            }
+            guard !isDescendant(parent, of: child) else {
+                throw invalid("child insertion would create a cycle")
+            }
+            parentChildren.insert(child, at: index)
+            setChildren(parentChildren, for: parent)
+            setParent(parent, for: child)
+        case let .removeChild(parent, child):
+            guard var parentChildren = children(of: parent),
+                  let index = parentChildren.firstIndex(of: child), contains(child) else {
+                throw invalid("child is not attached to parent")
+            }
+            parentChildren.remove(at: index)
+            setChildren(parentChildren, for: parent)
+            setParent(nil, for: child)
+        case let .moveChild(parent, child, index):
+            guard var parentChildren = children(of: parent),
+                  let oldIndex = parentChildren.firstIndex(of: child) else {
+                throw invalid("child is not attached to parent")
+            }
+            parentChildren.remove(at: oldIndex)
+            guard index >= 0 && index <= parentChildren.count else {
+                throw invalid("child index is out of bounds")
+            }
+            parentChildren.insert(child, at: index)
+            setChildren(parentChildren, for: parent)
+        }
+    }
+
+    private func contains(_ id: Int) -> Bool {
+        nodes[id] != nil || extensionNodes[id] != nil
+    }
+
+    private func parent(of id: Int) -> Int? {
+        nodes[id]?.parent ?? extensionNodes[id]?.parent
+    }
+
+    private func children(of id: Int) -> [Int]? {
+        nodes[id]?.children ?? extensionNodes[id]?.children
+    }
+
+    private mutating func setParent(_ parent: Int?, for id: Int) {
+        if var node = nodes[id] {
+            node.parent = parent
+            nodes[id] = node
+        } else if var node = extensionNodes[id] {
+            node.parent = parent
+            extensionNodes[id] = node
+        }
+    }
+
+    private mutating func setChildren(_ children: [Int], for id: Int) {
+        if var node = nodes[id] {
+            node.children = children
+            nodes[id] = node
+        } else if var node = extensionNodes[id] {
+            node.children = children
+            extensionNodes[id] = node
+        }
+    }
+
+    private func validateChild(
+        parent: Int,
+        child: Int,
+        registry: LUIAppleExtensionRegistry
+    ) throws {
+        if let parentNode = nodes[parent], let childNode = nodes[child] {
             guard Self.canContainChildren(parentNode.kind) else {
                 throw invalid("parent cannot contain children")
             }
@@ -292,43 +439,33 @@ struct LUIRetainedTree {
                childNode.kind != .contextMenu {
                 throw invalid("interactive leaf accepts only context-menu metadata")
             }
-            guard childNode.parent == nil else { throw invalid("child is already attached") }
-            guard index >= 0 && index <= parentNode.children.count else {
-                throw invalid("child index is out of bounds")
+            return
+        }
+        if let parentNode = nodes[parent], extensionNodes[child] != nil {
+            guard Self.acceptsExtensionChildren(parentNode.kind) else {
+                throw invalid("standard node cannot contain extension")
             }
-            guard !isDescendant(parent, of: child) else {
-                throw invalid("child insertion would create a cycle")
+            return
+        }
+        guard let parentNode = extensionNodes[parent],
+              let registration = registry.registration(parentNode.identifier) else {
+            throw invalid("unknown extension parent")
+        }
+        if nodes[child] != nil {
+            guard registration.acceptsStandardChildren else {
+                throw invalid("extension does not accept standard children")
             }
-            parentNode.children.insert(child, at: index)
-            childNode.parent = parent
-            nodes[parent] = parentNode
-            nodes[child] = childNode
-        case let .removeChild(parent, child):
-            guard var parentNode = nodes[parent], var childNode = nodes[child],
-                  let index = parentNode.children.firstIndex(of: child) else {
-                throw invalid("child is not attached to parent")
-            }
-            parentNode.children.remove(at: index)
-            childNode.parent = nil
-            nodes[parent] = parentNode
-            nodes[child] = childNode
-        case let .moveChild(parent, child, index):
-            guard var parentNode = nodes[parent],
-                  let oldIndex = parentNode.children.firstIndex(of: child) else {
-                throw invalid("child is not attached to parent")
-            }
-            parentNode.children.remove(at: oldIndex)
-            guard index >= 0 && index <= parentNode.children.count else {
-                throw invalid("child index is out of bounds")
-            }
-            parentNode.children.insert(child, at: index)
-            nodes[parent] = parentNode
+            return
+        }
+        guard let childNode = extensionNodes[child],
+              registration.childIdentifiers.contains(childNode.identifier) else {
+            throw invalid("unsupported extension child")
         }
     }
 
     private func isDescendant(_ target: Int, of root: Int) -> Bool {
-        guard let node = nodes[root] else { return false }
-        return root == target || node.children.contains { isDescendant(target, of: $0) }
+        guard let children = children(of: root) else { return false }
+        return root == target || children.contains { isDescendant(target, of: $0) }
     }
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
@@ -471,6 +608,14 @@ struct LUIRetainedTree {
             isContextMenuLeafHost(kind)
     }
 
+    private static func acceptsExtensionChildren(_ kind: LUINodeKind) -> Bool {
+        kind == .row || kind == .column || kind == .grid || kind == .stack ||
+            kind == .panel || kind == .card || kind == .box || kind == .scroll ||
+            kind == .list || kind == .listItem || kind == .dialog || kind == .drawer ||
+            kind == .sheet || kind == .accordion || kind == .resizable || kind == .split ||
+            kind == .alert || kind == .bubble
+    }
+
     private static func isModalSurface(_ kind: LUINodeKind) -> Bool {
         kind == .dialog || kind == .drawer || kind == .sheet
     }
@@ -485,7 +630,9 @@ struct LUIRetainedTree {
             kind == .box || kind == .listItem
     }
 
-    private func validateNodeProperties() throws {
+    private func validateNodeProperties(
+        extensionRegistry: LUIAppleExtensionRegistry
+    ) throws {
         for node in nodes.values {
             try validateSizeAxis(
                 node,
@@ -701,6 +848,16 @@ struct LUIRetainedTree {
             if node.kind == .inputGroupActions {
                 guard let parent = node.parent, nodes[parent]?.kind == .inputGroup else {
                     throw invalid("input-group-actions requires a direct input-group parent")
+                }
+            }
+        }
+        for node in extensionNodes.values {
+            guard let registration = extensionRegistry.registration(node.identifier) else {
+                throw invalid("unknown extension identifier")
+            }
+            for property in registration.properties where property.isRequired {
+                guard node.properties[property.name] != nil else {
+                    throw invalid("extension properties are incomplete")
                 }
             }
         }

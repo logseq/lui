@@ -62,16 +62,21 @@
   (AppleTree)
   (AppleResizable)
   (AppleSplit)
-  (AppleStatusBar))
+  (AppleStatusBar)
+  (AppleExtension :string))
 
 (type-record apple-renderer
   (apple-store :retained-store<apple-node>)
-  (apple-send-batch :fn<patch-batch;bool>))
+  (apple-send-batch :fn<patch-batch;bool>)
+  (apple-extension-registry :extension-registry))
 
 (signature lui.backend.apple/create
   :overload<fn<apple-renderer>;fn<fn<patch-batch;bool>;apple-renderer>>)
+(signature lui.backend.apple/create-with-extensions
+  :overload<fn<extension-registry;apple-renderer>;fn<fn<patch-batch;bool>;extension-registry;apple-renderer>>)
 (signature lui.backend.apple/create-wire :fn<fn<string;bool>;apple-renderer>)
 (signature lui.backend.apple/platform-node :fn<node-kind;apple-node>)
+(signature lui.backend.apple/extension-platform-node :fn<int;string;apple-node>)
 (signature lui.backend.apple/backend-for
   :fn<apple-renderer;operating-system;host-kind;backend>)
 (signature lui.backend.apple/backend :fn<apple-renderer;backend>)

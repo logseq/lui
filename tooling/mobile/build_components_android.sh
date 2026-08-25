@@ -27,24 +27,29 @@ jni_library="$repo_root/examples/components/flutter/android/app/src/main/jniLibs
   exit 1
 }
 
-if [[ -d ${ANDROID_NDK_HOME:-} ]]; then
-  ndk_root=$ANDROID_NDK_HOME
-else
-  ndk_root=
-  for candidate in "$android_home"/ndk/*; do
-    [[ -d $candidate ]] && ndk_root=$candidate
-  done
-fi
-[[ -n ${ndk_root:-} && -d $ndk_root ]] || {
-  echo "error: Android NDK is not installed under $android_home/ndk" >&2
-  exit 1
-}
-
 case "$(uname -s)" in
   Darwin) ndk_host=darwin-x86_64 ;;
   Linux) ndk_host=linux-x86_64 ;;
   *) echo "error: unsupported build host" >&2; exit 1 ;;
 esac
+
+ndk_root=
+if [[ -n ${ANDROID_NDK_HOME:-} ]]; then
+  [[ -x $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$ndk_host/bin/clang ]] || {
+    echo "error: ANDROID_NDK_HOME does not contain a complete NDK toolchain" >&2
+    exit 1
+  }
+  ndk_root=$ANDROID_NDK_HOME
+else
+  for candidate in "$android_home"/ndk/*; do
+    [[ -x $candidate/toolchains/llvm/prebuilt/$ndk_host/bin/clang ]] \
+      && ndk_root=$candidate
+  done
+fi
+[[ -n $ndk_root ]] || {
+  echo "error: Android NDK is not installed under $android_home/ndk" >&2
+  exit 1
+}
 ndk_bin="$ndk_root/toolchains/llvm/prebuilt/$ndk_host/bin"
 
 opam exec -- dune build -j 1 examples/components/native/gallery_bridge.ml

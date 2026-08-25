@@ -24,6 +24,19 @@
 (defn host [context]
   (:profile-host (:ui-profile context)))
 
+(defn extension! [context identifier]
+  (runtime/create-extension-node! (:ui-application context) identifier))
+
+(defn extension-property! [context node property value]
+  (runtime/set-extension-prop!
+   (:ui-application context) node property value))
+
+(defn extension-property-signal! [context node property source]
+  (do
+    (runtime/bind-extension-prop!
+     (:ui-scope context) (:ui-application context) node property source)
+    true))
+
 (defn row! [context]
   (runtime/create-node! (:ui-application context) proto/Row))
 

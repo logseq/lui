@@ -274,14 +274,26 @@ public final class LUIAppleBackend {
 
     private var tree = LUIRetainedTree()
     private var models: [Int: LUINodeModel] = [:]
+    private var extensionModels: [Int: LUIExtensionNodeModel] = [:]
     private var images: [Int: CGImage] = [:]
     private var mediaSurfaces: [Int: CGImage] = [:]
     private let decoder = JSONDecoder()
     private let appIcons: [String: LUIAppleIconSource]
+    private let extensionRegistry: LUIAppleExtensionRegistry
     let tooltipSession = LUITooltipSession()
 
     public init(appIcons: [String: LUIAppleIconSource] = [:]) {
         self.appIcons = appIcons
+        extensionRegistry = .frozenEmpty()
+    }
+
+    public init(
+        appIcons: [String: LUIAppleIconSource] = [:],
+        extensionRegistry: LUIAppleExtensionRegistry
+    ) throws {
+        try extensionRegistry.freeze()
+        self.appIcons = appIcons
+        self.extensionRegistry = extensionRegistry
     }
 
     func iconSource(for name: String) -> LUIAppleIconSource {
@@ -308,6 +320,20 @@ public final class LUIAppleBackend {
 
     func model(id: Int) -> LUINodeModel? {
         models[id]
+    }
+
+    func extensionModel(id: Int) -> LUIExtensionNodeModel? {
+        extensionModels[id]
+    }
+
+    func extensionView(nodeID: Int) -> AnyView {
+        guard let model = extensionModels[nodeID],
+              let registration = extensionRegistry.registration(model.identifier) else {
+            return AnyView(EmptyView())
+        }
+        return registration.viewFactory(
+            LUIAppleExtensionViewContext(nodeID: nodeID, backend: self)
+        )
     }
 
     private func firstSectionTitle(nodeID: Int) -> String? {
@@ -375,7 +401,10 @@ public final class LUIAppleBackend {
             )
         }
 
-        let nextTree = try tree.applying(batch.ops)
+        let nextTree = try tree.applying(
+            batch.ops,
+            extensionRegistry: extensionRegistry
+        )
         withTransaction(Transaction(animation: nil)) {
             commit(nextTree)
         }
@@ -431,6 +460,30 @@ public final class LUIAppleBackend {
             throw invalid("node \(node) is not an enabled double-press control")
         }
         onEvent?(.doublePress(node: node))
+    }
+
+    public func performExtensionEvent(
+        node: Int,
+        name: String,
+        values: [String: LUIExtensionValue]
+    ) throws {
+        guard let model = extensionModels[node],
+              let registration = extensionRegistry.registration(model.identifier),
+              let event = registration.events.first(where: { $0.name == name }) else {
+            throw invalid("unknown extension event")
+        }
+        let fields = Dictionary(uniqueKeysWithValues: event.fields.map { ($0.name, $0) })
+        guard values.allSatisfy({ name, value in
+            fields[name]?.kind.accepts(value.wireValue) == true
+        }), event.fields.allSatisfy({ !$0.isRequired || values[$0.name] != nil }) else {
+            throw invalid("invalid extension event payload")
+        }
+        onEvent?(.extension(
+            node: node,
+            identifier: model.identifier,
+            name: name,
+            values: values
+        ))
     }
 
     func performToggle(node: Int, checked: Bool) throws {
@@ -594,6 +647,16 @@ public final class LUIAppleBackend {
                 model.apply(state: state)
             } else {
                 models[id] = LUINodeModel(id: id, state: state)
+            }
+        }
+        for id in Array(extensionModels.keys) where nextTree.extensionNodes[id] == nil {
+            extensionModels[id] = nil
+        }
+        for (id, state) in nextTree.extensionNodes {
+            if let model = extensionModels[id] {
+                model.apply(state: state)
+            } else {
+                extensionModels[id] = LUIExtensionNodeModel(id: id, state: state)
             }
         }
     }

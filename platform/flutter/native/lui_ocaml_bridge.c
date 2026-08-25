@@ -30,7 +30,8 @@ static int emit_patch(value result) {
 
 LUI_EXPORT int32_t lui_ocaml_start(
     lui_patch_callback callback,
-    int32_t platform_code) {
+    int32_t platform_code,
+    int32_t host_code) {
   patch_callback = callback;
   if (!runtime_started) {
     char *arguments[] = {"lui_flutter", NULL};
@@ -42,7 +43,10 @@ LUI_EXPORT int32_t lui_ocaml_start(
   if (initialize == NULL) {
     return 0;
   }
-  return emit_patch(caml_callback_exn(*initialize, Val_long(platform_code)));
+  return emit_patch(caml_callback2_exn(
+      *initialize,
+      Val_long(platform_code),
+      Val_long(host_code)));
 }
 
 LUI_EXPORT int32_t lui_ocaml_press(int64_t node) {

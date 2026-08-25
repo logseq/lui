@@ -8,11 +8,13 @@ typedef _NativeStart =
     Int32 Function(
       Pointer<NativeFunction<_NativePatchCallback>> callback,
       Int32 platform,
+      Int32 host,
     );
 typedef _DartStart =
     int Function(
       Pointer<NativeFunction<_NativePatchCallback>> callback,
       int platform,
+      int host,
     );
 typedef _NativePress = Int32 Function(Int64 node);
 typedef _DartPress = int Function(int node);
@@ -110,7 +112,11 @@ final class LUIOcamlBridge {
       (Pointer<Utf8> json) => onPatch(json.toDartString()),
     );
     _patchCallback = callback;
-    if (_start(callback.nativeFunction, _platformCode(defaultTargetPlatform)) !=
+    if (_start(
+          callback.nativeFunction,
+          _platformCode(defaultTargetPlatform),
+          3,
+        ) !=
         1) {
       callback.close();
       _patchCallback = null;

@@ -3,6 +3,7 @@
             [lui.app :as driver]
             [lui.backend.flutter :as flutter]
             [components.app :as components]
+            [components.extensions :as extensions]
             [ocaml.Callback :as callback]))
 
 (def latest-patch (atom ""))
@@ -21,17 +22,30 @@
     5 proto/WindowsOS
     _ proto/GenericOS))
 
+(defn host-kind [host-code]
+  (match host-code
+    1 proto/WebHost
+    2 proto/SwiftUIHost
+    3 proto/FlutterHost
+    _ proto/GenericHost))
+
 (defn app []
   (match (deref current-app)
     (Some value) value
     None (raise (Invalid_argument "Flutter component bridge is not started"))))
 
-(defn initialize [platform-code]
+(defn initialize [platform-code host-code]
   (reset! latest-patch "")
-  (let [renderer (flutter/create-wire send-patch!)
+  (let [registry (extensions/registry)
+        renderer
+        (flutter/create-wire-with-extensions send-patch! registry)
         value
-        (components/create
-         (flutter/backend-for renderer (operating-system platform-code)))]
+        (components/create-with-extensions
+         (flutter/backend-for-profile
+          renderer
+          (proto/profile
+           (operating-system platform-code) (host-kind host-code)))
+         registry)]
     (reset! current-app (Some value))
     (driver/start! value)
     (driver/flush! value)

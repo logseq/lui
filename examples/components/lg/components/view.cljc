@@ -1,5 +1,6 @@
 (ns components.view
-  (:require [lui.macros :refer [defui reactive]]
+  (:require [signal.core]
+            [lui.macros :refer [defui reactive]]
             [lui.protocol :refer [TextChanged ToggleChanged ValueChanged]]
             [components.gallery :as gallery]
             [components.model :as model]))
@@ -9,7 +10,7 @@
     "Signal patched this paragraph; the Card node stayed mounted."
     "Signals update retained content without rebuilding the Card."))
 
-(defui gallery-view [model-source send]
+(defui gallery-view-with-option [model-source send extension-enabled-source]
   [gallery/component-gallery
    (reactive :gallery-disabled model-source)
    (fn [_event] (send model/ToggleDisabled))
@@ -90,4 +91,15 @@
    (fn [event]
      (match event
        (ValueChanged _node fraction) (send (model/SetSplitFraction fraction))
-       _ true))])
+       _ true))
+   extension-enabled-source])
+
+(defui gallery-view [model-source send]
+  [gallery-view-with-option
+   model-source send
+   (signal.core/constant (:ui-scheduler ui-context) false)])
+
+(defui gallery-view-with-extensions [model-source send]
+  [gallery-view-with-option
+   model-source send
+   (signal.core/constant (:ui-scheduler ui-context) true)])

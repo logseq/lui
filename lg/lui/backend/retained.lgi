@@ -1,10 +1,15 @@
 (ns lui.backend.retained)
 
+(type-variant retained-semantic-kind
+  (StandardSemantic :node-kind)
+  (ExtensionSemantic :string :string))
+
 (type-record retained-node [platform]
   (platform-node :platform)
-  (semantic-kind :node-kind)
+  (semantic-kind :retained-semantic-kind)
   (retained-parent :option<int>)
   (retained-properties :map<property;wire-value>)
+  (retained-extension-properties :map<string;wire-value>)
   (retained-children :vector<int>))
 
 (type-record retained-store [platform]
@@ -25,7 +30,7 @@
 (signature lui.backend.retained/move-at [value]
   :fn<vector<value>;int;int;vector<value>>)
 (signature lui.backend.retained/update-node [platform]
-  :fn<map<int;retained-node<platform>>;int;retained-node<platform>;map<property;wire-value>;vector<int>;map<int;retained-node<platform>>>)
+  :fn<map<int;retained-node<platform>>;int;retained-node<platform>;map<property;wire-value>;map<string;wire-value>;vector<int>;map<int;retained-node<platform>>>)
 (signature lui.backend.retained/update-parent [platform]
   :fn<map<int;retained-node<platform>>;int;retained-node<platform>;option<int>;map<int;retained-node<platform>>>)
 (signature lui.backend.retained/remove-reference
@@ -34,24 +39,56 @@
   :fn<map<int;retained-node<platform>>;int;map<int;retained-node<platform>>>)
 (signature lui.backend.retained/descendant? [platform]
   :fn<map<int;retained-node<platform>>;int;int;bool>)
+(signature lui.backend.retained/standard-kind [platform]
+  :fn<retained-node<platform>;option<node-kind>>)
+(signature lui.backend.retained/extension-identity [platform]
+  :fn<retained-node<platform>;option<tuple<string;string>>>)
+(signature lui.backend.retained/standard-kind? [platform]
+  :fn<retained-node<platform>;node-kind;bool>)
+(signature lui.backend.retained/extension-schema
+  :fn<extension-registry;string;extension-component-schema>)
+(signature lui.backend.retained/retained-child-supported? [platform]
+  :fn<extension-registry;retained-node<platform>;retained-node<platform>;bool>)
+(signature lui.backend.retained/unsupported-child-message [platform]
+  :fn<retained-node<platform>;retained-node<platform>;string>)
+(signature lui.backend.retained/apply-op-with-extensions [platform]
+  :fn<map<int;retained-node<platform>>;fn<node-kind;platform>;fn<int;string;platform>;extension-registry;patch-op;map<int;retained-node<platform>>>)
+(signature lui.backend.retained/unavailable-extension-platform [platform]
+  :fn<int;string;platform>)
+(signature lui.backend.retained/unavailable-standard-platform [platform]
+  :fn<node-kind;platform>)
 (signature lui.backend.retained/has-ancestor-kind? [platform]
   :fn<map<int;retained-node<platform>>;option<int>;node-kind;bool>)
 (signature lui.backend.retained/apply-op [platform]
   :fn<map<int;retained-node<platform>>;fn<node-kind;platform>;patch-op;map<int;retained-node<platform>>>)
 (signature lui.backend.retained/validate-nodes! [platform]
-  :fn<map<int;retained-node<platform>>;bool>)
+  :fn<map<int;retained-node<platform>>;extension-registry;bool>)
+(signature lui.backend.retained/apply-operations-with-extensions [platform]
+  :fn<map<int;retained-node<platform>>;fn<node-kind;platform>;fn<int;string;platform>;extension-registry;patch-batch;map<int;retained-node<platform>>>)
 (signature lui.backend.retained/apply-operations [platform]
   :fn<map<int;retained-node<platform>>;fn<node-kind;platform>;patch-batch;map<int;retained-node<platform>>>)
 (signature lui.backend.retained/apply-batch-with! [platform]
   :fn<retained-store<platform>;fn<node-kind;platform>;fn<patch-batch;bool>;patch-batch;bool>)
+(signature lui.backend.retained/commit-batch! [platform]
+  :fn<retained-store<platform>;fn<node-kind;platform>;fn<int;string;platform>;extension-registry;fn<patch-batch;bool>;patch-batch;bool>)
+(signature lui.backend.retained/apply-batch-with-extensions! [platform]
+  :fn<retained-store<platform>;fn<node-kind;platform>;fn<int;string;platform>;extension-registry;fn<patch-batch;bool>;patch-batch;bool>)
 (signature lui.backend.retained/apply-batch! [platform]
   :fn<retained-store<platform>;fn<node-kind;platform>;patch-batch;bool>)
+(signature lui.backend.retained/apply-extension-batch! [platform]
+  :fn<retained-store<platform>;fn<int;string;platform>;extension-registry;patch-batch;bool>)
 (signature lui.backend.retained/node [platform]
   :fn<retained-store<platform>;int;option<retained-node<platform>>>)
 (signature lui.backend.retained/nodes [platform]
   :fn<retained-store<platform>;map<int;retained-node<platform>>>)
+(signature lui.backend.retained/platform-node [platform]
+  :fn<retained-store<platform>;int;option<platform>>)
 (signature lui.backend.retained/property [platform]
   :fn<retained-store<platform>;int;property;option<wire-value>>)
+(signature lui.backend.retained/extension-identifier [platform]
+  :fn<retained-store<platform>;int;option<string>>)
+(signature lui.backend.retained/extension-property [platform]
+  :fn<retained-store<platform>;int;string;option<wire-value>>)
 (signature lui.backend.retained/children [platform]
   :fn<retained-store<platform>;int;vector<int>>)
 (signature lui.backend.retained/node-count [platform]

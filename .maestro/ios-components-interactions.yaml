@@ -29,6 +29,10 @@ appId: dev.lui.components
     speed: 80
     timeout: 30000
     centerElement: true
+- swipe:
+    start: "50%,30%"
+    end: "50%,60%"
+    duration: 300
 - tapOn:
     id: "component-row-Dialog"
     point: "50%,90%"
@@ -44,10 +48,6 @@ appId: dev.lui.components
     speed: 80
     timeout: 30000
     centerElement: true
-- swipe:
-    start: "50%,30%"
-    end: "50%,60%"
-    duration: 300
 - tapOn:
     id: "component-row-TextField"
     point: "50%,90%"

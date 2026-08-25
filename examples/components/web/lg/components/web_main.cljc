@@ -2,7 +2,45 @@
   (:require [ocaml.package/melange-webapi]
             [lui.app :as driver]
             [lui.backend.web :as web]
-            [components.app :as components]))
+            [lui.protocol :refer [StringValue]]
+            [components.app :as components]
+            [components.extensions :as extensions]))
+
+(defn- native-card-adapter []
+  (record web/web-extension-adapter
+    (web-extension-create
+     (fn [_node document _emit]
+       (let [button (Webapi.Dom.Document.createElement "button" document)
+             pressed (atom false)]
+         (Webapi.Dom.Element.setAttribute "type" "button" button)
+         (Webapi.Dom.Element.setClassName button "lui-native-card")
+         (Webapi.Dom.Element.addEventListener
+          "click"
+          (fn [_event]
+            (swap! pressed not)
+            (Webapi.Dom.Element.setAttribute
+             "data-active" (if (deref pressed) "true" "false") button)
+            (Stdlib.ignore true))
+          button)
+         button)))
+    (web-extension-set-property
+     (fn [node property value]
+       (if (= property "title")
+         (match value
+           (StringValue text)
+           (do
+             (Webapi.Dom.Element.setTextContent node text)
+             (Stdlib.ignore true))
+           _ (raise (Invalid_argument "native-card title must be a string")))
+         (Stdlib.ignore true))))
+    (web-extension-remove-property
+     (fn [node property]
+       (if (= property "title")
+         (do
+           (Webapi.Dom.Element.setTextContent node "")
+           (Stdlib.ignore true))
+         (Stdlib.ignore true))))
+    (web-extension-cleanup (fn [_node] (Stdlib.ignore true)))))
 
 (defn- append! [parent child]
   (Webapi.Dom.Element.appendChild (Webapi.Dom.Element.asNode child) parent))
@@ -63,8 +101,12 @@
     true))
 
 (defn main [host]
-  (let [renderer (web/create host)
-        application (components/create (web/backend renderer))]
+  (let [registry (extensions/registry)
+        renderer
+        (web/create-with-extensions
+         host {} registry {"native-card" (native-card-adapter)})
+        application
+        (components/create-with-extensions (web/backend renderer) registry)]
     (web/register-image!
      renderer
      1

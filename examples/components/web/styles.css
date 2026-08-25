@@ -59,6 +59,25 @@ body {
   width: min(56rem, 100%);
 }
 
+.lui-native-card {
+  min-height: 8rem;
+  width: min(28rem, 100%);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--card);
+  color: var(--card-foreground);
+  padding: 1.5rem;
+  font: inherit;
+  text-align: left;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.lui-native-card:hover,
+.lui-native-card[data-active="true"] {
+  box-shadow: 0 0.75rem 2rem color-mix(in srgb, var(--foreground) 12%, transparent);
+  transform: translateY(-2px);
+}
+
 @media (max-width: 44.999rem) {
   .lui-gallery-shell {
     grid-template-columns: minmax(0, 1fr);

@@ -2242,6 +2242,115 @@ struct LUISwiftUIBackendTests {
         #expect(backend.generation == 1)
     }
 
+    @Test("registered extensions retain identity and reject invalid batches atomically")
+    func registeredExtensionsRetainIdentity() throws {
+        let map = LUIAppleExtension(
+            identifier: "map",
+            fingerprint: "map-v1",
+            properties: [
+                .init(name: "latitude", kind: .double, isRequired: true),
+                .init(name: "longitude", kind: .double, isRequired: true),
+            ],
+            events: [
+                .init(
+                    name: "region-change",
+                    fields: [
+                        .init(name: "latitude", kind: .double, isRequired: true),
+                        .init(name: "longitude", kind: .double, isRequired: true),
+                    ]
+                ),
+            ]
+        ) { context in
+            AnyView(Text("Map \(context.nodeID)"))
+        }
+        let registry = LUIAppleExtensionRegistry()
+        try registry.register(map)
+        let backend = try LUIAppleBackend(extensionRegistry: registry)
+
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-extension","id":2,"identifier":"map","fingerprint":"map-v1"},
+          {"op":"set-extension-prop","id":2,"property":"latitude","value":37.3},
+          {"op":"set-extension-prop","id":2,"property":"longitude","value":-122.0},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+
+        let model = try #require(backend.extensionModel(id: 2))
+        #expect(model.identifier == "map")
+        #expect(model.property("latitude") == .double(37.3))
+        #expect(backend.rootIDs == [1])
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-extension-prop","id":2,"property":"latitude","value":38.0}
+        ]}
+        """)
+        #expect(backend.extensionModel(id: 2) === model)
+        #expect(model.property("latitude") == .double(38.0))
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":3,"ops":[
+              {"op":"create-extension","id":3,"identifier":"map","fingerprint":"wrong"}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 2)
+        #expect(backend.extensionModel(id: 3) == nil)
+
+        var received: LUIEvent?
+        backend.onEvent = { received = $0 }
+        try backend.performExtensionEvent(
+            node: 2,
+            name: "region-change",
+            values: ["latitude": .double(38.0), "longitude": .double(-122.0)]
+        )
+        #expect(received == .extension(
+            node: 2,
+            identifier: "map",
+            name: "region-change",
+            values: ["latitude": .double(38.0), "longitude": .double(-122.0)]
+        ))
+    }
+
+    @Test("extension registrations cannot shadow standard nodes or name invalid children")
+    func extensionRegistrationNamesAreClosed() throws {
+        let registry = LUIAppleExtensionRegistry()
+
+        #expect(throws: LUIBackendError.self) {
+            try registry.register(
+                LUIAppleExtension(identifier: "button", fingerprint: "shadow") { _ in
+                    AnyView(EmptyView())
+                }
+            )
+        }
+        #expect(throws: LUIBackendError.self) {
+            try registry.register(
+                LUIAppleExtension(
+                    identifier: "map",
+                    fingerprint: "map-v1",
+                    childIdentifiers: ["Invalid Child"]
+                ) { _ in
+                    AnyView(EmptyView())
+                }
+            )
+        }
+        #expect(throws: LUIBackendError.self) {
+            try registry.register(
+                LUIAppleExtension(
+                    identifier: "map",
+                    fingerprint: "map-v1",
+                    childIdentifiers: ["marker", "marker"]
+                ) { _ in
+                    AnyView(EmptyView())
+                }
+            )
+        }
+    }
+
     @Test("C ABI forwards SwiftUI backend events")
     func cABIForwardsEvent() {
         capturedAppleEvent = nil

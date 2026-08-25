@@ -90,6 +90,74 @@
     Tooltip "tooltip"
     StatusBar "status-bar"))
 
+(defn standard-node-name? [name]
+  (match name
+    "row" true
+    "column" true
+    "grid" true
+    "stack" true
+    "panel" true
+    "card" true
+    "alert" true
+    "bubble" true
+    "box" true
+    "text" true
+    "heading" true
+    "paragraph" true
+    "label" true
+    "button" true
+    "toggle-button" true
+    "toggle" true
+    "radio-group" true
+    "radio" true
+    "slider" true
+    "text-field" true
+    "input" true
+    "search-field" true
+    "textarea" true
+    "checkbox" true
+    "switch" true
+    "progress" true
+    "divider" true
+    "scroll" true
+    "list" true
+    "tabs" true
+    "button-group" true
+    "toggle-group" true
+    "spacer" true
+    "spinner" true
+    "icon" true
+    "select" true
+    "combobox" true
+    "dropdown-menu" true
+    "context-menu" true
+    "menu-item" true
+    "list-item" true
+    "avatar" true
+    "image" true
+    "media-surface" true
+    "stepper" true
+    "step" true
+    "timeline" true
+    "timeline-item" true
+    "input-group" true
+    "input-group-actions" true
+    "breadcrumb" true
+    "pagination" true
+    "accordion" true
+    "table" true
+    "table-row" true
+    "table-cell" true
+    "tree" true
+    "resizable" true
+    "split" true
+    "dialog" true
+    "drawer" true
+    "sheet" true
+    "tooltip" true
+    "status-bar" true
+    _ false))
+
 (defn property-name [property]
   (match property
     TextValue "text"

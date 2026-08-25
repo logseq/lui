@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 part 'lui_wire_schema.g.dart';
+part 'lui_flutter_extension.dart';
 
 sealed class LUIEvent {
   const LUIEvent();
@@ -30,6 +31,12 @@ sealed class LUIEvent {
   }) = LUIValueChangedEvent;
   const factory LUIEvent.dismiss({required int node}) = LUIDismissEvent;
   const factory LUIEvent.doublePress({required int node}) = LUIDoublePressEvent;
+  const factory LUIEvent.extension({
+    required int node,
+    required String identifier,
+    required String name,
+    required Map<String, Object> values,
+  }) = LUIExtensionComponentEvent;
 }
 
 @immutable
@@ -324,21 +331,31 @@ final class _NodeHandle extends ChangeNotifier {
 }
 
 final class LUIFlutterBackend {
-  LUIFlutterBackend({this.onEvent, Map<String, IconData> appIcons = const {}})
-    : appIcons = Map.unmodifiable(appIcons);
+  LUIFlutterBackend({
+    this.onEvent,
+    Map<String, IconData> appIcons = const {},
+    LUIFlutterExtensionRegistry? extensionRegistry,
+  }) : appIcons = Map.unmodifiable(appIcons),
+       _extensionRegistry = extensionRegistry ?? LUIFlutterExtensionRegistry() {
+    _extensionRegistry._freeze();
+  }
 
   final void Function(LUIEvent event)? onEvent;
   final Map<String, IconData> appIcons;
+  final LUIFlutterExtensionRegistry _extensionRegistry;
   final _LUITooltipSession _tooltipSession = _LUITooltipSession();
   Map<int, _NodeState> _states = {};
   final Map<int, _NodeHandle> _handles = {};
+  Map<int, _ExtensionNodeState> _extensionStates = {};
+  final Map<int, _ExtensionNodeHandle> _extensionHandles = {};
   final Map<int, ui.Image> _images = {};
   final Map<int, ui.Image> _mediaSurfaces = {};
   int generation = 0;
 
   static Key nodeKey(int id) => ValueKey('lui-node-$id');
 
-  bool containsNode(int id) => _states.containsKey(id);
+  bool containsNode(int id) =>
+      _states.containsKey(id) || _extensionStates.containsKey(id);
 
   List<LUIRootSection> rootSections(int root) {
     final rootState = _requireState(_states, root);
@@ -368,7 +385,8 @@ final class LUIFlutterBackend {
     return null;
   }
 
-  int debugRevision(int id) => _requireHandle(id).revision;
+  int debugRevision(int id) =>
+      _handles[id]?.revision ?? _requireExtensionHandle(id).revision;
 
   IconData _iconData(String name) {
     if (name.startsWith('app:')) {
@@ -382,6 +400,10 @@ final class LUIFlutterBackend {
       handle.dispose();
     }
     _handles.clear();
+    for (final handle in _extensionHandles.values) {
+      handle.dispose();
+    }
+    _extensionHandles.clear();
     for (final image in _images.values) {
       image.dispose();
     }
@@ -391,6 +413,7 @@ final class LUIFlutterBackend {
     }
     _mediaSurfaces.clear();
     _states = {};
+    _extensionStates = {};
   }
 
   void registerImage({required int id, required ui.Image image}) {
@@ -471,14 +494,22 @@ final class LUIFlutterBackend {
       for (final entry in _states.entries)
         entry.key: _NodeState.copy(entry.value),
     };
+    final nextExtensions = {
+      for (final entry in _extensionStates.entries)
+        entry.key: _ExtensionNodeState.copy(entry.value),
+    };
 
     for (final operation in operations) {
-      _applyState(next, operation);
+      _applyState(next, nextExtensions, operation);
     }
     _validateStates(next);
+    _validateExtensionStates(next, nextExtensions);
     final changedIDs = <int>{};
     final removed = _handles.keys
         .where((id) => !next.containsKey(id))
+        .toList(growable: false);
+    final removedExtensions = _extensionHandles.keys
+        .where((id) => !nextExtensions.containsKey(id))
         .toList(growable: false);
     for (final entry in next.entries) {
       final handle = _handles[entry.key];
@@ -494,36 +525,71 @@ final class LUIFlutterBackend {
     for (final id in removed) {
       _handles.remove(id)?.dispose();
     }
+    for (final entry in nextExtensions.entries) {
+      final handle = _extensionHandles[entry.key];
+      if (handle == null) {
+        _extensionHandles[entry.key] = _ExtensionNodeHandle(entry.value);
+      } else {
+        if (!handle.state.rendersLike(entry.value)) {
+          changedIDs.add(entry.key);
+        }
+        handle.state = entry.value;
+      }
+    }
+    for (final id in removedExtensions) {
+      _extensionHandles.remove(id)?.dispose();
+    }
     _states = next;
+    _extensionStates = nextExtensions;
     generation = nextGeneration;
     final changedSources = Set<int>.of(changedIDs);
     for (final source in changedSources) {
       final sourceState = next[source];
-      var parent = next[source]?.parent;
+      var parent = next[source]?.parent ?? nextExtensions[source]?.parent;
       while (parent != null) {
         final ancestor = next[parent];
-        if (ancestor == null) break;
-        if (ancestor.kind == _NodeKind.radioGroup) changedIDs.add(parent);
-        if (ancestor.kind == _NodeKind.stack &&
+        final extensionAncestor = nextExtensions[parent];
+        if (ancestor == null && extensionAncestor == null) break;
+        if (ancestor?.kind == _NodeKind.radioGroup) changedIDs.add(parent);
+        if (ancestor?.kind == _NodeKind.stack &&
             (sourceState?.kind == _NodeKind.dropdownMenu ||
                 sourceState?.kind == _NodeKind.tooltip)) {
           changedIDs.add(parent);
         }
-        parent = ancestor.parent;
+        if (extensionAncestor != null) changedIDs.add(parent);
+        parent = ancestor?.parent ?? extensionAncestor?.parent;
       }
     }
     for (final id in changedIDs) {
       _handles[id]?.markChanged();
+      _extensionHandles[id]?.markChanged();
     }
   }
 
   Widget widget({required int node}) {
+    final extensionHandle = _extensionHandles[node];
+    if (extensionHandle != null) {
+      return ListenableBuilder(
+        key: nodeKey(node),
+        listenable: extensionHandle,
+        builder: (context, _) => _buildExtensionNode(node),
+      );
+    }
     final handle = _requireHandle(node);
     return ListenableBuilder(
       key: nodeKey(node),
       listenable: handle,
       builder: (context, _) => _buildNode(context, node),
     );
+  }
+
+  Widget _buildExtensionNode(int node) {
+    final state = _requireExtensionState(node);
+    final registration = _extensionRegistry._registration(state.identifier);
+    if (registration == null) {
+      throw LUIBackendException('unknown extension ${state.identifier}');
+    }
+    return registration.builder(LUIFlutterExtensionContext._(node, this));
   }
 
   void performAction(int node) {
@@ -548,6 +614,52 @@ final class LUIFlutterBackend {
       );
     }
     onEvent?.call(LUIEvent.press(node: node));
+  }
+
+  void performExtensionEvent(
+    int node, {
+    required String name,
+    Map<String, Object> values = const {},
+  }) {
+    final state = _requireExtensionState(node);
+    final registration = _extensionRegistry._registration(state.identifier);
+    if (registration == null) {
+      throw LUIBackendException('unknown extension ${state.identifier}');
+    }
+    final event = registration.events
+        .where((candidate) => candidate.name == name)
+        .firstOrNull;
+    if (event == null) {
+      throw const LUIBackendException('unknown extension event');
+    }
+    final fields = {for (final field in event.fields) field.name: field};
+    if (!values.keys.every(fields.containsKey)) {
+      throw const LUIBackendException('unknown extension event field');
+    }
+    for (final field in event.fields) {
+      final value = values[field.name];
+      if (value == null) {
+        if (field.isRequired) {
+          throw const LUIBackendException(
+            'missing required extension event field',
+          );
+        }
+      } else if (!field.kind.accepts(value)) {
+        throw const LUIBackendException('invalid extension event field');
+      }
+    }
+    final normalized = {
+      for (final entry in values.entries)
+        entry.key: fields[entry.key]!.kind.normalize(entry.value),
+    };
+    onEvent?.call(
+      LUIEvent.extension(
+        node: node,
+        identifier: state.identifier,
+        name: name,
+        values: Map.unmodifiable(normalized),
+      ),
+    );
   }
 
   void _moveHorizontalFocus(int groupID, LogicalKeyboardKey key) {
@@ -766,8 +878,7 @@ final class LUIFlutterBackend {
     final state = _requireState(_states, id);
     final contextMenuID = state.children.cast<int?>().firstWhere(
       (childID) =>
-          childID != null &&
-          _requireState(_states, childID).kind == _NodeKind.contextMenu,
+          childID != null && _states[childID]?.kind == _NodeKind.contextMenu,
       orElse: () => null,
     );
     final children = state.children
@@ -1141,15 +1252,14 @@ final class LUIFlutterBackend {
     Widget stack() {
       final menuID = state.children.cast<int?>().firstWhere(
         (childID) =>
-            childID != null &&
-            _requireState(_states, childID).kind == _NodeKind.dropdownMenu,
+            childID != null && _states[childID]?.kind == _NodeKind.dropdownMenu,
         orElse: () => null,
       );
       final tooltipID = state.children.cast<int?>().firstWhere(
         (childID) =>
             childID != null &&
-            _requireState(_states, childID).kind == _NodeKind.tooltip &&
-            _requireState(_states, childID).properties.containsKey('anchor'),
+            _states[childID]?.kind == _NodeKind.tooltip &&
+            _states[childID]?.properties.containsKey('anchor') == true,
         orElse: () => null,
       );
       final menuState = menuID == null ? null : _requireState(_states, menuID);
@@ -2163,22 +2273,49 @@ final class LUIFlutterBackend {
 
   void _applyState(
     Map<int, _NodeState> states,
+    Map<int, _ExtensionNodeState> extensions,
     Map<String, Object?> operation,
   ) {
     switch (_string(operation['op'], 'op')) {
       case 'create-node':
         final id = _integer(operation['id'], 'id');
-        if (states.containsKey(id)) {
+        if (_containsState(states, extensions, id)) {
           throw const LUIBackendException('node already exists');
         }
         states[id] = _NodeState(_decodeNodeKind(operation['kind']));
+      case 'create-extension':
+        final id = _integer(operation['id'], 'id');
+        if (_containsState(states, extensions, id)) {
+          throw const LUIBackendException('node already exists');
+        }
+        final identifier = _string(operation['identifier'], 'identifier');
+        final fingerprint = _string(operation['fingerprint'], 'fingerprint');
+        final registration = _extensionRegistry._registration(identifier);
+        if (registration == null) {
+          throw const LUIBackendException('unknown extension');
+        }
+        if (registration.fingerprint != fingerprint) {
+          throw const LUIBackendException('extension fingerprint mismatch');
+        }
+        extensions[id] = _ExtensionNodeState(
+          identifier: identifier,
+          fingerprint: fingerprint,
+          properties: {
+            for (final property in registration.properties)
+              if (property.defaultValue != null)
+                property.name: property.kind.normalize(property.defaultValue!),
+          },
+        );
       case 'drop-node':
         final id = _integer(operation['id'], 'id');
-        final node = _requireState(states, id);
-        if (node.parent != null || node.children.isNotEmpty) {
+        final parent = _nodeParent(states, extensions, id);
+        final children = _nodeChildren(states, extensions, id);
+        if (parent != null || children.isNotEmpty) {
           throw const LUIBackendException('cannot drop an attached node');
         }
-        states.remove(id);
+        if (states.remove(id) == null && extensions.remove(id) == null) {
+          throw LUIBackendException('unknown node $id');
+        }
       case 'set-prop':
         final node = _requireState(states, _integer(operation['id'], 'id'));
         final property = _string(operation['property'], 'property');
@@ -2189,102 +2326,181 @@ final class LUIFlutterBackend {
           );
         }
         node.properties[property] = value!;
+      case 'set-extension-prop':
+        final node = _requireExtensionStateFrom(
+          extensions,
+          _integer(operation['id'], 'id'),
+        );
+        final propertyName = _string(operation['property'], 'property');
+        final registration = _extensionRegistry._registration(node.identifier)!;
+        final property = registration.properties
+            .where((candidate) => candidate.name == propertyName)
+            .firstOrNull;
+        final value = operation['value'];
+        if (property == null ||
+            value == null ||
+            !property.kind.accepts(value)) {
+          throw const LUIBackendException(
+            'unsupported extension property value',
+          );
+        }
+        node.properties[propertyName] = property.kind.normalize(value);
+      case 'remove-extension-prop':
+        final node = _requireExtensionStateFrom(
+          extensions,
+          _integer(operation['id'], 'id'),
+        );
+        final propertyName = _string(operation['property'], 'property');
+        final registration = _extensionRegistry._registration(node.identifier)!;
+        final property = registration.properties
+            .where((candidate) => candidate.name == propertyName)
+            .firstOrNull;
+        if (property == null) {
+          throw const LUIBackendException('unknown extension property');
+        }
+        if (property.defaultValue == null) {
+          node.properties.remove(propertyName);
+        } else {
+          node.properties[propertyName] = property.kind.normalize(
+            property.defaultValue!,
+          );
+        }
       case 'insert-child':
         final parentID = _integer(operation['parent'], 'parent');
         final childID = _integer(operation['child'], 'child');
         final index = _integer(operation['index'], 'index');
-        final parent = _requireState(states, parentID);
-        final child = _requireState(states, childID);
-        if (child.parent != null) {
+        if (!_containsState(states, extensions, parentID) ||
+            !_containsState(states, extensions, childID)) {
+          throw const LUIBackendException('unknown parent or child node');
+        }
+        if (_nodeParent(states, extensions, childID) != null) {
           throw const LUIBackendException('child is already attached');
         }
-        if (!_canContainChildren(parent.kind)) {
-          throw const LUIBackendException('parent cannot contain child');
-        }
-        if (parent.kind == _NodeKind.dropdownMenu &&
-            child.kind != _NodeKind.menuItem &&
-            child.kind != _NodeKind.divider) {
-          throw const LUIBackendException(
-            'dropdown-menu accepts only menu-item or separator children',
-          );
-        }
-        if (parent.kind == _NodeKind.contextMenu &&
-            child.kind != _NodeKind.menuItem &&
-            child.kind != _NodeKind.divider) {
-          throw const LUIBackendException(
-            'context-menu accepts only menu-item or separator children',
-          );
-        }
-        if (_isContextMenuLeafHost(parent.kind) &&
-            child.kind != _NodeKind.contextMenu) {
-          throw const LUIBackendException(
-            'interactive leaf accepts only context-menu metadata',
-          );
-        }
-        if (parent.kind == _NodeKind.table &&
-            child.kind != _NodeKind.tableRow) {
-          throw const LUIBackendException('table can contain only table-row');
-        }
-        if (parent.kind == _NodeKind.tableRow &&
-            child.kind != _NodeKind.tableCell) {
-          throw const LUIBackendException(
-            'table-row can contain only table-cell',
-          );
-        }
-        if (parent.kind == _NodeKind.tree && !_isTreeRowKind(child.kind)) {
-          throw const LUIBackendException('tree accepts only row containers');
-        }
-        if (parent.kind == _NodeKind.stepper && child.kind != _NodeKind.step) {
-          throw const LUIBackendException('stepper accepts only step children');
-        }
-        if (parent.kind == _NodeKind.timeline &&
-            child.kind != _NodeKind.timelineItem) {
-          throw const LUIBackendException(
-            'timeline accepts only timeline-item children',
-          );
-        }
-        if (parent.kind == _NodeKind.inputGroup &&
-            child.kind != _NodeKind.textarea &&
-            child.kind != _NodeKind.inputGroupActions) {
-          throw const LUIBackendException(
-            'input-group accepts only textarea and input-group-actions children',
-          );
-        }
-        if (index < 0 || index > parent.children.length) {
+        _validateChildRelationship(states, extensions, parentID, childID);
+        final children = _nodeChildren(states, extensions, parentID);
+        if (index < 0 || index > children.length) {
           throw const LUIBackendException('child index is out of bounds');
         }
-        if (_isDescendant(states, target: parentID, root: childID)) {
+        if (_isDescendantAny(
+          states,
+          extensions,
+          target: parentID,
+          root: childID,
+        )) {
           throw const LUIBackendException(
             'child insertion would create a cycle',
           );
         }
-        parent.children.insert(index, childID);
-        child.parent = parentID;
+        children.insert(index, childID);
+        _setNodeParent(states, extensions, childID, parentID);
       case 'remove-child':
         final parentID = _integer(operation['parent'], 'parent');
         final childID = _integer(operation['child'], 'child');
-        final parent = _requireState(states, parentID);
-        final child = _requireState(states, childID);
-        if (!parent.children.remove(childID)) {
+        final children = _nodeChildren(states, extensions, parentID);
+        if (!children.remove(childID)) {
           throw const LUIBackendException('child is not attached to parent');
         }
-        child.parent = null;
+        _setNodeParent(states, extensions, childID, null);
       case 'move-child':
-        final parent = _requireState(
-          states,
-          _integer(operation['parent'], 'parent'),
-        );
+        final parentID = _integer(operation['parent'], 'parent');
+        final children = _nodeChildren(states, extensions, parentID);
         final childID = _integer(operation['child'], 'child');
         final index = _integer(operation['index'], 'index');
-        if (!parent.children.remove(childID)) {
+        if (!children.remove(childID)) {
           throw const LUIBackendException('child is not attached to parent');
         }
-        if (index < 0 || index > parent.children.length) {
+        if (index < 0 || index > children.length) {
           throw const LUIBackendException('child index is out of bounds');
         }
-        parent.children.insert(index, childID);
+        children.insert(index, childID);
       default:
         throw const LUIBackendException('unknown patch operation');
+    }
+  }
+
+  void _validateChildRelationship(
+    Map<int, _NodeState> states,
+    Map<int, _ExtensionNodeState> extensions,
+    int parentID,
+    int childID,
+  ) {
+    final parent = states[parentID];
+    final child = states[childID];
+    if (parent != null && child == null) {
+      if (!_acceptsExtensionChildren(parent.kind)) {
+        throw const LUIBackendException(
+          'standard node cannot contain extension',
+        );
+      }
+      return;
+    }
+    final extensionParent = extensions[parentID];
+    final extensionChild = extensions[childID];
+    if (extensionParent != null) {
+      final registration = _extensionRegistry._registration(
+        extensionParent.identifier,
+      )!;
+      if (child != null) {
+        if (!registration.acceptsStandardChildren) {
+          throw const LUIBackendException(
+            'extension does not accept standard children',
+          );
+        }
+        return;
+      }
+      if (extensionChild == null ||
+          !registration.childIdentifiers.contains(extensionChild.identifier)) {
+        throw const LUIBackendException(
+          'extension child relationship is not registered',
+        );
+      }
+      return;
+    }
+    if (parent == null || child == null) {
+      throw const LUIBackendException('unknown parent or child node');
+    }
+    if (!_canContainChildren(parent.kind)) {
+      throw const LUIBackendException('parent cannot contain child');
+    }
+    if ((parent.kind == _NodeKind.dropdownMenu ||
+            parent.kind == _NodeKind.contextMenu) &&
+        child.kind != _NodeKind.menuItem &&
+        child.kind != _NodeKind.divider) {
+      throw const LUIBackendException(
+        'menu accepts only menu-item or separator children',
+      );
+    }
+    if (_isContextMenuLeafHost(parent.kind) &&
+        child.kind != _NodeKind.contextMenu) {
+      throw const LUIBackendException(
+        'interactive leaf accepts only context-menu metadata',
+      );
+    }
+    if (parent.kind == _NodeKind.table && child.kind != _NodeKind.tableRow) {
+      throw const LUIBackendException('table can contain only table-row');
+    }
+    if (parent.kind == _NodeKind.tableRow &&
+        child.kind != _NodeKind.tableCell) {
+      throw const LUIBackendException('table-row can contain only table-cell');
+    }
+    if (parent.kind == _NodeKind.tree && !_isTreeRowKind(child.kind)) {
+      throw const LUIBackendException('tree accepts only row containers');
+    }
+    if (parent.kind == _NodeKind.stepper && child.kind != _NodeKind.step) {
+      throw const LUIBackendException('stepper accepts only step children');
+    }
+    if (parent.kind == _NodeKind.timeline &&
+        child.kind != _NodeKind.timelineItem) {
+      throw const LUIBackendException(
+        'timeline accepts only timeline-item children',
+      );
+    }
+    if (parent.kind == _NodeKind.inputGroup &&
+        child.kind != _NodeKind.textarea &&
+        child.kind != _NodeKind.inputGroupActions) {
+      throw const LUIBackendException(
+        'input-group accepts only textarea and input-group-actions children',
+      );
     }
   }
 
@@ -2917,6 +3133,49 @@ final class LUIFlutterBackend {
     }
   }
 
+  void _validateExtensionStates(
+    Map<int, _NodeState> states,
+    Map<int, _ExtensionNodeState> extensions,
+  ) {
+    for (final entry in extensions.entries) {
+      final id = entry.key;
+      final state = entry.value;
+      final registration = _extensionRegistry._registration(state.identifier);
+      if (registration == null ||
+          registration.fingerprint != state.fingerprint) {
+        throw const LUIBackendException('invalid extension registration');
+      }
+      final properties = {
+        for (final property in registration.properties) property.name: property,
+      };
+      if (!state.properties.keys.every(properties.containsKey)) {
+        throw const LUIBackendException('unknown extension property');
+      }
+      for (final property in registration.properties) {
+        final value = state.properties[property.name];
+        if (value == null) {
+          if (property.isRequired) {
+            throw const LUIBackendException(
+              'missing required extension property',
+            );
+          }
+        } else if (!property.kind.accepts(value)) {
+          throw const LUIBackendException('invalid extension property');
+        }
+      }
+      final parent = state.parent;
+      if (parent != null &&
+          !_nodeChildren(states, extensions, parent).contains(id)) {
+        throw const LUIBackendException('extension parent is inconsistent');
+      }
+      for (final child in state.children) {
+        if (_nodeParent(states, extensions, child) != id) {
+          throw const LUIBackendException('extension child is inconsistent');
+        }
+      }
+    }
+  }
+
   static void _validateSizeAxis(
     _NodeState state,
     String fixedProperty,
@@ -2960,6 +3219,26 @@ final class LUIFlutterBackend {
       kind == _NodeKind.inputGroupActions ||
       _isContextMenuLeafHost(kind) ||
       kind.isModalSurface;
+
+  static bool _acceptsExtensionChildren(_NodeKind kind) =>
+      kind == _NodeKind.row ||
+      kind == _NodeKind.column ||
+      kind == _NodeKind.grid ||
+      kind == _NodeKind.stack ||
+      kind == _NodeKind.panel ||
+      kind == _NodeKind.card ||
+      kind == _NodeKind.box ||
+      kind == _NodeKind.scroll ||
+      kind == _NodeKind.list ||
+      kind == _NodeKind.listItem ||
+      kind == _NodeKind.dialog ||
+      kind == _NodeKind.drawer ||
+      kind == _NodeKind.sheet ||
+      kind == _NodeKind.accordion ||
+      kind == _NodeKind.resizable ||
+      kind == _NodeKind.split ||
+      kind == _NodeKind.alert ||
+      kind == _NodeKind.bubble;
 
   static bool _isContextMenuLeafHost(_NodeKind kind) {
     const kinds = {
@@ -3074,14 +3353,56 @@ final class LUIFlutterBackend {
       kind == _NodeKind.textarea ||
       kind == _NodeKind.combobox;
 
-  static bool _isDescendant(
-    Map<int, _NodeState> states, {
+  static bool _containsState(
+    Map<int, _NodeState> states,
+    Map<int, _ExtensionNodeState> extensions,
+    int id,
+  ) => states.containsKey(id) || extensions.containsKey(id);
+
+  static int? _nodeParent(
+    Map<int, _NodeState> states,
+    Map<int, _ExtensionNodeState> extensions,
+    int id,
+  ) {
+    final standard = states[id];
+    if (standard != null) return standard.parent;
+    return _requireExtensionStateFrom(extensions, id).parent;
+  }
+
+  static List<int> _nodeChildren(
+    Map<int, _NodeState> states,
+    Map<int, _ExtensionNodeState> extensions,
+    int id,
+  ) {
+    final standard = states[id];
+    if (standard != null) return standard.children;
+    return _requireExtensionStateFrom(extensions, id).children;
+  }
+
+  static void _setNodeParent(
+    Map<int, _NodeState> states,
+    Map<int, _ExtensionNodeState> extensions,
+    int id,
+    int? parent,
+  ) {
+    final standard = states[id];
+    if (standard != null) {
+      standard.parent = parent;
+      return;
+    }
+    _requireExtensionStateFrom(extensions, id).parent = parent;
+  }
+
+  static bool _isDescendantAny(
+    Map<int, _NodeState> states,
+    Map<int, _ExtensionNodeState> extensions, {
     required int target,
     required int root,
   }) {
     if (target == root) return true;
-    return _requireState(states, root).children.any(
-      (child) => _isDescendant(states, target: target, root: child),
+    return _nodeChildren(states, extensions, root).any(
+      (child) =>
+          _isDescendantAny(states, extensions, target: target, root: child),
     );
   }
 
@@ -3094,6 +3415,26 @@ final class LUIFlutterBackend {
   _NodeHandle _requireHandle(int id) {
     final handle = _handles[id];
     if (handle == null) throw LUIBackendException('unknown node $id');
+    return handle;
+  }
+
+  static _ExtensionNodeState _requireExtensionStateFrom(
+    Map<int, _ExtensionNodeState> states,
+    int id,
+  ) {
+    final node = states[id];
+    if (node == null) throw LUIBackendException('unknown extension node $id');
+    return node;
+  }
+
+  _ExtensionNodeState _requireExtensionState(int id) =>
+      _requireExtensionStateFrom(_extensionStates, id);
+
+  _ExtensionNodeHandle _requireExtensionHandle(int id) {
+    final handle = _extensionHandles[id];
+    if (handle == null) {
+      throw LUIBackendException('unknown extension node $id');
+    }
     return handle;
   }
 

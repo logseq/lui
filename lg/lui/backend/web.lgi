@@ -3,6 +3,14 @@
 
 (type-alias web-node :Dom.element)
 
+(type-record web-extension-adapter
+  (web-extension-create
+   :fn<int;Dom.document;fn<string;map<string;wire-value>;unit>;web-node>)
+  (web-extension-set-property
+   :fn<web-node;string;wire-value;unit>)
+  (web-extension-remove-property :fn<web-node;string;unit>)
+  (web-extension-cleanup :fn<web-node;unit>))
+
 (type-record web-image-resource
   (web-image-url :string)
   (web-image-width :float)
@@ -26,10 +34,28 @@
   (web-cleanups :ref<map<int;fn<unit>>>)
   (web-modal-stack :ref<vector<int>>)
   (web-open-context-menu :ref<option<int>>)
-  (web-splits :ref<map<int;web-split-state>>))
+  (web-splits :ref<map<int;web-split-state>>)
+  (web-extension-registry :extension-registry)
+  (web-extension-adapters :map<string;web-extension-adapter>))
 
 (signature lui.backend.web/create
   :overload<fn<Dom.element;web-renderer>;fn<Dom.element;map<string;string>;web-renderer>>)
+(signature lui.backend.web/create-with-extensions
+  :fn<Dom.element;map<string;string>;extension-registry;map<string;web-extension-adapter>;web-renderer>)
+(signature lui.backend.web/standard-kind [platform]
+  :fn<retained-node<platform>;node-kind>)
+(signature lui.backend.web/standard-kind? [platform]
+  :fn<retained-node<platform>;node-kind;bool>)
+(signature lui.backend.web/extension-adapter
+  :fn<web-renderer;string;web-extension-adapter>)
+(signature lui.backend.web/extension-platform-node
+  :fn<web-renderer;int;string;web-node>)
+(signature lui.backend.web/apply-extension-property!
+  :fn<web-renderer;int;string;wire-value;unit>)
+(signature lui.backend.web/remove-extension-property!
+  :fn<web-renderer;int;string;unit>)
+(signature lui.backend.web/cleanup-extension-node!
+  :fn<web-renderer;map<int;retained-node<web-node>>;int;unit>)
 (signature lui.backend.web/set-event-handler!
   :fn<web-renderer;fn<event;bool>;bool>)
 (signature lui.backend.web/register-image!

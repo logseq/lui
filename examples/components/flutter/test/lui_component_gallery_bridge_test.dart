@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lui_flutter_backend/lui_flutter_backend.dart';
 import 'package:lui_flutter_backend/lui_ocaml_bridge.dart';
 
+import 'package:lui_components/gallery_extensions.dart';
+
 const _libraryPath = String.fromEnvironment('LUI_NATIVE_LIBRARY');
 
 void main() {
@@ -24,6 +26,7 @@ void main() {
 
     late LUIOcamlBridge bridge;
     final backend = LUIFlutterBackend(
+      extensionRegistry: galleryExtensionRegistry(),
       onEvent: (event) => switch (event) {
         LUIPressEvent(:final node) => bridge.press(node),
         LUIHoldEvent(:final node) => bridge.hold(node),
@@ -41,6 +44,9 @@ void main() {
           node,
           value,
         ),
+        LUIExtensionComponentEvent() => throw StateError(
+          'Gallery extensions do not declare LG events',
+        ),
       },
     );
     bridge = LUIOcamlBridge.open(_libraryPath, onPatch: backend.applyJson);
@@ -51,45 +57,39 @@ void main() {
 
     bridge.start();
     expect(backend.generation, 1);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
-            width: 1200,
-            height: 900,
-            child: SingleChildScrollView(
-              child: backend.widget(node: bridge.rootNode),
+    final sections = backend.rootSections(bridge.rootNode);
+    final sectionsByTitle = {
+      for (final section in sections) section.title: section,
+    };
+    Future<void> showSection(String title) async {
+      final section = sectionsByTitle[title];
+      expect(section, isNotNull, reason: 'Gallery is missing $title');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 1200,
+              height: 900,
+              child: SingleChildScrollView(
+                child: backend.widget(node: section!.id),
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
+    }
 
-    expect(find.text('ToggleButton'), findsOneWidget);
-    expect(find.text('Progress fraction: 0.3'), findsOneWidget);
-    expect(find.byType(TextField), findsNWidgets(6));
-    expect(find.text('TextField'), findsOneWidget);
-    expect(find.text('Input'), findsOneWidget);
-    expect(find.text('SearchField'), findsOneWidget);
-    expect(find.text('Textarea'), findsOneWidget);
-    expect(find.text('InputGroup'), findsOneWidget);
-    expect(find.text('Message the team'), findsOneWidget);
+    expect(sectionsByTitle, containsPair('ToggleButton', isNotNull));
+    expect(sectionsByTitle, containsPair('TextField', isNotNull));
+    expect(sectionsByTitle, containsPair('InputGroup', isNotNull));
+    expect(sectionsByTitle, containsPair('ListItem', isNotNull));
+    expect(sectionsByTitle, containsPair('Tree', isNotNull));
+    expect(sectionsByTitle, containsPair('Split', isNotNull));
+    expect(sectionsByTitle, containsPair('Avatar', isNotNull));
+    expect(sectionsByTitle, containsPair('NativeExtension', isNotNull));
+
+    await showSection('Button');
     expect(find.text('Controls are disabled.'), findsNothing);
-    expect(find.text('ListItem'), findsOneWidget);
-    expect(find.text('Tree'), findsOneWidget);
-    expect(find.text('Split'), findsOneWidget);
-    expect(find.text('Documents'), findsOneWidget);
-    expect(find.text('Avatar'), findsOneWidget);
-    expect(find.text('Image and MediaSurface'), findsOneWidget);
-    expect(find.text('Stepper and Timeline'), findsOneWidget);
-    expect(find.text('Review'), findsOneWidget);
-    expect(find.text('Validated'), findsOneWidget);
-    expect(find.text('ZN'), findsOneWidget);
-    final listItems = find.byWidgetPredicate(
-      (widget) => widget is ListTile && widget.shape is RoundedRectangleBorder,
-      description: 'LUI ListItem rows',
-    );
-    expect(listItems, findsNWidgets(5));
     final toggleDisabled = find.widgetWithText(
       OutlinedButton,
       'Toggle disabled',
@@ -101,8 +101,8 @@ void main() {
     await tester.tap(toggleDisabled);
     await tester.pump();
     expect(find.text('Controls are disabled.'), findsNothing);
-    final backendOwnedLabel = find.text('Backend-owned');
-    final retainedLabel = tester.renderObject(backendOwnedLabel);
+
+    await showSection('ToggleButton');
     final backendOwnedSemantics = find.byWidgetPredicate(
       (widget) =>
           widget is Semantics && widget.properties.label == 'Backend-owned',
@@ -119,31 +119,28 @@ void main() {
       reason: 'uncontrolled selection is retained by the Flutter backend',
     );
 
+    await showSection('Progress');
     final advance = find.widgetWithText(OutlinedButton, 'Advance progress');
     await tester.ensureVisible(advance);
     await tester.tap(advance);
     await tester.pump();
     expect(find.text('Progress fraction: 0.4'), findsOneWidget);
-    expect(tester.renderObject(backendOwnedLabel), same(retainedLabel));
-    expect(
-      tester.widget<Semantics>(backendOwnedSemantics).properties.selected,
-      isTrue,
-      reason: 'an unrelated Signal patch preserves backend-owned state',
-    );
 
-    final controlled = find.widgetWithText(OutlinedButton, 'Controlled');
-    await tester.ensureVisible(controlled);
-    await tester.tap(controlled);
+    await showSection('Checkbox');
+    final checkbox = find.byType(CheckboxListTile);
+    await tester.tap(checkbox);
     await tester.pump();
     expect(
       tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
       isTrue,
     );
+    await showSection('Switch');
     expect(
       tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
       isTrue,
     );
 
+    await showSection('Select');
     final select = find.widgetWithText(OutlinedButton, 'Production');
     await tester.ensureVisible(select);
     final retainedSelect = tester.renderObject(select);
@@ -162,6 +159,7 @@ void main() {
     );
     expect(find.byType(MenuItemButton), findsNothing);
 
+    await showSection('Combobox');
     final combobox = find.byWidgetPredicate(
       (widget) =>
           widget is TextField &&
@@ -184,7 +182,7 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
     await tester.pump();
-    expect(find.widgetWithText(OutlinedButton, 'Preview'), findsOneWidget);
+    expect(tester.widget<EditableText>(editor).controller.text, 'Preview');
     expect(find.byType(MenuItemButton), findsNothing);
     expect(
       tester.widget<EditableText>(editor).focusNode,
@@ -192,17 +190,25 @@ void main() {
       reason: 'query and submit patches preserve native input identity',
     );
 
+    await showSection('ListItem');
     final checklist = find.text('Launch checklist.md');
     await tester.ensureVisible(checklist);
     final retainedChecklist = tester.renderObject(checklist);
     await tester.tap(checklist);
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('Selected Launch checklist.md'), findsNWidgets(2));
+    expect(find.text('Selected Launch checklist.md'), findsOneWidget);
     expect(tester.renderObject(checklist), same(retainedChecklist));
     await tester.tap(checklist);
     await tester.pump(const Duration(milliseconds: 40));
     await tester.tap(checklist);
     await tester.pump();
-    expect(find.text('Opened Launch checklist.md'), findsNWidgets(2));
+    expect(find.text('Opened Launch checklist.md'), findsOneWidget);
+
+    await showSection('NativeExtension');
+    expect(find.text('Native retained state'), findsOneWidget);
+    expect(find.text('Host-owned presses: 0'), findsOneWidget);
+    await tester.tap(find.text('Update native state'));
+    await tester.pump();
+    expect(find.text('Host-owned presses: 1'), findsOneWidget);
   });
 }

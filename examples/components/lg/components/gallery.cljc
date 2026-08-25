@@ -2,7 +2,8 @@
   (:require [lui.macros :refer [defui]]
             [lui.badge]
             [lui.separator]
-            [lui.skeleton]))
+            [lui.skeleton]
+            [components.extensions :as extensions]))
 
 (defui row-gallery []
   [:column {:gap 16 :padding 32}
@@ -949,7 +950,7 @@
    drawer-open-source open-drawer close-drawer
    sheet-open-source open-sheet close-sheet
    accordion-open-source set-accordion-open
-  split-fraction-source set-split-fraction]
+  split-fraction-source set-split-fraction extension-enabled-source]
   [:column
    [row-gallery]
    [column-gallery]
@@ -1043,4 +1044,6 @@
     comfortable-source compact-source disabled-source
     select-comfortable select-compact]
    [slider-gallery
-    volume-source volume-label-source disabled-source update-volume]])
+    volume-source volume-label-source disabled-source update-volume]
+   [:if {:test extension-enabled-source}
+    [extensions/native-extension-gallery]]])

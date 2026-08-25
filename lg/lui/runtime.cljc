@@ -1,18 +1,25 @@
 (ns lui.runtime
   (:require [signal.core :as sig]
-            [lui.protocol :as proto]))
+            [lui.protocol :as proto :refer [ExtensionEvent]]
+            [lui.extension :as ext]))
 
 (defn- empty-ops [] [])
 (defn- empty-handlers [] [])
 (defn- empty-dynamic-segments [] (hash-map))
+(defn- empty-extension-nodes [] (hash-map))
+(defn- empty-extension-properties [] (hash-map))
 
-(defn create [scheduler backend]
+(defn create-with-extensions [scheduler backend registry]
+  (ext/freeze! registry)
   (record application
     (runtime-scheduler scheduler)
     (runtime-backend backend)
+    (runtime-extension-registry registry)
     (next-node-id (atom 0))
     (mounted-nodes (atom (hash-map)))
+    (runtime-extension-nodes (atom (empty-extension-nodes)))
     (runtime-properties (atom (hash-map)))
+    (runtime-extension-properties (atom (empty-extension-properties)))
     (runtime-children (atom (hash-map)))
     (runtime-parents (atom (hash-map)))
     (pending-ops (atom (empty-ops)))
@@ -21,6 +28,9 @@
     (event-handlers (atom (hash-map)))
     (next-dynamic-segment-id (atom 0))
     (dynamic-segments (atom (empty-dynamic-segments)))))
+
+(defn create [scheduler backend]
+  (create-with-extensions scheduler backend (ext/registry)))
 
 (defn- enqueue! [application operation]
   (swap! (:pending-ops application) conj operation)
@@ -77,10 +87,28 @@
             (recur (inc index)))))
       false)))
 
-(defn- require-node-kind [application node]
+(defn- require-standard-node-kind [application node]
   (if-some [kind (clojure.core/get (deref (:mounted-nodes application)) node)]
     kind
     (raise (Invalid_argument "unknown node"))))
+
+(defn- extension-identifier [application node]
+  (clojure.core/get (deref (:runtime-extension-nodes application)) node))
+
+(defn- require-extension-schema [application node]
+  (if-some [identifier (extension-identifier application node)]
+    (match (ext/schema (:runtime-extension-registry application) identifier)
+      (Some schema) schema
+      None (raise (Invalid_argument "unknown extension schema")))
+    (raise (Invalid_argument "unknown extension node"))))
+
+(defn- require-node! [application node]
+  (when-not
+   (or
+    (contains? (deref (:mounted-nodes application)) node)
+    (contains? (deref (:runtime-extension-nodes application)) node))
+   (raise (Invalid_argument "unknown node")))
+  true)
 
 (defn create-node! [application kind]
   (let [node (swap! (:next-node-id application) inc)]
@@ -90,14 +118,33 @@
     (enqueue! application (proto/create-node-op node kind))
     node))
 
+(defn create-extension-node! [application identifier]
+  (let [schema
+        (match (ext/schema (:runtime-extension-registry application) identifier)
+          (Some current) current
+          None (raise (Invalid_argument "unknown extension identifier")))]
+    (when-not
+     (ext/profile-supported? schema (:backend-profile (:runtime-backend application)))
+     (raise (Invalid_argument "extension is unsupported by backend profile")))
+    (let [node (swap! (:next-node-id application) inc)]
+      (swap! (:runtime-extension-nodes application) assoc node identifier)
+      (swap! (:runtime-extension-properties application) assoc node (hash-map))
+      (swap! (:runtime-children application) assoc node [])
+      (enqueue!
+       application
+       (proto/create-extension-op node identifier (ext/fingerprint schema)))
+      node)))
+
 (defn drop-node! [application node]
-  (require-node-kind application node)
+  (require-node! application node)
   (when (contains? (deref (:runtime-parents application)) node)
     (raise (Invalid_argument "cannot drop an attached node")))
   (when (not (empty? (children application node)))
     (raise (Invalid_argument "cannot drop a node with children")))
   (swap! (:mounted-nodes application) dissoc node)
+  (swap! (:runtime-extension-nodes application) dissoc node)
   (swap! (:runtime-properties application) dissoc node)
+  (swap! (:runtime-extension-properties application) dissoc node)
   (swap! (:runtime-children application) dissoc node)
   (swap! (:runtime-parents application) dissoc node)
   (enqueue! application (proto/drop-node-op node)))
@@ -113,7 +160,7 @@
     (drop-node! application node)))
 
 (defn set-prop! [application node property value]
-  (let [kind (require-node-kind application node)]
+  (let [kind (require-standard-node-kind application node)]
     (when (not (proto/property-supported? kind property))
       (raise (Invalid_argument "property is unsupported by node kind")))
     (when (not (proto/property-value-supported-for-kind? kind property value))
@@ -121,20 +168,84 @@
   (swap! (:runtime-properties application) update node assoc property value)
   (enqueue! application (proto/set-prop-op node property value)))
 
+(defn set-extension-prop! [application node property value]
+  (let [schema (require-extension-schema application node)]
+    (when-not (ext/property-value-supported? schema property value)
+      (raise (Invalid_argument "invalid extension property value"))))
+  (let [properties (:runtime-extension-properties application)
+        current
+        (if-some [values (clojure.core/get (deref properties) node)]
+          values
+          (hash-map))]
+    (swap! properties assoc node (assoc current property value)))
+  (enqueue! application (proto/set-extension-prop-op node property value)))
+
+(defn remove-extension-prop! [application node property]
+  (let [schema (require-extension-schema application node)]
+    (when-not (ext/property-supported? schema property)
+      (raise (Invalid_argument "unknown extension property"))))
+  (let [properties (:runtime-extension-properties application)
+        current
+        (if-some [values (clojure.core/get (deref properties) node)]
+          values
+          (hash-map))]
+    (swap! properties assoc node (dissoc current property)))
+  (enqueue! application (proto/remove-extension-prop-op node property)))
+
+(defn- standard-extension-container? [kind]
+  (ext/standard-container-supported? kind))
+
+(defn- identifier-allowed? [identifiers identifier]
+  (ext/identifier-allowed? identifiers identifier))
+
+(defn- child-supported? [application parent child]
+  (let [standard-nodes (deref (:mounted-nodes application))
+        extension-nodes (deref (:runtime-extension-nodes application))]
+    (if-some [parent-kind (clojure.core/get standard-nodes parent)]
+      (if-some [child-kind (clojure.core/get standard-nodes child)]
+        (and
+         (proto/can-contain-children? parent-kind)
+         (proto/child-kind-supported? parent-kind child-kind))
+        (and
+         (contains? extension-nodes child)
+         (standard-extension-container? parent-kind)))
+      (if-some [parent-identifier (clojure.core/get extension-nodes parent)]
+        (match (ext/schema
+                (:runtime-extension-registry application) parent-identifier)
+          (Some schema)
+          (if (contains? standard-nodes child)
+            (:extension-standard-children schema)
+            (if-some [child-identifier
+                      (clojure.core/get extension-nodes child)]
+              (identifier-allowed?
+               (:extension-child-identifiers schema) child-identifier)
+              false))
+          None false)
+        false))))
+
 (defn insert-child! [application parent child index]
-  (let [parent-kind (require-node-kind application parent)
-        child-kind (require-node-kind application child)
-        children (children application parent)]
-    (when (not (proto/can-contain-children? parent-kind))
-      (raise (Invalid_argument "parent cannot contain children")))
-    (when (not (proto/child-kind-supported? parent-kind child-kind))
-      (raise
-       (Invalid_argument
-        (cond
-          (= parent-kind proto/Table) "table can contain only table-row"
-          (= parent-kind proto/TableRow)
-          "table-row can contain only table-cell"
-          :else "unsupported child kind"))))
+  (require-node! application parent)
+  (require-node! application child)
+  (let [children (children application parent)
+        standard-nodes (deref (:mounted-nodes application))]
+    (if-some [parent-kind (clojure.core/get standard-nodes parent)]
+      (if-some [child-kind (clojure.core/get standard-nodes child)]
+        (do
+          (when-not (proto/can-contain-children? parent-kind)
+            (raise (Invalid_argument "parent cannot contain children")))
+          (when-not (proto/child-kind-supported? parent-kind child-kind)
+            (raise
+             (Invalid_argument
+              (cond
+                (= parent-kind proto/Table) "table can contain only table-row"
+                (= parent-kind proto/TableRow)
+                "table-row can contain only table-cell"
+                (= parent-kind proto/Tree) "tree accepts only row containers"
+                :else "unsupported child kind")))))
+        (when-not (child-supported? application parent child)
+          (raise (Invalid_argument "unsupported child kind"))))
+      (when-not (child-supported? application parent child)
+        (raise (Invalid_argument "unsupported child kind"))))
     (when (contains? (deref (:runtime-parents application)) child)
       (raise (Invalid_argument "child is already attached")))
     (when (or (< index 0) (> index (count children)))
@@ -147,8 +258,8 @@
   (enqueue! application (proto/insert-child-op parent child index)))
 
 (defn remove-child! [application parent child]
-  (require-node-kind application parent)
-  (require-node-kind application child)
+  (require-node! application parent)
+  (require-node! application child)
   (let [children (children application parent)]
     (if-some [index (find-child-index children child)]
       (do
@@ -159,8 +270,8 @@
   (enqueue! application (proto/remove-child-op parent child)))
 
 (defn move-child! [application parent child index]
-  (require-node-kind application parent)
-  (require-node-kind application child)
+  (require-node! application parent)
+  (require-node! application child)
   (let [children (children application parent)]
     (if-some [current-index (find-child-index children child)]
       (do
@@ -179,6 +290,14 @@
     (fn [value]
       (set-prop! application node property value)))))
 
+(defn bind-extension-prop! [scope application node property source]
+  (sig/own!
+   scope
+   (sig/observe
+    source
+    (fn [value]
+      (set-extension-prop! application node property value)))))
+
 (defn- remove-handler! [application node handler-id]
   (if-some [handlers (clojure.core/get (deref (:event-handlers application)) node)]
     (let [remaining
@@ -193,7 +312,7 @@
     true))
 
 (defn on-event! [scope application node callback]
-  (require-node-kind application node)
+  (require-node! application node)
   (let [handler-id (swap! (:next-handler-id application) inc)
         handler
         (record event-handler
@@ -212,16 +331,23 @@
     true))
 
 (defn dispatch! [application event]
-  (let [node (proto/event-node event)
-        kind (require-node-kind application node)
-        properties
-        (if-some [current (clojure.core/get
-                           (deref (:runtime-properties application)) node)]
-          current
-          (hash-map))]
-    (when (not (proto/event-supported-for-properties?
-                kind properties event))
-      (raise (Invalid_argument "event is unsupported by node kind")))
+  (let [node (proto/event-node event)]
+    (match event
+      (ExtensionEvent _event-node identifier name values)
+      (let [schema (require-extension-schema application node)]
+        (when-not (= identifier (:extension-identifier schema))
+          (raise (Invalid_argument "extension event identifier mismatch")))
+        (when-not (ext/event-payload-supported? schema name values)
+          (raise (Invalid_argument "invalid extension event payload"))))
+      _
+      (let [kind (require-standard-node-kind application node)
+            properties
+            (if-some [current (clojure.core/get
+                               (deref (:runtime-properties application)) node)]
+              current
+              (hash-map))]
+        (when-not (proto/event-supported-for-properties? kind properties event)
+          (raise (Invalid_argument "event is unsupported by node kind")))))
     (if-some [handlers (clojure.core/get
                         (deref (:event-handlers application)) node)]
       (do
@@ -232,8 +358,24 @@
         true)
       true)))
 
+(defn- validate-extension-nodes! [application]
+  (let [properties (deref (:runtime-extension-properties application))]
+    (reduce-kv
+     (fn [_valid node _identifier]
+       (let [schema (require-extension-schema application node)
+             values
+             (if-some [current (clojure.core/get properties node)]
+               current
+               (hash-map))]
+         (when-not (ext/properties-supported? schema values)
+           (raise (Invalid_argument "extension properties are incomplete")))
+         true))
+     true
+     (deref (:runtime-extension-nodes application)))))
+
 (defn flush! [application]
   (sig/stabilize! (:runtime-scheduler application))
+  (validate-extension-nodes! application)
   (let [operations (deref (:pending-ops application))]
     (if (empty? operations)
       true
@@ -251,7 +393,9 @@
   (deref (:runtime-generation application)))
 
 (defn mounted-count [application]
-  (count (deref (:mounted-nodes application))))
+  (+
+   (count (deref (:mounted-nodes application)))
+   (count (deref (:runtime-extension-nodes application)))))
 
 (defn child-count [application node]
   (if-some [children (clojure.core/get
@@ -274,7 +418,7 @@
         (recur (inc index))))))
 
 (defn register-dynamic-segment! [application parent]
-  (require-node-kind application parent)
+  (require-node! application parent)
   (let [segment
         (record dynamic-segment
           (dynamic-segment-id

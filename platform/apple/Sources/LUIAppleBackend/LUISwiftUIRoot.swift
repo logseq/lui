@@ -15,9 +15,31 @@ public struct LUISwiftUIRoot: View {
     }
 
     public var body: some View {
-        if let root = backend.model(id: rootID) {
-            LUINodeView(model: root, backend: backend)
+        LUIAnyNodeView(nodeID: rootID, backend: backend)
+    }
+}
+
+private struct LUIAnyNodeView: View {
+    let nodeID: Int
+    let backend: LUIAppleBackend
+
+    @ViewBuilder
+    var body: some View {
+        if let model = backend.model(id: nodeID) {
+            LUINodeView(model: model, backend: backend)
+        } else if let model = backend.extensionModel(id: nodeID) {
+            LUIExtensionNodeView(model: model, backend: backend)
         }
+    }
+}
+
+private struct LUIExtensionNodeView: View {
+    let model: LUIExtensionNodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        let _ = model.revision
+        backend.extensionView(nodeID: model.id)
     }
 }
 
@@ -228,9 +250,7 @@ private struct LUINodeView: View {
     @ViewBuilder
     private var children: some View {
         ForEach(visibleChildren, id: \.self) { childID in
-            if let child = backend.model(id: childID) {
-                LUINodeView(model: child, backend: backend)
-            }
+            LUIAnyNodeView(nodeID: childID, backend: backend)
         }
     }
 
@@ -290,9 +310,7 @@ private struct LUIAlertView: View {
             }
             ZStack {
                 ForEach(model.children, id: \.self) { childID in
-                    if let child = backend.model(id: childID) {
-                        LUINodeView(model: child, backend: backend)
-                    }
+                    LUIAnyNodeView(nodeID: childID, backend: backend)
                 }
             }
         }
@@ -308,9 +326,7 @@ private struct LUIBubbleView: View {
             ZStack(alignment: reactionAlignment) {
                 ZStack {
                     ForEach(model.children, id: \.self) { childID in
-                        if let child = backend.model(id: childID) {
-                            LUINodeView(model: child, backend: backend)
-                        }
+                        LUIAnyNodeView(nodeID: childID, backend: backend)
                     }
                 }
                 if !model.text.isEmpty {
@@ -497,9 +513,7 @@ private struct LUIAccordionView: View {
             )
         ) {
             ForEach(model.children, id: \.self) { childID in
-                if let child = backend.model(id: childID) {
-                    LUINodeView(model: child, backend: backend)
-                }
+                LUIAnyNodeView(nodeID: childID, backend: backend)
             }
         } label: {
             Text(verbatim: model.text)
@@ -637,9 +651,7 @@ private struct LUIStackView: View {
     private func stackChildren(excluding tooltipID: Int?) -> some View {
         ZStack {
             ForEach(model.children.filter { $0 != tooltipID }, id: \.self) { childID in
-                if let child = backend.model(id: childID) {
-                    LUINodeView(model: child, backend: backend)
-                }
+                LUIAnyNodeView(nodeID: childID, backend: backend)
             }
         }
     }
@@ -843,9 +855,7 @@ private struct LUIModalSurfaceContent: View {
                 .accessibilityAddTraits(.isHeader)
             ZStack {
                 ForEach(model.children, id: \.self) { childID in
-                    if let child = backend.model(id: childID) {
-                        LUINodeView(model: child, backend: backend)
-                    }
+                    LUIAnyNodeView(nodeID: childID, backend: backend)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1342,9 +1352,7 @@ private struct LUIListItemView: View {
                     Text(verbatim: model.text)
                 } else {
                     ForEach(visibleChildren, id: \.self) { childID in
-                        if let child = backend.model(id: childID) {
-                            LUINodeView(model: child, backend: backend)
-                        }
+                        LUIAnyNodeView(nodeID: childID, backend: backend)
                     }
                 }
                 Spacer(minLength: 8)
@@ -1819,16 +1827,14 @@ private struct LUIRowView: View {
                 Spacer(minLength: 0)
             }
             ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
-                if let child = backend.model(id: childID) {
-                    LUINodeView(model: child, backend: backend)
-                        .frame(
-                            maxWidth: child.property(.grow)?.doubleValue ?? 0 > 0
-                                ? .infinity : nil,
-                            maxHeight: cross == "stretch"
-                                ? .infinity : nil
-                        )
-                        .layoutPriority(child.property(.grow)?.doubleValue ?? 0)
-                }
+                let child = backend.model(id: childID)
+                LUIAnyNodeView(nodeID: childID, backend: backend)
+                    .frame(
+                        maxWidth: child?.property(.grow)?.doubleValue ?? 0 > 0
+                            ? .infinity : nil,
+                        maxHeight: cross == "stretch" ? .infinity : nil
+                    )
+                    .layoutPriority(child?.property(.grow)?.doubleValue ?? 0)
                 if model.property(.main)?.stringValue == "space_between" &&
                     index < model.children.count - 1 {
                     Spacer(minLength: gap)
@@ -1869,17 +1875,15 @@ private struct LUIColumnView: View {
                 Spacer(minLength: 0)
             }
             ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
-                if let child = backend.model(id: childID) {
-                    LUINodeView(model: child, backend: backend)
-                        .frame(
-                            maxWidth: cross == "stretch"
-                                ? .infinity : nil,
-                            maxHeight: child.property(.grow)?.doubleValue ?? 0 > 0
-                                ? .infinity : nil,
-                            alignment: .topLeading
-                        )
-                        .layoutPriority(child.property(.grow)?.doubleValue ?? 0)
-                }
+                let child = backend.model(id: childID)
+                LUIAnyNodeView(nodeID: childID, backend: backend)
+                    .frame(
+                        maxWidth: cross == "stretch" ? .infinity : nil,
+                        maxHeight: child?.property(.grow)?.doubleValue ?? 0 > 0
+                            ? .infinity : nil,
+                        alignment: .topLeading
+                    )
+                    .layoutPriority(child?.property(.grow)?.doubleValue ?? 0)
                 if model.property(.main)?.stringValue == "space_between" &&
                     index < model.children.count - 1 {
                     Spacer(minLength: gap)
@@ -1916,9 +1920,7 @@ private struct LUIGridView: View {
     var body: some View {
         LazyVGrid(columns: gridItems, spacing: gap) {
             ForEach(model.children, id: \.self) { childID in
-                if let child = backend.model(id: childID) {
-                    LUINodeView(model: child, backend: backend)
-                }
+                LUIAnyNodeView(nodeID: childID, backend: backend)
             }
         }
     }
@@ -2318,8 +2320,10 @@ private struct LUISplitView: View {
         GeometryReader { geometry in
             let gap = max(CGFloat(model.splitGap), 0)
             let available = max(geometry.size.width - gap, 0)
-            let firstModel = model.children.first.flatMap(backend.model(id:))
-            let secondModel = model.children.dropFirst().first.flatMap(backend.model(id:))
+            let firstID = model.children.first
+            let secondID = model.children.dropFirst().first
+            let firstModel = firstID.flatMap(backend.model(id:))
+            let secondModel = secondID.flatMap(backend.model(id:))
             let fraction = LUISplitGeometry.effectiveFraction(
                 value: fractionState.fraction,
                 available: Double(available),
@@ -2331,12 +2335,12 @@ private struct LUISplitView: View {
 
             ZStack(alignment: .leading) {
                 HStack(spacing: gap) {
-                    if let firstModel {
-                        LUINodeView(model: firstModel, backend: backend)
+                    if let firstID {
+                        LUIAnyNodeView(nodeID: firstID, backend: backend)
                             .frame(width: firstWidth)
                     }
-                    if let secondModel {
-                        LUINodeView(model: secondModel, backend: backend)
+                    if let secondID {
+                        LUIAnyNodeView(nodeID: secondID, backend: backend)
                             .frame(width: secondWidth)
                     }
                 }
@@ -2506,9 +2510,7 @@ private struct LUIResizableView: View {
     var body: some View {
         ZStack {
             ForEach(model.children, id: \.self) { childID in
-                if let child = backend.model(id: childID) {
-                    LUINodeView(model: child, backend: backend)
-                }
+                LUIAnyNodeView(nodeID: childID, backend: backend)
             }
         }
         .modifier(LUISurfaceModifier(model: model))

@@ -14,9 +14,12 @@
 (type-record application
   (runtime-scheduler :scheduler)
   (runtime-backend :backend)
+  (runtime-extension-registry :extension-registry)
   (next-node-id :ref<int>)
   (mounted-nodes :ref<map<int;node-kind>>)
+  (runtime-extension-nodes :ref<map<int;string>>)
   (runtime-properties :ref<map<int;map<property;wire-value>>>)
+  (runtime-extension-properties :ref<map<int;map<string;wire-value>>>)
   (runtime-children :ref<map<int;vector<int>>>)
   (runtime-parents :ref<map<int;int>>)
   (pending-ops :ref<vector<patch-op>>)
@@ -27,10 +30,15 @@
   (dynamic-segments :ref<map<int;vector<dynamic-segment>>>))
 
 (signature lui.runtime/create :fn<scheduler;backend;application>)
+(signature lui.runtime/create-with-extensions
+  :fn<scheduler;backend;extension-registry;application>)
 (signature lui.runtime/empty-ops :fn<vector<patch-op>>)
 (signature lui.runtime/empty-handlers :fn<vector<event-handler>>)
 (signature lui.runtime/empty-dynamic-segments
   :fn<map<int;vector<dynamic-segment>>>)
+(signature lui.runtime/empty-extension-nodes :fn<map<int;string>>)
+(signature lui.runtime/empty-extension-properties
+  :fn<map<int;map<string;wire-value>>>)
 (signature lui.runtime/enqueue! :fn<application;patch-op;bool>)
 (signature lui.runtime/find-child-index
   :fn<vector<int>;int;option<int>>)
@@ -38,20 +46,38 @@
 (signature lui.runtime/insert-at :fn<vector<int>;int;int;vector<int>>)
 (signature lui.runtime/move-at :fn<vector<int>;int;int;vector<int>>)
 (signature lui.runtime/descendant? :fn<application;int;int;bool>)
+(signature lui.runtime/extension-identifier
+  :fn<application;int;option<string>>)
+(signature lui.runtime/require-extension-schema
+  :fn<application;int;extension-component-schema>)
+(signature lui.runtime/require-node! :fn<application;int;bool>)
 (signature lui.runtime/create-node! :fn<application;node-kind;int>)
+(signature lui.runtime/create-extension-node!
+  :fn<application;string;int>)
 (signature lui.runtime/drop-node! :fn<application;int;bool>)
 (signature lui.runtime/drop-subtree! :fn<application;int;bool>)
 (signature lui.runtime/set-prop! :fn<application;int;property;wire-value;bool>)
+(signature lui.runtime/set-extension-prop!
+  :fn<application;int;string;wire-value;bool>)
+(signature lui.runtime/remove-extension-prop!
+  :fn<application;int;string;bool>)
+(signature lui.runtime/standard-extension-container? :fn<node-kind;bool>)
+(signature lui.runtime/identifier-allowed?
+  :fn<vector<string>;string;bool>)
+(signature lui.runtime/child-supported? :fn<application;int;int;bool>)
 (signature lui.runtime/insert-child! :fn<application;int;int;int;bool>)
 (signature lui.runtime/remove-child! :fn<application;int;int;bool>)
 (signature lui.runtime/move-child! :fn<application;int;int;int;bool>)
 (signature lui.runtime/bind-prop! [value]
   :fn<scope;application;int;property;signal<wire-value>;subscription>)
+(signature lui.runtime/bind-extension-prop!
+  :fn<scope;application;int;string;signal<wire-value>;subscription>)
 (signature lui.runtime/on-event!
   :fn<scope;application;int;fn<event;bool>;bool>)
 (signature lui.runtime/remove-handler!
   :fn<application;int;int;bool>)
 (signature lui.runtime/dispatch! :fn<application;event;bool>)
+(signature lui.runtime/validate-extension-nodes! :fn<application;bool>)
 (signature lui.runtime/flush! :fn<application;bool>)
 (signature lui.runtime/generation :fn<application;int>)
 (signature lui.runtime/mounted-count :fn<application;int>)

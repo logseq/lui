@@ -18,7 +18,8 @@
     (Change node) node
     (ValueChanged node _value) node
     (Dismiss node) node
-    (DoublePress node) node))
+    (DoublePress node) node
+    (ExtensionEvent node _identifier _name _values) node))
 
 (defn- modal-surface? [kind]
   (or (= kind Dialog) (= kind Drawer) (= kind Sheet)))
@@ -64,7 +65,8 @@
     (Dismiss _node)
     (or (= kind Select) (= kind Combobox) (= kind DropdownMenu)
         (modal-surface? kind))
-    (DoublePress _node) (= kind ListItem)))
+    (DoublePress _node) (= kind ListItem)
+    (ExtensionEvent _node _identifier _name _values) false))
 
 (defn- true-property? [properties property]
   (match (clojure.core/get properties property)
@@ -706,11 +708,20 @@
 (defn create-node-op [node kind]
   (CreateNode node kind))
 
+(defn create-extension-op [node identifier fingerprint]
+  (CreateExtension node identifier fingerprint))
+
 (defn drop-node-op [node]
   (DropNode node))
 
 (defn set-prop-op [node property value]
   (SetProp node property value))
+
+(defn set-extension-prop-op [node property value]
+  (SetExtensionProp node property value))
+
+(defn remove-extension-prop-op [node property]
+  (RemoveExtensionProp node property))
 
 (defn insert-child-op [parent child index]
   (InsertChild parent child index))

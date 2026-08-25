@@ -79,6 +79,15 @@ private final class LUIAppleBridge {
                 "".withCString { callback(7, Int32(node), $0) }
             case let .doublePress(node):
                 "".withCString { callback(8, Int32(node), $0) }
+            case let .extension(node, identifier, name, values):
+                let payload: [String: Any] = [
+                    "identifier": identifier,
+                    "name": name,
+                    "values": values.mapValues(\.foundationValue),
+                ]
+                guard let data = try? JSONSerialization.data(withJSONObject: payload),
+                      let json = String(data: data, encoding: .utf8) else { return }
+                json.withCString { callback(9, Int32(node), $0) }
             }
         }
     }
@@ -96,6 +105,17 @@ private final class LUIAppleBridge {
                 .padding(16)
         )
         hostedRootID = rootID
+    }
+}
+
+private extension LUIExtensionValue {
+    var foundationValue: Any {
+        switch self {
+        case let .string(value): value
+        case let .bool(value): value
+        case let .int(value): value
+        case let .double(value): value
+        }
     }
 }
 

@@ -4,7 +4,8 @@
             [lui.protocol
              :refer [StringValue BoolValue IntValue FloatValue
                      CreateNode DropNode SetProp InsertChild RemoveChild
-                     MoveChild]]))
+                     MoveChild CreateExtension SetExtensionProp
+                     RemoveExtensionProp]]))
 
 (defn- escape-json [value]
   (string/escape
@@ -37,12 +38,23 @@
     (CreateNode node kind)
     (str "{\"op\":\"create-node\",\"id\":" node
          ",\"kind\":" (quoted (schema/node-kind-name kind)) "}")
+    (CreateExtension node identifier fingerprint)
+    (str "{\"op\":\"create-extension\",\"id\":" node
+         ",\"identifier\":" (quoted identifier)
+         ",\"fingerprint\":" (quoted fingerprint) "}")
     (DropNode node)
     (str "{\"op\":\"drop-node\",\"id\":" node "}")
     (SetProp node property value)
     (str "{\"op\":\"set-prop\",\"id\":" node
          ",\"property\":" (quoted (schema/property-name property))
          ",\"value\":" (encode-value value) "}")
+    (SetExtensionProp node property value)
+    (str "{\"op\":\"set-extension-prop\",\"id\":" node
+         ",\"property\":" (quoted property)
+         ",\"value\":" (encode-value value) "}")
+    (RemoveExtensionProp node property)
+    (str "{\"op\":\"remove-extension-prop\",\"id\":" node
+         ",\"property\":" (quoted property) "}")
     (InsertChild parent child index)
     (str "{\"op\":\"insert-child\",\"parent\":" parent
          ",\"child\":" child ",\"index\":" index "}")

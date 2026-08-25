@@ -1,7 +1,9 @@
 (ns lui.backend.retained
   (:require [lui.protocol :as proto
              :refer [CreateNode DropNode SetProp InsertChild RemoveChild
-                     MoveChild Radio RadioGroup StringValue]]))
+                     MoveChild CreateExtension SetExtensionProp
+                     RemoveExtensionProp Radio RadioGroup StringValue]]
+            [lui.extension :as ext]))
 
 (defn- empty-batches [] [])
 
@@ -52,15 +54,17 @@
         without (remove-at values from-index)]
     (insert-at without to-index value)))
 
-(defn- update-node [nodes node current properties children]
+(defn- update-node
+  [nodes node current properties extension-properties children]
   (assoc
    nodes
    node
    (record retained-node
-     (platform-node (:platform-node current))
+           (platform-node (:platform-node current))
      (semantic-kind (:semantic-kind current))
      (retained-parent (:retained-parent current))
      (retained-properties properties)
+     (retained-extension-properties extension-properties)
      (retained-children children))))
 
 (defn- update-parent [nodes node current parent]
@@ -68,11 +72,29 @@
    nodes
    node
    (record retained-node
-     (platform-node (:platform-node current))
+           (platform-node (:platform-node current))
      (semantic-kind (:semantic-kind current))
      (retained-parent parent)
      (retained-properties (:retained-properties current))
+     (retained-extension-properties
+      (:retained-extension-properties current))
      (retained-children (:retained-children current)))))
+
+(defn standard-kind [current]
+  (match (:semantic-kind current)
+    (StandardSemantic kind) (Some kind)
+    (ExtensionSemantic _identifier _fingerprint) None))
+
+(defn- standard-kind? [current expected]
+  (match (standard-kind current)
+    (Some kind) (= kind expected)
+    None false))
+
+(defn extension-identity [current]
+  (match (:semantic-kind current)
+    (ExtensionSemantic identifier fingerprint)
+    (Some (tuple identifier fingerprint))
+    (StandardSemantic _kind) None))
 
 (defn- descendant? [nodes root target]
   (if (= root target)
@@ -87,20 +109,74 @@
             (recur (inc index)))))
       false)))
 
-(defn- apply-op [nodes platform-for operation]
+(defn- extension-schema [registry identifier]
+  (match (ext/schema registry identifier)
+    (Some schema) schema
+    None (raise (Invalid_argument "unknown extension identifier"))))
+
+(defn- retained-child-supported? [registry parent child]
+  (match (tuple (:semantic-kind parent) (:semantic-kind child))
+    (tuple (StandardSemantic parent-kind) (StandardSemantic child-kind))
+    (and
+     (proto/can-contain-children? parent-kind)
+     (proto/child-kind-supported? parent-kind child-kind))
+    (tuple (StandardSemantic parent-kind)
+           (ExtensionSemantic _child-identifier _child-fingerprint))
+    (ext/standard-container-supported? parent-kind)
+    (tuple (ExtensionSemantic parent-identifier _parent-fingerprint)
+           (StandardSemantic _child-kind))
+    (:extension-standard-children
+     (extension-schema registry parent-identifier))
+    (tuple (ExtensionSemantic parent-identifier _parent-fingerprint)
+           (ExtensionSemantic child-identifier _child-fingerprint))
+    (ext/identifier-allowed?
+     (:extension-child-identifiers
+      (extension-schema registry parent-identifier))
+     child-identifier)))
+
+(defn- unsupported-child-message [parent child]
+  (match (tuple (:semantic-kind parent) (:semantic-kind child))
+    (tuple (StandardSemantic parent-kind) (StandardSemantic _child-kind))
+    (cond
+      (not (proto/can-contain-children? parent-kind))
+      "parent cannot contain children"
+      (= parent-kind proto/Table) "table can contain only table-row"
+      (= parent-kind proto/TableRow) "table-row can contain only table-cell"
+      (= parent-kind proto/Tree) "tree accepts only row containers"
+      :else "unsupported child kind")
+    _ "unsupported child kind"))
+
+(defn- apply-op-with-extensions
+  [nodes platform-for extension-platform-for registry operation]
   (match operation
     (CreateNode node kind)
     (if (contains? nodes node)
       (raise (Invalid_argument "node already exists"))
       (assoc
-       nodes
-       node
+       nodes node
        (record retained-node
          (platform-node (platform-for kind))
-         (semantic-kind kind)
+         (semantic-kind (StandardSemantic kind))
          (retained-parent None)
          (retained-properties (hash-map))
-               (retained-children []))))
+         (retained-extension-properties (hash-map))
+         (retained-children []))))
+
+    (CreateExtension node identifier fingerprint)
+    (if (contains? nodes node)
+      (raise (Invalid_argument "node already exists"))
+      (let [schema (extension-schema registry identifier)]
+        (when-not (= fingerprint (ext/fingerprint schema))
+          (raise (Invalid_argument "extension fingerprint mismatch")))
+        (assoc
+         nodes node
+         (record retained-node
+           (platform-node (extension-platform-for node identifier))
+           (semantic-kind (ExtensionSemantic identifier fingerprint))
+           (retained-parent None)
+           (retained-properties (hash-map))
+           (retained-extension-properties (hash-map))
+           (retained-children [])))))
 
     (DropNode node)
     (if-some [current (clojure.core/get nodes node)]
@@ -116,36 +192,57 @@
 
     (SetProp node property value)
     (if-some [current (clojure.core/get nodes node)]
-      (if (and
-           (proto/property-supported? (:semantic-kind current) property)
-           (proto/property-value-supported-for-kind?
-            (:semantic-kind current) property value))
-        (update-node
-         nodes node current
-         (assoc (:retained-properties current) property value)
-         (:retained-children current))
-        (raise (Invalid_argument "unsupported property value")))
+      (match (standard-kind current)
+        (Some kind)
+        (if (and
+             (proto/property-supported? kind property)
+             (proto/property-value-supported-for-kind? kind property value))
+          (update-node
+           nodes node current
+           (assoc (:retained-properties current) property value)
+           (:retained-extension-properties current)
+           (:retained-children current))
+          (raise (Invalid_argument "unsupported property value")))
+        None (raise (Invalid_argument "standard property targets extension")))
+      (raise (Invalid_argument "unknown node")))
+
+    (SetExtensionProp node property value)
+    (if-some [current (clojure.core/get nodes node)]
+      (match (:semantic-kind current)
+        (ExtensionSemantic identifier _fingerprint)
+        (let [schema (extension-schema registry identifier)]
+          (when-not (ext/property-value-supported? schema property value)
+            (raise (Invalid_argument "unsupported extension property value")))
+          (update-node
+           nodes node current (:retained-properties current)
+           (assoc (:retained-extension-properties current) property value)
+           (:retained-children current)))
+        (StandardSemantic _kind)
+        (raise (Invalid_argument "extension property targets standard node")))
+      (raise (Invalid_argument "unknown node")))
+
+    (RemoveExtensionProp node property)
+    (if-some [current (clojure.core/get nodes node)]
+      (match (:semantic-kind current)
+        (ExtensionSemantic identifier _fingerprint)
+        (let [schema (extension-schema registry identifier)]
+          (when-not (ext/property-supported? schema property)
+            (raise (Invalid_argument "unknown extension property")))
+          (update-node
+           nodes node current (:retained-properties current)
+           (dissoc (:retained-extension-properties current) property)
+           (:retained-children current)))
+        (StandardSemantic _kind)
+        (raise (Invalid_argument "extension property targets standard node")))
       (raise (Invalid_argument "unknown node")))
 
     (InsertChild parent child index)
     (if-some [parent-node (clojure.core/get nodes parent)]
       (if-some [child-node (clojure.core/get nodes child)]
         (cond
-          (not (proto/can-contain-children? (:semantic-kind parent-node)))
-          (raise (Invalid_argument "parent cannot contain children"))
-          (not
-           (proto/child-kind-supported?
-            (:semantic-kind parent-node) (:semantic-kind child-node)))
-          (raise
-           (Invalid_argument
-            (cond
-              (= (:semantic-kind parent-node) proto/Table)
-              "table can contain only table-row"
-              (= (:semantic-kind parent-node) proto/TableRow)
-              "table-row can contain only table-cell"
-              (= (:semantic-kind parent-node) proto/Tree)
-              "tree accepts only row containers"
-              :else "unsupported child kind")))
+          (not (retained-child-supported? registry parent-node child-node))
+          (raise (Invalid_argument
+                  (unsupported-child-message parent-node child-node)))
           (descendant? nodes child parent)
           (raise (Invalid_argument "child insertion would create a cycle"))
           (match (:retained-parent child-node)
@@ -156,6 +253,7 @@
           (let [with-child
                 (update-node
                  nodes parent parent-node (:retained-properties parent-node)
+                 (:retained-extension-properties parent-node)
                  (insert-at (:retained-children parent-node) index child))]
             (update-parent with-child child child-node (Some parent))))
         (raise (Invalid_argument "unknown child")))
@@ -169,6 +267,7 @@
           (let [without-child
                 (update-node
                  nodes parent parent-node (:retained-properties parent-node)
+                 (:retained-extension-properties parent-node)
                  (remove-at (:retained-children parent-node) index))]
             (update-parent without-child child child-node None))
           (raise (Invalid_argument "unknown child")))
@@ -181,9 +280,17 @@
                                (:retained-children parent-node) child)]
         (update-node
          nodes parent parent-node (:retained-properties parent-node)
+         (:retained-extension-properties parent-node)
          (move-at (:retained-children parent-node) current-index index))
         (raise (Invalid_argument "child is not attached to parent")))
       (raise (Invalid_argument "unknown parent")))))
+
+(defn- unavailable-extension-platform [_node _identifier]
+  (raise (Invalid_argument "extension registry is not configured")))
+
+(defn- apply-op [nodes platform-for operation]
+  (apply-op-with-extensions
+   nodes platform-for unavailable-extension-platform (ext/registry) operation))
 
 (defn- string-property [properties property]
   (match (clojure.core/get properties property)
@@ -191,7 +298,10 @@
     _ ""))
 
 (defn- node-properties-error [current]
-  (let [kind (:semantic-kind current)
+  (let [kind
+        (match (standard-kind current)
+          (Some value) value
+          None (raise (Invalid_argument "expected standard node")))
         properties (:retained-properties current)]
     (if (not (proto/surface-size-supported? properties))
       "surface size constraints conflict"
@@ -208,11 +318,11 @@
 
 (defn- context-menu-child? [nodes child]
   (if-some [current (clojure.core/get nodes child)]
-    (= (:semantic-kind current) proto/ContextMenu)
+    (standard-kind? current proto/ContextMenu)
     false))
 
 (defn- validate-list-item-content! [nodes current]
-  (when (= (:semantic-kind current) proto/ListItem)
+  (when (standard-kind? current proto/ListItem)
     (let [text
           (string-property (:retained-properties current) proto/TextValue)
           visible-children
@@ -232,10 +342,11 @@
     _ false))
 
 (defn- interactive-context-menu-host? [current]
-  (let [kind (:semantic-kind current)
-        properties (:retained-properties current)]
+  (let [properties (:retained-properties current)]
     (or
-     (proto/context-menu-host-kind? kind)
+     (match (standard-kind current)
+       (Some kind) (proto/context-menu-host-kind? kind)
+       None false)
      (bool-property-true? properties proto/PressEnabled)
      (bool-property-true? properties proto/DoublePressEnabled)
      (bool-property-true? properties proto/ToggleEnabled)
@@ -251,23 +362,22 @@
     (when (and (not (empty? context-children))
                (not (interactive-context-menu-host? current)))
       (raise (Invalid_argument "context-menu host must be interactive"))))
-  (when (= (:semantic-kind current) proto/ContextMenu)
+  (when (standard-kind? current proto/ContextMenu)
     (match (:retained-parent current)
       None (raise (Invalid_argument "context-menu requires a direct host"))
       _ nil)
     (doseq [child-id (:retained-children current)]
       (if-some [child (clojure.core/get nodes child-id)]
-        (let [kind (:semantic-kind child)
-              properties (:retained-properties child)]
-          (when (and (= kind proto/MenuItem)
+        (let [properties (:retained-properties child)]
+          (when (and (standard-kind? child proto/MenuItem)
                      (not (bool-property-true? properties proto/PressEnabled)))
             (raise
              (Invalid_argument "context-menu menu-item requires press support")))
-          (when (and (= kind proto/MenuItem)
+          (when (and (standard-kind? child proto/MenuItem)
                      (not (empty? (:retained-children child))))
             (raise
              (Invalid_argument "context-menu does not support nested menus")))
-          (when (and (= kind proto/MenuItem)
+          (when (and (standard-kind? child proto/MenuItem)
                      (some
                       (fn [property]
                         (not (or (= property proto/TextValue)
@@ -277,7 +387,7 @@
             (raise
              (Invalid_argument "context-menu menu-item has unsupported metadata")))
           (when (and
-                 (= kind proto/Divider)
+                 (standard-kind? child proto/Divider)
                  (not
                   (or
                    (empty? properties)
@@ -291,7 +401,10 @@
         (raise (Invalid_argument "unknown context-menu child"))))))
 
 (defn- validate-image-source! [current]
-  (let [kind (:semantic-kind current)]
+  (let [kind
+        (match (standard-kind current)
+          (Some value) value
+          None (raise (Invalid_argument "expected standard node")))]
     (when (or (= kind proto/Avatar) (= kind proto/Image))
       (let [properties (:retained-properties current)
             has-source-x (contains? properties proto/SourceX)
@@ -337,7 +450,10 @@
                      " source crop dimensions must be positive"))))))))))
 
 (defn- validate-media-resource! [current]
-  (let [kind (:semantic-kind current)
+  (let [kind
+        (match (standard-kind current)
+          (Some value) value
+          None (raise (Invalid_argument "expected standard node")))
         properties (:retained-properties current)]
     (when (and (= kind proto/Image)
                (not (contains? properties proto/ImageIdValue)))
@@ -347,7 +463,10 @@
       (raise (Invalid_argument "media-surface requires surface")))))
 
 (defn- validate-progress-structure! [current]
-  (let [kind (:semantic-kind current)
+  (let [kind
+        (match (standard-kind current)
+          (Some value) value
+          None (raise (Invalid_argument "expected standard node")))
         properties (:retained-properties current)]
     (when (and (= kind proto/Stepper)
                (not (contains? properties proto/ActiveIndex)))
@@ -358,11 +477,16 @@
 
 (defn- child-kind [nodes child]
   (if-some [current (clojure.core/get nodes child)]
-    (:semantic-kind current)
+    (match (standard-kind current)
+      (Some kind) kind
+      None (raise (Invalid_argument "expected standard child")))
     (raise (Invalid_argument "unknown child"))))
 
 (defn- validate-input-group! [nodes current]
-  (let [kind (:semantic-kind current)
+  (let [kind
+        (match (standard-kind current)
+          (Some value) value
+          None (raise (Invalid_argument "expected standard node")))
         children (:retained-children current)]
     (when (= kind proto/InputGroup)
       (when (or (empty? children) (> (count children) 2))
@@ -381,7 +505,7 @@
       (match (:retained-parent current)
         (Some parent)
         (if-some [parent-node (clojure.core/get nodes parent)]
-          (when (not (= (:semantic-kind parent-node) proto/InputGroup))
+          (when-not (standard-kind? parent-node proto/InputGroup)
             (raise
              (Invalid_argument
               "input-group-actions requires a direct input-group parent")))
@@ -396,7 +520,7 @@
     (Some parent-id)
     (if-some [parent-node (clojure.core/get nodes parent-id)]
       (or
-       (= (:semantic-kind parent-node) kind)
+       (standard-kind? parent-node kind)
        (has-ancestor-kind? nodes (:retained-parent parent-node) kind))
       false)
     None false))
@@ -411,58 +535,74 @@
        (Invalid_argument "treeitem must be contained by a tree")))))
 
 (defn- validate-split! [current]
-  (when (= (:semantic-kind current) proto/Split)
+  (when (standard-kind? current proto/Split)
     (when (not (= (count (:retained-children current)) 2))
       (raise (Invalid_argument "split requires exactly two children")))))
 
-(defn- validate-nodes! [nodes]
+(defn- validate-nodes! [nodes registry]
   (reduce-kv
    (fn [_valid _node current]
-     (when (and
-            (= (:semantic-kind current) Radio)
-            (not (has-ancestor-kind?
-                  nodes (:retained-parent current) RadioGroup)))
-       (raise
-        (Invalid_argument "radio must be contained by a radio-group")))
-     (validate-list-item-content! nodes current)
-     (validate-context-menu! nodes current)
-     (validate-image-source! current)
-     (validate-media-resource! current)
-     (validate-progress-structure! current)
-     (validate-input-group! nodes current)
-     (validate-tree-item! nodes current)
-     (validate-split! current)
-     (when (not
-            (proto/node-properties-supported?
-             (:semantic-kind current) (:retained-properties current)))
-       (raise
-        (Invalid_argument
-         (node-properties-error current))))
+     (match (:semantic-kind current)
+       (StandardSemantic kind)
+       (do
+         (when (and
+                (= kind Radio)
+                (not (has-ancestor-kind?
+                      nodes (:retained-parent current) RadioGroup)))
+           (raise
+            (Invalid_argument "radio must be contained by a radio-group")))
+         (validate-list-item-content! nodes current)
+         (validate-context-menu! nodes current)
+         (validate-image-source! current)
+         (validate-media-resource! current)
+         (validate-progress-structure! current)
+         (validate-input-group! nodes current)
+         (validate-tree-item! nodes current)
+         (validate-split! current)
+         (when-not
+          (proto/node-properties-supported?
+           kind (:retained-properties current))
+           (raise (Invalid_argument (node-properties-error current)))))
+       (ExtensionSemantic identifier _fingerprint)
+       (when-not
+        (ext/properties-supported?
+         (extension-schema registry identifier)
+         (:retained-extension-properties current))
+         (raise (Invalid_argument "extension properties are incomplete"))))
      true)
    true
    nodes))
 
-(defn- apply-operations [nodes platform-for batch]
+(defn- apply-operations-with-extensions
+  [nodes platform-for extension-platform-for registry batch]
   (loop [index 0
          current-nodes nodes]
     (if (= index (count (:ops batch)))
       (do
-        (validate-nodes! current-nodes)
+        (validate-nodes! current-nodes registry)
         current-nodes)
       (recur
        (inc index)
-       (apply-op current-nodes platform-for (nth (:ops batch) index))))))
+       (apply-op-with-extensions
+        current-nodes platform-for extension-platform-for registry
+        (nth (:ops batch) index))))))
 
-(defn apply-batch-with! [store platform-for send-batch batch]
+(defn- apply-operations [nodes platform-for batch]
+  (apply-operations-with-extensions
+   nodes platform-for unavailable-extension-platform (ext/registry) batch))
+
+(defn- commit-batch!
+  [store platform-for extension-platform-for registry send-batch batch]
   (let [expected-generation (inc (deref (:retained-generation store)))]
-    (when (not (= expected-generation (:generation batch)))
+    (when-not (= expected-generation (:generation batch))
       (raise
        (Invalid_argument
         (str "expected patch generation " expected-generation
              ", received " (:generation batch)))))
     (let [next-nodes
-        (apply-operations
-         (deref (:retained-nodes store)) platform-for batch)]
+          (apply-operations-with-extensions
+           (deref (:retained-nodes store)) platform-for
+           extension-platform-for registry batch)]
       (if (send-batch batch)
         (do
           (reset! (:retained-nodes store) next-nodes)
@@ -470,6 +610,24 @@
           (reset! (:retained-generation store) (:generation batch))
           true)
         (raise (Invalid_argument "platform rejected patch batch"))))))
+
+(defn apply-batch-with! [store platform-for send-batch batch]
+  (commit-batch!
+   store platform-for unavailable-extension-platform (ext/registry)
+   send-batch batch))
+
+(defn apply-batch-with-extensions!
+  [store platform-for extension-platform-for registry send-batch batch]
+  (commit-batch!
+   store platform-for extension-platform-for registry send-batch batch))
+
+(defn- unavailable-standard-platform [_kind]
+  (raise (Invalid_argument "standard platform factory is not configured")))
+
+(defn apply-extension-batch! [store extension-platform-for registry batch]
+  (commit-batch!
+   store unavailable-standard-platform extension-platform-for registry
+   (fn [_batch] true) batch))
 
 (defn apply-batch! [store platform-for batch]
   (apply-batch-with! store platform-for (fn [_batch] true) batch))
@@ -480,9 +638,26 @@
 (defn nodes [store]
   (deref (:retained-nodes store)))
 
+(defn platform-node [store node-id]
+  (if-some [current (node store node-id)]
+    (Some (:platform-node current))
+    None))
+
 (defn property [store node-id property]
   (if-some [current (node store node-id)]
     (clojure.core/get (:retained-properties current) property)
+    None))
+
+(defn extension-identifier [store node-id]
+  (if-some [current (node store node-id)]
+    (match (:semantic-kind current)
+      (ExtensionSemantic identifier _fingerprint) (Some identifier)
+      (StandardSemantic _kind) None)
+    None))
+
+(defn extension-property [store node-id property]
+  (if-some [current (node store node-id)]
+    (clojure.core/get (:retained-extension-properties current) property)
     None))
 
 (defn children [store node-id]

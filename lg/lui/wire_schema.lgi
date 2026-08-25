@@ -2,4 +2,5 @@
 (ns lui.wire-schema)
 
 (signature lui.wire-schema/node-kind-name :fn<node-kind;string>)
+(signature lui.wire-schema/standard-node-name? :fn<string;bool>)
 (signature lui.wire-schema/property-name :fn<property;string>)

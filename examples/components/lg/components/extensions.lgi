@@ -1,0 +1,9 @@
+(ns components.extensions)
+
+(signature components.extensions/apple-map-marker-schema
+  :fn<extension-component-schema>)
+(signature components.extensions/apple-map-schema
+  :fn<extension-component-schema>)
+(signature components.extensions/native-card-schema
+  :fn<extension-component-schema>)
+(signature components.extensions/registry :fn<extension-registry>)

@@ -10,17 +10,27 @@
                      Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Drawer Sheet Tooltip
                      Accordion Table TableRow TableCell Tree Resizable Split StatusBar]]
             [lui.backend.retained :as retained]
+            [lui.extension :as ext]
             [lui.wire :as wire]))
+
+(defn create-with-extensions
+  ([registry] (create-with-extensions (fn [_batch] true) registry))
+  ([send-batch registry]
+   (record flutter-renderer
+           (flutter-store (retained/create-store))
+           (flutter-send-batch send-batch)
+           (flutter-extension-registry registry))))
 
 (defn create
   ([] (create (fn [_batch] true)))
-  ([send-batch]
-   (record flutter-renderer
-           (flutter-store (retained/create-store))
-           (flutter-send-batch send-batch))))
+  ([send-batch] (create-with-extensions send-batch (ext/registry))))
 
 (defn create-wire [send-json]
   (create (fn [batch] (send-json (wire/encode-batch batch)))))
+
+(defn create-wire-with-extensions [send-json registry]
+  (create-with-extensions
+   (fn [batch] (send-json (wire/encode-batch batch))) registry))
 
 (defn- platform-node [kind]
   (match kind
@@ -89,14 +99,22 @@
     Split FlutterSplit
     StatusBar FlutterStatusBar))
 
-(defn backend-for [renderer operating-system]
+(defn- extension-platform-node [_node identifier]
+  (FlutterExtension identifier))
+
+(defn backend-for-profile [renderer profile]
   (record proto/backend
-          (backend-profile (proto/profile operating-system proto/FlutterHost))
+          (backend-profile profile)
           (apply-batch
            (fn [batch]
-             (retained/apply-batch-with!
-              (:flutter-store renderer) platform-node
+             (retained/apply-batch-with-extensions!
+              (:flutter-store renderer) platform-node extension-platform-node
+              (:flutter-extension-registry renderer)
               (:flutter-send-batch renderer) batch)))))
+
+(defn backend-for [renderer operating-system]
+  (backend-for-profile
+   renderer (proto/profile operating-system proto/FlutterHost)))
 
 (defn backend [renderer]
   (backend-for renderer proto/GenericOS))

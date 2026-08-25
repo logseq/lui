@@ -60,17 +60,26 @@
   (FlutterTree)
   (FlutterResizable)
   (FlutterSplit)
-  (FlutterStatusBar))
+  (FlutterStatusBar)
+  (FlutterExtension :string))
 
 (type-record flutter-renderer
   (flutter-store :retained-store<flutter-node>)
-  (flutter-send-batch :fn<patch-batch;bool>))
+  (flutter-send-batch :fn<patch-batch;bool>)
+  (flutter-extension-registry :extension-registry))
 
 (signature lui.backend.flutter/create
   :overload<fn<flutter-renderer>;fn<fn<patch-batch;bool>;flutter-renderer>>)
+(signature lui.backend.flutter/create-with-extensions
+  :overload<fn<extension-registry;flutter-renderer>;fn<fn<patch-batch;bool>;extension-registry;flutter-renderer>>)
 (signature lui.backend.flutter/create-wire
   :fn<fn<string;bool>;flutter-renderer>)
+(signature lui.backend.flutter/create-wire-with-extensions
+  :fn<fn<string;bool>;extension-registry;flutter-renderer>)
+(signature lui.backend.flutter/backend-for-profile
+  :fn<flutter-renderer;platform-profile;backend>)
 (signature lui.backend.flutter/platform-node :fn<node-kind;flutter-node>)
+(signature lui.backend.flutter/extension-platform-node :fn<int;string;flutter-node>)
 (signature lui.backend.flutter/backend-for
   :fn<flutter-renderer;operating-system;backend>)
 (signature lui.backend.flutter/backend :fn<flutter-renderer;backend>)

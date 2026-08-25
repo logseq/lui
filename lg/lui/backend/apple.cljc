@@ -10,14 +10,20 @@
                      Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Drawer Sheet Tooltip
                      Accordion Table TableRow TableCell Tree Resizable Split StatusBar]]
             [lui.backend.retained :as retained]
+            [lui.extension :as ext]
             [lui.wire :as wire]))
+
+(defn create-with-extensions
+  ([registry] (create-with-extensions (fn [_batch] true) registry))
+  ([send-batch registry]
+   (record apple-renderer
+           (apple-store (retained/create-store))
+           (apple-send-batch send-batch)
+           (apple-extension-registry registry))))
 
 (defn create
   ([] (create (fn [_batch] true)))
-  ([send-batch]
-   (record apple-renderer
-           (apple-store (retained/create-store))
-           (apple-send-batch send-batch))))
+  ([send-batch] (create-with-extensions send-batch (ext/registry))))
 
 (defn create-wire [send-json]
   (create (fn [batch] (send-json (wire/encode-batch batch)))))
@@ -89,13 +95,17 @@
     Split AppleSplit
     StatusBar AppleStatusBar))
 
+(defn- extension-platform-node [_node identifier]
+  (AppleExtension identifier))
+
 (defn backend-for [renderer operating-system host]
   (record proto/backend
           (backend-profile (proto/profile operating-system host))
           (apply-batch
            (fn [batch]
-             (retained/apply-batch-with!
-              (:apple-store renderer) platform-node
+             (retained/apply-batch-with-extensions!
+              (:apple-store renderer) platform-node extension-platform-node
+              (:apple-extension-registry renderer)
               (:apple-send-batch renderer) batch)))))
 
 (defn backend [renderer]

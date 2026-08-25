@@ -7,6 +7,122 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lui_flutter_backend/lui_flutter_backend.dart';
 
 void main() {
+  testWidgets('registered extensions retain identity and validate events', (
+    tester,
+  ) async {
+    final registry = LUIFlutterExtensionRegistry()
+      ..register(
+        LUIFlutterExtension(
+          identifier: 'native-card',
+          fingerprint: 'native-card-v1',
+          acceptsStandardChildren: true,
+          properties: const [
+            LUIExtensionProperty(
+              name: 'title',
+              kind: LUIExtensionValueKind.string,
+              isRequired: true,
+            ),
+            LUIExtensionProperty(
+              name: 'elevation',
+              kind: LUIExtensionValueKind.doubleValue,
+              defaultValue: 1.0,
+            ),
+          ],
+          events: const [
+            LUIExtensionEventSchema(
+              name: 'activate',
+              fields: [
+                LUIExtensionEventField(
+                  name: 'source',
+                  kind: LUIExtensionValueKind.string,
+                  isRequired: true,
+                ),
+              ],
+            ),
+          ],
+          builder: (context) => FilledButton(
+            onPressed: () => context.emit(
+              name: 'activate',
+              values: const {'source': 'flutter'},
+            ),
+            child: Text(context.property('title')! as String),
+          ),
+        ),
+      );
+    final events = <LUIEvent>[];
+    final backend =
+        LUIFlutterBackend(extensionRegistry: registry, onEvent: events.add)
+          ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-extension","id":2,"identifier":"native-card","fingerprint":"native-card-v1"},
+        {"op":"set-extension-prop","id":2,"property":"title","value":"Flutter native"},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    expect(find.text('Flutter native'), findsOneWidget);
+    expect(backend.debugRevision(2), 0);
+
+    backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-extension-prop","id":2,"property":"title","value":"Updated native"}
+      ]}
+      ''');
+    await tester.pump();
+    expect(find.text('Updated native'), findsOneWidget);
+    expect(backend.debugRevision(2), 1);
+
+    await tester.tap(find.text('Updated native'));
+    expect(events, const [
+      LUIEvent.extension(
+        node: 2,
+        identifier: 'native-card',
+        name: 'activate',
+        values: {'source': 'flutter'},
+      ),
+    ]);
+
+    expect(
+      () => backend.applyJson('''
+        {"generation":3,"ops":[
+          {"op":"create-extension","id":3,"identifier":"native-card","fingerprint":"wrong"}
+        ]}
+        '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 2);
+    expect(backend.containsNode(3), isFalse);
+  });
+
+  test('extension registrations cannot shadow standard node names', () {
+    final registry = LUIFlutterExtensionRegistry();
+    expect(
+      () => registry.register(
+        LUIFlutterExtension(
+          identifier: 'button',
+          fingerprint: 'shadow',
+          builder: (_) => const SizedBox.shrink(),
+        ),
+      ),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(
+      () => registry.register(
+        LUIFlutterExtension(
+          identifier: 'native-card',
+          fingerprint: 'native-card-v1',
+          childIdentifiers: const ['native-child', 'native-child'],
+          builder: (_) => const SizedBox.shrink(),
+        ),
+      ),
+      throwsA(isA<LUIBackendException>()),
+    );
+  });
+
   test('projects each direct retained root child as one Gallery section', () {
     final backend = LUIFlutterBackend()
       ..applyJson('''
