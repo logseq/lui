@@ -44,7 +44,10 @@
   (AppleDrawer)
   (AppleSheet)
   (AppleTooltip)
-  (AppleAccordion))
+  (AppleAccordion)
+  (AppleTable)
+  (AppleTableRow)
+  (AppleTableCell))
 
 (type-record apple-renderer
   (apple-store :retained-store<apple-node>)

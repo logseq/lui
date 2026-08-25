@@ -7,16 +7,16 @@
                      Divider Scroll ListContainer Tabs ButtonGroup ToggleGroup
                      Spacer Spinner Icon Select Combobox DropdownMenu
                      MenuItem ListItem Avatar Breadcrumb Pagination Accordion
-                     Dialog Drawer Sheet Tooltip TextValue Enabled
-                     Gap MainAlignment CrossAlignment GrowValue GridColumns PaddingValue
-                     PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth
-                     CornerRadius WidthValue HeightValue MinWidth MaxWidth MinHeight
-                     MaxHeight PlaceholderValue AccessibilityLabel StyleClass HeadingLevel Checked
-                     ProgressValue OrientationValue SizeValue IconName VariantValue InlineIconName
-                     IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled ChangeEnabled
-                     ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue SourceX
-                     SourceY SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset
-                     TooltipDelay]]))
+                     Table TableRow TableCell Dialog Drawer Sheet
+                     Tooltip TextValue Enabled Gap MainAlignment CrossAlignment
+                     GrowValue GridColumns PaddingValue PaddingHorizontal PaddingVertical BackgroundValue
+                     ForegroundValue BorderColorValue BorderWidth CornerRadius WidthValue HeightValue
+                     MinWidth MaxWidth MinHeight MaxHeight PlaceholderValue AccessibilityLabel
+                     StyleClass HeadingLevel Checked ProgressValue OrientationValue SizeValue
+                     IconName VariantValue InlineIconName IconPlacementValue Selected Autofocus
+                     SubmitOnEnter HoldEnabled ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled
+                     DoublePressEnabled ImageIdValue SourceX SourceY SourceWidth SourceHeight
+                     AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay TextAlignment]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -62,6 +62,9 @@
     Breadcrumb "breadcrumb"
     Pagination "pagination"
     Accordion "accordion"
+    Table "table"
+    TableRow "table-row"
+    TableCell "table-cell"
     Dialog "dialog"
     Drawer "drawer"
     Sheet "sheet"
@@ -119,4 +122,5 @@
     AnchorValue "anchor"
     AnchorAlignmentValue "anchor-alignment"
     AnchorOffset "anchor-offset"
-    TooltipDelay "tooltip-delay"))
+    TooltipDelay "tooltip-delay"
+    TextAlignment "text-alignment"))

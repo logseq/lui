@@ -44,6 +44,9 @@
   (Breadcrumb)
   (Pagination)
   (Accordion)
+  (Table)
+  (TableRow)
+  (TableCell)
   (Dialog)
   (Drawer)
   (Sheet)
@@ -119,7 +122,8 @@
   (AnchorValue)
   (AnchorAlignmentValue)
   (AnchorOffset)
-  (TooltipDelay))
+  (TooltipDelay)
+  (TextAlignment))
 
 (type-variant wire-value
   (StringValue :string)

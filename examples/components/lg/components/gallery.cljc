@@ -180,6 +180,32 @@
    [:paragraph
     "Click selects immediately; double click and Enter run the primary action without replacing a row."]])
 
+(defui table-gallery
+  [invoice-two-selected-source invoice-three-selected-source
+   select-invoice-two select-invoice-three]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Table"]
+   [:table {:width 520}
+    [:table-row {:gap 8}
+     [:table-cell {:grow 1.0 :size "sm" :foreground "muted-foreground"}
+      "Invoice"]
+     [:table-cell {:grow 1.0 :size "sm" :foreground "muted-foreground"}
+      "Status"]
+     [:table-cell
+      {:grow 1.0 :size "sm" :foreground "muted-foreground"
+       :text-alignment "end"}
+      "Amount"]]
+    [:table-row {:gap 8 :selected invoice-two-selected-source}
+     [:table-cell {:grow 1.0 :on-press select-invoice-two} "INV-002"]
+     [:table-cell {:grow 1.0} "Pending"]
+     [:table-cell {:grow 1.0 :text-alignment "end"} "$150.00"]]
+    [:table-row {:gap 8 :selected invoice-three-selected-source}
+     [:table-cell {:grow 1.0 :on-press select-invoice-three} "INV-003"]
+     [:table-cell {:grow 1.0} "Paid"]
+     [:table-cell {:grow 1.0 :text-alignment "end"} "$275.00"]]]
+   [:paragraph
+    "Press an invoice cell to patch only the selected retained rows."]])
+
 (defui badge-gallery []
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "Badge"]
@@ -586,6 +612,9 @@
     report-selected-source checklist-selected-source disabled-source
     document-action-source select-report select-checklist open-report
     open-checklist]
+   [table-gallery
+    overview-tab-selected-source activity-tab-selected-source
+    select-overview-tab select-activity-tab]
    [avatar-gallery avatar-image-source toggle-avatar-image]
    [text-entry-gallery value-source disabled-source update-value]
    [tooltip-gallery]

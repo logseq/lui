@@ -755,7 +755,9 @@ void main() {
         find.byKey(LUIFlutterBackend.nodeKey(3)),
       );
 
-      final mouse = await tester.createGesture(kind: ui.PointerDeviceKind.mouse);
+      final mouse = await tester.createGesture(
+        kind: ui.PointerDeviceKind.mouse,
+      );
       await mouse.addPointer(location: const Offset(1, 1));
       await mouse.moveTo(tester.getCenter(find.text('Bold')));
       await tester.pump(const Duration(milliseconds: 249));
@@ -780,7 +782,10 @@ void main() {
         tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(3))),
         same(buttonRenderObject),
       );
-      expect(tester.widget<Tooltip>(find.byType(Tooltip)).message, 'Toggle bold');
+      expect(
+        tester.widget<Tooltip>(find.byType(Tooltip)).message,
+        'Toggle bold',
+      );
       expect(
         tester.widget<Tooltip>(find.byType(Tooltip)).waitDuration,
         Duration.zero,
@@ -799,12 +804,12 @@ void main() {
     },
   );
 
-  testWidgets(
-    'maps Accordion to a controlled retained native disclosure',
-    (tester) async {
-      final events = <LUIEvent>[];
-      final backend = LUIFlutterBackend(onEvent: events.add)
-        ..applyJson('''
+  testWidgets('maps Accordion to a controlled retained native disclosure', (
+    tester,
+  ) async {
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
       {"generation":1,"ops":[
         {"op":"create-node","id":1,"kind":"accordion"},
         {"op":"create-node","id":2,"kind":"text"},
@@ -817,48 +822,47 @@ void main() {
       ]}
       ''');
 
-      await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
-      );
-      final tile = tester.widget<ExpansionTile>(find.byType(ExpansionTile));
-      expect(tile.title, isA<Text>());
-      expect((tile.title as Text).data, 'Details');
-      expect(tile.initiallyExpanded, isFalse);
-      expect(tile.maintainState, isTrue);
-      final retainedContent = tester.element(
-        find.text('Retained content', skipOffstage: false),
-      );
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    final tile = tester.widget<ExpansionTile>(find.byType(ExpansionTile));
+    expect(tile.title, isA<Text>());
+    expect((tile.title as Text).data, 'Details');
+    expect(tile.initiallyExpanded, isFalse);
+    expect(tile.maintainState, isTrue);
+    final retainedContent = tester.element(
+      find.text('Retained content', skipOffstage: false),
+    );
 
-      await tester.tap(find.text('Details'));
-      await tester.pumpAndSettle();
-      expect(events, const [LUIEvent.toggleChanged(node: 1, checked: true)]);
-      expect(find.text('Retained content'), findsNothing);
+    await tester.tap(find.text('Details'));
+    await tester.pumpAndSettle();
+    expect(events, const [LUIEvent.toggleChanged(node: 1, checked: true)]);
+    expect(find.text('Retained content'), findsNothing);
 
-      backend.applyJson('''
+    backend.applyJson('''
       {"generation":2,"ops":[
         {"op":"set-prop","id":1,"property":"text","value":"Advanced details"},
         {"op":"set-prop","id":1,"property":"selected","value":true}
       ]}
       ''');
-      await tester.pumpAndSettle();
-      expect(find.text('Advanced details'), findsOneWidget);
-      expect(find.text('Retained content'), findsOneWidget);
-      expect(
-        tester.element(find.text('Retained content', skipOffstage: false)),
-        same(retainedContent),
-      );
+    await tester.pumpAndSettle();
+    expect(find.text('Advanced details'), findsOneWidget);
+    expect(find.text('Retained content'), findsOneWidget);
+    expect(
+      tester.element(find.text('Retained content', skipOffstage: false)),
+      same(retainedContent),
+    );
 
-      expect(
-        () => backend.applyJson('''
+    expect(
+      () => backend.applyJson('''
         {"generation":3,"ops":[
           {"op":"set-prop","id":1,"property":"padding","value":8}
         ]}
         '''),
-        throwsA(isA<LUIBackendException>()),
-      );
-      expect(backend.generation, 2);
-    },
-  );
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 2);
+  });
 
   testWidgets(
     'maps ListItem text and custom children to retained native rows',
@@ -924,6 +928,119 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'maps Table rows to retained native Table widgets and patches locally',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      final events = <LUIEvent>[];
+      final backend = LUIFlutterBackend(onEvent: events.add)
+        ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"table"},
+        {"op":"create-node","id":2,"kind":"table-row"},
+        {"op":"create-node","id":3,"kind":"table-row"},
+        {"op":"create-node","id":4,"kind":"table-cell"},
+        {"op":"create-node","id":5,"kind":"table-cell"},
+        {"op":"create-node","id":6,"kind":"table-cell"},
+        {"op":"create-node","id":7,"kind":"table-cell"},
+        {"op":"set-prop","id":2,"property":"gap","value":4},
+        {"op":"set-prop","id":3,"property":"selected","value":false},
+        {"op":"set-prop","id":4,"property":"text","value":"Invoice"},
+        {"op":"set-prop","id":4,"property":"size","value":"sm"},
+        {"op":"set-prop","id":5,"property":"text","value":"Amount"},
+        {"op":"set-prop","id":5,"property":"text-alignment","value":"end"},
+        {"op":"set-prop","id":6,"property":"text","value":"INV-002"},
+        {"op":"set-prop","id":6,"property":"press-enabled","value":true},
+        {"op":"set-prop","id":7,"property":"text","value":"\$150.00"},
+        {"op":"set-prop","id":7,"property":"text-alignment","value":"end"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":2,"child":4,"index":0},
+        {"op":"insert-child","parent":2,"child":5,"index":1},
+        {"op":"insert-child","parent":3,"child":6,"index":0},
+        {"op":"insert-child","parent":3,"child":7,"index":1}
+      ]}
+      ''');
+
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+      );
+
+      expect(find.byType(Table), findsNWidgets(2));
+      expect(find.text('Invoice'), findsOneWidget);
+      expect(find.text('INV-002'), findsOneWidget);
+      expect(find.text(r'$150.00'), findsOneWidget);
+      final retainedAmount = tester.element(find.text(r'$150.00'));
+      final rowSemantics = tester.widget<Semantics>(
+        find
+            .descendant(
+              of: find.byKey(LUIFlutterBackend.nodeKey(3)),
+              matching: find.byType(Semantics),
+            )
+            .first,
+      );
+      expect(rowSemantics.properties.selected, isFalse);
+
+      await tester.tap(find.text('INV-002'));
+      await tester.pump();
+      expect(events, const [LUIEvent.press(node: 6)]);
+
+      final tableRevision = backend.debugRevision(1);
+      final rowRevision = backend.debugRevision(3);
+      final cellRevision = backend.debugRevision(7);
+      backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":3,"property":"selected","value":true},
+        {"op":"set-prop","id":7,"property":"text","value":"\$175.00"}
+      ]}
+      ''');
+      await tester.pump();
+
+      expect(backend.debugRevision(1), tableRevision);
+      expect(backend.debugRevision(3), rowRevision + 1);
+      expect(backend.debugRevision(7), cellRevision + 1);
+      expect(tester.element(find.text(r'$175.00')), same(retainedAmount));
+      expect(
+        tester
+            .widget<Semantics>(
+              find
+                  .descendant(
+                    of: find.byKey(LUIFlutterBackend.nodeKey(3)),
+                    matching: find.byType(Semantics),
+                  )
+                  .first,
+            )
+            .properties
+            .selected,
+        isTrue,
+      );
+      semantics.dispose();
+    },
+  );
+
+  test('rejects malformed Table nesting without a partial commit', () {
+    final backend = LUIFlutterBackend();
+    expect(
+      () => backend.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"table"},
+        {"op":"create-node","id":2,"kind":"text"},
+        {"op":"set-prop","id":2,"property":"text","value":"Invalid"},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ]}
+      '''),
+      throwsA(
+        isA<LUIBackendException>().having(
+          (error) => error.message,
+          'message',
+          contains('table can contain only table-row'),
+        ),
+      ),
+    );
+    expect(backend.generation, 0);
+    expect(backend.containsNode(1), isFalse);
+  });
 
   testWidgets(
     'registering an image invalidates only Avatars that reference its ImageId',

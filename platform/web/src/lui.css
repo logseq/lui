@@ -126,6 +126,36 @@
     -webkit-mask: var(--lui-icon-image, url("./icons/missing.svg")) center / contain no-repeat;
   }
 
+  .lui-table {
+    @apply w-full table-fixed border-collapse;
+  }
+
+  .lui-table-row {
+    @apply transition-colors;
+  }
+
+  .lui-table-row:hover,
+  .lui-table-row[data-selected] {
+    @apply bg-accent text-accent-foreground;
+  }
+
+  .lui-table-cell {
+    @apply py-3 text-sm;
+    padding-inline: calc(var(--lui-table-gap, 0px) / 2);
+  }
+
+  .lui-table-row:not(:last-child) > .lui-table-cell {
+    @apply border-b;
+  }
+
+  .lui-table-cell[data-pressable] {
+    @apply cursor-pointer;
+  }
+
+  .lui-table-cell[data-pressable]:focus-visible {
+    @apply outline-none ring-2 ring-inset ring-ring;
+  }
+
   .lui-avatar {
     @apply relative size-10 shrink-0 overflow-hidden rounded-full bg-secondary text-secondary-foreground;
   }

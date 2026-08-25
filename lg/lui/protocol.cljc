@@ -27,7 +27,8 @@
   (match event
     (Press _node)
     (or (= kind Button) (= kind Radio) (= kind Select)
-        (= kind Combobox) (= kind MenuItem) (= kind ListItem) (= kind Text))
+        (= kind Combobox) (= kind MenuItem) (= kind ListItem) (= kind Text)
+        (= kind TableCell))
     (Hold _node) (or (= kind Button) (= kind ToggleButton))
     (TextChanged _node _text)
     (or (= kind TextField) (= kind Input) (= kind SearchField)
@@ -155,6 +156,7 @@
       DropdownMenu true
       MenuItem true
       ListItem true
+      TableCell true
       _ false)
     BorderColorValue
     (and (not (= kind Avatar)) (not (modal-surface? kind))
@@ -199,7 +201,8 @@
     ProgressValue (or (= kind Progress) (= kind Slider))
     OrientationValue (= kind Divider)
     SizeValue
-    (or (= kind Button) (= kind ToggleButton) (= kind Spinner) (= kind Icon))
+    (or (= kind Button) (= kind ToggleButton) (= kind Spinner) (= kind Icon)
+        (= kind TableCell))
     IconName (= kind Icon)
     VariantValue (or (= kind Button) (= kind ToggleButton))
     InlineIconName
@@ -208,7 +211,7 @@
     IconPlacementValue (or (= kind Button) (= kind ToggleButton))
     Selected
     (or (= kind Button) (= kind ToggleButton) (= kind MenuItem)
-        (= kind ListItem))
+        (= kind ListItem) (= kind TableRow))
     Autofocus
     (or (= kind Button) (= kind ToggleButton)
         (= kind TextField) (= kind Input) (= kind SearchField)
@@ -219,7 +222,7 @@
     ToggleEnabled (= kind Radio)
     PressEnabled
     (or (= kind Text) (= kind Radio) (= kind Select) (= kind Combobox)
-        (= kind MenuItem) (= kind ListItem))
+        (= kind MenuItem) (= kind ListItem) (= kind TableCell))
     SubmitEnabled (or (= kind Combobox) (= kind ListItem))
     DoublePressEnabled (= kind ListItem)
     ImageIdValue (= kind Avatar)
@@ -231,6 +234,7 @@
     AnchorAlignmentValue (or (= kind DropdownMenu) (= kind Tooltip))
     AnchorOffset (or (= kind DropdownMenu) (= kind Tooltip))
     TooltipDelay (= kind Tooltip)
+    TextAlignment (= kind TableCell)
     TextValue
     (match kind
       Text true
@@ -256,6 +260,7 @@
       Drawer true
       Sheet true
       Tooltip true
+      TableCell true
       _ false)
     Enabled
     (match kind
@@ -277,7 +282,7 @@
       _ false)
     Gap
     (or (= kind Row) (= kind Column) (= kind Grid)
-        (= kind ListContainer) (= kind DropdownMenu)
+        (= kind ListContainer) (= kind DropdownMenu) (= kind TableRow)
         (horizontal-container? kind)))))
 
 (defn property-value-supported? [property value]
@@ -345,7 +350,20 @@
     (tuple AnchorOffset (FloatValue _value)) true
     (tuple TooltipDelay (IntValue value))
     (and (>= value 0) (<= value 2147483647))
+    (tuple TextAlignment (StringValue value))
+    (or (= value "start") (= value "center") (= value "end"))
     _ false))
+
+(defn property-value-supported-for-kind? [kind property value]
+  (if (= property SizeValue)
+    (match value
+      (StringValue size)
+      (if (= kind TableCell)
+        (or (control-size-supported? size)
+            (= size "heading") (= size "display"))
+        (control-size-supported? size))
+      _ false)
+    (property-value-supported? property value)))
 
 (defn int-property [properties property fallback]
   (if-some [value (clojure.core/get properties property)]
@@ -506,7 +524,15 @@
       Drawer true
       Sheet true
       Accordion true
+      Table true
+      TableRow true
       _ false)))
+
+(defn child-kind-supported? [parent-kind child-kind]
+  (match parent-kind
+    Table (= child-kind TableRow)
+    TableRow (= child-kind TableCell)
+    _ true))
 
 (defn create-node-op [node kind]
   (CreateNode node kind))

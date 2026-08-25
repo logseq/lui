@@ -290,6 +290,7 @@ public final class LUIAppleBackend {
     func performPress(node: Int) throws {
         guard let model = models[node],
               model.kind == .button || (model.kind == .text && model.supportsPress) ||
+                (model.kind == .tableCell && model.supportsPress) ||
                 model.kind == .select ||
                 model.kind == .combobox || model.kind == .menuItem ||
                 model.kind == .listItem,

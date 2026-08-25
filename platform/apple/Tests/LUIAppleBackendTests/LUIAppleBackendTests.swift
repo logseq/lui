@@ -547,6 +547,90 @@ struct LUISwiftUIBackendTests {
         #expect(item.revision == revision + 1)
     }
 
+    @Test("maps Table structure and patches only the retained row and cell")
+    func mapsTable() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"table"},
+          {"op":"create-node","id":2,"kind":"table-row"},
+          {"op":"create-node","id":3,"kind":"table-row"},
+          {"op":"create-node","id":4,"kind":"table-cell"},
+          {"op":"create-node","id":5,"kind":"table-cell"},
+          {"op":"create-node","id":6,"kind":"table-cell"},
+          {"op":"create-node","id":7,"kind":"table-cell"},
+          {"op":"set-prop","id":2,"property":"gap","value":4},
+          {"op":"set-prop","id":3,"property":"selected","value":false},
+          {"op":"set-prop","id":4,"property":"text","value":"Invoice"},
+          {"op":"set-prop","id":4,"property":"size","value":"sm"},
+          {"op":"set-prop","id":5,"property":"text","value":"Amount"},
+          {"op":"set-prop","id":5,"property":"text-alignment","value":"end"},
+          {"op":"set-prop","id":6,"property":"text","value":"INV-002"},
+          {"op":"set-prop","id":6,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":7,"property":"text","value":"$150.00"},
+          {"op":"set-prop","id":7,"property":"text-alignment","value":"end"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"insert-child","parent":2,"child":4,"index":0},
+          {"op":"insert-child","parent":2,"child":5,"index":1},
+          {"op":"insert-child","parent":3,"child":6,"index":0},
+          {"op":"insert-child","parent":3,"child":7,"index":1}
+        ]}
+        """)
+
+        let table = try #require(backend.model(id: 1))
+        let row = try #require(backend.model(id: 3))
+        let cell = try #require(backend.model(id: 7))
+        let tableRevision = table.revision
+        let rowRevision = row.revision
+        let cellRevision = cell.revision
+        #expect(table.kind == .table)
+        #expect(backend.model(id: 2)?.kind == .tableRow)
+        #expect(cell.kind == .tableCell)
+        #expect(table.children == [2, 3])
+        #expect(row.children == [6, 7])
+        #expect(cell.property(.textAlignment) == .string("end"))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.performPress(node: 6)
+        #expect(events == [.press(node: 6)])
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":3,"property":"selected","value":true},
+          {"op":"set-prop","id":7,"property":"text","value":"$175.00"}
+        ]}
+        """)
+        #expect(backend.model(id: 1) === table)
+        #expect(backend.model(id: 3) === row)
+        #expect(backend.model(id: 7) === cell)
+        #expect(table.revision == tableRevision)
+        #expect(row.revision == rowRevision + 1)
+        #expect(cell.revision == cellRevision + 1)
+        #expect(row.isSelected)
+        #expect(cell.text == "$175.00")
+    }
+
+    @Test("rejects malformed Table nesting without committing a partial batch")
+    func rejectsMalformedTableNesting() throws {
+        let backend = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"table"},
+              {"op":"create-node","id":2,"kind":"text"},
+              {"op":"set-prop","id":2,"property":"text","value":"Invalid"},
+              {"op":"insert-child","parent":1,"child":2,"index":0}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 0)
+        #expect(backend.rootIDs.isEmpty)
+        #expect(backend.model(id: 1) == nil)
+    }
+
     @Test("registering an image invalidates only Avatars that reference its ImageId")
     func mapsRegisteredAvatarImage() throws {
         let backend = LUIAppleBackend()

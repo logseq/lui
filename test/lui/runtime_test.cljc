@@ -1075,6 +1075,112 @@
      (wire/encode-batch batch)
      "List uses the pinned Vercel Native wire name")))
 
+(deftest table-family-has-the-pinned-closed-contract
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Table)
+                      (proto/create-node-op 2 proto/TableRow)
+                      (proto/create-node-op 3 proto/TableCell)
+                      (proto/set-prop-op
+                       2 proto/Selected (proto/BoolValue true))
+                      (proto/set-prop-op
+                       3 proto/TextValue (proto/StringValue "INV-002"))
+                      (proto/set-prop-op
+                       3 proto/TextAlignment (proto/StringValue "end"))
+                      (proto/set-prop-op
+                       3 proto/PressEnabled (proto/BoolValue true))
+                      (proto/insert-child-op 1 2 0)
+                      (proto/insert-child-op 2 3 0)]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"table\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"table-row\"},"
+      "{\"op\":\"create-node\",\"id\":3,\"kind\":\"table-cell\"},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"selected\","
+      "\"value\":true},"
+      "{\"op\":\"set-prop\",\"id\":3,\"property\":\"text\","
+      "\"value\":\"INV-002\"},"
+      "{\"op\":\"set-prop\",\"id\":3,"
+      "\"property\":\"text-alignment\",\"value\":\"end\"},"
+      "{\"op\":\"set-prop\",\"id\":3,"
+      "\"property\":\"press-enabled\",\"value\":true},"
+      "{\"op\":\"insert-child\",\"parent\":1,\"child\":2,\"index\":0},"
+      "{\"op\":\"insert-child\",\"parent\":2,\"child\":3,\"index\":0}]}" )
+     (wire/encode-batch batch)
+     "Table uses the pinned element and attribute vocabulary"))
+  (doseq [property
+          [proto/GrowValue proto/WidthValue proto/MinWidth proto/MaxWidth]]
+    (is (proto/property-supported? proto/Table property)
+        "Table admits its collection layout contract"))
+  (doseq [property [proto/Gap proto/Selected]]
+    (is (proto/property-supported? proto/TableRow property)
+        "TableRow admits row spacing and model-owned selection"))
+  (doseq [property
+          [proto/TextValue proto/GrowValue proto/SizeValue
+           proto/ForegroundValue proto/TextAlignment proto/PressEnabled]]
+    (is (proto/property-supported? proto/TableCell property)
+        "TableCell admits its complete text-cell contract"))
+  (is (proto/can-contain-children? proto/Table)
+      "Table retains rows")
+  (is (proto/can-contain-children? proto/TableRow)
+      "TableRow retains cells")
+  (is (not (proto/can-contain-children? proto/TableCell))
+      "TableCell is a text leaf")
+  (is (proto/event-supported? proto/TableCell (proto/Press 3))
+      "TableCell dispatches on-press")
+  (doseq [alignment ["start" "center" "end"]]
+    (is (proto/property-value-supported?
+         proto/TextAlignment (proto/StringValue alignment))
+        "every reference text alignment is accepted"))
+  (doseq [alignment ["left" "right" "stretch" ""]]
+    (is (not (proto/property-value-supported?
+              proto/TextAlignment (proto/StringValue alignment)))
+        "CSS aliases and invalid text alignments are rejected"))
+  (is (proto/property-value-supported-for-kind?
+       proto/TableCell proto/SizeValue (proto/StringValue "heading"))
+      "a TableCell accepts typography size rungs")
+  (is (not (proto/property-value-supported-for-kind?
+            proto/Spinner proto/SizeValue (proto/StringValue "heading")))
+      "control-sized widgets reject typography-only sizes"))
+
+(deftest table-family-enforces-structural-nesting-atomically
+  (let [application
+        (runtime/create (sig/scheduler) (apple/backend (apple/create)))
+        table (runtime/create-node! application proto/Table)
+        row (runtime/create-node! application proto/TableRow)
+        cell (runtime/create-node! application proto/TableCell)
+        text (runtime/create-node! application proto/Text)]
+    (runtime/insert-child! application table row 0)
+    (runtime/insert-child! application row cell 0)
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"table can contain only table-row"
+         (runtime/insert-child! application table text 1))
+        "authoring rejects a non-row directly under Table")
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"table-row can contain only table-cell"
+         (runtime/insert-child! application row text 1))
+        "authoring rejects a non-cell directly under TableRow"))
+  (let [renderer (apple/create)
+        invalid
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Table)
+                      (proto/create-node-op 2 proto/Text)
+                      (proto/set-prop-op
+                       2 proto/TextValue (proto/StringValue "Invalid"))
+                      (proto/insert-child-op 1 2 0)]))]
+    (is (thrown-with-msg?
+         Invalid_argument
+         #"table can contain only table-row"
+         ((:apply-batch (apple/backend renderer)) invalid))
+        "the backend rejects malformed wire nesting")
+    (assert-equal 0 (apple/node-count renderer)
+                  "a rejected Table batch retains no partial nodes")))
+
 (deftest spinner-uses-a-closed-leaf-contract
   (let [batch
         (record proto/patch-batch

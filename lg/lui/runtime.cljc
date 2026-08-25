@@ -113,16 +113,22 @@
   (let [kind (require-node-kind application node)]
     (when (not (proto/property-supported? kind property))
       (raise (Invalid_argument "property is unsupported by node kind")))
-    (when (not (proto/property-value-supported? property value))
+    (when (not (proto/property-value-supported-for-kind? kind property value))
       (raise (Invalid_argument "invalid property value"))))
   (enqueue! application (proto/set-prop-op node property value)))
 
 (defn insert-child! [application parent child index]
   (let [parent-kind (require-node-kind application parent)
-        _child-kind (require-node-kind application child)
+        child-kind (require-node-kind application child)
         children (children application parent)]
     (when (not (proto/can-contain-children? parent-kind))
       (raise (Invalid_argument "parent cannot contain children")))
+    (when (not (proto/child-kind-supported? parent-kind child-kind))
+      (raise
+       (Invalid_argument
+        (if (= parent-kind proto/Table)
+          "table can contain only table-row"
+          "table-row can contain only table-cell"))))
     (when (contains? (deref (:runtime-parents application)) child)
       (raise (Invalid_argument "child is already attached")))
     (when (or (< index 0) (> index (count children)))

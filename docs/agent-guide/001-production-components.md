@@ -221,6 +221,9 @@ Delivered parity slices:
 - direct retained `accordion` disclosure containers with the exact
   `text`/`selected`/`on-toggle`/`height` contract, model-owned expansion,
   retained collapsed children, and native Web, SwiftUI, and Flutter controls;
+- direct retained `table`, `table-row`, and `table-cell` nodes with strict
+  structural nesting, aligned columns, model-owned row selection, pressable
+  cells, and identity-preserving text and selection patches;
 - direct retained `list-item` rows with text-or-children content, inline
   registry icons, model-owned selection, disabled state, immediate press,
   additive double press, Enter submit, and identity-preserving Signal patches;
@@ -652,6 +655,30 @@ Each large completed wave is committed and pushed independently.
 - dropdown and context menus, accordion and tooltip;
 - dialog, drawer, sheet, resizable and split;
 - native platform presentation, dismissal, focus restoration and drag behavior.
+
+#### Table contract
+
+`table`, `table-row`, and `table-cell` are three retained semantic nodes. A
+Table contains only TableRows, a TableRow contains only TableCells, and a
+TableCell is a plain-text leaf. The runtime and every process-boundary backend
+reject invalid nesting atomically; LG dynamic segments may still insert,
+remove, and move valid rows without wrappers.
+
+Table is a vertical collection and TableRow is a horizontal row. Cells in the
+same ordinal column align across rows. `gap` applies to row cell spacing;
+ordinary admitted layout bounds remain on the element where the pinned
+reference allows them. TableRow owns the model-controlled `selected` state.
+TableCell owns `text`, `grow`, `size`, `foreground`, `text-alignment`, and
+`on-press`; `text-alignment` is `start`, `center`, or `end`. Literal values and
+Signals use those same names. Typography sizes `heading` and `display` are
+legal on TableCell but remain invalid on control-sized widgets.
+
+Web uses semantic `table`/`tr`/`td` DOM with grid, row, and grid-cell
+accessibility semantics. SwiftUI uses `Grid` and `GridRow`. Flutter composes
+retained per-row `Table` widgets so a row or cell patch does not rebuild an
+enclosing application component. The final row has no divider, selectable rows
+receive a full-width highlight, and an enabled pressable cell is one keyboard
+and accessibility activation target.
 
 #### Dialog contract
 

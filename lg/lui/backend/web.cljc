@@ -7,6 +7,7 @@
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
                      Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip Accordion
+                     Table TableRow TableCell
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
                      Progress Divider
@@ -26,6 +27,7 @@
                      SubmitEnabled DoublePressEnabled
                      ImageIdValue SourceX SourceY SourceWidth SourceHeight
                      AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay
+                     TextAlignment
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
 
@@ -95,7 +97,10 @@
     Drawer "lui-drawer"
     Sheet "lui-sheet"
     Tooltip "lui-tooltip"
-    Accordion "lui-accordion"))
+    Accordion "lui-accordion"
+    Table "lui-table"
+    TableRow "lui-table-row"
+    TableCell "lui-table-cell"))
 
 (defn- direct-toggle? [kind]
   (or (= kind Checkbox) (= kind SwitchControl) (= kind Radio)))
@@ -218,6 +223,9 @@
           Textarea "textarea"
           Select "button"
           ListItem "button"
+          Table "table"
+          TableRow "tr"
+          TableCell "td"
           Tooltip "span"
           Slider "input"
           Divider "hr"
@@ -251,6 +259,9 @@
           ListItem
           {"type" "button"
            "aria-pressed" "false"}
+          Table {"role" "grid"}
+          TableRow {"role" "row" "aria-selected" "false"}
+          TableCell {"role" "gridcell"}
           DropdownMenu
           {"role" "listbox"
            "data-anchor" "below"
@@ -825,6 +836,7 @@
     Breadcrumb (attach-horizontal-focus! renderer node kind dom-node)
     Pagination (attach-horizontal-focus! renderer node kind dom-node)
     Accordion (attach-accordion-event! renderer node dom-node)
+    TableCell (attach-pressable-text-events! renderer node dom-node)
     _ (Stdlib.ignore true)))
 
 (defn- set-style! [dom-node property value]
@@ -862,16 +874,25 @@
     (if (or
          (= color "background")
          (= color "foreground")
+         (= color "card")
+         (= color "card-foreground")
          (= color "primary")
          (= color "primary-foreground")
          (= color "secondary")
          (= color "secondary-foreground")
+         (= color "accent")
+         (= color "accent-foreground")
+         (= color "muted-foreground")
+         (= color "destructive")
+         (= color "destructive-foreground")
          (= color "success")
          (= color "success-foreground")
          (= color "warning")
          (= color "warning-foreground")
          (= color "error")
          (= color "error-foreground")
+         (= color "input")
+         (= color "ring")
          (= color "border"))
       (str "var(--color-" color ")")
       color)))
@@ -1116,7 +1137,10 @@
         (set-state-attribute! dom-node "data-disabled" (not enabled))))
 
     (tuple Gap (IntValue gap))
-    (set-style! dom-node "gap" (str gap "px"))
+    (do
+      (set-style! dom-node "gap" (str gap "px"))
+      (when (= kind TableRow)
+        (set-style! dom-node "--lui-table-gap" (str gap "px"))))
 
     (tuple MainAlignment (StringValue alignment))
     (set-style!
@@ -1262,13 +1286,18 @@
         (Webapi.Dom.Element.setAttribute
          "aria-expanded" (if selected "true" "false")
          (child-element dom-node 0)))
-      (do
-        (set-state-attribute! dom-node "data-selected" selected)
-        (Webapi.Dom.Element.setAttribute
-         (if (or (= kind MenuItem) (direct-tab-trigger? renderer node))
-           "aria-selected"
-           "aria-pressed")
-         (if selected "true" "false") dom-node)))
+      (if (= kind TableRow)
+        (do
+          (set-state-attribute! dom-node "data-selected" selected)
+          (Webapi.Dom.Element.setAttribute
+           "aria-selected" (if selected "true" "false") dom-node))
+        (do
+          (set-state-attribute! dom-node "data-selected" selected)
+          (Webapi.Dom.Element.setAttribute
+           (if (or (= kind MenuItem) (direct-tab-trigger? renderer node))
+             "aria-selected"
+             "aria-pressed")
+           (if selected "true" "false") dom-node))))
 
     (tuple Autofocus (BoolValue autofocus))
     (if autofocus
@@ -1307,7 +1336,12 @@
             (Webapi.Dom.Element.setAttribute "tabindex" "0" dom-node))
           (do
             (Webapi.Dom.Element.removeAttribute "role" dom-node)
-            (Webapi.Dom.Element.removeAttribute "tabindex" dom-node)))))
+            (Webapi.Dom.Element.removeAttribute "tabindex" dom-node))))
+      (when (= kind TableCell)
+        (set-state-attribute! dom-node "data-pressable" enabled)
+        (if enabled
+          (Webapi.Dom.Element.setAttribute "tabindex" "0" dom-node)
+          (Webapi.Dom.Element.removeAttribute "tabindex" dom-node))))
 
     (tuple SubmitEnabled (BoolValue enabled))
     (set-state-attribute! dom-node "data-submit-enabled" enabled)
@@ -1352,6 +1386,9 @@
     (tuple TooltipDelay (IntValue delay))
     (Webapi.Dom.Element.setAttribute
      "data-tooltip-delay" (str delay) dom-node)
+
+    (tuple TextAlignment (StringValue alignment))
+    (set-style! dom-node "text-align" alignment)
 
     _ (raise (Invalid_argument "invalid DOM property value"))))
 

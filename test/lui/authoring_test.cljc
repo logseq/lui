@@ -14,6 +14,7 @@
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput
                      AppleSelect AppleCombobox AppleDropdownMenu AppleMenuItem AppleListItem
+                     AppleTable AppleTableRow AppleTableCell
                      AppleAvatar AppleDialog AppleDrawer AppleSheet AppleTooltip
                      AppleAccordion]]
             [lui.backend.flutter :as flutter]))
@@ -174,6 +175,21 @@
     [:row {:gap 8}
      [:icon {:name "folder"}]
      [:text "Custom child row"]]]])
+
+(defui retained-table [selected-source amount-source on-open]
+  [:table {:width 420}
+   [:table-row {:gap 4}
+    [:table-cell
+     {:grow 1.0 :size "sm" :foreground "text-muted"}
+     "Invoice"]
+    [:table-cell
+     {:grow 1.0 :size "sm" :foreground "text-muted"
+      :text-alignment "end"}
+     "Amount"]]
+   [:table-row {:gap 4 :selected selected-source}
+    [:table-cell {:grow 1.0 :on-press on-open} "INV-002"]
+    [:table-cell
+     {:text amount-source :grow 1.0 :text-alignment "end"}]]])
 
 (defui retained-avatars [image-id]
   [:row {:gap 12}
@@ -792,6 +808,57 @@
         (runtime/flush! application)
         (assert-equal node-count (apple/node-count renderer)
                       "selection patches the retained ListItem in place")))))
+
+(deftest table-signals-patch-retained-rows-and-cells-in-place
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-table")
+        selected (sig/state scheduler false)
+        amount (sig/state scheduler "$150.00")
+        received (atom [])
+        callback (fn [event] (swap! received conj event) true)
+        root
+        (retained-table
+         (ui/context application scope)
+         (sig/value selected) (sig/value amount) callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [header-row (nth (apple/children renderer root) 0)
+          data-row (nth (apple/children renderer root) 1)
+          invoice-cell (nth (apple/children renderer data-row) 0)
+          amount-cell (nth (apple/children renderer data-row) 1)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer root)
+        (Some AppleTable) (is true "Table maps to one semantic native node")
+        _ (is false "Table native mapping exists"))
+      (match (apple/node renderer header-row)
+        (Some AppleTableRow) (is true "header is a retained TableRow")
+        _ (is false "TableRow native mapping exists"))
+      (match (apple/node renderer amount-cell)
+        (Some AppleTableCell) (is true "amount is a retained TableCell")
+        _ (is false "TableCell native mapping exists"))
+      (runtime/dispatch! application (proto/Press invoice-cell))
+      (runtime/flush! application)
+      (assert-equal [(proto/Press invoice-cell)] @received
+                    "cell activation reaches on-press once")
+      (sig/set! selected true)
+      (sig/set! amount "$175.00")
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "Table Signal patches allocate no retained nodes")
+      (assert-equal data-row (nth (apple/children renderer root) 1)
+                    "selected row identity is stable")
+      (assert-equal amount-cell (nth (apple/children renderer data-row) 1)
+                    "patched cell identity is stable")
+      (assert-equal
+       (Some (proto/BoolValue true))
+       (apple/property renderer data-row proto/Selected)
+       "selected patches only the retained row")
+      (assert-equal
+       (Some (proto/StringValue "$175.00"))
+       (apple/property renderer amount-cell proto/TextValue)
+       "amount patches only the retained cell"))))
 
 (deftest avatar-binds-a-model-owned-image-id-without-replacing-its-node
   (let [scheduler (sig/scheduler)

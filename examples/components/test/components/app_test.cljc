@@ -176,6 +176,12 @@
         "the shared Gallery demonstrates static and anchored Tooltip")
     (is (creates-kind? (flutter/batches renderer) proto/Accordion)
         "the shared Gallery demonstrates controlled Accordion")
+    (is (creates-kind? (flutter/batches renderer) proto/Table)
+        "the shared Gallery demonstrates semantic Table")
+    (is (creates-kind? (flutter/batches renderer) proto/TableRow)
+        "the shared Gallery demonstrates retained TableRow")
+    (is (creates-kind? (flutter/batches renderer) proto/TableCell)
+        "the shared Gallery demonstrates pressable TableCell")
     (assert-equal 1 (count (flutter/batches renderer)) "mount is one batch")
     (let [mounted-count (flutter/node-count renderer)]
       (driver/send! application model/ToggleDisabled)

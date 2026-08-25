@@ -66,6 +66,15 @@
 (defn pagination! [context]
   (runtime/create-node! (:ui-application context) proto/Pagination))
 
+(defn table! [context]
+  (runtime/create-node! (:ui-application context) proto/Table))
+
+(defn table-row! [context]
+  (runtime/create-node! (:ui-application context) proto/TableRow))
+
+(defn table-cell! [context]
+  (runtime/create-node! (:ui-application context) proto/TableCell))
+
 (defn spacer! [context]
   (runtime/create-node! (:ui-application context) proto/Spacer))
 

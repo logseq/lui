@@ -451,6 +451,8 @@ final class LUIFlutterBackend {
         state.kind == _NodeKind.combobox ||
         state.kind == _NodeKind.menuItem ||
         state.kind == _NodeKind.listItem ||
+        (state.kind == _NodeKind.tableCell &&
+            state.properties['press-enabled'] == true) ||
         (state.kind == _NodeKind.text &&
             state.properties['press-enabled'] == true);
     if (!pressable || state.properties['enabled'] == false) {
@@ -1052,6 +1054,80 @@ final class LUIFlutterBackend {
           ? () => performSubmit(id)
           : null,
     );
+    Widget table() => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    );
+    Widget tableRow() {
+      final columnWidths = <int, TableColumnWidth>{};
+      for (var index = 0; index < state.children.length; index += 1) {
+        final cell = _requireState(_states, state.children[index]);
+        final grow = (cell.properties['grow'] as num?)?.toDouble() ?? 0;
+        columnWidths[index] = grow > 0
+            ? FlexColumnWidth(grow)
+            : const IntrinsicColumnWidth();
+      }
+      final paddedCells = children
+          .map(
+            (child) => Padding(
+              padding: EdgeInsets.symmetric(horizontal: gap / 2),
+              child: child,
+            ),
+          )
+          .toList(growable: false);
+      final parent = state.parent == null ? null : _states[state.parent];
+      final isLast = parent == null || parent.children.last == id;
+      return Semantics(
+        container: true,
+        selected: buttonSelected,
+        child: _LUITableRowSurface(
+          selected: buttonSelected,
+          showDivider: !isLast,
+          child: Table(
+            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+            columnWidths: columnWidths,
+            children: [TableRow(children: paddedCells)],
+          ),
+        ),
+      );
+    }
+
+    Widget tableCell() {
+      final alignment = switch (state.properties['text-alignment']) {
+        'center' => Alignment.center,
+        'end' => Alignment.centerRight,
+        _ => Alignment.centerLeft,
+      };
+      final textAlign = switch (state.properties['text-alignment']) {
+        'center' => TextAlign.center,
+        'end' => TextAlign.end,
+        _ => TextAlign.start,
+      };
+      final label = Align(
+        alignment: alignment,
+        child: Text(
+          text,
+          textAlign: textAlign,
+          style: _textStyleForSize(
+            context,
+            state.properties['size'] as String?,
+          )?.copyWith(color: foreground),
+        ),
+      );
+      if (state.properties['press-enabled'] != true) return label;
+      return Semantics(
+        button: true,
+        child: InkWell(
+          onTap: () => performAction(id),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: label,
+          ),
+        ),
+      );
+    }
+
     Widget accordion() => _LUIAccordion(
       expanded: buttonSelected,
       title: text,
@@ -1061,7 +1137,18 @@ final class LUIFlutterBackend {
       children: children,
     );
     Widget textNode() {
-      final label = Text(text, style: TextStyle(color: foreground));
+      final label = Text(
+        text,
+        textAlign: switch (state.properties['text-alignment']) {
+          'center' => TextAlign.center,
+          'end' => TextAlign.end,
+          _ => TextAlign.start,
+        },
+        style: _textStyleForSize(
+          context,
+          state.properties['size'] as String?,
+        )?.copyWith(color: foreground),
+      );
       if (state.properties['press-enabled'] != true) return label;
       return TextButton(
         onPressed: () => performAction(id),
@@ -1177,6 +1264,9 @@ final class LUIFlutterBackend {
       _NodeKind.sheet => _LUIModalPresenter(backend: this, node: id),
       _NodeKind.menuItem => menuItem(),
       _NodeKind.listItem => listItem(),
+      _NodeKind.table => table(),
+      _NodeKind.tableRow => tableRow(),
+      _NodeKind.tableCell => tableCell(),
       _NodeKind.avatar => avatar(),
       _NodeKind.toggle => FilterChip(
         label: Text(text),
@@ -1411,6 +1501,16 @@ final class LUIFlutterBackend {
             'dropdown-menu accepts only menu-item or separator children',
           );
         }
+        if (parent.kind == _NodeKind.table &&
+            child.kind != _NodeKind.tableRow) {
+          throw const LUIBackendException('table can contain only table-row');
+        }
+        if (parent.kind == _NodeKind.tableRow &&
+            child.kind != _NodeKind.tableCell) {
+          throw const LUIBackendException(
+            'table-row can contain only table-cell',
+          );
+        }
         if (index < 0 || index > parent.children.length) {
           throw const LUIBackendException('child index is out of bounds');
         }
@@ -1496,6 +1596,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.select ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
+                kind == _NodeKind.tableCell ||
                 kind == _NodeKind.avatar ||
                 kind == _NodeKind.tooltip ||
                 kind.isModalSurface),
@@ -1521,10 +1622,12 @@ final class LUIFlutterBackend {
             kind == _NodeKind.divider,
       'size' =>
         value is String &&
-            _controlSizes.contains(value) &&
+            (_controlSizes.contains(value) ||
+                (kind == _NodeKind.tableCell && _textSizes.contains(value))) &&
             (_isButtonKind(kind) ||
                 kind == _NodeKind.spinner ||
-                kind == _NodeKind.icon),
+                kind == _NodeKind.icon ||
+                kind == _NodeKind.tableCell),
       'name' =>
         value is String &&
             (_iconNames.contains(value) ||
@@ -1549,7 +1652,8 @@ final class LUIFlutterBackend {
         value is bool &&
             (_isButtonKind(kind) ||
                 kind == _NodeKind.menuItem ||
-                kind == _NodeKind.listItem),
+                kind == _NodeKind.listItem ||
+                kind == _NodeKind.tableRow),
       'hold-enabled' => value is bool && _isButtonKind(kind),
       'autofocus' =>
         value is bool && (_isButtonKind(kind) || _isTextControl(kind)),
@@ -1563,7 +1667,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.select ||
                 kind == _NodeKind.combobox ||
                 kind == _NodeKind.menuItem ||
-                kind == _NodeKind.listItem),
+                kind == _NodeKind.listItem ||
+                kind == _NodeKind.tableCell),
       'submit-enabled' =>
         value is bool &&
             (kind == _NodeKind.combobox || kind == _NodeKind.listItem),
@@ -1596,6 +1701,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.grid ||
                 kind == _NodeKind.list ||
                 kind == _NodeKind.dropdownMenu ||
+                kind == _NodeKind.tableRow ||
                 _isHorizontalGroupKind(kind)),
       'padding' =>
         value is int && kind != _NodeKind.avatar && kind != _NodeKind.tooltip,
@@ -1628,7 +1734,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.select ||
                 kind == _NodeKind.dropdownMenu ||
                 kind == _NodeKind.menuItem ||
-                kind == _NodeKind.listItem),
+                kind == _NodeKind.listItem ||
+                kind == _NodeKind.tableCell),
       'border-color' =>
         value is String &&
             kind != _NodeKind.avatar &&
@@ -1687,6 +1794,10 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider ||
                 kind == _NodeKind.avatar),
+      'text-alignment' =>
+        value is String &&
+            _textAlignments.contains(value) &&
+            kind == _NodeKind.tableCell,
       _ => false,
     };
   }
@@ -1862,6 +1973,8 @@ final class LUIFlutterBackend {
       kind == _NodeKind.dropdownMenu ||
       kind == _NodeKind.listItem ||
       kind == _NodeKind.accordion ||
+      kind == _NodeKind.table ||
+      kind == _NodeKind.tableRow ||
       kind.isModalSurface;
 
   int? _checkedRadio(_NodeState root) {
@@ -2005,6 +2118,17 @@ final class LUIFlutterBackend {
     };
   }
 
+  static TextStyle? _textStyleForSize(BuildContext context, String? size) {
+    final textTheme = Theme.of(context).textTheme;
+    return switch (size) {
+      'sm' => textTheme.bodySmall,
+      'lg' => textTheme.titleMedium,
+      'heading' => textTheme.headlineSmall,
+      'display' => textTheme.displaySmall,
+      _ => textTheme.bodyMedium,
+    };
+  }
+
   Widget _modalSurface(BuildContext context, int node) {
     final state = _requireState(_states, node);
     final width = (state.properties['width'] as int?)?.toDouble();
@@ -2078,6 +2202,10 @@ final class LUIFlutterBackend {
 
   static const _controlSizes = {'default', 'sm', 'lg', 'icon'};
 
+  static const _textSizes = {'heading', 'display'};
+
+  static const _textAlignments = {'start', 'center', 'end'};
+
   static const _buttonVariants = {
     'default',
     'primary',
@@ -2086,6 +2214,47 @@ final class LUIFlutterBackend {
     'ghost',
     'destructive',
   };
+}
+
+final class _LUITableRowSurface extends StatefulWidget {
+  const _LUITableRowSurface({
+    required this.selected,
+    required this.showDivider,
+    required this.child,
+  });
+
+  final bool selected;
+  final bool showDivider;
+  final Widget child;
+
+  @override
+  State<_LUITableRowSurface> createState() => _LUITableRowSurfaceState();
+}
+
+final class _LUITableRowSurfaceState extends State<_LUITableRowSurface> {
+  var hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return MouseRegion(
+      onEnter: (_) => setState(() => hovered = true),
+      onExit: (_) => setState(() => hovered = false),
+      child: ColoredBox(
+        color: widget.selected || hovered
+            ? colors.secondaryContainer
+            : Colors.transparent,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: widget.showDivider
+                ? Border(bottom: BorderSide(color: colors.outlineVariant))
+                : null,
+          ),
+          child: widget.child,
+        ),
+      ),
+    );
+  }
 }
 
 class _LUIModalPresenter extends StatefulWidget {

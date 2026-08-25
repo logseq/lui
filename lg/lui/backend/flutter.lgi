@@ -42,7 +42,10 @@
   (FlutterDrawer)
   (FlutterSheet)
   (FlutterTooltip)
-  (FlutterAccordion))
+  (FlutterAccordion)
+  (FlutterTable)
+  (FlutterTableRow)
+  (FlutterTableCell))
 
 (type-record flutter-renderer
   (flutter-store :retained-store<flutter-node>)

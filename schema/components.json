@@ -24,9 +24,9 @@
     {"name": "radio-group", "status": "supported"},
     {"name": "breadcrumb", "status": "supported"},
     {"name": "pagination", "status": "supported"},
-    {"name": "table", "status": "pending"},
-    {"name": "table-row", "status": "pending"},
-    {"name": "table-cell", "status": "pending"},
+    {"name": "table", "status": "supported"},
+    {"name": "table-row", "status": "supported"},
+    {"name": "table-cell", "status": "supported"},
     {"name": "dropdown-menu", "status": "supported"},
     {"name": "menu-item", "status": "supported"},
     {"name": "accordion", "status": "supported"},
@@ -114,6 +114,9 @@
     {"lg": "Breadcrumb", "wire": "breadcrumb", "dart": "breadcrumb", "swift": "breadcrumb", "container": true},
     {"lg": "Pagination", "wire": "pagination", "dart": "pagination", "swift": "pagination", "container": true},
     {"lg": "Accordion", "wire": "accordion", "dart": "accordion", "swift": "accordion", "container": true},
+    {"lg": "Table", "wire": "table", "dart": "table", "swift": "table", "container": true},
+    {"lg": "TableRow", "wire": "table-row", "dart": "tableRow", "swift": "tableRow", "container": true},
+    {"lg": "TableCell", "wire": "table-cell", "dart": "tableCell", "swift": "tableCell", "container": false},
     {"lg": "Dialog", "wire": "dialog", "dart": "dialog", "swift": "dialog", "container": true},
     {"lg": "Drawer", "wire": "drawer", "dart": "drawer", "swift": "drawer", "container": true},
     {"lg": "Sheet", "wire": "sheet", "dart": "sheet", "swift": "sheet", "container": true},
@@ -170,7 +173,8 @@
     {"lg": "AnchorValue", "wire": "anchor", "swift": "anchor"},
     {"lg": "AnchorAlignmentValue", "wire": "anchor-alignment", "swift": "anchorAlignment"},
     {"lg": "AnchorOffset", "wire": "anchor-offset", "swift": "anchorOffset"},
-    {"lg": "TooltipDelay", "wire": "tooltip-delay", "swift": "tooltipDelay"}
+    {"lg": "TooltipDelay", "wire": "tooltip-delay", "swift": "tooltipDelay"},
+    {"lg": "TextAlignment", "wire": "text-alignment", "swift": "textAlignment"}
   ],
   "events": [
     {"lg": "Press", "fields": [":int"]},

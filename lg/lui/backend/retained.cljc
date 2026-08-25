@@ -118,7 +118,8 @@
     (if-some [current (clojure.core/get nodes node)]
       (if (and
            (proto/property-supported? (:semantic-kind current) property)
-           (proto/property-value-supported? property value))
+           (proto/property-value-supported-for-kind?
+            (:semantic-kind current) property value))
         (update-node
          nodes node current
          (assoc (:retained-properties current) property value)
@@ -132,6 +133,14 @@
         (cond
           (not (proto/can-contain-children? (:semantic-kind parent-node)))
           (raise (Invalid_argument "parent cannot contain children"))
+          (not
+           (proto/child-kind-supported?
+            (:semantic-kind parent-node) (:semantic-kind child-node)))
+          (raise
+           (Invalid_argument
+            (if (= (:semantic-kind parent-node) proto/Table)
+              "table can contain only table-row"
+              "table-row can contain only table-cell")))
           (descendant? nodes child parent)
           (raise (Invalid_argument "child insertion would create a cycle"))
           (match (:retained-parent child-node)

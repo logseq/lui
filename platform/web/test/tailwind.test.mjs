@@ -134,6 +134,19 @@ test("the production stylesheet contains the retained ListItem contract", async 
   assert.match(css, /\.lui-list-item\[data-name\]:{1,2}before\{[^}]*width:calc\(var\(--spacing\)\*4\)/)
 })
 
+test("Table uses semantic retained rows and cells with native interaction chrome", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-table\{[^}]*width:100%/)
+  assert.match(css, /\.lui-table\{[^}]*border-collapse:collapse/)
+  assert.match(css, /\.lui-table-row\{[^}]*transition-property:color,background-color/)
+  assert.match(css, /\.lui-table-row\[data-selected\]/)
+  assert.match(css, /\.lui-table-row:hover/)
+  assert.match(css, /\.lui-table-row:not\(:last-child\)>.lui-table-cell\{[^}]*border-bottom-width:1px/)
+  assert.match(css, /\.lui-table-cell\[data-pressable\]\{[^}]*cursor:pointer/)
+  assert.match(css, /\.lui-table-cell\[data-pressable\]:focus-visible/)
+})
+
 test("the production stylesheet contains the registered-image Avatar contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 

@@ -95,6 +95,12 @@ private struct LUINodeView: View {
             LUIMenuItemView(model: model, backend: backend)
         case .listItem:
             LUIListItemView(model: model, backend: backend)
+        case .table:
+            LUITableView(model: model, backend: backend)
+        case .tableRow:
+            LUITableRowView(model: model, backend: backend, isLast: true)
+        case .tableCell:
+            LUITableCellView(model: model, backend: backend)
         case .avatar:
             LUIAvatarView(model: model, backend: backend)
         case .checkbox:
@@ -212,6 +218,111 @@ private struct LUIAccordionView: View {
             Text(verbatim: model.text)
         }
         .disabled(!model.supportsToggle)
+    }
+}
+
+private struct LUITableView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+            ForEach(model.children, id: \.self) { rowID in
+                if let row = backend.model(id: rowID) {
+                    LUITableRowView(
+                        model: row,
+                        backend: backend,
+                        isLast: rowID == model.children.last
+                    )
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct LUITableRowView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    let isLast: Bool
+
+    var body: some View {
+        GridRow {
+            ForEach(model.children, id: \.self) { cellID in
+                if let cell = backend.model(id: cellID) {
+                    LUINodeView(model: cell, backend: backend)
+                        .padding(.horizontal, CGFloat(model.property(.gap)?.intValue ?? 0) / 2)
+                }
+            }
+        }
+        .background(model.isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+        .overlay(alignment: .bottom) {
+            if !isLast {
+                Divider()
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(model.isSelected ? .isSelected : [])
+    }
+}
+
+private struct LUITableCellView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        Group {
+            if model.supportsPress {
+                Button {
+                    try? backend.performPress(node: model.id)
+                } label: {
+                    label
+                }
+                .buttonStyle(.plain)
+            } else {
+                label
+            }
+        }
+        .frame(maxWidth: cellMaxWidth, alignment: frameAlignment)
+    }
+
+    private var label: some View {
+        Text(verbatim: model.text)
+            .font(font)
+            .multilineTextAlignment(textAlignment)
+            .frame(maxWidth: .infinity, alignment: frameAlignment)
+            .contentShape(Rectangle())
+            .padding(.vertical, 10)
+    }
+
+    private var cellMaxWidth: CGFloat? {
+        (model.property(.grow)?.doubleValue ?? 0) > 0 ? .infinity : nil
+    }
+
+    private var frameAlignment: Alignment {
+        switch model.property(.textAlignment)?.stringValue {
+        case "center": .center
+        case "end": .trailing
+        default: .leading
+        }
+    }
+
+    private var textAlignment: TextAlignment {
+        switch model.property(.textAlignment)?.stringValue {
+        case "center": .center
+        case "end": .trailing
+        default: .leading
+        }
+    }
+
+    private var font: Font {
+        switch model.property(.size)?.stringValue {
+        case "sm": .caption
+        case "lg": .title3
+        case "heading": .title
+        case "display": .largeTitle
+        default: .body
+        }
     }
 }
 

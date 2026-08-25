@@ -36,6 +36,9 @@
                          (= tag :toggle-group)
                          (= tag :breadcrumb)
                          (= tag :pagination)
+                         (= tag :table)
+                         (= tag :table-row)
+                         (= tag :table-cell)
                          (= tag :spacer)
                          (= tag :spinner)
                          (= tag :icon)
@@ -458,6 +461,66 @@
 (defelement pagination [context parent attrs & children]
   (labelled-container-expansion
    'lui.ui/pagination! context parent attrs children))
+
+(defelement table [context parent attrs & children]
+  (container-expansion 'lui.ui/table! context parent attrs children))
+
+(defelement table-row [context parent attrs & children]
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/table-row! ~context)]
+       ~@(bool-attribute-expansion
+          context node (:selected attrs) 'lui.protocol/Selected)
+       ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
+       ~node)))
+
+(defelement table-cell [context parent attrs & children]
+  (let [node (gensym "node")
+        text-source (:text attrs)
+        literal-text
+        (if (and (= (count children) 1) (string? (first children)))
+          (first children)
+          nil)]
+    (if text-source
+      (if (= (count children) 0)
+        nil
+        (throw
+         (IllegalArgumentException.
+          "table-cell accepts :text or one text child, not both")))
+      nil)
+    (if (= (count children) 0)
+      nil
+      (if literal-text
+        nil
+        (throw
+         (IllegalArgumentException.
+          "table-cell is a text leaf"))))
+    `(let [~node (lui.ui/table-cell! ~context)]
+       ~@(if text-source
+           [`(lui.ui/text-property-signal! ~context ~node ~text-source)]
+           (if literal-text
+             [`(lui.ui/text-property! ~context ~node ~literal-text)]
+             []))
+       ~@(string-attribute-expansion
+          context node (:size attrs) 'lui.protocol/SizeValue)
+       ~@(string-attribute-expansion
+          context node (:text-alignment attrs) 'lui.protocol/TextAlignment)
+       ~@(if (:on-press attrs)
+           [`(lui.ui/bool-property!
+              ~context ~node lui.protocol/PressEnabled true)
+            `(lui.ui/on-event! ~context ~node ~(:on-press attrs))]
+           [])
+       ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
 
 (defelement spacer [context parent _attrs & _children]
   (let [node (gensym "node")]
