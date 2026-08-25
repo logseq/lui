@@ -13,40 +13,43 @@ appId: dev.lui.lui_component_gallery
 - tapOn: "Toggle disabled"
 - assertNotVisible: "Controls are disabled."
 - tapOn: "Open navigation menu"
-- repeat:
-    times: 3
-    commands:
-      - swipe:
-          start: "50%,80%"
-          end: "50%,20%"
-          duration: 500
+- scrollUntilVisible:
+    element:
+      id: "component-row-Tree"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
 - tapOn:
     id: "component-row-Tree"
 - assertNotVisible: "Quarterly report.md"
 - tapOn: "Documents"
 - assertVisible: "Quarterly report.md"
 - tapOn: "Open navigation menu"
-- repeat:
-    times: 3
-    commands:
-      - swipe:
-          start: "50%,80%"
-          end: "50%,20%"
-          duration: 500
+- scrollUntilVisible:
+    element:
+      id: "component-row-TextField"
+    direction: DOWN
+    speed: 30
+    timeout: 30000
+    centerElement: true
 - tapOn:
     id: "component-row-TextField"
 - tapOn: "Project name"
 - inputText: "LUI Android"
-- assertVisible: "LUI Android"
-- hideKeyboard
+- inputText: "中文输入"
+- assertVisible: "LUI Android中文输入"
 - tapOn: "Open navigation menu"
-- repeat:
-    times: 4
-    commands:
-      - swipe:
-          start: "50%,80%"
-          end: "50%,20%"
-          duration: 500
+- extendedWaitUntil:
+    visible: "Components"
+    timeout: 5000
+- scrollUntilVisible:
+    element:
+      id: "component-row-DropdownMenu"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
 - tapOn:
     id: "component-row-DropdownMenu"
 - tapOn: "Production"
@@ -57,3 +60,143 @@ appId: dev.lui.lui_component_gallery
 - assertVisible:
     text: "Staging"
     selected: true
+- tapOn: "Open navigation menu"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Dialog"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Dialog"
+- tapOn: "Open dialog"
+- assertVisible: "Rename note"
+- tapOn: "Cancel"
+- assertNotVisible: "Rename note"
+- tapOn: "Open navigation menu"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Sheet"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Sheet"
+- tapOn: "Open sheet"
+- assertVisible: "Anyone with the link can view this showcase."
+- tapOn: "Done"
+- assertNotVisible: "Anyone with the link can view this showcase."
+- tapOn: "Open navigation menu"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Tooltip"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Tooltip"
+- longPressOn: "Edit document"
+- takeScreenshot: "android-tooltip-visible"
+- assertVisible: "Saved"
+- tapOn:
+    point: "80%,80%"
+- assertVisible: "Saved"
+- tapOn: "Open navigation menu"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Select"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Select"
+- tapOn: "Staging"
+- assertVisible: "Development"
+- tapOn: "Production"
+- assertVisible: "Production"
+- assertNotVisible: "Development"
+- tapOn: "Open navigation menu"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Combobox"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Combobox"
+- tapOn: "Production"
+- eraseText: 50
+- inputText: "sta"
+- assertVisible: "sta"
+- assertVisible: "Development"
+- tapOn: "Staging"
+- assertNotVisible: "Development"
+- tapOn: "Open navigation menu"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Checkbox"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Checkbox"
+- tapOn: "Enable notifications"
+- tapOn: "Open navigation menu"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Switch"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Switch"
+- assertVisible:
+    text: "Background sync"
+    checked: true
+- tapOn: "Open navigation menu"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Toggle"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Toggle"
+- assertVisible: "Bold formatting"
+- tapOn: "Open navigation menu"
+- scrollUntilVisible:
+    element:
+      id: "component-row-RadioGroup"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-RadioGroup"
+- tapOn: "Compact"
+- assertVisible:
+    text: "Compact"
+    checked: true
+- tapOn: "Open navigation menu"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Slider"
+    direction: DOWN
+    speed: 80
+    visibilityPercentage: 80
+    timeout: 30000
+    centerElement: false
+- tapOn:
+    id: "component-row-Slider"
+- assertVisible: "Volume: 0.35"
+- tapOn:
+    point: "70%,29%"
+- assertNotVisible: "Volume: 0.35"

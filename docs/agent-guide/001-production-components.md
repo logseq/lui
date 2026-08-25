@@ -186,8 +186,11 @@ Delivered parity slices:
   FFI boundary;
 - one real Android emulator qualification path builds the shared OCaml/JNI
   library and Flutter APK, installs it, and drives adaptive navigation, touch
-  disclosure, retained text input, recursive menus, and selected accessibility
-  semantics through Maestro;
+  disclosure, retained English and Chinese IME input, recursive menus, native
+  Dialog, Sheet, Tooltip long press, Select, Combobox, Checkbox, Switch, Toggle,
+  RadioGroup, and Slider interaction through Maestro; stable destination
+  identifiers belong to the complete Material navigation item so accessibility
+  automation does not depend on merged implementation children;
 - placeholder-free retained `:if` plus declaration-ordered dynamic segments;
   interleaved static children, switch branches, keyed collections and multiple
   dynamic regions preserve their local ordering and disposal boundaries;
@@ -1106,6 +1109,12 @@ covers modal focus containment and restoration, Tree disclosure and roving
 focus, Select and Combobox listbox navigation, recursive menus, keyboard-opened
 ContextMenu, Toolbar roving focus, Tooltip hover/focus/Escape behavior, and
 Toast focus, pause, close, and swipe interactions.
+
+The Android gallery has a real-emulator touch qualification suite over a freshly
+built and installed APK. It covers adaptive drawer navigation, retained Tree
+disclosure, English and Chinese IME editing, recursive Material menus, native
+Dialog and bottom Sheet presentation, Tooltip long press, Select and Combobox
+selection, control semantics, and direct Slider input.
 
 Reference evidence captured on 2026-08-26 with an Apple M3 MacBook Air,
 macOS 26.4, arm64, and OCaml 5.5.0:

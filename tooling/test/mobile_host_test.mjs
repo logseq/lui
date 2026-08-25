@@ -109,8 +109,26 @@ test("Android Gallery has a real interaction E2E flow", async () => {
 
   assert.match(flow, /tapOn: "Toggle disabled"/);
   assert.match(flow, /inputText: "LUI Android"/);
+  assert.match(flow, /inputText: "中文输入"/);
+  assert.match(flow, /tapOn: "Open dialog"/);
+  assert.match(flow, /tapOn: "Open sheet"/);
+  assert.match(flow, /longPressOn: "Edit document"/);
   assert.match(flow, /tapOn: "More environments"/);
   assert.match(flow, /id: "component-row-Button"/);
+  for (const page of [
+    "Dialog",
+    "Sheet",
+    "Tooltip",
+    "Select",
+    "Combobox",
+    "Checkbox",
+    "Switch",
+    "Toggle",
+    "RadioGroup",
+    "Slider",
+  ]) {
+    assert.match(flow, new RegExp(`id: "component-row-${page}"`));
+  }
   assert.match(main, /Semantics\(/);
   assert.match(main, /identifier: 'component-row-\$\{section\.title\}'/);
   assert.match(main, /_compactGallery\(context, sections, selected\)/);

@@ -182,10 +182,11 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
             child: Text('Components'),
           ),
           for (final section in sections)
-            NavigationDrawerDestination(
+            _GalleryNavigationDrawerDestination(
+              identifier: 'component-row-${section.title}',
               icon: const Icon(Icons.widgets_outlined),
               selectedIcon: const Icon(Icons.widgets),
-              label: _sectionLabel(section),
+              label: Text(section.title),
             ),
         ],
       ),
@@ -214,5 +215,25 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
     _bridge.close();
     _backend.dispose();
     super.dispose();
+  }
+}
+
+class _GalleryNavigationDrawerDestination extends NavigationDrawerDestination {
+  const _GalleryNavigationDrawerDestination({
+    required this.identifier,
+    required super.icon,
+    super.selectedIcon,
+    required super.label,
+  });
+
+  final String identifier;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      identifier: identifier,
+      child: super.build(context),
+    );
   }
 }
