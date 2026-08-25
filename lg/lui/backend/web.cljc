@@ -6,7 +6,7 @@
              :refer [Row Column Grid Stack Panel Card Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
-                     Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet
+                     Select Combobox DropdownMenu MenuItem ListItem Avatar Dialog Drawer Sheet Tooltip
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
                      Progress Divider
@@ -25,7 +25,7 @@
                      ChangeEnabled ToggleEnabled PressEnabled
                      SubmitEnabled DoublePressEnabled
                      ImageIdValue SourceX SourceY SourceWidth SourceHeight
-                     AnchorValue AnchorAlignmentValue AnchorOffset
+                     AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay
                      StringValue BoolValue IntValue FloatValue]]
             [lui.backend.retained :as retained]))
 
@@ -93,7 +93,8 @@
     Avatar "lui-avatar"
     Dialog "lui-dialog"
     Drawer "lui-drawer"
-    Sheet "lui-sheet"))
+    Sheet "lui-sheet"
+    Tooltip "lui-tooltip"))
 
 (defn- direct-toggle? [kind]
   (or (= kind Checkbox) (= kind SwitchControl) (= kind Radio)))
@@ -203,6 +204,7 @@
           Textarea "textarea"
           Select "button"
           ListItem "button"
+          Tooltip "span"
           Slider "input"
           Divider "hr"
           _ "div")
@@ -239,6 +241,7 @@
           {"role" "listbox"
            "data-anchor" "below"
            "data-anchor-alignment" "start"}
+          Tooltip {"role" "tooltip"}
           _ {})]
     (element
      (:web-document renderer) tag (base-class-name kind) attributes [])))
@@ -1287,14 +1290,27 @@
     (update-avatar! renderer node dom-node)
 
     (tuple AnchorValue (StringValue anchor))
-    (Webapi.Dom.Element.setAttribute "data-anchor" anchor dom-node)
+    (do
+      (Webapi.Dom.Element.setAttribute "data-anchor" anchor dom-node)
+      (when (= kind Tooltip)
+        (Webapi.Dom.Element.setAttribute "popover" "manual" dom-node)
+        (Webapi.Dom.Element.setAttribute
+         "data-anchor-alignment" "start" dom-node)))
 
     (tuple AnchorAlignmentValue (StringValue alignment))
     (Webapi.Dom.Element.setAttribute
      "data-anchor-alignment" alignment dom-node)
 
     (tuple AnchorOffset (FloatValue offset))
-    (set-style! dom-node "--lui-anchor-offset" (str offset "px"))
+    (do
+      (set-style! dom-node "--lui-anchor-offset" (str offset "px"))
+      (when (= kind Tooltip)
+        (Webapi.Dom.Element.setAttribute
+         "data-anchor-offset" (str offset) dom-node)))
+
+    (tuple TooltipDelay (IntValue delay))
+    (Webapi.Dom.Element.setAttribute
+     "data-tooltip-delay" (str delay) dom-node)
 
     _ (raise (Invalid_argument "invalid DOM property value"))))
 

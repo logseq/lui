@@ -14,7 +14,7 @@
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput
                      AppleSelect AppleCombobox AppleDropdownMenu AppleMenuItem AppleListItem
-                     AppleAvatar AppleDialog AppleDrawer AppleSheet]]
+                     AppleAvatar AppleDialog AppleDrawer AppleSheet AppleTooltip]]
             [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
@@ -91,6 +91,18 @@
     [:sheet
      {:text "Share" :width 320 :padding 24 :on-dismiss on-dismiss}
      [:column [:input {:placeholder "Share link"}]]]]])
+
+(defui retained-tooltips [text-source delay-source]
+  [:column
+   [:stack
+    [:button {:variant "outline" :on-press (fn [_event] true)} "Bold"]
+    [:tooltip
+     {:text text-source
+      :anchor "above"
+      :anchor-alignment "end"
+      :anchor-offset 8.0
+      :tooltip-delay delay-source}]]
+   [:tooltip "Copied!"]])
 
 (defelement badge [context parent _attrs & children]
   `(lui.elements/text ~context ~parent {} ~@children))
@@ -642,6 +654,52 @@
     (runtime/flush! application)
     (assert-equal 1 (count (apple/children renderer root))
                   "model state removes both edge-surface subtrees")))
+
+(deftest tooltip-properties-patch-one-retained-leaf
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-tooltips")
+        text (sig/state scheduler "Bold the selection")
+        delay (sig/state scheduler 250)
+        root
+        (retained-tooltips
+         (ui/context application scope) (sig/value text) (sig/value delay))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [stack (nth (apple/children renderer root) 0)
+          anchored (nth (apple/children renderer stack) 1)
+          static (nth (apple/children renderer root) 1)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer anchored)
+        (Some AppleTooltip) (is true "anchored Tooltip is one semantic node")
+        _ (is false "anchored Tooltip native mapping exists"))
+      (match (apple/node renderer static)
+        (Some AppleTooltip) (is true "static Tooltip uses the same node kind")
+        _ (is false "static Tooltip native mapping exists"))
+      (assert-equal
+       (Some (StringValue "Bold the selection"))
+       (apple/property renderer anchored proto/TextValue)
+       "Tooltip text Signal reaches the retained node")
+      (assert-equal
+       (Some (proto/IntValue 250))
+       (apple/property renderer anchored proto/TooltipDelay)
+       "Tooltip delay Signal reaches the retained node")
+      (sig/set! text "Toggle bold formatting")
+      (sig/set! delay 0)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "Tooltip property patches allocate no nodes")
+      (assert-equal anchored (nth (apple/children renderer stack) 1)
+                    "anchored Tooltip identity survives Signal patches")
+      (assert-equal
+       (Some (StringValue "Toggle bold formatting"))
+       (apple/property renderer anchored proto/TextValue)
+       "text patches locally")
+      (assert-equal
+       (Some (proto/IntValue 0))
+       (apple/property renderer anchored proto/TooltipDelay)
+       "delay patches locally"))))
 
 (deftest list-item-supports-text-or-custom-children-and-additive-actions
   (let [scheduler (sig/scheduler)

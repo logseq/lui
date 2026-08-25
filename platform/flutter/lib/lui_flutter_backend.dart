@@ -307,6 +307,7 @@ final class LUIFlutterBackend {
 
   final void Function(LUIEvent event)? onEvent;
   final Map<String, IconData> appIcons;
+  final _LUITooltipSession _tooltipSession = _LUITooltipSession();
   Map<int, _NodeState> _states = {};
   final Map<int, _NodeHandle> _handles = {};
   final Map<int, ui.Image> _images = {};
@@ -414,11 +415,17 @@ final class LUIFlutterBackend {
     generation = nextGeneration;
     final changedSources = Set<int>.of(changedIDs);
     for (final source in changedSources) {
+      final sourceState = next[source];
       var parent = next[source]?.parent;
       while (parent != null) {
         final ancestor = next[parent];
         if (ancestor == null) break;
         if (ancestor.kind == _NodeKind.radioGroup) changedIDs.add(parent);
+        if (ancestor.kind == _NodeKind.stack &&
+            (sourceState?.kind == _NodeKind.dropdownMenu ||
+                sourceState?.kind == _NodeKind.tooltip)) {
+          changedIDs.add(parent);
+        }
         parent = ancestor.parent;
       }
     }
@@ -921,7 +928,42 @@ final class LUIFlutterBackend {
             _requireState(_states, childID).kind == _NodeKind.dropdownMenu,
         orElse: () => null,
       );
+      final tooltipID = state.children.cast<int?>().firstWhere(
+        (childID) =>
+            childID != null &&
+            _requireState(_states, childID).kind == _NodeKind.tooltip &&
+            _requireState(_states, childID).properties.containsKey('anchor'),
+        orElse: () => null,
+      );
       final menuState = menuID == null ? null : _requireState(_states, menuID);
+      final tooltipState = tooltipID == null
+          ? null
+          : _requireState(_states, tooltipID);
+      final triggerChildren = state.children
+          .where((childID) => childID != menuID && childID != tooltipID)
+          .map((childID) => widget(node: childID))
+          .toList(growable: false);
+      Widget trigger = Stack(
+        clipBehavior: Clip.none,
+        children: triggerChildren,
+      );
+      if (tooltipState != null) {
+        trigger = _LUIRetainedTooltip(
+          session: _tooltipSession,
+          message: tooltipState.properties['text'] as String? ?? '',
+          waitDuration: Duration(
+            milliseconds:
+                tooltipState.properties['tooltip-delay'] as int? ?? 600,
+          ),
+          exitDuration: const Duration(milliseconds: 400),
+          preferBelow: tooltipState.properties['anchor'] != 'above',
+          verticalOffset:
+              (tooltipState.properties['anchor-offset'] as num?)?.toDouble() ??
+              4,
+          enableTapToDismiss: true,
+          child: trigger,
+        );
+      }
       return _LUIAnchoredStack(
         groupID: id,
         anchor: menuState?.properties['anchor'] as String? ?? 'below',
@@ -930,10 +972,7 @@ final class LUIFlutterBackend {
         offset:
             (menuState?.properties['anchor-offset'] as num?)?.toDouble() ?? 0,
         menu: menuID == null ? null : widget(node: menuID),
-        children: state.children
-            .where((childID) => childID != menuID)
-            .map((childID) => widget(node: childID))
-            .toList(growable: false),
+        trigger: trigger,
       );
     }
 
@@ -1118,6 +1157,7 @@ final class LUIFlutterBackend {
       _NodeKind.select => select(),
       _NodeKind.combobox => textControl(kind: state.kind),
       _NodeKind.dropdownMenu => dropdownMenu(),
+      _NodeKind.tooltip => Text(text),
       _NodeKind.dialog ||
       _NodeKind.drawer ||
       _NodeKind.sheet => _LUIModalPresenter(backend: this, node: id),
@@ -1416,6 +1456,7 @@ final class LUIFlutterBackend {
             value.isFinite &&
             value >= 0 &&
             kind != _NodeKind.avatar &&
+            kind != _NodeKind.tooltip &&
             !kind.isModalSurface,
       'columns' => value is int && value >= 0 && kind == _NodeKind.grid,
       'text' =>
@@ -1434,6 +1475,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
                 kind == _NodeKind.avatar ||
+                kind == _NodeKind.tooltip ||
                 kind.isModalSurface),
       'enabled' =>
         value is bool &&
@@ -1510,13 +1552,20 @@ final class LUIFlutterBackend {
       'anchor' =>
         value is String &&
             (value == 'above' || value == 'below') &&
-            kind == _NodeKind.dropdownMenu,
+            (kind == _NodeKind.dropdownMenu || kind == _NodeKind.tooltip),
       'anchor-alignment' =>
         value is String &&
-            const {'start', 'center', 'end', 'stretch'}.contains(value) &&
-            kind == _NodeKind.dropdownMenu,
+            const {'start', 'end', 'stretch'}.contains(value) &&
+            (kind == _NodeKind.dropdownMenu || kind == _NodeKind.tooltip),
       'anchor-offset' =>
-        value is num && value.isFinite && kind == _NodeKind.dropdownMenu,
+        value is num &&
+            value.isFinite &&
+            (kind == _NodeKind.dropdownMenu || kind == _NodeKind.tooltip),
+      'tooltip-delay' =>
+        value is int &&
+            value >= 0 &&
+            value <= 0x7fffffff &&
+            kind == _NodeKind.tooltip,
       'gap' =>
         value is int &&
             value >= 0 &&
@@ -1526,7 +1575,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.list ||
                 kind == _NodeKind.dropdownMenu ||
                 _isHorizontalGroupKind(kind)),
-      'padding' => value is int && kind != _NodeKind.avatar,
+      'padding' =>
+        value is int && kind != _NodeKind.avatar && kind != _NodeKind.tooltip,
       'padding-horizontal' || 'padding-vertical' =>
         value is int &&
             value >= 0 &&
@@ -1535,7 +1585,10 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.grid ||
                 kind == _NodeKind.box),
       'background' =>
-        value is String && kind != _NodeKind.avatar && !kind.isModalSurface,
+        value is String &&
+            kind != _NodeKind.avatar &&
+            kind != _NodeKind.tooltip &&
+            !kind.isModalSurface,
       'foreground' =>
         value is String &&
             (kind == _NodeKind.text ||
@@ -1555,26 +1608,38 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem),
       'border-color' =>
-        value is String && kind != _NodeKind.avatar && !kind.isModalSurface,
+        value is String &&
+            kind != _NodeKind.avatar &&
+            kind != _NodeKind.tooltip &&
+            !kind.isModalSurface,
       'border-width' =>
         value is int &&
             value >= 0 &&
             kind != _NodeKind.avatar &&
+            kind != _NodeKind.tooltip &&
             !kind.isModalSurface,
       'corner-radius' =>
         value is int &&
             value >= 0 &&
             kind != _NodeKind.avatar &&
+            kind != _NodeKind.tooltip &&
             !kind.isModalSurface,
-      'width' ||
-      'height' => value is int && value >= 0 && kind != _NodeKind.avatar,
+      'width' || 'height' =>
+        value is int &&
+            value >= 0 &&
+            kind != _NodeKind.avatar &&
+            kind != _NodeKind.tooltip,
       'min-width' || 'max-width' || 'min-height' || 'max-height' =>
         value is int &&
             value >= 0 &&
             kind != _NodeKind.avatar &&
+            kind != _NodeKind.tooltip &&
             !kind.isModalSurface,
       'style-class' =>
-        value is String && kind != _NodeKind.avatar && !kind.isModalSurface,
+        value is String &&
+            kind != _NodeKind.avatar &&
+            kind != _NodeKind.tooltip &&
+            !kind.isModalSurface,
       'checked' =>
         value is bool &&
             (kind == _NodeKind.checkbox ||
@@ -1663,6 +1728,26 @@ final class LUIFlutterBackend {
       if (state.kind.isModalSurface &&
           (state.properties['text'] as String? ?? '').isEmpty) {
         throw const LUIBackendException('modal surface requires text');
+      }
+      if (state.kind == _NodeKind.tooltip) {
+        if ((state.properties['text'] as String? ?? '').isEmpty) {
+          throw const LUIBackendException('tooltip requires text');
+        }
+        if (state.properties.containsKey('tooltip-delay') &&
+            !state.properties.containsKey('anchor')) {
+          throw const LUIBackendException('tooltip-delay requires anchor');
+        }
+      }
+      if (state.kind == _NodeKind.dropdownMenu ||
+          state.kind == _NodeKind.tooltip) {
+        if (state.properties.containsKey('anchor-alignment') &&
+            !state.properties.containsKey('anchor')) {
+          throw const LUIBackendException('anchor-alignment requires anchor');
+        }
+        if (state.properties.containsKey('anchor-offset') &&
+            !state.properties.containsKey('anchor')) {
+          throw const LUIBackendException('anchor-offset requires anchor');
+        }
       }
       if (state.kind == _NodeKind.listItem) {
         final hasText = (state.properties['text'] as String? ?? '').isNotEmpty;
@@ -2233,7 +2318,7 @@ final class _LUIAnchoredStack extends StatefulWidget {
     required this.alignment,
     required this.offset,
     required this.menu,
-    required this.children,
+    required this.trigger,
   });
 
   final int groupID;
@@ -2241,7 +2326,7 @@ final class _LUIAnchoredStack extends StatefulWidget {
   final String alignment;
   final double offset;
   final Widget? menu;
-  final List<Widget> children;
+  final Widget trigger;
 
   @override
   State<_LUIAnchoredStack> createState() => _LUIAnchoredStackState();
@@ -2313,9 +2398,137 @@ final class _LUIAnchoredStackState extends State<_LUIAnchoredStack> {
             ),
           ),
         ),
-        child: TapRegion(
-          groupId: widget.groupID,
-          child: Stack(clipBehavior: Clip.none, children: widget.children),
+        child: TapRegion(groupId: widget.groupID, child: widget.trigger),
+      ),
+    );
+  }
+}
+
+final class _LUITooltipSession {
+  final Stopwatch _clock = Stopwatch()..start();
+  Duration _warmUntil = Duration.zero;
+
+  bool get isWarm => _clock.elapsed < _warmUntil;
+
+  void warm() {
+    _warmUntil = _clock.elapsed + const Duration(milliseconds: 400);
+  }
+
+  void clear() {
+    _warmUntil = Duration.zero;
+  }
+}
+
+final class _LUIRetainedTooltip extends StatefulWidget {
+  const _LUIRetainedTooltip({
+    required this.session,
+    required this.message,
+    required this.waitDuration,
+    required this.exitDuration,
+    required this.preferBelow,
+    required this.verticalOffset,
+    required this.enableTapToDismiss,
+    required this.child,
+  });
+
+  final _LUITooltipSession session;
+  final String message;
+  final Duration waitDuration;
+  final Duration exitDuration;
+  final bool preferBelow;
+  final double verticalOffset;
+  final bool enableTapToDismiss;
+  final Widget child;
+
+  @override
+  State<_LUIRetainedTooltip> createState() => _LUIRetainedTooltipState();
+}
+
+final class _LUIRetainedTooltipState extends State<_LUIRetainedTooltip>
+    with WidgetsBindingObserver {
+  final GlobalKey<TooltipState> _tooltipKey = GlobalKey<TooltipState>();
+  bool _pointerInside = false;
+  bool _pointerPresented = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.session.clear();
+    Tooltip.dismissAllToolTips();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _dismissCold();
+  }
+
+  void _pointerEntered(PointerEnterEvent event) {
+    _pointerInside = true;
+    if (!widget.session.isWarm) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _pointerInside) {
+        _tooltipKey.currentState?.ensureTooltipVisible();
+      }
+    });
+  }
+
+  void _pointerExited(PointerExitEvent event) {
+    _pointerInside = false;
+    if (_pointerPresented) widget.session.warm();
+    _pointerPresented = false;
+  }
+
+  void _focusChanged(bool focused) {
+    if (focused) {
+      _tooltipKey.currentState?.ensureTooltipVisible();
+    } else if (!_pointerInside) {
+      Tooltip.dismissAllToolTips();
+    }
+  }
+
+  void _triggered() {
+    _pointerPresented = _pointerInside;
+  }
+
+  void _dismissCold() {
+    widget.session.clear();
+    _pointerPresented = false;
+    Tooltip.dismissAllToolTips();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): _dismissCold,
+      },
+      child: Focus(
+        onFocusChange: _focusChanged,
+        child: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: (_) => _dismissCold(),
+          child: Tooltip(
+            key: _tooltipKey,
+            message: widget.message,
+            waitDuration: widget.waitDuration,
+            exitDuration: widget.exitDuration,
+            preferBelow: widget.preferBelow,
+            verticalOffset: widget.verticalOffset,
+            enableTapToDismiss: widget.enableTapToDismiss,
+            onTriggered: _triggered,
+            child: MouseRegion(
+              onEnter: _pointerEntered,
+              onExit: _pointerExited,
+              child: widget.child,
+            ),
+          ),
         ),
       ),
     );

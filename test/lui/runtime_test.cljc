@@ -169,7 +169,85 @@
       "anchor direction is closed")
   (is (proto/property-value-supported?
        proto/AnchorAlignmentValue (proto/StringValue "stretch"))
-      "stretch is a legal anchored alignment"))
+      "stretch is a legal anchored alignment")
+  (is (not (proto/property-value-supported?
+            proto/AnchorAlignmentValue (proto/StringValue "center")))
+      "the pinned anchored alignment vocabulary excludes center"))
+
+(deftest tooltip-has-the-pinned-static-and-anchored-contract
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/Tooltip)
+                      (proto/set-prop-op
+                       1 proto/TextValue
+                       (proto/StringValue "Bold the selection"))
+                      (proto/set-prop-op
+                       1 proto/AnchorValue (proto/StringValue "above"))
+                      (proto/set-prop-op
+                       1 proto/AnchorAlignmentValue (proto/StringValue "end"))
+                      (proto/set-prop-op
+                       1 proto/AnchorOffset (proto/FloatValue 8.0))
+                      (proto/set-prop-op
+                       1 proto/TooltipDelay (proto/IntValue 250))]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"tooltip\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"text\","
+      "\"value\":\"Bold the selection\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"anchor\","
+      "\"value\":\"above\"},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"anchor-alignment\",\"value\":\"end\"},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"anchor-offset\",\"value\":8.0},"
+      "{\"op\":\"set-prop\",\"id\":1,"
+      "\"property\":\"tooltip-delay\",\"value\":250}]}" )
+     (wire/encode-batch batch)
+     "Tooltip uses only the pinned five-property wire vocabulary")
+    (doseq [property
+            [proto/TextValue proto/AnchorValue proto/AnchorAlignmentValue
+             proto/AnchorOffset proto/TooltipDelay]]
+      (is (proto/property-supported? proto/Tooltip property)
+          "Tooltip admits its exact public state"))
+    (doseq [property
+            [proto/Gap proto/PaddingValue proto/WidthValue proto/ForegroundValue
+             proto/StyleClass]]
+      (is (not (proto/property-supported? proto/Tooltip property))
+          "Tooltip rejects common surface properties"))
+    (is (not (proto/can-contain-children? proto/Tooltip))
+        "Tooltip is a text leaf")
+    (is (not (proto/event-supported? proto/Tooltip (proto/Press 1)))
+        "Tooltip visibility never emits an application event")
+    (is (proto/property-value-supported?
+         proto/TooltipDelay (proto/IntValue 0))
+        "zero opts into immediate hover reveal")
+    (is (proto/property-value-supported?
+         proto/TooltipDelay (proto/IntValue 2147483647))
+        "the signed 32-bit boundary is legal")
+    (is (not (proto/property-value-supported?
+              proto/TooltipDelay (proto/IntValue -1)))
+        "negative delay is invalid")
+    (is (not (proto/property-value-supported?
+              proto/TooltipDelay (proto/IntValue 2147483648)))
+        "delay cannot overflow the host contract")
+    (let [renderer (apple/create)
+          invalid
+          (record proto/patch-batch
+                  (generation 1)
+                  (ops [(proto/create-node-op 1 proto/Tooltip)
+                        (proto/set-prop-op
+                         1 proto/TextValue (proto/StringValue "Static"))
+                        (proto/set-prop-op
+                         1 proto/TooltipDelay (proto/IntValue 250))]))]
+      (is (thrown-with-msg?
+           Invalid_argument
+           #"node properties conflict"
+           ((:apply-batch (apple/backend renderer)) invalid))
+          "tooltip-delay without anchor is rejected")
+      (assert-equal 0 (apple/node-count renderer)
+                    "dependent-property failure is atomic"))))
 
 (deftest dialog-has-the-pinned-modal-surface-contract
   (let [batch

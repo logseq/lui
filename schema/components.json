@@ -37,7 +37,7 @@
     {"name": "dialog", "status": "supported"},
     {"name": "drawer", "status": "supported"},
     {"name": "sheet", "status": "supported"},
-    {"name": "tooltip", "status": "pending"},
+    {"name": "tooltip", "status": "supported"},
     {"name": "context-menu", "status": "pending"},
     {"name": "text", "status": "supported"},
     {"name": "badge", "status": "supported"},
@@ -115,7 +115,8 @@
     {"lg": "Pagination", "wire": "pagination", "dart": "pagination", "swift": "pagination", "container": true},
     {"lg": "Dialog", "wire": "dialog", "dart": "dialog", "swift": "dialog", "container": true},
     {"lg": "Drawer", "wire": "drawer", "dart": "drawer", "swift": "drawer", "container": true},
-    {"lg": "Sheet", "wire": "sheet", "dart": "sheet", "swift": "sheet", "container": true}
+    {"lg": "Sheet", "wire": "sheet", "dart": "sheet", "swift": "sheet", "container": true},
+    {"lg": "Tooltip", "wire": "tooltip", "dart": "tooltip", "swift": "tooltip", "container": false}
   ],
   "properties": [
     {"lg": "TextValue", "wire": "text", "swift": "text"},
@@ -167,7 +168,8 @@
     {"lg": "SourceHeight", "wire": "source-height", "swift": "sourceHeight"},
     {"lg": "AnchorValue", "wire": "anchor", "swift": "anchor"},
     {"lg": "AnchorAlignmentValue", "wire": "anchor-alignment", "swift": "anchorAlignment"},
-    {"lg": "AnchorOffset", "wire": "anchor-offset", "swift": "anchorOffset"}
+    {"lg": "AnchorOffset", "wire": "anchor-offset", "swift": "anchorOffset"},
+    {"lg": "TooltipDelay", "wire": "tooltip-delay", "swift": "tooltipDelay"}
   ],
   "events": [
     {"lg": "Press", "fields": [":int"]},

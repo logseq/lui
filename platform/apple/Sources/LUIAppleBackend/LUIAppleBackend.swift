@@ -220,6 +220,7 @@ public final class LUIAppleBackend {
     private var images: [Int: CGImage] = [:]
     private let decoder = JSONDecoder()
     private let appIcons: [String: LUIAppleIconSource]
+    let tooltipSession = LUITooltipSession()
 
     public init(appIcons: [String: LUIAppleIconSource] = [:]) {
         self.appIcons = appIcons
@@ -419,5 +420,93 @@ public final class LUIAppleBackend {
     private static func isTextEntry(_ kind: LUINodeKind) -> Bool {
         kind == .textField || kind == .input || kind == .searchField || kind == .textarea ||
             kind == .combobox
+    }
+}
+
+@MainActor
+final class LUITooltipSession {
+    private var warmUntil = -Double.infinity
+
+    func isWarm(at time: Double) -> Bool {
+        time < warmUntil
+    }
+
+    func warm(at time: Double) {
+        warmUntil = time + 0.4
+    }
+
+    func clear() {
+        warmUntil = -Double.infinity
+    }
+}
+
+@MainActor
+final class LUITooltipIntent {
+    private enum Origin {
+        case pointer
+        case focus
+    }
+
+    private let session: LUITooltipSession
+    private var revealAt: Double?
+    private var origin: Origin?
+    private(set) var isPresented = false
+
+    init(session: LUITooltipSession) {
+        self.session = session
+    }
+
+    func pointerEntered(at time: Double, delay: Double) {
+        if session.isWarm(at: time) || delay == 0 {
+            reveal(origin: .pointer)
+        } else {
+            revealAt = time + max(delay, 0)
+        }
+    }
+
+    func advance(to time: Double) {
+        guard let revealAt, time >= revealAt else { return }
+        reveal(origin: .pointer)
+    }
+
+    func pointerLeft(at time: Double) {
+        if isPresented, origin == .pointer {
+            session.warm(at: time)
+        }
+        dismiss()
+    }
+
+    func focusEntered() {
+        reveal(origin: .focus)
+    }
+
+    func focusLeft() {
+        dismiss()
+    }
+
+    func press() {
+        session.clear()
+        dismiss()
+    }
+
+    func escape() {
+        dismiss()
+    }
+
+    func viewBlurred() {
+        session.clear()
+        dismiss()
+    }
+
+    private func reveal(origin: Origin) {
+        revealAt = nil
+        self.origin = origin
+        isPresented = true
+    }
+
+    private func dismiss() {
+        revealAt = nil
+        origin = nil
+        isPresented = false
     }
 }

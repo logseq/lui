@@ -48,7 +48,9 @@ private struct LUINodeView: View {
             LUIColumnView(model: model, backend: backend)
         case .grid:
             LUIGridView(model: model, backend: backend)
-        case .stack, .panel, .card:
+        case .stack:
+            LUIStackView(model: model, backend: backend)
+        case .panel, .card:
             ZStack {
                 children
             }
@@ -83,6 +85,8 @@ private struct LUINodeView: View {
             LUIComboboxView(model: model, backend: backend)
         case .dropdownMenu:
             LUIDropdownMenuView(model: model, backend: backend)
+        case .tooltip:
+            LUITooltipLabel(model: model)
         case .dialog, .drawer, .sheet:
             LUIModalPresenter(model: model, backend: backend)
         case .menuItem:
@@ -183,6 +187,185 @@ private struct LUINodeView: View {
 
     private var progressAccessibilityValue: String {
         "\(Int((model.progressFraction * 100).rounded()))%"
+    }
+}
+
+private struct LUIStackView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    @ViewBuilder
+    var body: some View {
+        if let tooltip = anchoredTooltip {
+            LUITooltipHost(model: tooltip, session: backend.tooltipSession) {
+                stackChildren(excluding: tooltip.id)
+            }
+        } else {
+            stackChildren(excluding: nil)
+        }
+    }
+
+    private var anchoredTooltip: LUINodeModel? {
+        model.children
+            .compactMap(backend.model)
+            .first { $0.kind == .tooltip && $0.property(.anchor) != nil }
+    }
+
+    private func stackChildren(excluding tooltipID: Int?) -> some View {
+        ZStack {
+            ForEach(model.children.filter { $0 != tooltipID }, id: \.self) { childID in
+                if let child = backend.model(id: childID) {
+                    LUINodeView(model: child, backend: backend)
+                }
+            }
+        }
+    }
+}
+
+private struct LUITooltipLabel: View {
+    let model: LUINodeModel
+
+    var body: some View {
+        Text(verbatim: model.text)
+            .font(.caption)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .foregroundStyle(.primary)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+            .shadow(radius: 4, y: 2)
+    }
+}
+
+private struct LUITooltipHost<Content: View>: View {
+    let model: LUINodeModel
+    let session: LUITooltipSession
+    let content: Content
+
+    @Environment(\.scenePhase) private var scenePhase
+    @FocusState private var isFocused: Bool
+    @State private var isPresented = false
+    @State private var isHovered = false
+    @State private var revealTask: Task<Void, Never>?
+    @State private var intent: LUITooltipIntent
+
+    init(
+        model: LUINodeModel,
+        session: LUITooltipSession,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.model = model
+        self.session = session
+        self.content = content()
+        _intent = State(initialValue: LUITooltipIntent(session: session))
+    }
+
+    var body: some View {
+        let _ = model.revision
+        content
+            .focused($isFocused)
+            .onHover(perform: hoverChanged)
+            .simultaneousGesture(TapGesture().onEnded(dismissForPress))
+            .onChange(of: isFocused) { _, focused in
+                cancelReveal()
+                if focused {
+                    intent.focusEntered()
+                } else {
+                    intent.focusLeft()
+                }
+                syncPresentation()
+            }
+            .onChange(of: delay) {
+                if isHovered { hoverChanged(true) }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active {
+                    cancelReveal()
+                    intent.viewBlurred()
+                    syncPresentation()
+                }
+            }
+            .onKeyPress(.escape) {
+                cancelReveal()
+                intent.escape()
+                syncPresentation()
+                return .handled
+            }
+            .popover(
+                isPresented: Binding(
+                    get: { isPresented },
+                    set: { presented in
+                        isPresented = presented
+                        if !presented { intent.escape() }
+                    }
+                ),
+                attachmentAnchor: .point(attachmentPoint),
+                arrowEdge: arrowEdge
+            ) {
+                LUITooltipLabel(model: model)
+                    .presentationCompactAdaptation(.popover)
+            }
+            .accessibilityHint(Text(model.text))
+            .onDisappear {
+                cancelReveal()
+                intent.viewBlurred()
+            }
+    }
+
+    private var now: Double { ProcessInfo.processInfo.systemUptime }
+
+    private var delay: Double {
+        Double(model.property(.tooltipDelay)?.intValue ?? 600) / 1_000
+    }
+
+    private var attachmentPoint: UnitPoint {
+        switch model.property(.anchorAlignment)?.stringValue ?? "start" {
+        case "end": UnitPoint(x: 1, y: anchorY)
+        case "stretch": UnitPoint(x: 0.5, y: anchorY)
+        default: UnitPoint(x: 0, y: anchorY)
+        }
+    }
+
+    private var anchorY: CGFloat {
+        model.property(.anchor)?.stringValue == "above" ? 0 : 1
+    }
+
+    private var arrowEdge: Edge {
+        model.property(.anchor)?.stringValue == "above" ? .bottom : .top
+    }
+
+    private func hoverChanged(_ hovered: Bool) {
+        isHovered = hovered
+        cancelReveal()
+        if hovered {
+            let startedAt = now
+            intent.pointerEntered(at: startedAt, delay: delay)
+            syncPresentation()
+            guard !intent.isPresented else { return }
+            revealTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                intent.advance(to: startedAt + delay)
+                syncPresentation()
+            }
+        } else {
+            intent.pointerLeft(at: now)
+            syncPresentation()
+        }
+    }
+
+    private func dismissForPress() {
+        cancelReveal()
+        intent.press()
+        syncPresentation()
+    }
+
+    private func cancelReveal() {
+        revealTask?.cancel()
+        revealTask = nil
+    }
+
+    private func syncPresentation() {
+        isPresented = intent.isPresented
     }
 }
 

@@ -4,6 +4,7 @@ let show_error host message =
 
 let () =
   Web_dialog.install ();
+  Web_tooltip.install ();
   match Webapi.Dom.Document.querySelector "#app" Webapi.Dom.document with
   | None -> ()
   | Some host -> (

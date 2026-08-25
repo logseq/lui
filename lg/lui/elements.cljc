@@ -62,6 +62,7 @@
                          (= tag :dialog)
                          (= tag :drawer)
                          (= tag :sheet)
+                         (= tag :tooltip)
                          (= tag :menu-item)
                          (= tag :list-item)
                          (= tag :avatar)
@@ -195,6 +196,15 @@
                      (if (float? value)
                        [`(lui.ui/float-property! ~context ~node ~property ~value)]
                        [`(lui.ui/float-property-signal!
+                          ~context ~node ~property ~value)])
+                     []))
+
+(macro-helper-defn int-attribute-expansion
+                   [context node value property]
+                   (if value
+                     (if (int? value)
+                       [`(lui.ui/int-property! ~context ~node ~property ~value)]
+                       [`(lui.ui/int-property-signal!
                           ~context ~node ~property ~value)])
                      []))
 
@@ -806,6 +816,42 @@
 (defelement sheet [context parent attrs & children]
   (modal-surface-expansion
    'lui.ui/sheet! context parent attrs children))
+
+(defelement tooltip [context parent attrs & children]
+  (let [node (gensym "node")
+        text-source (:text attrs)
+        literal-text
+        (if (and (= (count children) 1) (string? (first children)))
+          (first children)
+          nil)]
+    (if text-source
+      (if (empty? children)
+        nil
+        (throw
+         (IllegalArgumentException.
+          "tooltip accepts :text or one text child, not both")))
+      (if literal-text
+        nil
+        (throw
+         (IllegalArgumentException.
+          "tooltip requires exactly one text child"))))
+    `(let [~node (lui.ui/tooltip! ~context)]
+       ~@(if text-source
+           [`(lui.ui/text-property-signal! ~context ~node ~text-source)]
+           [`(lui.ui/text-property! ~context ~node ~literal-text)])
+       ~@(string-attribute-expansion
+          context node (:anchor attrs) 'lui.protocol/AnchorValue)
+       ~@(string-attribute-expansion
+          context node (:anchor-alignment attrs)
+          'lui.protocol/AnchorAlignmentValue)
+       ~@(float-attribute-expansion
+          context node (:anchor-offset attrs) 'lui.protocol/AnchorOffset)
+       ~@(int-attribute-expansion
+          context node (:tooltip-delay attrs) 'lui.protocol/TooltipDelay)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~node)))
 
 (defelement menu-item [context parent attrs & children]
   (let [node (gensym "node")

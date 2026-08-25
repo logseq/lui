@@ -42,7 +42,8 @@
   (AppleAvatar)
   (AppleDialog)
   (AppleDrawer)
-  (AppleSheet))
+  (AppleSheet)
+  (AppleTooltip))
 
 (type-record apple-renderer
   (apple-store :retained-store<apple-node>)

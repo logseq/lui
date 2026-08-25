@@ -215,6 +215,9 @@ Delivered parity slices:
   picker primitives with model-owned value, query, and visibility Signals,
   typed press/input/submit/dismiss events, anchored native presentation, and
   identity-preserving conditional menu insertion and removal;
+- direct retained `tooltip` text leaves with static and runtime-owned anchored
+  modes, native focus/hover presentation, delayed hover intent, and a shared
+  warm window that never enters application state;
 - direct retained `list-item` rows with text-or-children content, inline
   registry icons, model-owned selection, disabled state, immediate press,
   additive double press, Enter submit, and identity-preserving Signal patches;
@@ -693,6 +696,37 @@ child controls or re-present the route. Removing the source node closes the
 native presentation without emitting a second dismissal. Escape, platform
 back, swipe dismissal, or backdrop press target only the topmost presented
 surface and restore focus according to the host platform.
+
+#### Tooltip contract
+
+`tooltip` is one retained text leaf. Its complete public API is `text`,
+`anchor`, `anchor-alignment`, `anchor-offset`, and `tooltip-delay`; it accepts
+no children, events, or common surface attributes. `anchor` is `above` or
+`below`. `anchor-alignment` is `start`, `end`, or `stretch`, and it and
+`anchor-offset` are legal only beside `anchor`. `tooltip-delay` is a
+non-negative whole number of milliseconds, is legal only beside `anchor`, and
+defaults to 600 when omitted. An empty text run is invalid.
+
+Without `anchor`, Tooltip is an ordinary static leaf whose existence remains
+model-owned, normally through `:if`. With `anchor`, it floats against its
+parent's retained frame and consumes no flow space. The backend owns all
+visibility state: pointer hover reveals after the delay, keyboard focus reveals
+immediately, and pointer leave, focus departure, Escape, trigger press, view
+blur, or disposal hide it without sending an LG event. A shown Tooltip remains
+open while the pointer crosses the anchor gap into its content.
+
+Only a pointer-leave dismissal starts the shared 400 ms warm window. Hovering a
+different Tooltip during that window reveals it immediately; focus, Escape,
+press, blur, and disposal clear or leave the window cold. Changing text,
+placement, offset, alignment, or delay patches the same retained Tooltip and
+must neither replace the trigger nor leak a pending timer or overlay.
+
+Web uses a semantic `role="tooltip"` DOM leaf and a document-scoped hover-intent
+coordinator. SwiftUI uses one stateful presenter attached to the retained
+trigger subtree and the platform popover/help accessibility path. Flutter
+wraps the retained trigger subtree with its native `Tooltip` presentation and a
+shared intent coordinator. Placement may auto-flip or adapt at host edges, but
+the public edge preference and state boundary stay identical.
 
 ### 7. Media and data display
 

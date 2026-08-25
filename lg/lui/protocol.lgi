@@ -45,7 +45,8 @@
   (Pagination)
   (Dialog)
   (Drawer)
-  (Sheet))
+  (Sheet)
+  (Tooltip))
 
 (type-variant operating-system
   (GenericOS)
@@ -116,7 +117,8 @@
   (SourceHeight)
   (AnchorValue)
   (AnchorAlignmentValue)
-  (AnchorOffset))
+  (AnchorOffset)
+  (TooltipDelay))
 
 (type-variant wire-value
   (StringValue :string)

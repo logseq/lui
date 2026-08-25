@@ -717,6 +717,89 @@ void main() {
   });
 
   testWidgets(
+    'maps Tooltip to native hover intent while retaining its trigger',
+    (tester) async {
+      final events = <LUIEvent>[];
+      final backend = LUIFlutterBackend(onEvent: events.add)
+        ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"stack"},
+        {"op":"create-node","id":3,"kind":"button"},
+        {"op":"create-node","id":4,"kind":"tooltip"},
+        {"op":"create-node","id":5,"kind":"tooltip"},
+        {"op":"set-prop","id":3,"property":"text","value":"Bold"},
+        {"op":"set-prop","id":4,"property":"text","value":"Bold the selection"},
+        {"op":"set-prop","id":4,"property":"anchor","value":"above"},
+        {"op":"set-prop","id":4,"property":"anchor-alignment","value":"end"},
+        {"op":"set-prop","id":4,"property":"anchor-offset","value":8.0},
+        {"op":"set-prop","id":4,"property":"tooltip-delay","value":250},
+        {"op":"set-prop","id":5,"property":"text","value":"Copied!"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":2,"child":3,"index":0},
+        {"op":"insert-child","parent":2,"child":4,"index":1},
+        {"op":"insert-child","parent":1,"child":5,"index":1}
+      ]}
+      ''');
+
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+      );
+
+      final nativeTooltip = tester.widget<Tooltip>(find.byType(Tooltip));
+      expect(nativeTooltip.message, 'Bold the selection');
+      expect(nativeTooltip.waitDuration, const Duration(milliseconds: 250));
+      expect(nativeTooltip.preferBelow, isFalse);
+      expect(find.text('Copied!'), findsOneWidget);
+      final buttonRenderObject = tester.renderObject(
+        find.byKey(LUIFlutterBackend.nodeKey(3)),
+      );
+
+      final mouse = await tester.createGesture(kind: ui.PointerDeviceKind.mouse);
+      await mouse.addPointer(location: const Offset(1, 1));
+      await mouse.moveTo(tester.getCenter(find.text('Bold')));
+      await tester.pump(const Duration(milliseconds: 249));
+      expect(find.text('Bold the selection'), findsNothing);
+      await tester.pump(const Duration(milliseconds: 1));
+      await tester.pump();
+      expect(find.text('Bold the selection'), findsOneWidget);
+
+      await tester.tap(find.text('Bold'));
+      await tester.pump();
+      expect(events, const [LUIEvent.press(node: 3)]);
+      expect(find.text('Bold the selection'), findsNothing);
+
+      backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":4,"property":"text","value":"Toggle bold"},
+        {"op":"set-prop","id":4,"property":"tooltip-delay","value":0}
+      ]}
+      ''');
+      await tester.pump();
+      expect(
+        tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(3))),
+        same(buttonRenderObject),
+      );
+      expect(tester.widget<Tooltip>(find.byType(Tooltip)).message, 'Toggle bold');
+      expect(
+        tester.widget<Tooltip>(find.byType(Tooltip)).waitDuration,
+        Duration.zero,
+      );
+      await mouse.removePointer();
+
+      expect(
+        () => backend.applyJson('''
+        {"generation":3,"ops":[
+          {"op":"set-prop","id":5,"property":"tooltip-delay","value":20}
+        ]}
+        '''),
+        throwsA(isA<LUIBackendException>()),
+      );
+      expect(backend.generation, 2);
+    },
+  );
+
+  testWidgets(
     'maps ListItem text and custom children to retained native rows',
     (tester) async {
       final events = <LUIEvent>[];

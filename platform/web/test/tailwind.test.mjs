@@ -167,6 +167,14 @@ test("the production stylesheet contains the retained picker contract", async ()
   assert.match(css, /\.lui-menu-item:not\(\[data-selected\]\) \.lui-menu-item-check/)
 })
 
+test("Tooltip uses the browser top layer without taking flow space", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-tooltip\[data-anchor\]\{[^}]*position:fixed/)
+  assert.match(css, /\.lui-tooltip\[data-anchor\]:not\(:popover-open\)\{[^}]*display:none/)
+  assert.match(css, /\.lui-tooltip:popover-open\{[^}]*display:block/)
+})
+
 test("the production stylesheet contains direct Vercel Native toggle controls", async () => {
   const css = await readFile(outputUrl, "utf8")
 

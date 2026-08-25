@@ -156,6 +156,23 @@
     @apply relative;
   }
 
+  .lui-tooltip {
+    @apply w-fit rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground shadow-md;
+  }
+
+  .lui-tooltip[data-anchor] {
+    @apply fixed z-50 m-0 max-w-xs border-0;
+    inset: auto;
+  }
+
+  .lui-tooltip[data-anchor]:not(:popover-open) {
+    @apply hidden;
+  }
+
+  .lui-tooltip:popover-open {
+    @apply block;
+  }
+
   .lui-stack > *,
   .lui-panel > *,
   .lui-card > * {
@@ -326,11 +343,6 @@
 
   .lui-dropdown-menu[data-anchor-alignment="start"] {
     left: 0;
-  }
-
-  .lui-dropdown-menu[data-anchor-alignment="center"] {
-    left: 50%;
-    translate: -50% 0;
   }
 
   .lui-dropdown-menu[data-anchor-alignment="end"] {

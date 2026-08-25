@@ -7,15 +7,15 @@
                      Divider Scroll ListContainer Tabs ButtonGroup ToggleGroup
                      Spacer Spinner Icon Select Combobox DropdownMenu
                      MenuItem ListItem Avatar Breadcrumb Pagination Dialog
-                     Drawer Sheet TextValue Enabled Gap MainAlignment
-                     CrossAlignment GrowValue GridColumns PaddingValue PaddingHorizontal PaddingVertical
-                     BackgroundValue ForegroundValue BorderColorValue BorderWidth CornerRadius WidthValue
-                     HeightValue MinWidth MaxWidth MinHeight MaxHeight PlaceholderValue
-                     AccessibilityLabel StyleClass HeadingLevel Checked ProgressValue OrientationValue
-                     SizeValue IconName VariantValue InlineIconName IconPlacementValue Selected
-                     Autofocus SubmitOnEnter HoldEnabled ChangeEnabled ToggleEnabled PressEnabled
-                     SubmitEnabled DoublePressEnabled ImageIdValue SourceX SourceY SourceWidth
-                     SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset]]))
+                     Drawer Sheet Tooltip TextValue Enabled Gap
+                     MainAlignment CrossAlignment GrowValue GridColumns PaddingValue PaddingHorizontal
+                     PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth CornerRadius
+                     WidthValue HeightValue MinWidth MaxWidth MinHeight MaxHeight
+                     PlaceholderValue AccessibilityLabel StyleClass HeadingLevel Checked ProgressValue
+                     OrientationValue SizeValue IconName VariantValue InlineIconName IconPlacementValue
+                     Selected Autofocus SubmitOnEnter HoldEnabled ChangeEnabled ToggleEnabled
+                     PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue SourceX SourceY
+                     SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -62,7 +62,8 @@
     Pagination "pagination"
     Dialog "dialog"
     Drawer "drawer"
-    Sheet "sheet"))
+    Sheet "sheet"
+    Tooltip "tooltip"))
 
 (defn property-name [property]
   (match property
@@ -115,4 +116,5 @@
     SourceHeight "source-height"
     AnchorValue "anchor"
     AnchorAlignmentValue "anchor-alignment"
-    AnchorOffset "anchor-offset"))
+    AnchorOffset "anchor-offset"
+    TooltipDelay "tooltip-delay"))

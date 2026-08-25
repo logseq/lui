@@ -284,6 +284,27 @@
    [:paragraph
     "All four controls share one Signal and patch their retained native nodes in place."]])
 
+(defui tooltip-gallery []
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Tooltip"]
+   [:row {:gap 16 :cross "center"}
+    [:stack
+     [:button
+      {:size "icon"
+       :icon "edit"
+       :label "Edit document"
+       :variant "outline"
+       :on-press (fn [_event] true)}]
+     [:tooltip
+      {:anchor "above"
+       :anchor-alignment "end"
+       :anchor-offset 8.0
+       :tooltip-delay 250}
+      "Edit document"]]
+    [:tooltip "Saved"]]
+   [:paragraph
+    "Hover or focus the icon to reveal the native anchored Tooltip; the second Tooltip is a static status label."]])
+
 (defui environment-menu
   [production-selected-source staging-selected-source disabled-source
    select-production select-staging dismiss]
@@ -554,6 +575,7 @@
     open-checklist]
    [avatar-gallery avatar-image-source toggle-avatar-image]
    [text-entry-gallery value-source disabled-source update-value]
+   [tooltip-gallery]
    [picker-gallery
     environment-source picker-query-source select-open-source
     combobox-open-source production-selected-source staging-selected-source

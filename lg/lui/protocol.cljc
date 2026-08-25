@@ -117,14 +117,18 @@
     CrossAlignment
     (or (= kind Row) (= kind Column) (= kind ListContainer)
         (horizontal-container? kind))
-    GrowValue (and (not (= kind Avatar)) (not (modal-surface? kind)))
+    GrowValue
+    (and (not (= kind Avatar)) (not (modal-surface? kind))
+         (not (= kind Tooltip)))
     GridColumns (= kind Grid)
-    PaddingValue (not (= kind Avatar))
+    PaddingValue (and (not (= kind Avatar)) (not (= kind Tooltip)))
     PaddingHorizontal
     (or (= kind Row) (= kind Column) (= kind Grid) (= kind Box))
     PaddingVertical
     (or (= kind Row) (= kind Column) (= kind Grid) (= kind Box))
-    BackgroundValue (and (not (= kind Avatar)) (not (modal-surface? kind)))
+    BackgroundValue
+    (and (not (= kind Avatar)) (not (modal-surface? kind))
+         (not (= kind Tooltip)))
     ForegroundValue
     (match kind
       Text true
@@ -149,16 +153,32 @@
       MenuItem true
       ListItem true
       _ false)
-    BorderColorValue (and (not (= kind Avatar)) (not (modal-surface? kind)))
-    BorderWidth (and (not (= kind Avatar)) (not (modal-surface? kind)))
-    CornerRadius (and (not (= kind Avatar)) (not (modal-surface? kind)))
-    WidthValue (not (= kind Avatar))
-    HeightValue (not (= kind Avatar))
-    MinWidth (and (not (= kind Avatar)) (not (modal-surface? kind)))
-    MaxWidth (and (not (= kind Avatar)) (not (modal-surface? kind)))
-    MinHeight (and (not (= kind Avatar)) (not (modal-surface? kind)))
-    MaxHeight (and (not (= kind Avatar)) (not (modal-surface? kind)))
-    StyleClass (and (not (= kind Avatar)) (not (modal-surface? kind)))
+    BorderColorValue
+    (and (not (= kind Avatar)) (not (modal-surface? kind))
+         (not (= kind Tooltip)))
+    BorderWidth
+    (and (not (= kind Avatar)) (not (modal-surface? kind))
+         (not (= kind Tooltip)))
+    CornerRadius
+    (and (not (= kind Avatar)) (not (modal-surface? kind))
+         (not (= kind Tooltip)))
+    WidthValue (and (not (= kind Avatar)) (not (= kind Tooltip)))
+    HeightValue (and (not (= kind Avatar)) (not (= kind Tooltip)))
+    MinWidth
+    (and (not (= kind Avatar)) (not (modal-surface? kind))
+         (not (= kind Tooltip)))
+    MaxWidth
+    (and (not (= kind Avatar)) (not (modal-surface? kind))
+         (not (= kind Tooltip)))
+    MinHeight
+    (and (not (= kind Avatar)) (not (modal-surface? kind))
+         (not (= kind Tooltip)))
+    MaxHeight
+    (and (not (= kind Avatar)) (not (modal-surface? kind))
+         (not (= kind Tooltip)))
+    StyleClass
+    (and (not (= kind Avatar)) (not (modal-surface? kind))
+         (not (= kind Tooltip)))
     AccessibilityLabel
     (or (= kind Button) (= kind ToggleButton)
         (= kind TextField) (= kind Input) (= kind SearchField)
@@ -204,9 +224,10 @@
     SourceY (= kind Avatar)
     SourceWidth (= kind Avatar)
     SourceHeight (= kind Avatar)
-    AnchorValue (= kind DropdownMenu)
-    AnchorAlignmentValue (= kind DropdownMenu)
-    AnchorOffset (= kind DropdownMenu)
+    AnchorValue (or (= kind DropdownMenu) (= kind Tooltip))
+    AnchorAlignmentValue (or (= kind DropdownMenu) (= kind Tooltip))
+    AnchorOffset (or (= kind DropdownMenu) (= kind Tooltip))
+    TooltipDelay (= kind Tooltip)
     TextValue
     (match kind
       Text true
@@ -231,6 +252,7 @@
       Dialog true
       Drawer true
       Sheet true
+      Tooltip true
       _ false)
     Enabled
     (match kind
@@ -316,9 +338,10 @@
     (tuple AnchorValue (StringValue value))
     (or (= value "above") (= value "below"))
     (tuple AnchorAlignmentValue (StringValue value))
-    (or (= value "start") (= value "center") (= value "end")
-        (= value "stretch"))
+    (or (= value "start") (= value "end") (= value "stretch"))
     (tuple AnchorOffset (FloatValue _value)) true
+    (tuple TooltipDelay (IntValue value))
+    (and (>= value 0) (<= value 2147483647))
     _ false))
 
 (defn int-property [properties property fallback]
@@ -404,6 +427,21 @@
      (match (clojure.core/get properties TextValue)
        (Some (StringValue value)) (not (= value ""))
        _ false)
+     true)
+   (if (= kind Tooltip)
+     (and
+      (match (clojure.core/get properties TextValue)
+        (Some (StringValue value)) (not (= value ""))
+        _ false)
+      (if (contains? properties TooltipDelay)
+        (contains? properties AnchorValue)
+        true))
+     true)
+   (if (or (= kind DropdownMenu) (= kind Tooltip))
+     (if (or (contains? properties AnchorAlignmentValue)
+             (contains? properties AnchorOffset))
+       (contains? properties AnchorValue)
+       true)
      true)
    (if (= kind Avatar)
      (let [has-image (contains? properties ImageIdValue)

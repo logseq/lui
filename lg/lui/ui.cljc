@@ -198,6 +198,9 @@
 (defn sheet! [context]
   (runtime/create-node! (:ui-application context) proto/Sheet))
 
+(defn tooltip! [context]
+  (runtime/create-node! (:ui-application context) proto/Tooltip))
+
 (defn menu-item! [context]
   (runtime/create-node! (:ui-application context) proto/MenuItem))
 
@@ -287,6 +290,10 @@
       (:ui-scope context)
       (sig/map (fn [value] (proto/IntValue value)) source)))
     true))
+
+(defn int-property! [context node property value]
+  (runtime/set-prop!
+   (:ui-application context) node property (proto/IntValue value)))
 
 (defn disabled! [context node disabled]
   (bool-property! context node proto/Enabled (not disabled)))

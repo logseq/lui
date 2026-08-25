@@ -61,10 +61,12 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.ok(summary.supported.includes('dialog'));
   assert.ok(summary.supported.includes('drawer'));
   assert.ok(summary.supported.includes('sheet'));
+  assert.ok(summary.supported.includes('tooltip'));
   assert.ok(summary.supported.includes('textarea'));
   assert.ok(!summary.pending.includes('dialog'));
   assert.ok(!summary.pending.includes('drawer'));
   assert.ok(!summary.pending.includes('sheet'));
+  assert.ok(!summary.pending.includes('tooltip'));
 });
 
 test('schema validation rejects duplicate wire names before generation', () => {

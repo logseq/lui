@@ -54,6 +54,7 @@
 (signature lui.ui/dialog! :fn<ui-context;int>)
 (signature lui.ui/drawer! :fn<ui-context;int>)
 (signature lui.ui/sheet! :fn<ui-context;int>)
+(signature lui.ui/tooltip! :fn<ui-context;int>)
 (signature lui.ui/menu-item! :fn<ui-context;int>)
 (signature lui.ui/list-item! :fn<ui-context;int>)
 (signature lui.ui/avatar! :fn<ui-context;int>)
@@ -78,6 +79,8 @@
   :fn<ui-context;int;property;signal.core/signal<float>;bool>)
 (signature lui.ui/int-property-signal!
   :fn<ui-context;int;property;signal.core/signal<int>;bool>)
+(signature lui.ui/int-property!
+  :fn<ui-context;int;property;int;bool>)
 (signature lui.ui/disabled! :fn<ui-context;int;bool;bool>)
 (signature lui.ui/disabled-signal!
   :fn<ui-context;int;signal.core/signal<bool>;bool>)

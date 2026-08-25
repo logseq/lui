@@ -1180,6 +1180,98 @@ struct LUISwiftUIBackendTests {
         #expect(backend.generation == 2)
     }
 
+    @Test("maps static and anchored Tooltip to one retained SwiftUI leaf")
+    func mapsTooltip() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"stack"},
+          {"op":"create-node","id":3,"kind":"button"},
+          {"op":"create-node","id":4,"kind":"tooltip"},
+          {"op":"create-node","id":5,"kind":"tooltip"},
+          {"op":"set-prop","id":3,"property":"text","value":"Bold"},
+          {"op":"set-prop","id":4,"property":"text","value":"Bold the selection"},
+          {"op":"set-prop","id":4,"property":"anchor","value":"above"},
+          {"op":"set-prop","id":4,"property":"anchor-alignment","value":"end"},
+          {"op":"set-prop","id":4,"property":"anchor-offset","value":8.0},
+          {"op":"set-prop","id":4,"property":"tooltip-delay","value":250},
+          {"op":"set-prop","id":5,"property":"text","value":"Copied!"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":2,"child":4,"index":1},
+          {"op":"insert-child","parent":1,"child":5,"index":1}
+        ]}
+        """)
+
+        let button = try #require(backend.model(id: 3))
+        let tooltip = try #require(backend.model(id: 4))
+        #expect(tooltip.kind == .tooltip)
+        #expect(tooltip.text == "Bold the selection")
+        #expect(tooltip.property(.anchor) == .string("above"))
+        #expect(tooltip.property(.anchorAlignment) == .string("end"))
+        #expect(tooltip.property(.anchorOffset) == .double(8))
+        #expect(tooltip.property(.tooltipDelay) == .int(250))
+        #expect(backend.model(id: 5)?.kind == .tooltip)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":4,"property":"text","value":"Toggle bold"},
+          {"op":"set-prop","id":4,"property":"tooltip-delay","value":0}
+        ]}
+        """)
+        #expect(backend.model(id: 3) === button)
+        #expect(backend.model(id: 4) === tooltip)
+        #expect(tooltip.text == "Toggle bold")
+        #expect(tooltip.property(.tooltipDelay) == .int(0))
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":3,"ops":[
+              {"op":"set-prop","id":5,"property":"tooltip-delay","value":20}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 2)
+    }
+
+    @Test("Tooltip hover intent delays, warms only on pointer leave, and resets on press")
+    func tooltipIntentLifecycle() {
+        let session = LUITooltipSession()
+        let first = LUITooltipIntent(session: session)
+        let second = LUITooltipIntent(session: session)
+
+        first.pointerEntered(at: 0, delay: 0.6)
+        #expect(!first.isPresented)
+        first.advance(to: 0.599)
+        #expect(!first.isPresented)
+        first.advance(to: 0.6)
+        #expect(first.isPresented)
+
+        first.pointerLeft(at: 0.7)
+        #expect(!first.isPresented)
+        second.pointerEntered(at: 0.8, delay: 0.6)
+        #expect(second.isPresented)
+
+        second.focusLeft()
+        second.focusEntered()
+        #expect(second.isPresented)
+        second.focusLeft()
+        #expect(!second.isPresented)
+
+        second.press()
+        let cold = LUITooltipIntent(session: session)
+        cold.pointerEntered(at: 0.9, delay: 0.6)
+        #expect(!cold.isPresented)
+        cold.advance(to: 1.49)
+        #expect(!cold.isPresented)
+        cold.advance(to: 1.5)
+        #expect(cold.isPresented)
+        cold.escape()
+        #expect(!cold.isPresented)
+    }
+
     @Test("maps List flow and multi-child Scroll to retained SwiftUI containers")
     func mapsListAndScrollContainers() throws {
         let backend = LUIAppleBackend()

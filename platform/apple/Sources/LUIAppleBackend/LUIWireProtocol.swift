@@ -119,8 +119,9 @@ enum LUIWireValue: Decodable, Equatable {
         case let (.anchor, .string(value)):
             value == "above" || value == "below"
         case let (.anchorAlignment, .string(value)):
-            ["start", "center", "end", "stretch"].contains(value)
+            ["start", "end", "stretch"].contains(value)
         case let (.anchorOffset, .double(value)): value.isFinite
+        case let (.tooltipDelay, .int(value)): (0...Int(Int32.max)).contains(value)
         case let (.main, .string(value)):
             Self.mainAlignments.contains(value)
         case let (.cross, .string(value)):
@@ -290,13 +291,13 @@ struct LUIRetainedTree {
         case .main, .cross:
             kind == .row || kind == .column || kind == .list ||
                 isHorizontalGroup(kind)
-        case .grow: kind != .avatar && !isModalSurface(kind)
+        case .grow: kind != .avatar && kind != .tooltip && !isModalSurface(kind)
         case .columns: kind == .grid
-        case .padding, .width, .height: kind != .avatar
+        case .padding, .width, .height: kind != .avatar && kind != .tooltip
         case .background, .borderColor, .borderWidth,
              .cornerRadius, .styleClass,
              .minWidth, .maxWidth, .minHeight, .maxHeight:
-            kind != .avatar && !isModalSurface(kind)
+            kind != .avatar && kind != .tooltip && !isModalSurface(kind)
         case .paddingHorizontal, .paddingVertical:
             kind == .row || kind == .column || kind == .grid || kind == .box
         case .foreground:
@@ -311,6 +312,7 @@ struct LUIRetainedTree {
                 kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio ||
                 kind == .select || kind == .menuItem || kind == .listItem || kind == .avatar ||
+                kind == .tooltip ||
                 isModalSurface(kind)
         case .enabled:
             kind == .button || kind == .toggleButton || isTextEntry(kind) ||
@@ -354,7 +356,9 @@ struct LUIRetainedTree {
         case .doublePressEnabled: kind == .listItem
         case .image, .sourceX, .sourceY, .sourceWidth, .sourceHeight:
             kind == .avatar
-        case .anchor, .anchorAlignment, .anchorOffset: kind == .dropdownMenu
+        case .anchor, .anchorAlignment, .anchorOffset:
+            kind == .dropdownMenu || kind == .tooltip
+        case .tooltipDelay: kind == .tooltip
         }
     }
 
@@ -436,6 +440,22 @@ struct LUIRetainedTree {
             if Self.isModalSurface(node.kind) {
                 guard !(node.properties[.text]?.stringValue ?? "").isEmpty else {
                     throw invalid("modal surface requires text")
+                }
+            }
+            if node.kind == .tooltip {
+                guard !(node.properties[.text]?.stringValue ?? "").isEmpty else {
+                    throw invalid("tooltip requires text")
+                }
+                if node.properties[.tooltipDelay] != nil, node.properties[.anchor] == nil {
+                    throw invalid("tooltip-delay requires anchor")
+                }
+            }
+            if node.kind == .dropdownMenu || node.kind == .tooltip {
+                if node.properties[.anchorAlignment] != nil, node.properties[.anchor] == nil {
+                    throw invalid("anchor-alignment requires anchor")
+                }
+                if node.properties[.anchorOffset] != nil, node.properties[.anchor] == nil {
+                    throw invalid("anchor-offset requires anchor")
                 }
             }
             if node.kind == .listItem {

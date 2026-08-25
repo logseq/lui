@@ -40,7 +40,8 @@
   (FlutterAvatar)
   (FlutterDialog)
   (FlutterDrawer)
-  (FlutterSheet))
+  (FlutterSheet)
+  (FlutterTooltip))
 
 (type-record flutter-renderer
   (flutter-store :retained-store<flutter-node>)
