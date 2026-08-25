@@ -356,6 +356,41 @@
                (not (contains? properties proto/TitleValue)))
       (raise (Invalid_argument "timeline-item requires title")))))
 
+(defn- child-kind [nodes child]
+  (if-some [current (clojure.core/get nodes child)]
+    (:semantic-kind current)
+    (raise (Invalid_argument "unknown child"))))
+
+(defn- validate-input-group! [nodes current]
+  (let [kind (:semantic-kind current)
+        children (:retained-children current)]
+    (when (= kind proto/InputGroup)
+      (when (or (empty? children) (> (count children) 2))
+        (raise
+         (Invalid_argument
+          "input-group requires one textarea and optional actions")))
+      (when (not (= (child-kind nodes (nth children 0)) proto/Textarea))
+        (raise
+         (Invalid_argument "input-group requires textarea first")))
+      (when (and (= (count children) 2)
+                 (not (= (child-kind nodes (nth children 1))
+                         proto/InputGroupActions)))
+        (raise
+         (Invalid_argument "input-group actions must follow textarea"))))
+    (when (= kind proto/InputGroupActions)
+      (match (:retained-parent current)
+        (Some parent)
+        (if-some [parent-node (clojure.core/get nodes parent)]
+          (when (not (= (:semantic-kind parent-node) proto/InputGroup))
+            (raise
+             (Invalid_argument
+              "input-group-actions requires a direct input-group parent")))
+          (raise (Invalid_argument "unknown input-group parent")))
+        None
+        (raise
+         (Invalid_argument
+          "input-group-actions requires a direct input-group parent"))))))
+
 (defn- has-ancestor-kind? [nodes parent kind]
   (match parent
     (Some parent-id)
@@ -394,6 +429,7 @@
      (validate-image-source! current)
      (validate-media-resource! current)
      (validate-progress-structure! current)
+     (validate-input-group! nodes current)
      (validate-tree-item! nodes current)
      (validate-split! current)
      (when (not

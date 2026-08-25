@@ -152,6 +152,8 @@
                          (= tag :step)
                          (= tag :timeline)
                          (= tag :timeline-item)
+                         (= tag :input-group)
+                         (= tag :input-group-actions)
                          (= tag :reactions)
                          (= tag :status-bar)
                           (= tag :keyed))
@@ -1125,6 +1127,18 @@
 (defelement textarea [context parent attrs & children]
   (text-entry-expansion
    'lui.ui/textarea! context parent attrs children))
+
+(defelement input-group [context parent attrs & children]
+  (labelled-container-expansion
+   'lui.ui/input-group!
+   context
+   parent
+   (assoc attrs :accessibility-label (:label attrs))
+   children))
+
+(defelement input-group-actions [context parent attrs & children]
+  (container-expansion
+   'lui.ui/input-group-actions! context parent attrs children))
 
 (defelement select [context parent attrs & children]
   (let [node (gensym "node")

@@ -274,6 +274,12 @@
 (defn timeline-item! [context]
   (runtime/create-node! (:ui-application context) proto/TimelineItem))
 
+(defn input-group! [context]
+  (runtime/create-node! (:ui-application context) proto/InputGroup))
+
+(defn input-group-actions! [context]
+  (runtime/create-node! (:ui-application context) proto/InputGroupActions))
+
 (defn button! [context]
   (runtime/create-node! (:ui-application context) proto/Button))
 

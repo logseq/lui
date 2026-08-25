@@ -418,6 +418,37 @@ text layout, and Flutter uses an unbounded native multiline `TextField`. Signal
 text patches preserve the DOM element, SwiftUI model, Flutter controller,
 selection, focus, and IME-owned transient state.
 
+### InputGroup contract
+
+`input-group` is the reference composer shape, not a general-purpose layout
+container. Its complete public API is `label`, `width`, `height`, `min-width`,
+and `grow`. It contains exactly one direct `textarea` as its first child,
+followed by at most one direct `input-group-actions`; no other direct children
+are legal. The textarea keeps the ordinary LUI text-entry contract, including
+Signal-backed text, placeholder, input and submit events, autofocus,
+`submit-on-enter`, auto-resize, focus, and selection state.
+
+The group owns one border, background, corner radius, and focus ring for the
+whole composer. The nested textarea's default chrome dissolves so it reads as
+part of that field, but its editable platform control and retained node identity
+remain intact. Focus on the textarea or any accessory control activates the
+group's focus-within presentation. Explicit group height is absorbed by the
+textarea rather than becoming empty space below the actions.
+
+`input-group-actions` is legal only as the optional second InputGroup child. Its
+complete public API is `gap`, defaulting to 6. It is a horizontal accessory row
+whose ordinary element children keep their own closed APIs and events; authors
+use `spacer` to separate leading actions from trailing submission controls.
+Dynamic and keyed children remain ordinary LG retained structure.
+
+Web uses a semantic group and CSS `:focus-within` around the native textarea.
+SwiftUI composes the retained text editor and accessory row inside one native
+rounded field, and Flutter composes the retained `TextField` and action row
+inside one Material input surface. Text changes patch only the existing
+textarea node, action swaps patch only the actions segment, and focus chrome is
+backend-owned transient state: none of these updates rebuild the InputGroup or
+application component.
+
 ### Picker contract
 
 The first picker slice uses four semantic retained elements and keeps their

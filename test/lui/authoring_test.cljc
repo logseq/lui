@@ -13,12 +13,13 @@
              :refer [AppleBox AppleCard AppleAlert AppleBubble AppleStatusBar
                      AppleCheckbox AppleColumn AppleFormLabel AppleGrid
                      AppleHeading AppleDivider AppleParagraph AppleProgress AppleRow AppleSpinner AppleSwitch
-                     AppleList ApplePanel AppleScrollView AppleStack AppleTextInput
+                     AppleList ApplePanel AppleScrollView AppleStack AppleTextInput AppleTextArea
                      AppleSelect AppleCombobox AppleDropdownMenu AppleContextMenu AppleMenuItem AppleListItem
                      AppleTable AppleTableRow AppleTableCell AppleTree AppleResizable AppleSplit
                      AppleAvatar AppleDialog AppleDrawer AppleSheet AppleTooltip
                      AppleImage AppleMediaSurface
                      AppleStepper AppleStep AppleTimeline AppleTimelineItem
+                     AppleInputGroup AppleInputGroupActions
                      AppleAccordion]]
             [lui.backend.flutter :as flutter]))
 
@@ -375,6 +376,25 @@
      :submit-on-enter true
      :on-input on-input
      :on-submit on-submit}]])
+
+(defui retained-input-group
+  [draft on-input on-submit on-attach on-send]
+  [:input-group
+   {:label "Message composer"
+    :width 320
+    :height 120
+    :min-width 240
+    :grow 1.0}
+   [:textarea
+    {:text draft
+     :placeholder "Message the team"
+     :submit-on-enter true
+     :on-input on-input
+     :on-submit on-submit}]
+   [:input-group-actions {:gap 8}
+    [:button {:variant "ghost" :icon "plus" :on-press on-attach} "Attach"]
+    [:spacer {:grow 1.0}]
+    [:button {:icon "send" :on-press on-send} "Send"]]])
 
 (defui controlled-delete-button [disabled-source callback]
   [:button
@@ -2019,6 +2039,70 @@
         (Some (proto/BoolValue value))
         (assert-equal false value "disabled Signal patches textarea")
         _ (is false "textarea enabled state")))))
+
+(deftest input-group-retains-one-textarea-and-accessory-row
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "input-group")
+        draft (sig/state scheduler "Hello")
+        received (atom [])
+        record-event (fn [event] (do (swap! received conj event) true))
+        on-input
+        (fn [event]
+          (do
+            (swap! received conj event)
+            (match event
+              (TextChanged _node text) (sig/set! draft text)
+              _ true)))
+        group
+        (retained-input-group
+         (ui/context application scope)
+         (sig/value draft)
+         on-input record-event record-event record-event)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [children (apple/children renderer group)
+          textarea (nth children 0)
+          actions (nth children 1)
+          action-children (apple/children renderer actions)
+          attach (nth action-children 0)
+          send (nth action-children 2)
+          node-count (apple/node-count renderer)]
+      (assert-equal (Some AppleInputGroup) (apple/node renderer group)
+                    "InputGroup is one retained semantic field")
+      (assert-equal (Some AppleTextArea) (apple/node renderer textarea)
+                    "the first child remains a native textarea")
+      (assert-equal (Some AppleInputGroupActions)
+                    (apple/node renderer actions)
+                    "accessories remain one retained semantic row")
+      (assert-equal 3 (count action-children)
+                    "ordinary action children remain explicit")
+      (assert-equal (Some (proto/IntValue 320))
+                    (apple/property renderer group proto/WidthValue)
+                    "group width uses the ordinary closed layout property")
+      (assert-equal (Some (proto/IntValue 8))
+                    (apple/property renderer actions proto/Gap)
+                    "the action row owns only its gap")
+      (runtime/dispatch! application (proto/TextChanged textarea "Updated"))
+      (runtime/dispatch! application (proto/Submit textarea))
+      (runtime/dispatch! application (proto/Press attach))
+      (runtime/dispatch! application (proto/Press send))
+      (runtime/flush! application)
+      (assert-equal "Updated" (sig/get draft)
+                    "the nested textarea updates the shared Signal")
+      (assert-equal
+       [(proto/TextChanged textarea "Updated")
+        (proto/Submit textarea)
+        (proto/Press attach)
+        (proto/Press send)]
+       @received
+       "entry and accessory events keep their existing typed paths")
+      (assert-equal node-count (apple/node-count renderer)
+                    "text patches preserve the group and all descendants")
+      (assert-equal (Some (proto/StringValue "Updated"))
+                    (apple/property renderer textarea proto/TextValue)
+                    "only the retained textarea text is patched"))))
 
 (deftest direct-toggle-controls-patch-text-and-state-without-replacement
   (let [scheduler (sig/scheduler)

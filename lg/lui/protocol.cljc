@@ -369,6 +369,11 @@
         (= property InlineIconName) (= property VariantValue)
         (= property Connector) (= property Selected)
         (= property PressEnabled))
+    InputGroup
+    (or (= property AccessibilityLabel) (= property WidthValue)
+        (= property HeightValue) (= property MinWidth)
+        (= property GrowValue))
+    InputGroupActions (= property Gap)
     _ (common-property-supported? kind property)))
 
 (defn property-value-supported? [property value]
@@ -677,6 +682,8 @@
       Split true
       Stepper true
       Timeline true
+      InputGroup true
+      InputGroupActions true
       Alert true
       Bubble true
       _ false)))
@@ -690,6 +697,8 @@
       Tree (tree-row-kind? child-kind)
       Stepper (= child-kind Step)
       Timeline (= child-kind TimelineItem)
+      InputGroup
+      (or (= child-kind Textarea) (= child-kind InputGroupActions))
       DropdownMenu (or (= child-kind MenuItem) (= child-kind Divider))
       ContextMenu (or (= child-kind MenuItem) (= child-kind Divider))
       _ true)))

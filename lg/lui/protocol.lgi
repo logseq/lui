@@ -50,6 +50,8 @@
   (Step)
   (Timeline)
   (TimelineItem)
+  (InputGroup)
+  (InputGroupActions)
   (Breadcrumb)
   (Pagination)
   (Accordion)

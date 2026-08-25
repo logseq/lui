@@ -229,6 +229,10 @@
         "the shared Gallery demonstrates a retained activity list")
     (is (creates-kind? (flutter/batches renderer) proto/TimelineItem)
         "the shared Gallery demonstrates pressable TimelineItem rows")
+    (is (creates-kind? (flutter/batches renderer) proto/InputGroup)
+        "the shared Gallery demonstrates one composer field")
+    (is (creates-kind? (flutter/batches renderer) proto/InputGroupActions)
+        "the shared Gallery demonstrates retained composer accessories")
     (assert-equal 1 (count (flutter/batches renderer)) "mount is one batch")
     (let [mounted-count (flutter/node-count renderer)]
       (driver/send! application model/ToggleDisabled)

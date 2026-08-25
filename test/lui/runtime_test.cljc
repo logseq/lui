@@ -2495,6 +2495,76 @@
     (assert-equal 0 (apple/node-count renderer)
                   "invalid Stepper structure is rejected atomically")))
 
+(deftest input-group-has-the-closed-reference-composer-contract
+  (doseq [property
+          [proto/AccessibilityLabel proto/WidthValue proto/HeightValue
+           proto/MinWidth proto/GrowValue]]
+    (is (proto/property-supported? proto/InputGroup property)
+        "InputGroup exposes only its reference sizing and label API"))
+  (is (not (proto/property-supported? proto/InputGroup proto/Gap))
+      "the field does not expose its internal spacing")
+  (is (proto/property-supported? proto/InputGroupActions proto/Gap)
+      "InputGroupActions owns its accessory gap")
+  (is (not (proto/property-supported?
+            proto/InputGroupActions proto/PaddingValue))
+      "the accessory inset remains backend-owned")
+  (is (proto/can-contain-children? proto/InputGroup)
+      "InputGroup retains its entry and optional accessories")
+  (is (proto/can-contain-children? proto/InputGroupActions)
+      "InputGroupActions retains ordinary element children")
+  (is (proto/child-kind-supported? proto/InputGroup proto/Textarea)
+      "the composer accepts a native multiline entry")
+  (is (proto/child-kind-supported?
+       proto/InputGroup proto/InputGroupActions)
+      "the composer accepts one accessory row")
+  (is (not (proto/child-kind-supported? proto/InputGroup proto/Button))
+      "controls must stay inside the accessory row"))
+
+(deftest retained-input-group-enforces-entry-order-and-cardinality-atomically
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        valid
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/InputGroup)
+                      (proto/set-prop-op
+                       1 proto/AccessibilityLabel
+                       (proto/StringValue "Composer"))
+                      (proto/create-node-op 2 proto/Textarea)
+                      (proto/set-prop-op
+                       2 proto/TextValue (proto/StringValue "Draft"))
+                      (proto/create-node-op 3 proto/InputGroupActions)
+                      (proto/set-prop-op 3 proto/Gap (proto/IntValue 6))
+                      (proto/create-node-op 4 proto/Button)
+                      (proto/set-prop-op
+                       4 proto/TextValue (proto/StringValue "Send"))
+                      (proto/insert-child-op 3 4 0)
+                      (proto/insert-child-op 1 2 0)
+                      (proto/insert-child-op 1 3 1)]))]
+    ((:apply-batch backend) valid)
+    (assert-equal 4 (apple/node-count renderer)
+                  "the valid composer shape commits as one batch"))
+  (doseq
+   [operations
+    [[(proto/create-node-op 1 proto/InputGroup)]
+     [(proto/create-node-op 1 proto/InputGroup)
+      (proto/create-node-op 2 proto/InputGroupActions)
+      (proto/insert-child-op 1 2 0)]
+     [(proto/create-node-op 1 proto/InputGroup)
+      (proto/create-node-op 2 proto/Textarea)
+      (proto/create-node-op 3 proto/Textarea)
+      (proto/insert-child-op 1 2 0)
+      (proto/insert-child-op 1 3 1)]
+     [(proto/create-node-op 1 proto/InputGroupActions)]]]
+    (let [renderer (apple/create)
+          backend (apple/backend renderer)
+          invalid
+          (record proto/patch-batch (generation 1) (ops operations))]
+      (is (thrown? Invalid_argument ((:apply-batch backend) invalid))
+          "invalid InputGroup structure is rejected")
+      (assert-equal 0 (apple/node-count renderer)
+                    "invalid composer batches remain atomic"))))
+
 (deftest platform-bridge-receives-one-call-per-batch
   (let [scheduler (sig/scheduler)
         calls (atom 0)

@@ -76,6 +76,8 @@
 (signature lui.ui/step! :fn<ui-context;int>)
 (signature lui.ui/timeline! :fn<ui-context;int>)
 (signature lui.ui/timeline-item! :fn<ui-context;int>)
+(signature lui.ui/input-group! :fn<ui-context;int>)
+(signature lui.ui/input-group-actions! :fn<ui-context;int>)
 (signature lui.ui/button! :fn<ui-context;int>)
 (signature lui.ui/toggle-button! :fn<ui-context;int>)
 (signature lui.ui/toggle! :fn<ui-context;int>)

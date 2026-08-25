@@ -740,7 +740,8 @@ final class LUIFlutterBackend {
           }
           if (state.kind != _NodeKind.row &&
               state.kind != _NodeKind.column &&
-              state.kind != _NodeKind.list) {
+              state.kind != _NodeKind.list &&
+              state.kind != _NodeKind.inputGroupActions) {
             return childWidget;
           }
           final grow = childState?.properties['grow'] as num? ?? 0;
@@ -812,8 +813,11 @@ final class LUIFlutterBackend {
     Widget textControl({required _NodeKind kind}) {
       final multiline = kind == _NodeKind.textarea;
       final combobox = kind == _NodeKind.combobox;
+      final grouped =
+          state.parent != null &&
+          _states[state.parent]?.kind == _NodeKind.inputGroup;
       return SizedBox(
-        width: 240,
+        width: grouped ? double.infinity : 240,
         child: Semantics(
           label: accessibilityLabel,
           textField: true,
@@ -827,6 +831,7 @@ final class LUIFlutterBackend {
             autofocus: state.properties['autofocus'] as bool? ?? false,
             multiline: multiline,
             search: kind == _NodeKind.searchField,
+            grouped: grouped,
             onOpen: combobox && enabled ? () => performAction(id) : null,
             submitOnEnter:
                 state.properties['submit-on-enter'] as bool? ?? false,
@@ -1683,6 +1688,36 @@ final class LUIFlutterBackend {
       );
     }
 
+    Widget inputGroup() {
+      final editor = children.first;
+      final editorBody = state.properties.containsKey('height')
+          ? Expanded(child: editor)
+          : editor;
+      return Semantics(
+        container: true,
+        label: accessibilityLabel,
+        child: _LUIInputGroupSurface(
+          child: Column(
+            mainAxisSize: state.properties.containsKey('height')
+                ? MainAxisSize.max
+                : MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [editorBody, if (children.length == 2) children[1]],
+          ),
+        ),
+      );
+    }
+
+    Widget inputGroupActions() => Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+      child: Row(
+        mainAxisSize: MainAxisSize.max,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        spacing: gap,
+        children: children,
+      ),
+    );
+
     final content = switch (state.kind) {
       _NodeKind.row => row(),
       _NodeKind.tabs ||
@@ -1772,6 +1807,8 @@ final class LUIFlutterBackend {
         ),
       ),
       _NodeKind.timelineItem => timelineItem(),
+      _NodeKind.inputGroup => inputGroup(),
+      _NodeKind.inputGroupActions => inputGroupActions(),
       _NodeKind.toggle => FilterChip(
         label: Text(text),
         selected: checked,
@@ -2104,7 +2141,9 @@ final class LUIFlutterBackend {
         final property = _string(operation['property'], 'property');
         final value = operation['value'];
         if (!_supports(node.kind, property, value)) {
-          throw const LUIBackendException('unsupported property value');
+          throw LUIBackendException(
+            'unsupported property value: ${node.kind.name}.$property',
+          );
         }
         node.properties[property] = value!;
       case 'insert-child':
@@ -2159,6 +2198,13 @@ final class LUIFlutterBackend {
             child.kind != _NodeKind.timelineItem) {
           throw const LUIBackendException(
             'timeline accepts only timeline-item children',
+          );
+        }
+        if (parent.kind == _NodeKind.inputGroup &&
+            child.kind != _NodeKind.textarea &&
+            child.kind != _NodeKind.inputGroupActions) {
+          throw const LUIBackendException(
+            'input-group accepts only textarea and input-group-actions children',
           );
         }
         if (index < 0 || index > parent.children.length) {
@@ -2238,6 +2284,17 @@ final class LUIFlutterBackend {
         'connector' || 'selected' || 'press-enabled' => value is bool,
         _ => false,
       };
+    }
+    if (kind == _NodeKind.inputGroup) {
+      return switch (property) {
+        'accessibility-label' => value is String,
+        'width' || 'height' || 'min-width' => value is int && value >= 0,
+        'grow' => value is num && value.isFinite && value >= 0,
+        _ => false,
+      };
+    }
+    if (kind == _NodeKind.inputGroupActions) {
+      return property == 'gap' && value is int && value >= 0;
     }
     return switch (property) {
       'main' =>
@@ -2792,6 +2849,28 @@ final class LUIFlutterBackend {
           );
         }
       }
+      if (state.kind == _NodeKind.inputGroup) {
+        if (state.children.isEmpty || state.children.length > 2) {
+          throw const LUIBackendException(
+            'input-group requires one textarea and optional actions',
+          );
+        }
+        if (states[state.children.first]?.kind != _NodeKind.textarea ||
+            (state.children.length == 2 &&
+                states[state.children[1]]?.kind !=
+                    _NodeKind.inputGroupActions)) {
+          throw const LUIBackendException(
+            'input-group requires textarea first and actions second',
+          );
+        }
+      }
+      if (state.kind == _NodeKind.inputGroupActions &&
+          (state.parent == null ||
+              states[state.parent]?.kind != _NodeKind.inputGroup)) {
+        throw const LUIBackendException(
+          'input-group-actions requires a direct input-group parent',
+        );
+      }
     }
   }
 
@@ -2834,6 +2913,8 @@ final class LUIFlutterBackend {
       kind == _NodeKind.bubble ||
       kind == _NodeKind.stepper ||
       kind == _NodeKind.timeline ||
+      kind == _NodeKind.inputGroup ||
+      kind == _NodeKind.inputGroupActions ||
       _isContextMenuLeafHost(kind) ||
       kind.isModalSurface;
 
@@ -3170,6 +3251,41 @@ final class _LUITableRowSurfaceState extends State<_LUITableRowSurface> {
           ),
           child: widget.child,
         ),
+      ),
+    );
+  }
+}
+
+final class _LUIInputGroupSurface extends StatefulWidget {
+  const _LUIInputGroupSurface({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_LUIInputGroupSurface> createState() => _LUIInputGroupSurfaceState();
+}
+
+final class _LUIInputGroupSurfaceState extends State<_LUIInputGroupSurface> {
+  var focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Focus(
+      canRequestFocus: false,
+      onFocusChange: (value) => setState(() => focused = value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 100),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          border: Border.all(
+            color: focused ? colors.primary : colors.outlineVariant,
+            width: focused ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: widget.child,
       ),
     );
   }
@@ -4075,6 +4191,7 @@ final class _LUITextInput extends StatefulWidget {
     required this.autofocus,
     required this.multiline,
     required this.search,
+    required this.grouped,
     required this.onOpen,
     required this.submitOnEnter,
     required this.onChanged,
@@ -4088,6 +4205,7 @@ final class _LUITextInput extends StatefulWidget {
   final bool autofocus;
   final bool multiline;
   final bool search;
+  final bool grouped;
   final VoidCallback? onOpen;
   final bool submitOnEnter;
   final ValueChanged<String> onChanged;
@@ -4134,6 +4252,7 @@ final class _LUITextInputState extends State<_LUITextInput> {
       style: TextStyle(color: widget.foreground),
       decoration: InputDecoration(
         hintText: widget.placeholder,
+        border: widget.grouped ? InputBorder.none : null,
         prefixIcon: widget.search ? const Icon(Icons.search) : null,
         suffixIcon: widget.search && _controller.text.isNotEmpty
             ? IconButton(

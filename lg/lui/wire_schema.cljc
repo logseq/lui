@@ -8,20 +8,20 @@
                      ButtonGroup ToggleGroup Spacer Spinner Icon Select
                      Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar
                      Image MediaSurface Stepper Step Timeline TimelineItem
-                     Breadcrumb Pagination Accordion Table TableRow TableCell
-                     Tree Resizable Split Dialog Drawer Sheet
-                     Tooltip StatusBar TextValue Enabled Gap MainAlignment
-                     CrossAlignment GrowValue GridColumns PaddingValue PaddingHorizontal PaddingVertical
-                     BackgroundValue ForegroundValue BorderColorValue BorderWidth CornerRadius WidthValue
-                     HeightValue MinWidth MaxWidth MinHeight MaxHeight PlaceholderValue
-                     AccessibilityLabel StyleClass HeadingLevel Checked ProgressValue OrientationValue
-                     SizeValue IconName VariantValue InlineIconName IconPlacementValue Selected
-                     Autofocus SubmitOnEnter HoldEnabled ChangeEnabled ToggleEnabled PressEnabled
-                     SubmitEnabled DoublePressEnabled ImageIdValue SurfaceIdValue ActiveIndex TitleValue
-                     DescriptionValue MetaValue IndicatorValue Connector SourceX SourceY
-                     SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay
-                     TextAlignment RoleValue TreeLevel Expanded ResizeDuration ResizeEasing
-                     ResizeOrigin]]))
+                     InputGroup InputGroupActions Breadcrumb Pagination Accordion Table
+                     TableRow TableCell Tree Resizable Split Dialog
+                     Drawer Sheet Tooltip StatusBar TextValue Enabled
+                     Gap MainAlignment CrossAlignment GrowValue GridColumns PaddingValue
+                     PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth
+                     CornerRadius WidthValue HeightValue MinWidth MaxWidth MinHeight
+                     MaxHeight PlaceholderValue AccessibilityLabel StyleClass HeadingLevel Checked
+                     ProgressValue OrientationValue SizeValue IconName VariantValue InlineIconName
+                     IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled ChangeEnabled
+                     ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue SurfaceIdValue
+                     ActiveIndex TitleValue DescriptionValue MetaValue IndicatorValue Connector
+                     SourceX SourceY SourceWidth SourceHeight AnchorValue AnchorAlignmentValue
+                     AnchorOffset TooltipDelay TextAlignment RoleValue TreeLevel Expanded
+                     ResizeDuration ResizeEasing ResizeOrigin]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -73,6 +73,8 @@
     Step "step"
     Timeline "timeline"
     TimelineItem "timeline-item"
+    InputGroup "input-group"
+    InputGroupActions "input-group-actions"
     Breadcrumb "breadcrumb"
     Pagination "pagination"
     Accordion "accordion"

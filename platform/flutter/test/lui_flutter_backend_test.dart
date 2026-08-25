@@ -914,6 +914,124 @@ void main() {
     expect(backend.containsNode(1), isFalse);
   });
 
+  testWidgets('maps InputGroup to one stable native composer field', (
+    tester,
+  ) async {
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"input-group"},
+        {"op":"set-prop","id":2,"property":"accessibility-label","value":"Message composer"},
+        {"op":"set-prop","id":2,"property":"width","value":320},
+        {"op":"set-prop","id":2,"property":"height","value":120},
+        {"op":"set-prop","id":2,"property":"min-width","value":240},
+        {"op":"set-prop","id":2,"property":"grow","value":1.0},
+        {"op":"create-node","id":3,"kind":"textarea"},
+        {"op":"set-prop","id":3,"property":"text","value":"Draft"},
+        {"op":"set-prop","id":3,"property":"placeholder","value":"Message the team"},
+        {"op":"create-node","id":4,"kind":"input-group-actions"},
+        {"op":"set-prop","id":4,"property":"gap","value":8},
+        {"op":"create-node","id":5,"kind":"button"},
+        {"op":"set-prop","id":5,"property":"text","value":"Attach"},
+        {"op":"create-node","id":6,"kind":"spacer"},
+        {"op":"set-prop","id":6,"property":"grow","value":1.0},
+        {"op":"create-node","id":7,"kind":"button"},
+        {"op":"set-prop","id":7,"property":"text","value":"Send"},
+        {"op":"insert-child","parent":4,"child":5,"index":0},
+        {"op":"insert-child","parent":4,"child":6,"index":1},
+        {"op":"insert-child","parent":4,"child":7,"index":2},
+        {"op":"insert-child","parent":2,"child":3,"index":0},
+        {"op":"insert-child","parent":2,"child":4,"index":1},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    final groupFinder = find.byKey(LUIFlutterBackend.nodeKey(2));
+    final actionsFinder = find.byKey(LUIFlutterBackend.nodeKey(4));
+    final textareaFinder = find.descendant(
+      of: groupFinder,
+      matching: find.byType(TextField),
+    );
+    final semanticsFinder = find.descendant(
+      of: groupFinder,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.label == 'Message composer',
+      ),
+    );
+    expect(textareaFinder, findsOneWidget);
+    expect(actionsFinder, findsOneWidget);
+    expect(find.text('Attach'), findsOneWidget);
+    expect(find.text('Send'), findsOneWidget);
+    expect(semanticsFinder, findsOneWidget);
+    expect(
+      tester.widget<TextField>(textareaFinder).decoration?.border,
+      InputBorder.none,
+    );
+
+    final retainedGroup = tester.renderObject(groupFinder);
+    final retainedActions = tester.renderObject(actionsFinder);
+    final retainedEditor = tester.widget<EditableText>(
+      find.descendant(of: textareaFinder, matching: find.byType(EditableText)),
+    );
+    await tester.tap(find.text('Attach'));
+    expect(events, [const LUIPressEvent(node: 5)]);
+
+    backend.applyJson('''
+    {"generation":2,"ops":[
+      {"op":"set-prop","id":3,"property":"text","value":"Updated"}
+    ]}
+    ''');
+    await tester.pump();
+    expect(tester.renderObject(groupFinder), same(retainedGroup));
+    expect(tester.renderObject(actionsFinder), same(retainedActions));
+    expect(find.text('Updated'), findsOneWidget);
+    expect(
+      tester
+          .widget<EditableText>(
+            find.descendant(
+              of: textareaFinder,
+              matching: find.byType(EditableText),
+            ),
+          )
+          .focusNode,
+      same(retainedEditor.focusNode),
+    );
+  });
+
+  test('rejects malformed InputGroup structure atomically', () {
+    final backend = LUIFlutterBackend();
+    expect(
+      () => backend.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"input-group"},
+        {"op":"create-node","id":2,"kind":"input-group-actions"},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 0);
+    expect(backend.containsNode(1), isFalse);
+
+    expect(
+      () => backend.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"input-group-actions"}
+      ]}
+      '''),
+      throwsA(isA<LUIBackendException>()),
+    );
+    expect(backend.generation, 0);
+    expect(backend.containsNode(1), isFalse);
+  });
+
   testWidgets('maps Accordion to a controlled retained native disclosure', (
     tester,
   ) async {

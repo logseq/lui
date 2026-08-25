@@ -1827,6 +1827,89 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 1) == nil)
     }
 
+    @Test("maps InputGroup to one stable native composer field")
+    func mapsInputGroup() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"input-group"},
+          {"op":"set-prop","id":2,"property":"accessibility-label","value":"Message composer"},
+          {"op":"set-prop","id":2,"property":"width","value":320},
+          {"op":"set-prop","id":2,"property":"height","value":120},
+          {"op":"set-prop","id":2,"property":"min-width","value":240},
+          {"op":"set-prop","id":2,"property":"grow","value":1.0},
+          {"op":"create-node","id":3,"kind":"textarea"},
+          {"op":"set-prop","id":3,"property":"text","value":"Draft"},
+          {"op":"set-prop","id":3,"property":"placeholder","value":"Message the team"},
+          {"op":"create-node","id":4,"kind":"input-group-actions"},
+          {"op":"set-prop","id":4,"property":"gap","value":8},
+          {"op":"create-node","id":5,"kind":"button"},
+          {"op":"set-prop","id":5,"property":"text","value":"Attach"},
+          {"op":"create-node","id":6,"kind":"spacer"},
+          {"op":"set-prop","id":6,"property":"grow","value":1.0},
+          {"op":"create-node","id":7,"kind":"button"},
+          {"op":"set-prop","id":7,"property":"text","value":"Send"},
+          {"op":"insert-child","parent":4,"child":5,"index":0},
+          {"op":"insert-child","parent":4,"child":6,"index":1},
+          {"op":"insert-child","parent":4,"child":7,"index":2},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":2,"child":4,"index":1},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+
+        let group = try #require(backend.model(id: 2))
+        let textarea = try #require(backend.model(id: 3))
+        let actions = try #require(backend.model(id: 4))
+        #expect(group.kind == .inputGroup)
+        #expect(group.children == [3, 4])
+        #expect(group.property(.width) == .int(320))
+        #expect(group.property(.height) == .int(120))
+        #expect(group.property(.minWidth) == .int(240))
+        #expect(textarea.kind == .textarea)
+        #expect(actions.kind == .inputGroupActions)
+        #expect(actions.children == [5, 6, 7])
+        #expect(actions.property(.gap) == .int(8))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":3,"property":"text","value":"Updated"}
+        ]}
+        """)
+        #expect(backend.model(id: 2) === group)
+        #expect(backend.model(id: 3) === textarea)
+        #expect(backend.model(id: 4) === actions)
+        #expect(textarea.text == "Updated")
+    }
+
+    @Test("rejects malformed InputGroup structure atomically")
+    func rejectsMalformedInputGroup() {
+        let backend = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"input-group"},
+              {"op":"create-node","id":2,"kind":"input-group-actions"},
+              {"op":"insert-child","parent":1,"child":2,"index":0}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 0)
+        #expect(backend.model(id: 1) == nil)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"input-group-actions"}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 0)
+        #expect(backend.model(id: 1) == nil)
+    }
+
     @Test("maps Accordion to a controlled retained SwiftUI disclosure")
     func mapsAccordion() throws {
         let backend = LUIAppleBackend()

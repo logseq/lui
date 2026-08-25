@@ -50,6 +50,8 @@ enum LUINodeKind: String, Decodable, Equatable {
     case step = "step"
     case timeline = "timeline"
     case timelineItem = "timeline-item"
+    case inputGroup = "input-group"
+    case inputGroupActions = "input-group-actions"
     case breadcrumb = "breadcrumb"
     case pagination = "pagination"
     case accordion = "accordion"

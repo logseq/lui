@@ -47,6 +47,8 @@
   (FlutterStep)
   (FlutterTimeline)
   (FlutterTimelineItem)
+  (FlutterInputGroup)
+  (FlutterInputGroupActions)
   (FlutterDialog)
   (FlutterDrawer)
   (FlutterSheet)

@@ -276,6 +276,10 @@ struct LUIRetainedTree {
             if parentNode.kind == .timeline, childNode.kind != .timelineItem {
                 throw invalid("timeline accepts only timeline-item children")
             }
+            if parentNode.kind == .inputGroup,
+               childNode.kind != .textarea, childNode.kind != .inputGroupActions {
+                throw invalid("input-group accepts textarea and input-group-actions")
+            }
             if parentNode.kind == .dropdownMenu,
                childNode.kind != .menuItem, childNode.kind != .divider {
                 throw invalid("dropdown-menu accepts only menu-item or separator children")
@@ -348,6 +352,11 @@ struct LUIRetainedTree {
                 property == .connector || property == .selected ||
                 property == .pressEnabled
         }
+        if kind == .inputGroup {
+            return property == .accessibilityLabel || property == .width ||
+                property == .height || property == .minWidth || property == .grow
+        }
+        if kind == .inputGroupActions { return property == .gap }
         return switch property {
         case .main, .cross:
             kind == .row || kind == .column || kind == .list ||
@@ -458,6 +467,7 @@ struct LUIRetainedTree {
             || kind == .table || kind == .tableRow || kind == .tree || kind == .resizable
             || kind == .split || kind == .alert || kind == .bubble ||
             kind == .stepper || kind == .timeline ||
+            kind == .inputGroup || kind == .inputGroupActions ||
             isContextMenuLeafHost(kind)
     }
 
@@ -676,6 +686,21 @@ struct LUIRetainedTree {
                 }
                 guard let parent = node.parent, nodes[parent]?.kind == .timeline else {
                     throw invalid("timeline-item requires a direct timeline parent")
+                }
+            }
+            if node.kind == .inputGroup {
+                guard node.children.count == 1 || node.children.count == 2,
+                      nodes[node.children[0]]?.kind == .textarea else {
+                    throw invalid("input-group requires textarea first")
+                }
+                if node.children.count == 2,
+                   nodes[node.children[1]]?.kind != .inputGroupActions {
+                    throw invalid("input-group actions must follow textarea")
+                }
+            }
+            if node.kind == .inputGroupActions {
+                guard let parent = node.parent, nodes[parent]?.kind == .inputGroup else {
+                    throw invalid("input-group-actions requires a direct input-group parent")
                 }
             }
         }

@@ -68,8 +68,8 @@
     {"name": "step", "status": "supported"},
     {"name": "timeline", "status": "supported"},
     {"name": "timeline-item", "status": "supported"},
-    {"name": "input-group", "status": "pending"},
-    {"name": "input-group-actions", "status": "pending"}
+    {"name": "input-group", "status": "supported"},
+    {"name": "input-group-actions", "status": "supported"}
   ],
   "nodeKinds": [
     {"lg": "Row", "wire": "row", "dart": "row", "swift": "row", "container": true},
@@ -120,6 +120,8 @@
     {"lg": "Step", "wire": "step", "dart": "step", "swift": "step", "container": false},
     {"lg": "Timeline", "wire": "timeline", "dart": "timeline", "swift": "timeline", "container": true},
     {"lg": "TimelineItem", "wire": "timeline-item", "dart": "timelineItem", "swift": "timelineItem", "container": false},
+    {"lg": "InputGroup", "wire": "input-group", "dart": "inputGroup", "swift": "inputGroup", "container": true},
+    {"lg": "InputGroupActions", "wire": "input-group-actions", "dart": "inputGroupActions", "swift": "inputGroupActions", "container": true},
     {"lg": "Breadcrumb", "wire": "breadcrumb", "dart": "breadcrumb", "swift": "breadcrumb", "container": true},
     {"lg": "Pagination", "wire": "pagination", "dart": "pagination", "swift": "pagination", "container": true},
     {"lg": "Accordion", "wire": "accordion", "dart": "accordion", "swift": "accordion", "container": true},

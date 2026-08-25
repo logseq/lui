@@ -6,7 +6,7 @@
              :refer [Row Column Grid Stack Panel Card Alert Bubble Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
-                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem Dialog Drawer Sheet Tooltip Accordion
+                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Drawer Sheet Tooltip Accordion
                      Table TableRow TableCell Tree Resizable Split StatusBar
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
@@ -106,6 +106,8 @@
     Step "lui-step"
     Timeline "lui-timeline"
     TimelineItem "lui-timeline-item"
+    InputGroup "lui-input-group"
+    InputGroupActions "lui-input-group-actions"
     Dialog "lui-dialog"
     Drawer "lui-drawer"
     Sheet "lui-sheet"
@@ -305,6 +307,8 @@
           TableCell "td"
           Stepper "div"
           Timeline "div"
+          InputGroup "div"
+          InputGroupActions "div"
           Tree "div"
           Tooltip "span"
           Slider "input"
@@ -345,6 +349,7 @@
           Tree {"role" "tree"}
           Stepper {"role" "list"}
           Timeline {"role" "list"}
+          InputGroup {"role" "group"}
           DropdownMenu
           {"role" "listbox"
            "data-anchor" "below"

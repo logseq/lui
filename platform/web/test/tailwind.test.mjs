@@ -238,6 +238,19 @@ test("the production stylesheet contains the direct text-entry contract", async 
   assert.doesNotMatch(css, /\.h-10\{/)
 })
 
+test("InputGroup presents one focus-within composer field", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-input-group\{[^}]*display:flex/)
+  assert.match(css, /\.lui-input-group\{[^}]*flex-direction:column/)
+  assert.match(css, /\.lui-input-group\{[^}]*border-width:1px/)
+  assert.match(css, /\.lui-input-group:focus-within/)
+  assert.match(css, /\.lui-input-group>\.lui-textarea\{[^}]*border-color:#0000/)
+  assert.match(css, /\.lui-input-group>\.lui-textarea\{[^}]*flex-grow:1/)
+  assert.match(css, /\.lui-input-group-actions\{[^}]*display:flex/)
+  assert.match(css, /\.lui-input-group-actions\{[^}]*align-items:center/)
+})
+
 test("the production stylesheet contains the retained picker contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 

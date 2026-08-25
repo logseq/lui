@@ -7,7 +7,7 @@
                      Spacer Spinner Icon
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
-                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem Dialog Drawer Sheet Tooltip
+                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Drawer Sheet Tooltip
                      Accordion Table TableRow TableCell Tree Resizable Split StatusBar]]
             [lui.backend.retained :as retained]
             [lui.wire :as wire]))
@@ -74,6 +74,8 @@
     Step FlutterStep
     Timeline FlutterTimeline
     TimelineItem FlutterTimelineItem
+    InputGroup FlutterInputGroup
+    InputGroupActions FlutterInputGroupActions
     Dialog FlutterDialog
     Drawer FlutterDrawer
     Sheet FlutterSheet

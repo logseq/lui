@@ -140,6 +140,10 @@ private struct LUINodeView: View {
             LUITimelineView(model: model, backend: backend)
         case .timelineItem:
             LUITimelineItemView(model: model, backend: backend)
+        case .inputGroup:
+            LUIInputGroupView(model: model, backend: backend)
+        case .inputGroupActions:
+            LUIInputGroupActionsView(model: model, backend: backend)
         case .checkbox:
             LUICheckboxView(model: model, backend: backend)
         case .switchControl:
@@ -1088,6 +1092,89 @@ private struct LUITimelineItemView: View {
     }
 }
 
+private struct LUIInputGroupView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    @FocusState private var focusedChild: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let entryID = model.children.first,
+               let entry = backend.model(id: entryID) {
+                LUITextControlView(model: entry, backend: backend, grouped: true)
+                    .focused($focusedChild, equals: entryID)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 8)
+            }
+            if model.children.count == 2,
+               let actions = backend.model(id: model.children[1]) {
+                LUIInputGroupActionsView(
+                    model: actions,
+                    backend: backend,
+                    focusedChild: $focusedChild
+                )
+            }
+        }
+        .background(systemBackground, in: shape)
+        .overlay {
+            shape.stroke(
+                focusedChild == nil ? Color.secondary.opacity(0.35) : Color.accentColor,
+                lineWidth: focusedChild == nil ? 1 : 2
+            )
+        }
+        .clipShape(shape)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 8)
+    }
+
+    private var systemBackground: Color {
+        #if os(macOS)
+        Color(nsColor: .textBackgroundColor)
+        #else
+        Color(uiColor: .secondarySystemBackground)
+        #endif
+    }
+}
+
+private struct LUIInputGroupActionsView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    var focusedChild: FocusState<Int?>.Binding?
+
+    init(
+        model: LUINodeModel,
+        backend: LUIAppleBackend,
+        focusedChild: FocusState<Int?>.Binding? = nil
+    ) {
+        self.model = model
+        self.backend = backend
+        self.focusedChild = focusedChild
+    }
+
+    var body: some View {
+        let _ = model.revision
+        HStack(spacing: CGFloat(model.property(.gap)?.intValue ?? 6)) {
+            ForEach(model.children, id: \.self) { childID in
+                if let child = backend.model(id: childID) {
+                    if let focusedChild {
+                        LUINodeView(model: child, backend: backend)
+                            .focused(focusedChild, equals: childID)
+                    } else {
+                        LUINodeView(model: child, backend: backend)
+                    }
+                }
+            }
+        }
+        .padding(.top, 4)
+        .padding(.horizontal, 8)
+        .padding(.bottom, 8)
+    }
+}
+
 private struct LUISelectView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
@@ -1851,17 +1938,25 @@ private struct LUISeparatorView: View {
 private struct LUITextControlView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    let grouped: Bool
     @State private var draft: String
     @FocusState private var focused: Bool
 
-    init(model: LUINodeModel, backend: LUIAppleBackend) {
+    init(model: LUINodeModel, backend: LUIAppleBackend, grouped: Bool = false) {
         self.model = model
         self.backend = backend
+        self.grouped = grouped
         _draft = State(initialValue: model.text)
     }
 
     var body: some View {
-        field
+        Group {
+            if grouped {
+                field.textFieldStyle(.plain)
+            } else {
+                field
+            }
+        }
             .disabled(!model.isEnabled)
             .focused($focused)
             .onSubmit { try? backend.performSubmit(node: model.id) }

@@ -49,6 +49,8 @@
   (AppleStep)
   (AppleTimeline)
   (AppleTimelineItem)
+  (AppleInputGroup)
+  (AppleInputGroupActions)
   (AppleDialog)
   (AppleDrawer)
   (AppleSheet)

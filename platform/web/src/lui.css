@@ -592,6 +592,28 @@
     field-sizing: content;
   }
 
+  .lui-input-group {
+    @apply flex flex-col overflow-hidden rounded-md border border-input bg-background ring-offset-background;
+  }
+
+  .lui-input-group:focus-within {
+    @apply outline-none ring-2 ring-ring ring-offset-2;
+  }
+
+  .lui-input-group > .lui-textarea {
+    @apply min-h-0 grow resize-none rounded-none bg-transparent;
+    border-color: transparent;
+  }
+
+  .lui-input-group > .lui-textarea:focus-visible {
+    @apply outline-none ring-0 ring-offset-0;
+  }
+
+  .lui-input-group-actions {
+    @apply flex items-center px-2 pb-2 pt-1;
+    gap: 6px;
+  }
+
   .lui-select {
     @apply inline-flex h-10 min-w-40 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background;
   }

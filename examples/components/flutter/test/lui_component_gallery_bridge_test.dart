@@ -67,11 +67,13 @@ void main() {
 
     expect(find.text('ToggleButton'), findsOneWidget);
     expect(find.text('Progress fraction: 0.3'), findsOneWidget);
-    expect(find.byType(TextField), findsNWidgets(5));
+    expect(find.byType(TextField), findsNWidgets(6));
     expect(find.text('TextField'), findsOneWidget);
     expect(find.text('Input'), findsOneWidget);
     expect(find.text('SearchField'), findsOneWidget);
     expect(find.text('Textarea'), findsOneWidget);
+    expect(find.text('InputGroup'), findsOneWidget);
+    expect(find.text('Message the team'), findsOneWidget);
     expect(find.text('Controls are disabled.'), findsNothing);
     expect(find.text('ListItem'), findsOneWidget);
     expect(find.text('Tree'), findsOneWidget);

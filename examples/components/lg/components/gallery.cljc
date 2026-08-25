@@ -424,6 +424,29 @@
    [:paragraph
     "All four controls share one Signal and patch their retained native nodes in place."]])
 
+(defui input-group-gallery [value-source disabled-source update-value]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "InputGroup"]
+   [:input-group
+    {:label "Message composer" :height 120 :min-width 240}
+    [:textarea
+     {:text value-source
+      :placeholder "Message the team"
+      :disabled disabled-source
+      :on-input update-value}]
+    [:input-group-actions {:gap 8}
+     [:button
+      {:variant "ghost" :icon "plus" :disabled disabled-source
+       :on-press (fn [_event] true)}
+      "Attach"]
+     [:spacer {:grow 1.0}]
+     [:button
+      {:variant "primary" :icon "send" :disabled disabled-source
+       :on-press (fn [_event] true)}
+      "Send"]]]
+   [:paragraph
+    "The textarea and actions share one native focus surface while retaining their own nodes."]])
+
 (defui tooltip-gallery []
   [:column {:gap 16 :padding 32}
    [:heading {:level 2} "Tooltip"]
@@ -767,6 +790,7 @@
    [avatar-gallery avatar-image-source toggle-avatar-image]
    [media-gallery media-surface-source]
    [text-entry-gallery value-source disabled-source update-value]
+   [input-group-gallery value-source disabled-source update-value]
    [tooltip-gallery]
    [accordion-gallery accordion-open-source set-accordion-open]
    [picker-gallery

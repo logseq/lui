@@ -59,6 +59,8 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.ok(summary.supported.includes('step'));
   assert.ok(summary.supported.includes('timeline'));
   assert.ok(summary.supported.includes('timeline-item'));
+  assert.ok(summary.supported.includes('input-group'));
+  assert.ok(summary.supported.includes('input-group-actions'));
   assert.ok(summary.supported.includes('tabs'));
   assert.ok(summary.supported.includes('button-group'));
   assert.ok(summary.supported.includes('toggle-group'));
@@ -103,6 +105,8 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.ok(!summary.pending.includes('step'));
   assert.ok(!summary.pending.includes('timeline'));
   assert.ok(!summary.pending.includes('timeline-item'));
+  assert.ok(!summary.pending.includes('input-group'));
+  assert.ok(!summary.pending.includes('input-group-actions'));
 });
 
 test('schema validation rejects duplicate wire names before generation', () => {
