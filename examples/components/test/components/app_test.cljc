@@ -72,7 +72,7 @@
    "Badge" "Separator" "Skeleton" "Spinner" "Icon" "Progress"
    "Stepper" "Step" "Timeline" "TimelineItem"
    "Stack" "Panel" "Card" "Alert" "Bubble" "Reactions" "StatusBar"
-   "Resizable" "Split" "Dialog" "Drawer" "Sheet" "List" "Scroll"
+   "Resizable" "Split" "Dialog" "Sheet" "List" "Scroll"
    "ListItem" "ContextMenu" "MenuItem" "Table" "TableRow" "TableCell"
    "Tree" "Avatar" "Image" "MediaSurface"
    "TextField" "Input" "SearchField" "Textarea"
@@ -102,7 +102,6 @@
                  (gallery-media-surface 1)
                  (gallery-tab "overview")
                  (gallery-dialog-open false)
-                 (gallery-drawer-open false)
                  (gallery-sheet-open false)
                  (gallery-accordion-open false)
                  (gallery-split-fraction 0.35))
@@ -127,8 +126,6 @@
                   "Tabs starts with one model-owned selection")
     (assert-equal false (:gallery-dialog-open initial)
                   "Dialog starts closed without a retained placeholder")
-    (assert-equal false (:gallery-drawer-open initial)
-                  "Drawer starts closed without a retained placeholder")
     (assert-equal false (:gallery-sheet-open initial)
                   "Sheet starts closed without a retained placeholder")
     (assert-equal false (:gallery-accordion-open initial)
@@ -154,16 +151,6 @@
                     (model/update initial model/OpenDialog)
                     model/CloseDialog))
                   "native dismissal closes Dialog through the reducer")
-    (assert-equal true
-                  (:gallery-drawer-open
-                   (model/update initial model/OpenDrawer))
-                  "the shared reducer owns Drawer presentation")
-    (assert-equal false
-                  (:gallery-drawer-open
-                   (model/update
-                    (model/update initial model/OpenDrawer)
-                    model/CloseDrawer))
-                  "native dismissal closes Drawer through the reducer")
     (assert-equal true
                   (:gallery-sheet-open
                    (model/update initial model/OpenSheet))
@@ -333,17 +320,6 @@
       (driver/flush! application)
       (assert-equal mounted-count (flutter/node-count renderer)
                     "closing removes the Dialog subtree without placeholders"))
-    (let [mounted-count (flutter/node-count renderer)]
-      (driver/send! application model/OpenDrawer)
-      (driver/flush! application)
-      (is (creates-kind? (flutter/batches renderer) proto/Drawer)
-          "the shared Gallery mounts the semantic Drawer node")
-      (is (> (flutter/node-count renderer) mounted-count)
-          "opening mounts only the Drawer retained subtree")
-      (driver/send! application model/CloseDrawer)
-      (driver/flush! application)
-      (assert-equal mounted-count (flutter/node-count renderer)
-                    "closing removes the Drawer subtree without placeholders"))
     (let [mounted-count (flutter/node-count renderer)]
       (driver/send! application model/OpenSheet)
       (driver/flush! application)

@@ -626,13 +626,13 @@ struct LUIRetainedTree {
     private static func acceptsExtensionChildren(_ kind: LUINodeKind) -> Bool {
         kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
-            kind == .list || kind == .listItem || kind == .dialog || kind == .drawer ||
+            kind == .list || kind == .listItem || kind == .dialog ||
             kind == .sheet || kind == .accordion || kind == .resizable || kind == .split ||
             kind == .alert || kind == .bubble
     }
 
     private static func isModalSurface(_ kind: LUINodeKind) -> Bool {
-        kind == .dialog || kind == .drawer || kind == .sheet
+        kind == .dialog || kind == .sheet
     }
 
     private static func isHorizontalGroup(_ kind: LUINodeKind) -> Bool {

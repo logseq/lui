@@ -2464,7 +2464,7 @@ void main() {
     },
   );
 
-  testWidgets('maps Drawer to a retained Material modal bottom sheet', (
+  testWidgets('maps Sheet to a retained native Material bottom sheet', (
     tester,
   ) async {
     final events = <LUIEvent>[];
@@ -2472,10 +2472,10 @@ void main() {
       ..applyJson('''
       {"generation":1,"ops":[
         {"op":"create-node","id":1,"kind":"column"},
-        {"op":"create-node","id":2,"kind":"drawer"},
+        {"op":"create-node","id":2,"kind":"sheet"},
         {"op":"create-node","id":3,"kind":"input"},
-        {"op":"set-prop","id":2,"property":"text","value":"Filters"},
-        {"op":"set-prop","id":2,"property":"height","value":260},
+        {"op":"set-prop","id":2,"property":"text","value":"Share"},
+        {"op":"set-prop","id":2,"property":"height","value":320},
         {"op":"set-prop","id":2,"property":"padding","value":24},
         {"op":"insert-child","parent":1,"child":2,"index":0},
         {"op":"insert-child","parent":2,"child":3,"index":0}
@@ -2488,76 +2488,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(BottomSheet), findsOneWidget);
-    expect(find.text('Filters'), findsOneWidget);
-    expect(
-      tester.getSize(find.byKey(const ValueKey('lui-drawer-surface-2'))).height,
-      260,
-    );
-    final inputRenderObject = tester.renderObject(
-      find.byKey(LUIFlutterBackend.nodeKey(3)),
-    );
-
-    backend.applyJson('''
-      {"generation":2,"ops":[
-        {"op":"set-prop","id":2,"property":"text","value":"More filters"},
-        {"op":"set-prop","id":2,"property":"height","value":300}
-      ]}
-      ''');
-    await tester.pump();
-    expect(find.text('More filters'), findsOneWidget);
-    expect(
-      tester.getSize(find.byKey(const ValueKey('lui-drawer-surface-2'))).height,
-      300,
-    );
-    expect(
-      tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(3))),
-      same(inputRenderObject),
-    );
-
-    backend.applyJson('''
-      {"generation":3,"ops":[
-        {"op":"remove-child","parent":1,"child":2},
-        {"op":"remove-child","parent":2,"child":3},
-        {"op":"drop-node","id":3},
-        {"op":"drop-node","id":2}
-      ]}
-      ''');
-    await tester.pumpAndSettle();
-    expect(find.byType(BottomSheet), findsNothing);
-    expect(events, isEmpty);
-  });
-
-  testWidgets('maps Sheet to a retained trailing Material Drawer route', (
-    tester,
-  ) async {
-    final events = <LUIEvent>[];
-    final backend = LUIFlutterBackend(onEvent: events.add)
-      ..applyJson('''
-      {"generation":1,"ops":[
-        {"op":"create-node","id":1,"kind":"column"},
-        {"op":"create-node","id":2,"kind":"sheet"},
-        {"op":"create-node","id":3,"kind":"input"},
-        {"op":"set-prop","id":2,"property":"text","value":"Share"},
-        {"op":"set-prop","id":2,"property":"width","value":320},
-        {"op":"set-prop","id":2,"property":"padding","value":24},
-        {"op":"insert-child","parent":1,"child":2,"index":0},
-        {"op":"insert-child","parent":2,"child":3,"index":0}
-      ]}
-      ''');
-
-    await tester.pumpWidget(
-      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.byType(Drawer), findsOneWidget);
     expect(find.text('Share'), findsOneWidget);
     final surface = find.byKey(const ValueKey('lui-sheet-surface-2'));
-    expect(tester.getSize(surface).width, 320);
-    expect(
-      tester.getTopRight(surface).dx,
-      tester.getSize(find.byType(Scaffold)).width,
-    );
+    expect(tester.getSize(surface).height, 320);
     final inputRenderObject = tester.renderObject(
       find.byKey(LUIFlutterBackend.nodeKey(3)),
     );
@@ -2565,12 +2498,12 @@ void main() {
     backend.applyJson('''
       {"generation":2,"ops":[
         {"op":"set-prop","id":2,"property":"text","value":"Share link"},
-        {"op":"set-prop","id":2,"property":"width","value":360}
+        {"op":"set-prop","id":2,"property":"height","value":360}
       ]}
       ''');
     await tester.pump();
     expect(find.text('Share link'), findsOneWidget);
-    expect(tester.getSize(surface).width, 360);
+    expect(tester.getSize(surface).height, 360);
     expect(
       tester.renderObject(find.byKey(LUIFlutterBackend.nodeKey(3))),
       same(inputRenderObject),
@@ -2579,7 +2512,7 @@ void main() {
     await tester.tapAt(const Offset(4, 4));
     await tester.pumpAndSettle();
     expect(events, const [LUIEvent.dismiss(node: 2)]);
-    expect(find.byType(Drawer), findsNothing);
+    expect(find.byType(BottomSheet), findsNothing);
   });
 
   testWidgets('maps List flow and multi-child Scroll to Flutter widgets', (

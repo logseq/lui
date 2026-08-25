@@ -18,7 +18,6 @@
     (gallery-media-surface 1)
     (gallery-tab "overview")
     (gallery-dialog-open false)
-    (gallery-drawer-open false)
     (gallery-sheet-open false)
     (gallery-accordion-open false)
     (gallery-split-fraction 0.35)))
@@ -86,12 +85,6 @@
 
     CloseDialog
     (assoc model :gallery-dialog-open false)
-
-    OpenDrawer
-    (assoc model :gallery-drawer-open true)
-
-    CloseDrawer
-    (assoc model :gallery-drawer-open false)
 
     OpenSheet
     (assoc model :gallery-sheet-open true)

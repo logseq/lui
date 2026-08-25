@@ -204,33 +204,15 @@
        [:button {:variant "ghost" :on-press close-dialog} "Cancel"]
        [:button {:variant "primary" :on-press close-dialog} "Save"]]]]]])
 
-(defui drawer-gallery [drawer-open-source open-drawer close-drawer]
-  [:column {:gap 16 :padding 32}
-   [:heading {:level 2} "Drawer"]
-   [:button {:variant "outline" :on-press open-drawer} "Open drawer"]
-   [:paragraph
-    "Drawer is the bottom-edge surface for compact tasks."]
-   [:if {:test drawer-open-source}
-    [:drawer
-     {:text "Filters"
-      :height 260
-      :padding 24
-      :on-dismiss close-drawer}
-     [:column {:gap 12}
-      [:box {:height 24}]
-      [:checkbox "Only unread"]
-      [:switch "Compact rows"]
-      [:button {:variant "primary" :on-press close-drawer} "Apply filters"]]]]])
-
 (defui sheet-gallery [sheet-open-source open-sheet close-sheet]
   [:column {:gap 16 :padding 32}
    [:heading {:level 2} "Sheet"]
    [:button {:variant "outline" :on-press open-sheet} "Open sheet"]
-   [:paragraph "Sheet is the adaptive trailing-edge surface."]
+   [:paragraph "Sheet uses the host platform's native modal presentation."]
    [:if {:test sheet-open-source}
     [:sheet
      {:text "Share"
-      :width 320
+      :height 320
       :padding 24
       :on-dismiss close-sheet}
      [:column {:gap 12}
@@ -947,7 +929,6 @@
    overview-tab-selected-source activity-tab-selected-source
    tab-content-source select-overview-tab select-activity-tab
    dialog-open-source open-dialog close-dialog
-   drawer-open-source open-drawer close-drawer
    sheet-open-source open-sheet close-sheet
    accordion-open-source set-accordion-open
   split-fraction-source set-split-fraction extension-enabled-source]
@@ -992,7 +973,6 @@
    [resizable-gallery]
    [split-gallery split-fraction-source set-split-fraction]
    [dialog-gallery dialog-open-source open-dialog close-dialog]
-   [drawer-gallery drawer-open-source open-drawer close-drawer]
    [sheet-gallery sheet-open-source open-sheet close-sheet]
    [list-gallery]
    [scroll-gallery]

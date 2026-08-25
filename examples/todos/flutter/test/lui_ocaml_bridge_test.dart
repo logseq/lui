@@ -33,6 +33,8 @@ void main() {
           node,
           value,
         ),
+        LUIExtensionComponentEvent() =>
+          throw StateError('Todos does not register extension events'),
       },
     );
     bridge = LUIOcamlBridge.open(_libraryPath, onPatch: backend.applyJson);

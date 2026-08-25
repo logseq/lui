@@ -26,7 +26,7 @@
     (Some value) value
     None (raise (Invalid_argument "Flutter Todos bridge is not started"))))
 
-(defn initialize [platform-code]
+(defn initialize [platform-code _host-code]
   (reset! latest-patch "")
   (let [renderer (flutter/create-wire send-patch!)
         value

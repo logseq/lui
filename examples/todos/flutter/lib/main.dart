@@ -54,6 +54,8 @@ class _TodosHostState extends State<TodosHost> {
         _bridge.radioChanged(node);
       case LUIValueChangedEvent(:final node, :final value):
         _bridge.sliderChanged(node, value);
+      case LUIExtensionComponentEvent():
+        throw StateError('Todos does not register extension events');
     }
   }
 

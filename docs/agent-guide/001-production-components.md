@@ -787,7 +787,7 @@ Each large completed wave is committed and pushed independently.
 ### 6. Overlays and advanced interactions
 
 - dropdown and context menus, accordion and tooltip;
-- dialog, drawer, sheet, resizable and split;
+- dialog, sheet, resizable and split;
 - native platform presentation, dismissal, focus restoration and drag behavior.
 
 #### Resizable contract
@@ -982,29 +982,27 @@ moves focus into the dialog, traps traversal while it is modal, and restores
 the previously focused control after removal. Nested declaration must not make
 ordinary parent layout or unrelated retained nodes rebuild.
 
-#### Drawer and Sheet contract
+#### Sheet contract
 
-`drawer` and `sheet` extend the same model-owned modal contract as `dialog`.
-Their public attributes are exactly `text`, `width`, `height`, `padding`, and
-`on-dismiss`; neither surface accepts `gap` or backend-specific presentation
-options. A `drawer` is the bottom-edge variant and a `sheet` is the right-edge
-variant in the pinned Vercel Native vocabulary. Both are root-relative even
-when authored under a nested layout container, and their children stack in one
-retained content box beneath platform title chrome. Application state controls
-existence through `:if`; native dismissal emits `Dismiss` once and never mutates
-the model directly.
+`sheet` extends the same model-owned modal contract as `dialog`. Its public
+attributes are exactly `text`, `width`, `height`, `padding`, and `on-dismiss`;
+it accepts neither `gap` nor backend-specific presentation options. It is
+root-relative even when authored under a nested layout container, and its
+children stack in one retained content box beneath platform title chrome.
+Application state controls existence through `:if`; native dismissal emits
+`Dismiss` once and never mutates the model directly. LUI intentionally has no
+`drawer` component because that name maps to incompatible navigation and modal
+patterns across Web, Apple, and Material platforms.
 
-Backends preserve those semantic edges while using the closest native
-presentation available. Web reuses the native `dialog` top layer, focus trap,
-backdrop and focus restoration, with Tailwind styles docking the surface to the
-bottom or right. SwiftUI uses the system sheet presentation for Drawer and the
-adaptive system inspector presentation for Sheet; compact Apple environments
-may adapt the inspector to a sheet while keeping the same public API and event
-contract. Flutter uses the Material modal bottom-sheet route for Drawer and a
-modal route containing the native Material Drawer widget for Sheet. Platform
-adaptation must not leak additional public attributes.
+Each backend uses its native sheet interaction. SwiftUI uses the system
+`.sheet` presentation, including platform swipe, keyboard, accessibility, and
+adaptive iPhone/iPad/macOS behavior. Flutter uses the Material modal bottom
+sheet route with its native drag, system-back, barrier, safe-area, and focus
+behavior. Web follows Base UI's sheet/drawer popup behavior while exposing only
+the portable `sheet` name. Platform adaptation must not leak additional public
+attributes.
 
-While a surface is open, changing its title, dimensions, padding, or retained
+While the sheet is open, changing its title, dimensions, padding, or retained
 descendants updates only that presented subtree. It must not replace stable
 child controls or re-present the route. Removing the source node closes the
 native presentation without emitting a second dismissal. Escape, platform

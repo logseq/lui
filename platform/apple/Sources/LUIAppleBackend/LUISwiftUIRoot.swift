@@ -130,7 +130,7 @@ private struct LUINodeView: View {
             LUITooltipLabel(model: model)
         case .accordion:
             LUIAccordionView(model: model, backend: backend)
-        case .dialog, .drawer, .sheet:
+        case .dialog, .sheet:
             LUIModalPresenter(model: model, backend: backend)
         case .menuItem:
             LUIMenuItemView(model: model, backend: backend)
@@ -813,18 +813,16 @@ private struct LUIModalPresenter: View {
     var body: some View {
         Group {
             switch model.kind {
-            case .dialog, .drawer:
+            case .dialog:
                 presentationAnchor
                     .sheet(isPresented: $isPresented) {
                         LUIModalSurfaceContent(model: model, backend: backend)
                     }
             case .sheet:
                 presentationAnchor
-                    .inspector(isPresented: $isPresented) {
+                    .sheet(isPresented: $isPresented) {
                         LUIModalSurfaceContent(model: model, backend: backend)
-                            .inspectorColumnWidth(
-                                CGFloat(model.property(.width)?.intValue ?? 320)
-                            )
+                            .presentationDragIndicator(.visible)
                     }
             default:
                 EmptyView()
@@ -869,8 +867,6 @@ private struct LUIModalSurfaceContent: View {
         case .dialog:
             CGFloat(model.property(.width)?.intValue ?? 420)
         case .sheet:
-            CGFloat(model.property(.width)?.intValue ?? 320)
-        case .drawer:
             model.property(.width).map { CGFloat($0.intValue ?? 0) }
         default:
             nil
@@ -881,8 +877,6 @@ private struct LUIModalSurfaceContent: View {
         switch model.kind {
         case .dialog:
             CGFloat(model.property(.height)?.intValue ?? 220)
-        case .drawer:
-            CGFloat(model.property(.height)?.intValue ?? 260)
         case .sheet:
             model.property(.height).map { CGFloat($0.intValue ?? 0) }
         default:
@@ -893,7 +887,7 @@ private struct LUIModalSurfaceContent: View {
 
 private extension LUINodeKind {
     var isModalSurface: Bool {
-        self == .dialog || self == .drawer || self == .sheet
+        self == .dialog || self == .sheet
     }
 }
 

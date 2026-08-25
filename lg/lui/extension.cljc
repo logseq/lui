@@ -255,7 +255,7 @@
    (= kind proto/Row) (= kind proto/Column) (= kind proto/Grid)
    (= kind proto/Stack) (= kind proto/Panel) (= kind proto/Card)
    (= kind proto/Box) (= kind proto/Scroll) (= kind proto/ListContainer)
-   (= kind proto/ListItem) (= kind proto/Dialog) (= kind proto/Drawer)
+   (= kind proto/ListItem) (= kind proto/Dialog)
    (= kind proto/Sheet) (= kind proto/Accordion) (= kind proto/Resizable)
    (= kind proto/Split) (= kind proto/Alert) (= kind proto/Bubble)))
 

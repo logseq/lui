@@ -16,7 +16,7 @@
                      AppleList ApplePanel AppleScrollView AppleStack AppleTextInput AppleTextArea
                      AppleSelect AppleCombobox AppleDropdownMenu AppleContextMenu AppleMenuItem AppleListItem
                      AppleTable AppleTableRow AppleTableCell AppleTree AppleResizable AppleSplit
-                     AppleAvatar AppleDialog AppleDrawer AppleSheet AppleTooltip
+                     AppleAvatar AppleDialog AppleSheet AppleTooltip
                      AppleImage AppleMediaSurface
                      AppleStepper AppleStep AppleTimeline AppleTimelineItem
                      AppleInputGroup AppleInputGroupActions
@@ -86,16 +86,12 @@
       [:input {:placeholder "Name"}]
       [:button "Save"]]]]])
 
-(defui controlled-edge-surfaces [drawer-open sheet-open on-dismiss]
+(defui controlled-sheet [sheet-open on-dismiss]
   [:column
    [:text "Outside"]
-   [:if {:test drawer-open}
-    [:drawer
-     {:text "Filters" :height 260 :padding 24 :on-dismiss on-dismiss}
-     [:column [:checkbox "Only unread"]]]]
    [:if {:test sheet-open}
     [:sheet
-     {:text "Share" :width 320 :padding 24 :on-dismiss on-dismiss}
+     {:text "Share" :height 320 :padding 24 :on-dismiss on-dismiss}
      [:column [:input {:placeholder "Share link"}]]]]])
 
 (defui retained-tooltips [text-source delay-source]
@@ -744,57 +740,39 @@
       (assert-equal 1 (count (apple/children renderer root))
                     "model state removes the dialog subtree"))))
 
-(deftest edge-surfaces-are-model-owned-root-modals-with-retained-content
+(deftest sheet-is-a-model-owned-native-modal-with-retained-content
   (let [scheduler (sig/scheduler)
         renderer (apple/create)
         application (runtime/create scheduler (apple/backend renderer))
-        scope (sig/scope "controlled-edge-surfaces")
+        scope (sig/scope "controlled-sheet")
         context (ui/context application scope)
-        drawer-open (sig/state scheduler false)
         sheet-open (sig/state scheduler false)
         received (atom [])
         on-dismiss (fn [event] (swap! received conj event) true)
         root
-        (controlled-edge-surfaces
-         context (sig/value drawer-open) (sig/value sheet-open) on-dismiss)]
+        (controlled-sheet context (sig/value sheet-open) on-dismiss)]
     (sig/mount! scope)
     (runtime/flush! application)
     (assert-equal 1 (count (apple/children renderer root))
-                  "closed edge surfaces leave no retained placeholders")
-    (sig/set! drawer-open true)
-    (runtime/flush! application)
-    (let [drawer (nth (apple/children renderer root) 1)]
-      (match (apple/node renderer drawer)
-        (Some AppleDrawer) (is true "drawer is one semantic retained node")
-        _ (is false "drawer maps to the native bottom surface"))
-      (assert-equal (Some (StringValue "Filters"))
-                    (apple/property renderer drawer proto/TextValue)
-                    "drawer title is retained")
-      (assert-equal (Some (proto/IntValue 260))
-                    (apple/property renderer drawer proto/HeightValue)
-                    "drawer height is retained")
-      (runtime/dispatch! application (proto/Dismiss drawer))
-      (runtime/flush! application))
+                  "a closed sheet leaves no retained placeholder")
     (sig/set! sheet-open true)
     (runtime/flush! application)
-    (let [sheet (nth (apple/children renderer root) 2)]
+    (let [sheet (nth (apple/children renderer root) 1)]
       (match (apple/node renderer sheet)
         (Some AppleSheet) (is true "sheet is one semantic retained node")
-        _ (is false "sheet maps to the native trailing surface"))
+        _ (is false "sheet maps to the platform-native modal surface"))
       (assert-equal (Some (proto/IntValue 320))
-                    (apple/property renderer sheet proto/WidthValue)
-                    "sheet width is retained")
+                    (apple/property renderer sheet proto/HeightValue)
+                    "sheet height is retained")
       (runtime/dispatch! application (proto/Dismiss sheet))
       (runtime/flush! application)
-      (assert-equal [(proto/Dismiss (nth (apple/children renderer root) 1))
-                     (proto/Dismiss sheet)]
+      (assert-equal [(proto/Dismiss sheet)]
                     @received
-                    "both native dismissals reach the authored handler once"))
-    (sig/set! drawer-open false)
+                    "native dismissal reaches the authored handler once"))
     (sig/set! sheet-open false)
     (runtime/flush! application)
     (assert-equal 1 (count (apple/children renderer root))
-                  "model state removes both edge-surface subtrees")))
+                  "model state removes the sheet subtree")))
 
 (deftest tooltip-properties-patch-one-retained-leaf
   (let [scheduler (sig/scheduler)

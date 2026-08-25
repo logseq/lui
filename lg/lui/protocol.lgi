@@ -62,7 +62,6 @@
   (Resizable)
   (Split)
   (Dialog)
-  (Drawer)
   (Sheet)
   (Tooltip)
   (StatusBar))

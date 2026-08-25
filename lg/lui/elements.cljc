@@ -139,7 +139,6 @@
                          (= tag :dropdown-menu)
                          (= tag :context-menu)
                          (= tag :dialog)
-                         (= tag :drawer)
                          (= tag :sheet)
                          (= tag :tooltip)
                          (= tag :accordion)
@@ -1496,10 +1495,6 @@
 (defelement dialog [context parent attrs & children]
   (modal-surface-expansion
    'lui.ui/dialog! context parent attrs children))
-
-(defelement drawer [context parent attrs & children]
-  (modal-surface-expansion
-   'lui.ui/drawer! context parent attrs children))
 
 (defelement sheet [context parent attrs & children]
   (modal-surface-expansion

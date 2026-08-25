@@ -33,6 +33,7 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.deepEqual(summary.excluded, [
     'chart',
     'code',
+    'drawer',
     'markdown',
     'series',
     'span',
@@ -67,7 +68,7 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.ok(summary.supported.includes('breadcrumb'));
   assert.ok(summary.supported.includes('pagination'));
   assert.ok(summary.supported.includes('dialog'));
-  assert.ok(summary.supported.includes('drawer'));
+  assert.ok(!summary.supported.includes('drawer'));
   assert.ok(summary.supported.includes('sheet'));
   assert.ok(summary.supported.includes('tooltip'));
   assert.ok(summary.supported.includes('accordion'));

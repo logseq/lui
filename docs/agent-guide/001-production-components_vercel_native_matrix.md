@@ -103,7 +103,7 @@ not substitutes for these elements.
 
 ### Surfaces and overlays
 
-`alert`, `bubble`, `reactions`, `dialog`, `drawer`, `sheet`, `tooltip`, and
+`alert`, `bubble`, `reactions`, `dialog`, `sheet`, `tooltip`, and
 `context-menu`.
 
 ### Text and media

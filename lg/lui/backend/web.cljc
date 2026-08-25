@@ -7,7 +7,7 @@
              :refer [Row Column Grid Stack Panel Card Alert Bubble Box
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
-                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Drawer Sheet Tooltip Accordion
+                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Sheet Tooltip Accordion
                      Table TableRow TableCell Tree Resizable Split StatusBar
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
@@ -111,7 +111,7 @@
     (Stdlib.ignore true)))
 
 (defn- modal-surface? [kind]
-  (or (= kind Dialog) (= kind Drawer) (= kind Sheet)))
+  (or (= kind Dialog) (= kind Sheet)))
 
 (defn set-event-handler! [renderer handler]
   (reset! (:web-event-handler renderer) handler)
@@ -172,7 +172,6 @@
     InputGroup "lui-input-group"
     InputGroupActions "lui-input-group-actions"
     Dialog "lui-dialog"
-    Drawer "lui-drawer"
     Sheet "lui-sheet"
     Tooltip "lui-tooltip"
     Accordion "lui-accordion"
@@ -469,7 +468,6 @@
     Alert (create-alert-node renderer)
     Bubble (create-bubble-node renderer)
     Dialog (create-modal-node renderer kind)
-    Drawer (create-modal-node renderer kind)
     Sheet (create-modal-node renderer kind)
     Split (create-split-node renderer)
     _ (create-simple-node renderer kind)))
@@ -1497,7 +1495,6 @@
     DropdownMenu (attach-dropdown-events! renderer node dom-node)
     ContextMenu (attach-context-menu-events! renderer node dom-node)
     Dialog (attach-modal-events! renderer node dom-node)
-    Drawer (attach-modal-events! renderer node dom-node)
     Sheet (attach-modal-events! renderer node dom-node)
     MenuItem (attach-picker-press-event! renderer node dom-node)
     ListItem (attach-list-item-events! renderer node dom-node)
@@ -2251,8 +2248,6 @@
       (update-stepper-parent! renderer node))
     Dialog
     (Webapi.Dom.Element.setTextContent (child-element dom-node 0) text)
-    Drawer
-    (Webapi.Dom.Element.setTextContent (child-element dom-node 0) text)
     Sheet
     (Webapi.Dom.Element.setTextContent (child-element dom-node 0) text)
     Avatar
@@ -2873,8 +2868,6 @@
             (Some DropdownMenu)
             (update-picker-expanded! renderer parent true)
             (Some Dialog)
-            (open-modal! renderer child (:platform-node current))
-            (Some Drawer)
             (open-modal! renderer child (:platform-node current))
             (Some Sheet)
             (open-modal! renderer child (:platform-node current))

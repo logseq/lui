@@ -22,7 +22,7 @@
     (ExtensionEvent node _identifier _name _values) node))
 
 (defn- modal-surface? [kind]
-  (or (= kind Dialog) (= kind Drawer) (= kind Sheet)))
+  (or (= kind Dialog) (= kind Sheet)))
 
 (defn tree-row-kind? [kind]
   (or (= kind Row) (= kind Column) (= kind Panel) (= kind Card)
@@ -315,7 +315,6 @@
       ListItem true
       Avatar true
       Dialog true
-      Drawer true
       Sheet true
       Tooltip true
       TableCell true
@@ -674,7 +673,6 @@
       ContextMenu true
       ListItem true
       Dialog true
-      Drawer true
       Sheet true
       Accordion true
       Table true

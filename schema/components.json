@@ -4,7 +4,7 @@
     "repository": "vercel-labs/native",
     "revision": "4e015e925fc9974e2ab92840d6f8bb5a8f201c2d",
     "source": "src/primitives/canvas/ui_schema.zig",
-    "excluded": ["chart", "code", "markdown", "series", "span"]
+    "excluded": ["chart", "code", "drawer", "markdown", "series", "span"]
   },
   "publicElements": [
     {"name": "row", "status": "supported"},
@@ -35,7 +35,6 @@
     {"name": "bubble", "status": "supported"},
     {"name": "reactions", "status": "supported"},
     {"name": "dialog", "status": "supported"},
-    {"name": "drawer", "status": "supported"},
     {"name": "sheet", "status": "supported"},
     {"name": "tooltip", "status": "supported"},
     {"name": "context-menu", "status": "supported"},
@@ -132,7 +131,6 @@
     {"lg": "Resizable", "wire": "resizable", "dart": "resizable", "swift": "resizable", "container": true},
     {"lg": "Split", "wire": "split", "dart": "split", "swift": "split", "container": true},
     {"lg": "Dialog", "wire": "dialog", "dart": "dialog", "swift": "dialog", "container": true},
-    {"lg": "Drawer", "wire": "drawer", "dart": "drawer", "swift": "drawer", "container": true},
     {"lg": "Sheet", "wire": "sheet", "dart": "sheet", "swift": "sheet", "container": true},
     {"lg": "Tooltip", "wire": "tooltip", "dart": "tooltip", "swift": "tooltip", "container": false},
     {"lg": "StatusBar", "wire": "status-bar", "dart": "statusBar", "swift": "statusBar", "container": false}

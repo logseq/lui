@@ -1942,9 +1942,8 @@ final class LUIFlutterBackend {
       _NodeKind.contextMenu => const SizedBox.shrink(),
       _NodeKind.tooltip => Text(text),
       _NodeKind.accordion => accordion(),
-      _NodeKind.dialog ||
-      _NodeKind.drawer ||
-      _NodeKind.sheet => _LUIModalPresenter(backend: this, node: id),
+      _NodeKind.dialog || _NodeKind.sheet =>
+        _LUIModalPresenter(backend: this, node: id),
       _NodeKind.menuItem => menuItem(),
       _NodeKind.listItem => listItem(),
       _NodeKind.table => table(),
@@ -3271,7 +3270,6 @@ final class LUIFlutterBackend {
       kind == _NodeKind.list ||
       kind == _NodeKind.listItem ||
       kind == _NodeKind.dialog ||
-      kind == _NodeKind.drawer ||
       kind == _NodeKind.sheet ||
       kind == _NodeKind.accordion ||
       kind == _NodeKind.resizable ||
@@ -3564,15 +3562,10 @@ final class LUIFlutterBackend {
           child: _modalSurfaceBody(context, state),
         ),
       ),
-      _NodeKind.drawer => SizedBox(
-        key: ValueKey('lui-drawer-surface-$node'),
-        width: width ?? double.infinity,
-        height: height ?? 260,
-        child: _modalSurfaceBody(context, state),
-      ),
-      _NodeKind.sheet => Drawer(
+      _NodeKind.sheet => SizedBox(
         key: ValueKey('lui-sheet-surface-$node'),
-        width: width ?? 320,
+        width: width ?? double.infinity,
+        height: height,
         child: SafeArea(child: _modalSurfaceBody(context, state)),
       ),
       _ => throw const LUIBackendException('node is not a modal surface'),
@@ -3759,7 +3752,7 @@ class _LUIModalPresenterState extends State<_LUIModalPresenter> {
           widget.backend._modalSurface(context, widget.node),
     );
     return switch (state.kind) {
-      _NodeKind.drawer => ModalBottomSheetRoute<void>(
+      _NodeKind.sheet => ModalBottomSheetRoute<void>(
         builder: surface,
         capturedThemes: InheritedTheme.capture(
           from: context,
@@ -3773,19 +3766,6 @@ class _LUIModalPresenterState extends State<_LUIModalPresenter> {
         isDismissible: true,
         enableDrag: true,
         useSafeArea: true,
-      ),
-      _NodeKind.sheet => RawDialogRoute<void>(
-        barrierDismissible: true,
-        barrierLabel: localizations.modalBarrierDismissLabel,
-        pageBuilder: (context, _, _) =>
-            Align(alignment: Alignment.centerRight, child: surface(context)),
-        transitionBuilder: (context, animation, _, child) => SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1, 0),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
-          child: child,
-        ),
       ),
       _NodeKind.dialog => DialogRoute<void>(
         context: context,
@@ -3813,9 +3793,7 @@ class _LUIModalPresenterState extends State<_LUIModalPresenter> {
 
 extension on _NodeKind {
   bool get isModalSurface =>
-      this == _NodeKind.dialog ||
-      this == _NodeKind.drawer ||
-      this == _NodeKind.sheet;
+      this == _NodeKind.dialog || this == _NodeKind.sheet;
 
   bool get isOverlaySurface =>
       this == _NodeKind.panel ||
