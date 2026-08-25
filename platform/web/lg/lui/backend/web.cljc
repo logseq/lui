@@ -4224,6 +4224,65 @@
          side alignment offset)))
     (Stdlib.ignore true)))
 
+(defn- point-in-triangle?
+  [point-x point-y ax ay bx by cx cy]
+  (let [cross-a
+        (- (* (- point-x bx) (- ay by))
+           (* (- ax bx) (- point-y by)))
+        cross-b
+        (- (* (- point-x cx) (- by cy))
+           (* (- bx cx) (- point-y cy)))
+        cross-c
+        (- (* (- point-x ax) (- cy ay))
+           (* (- cx ax) (- point-y ay)))
+        has-negative
+        (or (< cross-a 0.0) (< cross-b 0.0) (< cross-c 0.0))
+        has-positive
+        (or (> cross-a 0.0) (> cross-b 0.0) (> cross-c 0.0))]
+    (not (and has-negative has-positive))))
+
+(defn- submenu-corridor?
+  [positioner popup leave-x leave-y point-x point-y]
+  (let [bounds (Webapi.Dom.Element.getBoundingClientRect popup)
+        buffer 4.0
+        side
+        (match (Webapi.Dom.Element.getAttribute "data-side" positioner)
+          (Some value) value
+          None (dropdown-side positioner))]
+    (match side
+      "left"
+      (point-in-triangle?
+       point-x point-y
+       (+ leave-x buffer) leave-y
+       (Webapi.Dom.DomRect.right bounds)
+       (- (Webapi.Dom.DomRect.top bounds) buffer)
+       (Webapi.Dom.DomRect.right bounds)
+       (+ (Webapi.Dom.DomRect.bottom bounds) buffer))
+      "above"
+      (point-in-triangle?
+       point-x point-y
+       leave-x (+ leave-y buffer)
+       (- (Webapi.Dom.DomRect.left bounds) buffer)
+       (Webapi.Dom.DomRect.bottom bounds)
+       (+ (Webapi.Dom.DomRect.right bounds) buffer)
+       (Webapi.Dom.DomRect.bottom bounds))
+      "below"
+      (point-in-triangle?
+       point-x point-y
+       leave-x (- leave-y buffer)
+       (- (Webapi.Dom.DomRect.left bounds) buffer)
+       (Webapi.Dom.DomRect.top bounds)
+       (+ (Webapi.Dom.DomRect.right bounds) buffer)
+       (Webapi.Dom.DomRect.top bounds))
+      _
+      (point-in-triangle?
+       point-x point-y
+       (- leave-x buffer) leave-y
+       (Webapi.Dom.DomRect.left bounds)
+       (- (Webapi.Dom.DomRect.top bounds) buffer)
+       (Webapi.Dom.DomRect.left bounds)
+       (+ (Webapi.Dom.DomRect.bottom bounds) buffer)))))
+
 (defn- set-dropdown-open! [renderer node open]
   (let [positioner (dom-node renderer node)
         popup (child-element positioner 0)]
@@ -4257,8 +4316,12 @@
       (if-some [parent-node (retained/node (:web-store renderer) parent)]
         (if (standard-kind? parent-node MenuItem)
           (let [trigger (:platform-node parent-node)
+                positioner (:platform-node current)
                 popup (child-element (:platform-node current) 0)
                 close-timer (atom None)
+                grace-active (atom false)
+                grace-x (atom 0.0)
+                grace-y (atom 0.0)
                 cancel-close!
                 (fn []
                   (match (deref close-timer)
@@ -4266,14 +4329,8 @@
                     None (Stdlib.ignore true))
                   (reset! close-timer None)
                   true)
-                open!
-                (fn [_event]
-                  (cancel-close!)
-                  (Webapi.Dom.Element.setAttribute
-                   "aria-expanded" "true" trigger)
-                  (set-dropdown-open! renderer node true))
-                close!
-                (fn [_event]
+                close-later!
+                (fn []
                   (cancel-close!)
                   (reset!
                    close-timer
@@ -4283,9 +4340,53 @@
                      :f
                      (fn []
                        (reset! close-timer None)
+                       (reset! grace-active false)
                        (Webapi.Dom.Element.setAttribute
                         "aria-expanded" "false" trigger)
                        (set-dropdown-open! renderer node false)))))
+                  true)
+                open!
+                (fn [_event]
+                  (cancel-close!)
+                  (reset! grace-active false)
+                  (Webapi.Dom.Element.setAttribute
+                   "aria-expanded" "true" trigger)
+                  (set-dropdown-open! renderer node true))
+                trigger-leave!
+                (fn [event]
+                  (let [mouse-event (pointer-mouse-event event)]
+                    (reset! grace-active true)
+                    (reset!
+                     grace-x
+                     (Stdlib.float_of_int
+                      (Webapi.Dom.MouseEvent.clientX mouse-event)))
+                    (reset!
+                     grace-y
+                     (Stdlib.float_of_int
+                      (Webapi.Dom.MouseEvent.clientY mouse-event)))
+                    (close-later!))
+                  (Stdlib.ignore true))
+                popup-leave!
+                (fn [_event]
+                  (reset! grace-active false)
+                  (close-later!)
+                  (Stdlib.ignore true))
+                pointer-move!
+                (fn [event]
+                  (when (deref grace-active)
+                    (let [mouse-event (pointer-mouse-event event)
+                          point-x
+                          (Stdlib.float_of_int
+                           (Webapi.Dom.MouseEvent.clientX mouse-event))
+                          point-y
+                          (Stdlib.float_of_int
+                           (Webapi.Dom.MouseEvent.clientY mouse-event))]
+                      (when (not (submenu-corridor?
+                                  positioner popup
+                                  (deref grace-x) (deref grace-y)
+                                  point-x point-y))
+                        (reset! grace-active false))
+                      (close-later!)))
                   (Stdlib.ignore true))
                 previous-cleanup
                 (clojure.core/get (deref (:web-cleanups renderer)) node)]
@@ -4299,9 +4400,13 @@
              "role" "menu" (child-element (:platform-node current) 0))
             (Webapi.Dom.Element.addEventListener "mouseenter" open! trigger)
             (Webapi.Dom.Element.addEventListener "focusin" open! trigger)
-            (Webapi.Dom.Element.addEventListener "mouseleave" close! trigger)
+            (Webapi.Dom.Element.addEventListener
+             "mouseleave" trigger-leave! trigger)
             (Webapi.Dom.Element.addEventListener "mouseenter" open! popup)
-            (Webapi.Dom.Element.addEventListener "mouseleave" close! popup)
+            (Webapi.Dom.Element.addEventListener
+             "mouseleave" popup-leave! popup)
+            (Webapi.Dom.Document.addEventListener
+             "mousemove" pointer-move! (:web-document renderer))
             (swap!
              (:web-cleanups renderer) assoc node
              (fn []
@@ -4314,11 +4419,13 @@
                (Webapi.Dom.Element.removeEventListener
                 "focusin" open! trigger)
                (Webapi.Dom.Element.removeEventListener
-                "mouseleave" close! trigger)
+                "mouseleave" trigger-leave! trigger)
                (Webapi.Dom.Element.removeEventListener
                 "mouseenter" open! popup)
                (Webapi.Dom.Element.removeEventListener
-                "mouseleave" close! popup)
+                "mouseleave" popup-leave! popup)
+               (Webapi.Dom.Document.removeEventListener
+                "mousemove" pointer-move! (:web-document renderer))
                (Stdlib.ignore true)))
             (position-dropdown! renderer node))
           (do

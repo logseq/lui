@@ -375,6 +375,190 @@ test("DropdownMenu typeahead moves focus to the matching enabled item", async ()
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Staging")
 })
 
+test("Nested menu keeps its right-side submenu open through the pointer corridor", async () => {
+  await openGalleryPage("DropdownMenu")
+
+  assert.equal(
+    await state(`(() => {
+      const trigger = [...document.querySelectorAll('.lui-menu-item')]
+        .find((item) => item.textContent.includes('More environments')
+          && item.getBoundingClientRect().width > 0)
+      trigger?.dispatchEvent(new MouseEvent('mouseenter', {
+        clientX: trigger.getBoundingClientRect().right,
+        clientY: trigger.getBoundingClientRect().top
+          + trigger.getBoundingClientRect().height / 2,
+      }))
+      return trigger?.getAttribute('aria-expanded')
+    })()`),
+    "true",
+  )
+  await browser("wait", "30")
+
+  const side = await state(`(() => {
+    const trigger = [...document.querySelectorAll('.lui-menu-item')]
+      .find((item) => item.textContent.includes('More environments')
+        && item.getBoundingClientRect().width > 0)
+    const submenu = [...document.querySelectorAll('.lui-popup-positioner[data-submenu]')]
+      .find((node) => !node.hasAttribute('hidden')
+        && node.textContent.includes('Production region'))
+    const popup = submenu?.querySelector('.lui-dropdown-menu')
+    const triggerBounds = trigger?.getBoundingClientRect()
+    const popupBounds = popup?.getBoundingClientRect()
+    window.__submenuCorridor = {
+      startX: triggerBounds?.right,
+      startY: (triggerBounds?.top ?? 0) + (triggerBounds?.height ?? 0) / 2,
+      endX: popupBounds?.left,
+      endY: (popupBounds?.top ?? 0) + (popupBounds?.height ?? 0) / 2,
+    }
+    trigger?.dispatchEvent(new MouseEvent('mouseleave', {
+      clientX: window.__submenuCorridor.startX,
+      clientY: window.__submenuCorridor.startY,
+      relatedTarget: document.body,
+    }))
+    ;[0.35, 0.7].forEach((progress, index) => {
+      setTimeout(() => {
+        const point = window.__submenuCorridor
+        document.dispatchEvent(new MouseEvent('mousemove', {
+          bubbles: true,
+          clientX: point.startX + (point.endX - point.startX) * progress,
+          clientY: point.startY + (point.endY - point.startY) * progress,
+        }))
+      }, index * 70)
+    })
+    setTimeout(() => {
+      window.__submenuCorridorResult = {
+        expanded: trigger?.getAttribute('aria-expanded'),
+        open: popup?.hasAttribute('data-open'),
+      }
+    }, 180)
+    return submenu?.getAttribute('data-side')
+  })()`)
+  assert.equal(side, "right")
+  await browser("wait", "230")
+
+  assert.deepEqual(
+    await state(`window.__submenuCorridorResult`),
+    { expanded: "true", open: true },
+  )
+
+  await evaluate(`[...document.querySelectorAll('.lui-popup-positioner[data-submenu]')]
+    .find((node) => !node.hasAttribute('hidden')
+      && node.textContent.includes('Production region'))
+    ?.querySelector('.lui-dropdown-menu')
+    ?.dispatchEvent(new MouseEvent('mouseenter'))`)
+
+  await evaluate(`(() => {
+    const trigger = [...document.querySelectorAll('.lui-menu-item')]
+      .find((item) => item.textContent.includes('More environments')
+        && item.getBoundingClientRect().width > 0)
+    const bounds = trigger?.getBoundingClientRect()
+    trigger?.dispatchEvent(new MouseEvent('mouseenter'))
+    trigger?.dispatchEvent(new MouseEvent('mouseleave', {
+      clientX: bounds?.left,
+      clientY: (bounds?.top ?? 0) + (bounds?.height ?? 0) / 2,
+      relatedTarget: document.body,
+    }))
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true,
+      clientX: (bounds?.left ?? 0) - 40,
+      clientY: (bounds?.top ?? 0) - 40,
+    }))
+  })()`)
+  await browser("wait", "150")
+  assert.equal(
+    await state(`[...document.querySelectorAll('.lui-popup-positioner[data-submenu]')]
+      .find((node) => !node.hasAttribute('hidden')
+        && node.textContent.includes('Production region'))
+      ?.querySelector('.lui-dropdown-menu')
+      ?.hasAttribute('data-open')`),
+    false,
+  )
+})
+
+test("Nested menu corridor follows a submenu that flips to the left", async () => {
+  await openGalleryPage("Select")
+  await browser("set", "viewport", "480", "720")
+  await evaluate(`(() => {
+    const select = document.querySelector('.lui-select')
+    Object.assign(select.style, {
+      position: 'fixed',
+      right: '4px',
+      bottom: '160px',
+      width: '180px',
+      zIndex: '1',
+    })
+    select.focus()
+  })()`)
+  await browser("press", "Enter")
+  await browser("wait", "30")
+
+  assert.equal(
+    await state(`(() => {
+      const rootPopup = document.getElementById(
+        document.querySelector('.lui-select')?.getAttribute('aria-controls'),
+      )
+      const trigger = [...(rootPopup?.querySelectorAll('.lui-menu-item') ?? [])]
+        .find((item) => item.textContent.includes('More environments'))
+      trigger?.dispatchEvent(new MouseEvent('mouseenter', {
+        clientX: trigger.getBoundingClientRect().left,
+        clientY: trigger.getBoundingClientRect().top
+          + trigger.getBoundingClientRect().height / 2,
+      }))
+      return trigger?.getAttribute('aria-expanded')
+    })()`),
+    "true",
+  )
+  await browser("wait", "30")
+
+  assert.equal(
+    await state(`(() => {
+      const rootPopup = document.getElementById(
+        document.querySelector('.lui-select')?.getAttribute('aria-controls'),
+      )
+      const trigger = [...(rootPopup?.querySelectorAll('.lui-menu-item') ?? [])]
+        .find((item) => item.textContent.includes('More environments'))
+      const submenu = [...document.querySelectorAll('.lui-popup-positioner[data-submenu]')]
+        .find((node) => !node.hasAttribute('hidden')
+          && node.textContent.includes('Production region'))
+      const popup = submenu?.querySelector('.lui-dropdown-menu')
+      const triggerBounds = trigger?.getBoundingClientRect()
+      const popupBounds = popup?.getBoundingClientRect()
+      window.__flippedSubmenuCorridor = {
+        startX: triggerBounds?.left,
+        startY: (triggerBounds?.top ?? 0) + (triggerBounds?.height ?? 0) / 2,
+        endX: popupBounds?.right,
+        endY: (popupBounds?.top ?? 0) + (popupBounds?.height ?? 0) / 2,
+      }
+      trigger?.dispatchEvent(new MouseEvent('mouseleave', {
+        clientX: window.__flippedSubmenuCorridor.startX,
+        clientY: window.__flippedSubmenuCorridor.startY,
+        relatedTarget: document.body,
+      }))
+      ;[0.4, 0.8].forEach((progress, index) => {
+        setTimeout(() => {
+          const point = window.__flippedSubmenuCorridor
+          document.dispatchEvent(new MouseEvent('mousemove', {
+            bubbles: true,
+            clientX: point.startX + (point.endX - point.startX) * progress,
+            clientY: point.startY + (point.endY - point.startY) * progress,
+          }))
+        }, index * 70)
+      })
+      setTimeout(() => {
+        window.__flippedSubmenuCorridorOpen = popup?.hasAttribute('data-open')
+      }, 180)
+      return submenu?.getAttribute('data-side')
+    })()`),
+    "left",
+  )
+  await browser("wait", "230")
+
+  assert.equal(
+    await state(`window.__flippedSubmenuCorridorOpen`),
+    true,
+  )
+})
+
 test("Select keyboard navigation enters submenus and restores trigger focus", async () => {
   await openGalleryPage("Select")
   await evaluate(`(() => {

@@ -103,6 +103,12 @@ with the following click deduplicated, while MenuItem still requires a complete
 click. This keeps touch opening responsive without allowing the opening release
 to commit an option that was not present at press start.
 
+Recursive menus now add a Base UI-style pointer grace corridor without exposing
+new component properties. Each submenu derives a directional triangle from its
+actual post-collision side, the trigger leave point, and the popup edge. Pointer
+movement toward the popup refreshes close intent; movement away preserves the
+normal close delay. Browser tests cover both right-side and flipped-left paths.
+
 ## Base UI parity scope
 
 Behavioral parity applies to LUI components that overlap Base UI: Accordion,

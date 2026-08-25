@@ -92,6 +92,10 @@
   :fn<web-renderer;int;bool>)
 (signature lui.backend.web/position-dropdown!
   :fn<web-renderer;int;unit>)
+(signature lui.backend.web/point-in-triangle?
+  :fn<float;float;float;float;float;float;float;float;bool>)
+(signature lui.backend.web/submenu-corridor?
+  :fn<web-node;web-node;float;float;float;float;bool>)
 (signature lui.backend.web/set-dropdown-open!
   :fn<web-renderer;int;bool;unit>)
 (signature lui.backend.web/mount-dropdown!

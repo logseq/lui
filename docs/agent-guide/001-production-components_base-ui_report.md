@@ -66,9 +66,15 @@ deduplicated; MenuItem activation remains click-qualified, so the release of an
 opening touch cannot select an item that appeared beneath it. A touch-opened
 Combobox keeps its native input focused.
 
-The remaining work in this report is still normative: nested menus need a
-pointer grace corridor, Select needs selected-item alignment for non-touch
-input, and Combobox needs explicit empty-result semantics and live status.
+Nested menus now use the rendered submenu side and the pointer's leave point
+to form a directional grace triangle. Pointer movement through that corridor
+refreshes the close intent while movement away leaves the ordinary 120 ms close
+delay intact. The same behavior is verified for right-side submenus and for
+submenus that collision placement flips to the left.
+
+The remaining work in this report is still normative: Select needs
+selected-item alignment for non-touch input, and Combobox needs explicit
+empty-result semantics and live status.
 
 ## Implementation boundary
 
