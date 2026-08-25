@@ -2862,6 +2862,46 @@
    (Webapi.Dom.Element.asNode (dom-node renderer root)) host)
   (update-splits-under! renderer root))
 
+(defn- first-section-title [renderer node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (let [kind (:semantic-kind current)
+          title (retained/property (:web-store renderer) node TextValue)]
+      (if (and
+           (or (= kind Heading) (= kind Text))
+           (match title
+             (Some (StringValue value)) (not (= value ""))
+             _ false))
+        (match title
+          (Some (StringValue value)) (Some value)
+          _ None)
+        (let [children (:retained-children current)]
+          (loop [index 0]
+            (if (= index (count children))
+              None
+              (if-some [found (first-section-title renderer (nth children index))]
+                (Some found)
+                (recur (inc index))))))))
+    None))
+
+(defn root-sections [renderer root]
+  (let [children (retained/children (:web-store renderer) root)]
+    (loop [index 0
+           result []]
+      (if (= index (count children))
+        result
+        (let [page (nth children index)
+              title
+              (if-some [found (first-section-title renderer page)]
+                found
+                (str "Component " page))]
+          (recur
+           (inc index)
+           (conj
+            result
+            (record root-section
+              (root-section-node page)
+              (root-section-title title)))))))))
+
 (defn- some-node [value]
   (Some value))
 

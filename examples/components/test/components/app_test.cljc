@@ -21,6 +21,64 @@
        (:ops batch)))
     batches)))
 
+(defn gallery-page-titles [batches]
+  (let [operations (mapcat :ops batches)
+        heading-nodes
+        (keep
+         (fn [operation]
+           (match operation
+             (proto/CreateNode node kind) (when (= kind proto/Heading) node)
+             _ nil))
+         operations)]
+    (vec
+     (keep
+      (fn [operation]
+        (match operation
+          (proto/SetProp node property value)
+          (when
+           (and
+            (= property proto/TextValue)
+            (some (fn [heading-node] (= heading-node node)) heading-nodes))
+           (match value
+             (proto/StringValue title) title
+             _ nil))
+          _ nil))
+      operations))))
+
+(defn created-node-kinds [batches]
+  (reduce
+   (fn [result operation]
+     (match operation
+       (proto/CreateNode node kind) (assoc result node kind)
+       _ result))
+   {}
+   (mapcat :ops batches)))
+
+(defn heading-count-under [renderer kinds node]
+  (+
+   (if (= (get kinds node) proto/Heading) 1 0)
+   (reduce
+    +
+    0
+    (map
+     (fn [child] (heading-count-under renderer kinds child))
+     (flutter/children renderer node)))))
+
+(def gallery-page-contract
+  ["Row" "Column" "Grid" "Text" "Spacer"
+   "Button" "ToggleButton" "ButtonGroup" "ToggleGroup"
+   "Breadcrumb" "Pagination" "Tabs"
+   "Badge" "Separator" "Skeleton" "Spinner" "Icon" "Progress"
+   "Stepper" "Step" "Timeline" "TimelineItem"
+   "Stack" "Panel" "Card" "Alert" "Bubble" "Reactions" "StatusBar"
+   "Resizable" "Split" "Dialog" "Drawer" "Sheet" "List" "Scroll"
+   "ListItem" "ContextMenu" "MenuItem" "Table" "TableRow" "TableCell"
+   "Tree" "Avatar" "Image" "MediaSurface"
+   "TextField" "Input" "SearchField" "Textarea"
+   "InputGroup" "InputGroupActions" "Tooltip" "Accordion"
+   "Select" "Combobox" "DropdownMenu" "Checkbox" "Switch"
+   "Toggle" "RadioGroup" "Radio" "Slider"])
+
 (deftest gallery-model-owns-the-shared-showcase-state
   (let [initial (model/initial)
         advanced (model/update initial model/AdvanceProgress)
@@ -299,3 +357,26 @@
     (driver/dispose! application)
     (assert-equal 0 (flutter/node-count renderer) "dispose drops every retained node")
     (is (driver/disposed? application) "the native gallery lifecycle terminates")))
+
+(deftest gallery-has-one-page-for-every-public-component
+  (let [renderer (flutter/create)
+        application (components/create (flutter/backend renderer))]
+    (driver/start! application)
+    (driver/flush! application)
+    (assert-equal
+     gallery-page-contract
+     (gallery-page-titles (flutter/batches renderer))
+     "the retained Gallery exposes every public component on exactly one page")
+    (let [batches (flutter/batches renderer)
+          kinds (created-node-kinds batches)
+          pages (flutter/children renderer (driver/root-node application))]
+      (assert-equal
+       (count gallery-page-contract)
+       (count pages)
+       "every component page is a direct child of the shared Gallery root")
+      (is
+       (every?
+        (fn [page] (= 1 (heading-count-under renderer kinds page)))
+        pages)
+       "each direct Gallery page contains exactly one component heading"))
+    (driver/dispose! application)))

@@ -82,6 +82,10 @@ final class LUIOcamlBridge {
     required void Function(String json) onPatch,
   }) => LUIOcamlBridge._(DynamicLibrary.open(libraryPath), onPatch);
 
+  factory LUIOcamlBridge.process({
+    required void Function(String json) onPatch,
+  }) => LUIOcamlBridge._(DynamicLibrary.process(), onPatch);
+
   final DynamicLibrary library;
   final void Function(String json) onPatch;
   final _DartStart _start;

@@ -12,6 +12,10 @@
   (web-split-source :float)
   (web-split-current :float))
 
+(type-record root-section
+  (root-section-node :int)
+  (root-section-title :string))
+
 (type-record web-renderer
   (web-store :retained-store<web-node>)
   (web-document :Dom.document)
@@ -172,6 +176,8 @@
 (signature lui.backend.web/backend :fn<web-renderer;backend>)
 (signature lui.backend.web/mount!
   :fn<web-renderer;int;Dom.element;unit>)
+(signature lui.backend.web/root-sections
+  :fn<web-renderer;int;vector<root-section>>)
 (signature lui.backend.web/some-node
   :fn<web-node;option<web-node>>)
 (signature lui.backend.web/node :fn<web-renderer;int;option<web-node>>)

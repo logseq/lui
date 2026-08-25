@@ -1,6 +1,8 @@
 .PHONY: test test-schema generate-component-schema test-lg test-apple test-flutter build-apple-app \
 	build-components-flutter-macos test-components-flutter-macos \
-	run-components-flutter-macos build-web build-web-css serve-web
+	run-components-flutter-macos build-components-ios-simulator \
+	test-components-ios-e2e build-components-android build-web build-web-css \
+	build-web-release serve-web
 
 test: test-schema test-lg test-apple test-flutter build-web
 
@@ -44,6 +46,16 @@ test-components-flutter-macos:
 run-components-flutter-macos: build-components-flutter-macos
 	cd examples/components/flutter && flutter run -d macos
 
+build-components-ios-simulator:
+	tooling/mobile/build_components_ios_simulator.sh
+
+test-components-ios-e2e:
+	tooling/mobile/test_components_ios_e2e.sh
+
+build-components-android:
+	tooling/mobile/build_components_android.sh
+	cd examples/components/flutter && flutter build apk --debug --target-platform android-arm64
+
 build-apple-app:
 	sh examples/todos/macos-appkit/build-app.sh
 
@@ -55,6 +67,9 @@ build-web-css: platform/web/node_modules/.package-lock.json
 
 build-web: build-web-css
 	opam exec -- dune build @web -j 1
+
+build-web-release: build-web
+	node tooling/build_web_release.mjs
 
 serve-web: build-web
 	node tooling/serve_web.mjs

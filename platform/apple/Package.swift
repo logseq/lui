@@ -7,6 +7,7 @@ let package = Package(
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         .library(name: "LUIAppleBackend", type: .dynamic, targets: ["LUIAppleBackend"]),
+        .library(name: "LUIAppleBackendStatic", type: .static, targets: ["LUIAppleBackend"]),
     ],
     targets: [
         .target(name: "LUIAppleBackend"),

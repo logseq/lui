@@ -14,6 +14,10 @@ private struct CapturedAppleEvent: Equatable, Sendable {
 
 nonisolated(unsafe) private var capturedAppleEvent: CapturedAppleEvent?
 
+private final class ObservationFlag: @unchecked Sendable {
+    var value = false
+}
+
 private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
     capturedAppleEvent = CapturedAppleEvent(
         kind: kind,
@@ -79,6 +83,36 @@ struct LUISwiftUIBackendTests {
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
     }
 
+    @Test("projects direct retained children as Gallery sections")
+    func projectsRootSections() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"column"},
+          {"op":"create-node","id":3,"kind":"heading"},
+          {"op":"set-prop","id":3,"property":"text","value":"Button"},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"create-node","id":4,"kind":"button"},
+          {"op":"set-prop","id":4,"property":"text","value":"Default"},
+          {"op":"insert-child","parent":2,"child":4,"index":1},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"create-node","id":7,"kind":"column"},
+          {"op":"create-node","id":5,"kind":"heading"},
+          {"op":"set-prop","id":5,"property":"text","value":"Tabs"},
+          {"op":"insert-child","parent":7,"child":5,"index":0},
+          {"op":"create-node","id":6,"kind":"tabs"},
+          {"op":"insert-child","parent":7,"child":6,"index":1},
+          {"op":"insert-child","parent":1,"child":7,"index":1}
+        ]}
+        """)
+
+        #expect(backend.rootSections(rootID: 1) == [
+            LUIRootSection(id: 2, title: "Button"),
+            LUIRootSection(id: 7, title: "Tabs"),
+        ])
+    }
+
     @Test("a property patch invalidates only its retained SwiftUI node")
     func propertyPatchIsLocal() throws {
         let backend = LUIAppleBackend()
@@ -103,6 +137,39 @@ struct LUISwiftUIBackendTests {
         #expect(label.revision == labelRevision + 1)
         #expect(button.revision == buttonRevision)
         #expect(label.property(.text) == .string("Updated"))
+    }
+
+    @Test("SwiftUI observes retained properties and child projections")
+    func retainedStateIsObservable() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: Self.initialBatch)
+        let row = try #require(backend.model(id: 1))
+        let button = try #require(backend.model(id: 3))
+        let childrenChanged = ObservationFlag()
+        let propertiesChanged = ObservationFlag()
+
+        withObservationTracking {
+            _ = row.children
+        } onChange: {
+            childrenChanged.value = true
+        }
+        withObservationTracking {
+            _ = button.isEnabled
+        } onChange: {
+            propertiesChanged.value = true
+        }
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"create-node","id":4,"kind":"paragraph"},
+          {"op":"set-prop","id":4,"property":"text","value":"Mounted"},
+          {"op":"insert-child","parent":1,"child":4,"index":2},
+          {"op":"set-prop","id":3,"property":"enabled","value":false}
+        ]}
+        """)
+
+        #expect(childrenChanged.value)
+        #expect(propertiesChanged.value)
     }
 
     @Test("a keyed move changes only the parent child projection")
@@ -440,6 +507,24 @@ struct LUISwiftUIBackendTests {
         """)
         #expect(backend.model(id: 2) === textField)
         #expect(textField.text == "Updated")
+    }
+
+    @Test("native drafts preserve Chinese composition while focused")
+    func nativeDraftPreservesComposition() {
+        var draft = LUITextDraftState(source: "")
+
+        draft.edit("n")
+        draft.reconcile(source: "N", focused: true)
+        #expect(draft.text == "n")
+        draft.edit("ni")
+        draft.edit("你")
+        draft.edit("你好")
+        #expect(draft.text == "你好")
+
+        draft.reconcile(source: "你好", focused: false)
+        #expect(draft.text == "你好")
+        draft.reconcile(source: "服务器更新", focused: false)
+        #expect(draft.text == "服务器更新")
     }
 
     @Test("maps picker primitives to retained SwiftUI state and typed events")

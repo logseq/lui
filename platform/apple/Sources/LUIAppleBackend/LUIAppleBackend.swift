@@ -8,15 +8,25 @@ public enum LUIAppleIconSource: Equatable, Sendable {
     case assetName(String)
 }
 
+public struct LUIRootSection: Identifiable, Hashable, Sendable {
+    public let id: Int
+    public let title: String
+
+    public init(id: Int, title: String) {
+        self.id = id
+        self.title = title
+    }
+}
+
 @Observable
 @MainActor
 final class LUINodeModel: Identifiable {
     let id: Int
     let kind: LUINodeKind
 
-    @ObservationIgnored private(set) var properties: [LUIProperty: LUIWireValue]
-    @ObservationIgnored private(set) var children: [Int]
-    @ObservationIgnored private(set) var parent: Int?
+    private(set) var properties: [LUIProperty: LUIWireValue]
+    private(set) var children: [Int]
+    private(set) var parent: Int?
     private(set) var revision = 0
 
     init(id: Int, state: LUINodeState) {
@@ -286,8 +296,29 @@ public final class LUIAppleBackend {
         tree.rootIDs.sorted()
     }
 
+    public func rootSections(rootID: Int) -> [LUIRootSection] {
+        guard let root = models[rootID] else { return [] }
+        return root.children.map { pageID in
+            LUIRootSection(
+                id: pageID,
+                title: firstSectionTitle(nodeID: pageID) ?? "Component \(pageID)"
+            )
+        }
+    }
+
     func model(id: Int) -> LUINodeModel? {
         models[id]
+    }
+
+    private func firstSectionTitle(nodeID: Int) -> String? {
+        guard let node = models[nodeID] else { return nil }
+        if (node.kind == .heading || node.kind == .text), !node.text.isEmpty {
+            return node.text
+        }
+        for child in node.children {
+            if let title = firstSectionTitle(nodeID: child) { return title }
+        }
+        return nil
     }
 
     func registeredImage(id: Int) -> CGImage? {

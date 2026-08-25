@@ -1,0 +1,122 @@
+appId: dev.lui.components
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Components"
+    timeout: 30000
+- tapOn:
+    id: "component-row-Button"
+    point: "50%,90%"
+- assertVisible: "Toggle disabled"
+- tapOn: "Toggle disabled"
+- assertVisible: "Controls are disabled."
+- tapOn: "Toggle disabled"
+- assertNotVisible: "Controls are disabled."
+- tapOn: "Components"
+- tapOn:
+    id: "component-row-Tabs"
+    point: "50%,90%"
+- tapOn: "Activity"
+- assertVisible: "Recent retained updates"
+- tapOn: "Overview"
+- assertVisible: "Signal updates remain local"
+- tapOn: "Components"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Dialog"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Dialog"
+    point: "50%,90%"
+- tapOn: "Open dialog"
+- assertVisible: "Rename note"
+- tapOn: "Cancel"
+- assertNotVisible: "Rename note"
+- tapOn: "Components"
+- scrollUntilVisible:
+    element:
+      id: "component-row-TextField"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- swipe:
+    start: "50%,30%"
+    end: "50%,60%"
+    duration: 300
+- tapOn:
+    id: "component-row-TextField"
+    point: "50%,90%"
+- tapOn: "Project name"
+- inputText: "LUI iOS"
+- inputText: "中文输入"
+- assertVisible: "LUI iOS中文输入"
+- tapOn: "Components"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Checkbox"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Checkbox"
+    point: "50%,90%"
+- tapOn: "Enable notifications"
+- tapOn: "Components"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Switch"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Switch"
+    point: "50%,90%"
+- assertVisible:
+    text: "Background sync"
+    checked: true
+- tapOn: "Components"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Toggle"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Toggle"
+    point: "50%,90%"
+- assertVisible: "Bold formatting"
+- tapOn: "Components"
+- scrollUntilVisible:
+    element:
+      id: "component-row-RadioGroup"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-RadioGroup"
+    point: "50%,90%"
+- tapOn: "Compact"
+- assertVisible:
+    text: "Compact"
+    selected: true
+- tapOn: "Components"
+- scrollUntilVisible:
+    element:
+      id: "component-row-Slider"
+    direction: DOWN
+    speed: 80
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: "component-row-Slider"
+    point: "50%,90%"
+- assertVisible: "Volume"

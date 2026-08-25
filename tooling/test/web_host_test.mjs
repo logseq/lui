@@ -22,6 +22,18 @@ test("make serve-web uses the checked-in Node host", async () => {
   assert.doesNotMatch(makefile, /python.*http\.server/);
 });
 
+test("Gallery Web derives a sidebar and one active page from the retained root", async () => {
+  const main = await readFile(
+    new URL("../../examples/components/web/lg/components/web_main.cljc", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(main, /web\/root-sections/);
+  assert.match(main, /lui-gallery-sidebar/);
+  assert.match(main, /lui-gallery-content/);
+  assert.doesNotMatch(main, /web\/mount! renderer \(driver\/root-node application\) host/);
+});
+
 test("Gallery Web Node host serves static files", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "lui-web-host-"));
   await writeFile(path.join(root, "index.html"), "<h1>LUI Gallery</h1>");

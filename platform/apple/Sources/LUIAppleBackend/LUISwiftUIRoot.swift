@@ -155,6 +155,7 @@ private struct LUINodeView: View {
                 )
             )
             .disabled(!model.isEnabled)
+            .frame(minHeight: minimumTouchHeight)
         case .toggle:
             Toggle(
                 model.text,
@@ -164,8 +165,9 @@ private struct LUINodeView: View {
                 )
             )
             .disabled(!model.isEnabled)
+            .frame(minHeight: minimumTouchHeight)
         case .radioGroup:
-            HStack(alignment: .center) { children }
+            LUIRadioGroupView(model: model, backend: backend)
         case .radio:
             Button {
                 try? backend.performChange(node: model.id)
@@ -174,6 +176,8 @@ private struct LUINodeView: View {
             }
             .buttonStyle(.plain)
             .disabled(!model.isEnabled)
+            .frame(minHeight: minimumTouchHeight)
+            .accessibilityAddTraits(model.isChecked ? .isSelected : [])
         case .slider:
             Slider(
                 value: Binding(
@@ -183,6 +187,7 @@ private struct LUINodeView: View {
                 in: 0...1
             )
             .disabled(!model.isEnabled)
+            .frame(minHeight: minimumTouchHeight)
         case .progress:
             ProgressView(value: model.progressFraction)
                 .accessibilityValue(Text(progressAccessibilityValue))
@@ -246,6 +251,14 @@ private struct LUINodeView: View {
 
     private var progressAccessibilityValue: String {
         "\(Int((model.progressFraction * 100).rounded()))%"
+    }
+
+    private var minimumTouchHeight: CGFloat? {
+        #if os(iOS)
+        44
+        #else
+        nil
+        #endif
     }
 
     private var messageTextAlignment: TextAlignment {
@@ -1500,12 +1513,16 @@ private struct LUIButtonView: View {
     }
 
     private var buttonHeight: CGFloat? {
+        #if os(iOS)
+        return 44
+        #else
         switch model.buttonSize {
         case "sm": 36
         case "lg": 44
         case "icon": 40
         default: 40
         }
+        #endif
     }
 
     private func requestFocusIfNeeded() {
@@ -1858,7 +1875,8 @@ private struct LUIColumnView: View {
                             maxWidth: cross == "stretch"
                                 ? .infinity : nil,
                             maxHeight: child.property(.grow)?.doubleValue ?? 0 > 0
-                                ? .infinity : nil
+                                ? .infinity : nil,
+                            alignment: .topLeading
                         )
                         .layoutPriority(child.property(.grow)?.doubleValue ?? 0)
                 }
@@ -1935,18 +1953,36 @@ private struct LUISeparatorView: View {
     }
 }
 
+struct LUITextDraftState: Equatable {
+    private(set) var text: String
+
+    init(source: String) {
+        text = source
+    }
+
+    mutating func edit(_ next: String) {
+        text = next
+    }
+
+    mutating func reconcile(source: String, focused: Bool) {
+        if !focused, text != source {
+            text = source
+        }
+    }
+}
+
 private struct LUITextControlView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     let grouped: Bool
-    @State private var draft: String
+    @State private var draftState: LUITextDraftState
     @FocusState private var focused: Bool
 
     init(model: LUINodeModel, backend: LUIAppleBackend, grouped: Bool = false) {
         self.model = model
         self.backend = backend
         self.grouped = grouped
-        _draft = State(initialValue: model.text)
+        _draftState = State(initialValue: LUITextDraftState(source: model.text))
     }
 
     var body: some View {
@@ -1965,8 +2001,11 @@ private struct LUITextControlView: View {
                 if requested { focused = true }
             }
             .onChange(of: model.text) { _, next in
-                if draft != next {
-                    draft = next
+                draftState.reconcile(source: next, focused: focused)
+            }
+            .onChange(of: focused) { _, next in
+                if !next {
+                    draftState.reconcile(source: model.text, focused: false)
                 }
             }
     }
@@ -1988,9 +2027,9 @@ private struct LUITextControlView: View {
                     model.property(.placeholder)?.stringValue ?? "",
                     text: binding
                 )
-                if !draft.isEmpty {
+                if !draftState.text.isEmpty {
                     Button {
-                        draft = ""
+                        draftState.edit("")
                         try? backend.performTextChange(node: model.id, text: "")
                     } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -2006,12 +2045,57 @@ private struct LUITextControlView: View {
 
     private var binding: Binding<String> {
         Binding(
-            get: { draft },
+            get: { draftState.text },
             set: { next in
-                draft = next
+                draftState.edit(next)
                 try? backend.performTextChange(node: model.id, text: next)
             }
         )
+    }
+}
+
+private struct LUIRadioGroupView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        Picker(groupLabel, selection: selection) {
+            ForEach(choices) { choice in
+                Text(verbatim: choice.text)
+                    .tag(Optional(choice.id))
+            }
+        }
+        #if os(macOS)
+        .pickerStyle(.radioGroup)
+        #else
+        .pickerStyle(.segmented)
+        #endif
+        .disabled(!choices.contains(where: \.isEnabled))
+    }
+
+    private var choices: [LUINodeModel] {
+        model.children.compactMap { childID in
+            guard let child = backend.model(id: childID), child.kind == .radio else {
+                return nil
+            }
+            return child
+        }
+    }
+
+    private var selection: Binding<Int?> {
+        Binding(
+            get: { choices.first(where: \.isChecked)?.id },
+            set: { selectedID in
+                guard let selectedID,
+                      let choice = backend.model(id: selectedID),
+                      choice.isEnabled else { return }
+                try? backend.performChange(node: selectedID)
+            }
+        )
+    }
+
+    private var groupLabel: String {
+        model.property(.accessibilityLabel)?.stringValue ?? "Options"
     }
 }
 
@@ -2041,6 +2125,7 @@ private struct LUICheckboxView: View {
         }
         .buttonStyle(.plain)
         .disabled(!model.isEnabled)
+        .frame(minHeight: 44)
         .accessibilityValue(Text(model.isChecked ? "1" : "0"))
         #endif
     }
@@ -2479,7 +2564,9 @@ private struct LUIAccessibilityModifier: ViewModifier {
                 .accessibilityLabel(Text(label))
                 .accessibilityHint(Text(hint))
         } else if let label {
-            content.accessibilityLabel(Text(label))
+            content
+                .accessibilityLabel(Text(label))
+                .accessibilityIdentifier(label)
         } else if let hint {
             content.accessibilityHint(Text(hint))
         } else {

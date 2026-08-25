@@ -32,6 +32,21 @@ sealed class LUIEvent {
   const factory LUIEvent.doublePress({required int node}) = LUIDoublePressEvent;
 }
 
+@immutable
+final class LUIRootSection {
+  const LUIRootSection({required this.id, required this.title});
+
+  final int id;
+  final String title;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIRootSection && other.id == id && other.title == title;
+
+  @override
+  int get hashCode => Object.hash(id, title);
+}
+
 final class LUIDoublePressEvent extends LUIEvent {
   const LUIDoublePressEvent({required this.node});
   final int node;
@@ -324,6 +339,34 @@ final class LUIFlutterBackend {
   static Key nodeKey(int id) => ValueKey('lui-node-$id');
 
   bool containsNode(int id) => _states.containsKey(id);
+
+  List<LUIRootSection> rootSections(int root) {
+    final rootState = _requireState(_states, root);
+    return List.unmodifiable(
+      rootState.children.map(
+        (pageID) => LUIRootSection(
+          id: pageID,
+          title: _firstSectionTitle(pageID) ?? 'Component $pageID',
+        ),
+      ),
+    );
+  }
+
+  String? _firstSectionTitle(int node) {
+    final state = _states[node];
+    if (state == null) return null;
+    final text = state.properties['text'];
+    if ((state.kind == _NodeKind.heading || state.kind == _NodeKind.text) &&
+        text is String &&
+        text.isNotEmpty) {
+      return text;
+    }
+    for (final child in state.children) {
+      final title = _firstSectionTitle(child);
+      if (title != null) return title;
+    }
+    return null;
+  }
 
   int debugRevision(int id) => _requireHandle(id).revision;
 

@@ -7,6 +7,30 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lui_flutter_backend/lui_flutter_backend.dart';
 
 void main() {
+  test('projects each direct retained root child as one Gallery section', () {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"column"},
+        {"op":"create-node","id":3,"kind":"heading"},
+        {"op":"set-prop","id":3,"property":"text","value":"Button"},
+        {"op":"insert-child","parent":2,"child":3,"index":0},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"create-node","id":4,"kind":"column"},
+        {"op":"create-node","id":5,"kind":"heading"},
+        {"op":"set-prop","id":5,"property":"text","value":"Tabs"},
+        {"op":"insert-child","parent":4,"child":5,"index":0},
+        {"op":"insert-child","parent":1,"child":4,"index":1}
+      ]}
+      ''');
+
+    expect(backend.rootSections(1), const [
+      LUIRootSection(id: 2, title: 'Button'),
+      LUIRootSection(id: 4, title: 'Tabs'),
+    ]);
+  });
+
   testWidgets('applies one LG patch batch to real Flutter widgets', (
     tester,
   ) async {

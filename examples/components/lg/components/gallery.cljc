@@ -4,9 +4,45 @@
             [lui.separator]
             [lui.skeleton]))
 
+(defui row-gallery []
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Row"]
+   [:row {:gap 12}
+    [:panel {:padding 12} [:text "First"]]
+    [:panel {:padding 12} [:text "Second"]]]])
+
+(defui column-gallery []
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Column"]
+   [:column {:gap 8}
+    [:text "First"]
+    [:text "Second"]]])
+
+(defui grid-gallery []
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Grid"]
+   [:grid {:columns 2 :gap 12}
+    [:card {:padding 12} [:text "One"]]
+    [:card {:padding 12} [:text "Two"]]
+    [:card {:padding 12} [:text "Three"]]
+    [:card {:padding 12} [:text "Four"]]]])
+
+(defui text-gallery []
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Text"]
+   [:text "A lightweight text label rendered by the native backend."]])
+
+(defui spacer-gallery []
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Spacer"]
+   [:row {:gap 8 :max-width 320}
+    [:text "Leading"]
+    [:spacer {:grow 1.0}]
+    [:text "Trailing"]]])
+
 (defui button-gallery [disabled-source toggle-disabled]
   [:column {:gap 24 :padding 32}
-   [:text "Button"]
+   [:heading {:level 2} "Button"]
    [:button
     {:variant "outline" :on-press toggle-disabled}
     "Toggle disabled"]
@@ -65,33 +101,54 @@
    [:paragraph
     "Press Primary for a normal action; hold it for 350 ms to toggle disabled state."]])
 
-(defui surface-gallery [copy-source]
+(defui stack-gallery []
   [:column {:gap 24 :padding 32}
-   [:heading {:level 2} "Stack, Panel, and Card"]
-   [:grid {:columns 2 :gap 16}
-    [:panel {:padding 16}
-     [:column {:gap 8}
-      [:text "Panel"]
-      [:paragraph "A raised overlay surface with explicit content padding."]]]
-    [:card
-     [:column {:gap 12}
-      [:text "Card"]
-      [:paragraph {:value copy-source}]
-      [:button {:on-press (fn [_event] true)} "Save changes"]]]]
+   [:heading {:level 2} "Stack"]
    [:stack {:width 320 :height 96}
     [:panel {:padding 16}
      [:text "Stack base layer"]]
     [:text {:padding 16} "Overlay layer"]]])
 
-(defui message-surface-gallery [copy-source]
+(defui panel-gallery []
   [:column {:gap 24 :padding 32}
-   [:heading {:level 2} "Alert, Bubble, Reactions, and StatusBar"]
+   [:heading {:level 2} "Panel"]
+   [:panel {:padding 16}
+    [:column {:gap 8}
+     [:text "Panel"]
+     [:paragraph "A raised overlay surface with explicit content padding."]]]])
+
+(defui card-gallery [copy-source]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Card"]
+   [:card
+    [:column {:gap 12}
+     [:text "Card"]
+     [:paragraph {:value copy-source}]
+     [:button {:on-press (fn [_event] true)} "Save changes"]]]])
+
+(defui alert-gallery []
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Alert"]
    [:alert {:text "Sync paused" :variant "secondary"}
-    [:paragraph "Reconnect to resume model-owned updates."]]
+    [:paragraph "Reconnect to resume model-owned updates."]]])
+
+(defui bubble-gallery [copy-source]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Bubble"]
    [:row {:main "end"}
     [:bubble {:variant "primary"}
-     [:paragraph {:value copy-source}]
-     [:reactions {:text-alignment "end"} "2 reactions"]]]
+     [:paragraph {:value copy-source}]]]])
+
+(defui reactions-gallery []
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Reactions"]
+   [:bubble
+    [:paragraph "A message with compact reaction metadata."]
+    [:reactions {:text-alignment "end"} "2 reactions"]]])
+
+(defui status-bar-gallery [copy-source]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "StatusBar"]
    [:status-bar {:value copy-source :text-alignment "end"}]])
 
 (defui resizable-gallery []
@@ -115,11 +172,11 @@
     {:value fraction-source :gap 8 :height 220
      :resize-duration 180 :resize-easing "standard"
      :label "Gallery workspace" :on-resize set-fraction}
-    [:panel {:min-width 180 :padding 16}
+    [:panel {:min-width 96 :padding 16}
      [:column {:gap 8}
       [:text "Sidebar"]
       [:paragraph "Drag, use arrow keys, or adjust with assistive controls."]]]
-    [:panel {:min-width 320 :padding 16}
+    [:panel {:min-width 140 :padding 16}
      [:column {:gap 8}
       [:text "Content"]
       [:paragraph "The shared model echoes the effective pane fraction."]]]]
@@ -137,7 +194,7 @@
      {:text "Rename note"
       :width 380
       :height 240
-     :padding 24
+      :padding 24
       :on-dismiss close-dialog}
      [:column {:gap 16}
       [:box {:height 24}]
@@ -146,16 +203,12 @@
        [:button {:variant "ghost" :on-press close-dialog} "Cancel"]
        [:button {:variant "primary" :on-press close-dialog} "Save"]]]]]])
 
-(defui edge-surface-gallery
-  [drawer-open-source open-drawer close-drawer
-   sheet-open-source open-sheet close-sheet]
+(defui drawer-gallery [drawer-open-source open-drawer close-drawer]
   [:column {:gap 16 :padding 32}
-   [:heading {:level 2} "Drawer and Sheet"]
-   [:row {:gap 12}
-    [:button {:variant "outline" :on-press open-drawer} "Open drawer"]
-    [:button {:variant "outline" :on-press open-sheet} "Open sheet"]]
+   [:heading {:level 2} "Drawer"]
+   [:button {:variant "outline" :on-press open-drawer} "Open drawer"]
    [:paragraph
-    "Drawer is the bottom-edge surface; Sheet is the adaptive trailing-edge surface."]
+    "Drawer is the bottom-edge surface for compact tasks."]
    [:if {:test drawer-open-source}
     [:drawer
      {:text "Filters"
@@ -166,7 +219,13 @@
       [:box {:height 24}]
       [:checkbox "Only unread"]
       [:switch "Compact rows"]
-      [:button {:variant "primary" :on-press close-drawer} "Apply filters"]]]]
+      [:button {:variant "primary" :on-press close-drawer} "Apply filters"]]]]])
+
+(defui sheet-gallery [sheet-open-source open-sheet close-sheet]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Sheet"]
+   [:button {:variant "outline" :on-press open-sheet} "Open sheet"]
+   [:paragraph "Sheet is the adaptive trailing-edge surface."]
    [:if {:test sheet-open-source}
     [:sheet
      {:text "Share"
@@ -179,13 +238,17 @@
       [:input {:placeholder "Share link"}]
       [:button {:variant "primary" :on-press close-sheet} "Done"]]]]])
 
-(defui collection-gallery []
+(defui list-gallery []
   [:column {:gap 24 :padding 32}
-   [:heading {:level 2} "List and Scroll"]
+   [:heading {:level 2} "List"]
    [:list {:gap 8 :cross "stretch" :max-width 480}
     [:card {:padding 16} [:text "List item one"]]
     [:card {:padding 16} [:text "List item two"]]
-    [:card {:padding 16} [:text "List item three"]]]
+    [:card {:padding 16} [:text "List item three"]]]])
+
+(defui scroll-gallery []
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Scroll"]
    [:scroll {:width 320 :height 160}
     [:list {:gap 8 :cross "stretch"}
      [:card {:padding 16} [:text "Scrollable item one"]]
@@ -240,12 +303,22 @@
    [:paragraph
     "Right click on desktop or long press on touch platforms; the deepest retained host owns the native menu."]])
 
+(defui menu-item-gallery
+  [disabled-source rename-document archive-document]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "MenuItem"]
+   [:dropdown-menu {:min-width 200}
+    [:menu-item {:icon "edit" :on-press rename-document} "Rename"]
+    [:menu-item
+     {:disabled disabled-source :on-press archive-document}
+     "Archive"]]])
+
 (defui table-gallery
   [invoice-two-selected-source invoice-three-selected-source
    select-invoice-two select-invoice-three]
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "Table"]
-   [:table {:width 520}
+   [:table {:grow 1.0 :max-width 520}
     [:table-row {:gap 8}
      [:table-cell {:grow 1.0 :size "sm" :foreground "muted-foreground"}
       "Invoice"]
@@ -265,6 +338,22 @@
      [:table-cell {:grow 1.0 :text-alignment "end"} "$275.00"]]]
    [:paragraph
     "Press an invoice cell to patch only the selected retained rows."]])
+
+(defui table-row-gallery []
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "TableRow"]
+   [:table {:grow 1.0 :max-width 520}
+    [:table-row {:gap 8}
+     [:table-cell {:grow 1.0} "A retained row"]
+     [:table-cell {:grow 1.0} "Two cells"]]]])
+
+(defui table-cell-gallery [select-invoice-two]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "TableCell"]
+   [:table {:grow 1.0 :max-width 520}
+    [:table-row {:gap 8}
+     [:table-cell {:grow 1.0 :on-press select-invoice-two}
+      "Pressable cell"]]]])
 
 (defui tree-gallery
   [open-source report-selected-source checklist-selected-source
@@ -324,24 +413,28 @@
    [:paragraph
     "The host owns image resources; changing the ImageId Signal retains the Avatar node."]])
 
-(defui media-gallery [resource-source]
+(defui image-gallery [resource-source]
   [:column {:gap 24 :padding 32}
-   [:heading {:level 2} "Image and MediaSurface"]
-   [:row {:gap 16 :cross "center"}
-    [:image
-     {:image resource-source
-      :width 160
-      :height 96
-      :corner-radius 12
-      :label "Registered application icon"}]
-    [:media-surface
-     {:surface resource-source
-      :width 160
-      :height 96
-      :corner-radius 12
-      :label "Producer-owned preview frame"}]]
+   [:heading {:level 2} "Image"]
+   [:image
+    {:image resource-source
+     :width 160
+     :height 96
+     :corner-radius 12
+     :label "Registered application icon"}]
+   [:paragraph "Image shares the host image registry."]])
+
+(defui media-surface-gallery [resource-source]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "MediaSurface"]
+   [:media-surface
+    {:surface resource-source
+     :width 160
+     :height 96
+     :corner-radius 12
+     :label "Producer-owned preview frame"}]
    [:paragraph
-    "Image shares the host image registry; MediaSurface keeps one SurfaceId while its producer replaces frames."]])
+    "MediaSurface keeps one SurfaceId while its producer replaces frames."]])
 
 (defui progress-gallery [value-source value-label-source advance]
   [:column {:gap 24 :padding 32}
@@ -391,7 +484,7 @@
     [:icon {:name "settings"}]
     [:icon {:name "trash" :size "lg" :foreground "destructive"}]]])
 
-(defui text-entry-gallery [value-source disabled-source update-value]
+(defui text-field-gallery [value-source disabled-source update-value]
   [:column {:gap 24 :padding 32}
    [:heading {:level 2} "TextField"]
    [:text-field
@@ -399,21 +492,30 @@
      :label "Project name"
      :placeholder "Project name"
      :disabled disabled-source
-     :on-input update-value}]
+     :on-input update-value}]])
+
+(defui input-gallery [value-source disabled-source update-value]
+  [:column {:gap 24 :padding 32}
    [:heading {:level 2} "Input"]
    [:input
     {:text value-source
      :label "Email"
      :placeholder "you@example.com"
      :disabled disabled-source
-     :on-input update-value}]
+     :on-input update-value}]])
+
+(defui search-field-gallery [value-source disabled-source update-value]
+  [:column {:gap 24 :padding 32}
    [:heading {:level 2} "SearchField"]
    [:search-field
     {:text value-source
      :label "Search components"
      :placeholder "Search components"
      :disabled disabled-source
-     :on-input update-value}]
+     :on-input update-value}]])
+
+(defui textarea-gallery [value-source disabled-source update-value]
+  [:column {:gap 24 :padding 32}
    [:heading {:level 2} "Textarea"]
    [:textarea
     {:text value-source
@@ -422,7 +524,7 @@
      :disabled disabled-source
      :on-input update-value}]
    [:paragraph
-    "All four controls share one Signal and patch their retained native nodes in place."]])
+    "The native editor owns composition while the shared Signal retains its value."]])
 
 (defui input-group-gallery [value-source disabled-source update-value]
   [:column {:gap 16 :padding 32}
@@ -446,6 +548,26 @@
       "Send"]]]
    [:paragraph
     "The textarea and actions share one native focus surface while retaining their own nodes."]])
+
+(defui input-group-actions-gallery [value-source disabled-source update-value]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "InputGroupActions"]
+   [:input-group {:label "Compact composer" :min-width 240}
+    [:textarea
+     {:text value-source
+      :placeholder "Write a reply"
+      :disabled disabled-source
+      :on-input update-value}]
+    [:input-group-actions {:gap 8}
+     [:button
+      {:variant "ghost" :icon "plus" :disabled disabled-source
+       :on-press (fn [_event] true)}
+      "Attach"]
+     [:spacer {:grow 1.0}]
+     [:button
+      {:variant "primary" :icon "send" :disabled disabled-source
+       :on-press (fn [_event] true)}
+      "Send"]]]])
 
 (defui tooltip-gallery []
   [:column {:gap 16 :padding 32}
@@ -502,13 +624,13 @@
     "Staging"]
    [:menu-item {:disabled true} "Development"]])
 
-(defui picker-gallery
-  [selected-source query-source select-open-source combobox-open-source
+(defui select-gallery
+  [selected-source select-open-source
    production-selected-source staging-selected-source disabled-source
-   open-select open-combobox update-query submit-query dismiss
+   open-select dismiss
    select-production select-staging]
   [:column {:gap 24 :padding 32}
-   [:heading {:level 2} "Select, Combobox, and DropdownMenu"]
+   [:heading {:level 2} "Select"]
    [:stack
     [:select
      {:text selected-source
@@ -519,6 +641,15 @@
      [environment-menu
       production-selected-source staging-selected-source disabled-source
       select-production select-staging dismiss]]]
+   [:paragraph "Select opens a model-owned retained menu segment."]])
+
+(defui combobox-gallery
+  [query-source combobox-open-source
+   production-selected-source staging-selected-source disabled-source
+   open-combobox update-query submit-query dismiss
+   select-production select-staging]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Combobox"]
    [:stack
     [:combobox
      {:text query-source
@@ -533,35 +664,54 @@
       production-selected-source staging-selected-source disabled-source
       select-production select-staging dismiss]]]
    [:paragraph
-    "Selection, query, and menu visibility are shared Signals; opening and closing mounts only the retained menu segment."]])
+    "The query and menu visibility are shared Signals."]])
 
-(defui toggle-gallery [checked-source disabled-source update-toggle]
+(defui dropdown-menu-gallery
+  [production-selected-source staging-selected-source disabled-source dismiss
+   select-production select-staging]
   [:column {:gap 24 :padding 32}
-   [:heading {:level 2} "Checkbox and Switch"]
+   [:heading {:level 2} "DropdownMenu"]
+   [environment-menu
+    production-selected-source staging-selected-source disabled-source
+    select-production select-staging dismiss]
+   [:paragraph
+    "DropdownMenu retains its MenuItem children while the host owns presentation."]])
+
+(defui checkbox-gallery [checked-source disabled-source update-toggle]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Checkbox"]
    [:checkbox
     {:checked checked-source
      :disabled disabled-source
      :on-toggle update-toggle}
     "Enable notifications"]
+   [:paragraph "Checkbox patches its retained native state in place."]])
+
+(defui switch-gallery [checked-source disabled-source update-toggle]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Switch"]
    [:switch
     {:checked checked-source
      :disabled disabled-source
      :on-toggle update-toggle}
     "Background sync"]
    [:paragraph
-    "Both native controls share one Signal and patch in place."]])
+    "Switch shares the same model-owned Signal."]])
 
-(defui value-control-gallery
-  [checked-source comfortable-source compact-source volume-source
-   volume-label-source disabled-source update-toggle select-comfortable
-   select-compact update-volume]
+(defui toggle-gallery [checked-source disabled-source update-toggle]
   [:column {:gap 24 :padding 32}
-   [:heading {:level 2} "Toggle, RadioGroup, and Slider"]
+   [:heading {:level 2} "Toggle"]
    [:toggle
     {:checked checked-source
      :disabled disabled-source
      :on-toggle update-toggle}
-    "Bold formatting"]
+    "Bold formatting"]])
+
+(defui radio-group-gallery
+  [comfortable-source compact-source disabled-source
+   select-comfortable select-compact]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "RadioGroup"]
    [:radio-group {:label "Content density"}
     [:radio
      {:checked comfortable-source
@@ -572,7 +722,29 @@
      {:checked compact-source
       :disabled disabled-source
       :on-change select-compact}
-     "Compact"]]
+     "Compact"]]])
+
+(defui radio-gallery
+  [comfortable-source compact-source disabled-source
+   select-comfortable select-compact]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Radio"]
+   [:radio-group {:label "Individual radio choices"}
+    [:radio
+     {:checked comfortable-source
+      :disabled disabled-source
+      :on-change select-comfortable}
+     "Comfortable"]
+    [:radio
+     {:checked compact-source
+      :disabled disabled-source
+      :on-change select-compact}
+     "Compact"]]])
+
+(defui slider-gallery
+  [volume-source volume-label-source disabled-source update-volume]
+  [:column {:gap 24 :padding 32}
+   [:heading {:level 2} "Slider"]
    [:paragraph {:value volume-label-source}]
    [:slider
     {:value volume-source
@@ -580,7 +752,7 @@
      :label "Volume"
      :on-change update-volume}]
    [:paragraph
-    "All controls are model-owned Signals and retain their native node identity."]])
+    "The model-owned Signal patches the retained native slider."]])
 
 (defui toggle-button-gallery
   [selected-source disabled-source update-selected toggle-disabled]
@@ -610,7 +782,7 @@
    [:paragraph
     "Controlled selection follows one Signal; backend-owned selection survives unrelated patches."]])
 
-(defui action-group-gallery
+(defui button-group-gallery
   [selected-source disabled-source update-selected toggle-disabled]
   [:column {:gap 16 :padding 32}
    [:heading {:level 2} "ButtonGroup"]
@@ -623,7 +795,11 @@
       :selected selected-source
       :disabled disabled-source
       :on-toggle update-selected}
-     "Pin"]]
+     "Pin"]]])
+
+(defui toggle-group-gallery
+  [selected-source disabled-source update-selected toggle-disabled]
+  [:column {:gap 16 :padding 32}
    [:heading {:level 2} "ToggleGroup"]
    [:toggle-group {:accessibility-label "View options"}
     [:toggle-button
@@ -643,9 +819,7 @@
    [:paragraph
     "Groups own native layout and focus navigation; each child owns its event and selection state."]])
 
-(defui navigation-gallery
-  [overview-selected-source activity-selected-source disabled-source
-   select-overview select-activity]
+(defui breadcrumb-gallery [select-overview]
   [:column {:gap 16 :padding 32}
    [:heading {:level 2} "Breadcrumb"]
    [:breadcrumb {:accessibility-label "Component path"}
@@ -655,7 +829,12 @@
     [:icon
      {:name "chevron-right" :size "sm"
       :foreground "muted-foreground"}]
-    [:text "Navigation"]]
+    [:text "Navigation"]]])
+
+(defui pagination-gallery
+  [overview-selected-source activity-selected-source disabled-source
+   select-overview select-activity]
+  [:column {:gap 16 :padding 32}
    [:heading {:level 2} "Pagination"]
    [:pagination {:accessibility-label "Gallery pages"}
     [:button
@@ -677,7 +856,7 @@
       :on-press select-activity}
      "Next"]]
    [:paragraph
-    "Both containers are plain composition; the shared tab Signal also controls the current page."]])
+    "Pagination composes native buttons around shared model-owned selection."]])
 
 (defui tabs-gallery
   [overview-selected-source activity-selected-source content-source
@@ -700,14 +879,26 @@
    [:paragraph
     "Tabs owns layout and platform presentation; Signals own selection and content."]])
 
-(defui progress-structure-gallery [active-source advance-step]
+(defui stepper-gallery [active-source advance-step]
   [:column {:gap 16 :padding 32}
-   [:heading {:level 2} "Stepper and Timeline"]
+   [:heading {:level 2} "Stepper"]
    [:stepper {:active active-source :label "Release progress"}
     [:step "Draft"]
     [:step "Review"]
     [:step "Ship"]]
-   [:button {:variant "outline" :on-press advance-step} "Advance stage"]
+   [:button {:variant "outline" :on-press advance-step} "Advance stage"]])
+
+(defui step-gallery [active-source]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Step"]
+   [:stepper {:active active-source :label "Step states"}
+    [:step "Draft"]
+    [:step "Review"]
+    [:step "Ship"]]])
+
+(defui timeline-gallery [advance-step]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "Timeline"]
    [:timeline {:gap 4 :label "Release activity"}
     [:timeline-item
      {:title "Validated"
@@ -719,9 +910,22 @@
     [:timeline-item
      {:title "Published"
       :description "Waiting for the next model action"
-      :connector false}]]
+      :connector false}]]])
+
+(defui timeline-item-gallery [advance-step]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "TimelineItem"]
+   [:timeline {:gap 4 :label "Activity item"}
+    [:timeline-item
+     {:title "Validated"
+      :description "One retained timeline row"
+      :meta "CI · now"
+      :icon "check"
+      :variant "primary"
+      :connector false
+      :on-press advance-step}]]
    [:paragraph
-    "The active Signal patches existing Step nodes; timeline rows remain retained."]])
+    "TimelineItem owns its content and interaction inside Timeline."]])
 
 (defui component-gallery
   [disabled-source toggle-disabled card-copy
@@ -745,14 +949,22 @@
    drawer-open-source open-drawer close-drawer
    sheet-open-source open-sheet close-sheet
    accordion-open-source set-accordion-open
-   split-fraction-source set-split-fraction]
+  split-fraction-source set-split-fraction]
   [:column
+   [row-gallery]
+   [column-gallery]
+   [grid-gallery]
+   [text-gallery]
+   [spacer-gallery]
    [button-gallery disabled-source toggle-disabled]
    [toggle-button-gallery
     checked-source disabled-source update-toggle toggle-disabled]
-   [action-group-gallery
+   [button-group-gallery
     checked-source disabled-source update-toggle toggle-disabled]
-   [navigation-gallery
+   [toggle-group-gallery
+    checked-source disabled-source update-toggle toggle-disabled]
+   [breadcrumb-gallery select-overview-tab]
+   [pagination-gallery
     overview-tab-selected-source activity-tab-selected-source disabled-source
     select-overview-tab select-activity-tab]
    [tabs-gallery
@@ -765,41 +977,70 @@
    [spinner-gallery]
    [icon-gallery]
    [progress-gallery progress-source progress-label-source advance-progress]
-   [progress-structure-gallery active-step-source advance-step]
-   [surface-gallery card-copy]
-   [message-surface-gallery card-copy]
+   [stepper-gallery active-step-source advance-step]
+   [step-gallery active-step-source]
+   [timeline-gallery advance-step]
+   [timeline-item-gallery advance-step]
+   [stack-gallery]
+   [panel-gallery]
+   [card-gallery card-copy]
+   [alert-gallery]
+   [bubble-gallery card-copy]
+   [reactions-gallery]
+   [status-bar-gallery card-copy]
    [resizable-gallery]
    [split-gallery split-fraction-source set-split-fraction]
    [dialog-gallery dialog-open-source open-dialog close-dialog]
-   [edge-surface-gallery
-    drawer-open-source open-drawer close-drawer
-    sheet-open-source open-sheet close-sheet]
-   [collection-gallery]
+   [drawer-gallery drawer-open-source open-drawer close-drawer]
+   [sheet-gallery sheet-open-source open-sheet close-sheet]
+   [list-gallery]
+   [scroll-gallery]
    [list-item-gallery
     report-selected-source checklist-selected-source disabled-source
     document-action-source select-report select-checklist open-report
     open-checklist]
    [context-menu-gallery
     disabled-source document-action-source rename-document archive-document]
+   [menu-item-gallery disabled-source rename-document archive-document]
    [table-gallery
     overview-tab-selected-source activity-tab-selected-source
     select-overview-tab select-activity-tab]
+   [table-row-gallery]
+   [table-cell-gallery select-overview-tab]
    [tree-gallery
     accordion-open-source report-selected-source checklist-selected-source
     set-accordion-open select-report select-checklist]
    [avatar-gallery avatar-image-source toggle-avatar-image]
-   [media-gallery media-surface-source]
-   [text-entry-gallery value-source disabled-source update-value]
+   [image-gallery media-surface-source]
+   [media-surface-gallery media-surface-source]
+   [text-field-gallery value-source disabled-source update-value]
+   [input-gallery value-source disabled-source update-value]
+   [search-field-gallery value-source disabled-source update-value]
+   [textarea-gallery value-source disabled-source update-value]
    [input-group-gallery value-source disabled-source update-value]
+   [input-group-actions-gallery value-source disabled-source update-value]
    [tooltip-gallery]
    [accordion-gallery accordion-open-source set-accordion-open]
-   [picker-gallery
-    environment-source picker-query-source select-open-source
-    combobox-open-source production-selected-source staging-selected-source
-    disabled-source open-select open-combobox update-picker-query
-    submit-picker-query dismiss-picker select-production select-staging]
+   [select-gallery
+    environment-source select-open-source
+    production-selected-source staging-selected-source disabled-source
+    open-select dismiss-picker select-production select-staging]
+   [combobox-gallery
+    picker-query-source combobox-open-source
+    production-selected-source staging-selected-source disabled-source
+    open-combobox update-picker-query submit-picker-query dismiss-picker
+    select-production select-staging]
+   [dropdown-menu-gallery
+    production-selected-source staging-selected-source disabled-source
+    dismiss-picker select-production select-staging]
+   [checkbox-gallery checked-source disabled-source update-toggle]
+   [switch-gallery checked-source disabled-source update-toggle]
    [toggle-gallery checked-source disabled-source update-toggle]
-   [value-control-gallery
-    checked-source comfortable-source compact-source volume-source
-    volume-label-source disabled-source update-toggle select-comfortable
-    select-compact update-volume]])
+   [radio-group-gallery
+    comfortable-source compact-source disabled-source
+    select-comfortable select-compact]
+   [radio-gallery
+    comfortable-source compact-source disabled-source
+    select-comfortable select-compact]
+   [slider-gallery
+    volume-source volume-label-source disabled-source update-volume]])
