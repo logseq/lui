@@ -106,6 +106,11 @@ controls, layouts and presentation APIs directly. UIKit and AppKit may appear
 behind SwiftUI or inside the framework, but they are not separate public
 renderers and do not create a second backend to maintain.
 
+UIKit hosts use `LUIUIKitHost.makeViewController(backend:rootID:)`. The adapter
+contains only a `UIHostingController` around `LUISwiftUIRoot`; the iPhone
+Simulator compile contract embeds it in a `UINavigationController` and proves
+that no UIKit component implementation or duplicate state bridge is required.
+
 ### Flutter
 
 LUI maps the shared contract to existing Flutter widgets and Material platform

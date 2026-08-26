@@ -69,6 +69,12 @@ Qualify a signed, shrunk Android release AAB without using production secrets:
 make qualify-components-android-release
 ```
 
+Compile the single SwiftUI Apple renderer through its public UIKit host adapter:
+
+```sh
+make test-apple-uikit-host
+```
+
 The command invokes the explicit `ios simulator` and `android` LG targets,
 then links the two host applications. Shared toolchains are installed once
 with `lg mobile setup ios simulator` and `lg mobile setup android`; LUI does

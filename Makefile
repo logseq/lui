@@ -1,4 +1,4 @@
-.PHONY: test test-schema generate-component-schema test-lg test-performance test-apple test-flutter build-apple-app \
+.PHONY: test test-schema generate-component-schema test-lg test-performance test-apple test-apple-uikit-host test-flutter build-apple-app \
 	build-components-flutter-macos test-components-flutter-macos \
 	run-components-flutter-macos build-components-ios-simulator \
 	build-components-mobile test-components-ios-e2e build-components-android build-components-android-release \
@@ -23,6 +23,10 @@ test-apple:
 	swift test --package-path platform/apple
 	LUI_APPLE_LIBRARY="$(CURDIR)/platform/apple/.build/debug/libLUIAppleBackend.dylib" \
 		opam exec -- dune build @apple-bridge-test -j 1
+	$(MAKE) test-apple-uikit-host
+
+test-apple-uikit-host:
+	tooling/mobile/test_uikit_host_contract.sh
 
 test-flutter:
 	opam exec -- dune build -j 1 \

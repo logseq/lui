@@ -80,6 +80,22 @@ Run the iOS interaction suite against a booted simulator:
 make test-components-ios-e2e
 ```
 
+UIKit applications embed the same SwiftUI renderer without a second backend:
+
+```swift
+let controller = LUIUIKitHost.makeViewController(
+    backend: backend,
+    rootID: rootID
+)
+navigationController.pushViewController(controller, animated: true)
+```
+
+Compile that public adapter against the real iPhone Simulator SDK with:
+
+```sh
+make test-apple-uikit-host
+```
+
 Reuse an existing Simulator app while iterating on the Maestro flow:
 
 ```sh
@@ -148,6 +164,8 @@ The following production-boundary checks passed on 2026-08-26:
 - `swift test --package-path platform/apple`: 62 retained SwiftUI backend tests;
 - `make test-components-ios-e2e`: signed app build plus the complete Maestro
   interaction flow on an iPhone 17 Pro Simulator running iOS 26.0;
+- `make test-apple-uikit-host`: iPhone Simulator compilation of a UIKit
+  navigation controller embedding the public `LUISwiftUIRoot` adapter;
 - `swift build --package-path examples/components/ios-swiftui` with
   `--target LUIComponentsApp`: the shared SwiftUI Gallery target on macOS;
 - `make build-components-flutter-macos` and
@@ -194,9 +212,10 @@ and does not change these artifacts.
 - The SwiftUI macOS target is compile-qualified, while the Flutter macOS app is
   the packaged desktop showcase. A separately bundled SwiftUI macOS `.app` is
   not produced by this example.
-- SwiftUI is the only Apple renderer. UIKit applications can host the public
-  `LUISwiftUIRoot` with `UIHostingController`, but LUI intentionally does not
-  maintain a second UIKit component backend or a separate UIKit Gallery.
+- SwiftUI is the only Apple renderer. UIKit applications use the compile-
+  qualified `LUIUIKitHost.makeViewController` adapter, which wraps the public
+  `LUISwiftUIRoot`; LUI intentionally does not maintain a second UIKit
+  component backend or a separate UIKit Gallery.
 - System Safari interaction qualification remains outstanding. The repository
   has a complete Chromium suite plus focused Firefox and WebKit production
   compatibility gates.
