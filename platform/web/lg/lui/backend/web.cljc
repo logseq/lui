@@ -1931,17 +1931,30 @@
 (defn- attach-button-events! [renderer node kind dom-node]
   (let [timer (atom None)
         suppress-click (atom false)
+        active-pointer (atom None)
+        origin-x (atom 0)
+        origin-y (atom 0)
         hold-enabled?
         (fn []
           (and
            (Webapi.Dom.Element.hasAttribute "data-hold-enabled" dom-node)
            (not (Webapi.Dom.Element.hasAttribute "disabled" dom-node))))
-        cancel!
+        connected?
+        (fn []
+          (Webapi.Dom.Element.contains
+           (Webapi.Dom.Element.asNode dom-node)
+           (Webapi.Dom.Document.documentElement (:web-document renderer))))
+        cancel-timer!
         (fn []
           (match (deref timer)
             (Some timer-id) (Js.Global.clearTimeout timer-id)
             None (Stdlib.ignore true))
           (reset! timer None)
+          true)
+        cancel-hold!
+        (fn []
+          (cancel-timer!)
+          (reset! active-pointer None)
           true)
         dispatch-hold!
         (fn [suppress]
@@ -1970,61 +1983,129 @@
             (Stdlib.ignore
              ((deref (:web-event-handler renderer)) (proto/Press node))))
           true)
-        start!
+        schedule-hold!
         (fn []
-          (cancel!)
-          (when (hold-enabled?)
-            (reset!
-             timer
-             (Some
-              (Js.Global.setTimeout
-               350
-               :f
-               (fn []
-                 (reset! timer None)
+          (reset!
+           timer
+           (Some
+            (Js.Global.setTimeout
+             350
+             :f
+             (fn []
+               (reset! timer None)
+               (when (connected?)
                  (dispatch-hold! true)
-                 (Stdlib.ignore true))))))
-          true)]
-    (Webapi.Dom.Element.addMouseDownEventListener
-     (fn [event]
-       (when (= 0 (Webapi.Dom.MouseEvent.button event)) (start!))
-       (Stdlib.ignore true))
-     dom-node)
-    (Webapi.Dom.Element.addMouseUpEventListener
-     (fn [_event] (cancel!) (Stdlib.ignore true)) dom-node)
+                 (Stdlib.ignore true))
+               (Stdlib.ignore true)))))
+          true)
+        pointer-down!
+        (fn [event]
+          (cancel-hold!)
+          (reset! suppress-click false)
+          (when (and
+                 (hold-enabled?)
+                 (= (Webapi.Dom.MouseEvent.button
+                     (pointer-mouse-event event)) 0))
+            (reset! active-pointer (Some (pointer-id event)))
+            (reset!
+             origin-x
+             (Webapi.Dom.MouseEvent.clientX (pointer-mouse-event event)))
+            (reset!
+             origin-y
+             (Webapi.Dom.MouseEvent.clientY (pointer-mouse-event event)))
+            (when (Webapi.Dom.Event.isTrusted event)
+              (Webapi.Dom.Element.setPointerCapture
+               (Webapi.Dom.PointerEvent.pointerId (obj/magic event)) dom-node))
+            (schedule-hold!)
+            (Stdlib.ignore true))
+          (Stdlib.ignore true))
+        pointer-move!
+        (fn [event]
+          (match (deref active-pointer)
+            (Some pointer)
+            (when (= pointer (pointer-id event))
+              (let [delta-x
+                    (abs
+                     (- (Webapi.Dom.MouseEvent.clientX
+                         (pointer-mouse-event event))
+                        (deref origin-x)))
+                    delta-y
+                    (abs
+                     (- (Webapi.Dom.MouseEvent.clientY
+                         (pointer-mouse-event event))
+                        (deref origin-y)))]
+                (when (or (> delta-x 10) (> delta-y 10))
+                  (cancel-hold!)
+                  (reset! suppress-click false)
+                  (Stdlib.ignore true))))
+            None (Stdlib.ignore true))
+          (Stdlib.ignore true))
+        pointer-end!
+        (fn [event]
+          (match (deref active-pointer)
+            (Some pointer)
+            (when (= pointer (pointer-id event))
+              (cancel-hold!)
+              (Stdlib.ignore true))
+            None (Stdlib.ignore true))
+          (Stdlib.ignore true))
+        pointer-cancel!
+        (fn [event]
+          (match (deref active-pointer)
+            (Some pointer)
+            (when (= pointer (pointer-id event))
+              (cancel-hold!)
+              (reset! suppress-click false)
+              (Stdlib.ignore true))
+            None (Stdlib.ignore true))
+          (Stdlib.ignore true))
+        context-menu!
+        (fn [event]
+          (when (hold-enabled?)
+            (cancel-hold!)
+            (Webapi.Dom.Event.preventDefault event)
+            (Stdlib.ignore (dispatch-hold! false)))
+          (Stdlib.ignore true))
+        click!
+        (fn [event]
+          (if (deref suppress-click)
+            (do
+              (reset! suppress-click false)
+              (Webapi.Dom.Event.preventDefault event))
+            (Stdlib.ignore (dispatch-primary!)))
+          (Stdlib.ignore true))
+        previous-cleanup
+        (clojure.core/get (deref (:web-cleanups renderer)) node)]
+    (Webapi.Dom.Element.addEventListener "pointerdown" pointer-down! dom-node)
+    (Webapi.Dom.Element.addEventListener "pointermove" pointer-move! dom-node)
+    (Webapi.Dom.Element.addEventListener "pointerup" pointer-end! dom-node)
+    (Webapi.Dom.Element.addEventListener "pointercancel" pointer-cancel! dom-node)
     (Webapi.Dom.Element.addEventListener
-     "mouseleave"
-     (fn [_event] (cancel!) (Stdlib.ignore true)) dom-node)
-    (Webapi.Dom.Element.addTouchStartEventListener
-     (fn [_event] (start!) (Stdlib.ignore true)) dom-node)
-    (Webapi.Dom.Element.addTouchEndEventListener
-     (fn [_event] (cancel!) (Stdlib.ignore true)) dom-node)
-    (Webapi.Dom.Element.addEventListener
-     "touchcancel"
-     (fn [_event]
-       (cancel!)
-       (reset! suppress-click false)
-       (Stdlib.ignore true))
-     dom-node)
-    (Webapi.Dom.Element.addEventListener
-     "contextmenu"
-     (fn [event]
-       (when (hold-enabled?)
-         (cancel!)
-         (Webapi.Dom.Event.preventDefault event)
-         (Stdlib.ignore (dispatch-hold! false)))
-       (Stdlib.ignore true))
-     dom-node)
-    (Webapi.Dom.Element.addEventListener
-     "click"
-     (fn [event]
-       (if (deref suppress-click)
-         (do
-           (reset! suppress-click false)
-           (Webapi.Dom.Event.preventDefault event))
-         (Stdlib.ignore (dispatch-primary!)))
-       (Stdlib.ignore true))
-     dom-node)))
+     "lostpointercapture" pointer-cancel! dom-node)
+    (Webapi.Dom.Element.addEventListener "contextmenu" context-menu! dom-node)
+    (Webapi.Dom.Element.addEventListener "click" click! dom-node)
+    (swap!
+     (:web-cleanups renderer) assoc node
+     (fn []
+       (match previous-cleanup
+         (Some cleanup) (cleanup)
+         None (Stdlib.ignore true))
+       (cancel-hold!)
+       (Webapi.Dom.Element.removeEventListener
+        "pointerdown" pointer-down! dom-node)
+       (Webapi.Dom.Element.removeEventListener
+        "pointermove" pointer-move! dom-node)
+       (Webapi.Dom.Element.removeEventListener
+        "pointerup" pointer-end! dom-node)
+       (Webapi.Dom.Element.removeEventListener
+        "pointercancel" pointer-cancel! dom-node)
+       (Webapi.Dom.Element.removeEventListener
+        "lostpointercapture" pointer-cancel! dom-node)
+       (Webapi.Dom.Element.removeEventListener
+        "contextmenu" context-menu! dom-node)
+       (Webapi.Dom.Element.removeEventListener "click" click! dom-node)
+       (Stdlib.ignore true)))
+    (Stdlib.ignore true)))
 
 (defn- horizontal-group-child? [group-kind child-kind]
   (match group-kind

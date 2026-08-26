@@ -203,6 +203,68 @@ test("Reduced motion removes a closing Dialog without waiting for a fallback", a
   await browser("set", "media", "light")
 })
 
+test("Sheet preserves native Chinese composition through visual viewport changes", async () => {
+  await openGalleryPage("Sheet")
+  await browser("set", "viewport", "390", "844")
+  await clickButton("Open sheet")
+
+  await evaluate(`(() => {
+    const input = document.querySelector('.lui-sheet input[placeholder="Share link"]')
+    window.__sheetCompositionInput = input
+    input.focus()
+    input.dispatchEvent(new CompositionEvent('compositionstart', {
+      bubbles: true,
+      data: '',
+    }))
+    input.value = '中'
+    input.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      data: '中',
+      inputType: 'insertCompositionText',
+      isComposing: true,
+    }))
+  })()`)
+
+  await browser("set", "viewport", "390", "520")
+  await browser("wait", "50")
+  assert.deepEqual(
+    await state(`(() => {
+      const input = document.querySelector('.lui-sheet input[placeholder="Share link"]')
+      const sheet = document.querySelector('.lui-sheet')
+      return {
+        sameInput: input === window.__sheetCompositionInput,
+        focused: document.activeElement === input,
+        value: input?.value,
+        insideViewport: (sheet?.getBoundingClientRect().bottom ?? innerHeight + 1) <= innerHeight,
+      }
+    })()`),
+    { sameInput: true, focused: true, value: "中", insideViewport: true },
+  )
+
+  assert.deepEqual(
+    await state(`(() => {
+      const input = window.__sheetCompositionInput
+      input.value = '中文'
+      input.dispatchEvent(new CompositionEvent('compositionend', {
+        bubbles: true,
+        data: '中文',
+      }))
+      input.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        data: '中文',
+        inputType: 'insertFromComposition',
+        isComposing: false,
+      }))
+      return {
+        sameInput: document.querySelector('.lui-sheet input[placeholder="Share link"]') === input,
+        focused: document.activeElement === input,
+        value: input.value,
+      }
+    })()`),
+    { sameInput: true, focused: true, value: "中文" },
+  )
+})
+
 test("Compact Sheet arbitrates scroll, direction, distance, and velocity", async () => {
   await openGalleryPage("Sheet")
   await browser("set", "viewport", "390", "844")
@@ -329,6 +391,69 @@ test("Compact Sheet arbitrates scroll, direction, distance, and velocity", async
   })()`)
   assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 0)
   assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-ending-style]').length`), 1)
+})
+
+test("Button hold uses one movement-safe Pointer Events lifecycle", async () => {
+  await openGalleryPage("Button")
+
+  await evaluate(`(() => {
+    const button = [...document.querySelectorAll('button')]
+      .find((node) => node.textContent.trim() === 'Primary')
+    button.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true, pointerId: 101, pointerType: 'touch',
+      clientX: 100, clientY: 200, button: 0, buttons: 1,
+    }))
+  })()`)
+  await browser("wait", "380")
+  await evaluate(`document.querySelector('button[data-hold-enabled]')?.dispatchEvent(
+    new PointerEvent('pointerup', { bubbles: true, pointerId: 101, pointerType: 'touch' }),
+  )`)
+  assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), true)
+
+  await clickButton("Toggle disabled")
+  assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), false)
+
+  await evaluate(`(() => {
+    const button = document.querySelector('button[data-hold-enabled]')
+    const pointer = (type, x, y) => new PointerEvent(type, {
+      bubbles: true, pointerId: 102, pointerType: 'touch',
+      clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1,
+    })
+    button.dispatchEvent(pointer('pointerdown', 100, 200))
+    button.dispatchEvent(pointer('pointermove', 120, 200))
+  })()`)
+  await browser("wait", "380")
+  await evaluate(`document.querySelector('button[data-hold-enabled]')?.dispatchEvent(
+    new PointerEvent('pointerup', { bubbles: true, pointerId: 102, pointerType: 'touch' }),
+  )`)
+  assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), false)
+
+  await evaluate(`(() => {
+    const button = document.querySelector('button[data-hold-enabled]')
+    button.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true, pointerId: 103, pointerType: 'mouse',
+      clientX: 100, clientY: 200, button: 0, buttons: 1,
+    }))
+    button.dispatchEvent(new PointerEvent('lostpointercapture', {
+      bubbles: true, pointerId: 103, pointerType: 'mouse',
+    }))
+  })()`)
+  await browser("wait", "380")
+  assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), false)
+
+  await evaluate(`(() => {
+    const button = document.querySelector('button[data-hold-enabled]')
+    button.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true, pointerId: 104, pointerType: 'touch',
+      clientX: 100, clientY: 200, button: 0, buttons: 1,
+    }))
+    ;[...document.querySelectorAll('nav button')]
+      .find((node) => node.textContent === 'Row')?.click()
+  })()`)
+  await browser("wait", "380")
+  await evaluate(`[...document.querySelectorAll('nav button')]
+    .find((node) => node.textContent === 'Button')?.click()`)
+  assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), false)
 })
 
 test("Tree click toggles disclosure and keeps selection model-owned", async () => {
