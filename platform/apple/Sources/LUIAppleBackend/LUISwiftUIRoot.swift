@@ -1740,39 +1740,22 @@ private struct LUIListItemView: View {
     @State private var didLongPress = false
 
     var body: some View {
-        Button {
-            if didLongPress {
-                didLongPress = false
-            } else if model.isTreeItem {
-                try? backend.performTreeTap(node: model.id)
-            } else if model.supportsPress {
-                try? backend.performPress(node: model.id)
+        Group {
+            switch LUIListItemInteractionPolicy.style(
+                hasVisibleChildren: !visibleChildren.isEmpty
+            ) {
+            case .button:
+                Button(action: performPrimaryAction) {
+                    rowContent
+                }
+                .buttonStyle(.plain)
+            case .composite:
+                rowContent
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: performPrimaryAction)
+                    .accessibilityAction { performPrimaryAction() }
             }
-        } label: {
-            HStack(spacing: 8) {
-                if model.isTreeItem, model.supportsToggle {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .rotationEffect(.degrees(model.isExpanded == true ? 90 : 0))
-                        .animation(.snappy, value: model.isExpanded)
-                        .accessibilityHidden(true)
-                }
-                if !model.buttonIconName.isEmpty {
-                    LUIIconImage(source: backend.iconSource(for: model.buttonIconName))
-                        .frame(width: 16, height: 16)
-                }
-                if visibleChildren.isEmpty {
-                    Text(verbatim: model.text)
-                } else {
-                    ForEach(visibleChildren, id: \.self) { childID in
-                        LUIAnyNodeView(nodeID: childID, backend: backend)
-                    }
-                }
-                Spacer(minLength: 8)
-            }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1801,6 +1784,41 @@ private struct LUIListItemView: View {
         }
         .accessibilityAddTraits(model.isSelected ? .isSelected : [])
         .disabled(!model.isEnabled)
+    }
+
+    private var rowContent: some View {
+        HStack(spacing: 8) {
+            if model.isTreeItem, model.supportsToggle {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .rotationEffect(.degrees(model.isExpanded == true ? 90 : 0))
+                    .animation(.snappy, value: model.isExpanded)
+                    .accessibilityHidden(true)
+            }
+            if !model.buttonIconName.isEmpty {
+                LUIIconImage(source: backend.iconSource(for: model.buttonIconName))
+                    .frame(width: 16, height: 16)
+            }
+            if visibleChildren.isEmpty {
+                Text(verbatim: model.text)
+            } else {
+                ForEach(visibleChildren, id: \.self) { childID in
+                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                }
+            }
+            Spacer(minLength: 8)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func performPrimaryAction() {
+        if didLongPress {
+            didLongPress = false
+        } else if model.isTreeItem {
+            try? backend.performTreeTap(node: model.id)
+        } else if model.supportsPress {
+            try? backend.performPress(node: model.id)
+        }
     }
 
     private var visibleChildren: [Int] {

@@ -1,5 +1,16 @@
 import Foundation
 import Observation
+
+enum LUIListItemInteractionStyle: Equatable {
+    case button
+    case composite
+}
+
+enum LUIListItemInteractionPolicy {
+    static func style(hasVisibleChildren: Bool) -> LUIListItemInteractionStyle {
+        hasVisibleChildren ? .composite : .button
+    }
+}
 import SwiftUI
 import CoreGraphics
 

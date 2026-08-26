@@ -74,22 +74,20 @@ private struct LUISkipNodeView: View {
         case .drawer:
             LUIDrawerView(model: model, backend: backend)
         case .listItem:
-            Button {
-                if didLongPress {
-                    didLongPress = false
-                } else if model.supportsPress {
-                    try? backend.performPress(node: model.id)
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    if !model.text.isEmpty {
-                        Text(verbatim: model.text)
+            Group {
+                switch LUIListItemInteractionPolicy.style(
+                    hasVisibleChildren: !visibleListItemChildren.isEmpty
+                ) {
+                case .button:
+                    Button(action: { performListItemPrimaryAction() }) {
+                        listItemContent
                     }
-                    children
-                    Spacer(minLength: 8)
+                    .buttonStyle(.plain)
+                case .composite:
+                    listItemContent
+                        .onTapGesture { performListItemPrimaryAction() }
                 }
             }
-            .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(model.isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
             .simultaneousGesture(
@@ -188,6 +186,31 @@ private struct LUISkipNodeView: View {
     private var children: some View {
         ForEach(model.children, id: \.self) { childID in
             LUIAnyNodeView(nodeID: childID, backend: backend)
+        }
+    }
+
+    private var visibleListItemChildren: [Int] {
+        model.children.filter { backend.model(id: $0)?.kind != .contextMenu }
+    }
+
+    private var listItemContent: some View {
+        HStack(spacing: 8) {
+            if visibleListItemChildren.isEmpty {
+                Text(verbatim: model.text)
+            } else {
+                ForEach(visibleListItemChildren, id: \.self) { childID in
+                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                }
+            }
+            Spacer(minLength: 8)
+        }
+    }
+
+    private func performListItemPrimaryAction() {
+        if didLongPress {
+            didLongPress = false
+        } else if model.supportsPress {
+            try? backend.performPress(node: model.id)
         }
     }
 

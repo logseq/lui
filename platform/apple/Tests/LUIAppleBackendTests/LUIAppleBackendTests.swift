@@ -728,6 +728,12 @@ struct LUISwiftUIBackendTests {
         #expect(item.revision == revision + 1)
     }
 
+    @Test("custom ListItem content uses a composite interaction container")
+    func listItemInteractionStylePreservesInteractiveChildren() {
+        #expect(LUIListItemInteractionPolicy.style(hasVisibleChildren: false) == .button)
+        #expect(LUIListItemInteractionPolicy.style(hasVisibleChildren: true) == .composite)
+    }
+
     @Test("maps Table structure and patches only the retained row and cell")
     func mapsTable() throws {
         let backend = LUIAppleBackend()
