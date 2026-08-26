@@ -372,7 +372,7 @@ test("Compact Sheet arbitrates scroll, direction, distance, and velocity", async
   assert.equal(await state(`document.querySelector('.lui-sheet')?.hasAttribute('data-swiping')`), false)
   assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 1)
 
-  await evaluate(`(() => {
+  const dismissedSheetState = await state(`(() => {
     const sheet = document.querySelector('.lui-sheet')
     const dispatch = (type, y) => sheet.dispatchEvent(new PointerEvent(type, {
       bubbles: true,
@@ -388,9 +388,12 @@ test("Compact Sheet arbitrates scroll, direction, distance, and velocity", async
     dispatch('pointerdown', 180)
     dispatch('pointermove', 240)
     dispatch('pointerup', 240)
+    return {
+      open: document.querySelectorAll('.lui-modal-layer[data-open]').length,
+      ending: document.querySelectorAll('.lui-modal-layer[data-ending-style]').length,
+    }
   })()`)
-  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 0)
-  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-ending-style]').length`), 1)
+  assert.deepEqual(dismissedSheetState, { open: 0, ending: 1 })
 })
 
 test("Button hold uses one movement-safe Pointer Events lifecycle", async () => {

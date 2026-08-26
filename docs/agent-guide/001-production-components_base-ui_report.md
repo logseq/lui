@@ -1,6 +1,6 @@
 # Base UI Web interaction and motion report
 
-Status: implementation in progress
+Status: implemented and qualified within the pinned LUI public API
 
 ## Scope and reference
 
@@ -84,10 +84,11 @@ refreshes the close intent while movement away leaves the ordinary 120 ms close
 delay intact. The same behavior is verified for right-side submenus and for
 submenus that collision placement flips to the left.
 
-Select selected-item alignment and Combobox empty-result semantics are now
-implemented. The remaining work in this report is the collection/control
-matrix below, plus localized application-owned wording for asynchronous
-Combobox loading states when LUI gains a corresponding product requirement.
+Select selected-item alignment and Combobox empty-result semantics are
+implemented. The collection/control matrix below records the qualified result
+and deliberate API exclusions. Localized application-owned wording for
+asynchronous Combobox loading remains outside this scope until LUI has a
+corresponding product requirement.
 
 ## Implementation boundary
 
