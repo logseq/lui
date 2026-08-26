@@ -708,13 +708,13 @@ Button or ToggleButton presentation; its purpose is semantic grouping and
 navigation, not another selection owner. Arbitrary non-control children remain
 ordinary children and receive no contextual control behavior.
 
-Direct Button children in a ButtonGroup and direct ToggleButton children in
-either group participate in the reference keymap: Left and Right move focus
-with wrapping, while Home and End move to the first and last eligible enabled
-control. Activation remains the child's native Enter or Space behavior and
-does not move selection by itself. The groups do not collapse their children
-to one Tab stop. Web exposes a labelled `group` and implements this keymap by
-delegation; SwiftUI and Flutter use retained native controls plus their native
+Direct Button and ToggleButton children in either group participate in the
+reference keymap: Left and Right move focus with wrapping, while Home and End
+move to the first and last eligible enabled control. Activation remains the
+child's native Enter or Space behavior and does not move selection by itself.
+Web exposes a labelled `group` with one roving Tab stop, preserves the latest
+eligible stop across unrelated retained patches, and implements the keymap by
+delegation. SwiftUI and Flutter use retained native controls plus their native
 focus systems. Reparenting a retained control into or out of a group updates
 only that control's contextual presentation and focus membership.
 
@@ -987,10 +987,12 @@ are rejected atomically.
 Keyboard behavior follows the ARIA tree pattern. Up and Down move through
 visible tree items, Home and End move to the edges, Left collapses an expanded
 row or moves to its logical parent, Right expands a collapsed row or moves to
-its first logical child, and Enter or Space activates the focused row. Disabled
-rows are skipped. Pointer activation does not create backend-owned selection;
-every selection and disclosure change must return through LG and patch the same
-retained row.
+its first logical child, and Enter or Space activates the focused row. Printable
+characters move focus to the next visible item whose accessible text starts
+with the typed prefix; rapid characters share a 500 ms buffer and search wraps.
+Disabled rows and descendants of collapsed rows are skipped. Pointer activation
+does not create backend-owned selection; every selection and disclosure change
+must return through LG and patch the same retained row.
 
 Web uses `role="tree"` and `role="treeitem"` with roving `tabindex`. SwiftUI
 uses one retained focus coordinator around native row content and exposes the

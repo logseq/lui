@@ -361,6 +361,43 @@ test("Tree is fully operable with one keyboard tab stop", async () => {
   )
 })
 
+test("Tree typeahead wraps visible items and supports rapid prefixes", async () => {
+  await openGalleryPage("Tree")
+  await evaluate(`document.querySelector('[role=treeitem]')?.focus()`)
+  await browser("press", "ArrowRight")
+  await browser("press", "ArrowRight")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Quarterly report.md")
+
+  await browser("press", "l")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Launch checklist.md")
+  await browser("wait", "550")
+  await browser("press", "q")
+  await browser("press", "u")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Quarterly report.md")
+
+  await browser("wait", "550")
+  await browser("press", "d")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Documents")
+  await browser("wait", "550")
+  await browser("press", "z")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Documents")
+  await evaluate(`document.activeElement?.dispatchEvent(
+    new KeyboardEvent('keydown', {
+      key: 'k',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    }),
+  )`)
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Documents")
+
+  await browser("press", "ArrowLeft")
+  assert.equal(await state(`document.querySelectorAll('[role=treeitem]').length`), 1)
+  await browser("wait", "550")
+  await browser("press", "q")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Documents")
+})
+
 test("DropdownMenu typeahead moves focus to the matching enabled item", async () => {
   await openGalleryPage("DropdownMenu")
   await evaluate(`[
@@ -2043,4 +2080,50 @@ test("Accordion keeps a linked retained panel through controlled motion", async 
     { expanded: "false", ending: false, hidden: true },
   )
   await browser("set", "media", "light")
+})
+
+test("ToggleGroup keeps plain Buttons in its accessible roving control set", async () => {
+  await openGalleryPage("ToggleGroup")
+
+  assert.deepEqual(
+    await state(`(() => {
+      const group = document.querySelector('.lui-toggle-group')
+      const controls = [...(group?.querySelectorAll(':scope > button') ?? [])]
+      return {
+        role: group?.getAttribute('role'),
+        label: group?.getAttribute('aria-label'),
+        controls: controls.map((control) => ({
+          text: control.textContent.trim(),
+          tabIndex: control.tabIndex,
+        })),
+      }
+    })()`),
+    {
+      role: "group",
+      label: "View options",
+      controls: [
+        { text: "Controlled", tabIndex: 0 },
+        { text: "Multi-select", tabIndex: -1 },
+        { text: "Action chip", tabIndex: -1 },
+      ],
+    },
+  )
+
+  await evaluate(`document.querySelector('.lui-toggle-group > button')?.focus()`)
+  await browser("press", "ArrowRight")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Multi-select")
+  await browser("press", "ArrowRight")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Action chip")
+  await browser("press", "ArrowRight")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Controlled")
+  await browser("press", "ArrowLeft")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Action chip")
+
+  await evaluate(`document.activeElement?.click()`)
+  assert.deepEqual(
+    await state(`[
+      ...document.querySelectorAll('.lui-toggle-group > button'),
+    ].map((control) => control.disabled)`),
+    [true, true, true],
+  )
 })

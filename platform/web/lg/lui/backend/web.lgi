@@ -114,6 +114,10 @@
 (signature lui.backend.web/toast-duration :fn<web-renderer;int;int>)
 (signature lui.backend.web/first-toast-node? :fn<web-renderer;web-node;bool>)
 (signature lui.backend.web/mount-toast! :fn<web-renderer;int;web-node;unit>)
+(signature lui.backend.web/refresh-horizontal-group-roving!
+  :fn<web-renderer;int;node-kind;bool>)
+(signature lui.backend.web/update-all-horizontal-group-roving!
+  :fn<web-renderer;bool>)
 (signature lui.backend.web/register-image!
   :fn<web-renderer;int;string;float;float;bool>)
 (signature lui.backend.web/unregister-image!

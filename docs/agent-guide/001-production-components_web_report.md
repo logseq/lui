@@ -141,6 +141,21 @@ cancellation cannot let a stale phase hide a reopened panel, and reduced-motion
 preference closes it synchronously. The public API remains the compact,
 model-owned single-disclosure contract.
 
+ButtonGroup and ToggleGroup now initialize and maintain one roving Tab stop
+across retained batches. Their fixed horizontal keymap wraps, follows document
+direction, supports Home and End, and excludes disabled controls. ToggleGroup
+includes both Button and ToggleButton children, matching the shared LUI and
+Vercel Native contract; activating either child still returns through its own
+model callback instead of introducing group-owned selection state.
+
+Tree now adds delegated WAI-ARIA typeahead to its existing retained roving
+focus model. Printable input searches the next visible enabled row with
+wrapping, rapid characters form one 500 ms prefix, and focus movement continues
+to return selection through the existing LG callback. Modifier shortcuts,
+unmatched prefixes, disabled rows, and descendants removed by collapsed
+branches do not become search targets. The timer is released with the retained
+Tree node.
+
 ## Base UI parity scope
 
 Behavioral parity applies to LUI components that overlap Base UI: Accordion,

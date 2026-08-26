@@ -1224,6 +1224,27 @@
    true
    (retained/nodes (:web-store renderer))))
 
+(defn- cancel-typeahead! [typeahead-timer]
+  (match (deref typeahead-timer)
+    (Some timer-id) (Js.Global.clearTimeout timer-id)
+    None (Stdlib.ignore true))
+  (reset! typeahead-timer None)
+  true)
+
+(defn- reset-typeahead-later! [typeahead-buffer typeahead-timer]
+  (cancel-typeahead! typeahead-timer)
+  (reset!
+   typeahead-timer
+   (Some
+    (Js.Global.setTimeout
+     500
+     :f
+     (fn []
+       (reset! typeahead-timer None)
+       (reset! typeahead-buffer "")
+       (Stdlib.ignore true)))))
+  true)
+
 (defn- attach-tree-item-events! [renderer node kind dom-node]
   (when (not (= kind ListItem))
     (Webapi.Dom.Element.addEventListener
@@ -1301,6 +1322,64 @@
          None (Stdlib.ignore true)))
      (Stdlib.ignore true))
    dom-node))
+
+(defn- attach-tree-events! [renderer tree tree-node]
+  (let [typeahead-buffer (atom "")
+        typeahead-timer (atom None)
+        key-handler
+        (fn [event]
+          (let [key (Webapi.Dom.KeyboardEvent.key event)]
+            (when
+             (and (= (String.length key) 1)
+                  (not (= (string/trim key) ""))
+                  (not (Webapi.Dom.KeyboardEvent.isComposing event))
+                  (not (Webapi.Dom.KeyboardEvent.metaKey event))
+                  (not (Webapi.Dom.KeyboardEvent.ctrlKey event))
+                  (not (Webapi.Dom.KeyboardEvent.altKey event)))
+              (let [items (tree-focus-items-under renderer tree)
+                    document
+                    (Webapi.Dom.Document.unsafeAsHtmlDocument
+                     (:web-document renderer))
+                    current-index
+                    (if-some [focused
+                              (Webapi.Dom.HtmlDocument.activeElement document)]
+                      (focused-child-index renderer items focused 0)
+                      None)
+                    query
+                    (String.lowercase_ascii
+                     (str (deref typeahead-buffer) key))
+                    start
+                    (match current-index
+                      (Some index) index
+                      None -1)]
+                (reset! typeahead-buffer query)
+                (reset-typeahead-later!
+                 typeahead-buffer typeahead-timer)
+                (loop [offset 1]
+                  (when (<= offset (count items))
+                    (let [index (mod (+ start offset) (count items))
+                          item (nth items index)
+                          label
+                          (String.lowercase_ascii
+                           (string/trim
+                            (Webapi.Dom.Element.textContent
+                             (dom-node renderer item))))]
+                      (if (string/starts-with? label query)
+                        (do
+                          (Webapi.Dom.KeyboardEvent.preventDefault event)
+                          (focus-tree-item! renderer tree items item))
+                        (recur (inc offset)))))))))
+          (Stdlib.ignore true))]
+    (Webapi.Dom.Element.addKeyDownEventListener key-handler tree-node)
+    (swap!
+     (:web-cleanups renderer)
+     assoc
+     tree
+     (fn []
+       (cancel-typeahead! typeahead-timer)
+       (Webapi.Dom.Element.removeKeyDownEventListener key-handler tree-node)
+       (Stdlib.ignore true)))
+    (Stdlib.ignore true)))
 
 (defn- attach-pressable-text-events! [renderer node dom-node]
   (Webapi.Dom.Element.addEventListener
@@ -1648,27 +1727,6 @@
          (Webapi.Dom.Document.unsafeAsHtmlDocument document))
         typeahead-buffer (atom "")
         typeahead-timer (atom None)
-        cancel-typeahead!
-        (fn []
-          (match (deref typeahead-timer)
-            (Some timer-id) (Js.Global.clearTimeout timer-id)
-            None (Stdlib.ignore true))
-          (reset! typeahead-timer None)
-          true)
-        reset-typeahead-later!
-        (fn []
-          (cancel-typeahead!)
-          (reset!
-           typeahead-timer
-           (Some
-            (Js.Global.setTimeout
-             500
-             :f
-             (fn []
-               (reset! typeahead-timer None)
-               (reset! typeahead-buffer "")
-               (Stdlib.ignore true)))))
-          true)
         refresh-position!
         (fn [_event]
           (Webapi.requestAnimationFrame
@@ -1779,7 +1837,8 @@
                       (Some index) index
                       None -1)]
                 (reset! typeahead-buffer query)
-                (reset-typeahead-later!)
+                (reset-typeahead-later!
+                 typeahead-buffer typeahead-timer)
                 (loop [offset 1]
                   (when (<= offset (count items))
                     (let [index (mod (+ start offset) (count items))
@@ -1811,7 +1870,7 @@
      assoc
      node
      (fn []
-       (cancel-typeahead!)
+       (cancel-typeahead! typeahead-timer)
        (Webapi.Dom.Document.removeEventListener
         "pointerdown" pointer-handler document)
        (Webapi.Dom.Document.removeEventListener
@@ -1927,7 +1986,7 @@
   (match group-kind
     Tabs (= child-kind Button)
     ButtonGroup (or (= child-kind Button) (= child-kind ToggleButton))
-    ToggleGroup (= child-kind ToggleButton)
+    ToggleGroup (or (= child-kind Button) (= child-kind ToggleButton))
     Breadcrumb (= child-kind Button)
     Pagination (= child-kind Button)
     _ false))
@@ -1936,17 +1995,24 @@
   (not (= (retained/property (:web-store renderer) node Enabled)
           (Some (BoolValue false)))))
 
-(defn- horizontal-focus-children [renderer node kind]
+(defn- horizontal-all-focus-children [renderer node kind]
   (into
    []
    (filter
     (fn [child]
       (if-some [current (retained/node (:web-store renderer) child)]
-        (and
-         (horizontal-group-child? kind (standard-kind current))
-         (enabled-node? renderer child))
+        (match (retained/standard-kind current)
+          (Some child-kind) (horizontal-group-child? kind child-kind)
+          None false)
         false))
     (retained/children (:web-store renderer) node))))
+
+(defn- horizontal-focus-children [renderer node kind]
+  (into
+   []
+   (filter
+    (fn [child] (enabled-node? renderer child))
+    (horizontal-all-focus-children renderer node kind))))
 
 (defn- focused-child-index [renderer children focused index]
   (if (>= index (count children))
@@ -1956,6 +2022,15 @@
          focused)
       (Some index)
       (focused-child-index renderer children focused (+ index 1)))))
+
+(defn- horizontal-tab-stop-index [renderer children index]
+  (if (>= index (count children))
+    None
+    (if (= (Webapi.Dom.Element.getAttribute
+            "tabindex" (dom-node renderer (nth children index)))
+           (Some "0"))
+      (Some index)
+      (horizontal-tab-stop-index renderer children (+ index 1)))))
 
 (defn- horizontal-focus-index [key current length]
   (if (= length 0)
@@ -1981,30 +2056,54 @@
        (Webapi.Dom.Window.getComputedStyle element window))
       "ltr")))
 
-(defn- refresh-focused-group-roving! [renderer node kind]
-  (let [children (horizontal-focus-children renderer node kind)
+(defn- refresh-horizontal-group-roving! [renderer node kind]
+  (let [all-children (horizontal-all-focus-children renderer node kind)
+        children (horizontal-focus-children renderer node kind)
         document
-        (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))]
-    (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
-      (match (focused-child-index renderer children focused 0)
-        (Some target)
-        (loop [index 0]
-          (when (< index (count children))
-            (Webapi.Dom.Element.setAttribute
-             "tabindex" (if (= index target) "0" "-1")
-             (dom-node renderer (nth children index)))
-            (recur (inc index))))
-        None (Stdlib.ignore true))
-      (Stdlib.ignore true))
+        (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))
+        focused-index
+        (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
+          (focused-child-index renderer children focused 0)
+          None)
+        target
+        (match focused-index
+          (Some index) index
+          None
+          (match (horizontal-tab-stop-index renderer children 0)
+            (Some index) index
+            None 0))]
+    (doseq [child all-children]
+      (Webapi.Dom.Element.setAttribute
+       "tabindex" "-1" (dom-node renderer child)))
+    (when (not (empty? children))
+      (Webapi.Dom.Element.setAttribute
+       "tabindex" "0" (dom-node renderer (nth children target))))
     true))
 
+(defn- horizontal-focus-kind? [kind]
+  (or (= kind Tabs) (= kind ButtonGroup) (= kind ToggleGroup)
+      (= kind Breadcrumb) (= kind Pagination)))
+
+(defn- update-all-horizontal-group-roving! [renderer]
+  (reduce-kv
+   (fn [_updated node current]
+     (match (retained/standard-kind current)
+       (Some kind)
+       (do
+         (when (horizontal-focus-kind? kind)
+           (refresh-horizontal-group-roving! renderer node kind))
+         true)
+       None true)
+     true)
+   true
+   (retained/nodes (:web-store renderer))))
+
 (defn- attach-horizontal-focus! [renderer node kind group-node]
-  (when (= kind Tabs)
-    (Webapi.Dom.Element.addFocusInEventListener
-     (fn [_event]
-       (refresh-focused-group-roving! renderer node kind)
-       (Stdlib.ignore true))
-     group-node))
+  (Webapi.Dom.Element.addFocusInEventListener
+   (fn [_event]
+     (refresh-horizontal-group-roving! renderer node kind)
+     (Stdlib.ignore true))
+   group-node)
   (Webapi.Dom.Element.addKeyDownEventListener
    (fn [event]
      (let [key (Webapi.Dom.KeyboardEvent.key event)
@@ -3206,6 +3305,8 @@
     (attach-context-host-events! renderer node dom-node))
   (when (proto/tree-row-kind? kind)
     (attach-tree-item-events! renderer node kind dom-node))
+  (when (= kind Tree)
+    (attach-tree-events! renderer node dom-node))
   (when (= kind Toolbar)
     (attach-toolbar-events! renderer node dom-node))
   (match kind
@@ -5456,6 +5557,7 @@
 (defn- apply-dom-batch! [renderer previous-nodes batch]
   (doseq [operation (:ops batch)]
     (apply-dom-op! renderer previous-nodes operation))
+  (update-all-horizontal-group-roving! renderer)
   (update-all-tree-roving! renderer)
   (update-all-toolbar-roving! renderer)
   (Stdlib.ignore true))
