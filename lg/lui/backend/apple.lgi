@@ -78,6 +78,8 @@
 (signature lui.backend.apple/create-with-extensions
   :overload<fn<extension-registry;apple-renderer>;fn<fn<patch-batch;bool>;extension-registry;apple-renderer>>)
 (signature lui.backend.apple/create-wire :fn<fn<string;bool>;apple-renderer>)
+(signature lui.backend.apple/create-wire-with-extensions
+ :fn<fn<string;bool>;extension-registry;apple-renderer>)
 (signature lui.backend.apple/platform-node :fn<node-kind;apple-node>)
 (signature lui.backend.apple/extension-platform-node :fn<int;string;apple-node>)
 (signature lui.backend.apple/backend-for

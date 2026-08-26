@@ -28,6 +28,10 @@
 (defn create-wire [send-json]
   (create (fn [batch] (send-json (wire/encode-batch batch)))))
 
+(defn create-wire-with-extensions [send-json registry]
+  (create-with-extensions
+   (fn [batch] (send-json (wire/encode-batch batch))) registry))
+
 (defn- platform-node [kind]
   (match kind
     Root AppleRoot

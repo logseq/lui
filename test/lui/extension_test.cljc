@@ -387,6 +387,28 @@
            (retained/extension-property
             (:apple-store renderer) map-node "latitude")))))
 
+(deftest apple-wire-backend-retains-registered-extensions
+  (let [registry (ios-registry)
+        encoded (atom "")
+        renderer
+        (apple/create-wire-with-extensions
+         (fn [json] (reset! encoded json) true)
+         registry)
+        application
+        (runtime/create-with-extensions
+         (sig/scheduler)
+         (apple/backend-for renderer proto/IOS proto/SwiftUIHost)
+         registry)
+        map-node (runtime/create-extension-node! application "map")]
+    (runtime/set-extension-prop!
+     application map-node "latitude" (proto/FloatValue 37.3))
+    (runtime/set-extension-prop!
+     application map-node "longitude" (proto/FloatValue -122.0))
+    (runtime/flush! application)
+    (is (not (= "" (deref encoded))))
+    (is (= (Some (apple/AppleExtension "map"))
+           (apple/node renderer map-node)))))
+
 (deftest flutter-proxy-backend-retains-registered-extensions
   (let [registry (ext/registry)
         _registered (ext/register-component! registry (flutter-schema))
