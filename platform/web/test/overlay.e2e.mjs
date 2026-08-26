@@ -2436,3 +2436,46 @@ test("ToggleGroup keeps plain Buttons in its accessible roving control set", asy
     [true, true, true],
   )
 })
+
+test("every Gallery page fits the compact one-page mobile shell", async () => {
+  await openGalleryPage("Button")
+  await browser("set", "viewport", "390", "844")
+
+  const audit = await state(`(() => {
+    const content = document.querySelector('.lui-gallery-content')
+    const buttons = [...document.querySelectorAll('.lui-gallery-nav-item')]
+    const failures = []
+    for (const button of buttons) {
+      button.click()
+      const headings = content.querySelectorAll('[role="heading"]')
+      if (headings.length !== 1 || content.scrollWidth > content.clientWidth + 1) {
+        const contentRight = content.getBoundingClientRect().right
+        failures.push({
+          page: button.textContent,
+          headings: headings.length,
+          clientWidth: content.clientWidth,
+          scrollWidth: content.scrollWidth,
+          offenders: [...content.querySelectorAll('*')]
+            .filter((element) => element.getBoundingClientRect().right > contentRight + 1)
+            .map((element) => ({
+              className: element.className,
+              right: Math.round(element.getBoundingClientRect().right),
+              width: Math.round(element.getBoundingClientRect().width),
+            }))
+            .slice(0, 8),
+        })
+      }
+    }
+    return {
+      count: buttons.length,
+      minNavigationHeight: Math.min(...buttons.map((button) => button.getBoundingClientRect().height)),
+      mountedPages: document.querySelectorAll('.lui-gallery-content > *').length,
+      failures,
+    }
+  })()`)
+
+  assert.equal(audit.count, 65)
+  assert.ok(audit.minNavigationHeight >= 44, JSON.stringify(audit))
+  assert.equal(audit.mountedPages, 1)
+  assert.deepEqual(audit.failures, [])
+})

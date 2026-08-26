@@ -1260,7 +1260,7 @@ body {
   }
 
   .lui-toolbar[aria-orientation="horizontal"] {
-    @apply flex-row;
+    @apply max-w-full flex-row overflow-x-auto;
   }
 
   .lui-toolbar[aria-orientation="vertical"] {

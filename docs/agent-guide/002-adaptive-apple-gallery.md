@@ -60,10 +60,12 @@ scrollable component picker.
 
 ## Verification
 
-The LG integration test proves all 63 public components are unique direct page
-roots. Browser verification asserts 63 derived navigation entries and exactly
-one mounted component heading. Flutter backend tests cover direct-root section
-projection and retained widget identity.
+The LG integration test proves all 64 public components are unique direct page
+roots. Hosts that register the Gallery's `NativeExtension` expose 65 derived
+navigation entries. Browser verification checks all 65 entries at a compact
+viewport, exactly one mounted component heading, and no page-level horizontal
+overflow. Flutter backend tests cover direct-root section projection and
+retained widget identity.
 
 Maestro exercises list-to-detail navigation and real interactions for Button,
 Tabs, Dialog, text input, Checkbox/Switch Signal sharing, and Radio selection.

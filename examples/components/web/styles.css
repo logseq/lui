@@ -100,6 +100,7 @@ body {
 
   .lui-gallery-nav-item {
     flex: 0 0 auto;
+    min-height: 2.75rem;
     white-space: nowrap;
   }
 }
