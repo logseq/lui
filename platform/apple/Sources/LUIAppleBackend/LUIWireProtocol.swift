@@ -588,7 +588,8 @@ struct LUIRetainedTree {
         case .accessibilityLabel:
             kind == .button || kind == .toggleButton || isTextEntry(kind) || kind == .checkbox ||
                 kind == .switchControl || kind == .toggle ||
-                kind == .radioGroup || kind == .buttonGroup || kind == .toggleGroup ||
+                kind == .radioGroup || kind == .tabs ||
+                kind == .buttonGroup || kind == .toggleGroup ||
                 kind == .breadcrumb || kind == .pagination ||
                 kind == .radio || kind == .slider || kind == .avatar || kind == .image ||
                 kind == .mediaSurface || kind == .tree ||
@@ -599,7 +600,7 @@ struct LUIRetainedTree {
             kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
         case .progressValue: kind == .progress || kind == .slider || kind == .split
         case .resizeDuration, .resizeEasing, .resizeOrigin: kind == .split
-        case .orientation: kind == .divider
+        case .orientation: kind == .divider || kind == .tabs
         case .size:
             kind == .button || kind == .toggleButton || kind == .spinner ||
                 kind == .icon || kind == .text || kind == .tableCell

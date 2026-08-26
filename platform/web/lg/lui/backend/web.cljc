@@ -1951,10 +1951,64 @@
         None (Some 0))
       _ None)))
 
+(defn- element-direction [renderer element]
+  (let [document
+        (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))]
+    (if-some [window (Webapi.Dom.HtmlDocument.defaultView document)]
+      (Webapi.Dom.CssStyleDeclaration.direction
+       (Webapi.Dom.Window.getComputedStyle element window))
+      "ltr")))
+
+(defn- refresh-focused-group-roving! [renderer node kind]
+  (let [children (horizontal-focus-children renderer node kind)
+        document
+        (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))]
+    (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
+      (match (focused-child-index renderer children focused 0)
+        (Some target)
+        (loop [index 0]
+          (when (< index (count children))
+            (Webapi.Dom.Element.setAttribute
+             "tabindex" (if (= index target) "0" "-1")
+             (dom-node renderer (nth children index)))
+            (recur (inc index))))
+        None (Stdlib.ignore true))
+      (Stdlib.ignore true))
+    true))
+
 (defn- attach-horizontal-focus! [renderer node kind group-node]
+  (when (= kind Tabs)
+    (Webapi.Dom.Element.addFocusInEventListener
+     (fn [_event]
+       (refresh-focused-group-roving! renderer node kind)
+       (Stdlib.ignore true))
+     group-node))
   (Webapi.Dom.Element.addKeyDownEventListener
    (fn [event]
      (let [key (Webapi.Dom.KeyboardEvent.key event)
+           orientation
+           (if (= kind Tabs)
+             (match (retained/property
+                     (:web-store renderer) node OrientationValue)
+               (Some (StringValue value)) value
+               _ "horizontal")
+             "horizontal")
+           direction (element-direction renderer group-node)
+           forward-key
+           (if (= orientation "vertical")
+             "ArrowDown"
+             (if (= direction "rtl") "ArrowLeft" "ArrowRight"))
+           backward-key
+           (if (= orientation "vertical")
+             "ArrowUp"
+             (if (= direction "rtl") "ArrowRight" "ArrowLeft"))
+           navigation-key
+           (cond
+             (= key forward-key) "ArrowRight"
+             (= key backward-key) "ArrowLeft"
+             (= key "Home") "Home"
+             (= key "End") "End"
+             :else "")
            children (horizontal-focus-children renderer node kind)
            document
            (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))
@@ -1962,7 +2016,7 @@
            (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
              (focused-child-index renderer children focused 0)
              None)]
-       (match (horizontal-focus-index key current (count children))
+       (match (horizontal-focus-index navigation-key current (count children))
          (Some index)
          (do
            (Webapi.Dom.KeyboardEvent.preventDefault event)
@@ -2019,14 +2073,6 @@
          focused)
       (Some index)
       (focused-toolbar-item-index store items focused (+ index 1)))))
-
-(defn- toolbar-direction [renderer toolbar-node]
-  (let [document
-        (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))]
-    (if-some [window (Webapi.Dom.HtmlDocument.defaultView document)]
-      (Webapi.Dom.CssStyleDeclaration.direction
-       (Webapi.Dom.Window.getComputedStyle toolbar-node window))
-      "ltr")))
 
 (defn- toolbar-input-owns-key? [store item event forward-key backward-key]
   (if-some [current (retained/node store item)]
@@ -2118,7 +2164,7 @@
                    (:web-store renderer) node OrientationValue)
              (Some (StringValue value)) value
              _ "horizontal")
-           direction (toolbar-direction renderer toolbar-node)
+           direction (element-direction renderer toolbar-node)
            forward-key
            (if (= orientation "vertical")
              "ArrowDown"
@@ -3859,6 +3905,67 @@
     (Some (BoolValue selected)) selected
     _ false))
 
+(defn- refresh-tabs-roving! [store document tabs]
+  (let [all-children
+        (into
+         []
+         (filter
+          (fn [child]
+            (if-some [current (retained/node store child)]
+              (standard-kind? current Button)
+              false))
+          (retained/children store tabs)))
+        children
+        (into
+         []
+         (filter
+          (fn [child]
+            (not (= (retained/property store child Enabled)
+                    (Some (BoolValue false)))))
+          all-children))
+        html-document (Webapi.Dom.Document.unsafeAsHtmlDocument document)
+        active
+        (if-some [focused (Webapi.Dom.HtmlDocument.activeElement html-document)]
+          (loop [index 0]
+            (if (>= index (count children))
+              None
+              (if-some [current (retained/node store (nth children index))]
+                (if (Webapi.Dom.Element.isSameNode
+                     (Webapi.Dom.Element.asNode (:platform-node current))
+                     focused)
+                  (Some index)
+                  (recur (inc index)))
+                (recur (inc index)))))
+          None)
+        selected
+        (loop [index 0]
+          (if (>= index (count children))
+            0
+            (if (= (retained/property store (nth children index) Selected)
+                   (Some (BoolValue true)))
+              index
+              (recur (inc index)))))
+        target
+        (match active
+          (Some index) index
+          None selected)]
+    (loop [index 0]
+      (when (< index (count all-children))
+        (if-some [current (retained/node store (nth all-children index))]
+          (Webapi.Dom.Element.setAttribute
+           "tabindex" "-1" (:platform-node current))
+          (Stdlib.ignore true))
+        (recur (inc index))))
+    (loop [index 0]
+      (when (< index (count children))
+        (if-some [current (retained/node store (nth children index))]
+          (Webapi.Dom.Element.setAttribute
+           "tabindex" (if (= index target) "0" "-1")
+           (:platform-node current))
+          (Stdlib.ignore true))
+        (recur (inc index))))
+    (Stdlib.ignore true)))
+
 (defn- refresh-button-context! [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
     (when (standard-kind? current Button)
@@ -3869,7 +3976,12 @@
             (Webapi.Dom.Element.setAttribute "role" "tab" element)
             (Webapi.Dom.Element.setAttribute
              "aria-selected" (if selected "true" "false") element)
-            (Webapi.Dom.Element.removeAttribute "aria-pressed" element))
+            (Webapi.Dom.Element.removeAttribute "aria-pressed" element)
+            (match (:retained-parent current)
+              (Some parent)
+              (refresh-tabs-roving!
+               (:web-store renderer) (:web-document renderer) parent)
+              None (Stdlib.ignore true)))
           (do
             (Webapi.Dom.Element.removeAttribute "role" element)
             (Webapi.Dom.Element.removeAttribute "aria-selected" element)
@@ -5000,6 +5112,12 @@
         (Webapi.Dom.Element.removeAttribute
          "aria-label"
          (if (direct-toggle? kind) (child-element dom-node 0) dom-node))
+        OrientationValue
+        (when (= kind Tabs)
+          (Webapi.Dom.Element.setAttribute
+           "data-orientation" "horizontal" dom-node)
+          (Webapi.Dom.Element.setAttribute
+           "aria-orientation" "horizontal" dom-node))
         StyleClass (refresh-node-class! renderer node kind dom-node)
         _ (Stdlib.ignore true)))
     (raise (Invalid_argument "unknown DOM node"))))
@@ -5032,15 +5150,36 @@
             (when (= property MinWidth) (update-split! renderer parent))
             (if-some [parent-node
                       (retained/node (:web-store renderer) parent)]
-              (when (standard-kind? parent-node DropdownMenu)
-                (Stdlib.ignore
-                 (refresh-combobox-list-state! renderer parent)))
+              (do
+                (when
+                 (and
+                  (standard-kind? parent-node Tabs)
+                  (or (= property Selected) (= property Enabled)))
+                  (refresh-tabs-roving!
+                   (:web-store renderer) (:web-document renderer) parent))
+                (when (standard-kind? parent-node DropdownMenu)
+                  (Stdlib.ignore
+                   (refresh-combobox-list-state! renderer parent))))
               (Stdlib.ignore true)))
           None (Stdlib.ignore true)))
       (raise (Invalid_argument "unknown DOM node")))
 
     (RemoveProp node property)
-    (remove-property! renderer node property)
+    (do
+      (remove-property! renderer node property)
+      (if-some [current (retained/node (:web-store renderer) node)]
+        (match (:retained-parent current)
+          (Some parent)
+          (if-some [parent-node (retained/node (:web-store renderer) parent)]
+            (when
+             (and
+              (standard-kind? parent-node Tabs)
+              (or (= property Selected) (= property Enabled)))
+              (refresh-tabs-roving!
+               (:web-store renderer) (:web-document renderer) parent))
+            (Stdlib.ignore true))
+          None (Stdlib.ignore true))
+        (Stdlib.ignore true)))
 
     (SetExtensionProp node property value)
     (apply-extension-property! renderer node property value)

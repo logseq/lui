@@ -1791,3 +1791,92 @@ test("Tooltip flips and shifts inside compact viewport edges", async () => {
     },
   )
 })
+
+test("Tabs use Base UI keyboard, orientation, RTL, and roving-focus semantics", async () => {
+  await openGalleryPage("Tabs")
+
+  assert.deepEqual(
+    await state(`(() => {
+      const horizontal = document.querySelector('.lui-tabs[aria-label="Workspace sections"]')
+      const vertical = document.querySelector('.lui-tabs[aria-label="Workspace sections vertical"]')
+      const tabs = [...(horizontal?.querySelectorAll(':scope > button') ?? [])]
+      return {
+        orientation: horizontal?.getAttribute('aria-orientation'),
+        verticalOrientation: vertical?.getAttribute('aria-orientation'),
+        roles: tabs.map((tab) => tab.getAttribute('role')),
+        selected: tabs.map((tab) => tab.getAttribute('aria-selected')),
+        tabStops: tabs.map((tab) => tab.tabIndex),
+      }
+    })()`),
+    {
+      orientation: "horizontal",
+      verticalOrientation: "vertical",
+      roles: ["tab", "tab"],
+      selected: ["true", "false"],
+      tabStops: [0, -1],
+    },
+  )
+
+  await evaluate(`document.querySelector(
+    '.lui-tabs[aria-label="Workspace sections"] > button[aria-selected="true"]',
+  )?.focus()`)
+  await browser("press", "ArrowRight")
+  assert.deepEqual(
+    await state(`({
+      focus: document.activeElement?.textContent.trim(),
+      content: document.querySelector('.lui-tabs[aria-label="Workspace sections"]')
+        ?.nextElementSibling?.textContent.trim(),
+      selected: [...document.querySelectorAll(
+        '.lui-tabs[aria-label="Workspace sections"] > button',
+      )].map((tab) => tab.getAttribute('aria-selected')),
+    })`),
+    {
+      focus: "Activity",
+      content: "Signal updates remain local",
+      selected: ["true", "false"],
+    },
+  )
+
+  await browser("press", "Enter")
+  await browser("wait", "30")
+  assert.deepEqual(
+    await state(`({
+      content: document.querySelector('.lui-tabs[aria-label="Workspace sections"]')
+        ?.nextElementSibling?.textContent.trim(),
+      selected: [...document.querySelectorAll(
+        '.lui-tabs[aria-label="Workspace sections"] > button',
+      )].map((tab) => tab.getAttribute('aria-selected')),
+      tabStops: [...document.querySelectorAll(
+        '.lui-tabs[aria-label="Workspace sections"] > button',
+      )].map((tab) => tab.tabIndex),
+    })`),
+    {
+      content: "Recent retained updates",
+      selected: ["false", "true"],
+      tabStops: [-1, 0],
+    },
+  )
+
+  await browser("press", "Home")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Overview")
+  await browser("press", "End")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Activity")
+
+  await evaluate(`(() => {
+    const tabs = document.querySelector('.lui-tabs[aria-label="Workspace sections"]')
+    tabs.style.direction = 'rtl'
+    tabs.querySelector(':scope > button')?.focus()
+  })()`)
+  await browser("press", "ArrowLeft")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Activity")
+
+  await evaluate(`document.querySelector(
+    '.lui-tabs[aria-label="Workspace sections vertical"] > button',
+  )?.focus()`)
+  await browser("press", "ArrowDown")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Activity")
+  await browser("press", "ArrowLeft")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Activity")
+  await browser("press", "ArrowUp")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Overview")
+})

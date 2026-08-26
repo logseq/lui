@@ -661,7 +661,7 @@ the Timeline, sibling items, or application component.
 
 ### Tabs contract
 
-`tabs` is the reference's horizontal TabsList container, not a page-content
+`tabs` is the reference's oriented TabsList container, not a page-content
 owner. It introduces no selection value, tab identifier, panel part or event.
 Direct `button` children are presented as tab triggers; their existing
 `selected` Signal and `on-press` callback remain the model-owned controlled
@@ -674,13 +674,20 @@ The bare strip hugs its triggers with house spacing and chrome. An explicitly
 authored `gap` or padding value wins for that field. A selected trigger changes
 only that retained Button node; it does not replace the Tabs node, sibling
 triggers or selected content. Web maps the strip to a `tablist` and direct
-Button children to `tab` semantics. SwiftUI and Flutter use retained native
-Button controls with platform tab-strip presentation and selected semantics.
-Enter or Space activates the focused trigger through the Button's normal
-platform behavior. Left and Right move focus between direct triggers with
-wrapping, while Home and End move to the first and last enabled trigger; focus
-movement does not select or activate it. Like the pinned reference, Tabs adds
-no runtime-owned selection or mutual exclusion.
+Button children to `tab` semantics. Its `label` names the tablist for assistive
+technology. SwiftUI and Flutter use retained native Button controls with
+platform tab-strip presentation and selected semantics. Enter or Space
+activates the focused trigger through the Button's normal platform behavior.
+On Web, horizontal Left and Right navigation follows computed LTR or RTL
+direction; vertical Up and Down navigation follows the authored `orientation`.
+Both modes wrap, skip disabled triggers, and support Home and End. Focus owns
+the single roving tab stop but does not select or activate the trigger. Like
+the pinned reference, Tabs adds no runtime-owned selection or mutual exclusion.
+
+The current compact API has no retained panel relationship, so Web does not
+invent `aria-controls`, activation direction, or a moving indicator from DOM
+proximity. Those behaviors require an explicit panel association design before
+they can be implemented without fragile implicit coupling.
 
 ### ButtonGroup and ToggleGroup contract
 

@@ -123,6 +123,16 @@ value fans out through the shared Signal before ordinary option navigation
 resumes. The Web backend resolves wrapped controls by their actual `INPUT` or
 `TEXTAREA` tag instead of relying on melange-webapi's generic Element cast.
 
+Tabs now follows Base UI's manual-activation composite behavior. One direct
+enabled Button owns the roving tab stop; arrows move focus without changing the
+model-owned selection, while native Enter or Space activation invokes the
+existing Button event. Horizontal navigation follows computed LTR or RTL
+direction, vertical navigation uses Up and Down, and both modes wrap, skip
+disabled triggers, and support Home and End. The tablist accepts an accessible
+label and exposes its orientation. Panel relationships and indicator motion
+remain intentionally deferred until the compact API has an explicit retained
+panel association.
+
 ## Base UI parity scope
 
 Behavioral parity applies to LUI components that overlap Base UI: Accordion,

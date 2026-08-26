@@ -916,7 +916,21 @@
   (container-expansion 'lui.ui/list! context parent attrs children))
 
 (defelement tabs [context parent attrs & children]
-  (container-expansion 'lui.ui/tabs! context parent attrs children))
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/tabs! ~context)]
+       ~@(element-properties context node attrs)
+       ~@(string-attribute-expansion
+          context node (:orientation attrs) 'lui.protocol/OrientationValue)
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
+       ~node)))
 
 (macro-helper-defn labelled-container-expansion
                    [constructor context parent attrs children]

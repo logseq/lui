@@ -2807,7 +2807,7 @@ final class LUIFlutterBackend {
       'orientation' =>
         value is String &&
             (value == 'horizontal' || value == 'vertical') &&
-            kind == _NodeKind.divider,
+            (kind == _NodeKind.divider || kind == _NodeKind.tabs),
       'size' =>
         value is String &&
             (_controlSizes.contains(value) ||
@@ -2992,6 +2992,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.switchControl ||
                 kind == _NodeKind.toggle ||
                 kind == _NodeKind.radioGroup ||
+                kind == _NodeKind.tabs ||
                 kind == _NodeKind.buttonGroup ||
                 kind == _NodeKind.toggleGroup ||
                 kind == _NodeKind.breadcrumb ||

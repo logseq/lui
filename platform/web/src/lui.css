@@ -1196,6 +1196,10 @@ body {
     @apply inline-flex items-center gap-1 rounded-lg bg-secondary p-1 text-secondary-foreground;
   }
 
+  .lui-tabs[aria-orientation="vertical"] {
+    @apply flex-col items-stretch;
+  }
+
   .lui-toolbar {
     @apply inline-flex w-fit items-center rounded-lg border border-border bg-card p-1 text-card-foreground outline-none transition-colors;
     gap: var(--lui-gap, 0px);

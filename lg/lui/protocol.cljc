@@ -149,9 +149,6 @@
   (or (= kind Tabs) (= kind ButtonGroup) (= kind ToggleGroup)
       (= kind Breadcrumb) (= kind Pagination)))
 
-(defn- labelled-horizontal-container? [kind]
-  (and (horizontal-container? kind) (not (= kind Tabs))))
-
 (defn- common-property-supported? [kind property]
   (match property
     MainAlignment
@@ -234,7 +231,7 @@
         (= kind Textarea)
         (= kind Checkbox) (= kind SwitchControl)
         (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider)
-        (labelled-horizontal-container? kind)
+        (horizontal-container? kind)
         (= kind Avatar) (= kind Image) (= kind MediaSurface)
         (= kind Tree) (= kind Resizable) (= kind Split)
         (= kind Alert) (= kind Bubble)
@@ -246,7 +243,7 @@
     Checked (or (= kind Checkbox) (= kind SwitchControl)
                 (= kind Toggle) (= kind Radio))
     ProgressValue (or (= kind Progress) (= kind Slider) (= kind Split))
-    OrientationValue (= kind Divider)
+    OrientationValue (or (= kind Divider) (= kind Tabs))
     SizeValue
     (or (= kind Button) (= kind ToggleButton) (= kind Spinner) (= kind Icon)
         (= kind TableCell))

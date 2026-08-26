@@ -299,6 +299,8 @@ void main() {
         {"op":"create-node","id":3,"kind":"button"},
         {"op":"create-node","id":4,"kind":"toggle-button"},
         {"op":"set-prop","id":1,"property":"gap","value":4},
+        {"op":"set-prop","id":1,"property":"orientation","value":"horizontal"},
+        {"op":"set-prop","id":1,"property":"accessibility-label","value":"Workspace sections"},
         {"op":"set-prop","id":2,"property":"text","value":"Overview"},
         {"op":"set-prop","id":2,"property":"selected","value":true},
         {"op":"set-prop","id":3,"property":"text","value":"Activity"},
@@ -324,6 +326,17 @@ void main() {
           .first,
     );
     expect(tabs.spacing, 4);
+    expect(
+      find.descendant(
+        of: find.byKey(LUIFlutterBackend.nodeKey(1)),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Semantics &&
+              widget.properties.label == 'Workspace sections',
+        ),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Overview'), findsOneWidget);
     expect(find.text('Activity'), findsOneWidget);
     expect(

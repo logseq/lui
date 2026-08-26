@@ -930,7 +930,7 @@
    disabled-source select-overview select-activity]
   [:column {:gap 16 :padding 32}
    [:heading {:level 2} "Tabs"]
-   [:tabs
+   [:tabs {:label "Workspace sections"}
     [:button
      {:selected overview-selected-source
       :disabled disabled-source
@@ -943,6 +943,17 @@
      "Activity"]]
    [:card {:padding 16}
     [:paragraph {:value content-source}]]
+   [:tabs {:label "Workspace sections vertical" :orientation "vertical"}
+    [:button
+     {:selected overview-selected-source
+      :disabled disabled-source
+      :on-press select-overview}
+     "Overview"]
+    [:button
+     {:selected activity-selected-source
+      :disabled disabled-source
+      :on-press select-activity}
+     "Activity"]]
    [:paragraph
     "Tabs owns layout and platform presentation; Signals own selection and content."]])
 

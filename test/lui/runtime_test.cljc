@@ -399,7 +399,7 @@
       (assert-equal 0 (apple/node-count renderer)
                     "an invalid sheet batch leaves no retained nodes"))))
 
-(deftest tabs-is-a-controlled-horizontal-trigger-container
+(deftest tabs-is-a-controlled-oriented-trigger-container
   (let [batch
         (record proto/patch-batch
                 (generation 1)
@@ -429,7 +429,8 @@
   (doseq [property
           [proto/Gap proto/MainAlignment proto/CrossAlignment
            proto/PaddingValue proto/GrowValue proto/WidthValue
-           proto/MinWidth proto/MaxWidth]]
+           proto/MinWidth proto/MaxWidth proto/OrientationValue
+           proto/AccessibilityLabel]]
     (is (proto/property-supported? proto/Tabs property)
         "Tabs admits the reference container surface"))
   (doseq [property [proto/TextValue proto/Selected proto/Enabled]]

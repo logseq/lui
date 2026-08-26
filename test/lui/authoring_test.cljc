@@ -318,7 +318,8 @@
 
 (defui retained-tabs
   [overview-selected activity-selected on-overview on-activity on-toggle]
-  [:tabs {:gap 4 :main "start" :cross "center"}
+  [:tabs {:gap 4 :main "start" :cross "center"
+          :orientation "vertical" :label "Workspace sections"}
    [:button
     {:selected overview-selected :on-press on-overview}
     "Overview"]
@@ -1422,6 +1423,14 @@
         (Some (proto/IntValue value))
         (assert-equal 4 value "Tabs keeps its explicit trigger gap")
         _ (is false "Tabs gap exists"))
+      (match (apple/property renderer root proto/OrientationValue)
+        (Some (proto/StringValue value))
+        (assert-equal "vertical" value "Tabs keeps its explicit orientation")
+        _ (is false "Tabs orientation exists"))
+      (match (apple/property renderer root proto/AccessibilityLabel)
+        (Some (proto/StringValue value))
+        (assert-equal "Workspace sections" value "Tabs keeps its accessible name")
+        _ (is false "Tabs accessible name exists"))
       (match (apple/property renderer overview proto/Selected)
         (Some (proto/BoolValue value))
         (assert-equal true value "the first Button owns selected state")

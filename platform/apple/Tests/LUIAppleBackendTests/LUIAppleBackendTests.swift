@@ -285,6 +285,8 @@ struct LUISwiftUIBackendTests {
           {"op":"create-node","id":3,"kind":"button"},
           {"op":"create-node","id":4,"kind":"toggle-button"},
           {"op":"set-prop","id":1,"property":"gap","value":4},
+          {"op":"set-prop","id":1,"property":"orientation","value":"horizontal"},
+          {"op":"set-prop","id":1,"property":"accessibility-label","value":"Workspace sections"},
           {"op":"set-prop","id":2,"property":"text","value":"Overview"},
           {"op":"set-prop","id":2,"property":"selected","value":true},
           {"op":"set-prop","id":3,"property":"text","value":"Activity"},
@@ -307,6 +309,8 @@ struct LUISwiftUIBackendTests {
         #expect(tabs.kind.rawValue == "tabs")
         #expect(tabs.children == [2, 3, 4])
         #expect(tabs.property(.gap) == .int(4))
+        #expect(tabs.property(.orientation) == .string("horizontal"))
+        #expect(tabs.property(.accessibilityLabel) == .string("Workspace sections"))
         #expect(overview.isSelected)
         #expect(!activity.isSelected)
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
