@@ -1,0 +1,39 @@
+(ns lui.resources)
+
+(type-variant resource-reload-status
+  (ResourceApplied :int)
+  (ResourceUnchanged :int)
+  (ResourceRejected :int :string)
+  (ResourceStale :int))
+
+(type-variant resource-prepare-result [resource]
+  (ResourcePrepared :resource)
+  (ResourcePrepareRejected :string))
+
+(type-variant resource-invalidation-result
+  (ResourceInvalidated)
+  (ResourceInvalidationRejected :string))
+
+(type-record committed-resource [resource]
+  (committed-resource-hash :string)
+  (committed-resource-value :resource)
+  (committed-resource-generation :int))
+
+(type-record resource-session [resource]
+  (resource-values :ref<map<string;committed-resource<resource>>>)
+  (resource-dependencies :ref<map<string;vector<int>>>)
+  (resource-completed-generation :ref<int>)
+  (invalidate-resource-dependents :fn<vector<int>;bool>)
+  (retire-resource :fn<resource;bool>))
+
+(signature lui.resources/create [resource]
+  :fn<fn<vector<int>;bool>;fn<resource;bool>;resource-session<resource>>)
+(signature lui.resources/contains-node? :fn<vector<int>;int;bool>)
+(signature lui.resources/reject! [resource]
+  :fn<resource-session<resource>;int;string;resource-reload-status>)
+(signature lui.resources/register-dependency! [resource]
+  :fn<resource-session<resource>;string;int;bool>)
+(signature lui.resources/current [resource]
+  :fn<resource-session<resource>;string;option<resource>>)
+(signature lui.resources/reload! [resource]
+  :fn<resource-session<resource>;int;string;string;string;fn<string;resource>;resource-reload-status>)

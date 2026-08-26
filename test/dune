@@ -12,6 +12,7 @@
   lui/runtime_test.cljc
   lui/hot_reload_test.cljc
   lui/hot_reload_view_test.cljc
+  lui/phase2_hot_reload_test.cljc
   lui/authoring_test.cljc
   lui/dynamic_test.cljc
   lui/extension_test.cljc
@@ -37,6 +38,7 @@
    %{dep:lui/runtime_test.cljc}
    %{dep:lui/hot_reload_test.cljc}
    %{dep:lui/hot_reload_view_test.cljc}
+   %{dep:lui/phase2_hot_reload_test.cljc}
    %{dep:lui/authoring_test.cljc}
    %{dep:lui/dynamic_test.cljc}
    %{dep:lui/extension_test.cljc}
@@ -70,6 +72,7 @@
   lui/runtime_test.cljc
   lui/hot_reload_test.cljc
   lui/hot_reload_view_test.cljc
+  lui/phase2_hot_reload_test.cljc
   lui/authoring_test.cljc
   lui/dynamic_test.cljc
   lui/extension_test.cljc
@@ -95,6 +98,7 @@
    %{dep:lui/runtime_test.cljc}
    %{dep:lui/hot_reload_test.cljc}
    %{dep:lui/hot_reload_view_test.cljc}
+   %{dep:lui/phase2_hot_reload_test.cljc}
    %{dep:lui/authoring_test.cljc}
    %{dep:lui/dynamic_test.cljc}
    %{dep:lui/extension_test.cljc}
@@ -138,6 +142,7 @@
   %{lib:lg-test.sources:test_native.cljc}
   lui/hot_reload_test.cljc
   lui/hot_reload_view_test.cljc
+  lui/phase2_hot_reload_test.cljc
   %{lib:lg-test.sources:run.cljc}
   %{lib:lg-test.runtime:lg_test_runtime.cmi}
   %{lib:lg-test.alcotest:lg_test_alcotest.cmi}
@@ -153,6 +158,7 @@
    %{lib:lg-test.sources:test_native.cljc}
    %{dep:lui/hot_reload_test.cljc}
    %{dep:lui/hot_reload_view_test.cljc}
+   %{dep:lui/phase2_hot_reload_test.cljc}
    %{lib:lg-test.sources:run.cljc}
    -o %{target})))
 
@@ -206,7 +212,11 @@
  (name hot_reload_repl_test)
  (modules hot_reload_repl_test hot_reload_repl_base)
  (modes byte)
- (deps hot_reload_repl_base.state)
+ (deps
+  hot_reload_repl_base.state
+  fixtures/repl_subscription.lgi
+  fixtures/repl_subscription_v1.cljc
+  fixtures/repl_subscription_v2.cljc)
  (flags (:standard -w -27-32-37-39-69))
  (libraries
   lg.repl
@@ -214,7 +224,12 @@
   lg.runtime
   lg.rrbvec)
  (action
-  (run %{test} %{dep:hot_reload_repl_base.state})))
+  (run
+   %{test}
+   %{dep:hot_reload_repl_base.state}
+   %{dep:fixtures/repl_subscription.lgi}
+   %{dep:fixtures/repl_subscription_v1.cljc}
+   %{dep:fixtures/repl_subscription_v2.cljc})))
 
 (rule
  (target apple_bridge_native.ml)

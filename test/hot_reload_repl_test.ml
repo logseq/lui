@@ -26,6 +26,8 @@ let write_file path content =
     ~finally:(fun () -> close_out channel)
     (fun () -> output_string channel content)
 
+let read_file path = In_channel.with_open_bin path In_channel.input_all
+
 let watched_view_source label =
   Printf.sprintf
     {|
@@ -43,6 +45,8 @@ let watched_view_source label =
     label
 
 let () =
+  if Array.length Sys.argv <> 5 then
+    fail "expected state, subscription interface, and two fixture paths";
   let _runtime_anchor = Hot_reload_repl_base.lui_hot_reload_generation in
   let executable_directory = Filename.dirname Sys.executable_name in
   let bootstrap_interfaces =
@@ -61,6 +65,7 @@ let () =
             [lui.app :as app]
             [lui.hot-reload :as hot]
             [lui.protocol :as proto]
+            [lui.subscriptions :as subscriptions]
             [lui.ui :as ui]
             [lui.backend.apple :as apple]))
 |}
@@ -79,16 +84,27 @@ let () =
     root))
 |}
   |> ignore;
-  eval session "(defn add-action [model action] (+ model action))" |> ignore;
+  Session.eval_files session [ Sys.argv.(2) ] |> expect_ok |> ignore;
+  eval session "(defn add-action [^:int model ^:int action] (+ model action))"
+  |> ignore;
+  eval session "(def logic-reloads (atom 0))" |> ignore;
+  eval session
+    "(def cancel-logic-watch (watch-redef! add-action (fn [] (do (swap! logic-reloads inc) true))))"
+  |> ignore;
+  eval session "(def subscription-starts (atom 0))" |> ignore;
+  eval session "(def subscription-stops (atom 0))" |> ignore;
+  eval session (read_file Sys.argv.(3)) |> ignore;
   eval session "(def renderer (apple/create))" |> ignore;
   eval session
     {|
 (def application
-  (app/create-reloadable
+  (app/create-reloadable-with-subscriptions
    (apple/backend renderer) "source-a" "contract-a"
-   2 add-action counter-view))
+   2 add-action counter-view app-subscriptions))
 |}
   |> ignore;
+  assert_equal "1" (rendered session "(deref subscription-starts)")
+    "the initial typed subscription set starts once";
   eval session "(app/start! application)" |> ignore;
   eval session "(app/flush! application)" |> ignore;
   eval session
@@ -130,6 +146,20 @@ let () =
     "an existing LUI application observes the replacement view";
   assert_equal "2" (rendered session "(app/model application)")
     "the live model survives attached view replacement";
+  eval session (read_file Sys.argv.(4)) |> ignore;
+  assert_equal "2" (rendered session "(deref subscription-starts)")
+    "same-signature subscription logic starts its changed resource";
+  assert_equal "1" (rendered session "(deref subscription-stops)")
+    "the previous subscription is cancelled after replacement";
+  eval session
+    "(defn add-action [^:int model ^:int action] (+ model (* action 10)))"
+  |> ignore;
+  assert_equal "1" (rendered session "(deref logic-reloads)")
+    "the typed update root publishes its replacement notification";
+  eval session "(app/send! application 1)" |> ignore;
+  eval session "(app/flush! application)" |> ignore;
+  assert_equal "12" (rendered session "(app/model application)")
+    "same-signature update logic is used by the existing dispatch closure";
   let watched_file = Filename.temp_file "lui-hot-reload-" ".cljc" in
   let now = ref 0. in
   Fun.protect
@@ -189,4 +219,82 @@ let () =
             "only the newest settled burst generation commits"
       | _ -> fail "expected the final burst generation to commit");
       assert_equal "\"Burst final\"" (rendered session "(visible-text)")
-        "write coalescing publishes only the newest view")
+        "write coalescing publishes only the newest view");
+  let watched_resource = Filename.temp_file "lui-hot-resource-" ".txt" in
+  let resource_now = ref 0. in
+  Fun.protect
+    ~finally:(fun () -> Sys.remove watched_resource)
+    (fun () ->
+      write_file watched_resource "image-a";
+      let invalidations = ref 0 in
+      let retired = ref [] in
+      let resources =
+        Hot_reload_repl_base.lui_resources_create
+          (fun nodes ->
+            if Rrbvec.length nodes > 0 then incr invalidations;
+            true)
+          (fun resource ->
+            retired := resource :: !retired;
+            true)
+      in
+      (match
+         Hot_reload_repl_base.lui_resources_reload_bang resources 1 "hero"
+           (Digest.to_hex (Digest.string "image-a")) "image-a" Fun.id
+       with
+      | Hot_reload_repl_base.ResourceApplied 1 -> ()
+      | _ -> fail "expected the initial resource to be applied");
+      Hot_reload_repl_base.lui_resources_register_dependency_bang resources
+        "hero" 99
+      |> ignore;
+      let watcher =
+        Watch_session.create_with_reload ~paths:[ watched_resource ]
+          ~settle_seconds:0.05 ~now:(fun () -> !resource_now)
+          ~reload:(fun ~generation paths ->
+            let payload = read_file (List.hd paths) in
+            let source_hash = Digest.to_hex (Digest.string payload) in
+            match
+              Hot_reload_repl_base.lui_resources_reload_bang resources
+                (generation + 1) "hero" source_hash payload Fun.id
+            with
+            | Hot_reload_repl_base.ResourceApplied _
+            | Hot_reload_repl_base.ResourceUnchanged _ -> Ok ()
+            | Hot_reload_repl_base.ResourceRejected (_, message) ->
+                Error
+                  {
+                    Lg.Compiler.code = "LG9000";
+                    phase = `Infrastructure;
+                    message;
+                    location = None;
+                  }
+            | Hot_reload_repl_base.ResourceStale stale_generation ->
+                Error
+                  {
+                    Lg.Compiler.code = "LG9001";
+                    phase = `Infrastructure;
+                    message =
+                      Printf.sprintf "stale resource generation %d"
+                        stale_generation;
+                    location = None;
+                  })
+        |> expect_ok
+      in
+      write_file watched_resource "image-b";
+      (match Watch_session.poll watcher with
+      | Some (Watch_session.Change_detected _) -> ()
+      | _ -> fail "expected the resource watcher to detect the save");
+      resource_now := 0.1;
+      (match Watch_session.poll watcher with
+      | Some (Watch_session.Reload_committed _) -> ()
+      | _ -> fail "expected the resource watcher to commit the save");
+      (match Hot_reload_repl_base.lui_resources_current resources "hero" with
+      | Some resource ->
+          assert_equal "image-b" resource
+            "saving a resource replaces the live resource"
+      | None -> fail "expected a committed resource");
+      assert_equal "1" (string_of_int !invalidations)
+        "resource reload invalidates registered dependent nodes";
+      match !retired with
+      | [ resource ] ->
+          assert_equal "image-a" resource
+            "resource reload retires the replaced resource"
+      | _ -> fail "expected exactly one retired resource")

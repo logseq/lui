@@ -3,6 +3,7 @@
             [lui.hot-reload :as hot]
             [lui.protocol :as proto]
             [lui.runtime :as runtime]
+            [lui.subscriptions :as subscriptions]
             [lui.ui :as ui]))
 
 (defn reduce! [model-state reducer action]
@@ -82,11 +83,13 @@
         context (gensym "context")
         model-state (gensym "model_state")
         lifecycle (gensym "lifecycle")
+        reducer-root (gensym "reducer_root")
         send-action (gensym "send_action")
         root (gensym "root")
         view-node (gensym "view_node")
         session (gensym "session")
         app (gensym "app")
+        cancel-reducer-watch (gensym "cancel_reducer_watch")
         cancel-redefinition-watch (gensym "cancel_redefinition_watch")]
     `(let [~scheduler (signal.core/scheduler)
            ~application
@@ -105,10 +108,11 @@
             ~active-state-paths)
            ~model-state (signal.core/state ~scheduler ~initial-model)
            ~lifecycle (atom lui.app/Running)
+           ~reducer-root (atom ~reducer)
            ~send-action
            (fn [~'action]
              (if (= (deref ~lifecycle) lui.app/Running)
-               (lui.app/reduce! ~model-state ~reducer ~'action)
+               (lui.app/reduce! ~model-state (deref ~reducer-root) ~'action)
                false))
            ~root (lui.runtime/create-node! ~application lui.protocol/Root)
            ~view-node
@@ -132,6 +136,13 @@
                  (reload-state-scopes ~state-scopes)
                  (reload-view-node (atom ~view-node))
                  (reload-session ~session)))))
+           ~cancel-reducer-watch
+           (watch-redef!
+            ~reducer
+            (fn []
+              (do
+                (reset! ~reducer-root ~reducer)
+                true)))
            ~cancel-redefinition-watch
            (watch-redef!
             ~view
@@ -146,7 +157,48 @@
                   (lui.hot-reload/ReloadUnchanged ~'_generation) true
                   _ false))))]
        (lui.runtime/insert-child! ~application ~root ~view-node 0)
+       (signal.core/on-dispose! ~scope ~cancel-reducer-watch)
        (signal.core/on-dispose! ~scope ~cancel-redefinition-watch)
+       ~app)))
+
+(macro-helper-defn reloadable-subscriptions-expansion
+  [app-form subscription-definition]
+  (let [app (gensym "app")
+        coordinator (gensym "subscription_coordinator")
+        generation (gensym "subscription_generation")
+        initial-status (gensym "initial_subscription_status")
+        cancel-watch (gensym "cancel_subscription_watch")]
+    `(let [~app ~app-form
+           ~coordinator
+           (lui.subscriptions/create (:app-send-action ~app))
+           ~generation (atom 1)
+           ~initial-status
+           (lui.subscriptions/reconcile!
+            ~coordinator 1 (~subscription-definition (lui.app/model ~app)))
+           ~cancel-watch
+           (watch-redef!
+            ~subscription-definition
+            (fn []
+              (let [~'next-generation (swap! ~generation inc)
+                    ~'status
+                    (lui.subscriptions/reconcile!
+                     ~coordinator ~'next-generation
+                     (~subscription-definition (lui.app/model ~app)))]
+                (match ~'status
+                  (lui.subscriptions/SubscriptionsApplied ~'_generation) true
+                  (lui.subscriptions/SubscriptionsUnchanged ~'_generation) true
+                  _ false))))]
+       (match ~initial-status
+         (lui.subscriptions/SubscriptionsApplied ~'_generation) true
+         (lui.subscriptions/SubscriptionsUnchanged ~'_generation) true
+         (lui.subscriptions/SubscriptionsRejected ~'_generation ~'message)
+         (raise (Invalid_argument ~'message))
+         (lui.subscriptions/SubscriptionsStale ~'_generation)
+         (raise (Invalid_argument "initial subscription generation is stale")))
+       (signal.core/on-dispose!
+        (:app-scope ~app)
+        (fn [] (lui.subscriptions/dispose! ~coordinator)))
+       (signal.core/on-dispose! (:app-scope ~app) ~cancel-watch)
        ~app)))
 
 (defmacro create [backend initial-model reducer view]
@@ -165,6 +217,21 @@
   [backend registry source-hash contract-hash initial-model reducer view]
   (reloadable-app-expansion
    backend registry source-hash contract-hash initial-model reducer view))
+
+(defmacro create-reloadable-with-subscriptions
+  [backend source-hash contract-hash initial-model reducer view subscriptions]
+  (reloadable-subscriptions-expansion
+   `(lui.app/create-reloadable
+     ~backend ~source-hash ~contract-hash ~initial-model ~reducer ~view)
+   subscriptions))
+
+(defmacro create-reloadable-with-extensions-and-subscriptions
+  [backend registry source-hash contract-hash initial-model reducer view
+   subscriptions]
+  (reloadable-subscriptions-expansion
+   `(lui.app/create-reloadable-with-extensions
+     ~backend ~registry ~source-hash ~contract-hash ~initial-model ~reducer ~view)
+   subscriptions))
 
 (defn start! [app]
   (if (= (deref (:app-lifecycle-state app)) Running)

@@ -1,0 +1,6 @@
+(ns hot-reload.e2e)
+
+(signature hot-reload.e2e/add-action :fn<int;int;int>)
+
+(signature hot-reload.e2e/app-subscriptions
+  :fn<int;vector<subscription-spec<int>>>)
