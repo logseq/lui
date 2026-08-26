@@ -478,30 +478,36 @@
                         (property-expansions context node (next mappings))))))
 
 (macro-helper-defn element-properties [context node attrs]
-                   (property-expansions
-                    context node
-                    [[(:gap attrs) 'lui.ui/gap!]
-                     [(:main attrs) 'lui.ui/main!]
-                     [(:cross attrs) 'lui.ui/cross!]
-                     [(:grow attrs) 'lui.ui/grow!]
-                     [(:columns attrs) 'lui.ui/columns!]
-                     [(:padding attrs) 'lui.ui/padding!]
-                     [(:padding-horizontal attrs) 'lui.ui/padding-horizontal!]
-                     [(:padding-vertical attrs) 'lui.ui/padding-vertical!]
-                     [(:background attrs) 'lui.ui/background!]
-                     [(:foreground attrs) 'lui.ui/foreground!]
-                     [(:border-color attrs) 'lui.ui/border-color!]
-                     [(:border-width attrs) 'lui.ui/border-width!]
-                     [(:corner-radius attrs) 'lui.ui/corner-radius!]
-                     [(:width attrs) 'lui.ui/width!]
-                     [(:height attrs) 'lui.ui/height!]
-                     [(:min-width attrs) 'lui.ui/min-width!]
-                     [(:max-width attrs) 'lui.ui/max-width!]
-                     [(:min-height attrs) 'lui.ui/min-height!]
-                     [(:max-height attrs) 'lui.ui/max-height!]
-                     [(:accessibility-identifier attrs)
-                      'lui.ui/accessibility-identifier!]
-                     [(:class attrs) 'lui.ui/style-class!]]))
+                   (concat
+                    (property-expansions
+                     context node
+                     [[(:gap attrs) 'lui.ui/gap!]
+                      [(:main attrs) 'lui.ui/main!]
+                      [(:cross attrs) 'lui.ui/cross!]
+                      [(:grow attrs) 'lui.ui/grow!]
+                      [(:columns attrs) 'lui.ui/columns!]
+                      [(:padding attrs) 'lui.ui/padding!]
+                      [(:padding-horizontal attrs) 'lui.ui/padding-horizontal!]
+                      [(:padding-vertical attrs) 'lui.ui/padding-vertical!]
+                      [(:background attrs) 'lui.ui/background!]
+                      [(:foreground attrs) 'lui.ui/foreground!]
+                      [(:border-color attrs) 'lui.ui/border-color!]
+                      [(:border-width attrs) 'lui.ui/border-width!]
+                      [(:corner-radius attrs) 'lui.ui/corner-radius!]
+                      [(:width attrs) 'lui.ui/width!]
+                      [(:height attrs) 'lui.ui/height!]
+                      [(:min-width attrs) 'lui.ui/min-width!]
+                      [(:max-width attrs) 'lui.ui/max-width!]
+                      [(:min-height attrs) 'lui.ui/min-height!]
+                      [(:max-height attrs) 'lui.ui/max-height!]
+                      [(:accessibility-identifier attrs)
+                       'lui.ui/accessibility-identifier!]
+                      [(:class attrs) 'lui.ui/style-class!]])
+                    (if (:accessibility-identifier-signal attrs)
+                      [`(lui.ui/string-property-signal!
+                         ~context ~node lui.protocol/AccessibilityIdentifier
+                         ~(:accessibility-identifier-signal attrs))]
+                      [])))
 
 (macro-helper-defn interactive-properties [context node attrs]
                    (concat

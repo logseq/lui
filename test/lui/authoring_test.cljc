@@ -198,6 +198,11 @@
      [:icon {:name "folder"}]
      [:text "Custom child row"]]]])
 
+(defui reactive-element-metadata [identifier-source]
+  [:button
+   {:accessibility-identifier-signal identifier-source}
+   "Sync"])
+
 (defui retained-table [selected-source amount-source on-open]
   [:table {:width 420}
    [:table-row {:gap 4}
@@ -954,6 +959,30 @@
         (runtime/flush! application)
         (assert-equal node-count (apple/node-count renderer)
                       "selection patches the retained ListItem in place")))))
+
+(deftest accessibility-identifiers-patch-without-replacing-elements
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "reactive-element-metadata")
+        identifier (sig/state scheduler "sync.disconnected")
+        root (reactive-element-metadata
+              (ui/context application scope) (sig/value identifier))]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (assert-equal
+     (Some (StringValue "sync.disconnected"))
+     (apple/property renderer root proto/AccessibilityIdentifier)
+     "the initial accessibility identifier reaches the retained element")
+    (let [node-count (apple/node-count renderer)]
+      (sig/set! identifier "sync.connected")
+      (runtime/flush! application)
+      (assert-equal
+       (Some (StringValue "sync.connected"))
+       (apple/property renderer root proto/AccessibilityIdentifier)
+       "accessibility identifiers patch in place")
+      (assert-equal node-count (apple/node-count renderer)
+                    "metadata patches allocate no replacement nodes"))))
 
 (deftest table-signals-patch-retained-rows-and-cells-in-place
   (let [scheduler (sig/scheduler)
