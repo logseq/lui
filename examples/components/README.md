@@ -81,6 +81,28 @@ Build the shared LG runtime and arm64 debug APK in one command:
 make build-components-android
 ```
 
+Qualify the production packaging path with a locally generated qualification
+certificate. The certificate and copied artifact stay under `_build` and are
+not suitable for store submission:
+
+```sh
+make qualify-components-android-release
+```
+
+Build the signed, R8- and resource-shrunk arm64 AAB with the real release
+certificate by providing all four signing values explicitly:
+
+```sh
+export LUI_ANDROID_KEYSTORE=/absolute/path/to/release.jks
+export LUI_ANDROID_KEY_ALIAS=release
+export LUI_ANDROID_STORE_PASSWORD='...'
+export LUI_ANDROID_KEY_PASSWORD='...'
+make build-components-android-release
+```
+
+Release builds fail before task execution when any signing value is missing;
+they never fall back to Flutter's debug certificate.
+
 Run the real interaction suite against the only connected Android device or
 emulator:
 
@@ -108,8 +130,7 @@ adaptive Material Gallery with Maestro, and writes the final screenshot to
 
 ## Qualification snapshot
 
-The following production-boundary checks passed on 2026-08-26 through commit
-`a366a45`:
+The following production-boundary checks passed on 2026-08-26:
 
 - `swift test --package-path platform/apple`: 62 retained SwiftUI backend tests;
 - `make test-components-ios-e2e`: signed app build plus the complete Maestro
@@ -121,6 +142,9 @@ The following production-boundary checks passed on 2026-08-26 through commit
   native-library/code-signature smoke test;
 - `make test-components-android-e2e`: fresh arm64 debug APK build, install, and
   complete Maestro interaction flow on an Android 16 emulator;
+- `make qualify-components-android-release`: R8- and resource-shrunk arm64 AAB
+  signed with an isolated 3072-bit qualification certificate, with signature
+  integrity and the packaged `liblui_components.so` verified;
 - `npm --prefix platform/web run check`: 37 production CSS and backend-boundary
   tests, followed by the focused Toolbar and all-65-page compact viewport E2E
   pass;
@@ -129,16 +153,18 @@ The following production-boundary checks passed on 2026-08-26 through commit
   one property patch per mutation.
 
 The resulting debug artifacts were 9,412 KiB for the iOS Simulator app,
-110,528 KiB for the Flutter macOS app, and 98,368 KiB for the Android APK.
-These numbers qualify repeatability and packaging content; they are not release
-size budgets.
+110,528 KiB for the Flutter macOS app, and 98,368 KiB for the Android APK. The
+signed Android release AAB was 19,344 KiB. These numbers qualify repeatability
+and packaging content; they are not release size budgets.
 
 ## Known limitations
 
 - Physical iPhone/iPad and physical Android-device interaction passes are not
   yet recorded. The current mobile evidence is Simulator/emulator evidence.
-- Android release shrinking, store signing, and AAB packaging are not qualified;
-  the current Android artifact is a debug APK.
+- Google Play submission and Play App Signing remain external release-process
+  checks. The repository now qualifies shrinking, explicit certificate
+  signing, signature integrity, native-library content, and AAB packaging with
+  an isolated local certificate.
 - The SwiftUI macOS target is compile-qualified, while the Flutter macOS app is
   the packaged desktop showcase. A separately bundled SwiftUI macOS `.app` is
   not produced by this example.

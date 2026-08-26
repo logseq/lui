@@ -4,8 +4,32 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val releaseStorePath = providers.environmentVariable("LUI_ANDROID_KEYSTORE").orNull
+val releaseKeyAlias = providers.environmentVariable("LUI_ANDROID_KEY_ALIAS").orNull
+val releaseStorePassword = providers.environmentVariable("LUI_ANDROID_STORE_PASSWORD").orNull
+val releaseKeyPassword = providers.environmentVariable("LUI_ANDROID_KEY_PASSWORD").orNull
+val releaseSigningConfigured = listOf(
+    releaseStorePath,
+    releaseKeyAlias,
+    releaseStorePassword,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+
+gradle.taskGraph.whenReady {
+    val releaseTaskRequested = allTasks.any { task ->
+        task.project == project &&
+            (task.name == "assembleRelease" || task.name == "bundleRelease")
+    }
+    if (releaseTaskRequested && !releaseSigningConfigured) {
+        throw GradleException(
+            "Release signing requires LUI_ANDROID_KEYSTORE, LUI_ANDROID_KEY_ALIAS, " +
+                "LUI_ANDROID_STORE_PASSWORD, and LUI_ANDROID_KEY_PASSWORD.",
+        )
+    }
+}
+
 android {
-    namespace = "dev.lui.lui_component_gallery"
+    namespace = "dev.lui.components"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.3.13750724"
 
@@ -15,10 +39,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "dev.lui.lui_component_gallery"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        applicationId = "dev.lui.components"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
@@ -29,11 +50,26 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(releaseStorePath!!)
+                keyAlias = releaseKeyAlias
+                storePassword = releaseStorePassword
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

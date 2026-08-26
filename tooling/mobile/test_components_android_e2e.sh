@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-app_id=dev.lui.lui_component_gallery
+app_id=dev.lui.components
 apk_path="$repo_root/examples/components/flutter/build/app/outputs/flutter-apk/app-debug.apk"
 flow="$repo_root/.maestro/android-components-interactions.yaml"
 screenshots_dir="$repo_root/_build/mobile-components/android-e2e"

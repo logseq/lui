@@ -1,4 +1,4 @@
-appId: dev.lui.lui_component_gallery
+appId: dev.lui.components
 ---
 - launchApp:
     clearState: true

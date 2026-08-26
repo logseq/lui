@@ -63,6 +63,12 @@ Build the iOS Simulator app and Android arm64 APK together with:
 make build-components-mobile
 ```
 
+Qualify a signed, shrunk Android release AAB without using production secrets:
+
+```sh
+make qualify-components-android-release
+```
+
 The command invokes the explicit `ios simulator` and `android` LG targets,
 then links the two host applications. Shared toolchains are installed once
 with `lg mobile setup ios simulator` and `lg mobile setup android`; LUI does

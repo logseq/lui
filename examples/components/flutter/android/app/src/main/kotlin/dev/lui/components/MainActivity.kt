@@ -1,4 +1,4 @@
-package dev.lui.lui_component_gallery
+package dev.lui.components
 
 import io.flutter.embedding.android.FlutterActivity
 
