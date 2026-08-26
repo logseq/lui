@@ -183,11 +183,17 @@ void main() {
       matching: find.byType(EditableText),
     );
     final retainedEditor = tester.widget<EditableText>(editor);
+    expect(
+      retainedEditor.controller.text,
+      'Staging',
+      reason: 'Select and Combobox share the same retained environment state',
+    );
     await tester.tap(
       find.descendant(of: combobox, matching: find.byType(IconButton)),
     );
     await tester.pumpAndSettle();
-    expect(find.byType(MenuItemButton), findsNWidgets(3));
+    expect(find.byType(MenuItemButton), findsOneWidget);
+    expect(find.widgetWithText(MenuItemButton, 'Staging'), findsOneWidget);
     await tester.enterText(combobox, 'Preview');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();

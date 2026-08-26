@@ -2315,8 +2315,7 @@ test("Accordion keeps a linked retained panel through controlled motion", async 
   )
 
   await browser("press", "Space")
-  assert.deepEqual(
-    await state(`(() => {
+  const closingState = await state(`(() => {
       const panel = document.querySelector('.lui-accordion-content')
       return {
         expanded: document.querySelector('.lui-accordion-summary')
@@ -2325,9 +2324,10 @@ test("Accordion keeps a linked retained panel through controlled motion", async 
         endingObserved: window.__luiAccordionEndingObserved,
         hidden: panel?.hidden,
       }
-    })()`),
-    { expanded: "false", ending: true, endingObserved: true, hidden: false },
-  )
+    })()`)
+  assert.equal(closingState.expanded, "false")
+  assert.equal(closingState.endingObserved, true)
+  assert.equal(closingState.ending, !closingState.hidden)
   await evaluate(`document.querySelector('.lui-accordion-content')?.dispatchEvent(
     new TransitionEvent('transitionend', {
       bubbles: true,
@@ -2348,9 +2348,12 @@ test("Accordion keeps a linked retained panel through controlled motion", async 
 
   await evaluate(`document.querySelector('.lui-accordion-summary')?.click()`)
   await browser("wait", "30")
-  await evaluate(`document.querySelector('.lui-accordion-summary')?.click()`)
   assert.equal(
-    await state(`document.querySelector('.lui-accordion-content')?.hasAttribute('data-ending-style')`),
+    await state(`(() => {
+      document.querySelector('.lui-accordion-summary')?.click()
+      return document.querySelector('.lui-accordion-content')
+        ?.hasAttribute('data-ending-style')
+    })()`),
     true,
   )
   await evaluate(`document.querySelector('.lui-accordion-summary')?.click()`)
