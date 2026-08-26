@@ -151,6 +151,9 @@
      (proto/FloatValue value))
     node))
 
+(defn drawer! [context]
+  (runtime/create-node! (:ui-application context) proto/Drawer))
+
 (defn status-bar! [context]
   (runtime/create-node! (:ui-application context) proto/StatusBar))
 

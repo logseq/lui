@@ -208,6 +208,8 @@ private struct LUINodeView: View {
             LUIResizableView(model: model, backend: backend)
         case .split:
             LUISplitView(model: model, backend: backend)
+        case .drawer:
+            LUIDrawerView(model: model, backend: backend)
         case .tableRow:
             LUITableRowView(model: model, backend: backend, isLast: true)
         case .tableCell:

@@ -63,6 +63,7 @@
   (Resizable)
   (Split)
   (Dialog)
+  (Drawer)
   (Sheet)
   (Tooltip)
   (Toast)

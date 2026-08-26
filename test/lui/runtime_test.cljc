@@ -1523,6 +1523,38 @@
       (assert-equal 0 (apple/node-count renderer)
                     "malformed Split batches remain atomic"))))
 
+(deftest drawer-owns-one-controlled-two-pane-presentation
+  (is (proto/property-supported? proto/Drawer proto/Selected)
+      "Drawer owns its controlled presentation state")
+  (is (proto/property-supported? proto/Drawer proto/WidthValue)
+      "Drawer accepts an explicit panel width")
+  (is (proto/can-contain-children? proto/Drawer)
+      "Drawer retains its main and panel roots")
+  (is (proto/event-supported? proto/Drawer (proto/ToggleChanged 1 true))
+      "Drawer reports edge and dismiss gestures through ToggleChanged")
+  (let [operations
+        [(proto/create-node-op 1 proto/Drawer)
+         (proto/create-node-op 2 proto/Panel)
+         (proto/create-node-op 3 proto/Panel)
+         (proto/set-prop-op 1 proto/Selected (proto/BoolValue false))
+         (proto/set-prop-op 1 proto/WidthValue (proto/IntValue 320))
+         (proto/insert-child-op 1 2 0)
+         (proto/insert-child-op 1 3 1)]]
+    (let [renderer (apple/create)
+          backend (:apply-batch (apple/backend renderer))]
+      (is (backend (record proto/patch-batch (generation 1) (ops operations)))
+          "valid Apple Drawer batch applies")
+      (match (apple/node renderer 1)
+        (Some AppleDrawer) (is true "Drawer maps to Apple native layout")
+        _ (is false "Apple Drawer mapping exists")))
+    (let [renderer (flutter/create)
+          backend (:apply-batch (flutter/backend renderer))]
+      (is (backend (record proto/patch-batch (generation 1) (ops operations)))
+          "valid Flutter Drawer batch applies")
+      (match (flutter/node renderer 1)
+        (Some FlutterDrawer) (is true "Drawer maps to Flutter native layout")
+        _ (is false "Flutter Drawer mapping exists")))))
+
 (deftest context-menu-is-retained-host-metadata
   (is (proto/can-contain-children? proto/ContextMenu)
       "ContextMenu retains its flat item identities")

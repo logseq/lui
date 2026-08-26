@@ -257,7 +257,8 @@
    (= kind proto/Box) (= kind proto/Scroll) (= kind proto/ListContainer)
    (= kind proto/ListItem) (= kind proto/Dialog)
    (= kind proto/Sheet) (= kind proto/Accordion) (= kind proto/Resizable)
-   (= kind proto/Split) (= kind proto/Alert) (= kind proto/Bubble)))
+   (= kind proto/Split) (= kind proto/Drawer)
+   (= kind proto/Alert) (= kind proto/Bubble)))
 
 (defn identifier-allowed? [identifiers identifier]
   (loop [index 0]

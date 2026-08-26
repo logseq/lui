@@ -11,7 +11,7 @@
                      Text Heading Paragraph Label Button ToggleButton
                      TextField Input SearchField Textarea Checkbox SwitchControl
                      Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Sheet Tooltip Toast Toolbar Accordion
-                     Table TableRow TableCell Tree Resizable Split StatusBar
+                     Table TableRow TableCell Tree Resizable Split Drawer StatusBar
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
                      Progress Divider
@@ -224,6 +224,7 @@
     Tree "lui-tree"
     Resizable "lui-resizable"
     Split "lui-split"
+    Drawer "lui-drawer"
     StatusBar "lui-status-bar"))
 
 (defn- create-split-node [renderer]

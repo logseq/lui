@@ -847,9 +847,12 @@ final class LUIFlutterBackend {
         state.kind == _NodeKind.toggleButton ||
         state.kind == _NodeKind.toggle ||
         state.kind == _NodeKind.accordion ||
+        state.kind == _NodeKind.drawer ||
         treeItem;
     final hasHandler =
-        (state.kind != _NodeKind.accordion && !treeItem) ||
+        (state.kind != _NodeKind.accordion &&
+            state.kind != _NodeKind.drawer &&
+            !treeItem) ||
         state.properties['toggle-enabled'] == true;
     if (!isToggle || state.properties['enabled'] == false || !hasHandler) {
       throw LUIBackendException('node $node is not an enabled toggle button');
@@ -1954,6 +1957,16 @@ final class LUIFlutterBackend {
       _NodeKind.resizable => Stack(children: children),
       _NodeKind.alert => alert(),
       _NodeKind.bubble => bubble(),
+      _NodeKind.drawer => _LUIDrawer(
+        sourcePresented: state.properties['selected'] as bool? ?? false,
+        width: (state.properties['width'] as int? ?? 320).toDouble(),
+        label: accessibilityLabel ?? 'Navigation',
+        onChanged: state.properties['toggle-enabled'] == true
+            ? (presented) => performToggle(id, presented)
+            : null,
+        main: children[0],
+        panel: children[1],
+      ),
       _NodeKind.split => _LUISplit(
         sourceFraction: (state.properties['value'] as double?) ?? 0,
         gap: (state.properties['gap'] as int? ?? 9).toDouble(),
@@ -2262,7 +2275,8 @@ final class LUIFlutterBackend {
         child: surface,
       );
     }
-    final width = state.kind == _NodeKind.resizable
+    final width =
+        state.kind == _NodeKind.resizable || state.kind == _NodeKind.drawer
         ? null
         : state.properties['width'] as int?;
     final height = state.properties['height'] as int?;
@@ -2853,14 +2867,20 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
                 kind == _NodeKind.tableRow ||
+                kind == _NodeKind.drawer ||
                 _isTreeRowKind(kind)),
       'long-press-enabled' =>
         value is bool && (_isButtonKind(kind) || kind == _NodeKind.listItem),
       'autofocus' =>
         value is bool && (_isButtonKind(kind) || _isTextControl(kind)),
       'submit-on-enter' => value is bool && kind == _NodeKind.textarea,
-      'change-enabled' || 'toggle-enabled' =>
+      'change-enabled' =>
         value is bool && (kind == _NodeKind.radio || _isTreeRowKind(kind)),
+      'toggle-enabled' =>
+        value is bool &&
+            (kind == _NodeKind.radio ||
+                kind == _NodeKind.drawer ||
+                _isTreeRowKind(kind)),
       'press-enabled' =>
         value is bool &&
             (kind == _NodeKind.text ||
@@ -3015,6 +3035,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.tree ||
                 kind == _NodeKind.resizable ||
                 kind == _NodeKind.split ||
+                kind == _NodeKind.drawer ||
                 kind == _NodeKind.alert ||
                 kind == _NodeKind.bubble ||
                 _isTreeRowKind(kind)),
@@ -3098,6 +3119,9 @@ final class LUIFlutterBackend {
             'split animation options require a positive duration',
           );
         }
+      }
+      if (state.kind == _NodeKind.drawer && state.children.length != 2) {
+        throw const LUIBackendException('drawer requires exactly two children');
       }
       if (state.kind == _NodeKind.radio &&
           !_hasAncestor(states, state.parent, _NodeKind.radioGroup)) {
@@ -3417,6 +3441,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.tree ||
       kind == _NodeKind.resizable ||
       kind == _NodeKind.split ||
+      kind == _NodeKind.drawer ||
       kind == _NodeKind.alert ||
       kind == _NodeKind.bubble ||
       kind == _NodeKind.stepper ||
@@ -3445,6 +3470,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.accordion ||
       kind == _NodeKind.resizable ||
       kind == _NodeKind.split ||
+      kind == _NodeKind.drawer ||
       kind == _NodeKind.alert ||
       kind == _NodeKind.bubble ||
       kind == _NodeKind.toast ||
@@ -4062,6 +4088,133 @@ extension on _NodeKind {
       this == _NodeKind.alert ||
       this == _NodeKind.bubble ||
       this == _NodeKind.resizable;
+}
+
+final class _LUIDrawer extends StatefulWidget {
+  const _LUIDrawer({
+    required this.sourcePresented,
+    required this.width,
+    required this.label,
+    required this.onChanged,
+    required this.main,
+    required this.panel,
+  });
+
+  final bool sourcePresented;
+  final double width;
+  final String label;
+  final ValueChanged<bool>? onChanged;
+  final Widget main;
+  final Widget panel;
+
+  @override
+  State<_LUIDrawer> createState() => _LUIDrawerState();
+}
+
+final class _LUIDrawerState extends State<_LUIDrawer> {
+  static const _edgeWidth = 24.0;
+
+  late bool _presented;
+  double _dragOffset = 0;
+  bool _dragging = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _presented = widget.sourcePresented;
+  }
+
+  @override
+  void didUpdateWidget(covariant _LUIDrawer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.sourcePresented == oldWidget.sourcePresented) return;
+    _presented = widget.sourcePresented;
+    _dragOffset = 0;
+  }
+
+  void _updatePresentation(bool presented) {
+    setState(() {
+      _presented = presented;
+      _dragOffset = 0;
+    });
+    if (presented != widget.sourcePresented) widget.onChanged?.call(presented);
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final availableWidth = constraints.hasBoundedWidth
+          ? constraints.maxWidth
+          : widget.width;
+      final width = widget.width.clamp(0, availableWidth * 0.9).toDouble();
+      final visibleWidth = ((_presented ? width : 0) + _dragOffset)
+          .clamp(0, width)
+          .toDouble();
+      final progress = width == 0 ? 0.0 : visibleWidth / width;
+      final canToggle = widget.onChanged != null && width > 0;
+
+      return GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragStart: !canToggle
+            ? null
+            : (details) {
+                _dragging =
+                    _presented || details.localPosition.dx <= _edgeWidth;
+              },
+        onHorizontalDragUpdate: !canToggle
+            ? null
+            : (details) {
+                if (!_dragging) return;
+                setState(() {
+                  final next = _dragOffset + details.delta.dx;
+                  _dragOffset = _presented
+                      ? next.clamp(-width, 0).toDouble()
+                      : next.clamp(0, width).toDouble();
+                });
+              },
+        onHorizontalDragEnd: !canToggle
+            ? null
+            : (_) {
+                if (!_dragging) return;
+                _dragging = false;
+                final settledWidth = ((_presented ? width : 0) + _dragOffset)
+                    .clamp(0, width)
+                    .toDouble();
+                _updatePresentation(settledWidth >= width * 0.5);
+              },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            widget.main,
+            if (visibleWidth > 0)
+              Positioned.fill(
+                key: const ValueKey('lui-drawer-scrim'),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: !canToggle ? null : () => _updatePresentation(false),
+                  child: ColoredBox(
+                    color: Colors.black.withValues(alpha: 0.32 * progress),
+                  ),
+                ),
+              ),
+            Positioned(
+              key: const ValueKey('lui-drawer-panel'),
+              left: -width + visibleWidth,
+              top: 0,
+              bottom: 0,
+              width: width,
+              child: Semantics(
+                container: true,
+                label: widget.label,
+                hidden: visibleWidth == 0,
+                child: widget.panel,
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
 }
 
 final class _LUISplit extends StatefulWidget {

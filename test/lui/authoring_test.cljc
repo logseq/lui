@@ -243,6 +243,12 @@
    [:panel {:min-width 180 :padding 12} [:text "Sidebar"]]
    [:panel {:min-width 320 :padding 12} [:text "Content"]]])
 
+(defui retained-drawer [open-source on-toggle]
+  [:drawer
+   {:selected open-source :width 320 :label "Navigation" :on-toggle on-toggle}
+   [:panel [:text "Content"]]
+   [:panel [:text "Navigation"]]])
+
 (defui retained-context-menu [archive-disabled on-rename on-archive]
   [:list-item
    "Document"
@@ -1135,6 +1141,44 @@
        (Some (proto/FloatValue 0.42))
        (apple/property renderer root proto/ProgressValue)
        "the model echo patches only the retained Split"))))
+
+(deftest drawer-presentation-and-gesture-events-remain-model-owned
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-drawer")
+        open (sig/state scheduler false)
+        received (atom [])
+        callback (fn [event] (swap! received conj event) true)
+        root
+        (retained-drawer
+         (ui/context application scope) (sig/value open) callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [main (nth (apple/children renderer root) 0)
+          panel (nth (apple/children renderer root) 1)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer root)
+        (Some AppleDrawer) (is true "Drawer maps to one retained native layout")
+        _ (is false "Drawer native mapping exists"))
+      (assert-equal
+       (Some (proto/BoolValue false))
+       (apple/property renderer root proto/Selected)
+       "bound selection seeds the controlled drawer state")
+      (runtime/dispatch! application (proto/ToggleChanged root true))
+      (runtime/flush! application)
+      (assert-equal [(proto/ToggleChanged root true)] @received
+                    "edge gestures publish one typed toggle event")
+      (sig/set! open true)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "presentation echoes allocate no retained nodes")
+      (assert-equal [main panel] (apple/children renderer root)
+                    "main and panel identity survive presentation patches")
+      (assert-equal
+       (Some (proto/BoolValue true))
+       (apple/property renderer root proto/Selected)
+       "the model echo patches only drawer presentation"))))
 
 (deftest context-menu-metadata-and-signals-remain-retained
   (let [scheduler (sig/scheduler)

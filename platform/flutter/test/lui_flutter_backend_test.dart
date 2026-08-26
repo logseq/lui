@@ -1925,6 +1925,66 @@ void main() {
     }
   });
 
+  testWidgets('Drawer keeps two panes retained and emits controlled toggles', (
+    tester,
+  ) async {
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"drawer"},
+        {"op":"create-node","id":2,"kind":"panel"},
+        {"op":"create-node","id":3,"kind":"panel"},
+        {"op":"set-prop","id":1,"property":"selected","value":false},
+        {"op":"set-prop","id":1,"property":"toggle-enabled","value":true},
+        {"op":"set-prop","id":1,"property":"width","value":320},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    final main = find.byKey(LUIFlutterBackend.nodeKey(2));
+    final panel = find.byKey(LUIFlutterBackend.nodeKey(3));
+    final mainElement = tester.element(main);
+    final panelElement = tester.element(panel);
+
+    await tester.dragFrom(const Offset(1, 100), const Offset(200, 0));
+    await tester.pump();
+    expect(events, const [LUIEvent.toggleChanged(node: 1, checked: true)]);
+
+    backend.applyJson('''
+    {"generation":2,"ops":[
+      {"op":"set-prop","id":1,"property":"selected","value":true}
+    ]}
+    ''');
+    await tester.pump();
+    expect(tester.element(main), same(mainElement));
+    expect(tester.element(panel), same(panelElement));
+
+    await tester.tapAt(const Offset(500, 100));
+    await tester.pump();
+    expect(events, const [
+      LUIEvent.toggleChanged(node: 1, checked: true),
+      LUIEvent.toggleChanged(node: 1, checked: false),
+    ]);
+
+    backend.applyJson('''
+    {"generation":3,"ops":[
+      {"op":"set-prop","id":1,"property":"selected","value":false},
+      {"op":"set-prop","id":1,"property":"width","value":0}
+    ]}
+    ''');
+    await tester.pump();
+    await tester.dragFrom(const Offset(1, 100), const Offset(200, 0));
+    expect(events, const [
+      LUIEvent.toggleChanged(node: 1, checked: true),
+      LUIEvent.toggleChanged(node: 1, checked: false),
+    ]);
+  });
+
   testWidgets('maps Tree rows to one retained native roving focus set', (
     tester,
   ) async {

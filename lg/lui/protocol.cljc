@@ -60,7 +60,7 @@
         (= kind Textarea) (= kind Combobox) (= kind ListItem))
     (ToggleChanged _node _checked)
     (or (= kind ToggleButton) (= kind Checkbox) (= kind SwitchControl)
-        (= kind Toggle) (= kind Radio) (= kind Accordion))
+        (= kind Toggle) (= kind Radio) (= kind Accordion) (= kind Drawer))
     (Change _node) (= kind Radio)
     (ValueChanged _node _value) (or (= kind Slider) (= kind Split))
     (Dismiss _node)
@@ -234,7 +234,7 @@
         (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider)
         (horizontal-container? kind)
         (= kind Avatar) (= kind Image) (= kind MediaSurface)
-        (= kind Tree) (= kind Resizable) (= kind Split)
+        (= kind Tree) (= kind Resizable) (= kind Split) (= kind Drawer)
         (= kind Alert) (= kind Bubble)
         (tree-row-kind? kind))
     AccessibilityIdentifier true
@@ -259,7 +259,8 @@
     IconPlacementValue (or (= kind Button) (= kind ToggleButton))
     Selected
     (or (= kind Button) (= kind ToggleButton) (= kind MenuItem)
-        (= kind ListItem) (= kind TableRow) (tree-row-kind? kind))
+        (= kind ListItem) (= kind TableRow) (= kind Drawer)
+        (tree-row-kind? kind))
     Autofocus
     (or (= kind Button) (= kind ToggleButton)
         (= kind TextField) (= kind Input) (= kind SearchField)
@@ -267,7 +268,7 @@
     SubmitOnEnter (= kind Textarea)
     LongPressEnabled (or (= kind Button) (= kind ToggleButton) (= kind ListItem))
     ChangeEnabled (or (= kind Radio) (tree-row-kind? kind))
-    ToggleEnabled (or (= kind Radio) (tree-row-kind? kind))
+    ToggleEnabled (or (= kind Radio) (= kind Drawer) (tree-row-kind? kind))
     PressEnabled
     (or (= kind Text) (= kind Radio) (= kind Select) (= kind Combobox)
         (= kind MenuItem) (= kind ListItem) (= kind TableCell)
@@ -699,6 +700,7 @@
       Tree true
       Resizable true
       Split true
+      Drawer true
       Stepper true
       Timeline true
       InputGroup true

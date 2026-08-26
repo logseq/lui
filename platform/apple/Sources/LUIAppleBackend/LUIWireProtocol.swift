@@ -601,7 +601,8 @@ struct LUIRetainedTree {
                 kind == .breadcrumb || kind == .pagination ||
                 kind == .radio || kind == .slider || kind == .avatar || kind == .image ||
                 kind == .mediaSurface || kind == .tree ||
-                kind == .resizable || kind == .split || kind == .alert || kind == .bubble ||
+                kind == .resizable || kind == .split || kind == .drawer ||
+                kind == .alert || kind == .bubble ||
                 isTreeRow(kind)
         case .headingLevel: kind == .heading
         case .checked:
@@ -624,11 +625,12 @@ struct LUIRetainedTree {
                 kind == .listItem
         case .selected:
             kind == .button || kind == .toggleButton || kind == .menuItem ||
-                kind == .listItem || kind == .tableRow || isTreeRow(kind)
+                kind == .listItem || kind == .tableRow || kind == .drawer || isTreeRow(kind)
         case .autofocus:
             kind == .button || kind == .toggleButton || isTextEntry(kind)
         case .submitOnEnter: kind == .textarea
-        case .changeEnabled, .toggleEnabled: kind == .radio || isTreeRow(kind)
+        case .changeEnabled: kind == .radio || isTreeRow(kind)
+        case .toggleEnabled: kind == .radio || kind == .drawer || isTreeRow(kind)
         case .pressEnabled:
             kind == .text || kind == .radio || kind == .select || kind == .combobox ||
                 kind == .menuItem || kind == .listItem
@@ -663,7 +665,7 @@ struct LUIRetainedTree {
             || kind == .dropdownMenu || kind == .contextMenu || kind == .listItem || isModalSurface(kind)
             || kind == .accordion
             || kind == .table || kind == .tableRow || kind == .tree || kind == .resizable
-            || kind == .split || kind == .alert || kind == .bubble ||
+            || kind == .split || kind == .drawer || kind == .alert || kind == .bubble ||
             kind == .stepper || kind == .timeline ||
             kind == .inputGroup || kind == .inputGroupActions ||
             kind == .toast || kind == .toolbar ||
@@ -675,6 +677,7 @@ struct LUIRetainedTree {
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
             kind == .list || kind == .listItem || kind == .dialog ||
             kind == .sheet || kind == .accordion || kind == .resizable || kind == .split ||
+            kind == .drawer ||
             kind == .alert || kind == .bubble || kind == .toast || kind == .toolbar
     }
 
@@ -763,6 +766,9 @@ struct LUIRetainedTree {
                         throw invalid("split animation options require a positive duration")
                     }
                 }
+            }
+            if node.kind == .drawer, node.children.count != 2 {
+                throw invalid("drawer requires exactly two children")
             }
             if node.kind == .radio, !hasAncestor(node.parent, kind: .radioGroup) {
                 throw invalid("radio must be contained by a radio-group")

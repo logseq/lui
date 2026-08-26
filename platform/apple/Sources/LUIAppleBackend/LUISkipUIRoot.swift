@@ -65,6 +65,8 @@ private struct LUISkipNodeView: View {
                 }
                 children
             }
+        case .drawer:
+            LUIDrawerView(model: model, backend: backend)
         case .listItem:
             Button {
                 if didLongPress {

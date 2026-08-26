@@ -51,6 +51,7 @@
 (signature lui.ui/resizable! :fn<ui-context;int>)
 (signature lui.ui/split! :fn<ui-context;signal.core/signal<float>;int>)
 (signature lui.ui/split-literal! :fn<ui-context;float;int>)
+(signature lui.ui/drawer! :fn<ui-context;int>)
 (signature lui.ui/status-bar! :fn<ui-context;int>)
 (signature lui.ui/toolbar! :fn<ui-context;int>)
 (signature lui.ui/spacer! :fn<ui-context;int>)

@@ -517,9 +517,10 @@ public final class LUIAppleBackend {
         guard let model = models[node],
               model.kind == .toggleButton || model.kind == .checkbox ||
                 model.kind == .switchControl || model.kind == .toggle ||
-                model.kind == .accordion || model.isTreeItem,
+                model.kind == .accordion || model.kind == .drawer || model.isTreeItem,
               model.isEnabled,
-              (model.kind != .accordion && !model.isTreeItem) || model.supportsToggle else {
+              (model.kind != .accordion && model.kind != .drawer && !model.isTreeItem) ||
+                model.supportsToggle else {
             throw invalid("node \(node) is not an enabled toggle")
         }
         onEvent?(.toggleChanged(node: node, checked: checked))

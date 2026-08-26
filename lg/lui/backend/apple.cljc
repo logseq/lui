@@ -8,7 +8,7 @@
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
                      Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Sheet Tooltip Toast Toolbar
-                     Accordion Table TableRow TableCell Tree Resizable Split StatusBar]]
+                     Accordion Table TableRow TableCell Tree Resizable Split Drawer StatusBar]]
             [lui.backend.retained :as retained]
             [lui.extension :as ext]
             [lui.wire :as wire]))
@@ -99,6 +99,7 @@
     Tree AppleTree
     Resizable AppleResizable
     Split AppleSplit
+    Drawer AppleDrawer
     StatusBar AppleStatusBar))
 
 (defn- extension-platform-node [_node identifier]

@@ -10,19 +10,19 @@
                      Avatar Image MediaSurface Stepper Step Timeline
                      TimelineItem InputGroup InputGroupActions Breadcrumb Pagination Accordion
                      Table TableRow TableCell Tree Resizable Split
-                     Dialog Sheet Tooltip Toast Toolbar StatusBar
-                     TextValue Enabled Gap MainAlignment CrossAlignment GrowValue
-                     GridColumns PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue
-                     BorderColorValue BorderWidth CornerRadius WidthValue HeightValue MinWidth
-                     MaxWidth MinHeight MaxHeight PlaceholderValue AccessibilityLabel AccessibilityIdentifier
-                     StyleClass HeadingLevel Checked ProgressValue OrientationValue SizeValue
-                     IconName VariantValue InlineIconName IconPlacementValue Selected Autofocus
-                     SubmitOnEnter LongPressEnabled ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled
-                     DoublePressEnabled ImageIdValue SurfaceIdValue ActiveIndex TitleValue DescriptionValue
-                     MetaValue IndicatorValue Connector SourceX SourceY SourceWidth
-                     SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay DurationValue
-                     TextAlignment RoleValue TreeLevel Expanded ResizeDuration ResizeEasing
-                     ResizeOrigin]]))
+                     Dialog Drawer Sheet Tooltip Toast Toolbar
+                     StatusBar TextValue Enabled Gap MainAlignment CrossAlignment
+                     GrowValue GridColumns PaddingValue PaddingHorizontal PaddingVertical BackgroundValue
+                     ForegroundValue BorderColorValue BorderWidth CornerRadius WidthValue HeightValue
+                     MinWidth MaxWidth MinHeight MaxHeight PlaceholderValue AccessibilityLabel
+                     AccessibilityIdentifier StyleClass HeadingLevel Checked ProgressValue OrientationValue
+                     SizeValue IconName VariantValue InlineIconName IconPlacementValue Selected
+                     Autofocus SubmitOnEnter LongPressEnabled ChangeEnabled ToggleEnabled PressEnabled
+                     SubmitEnabled DoublePressEnabled ImageIdValue SurfaceIdValue ActiveIndex TitleValue
+                     DescriptionValue MetaValue IndicatorValue Connector SourceX SourceY
+                     SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay
+                     DurationValue TextAlignment RoleValue TreeLevel Expanded ResizeDuration
+                     ResizeEasing ResizeOrigin]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -87,6 +87,7 @@
     Resizable "resizable"
     Split "split"
     Dialog "dialog"
+    Drawer "drawer"
     Sheet "sheet"
     Tooltip "tooltip"
     Toast "toast"
@@ -156,6 +157,7 @@
     "resizable" true
     "split" true
     "dialog" true
+    "drawer" true
     "sheet" true
     "tooltip" true
     "toast" true

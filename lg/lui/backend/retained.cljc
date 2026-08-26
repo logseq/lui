@@ -577,6 +577,11 @@
     (when (not (= (count (:retained-children current)) 2))
       (raise (Invalid_argument "split requires exactly two children")))))
 
+(defn- validate-drawer! [current]
+  (when (standard-kind? current proto/Drawer)
+    (when (not (= (count (:retained-children current)) 2))
+      (raise (Invalid_argument "drawer requires exactly two children")))))
+
 (defn- validate-root! [current]
   (when (standard-kind? current proto/Root)
     (when-not (= (:retained-parent current) None)
@@ -604,6 +609,7 @@
          (validate-input-group! nodes current)
          (validate-tree-item! nodes current)
          (validate-split! current)
+         (validate-drawer! current)
          (validate-root! current)
          (when-not
           (proto/node-properties-supported?

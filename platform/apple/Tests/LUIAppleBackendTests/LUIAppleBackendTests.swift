@@ -990,6 +990,78 @@ struct LUISwiftUIBackendTests {
         }
     }
 
+    @Test("Drawer retains two controlled panes and emits toggles")
+    func mapsDrawerToControlledRetainedPanes() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"drawer"},
+          {"op":"create-node","id":2,"kind":"panel"},
+          {"op":"create-node","id":3,"kind":"panel"},
+          {"op":"set-prop","id":1,"property":"selected","value":false},
+          {"op":"set-prop","id":1,"property":"toggle-enabled","value":true},
+          {"op":"set-prop","id":1,"property":"width","value":320},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let drawer = try #require(backend.model(id: 1))
+        let main = try #require(backend.model(id: 2))
+        let panel = try #require(backend.model(id: 3))
+        #expect(drawer.kind == .drawer)
+        #expect(drawer.children == [2, 3])
+        #expect(drawer.property(.selected) == .bool(false))
+        #expect(drawer.property(.width) == .int(320))
+
+        try backend.performToggle(node: 1, checked: true)
+        #expect(events == [.toggleChanged(node: 1, checked: true)])
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"selected","value":true}
+        ]}
+        """)
+        #expect(backend.model(id: 1) === drawer)
+        #expect(backend.model(id: 2) === main)
+        #expect(backend.model(id: 3) === panel)
+        #expect(drawer.isSelected)
+    }
+
+    @Test("Drawer edge gestures resolve to controlled presentation state")
+    func resolvesDrawerGestures() {
+        #expect(LUIDrawerGeometry.gestureIsEligible(isPresented: false, startX: 12))
+        #expect(!LUIDrawerGeometry.gestureIsEligible(isPresented: false, startX: 40))
+        #expect(LUIDrawerGeometry.gestureIsEligible(isPresented: true, startX: 200))
+        #expect(LUIDrawerGeometry.dragOffset(
+            isPresented: false,
+            translation: 400,
+            width: 320
+        ) == 320)
+        #expect(LUIDrawerGeometry.dragOffset(
+            isPresented: true,
+            translation: -400,
+            width: 320
+        ) == -320)
+        #expect(LUIDrawerGeometry.targetIsPresented(
+            isPresented: false,
+            translation: 180,
+            width: 320
+        ))
+        #expect(!LUIDrawerGeometry.targetIsPresented(
+            isPresented: true,
+            translation: -180,
+            width: 320
+        ))
+        #expect(!LUIDrawerGeometry.targetIsPresented(
+            isPresented: false,
+            translation: 1,
+            width: 0
+        ))
+    }
+
     @Test("maps Tree rows to one retained native focus set")
     func mapsTree() throws {
         let backend = LUIAppleBackend()

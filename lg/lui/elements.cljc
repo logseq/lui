@@ -126,6 +126,7 @@
                          (= tag :tree)
                          (= tag :resizable)
                          (= tag :split)
+                         (= tag :drawer)
                          (= tag :spacer)
                          (= tag :spinner)
                          (= tag :icon)
@@ -1099,6 +1100,25 @@
          ~node))
     (throw
      (IllegalArgumentException. "split requires exactly two children"))))
+
+(defelement drawer [context parent attrs & children]
+  (if (= (count children) 2)
+    (let [node (gensym "node")]
+      `(let [~node (lui.ui/drawer! ~context)]
+         ~@(bool-attribute-expansion
+            context node (:selected attrs) 'lui.protocol/Selected)
+         ~@(accordion-event-expansion context node attrs)
+         ~@(element-properties context node attrs)
+         ~@(if parent
+             [`(lui.ui/append! ~context ~parent ~node)]
+             [])
+         ~@(map
+            (fn [child]
+              `(lui.elements/element ~context ~node ~child))
+            children)
+         ~node))
+    (throw
+     (IllegalArgumentException. "drawer requires exactly two children"))))
 
 (defelement status-bar [context parent attrs & children]
   (let [value (:value attrs)
