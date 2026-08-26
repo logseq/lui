@@ -1591,7 +1591,8 @@ test("Toolbar exposes orientation-aware roving focus over composed controls", as
         controls: [
           { label: "Bold", tabIndex: 0, disabled: false },
           { label: "Italic", tabIndex: -1, disabled: false },
-          { label: "Redo", tabIndex: -1, disabled: true },
+          { label: "Underline", tabIndex: -1, disabled: false },
+          { label: "Redo", tabIndex: -1, disabled: false },
           { label: "More", tabIndex: -1, disabled: false },
         ],
       },
@@ -1610,6 +1611,23 @@ test("Toolbar exposes orientation-aware roving focus over composed controls", as
   await browser("press", "ArrowRight")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Italic")
   await browser("press", "ArrowRight")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Underline")
+  await browser("press", "ArrowRight")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Redo")
+  assert.deepEqual(
+    await state(`(() => {
+      const redo = [...document.querySelectorAll('[aria-label="Formatting"] button')]
+        .find((button) => button.textContent.trim() === 'Redo')
+      return {
+        ariaDisabled: redo.getAttribute('aria-disabled'),
+        dataDisabled: redo.hasAttribute('data-disabled'),
+      }
+    })()`),
+    { ariaDisabled: "true", dataDisabled: true },
+  )
+  await browser("press", "Enter")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Redo")
+  await browser("press", "ArrowRight")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "More")
   await browser("press", "Home")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Bold")
@@ -1619,6 +1637,29 @@ test("Toolbar exposes orientation-aware roving focus over composed controls", as
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Image")
   await browser("press", "ArrowUp")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Link")
+})
+
+test("Toolbar flattens nested control groups into one roving sequence", async () => {
+  await openGalleryPage("Toolbar")
+  const toolbar = '[aria-label="Formatting"]'
+
+  assert.deepEqual(
+    await state(`(() => {
+      const root = document.querySelector(${JSON.stringify(toolbar)})
+      const group = root.querySelector('[role=group]')
+      return {
+        label: group.getAttribute('aria-label'),
+        items: [...group.querySelectorAll('button')].map((item) => item.textContent.trim()),
+      }
+    })()`),
+    { label: "Text style", items: ["Italic", "Underline"] },
+  )
+
+  await evaluate(`document.querySelector(${JSON.stringify(toolbar)}).querySelector('button').focus()`)
+  for (const expected of ["Italic", "Underline", "Redo", "More"]) {
+    await browser("press", "ArrowRight")
+    assert.equal(await state(`document.activeElement?.textContent.trim()`), expected)
+  }
 })
 
 test("Toolbar input keeps editing keys until its caret reaches a boundary", async () => {

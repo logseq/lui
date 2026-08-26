@@ -299,6 +299,26 @@ test("Toolbar composes existing controls with horizontal and vertical roving lay
   assert.match(css, /\.lui-toolbar\[aria-orientation=horizontal\]\{[^}]*flex-direction:row/)
   assert.match(css, /\.lui-toolbar\[aria-orientation=vertical\]\{[^}]*flex-direction:column/)
   assert.match(css, /\.lui-toolbar:focus-within/)
+  assert.match(css, /\.lui-button\[data-disabled\]\{[^}]*cursor:not-allowed;[^}]*opacity:/)
+})
+
+test("interactive controls share motion and reduced-motion behavior", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  for (const selector of [
+    ".lui-button",
+    ".lui-toggle",
+    ".lui-checkbox-control",
+    ".lui-switch-control",
+    ".lui-switch-control:after",
+  ]) {
+    const escaped = selector.replaceAll(".", "\\.").replaceAll(":", "\\:")
+    assert.match(css, new RegExp(`${escaped}\\{[^}]*transition`))
+  }
+  assert.match(
+    css,
+    /@media \(prefers-reduced-motion:reduce\)\{[^{}]*\.lui-button,[^{}]*\.lui-toggle,[^{}]*\.lui-checkbox-control,[^{}]*\.lui-switch-control,[^{}]*\.lui-switch-control:after\{[^}]*transition-duration:0s/,
+  )
 })
 
 test("Accordion styles the Base UI controlled panel motion", async () => {

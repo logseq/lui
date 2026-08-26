@@ -1928,6 +1928,10 @@
        (Stdlib.ignore true)))
     (Stdlib.ignore true)))
 
+(defn- enabled-node? [renderer node]
+  (not (= (retained/property (:web-store renderer) node Enabled)
+          (Some (BoolValue false)))))
+
 (defn- attach-button-events! [renderer node kind dom-node]
   (let [timer (atom None)
         suppress-click (atom false)
@@ -1937,6 +1941,7 @@
         hold-enabled?
         (fn []
           (and
+           (enabled-node? renderer node)
            (Webapi.Dom.Element.hasAttribute "data-hold-enabled" dom-node)
            (not (Webapi.Dom.Element.hasAttribute "disabled" dom-node))))
         connected?
@@ -2068,11 +2073,13 @@
           (Stdlib.ignore true))
         click!
         (fn [event]
-          (if (deref suppress-click)
-            (do
-              (reset! suppress-click false)
-              (Webapi.Dom.Event.preventDefault event))
-            (Stdlib.ignore (dispatch-primary!)))
+          (if (not (enabled-node? renderer node))
+            (Webapi.Dom.Event.preventDefault event)
+            (if (deref suppress-click)
+              (do
+                (reset! suppress-click false)
+                (Webapi.Dom.Event.preventDefault event))
+              (Stdlib.ignore (dispatch-primary!))))
           (Stdlib.ignore true))
         previous-cleanup
         (clojure.core/get (deref (:web-cleanups renderer)) node)]
@@ -2115,10 +2122,6 @@
     Breadcrumb (= child-kind Button)
     Pagination (= child-kind Button)
     _ false))
-
-(defn- enabled-node? [renderer node]
-  (not (= (retained/property (:web-store renderer) node Enabled)
-          (Some (BoolValue false)))))
 
 (defn- horizontal-all-focus-children [renderer node kind]
   (into
@@ -2209,6 +2212,18 @@
   (or (= kind Tabs) (= kind ButtonGroup) (= kind ToggleGroup)
       (= kind Breadcrumb) (= kind Pagination)))
 
+(defn- node-has-ancestor-kind? [renderer node expected]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (match (:retained-parent current)
+      (Some parent)
+      (if-some [parent-node (retained/node (:web-store renderer) parent)]
+        (or
+         (standard-kind? parent-node expected)
+         (node-has-ancestor-kind? renderer parent expected))
+        false)
+      None false)
+    false))
+
 (defn- update-all-horizontal-group-roving! [renderer]
   (reduce-kv
    (fn [_updated node current]
@@ -2231,7 +2246,9 @@
    group-node)
   (Webapi.Dom.Element.addKeyDownEventListener
    (fn [event]
-     (let [key (Webapi.Dom.KeyboardEvent.key event)
+     (when-not
+      (node-has-ancestor-kind? renderer node Toolbar)
+      (let [key (Webapi.Dom.KeyboardEvent.key event)
            orientation
            (if (= kind Tabs)
              (match (retained/property
@@ -2270,7 +2287,8 @@
             (Webapi.Dom.Element.unsafeAsHtmlElement
              (dom-node renderer (nth children index)))))
          None (Stdlib.ignore true))
-       (Stdlib.ignore true)))
+        (Stdlib.ignore true)))
+     (Stdlib.ignore true))
    group-node))
 
 (defn- toolbar-item-kind? [kind]
@@ -2278,6 +2296,9 @@
       (= kind Checkbox) (= kind SwitchControl) (= kind Radio)
       (= kind Select) (= kind Combobox) (= kind TextField)
       (= kind Input) (= kind SearchField)))
+
+(defn- toolbar-button-kind? [kind]
+  (or (= kind Button) (= kind ToggleButton) (= kind Toggle)))
 
 (defn- toolbar-all-items-under [renderer parent]
   (reduce
@@ -2294,7 +2315,12 @@
   (into
    []
    (filter
-    (fn [item] (enabled-node? renderer item))
+    (fn [item]
+      (if-some [current (retained/node (:web-store renderer) item)]
+        (or
+         (enabled-node? renderer item)
+         (toolbar-button-kind? (standard-kind current)))
+        false))
     (toolbar-all-items-under renderer parent))))
 
 (defn- toolbar-focus-node [store node]
@@ -2305,6 +2331,22 @@
         (child-element platform-node 0)
         platform-node))
     (raise (Invalid_argument "unknown toolbar item"))))
+
+(defn- apply-toolbar-disabled-semantics! [renderer item]
+  (if-some [current (retained/node (:web-store renderer) item)]
+    (let [kind (standard-kind current)
+          focus-node (dom-node renderer item)]
+      (when (toolbar-button-kind? kind)
+        (if (enabled-node? renderer item)
+          (do
+            (Webapi.Dom.Element.removeAttribute "aria-disabled" focus-node)
+            (Webapi.Dom.Element.removeAttribute "data-disabled" focus-node))
+          (do
+            (Webapi.Dom.Element.removeAttribute "disabled" focus-node)
+            (Webapi.Dom.Element.setAttribute "aria-disabled" "true" focus-node)
+            (Webapi.Dom.Element.setAttribute "data-disabled" "" focus-node)))))
+    (Stdlib.ignore true))
+  true)
 
 (defn- toolbar-text-input-kind? [kind]
   (or (= kind TextField) (= kind Input) (= kind SearchField)
@@ -2364,6 +2406,7 @@
           None 0)]
     (loop [index 0]
       (when (< index (count all-items))
+        (apply-toolbar-disabled-semantics! renderer (nth all-items index))
         (Webapi.Dom.Element.setAttribute
          "tabindex" "-1"
          (toolbar-focus-node (:web-store renderer) (nth all-items index)))

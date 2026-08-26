@@ -583,7 +583,9 @@
    [:heading {:level 2} "Toolbar"]
    [:toolbar {:orientation "horizontal" :label "Formatting" :gap 4}
     [:button {:variant "ghost"} "Bold"]
-    [:button {:variant "ghost"} "Italic"]
+    [:button-group {:accessibility-label "Text style"}
+     [:button {:variant "ghost"} "Italic"]
+     [:button {:variant "ghost"} "Underline"]]
     [:button {:variant "ghost" :disabled true} "Redo"]
     [:button {:variant "ghost"} "More"]
     [:input
