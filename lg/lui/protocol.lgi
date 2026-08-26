@@ -126,7 +126,7 @@
   (Selected)
   (Autofocus)
   (SubmitOnEnter)
-  (HoldEnabled)
+  (LongPressEnabled)
   (ChangeEnabled)
   (ToggleEnabled)
   (PressEnabled)
@@ -165,7 +165,7 @@
 
 (type-variant event
   (Press :int)
-  (Hold :int)
+  (LongPress :int)
   (TextChanged :int :string)
   (Submit :int)
   (ToggleChanged :int :bool)

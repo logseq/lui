@@ -562,31 +562,31 @@
 
 (macro-helper-defn button-event-expansion [context node attrs]
                    (let [on-press (:on-press attrs)
-                         on-hold (:on-hold attrs)]
-                     (if (or on-press on-hold)
+                         on-long-press (:on-long-press attrs)]
+                     (if (or on-press on-long-press)
                        [`(lui.ui/on-event!
                           ~context ~node
                           (fn [~'event]
                             (match ~'event
                               (lui.protocol/Press ~'_node)
                               ~(if on-press `(~on-press ~'event) true)
-                              (lui.protocol/Hold ~'_node)
-                              ~(if on-hold `(~on-hold ~'event) true)
+                              (lui.protocol/LongPress ~'_node)
+                              ~(if on-long-press `(~on-long-press ~'event) true)
                               ~'_ true)))]
                        [])))
 
 (macro-helper-defn toggle-button-event-expansion [context node attrs]
                    (let [on-toggle (:on-toggle attrs)
-                         on-hold (:on-hold attrs)]
-                     (if (or on-toggle on-hold)
+                         on-long-press (:on-long-press attrs)]
+                     (if (or on-toggle on-long-press)
                        [`(lui.ui/on-event!
                           ~context ~node
                           (fn [~'event]
                             (match ~'event
                               (lui.protocol/ToggleChanged ~'_node ~'_checked)
                               ~(if on-toggle `(~on-toggle ~'event) true)
-                              (lui.protocol/Hold ~'_node)
-                              ~(if on-hold `(~on-hold ~'event) true)
+                              (lui.protocol/LongPress ~'_node)
+                              ~(if on-long-press `(~on-long-press ~'event) true)
                               ~'_ true)))]
                        [])))
 
@@ -698,11 +698,12 @@
 
 (macro-helper-defn list-item-event-expansion [context node attrs]
                    (let [on-press (:on-press attrs)
+                         on-long-press (:on-long-press attrs)
                          on-double-press (:on-double-press attrs)
                          on-submit (:on-submit attrs)
                          on-change (:on-change attrs)
                          on-toggle (:on-toggle attrs)]
-                     (if (or on-press on-double-press on-submit
+                     (if (or on-press on-long-press on-double-press on-submit
                              on-change on-toggle)
                        [`(lui.ui/on-event!
                           ~context ~node
@@ -710,6 +711,8 @@
                             (match ~'event
                               (lui.protocol/Press ~'_node)
                               ~(if on-press `(~on-press ~'event) true)
+                              (lui.protocol/LongPress ~'_node)
+                              ~(if on-long-press `(~on-long-press ~'event) true)
                               (lui.protocol/DoublePress ~'_node)
                               ~(if on-double-press
                                  `(~on-double-press ~'event)
@@ -1232,9 +1235,9 @@
        ~@(bool-attribute-expansion
           context node (:autofocus attrs) 'lui.protocol/Autofocus)
        ~@(disabled-attribute-expansion context node attrs)
-       ~@(if (:on-hold attrs)
+       ~@(if (:on-long-press attrs)
            [`(lui.ui/bool-property!
-              ~context ~node lui.protocol/HoldEnabled true)]
+              ~context ~node lui.protocol/LongPressEnabled true)]
            [])
        ~@(button-event-expansion context node attrs)
        ~@(element-properties context node attrs)
@@ -1268,9 +1271,9 @@
        ~@(bool-attribute-expansion
           context node (:autofocus attrs) 'lui.protocol/Autofocus)
        ~@(disabled-attribute-expansion context node attrs)
-       ~@(if (:on-hold attrs)
+       ~@(if (:on-long-press attrs)
            [`(lui.ui/bool-property!
-              ~context ~node lui.protocol/HoldEnabled true)]
+              ~context ~node lui.protocol/LongPressEnabled true)]
            [])
        ~@(toggle-button-event-expansion context node attrs)
        ~@(element-properties context node attrs)
@@ -1712,6 +1715,10 @@
        ~@(if (:on-double-press attrs)
            [`(lui.ui/bool-property!
               ~context ~node lui.protocol/DoublePressEnabled true)]
+           [])
+       ~@(if (:on-long-press attrs)
+           [`(lui.ui/bool-property!
+              ~context ~node lui.protocol/LongPressEnabled true)]
            [])
        ~@(if (:on-submit attrs)
            [`(lui.ui/bool-property!

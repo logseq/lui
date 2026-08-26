@@ -181,13 +181,14 @@
     [:text {:value copy-source}]]])
 
 (defui retained-list-items
-  [selected disabled on-select on-open]
+  [selected disabled on-select on-open on-long-press]
   [:list {:gap 2}
    [:list-item
     {:icon "file-text"
      :selected selected
      :disabled disabled
      :on-press on-select
+     :on-long-press on-long-press
      :on-double-press on-open
      :on-submit on-open}
     "Quarterly report.md"]
@@ -426,7 +427,7 @@
   [:button {:on-press callback} "Continue"])
 
 (defui retained-vercel-button
-  [text-source disabled-source selected-source autofocus-source on-press on-hold]
+  [text-source disabled-source selected-source autofocus-source on-press on-long-press]
   [:button
    {:text text-source
     :variant "primary"
@@ -439,7 +440,7 @@
     :label "Download report"
     :accessibility-identifier "button.download"
     :on-press on-press
-    :on-hold on-hold}])
+    :on-long-press on-long-press}])
 
 (defui icon-action-button [callback]
   [:button
@@ -451,7 +452,7 @@
     :label "New note"
     :on-press callback}])
 
-(defui formatting-toggle [selected-source on-toggle on-hold]
+(defui formatting-toggle [selected-source on-toggle on-long-press]
   [:toggle-button
    {:variant "outline"
     :size "sm"
@@ -459,7 +460,7 @@
     :selected selected-source
     :label "Bold formatting"
     :on-toggle on-toggle
-    :on-hold on-hold}
+    :on-long-press on-long-press}
    "Bold"])
 
 (defui semantic-content []
@@ -915,7 +916,8 @@
         callback (fn [event] (swap! received conj event) true)
         root
         (retained-list-items
-         context (sig/value selected) (sig/value disabled) callback callback)]
+         context (sig/value selected) (sig/value disabled)
+         callback callback callback)]
     (sig/mount! scope)
     (runtime/flush! application)
     (let [text-item (nth (apple/children renderer root) 0)
@@ -930,14 +932,16 @@
       (assert-equal 1 (count (apple/children renderer custom-item))
                     "custom row content is retained below the ListItem")
       (runtime/dispatch! application (proto/Press text-item))
+      (runtime/dispatch! application (proto/LongPress text-item))
       (runtime/dispatch! application (proto/DoublePress text-item))
       (runtime/dispatch! application (proto/Submit text-item))
       (runtime/flush! application)
       (assert-equal
-       [(proto/Press text-item) (proto/DoublePress text-item)
+       [(proto/Press text-item) (proto/LongPress text-item)
+        (proto/DoublePress text-item)
         (proto/Submit text-item)]
        @received
-       "press, additive double press, and Enter submit stay distinct")
+       "press, long press, additive double press, and Enter submit stay distinct")
       (let [node-count (apple/node-count renderer)]
         (sig/set! selected true)
         (runtime/flush! application)
@@ -2293,7 +2297,7 @@
         autofocus (sig/state scheduler false)
         label (sig/state scheduler "Download")
         presses (atom 0)
-        holds (atom 0)
+        long-presses (atom 0)
         button
         (retained-vercel-button
          context
@@ -2302,7 +2306,7 @@
          (sig/value selected)
          (sig/value autofocus)
          (fn [_event] (swap! presses inc) true)
-         (fn [_event] (swap! holds inc) true))]
+         (fn [_event] (swap! long-presses inc) true))]
     (sig/mount! scope)
     (runtime/flush! application)
     (doseq [property-and-value
@@ -2320,10 +2324,10 @@
           (assert-equal expected value "Button string property reaches backend")
           _ (is false "Button string property is present"))))
     (runtime/dispatch! application (proto/Press button))
-    (runtime/dispatch! application (proto/Hold button))
+    (runtime/dispatch! application (proto/LongPress button))
     (runtime/flush! application)
     (assert-equal 1 @presses "on-press receives only Press")
-    (assert-equal 1 @holds "on-hold receives only Hold")
+    (assert-equal 1 @long-presses "on-long-press receives only LongPress")
     (let [node-count (apple/node-count renderer)]
       (sig/set! label "Export")
       (sig/set! selected true)
@@ -2365,22 +2369,23 @@
         context (ui/context application scope)
         selected (sig/state scheduler false)
         toggles (atom [])
-        holds (atom 0)
+        long-presses (atom 0)
         button
         (formatting-toggle
          context
          (sig/value selected)
          (fn [event] (swap! toggles conj event) true)
-         (fn [_event] (swap! holds inc) true))]
+         (fn [_event] (swap! long-presses inc) true))]
     (sig/mount! scope)
     (runtime/flush! application)
     (is (= (Some apple/AppleToggleButton) (apple/node renderer button))
         "ToggleButton maps to a distinct native control kind")
     (runtime/dispatch! application (proto/ToggleChanged button true))
-    (runtime/dispatch! application (proto/Hold button))
+    (runtime/dispatch! application (proto/LongPress button))
     (runtime/flush! application)
     (assert-equal 1 (count @toggles) "on-toggle receives one toggle event")
-    (assert-equal 1 @holds "on-hold receives one hold event")
+    (assert-equal
+     1 @long-presses "on-long-press receives one long press event")
     (let [node-count (apple/node-count renderer)]
       (sig/set! selected true)
       (runtime/flush! application)

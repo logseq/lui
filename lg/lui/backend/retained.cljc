@@ -382,7 +382,7 @@
      (bool-property-true? properties proto/PressEnabled)
      (bool-property-true? properties proto/DoublePressEnabled)
      (bool-property-true? properties proto/ToggleEnabled)
-     (bool-property-true? properties proto/HoldEnabled))))
+     (bool-property-true? properties proto/LongPressEnabled))))
 
 (defn- validate-context-menu! [nodes current]
   (let [context-children

@@ -74,7 +74,7 @@ final class LUINodeModel: Identifiable {
     var isExpanded: Bool? { properties[.expanded]?.boolValue }
     var isTreeItem: Bool { role == "treeitem" }
     var requestsAutofocus: Bool { properties[.autofocus]?.boolValue ?? false }
-    var supportsHold: Bool { properties[.holdEnabled]?.boolValue ?? false }
+    var supportsLongPress: Bool { properties[.longPressEnabled]?.boolValue ?? false }
     var supportsChange: Bool { properties[.changeEnabled]?.boolValue ?? false }
     var supportsToggle: Bool { properties[.toggleEnabled]?.boolValue ?? false }
     var supportsPress: Bool { properties[.pressEnabled]?.boolValue ?? false }
@@ -447,13 +447,14 @@ public final class LUIAppleBackend {
         onEvent?(.press(node: node))
     }
 
-    func performHold(node: Int) throws {
+    func performLongPress(node: Int) throws {
         guard let model = models[node],
-              model.kind == .button || model.kind == .toggleButton,
-              model.isEnabled, model.supportsHold else {
-            throw invalid("node \(node) is not an enabled holdable button")
+              model.kind == .button || model.kind == .toggleButton ||
+                model.kind == .listItem,
+              model.isEnabled, model.supportsLongPress else {
+            throw invalid("node \(node) is not enabled for long press")
         }
-        onEvent?(.hold(node: node))
+        onEvent?(.longPress(node: node))
     }
 
     func performTextChange(node: Int, text: String) throws {

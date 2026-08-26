@@ -19,8 +19,8 @@ private func luiOCamlStart(
 private func luiOCamlStop() -> Int32
 @_silgen_name("lui_ocaml_press")
 private func luiOCamlPress(_ node: Int64) -> Int32
-@_silgen_name("lui_ocaml_hold")
-private func luiOCamlHold(_ node: Int64) -> Int32
+@_silgen_name("lui_ocaml_long_press")
+private func luiOCamlLongPress(_ node: Int64) -> Int32
 @_silgen_name("lui_ocaml_text_changed")
 private func luiOCamlTextChanged(_ node: Int64, _ text: UnsafePointer<CChar>?) -> Int32
 @_silgen_name("lui_ocaml_submit")
@@ -65,7 +65,7 @@ private final class GalleryHost {
         backend.onEvent = { event in
             switch event {
             case let .press(node): _ = luiOCamlPress(Int64(node))
-            case let .hold(node): _ = luiOCamlHold(Int64(node))
+            case let .longPress(node): _ = luiOCamlLongPress(Int64(node))
             case let .textChanged(node, text):
                 text.withCString { _ = luiOCamlTextChanged(Int64(node), $0) }
             case let .submit(node): _ = luiOCamlSubmit(Int64(node))

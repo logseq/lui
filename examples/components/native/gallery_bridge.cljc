@@ -57,9 +57,9 @@
   (driver/flush! (app))
   (deref latest-patch))
 
-(defn hold [node]
+(defn long-press [node]
   (reset! latest-patch "")
-  (driver/dispatch-event! (app) (proto/Hold node))
+  (driver/dispatch-event! (app) (proto/LongPress node))
   (driver/flush! (app))
   (deref latest-patch))
 
@@ -114,7 +114,7 @@
 
 (callback/register "lui_flutter_init" initialize)
 (callback/register "lui_flutter_press" press)
-(callback/register "lui_flutter_hold" hold)
+(callback/register "lui_flutter_long_press" long-press)
 (callback/register "lui_flutter_text_changed" text-changed)
 (callback/register "lui_flutter_submit" submit)
 (callback/register "lui_flutter_dismiss" dismiss)

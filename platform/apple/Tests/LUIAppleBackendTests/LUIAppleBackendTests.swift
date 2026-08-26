@@ -49,17 +49,17 @@ struct LUISwiftUIBackendTests {
     }
 
 #if os(macOS)
-    @Test("macOS secondary activation dispatches hold exactly once when enabled")
-    func secondaryActivationDispatchesHold() {
-        let capture = LUISecondaryHoldView()
+    @Test("macOS secondary activation dispatches long press exactly once when enabled")
+    func secondaryActivationDispatchesLongPress() {
+        let capture = LUISecondaryLongPressView()
         var count = 0
-        capture.onHold = { count += 1 }
+        capture.onLongPress = { count += 1 }
 
-        capture.isHoldEnabled = false
+        capture.isLongPressEnabled = false
         capture.handleSecondaryActivation()
         #expect(count == 0)
 
-        capture.isHoldEnabled = true
+        capture.isLongPressEnabled = true
         capture.handleSecondaryActivation()
         #expect(count == 1)
     }
@@ -529,20 +529,20 @@ struct LUISwiftUIBackendTests {
           {"op":"create-node","id":3,"kind":"switch"},
           {"op":"set-prop","id":1,"property":"text","value":"Continue"},
           {"op":"set-prop","id":1,"property":"enabled","value":true},
-          {"op":"set-prop","id":1,"property":"hold-enabled","value":true},
+          {"op":"set-prop","id":1,"property":"long-press-enabled","value":true},
           {"op":"set-prop","id":3,"property":"checked","value":false}
         ]}
         """)
 
         try backend.performPress(node: 1)
-        try backend.performHold(node: 1)
+        try backend.performLongPress(node: 1)
         try backend.performTextChange(node: 2, text: "Draft")
         try backend.performSubmit(node: 2)
         try backend.performToggle(node: 3, checked: true)
 
         #expect(events == [
             .press(node: 1),
-            .hold(node: 1),
+            .longPress(node: 1),
             .textChanged(node: 2, text: "Draft"),
             .submit(node: 2),
             .toggleChanged(node: 3, checked: true),
@@ -690,6 +690,7 @@ struct LUISwiftUIBackendTests {
           {"op":"set-prop","id":2,"property":"icon","value":"file-text"},
           {"op":"set-prop","id":2,"property":"selected","value":true},
           {"op":"set-prop","id":2,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":2,"property":"long-press-enabled","value":true},
           {"op":"set-prop","id":2,"property":"double-press-enabled","value":true},
           {"op":"set-prop","id":2,"property":"submit-enabled","value":true},
           {"op":"set-prop","id":5,"property":"text","value":"Custom child row"},
@@ -708,10 +709,12 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 3)?.children == [4])
 
         try backend.performPress(node: 2)
+        try backend.performLongPress(node: 2)
         try backend.performDoublePress(node: 2)
         try backend.performSubmit(node: 2)
         #expect(events == [
             .press(node: 2),
+            .longPress(node: 2),
             .doublePress(node: 2),
             .submit(node: 2),
         ])
@@ -1294,7 +1297,7 @@ struct LUISwiftUIBackendTests {
           {"op":"set-prop","id":1,"property":"autofocus","value":true},
           {"op":"set-prop","id":1,"property":"accessibility-label","value":"Download report"},
           {"op":"set-prop","id":1,"property":"accessibility-identifier","value":"button.download"},
-          {"op":"set-prop","id":1,"property":"hold-enabled","value":true}
+          {"op":"set-prop","id":1,"property":"long-press-enabled","value":true}
         ]}
         """)
 
@@ -1306,7 +1309,7 @@ struct LUISwiftUIBackendTests {
         #expect(button.property(.iconPlacement) == .string("trailing"))
         #expect(button.property(.selected) == .bool(true))
         #expect(button.property(.autofocus) == .bool(true))
-        #expect(button.property(.holdEnabled) == .bool(true))
+        #expect(button.property(.longPressEnabled) == .bool(true))
         #expect(button.accessibilityLabel(in: backend) == "Download report")
         #expect(button.accessibilityIdentifier(in: backend) == "button.download")
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
@@ -1359,7 +1362,7 @@ struct LUISwiftUIBackendTests {
           {"op":"set-prop","id":1,"property":"size","value":"sm"},
           {"op":"set-prop","id":1,"property":"icon","value":"edit"},
           {"op":"set-prop","id":1,"property":"selected","value":false},
-          {"op":"set-prop","id":1,"property":"hold-enabled","value":true}
+          {"op":"set-prop","id":1,"property":"long-press-enabled","value":true}
         ]}
         """)
 
@@ -1370,10 +1373,10 @@ struct LUISwiftUIBackendTests {
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
 
         try backend.performToggle(node: 1, checked: true)
-        try backend.performHold(node: 1)
+        try backend.performLongPress(node: 1)
         #expect(events == [
             .toggleChanged(node: 1, checked: true),
-            .hold(node: 1),
+            .longPress(node: 1),
         ])
 
         try backend.apply(json: """

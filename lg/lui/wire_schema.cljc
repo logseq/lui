@@ -17,7 +17,7 @@
                      MaxWidth MinHeight MaxHeight PlaceholderValue AccessibilityLabel AccessibilityIdentifier
                      StyleClass HeadingLevel Checked ProgressValue OrientationValue SizeValue
                      IconName VariantValue InlineIconName IconPlacementValue Selected Autofocus
-                     SubmitOnEnter HoldEnabled ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled
+                     SubmitOnEnter LongPressEnabled ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled
                      DoublePressEnabled ImageIdValue SurfaceIdValue ActiveIndex TitleValue DescriptionValue
                      MetaValue IndicatorValue Connector SourceX SourceY SourceWidth
                      SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay DurationValue
@@ -202,7 +202,7 @@
     Selected "selected"
     Autofocus "autofocus"
     SubmitOnEnter "submit-on-enter"
-    HoldEnabled "hold-enabled"
+    LongPressEnabled "long-press-enabled"
     ChangeEnabled "change-enabled"
     ToggleEnabled "toggle-enabled"
     PressEnabled "press-enabled"

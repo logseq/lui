@@ -18,8 +18,8 @@ typedef _DartStart =
     );
 typedef _NativePress = Int32 Function(Int64 node);
 typedef _DartPress = int Function(int node);
-typedef _NativeHold = Int32 Function(Int64 node);
-typedef _DartHold = int Function(int node);
+typedef _NativeLongPress = Int32 Function(Int64 node);
+typedef _DartLongPress = int Function(int node);
 typedef _NativeTextChanged = Int32 Function(Int64 node, Pointer<Utf8> text);
 typedef _DartTextChanged = int Function(int node, Pointer<Utf8> text);
 typedef _NativeSubmit = Int32 Function(Int64 node);
@@ -47,7 +47,9 @@ final class LUIOcamlBridge {
       _press = library.lookupFunction<_NativePress, _DartPress>(
         'lui_ocaml_press',
       ),
-      _hold = library.lookupFunction<_NativeHold, _DartHold>('lui_ocaml_hold'),
+      _longPress = library.lookupFunction<_NativeLongPress, _DartLongPress>(
+        'lui_ocaml_long_press',
+      ),
       _textChanged = library
           .lookupFunction<_NativeTextChanged, _DartTextChanged>(
             'lui_ocaml_text_changed',
@@ -92,7 +94,7 @@ final class LUIOcamlBridge {
   final void Function(String json) onPatch;
   final _DartStart _start;
   final _DartPress _press;
-  final _DartHold _hold;
+  final _DartLongPress _longPress;
   final _DartTextChanged _textChanged;
   final _DartSubmit _submit;
   final _DartDismiss _dismiss;
@@ -137,8 +139,10 @@ final class LUIOcamlBridge {
     if (_press(node) != 1) throw StateError('OCaml press dispatch failed');
   }
 
-  void hold(int node) {
-    if (_hold(node) != 1) throw StateError('OCaml hold dispatch failed');
+  void longPress(int node) {
+    if (_longPress(node) != 1) {
+      throw StateError('OCaml long-press dispatch failed');
+    }
   }
 
   void doublePress(int node) {

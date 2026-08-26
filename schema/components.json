@@ -178,7 +178,7 @@
     {"lg": "Selected", "wire": "selected", "swift": "selected"},
     {"lg": "Autofocus", "wire": "autofocus", "swift": "autofocus"},
     {"lg": "SubmitOnEnter", "wire": "submit-on-enter", "swift": "submitOnEnter"},
-    {"lg": "HoldEnabled", "wire": "hold-enabled", "swift": "holdEnabled"},
+    {"lg": "LongPressEnabled", "wire": "long-press-enabled", "swift": "longPressEnabled"},
     {"lg": "ChangeEnabled", "wire": "change-enabled", "swift": "changeEnabled"},
     {"lg": "ToggleEnabled", "wire": "toggle-enabled", "swift": "toggleEnabled"},
     {"lg": "PressEnabled", "wire": "press-enabled", "swift": "pressEnabled"},
@@ -211,7 +211,7 @@
   ],
   "events": [
     {"lg": "Press", "fields": [":int"]},
-    {"lg": "Hold", "fields": [":int"]},
+    {"lg": "LongPress", "fields": [":int"]},
     {"lg": "TextChanged", "fields": [":int", ":string"]},
     {"lg": "Submit", "fields": [":int"]},
     {"lg": "ToggleChanged", "fields": [":int", ":bool"]},

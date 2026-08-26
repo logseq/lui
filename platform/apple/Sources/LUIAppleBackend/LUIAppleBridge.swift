@@ -61,7 +61,7 @@ private final class LUIAppleBridge {
             switch event {
             case let .press(node):
                 "".withCString { callback(0, Int32(node), $0) }
-            case let .hold(node):
+            case let .longPress(node):
                 "".withCString { callback(3, Int32(node), $0) }
             case let .textChanged(node, text):
                 text.withCString { callback(1, Int32(node), $0) }

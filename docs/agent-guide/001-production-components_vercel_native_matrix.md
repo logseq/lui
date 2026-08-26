@@ -157,7 +157,7 @@ ordinary external CSS selected through the platform tweak mechanism.
 
 LUI uses callbacks in place of named messages but preserves the reference event
 names and payload semantics: `on-press`, `on-double-press`, `on-toggle`,
-`on-change`, `on-input`, `on-submit`, `on-dismiss`, `on-resize`, `on-hold`, and
+`on-change`, `on-input`, `on-submit`, `on-dismiss`, `on-resize`, `on-long-press`, and
 `on-drag` where admitted by the reference element.
 
 ## Completed provisional API removals

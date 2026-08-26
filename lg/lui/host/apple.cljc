@@ -18,7 +18,7 @@
               (cond
                 (= kind 0) (on-event (proto/Press node))
                 (= kind 1) (on-event (proto/TextChanged node text))
-                (= kind 3) (on-event (proto/Hold node))
+                (= kind 3) (on-event (proto/LongPress node))
                 (= kind 6) (on-event (proto/Submit node))
                 (= kind 7) (on-event (proto/Dismiss node))
                 (= kind 8) (on-event (proto/DoublePress node))

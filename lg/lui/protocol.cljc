@@ -11,7 +11,7 @@
 (defn event-node [event]
   (match event
     (Press node) node
-    (Hold node) node
+    (LongPress node) node
     (TextChanged node _text) node
     (Submit node) node
     (ToggleChanged node _checked) node
@@ -50,7 +50,8 @@
     (or (= kind Button) (= kind Radio) (= kind Select)
         (= kind Combobox) (= kind MenuItem) (= kind ListItem) (= kind Text)
         (= kind TableCell) (= kind TimelineItem))
-    (Hold _node) (or (= kind Button) (= kind ToggleButton))
+    (LongPress _node)
+    (or (= kind Button) (= kind ToggleButton) (= kind ListItem))
     (TextChanged _node _text)
     (or (= kind TextField) (= kind Input) (= kind SearchField)
         (= kind Textarea) (= kind Combobox))
@@ -264,7 +265,7 @@
         (= kind TextField) (= kind Input) (= kind SearchField)
         (= kind Textarea))
     SubmitOnEnter (= kind Textarea)
-    HoldEnabled (or (= kind Button) (= kind ToggleButton))
+    LongPressEnabled (or (= kind Button) (= kind ToggleButton) (= kind ListItem))
     ChangeEnabled (or (= kind Radio) (tree-row-kind? kind))
     ToggleEnabled (or (= kind Radio) (tree-row-kind? kind))
     PressEnabled
@@ -433,7 +434,7 @@
     (tuple Selected (BoolValue _value)) true
     (tuple Autofocus (BoolValue _value)) true
     (tuple SubmitOnEnter (BoolValue _value)) true
-    (tuple HoldEnabled (BoolValue _value)) true
+    (tuple LongPressEnabled (BoolValue _value)) true
     (tuple ChangeEnabled (BoolValue _value)) true
     (tuple ToggleEnabled (BoolValue _value)) true
     (tuple PressEnabled (BoolValue _value)) true

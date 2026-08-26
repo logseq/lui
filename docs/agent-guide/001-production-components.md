@@ -231,12 +231,12 @@ Delivered parity slices:
   `checked`, `disabled`, `label`, and `on-toggle`; their labels and native
   controls form one hit target and one accessibility node;
 - direct retained `button` controls with the six reference variants, four
-  sizes, inline registry icons, selected/autofocus state, press, 350 ms hold,
-  and immediate desktop secondary hold behavior;
+  sizes, inline registry icons, selected/autofocus state, press, 350 ms long press,
+  and immediate desktop secondary long-press behavior;
 - direct retained `toggle-button` controls with Button-compatible variants,
   sizes and inline icons, `on-toggle` activation, optional model-owned
   `selected`, backend-owned selection when that property is absent, and the
-  same hold and autofocus behavior;
+  same long-press and autofocus behavior;
 - direct retained `select`, `combobox`, `dropdown-menu`, and `menu-item`
   picker primitives with model-owned value, query, and visibility Signals,
   typed press/input/submit/dismiss events, anchored native presentation, and
@@ -272,7 +272,7 @@ Delivered parity slices:
 `button` follows the pinned Vercel Native control rather than the provisional
 Solid-style implementation. Its public attributes are `text`, `variant`,
 `size`, `icon`, `icon-placement`, `disabled`, `selected`, `autofocus`, `label`,
-`on-press`, and `on-hold`. `icon-placement` is part of the reference schema and
+`on-press`, and `on-long-press`. `icon-placement` is part of the reference schema and
 renderer even though the Button page's generated attribute table omits it.
 
 - `variant` is one of `default`, `primary`, `secondary`, `outline`, `ghost`, or
@@ -286,8 +286,8 @@ renderer even though the Button page's generated attribute table omits it.
 - `autofocus` is edge-triggered: mount with true or false-to-true requests
   focus once; retaining true must not steal focus again after another update.
 - A quick primary activation dispatches `on-press`. A pointer held for about
-  350 ms dispatches `on-hold` and suppresses the following press. A desktop
-  secondary activation dispatches hold immediately when the route has no
+  350 ms dispatches `on-long-press` and suppresses the following press. A desktop
+  secondary activation dispatches long press immediately when the route has no
   context menu.
 - Literal values and Signal sources share the same attribute names. A Signal
   change patches the retained Button node and never replaces its enclosing
@@ -304,7 +304,7 @@ not become a public LG attribute.
 
 `toggle-button` follows the pinned pressed-button contract. It shares `text`,
 `variant`, `size`, `icon`, `icon-placement`, `disabled`, `selected`,
-`autofocus`, `label`, and `on-hold` with Button, but primary activation emits
+`autofocus`, `label`, and `on-long-press` with Button, but primary activation emits
 `on-toggle` with the requested next selection instead of `on-press`.
 
 When `selected` is present, its literal or Signal value is the model's

@@ -8,7 +8,7 @@
   :fn<reducer-app<gallery-model;gallery-action>>)
 (signature components.flutter-bridge/initialize :fn<int;int;string>)
 (signature components.flutter-bridge/press :fn<int;string>)
-(signature components.flutter-bridge/hold :fn<int;string>)
+(signature components.flutter-bridge/long-press :fn<int;string>)
 (signature components.flutter-bridge/text-changed :fn<int;string;string>)
 (signature components.flutter-bridge/toggle-changed :fn<int;bool;string>)
 (signature components.flutter-bridge/radio-changed :fn<int;string>)

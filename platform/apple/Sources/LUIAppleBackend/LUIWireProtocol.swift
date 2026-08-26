@@ -6,7 +6,7 @@ public enum LUIBackendError: Error, Equatable {
 
 public enum LUIEvent: Equatable, Sendable {
     case press(node: Int)
-    case hold(node: Int)
+    case longPress(node: Int)
     case textChanged(node: Int, text: String)
     case submit(node: Int)
     case toggleChanged(node: Int, checked: Bool)
@@ -128,7 +128,7 @@ enum LUIWireValue: Decodable, Equatable {
         case .headingLevel:
             guard let value = intValue else { return false }
             return (1...6).contains(value)
-        case .checked, .selected, .autofocus, .submitOnEnter, .holdEnabled,
+        case .checked, .selected, .autofocus, .submitOnEnter, .longPressEnabled,
              .changeEnabled, .toggleEnabled, .pressEnabled, .submitEnabled,
              .doublePressEnabled, .connector, .expanded, .enabled:
             return boolValue != nil
@@ -615,8 +615,10 @@ struct LUIRetainedTree {
         case .name: kind == .icon
         case .variant:
             kind == .button || kind == .toggleButton || kind == .alert || kind == .bubble
-        case .iconPlacement, .holdEnabled:
+        case .iconPlacement:
             kind == .button || kind == .toggleButton
+        case .longPressEnabled:
+            kind == .button || kind == .toggleButton || kind == .listItem
         case .icon:
             kind == .button || kind == .toggleButton || kind == .menuItem ||
                 kind == .listItem
@@ -960,7 +962,7 @@ struct LUIRetainedTree {
             properties[.pressEnabled]?.boolValue == true ||
             properties[.doublePressEnabled]?.boolValue == true ||
             properties[.toggleEnabled]?.boolValue == true ||
-            properties[.holdEnabled]?.boolValue == true
+            properties[.longPressEnabled]?.boolValue == true
     }
 
     private static func isContextMenuLeafHost(_ kind: LUINodeKind) -> Bool {

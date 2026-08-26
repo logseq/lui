@@ -1707,10 +1707,13 @@ private struct LUIMenuItemView: View {
 private struct LUIListItemView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @State private var didLongPress = false
 
     var body: some View {
         Button {
-            if model.isTreeItem {
+            if didLongPress {
+                didLongPress = false
+            } else if model.isTreeItem {
                 try? backend.performTreeTap(node: model.id)
             } else if model.supportsPress {
                 try? backend.performPress(node: model.id)
@@ -1752,6 +1755,13 @@ private struct LUIListItemView: View {
                 if model.supportsDoublePress {
                     try? backend.performDoublePress(node: model.id)
                 }
+            }
+        )
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                guard model.supportsLongPress, model.isEnabled else { return }
+                didLongPress = true
+                try? backend.performLongPress(node: model.id)
             }
         )
         .onKeyPress(.return) {
@@ -1804,15 +1814,15 @@ private struct LUIButtonView: View {
             .simultaneousGesture(
                 LongPressGesture(minimumDuration: 0.35)
                     .onEnded { _ in
-                        guard model.supportsHold, model.isEnabled else { return }
+                        guard model.supportsLongPress, model.isEnabled else { return }
                         held = true
-                        try? backend.performHold(node: model.id)
+                        try? backend.performLongPress(node: model.id)
                     }
             )
             .modifier(
-                LUISecondaryHoldModifier(
-                    enabled: model.supportsHold && model.isEnabled,
-                    action: { try? backend.performHold(node: model.id) }
+                LUISecondaryLongPressModifier(
+                    enabled: model.supportsLongPress && model.isEnabled,
+                    action: { try? backend.performLongPress(node: model.id) }
                 )
             )
             .modifier(
@@ -2081,7 +2091,7 @@ private struct LUIHorizontalGroupView: View {
     }
 }
 
-private struct LUISecondaryHoldModifier: ViewModifier {
+private struct LUISecondaryLongPressModifier: ViewModifier {
     let enabled: Bool
     let action: () -> Void
 
@@ -2089,7 +2099,7 @@ private struct LUISecondaryHoldModifier: ViewModifier {
     func body(content: Content) -> some View {
 #if os(macOS)
         content.overlay {
-            LUISecondaryHoldCapture(enabled: enabled, action: action)
+            LUISecondaryLongPressCapture(enabled: enabled, action: action)
         }
 #else
         content
@@ -2098,29 +2108,29 @@ private struct LUISecondaryHoldModifier: ViewModifier {
 }
 
 #if os(macOS)
-private struct LUISecondaryHoldCapture: NSViewRepresentable {
+private struct LUISecondaryLongPressCapture: NSViewRepresentable {
     let enabled: Bool
     let action: () -> Void
 
-    func makeNSView(context: Context) -> LUISecondaryHoldView {
-        let view = LUISecondaryHoldView()
-        view.isHoldEnabled = enabled
-        view.onHold = action
+    func makeNSView(context: Context) -> LUISecondaryLongPressView {
+        let view = LUISecondaryLongPressView()
+        view.isLongPressEnabled = enabled
+        view.onLongPress = action
         return view
     }
 
-    func updateNSView(_ view: LUISecondaryHoldView, context: Context) {
-        view.isHoldEnabled = enabled
-        view.onHold = action
+    func updateNSView(_ view: LUISecondaryLongPressView, context: Context) {
+        view.isLongPressEnabled = enabled
+        view.onLongPress = action
     }
 }
 
-final class LUISecondaryHoldView: NSView {
-    var isHoldEnabled = false
-    var onHold: () -> Void = {}
+final class LUISecondaryLongPressView: NSView {
+    var isLongPressEnabled = false
+    var onLongPress: () -> Void = {}
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard isHoldEnabled, bounds.contains(point), let event = window?.currentEvent else {
+        guard isLongPressEnabled, bounds.contains(point), let event = window?.currentEvent else {
             return nil
         }
         if event.type == .rightMouseDown ||
@@ -2143,7 +2153,7 @@ final class LUISecondaryHoldView: NSView {
     }
 
     func handleSecondaryActivation() {
-        if isHoldEnabled { onHold() }
+        if isLongPressEnabled { onLongPress() }
     }
 }
 #endif

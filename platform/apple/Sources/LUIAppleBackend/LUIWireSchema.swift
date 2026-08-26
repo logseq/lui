@@ -108,7 +108,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case selected = "selected"
     case autofocus = "autofocus"
     case submitOnEnter = "submit-on-enter"
-    case holdEnabled = "hold-enabled"
+    case longPressEnabled = "long-press-enabled"
     case changeEnabled = "change-enabled"
     case toggleEnabled = "toggle-enabled"
     case pressEnabled = "press-enabled"

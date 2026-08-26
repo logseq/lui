@@ -29,7 +29,7 @@ void main() {
       extensionRegistry: galleryExtensionRegistry(),
       onEvent: (event) => switch (event) {
         LUIPressEvent(:final node) => bridge.press(node),
-        LUIHoldEvent(:final node) => bridge.hold(node),
+        LUILongPressEvent(:final node) => bridge.longPress(node),
         LUITextChangedEvent(:final node, :final text) => bridge.textChanged(
           node,
           text,

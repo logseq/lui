@@ -33,6 +33,7 @@ struct LUIAnyNodeView: View {
 private struct LUISkipNodeView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @State private var didLongPress = false
 
     @ViewBuilder
     var body: some View {
@@ -56,7 +57,7 @@ private struct LUISkipNodeView: View {
             }
         case .column, .list, .box, .panel, .card, .stack, .grid, .table,
              .tableRow, .tableCell, .tree, .timeline, .timelineItem, .stepper,
-             .step, .alert, .bubble, .toast, .accordion, .listItem,
+             .step, .alert, .bubble, .toast, .accordion,
              .menuItem, .resizable, .split, .scroll:
             VStack(alignment: .leading, spacing: CGFloat(model.property(.gap)?.intValue ?? 0)) {
                 if !model.text.isEmpty {
@@ -64,6 +65,32 @@ private struct LUISkipNodeView: View {
                 }
                 children
             }
+        case .listItem:
+            Button {
+                if didLongPress {
+                    didLongPress = false
+                } else if model.supportsPress {
+                    try? backend.performPress(node: model.id)
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    if !model.text.isEmpty {
+                        Text(verbatim: model.text)
+                    }
+                    children
+                    Spacer(minLength: 8)
+                }
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(model.isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                    guard model.supportsLongPress, model.isEnabled else { return }
+                    didLongPress = true
+                    try? backend.performLongPress(node: model.id)
+                }
+            )
         case .heading:
             Text(verbatim: model.text).font(.title)
         case .text, .paragraph, .label, .statusBar, .tooltip:

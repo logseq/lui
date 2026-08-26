@@ -1959,7 +1959,7 @@
                        1 proto/IconPlacementValue (proto/StringValue "trailing"))
                       (proto/set-prop-op 1 proto/Selected (proto/BoolValue true))
                       (proto/set-prop-op 1 proto/Autofocus (proto/BoolValue true))
-                      (proto/set-prop-op 1 proto/HoldEnabled (proto/BoolValue true))]))]
+                      (proto/set-prop-op 1 proto/LongPressEnabled (proto/BoolValue true))]))]
     (assert-equal
      (str
       "{\"generation\":1,\"ops\":["
@@ -1971,7 +1971,7 @@
       "{\"op\":\"set-prop\",\"id\":1,\"property\":\"icon-placement\",\"value\":\"trailing\"},"
       "{\"op\":\"set-prop\",\"id\":1,\"property\":\"selected\",\"value\":true},"
       "{\"op\":\"set-prop\",\"id\":1,\"property\":\"autofocus\",\"value\":true},"
-      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"hold-enabled\",\"value\":true}]}")
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"long-press-enabled\",\"value\":true}]}")
      (wire/encode-batch batch)
      "Button properties keep exact closed wire names")
     (doseq [variant ["default" "primary" "secondary" "outline" "ghost"
@@ -1989,11 +1989,11 @@
           "both reference icon placements are accepted"))
     (doseq [property [proto/VariantValue proto/SizeValue proto/InlineIconName
                       proto/IconPlacementValue proto/Selected proto/Autofocus
-                      proto/HoldEnabled proto/AccessibilityLabel]]
+                      proto/LongPressEnabled proto/AccessibilityLabel]]
       (is (proto/property-supported? proto/Button property)
           "Button admits every typed contract property"))
-    (is (proto/event-supported? proto/Button (proto/Hold 1))
-        "Button admits Hold events")
+    (is (proto/event-supported? proto/Button (proto/LongPress 1))
+        "Button admits LongPress events")
     (is (proto/can-contain-children? proto/Button)
         "Button may retain ContextMenu metadata")
     (is (not (proto/child-kind-supported? proto/Button proto/Text))
@@ -2033,17 +2033,17 @@
                        1 proto/IconPlacementValue (proto/StringValue "leading"))
                       (proto/set-prop-op 1 proto/Selected (proto/BoolValue false))
                       (proto/set-prop-op 1 proto/Autofocus (proto/BoolValue true))
-                      (proto/set-prop-op 1 proto/HoldEnabled (proto/BoolValue true))]))]
+                      (proto/set-prop-op 1 proto/LongPressEnabled (proto/BoolValue true))]))]
     (is (proto/event-supported?
          proto/ToggleButton (proto/ToggleChanged 1 true))
         "ToggleButton activation emits on-toggle with the next state")
-    (is (proto/event-supported? proto/ToggleButton (proto/Hold 1))
-        "ToggleButton supports the reference hold gesture")
+    (is (proto/event-supported? proto/ToggleButton (proto/LongPress 1))
+        "ToggleButton supports the long-press gesture")
     (is (not (proto/event-supported? proto/ToggleButton (proto/Press 1)))
         "ToggleButton does not expose Button on-press activation")
     (doseq [property [proto/TextValue proto/VariantValue proto/SizeValue
                       proto/InlineIconName proto/IconPlacementValue
-                      proto/Selected proto/Autofocus proto/HoldEnabled
+                      proto/Selected proto/Autofocus proto/LongPressEnabled
                       proto/Enabled proto/AccessibilityLabel]]
       (is (proto/property-supported? proto/ToggleButton property)
           "ToggleButton admits the exact shared control properties"))
@@ -2062,7 +2062,7 @@
           "{\"op\":\"set-prop\",\"id\":1,\"property\":\"icon-placement\",\"value\":\"leading\"},"
           "{\"op\":\"set-prop\",\"id\":1,\"property\":\"selected\",\"value\":false},"
           "{\"op\":\"set-prop\",\"id\":1,\"property\":\"autofocus\",\"value\":true},"
-          "{\"op\":\"set-prop\",\"id\":1,\"property\":\"hold-enabled\",\"value\":true}]}")
+          "{\"op\":\"set-prop\",\"id\":1,\"property\":\"long-press-enabled\",\"value\":true}]}")
          (wire/encode-batch batch))
         "ToggleButton has one stable typed wire representation")))
 

@@ -396,7 +396,7 @@ test("Compact Sheet arbitrates scroll, direction, distance, and velocity", async
   assert.deepEqual(dismissedSheetState, { open: 0, ending: 1 })
 })
 
-test("Button hold uses one movement-safe Pointer Events lifecycle", async () => {
+test("Button long press uses one movement-safe Pointer Events lifecycle", async () => {
   await openGalleryPage("Button")
 
   await evaluate(`(() => {
@@ -408,7 +408,7 @@ test("Button hold uses one movement-safe Pointer Events lifecycle", async () => 
     }))
   })()`)
   await browser("wait", "380")
-  await evaluate(`document.querySelector('button[data-hold-enabled]')?.dispatchEvent(
+  await evaluate(`document.querySelector('button[data-long-press-enabled]')?.dispatchEvent(
     new PointerEvent('pointerup', { bubbles: true, pointerId: 101, pointerType: 'touch' }),
   )`)
   assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), true)
@@ -417,7 +417,7 @@ test("Button hold uses one movement-safe Pointer Events lifecycle", async () => 
   assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), false)
 
   await evaluate(`(() => {
-    const button = document.querySelector('button[data-hold-enabled]')
+    const button = document.querySelector('button[data-long-press-enabled]')
     const pointer = (type, x, y) => new PointerEvent(type, {
       bubbles: true, pointerId: 102, pointerType: 'touch',
       clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1,
@@ -426,13 +426,13 @@ test("Button hold uses one movement-safe Pointer Events lifecycle", async () => 
     button.dispatchEvent(pointer('pointermove', 120, 200))
   })()`)
   await browser("wait", "380")
-  await evaluate(`document.querySelector('button[data-hold-enabled]')?.dispatchEvent(
+  await evaluate(`document.querySelector('button[data-long-press-enabled]')?.dispatchEvent(
     new PointerEvent('pointerup', { bubbles: true, pointerId: 102, pointerType: 'touch' }),
   )`)
   assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), false)
 
   await evaluate(`(() => {
-    const button = document.querySelector('button[data-hold-enabled]')
+    const button = document.querySelector('button[data-long-press-enabled]')
     button.dispatchEvent(new PointerEvent('pointerdown', {
       bubbles: true, pointerId: 103, pointerType: 'mouse',
       clientX: 100, clientY: 200, button: 0, buttons: 1,
@@ -445,7 +445,7 @@ test("Button hold uses one movement-safe Pointer Events lifecycle", async () => 
   assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), false)
 
   await evaluate(`(() => {
-    const button = document.querySelector('button[data-hold-enabled]')
+    const button = document.querySelector('button[data-long-press-enabled]')
     button.dispatchEvent(new PointerEvent('pointerdown', {
       bubbles: true, pointerId: 104, pointerType: 'touch',
       clientX: 100, clientY: 200, button: 0, buttons: 1,

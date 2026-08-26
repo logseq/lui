@@ -641,7 +641,7 @@ void main() {
         {"op":"set-prop","id":1,"property":"autofocus","value":true},
         {"op":"set-prop","id":1,"property":"accessibility-label","value":"Download report"},
         {"op":"set-prop","id":1,"property":"accessibility-identifier","value":"button.download"},
-        {"op":"set-prop","id":1,"property":"hold-enabled","value":true}
+        {"op":"set-prop","id":1,"property":"long-press-enabled","value":true}
       ]}
       ''');
 
@@ -669,7 +669,7 @@ void main() {
 
     await tester.longPress(find.byType(FilledButton));
     await tester.pump();
-    expect(events, [const LUIEvent.hold(node: 1)]);
+    expect(events, [const LUIEvent.longPress(node: 1)]);
 
     events.clear();
     await tester.tap(find.byType(FilledButton));
@@ -1521,6 +1521,7 @@ void main() {
         {"op":"set-prop","id":2,"property":"icon","value":"file-text"},
         {"op":"set-prop","id":2,"property":"selected","value":true},
         {"op":"set-prop","id":2,"property":"press-enabled","value":true},
+        {"op":"set-prop","id":2,"property":"long-press-enabled","value":true},
         {"op":"set-prop","id":2,"property":"double-press-enabled","value":true},
         {"op":"set-prop","id":2,"property":"submit-enabled","value":true},
         {"op":"set-prop","id":5,"property":"text","value":"Custom child row"},
@@ -1540,6 +1541,11 @@ void main() {
       expect(find.text('Custom child row'), findsOneWidget);
       expect(find.byIcon(Icons.description_outlined), findsOneWidget);
       final retained = tester.renderObject(find.text('Quarterly report.md'));
+
+      await tester.longPress(find.text('Quarterly report.md'));
+      await tester.pump();
+      expect(events, [const LUIEvent.longPress(node: 2)]);
+      events.clear();
 
       await tester.tap(find.text('Quarterly report.md'));
       await tester.pump(const Duration(milliseconds: 400));

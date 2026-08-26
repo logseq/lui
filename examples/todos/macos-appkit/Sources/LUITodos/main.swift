@@ -9,7 +9,7 @@ private typealias PatchCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
 private typealias StartFunction = @convention(c) (PatchCallback?, Int32) -> Int32
 private typealias StopFunction = @convention(c) () -> Int32
 private typealias PressFunction = @convention(c) (Int64) -> Int32
-private typealias HoldFunction = @convention(c) (Int64) -> Int32
+private typealias LongPressFunction = @convention(c) (Int64) -> Int32
 private typealias TextChangedFunction =
     @convention(c) (Int64, UnsafePointer<CChar>?) -> Int32
 private typealias SubmitFunction = @convention(c) (Int64) -> Int32
@@ -35,7 +35,7 @@ private final class NativeTodosRuntime {
     private let startFunction: StartFunction
     private let stopFunction: StopFunction
     private let pressFunction: PressFunction
-    private let holdFunction: HoldFunction
+    private let longPressFunction: LongPressFunction
     private let textChangedFunction: TextChangedFunction
     private let submitFunction: SubmitFunction
     private let dismissFunction: DismissFunction
@@ -52,7 +52,7 @@ private final class NativeTodosRuntime {
         startFunction = try Self.load("lui_ocaml_start", from: handle)
         stopFunction = try Self.load("lui_ocaml_stop", from: handle)
         pressFunction = try Self.load("lui_ocaml_press", from: handle)
-        holdFunction = try Self.load("lui_ocaml_hold", from: handle)
+        longPressFunction = try Self.load("lui_ocaml_long_press", from: handle)
         textChangedFunction = try Self.load("lui_ocaml_text_changed", from: handle)
         submitFunction = try Self.load("lui_ocaml_submit", from: handle)
         dismissFunction = try Self.load("lui_ocaml_dismiss", from: handle)
@@ -76,8 +76,8 @@ private final class NativeTodosRuntime {
         _ = pressFunction(Int64(node))
     }
 
-    func hold(node: Int) {
-        _ = holdFunction(Int64(node))
+    func longPress(node: Int) {
+        _ = longPressFunction(Int64(node))
     }
 
     func textChanged(node: Int, text: String) {
@@ -147,8 +147,8 @@ private final class TodosHost: NSObject, NSApplicationDelegate, NSWindowDelegate
                 switch event {
                 case let .press(node):
                     self?.runtime?.press(node: node)
-                case let .hold(node):
-                    self?.runtime?.hold(node: node)
+                case let .longPress(node):
+                    self?.runtime?.longPress(node: node)
                 case let .textChanged(node, text):
                     self?.runtime?.textChanged(node: node, text: text)
                 case let .submit(node):

@@ -30,7 +30,7 @@
                      Checked
                      ProgressValue ResizeDuration ResizeEasing ResizeOrigin
                      OrientationValue SizeValue IconName
-                     VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter HoldEnabled
+                     VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter LongPressEnabled
                      ChangeEnabled ToggleEnabled PressEnabled
                      SubmitEnabled DoublePressEnabled
                      ImageIdValue SurfaceIdValue ActiveIndex TitleValue DescriptionValue MetaValue IndicatorValue Connector SourceX SourceY SourceWidth SourceHeight
@@ -1439,23 +1439,6 @@
 
 (defn- attach-list-item-events! [renderer node dom-node]
   (Webapi.Dom.Element.addEventListener
-   "click"
-   (fn [_event]
-     (when (event-capability? renderer node PressEnabled)
-       (Stdlib.ignore
-        ((deref (:web-event-handler renderer)) (proto/Press node))))
-     (when (and
-            (treeitem? renderer node)
-            (event-capability? renderer node ToggleEnabled))
-       (match (retained/property (:web-store renderer) node Expanded)
-         (Some (BoolValue expanded))
-         (Stdlib.ignore
-          ((deref (:web-event-handler renderer))
-           (proto/ToggleChanged node (not expanded))))
-         _ (Stdlib.ignore true)))
-     (Stdlib.ignore true))
-   dom-node)
-  (Webapi.Dom.Element.addEventListener
    "dblclick"
    (fn [_event]
      (when (event-capability? renderer node DoublePressEnabled)
@@ -2019,11 +2002,11 @@
         active-pointer (atom None)
         origin-x (atom 0)
         origin-y (atom 0)
-        hold-enabled?
+        long-press-enabled?
         (fn []
           (and
            (enabled-node? renderer node)
-           (Webapi.Dom.Element.hasAttribute "data-hold-enabled" dom-node)
+           (Webapi.Dom.Element.hasAttribute "data-long-press-enabled" dom-node)
            (not (Webapi.Dom.Element.hasAttribute "disabled" dom-node))))
         connected?
         (fn []
@@ -2037,17 +2020,17 @@
             None (Stdlib.ignore true))
           (reset! timer None)
           true)
-        cancel-hold!
+        cancel-long-press!
         (fn []
           (cancel-timer!)
           (reset! active-pointer None)
           true)
-        dispatch-hold!
+        dispatch-long-press!
         (fn [suppress]
-          (when (hold-enabled?)
+          (when (long-press-enabled?)
             (reset! suppress-click suppress)
             (Stdlib.ignore
-             ((deref (:web-event-handler renderer)) (proto/Hold node))))
+             ((deref (:web-event-handler renderer)) (proto/LongPress node))))
           true)
         dispatch-primary!
         (fn []
@@ -2067,10 +2050,25 @@
               (Stdlib.ignore
                ((deref (:web-event-handler renderer))
                 (proto/ToggleChanged node next-selected))))
-            (Stdlib.ignore
-             ((deref (:web-event-handler renderer)) (proto/Press node))))
+            (if (= kind ListItem)
+              (do
+                (when (event-capability? renderer node PressEnabled)
+                  (Stdlib.ignore
+                   ((deref (:web-event-handler renderer)) (proto/Press node))))
+                (when (and
+                       (treeitem? renderer node)
+                       (event-capability? renderer node ToggleEnabled))
+                  (match (retained/property
+                          (:web-store renderer) node Expanded)
+                    (Some (BoolValue expanded))
+                    (Stdlib.ignore
+                     ((deref (:web-event-handler renderer))
+                      (proto/ToggleChanged node (not expanded))))
+                    _ (Stdlib.ignore true))))
+              (Stdlib.ignore
+               ((deref (:web-event-handler renderer)) (proto/Press node)))))
           true)
-        schedule-hold!
+        schedule-long-press!
         (fn []
           (reset!
            timer
@@ -2081,16 +2079,16 @@
              (fn []
                (reset! timer None)
                (when (connected?)
-                 (dispatch-hold! true)
+                 (dispatch-long-press! true)
                  (Stdlib.ignore true))
                (Stdlib.ignore true)))))
           true)
         pointer-down!
         (fn [event]
-          (cancel-hold!)
+          (cancel-long-press!)
           (reset! suppress-click false)
           (when (and
-                 (hold-enabled?)
+                 (long-press-enabled?)
                  (= (Webapi.Dom.MouseEvent.button
                      (pointer-mouse-event event)) 0))
             (reset! active-pointer (Some (pointer-id event)))
@@ -2103,7 +2101,7 @@
             (when (Webapi.Dom.Event.isTrusted event)
               (Webapi.Dom.Element.setPointerCapture
                (Webapi.Dom.PointerEvent.pointerId (obj/magic event)) dom-node))
-            (schedule-hold!)
+            (schedule-long-press!)
             (Stdlib.ignore true))
           (Stdlib.ignore true))
         pointer-move!
@@ -2122,7 +2120,7 @@
                          (pointer-mouse-event event))
                         (deref origin-y)))]
                 (when (or (> delta-x 10) (> delta-y 10))
-                  (cancel-hold!)
+                  (cancel-long-press!)
                   (reset! suppress-click false)
                   (Stdlib.ignore true))))
             None (Stdlib.ignore true))
@@ -2132,7 +2130,7 @@
           (match (deref active-pointer)
             (Some pointer)
             (when (= pointer (pointer-id event))
-              (cancel-hold!)
+              (cancel-long-press!)
               (Stdlib.ignore true))
             None (Stdlib.ignore true))
           (Stdlib.ignore true))
@@ -2141,17 +2139,17 @@
           (match (deref active-pointer)
             (Some pointer)
             (when (= pointer (pointer-id event))
-              (cancel-hold!)
+              (cancel-long-press!)
               (reset! suppress-click false)
               (Stdlib.ignore true))
             None (Stdlib.ignore true))
           (Stdlib.ignore true))
         context-menu!
         (fn [event]
-          (when (hold-enabled?)
-            (cancel-hold!)
+          (when (long-press-enabled?)
+            (cancel-long-press!)
             (Webapi.Dom.Event.preventDefault event)
-            (Stdlib.ignore (dispatch-hold! false)))
+            (Stdlib.ignore (dispatch-long-press! false)))
           (Stdlib.ignore true))
         click!
         (fn [event]
@@ -2179,7 +2177,7 @@
        (match previous-cleanup
          (Some cleanup) (cleanup)
          None (Stdlib.ignore true))
-       (cancel-hold!)
+       (cancel-long-press!)
        (Webapi.Dom.Element.removeEventListener
         "pointerdown" pointer-down! dom-node)
        (Webapi.Dom.Element.removeEventListener
@@ -3646,7 +3644,10 @@
          (Webapi.Dom.Element.removeAttribute "data-highlighted" dom-node)
          (Stdlib.ignore true))
        dom-node))
-    ListItem (attach-list-item-events! renderer node dom-node)
+    ListItem
+    (do
+      (attach-button-events! renderer node kind dom-node)
+      (attach-list-item-events! renderer node dom-node))
     Checkbox (attach-toggle-event! renderer node kind dom-node)
     SwitchControl (attach-toggle-event! renderer node kind dom-node)
     Toggle (attach-button-events! renderer node kind dom-node)
@@ -4779,8 +4780,8 @@
     (tuple SubmitOnEnter (BoolValue submit-on-enter))
     (set-state-attribute! dom-node "data-submit-on-enter" submit-on-enter)
 
-    (tuple HoldEnabled (BoolValue enabled))
-    (set-state-attribute! dom-node "data-hold-enabled" enabled)
+    (tuple LongPressEnabled (BoolValue enabled))
+    (set-state-attribute! dom-node "data-long-press-enabled" enabled)
 
     (tuple ChangeEnabled (BoolValue enabled))
     (set-state-attribute! dom-node "data-change-enabled" enabled)

@@ -92,8 +92,8 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
     switch (event) {
       case LUIPressEvent(:final node):
         _bridge.press(node);
-      case LUIHoldEvent(:final node):
-        _bridge.hold(node);
+      case LUILongPressEvent(:final node):
+        _bridge.longPress(node);
       case LUITextChangedEvent(:final node, :final text):
         _bridge.textChanged(node, text);
       case LUISubmitEvent(:final node):

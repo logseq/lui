@@ -14,7 +14,7 @@ sealed class LUIEvent {
   const LUIEvent();
 
   const factory LUIEvent.press({required int node}) = LUIPressEvent;
-  const factory LUIEvent.hold({required int node}) = LUIHoldEvent;
+  const factory LUIEvent.longPress({required int node}) = LUILongPressEvent;
   const factory LUIEvent.textChanged({
     required int node,
     required String text,
@@ -101,12 +101,13 @@ final class LUIValueChangedEvent extends LUIEvent {
   int get hashCode => Object.hash(node, value);
 }
 
-final class LUIHoldEvent extends LUIEvent {
-  const LUIHoldEvent({required this.node});
+final class LUILongPressEvent extends LUIEvent {
+  const LUILongPressEvent({required this.node});
   final int node;
 
   @override
-  bool operator ==(Object other) => other is LUIHoldEvent && other.node == node;
+  bool operator ==(Object other) =>
+      other is LUILongPressEvent && other.node == node;
 
   @override
   int get hashCode => node.hashCode;
@@ -829,14 +830,14 @@ final class LUIFlutterBackend {
     onEvent?.call(LUIEvent.submit(node: node));
   }
 
-  void performHold(int node) {
+  void performLongPress(int node) {
     final state = _requireState(_states, node);
-    if (!_isButtonKind(state.kind) ||
+    if (!(_isButtonKind(state.kind) || state.kind == _NodeKind.listItem) ||
         state.properties['enabled'] == false ||
-        state.properties['hold-enabled'] != true) {
-      throw LUIBackendException('node $node is not an enabled holdable button');
+        state.properties['long-press-enabled'] != true) {
+      throw LUIBackendException('node $node is not enabled for long press');
     }
-    onEvent?.call(LUIEvent.hold(node: node));
+    onEvent?.call(LUIEvent.longPress(node: node));
   }
 
   void performToggle(int node, bool checked) {
@@ -982,8 +983,8 @@ final class LUIFlutterBackend {
         state.properties['icon-placement'] as String? ?? 'leading';
     final buttonSelected = state.properties['selected'] as bool? ?? false;
     final buttonAutofocus = state.properties['autofocus'] as bool? ?? false;
-    final buttonHoldEnabled =
-        state.properties['hold-enabled'] as bool? ?? false;
+    final longPressEnabled =
+        state.properties['long-press-enabled'] as bool? ?? false;
     final isTabTrigger =
         state.kind == _NodeKind.button &&
         state.parent != null &&
@@ -1083,8 +1084,8 @@ final class LUIFlutterBackend {
       required VoidCallback? onPressed,
       Key? semanticsKey,
     }) {
-      final onLongPress = enabled && buttonHoldEnabled
-          ? () => performHold(id)
+      final onLongPress = enabled && longPressEnabled
+          ? () => performLongPress(id)
           : null;
       final colors = Theme.of(context).colorScheme;
       final selectedColor = selected ? colors.secondaryContainer : null;
@@ -1436,6 +1437,7 @@ final class LUIFlutterBackend {
       onDoublePress: state.properties['double-press-enabled'] == true
           ? () => performDoublePress(id)
           : null,
+      onLongPress: longPressEnabled ? () => performLongPress(id) : null,
       onSubmit: state.properties['submit-enabled'] == true
           ? () => performSubmit(id)
           : null,
@@ -2852,7 +2854,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.listItem ||
                 kind == _NodeKind.tableRow ||
                 _isTreeRowKind(kind)),
-      'hold-enabled' => value is bool && _isButtonKind(kind),
+      'long-press-enabled' =>
+        value is bool && (_isButtonKind(kind) || kind == _NodeKind.listItem),
       'autofocus' =>
         value is bool && (_isButtonKind(kind) || _isTextControl(kind)),
       'submit-on-enter' => value is bool && kind == _NodeKind.textarea,
@@ -3510,7 +3513,7 @@ final class LUIFlutterBackend {
         state.properties['press-enabled'] == true ||
         state.properties['double-press-enabled'] == true ||
         state.properties['toggle-enabled'] == true ||
-        state.properties['hold-enabled'] == true;
+        state.properties['long-press-enabled'] == true;
   }
 
   int? _checkedRadio(_NodeState root) {
@@ -4459,6 +4462,7 @@ final class _LUIListItem extends StatefulWidget {
     required this.content,
     required this.onPress,
     required this.onDoublePress,
+    required this.onLongPress,
     required this.onSubmit,
   });
 
@@ -4469,6 +4473,7 @@ final class _LUIListItem extends StatefulWidget {
   final Widget content;
   final VoidCallback? onPress;
   final VoidCallback? onDoublePress;
+  final VoidCallback? onLongPress;
   final VoidCallback? onSubmit;
 
   @override
@@ -4480,21 +4485,35 @@ final class _LUIListItemState extends State<_LUIListItem> {
   Duration? _lastRelease;
   Offset? _lastPosition;
   Timer? _releaseTimer;
+  Timer? _longPressTimer;
+  var _didLongPress = false;
 
   void _handlePointerDown(PointerDownEvent event) {
     if (widget.enabled && event.buttons & kPrimaryButton != 0) {
       _primaryPointer = event.pointer;
+      _didLongPress = false;
+      _longPressTimer?.cancel();
+      if (widget.onLongPress != null) {
+        _longPressTimer = Timer(const Duration(milliseconds: 450), () {
+          if (_primaryPointer != event.pointer || !mounted) return;
+          _didLongPress = true;
+          widget.onLongPress?.call();
+        });
+      }
     }
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
     if (_primaryPointer == event.pointer) _primaryPointer = null;
+    _longPressTimer?.cancel();
   }
 
   void _handlePointerUp(PointerUpEvent event) {
     if (_primaryPointer != event.pointer) return;
     _primaryPointer = null;
+    _longPressTimer?.cancel();
     if (!widget.enabled) return;
+    if (_didLongPress) return;
     widget.onPress?.call();
 
     final previousRelease = _lastRelease;
@@ -4523,6 +4542,7 @@ final class _LUIListItemState extends State<_LUIListItem> {
   @override
   void dispose() {
     _releaseTimer?.cancel();
+    _longPressTimer?.cancel();
     super.dispose();
   }
 
@@ -4543,6 +4563,7 @@ final class _LUIListItemState extends State<_LUIListItem> {
       enabled: widget.enabled,
       selected: widget.selected,
       onTap: press,
+      onLongPress: widget.enabled ? widget.onLongPress : null,
       child: CallbackShortcuts(
         bindings: bindings,
         child: Focus(

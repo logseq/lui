@@ -56,7 +56,7 @@
       :icon "download"
       :disabled disabled-source
       :on-press (fn [_event] true)
-      :on-hold toggle-disabled}
+      :on-long-press toggle-disabled}
      "Primary"]
     [:button
      {:variant "secondary"
@@ -100,7 +100,7 @@
       :disabled disabled-source
       :on-press (fn [_event] true)}]]
    [:paragraph
-    "Press Primary for a normal action; hold it for 350 ms to toggle disabled state."]])
+    "Press Primary normally; long-press it for 350 ms to toggle disabled state."]])
 
 (defui stack-gallery []
   [:column {:gap 24 :padding 32}
@@ -844,7 +844,7 @@
       :selected selected-source
       :disabled disabled-source
       :on-toggle update-selected
-      :on-hold toggle-disabled}
+      :on-long-press toggle-disabled}
      "Controlled"]
     [:toggle-button
      {:variant "ghost"

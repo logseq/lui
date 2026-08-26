@@ -65,7 +65,7 @@ damps opposite movement, locks one axis, excludes interactive descendants, and
 resets cancelled gestures without dismissing model-owned state.
 
 Native Sheet inputs now have a real mobile viewport regression that covers
-Chinese composition, focus, value, and retained DOM identity. Button hold uses
+Chinese composition, focus, value, and retained DOM identity. Button long press uses
 one Pointer Events lifecycle for mouse, pen, and touch; movement, capture loss,
 detachment, cancellation, and retained-node cleanup all cancel pending timers.
 
@@ -184,7 +184,7 @@ strength.
 | `toggle-group`, `button-group` | One roving Tab stop, direction-aware horizontal arrows, Home/End, wrapping, and disabled-item skipping | Initial roving state, retained tab-stop refresh, and mixed Button/ToggleButton membership are covered. LUI intentionally keeps both groups horizontal and leaves selection ownership on each child. | Do not add orientation or group-selection properties. Preserve the current tab stop across unrelated retained patches and keep activation separate from focus. |
 | `tree` | ARIA tree roving focus, disclosure and selection keys, disabled handling, and wrapped multi-character typeahead over visible rows | Core arrows/Home/End, disclosure, retained selection, disabled skipping, and 500 ms typeahead are covered | Keep mobile hit-target qualification in the gallery pass; no popup animation or public search property applies. |
 | `slider` | Native pointer/touch drag and keyboard behavior including arrows, Home/End, PageUp/PageDown and Shift+Arrow large steps | Native range input already supplies single-thumb behavior | Continue using native range input. Test the native key/touch contract; do not port Base UI's multi-thumb machinery because it is outside LUI's public API. |
-| checkbox, switch, radio, toggle, buttons | Native activation, focus-visible behavior, disabled semantics, and local state animation | Native semantics and unified Pointer Events hold tracking are covered, including movement, capture-loss, detachment, and cleanup cancellation. Button, toggle, checkbox, switch, and radio transitions share reduced-motion cancellation, while coarse-pointer controls and interactive rows retain at least a 44 px hit target | Keep native input/button activation and do not add public animation properties. |
+| checkbox, switch, radio, toggle, buttons | Native activation, focus-visible behavior, disabled semantics, and local state animation | Native semantics and unified Pointer Events long-press tracking are covered, including movement, capture-loss, detachment, and cleanup cancellation. Button, toggle, checkbox, switch, and radio transitions share reduced-motion cancellation, while coarse-pointer controls and interactive rows retain at least a 44 px hit target | Keep native input/button activation and do not add public animation properties. |
 | text inputs and textarea | Native editing, selection, clipboard, IME composition, mobile keyboard, and textarea auto-size | Composition, auto-size, Combobox editing, and Sheet visual-viewport identity are covered with native controls | Keep editing browser-owned. Motion and layout code must never write the input value or recreate a focused control. |
 
 Pure display components such as Row, Column, Grid, Stack, Panel, Card, Text,

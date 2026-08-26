@@ -18,7 +18,7 @@ void main() {
     final backend = LUIFlutterBackend(
       onEvent: (event) => switch (event) {
         LUIPressEvent(:final node) => bridge.press(node),
-        LUIHoldEvent(:final node) => bridge.hold(node),
+        LUILongPressEvent(:final node) => bridge.longPress(node),
         LUITextChangedEvent(:final node, :final text) => bridge.textChanged(
           node,
           text,
@@ -33,8 +33,9 @@ void main() {
           node,
           value,
         ),
-        LUIExtensionComponentEvent() =>
-          throw StateError('Todos does not register extension events'),
+        LUIExtensionComponentEvent() => throw StateError(
+          'Todos does not register extension events',
+        ),
       },
     );
     bridge = LUIOcamlBridge.open(_libraryPath, onPatch: backend.applyJson);
