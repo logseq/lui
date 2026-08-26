@@ -124,72 +124,75 @@ enum LUIWireValue: Decodable, Equatable {
     }
 
     func matches(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
-        switch (property, self) {
-        case let (.headingLevel, .int(level)): (1...6).contains(level)
-        case (.checked, .bool): true
-        case (.progressValue, .double): true
-        case let (.resizeDuration, .int(value)): value >= 0
-        case let (.resizeEasing, .string(value)):
-            ["linear", "standard", "emphasized", "spring"].contains(value)
-        case let (.resizeOrigin, .double(value)): value.isFinite
-        case let (.orientation, .string(value)):
-            value == "horizontal" || value == "vertical"
-        case let (.size, .string(value)):
-            Self.controlSizes.contains(value) ||
+        switch property {
+        case .headingLevel:
+            guard let value = intValue else { return false }
+            return (1...6).contains(value)
+        case .checked, .selected, .autofocus, .submitOnEnter, .holdEnabled,
+             .changeEnabled, .toggleEnabled, .pressEnabled, .submitEnabled,
+             .doublePressEnabled, .connector, .expanded, .enabled:
+            return boolValue != nil
+        case .progressValue:
+            return doubleValue != nil
+        case .resizeDuration, .image, .surface, .active, .columns,
+             .paddingHorizontal, .paddingVertical, .borderWidth, .cornerRadius,
+             .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight:
+            guard let value = intValue else { return false }
+            return value >= 0
+        case .resizeEasing:
+            guard let value = stringValue else { return false }
+            return ["linear", "standard", "emphasized", "spring"].contains(value)
+        case .resizeOrigin, .sourceX, .sourceY, .sourceWidth, .sourceHeight,
+             .anchorOffset:
+            guard let value = doubleValue else { return false }
+            return value.isFinite
+        case .orientation:
+            guard let value = stringValue else { return false }
+            return value == "horizontal" || value == "vertical"
+        case .size:
+            guard let value = stringValue else { return false }
+            return Self.controlSizes.contains(value) ||
                 (kind == .tableCell && Self.textSizes.contains(value))
-        case let (.name, .string(value)):
-            Self.iconNames.contains(value) || Self.isApplicationIconName(value)
-        case let (.variant, .string(value)): Self.buttonVariants.contains(value)
-        case let (.icon, .string(value)):
-            Self.iconNames.contains(value) || Self.isApplicationIconName(value)
-        case let (.iconPlacement, .string(value)):
-            value == "leading" || value == "trailing"
-        case (.selected, .bool), (.autofocus, .bool), (.submitOnEnter, .bool),
-             (.holdEnabled, .bool),
-             (.changeEnabled, .bool), (.toggleEnabled, .bool), (.pressEnabled, .bool),
-             (.submitEnabled, .bool), (.doublePressEnabled, .bool): true
-        case let (.image, .int(value)), let (.surface, .int(value)): value >= 0
-        case let (.active, .int(value)): value >= 0
-        case (.title, .string), (.description, .string), (.meta, .string),
-             (.indicator, .string), (.connector, .bool): true
-        case let (.sourceX, .double(value)),
-             let (.sourceY, .double(value)),
-             let (.sourceWidth, .double(value)),
-             let (.sourceHeight, .double(value)): value.isFinite
-        case let (.anchor, .string(value)):
-            ["above", "below", "left", "right"].contains(value)
-        case let (.anchorAlignment, .string(value)):
-            ["start", "end", "stretch"].contains(value)
-        case let (.anchorOffset, .double(value)): value.isFinite
-        case let (.tooltipDelay, .int(value)): (0...Int(Int32.max)).contains(value)
-        case let (.duration, .int(value)): (0...Int(Int32.max)).contains(value)
-        case let (.textAlignment, .string(value)):
-            Self.textAlignments.contains(value)
-        case let (.role, .string(value)): value == "treeitem"
-        case let (.treeLevel, .int(value)): value > 0
-        case (.expanded, .bool): true
-        case let (.main, .string(value)):
-            Self.mainAlignments.contains(value)
-        case let (.cross, .string(value)):
-            Self.crossAlignments.contains(value)
-        case let (.grow, .double(value)): value.isFinite && value >= 0
-        case let (.columns, .int(value)): value >= 0
-        case (.foreground, .string), (.borderColor, .string): true
-        case let (.paddingHorizontal, .int(value)),
-             let (.paddingVertical, .int(value)),
-             let (.borderWidth, .int(value)),
-             let (.cornerRadius, .int(value)),
-             let (.width, .int(value)),
-             let (.height, .int(value)),
-             let (.minWidth, .int(value)),
-             let (.maxWidth, .int(value)),
-             let (.minHeight, .int(value)),
-             let (.maxHeight, .int(value)): value >= 0
-        case (.text, .string), (.enabled, .bool), (.gap, .int),
-             (.padding, .int), (.background, .string),
-             (.placeholder, .string), (.accessibilityLabel, .string),
-             (.styleClass, .string): true
-        default: false
+        case .name, .icon:
+            guard let value = stringValue else { return false }
+            return Self.iconNames.contains(value) || Self.isApplicationIconName(value)
+        case .variant:
+            guard let value = stringValue else { return false }
+            return Self.buttonVariants.contains(value)
+        case .iconPlacement:
+            guard let value = stringValue else { return false }
+            return value == "leading" || value == "trailing"
+        case .title, .description, .meta, .indicator, .foreground, .borderColor,
+             .text, .background, .placeholder, .accessibilityLabel, .styleClass:
+            return stringValue != nil
+        case .anchor:
+            guard let value = stringValue else { return false }
+            return ["above", "below", "left", "right"].contains(value)
+        case .anchorAlignment:
+            guard let value = stringValue else { return false }
+            return ["start", "end", "stretch"].contains(value)
+        case .tooltipDelay, .duration:
+            guard let value = intValue else { return false }
+            return (0...Int(Int32.max)).contains(value)
+        case .textAlignment:
+            guard let value = stringValue else { return false }
+            return Self.textAlignments.contains(value)
+        case .role:
+            return stringValue == "treeitem"
+        case .treeLevel:
+            guard let value = intValue else { return false }
+            return value > 0
+        case .main:
+            guard let value = stringValue else { return false }
+            return Self.mainAlignments.contains(value)
+        case .cross:
+            guard let value = stringValue else { return false }
+            return Self.crossAlignments.contains(value)
+        case .grow:
+            guard let value = doubleValue else { return false }
+            return value.isFinite && value >= 0
+        case .gap, .padding:
+            return intValue != nil
         }
     }
 
@@ -231,9 +234,10 @@ enum LUIWireValue: Decodable, Equatable {
         let name = value.dropFirst(4)
         let segments = name.split(separator: "-", omittingEmptySubsequences: false)
         return !segments.isEmpty && segments.allSatisfy { segment in
-            !segment.isEmpty && segment.unicodeScalars.allSatisfy { scalar in
-                (scalar.value >= 97 && scalar.value <= 122) ||
-                    (scalar.value >= 48 && scalar.value <= 57)
+            !segment.isEmpty && segment.utf8.allSatisfy { byte in
+                let value = Int(byte)
+                return (value >= 97 && value <= 122) ||
+                    (value >= 48 && value <= 57)
             }
         }
     }
@@ -788,7 +792,7 @@ struct LUIRetainedTree {
                             throw invalid("context-menu does not support nested menus")
                         }
                         let allowed: Set<LUIProperty> = [.text, .enabled, .pressEnabled]
-                        guard child.properties.keys.allSatisfy(allowed.contains) else {
+                        guard child.properties.keys.allSatisfy({ allowed.contains($0) }) else {
                             throw invalid("context-menu menu-item has unsupported metadata")
                         }
                     } else if !child.properties.isEmpty && child.properties != [
@@ -875,14 +879,14 @@ struct LUIRetainedTree {
                     guard node.properties[.image]?.intValue != nil else {
                         throw invalid("avatar source crop requires an image")
                     }
-                    let x = node.properties[.sourceX]?.doubleValue ?? -1
-                    let y = node.properties[.sourceY]?.doubleValue ?? -1
-                    let width = node.properties[.sourceWidth]?.doubleValue ?? 0
-                    let height = node.properties[.sourceHeight]?.doubleValue ?? 0
-                    guard x >= 0, y >= 0 else {
+                    let x = node.properties[.sourceX]?.doubleValue ?? -1.0
+                    let y = node.properties[.sourceY]?.doubleValue ?? -1.0
+                    let width = node.properties[.sourceWidth]?.doubleValue ?? 0.0
+                    let height = node.properties[.sourceHeight]?.doubleValue ?? 0.0
+                    guard x >= 0.0, y >= 0.0 else {
                         throw invalid("\(node.kind == .avatar ? "avatar" : "image") source crop coordinates must be non-negative")
                     }
-                    guard width > 0, height > 0 else {
+                    guard width > 0.0, height > 0.0 else {
                         throw invalid("\(node.kind == .avatar ? "avatar" : "image") source crop dimensions must be positive")
                     }
                 }

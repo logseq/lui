@@ -1,0 +1,3 @@
+# LUI uses Skip Lite so the shared SwiftUI renderer is translated to Compose.
+skip:
+  mode: 'transpiled'

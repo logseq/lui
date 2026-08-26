@@ -16,17 +16,31 @@ public enum LUIExtensionValueKind: Sendable {
     case double
 
     func accepts(_ value: LUIWireValue) -> Bool {
-        switch (self, value) {
-        case (.string, .string), (.bool, .bool), (.int, .int): true
-        case let (.double, .double(value)): value.isFinite
-        case (.double, .int): true
-        default: false
+        switch self {
+        case .string:
+            if case .string = value { return true }
+        case .bool:
+            if case .bool = value { return true }
+        case .int:
+            if case .int = value { return true }
+        case .double:
+            switch value {
+            case .double(let number): return number.isFinite
+            case .int: return true
+            default: break
+            }
         }
+        return false
     }
 
     func normalize(_ value: LUIWireValue) -> LUIWireValue {
-        if case let (.double, .int(number)) = (self, value) {
-            return .double(Double(number))
+        switch self {
+        case .double:
+            if case .int(let number) = value {
+                return .double(Double(number))
+            }
+        default:
+            break
         }
         return value
     }
@@ -163,15 +177,15 @@ public final class LUIAppleExtensionRegistry {
         guard registrations[registration.identifier] == nil else {
             throw invalid("extension identifier is already registered")
         }
-        guard registration.childIdentifiers.allSatisfy(Self.isValidName) else {
+        guard registration.childIdentifiers.allSatisfy({ Self.isValidName($0) }) else {
             throw invalid("invalid extension child identifier")
         }
         try Self.validateUniqueNames(
             registration.childIdentifiers,
             label: "child identifier"
         )
-        try Self.validateUniqueNames(registration.properties.map(\.name), label: "property")
-        try Self.validateUniqueNames(registration.events.map(\.name), label: "event")
+        try Self.validateUniqueNames(registration.properties.map({ $0.name }), label: "property")
+        try Self.validateUniqueNames(registration.events.map({ $0.name }), label: "event")
         for property in registration.properties {
             guard Self.isValidName(property.name) else {
                 throw invalid("invalid extension property name")
@@ -186,7 +200,7 @@ public final class LUIAppleExtensionRegistry {
             guard Self.isValidName(event.name) else {
                 throw invalid("invalid extension event name")
             }
-            try Self.validateUniqueNames(event.fields.map(\.name), label: "event field")
+            try Self.validateUniqueNames(event.fields.map({ $0.name }), label: "event field")
             guard event.fields.allSatisfy({ Self.isValidName($0.name) }) else {
                 throw invalid("invalid extension event field name")
             }
@@ -235,9 +249,10 @@ public final class LUIAppleExtensionRegistry {
     private static func isValidName(_ value: String) -> Bool {
         guard !value.isEmpty else { return false }
         return value.split(separator: "-", omittingEmptySubsequences: false).allSatisfy {
-            !$0.isEmpty && $0.unicodeScalars.allSatisfy { scalar in
-                (scalar.value >= 97 && scalar.value <= 122) ||
-                    (scalar.value >= 48 && scalar.value <= 57)
+            !$0.isEmpty && $0.utf8.allSatisfy { byte in
+                let value = Int(byte)
+                return (value >= 97 && value <= 122) ||
+                    (value >= 48 && value <= 57)
             }
         }
     }
@@ -299,7 +314,7 @@ final class LUIExtensionNodeModel: Identifiable {
         fingerprint = state.fingerprint
         parent = state.parent
         children = state.children
-        properties = state.properties.mapValues(\.extensionValue)
+        properties = state.properties.mapValues({ $0.extensionValue })
     }
 
     func property(_ name: String) -> LUIExtensionValue? {
@@ -307,7 +322,7 @@ final class LUIExtensionNodeModel: Identifiable {
     }
 
     func apply(state: LUIExtensionNodeState) {
-        let nextProperties = state.properties.mapValues(\.extensionValue)
+        let nextProperties = state.properties.mapValues({ $0.extensionValue })
         guard parent != state.parent || children != state.children ||
             properties != nextProperties else { return }
         parent = state.parent

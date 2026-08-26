@@ -1,3 +1,4 @@
+#if !SKIP
 import SwiftUI
 import Testing
 import CoreGraphics
@@ -2558,3 +2559,4 @@ struct LUISwiftUIBackendTests {
     ]}
     """
 }
+#endif

@@ -1,3 +1,4 @@
+#if !SKIP
 import SwiftUI
 #if os(macOS)
 import AppKit
@@ -2955,3 +2956,4 @@ private struct LUIAccessibilityModifier: ViewModifier {
         }
     }
 }
+#endif

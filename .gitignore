@@ -1,5 +1,7 @@
 /_build/
 /.lg-cache/
+/.clj-kondo/
+/.lsp/
 /platform/apple/.build/
 /platform/flutter/.dart_tool/
 /platform/flutter/build/

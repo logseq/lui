@@ -82,8 +82,8 @@ final class LUINodeModel: Identifiable {
     var supportsDoublePress: Bool {
         properties[.doublePressEnabled]?.boolValue ?? false
     }
-    var sliderValue: Double { properties[.progressValue]?.doubleValue ?? 0 }
-    var splitFraction: Double { properties[.progressValue]?.doubleValue ?? 0 }
+    var sliderValue: Double { properties[.progressValue]?.doubleValue ?? 0.0 }
+    var splitFraction: Double { properties[.progressValue]?.doubleValue ?? 0.0 }
     var splitGap: Int { properties[.gap]?.intValue ?? 9 }
     var splitResizeDuration: Int { properties[.resizeDuration]?.intValue ?? 0 }
     var splitResizeEasing: String { properties[.resizeEasing]?.stringValue ?? "standard" }
@@ -146,6 +146,7 @@ final class LUINodeModel: Identifiable {
 
     var avatarSourceRect: CGRect? { imageSourceRect }
 
+    #if !SKIP
     func registeredImage(in backend: LUIAppleBackend) -> CGImage? {
         guard let imageID = properties[.image]?.intValue, imageID > 0 else {
             return nil
@@ -177,6 +178,7 @@ final class LUINodeModel: Identifiable {
         }
         return backend.mediaSurfaceFrame(id: mediaSurfaceID)
     }
+    #endif
 
     var mediaSurfaceID: Int { properties[.surface]?.intValue ?? 0 }
     var activeStepIndex: Int { properties[.active]?.intValue ?? 0 }
@@ -257,7 +259,7 @@ final class LUINodeModel: Identifiable {
     }
 
     var progressFraction: Double {
-        min(max(properties[.progressValue]?.doubleValue ?? 0, 0), 1)
+        min(max(properties[.progressValue]?.doubleValue ?? 0.0, 0.0), 1.0)
     }
 
     func accessibilityLabel(in backend: LUIAppleBackend) -> String? {
@@ -275,8 +277,10 @@ public final class LUIAppleBackend {
     private var tree = LUIRetainedTree()
     private var models: [Int: LUINodeModel] = [:]
     private var extensionModels: [Int: LUIExtensionNodeModel] = [:]
+    #if !SKIP
     private var images: [Int: CGImage] = [:]
     private var mediaSurfaces: [Int: CGImage] = [:]
+    #endif
     private let decoder = JSONDecoder()
     private let appIcons: [String: LUIAppleIconSource]
     private let extensionRegistry: LUIAppleExtensionRegistry
@@ -357,6 +361,7 @@ public final class LUIAppleBackend {
         return nil
     }
 
+    #if !SKIP
     func registeredImage(id: Int) -> CGImage? {
         images[id]
     }
@@ -390,6 +395,7 @@ public final class LUIAppleBackend {
         guard mediaSurfaces.removeValue(forKey: id) != nil else { return }
         invalidateMediaSurfaces(surfaceID: id)
     }
+    #endif
 
     public func apply(json: String) throws {
         guard let data = json.data(using: .utf8) else {
@@ -529,7 +535,7 @@ public final class LUIAppleBackend {
               value.isFinite else {
             throw invalid("node \(node) is not an enabled value control")
         }
-        onEvent?(.valueChanged(node: node, value: min(max(value, 0), 1)))
+        onEvent?(.valueChanged(node: node, value: min(max(value, 0.0), 1.0)))
     }
 
     func performDismiss(node: Int) throws {
@@ -761,7 +767,7 @@ final class LUITooltipIntent {
     }
 
     func pointerEntered(at time: Double, delay: Double) {
-        if session.isWarm(at: time) || delay == 0 {
+        if session.isWarm(at: time) || delay == 0.0 {
             reveal(origin: .pointer)
         } else {
             revealAt = time + max(delay, 0)
