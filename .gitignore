@@ -1,4 +1,5 @@
 /_build/
+/.build/
 /.lg-cache/
 /.clj-kondo/
 /.lsp/
