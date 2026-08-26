@@ -105,3 +105,42 @@ make test-components-android-e2e
 The runner builds the shared OCaml/JNI library and APK, installs it, drives the
 adaptive Material Gallery with Maestro, and writes the final screenshot to
 `_build/mobile-components/android-e2e/final.png`.
+
+## Qualification snapshot
+
+The following production-boundary checks passed on 2026-08-26 at commit
+`2cdf8ad`:
+
+- `swift test --package-path platform/apple`: 62 retained SwiftUI backend tests;
+- `make test-components-ios-e2e`: signed app build plus the complete Maestro
+  interaction flow on an iPhone 17 Pro Simulator running iOS 26.0;
+- `swift build --package-path examples/components/ios-swiftui` with
+  `--target LUIComponentsApp`: the shared SwiftUI Gallery target on macOS;
+- `make build-components-flutter-macos` and
+  `make test-components-flutter-macos`: the Flutter desktop app and packaged
+  native-library/code-signature smoke test;
+- `make test-components-android-e2e`: fresh arm64 debug APK build, install, and
+  complete Maestro interaction flow on an Android 16 emulator;
+- `npm --prefix platform/web run check`: 37 production CSS and backend-boundary
+  tests, followed by the focused Toolbar and all-65-page compact viewport E2E
+  pass.
+
+The resulting debug artifacts were 9,412 KiB for the iOS Simulator app,
+110,528 KiB for the Flutter macOS app, and 98,368 KiB for the Android APK.
+These numbers qualify repeatability and packaging content; they are not release
+size budgets.
+
+## Known limitations
+
+- Physical iPhone/iPad and physical Android-device interaction passes are not
+  yet recorded. The current mobile evidence is Simulator/emulator evidence.
+- Android release shrinking, store signing, and AAB packaging are not qualified;
+  the current Android artifact is a debug APK.
+- The SwiftUI macOS target is compile-qualified, while the Flutter macOS app is
+  the packaged desktop showcase. A separately bundled SwiftUI macOS `.app` is
+  not produced by this example.
+- SwiftUI is the only Apple renderer. UIKit applications can host the public
+  `LUISwiftUIRoot` with `UIHostingController`, but LUI intentionally does not
+  maintain a second UIKit component backend or a separate UIKit Gallery.
+- Web interaction E2E currently runs through Chromium. Cross-browser Safari and
+  Firefox qualification remains outstanding.
