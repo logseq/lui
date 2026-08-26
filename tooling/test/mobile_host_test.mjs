@@ -61,6 +61,15 @@ test("Apple Gallery is a SwiftUI host linked to the retained Apple backend", asy
   assert.match(main, /LUISwiftUIRoot/);
 });
 
+test("Apple modals dismiss through a stable root presentation host", async () => {
+  const root = await source("platform/apple/Sources/LUIAppleBackend/LUISwiftUIRoot.swift");
+
+  assert.match(root, /LUISwiftUIRoot[\s\S]*\.sheet\(item:/);
+  assert.match(root, /case \.dialog, \.sheet:\s*EmptyView\(\)/);
+  assert.doesNotMatch(root, /LUIModalPresenter/);
+  assert.doesNotMatch(root, /\.sheet\(isPresented:/);
+});
+
 test("Flutter Gallery derives adaptive one-page navigation from retained sections", async () => {
   const main = await source("examples/components/flutter/lib/main.dart");
 

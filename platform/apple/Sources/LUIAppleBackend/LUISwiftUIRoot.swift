@@ -1,10 +1,42 @@
 #if !SKIP
+import Observation
 import SwiftUI
 #if os(macOS)
 import AppKit
 #else
 import UIKit
 #endif
+
+struct LUIModalPresentation: Identifiable {
+    let model: LUINodeModel
+    let rootID: Int
+
+    var id: Int { model.id }
+}
+
+@Observable
+@MainActor
+final class LUIModalPresentationStore {
+    private(set) var item: LUIModalPresentation?
+    private var interactiveDismissalID: Int?
+
+    func synchronize(with item: LUIModalPresentation?) {
+        guard self.item?.id != item?.id else { return }
+        self.item = item
+    }
+
+    func updateFromPresentation(_ item: LUIModalPresentation?) {
+        if item == nil, let presentedID = self.item?.id {
+            interactiveDismissalID = presentedID
+        }
+        self.item = item
+    }
+
+    func consumeInteractiveDismissal() -> Int? {
+        defer { interactiveDismissalID = nil }
+        return interactiveDismissalID
+    }
+}
 
 public struct LUISwiftUIRoot: View {
     private let backend: LUIAppleBackend
@@ -17,6 +49,27 @@ public struct LUISwiftUIRoot: View {
 
     public var body: some View {
         LUIAnyNodeView(nodeID: rootID, backend: backend)
+            .sheet(item: modalBinding, onDismiss: didDismissModal) { presentation in
+                LUIModalSurfaceContent(model: presentation.model, backend: backend)
+                    .modifier(LUIModalPresentationStyle(kind: presentation.model.kind))
+            }
+    }
+
+    private var modalBinding: Binding<LUIModalPresentation?> {
+        Binding(
+            get: {
+                guard backend.modalPresentation.item?.rootID == rootID else { return nil }
+                return backend.modalPresentation.item
+            },
+            set: { backend.modalPresentation.updateFromPresentation($0) }
+        )
+    }
+
+    private func didDismissModal() {
+        guard let nodeID = backend.modalPresentation.consumeInteractiveDismissal() else {
+            return
+        }
+        try? backend.performDismiss(node: nodeID)
     }
 }
 
@@ -142,7 +195,7 @@ private struct LUINodeView: View {
         case .accordion:
             LUIAccordionView(model: model, backend: backend)
         case .dialog, .sheet:
-            LUIModalPresenter(model: model, backend: backend)
+            EmptyView()
         case .menuItem:
             LUIMenuItemView(model: model, backend: backend)
         case .listItem:
@@ -1069,40 +1122,15 @@ private struct LUITooltipHost<Content: View>: View {
     }
 }
 
-private struct LUIModalPresenter: View {
-    let model: LUINodeModel
-    let backend: LUIAppleBackend
-    @State private var isPresented = false
+private struct LUIModalPresentationStyle: ViewModifier {
+    let kind: LUINodeKind
 
-    @ViewBuilder
-    var body: some View {
-        Group {
-            switch model.kind {
-            case .dialog:
-                presentationAnchor
-                    .sheet(isPresented: $isPresented) {
-                        LUIModalSurfaceContent(model: model, backend: backend)
-                    }
-            case .sheet:
-                presentationAnchor
-                    .sheet(isPresented: $isPresented) {
-                        LUIModalSurfaceContent(model: model, backend: backend)
-                            .presentationDragIndicator(.visible)
-                    }
-            default:
-                EmptyView()
-            }
+    func body(content: Content) -> some View {
+        if kind == .sheet {
+            content.presentationDragIndicator(.visible)
+        } else {
+            content
         }
-        .onAppear { isPresented = true }
-        .onChange(of: isPresented) { _, presented in
-            if !presented {
-                try? backend.performDismiss(node: model.id)
-            }
-        }
-    }
-
-    private var presentationAnchor: some View {
-        Color.clear.frame(width: 0, height: 0)
     }
 }
 

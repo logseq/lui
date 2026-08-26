@@ -289,6 +289,9 @@ public final class LUIAppleBackend {
     private let appIcons: [String: LUIAppleIconSource]
     private let extensionRegistry: LUIAppleExtensionRegistry
     let tooltipSession = LUITooltipSession()
+    #if !SKIP
+    let modalPresentation = LUIModalPresentationStore()
+    #endif
 
     public init(appIcons: [String: LUIAppleIconSource] = [:]) {
         self.appIcons = appIcons
@@ -429,6 +432,9 @@ public final class LUIAppleBackend {
             commit(nextTree)
         }
         tree = nextTree
+        #if !SKIP
+        syncModalPresentation()
+        #endif
         generation = batch.generation
     }
 
@@ -696,6 +702,34 @@ public final class LUIAppleBackend {
             }
         }
     }
+
+    #if !SKIP
+    private func syncModalPresentation() {
+        var presentation: LUIModalPresentation?
+        var visited = Set<Int>()
+
+        func visit(_ nodeID: Int, rootID: Int) {
+            guard visited.insert(nodeID).inserted else { return }
+            if let model = models[nodeID] {
+                if model.kind == .dialog || model.kind == .sheet {
+                    presentation = LUIModalPresentation(model: model, rootID: rootID)
+                }
+                for childID in model.children {
+                    visit(childID, rootID: rootID)
+                }
+            } else if let model = extensionModels[nodeID] {
+                for childID in model.children {
+                    visit(childID, rootID: rootID)
+                }
+            }
+        }
+
+        for rootID in rootIDs {
+            visit(rootID, rootID: rootID)
+        }
+        modalPresentation.synchronize(with: presentation)
+    }
+    #endif
 
     private func invalidateAvatars(imageID: Int) {
         withTransaction(Transaction(animation: nil)) {
