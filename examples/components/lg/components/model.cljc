@@ -1,4 +1,5 @@
-(ns components.model)
+(ns components.model
+  (:require [clojure.string :as string]))
 
 (defn initial []
   (record gallery-model
@@ -147,6 +148,17 @@
 
 (defn staging-selected? [model]
   (= (:gallery-environment model) "Staging"))
+
+(defn environment-visible? [model environment]
+  (let [query (string/lower-case (:gallery-picker-query model))]
+    (or (= query "")
+        (string/includes? (string/lower-case environment) query))))
+
+(defn production-visible? [model]
+  (environment-visible? model "Production"))
+
+(defn staging-visible? [model]
+  (environment-visible? model "Staging"))
 
 (defn report-selected? [model]
   (= (:gallery-document model) "Quarterly report.md"))

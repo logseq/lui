@@ -704,6 +704,93 @@
     (Webapi.Dom.Element.removeAttribute "data-lui-active-index" control)
     (Webapi.Dom.Element.removeAttribute "aria-activedescendant" control)))
 
+(defn- ensure-combobox-status! [renderer dropdown]
+  (let [popup (child-element (dom-node renderer dropdown) 0)]
+    (if-some [status
+              (Webapi.Dom.Element.querySelector
+               ".lui-combobox-status" popup)]
+      status
+      (let [status
+            (element
+             (:web-document renderer) "div" "lui-combobox-status"
+             {"role" "status"
+              "aria-live" "polite"
+              "aria-atomic" "true"}
+             [])]
+        (Webapi.Dom.Element.appendChild
+         (Webapi.Dom.Element.asNode status) popup)
+        status))))
+
+(defn- refresh-dropdown-item-roles! [renderer dropdown]
+  (let [listbox (dropdown-listbox? renderer dropdown)]
+    (doseq [item (retained/children (:web-store renderer) dropdown)]
+      (if-some [current (retained/node (:web-store renderer) item)]
+        (when (standard-kind? current MenuItem)
+          (if listbox
+            (do
+              (Webapi.Dom.Element.setAttribute
+               "role" "option" (:platform-node current))
+              (Webapi.Dom.Element.setAttribute
+               "aria-selected"
+               (if (= (retained/property
+                       (:web-store renderer) item Selected)
+                      (Some (BoolValue true)))
+                 "true"
+                 "false")
+               (:platform-node current)))
+            (do
+              (Webapi.Dom.Element.setAttribute
+               "role" "menuitem" (:platform-node current))
+              (Webapi.Dom.Element.removeAttribute
+               "aria-selected" (:platform-node current)))))
+        (Stdlib.ignore true)))
+    true))
+
+(defn- refresh-combobox-list-state! [renderer dropdown]
+  (match (picker-for-dropdown renderer dropdown)
+    (Some picker)
+    (if-some [current (retained/node (:web-store renderer) picker)]
+      (when (standard-kind? current Combobox)
+        (let [items (picker-menu-items renderer dropdown)
+              item-count (count items)
+              empty (empty? items)
+              root (:platform-node current)
+              control (child-element root 0)
+              trigger (child-element root 1)
+              positioner (dom-node renderer dropdown)
+              popup (child-element positioner 0)
+              status (ensure-combobox-status! renderer dropdown)]
+          (set-state-attribute! control "data-list-empty" empty)
+          (set-state-attribute! trigger "data-list-empty" empty)
+          (set-state-attribute! positioner "data-empty" empty)
+          (set-state-attribute! popup "data-empty" empty)
+          (Webapi.Dom.Element.setTextContent
+           status
+           (if empty
+             "No results."
+             (str item-count
+                  (if (= item-count 1)
+                    " result available."
+                    " results available."))))
+          (if empty
+            (clear-combobox-active! renderer picker)
+            (let [active (combobox-active-index renderer picker items)
+                  index
+                  (match active
+                    (Some current-index) current-index
+                    None 0)
+                  expected-id (node-dom-id (nth items index))]
+              (when-not
+               (= (Webapi.Dom.Element.getAttribute
+                   "aria-activedescendant" control)
+                  (Some expected-id))
+               (set-combobox-active! renderer picker dropdown index))))
+          (when (Webapi.Dom.Element.hasAttribute "data-open" popup)
+            (position-dropdown! renderer dropdown))))
+      (Stdlib.ignore true))
+    None (Stdlib.ignore true))
+  true)
+
 (defn- activate-menu-item! [renderer item]
   (Webapi.Dom.HtmlElement.click
    (Webapi.Dom.Element.unsafeAsHtmlElement (dom-node renderer item))))
@@ -716,6 +803,15 @@
           (Webapi.Dom.HtmlInputElement.value (text-control-node dom-node)))
         emit!
         (fn [value]
+          (when
+           (and
+            (= kind Combobox)
+            (= (retained/property
+                (:web-store renderer) node PressEnabled)
+               (Some (BoolValue true)))
+            (= (picker-dropdown renderer node) None))
+            (Stdlib.ignore
+             ((deref (:web-event-handler renderer)) (proto/Press node))))
           (Stdlib.ignore
            ((deref (:web-event-handler renderer))
             (proto/TextChanged node value)))
@@ -4550,6 +4646,8 @@
          popup)
         (Webapi.Dom.Element.setAttribute
          "id" (str (node-dom-id node) "-popup") popup))
+      (refresh-dropdown-item-roles! renderer node)
+      (refresh-combobox-list-state! renderer node)
       (match (:retained-parent current)
       (Some parent)
       (if-some [parent-node (retained/node (:web-store renderer) parent)]
@@ -4930,7 +5028,14 @@
          property value)
         (match (:retained-parent current)
           (Some parent)
-          (when (= property MinWidth) (update-split! renderer parent))
+          (do
+            (when (= property MinWidth) (update-split! renderer parent))
+            (if-some [parent-node
+                      (retained/node (:web-store renderer) parent)]
+              (when (standard-kind? parent-node DropdownMenu)
+                (Stdlib.ignore
+                 (refresh-combobox-list-state! renderer parent)))
+              (Stdlib.ignore true)))
           None (Stdlib.ignore true)))
       (raise (Invalid_argument "unknown DOM node")))
 
@@ -5018,7 +5123,9 @@
         (Stdlib.ignore true))
       (if-some [parent-node (retained/node (:web-store renderer) parent)]
         (when (standard-kind? parent-node DropdownMenu)
-          (position-dropdown! renderer parent))
+          (refresh-dropdown-item-roles! renderer parent)
+          (Stdlib.ignore
+           (refresh-combobox-list-state! renderer parent)))
         (Stdlib.ignore true)))
 
     (RemoveChild parent child)
@@ -5066,6 +5173,12 @@
               (Webapi.Dom.Element.removeAttribute
                "aria-expanded" (:platform-node parent-node)))
             (Stdlib.ignore true)))
+        (Stdlib.ignore true))
+      (if-some [parent-node (retained/node (:web-store renderer) parent)]
+        (when (standard-kind? parent-node DropdownMenu)
+          (refresh-dropdown-item-roles! renderer parent)
+          (Stdlib.ignore
+           (refresh-combobox-list-state! renderer parent)))
         (Stdlib.ignore true)))
 
     (MoveChild parent child index)
@@ -5097,6 +5210,12 @@
          parent-node child-node (visible-child-index renderer parent index)))
       (update-split! renderer parent)
       (refresh-structured-children! renderer parent)
+      (if-some [parent-node (retained/node (:web-store renderer) parent)]
+        (when (standard-kind? parent-node DropdownMenu)
+          (refresh-dropdown-item-roles! renderer parent)
+          (Stdlib.ignore
+           (refresh-combobox-list-state! renderer parent)))
+        (Stdlib.ignore true))
       (when dropdown (position-dropdown! renderer child))
       (when (and tooltip
                  (Webapi.Dom.Element.hasAttribute "data-open" surface-node))

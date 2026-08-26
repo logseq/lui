@@ -72,9 +72,10 @@ refreshes the close intent while movement away leaves the ordinary 120 ms close
 delay intact. The same behavior is verified for right-side submenus and for
 submenus that collision placement flips to the left.
 
-The remaining work in this report is still normative: Select needs
-selected-item alignment for non-touch input, and Combobox needs explicit
-empty-result semantics and live status.
+Select selected-item alignment and Combobox empty-result semantics are now
+implemented. The remaining work in this report is the collection/control
+matrix below, plus localized application-owned wording for asynchronous
+Combobox loading states when LUI gains a corresponding product requirement.
 
 ## Implementation boundary
 
@@ -155,8 +156,8 @@ strength.
 | `sheet` | Use Drawer behavior: edge presentation, swipe dismissal, scroll-edge arbitration, pointer/touch distinction, safe handling of interactive descendants and software keyboards | It is a permanently right-sided Dialog with no responsive bottom-sheet layout, gesture state, or exit animation | Keep the public name Sheet. Use a right sheet on wide screens and a bottom sheet on phones. Add downward touch swipe only on the compact layout. Do not add Drawer snap-point or nesting API. |
 | `dropdown-menu` | Tap/press and keyboard open, outside/Escape dismissal, roving highlight, typeahead, nested submenu keyboard behavior and pointer grace corridor, collision-aware placement, transition phases | Basic arrows and nested hover exist. Close is immediate, placement has no collision fallback, hover timeout has no pointer corridor, and typeahead is absent | Add shared popup phases, typeahead, collision placement, touch-safe press ordering, and a submenu grace polygon. Preserve recursive LUI menus. |
 | `context-menu` | Right click, keyboard ContextMenu/Shift+F10, and 500 ms long press; cancel long press after more than 10 px movement; same menu behavior as Menu | Point placement, movement cancellation, and keyboard restoration are covered. Closed menus no longer intercept document-level Escape/Home/End keys | Keep keyboard handling gated by the model-owned open menu. Always keep a visible primary route to the same actions. |
-| `select` | Listbox semantics, typeahead, selected-item alignment for mouse/keyboard, ordinary anchored placement for touch, safe press-release selection, scrolling active item, complete keyboard navigation | Shares a generic dropdown and item button path. It does not vary positioning by pointer type and has incomplete typeahead/press-release rules | Keep the small public API while adopting input-modality-aware placement and listbox interaction. Touch must never select an item merely because it appeared under the opening finger. |
-| `combobox` | Editable input with `aria-activedescendant`, filtered listbox, composition-safe input, arrows/Home/End/Enter/Escape, touch trigger handling, live status where needed | Native composition stays local until `compositionend`; IME keydown, retained identity, shared Signal commit, touch opening, popup lifecycle, and collision behavior are covered. Empty-state semantics remain incomplete | Preserve the native input and composition buffer. Add empty-state and richer filtering coverage; never replace editing with a contenteditable surface. |
+| `select` | Listbox semantics, typeahead, selected-item alignment for mouse/keyboard, ordinary anchored placement for touch, safe press-release selection, scrolling active item, complete keyboard navigation | Keyboard/mouse selected-item alignment, touch-safe anchored placement, collision fallback, typeahead, and press-release ordering are covered | Keep the implementation internal to Web and preserve the compact cross-platform API. |
+| `combobox` | Editable input with `aria-activedescendant`, filtered listbox, composition-safe input, arrows/Home/End/Enter/Escape, touch trigger handling, live status where needed | Native composition, retained input identity, Signal filtering, empty/recovery state, active-descendant cleanup, live status, touch opening, popup lifecycle, and collision behavior are covered | Preserve the native input and composition buffer. Application-specific asynchronous or localized status wording can be added only when required; never replace editing with a contenteditable surface. |
 | `tooltip` | Delayed pointer hover and immediate keyboard focus. Escape dismisses. A tooltip is not a touch or screen-reader discovery mechanism; the trigger needs its own accessible name | Hover/focus behavior exists, but display changes instantly | Add start/end transition phases. Do not invent Web long-press tooltip behavior. Ensure icon-only triggers remain independently named. |
 | `toast` | F6 focus transfer, pause on interaction, stack variables, pointer-event swipe, direction lock, threshold/velocity behavior, and interactive descendants excluded from swiping | F6 and pause exist. Swipe is mouse-only, uses inline transform and a fixed threshold, and can steal interaction from descendants | Use Pointer Events, pointer identity/capture, Base UI-style swipe variables and state attributes, interactive-target exclusion, directional damping, and down/right dismissal. |
 
@@ -231,6 +232,14 @@ selects its text, and editing retains ownership while composing, selecting,
 using modifiers, or moving within the text. Only a direction-aware caret
 boundary transfers focus to the previous or next toolbar item. Home and End
 remain native editing keys for a non-empty input.
+
+Combobox filtering remains application-owned Signal state. The Web backend
+derives only transient listbox semantics from the final retained children:
+direct items receive option roles, an empty result clears any stale active
+descendant, `data-empty` and `data-list-empty` expose styling state, and a
+polite atomic status reports empty and recovered result counts. Typing into a
+closed Combobox requests the existing model-owned open action before emitting
+the query change, so an immediately empty filter cannot race popup mounting.
 
 ## Test gates before implementation is accepted
 

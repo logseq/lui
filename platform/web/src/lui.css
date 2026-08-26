@@ -785,6 +785,14 @@ body {
     transform: scale(0.96);
   }
 
+  .lui-combobox-status {
+    @apply sr-only;
+  }
+
+  .lui-dropdown-menu[data-empty] .lui-combobox-status {
+    @apply not-sr-only px-2 py-1.5 text-sm text-muted-foreground;
+  }
+
   .lui-context-menu {
     @apply fixed z-50 hidden max-h-72 min-w-40 flex-col overflow-auto rounded-md border bg-card p-1 text-card-foreground shadow-md;
     max-width: calc(100vw - 1rem);

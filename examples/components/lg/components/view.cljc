@@ -46,6 +46,8 @@
    (reactive model/combobox-open? model-source)
    (reactive model/production-selected? model-source)
    (reactive model/staging-selected? model-source)
+   (reactive model/production-visible? model-source)
+   (reactive model/staging-visible? model-source)
    (fn [_event] (send (model/OpenPicker "select")))
    (fn [_event] (send (model/OpenPicker "combobox")))
    (fn [event]

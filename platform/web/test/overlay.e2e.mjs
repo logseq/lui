@@ -1091,7 +1091,16 @@ test("Combobox commits the final composition and resumes normal option selection
   await browser("wait", "30")
   assert.equal(await state(`document.querySelector('.lui-combobox-control')?.value`), "中文")
 
-  await evaluate(`document.querySelector('.lui-combobox-control')?.focus()`)
+  await evaluate(`(() => {
+    const control = document.querySelector('.lui-combobox-control')
+    control.focus()
+    control.value = ''
+    control.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      inputType: 'deleteContentBackward',
+    }))
+  })()`)
+  await browser("wait", "30")
   await browser("press", "ArrowDown")
   await browser("wait", "30")
   await browser("press", "Enter")
@@ -1162,6 +1171,126 @@ test("Combobox touch trigger opens without moving input focus and stays onscreen
       insideLeft: true,
       insideRight: true,
       insideBottom: true,
+    },
+  )
+})
+
+test("Combobox exposes and recovers from an empty filtered result", async () => {
+  await openGalleryPage("Combobox")
+  await evaluate(`(() => {
+    const control = document.querySelector('.lui-combobox-control')
+    control.focus()
+    control.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+    )
+    control.value = 'zzz'
+    control.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      data: 'zzz',
+      inputType: 'insertText',
+    }))
+  })()`)
+  await browser("wait", "30")
+
+  assert.deepEqual(
+    await state(`(() => {
+      const control = document.querySelector('.lui-combobox-control')
+      const root = control?.closest('.lui-combobox')
+      const trigger = root?.querySelector('.lui-combobox-trigger')
+      const popup = document.getElementById(control?.getAttribute('aria-controls'))
+      const status = popup?.querySelector('[role=status]')
+      const press = (key) => {
+        const event = new KeyboardEvent('keydown', {
+          key, bubbles: true, cancelable: true,
+        })
+        control.dispatchEvent(event)
+        return event.defaultPrevented
+      }
+      return {
+        sameControl: document.querySelector('.lui-combobox-control') === control,
+        focused: document.activeElement === control,
+        value: control?.value,
+        expanded: control?.getAttribute('aria-expanded'),
+        activeDescendant: control?.getAttribute('aria-activedescendant'),
+        controlEmpty: control?.hasAttribute('data-list-empty'),
+        triggerEmpty: trigger?.hasAttribute('data-list-empty'),
+        popupEmpty: popup?.hasAttribute('data-empty'),
+        positionerEmpty: popup?.parentElement?.hasAttribute('data-empty'),
+        options: [...(popup?.querySelectorAll('[role=option]') ?? [])]
+          .map((option) => option.textContent.trim()),
+        status: status?.textContent,
+        statusLive: status?.getAttribute('aria-live'),
+        statusAtomic: status?.getAttribute('aria-atomic'),
+        arrowPrevented: press('ArrowDown'),
+        enterPrevented: press('Enter'),
+        activeAfterKeys: control?.getAttribute('aria-activedescendant'),
+        expandedAfterKeys: control?.getAttribute('aria-expanded'),
+      }
+    })()`),
+    {
+      sameControl: true,
+      focused: true,
+      value: "zzz",
+      expanded: "true",
+      activeDescendant: null,
+      controlEmpty: true,
+      triggerEmpty: true,
+      popupEmpty: true,
+      positionerEmpty: true,
+      options: [],
+      status: "No results.",
+      statusLive: "polite",
+      statusAtomic: "true",
+      arrowPrevented: true,
+      enterPrevented: true,
+      activeAfterKeys: null,
+      expandedAfterKeys: "true",
+    },
+  )
+
+  await evaluate(`(() => {
+    const control = document.querySelector('.lui-combobox-control')
+    control.value = 'STAG'
+    control.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      data: 'STAG',
+      inputType: 'insertText',
+    }))
+  })()`)
+  await browser("wait", "30")
+
+  assert.deepEqual(
+    await state(`(() => {
+      const control = document.querySelector('.lui-combobox-control')
+      const root = control?.closest('.lui-combobox')
+      const popup = document.getElementById(control?.getAttribute('aria-controls'))
+      const active = document.getElementById(control?.getAttribute('aria-activedescendant'))
+      return {
+        sameControl: document.querySelector('.lui-combobox-control') === control,
+        focused: document.activeElement === control,
+        value: control?.value,
+        controlEmpty: control?.hasAttribute('data-list-empty'),
+        triggerEmpty: root?.querySelector('.lui-combobox-trigger')
+          ?.hasAttribute('data-list-empty'),
+        popupEmpty: popup?.hasAttribute('data-empty'),
+        positionerEmpty: popup?.parentElement?.hasAttribute('data-empty'),
+        options: [...(popup?.querySelectorAll('[role=option]') ?? [])]
+          .map((option) => option.textContent.trim()),
+        active: active?.textContent.trim(),
+        status: popup?.querySelector('[role=status]')?.textContent,
+      }
+    })()`),
+    {
+      sameControl: true,
+      focused: true,
+      value: "STAG",
+      controlEmpty: false,
+      triggerEmpty: false,
+      popupEmpty: false,
+      positionerEmpty: false,
+      options: ["Staging"],
+      active: "Staging",
+      status: "1 result available.",
     },
   )
 })

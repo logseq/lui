@@ -693,6 +693,7 @@
 (defui combobox-gallery
   [query-source combobox-open-source
    production-selected-source staging-selected-source disabled-source
+   production-visible-source staging-visible-source
    open-combobox update-query submit-query dismiss
    select-production select-staging]
   [:column {:gap 24 :padding 32}
@@ -707,14 +708,30 @@
       :on-press open-combobox
       :on-dismiss dismiss}]
     [:if {:test combobox-open-source}
-     [environment-menu
-      production-selected-source staging-selected-source disabled-source
-      select-production select-staging dismiss]]]
+     [:dropdown-menu
+      {:anchor "below"
+       :anchor-alignment "stretch"
+       :anchor-offset 6.0
+       :min-width 200
+       :on-dismiss dismiss}
+      [:if {:test production-visible-source}
+       [:menu-item
+        {:icon "check"
+         :selected production-selected-source
+         :disabled disabled-source
+         :on-press select-production}
+        "Production"]]
+      [:if {:test staging-visible-source}
+       [:menu-item
+        {:selected staging-selected-source
+         :disabled disabled-source
+         :on-press select-staging}
+        "Staging"]]]]]
    [:row {:gap 8 :cross "center"}
     [:text "Shared query:"]
     [:text {:value query-source :class "lui-combobox-query-value"}]]
    [:paragraph
-    "The query and menu visibility are shared Signals."]])
+    "Signals filter the retained options while the native input keeps focus and identity."]])
 
 (defui dropdown-menu-gallery
   [production-selected-source staging-selected-source disabled-source dismiss
@@ -987,6 +1004,7 @@
    select-comfortable select-compact update-volume
    environment-source picker-query-source select-open-source
    combobox-open-source production-selected-source staging-selected-source
+   production-visible-source staging-visible-source
    open-select open-combobox update-picker-query submit-picker-query
    dismiss-picker select-production select-staging
    report-selected-source checklist-selected-source document-action-source
@@ -1082,6 +1100,7 @@
    [combobox-gallery
     picker-query-source combobox-open-source
     production-selected-source staging-selected-source disabled-source
+    production-visible-source staging-visible-source
     open-combobox update-picker-query submit-picker-query dismiss-picker
     select-production select-staging]
    [dropdown-menu-gallery
