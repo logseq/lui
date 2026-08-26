@@ -163,7 +163,8 @@ enum LUIWireValue: Decodable, Equatable {
             guard let value = stringValue else { return false }
             return value == "leading" || value == "trailing"
         case .title, .description, .meta, .indicator, .foreground, .borderColor,
-             .text, .background, .placeholder, .accessibilityLabel, .styleClass:
+             .text, .background, .placeholder, .accessibilityLabel,
+             .accessibilityIdentifier, .styleClass:
             return stringValue != nil
         case .anchor:
             guard let value = stringValue else { return false }
@@ -513,6 +514,7 @@ struct LUIRetainedTree {
     }
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
+        if property == .accessibilityIdentifier { return true }
         if kind == .root { return false }
         if kind == .contextMenu { return false }
         if kind == .accordion {
@@ -589,6 +591,8 @@ struct LUIRetainedTree {
                 || kind == .tableRow || kind == .tree
         case .placeholder:
             isTextEntry(kind) || kind == .select
+        case .accessibilityIdentifier:
+            true
         case .accessibilityLabel:
             kind == .button || kind == .toggleButton || isTextEntry(kind) || kind == .checkbox ||
                 kind == .switchControl || kind == .toggle ||

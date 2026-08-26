@@ -266,6 +266,10 @@ final class LUINodeModel: Identifiable {
         properties[.accessibilityLabel]?.stringValue
     }
 
+    func accessibilityIdentifier(in backend: LUIAppleBackend) -> String? {
+        properties[.accessibilityIdentifier]?.stringValue
+    }
+
     func accessibilityHint(in backend: LUIAppleBackend) -> String? { nil }
 }
 

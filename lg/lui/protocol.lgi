@@ -112,6 +112,7 @@
   (MaxHeight)
   (PlaceholderValue)
   (AccessibilityLabel)
+  (AccessibilityIdentifier)
   (StyleClass)
   (HeadingLevel)
   (Checked)

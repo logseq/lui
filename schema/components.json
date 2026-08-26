@@ -164,6 +164,7 @@
     {"lg": "MaxHeight", "wire": "max-height", "swift": "maxHeight"},
     {"lg": "PlaceholderValue", "wire": "placeholder", "swift": "placeholder"},
     {"lg": "AccessibilityLabel", "wire": "accessibility-label", "swift": "accessibilityLabel"},
+    {"lg": "AccessibilityIdentifier", "wire": "accessibility-identifier", "swift": "accessibilityIdentifier"},
     {"lg": "StyleClass", "wire": "style-class", "swift": "styleClass"},
     {"lg": "HeadingLevel", "wire": "heading-level", "swift": "headingLevel"},
     {"lg": "Checked", "wire": "checked", "swift": "checked"},

@@ -1293,6 +1293,7 @@ struct LUISwiftUIBackendTests {
           {"op":"set-prop","id":1,"property":"selected","value":true},
           {"op":"set-prop","id":1,"property":"autofocus","value":true},
           {"op":"set-prop","id":1,"property":"accessibility-label","value":"Download report"},
+          {"op":"set-prop","id":1,"property":"accessibility-identifier","value":"button.download"},
           {"op":"set-prop","id":1,"property":"hold-enabled","value":true}
         ]}
         """)
@@ -1307,6 +1308,7 @@ struct LUISwiftUIBackendTests {
         #expect(button.property(.autofocus) == .bool(true))
         #expect(button.property(.holdEnabled) == .bool(true))
         #expect(button.accessibilityLabel(in: backend) == "Download report")
+        #expect(button.accessibilityIdentifier(in: backend) == "button.download")
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
 
         try backend.apply(json: """

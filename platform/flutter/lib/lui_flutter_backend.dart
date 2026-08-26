@@ -931,6 +931,8 @@ final class LUIFlutterBackend {
     final placeholder = state.properties['placeholder'] as String?;
     final accessibilityLabel =
         state.properties['accessibility-label'] as String?;
+    final accessibilityIdentifier =
+        state.properties['accessibility-identifier'] as String?;
     final checked = state.properties['checked'] as bool? ?? false;
     final progressFraction = ((state.properties['value'] as double?) ?? 0)
         .clamp(0.0, 1.0);
@@ -2152,7 +2154,9 @@ final class LUIFlutterBackend {
     };
 
     if (state.kind == _NodeKind.root || state.kind.isModalSurface) {
-      return content;
+      return accessibilityIdentifier == null
+          ? content
+          : Semantics(identifier: accessibilityIdentifier, child: content);
     }
 
     final isSurface = state.kind.isOverlaySurface;
@@ -2373,7 +2377,9 @@ final class LUIFlutterBackend {
         child: surface,
       );
     }
-    return surface;
+    return accessibilityIdentifier == null
+        ? surface
+        : Semantics(identifier: accessibilityIdentifier, child: surface);
   }
 
   void _applyState(
@@ -2661,6 +2667,7 @@ final class LUIFlutterBackend {
   }
 
   static bool _supports(_NodeKind kind, String property, Object? value) {
+    if (property == 'accessibility-identifier') return value is String;
     if (kind == _NodeKind.root) return false;
     if (kind == _NodeKind.contextMenu) return false;
     if (kind == _NodeKind.accordion) {

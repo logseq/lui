@@ -598,3 +598,8 @@
   (runtime/set-prop!
    (:ui-application context) node proto/AccessibilityLabel
    (proto/StringValue label)))
+
+(defn accessibility-identifier! [context node identifier]
+  (runtime/set-prop!
+   (:ui-application context) node proto/AccessibilityIdentifier
+   (proto/StringValue identifier)))

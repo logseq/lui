@@ -94,6 +94,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case maxHeight = "max-height"
     case placeholder = "placeholder"
     case accessibilityLabel = "accessibility-label"
+    case accessibilityIdentifier = "accessibility-identifier"
     case styleClass = "style-class"
     case headingLevel = "heading-level"
     case checked = "checked"

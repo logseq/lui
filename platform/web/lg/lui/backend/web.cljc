@@ -25,7 +25,8 @@
                      BackgroundValue ForegroundValue BorderColorValue
                      BorderWidth CornerRadius
                      WidthValue HeightValue MinWidth MaxWidth MinHeight MaxHeight
-                     PlaceholderValue AccessibilityLabel StyleClass HeadingLevel
+                     PlaceholderValue AccessibilityLabel AccessibilityIdentifier
+                     StyleClass HeadingLevel
                      Checked
                      ProgressValue ResizeDuration ResizeEasing ResizeOrigin
                      OrientationValue SizeValue IconName
@@ -4673,6 +4674,9 @@
          (child-element dom-node 0)
          dom-node)))
 
+    (tuple AccessibilityIdentifier (StringValue identifier))
+    (Webapi.Dom.Element.setAttribute "id" identifier dom-node)
+
     (tuple StyleClass (StringValue _class-name))
     (refresh-node-class! renderer node kind dom-node)
 
@@ -5579,6 +5583,8 @@
         (Webapi.Dom.Element.removeAttribute
          "aria-label"
          (if (direct-toggle? kind) (child-element dom-node 0) dom-node))
+        AccessibilityIdentifier
+        (Webapi.Dom.Element.removeAttribute "id" dom-node)
         OrientationValue
         (when (= kind Tabs)
           (Webapi.Dom.Element.setAttribute

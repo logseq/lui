@@ -14,14 +14,15 @@
                      TextValue Enabled Gap MainAlignment CrossAlignment GrowValue
                      GridColumns PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue
                      BorderColorValue BorderWidth CornerRadius WidthValue HeightValue MinWidth
-                     MaxWidth MinHeight MaxHeight PlaceholderValue AccessibilityLabel StyleClass
-                     HeadingLevel Checked ProgressValue OrientationValue SizeValue IconName
-                     VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter
-                     HoldEnabled ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled
-                     ImageIdValue SurfaceIdValue ActiveIndex TitleValue DescriptionValue MetaValue
-                     IndicatorValue Connector SourceX SourceY SourceWidth SourceHeight
-                     AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay DurationValue TextAlignment
-                     RoleValue TreeLevel Expanded ResizeDuration ResizeEasing ResizeOrigin]]))
+                     MaxWidth MinHeight MaxHeight PlaceholderValue AccessibilityLabel AccessibilityIdentifier
+                     StyleClass HeadingLevel Checked ProgressValue OrientationValue SizeValue
+                     IconName VariantValue InlineIconName IconPlacementValue Selected Autofocus
+                     SubmitOnEnter HoldEnabled ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled
+                     DoublePressEnabled ImageIdValue SurfaceIdValue ActiveIndex TitleValue DescriptionValue
+                     MetaValue IndicatorValue Connector SourceX SourceY SourceWidth
+                     SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay DurationValue
+                     TextAlignment RoleValue TreeLevel Expanded ResizeDuration ResizeEasing
+                     ResizeOrigin]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -187,6 +188,7 @@
     MaxHeight "max-height"
     PlaceholderValue "placeholder"
     AccessibilityLabel "accessibility-label"
+    AccessibilityIdentifier "accessibility-identifier"
     StyleClass "style-class"
     HeadingLevel "heading-level"
     Checked "checked"

@@ -640,6 +640,7 @@ void main() {
         {"op":"set-prop","id":1,"property":"selected","value":true},
         {"op":"set-prop","id":1,"property":"autofocus","value":true},
         {"op":"set-prop","id":1,"property":"accessibility-label","value":"Download report"},
+        {"op":"set-prop","id":1,"property":"accessibility-identifier","value":"button.download"},
         {"op":"set-prop","id":1,"property":"hold-enabled","value":true}
       ]}
       ''');
@@ -655,6 +656,7 @@ void main() {
       tester.getSemantics(find.byType(FilledButton)),
       matchesSemantics(
         label: 'Download report',
+        identifier: 'button.download',
         hasSelectedState: true,
         isButton: true,
         isSelected: true,

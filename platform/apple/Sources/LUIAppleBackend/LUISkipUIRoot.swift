@@ -165,10 +165,16 @@ private struct LUISkipAccessibilityModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if let label = model.accessibilityLabel(in: backend) {
+        let label = model.accessibilityLabel(in: backend)
+        let identifier = model.accessibilityIdentifier(in: backend) ?? label
+        if let label, let identifier {
             content
                 .accessibilityLabel(Text(label))
-                .accessibilityIdentifier(label)
+                .accessibilityIdentifier(identifier)
+        } else if let label {
+            content.accessibilityLabel(Text(label))
+        } else if let identifier {
+            content.accessibilityIdentifier(identifier)
         } else {
             content
         }

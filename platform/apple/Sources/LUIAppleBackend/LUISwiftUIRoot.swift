@@ -2941,14 +2941,24 @@ private struct LUIAccessibilityModifier: ViewModifier {
     func body(content: Content) -> some View {
         let label = model.accessibilityLabel(in: backend)
         let hint = model.accessibilityHint(in: backend)
-        if let label, let hint {
+        let identifier = model.accessibilityIdentifier(in: backend) ?? label
+        if let label, let hint, let identifier {
+            content
+                .accessibilityLabel(Text(label))
+                .accessibilityHint(Text(hint))
+                .accessibilityIdentifier(identifier)
+        } else if let label, let identifier {
+            content
+                .accessibilityLabel(Text(label))
+                .accessibilityIdentifier(identifier)
+        } else if let label, let hint {
             content
                 .accessibilityLabel(Text(label))
                 .accessibilityHint(Text(hint))
         } else if let label {
-            content
-                .accessibilityLabel(Text(label))
-                .accessibilityIdentifier(label)
+            content.accessibilityLabel(Text(label))
+        } else if let identifier {
+            content.accessibilityIdentifier(identifier)
         } else if let hint {
             content.accessibilityHint(Text(hint))
         } else {

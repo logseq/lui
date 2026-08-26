@@ -497,6 +497,8 @@
                      [(:max-width attrs) 'lui.ui/max-width!]
                      [(:min-height attrs) 'lui.ui/min-height!]
                      [(:max-height attrs) 'lui.ui/max-height!]
+                     [(:accessibility-identifier attrs)
+                      'lui.ui/accessibility-identifier!]
                      [(:class attrs) 'lui.ui/style-class!]]))
 
 (macro-helper-defn interactive-properties [context node attrs]

@@ -236,6 +236,7 @@
         (= kind Tree) (= kind Resizable) (= kind Split)
         (= kind Alert) (= kind Bubble)
         (tree-row-kind? kind))
+    AccessibilityIdentifier true
     PlaceholderValue
     (or (= kind TextField) (= kind Input) (= kind SearchField)
         (= kind Textarea) (= kind Select) (= kind Combobox))
@@ -351,36 +352,38 @@
         (horizontal-container? kind))))
 
 (defn property-supported? [kind property]
-  (match kind
-    Root false
-    ContextMenu false
-    Toast
-    (or (= property DurationValue) (= property AccessibilityLabel)
-        (= property StyleClass))
-    Toolbar
-    (or (= property OrientationValue) (= property AccessibilityLabel)
-        (= property Gap) (= property StyleClass))
-    Accordion
-    (or (= property TextValue) (= property Selected)
-        (= property ToggleEnabled) (= property HeightValue))
-    Stepper
-    (or (= property ActiveIndex) (= property AccessibilityLabel))
-    Step (= property TextValue)
-    Timeline
-    (or (= property Gap) (= property GrowValue)
-        (= property AccessibilityLabel))
-    TimelineItem
-    (or (= property TitleValue) (= property DescriptionValue)
-        (= property MetaValue) (= property IndicatorValue)
-        (= property InlineIconName) (= property VariantValue)
-        (= property Connector) (= property Selected)
-        (= property PressEnabled))
-    InputGroup
-    (or (= property AccessibilityLabel) (= property WidthValue)
-        (= property HeightValue) (= property MinWidth)
-        (= property GrowValue))
-    InputGroupActions (= property Gap)
-    _ (common-property-supported? kind property)))
+  (if (= property AccessibilityIdentifier)
+    true
+    (match kind
+      Root false
+      ContextMenu false
+      Toast
+      (or (= property DurationValue) (= property AccessibilityLabel)
+          (= property StyleClass))
+      Toolbar
+      (or (= property OrientationValue) (= property AccessibilityLabel)
+          (= property Gap) (= property StyleClass))
+      Accordion
+      (or (= property TextValue) (= property Selected)
+          (= property ToggleEnabled) (= property HeightValue))
+      Stepper
+      (or (= property ActiveIndex) (= property AccessibilityLabel))
+      Step (= property TextValue)
+      Timeline
+      (or (= property Gap) (= property GrowValue)
+          (= property AccessibilityLabel))
+      TimelineItem
+      (or (= property TitleValue) (= property DescriptionValue)
+          (= property MetaValue) (= property IndicatorValue)
+          (= property InlineIconName) (= property VariantValue)
+          (= property Connector) (= property Selected)
+          (= property PressEnabled))
+      InputGroup
+      (or (= property AccessibilityLabel) (= property WidthValue)
+          (= property HeightValue) (= property MinWidth)
+          (= property GrowValue))
+      InputGroupActions (= property Gap)
+      _ (common-property-supported? kind property))))
 
 (defn property-value-supported? [property value]
   (match (tuple property value)
@@ -409,6 +412,7 @@
     (tuple MaxHeight (IntValue value)) (>= value 0)
     (tuple PlaceholderValue (StringValue _value)) true
     (tuple AccessibilityLabel (StringValue _value)) true
+    (tuple AccessibilityIdentifier (StringValue _value)) true
     (tuple StyleClass (StringValue _value)) true
     (tuple HeadingLevel (IntValue value))
     (and (>= value 1) (<= value 6))

@@ -437,6 +437,7 @@
     :selected selected-source
     :autofocus autofocus-source
     :label "Download report"
+    :accessibility-identifier "button.download"
     :on-press on-press
     :on-hold on-hold}])
 
@@ -2310,7 +2311,8 @@
              (tuple proto/SizeValue "lg")
              (tuple proto/InlineIconName "download")
              (tuple proto/IconPlacementValue "trailing")
-             (tuple proto/AccessibilityLabel "Download report")]]
+             (tuple proto/AccessibilityLabel "Download report")
+             (tuple proto/AccessibilityIdentifier "button.download")]]
       (match property-and-value
         (tuple property expected)
         (match (apple/property renderer button property)
