@@ -319,14 +319,41 @@ test("interactive controls share motion and reduced-motion behavior", async () =
     ".lui-checkbox-control",
     ".lui-switch-control",
     ".lui-switch-control:after",
+    ".lui-radio-control",
   ]) {
     const escaped = selector.replaceAll(".", "\\.").replaceAll(":", "\\:")
     assert.match(css, new RegExp(`${escaped}\\{[^}]*transition`))
   }
   assert.match(
     css,
-    /@media \(prefers-reduced-motion:reduce\)\{[^{}]*\.lui-button,[^{}]*\.lui-toggle,[^{}]*\.lui-checkbox-control,[^{}]*\.lui-switch-control,[^{}]*\.lui-switch-control:after\{[^}]*transition-duration:0s/,
+    /@media \(prefers-reduced-motion:reduce\)\{[^{}]*\.lui-button,[^{}]*\.lui-toggle,[^{}]*\.lui-checkbox-control,[^{}]*\.lui-switch-control,[^{}]*\.lui-switch-control:after,[^{}]*\.lui-radio-control\{[^}]*transition-duration:0s/,
   )
+})
+
+test("coarse pointers receive 44px native control hit targets", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /@media \(pointer:coarse\)\{/)
+  for (const selector of [
+    ".lui-button",
+    ".lui-toggle",
+    ".lui-checkbox",
+    ".lui-switch",
+    ".lui-radio",
+    ".lui-list-item",
+    ".lui-menu-item",
+    ".lui-tree-item",
+    ".lui-select",
+    ".lui-input",
+    ".lui-text-field",
+    ".lui-search-field",
+    ".lui-combobox-control",
+    ".lui-slider",
+    ".lui-accordion-summary",
+  ]) {
+    const escaped = selector.replaceAll(".", "\\.")
+    assert.match(css, new RegExp(`${escaped}[^\\{]*\\{[^}]*min-height:44px`))
+  }
 })
 
 test("Accordion styles the Base UI controlled panel motion", async () => {

@@ -912,7 +912,8 @@ body {
     .lui-toggle,
     .lui-checkbox-control,
     .lui-switch-control,
-    .lui-switch-control::after {
+    .lui-switch-control::after,
+    .lui-radio-control {
       transition-duration: 0ms !important;
     }
   }
@@ -1194,7 +1195,7 @@ body {
   }
 
   .lui-radio-control {
-    @apply size-4 appearance-none rounded-full border border-primary bg-background;
+    @apply size-4 appearance-none rounded-full border border-primary bg-background transition-[border-width,background-color];
   }
 
   .lui-radio-control:checked {
@@ -1203,6 +1204,26 @@ body {
 
   .lui-radio-control:focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2;
+  }
+
+  @media (pointer: coarse) {
+    .lui-button,
+    .lui-toggle,
+    .lui-checkbox,
+    .lui-switch,
+    .lui-radio,
+    .lui-list-item,
+    .lui-menu-item,
+    .lui-tree-item,
+    .lui-select,
+    .lui-input,
+    .lui-text-field,
+    .lui-search-field,
+    .lui-combobox-control,
+    .lui-slider,
+    .lui-accordion-summary {
+      min-height: 44px;
+    }
   }
 
   .lui-slider {
