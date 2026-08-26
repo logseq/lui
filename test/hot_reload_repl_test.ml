@@ -20,6 +20,11 @@ let assert_equal expected actual message =
   if not (String.equal expected actual) then
     fail (Printf.sprintf "%s: expected %S, got %S" message expected actual)
 
+let nearest_rank values percent =
+  let sorted = List.sort Int.compare values |> Array.of_list in
+  let rank = ((Array.length sorted * percent) + 99) / 100 in
+  sorted.(max 0 (rank - 1))
+
 let write_file path content =
   let channel = open_out_bin path in
   Fun.protect
@@ -172,7 +177,19 @@ let () =
         |> expect_ok
       in
       write_file watched_file (watched_view_source "Automatic");
-      (match Watch_session.poll watcher with
+      let detection_started = Unix.gettimeofday () in
+      let detection = Watch_session.poll watcher in
+      let detection_ms =
+        Float.to_int ((Unix.gettimeofday () -. detection_started) *. 1000.)
+      in
+      Printf.printf "LUI_HOT_RELOAD_PERF change_detection_ms=%d\n%!"
+        detection_ms;
+      if detection_ms > 100 then
+        fail
+          (Printf.sprintf
+             "file change acknowledgement exceeds the 100 ms target: %d ms"
+             detection_ms);
+      (match detection with
       | Some (Watch_session.Change_detected event) ->
           assert_equal "1" (string_of_int event.generation)
             "the watcher assigns a monotonic generation"
@@ -297,4 +314,22 @@ let () =
       | [ resource ] ->
           assert_equal "image-a" resource
             "resource reload retires the replaced resource"
-      | _ -> fail "expected exactly one retired resource")
+      | _ -> fail "expected exactly one retired resource");
+  let reload_samples =
+    List.init 20 (fun index ->
+        let started = Unix.gettimeofday () in
+        eval session
+          (watched_view_source (Printf.sprintf "Parity benchmark %02d" index))
+        |> ignore;
+        Float.to_int ((Unix.gettimeofday () -. started) *. 1000.))
+  in
+  let p50 = nearest_rank reload_samples 50 in
+  let p95 = nearest_rank reload_samples 95 in
+  Printf.printf "LUI_HOT_RELOAD_PERF samples=20 p50_ms=%d p95_ms=%d\n%!" p50
+    p95;
+  if p95 > 500 then
+    fail
+      (Printf.sprintf
+         "warm single-file UI reload p95 exceeds the 500 ms target: %d ms" p95);
+  assert_equal "\"Parity benchmark 19\"" (rendered session "(visible-text)")
+    "the latency fixture measures committed visible generations"

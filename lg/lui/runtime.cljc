@@ -69,6 +69,16 @@
     (checkpoint-reload-keys (deref (:runtime-reload-keys application)))
     (checkpoint-node-aliases (deref (:runtime-node-aliases application)))))
 
+(defn render-tree-snapshot [application]
+  (record render-tree-snapshot
+    (render-mounted-nodes (deref (:mounted-nodes application)))
+    (render-extension-nodes (deref (:runtime-extension-nodes application)))
+    (render-properties (deref (:runtime-properties application)))
+    (render-extension-properties
+     (deref (:runtime-extension-properties application)))
+    (render-children (deref (:runtime-children application)))
+    (render-reload-keys (deref (:runtime-reload-keys application)))))
+
 (defn restore! [application saved]
   (when-not (= (deref (:runtime-generation application))
                (:checkpoint-generation saved))

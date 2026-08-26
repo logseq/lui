@@ -47,6 +47,14 @@
   (checkpoint-reload-keys :map<int;string>)
   (checkpoint-node-aliases :map<int;int>))
 
+(type-record render-tree-snapshot
+  (render-mounted-nodes :map<int;node-kind>)
+  (render-extension-nodes :map<int;string>)
+  (render-properties :map<int;map<property;wire-value>>)
+  (render-extension-properties :map<int;map<string;wire-value>>)
+  (render-children :map<int;vector<int>>)
+  (render-reload-keys :map<int;string>))
+
 (type-record application
   (runtime-scheduler :scheduler)
   (runtime-backend :backend)
@@ -72,6 +80,8 @@
 (signature lui.runtime/create-with-extensions
   :fn<scheduler;backend;extension-registry;application>)
 (signature lui.runtime/checkpoint :fn<application;runtime-checkpoint>)
+(signature lui.runtime/render-tree-snapshot
+  :fn<application;render-tree-snapshot>)
 (signature lui.runtime/restore! :fn<application;runtime-checkpoint;bool>)
 (signature lui.runtime/reconcile-subtree!
   :fn<application;runtime-checkpoint;int;int;int;int>)

@@ -470,3 +470,30 @@
           (assert-equal "Before local 0" text
                         "a removed component path receives fresh local state")
           _ (is false "the recreated local-state label has text"))))))
+
+(deftest clean-build-and-hot-reload-produce-equivalent-render-trees
+  (let [hot-renderer (apple/create)
+        hot-application
+        (app/create-reloadable
+         (apple/backend hot-renderer) "source-a" "contract-a"
+         2 add-action initial-counter-view)
+        clean-renderer (apple/create)
+        clean-application
+        (app/create-reloadable
+         (apple/backend clean-renderer) "source-b" "contract-a"
+         2 add-action replacement-counter-view)]
+    (app/start! hot-application)
+    (app/start! clean-application)
+    (app/flush! hot-application)
+    (app/flush! clean-application)
+    (let [request (app/request-reload! hot-application)]
+      (assert-equal
+       (hot/ReloadApplied request)
+       (app/reload-view!
+        hot-application request "source-b" "contract-a"
+        replacement-counter-view 3)
+       "the parity fixture hot-applies"))
+    (assert-equal
+     (runtime/render-tree-snapshot (app/runtime clean-application))
+     (runtime/render-tree-snapshot (app/runtime hot-application))
+     "a clean build and hot-reloaded build render the same canonical tree")))

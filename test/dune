@@ -15,6 +15,7 @@
   lui/phase2_hot_reload_test.cljc
   lui/phase3_hot_reload_test.lgi
   lui/phase3_hot_reload_test.cljc
+  lui/phase4_hot_reload_test.cljc
   lui/authoring_test.cljc
   lui/dynamic_test.cljc
   lui/extension_test.cljc
@@ -43,6 +44,7 @@
    %{dep:lui/phase2_hot_reload_test.cljc}
    %{dep:lui/phase3_hot_reload_test.lgi}
    %{dep:lui/phase3_hot_reload_test.cljc}
+   %{dep:lui/phase4_hot_reload_test.cljc}
    %{dep:lui/authoring_test.cljc}
    %{dep:lui/dynamic_test.cljc}
    %{dep:lui/extension_test.cljc}
@@ -79,6 +81,7 @@
   lui/phase2_hot_reload_test.cljc
   lui/phase3_hot_reload_test.lgi
   lui/phase3_hot_reload_test.cljc
+  lui/phase4_hot_reload_test.cljc
   lui/authoring_test.cljc
   lui/dynamic_test.cljc
   lui/extension_test.cljc
@@ -107,6 +110,7 @@
    %{dep:lui/phase2_hot_reload_test.cljc}
    %{dep:lui/phase3_hot_reload_test.lgi}
    %{dep:lui/phase3_hot_reload_test.cljc}
+   %{dep:lui/phase4_hot_reload_test.cljc}
    %{dep:lui/authoring_test.cljc}
    %{dep:lui/dynamic_test.cljc}
    %{dep:lui/extension_test.cljc}
@@ -153,6 +157,7 @@
   lui/phase2_hot_reload_test.cljc
   lui/phase3_hot_reload_test.lgi
   lui/phase3_hot_reload_test.cljc
+  lui/phase4_hot_reload_test.cljc
   %{lib:lg-test.sources:run.cljc}
   %{lib:lg-test.runtime:lg_test_runtime.cmi}
   %{lib:lg-test.alcotest:lg_test_alcotest.cmi}
@@ -171,6 +176,7 @@
    %{dep:lui/phase2_hot_reload_test.cljc}
    %{dep:lui/phase3_hot_reload_test.lgi}
    %{dep:lui/phase3_hot_reload_test.cljc}
+   %{dep:lui/phase4_hot_reload_test.cljc}
    %{lib:lg-test.sources:run.cljc}
    -o %{target})))
 
@@ -234,7 +240,8 @@
   lg.repl
   lg.edn-backend.native
   lg.runtime
-  lg.rrbvec)
+  lg.rrbvec
+  unix)
  (action
   (run
    %{test}

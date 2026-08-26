@@ -1,0 +1,109 @@
+(ns lui.devtools)
+
+(type-variant diagnostic-phase
+  (ReaderDiagnostic)
+  (ParseDiagnostic)
+  (TypeDiagnostic)
+  (LowerDiagnostic)
+  (OcamlDiagnostic)
+  (ResourceDiagnostic)
+  (MigrationDiagnostic)
+  (InfrastructureDiagnostic)
+  (ProtocolDiagnostic))
+
+(type-record source-range
+  (range-file :string)
+  (range-start-line :int)
+  (range-start-column :int)
+  (range-end-line :int)
+  (range-end-column :int))
+
+(type-record hot-diagnostic
+  (diagnostic-code :string)
+  (diagnostic-phase :diagnostic-phase)
+  (diagnostic-message :string)
+  (diagnostic-range :option<source-range>)
+  (diagnostic-related-ranges :vector<source-range>))
+
+(type-record retained-state-inspection
+  (inspection-widget-count :int)
+  (inspection-handler-count :int)
+  (inspection-subscription-count :int)
+  (inspection-resource-count :int)
+  (inspection-state-scope-count :int))
+
+(type-variant developer-event
+  (DeveloperChangeDetected :int :vector<string>)
+  (DeveloperCompilationStarted :int)
+  (DeveloperDiagnostic :int :hot-diagnostic)
+  (DeveloperReloadCommitted
+   :int :int :vector<string> :vector<int> :retained-state-inspection)
+  (DeveloperReloadUnchanged :int :int)
+  (DeveloperReloadRejected :int :string)
+  (DeveloperReloadStale :int)
+  (DeveloperRestartRequired :int :string)
+  (DeveloperMigrationRequired :string)
+  (DeveloperMigrationFailed :string)
+  (DeveloperRestartStarted :int :restart-reason)
+  (DeveloperRestartCompleted :int :bool)
+  (DeveloperRestartRejected :int :string :string)
+  (DeveloperRestartStale :int)
+  (DeveloperTargetDisconnected :string)
+  (DeveloperProtocolMismatch :string :string))
+
+(type-record overlay-model
+  (overlay-visible :bool)
+  (overlay-collapsed :bool)
+  (overlay-generation :int)
+  (overlay-title :string)
+  (overlay-detail :string))
+
+(type-record reload-latency-summary
+  (latency-sample-count :int)
+  (latency-p50-ms :int)
+  (latency-p95-ms :int)
+  (latency-max-ms :int))
+
+(type-record developer-session
+  (developer-events :ref<vector<developer-event>>)
+  (developer-diagnostics :ref<map<string;hot-diagnostic>>)
+  (developer-latencies :ref<vector<int>>)
+  (developer-overlay-visible :ref<bool>)
+  (developer-overlay-collapsed :ref<bool>)
+  (developer-overlay-generation :ref<int>)
+  (developer-overlay-title :ref<string>)
+  (developer-overlay-detail :ref<string>))
+
+(signature lui.devtools/create :fn<developer-session>)
+(signature lui.devtools/record-change-detected!
+  :fn<developer-session;int;vector<string>;bool>)
+(signature lui.devtools/record-compilation-started!
+  :fn<developer-session;int;bool>)
+(signature lui.devtools/diagnostic-key :fn<hot-diagnostic;string>)
+(signature lui.devtools/record-diagnostic!
+  :fn<developer-session;int;hot-diagnostic;bool>)
+(signature lui.devtools/editor-diagnostics
+  :fn<developer-session;vector<hot-diagnostic>>)
+(signature lui.devtools/overlay :fn<developer-session;overlay-model>)
+(signature lui.devtools/render-overlay! :fn<ui-context;overlay-model;int>)
+(signature lui.devtools/collapse-overlay! :fn<developer-session;bool>)
+(signature lui.devtools/expand-overlay! :fn<developer-session;bool>)
+(signature lui.devtools/record-latency! :fn<developer-session;int;bool>)
+(signature lui.devtools/latency-summary
+  :fn<developer-session;reload-latency-summary>)
+(signature lui.devtools/ingest-reload!
+  :fn<developer-session;reload-event;vector<string>;vector<int>;retained-state-inspection;bool>)
+(signature lui.devtools/record-target-disconnected!
+  :fn<developer-session;string;bool>)
+(signature lui.devtools/record-migration-required!
+  :fn<developer-session;string;bool>)
+(signature lui.devtools/record-migration-failed!
+  :fn<developer-session;string;bool>)
+(signature lui.devtools/ingest-restart!
+  :fn<developer-session;restart-event;bool>)
+(signature lui.devtools/record-protocol-mismatch!
+  :fn<developer-session;string;string;bool>)
+(signature lui.devtools/events :fn<developer-session;vector<developer-event>>)
+(signature lui.devtools/latest-event
+  :fn<developer-session;option<developer-event>>)
+(signature lui.devtools/percentile :fn<vector<int>;int;int>)
