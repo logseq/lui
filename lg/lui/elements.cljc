@@ -144,6 +144,7 @@
                          (= tag :checkbox)
                          (= tag :switch)
                          (= tag :text-field)
+                         (= tag :secure-field)
                          (= tag :input)
                          (= tag :search-field)
                          (= tag :textarea)
@@ -1402,6 +1403,10 @@
 (defelement text-field [context parent attrs & children]
   (text-entry-expansion
    'lui.ui/text-field! context parent attrs children))
+
+(defelement secure-field [context parent attrs & children]
+  (text-entry-expansion
+   'lui.ui/secure-field! context parent attrs children))
 
 (defelement input [context parent attrs & children]
   (text-entry-expansion

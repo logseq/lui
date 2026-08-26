@@ -176,7 +176,7 @@ private struct LUINodeView: View {
             LUIButtonView(model: model, backend: backend)
         case .toggleButton:
             LUIButtonView(model: model, backend: backend, isToggle: true)
-        case .textField, .input, .searchField, .textarea:
+        case .textField, .secureField, .input, .searchField, .textarea:
             LUITextControlView(model: model, backend: backend)
         case .select:
             LUISelectView(model: model, backend: backend)
@@ -2434,7 +2434,12 @@ private struct LUITextControlView: View {
 
     @ViewBuilder
     private var field: some View {
-        if model.kind == .textarea {
+        if model.kind == .secureField {
+            SecureField(
+                model.property(.placeholder)?.stringValue ?? "",
+                text: binding
+            )
+        } else if model.kind == .textarea {
             TextField(
                 model.property(.placeholder)?.stringValue ?? "",
                 text: binding,

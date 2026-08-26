@@ -23,6 +23,7 @@
   (Radio)
   (Slider)
   (TextField)
+  (SecureField)
   (Input)
   (SearchField)
   (Textarea)

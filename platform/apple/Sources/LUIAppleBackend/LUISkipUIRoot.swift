@@ -125,6 +125,11 @@ private struct LUISkipNodeView: View {
                 model.property(.placeholder)?.stringValue ?? "",
                 text: textBinding
             )
+        case .secureField:
+            SecureField(
+                model.property(.placeholder)?.stringValue ?? "",
+                text: textBinding
+            )
         case .textarea:
             TextEditor(text: textBinding)
         case .select, .combobox, .dropdownMenu, .radioGroup:

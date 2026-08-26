@@ -1012,6 +1012,7 @@ final class LUIFlutterBackend {
             foreground: foreground,
             autofocus: state.properties['autofocus'] as bool? ?? false,
             multiline: multiline,
+            secure: kind == _NodeKind.secureField,
             search: kind == _NodeKind.searchField,
             grouped: grouped,
             onOpen: combobox && enabled ? () => performAction(id) : null,
@@ -2110,6 +2111,7 @@ final class LUIFlutterBackend {
         onChanged: enabled ? (value) => performValueChange(id, value) : null,
       ),
       _NodeKind.textField ||
+      _NodeKind.secureField ||
       _NodeKind.input ||
       _NodeKind.searchField ||
       _NodeKind.textarea => textControl(kind: state.kind),
@@ -3488,6 +3490,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.select ||
       kind == _NodeKind.combobox ||
       kind == _NodeKind.textField ||
+      kind == _NodeKind.secureField ||
       kind == _NodeKind.input ||
       kind == _NodeKind.searchField ||
       kind == _NodeKind.divider;
@@ -3500,6 +3503,7 @@ final class LUIFlutterBackend {
       _NodeKind.radio,
       _NodeKind.slider,
       _NodeKind.textField,
+      _NodeKind.secureField,
       _NodeKind.input,
       _NodeKind.searchField,
       _NodeKind.textarea,
@@ -3522,6 +3526,7 @@ final class LUIFlutterBackend {
       _NodeKind.radio,
       _NodeKind.slider,
       _NodeKind.textField,
+      _NodeKind.secureField,
       _NodeKind.input,
       _NodeKind.searchField,
       _NodeKind.textarea,
@@ -3600,6 +3605,7 @@ final class LUIFlutterBackend {
 
   static bool _isTextControl(_NodeKind kind) =>
       kind == _NodeKind.textField ||
+      kind == _NodeKind.secureField ||
       kind == _NodeKind.input ||
       kind == _NodeKind.searchField ||
       kind == _NodeKind.textarea ||
@@ -5054,6 +5060,7 @@ final class _LUITextInput extends StatefulWidget {
     required this.foreground,
     required this.autofocus,
     required this.multiline,
+    required this.secure,
     required this.search,
     required this.grouped,
     required this.onOpen,
@@ -5068,6 +5075,7 @@ final class _LUITextInput extends StatefulWidget {
   final Color? foreground;
   final bool autofocus;
   final bool multiline;
+  final bool secure;
   final bool search;
   final bool grouped;
   final VoidCallback? onOpen;
@@ -5113,6 +5121,7 @@ final class _LUITextInputState extends State<_LUITextInput> {
           : TextInputAction.done,
       minLines: 1,
       maxLines: widget.multiline ? null : 1,
+      obscureText: widget.secure,
       style: TextStyle(color: widget.foreground),
       decoration: InputDecoration(
         hintText: widget.placeholder,

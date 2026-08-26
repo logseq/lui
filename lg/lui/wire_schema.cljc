@@ -3,26 +3,26 @@
   (:require [lui.protocol :refer [Root Row Column Grid Stack Panel
                      Card Alert Bubble Box Text Heading
                      Paragraph Label Button ToggleButton Toggle RadioGroup
-                     Radio Slider TextField Input SearchField Textarea
-                     Checkbox SwitchControl Progress Divider Scroll ListContainer
-                     Tabs ButtonGroup ToggleGroup Spacer Spinner Icon
-                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem
-                     Avatar Image MediaSurface Stepper Step Timeline
-                     TimelineItem InputGroup InputGroupActions Breadcrumb Pagination Accordion
-                     Table TableRow TableCell Tree Resizable Split
-                     Dialog Drawer Sheet Tooltip Toast Toolbar
-                     StatusBar TextValue Enabled Gap MainAlignment CrossAlignment
-                     GrowValue GridColumns PaddingValue PaddingHorizontal PaddingVertical BackgroundValue
-                     ForegroundValue BorderColorValue BorderWidth CornerRadius WidthValue HeightValue
-                     MinWidth MaxWidth MinHeight MaxHeight PlaceholderValue AccessibilityLabel
-                     AccessibilityIdentifier StyleClass HeadingLevel Checked ProgressValue OrientationValue
-                     SizeValue IconName VariantValue InlineIconName IconPlacementValue Selected
-                     Autofocus SubmitOnEnter LongPressEnabled ChangeEnabled ToggleEnabled PressEnabled
-                     SubmitEnabled DoublePressEnabled ImageIdValue SurfaceIdValue ActiveIndex TitleValue
-                     DescriptionValue MetaValue IndicatorValue Connector SourceX SourceY
-                     SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay
-                     DurationValue TextAlignment RoleValue TreeLevel Expanded ResizeDuration
-                     ResizeEasing ResizeOrigin]]))
+                     Radio Slider TextField SecureField Input SearchField
+                     Textarea Checkbox SwitchControl Progress Divider Scroll
+                     ListContainer Tabs ButtonGroup ToggleGroup Spacer Spinner
+                     Icon Select Combobox DropdownMenu ContextMenu MenuItem
+                     ListItem Avatar Image MediaSurface Stepper Step
+                     Timeline TimelineItem InputGroup InputGroupActions Breadcrumb Pagination
+                     Accordion Table TableRow TableCell Tree Resizable
+                     Split Dialog Drawer Sheet Tooltip Toast
+                     Toolbar StatusBar TextValue Enabled Gap MainAlignment
+                     CrossAlignment GrowValue GridColumns PaddingValue PaddingHorizontal PaddingVertical
+                     BackgroundValue ForegroundValue BorderColorValue BorderWidth CornerRadius WidthValue
+                     HeightValue MinWidth MaxWidth MinHeight MaxHeight PlaceholderValue
+                     AccessibilityLabel AccessibilityIdentifier StyleClass HeadingLevel Checked ProgressValue
+                     OrientationValue SizeValue IconName VariantValue InlineIconName IconPlacementValue
+                     Selected Autofocus SubmitOnEnter LongPressEnabled ChangeEnabled ToggleEnabled
+                     PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue SurfaceIdValue ActiveIndex
+                     TitleValue DescriptionValue MetaValue IndicatorValue Connector SourceX
+                     SourceY SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset
+                     TooltipDelay DurationValue TextAlignment RoleValue TreeLevel Expanded
+                     ResizeDuration ResizeEasing ResizeOrigin]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -47,6 +47,7 @@
     Radio "radio"
     Slider "slider"
     TextField "text-field"
+    SecureField "secure-field"
     Input "input"
     SearchField "search-field"
     Textarea "textarea"
@@ -117,6 +118,7 @@
     "radio" true
     "slider" true
     "text-field" true
+    "secure-field" true
     "input" true
     "search-field" true
     "textarea" true

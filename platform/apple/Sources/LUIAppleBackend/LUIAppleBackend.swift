@@ -757,7 +757,7 @@ public final class LUIAppleBackend {
     }
 
     private static func isTextEntry(_ kind: LUINodeKind) -> Bool {
-        kind == .textField || kind == .input || kind == .searchField || kind == .textarea ||
+        kind == .textField || kind == .secureField || kind == .input || kind == .searchField || kind == .textarea ||
             kind == .combobox
     }
 }

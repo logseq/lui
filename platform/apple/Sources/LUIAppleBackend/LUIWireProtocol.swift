@@ -654,7 +654,7 @@ struct LUIRetainedTree {
     }
 
     private static func isTextEntry(_ kind: LUINodeKind) -> Bool {
-        kind == .textField || kind == .input || kind == .searchField || kind == .textarea ||
+        kind == .textField || kind == .secureField || kind == .input || kind == .searchField || kind == .textarea ||
             kind == .combobox
     }
 
@@ -694,7 +694,7 @@ struct LUIRetainedTree {
         kind == .button || kind == .toggleButton || kind == .buttonGroup ||
             kind == .toggleGroup || kind == .checkbox || kind == .switchControl ||
             kind == .toggle || kind == .radioGroup || kind == .select ||
-            kind == .combobox || kind == .textField || kind == .input ||
+            kind == .combobox || kind == .textField || kind == .secureField || kind == .input ||
             kind == .searchField || kind == .divider
     }
 
@@ -959,7 +959,7 @@ struct LUIRetainedTree {
         properties: [LUIProperty: LUIWireValue]
     ) -> Bool {
         let inherent: Set<LUINodeKind> = [
-            .button, .toggleButton, .toggle, .radio, .slider, .textField,
+            .button, .toggleButton, .toggle, .radio, .slider, .textField, .secureField,
             .input, .searchField, .textarea, .checkbox, .switchControl,
             .select, .combobox, .menuItem, .listItem, .accordion, .text,
             .tableCell,
@@ -973,7 +973,7 @@ struct LUIRetainedTree {
 
     private static func isContextMenuLeafHost(_ kind: LUINodeKind) -> Bool {
         let kinds: Set<LUINodeKind> = [
-            .button, .toggleButton, .toggle, .radio, .slider, .textField,
+            .button, .toggleButton, .toggle, .radio, .slider, .textField, .secureField,
             .input, .searchField, .textarea, .checkbox, .switchControl,
             .select, .combobox, .menuItem, .text, .tableCell,
         ]

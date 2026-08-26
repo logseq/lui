@@ -67,4 +67,23 @@ struct LUIBackendParityTests {
             LUIEvent.toggleChanged(node: 3, checked: true),
         ])
     }
+
+    @Test("secure fields retain text input behavior without exposing plain text controls")
+    func secureFieldDispatchesTextEvents() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"secure-field"},
+          {"op":"set-prop","id":1,"property":"text","value":""},
+          {"op":"set-prop","id":1,"property":"placeholder","value":"Password"}
+        ]}
+        """)
+
+        #expect(backend.model(id: 1)?.kind.rawValue == "secure-field")
+        try backend.performTextChange(node: 1, text: "secret")
+        #expect(events == [.textChanged(node: 1, text: "secret")])
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+    }
 }

@@ -23,6 +23,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case radio = "radio"
     case slider = "slider"
     case textField = "text-field"
+    case secureField = "secure-field"
     case input = "input"
     case searchField = "search-field"
     case textarea = "textarea"

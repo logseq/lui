@@ -31,7 +31,7 @@
 (defn context-menu-host-kind? [kind]
   (or
    (= kind Button) (= kind ToggleButton) (= kind Toggle) (= kind Radio)
-   (= kind Slider) (= kind TextField) (= kind Input) (= kind SearchField)
+   (= kind Slider) (= kind TextField) (= kind SecureField) (= kind Input) (= kind SearchField)
    (= kind Textarea) (= kind Checkbox) (= kind SwitchControl)
    (= kind Select) (= kind Combobox) (= kind MenuItem) (= kind ListItem)
    (= kind Accordion) (= kind Text) (= kind TableCell)))
@@ -39,7 +39,7 @@
 (defn context-menu-leaf-host-kind? [kind]
   (or
    (= kind Button) (= kind ToggleButton) (= kind Toggle) (= kind Radio)
-   (= kind Slider) (= kind TextField) (= kind Input) (= kind SearchField)
+   (= kind Slider) (= kind TextField) (= kind SecureField) (= kind Input) (= kind SearchField)
    (= kind Textarea) (= kind Checkbox) (= kind SwitchControl)
    (= kind Select) (= kind Combobox) (= kind MenuItem) (= kind Text)
    (= kind TableCell)))
@@ -53,10 +53,10 @@
     (LongPress _node)
     (or (= kind Button) (= kind ToggleButton) (= kind ListItem))
     (TextChanged _node _text)
-    (or (= kind TextField) (= kind Input) (= kind SearchField)
+    (or (= kind TextField) (= kind SecureField) (= kind Input) (= kind SearchField)
         (= kind Textarea) (= kind Combobox))
     (Submit _node)
-    (or (= kind TextField) (= kind Input) (= kind SearchField)
+    (or (= kind TextField) (= kind SecureField) (= kind Input) (= kind SearchField)
         (= kind Textarea) (= kind Combobox) (= kind ListItem))
     (ToggleChanged _node _checked)
     (or (= kind ToggleButton) (= kind Checkbox) (= kind SwitchControl)
@@ -179,6 +179,7 @@
       Button true
       ToggleButton true
       TextField true
+      SecureField true
       Input true
       SearchField true
       Textarea true
@@ -228,7 +229,7 @@
          (not (= kind Tooltip)))
     AccessibilityLabel
     (or (= kind Button) (= kind ToggleButton)
-        (= kind TextField) (= kind Input) (= kind SearchField)
+        (= kind TextField) (= kind SecureField) (= kind Input) (= kind SearchField)
         (= kind Textarea)
         (= kind Checkbox) (= kind SwitchControl)
         (= kind Toggle) (= kind RadioGroup) (= kind Radio) (= kind Slider)
@@ -239,7 +240,7 @@
         (tree-row-kind? kind))
     AccessibilityIdentifier true
     PlaceholderValue
-    (or (= kind TextField) (= kind Input) (= kind SearchField)
+    (or (= kind TextField) (= kind SecureField) (= kind Input) (= kind SearchField)
         (= kind Textarea) (= kind Select) (= kind Combobox))
     HeadingLevel (= kind Heading)
     Checked (or (= kind Checkbox) (= kind SwitchControl)
@@ -263,7 +264,7 @@
         (tree-row-kind? kind))
     Autofocus
     (or (= kind Button) (= kind ToggleButton)
-        (= kind TextField) (= kind Input) (= kind SearchField)
+        (= kind TextField) (= kind SecureField) (= kind Input) (= kind SearchField)
         (= kind Textarea))
     SubmitOnEnter (= kind Textarea)
     LongPressEnabled (or (= kind Button) (= kind ToggleButton) (= kind ListItem))
@@ -303,6 +304,7 @@
       Button true
       ToggleButton true
       TextField true
+      SecureField true
       Input true
       SearchField true
       Textarea true
@@ -328,6 +330,7 @@
       Button true
       ToggleButton true
       TextField true
+      SecureField true
       Input true
       SearchField true
       Textarea true
@@ -734,7 +737,7 @@
           (= child-kind Checkbox) (= child-kind SwitchControl)
           (= child-kind Toggle) (= child-kind RadioGroup)
           (= child-kind Select) (= child-kind Combobox)
-          (= child-kind TextField) (= child-kind Input)
+          (= child-kind TextField) (= child-kind SecureField) (= child-kind Input)
           (= child-kind SearchField) (= child-kind Divider))
       DropdownMenu (or (= child-kind MenuItem) (= child-kind Divider))
       ContextMenu (or (= child-kind MenuItem) (= child-kind Divider))

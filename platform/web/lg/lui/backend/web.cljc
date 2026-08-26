@@ -9,7 +9,7 @@
             [lui.protocol :as proto
              :refer [Row Column Grid Stack Panel Card Alert Bubble Box
                      Text Heading Paragraph Label Button ToggleButton
-                     TextField Input SearchField Textarea Checkbox SwitchControl
+                     TextField SecureField Input SearchField Textarea Checkbox SwitchControl
                      Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Sheet Tooltip Toast Toolbar Accordion
                      Table TableRow TableCell Tree Resizable Split Drawer StatusBar
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
@@ -180,6 +180,7 @@
     Radio "lui-radio"
     Slider "lui-slider"
     TextField "lui-text-field"
+    SecureField "lui-text-field"
     Input "lui-input"
     SearchField "lui-search-field"
     Textarea "lui-textarea"
@@ -425,6 +426,7 @@
           Label "label"
           Text "span"
           TextField "input"
+          SecureField "input"
           Input "input"
           SearchField "input"
           Textarea "textarea"
@@ -448,6 +450,7 @@
         (match kind
           Heading {"role" "heading"}
           SearchField {"type" "search"}
+          SecureField {"type" "password"}
           Textarea
           {"style"
            "field-sizing: content; resize: vertical; overflow-y: auto"}
@@ -2375,7 +2378,7 @@
 (defn- toolbar-item-kind? [kind]
   (or (= kind Button) (= kind ToggleButton) (= kind Toggle)
       (= kind Checkbox) (= kind SwitchControl) (= kind Radio)
-      (= kind Select) (= kind Combobox) (= kind TextField)
+      (= kind Select) (= kind Combobox) (= kind TextField) (= kind SecureField)
       (= kind Input) (= kind SearchField)))
 
 (defn- toolbar-all-items-under [renderer parent]
@@ -2421,7 +2424,7 @@
   true)
 
 (defn- toolbar-text-input-kind? [kind]
-  (or (= kind TextField) (= kind Input) (= kind SearchField)
+  (or (= kind TextField) (= kind SecureField) (= kind Input) (= kind SearchField)
       (= kind Combobox)))
 
 (defn- focused-toolbar-item-index [store items focused index]
@@ -3617,6 +3620,7 @@
     Button (attach-button-events! renderer node kind dom-node)
     ToggleButton (attach-button-events! renderer node kind dom-node)
     TextField (attach-text-events! renderer node kind dom-node)
+    SecureField (attach-text-events! renderer node kind dom-node)
     Input (attach-text-events! renderer node kind dom-node)
     SearchField (attach-text-events! renderer node kind dom-node)
     Textarea (attach-text-events! renderer node kind dom-node)
@@ -4542,6 +4546,7 @@
     (Webapi.Dom.Element.setTextContent
      (child-element dom-node 0) (select-display-text renderer node))
     TextField (set-text-control-value! dom-node text)
+    SecureField (set-text-control-value! dom-node text)
     Input (set-text-control-value! dom-node text)
     SearchField (set-text-control-value! dom-node text)
     Textarea (set-text-control-value! dom-node text)

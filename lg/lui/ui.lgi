@@ -74,6 +74,7 @@
 (signature lui.ui/text-signal! :fn<ui-context;signal<string>;int>)
 (signature lui.ui/text-value! :fn<ui-context;signal<wire-value>;int>)
 (signature lui.ui/text-field! :fn<ui-context;int>)
+(signature lui.ui/secure-field! :fn<ui-context;int>)
 (signature lui.ui/input! :fn<ui-context;int>)
 (signature lui.ui/search-field! :fn<ui-context;int>)
 (signature lui.ui/textarea! :fn<ui-context;int>)

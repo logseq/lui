@@ -265,6 +265,9 @@
 (defn text-field! [context]
   (runtime/create-node! (:ui-application context) proto/TextField))
 
+(defn secure-field! [context]
+  (runtime/create-node! (:ui-application context) proto/SecureField))
+
 (defn input! [context]
   (runtime/create-node! (:ui-application context) proto/Input))
 

@@ -2,7 +2,7 @@
   (:require [lui.protocol :as proto
              :refer [Root Row Column Grid Stack Panel Card Alert Bubble Box
                      Text Heading Paragraph Label Button ToggleButton
-                     TextField Input SearchField Textarea
+                     TextField SecureField Input SearchField Textarea
                      Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
                      Checkbox SwitchControl
@@ -51,6 +51,7 @@
     Button AppleButton
     ToggleButton AppleToggleButton
     TextField AppleTextInput
+    SecureField AppleTextInput
     Input AppleTextInput
     SearchField AppleTextInput
     Textarea AppleTextArea
