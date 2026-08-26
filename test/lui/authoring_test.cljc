@@ -117,7 +117,8 @@
   [message-source orientation-source on-dismiss]
   [:column
    [:toolbar
-    {:orientation orientation-source :label "Formatting" :gap 4}
+    {:orientation orientation-source :label "Formatting" :gap 4
+     :accessibility-identifier "toolbar.formatting"}
     [:button "Bold"]
     [:separator]
     [:button "Italic"]]
@@ -1805,6 +1806,10 @@
       (assert-equal (Some (StringValue "horizontal"))
                     (apple/property renderer toolbar proto/OrientationValue)
                     "Toolbar retains orientation")
+      (assert-equal
+       (Some (StringValue "toolbar.formatting"))
+       (apple/property renderer toolbar proto/AccessibilityIdentifier)
+       "Toolbar retains its automation identifier")
       (assert-equal (Some (proto/IntValue 1200))
                     (apple/property renderer toast proto/DurationValue)
                     "Toast retains its dismissal duration")

@@ -1599,6 +1599,10 @@
           context node (:gap attrs) 'lui.protocol/Gap)
        ~@(string-attribute-expansion
           context node (:class attrs) 'lui.protocol/StyleClass)
+       ~@(property-expansions
+          context node
+          [[(:accessibility-identifier attrs)
+            'lui.ui/accessibility-identifier!]])
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])
