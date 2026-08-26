@@ -133,6 +133,14 @@ label and exposes its orientation. Panel relationships and indicator motion
 remain intentionally deferred until the compact API has an explicit retained
 panel association.
 
+Accordion now uses a real button trigger and a linked `region` panel instead of
+intercepting a `details`/`summary` control. The panel remains mounted while
+collapsed, measures its retained content into an internal height variable, and
+follows Base UI's 150 ms ease-out starting and ending phases. Transition
+cancellation cannot let a stale phase hide a reopened panel, and reduced-motion
+preference closes it synchronously. The public API remains the compact,
+model-owned single-disclosure contract.
+
 ## Base UI parity scope
 
 Behavioral parity applies to LUI components that overlap Base UI: Accordion,

@@ -1880,3 +1880,167 @@ test("Tabs use Base UI keyboard, orientation, RTL, and roving-focus semantics", 
   await browser("press", "ArrowUp")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Overview")
 })
+
+test("Accordion keeps a linked retained panel through controlled motion", async () => {
+  await openGalleryPage("Accordion")
+
+  assert.deepEqual(
+    await state(`(() => {
+      const root = document.querySelector('.lui-accordion')
+      const trigger = root?.querySelector('.lui-accordion-summary')
+      const panel = root?.querySelector('.lui-accordion-content')
+      window.__luiAccordionPanel = panel
+      window.__luiAccordionStartingObserved = false
+      window.__luiAccordionEndingObserved = false
+      new MutationObserver(() => {
+        if (panel?.hasAttribute('data-starting-style')) {
+          window.__luiAccordionStartingObserved = true
+        }
+        if (panel?.hasAttribute('data-ending-style')) {
+          window.__luiAccordionEndingObserved = true
+        }
+      }).observe(panel, { attributes: true })
+      return {
+        rootTag: root?.tagName,
+        triggerTag: trigger?.tagName,
+        triggerType: trigger?.getAttribute('type'),
+        expanded: trigger?.getAttribute('aria-expanded'),
+        controlsPanel: trigger?.getAttribute('aria-controls') === panel?.id,
+        panelNamed: Boolean(panel?.id),
+        panelRole: panel?.getAttribute('role'),
+        panelLabelled: panel?.getAttribute('aria-labelledby') === trigger?.id,
+        triggerNamed: Boolean(trigger?.id),
+        hidden: panel?.hidden,
+        retainedText: panel?.textContent.trim(),
+      }
+    })()`),
+    {
+      rootTag: "DIV",
+      triggerTag: "BUTTON",
+      triggerType: "button",
+      expanded: "false",
+      controlsPanel: true,
+      panelNamed: true,
+      panelRole: "region",
+      panelLabelled: true,
+      triggerNamed: true,
+      hidden: true,
+      retainedText:
+        "Yes. The native disclosure hides this content while LUI preserves its node identity.",
+    },
+  )
+
+  await evaluate(`document.querySelector('.lui-accordion-summary')?.focus()`)
+  await browser("press", "Enter")
+  await browser("wait", "30")
+  assert.deepEqual(
+    await state(`(() => {
+      const root = document.querySelector('.lui-accordion')
+      const trigger = root?.querySelector('.lui-accordion-summary')
+      const panel = root?.querySelector('.lui-accordion-content')
+      return {
+        expanded: trigger?.getAttribute('aria-expanded'),
+        open: root?.hasAttribute('data-open'),
+        panelOpen: panel?.hasAttribute('data-open'),
+        hidden: panel?.hidden,
+        samePanel: panel === window.__luiAccordionPanel,
+        startingObserved: window.__luiAccordionStartingObserved,
+        measuredHeight: (() => {
+          const value = panel?.style.getPropertyValue('--lui-accordion-panel-height') ?? ''
+          return value === 'auto' || (value.endsWith('px') && Number.parseFloat(value) > 0)
+        })(),
+      }
+    })()`),
+    {
+      expanded: "true",
+      open: true,
+      panelOpen: true,
+      hidden: false,
+      samePanel: true,
+      startingObserved: true,
+      measuredHeight: true,
+    },
+  )
+
+  await browser("press", "Escape")
+  assert.equal(
+    await state(`document.querySelector('.lui-accordion-summary')?.getAttribute('aria-expanded')`),
+    "true",
+  )
+
+  await browser("press", "Space")
+  assert.deepEqual(
+    await state(`(() => {
+      const panel = document.querySelector('.lui-accordion-content')
+      return {
+        expanded: document.querySelector('.lui-accordion-summary')
+          ?.getAttribute('aria-expanded'),
+        ending: panel?.hasAttribute('data-ending-style'),
+        endingObserved: window.__luiAccordionEndingObserved,
+        hidden: panel?.hidden,
+      }
+    })()`),
+    { expanded: "false", ending: true, endingObserved: true, hidden: false },
+  )
+  await evaluate(`document.querySelector('.lui-accordion-content')?.dispatchEvent(
+    new TransitionEvent('transitionend', {
+      bubbles: true,
+      propertyName: 'height',
+    }),
+  )`)
+  assert.deepEqual(
+    await state(`(() => {
+      const panel = document.querySelector('.lui-accordion-content')
+      return {
+        ending: panel?.hasAttribute('data-ending-style'),
+        hidden: panel?.hidden,
+        samePanel: panel === window.__luiAccordionPanel,
+      }
+    })()`),
+    { ending: false, hidden: true, samePanel: true },
+  )
+
+  await evaluate(`document.querySelector('.lui-accordion-summary')?.click()`)
+  await browser("wait", "30")
+  await evaluate(`document.querySelector('.lui-accordion-summary')?.click()`)
+  assert.equal(
+    await state(`document.querySelector('.lui-accordion-content')?.hasAttribute('data-ending-style')`),
+    true,
+  )
+  await evaluate(`document.querySelector('.lui-accordion-summary')?.click()`)
+  await evaluate(`document.querySelector('.lui-accordion-content')?.dispatchEvent(
+    new TransitionEvent('transitioncancel', {
+      bubbles: true,
+      propertyName: 'height',
+    }),
+  )`)
+  assert.deepEqual(
+    await state(`(() => {
+      const panel = document.querySelector('.lui-accordion-content')
+      return {
+        expanded: document.querySelector('.lui-accordion-summary')
+          ?.getAttribute('aria-expanded'),
+        ending: panel?.hasAttribute('data-ending-style'),
+        hidden: panel?.hidden,
+        samePanel: panel === window.__luiAccordionPanel,
+      }
+    })()`),
+    { expanded: "true", ending: false, hidden: false, samePanel: true },
+  )
+
+  await browser("set", "media", "light", "reduced-motion")
+  await browser("press", "Space")
+  assert.deepEqual(
+    await state(`(() => {
+      const panel = document.querySelector('.lui-accordion-content')
+      return {
+        expanded: document.querySelector('.lui-accordion-summary')
+          ?.getAttribute('aria-expanded'),
+        ending: panel?.hasAttribute('data-ending-style'),
+        hidden: panel?.hidden,
+      }
+    })()`),
+    { expanded: "false", ending: false, hidden: true },
+  )
+  await browser("set", "media", "light")
+})

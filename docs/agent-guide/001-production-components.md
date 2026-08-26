@@ -1087,13 +1087,16 @@ control uses its native intrinsic size. Accordion does not introduce item,
 template, group, animation, or multi-selection APIs: a group is ordinary
 `column` composition and one-open-at-a-time behavior belongs in the model.
 
-Each backend keeps native disclosure semantics and controlled state. Web uses
-`details` and `summary`; summary activation emits one `ToggleChanged` event and
-the model's subsequent `selected` patch controls `open`. SwiftUI uses
-`DisclosureGroup` with a model-backed binding. Flutter uses `ExpansionTile`
-with model-owned expansion and a stable retained key. Property patches update
-the same native node and never remount its child models. Collapsing hides
-content visually but does not remove it from LUI's retained tree.
+Each backend keeps native disclosure semantics and controlled state. Web uses a
+real button trigger linked to a retained `region` panel. Activation emits one
+`ToggleChanged` event and the model's subsequent `selected` patch controls the
+open state. The panel measures its content and uses the Base UI 150 ms
+height-transition contract for opening and closing; reduced motion settles
+synchronously. SwiftUI uses `DisclosureGroup` with a model-backed binding.
+Flutter uses `ExpansionTile` with model-owned expansion and a stable retained
+key. Property patches update the same native node and never remount its child
+models. Collapsing hides content visually but does not remove it from LUI's
+retained tree.
 
 ### 7. Media and data display
 

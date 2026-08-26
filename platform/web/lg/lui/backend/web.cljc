@@ -402,15 +402,17 @@
 (defn- create-accordion-node [renderer]
   (let [document (:web-document renderer)]
     (element
-     document "details" "lui-accordion" {}
+     document "div" "lui-accordion" {"data-closed" ""}
      [(element
-       document "summary" "lui-accordion-summary"
-       {"aria-expanded" "false"}
+       document "button" "lui-accordion-summary"
+       {"type" "button" "aria-expanded" "false"}
        [(element document "span" "lui-accordion-label" {} [])
         (element
          document "span" "lui-accordion-chevron lui-icon"
          {"aria-hidden" "true" "data-name" "chevron-down"} [])])
-      (element document "div" "lui-accordion-content" {} [])])))
+      (element
+       document "div" "lui-accordion-content"
+       {"role" "region" "data-closed" "" "hidden" ""} [])])))
 
 (defn- create-simple-node [renderer kind]
   (let [tag
@@ -596,6 +598,26 @@
 
 (defn- node-dom-id [node]
   (str "lui-node-" node))
+
+(defn- accordion-trigger-node [dom-node]
+  (child-element dom-node 0))
+
+(defn- accordion-panel-node [dom-node]
+  (child-element dom-node 1))
+
+(defn- accordion-label-node [dom-node]
+  (child-element (accordion-trigger-node dom-node) 0))
+
+(defn- initialize-accordion-semantics! [node dom-node]
+  (let [trigger (accordion-trigger-node dom-node)
+        panel (accordion-panel-node dom-node)
+        trigger-id (str (node-dom-id node) "-trigger")
+        panel-id (str (node-dom-id node) "-panel")]
+    (Webapi.Dom.Element.setAttribute "id" trigger-id trigger)
+    (Webapi.Dom.Element.setAttribute "id" panel-id panel)
+    (Webapi.Dom.Element.setAttribute "aria-controls" panel-id trigger)
+    (Webapi.Dom.Element.setAttribute "aria-labelledby" trigger-id panel)
+    (Stdlib.ignore true)))
 
 (defn- submit-on-enter? [renderer node]
   (= (retained/property (:web-store renderer) node SubmitOnEnter)
@@ -1043,7 +1065,7 @@
           ((deref (:web-event-handler renderer))
            (proto/ToggleChanged node (not selected))))))
      (Stdlib.ignore true))
-   (child-element dom-node 0)))
+   (accordion-trigger-node dom-node)))
 
 (defn- event-capability? [renderer node property]
   (= (retained/property (:web-store renderer) node property)
@@ -2697,7 +2719,8 @@
      (Webapi.Dom.Event.target event)))
    target))
 
-(defn- after-transition! [document target fallback-duration complete!]
+(defn- after-transition!
+  [document target fallback-duration finish-on-cancel complete!]
   (if (prefers-reduced-motion? document)
     (do
       (complete!)
@@ -2719,15 +2742,17 @@
                 None (Stdlib.ignore true))
               (Webapi.Dom.Element.removeEventListener
                "transitionend" transition-handler target)
-              (Webapi.Dom.Element.removeEventListener
-               "transitioncancel" transition-handler target)
+              (when finish-on-cancel
+                (Webapi.Dom.Element.removeEventListener
+                 "transitioncancel" transition-handler target))
               (complete!))
             true)]
       (reset! finish-ref finish!)
       (Webapi.Dom.Element.addEventListener
        "transitionend" transition-handler target)
-      (Webapi.Dom.Element.addEventListener
-       "transitioncancel" transition-handler target)
+      (when finish-on-cancel
+        (Webapi.Dom.Element.addEventListener
+         "transitioncancel" transition-handler target))
       (reset! timer
               (Some
                (Js.Global.setTimeout
@@ -2738,7 +2763,7 @@
 
 (defn- finish-popup-close-after-transition! [document popup duration]
   (after-transition!
-   document popup duration
+   document popup duration true
    (fn []
      (when (= (Webapi.Dom.Element.getAttribute
                "data-ending-style" popup)
@@ -3239,6 +3264,73 @@
          (Webapi.Dom.Element.unsafeAsHtmlElement dom-node))]
     (Webapi.Dom.CssStyleDeclaration.setProperty
      property value "" element-style)))
+
+(defn- set-accordion-open! [renderer dom-node open]
+  (let [trigger (accordion-trigger-node dom-node)
+        panel (accordion-panel-node dom-node)]
+    (Webapi.Dom.Element.setAttribute
+     "aria-expanded" (if open "true" "false") trigger)
+    (if open
+      (do
+        (Webapi.Dom.Element.removeAttribute "data-closed" dom-node)
+        (Webapi.Dom.Element.setAttribute "data-open" "" dom-node)
+        (Webapi.Dom.Element.removeAttribute "hidden" panel)
+        (Webapi.Dom.Element.removeAttribute "data-closed" panel)
+        (Webapi.Dom.Element.removeAttribute "data-ending-style" panel)
+        (Webapi.Dom.Element.setAttribute "data-open" "" panel)
+        (set-style!
+         panel "--lui-accordion-panel-height"
+         (str (Webapi.Dom.Element.scrollHeight panel) "px"))
+        (Webapi.Dom.Element.setAttribute "data-starting-style" "" panel)
+        (Webapi.requestAnimationFrame
+         (fn [_time]
+           (when (Webapi.Dom.Element.hasAttribute "data-open" panel)
+             (Webapi.Dom.Element.removeAttribute
+              "data-starting-style" panel))
+           (Stdlib.ignore true)))
+        (if (prefers-reduced-motion? (:web-document renderer))
+          (set-style! panel "--lui-accordion-panel-height" "auto")
+          (Stdlib.ignore
+           (Js.Global.setTimeout
+            190
+            :f
+            (fn []
+              (when (Webapi.Dom.Element.hasAttribute "data-open" panel)
+                (set-style! panel "--lui-accordion-panel-height" "auto"))
+              (Stdlib.ignore true))))))
+      (do
+        (Webapi.Dom.Element.removeAttribute "data-open" dom-node)
+        (Webapi.Dom.Element.setAttribute "data-closed" "" dom-node)
+        (when (not (Webapi.Dom.Element.hasAttribute "hidden" panel))
+          (set-style!
+           panel "--lui-accordion-panel-height"
+           (str (Webapi.Dom.Element.scrollHeight panel) "px"))
+          (Stdlib.ignore
+           (Webapi.Dom.HtmlElement.offsetHeight
+            (Webapi.Dom.Element.unsafeAsHtmlElement panel)))
+          (Webapi.Dom.Element.removeAttribute "data-open" panel)
+          (Webapi.Dom.Element.removeAttribute "data-starting-style" panel)
+          (Webapi.Dom.Element.setAttribute "data-closed" "" panel)
+          (let [complete!
+                (fn []
+                  (when (Webapi.Dom.Element.hasAttribute
+                         "data-ending-style" panel)
+                    (Webapi.Dom.Element.removeAttribute
+                     "data-ending-style" panel)
+                    (Webapi.Dom.Element.setAttribute "hidden" "" panel))
+                  true)]
+            (if (prefers-reduced-motion? (:web-document renderer))
+              (do
+                (Webapi.Dom.Element.setAttribute
+                 "data-ending-style" "" panel)
+                (Stdlib.ignore (complete!)))
+              (do
+                (Stdlib.ignore
+                 (after-transition!
+                  (:web-document renderer) panel 190 false complete!))
+                (Webapi.Dom.Element.setAttribute
+                 "data-ending-style" "" panel)))))))
+    (Stdlib.ignore true)))
 
 (defn- split-base-fraction [value]
   (if (and (Float.is_finite value) (> value 0.0))
@@ -4026,7 +4118,7 @@
     (Webapi.Dom.Element.setTextContent (child-element dom-node 1) text)
     Accordion
     (Webapi.Dom.Element.setTextContent
-     (child-element (child-element dom-node 0) 0) text)
+     (accordion-label-node dom-node) text)
     Step
     (do
       (Webapi.Dom.Element.setTextContent (child-element dom-node 1) text)
@@ -4245,11 +4337,7 @@
 
     (tuple Selected (BoolValue selected))
     (if (= kind Accordion)
-      (do
-        (set-state-attribute! dom-node "open" selected)
-        (Webapi.Dom.Element.setAttribute
-         "aria-expanded" (if selected "true" "false")
-         (child-element dom-node 0)))
+      (set-accordion-open! renderer dom-node selected)
       (if (or (= kind TableRow) (= kind TimelineItem)
               (treeitem? renderer node))
         (do
@@ -4517,7 +4605,9 @@
         (if (= kind Bubble)
           (child-element dom-node 0)
           (if (or (= kind Accordion) (modal-surface? kind))
-            (child-element dom-node 1)
+            (if (= kind Accordion)
+              (accordion-panel-node dom-node)
+              (child-element dom-node 1))
             dom-node))))))
 
 (defn- retained-content-container [current dom-node]
@@ -5046,7 +5136,7 @@
         (if (= kind Sheet) surface (child-element layer 0))
         duration (if (= kind Sheet) 470 170)]
     (after-transition!
-     document transition-target duration
+     document transition-target duration true
      (fn []
        (when (Webapi.Dom.Element.contains
               (Webapi.Dom.Element.asNode layer) parent)
@@ -5061,7 +5151,7 @@
     (begin-popup-close! popup)
     (Webapi.Dom.Element.setAttribute "inert" "" popup)
     (after-transition!
-     document popup 130
+     document popup 130 true
      (fn []
        (when (Webapi.Dom.Element.contains
               (Webapi.Dom.Element.asNode positioner) parent)
@@ -5127,6 +5217,8 @@
     (CreateNode node kind)
     (let [created (dom-node renderer node)]
       (Webapi.Dom.Element.setAttribute "id" (node-dom-id node) created)
+      (when (= kind Accordion)
+        (initialize-accordion-semantics! node created))
       (attach-events! renderer node kind created))
 
     (CreateExtension node _identifier _fingerprint)

@@ -301,14 +301,16 @@ test("Toolbar composes existing controls with horizontal and vertical roving lay
   assert.match(css, /\.lui-toolbar:focus-within/)
 })
 
-test("Accordion styles the native details and summary disclosure", async () => {
+test("Accordion styles the Base UI controlled panel motion", async () => {
   const css = await readFile(outputUrl, "utf8")
 
   assert.match(css, /\.lui-accordion\{[^}]*border-bottom-width:1px/)
-  assert.match(css, /\.lui-accordion-summary\{[^}]*cursor:pointer/)
-  assert.match(css, /\.lui-accordion-summary::-webkit-details-marker\{[^}]*display:none/)
+  assert.match(css, /\.lui-accordion-summary\{[^}]*width:100%/)
   assert.match(css, /\.lui-accordion-chevron\{[^}]*transition-property:transform/)
-  assert.match(css, /\.lui-accordion\[open\] \.lui-accordion-chevron\{[^}]*rotate:180deg/)
+  assert.match(css, /\.lui-accordion\[data-open\] \.lui-accordion-chevron\{[^}]*rotate:180deg/)
+  assert.match(css, /\.lui-accordion-content\{[^}]*height:var\(--lui-accordion-panel-height,auto\)/)
+  assert.match(css, /\.lui-accordion-content\{[^}]*overflow:hidden/)
+  assert.match(css, /\.lui-accordion-content\[data-starting-style\],\.lui-accordion-content\[data-ending-style\]\{[^}]*height:0/)
 })
 
 test("the production stylesheet contains direct Vercel Native toggle controls", async () => {

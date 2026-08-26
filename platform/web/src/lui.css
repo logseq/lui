@@ -365,6 +365,7 @@ body {
     .lui-sheet,
     .lui-dropdown-menu,
     .lui-tooltip[data-anchor],
+    .lui-accordion-content,
     .lui-accordion-chevron {
       transition-duration: 0ms !important;
     }
@@ -429,23 +430,26 @@ body {
   }
 
   .lui-accordion-summary {
-    @apply flex cursor-pointer list-none items-center justify-between py-4 text-sm font-medium;
-  }
-
-  .lui-accordion-summary::-webkit-details-marker {
-    @apply hidden;
+    @apply flex w-full cursor-pointer items-center justify-between bg-transparent py-4 text-left text-sm font-medium outline-none;
   }
 
   .lui-accordion-chevron {
     @apply size-4 shrink-0 transition-transform duration-200;
   }
 
-  .lui-accordion[open] .lui-accordion-chevron {
+  .lui-accordion[data-open] .lui-accordion-chevron {
     @apply rotate-180;
   }
 
   .lui-accordion-content {
-    @apply pb-4 pt-0 text-sm;
+    @apply overflow-hidden pb-4 pt-0 text-sm;
+    height: var(--lui-accordion-panel-height, auto);
+    transition: height 150ms ease-out;
+  }
+
+  .lui-accordion-content[data-starting-style],
+  .lui-accordion-content[data-ending-style] {
+    height: 0;
   }
 
   .lui-stack > *,
