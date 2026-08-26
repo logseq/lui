@@ -92,6 +92,7 @@
             (web-media-surfaces (atom {}))
             (web-cleanups (atom {}))
             (web-modal-stack (atom []))
+            (web-modal-return-focus (atom None))
             (web-open-tooltip (atom None))
             (web-tooltip-warm (atom false))
             (web-open-context-menu (atom None))
@@ -1576,10 +1577,43 @@
         (sheet-scroll-blocks-swipe? parent boundary)
         false))))
 
+(defn- focus-element! [element]
+  (Webapi.Dom.HtmlElement.focus
+   (Webapi.Dom.Element.unsafeAsHtmlElement element)))
+
+(defn- document-body-focused? [renderer]
+  (let [document
+        (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))]
+    (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
+      (if-some [body (Webapi.Dom.HtmlDocument.body document)]
+        (Webapi.Dom.Element.isSameNode
+         (Webapi.Dom.Element.asNode body) focused)
+        false)
+      false)))
+
+(defn- restore-focus! [renderer focused]
+  (match focused
+    (Some element)
+    (do
+      (focus-element! element)
+      (Stdlib.ignore
+       (Js.Global.setTimeout
+        0
+        :f
+        (fn []
+          (when (document-body-focused? renderer)
+            (focus-element! element))
+          (Stdlib.ignore true)))))
+    None (Stdlib.ignore true)))
+
 (defn- attach-modal-events! [renderer node dom-node]
   (let [document (:web-document renderer)
         html-document (Webapi.Dom.Document.unsafeAsHtmlDocument document)
-        previous-focus (Webapi.Dom.HtmlDocument.activeElement html-document)
+        previous-focus
+        (if (document-body-focused? renderer)
+          (deref (:web-modal-return-focus renderer))
+          (Webapi.Dom.HtmlDocument.activeElement html-document))
+        _ (reset! (:web-modal-return-focus renderer) None)
         layer (modal-layer-node dom-node)
         backdrop (child-element layer 0)
         sheet?
@@ -1789,11 +1823,7 @@
          (Webapi.Dom.Element.removeEventListener
           "pointercancel" pointer-cancel! dom-node))
        (Webapi.Dom.Document.removeKeyDownEventListener key-handler document)
-       (match previous-focus
-         (Some element)
-         (Webapi.Dom.HtmlElement.focus
-          (Webapi.Dom.Element.unsafeAsHtmlElement element))
-         None (Stdlib.ignore true))
+       (restore-focus! renderer previous-focus)
        (Stdlib.ignore true)))
     (Stdlib.ignore true)))
 
@@ -1965,6 +1995,23 @@
   (not (= (retained/property (:web-store renderer) node Enabled)
           (Some (BoolValue false)))))
 
+(defn- record-modal-return-focus! [renderer element]
+  (reset! (:web-modal-return-focus renderer) (Some element))
+  (Stdlib.ignore
+   (Js.Global.setTimeout
+    0
+    :f
+    (fn []
+      (match (deref (:web-modal-return-focus renderer))
+        (Some current)
+        (when (Webapi.Dom.Element.isSameNode
+               (Webapi.Dom.Element.asNode current) element)
+          (Stdlib.ignore
+           (reset! (:web-modal-return-focus renderer) None)))
+        None (Stdlib.ignore true))
+      (Stdlib.ignore true))))
+  true)
+
 (defn- attach-button-events! [renderer node kind dom-node]
   (let [timer (atom None)
         suppress-click (atom false)
@@ -2003,6 +2050,7 @@
           true)
         dispatch-primary!
         (fn []
+          (record-modal-return-focus! renderer dom-node)
           (if (or (= kind ToggleButton) (= kind Toggle))
             (let [selected
                   (match (Webapi.Dom.Element.getAttribute
@@ -5450,35 +5498,6 @@
         (Some focused)
         None)
       None)))
-
-(defn- focus-element! [element]
-  (Webapi.Dom.HtmlElement.focus
-   (Webapi.Dom.Element.unsafeAsHtmlElement element)))
-
-(defn- document-body-focused? [renderer]
-  (let [document
-        (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))]
-    (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
-      (if-some [body (Webapi.Dom.HtmlDocument.body document)]
-        (Webapi.Dom.Element.isSameNode
-         (Webapi.Dom.Element.asNode body) focused)
-        false)
-      false)))
-
-(defn- restore-focus! [renderer focused]
-  (match focused
-    (Some element)
-    (do
-      (focus-element! element)
-      (Stdlib.ignore
-       (Js.Global.setTimeout
-        0
-        :f
-        (fn []
-          (when (document-body-focused? renderer)
-            (focus-element! element))
-          (Stdlib.ignore true)))))
-    None (Stdlib.ignore true)))
 
 (defn- refresh-structured-children! [renderer parent]
   (if-some [current (retained/node (:web-store renderer) parent)]

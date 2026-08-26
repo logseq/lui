@@ -36,6 +36,7 @@
   (web-media-surfaces :ref<map<int;web-image-resource>>)
   (web-cleanups :ref<map<int;fn<unit>>>)
   (web-modal-stack :ref<vector<int>>)
+  (web-modal-return-focus :ref<option<web-node>>)
   (web-open-tooltip :ref<option<int>>)
   (web-tooltip-warm :ref<bool>)
   (web-open-context-menu :ref<option<int>>)

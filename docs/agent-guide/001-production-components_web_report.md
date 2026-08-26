@@ -198,8 +198,17 @@ motion cancellation, retained identity, IME composition, and every compact
 Gallery page. A pinned Playwright Firefox gate separately renders all 65 pages
 at the mobile viewport and exercises the highest-risk retained interactions:
 Dialog portal/focus restoration, Tree keyboard navigation, Dropdown typeahead,
-and Chinese composition in a retained Sheet input. Playwright and its browser
-runtime are development-only and do not enter the release bundle.
+and Chinese composition in a retained Sheet input. The identical contract also
+runs on pinned Playwright WebKit 26.5. Playwright and its browser runtimes are
+development-only and do not enter the release bundle.
+
+WebKit does not focus a native button for ordinary pointer activation. The Web
+backend therefore records a Button as a potential modal return target only for
+the current event-loop turn. A synchronously mounted controlled Dialog or Sheet
+consumes that target when `document.activeElement` is still `body`; otherwise
+the candidate expires without changing normal WebKit button focus behavior.
+Modal cleanup uses the shared guarded focus-restoration path, so an unrelated
+focus change is never overwritten by a delayed retry.
 
 Safari remains an explicit qualification gap. The system Safari driver on the
 current macOS host requires the user-controlled Allow Remote Automation setting;

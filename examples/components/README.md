@@ -24,11 +24,12 @@ compatibility gate with:
 ```sh
 make test-web-e2e
 make test-web-firefox-e2e
+make test-web-webkit-e2e
 ```
 
-The Firefox target installs its pinned Playwright browser into the user cache
-on first use; neither Playwright nor the browser is included in the release
-bundle.
+The Firefox and WebKit targets install their pinned Playwright browsers into
+the user cache on first use; neither Playwright nor either browser is included
+in the release bundle.
 
 ## Flutter desktop
 
@@ -164,6 +165,9 @@ The following production-boundary checks passed on 2026-08-26:
 - `make test-web-firefox-e2e`: all 65 pages at the compact viewport plus
   Firefox-native Dialog portal/focus, Tree keyboard, Dropdown typeahead, and
   Chinese composition checks;
+- `make test-web-webkit-e2e`: the same compatibility contract on WebKit 26.5,
+  including explicit modal return-focus behavior for WebKit's non-focusing
+  pointer activation of native buttons;
 - `make test-performance`: all six native retained-runtime budgets, including
   10,000 sustained local Signal mutations with constant two-node pressure and
   one property patch per mutation.
@@ -173,10 +177,10 @@ The resulting debug artifacts were 9,412 KiB for the iOS Simulator app,
 signed Android release AAB was 19,344 KiB. These numbers qualify repeatability
 and packaging content; they are not release size budgets.
 
-`make build-web-release` reports 424,286 bytes raw, 97,823 bytes gzip, and
-81,036 bytes Brotli for the minified application JavaScript. The complete
-deploy directory, including CSS, icons, HTML, and source map, is 515,383 bytes
-raw, 113,194 bytes gzip, and 94,070 bytes Brotli. Playwright is development-only
+`make build-web-release` reports 424,645 bytes raw, 97,849 bytes gzip, and
+81,066 bytes Brotli for the minified application JavaScript. The complete
+deploy directory, including CSS, icons, HTML, and source map, is 515,742 bytes
+raw, 113,218 bytes gzip, and 94,112 bytes Brotli. Playwright is development-only
 and does not change these artifacts.
 
 ## Known limitations
@@ -193,5 +197,6 @@ and does not change these artifacts.
 - SwiftUI is the only Apple renderer. UIKit applications can host the public
   `LUISwiftUIRoot` with `UIHostingController`, but LUI intentionally does not
   maintain a second UIKit component backend or a separate UIKit Gallery.
-- Safari interaction qualification remains outstanding. The repository has a
-  complete Chromium suite and a focused Firefox production compatibility gate.
+- System Safari interaction qualification remains outstanding. The repository
+  has a complete Chromium suite plus focused Firefox and WebKit production
+  compatibility gates.

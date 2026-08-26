@@ -2,9 +2,17 @@ import assert from "node:assert/strict"
 import { once } from "node:events"
 import test from "node:test"
 
-import { firefox } from "playwright"
+import { firefox, webkit } from "playwright"
 
 import { createStaticServer } from "../../../tooling/serve_web.mjs"
+
+const browserName = process.env.LUI_WEB_BROWSER ?? "firefox"
+const browserType = { firefox, webkit }[browserName]
+const browserLabel = { firefox: "Firefox", webkit: "WebKit" }[browserName]
+
+if (!browserType) {
+  throw new Error(`unsupported LUI_WEB_BROWSER: ${browserName}`)
+}
 
 async function openGalleryPage(page, name) {
   await page.evaluate((pageName) => {
@@ -14,17 +22,20 @@ async function openGalleryPage(page, name) {
   }, name)
 }
 
-test("Firefox preserves the Gallery's retained interaction contract", async () => {
+test(`${browserLabel} preserves the Gallery's retained interaction contract`, async () => {
   const server = createStaticServer(new URL("../../../", import.meta.url).pathname)
   server.listen(0, "127.0.0.1")
   await once(server, "listening")
 
-  const browser = await firefox.launch()
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
+  let browser
+  let page
   const pageErrors = []
-  page.on("pageerror", (error) => pageErrors.push(error.message))
 
   try {
+    browser = await browserType.launch()
+    page = await browser.newPage({ viewport: { width: 390, height: 844 } })
+    page.on("pageerror", (error) => pageErrors.push(error.message))
+
     const origin = `http://127.0.0.1:${server.address().port}`
     await page.goto(`${origin}/examples/components/web/index.html`)
 
@@ -59,6 +70,10 @@ test("Firefox preserves the Gallery's retained interaction contract", async () =
     assert.deepEqual(mobileAudit.failures, [])
 
     await openGalleryPage(page, "Dialog")
+    await page.evaluate(() => {
+      window.__luiCompatDialogTrigger = [...document.querySelectorAll("button")]
+        .find((button) => button.textContent.trim() === "Open dialog")
+    })
     await page.getByRole("button", { name: "Open dialog", exact: true }).click()
     const dialogState = await page.evaluate(() => {
       const layer = document.querySelector(".lui-modal-layer[data-open]")
@@ -78,9 +93,21 @@ test("Firefox preserves the Gallery's retained interaction contract", async () =
     })
     await page.keyboard.press("Escape")
     await page.waitForFunction(() => !document.querySelector(".lui-modal-layer"))
-    assert.equal(
-      await page.evaluate(() => document.activeElement?.textContent?.trim()),
-      "Open dialog",
+    assert.deepEqual(
+      await page.evaluate(() => ({
+        tag: document.activeElement?.tagName,
+        text: document.activeElement?.textContent?.trim(),
+        sameTrigger: document.activeElement === window.__luiCompatDialogTrigger,
+        triggerConnected: window.__luiCompatDialogTrigger?.isConnected,
+        hostInert: document.querySelector("#app")?.hasAttribute("inert"),
+      })),
+      {
+        tag: "BUTTON",
+        text: "Open dialog",
+        sameTrigger: true,
+        triggerConnected: true,
+        hostInert: false,
+      },
     )
 
     await openGalleryPage(page, "Tree")
@@ -148,8 +175,8 @@ test("Firefox preserves the Gallery's retained interaction contract", async () =
     })
     assert.deepEqual(pageErrors, [])
   } finally {
-    await page.close()
-    await browser.close()
+    await page?.close()
+    await browser?.close()
     server.close()
     await once(server, "close")
   }
