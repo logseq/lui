@@ -108,8 +108,8 @@ adaptive Material Gallery with Maestro, and writes the final screenshot to
 
 ## Qualification snapshot
 
-The following production-boundary checks passed on 2026-08-26 at commit
-`2cdf8ad`:
+The following production-boundary checks passed on 2026-08-26 through commit
+`a366a45`:
 
 - `swift test --package-path platform/apple`: 62 retained SwiftUI backend tests;
 - `make test-components-ios-e2e`: signed app build plus the complete Maestro
@@ -123,7 +123,10 @@ The following production-boundary checks passed on 2026-08-26 at commit
   complete Maestro interaction flow on an Android 16 emulator;
 - `npm --prefix platform/web run check`: 37 production CSS and backend-boundary
   tests, followed by the focused Toolbar and all-65-page compact viewport E2E
-  pass.
+  pass;
+- `make test-performance`: all six native retained-runtime budgets, including
+  10,000 sustained local Signal mutations with constant two-node pressure and
+  one property patch per mutation.
 
 The resulting debug artifacts were 9,412 KiB for the iOS Simulator app,
 110,528 KiB for the Flutter macOS app, and 98,368 KiB for the Android APK.

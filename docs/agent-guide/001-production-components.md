@@ -1147,12 +1147,12 @@ macOS 26.4, arm64, and OCaml 5.5.0:
 
 | Workload | Result | Budget |
 | --- | ---: | ---: |
-| local text patch in 1,000 nodes | 0.174 ms | 10 ms |
-| 60 typing patches in 10,000 nodes | 68.136 ms | 250 ms |
-| keyed 1,000-item reorder | 0.878 ms | 25 ms |
-| keyed 1,000-item middle edit | 0.910 ms | 25 ms |
+| local text patch in 1,000 nodes | 0.398 ms | 10 ms |
+| 60 typing patches in 10,000 nodes | 107.675 ms | 250 ms |
+| keyed 1,000-item reorder | 0.997 ms | 25 ms |
+| keyed 1,000-item middle edit | 1.103 ms | 25 ms |
 | scroll background patch | 0.002 ms | 10 ms |
-| 10,000 sustained local mutations | 13.945 ms | 1,000 ms |
+| 10,000 sustained local mutations | 20.790 ms | 1,000 ms |
 
 ## Definition of done
 
