@@ -190,6 +190,21 @@ controls. It supplies the toolbar role, orientation-aware roving focus, groups,
 and separators; component-specific toolbar button and input node kinds are not
 required.
 
+## Browser qualification
+
+Chromium remains the complete behavioral gate: 37 browser tests cover portals,
+focus, keyboard and typeahead, pointer and touch gestures, collision handling,
+motion cancellation, retained identity, IME composition, and every compact
+Gallery page. A pinned Playwright Firefox gate separately renders all 65 pages
+at the mobile viewport and exercises the highest-risk retained interactions:
+Dialog portal/focus restoration, Tree keyboard navigation, Dropdown typeahead,
+and Chinese composition in a retained Sheet input. Playwright and its browser
+runtime are development-only and do not enter the release bundle.
+
+Safari remains an explicit qualification gap. The system Safari driver on the
+current macOS host requires the user-controlled Allow Remote Automation setting;
+LUI does not weaken or bypass that OS boundary.
+
 ## Historical measurements
 
 The rejected provider experiment measured a minified common set of Button,

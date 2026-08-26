@@ -3,7 +3,7 @@
 	run-components-flutter-macos build-components-ios-simulator \
 	build-components-mobile test-components-ios-e2e build-components-android build-components-android-release \
 	qualify-components-android-release test-components-android-e2e build-web build-web-css \
-	test-web-e2e build-web-release serve-web
+	test-web-e2e test-web-firefox-e2e build-web-release serve-web
 
 test: test-schema test-lg test-apple test-flutter build-web
 
@@ -87,6 +87,10 @@ build-web: build-web-css
 
 test-web-e2e: build-web
 	node --test platform/web/test/overlay.e2e.mjs
+
+test-web-firefox-e2e: build-web
+	npm --prefix platform/web exec playwright install firefox
+	node --test platform/web/test/firefox.e2e.mjs
 
 build-web-release: build-web
 	node tooling/build_web_release.mjs

@@ -9,6 +9,7 @@
   "devDependencies": {
     "@tailwindcss/cli": "4.1.4",
     "esbuild": "0.28.2",
+    "playwright": "1.62.1",
     "tailwindcss": "4.1.4"
   }
 }

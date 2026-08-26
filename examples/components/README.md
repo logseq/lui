@@ -18,6 +18,18 @@ The Node host listens on all network interfaces. Open
 <http://127.0.0.1:8765/examples/components/web/index.html> locally, or replace
 `127.0.0.1` with the computer's LAN address when opening it from a phone.
 
+Run the complete Chromium interaction suite and the focused Firefox production
+compatibility gate with:
+
+```sh
+make test-web-e2e
+make test-web-firefox-e2e
+```
+
+The Firefox target installs its pinned Playwright browser into the user cache
+on first use; neither Playwright nor the browser is included in the release
+bundle.
+
 ## Flutter desktop
 
 Build the signed macOS app with the native LG library embedded:
@@ -146,8 +158,12 @@ The following production-boundary checks passed on 2026-08-26:
   signed with an isolated 3072-bit qualification certificate, with signature
   integrity and the packaged `liblui_components.so` verified;
 - `npm --prefix platform/web run check`: 37 production CSS and backend-boundary
-  tests, followed by the focused Toolbar and all-65-page compact viewport E2E
-  pass;
+  tests;
+- `make test-web-e2e`: 37 Chromium interaction tests over the complete retained
+  popup, keyboard, pointer, touch, motion, IME, and mobile Gallery contract;
+- `make test-web-firefox-e2e`: all 65 pages at the compact viewport plus
+  Firefox-native Dialog portal/focus, Tree keyboard, Dropdown typeahead, and
+  Chinese composition checks;
 - `make test-performance`: all six native retained-runtime budgets, including
   10,000 sustained local Signal mutations with constant two-node pressure and
   one property patch per mutation.
@@ -156,6 +172,12 @@ The resulting debug artifacts were 9,412 KiB for the iOS Simulator app,
 110,528 KiB for the Flutter macOS app, and 98,368 KiB for the Android APK. The
 signed Android release AAB was 19,344 KiB. These numbers qualify repeatability
 and packaging content; they are not release size budgets.
+
+`make build-web-release` reports 424,286 bytes raw, 97,823 bytes gzip, and
+81,036 bytes Brotli for the minified application JavaScript. The complete
+deploy directory, including CSS, icons, HTML, and source map, is 515,383 bytes
+raw, 113,194 bytes gzip, and 94,070 bytes Brotli. Playwright is development-only
+and does not change these artifacts.
 
 ## Known limitations
 
@@ -171,5 +193,5 @@ and packaging content; they are not release size budgets.
 - SwiftUI is the only Apple renderer. UIKit applications can host the public
   `LUISwiftUIRoot` with `UIHostingController`, but LUI intentionally does not
   maintain a second UIKit component backend or a separate UIKit Gallery.
-- Web interaction E2E currently runs through Chromium. Cross-browser Safari and
-  Firefox qualification remains outstanding.
+- Safari interaction qualification remains outstanding. The repository has a
+  complete Chromium suite and a focused Firefox production compatibility gate.
