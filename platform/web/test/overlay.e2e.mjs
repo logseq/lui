@@ -1602,6 +1602,7 @@ test("Toolbar exposes orientation-aware roving focus over composed controls", as
         controls: [
           { label: "Link", tabIndex: 0, disabled: false },
           { label: "Image", tabIndex: -1, disabled: false },
+          { label: "Locked picker", tabIndex: -1, disabled: false },
         ],
       },
     ],
@@ -1637,6 +1638,83 @@ test("Toolbar exposes orientation-aware roving focus over composed controls", as
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Image")
   await browser("press", "ArrowUp")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Link")
+})
+
+test("Toolbar keeps disabled native controls focusable without activating them", async () => {
+  await openGalleryPage("Toolbar")
+  const toolbar = '[aria-label="Insert"]'
+
+  assert.deepEqual(
+    await state(`(() => {
+      const root = document.querySelector(${JSON.stringify(toolbar)})
+      return [...root.querySelectorAll('button, input')].map((control) => ({
+        className: control.className,
+        disabled: control.disabled,
+        ariaDisabled: control.getAttribute('aria-disabled'),
+        dataDisabled: control.hasAttribute('data-disabled'),
+        tabIndex: control.tabIndex,
+      }))
+    })()`),
+    [
+      { className: "lui-button", disabled: false, ariaDisabled: null, dataDisabled: false, tabIndex: 0 },
+      { className: "lui-button", disabled: false, ariaDisabled: null, dataDisabled: false, tabIndex: -1 },
+      { className: "lui-checkbox-control", disabled: false, ariaDisabled: "true", dataDisabled: true, tabIndex: -1 },
+      { className: "lui-select", disabled: false, ariaDisabled: "true", dataDisabled: true, tabIndex: -1 },
+      { className: "lui-input", disabled: false, ariaDisabled: "true", dataDisabled: true, tabIndex: -1 },
+    ],
+  )
+
+  await evaluate(`document.querySelector(${JSON.stringify(toolbar)}).querySelector('button').focus()`)
+  for (const selector of [
+    ".lui-button:nth-of-type(2)",
+    ".lui-checkbox-control",
+    ".lui-select",
+    ".lui-input",
+  ]) {
+    await browser("press", "ArrowDown")
+    assert.equal(
+      await state(`document.activeElement === document.querySelector(${JSON.stringify(toolbar)}).querySelector(${JSON.stringify(selector)})`),
+      true,
+    )
+  }
+
+  await evaluate(`document.querySelector(${JSON.stringify(toolbar)}).querySelector('.lui-checkbox-control').focus()`)
+  await browser("press", "Space")
+  assert.equal(await state(`document.querySelector(${JSON.stringify(toolbar)}).querySelector('.lui-checkbox-control').checked`), false)
+
+  await evaluate(`document.querySelector(${JSON.stringify(toolbar)}).querySelector('.lui-input').focus()`)
+  const lockedValue = await state(`document.querySelector(${JSON.stringify(toolbar)}).querySelector('.lui-input').value`)
+  await browser("press", "x")
+  assert.equal(await state(`document.querySelector(${JSON.stringify(toolbar)}).querySelector('.lui-input').value`), lockedValue)
+})
+
+test("Select placeholder preserves its retained value child through Signal patches", async () => {
+  await openGalleryPage("Toolbar")
+  const toolbar = '[aria-label="Insert"]'
+
+  assert.deepEqual(
+    await state(`(() => {
+      const select = document.querySelector(${JSON.stringify(toolbar)}).querySelector('.lui-select')
+      const value = select.querySelector('.lui-select-value')
+      return { valueChild: Boolean(value), text: value?.textContent }
+    })()`),
+    { valueChild: true, text: "Locked picker" },
+  )
+
+  assert.deepEqual(
+    await state(`(() => {
+      const formatting = document.querySelector('[aria-label="Formatting"] input')
+      const select = document.querySelector(${JSON.stringify(toolbar)}).querySelector('.lui-select')
+      const value = select.querySelector('.lui-select-value')
+      formatting.value = 'patched'
+      formatting.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+      return {
+        sameValueChild: select.querySelector('.lui-select-value') === value,
+        text: value?.textContent,
+      }
+    })()`),
+    { sameValueChild: true, text: "patched" },
+  )
 })
 
 test("Toolbar flattens nested control groups into one roving sequence", async () => {

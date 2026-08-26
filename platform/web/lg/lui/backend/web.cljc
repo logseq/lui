@@ -825,19 +825,27 @@
           (Webapi.Dom.HtmlInputElement.value (text-control-node dom-node)))
         emit!
         (fn [value]
-          (when
-           (and
-            (= kind Combobox)
-            (= (retained/property
-                (:web-store renderer) node PressEnabled)
-               (Some (BoolValue true)))
-            (= (picker-dropdown renderer node) None))
+          (when (enabled-node? renderer node)
+            (when
+             (and
+              (= kind Combobox)
+              (= (retained/property
+                  (:web-store renderer) node PressEnabled)
+                 (Some (BoolValue true)))
+              (= (picker-dropdown renderer node) None))
+              (Stdlib.ignore
+               ((deref (:web-event-handler renderer)) (proto/Press node))))
             (Stdlib.ignore
-             ((deref (:web-event-handler renderer)) (proto/Press node))))
-          (Stdlib.ignore
-           ((deref (:web-event-handler renderer))
-            (proto/TextChanged node value)))
+             ((deref (:web-event-handler renderer))
+              (proto/TextChanged node value))))
           true)]
+    (Webapi.Dom.Element.addEventListener
+     "beforeinput"
+     (fn [event]
+       (when-not (enabled-node? renderer node)
+         (Webapi.Dom.Event.preventDefault event))
+       (Stdlib.ignore true))
+     dom-node)
     (Webapi.Dom.Element.addEventListener
      "compositionstart"
      (fn [_event]
@@ -870,7 +878,9 @@
      dom-node)
     (Webapi.Dom.Element.addKeyDownEventListener
      (fn [event]
-       (let [composing?
+       (when
+        (enabled-node? renderer node)
+        (let [composing?
              (or (deref composing)
                  (Webapi.Dom.KeyboardEvent.isComposing event))
              enter (= "Enter" (Webapi.Dom.KeyboardEvent.key event))
@@ -945,39 +955,60 @@
                      (proto/Dismiss menu))))
                  None (Stdlib.ignore true))
 
-               :else (Stdlib.ignore true))))
-         (Stdlib.ignore true)))
+                 :else (Stdlib.ignore true))))
+          (Stdlib.ignore true)))
+       (Stdlib.ignore true))
      dom-node)))
 
 (defn- attach-toggle-event! [renderer node _kind dom-node]
-  (Webapi.Dom.Element.addEventListener
-   "change"
-   (fn [_event]
-     (let [checked
-           (Webapi.Dom.HtmlInputElement.checked
-            (text-control-node dom-node))]
-       (Stdlib.ignore
-        ((deref (:web-event-handler renderer))
-         (proto/ToggleChanged node checked)))
-       (Stdlib.ignore true)))
-   (child-element dom-node 0)))
+  (let [control (child-element dom-node 0)]
+    (Webapi.Dom.Element.addEventListener
+     "click"
+     (fn [event]
+       (when-not (enabled-node? renderer node)
+         (Webapi.Dom.Event.preventDefault event))
+       (Stdlib.ignore true))
+     control)
+    (Webapi.Dom.Element.addEventListener
+     "change"
+     (fn [_event]
+       (when (enabled-node? renderer node)
+         (let [checked
+               (Webapi.Dom.HtmlInputElement.checked
+                (text-control-node dom-node))]
+           (Stdlib.ignore
+            ((deref (:web-event-handler renderer))
+             (proto/ToggleChanged node checked)))))
+       (Stdlib.ignore true))
+     control)))
 
 (defn- attach-radio-event! [renderer node dom-node]
-  (Webapi.Dom.Element.addEventListener
-   "change"
-   (fn [_event]
-     (when (Webapi.Dom.HtmlInputElement.checked (text-control-node dom-node))
-       (Stdlib.ignore
-        ((deref (:web-event-handler renderer))
-         (if (= (retained/property (:web-store renderer) node ChangeEnabled)
-                (Some (BoolValue true)))
-           (proto/Change node)
-           (if (= (retained/property (:web-store renderer) node ToggleEnabled)
+  (let [control (child-element dom-node 0)]
+    (Webapi.Dom.Element.addEventListener
+     "click"
+     (fn [event]
+       (when-not (enabled-node? renderer node)
+         (Webapi.Dom.Event.preventDefault event))
+       (Stdlib.ignore true))
+     control)
+    (Webapi.Dom.Element.addEventListener
+     "change"
+     (fn [_event]
+       (when (and
+              (enabled-node? renderer node)
+              (Webapi.Dom.HtmlInputElement.checked
+               (text-control-node dom-node)))
+         (Stdlib.ignore
+          ((deref (:web-event-handler renderer))
+           (if (= (retained/property (:web-store renderer) node ChangeEnabled)
                   (Some (BoolValue true)))
-             (proto/ToggleChanged node true)
-             (proto/Press node))))))
-     (Stdlib.ignore true))
-   (child-element dom-node 0)))
+             (proto/Change node)
+             (if (= (retained/property (:web-store renderer) node ToggleEnabled)
+                    (Some (BoolValue true)))
+               (proto/ToggleChanged node true)
+               (proto/Press node))))))
+       (Stdlib.ignore true))
+     control)))
 
 (defn- attach-slider-event! [renderer node dom-node]
   (Webapi.Dom.Element.addEventListener
@@ -1006,7 +1037,9 @@
         suppress-click (atom false)
         press!
         (fn []
-          (when (event-capability? renderer node PressEnabled)
+          (when (and
+                 (enabled-node? renderer node)
+                 (event-capability? renderer node PressEnabled))
             (Stdlib.ignore
              ((deref (:web-event-handler renderer)) (proto/Press node))))
           true)]
@@ -2297,9 +2330,6 @@
       (= kind Select) (= kind Combobox) (= kind TextField)
       (= kind Input) (= kind SearchField)))
 
-(defn- toolbar-button-kind? [kind]
-  (or (= kind Button) (= kind ToggleButton) (= kind Toggle)))
-
 (defn- toolbar-all-items-under [renderer parent]
   (reduce
    (fn [items child]
@@ -2312,16 +2342,7 @@
    (retained/children (:web-store renderer) parent)))
 
 (defn- toolbar-items-under [renderer parent]
-  (into
-   []
-   (filter
-    (fn [item]
-      (if-some [current (retained/node (:web-store renderer) item)]
-        (or
-         (enabled-node? renderer item)
-         (toolbar-button-kind? (standard-kind current)))
-        false))
-    (toolbar-all-items-under renderer parent))))
+  (toolbar-all-items-under renderer parent))
 
 (defn- toolbar-focus-node [store node]
   (if-some [current (retained/node store node)]
@@ -2335,16 +2356,19 @@
 (defn- apply-toolbar-disabled-semantics! [renderer item]
   (if-some [current (retained/node (:web-store renderer) item)]
     (let [kind (standard-kind current)
-          focus-node (dom-node renderer item)]
-      (when (toolbar-button-kind? kind)
-        (if (enabled-node? renderer item)
-          (do
-            (Webapi.Dom.Element.removeAttribute "aria-disabled" focus-node)
-            (Webapi.Dom.Element.removeAttribute "data-disabled" focus-node))
-          (do
-            (Webapi.Dom.Element.removeAttribute "disabled" focus-node)
-            (Webapi.Dom.Element.setAttribute "aria-disabled" "true" focus-node)
-            (Webapi.Dom.Element.setAttribute "data-disabled" "" focus-node)))))
+          platform-node (dom-node renderer item)
+          focus-node
+          (if (or (direct-toggle? kind) (= kind Combobox))
+            (child-element platform-node 0)
+            platform-node)]
+      (if (enabled-node? renderer item)
+        (do
+          (Webapi.Dom.Element.removeAttribute "aria-disabled" focus-node)
+          (Webapi.Dom.Element.removeAttribute "data-disabled" focus-node))
+        (do
+          (Webapi.Dom.Element.removeAttribute "disabled" focus-node)
+          (Webapi.Dom.Element.setAttribute "aria-disabled" "true" focus-node)
+          (Webapi.Dom.Element.setAttribute "data-disabled" "" focus-node))))
     (Stdlib.ignore true))
   true)
 
@@ -4499,7 +4523,9 @@
         (set-state-attribute! dom-node "data-disabled" (not enabled)))
       (when (treeitem? renderer node)
         (Webapi.Dom.Element.setAttribute
-         "aria-disabled" (if enabled "false" "true") dom-node)))
+         "aria-disabled" (if enabled "false" "true") dom-node))
+      (when (node-has-ancestor-kind? renderer node Toolbar)
+        (Stdlib.ignore (apply-toolbar-disabled-semantics! renderer node))))
 
     (tuple Gap (IntValue gap))
     (do
@@ -4585,7 +4611,7 @@
     (tuple PlaceholderValue (StringValue placeholder))
     (if (= kind Select)
       (Webapi.Dom.Element.setTextContent
-       dom-node (select-display-text renderer node))
+       (child-element dom-node 0) (select-display-text renderer node))
       (Webapi.Dom.HtmlInputElement.setPlaceholder
        (text-control-node dom-node) placeholder))
 

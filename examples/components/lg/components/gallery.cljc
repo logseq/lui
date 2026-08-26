@@ -578,7 +578,8 @@
    [:paragraph
     "Hover, focus, or long-press the icon to reveal the native anchored Tooltip; the second Tooltip is a static status label."]])
 
-(defui toolbar-gallery [value-source update-value]
+(defui toolbar-gallery
+  [value-source disabled-source checked-source update-value]
   [:column {:gap 16 :padding 32}
    [:heading {:level 2} "Toolbar"]
    [:toolbar {:orientation "horizontal" :label "Formatting" :gap 4}
@@ -595,7 +596,15 @@
       :on-input update-value}]]
    [:toolbar {:orientation "vertical" :label "Insert" :gap 4}
     [:button {:variant "ghost"} "Link"]
-    [:button {:variant "ghost"} "Image"]]
+    [:button {:variant "ghost"} "Image"]
+    [:checkbox
+     {:checked checked-source :disabled disabled-source} "Locked option"]
+    [:select
+     {:text value-source
+      :placeholder "Locked picker"
+      :disabled disabled-source}]
+    [:input
+     {:text value-source :label "Locked input" :disabled disabled-source}]]
    [:paragraph
     "Toolbar composes ordinary controls and owns only orientation-aware roving focus."]])
 
@@ -1008,7 +1017,7 @@
     "TimelineItem owns its content and interaction inside Timeline."]])
 
 (defui component-gallery
-  [disabled-source toggle-disabled card-copy
+  [disabled-source toolbar-disabled-source toggle-disabled card-copy
    value-source update-value
    checked-source update-toggle
    progress-source progress-label-source advance-progress
@@ -1104,7 +1113,8 @@
    [toast-gallery
     toast-open-source toast-message-source toast-description-source
     show-toasts update-toast close-toasts]
-   [toolbar-gallery value-source update-value]
+   [toolbar-gallery
+    value-source toolbar-disabled-source checked-source update-value]
    [accordion-gallery accordion-open-source set-accordion-open]
    [select-gallery
     environment-source select-open-source

@@ -299,7 +299,15 @@ test("Toolbar composes existing controls with horizontal and vertical roving lay
   assert.match(css, /\.lui-toolbar\[aria-orientation=horizontal\]\{[^}]*flex-direction:row/)
   assert.match(css, /\.lui-toolbar\[aria-orientation=vertical\]\{[^}]*flex-direction:column/)
   assert.match(css, /\.lui-toolbar:focus-within/)
-  assert.match(css, /\.lui-button\[data-disabled\]\{[^}]*cursor:not-allowed;[^}]*opacity:/)
+  assert.match(css, /\.lui-button\[data-disabled\][^\{]*\{[^}]*cursor:not-allowed;[^}]*opacity:/)
+  for (const selector of [
+    ".lui-checkbox-control[data-disabled]",
+    ".lui-select[data-disabled]",
+    ".lui-input[data-disabled]",
+  ]) {
+    const escaped = selector.replaceAll(".", "\\.").replaceAll("[", "\\[").replaceAll("]", "\\]")
+    assert.match(css, new RegExp(`${escaped}[^\\{]*\\{[^}]*cursor:not-allowed;[^}]*opacity:`))
+  }
 })
 
 test("interactive controls share motion and reduced-motion behavior", async () => {

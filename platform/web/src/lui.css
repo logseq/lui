@@ -1093,6 +1093,17 @@ body {
     @apply cursor-not-allowed opacity-50;
   }
 
+  .lui-checkbox-control[data-disabled],
+  .lui-switch-control[data-disabled],
+  .lui-radio-control[data-disabled],
+  .lui-select[data-disabled],
+  .lui-input[data-disabled],
+  .lui-text-field[data-disabled],
+  .lui-search-field[data-disabled],
+  .lui-combobox-control[data-disabled] {
+    @apply cursor-not-allowed opacity-50;
+  }
+
   .lui-button-icon {
     @apply pointer-events-none size-4 shrink-0;
   }

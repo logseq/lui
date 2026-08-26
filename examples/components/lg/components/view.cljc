@@ -13,6 +13,7 @@
 (defui gallery-view-with-option [model-source send extension-enabled-source]
   [gallery/component-gallery
    (reactive :gallery-disabled model-source)
+   (signal.core/constant (:ui-scheduler ui-context) true)
    (fn [_event] (send model/ToggleDisabled))
    (reactive card-copy model-source)
    (reactive :gallery-field-value model-source)
