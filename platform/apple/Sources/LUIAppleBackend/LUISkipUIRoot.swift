@@ -58,12 +58,18 @@ private struct LUISkipNodeView: View {
         case .column, .list, .box, .panel, .card, .stack, .grid, .table,
              .tableRow, .tableCell, .tree, .timeline, .timelineItem, .stepper,
              .step, .alert, .bubble, .toast, .accordion,
-             .menuItem, .resizable, .split, .scroll:
+             .menuItem, .resizable, .split:
             VStack(alignment: .leading, spacing: CGFloat(model.property(.gap)?.intValue ?? 0)) {
                 if !model.text.isEmpty {
                     Text(verbatim: model.text)
                 }
                 children
+            }
+        case .scroll:
+            ScrollView {
+                ZStack {
+                    children
+                }
             }
         case .drawer:
             LUIDrawerView(model: model, backend: backend)
