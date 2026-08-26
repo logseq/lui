@@ -578,14 +578,19 @@
    [:paragraph
     "Hover, focus, or long-press the icon to reveal the native anchored Tooltip; the second Tooltip is a static status label."]])
 
-(defui toolbar-gallery []
+(defui toolbar-gallery [value-source update-value]
   [:column {:gap 16 :padding 32}
    [:heading {:level 2} "Toolbar"]
    [:toolbar {:orientation "horizontal" :label "Formatting" :gap 4}
     [:button {:variant "ghost"} "Bold"]
     [:button {:variant "ghost"} "Italic"]
     [:button {:variant "ghost" :disabled true} "Redo"]
-    [:button {:variant "ghost"} "More"]]
+    [:button {:variant "ghost"} "More"]
+    [:input
+     {:text value-source
+      :placeholder "Format value"
+      :label "Format value"
+      :on-input update-value}]]
    [:toolbar {:orientation "vertical" :label "Insert" :gap 4}
     [:button {:variant "ghost"} "Link"]
     [:button {:variant "ghost"} "Image"]]
@@ -1068,7 +1073,7 @@
    [toast-gallery
     toast-open-source toast-message-source toast-description-source
     show-toasts update-toast close-toasts]
-   [toolbar-gallery]
+   [toolbar-gallery value-source update-value]
    [accordion-gallery accordion-open-source set-accordion-open]
    [select-gallery
     environment-source select-open-source

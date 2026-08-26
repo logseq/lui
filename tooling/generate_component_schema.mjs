@@ -113,6 +113,7 @@ ${events}
   (CreateExtension :int :string :string)
   (DropNode :int)
   (SetProp :int :property :wire-value)
+  (RemoveProp :int :property)
   (SetExtensionProp :int :string :wire-value)
   (RemoveExtensionProp :int :string)
   (InsertChild :int :int :int)
@@ -161,6 +162,7 @@ ${events}
 (signature lui.protocol/drop-node-op :fn<int;patch-op>)
 (signature lui.protocol/set-prop-op
   :fn<int;property;wire-value;patch-op>)
+(signature lui.protocol/remove-prop-op :fn<int;property;patch-op>)
 (signature lui.protocol/set-extension-prop-op
   :fn<int;string;wire-value;patch-op>)
 (signature lui.protocol/remove-extension-prop-op

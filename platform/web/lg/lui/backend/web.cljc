@@ -1901,6 +1901,66 @@
     (fn [item] (enabled-node? renderer item))
     (toolbar-all-items-under renderer parent))))
 
+(defn- toolbar-focus-node [store node]
+  (if-some [current (retained/node store node)]
+    (let [kind (standard-kind current)
+          platform-node (:platform-node current)]
+      (if (or (direct-toggle? kind) (= kind Combobox))
+        (child-element platform-node 0)
+        platform-node))
+    (raise (Invalid_argument "unknown toolbar item"))))
+
+(defn- toolbar-text-input-kind? [kind]
+  (or (= kind TextField) (= kind Input) (= kind SearchField)
+      (= kind Combobox)))
+
+(defn- focused-toolbar-item-index [store items focused index]
+  (if (>= index (count items))
+    None
+    (if (Webapi.Dom.Element.isSameNode
+         (Webapi.Dom.Element.asNode
+          (toolbar-focus-node store (nth items index)))
+         focused)
+      (Some index)
+      (focused-toolbar-item-index store items focused (+ index 1)))))
+
+(defn- toolbar-direction [renderer toolbar-node]
+  (let [document
+        (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))]
+    (if-some [window (Webapi.Dom.HtmlDocument.defaultView document)]
+      (Webapi.Dom.CssStyleDeclaration.direction
+       (Webapi.Dom.Window.getComputedStyle toolbar-node window))
+      "ltr")))
+
+(defn- toolbar-input-owns-key? [store item event forward-key backward-key]
+  (if-some [current (retained/node store item)]
+    (if (toolbar-text-input-kind? (standard-kind current))
+      (let [control (text-control-node (:platform-node current))
+            start (Webapi.Dom.HtmlInputElement.selectionStart control)
+            end (Webapi.Dom.HtmlInputElement.selectionEnd control)
+            length (count (Webapi.Dom.HtmlInputElement.value control))
+            key (Webapi.Dom.KeyboardEvent.key event)]
+        (or
+         (Webapi.Dom.KeyboardEvent.isComposing event)
+         (Webapi.Dom.KeyboardEvent.shiftKey event)
+         (Webapi.Dom.KeyboardEvent.ctrlKey event)
+         (Webapi.Dom.KeyboardEvent.altKey event)
+         (Webapi.Dom.KeyboardEvent.metaKey event)
+         (not (= start end))
+         (and (= key forward-key) (< end length))
+         (and (= key backward-key) (> start 0))
+         (and (> length 0) (or (= key "Home") (= key "End")))))
+      false)
+    false))
+
+(defn- select-toolbar-input! [store item]
+  (if-some [current (retained/node store item)]
+    (when (toolbar-text-input-kind? (standard-kind current))
+      (let [control (text-control-node (:platform-node current))]
+        (Webapi.Dom.HtmlInputElement.setSelectionRange
+         0 (count (Webapi.Dom.HtmlInputElement.value control)) control)))
+    (Stdlib.ignore true)))
+
 (defn- refresh-toolbar-roving! [renderer toolbar]
   (let [all-items (toolbar-all-items-under renderer toolbar)
         items (toolbar-items-under renderer toolbar)
@@ -1908,7 +1968,7 @@
         (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))
         active
         (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
-          (focused-child-index renderer items focused 0)
+          (focused-toolbar-item-index (:web-store renderer) items focused 0)
           None)
         target
         (match active
@@ -1917,13 +1977,14 @@
     (loop [index 0]
       (when (< index (count all-items))
         (Webapi.Dom.Element.setAttribute
-         "tabindex" "-1" (dom-node renderer (nth all-items index)))
+         "tabindex" "-1"
+         (toolbar-focus-node (:web-store renderer) (nth all-items index)))
         (recur (inc index))))
     (loop [index 0]
       (when (< index (count items))
         (Webapi.Dom.Element.setAttribute
          "tabindex" (if (= index target) "0" "-1")
-         (dom-node renderer (nth items index)))
+         (toolbar-focus-node (:web-store renderer) (nth items index)))
         (recur (inc index))))
     true))
 
@@ -1937,6 +1998,22 @@
    (retained/nodes (:web-store renderer))))
 
 (defn- attach-toolbar-events! [renderer node toolbar-node]
+  (Webapi.Dom.Element.addFocusInEventListener
+   (fn [_event]
+     (let [items (toolbar-items-under renderer node)
+           document
+           (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))]
+       (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
+         (match
+          (focused-toolbar-item-index (:web-store renderer) items focused 0)
+          (Some index)
+          (do
+            (refresh-toolbar-roving! renderer node)
+            (select-toolbar-input! (:web-store renderer) (nth items index)))
+          None (Stdlib.ignore true))
+         (Stdlib.ignore true))
+       (Stdlib.ignore true)))
+   toolbar-node)
   (Webapi.Dom.Element.addKeyDownEventListener
    (fn [event]
      (let [key (Webapi.Dom.KeyboardEvent.key event)
@@ -1945,35 +2022,48 @@
                    (:web-store renderer) node OrientationValue)
              (Some (StringValue value)) value
              _ "horizontal")
-           navigation-key
+           direction (toolbar-direction renderer toolbar-node)
+           forward-key
            (if (= orientation "vertical")
-             (match key
-               "ArrowDown" "ArrowRight"
-               "ArrowUp" "ArrowLeft"
-               "Home" "Home"
-               "End" "End"
-               _ "")
-             (match key
-               "ArrowRight" "ArrowRight"
-               "ArrowLeft" "ArrowLeft"
-               "Home" "Home"
-               "End" "End"
-               _ ""))
+             "ArrowDown"
+             (if (= direction "rtl") "ArrowLeft" "ArrowRight"))
+           backward-key
+           (if (= orientation "vertical")
+             "ArrowUp"
+             (if (= direction "rtl") "ArrowRight" "ArrowLeft"))
+           navigation-key
+           (cond
+             (= key forward-key) "ArrowRight"
+             (= key backward-key) "ArrowLeft"
+             (= key "Home") "Home"
+             (= key "End") "End"
+             :else "")
            items (toolbar-items-under renderer node)
            document
            (Webapi.Dom.Document.unsafeAsHtmlDocument (:web-document renderer))
            current
            (if-some [focused (Webapi.Dom.HtmlDocument.activeElement document)]
-             (focused-child-index renderer items focused 0)
+             (focused-toolbar-item-index
+              (:web-store renderer) items focused 0)
              None)]
-       (when (not (= navigation-key ""))
+       (when
+        (and
+         (not (= navigation-key ""))
+         (not
+          (match current
+            (Some index)
+            (toolbar-input-owns-key?
+             (:web-store renderer) (nth items index) event
+             forward-key backward-key)
+            None false)))
          (match (horizontal-focus-index navigation-key current (count items))
            (Some index)
            (do
              (Webapi.Dom.KeyboardEvent.preventDefault event)
              (Webapi.Dom.HtmlElement.focus
               (Webapi.Dom.Element.unsafeAsHtmlElement
-               (dom-node renderer (nth items index)))))
+               (toolbar-focus-node
+                (:web-store renderer) (nth items index)))))
            None (Stdlib.ignore true)))
        (Stdlib.ignore true)))
    toolbar-node))
@@ -2237,35 +2327,36 @@
           (Stdlib.ignore true))
         key-handler
         (fn [event]
-          (let [key (Webapi.Dom.KeyboardEvent.key event)]
-            (if (= "Escape" key)
-              (do
-                (Webapi.Dom.KeyboardEvent.preventDefault event)
-                (hide-context-menu! renderer)
-                (focus-context-menu-host! renderer node))
-              (when (or
-                     (= key "ArrowDown") (= key "ArrowUp")
-                     (= key "Home") (= key "End"))
-                (let [items (context-menu-focus-items renderer node)
-                      html-document
-                      (Webapi.Dom.Document.unsafeAsHtmlDocument document)
-                      current
-                      (if-some [focused
-                                (Webapi.Dom.HtmlDocument.activeElement
-                                 html-document)]
-                        (focused-child-index renderer items focused 0)
-                        None)
-                      navigation-key
-                      (if (= key "ArrowDown")
-                        "ArrowRight"
-                        (if (= key "ArrowUp") "ArrowLeft" key))]
-                  (if-some [index
-                            (horizontal-focus-index
-                             navigation-key current (count items))]
-                    (do
-                      (Webapi.Dom.KeyboardEvent.preventDefault event)
-                      (focus-context-menu-item! renderer node index))
-                    (Stdlib.ignore true))))))
+          (when (= (deref (:web-open-context-menu renderer)) (Some node))
+            (let [key (Webapi.Dom.KeyboardEvent.key event)]
+              (if (= "Escape" key)
+                (do
+                  (Webapi.Dom.KeyboardEvent.preventDefault event)
+                  (hide-context-menu! renderer)
+                  (focus-context-menu-host! renderer node))
+                (when (or
+                       (= key "ArrowDown") (= key "ArrowUp")
+                       (= key "Home") (= key "End"))
+                  (let [items (context-menu-focus-items renderer node)
+                        html-document
+                        (Webapi.Dom.Document.unsafeAsHtmlDocument document)
+                        current
+                        (if-some [focused
+                                  (Webapi.Dom.HtmlDocument.activeElement
+                                   html-document)]
+                          (focused-child-index renderer items focused 0)
+                          None)
+                        navigation-key
+                        (if (= key "ArrowDown")
+                          "ArrowRight"
+                          (if (= key "ArrowUp") "ArrowLeft" key))]
+                    (if-some [index
+                              (horizontal-focus-index
+                               navigation-key current (count items))]
+                      (do
+                        (Webapi.Dom.KeyboardEvent.preventDefault event)
+                        (focus-context-menu-item! renderer node index))
+                      (Stdlib.ignore true)))))))
           (Stdlib.ignore true))
         focus-handler
         (fn [event]

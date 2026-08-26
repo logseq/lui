@@ -1283,6 +1283,140 @@ test("Toolbar exposes orientation-aware roving focus over composed controls", as
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Link")
 })
 
+test("Toolbar input keeps editing keys until its caret reaches a boundary", async () => {
+  await openGalleryPage("Toolbar")
+  const toolbar = '[aria-label="Formatting"]'
+
+  assert.deepEqual(
+    await state(`(() => {
+      const root = document.querySelector(${JSON.stringify(toolbar)})
+      const input = root?.querySelector('input')
+      const more = [...(root?.querySelectorAll('button') ?? [])]
+        .find((button) => button.textContent.trim() === 'More')
+      input.value = 'abcd'
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+      more.focus()
+      more.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowRight', bubbles: true, cancelable: true,
+      }))
+      return {
+        focused: document.activeElement === input,
+        tabIndex: input.tabIndex,
+        value: input.value,
+        selectionStart: input.selectionStart,
+        selectionEnd: input.selectionEnd,
+      }
+    })()`),
+    {
+      focused: true,
+      tabIndex: 0,
+      value: "abcd",
+      selectionStart: 0,
+      selectionEnd: 4,
+    },
+  )
+
+  assert.deepEqual(
+    await state(`(() => {
+      const root = document.querySelector(${JSON.stringify(toolbar)})
+      const input = root.querySelector('input')
+      const run = (key, start, end = start, modifiers = {}) => {
+        input.focus()
+        input.setSelectionRange(start, end)
+        const event = new KeyboardEvent('keydown', {
+          key, ...modifiers, bubbles: true, cancelable: true,
+        })
+        input.dispatchEvent(event)
+        return {
+          key,
+          focused: document.activeElement === input,
+          prevented: event.defaultPrevented,
+          selectionStart: input.selectionStart,
+          selectionEnd: input.selectionEnd,
+        }
+      }
+      return [
+        run('ArrowRight', 2),
+        run('ArrowLeft', 1, 3),
+        run('ArrowRight', 2, 2, { shiftKey: true }),
+        run('ArrowRight', 4, 4, { ctrlKey: true }),
+        run('ArrowRight', 4, 4, { altKey: true }),
+        run('ArrowRight', 4, 4, { metaKey: true }),
+        run('Home', 2),
+        run('End', 2),
+      ]
+    })()`),
+    [
+      { key: "ArrowRight", focused: true, prevented: false, selectionStart: 2, selectionEnd: 2 },
+      { key: "ArrowLeft", focused: true, prevented: false, selectionStart: 1, selectionEnd: 3 },
+      { key: "ArrowRight", focused: true, prevented: false, selectionStart: 2, selectionEnd: 2 },
+      { key: "ArrowRight", focused: true, prevented: false, selectionStart: 4, selectionEnd: 4 },
+      { key: "ArrowRight", focused: true, prevented: false, selectionStart: 4, selectionEnd: 4 },
+      { key: "ArrowRight", focused: true, prevented: false, selectionStart: 4, selectionEnd: 4 },
+      { key: "Home", focused: true, prevented: false, selectionStart: 2, selectionEnd: 2 },
+      { key: "End", focused: true, prevented: false, selectionStart: 2, selectionEnd: 2 },
+    ],
+  )
+
+  assert.deepEqual(
+    await state(`(() => {
+      const root = document.querySelector(${JSON.stringify(toolbar)})
+      const input = root.querySelector('input')
+      const pressAt = (key, caret) => {
+        input.focus()
+        input.setSelectionRange(caret, caret)
+        const event = new KeyboardEvent('keydown', {
+          key, bubbles: true, cancelable: true,
+        })
+        input.dispatchEvent(event)
+        return {
+          key,
+          prevented: event.defaultPrevented,
+          focusedText: document.activeElement?.textContent?.trim() ?? '',
+          inputFocused: document.activeElement === input,
+        }
+      }
+      return [pressAt('ArrowLeft', 0), pressAt('ArrowRight', input.value.length)]
+    })()`),
+    [
+      { key: "ArrowLeft", prevented: true, focusedText: "More", inputFocused: false },
+      { key: "ArrowRight", prevented: true, focusedText: "Bold", inputFocused: false },
+    ],
+  )
+
+  assert.deepEqual(
+    await state(`(() => {
+      const root = document.querySelector(${JSON.stringify(toolbar)})
+      const input = root.querySelector('input')
+      root.style.direction = 'rtl'
+      const pressAt = (key, caret) => {
+        input.focus()
+        input.setSelectionRange(caret, caret)
+        const event = new KeyboardEvent('keydown', {
+          key, bubbles: true, cancelable: true,
+        })
+        input.dispatchEvent(event)
+        return {
+          key,
+          prevented: event.defaultPrevented,
+          focusedText: document.activeElement?.textContent?.trim() ?? '',
+          inputFocused: document.activeElement === input,
+        }
+      }
+      const result = [
+        pressAt('ArrowRight', 0),
+        pressAt('ArrowLeft', input.value.length),
+      ]
+      root.style.direction = ''
+      return result
+    })()`),
+    [
+      { key: "ArrowRight", prevented: true, focusedText: "More", inputFocused: false },
+      { key: "ArrowLeft", prevented: true, focusedText: "Bold", inputFocused: false },
+    ],
+  )
+})
+
 test("Toast portals stable updates and supports pause, F6, close, and touch swipe dismissal", async () => {
   await openGalleryPage("Toast")
   await clickButton("Show notifications")
