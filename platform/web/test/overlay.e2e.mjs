@@ -203,11 +203,11 @@ test("Reduced motion removes a closing Dialog without waiting for a fallback", a
   await browser("set", "media", "light")
 })
 
-test("Compact Sheet dismisses downward touch swipes and snaps back below threshold", async () => {
+test("Compact Sheet arbitrates scroll, direction, distance, and velocity", async () => {
   await openGalleryPage("Sheet")
   await browser("set", "viewport", "390", "844")
   await clickButton("Open sheet")
-  await browser("wait", "50")
+  await browser("wait", "100")
 
   const compactSheet = await state(`(() => {
       const sheet = document.querySelector('.lui-sheet')
@@ -245,6 +245,53 @@ test("Compact Sheet dismisses downward touch swipes and snaps back below thresho
 
   await evaluate(`(() => {
     const sheet = document.querySelector('.lui-sheet')
+    const dispatch = (type, x, y) => sheet.dispatchEvent(new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      isPrimary: true,
+      pointerId: 43,
+      pointerType: 'touch',
+      clientX: x,
+      clientY: y,
+      button: 0,
+      buttons: type === 'pointerup' ? 0 : 1,
+    }))
+    dispatch('pointerdown', 40, 180)
+    dispatch('pointermove', 180, 190)
+    dispatch('pointermove', 180, 540)
+    dispatch('pointerup', 180, 540)
+  })()`)
+  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 1)
+
+  await evaluate(`(() => {
+    const sheet = document.querySelector('.lui-sheet')
+    const scroller = document.createElement('div')
+    const content = document.createElement('div')
+    scroller.style.cssText = 'height:40px;overflow-y:auto'
+    content.style.height = '200px'
+    scroller.append(content)
+    sheet.append(scroller)
+    scroller.scrollTop = 20
+    const dispatch = (type, y) => content.dispatchEvent(new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      isPrimary: true,
+      pointerId: 44,
+      pointerType: 'touch',
+      clientX: 190,
+      clientY: y,
+      button: 0,
+      buttons: type === 'pointerup' ? 0 : 1,
+    }))
+    dispatch('pointerdown', 180)
+    dispatch('pointermove', 540)
+    dispatch('pointerup', 540)
+    scroller.remove()
+  })()`)
+  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 1)
+
+  await evaluate(`(() => {
+    const sheet = document.querySelector('.lui-sheet')
     const dispatch = (type, y) => sheet.dispatchEvent(new PointerEvent(type, {
       bubbles: true,
       cancelable: true,
@@ -269,7 +316,7 @@ test("Compact Sheet dismisses downward touch swipes and snaps back below thresho
       bubbles: true,
       cancelable: true,
       isPrimary: true,
-      pointerId: 43,
+      pointerId: 45,
       pointerType: 'touch',
       clientX: 190,
       clientY: y,
@@ -277,8 +324,8 @@ test("Compact Sheet dismisses downward touch swipes and snaps back below thresho
       buttons: type === 'pointerup' ? 0 : 1,
     }))
     dispatch('pointerdown', 180)
-    dispatch('pointermove', 520)
-    dispatch('pointerup', 560)
+    dispatch('pointermove', 240)
+    dispatch('pointerup', 240)
   })()`)
   assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 0)
   assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-ending-style]').length`), 1)
@@ -1583,7 +1630,7 @@ test("Toolbar input keeps editing keys until its caret reaches a boundary", asyn
   )
 })
 
-test("Toast portals stable updates and supports pause, F6, close, and touch swipe dismissal", async () => {
+test("Toast portals stable updates and supports Base UI down/right touch dismissal", async () => {
   await openGalleryPage("Toast")
   await clickButton("Show notifications")
 
@@ -1684,13 +1731,31 @@ test("Toast portals stable updates and supports pause, F6, close, and touch swip
   assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 2)
   await evaluate(`(() => {
     const toast = document.querySelector('[role=status]')
-    const event = (name, x) => new PointerEvent(name, {
+    const event = (name, x, y) => new PointerEvent(name, {
       bubbles: true,
       cancelable: true,
       clientX: x,
-      clientY: 20,
+      clientY: y,
       isPrimary: true,
       pointerId: 9,
+      pointerType: 'touch',
+      button: 0,
+      buttons: name === 'pointerup' ? 0 : 1,
+    })
+    toast.dispatchEvent(event('pointerdown', 180, 20))
+    toast.dispatchEvent(event('pointermove', 20, 20))
+    toast.dispatchEvent(event('pointerup', 20, 20))
+  })()`)
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 2)
+  await evaluate(`(() => {
+    const toast = document.querySelector('[role=status]')
+    const event = (name, y) => new PointerEvent(name, {
+      bubbles: true,
+      cancelable: true,
+      clientX: 20,
+      clientY: y,
+      isPrimary: true,
+      pointerId: 10,
       pointerType: 'touch',
       button: 0,
       buttons: name === 'pointerup' ? 0 : 1,

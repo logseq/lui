@@ -1530,6 +1530,19 @@
           (swipe-ignored-target? parent boundary)
           false)))))
 
+(defn- sheet-scroll-blocks-swipe? [target boundary]
+  (if (Webapi.Dom.Element.isSameNode
+       (Webapi.Dom.Element.asNode target) boundary)
+    false
+    (if (and
+         (> (Webapi.Dom.Element.scrollHeight target)
+            (Webapi.Dom.Element.clientHeight target))
+         (> (Webapi.Dom.Element.scrollTop target) 0.5))
+      true
+      (if-some [parent (Webapi.Dom.Element.parentElement target)]
+        (sheet-scroll-blocks-swipe? parent boundary)
+        false))))
+
 (defn- attach-modal-events! [renderer node dom-node]
   (let [document (:web-document renderer)
         html-document (Webapi.Dom.Document.unsafeAsHtmlDocument document)
@@ -1544,12 +1557,16 @@
         swipe-start-x (atom 0.0)
         swipe-start-y (atom 0.0)
         swipe-current-y (atom 0.0)
+        swipe-start-time (atom 0.0)
+        swipe-axis (atom None)
         reset-swipe!
         (fn []
           (reset! swipe-pointer None)
+          (reset! swipe-axis None)
           (Webapi.Dom.Element.removeAttribute "data-swiping" dom-node)
           (Webapi.Dom.Element.removeAttribute "data-swipe-direction" dom-node)
           (set-style! dom-node "--drawer-swipe-movement-y" "0px")
+          (set-style! backdrop "--drawer-swipe-progress" "1")
           true)
         dismiss!
         (fn []
@@ -1568,12 +1585,14 @@
                  (Webapi.Dom.Event.target event))
                 root (Webapi.Dom.Document.documentElement document)
                 compact (<= (Webapi.Dom.Element.clientWidth root) 640)
-                ignored (swipe-ignored-target? target dom-node)]
+                ignored (swipe-ignored-target? target dom-node)
+                scroll-blocked (sheet-scroll-blocks-swipe? target dom-node)]
             (when (and sheet? compact
                        (= (pointer-type event) "touch")
                        (= (Webapi.Dom.MouseEvent.button
                            (pointer-mouse-event event)) 0)
-                       (not ignored))
+                       (not ignored)
+                       (not scroll-blocked))
               (let [x (Stdlib.float_of_int
                        (Webapi.Dom.MouseEvent.clientX
                         (pointer-mouse-event event)))
@@ -1584,6 +1603,10 @@
                 (reset! swipe-start-x x)
                 (reset! swipe-start-y y)
                 (reset! swipe-current-y y)
+                (reset! swipe-start-time (Webapi.Dom.Event.timeStamp event))
+                (when (Webapi.Dom.Event.isTrusted event)
+                  (Webapi.Dom.Element.setPointerCapture
+                   (Webapi.Dom.PointerEvent.pointerId (obj/magic event)) dom-node))
                 (Stdlib.ignore true))))
           (Stdlib.ignore true))
         pointer-move!
@@ -1598,12 +1621,19 @@
                           (pointer-mouse-event event)))
                         (deref swipe-start-x)))
                     delta-y
-                    (max 0.0
-                         (- (Stdlib.float_of_int
-                             (Webapi.Dom.MouseEvent.clientY
-                              (pointer-mouse-event event)))
-                            (deref swipe-start-y)))]
-                (when (and (> delta-y 4.0) (> delta-y delta-x))
+                    (- (Stdlib.float_of_int
+                        (Webapi.Dom.MouseEvent.clientY
+                         (pointer-mouse-event event)))
+                       (deref swipe-start-y))]
+                (when (and (= (deref swipe-axis) None)
+                           (> (max delta-x (Float.abs delta-y)) 8.0))
+                  (reset!
+                   swipe-axis
+                   (Some (if (> delta-x (Float.abs delta-y))
+                           "horizontal"
+                           "vertical"))))
+                (when (and (= (deref swipe-axis) (Some "vertical"))
+                           (> delta-y 0.0))
                   (Webapi.Dom.Event.preventDefault event)
                   (reset!
                    swipe-current-y
@@ -1615,7 +1645,15 @@
                    "data-swipe-direction" "down" dom-node)
                   (set-style!
                    dom-node "--drawer-swipe-movement-y"
-                   (str delta-y "px")))))
+                   (str delta-y "px"))
+                  (set-style!
+                   backdrop "--drawer-swipe-progress"
+                   (str
+                    (max 0.0
+                         (- 1.0
+                            (/ delta-y
+                               (Stdlib.float_of_int
+                                (Webapi.Dom.Element.clientHeight dom-node))))))))))
             None (Stdlib.ignore true))
           (Stdlib.ignore true))
         pointer-end!
@@ -1630,9 +1668,15 @@
                     (max 96.0
                          (* 0.25
                             (Stdlib.float_of_int
-                             (Webapi.Dom.Element.clientHeight dom-node))))]
+                             (Webapi.Dom.Element.clientHeight dom-node))))
+                    duration
+                    (max 1.0
+                         (- (Webapi.Dom.Event.timeStamp event)
+                            (deref swipe-start-time)))
+                    velocity (/ delta duration)]
                 (reset-swipe!)
-                (when (> delta threshold)
+                (when (or (> delta threshold)
+                          (and (>= delta 48.0) (>= velocity 0.5)))
                   (Stdlib.ignore (dismiss!)))))
             None (Stdlib.ignore true))
           (Stdlib.ignore true))
@@ -3130,14 +3174,20 @@
         focus-inside (atom false)
         active-pointer (atom None)
         start-x (atom None)
+        start-y (atom None)
         current-x (atom 0)
+        current-y (atom 0)
+        swipe-axis (atom None)
         reset-toast-swipe!
         (fn []
           (reset! active-pointer None)
           (reset! start-x None)
+          (reset! start-y None)
+          (reset! swipe-axis None)
           (Webapi.Dom.Element.removeAttribute "data-swiping" toast)
           (Webapi.Dom.Element.removeAttribute "data-swipe-direction" toast)
           (set-style! toast "--toast-swipe-movement-x" "0px")
+          (set-style! toast "--toast-swipe-movement-y" "0px")
           true)
         cancel!
         (fn []
@@ -3204,10 +3254,17 @@
                            (pointer-mouse-event event)) 0)
                        (not interactive))
               (let [x (Webapi.Dom.MouseEvent.clientX
+                       (pointer-mouse-event event))
+                    y (Webapi.Dom.MouseEvent.clientY
                        (pointer-mouse-event event))]
                 (reset! active-pointer (Some (pointer-id event)))
                 (reset! start-x (Some x))
+                (reset! start-y (Some y))
                 (reset! current-x x)
+                (reset! current-y y)
+                (when (Webapi.Dom.Event.isTrusted event)
+                  (Webapi.Dom.Element.setPointerCapture
+                   (Webapi.Dom.PointerEvent.pointerId (obj/magic event)) toast))
                 (cancel!))))
           (Stdlib.ignore true))
         pointer-move!
@@ -3216,18 +3273,56 @@
             (Some active-pointer-id)
             (when (= active-pointer-id (pointer-id event))
               (match (deref start-x)
-              (Some origin)
+              (Some origin-x)
+              (match (deref start-y)
+              (Some origin-y)
               (let [x (Webapi.Dom.MouseEvent.clientX
                        (pointer-mouse-event event))
-                    delta (- x origin)]
+                    y (Webapi.Dom.MouseEvent.clientY
+                       (pointer-mouse-event event))
+                    delta-x (- x origin-x)
+                    delta-y (- y origin-y)]
                 (reset! current-x x)
-                (Webapi.Dom.Event.preventDefault event)
-                (Webapi.Dom.Element.setAttribute "data-swiping" "" toast)
-                (Webapi.Dom.Element.setAttribute
-                 "data-swipe-direction" (if (< delta 0) "left" "right") toast)
-                (set-style!
-                 toast "--toast-swipe-movement-x" (str delta "px")))
-                None (Stdlib.ignore true)))
+                (reset! current-y y)
+                (when (and (= (deref swipe-axis) None)
+                           (> (max (abs delta-x) (abs delta-y)) 4))
+                  (reset!
+                   swipe-axis
+                   (Some (if (> (abs delta-x) (abs delta-y))
+                           "horizontal"
+                           "vertical"))))
+                (match (deref swipe-axis)
+                  (Some axis)
+                  (if (= axis "horizontal")
+                    (let [movement
+                          (if (< delta-x 0)
+                            (- (Stdlib.int_of_float
+                                (Float.sqrt
+                                 (Stdlib.float_of_int (abs delta-x)))))
+                            delta-x)]
+                      (Webapi.Dom.Event.preventDefault event)
+                      (Webapi.Dom.Element.setAttribute "data-swiping" "" toast)
+                      (Webapi.Dom.Element.setAttribute
+                       "data-swipe-direction"
+                       (if (< delta-x 0) "left" "right") toast)
+                      (set-style!
+                       toast "--toast-swipe-movement-x" (str movement "px")))
+                    (let [movement
+                          (if (< delta-y 0)
+                            (- (Stdlib.int_of_float
+                                (Float.sqrt
+                                 (Stdlib.float_of_int (abs delta-y)))))
+                            delta-y)]
+                      (Webapi.Dom.Event.preventDefault event)
+                      (Webapi.Dom.Element.setAttribute "data-swiping" "" toast)
+                      (Webapi.Dom.Element.setAttribute
+                       "data-swipe-direction"
+                       (if (< delta-y 0) "up" "down") toast)
+                      (set-style!
+                       toast "--toast-swipe-movement-y" (str movement "px"))))
+                  None (Stdlib.ignore true)))
+                None (Stdlib.ignore true))
+              None (Stdlib.ignore true)))
             None (Stdlib.ignore true))
           (Stdlib.ignore true))
         pointer-up!
@@ -3236,17 +3331,29 @@
             (Some active-pointer-id)
             (when (= active-pointer-id (pointer-id event))
               (match (deref start-x)
-              (Some origin)
-              (let [delta (- (deref current-x) origin)]
+              (Some origin-x)
+              (match (deref start-y)
+              (Some origin-y)
+              (let [delta-x (- (deref current-x) origin-x)
+                    delta-y (- (deref current-y) origin-y)
+                    should-dismiss
+                    (match (deref swipe-axis)
+                      (Some axis)
+                      (if (= axis "horizontal")
+                        (> delta-x 40)
+                        (> delta-y 40))
+                      None false)]
                 (reset! active-pointer None)
                 (reset! start-x None)
+                (reset! start-y None)
                 (Stdlib.ignore
-                 (if (or (> delta 80) (< delta -80))
+                 (if should-dismiss
                    (dismiss!)
                    (do
                      (reset-toast-swipe!)
                      (resume!)))))
-                None (Stdlib.ignore true)))
+                None (Stdlib.ignore true))
+              None (Stdlib.ignore true)))
             None (Stdlib.ignore true))
           (Stdlib.ignore true))
         pointer-cancel!

@@ -57,6 +57,13 @@ shells while releasing modal ownership and restoring focus immediately.
 Interrupted retained Tooltip and submenu exits cannot clear a reopened
 component's open phase.
 
+Compact Sheet gesture arbitration now locks the first intentional axis, leaves
+form controls and non-edge scroll containers native, captures trusted pointers,
+tracks the backdrop with the sheet, and dismisses on either sufficient distance
+or downward velocity. Toast uses the Base UI default down/right directions,
+damps opposite movement, locks one axis, excludes interactive descendants, and
+resets cancelled gestures without dismissing model-owned state.
+
 Anchored DropdownMenu, Select, Combobox, and Tooltip surfaces now share one
 viewport-aware placement helper. It preserves the requested side when it fits,
 flips to the opposite side when that has more usable space, shifts both axes to
@@ -153,13 +160,13 @@ strength.
 | LUI element | Base UI contract to match | Current Web gap | Required decision |
 | --- | --- | --- | --- |
 | `dialog` | Portal, backdrop dismissal, Escape, modal focus trap, focus restoration, enter and exit phases; no swipe gesture | Focus behavior exists, but opening and removal are instantaneous and expose only a private modal state attribute | Add the shared popup transition lifecycle. Keep Dialog non-gestural. |
-| `sheet` | Use Drawer behavior: edge presentation, swipe dismissal, scroll-edge arbitration, pointer/touch distinction, safe handling of interactive descendants and software keyboards | It is a permanently right-sided Dialog with no responsive bottom-sheet layout, gesture state, or exit animation | Keep the public name Sheet. Use a right sheet on wide screens and a bottom sheet on phones. Add downward touch swipe only on the compact layout. Do not add Drawer snap-point or nesting API. |
+| `sheet` | Use Drawer behavior: edge presentation, swipe dismissal, scroll-edge arbitration, pointer/touch distinction, safe handling of interactive descendants and software keyboards | Responsive geometry, exit motion, axis locking, scroll-edge arbitration, interactive-target exclusion, pointer capture, distance/velocity dismissal, and backdrop tracking are covered. The remaining qualification is IME identity while the visual viewport changes | Keep the public name Sheet. Use a right sheet on wide screens and a bottom sheet on phones. Keep downward touch swipe only on the compact layout. Do not add Drawer snap-point or nesting API. |
 | `dropdown-menu` | Tap/press and keyboard open, outside/Escape dismissal, roving highlight, typeahead, nested submenu keyboard behavior and pointer grace corridor, collision-aware placement, transition phases | Basic arrows and nested hover exist. Close is immediate, placement has no collision fallback, hover timeout has no pointer corridor, and typeahead is absent | Add shared popup phases, typeahead, collision placement, touch-safe press ordering, and a submenu grace polygon. Preserve recursive LUI menus. |
 | `context-menu` | Right click, keyboard ContextMenu/Shift+F10, and 500 ms long press; cancel long press after more than 10 px movement; same menu behavior as Menu | Point placement, movement cancellation, and keyboard restoration are covered. Closed menus no longer intercept document-level Escape/Home/End keys | Keep keyboard handling gated by the model-owned open menu. Always keep a visible primary route to the same actions. |
 | `select` | Listbox semantics, typeahead, selected-item alignment for mouse/keyboard, ordinary anchored placement for touch, safe press-release selection, scrolling active item, complete keyboard navigation | Keyboard/mouse selected-item alignment, touch-safe anchored placement, collision fallback, typeahead, and press-release ordering are covered | Keep the implementation internal to Web and preserve the compact cross-platform API. |
 | `combobox` | Editable input with `aria-activedescendant`, filtered listbox, composition-safe input, arrows/Home/End/Enter/Escape, touch trigger handling, live status where needed | Native composition, retained input identity, Signal filtering, empty/recovery state, active-descendant cleanup, live status, touch opening, popup lifecycle, and collision behavior are covered | Preserve the native input and composition buffer. Application-specific asynchronous or localized status wording can be added only when required; never replace editing with a contenteditable surface. |
 | `tooltip` | Delayed pointer hover and immediate keyboard focus. Escape dismisses. A tooltip is not a touch or screen-reader discovery mechanism; the trigger needs its own accessible name | Hover/focus behavior exists, but display changes instantly | Add start/end transition phases. Do not invent Web long-press tooltip behavior. Ensure icon-only triggers remain independently named. |
-| `toast` | F6 focus transfer, pause on interaction, stack variables, pointer-event swipe, direction lock, threshold/velocity behavior, and interactive descendants excluded from swiping | F6 and pause exist. Swipe is mouse-only, uses inline transform and a fixed threshold, and can steal interaction from descendants | Use Pointer Events, pointer identity/capture, Base UI-style swipe variables and state attributes, interactive-target exclusion, directional damping, and down/right dismissal. |
+| `toast` | F6 focus transfer, pause on interaction, stack variables, pointer-event swipe, direction lock, threshold behavior, and interactive descendants excluded from swiping | F6, pause, Pointer Events, capture, cancellation, axis locking, down/right dismissal, opposite-direction damping, state attributes, and interactive-target exclusion are covered | Keep the behavior backend-owned and the public Toast API compact. Do not add Base UI's configurable swipe-direction API. |
 
 ### Collections and controls
 

@@ -408,8 +408,12 @@ body {
 
   .lui-toast {
     @apply pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-lg outline-none transition-[transform,opacity,margin] duration-200;
-    touch-action: pan-y;
-    transform: translateX(var(--toast-swipe-movement-x, 0px));
+    touch-action: none;
+    transform: translate3d(
+      var(--toast-swipe-movement-x, 0px),
+      var(--toast-swipe-movement-y, 0px),
+      0
+    );
   }
 
   .lui-toast:focus-visible {
@@ -556,7 +560,7 @@ body {
 
   .lui-modal-backdrop {
     @apply absolute inset-0 bg-black/50;
-    opacity: 1;
+    opacity: var(--drawer-swipe-progress, 1);
     transition: opacity 150ms ease-out;
   }
 
