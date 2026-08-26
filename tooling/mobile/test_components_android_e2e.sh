@@ -30,11 +30,13 @@ fi
 adb -s "$device" get-state >/dev/null \
   || die "Android device is unavailable: $device"
 
-"$repo_root/tooling/mobile/build_components_android.sh" >/dev/null
-(
-  cd "$repo_root/examples/components/flutter"
-  flutter build apk --debug --target-platform android-arm64
-)
+if [[ ${LUI_ANDROID_E2E_SKIP_BUILD:-0} != 1 ]]; then
+  "$repo_root/tooling/mobile/build_components_android.sh" >/dev/null
+  (
+    cd "$repo_root/examples/components/flutter"
+    flutter build apk --debug --target-platform android-arm64
+  )
+fi
 [[ -f $apk_path ]] || die "Android Gallery APK is missing: $apk_path"
 
 mkdir -p "$screenshots_dir"

@@ -67,6 +67,12 @@ Run the iOS interaction suite against a booted simulator:
 make test-components-ios-e2e
 ```
 
+Reuse an existing Simulator app while iterating on the Maestro flow:
+
+```sh
+LUI_IOS_E2E_SKIP_BUILD=1 make test-components-ios-e2e
+```
+
 ## Android
 
 Build the shared LG runtime and arm64 debug APK in one command:
@@ -86,6 +92,14 @@ When more than one device is connected, select it explicitly:
 
 ```sh
 LUI_ANDROID_DEVICE_ID=emulator-5554 make test-components-android-e2e
+```
+
+Reuse an existing APK while iterating on interactions:
+
+```sh
+LUI_ANDROID_E2E_SKIP_BUILD=1 \
+LUI_ANDROID_DEVICE_ID=emulator-5554 \
+make test-components-android-e2e
 ```
 
 The runner builds the shared OCaml/JNI library and APK, installs it, drives the

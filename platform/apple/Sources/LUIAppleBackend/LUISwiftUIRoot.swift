@@ -727,6 +727,7 @@ private struct LUIAnchoredComboboxMenuHost<Content: View>: View {
                     .zIndex(1)
             }
         }
+        .zIndex(model == nil ? 0 : 1)
     }
 }
 

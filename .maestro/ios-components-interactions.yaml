@@ -136,9 +136,9 @@ appId: dev.lui.components
 - eraseText: 50
 - inputText: "sta"
 - assertVisible: "sta"
-- assertVisible: "Development"
+- assertVisible: "Staging"
+- assertNotVisible: "Production"
 - tapOn: "Staging"
-- assertNotVisible: "Development"
 - tapOn: "Components"
 - scrollUntilVisible:
     element:

@@ -133,9 +133,9 @@ appId: dev.lui.lui_component_gallery
 - eraseText: 50
 - inputText: "sta"
 - assertVisible: "sta"
-- assertVisible: "Development"
+- assertVisible: "Staging"
+- assertNotVisible: "Production"
 - tapOn: "Staging"
-- assertNotVisible: "Development"
 - tapOn: "Open navigation menu"
 - scrollUntilVisible:
     element:

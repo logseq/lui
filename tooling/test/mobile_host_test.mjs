@@ -134,6 +134,10 @@ test("Android Gallery has a real interaction E2E flow", async () => {
   assert.match(main, /_compactGallery\(context, sections, selected\)/);
   assert.match(runner, /build_components_android\.sh/);
   assert.match(runner, /flutter build apk/);
+  assert.match(
+    runner,
+    /if \[\[ \$\{LUI_ANDROID_E2E_SKIP_BUILD:-0\} != 1 \]\]; then[\s\S]*build_components_android\.sh[\s\S]*flutter build apk[\s\S]*fi/,
+  );
   assert.match(runner, /adb -s "\$device" install -r/);
   assert.match(runner, /maestro.*--device "\$device" test/s);
   assert.match(runner, /adb -s "\$device" exec-out screencap -p/);
