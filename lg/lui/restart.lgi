@@ -1,0 +1,74 @@
+(ns lui.restart)
+
+(type-record text-selection
+  (selection-start :int)
+  (selection-end :int))
+
+(type-record window-context
+  (window-key :string)
+  (window-x :float)
+  (window-y :float)
+  (window-width :float)
+  (window-height :float)
+  (window-active :bool))
+
+(type-record restart-context
+  (restart-route :option<string>)
+  (restart-selected-tabs :map<string;string>)
+  (restart-focused-reload-key :option<string>)
+  (restart-selection :option<text-selection>)
+  (restart-scroll-offsets :map<string;float>)
+  (restart-windows :vector<window-context>))
+
+(type-variant restart-reason
+  (ModelTypeChanged)
+  (PackageGraphChanged)
+  (FfiChanged)
+  (HostAbiChanged)
+  (CompilerOptionsChanged)
+  (CompilerCrashed)
+  (TargetDisconnected)
+  (MigrationFailed :string))
+
+(type-variant restart-step-result
+  (RestartStepCompleted)
+  (RestartStepRejected :string))
+
+(type-variant restart-capture-result
+  (RestartContextCaptured :restart-context)
+  (RestartContextRejected :string))
+
+(type-variant restart-status
+  (RestartCompleted :int :bool)
+  (RestartRejected :int :string :string)
+  (RestartStale :int))
+
+(type-record restart-event
+  (restart-event-generation :int)
+  (restart-event-reason :restart-reason)
+  (restart-event-status :restart-status))
+
+(type-record restart-coordinator
+  (capture-restart-context :fn<restart-context>)
+  (rebuild-target :fn<restart-reason;restart-step-result>)
+  (launch-target :fn<restart-context;restart-step-result>)
+  (restore-restart-context :fn<restart-context;restart-step-result>)
+  (restart-requested-generation :ref<int>)
+  (restart-completed-generation :ref<int>)
+  (restart-events :ref<vector<restart-event>>))
+
+(signature lui.restart/create
+  :fn<fn<restart-context>;fn<restart-reason;restart-step-result>;fn<restart-context;restart-step-result>;fn<restart-context;restart-step-result>;restart-coordinator>)
+(signature lui.restart/request! :fn<restart-coordinator;int>)
+(signature lui.restart/run-step [argument]
+  :fn<fn<argument;restart-step-result>;argument;restart-step-result>)
+(signature lui.restart/capture-context
+  :fn<restart-coordinator;restart-capture-result>)
+(signature lui.restart/run!
+  :fn<restart-coordinator;int;restart-reason;restart-status>)
+(signature lui.restart/automatic!
+  :fn<restart-coordinator;restart-reason;restart-status>)
+(signature lui.restart/handle-reload!
+  :fn<restart-coordinator;reload-status;restart-reason;option<restart-status>>)
+(signature lui.restart/events
+  :fn<restart-coordinator;vector<restart-event>>)

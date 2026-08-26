@@ -1,0 +1,12 @@
+(ns lui.phase3-hot-reload-test)
+
+(type-record migrated-counter
+  (counter-value :int)
+  (counter-label :string))
+
+(signature lui.phase3-hot-reload-test/migrate-counter
+  :fn<int;migrated-counter>)
+(signature lui.phase3-hot-reload-test/validate-counter
+  :fn<migrated-counter;option<string>>)
+(signature lui.phase3-hot-reload-test/apply-counter
+  :fn<migration-plan<int;migrated-counter>;model-snapshot<int>;migration-result<migrated-counter>>)
