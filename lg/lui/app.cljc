@@ -10,6 +10,27 @@
    model-state
    (fn [current] (reducer current action))))
 
+(defn- restore-state-scopes! [state-scopes saved]
+  (doseq [[path scope] (deref state-scopes)]
+    (when-not (contains? saved path)
+      (sig/dispose-scope! scope)))
+  (reset! state-scopes saved)
+  true)
+
+(defn- prune-state-scopes! [state-scopes active]
+  (let [retained
+        (reduce-kv
+         (fn [result path scope]
+           (if (contains? active path)
+             (assoc result path scope)
+             (do
+               (sig/dispose-scope! scope)
+               result)))
+         (hash-map)
+         (deref state-scopes))]
+    (reset! state-scopes retained)
+    true))
+
 (macro-helper-defn reducer-app-expansion
   [backend registry initial-model reducer view]
   (let [scheduler (gensym "scheduler")
@@ -57,13 +78,16 @@
         view-scope (gensym "view_scope")
         state-scope (gensym "state_scope")
         state-scopes (gensym "state_scopes")
+        active-state-paths (gensym "active_state_paths")
         context (gensym "context")
         model-state (gensym "model_state")
         lifecycle (gensym "lifecycle")
         send-action (gensym "send_action")
         root (gensym "root")
         view-node (gensym "view_node")
-        session (gensym "session")]
+        session (gensym "session")
+        app (gensym "app")
+        cancel-redefinition-watch (gensym "cancel_redefinition_watch")]
     `(let [~scheduler (signal.core/scheduler)
            ~application
            ~(if registry
@@ -74,9 +98,11 @@
            ~view-scope (signal.core/scope "app-view-0" ~scope)
            ~state-scope (signal.core/scope "app-view-state" ~scope)
            ~state-scopes (atom (hash-map))
+           ~active-state-paths (atom (hash-map))
            ~context
            (lui.ui/context-with-state-registry
-            ~application ~view-scope ~state-scope ~state-scopes)
+            ~application ~view-scope ~state-scope ~state-scopes
+            ~active-state-paths)
            ~model-state (signal.core/state ~scheduler ~initial-model)
            ~lifecycle (atom lui.app/Running)
            ~send-action
@@ -87,25 +113,41 @@
            ~root (lui.runtime/create-node! ~application lui.protocol/Root)
            ~view-node
            (~view ~context (signal.core/value ~model-state) ~send-action)
-           ~session (lui.hot-reload/create ~source-hash ~contract-hash ~view)]
+           ~session (lui.hot-reload/create ~source-hash ~contract-hash ~view)
+           ~app
+           (record lui.app/reducer-app
+             (app-scheduler ~scheduler)
+             (app-runtime ~application)
+             (app-scope ~scope)
+             (app-read-model (fn [] (signal.core/get ~model-state)))
+             (app-send-action ~send-action)
+             (app-root-node ~root)
+             (app-lifecycle-state ~lifecycle)
+             (app-reload-state
+              (Some
+               (record lui.app/reloadable-view-state
+                 (reload-model-source (signal.core/value ~model-state))
+                 (reload-view-scope (atom ~view-scope))
+                 (reload-state-scope ~state-scope)
+                 (reload-state-scopes ~state-scopes)
+                 (reload-view-node (atom ~view-node))
+                 (reload-session ~session)))))
+           ~cancel-redefinition-watch
+           (watch-redef!
+            ~view
+            (fn []
+              (let [~'request (lui.app/request-reload! ~app)
+                    ~'status
+                    (lui.app/reload-view!
+                     ~app ~'request (str "definition-" ~'request)
+                     ~contract-hash ~view 0)]
+                (match ~'status
+                  (lui.hot-reload/ReloadApplied ~'_generation) true
+                  (lui.hot-reload/ReloadUnchanged ~'_generation) true
+                  _ false))))]
        (lui.runtime/insert-child! ~application ~root ~view-node 0)
-       (record lui.app/reducer-app
-         (app-scheduler ~scheduler)
-         (app-runtime ~application)
-         (app-scope ~scope)
-         (app-read-model (fn [] (signal.core/get ~model-state)))
-         (app-send-action ~send-action)
-         (app-root-node ~root)
-         (app-lifecycle-state ~lifecycle)
-         (app-reload-state
-          (Some
-           (record lui.app/reloadable-view-state
-             (reload-model-source (signal.core/value ~model-state))
-             (reload-view-scope (atom ~view-scope))
-             (reload-state-scope ~state-scope)
-             (reload-state-scopes ~state-scopes)
-             (reload-view-node (atom ~view-node))
-             (reload-session ~session))))))))
+       (signal.core/on-dispose! ~scope ~cancel-redefinition-watch)
+       ~app)))
 
 (defmacro create [backend initial-model reducer view]
   (reducer-app-expansion backend nil initial-model reducer view))
@@ -209,6 +251,8 @@
               saved (runtime/checkpoint application)
               old-scope (deref (:reload-view-scope state))
               old-view (deref (:reload-view-node state))
+              saved-state-scopes (deref (:reload-state-scopes state))
+              candidate-active-state-paths (atom (hash-map))
               candidate-scope
               (sig/scope (str "app-view-" request) (:app-scope app))
               candidate-node (atom None)
@@ -218,7 +262,8 @@
                       (ui/context-with-state-registry
                        application candidate-scope
                        (:reload-state-scope state)
-                       (:reload-state-scopes state))
+                       (:reload-state-scopes state)
+                       candidate-active-state-paths)
                       node
                       (view context (:reload-model-source state)
                             (:app-send-action app))]
@@ -232,6 +277,8 @@
                 (catch (Invalid_argument message)
                   (do
                     (runtime/restore! application saved)
+                    (restore-state-scopes!
+                     (:reload-state-scopes state) saved-state-scopes)
                     (sig/dispose-scope! candidate-scope)
                     (Some message))))]
           (match failure
@@ -246,6 +293,9 @@
                     (raise
                      (Invalid_argument "candidate view did not return a node")))]
               (sig/dispose-scope! old-scope)
+              (prune-state-scopes!
+               (:reload-state-scopes state)
+               (deref candidate-active-state-paths))
               (sig/mount! candidate-scope)
               (reset! (:reload-view-scope state) candidate-scope)
               (reset! (:reload-view-node state) node)

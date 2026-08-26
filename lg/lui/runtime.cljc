@@ -42,6 +42,7 @@
     (event-handlers (atom (hash-map)))
     (next-dynamic-segment-id (atom 0))
     (dynamic-segments (atom (empty-dynamic-segments)))
+    (runtime-reload-keys (atom (hash-map)))
     (runtime-node-aliases (atom (hash-map)))))
 
 (defn create [scheduler backend]
@@ -65,6 +66,7 @@
     (checkpoint-next-dynamic-segment-id
      (deref (:next-dynamic-segment-id application)))
     (checkpoint-dynamic-segments (deref (:dynamic-segments application)))
+    (checkpoint-reload-keys (deref (:runtime-reload-keys application)))
     (checkpoint-node-aliases (deref (:runtime-node-aliases application)))))
 
 (defn restore! [application saved]
@@ -86,6 +88,7 @@
   (reset! (:next-dynamic-segment-id application)
           (:checkpoint-next-dynamic-segment-id saved))
   (reset! (:dynamic-segments application) (:checkpoint-dynamic-segments saved))
+  (reset! (:runtime-reload-keys application) (:checkpoint-reload-keys saved))
   (reset! (:runtime-node-aliases application) (:checkpoint-node-aliases saved))
   true)
 
@@ -119,6 +122,18 @@
         false)
       false)))
 
+(defn- find-child-by-reload-key [children reload-keys key]
+  (loop [index 0
+         found None]
+    (if (= index (count children))
+      found
+      (let [child (nth children index)]
+        (if (= (clojure.core/get reload-keys child) (Some key))
+          (if-some [_existing found]
+            (raise (Invalid_argument "duplicate reload key among siblings"))
+            (recur (inc index) (Some child)))
+          (recur (inc index) found))))))
+
 (defn- collect-node-mapping
   [application saved old-node candidate-node mapping]
   (if-not (node-compatible? application saved old-node candidate-node)
@@ -136,18 +151,35 @@
                      (deref (:runtime-children application)) candidate-node)]
             children
             [])
-          shared-count (min (count old-children) (count candidate-children))]
+          old-reload-keys (:checkpoint-reload-keys saved)
+          candidate-reload-keys (deref (:runtime-reload-keys application))]
       (loop [index 0
              current mapping]
-        (if (= index shared-count)
+        (if (= index (count candidate-children))
           current
-          (recur
-           (inc index)
-           (collect-node-mapping
-            application saved
-            (nth old-children index)
-            (nth candidate-children index)
-            current)))))))
+          (let [candidate-child (nth candidate-children index)
+                old-child
+                (if-some [key
+                          (clojure.core/get
+                           candidate-reload-keys candidate-child)]
+                  (let [_candidate-match
+                        (find-child-by-reload-key
+                         candidate-children candidate-reload-keys key)]
+                    (find-child-by-reload-key
+                     old-children old-reload-keys key))
+                  (if (< index (count old-children))
+                    (let [position-child (nth old-children index)]
+                      (if (contains? old-reload-keys position-child)
+                        None
+                        (Some position-child)))
+                    None))]
+            (recur
+             (inc index)
+             (match old-child
+               (Some matched)
+               (collect-node-mapping
+                application saved matched candidate-child current)
+               None current))))))))
 
 (defn- collect-subtree-nodes [children-map root]
   (let [children
@@ -303,6 +335,8 @@
         (remove-node-keys (:checkpoint-properties saved) old-nodes)
         base-extension-properties
         (remove-node-keys (:checkpoint-extension-properties saved) old-nodes)
+        base-reload-keys
+        (remove-node-keys (:checkpoint-reload-keys saved) old-nodes)
         base-children
         (remove-node-keys (:checkpoint-children saved) old-nodes)
         desired-standard
@@ -321,6 +355,10 @@
         (remap-node-values
          (deref (:runtime-extension-properties application))
          candidate-nodes mapping base-extension-properties)
+        desired-reload-keys
+        (remap-node-values
+         (deref (:runtime-reload-keys application))
+         candidate-nodes mapping base-reload-keys)
         desired-children
         (assoc
          (remap-children current-children candidate-nodes mapping base-children)
@@ -406,6 +444,7 @@
     (reset! (:runtime-parents application) (rebuild-parents desired-children))
     (reset! (:event-handlers application) desired-handlers)
     (reset! (:dynamic-segments application) desired-segments)
+    (reset! (:runtime-reload-keys application) desired-reload-keys)
     (reset!
      (:runtime-node-aliases application)
      (reduce-kv
@@ -545,6 +584,12 @@
           node identifier (ext/tweak-fingerprint schema)))
         node))))
 
+(defn set-reload-key! [application node key]
+  (let [node (canonical-node application node)]
+    (require-node! application node)
+    (swap! (:runtime-reload-keys application) assoc node key)
+    true))
+
 (defn drop-node! [application node]
   (let [node (canonical-node application node)]
   (require-node! application node)
@@ -558,6 +603,7 @@
   (swap! (:runtime-extension-properties application) dissoc node)
   (swap! (:runtime-children application) dissoc node)
   (swap! (:runtime-parents application) dissoc node)
+  (swap! (:runtime-reload-keys application) dissoc node)
   (enqueue! application (proto/drop-node-op node))))
 
 (defn drop-subtree! [application node]

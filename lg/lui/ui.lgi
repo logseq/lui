@@ -6,22 +6,24 @@
   (ui-scope :scope)
   (ui-state-scope :scope)
   (ui-state-scopes :ref<map<string;scope>>)
+  (ui-active-state-paths :ref<map<string;bool>>)
   (ui-state-path :string)
   (ui-profile :platform-profile))
 
 (signature lui.ui/context :fn<application;scope;ui-context>)
 (signature lui.ui/make-context
-  :fn<application;scope;scope;ref<map<string;scope>>;string;ui-context>)
+  :fn<application;scope;scope;ref<map<string;scope>>;ref<map<string;bool>>;string;ui-context>)
 (signature lui.ui/context-with-state-scope
   :fn<application;scope;scope;ui-context>)
 (signature lui.ui/context-with-state-registry
-  :fn<application;scope;scope;ref<map<string;scope>>;ui-context>)
+  :fn<application;scope;scope;ref<map<string;scope>>;ref<map<string;bool>>;ui-context>)
 (signature lui.ui/child-context :fn<ui-context;string;ui-context>)
 (signature lui.ui/profile :fn<ui-context;platform-profile>)
 (signature lui.ui/platform :fn<ui-context;operating-system>)
 (signature lui.ui/host :fn<ui-context;host-kind>)
 (signature lui.ui/extension! :fn<ui-context;string;int>)
 (signature lui.ui/platform-tweak! :fn<ui-context;string;int>)
+(signature lui.ui/key! :fn<ui-context;int;string;bool>)
 (signature lui.ui/extension-property!
   :fn<ui-context;int;string;wire-value;bool>)
 (signature lui.ui/extension-property-signal!

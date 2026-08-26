@@ -26,6 +26,10 @@
 
 (signature lui.app/reduce! [model action]
   :fn<state<model>;fn<model;action;model>;action;bool>)
+(signature lui.app/restore-state-scopes!
+  :fn<ref<map<string;scope>>;map<string;scope>;bool>)
+(signature lui.app/prune-state-scopes!
+  :fn<ref<map<string;scope>>;map<string;bool>;bool>)
 (signature lui.app/start! [model action]
   :fn<reducer-app<model;action>;bool>)
 (signature lui.app/flush! [model action]

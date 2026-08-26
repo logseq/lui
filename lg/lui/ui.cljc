@@ -4,38 +4,45 @@
             [lui.runtime :as runtime]))
 
 (defn- make-context
-  [application scope state-scope state-scopes state-path]
+  [application scope state-scope state-scopes active-state-paths state-path]
   (record ui-context
     (ui-application application)
     (ui-scheduler (:runtime-scheduler application))
     (ui-scope scope)
     (ui-state-scope state-scope)
     (ui-state-scopes state-scopes)
+    (ui-active-state-paths active-state-paths)
     (ui-state-path state-path)
     (ui-profile (:backend-profile (:runtime-backend application)))))
 
 (defn context [application scope]
-  (make-context application scope scope (atom (hash-map)) ""))
+  (make-context
+   application scope scope (atom (hash-map)) (atom (hash-map)) ""))
 
 (defn context-with-state-scope [application scope state-scope]
-  (make-context application scope state-scope (atom (hash-map)) ""))
+  (make-context
+   application scope state-scope (atom (hash-map)) (atom (hash-map)) ""))
 
 (defn context-with-state-registry
-  [application scope state-scope state-scopes]
-  (make-context application scope state-scope state-scopes ""))
+  [application scope state-scope state-scopes active-state-paths]
+  (make-context
+   application scope state-scope state-scopes active-state-paths ""))
 
 (defn child-context [parent name]
   (let [scope (sig/scope name (:ui-scope parent))
         path (str (:ui-state-path parent) "/" name)
         state-scopes (:ui-state-scopes parent)
+        active-state-paths (:ui-active-state-paths parent)
         state-scope
         (if-some [existing (clojure.core/get (deref state-scopes) path)]
           existing
           (let [created (sig/scope name (:ui-state-scope parent))]
             (swap! state-scopes assoc path created)
             created))]
+    (swap! active-state-paths assoc path true)
     (make-context
-     (:ui-application parent) scope state-scope state-scopes path)))
+     (:ui-application parent) scope state-scope state-scopes
+     active-state-paths path)))
 
 (defn profile [context]
   (:ui-profile context))
@@ -51,6 +58,9 @@
 
 (defn platform-tweak! [context identifier]
   (runtime/create-tweak-node! (:ui-application context) identifier))
+
+(defn key! [context node key]
+  (runtime/set-reload-key! (:ui-application context) node key))
 
 (defn extension-property! [context node property value]
   (runtime/set-extension-prop!

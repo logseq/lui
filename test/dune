@@ -173,6 +173,50 @@
  (action (run %{exe:hot_reload_native.exe})))
 
 (rule
+ (targets
+  hot_reload_repl_base.ml
+  hot_reload_repl_increment.ml
+  hot_reload_repl_base.state)
+ (deps
+  ../lg/lui/lui_native.state
+  (source_tree ../lg/lui/backend/retained)
+  (source_tree ../lg/lui/backend/apple)
+  %{bin:lg})
+ (action
+  (progn
+   (run
+    %{bin:lg}
+    --target native
+    --compile-files-from
+    ../lg/lui/lui_native.state
+    ../lg/lui/backend/retained
+    ../lg/lui/backend/apple
+    -o hot_reload_repl_base.ml)
+   (run
+    %{bin:lg}
+    --target native
+    --compile-files-from-state
+    ../lg/lui/lui_native.state
+    hot_reload_repl_base.state
+    ../lg/lui/backend/retained
+    ../lg/lui/backend/apple
+    -o hot_reload_repl_increment.ml))))
+
+(test
+ (name hot_reload_repl_test)
+ (modules hot_reload_repl_test hot_reload_repl_base)
+ (modes byte)
+ (deps hot_reload_repl_base.state)
+ (flags (:standard -w -27-32-37-39-69))
+ (libraries
+  lg.repl
+  lg.edn-backend.native
+  lg.runtime
+  lg.rrbvec)
+ (action
+  (run %{test} %{dep:hot_reload_repl_base.state})))
+
+(rule
  (target apple_bridge_native.ml)
  (deps
   ../lg/lui/lui_native.state

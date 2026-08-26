@@ -44,6 +44,7 @@
   (checkpoint-event-handlers :map<int;vector<event-handler>>)
   (checkpoint-next-dynamic-segment-id :int)
   (checkpoint-dynamic-segments :map<int;vector<dynamic-segment>>)
+  (checkpoint-reload-keys :map<int;string>)
   (checkpoint-node-aliases :map<int;int>))
 
 (type-record application
@@ -64,6 +65,7 @@
   (event-handlers :ref<map<int;vector<event-handler>>>)
   (next-dynamic-segment-id :ref<int>)
   (dynamic-segments :ref<map<int;vector<dynamic-segment>>>)
+  (runtime-reload-keys :ref<map<int;string>>)
   (runtime-node-aliases :ref<map<int;int>>))
 
 (signature lui.runtime/create :fn<scheduler;backend;application>)
@@ -76,6 +78,8 @@
 (signature lui.runtime/map-node :fn<map<int;int>;int;int>)
 (signature lui.runtime/node-compatible?
   :fn<application;runtime-checkpoint;int;int;bool>)
+(signature lui.runtime/find-child-by-reload-key
+  :fn<vector<int>;map<int;string>;string;option<int>>)
 (signature lui.runtime/collect-node-mapping
   :fn<application;runtime-checkpoint;int;int;map<int;int>;map<int;int>>)
 (signature lui.runtime/collect-subtree-nodes
@@ -120,6 +124,7 @@
 (signature lui.runtime/create-extension-node!
   :fn<application;string;int>)
 (signature lui.runtime/create-tweak-node! :fn<application;string;int>)
+(signature lui.runtime/set-reload-key! :fn<application;int;string;bool>)
 (signature lui.runtime/drop-node! :fn<application;int;bool>)
 (signature lui.runtime/drop-subtree! :fn<application;int;bool>)
 (signature lui.runtime/set-prop! :fn<application;int;property;wire-value;bool>)

@@ -102,6 +102,27 @@
     (ui/append! context root editor)
     root))
 
+(defn keyed-row-view [context order]
+  (let [root (ui/row! context)
+        first-item (ui/text! context "First")
+        second-item (ui/text! context "Second")]
+    (ui/key! context first-item "first")
+    (ui/key! context second-item "second")
+    (if (= order :forward)
+      (do
+        (ui/append! context root first-item)
+        (ui/append! context root second-item))
+      (do
+        (ui/append! context root second-item)
+        (ui/append! context root first-item)))
+    root))
+
+(defn initial-keyed-view [context _model-source _send]
+  (keyed-row-view context :forward))
+
+(defn reordered-keyed-view [context _model-source _send]
+  (keyed-row-view context :reverse))
+
 (defn add-action [model action]
   (+ model action))
 
@@ -393,3 +414,59 @@
             (assert-equal "After local 1" text
                           "the compatible state slot retains its value")
             _ (is false "the reloaded local-state label has text")))))))
+
+(deftest reload-matches-keyed-children-across-reordering
+  (let [renderer (apple/create)
+        application
+        (app/create-reloadable
+         (apple/backend renderer) "source-a" "contract-a"
+         0 add-action initial-keyed-view)]
+    (app/start! application)
+    (app/flush! application)
+    (let [stable-root (app/root-node application)
+          row (nth (apple/children renderer stable-root) 0)
+          first-item (nth (apple/children renderer row) 0)
+          second-item (nth (apple/children renderer row) 1)
+          request (app/request-reload! application)]
+      (assert-equal
+       (hot/ReloadApplied request)
+       (app/reload-view!
+        application request "source-b" "contract-a"
+        reordered-keyed-view 0)
+       "a keyed reordering hot-applies")
+      (assert-equal [second-item first-item] (apple/children renderer row)
+                    "native identities follow explicit keys across moves"))))
+
+(deftest reload-prunes-state-scopes-for-removed-component-paths
+  (let [renderer (apple/create)
+        application
+        (app/create-reloadable
+         (apple/backend renderer) "source-a" "contract-a"
+         0 add-action initial-stateful-view)]
+    (app/start! application)
+    (app/flush! application)
+    (let [stable-root (app/root-node application)
+          layout (nth (apple/children renderer stable-root) 0)
+          button (nth (apple/children renderer layout) 1)]
+      (app/dispatch-event! application (proto/Press button))
+      (app/flush! application)
+      (let [remove-request (app/request-reload! application)]
+        (assert-equal
+         (hot/ReloadApplied remove-request)
+         (app/reload-view!
+          application remove-request "source-b" "contract-a" plain-view 0)
+         "removing the stateful component hot-applies"))
+      (let [restore-request (app/request-reload! application)]
+        (assert-equal
+         (hot/ReloadApplied restore-request)
+         (app/reload-view!
+          application restore-request "source-c" "contract-a"
+          initial-stateful-view 0)
+         "adding the component path again hot-applies"))
+      (let [next-layout (nth (apple/children renderer stable-root) 0)
+            next-label (nth (apple/children renderer next-layout) 0)]
+        (match (apple/property renderer next-label proto/TextValue)
+          (Some (proto/StringValue text))
+          (assert-equal "Before local 0" text
+                        "a removed component path receives fresh local state")
+          _ (is false "the recreated local-state label has text"))))))
