@@ -2597,6 +2597,37 @@ struct LUISwiftUIBackendTests {
         ))
     }
 
+    @Test("standard-child extensions can render any retained direct child")
+    func extensionCanRenderASelectedDirectChild() throws {
+        var renderedChildIDs: [Int] = []
+        let registry = LUIAppleExtensionRegistry()
+        try registry.register(
+            LUIAppleExtension(
+                identifier: "deck",
+                fingerprint: "deck-v1",
+                acceptsStandardChildren: true
+            ) { context in
+                renderedChildIDs = context.childIDs
+                return context.content(for: context.childIDs[1])
+            }
+        )
+        let backend = try LUIAppleBackend(extensionRegistry: registry)
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-extension","id":1,"identifier":"deck","fingerprint":"deck-v1"},
+          {"op":"create-node","id":2,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"text","value":"First"},
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"set-prop","id":3,"property":"text","value":"Second"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        _ = backend.extensionView(nodeID: 1)
+        #expect(renderedChildIDs == [2, 3])
+    }
+
     @Test("extension registrations cannot shadow standard nodes or name invalid children")
     func extensionRegistrationNamesAreClosed() throws {
         let registry = LUIAppleExtensionRegistry()

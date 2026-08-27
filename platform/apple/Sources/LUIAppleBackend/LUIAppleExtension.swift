@@ -277,7 +277,12 @@ public struct LUIAppleExtensionViewContext {
 
     public var content: AnyView {
         guard childIDs.count == 1 else { return AnyView(EmptyView()) }
-        return backend.anyNodeView(nodeID: childIDs[0])
+        return content(for: childIDs[0])
+    }
+
+    public func content(for childID: Int) -> AnyView {
+        guard childIDs.contains(childID) else { return AnyView(EmptyView()) }
+        return backend.anyNodeView(nodeID: childID)
     }
 
     public func childProperty(node childID: Int, _ name: String) -> LUIExtensionValue? {
