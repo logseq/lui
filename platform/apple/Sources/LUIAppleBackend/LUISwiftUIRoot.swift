@@ -140,7 +140,11 @@ private struct LUINodeView: View {
         case .tabs, .buttonGroup, .toggleGroup, .breadcrumb, .pagination:
             LUIHorizontalGroupView(model: model, backend: backend)
         case .column, .list:
-            LUIColumnView(model: model, backend: backend)
+            if LUIVerticalContainerPolicy.isLazy(kind: model.kind) {
+                LUIListView(model: model, backend: backend)
+            } else {
+                LUIColumnView(model: model, backend: backend)
+            }
         case .grid:
             LUIGridView(model: model, backend: backend)
         case .stack:
@@ -2363,6 +2367,23 @@ private struct LUIColumnView: View {
         case "center": .center
         case "end": .trailing
         default: .leading
+        }
+    }
+}
+
+private struct LUIListView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        LazyVStack(
+            alignment: .leading,
+            spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+        ) {
+            ForEach(model.children, id: \.self) { childID in
+                LUIAnyNodeView(nodeID: childID, backend: backend)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 }

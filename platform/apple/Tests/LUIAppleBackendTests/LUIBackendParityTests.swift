@@ -4,6 +4,12 @@ import Testing
 @MainActor
 @Suite("LUI shared backend parity")
 struct LUIBackendParityTests {
+    @Test("lists use lazy vertical containers on both SwiftUI hosts")
+    func listContainersAreLazy() {
+        #expect(LUIVerticalContainerPolicy.isLazy(kind: LUINodeKind.list))
+        #expect(!LUIVerticalContainerPolicy.isLazy(kind: LUINodeKind.column))
+    }
+
     @Test("retains nodes and patches properties")
     func retainsNodesAndPatchesProperties() throws {
         let backend = LUIAppleBackend()

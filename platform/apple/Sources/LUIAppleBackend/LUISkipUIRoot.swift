@@ -57,7 +57,14 @@ private struct LUISkipNodeView: View {
             }
         case .toolbar:
             toolbar
-        case .column, .list, .box, .panel, .card, .stack, .grid, .table,
+        case .list:
+            LazyVStack(
+                alignment: .leading,
+                spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+            ) {
+                children
+            }
+        case .column, .box, .panel, .card, .stack, .grid, .table,
              .tableRow, .tableCell, .tree, .timeline, .timelineItem, .stepper,
              .step, .alert, .bubble, .toast, .accordion,
              .menuItem, .resizable, .split:
