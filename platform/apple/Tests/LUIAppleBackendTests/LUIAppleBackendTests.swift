@@ -30,6 +30,19 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    @Test("semantic muted foreground uses secondary text styling")
+    func semanticMutedForegroundUsesSecondaryTextStyling() {
+        #expect(LUIThemeColorPolicy.isMutedForeground("muted-foreground"))
+        #expect(!LUIThemeColorPolicy.isMutedForeground("foreground"))
+        #expect(!LUIThemeColorPolicy.isMutedForeground(nil))
+    }
+
+    @Test("level one headings use the emphasized title weight")
+    func levelOneHeadingsUseTheEmphasizedTitleWeight() {
+        #expect(LUIHeadingTypography.isBold(level: 1))
+        #expect(!LUIHeadingTypography.isBold(level: 2))
+    }
+
     private func image(width: Int = 64, height: Int = 64) throws -> CGImage {
         let bytes = Data(repeating: 0xff, count: width * height * 4)
         let provider = try #require(CGDataProvider(data: bytes as CFData))

@@ -169,6 +169,9 @@ private struct LUINodeView: View {
         case .heading:
             Text(verbatim: model.text)
                 .font(headingFont)
+                .fontWeight(
+                    LUIHeadingTypography.isBold(level: headingLevel) ? .bold : nil
+                )
                 .accessibilityAddTraits(.isHeader)
         case .paragraph:
             Text(verbatim: model.text)
@@ -329,7 +332,7 @@ private struct LUINodeView: View {
     }
 
     private var headingFont: Font {
-        switch model.property(.headingLevel)?.intValue ?? 1 {
+        switch headingLevel {
         case 1: .largeTitle
         case 2: .title
         case 3: .title2
@@ -337,6 +340,10 @@ private struct LUINodeView: View {
         case 5: .headline
         default: .subheadline
         }
+    }
+
+    private var headingLevel: Int {
+        model.property(.headingLevel)?.intValue ?? 1
     }
 
     private var progressAccessibilityValue: String {
@@ -2677,7 +2684,10 @@ private struct LUISurfaceModifier: ViewModifier {
     }
 
     private func color(_ name: String?) -> Color? {
-        switch name?.lowercased() {
+        if LUIThemeColorPolicy.isMutedForeground(name) {
+            return .secondary
+        }
+        return switch name?.lowercased() {
         case nil: nil
         case "transparent": .clear
         case "background": systemBackground
@@ -2698,7 +2708,7 @@ private struct LUISurfaceModifier: ViewModifier {
         case "red": .red
         case "blue": .blue
         case "green": .green
-        default: .clear
+        default: nil
         }
     }
 
