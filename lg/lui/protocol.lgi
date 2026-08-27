@@ -33,6 +33,7 @@
   (Divider)
   (Scroll)
   (ListContainer)
+  (VirtualList)
   (Tabs)
   (ButtonGroup)
   (ToggleGroup)

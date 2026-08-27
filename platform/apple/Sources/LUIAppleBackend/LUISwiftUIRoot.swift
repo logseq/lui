@@ -157,6 +157,8 @@ private struct LUINodeView: View {
             } else {
                 LUIColumnView(model: model, backend: backend)
             }
+        case .virtualList:
+            LUIVirtualListView(model: model, backend: backend)
         case .grid:
             LUIGridView(model: model, backend: backend)
         case .stack:
@@ -2596,6 +2598,25 @@ private struct LUIListView: View {
             ForEach(model.children, id: \.self) { childID in
                 LUIAnyNodeView(nodeID: childID, backend: backend)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+}
+
+private struct LUIVirtualListView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(
+                alignment: .leading,
+                spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+            ) {
+                ForEach(model.children, id: \.self) { childID in
+                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
     }

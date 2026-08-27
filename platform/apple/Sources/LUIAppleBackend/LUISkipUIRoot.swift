@@ -75,6 +75,15 @@ private struct LUISkipNodeView: View {
             ) {
                 children
             }
+        case .virtualList:
+            ScrollView {
+                LazyVStack(
+                    alignment: .leading,
+                    spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+                ) {
+                    children
+                }
+            }
         case .column, .box:
             VStack(
                 alignment: columnAlignment,

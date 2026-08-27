@@ -29,6 +29,7 @@
   (AppleDivider)
   (AppleScrollView)
   (AppleList)
+  (AppleVirtualList)
   (AppleTabs)
   (AppleButtonGroup)
   (AppleToggleGroup)

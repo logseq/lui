@@ -557,7 +557,7 @@ struct LUIRetainedTree {
         }
         return switch property {
         case .main, .cross:
-            kind == .row || kind == .column || kind == .list ||
+            kind == .row || kind == .column || kind == .list || kind == .virtualList ||
                 isHorizontalGroup(kind)
         case .grow: kind != .avatar && kind != .tooltip && !isModalSurface(kind)
         case .columns: kind == .grid
@@ -598,6 +598,7 @@ struct LUIRetainedTree {
                 kind == .drawer
         case .gap:
             kind == .row || kind == .column || kind == .grid || kind == .list ||
+                kind == .virtualList ||
                 kind == .dropdownMenu || isHorizontalGroup(kind) || kind == .split
                 || kind == .tableRow || kind == .tree
         case .placeholder:
@@ -675,7 +676,7 @@ struct LUIRetainedTree {
     private static func canContainChildren(_ kind: LUINodeKind) -> Bool {
         kind == .root || kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
-            kind == .list || isHorizontalGroup(kind) || kind == .radioGroup
+            kind == .list || kind == .virtualList || isHorizontalGroup(kind) || kind == .radioGroup
             || kind == .dropdownMenu || kind == .contextMenu || kind == .listItem || isModalSurface(kind)
             || kind == .accordion
             || kind == .table || kind == .tableRow || kind == .tree || kind == .resizable
@@ -689,7 +690,7 @@ struct LUIRetainedTree {
     private static func acceptsExtensionChildren(_ kind: LUINodeKind) -> Bool {
         kind == .root || kind == .row || kind == .column || kind == .grid || kind == .stack ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
-            kind == .list || kind == .listItem || kind == .dialog ||
+            kind == .list || kind == .virtualList || kind == .listItem || kind == .dialog ||
             kind == .sheet || kind == .accordion || kind == .resizable || kind == .split ||
             kind == .drawer ||
             kind == .alert || kind == .bubble || kind == .toast || kind == .toolbar

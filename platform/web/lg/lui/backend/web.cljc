@@ -12,7 +12,7 @@
                      TextField SecureField Input SearchField Textarea Checkbox SwitchControl
                      Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Sheet Tooltip Toast Toolbar Accordion
                      Table TableRow TableCell Tree Resizable Split Drawer StatusBar
-                     Scroll ListContainer Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
+                     Scroll ListContainer VirtualList Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
                      Progress Divider
                      Toggle RadioGroup Radio Slider
@@ -190,6 +190,7 @@
     Divider "lui-separator"
     Scroll "lui-scroll"
     ListContainer "lui-list"
+    VirtualList "lui-virtual-list"
     Tabs "lui-tabs"
     ButtonGroup "lui-button-group"
     ToggleGroup "lui-toggle-group"

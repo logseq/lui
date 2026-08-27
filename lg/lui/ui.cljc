@@ -105,6 +105,9 @@
 (defn list! [context]
   (runtime/create-node! (:ui-application context) proto/ListContainer))
 
+(defn virtual-list! [context]
+  (runtime/create-node! (:ui-application context) proto/VirtualList))
+
 (defn tabs! [context]
   (runtime/create-node! (:ui-application context) proto/Tabs))
 

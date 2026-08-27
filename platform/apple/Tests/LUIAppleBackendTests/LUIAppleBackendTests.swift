@@ -545,6 +545,26 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 3)?.role == "navigation-heading")
     }
 
+    @Test("virtual list retains one flat lazy collection")
+    func mapsVirtualList() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"virtual-list"},
+          {"op":"create-node","id":2,"kind":"text"},
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"set-prop","id":1,"property":"gap","value":8},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let list = try #require(backend.model(id: 1))
+        #expect(list.kind == .virtualList)
+        #expect(list.children == [2, 3])
+        #expect(list.property(.gap) == .int(8))
+    }
+
     @Test("rejects invalid batches before observable models change")
     func rejectsInvalidBatchAtomically() throws {
         let backend = LUIAppleBackend()

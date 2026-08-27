@@ -921,6 +921,7 @@ final class LUIFlutterBackend {
           if (state.kind != _NodeKind.row &&
               state.kind != _NodeKind.column &&
               state.kind != _NodeKind.list &&
+              state.kind != _NodeKind.virtualList &&
               state.kind != _NodeKind.inputGroupActions) {
             return childWidget;
           }
@@ -1951,6 +1952,11 @@ final class LUIFlutterBackend {
       _NodeKind.breadcrumb ||
       _NodeKind.pagination => horizontalGroup(),
       _NodeKind.column || _NodeKind.list => column(),
+      _NodeKind.virtualList => ListView.separated(
+        itemCount: state.children.length,
+        itemBuilder: (context, index) => widget(node: state.children[index]),
+        separatorBuilder: (context, index) => SizedBox(height: gap),
+      ),
       _NodeKind.grid => grid(),
       _NodeKind.stack => stack(),
       _NodeKind.panel ||
@@ -2761,6 +2767,7 @@ final class LUIFlutterBackend {
             (kind == _NodeKind.row ||
                 kind == _NodeKind.column ||
                 kind == _NodeKind.list ||
+                kind == _NodeKind.virtualList ||
                 _isHorizontalGroupKind(kind)),
       'cross' =>
         value is String &&
@@ -2768,6 +2775,7 @@ final class LUIFlutterBackend {
             (kind == _NodeKind.row ||
                 kind == _NodeKind.column ||
                 kind == _NodeKind.list ||
+                kind == _NodeKind.virtualList ||
                 _isHorizontalGroupKind(kind)),
       'grow' =>
         value is num &&
@@ -2932,6 +2940,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.column ||
                 kind == _NodeKind.grid ||
                 kind == _NodeKind.list ||
+                kind == _NodeKind.virtualList ||
                 kind == _NodeKind.dropdownMenu ||
                 kind == _NodeKind.tableRow ||
                 kind == _NodeKind.tree ||
@@ -3434,6 +3443,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.box ||
       kind == _NodeKind.scroll ||
       kind == _NodeKind.list ||
+      kind == _NodeKind.virtualList ||
       _isHorizontalGroupKind(kind) ||
       kind == _NodeKind.radioGroup ||
       kind == _NodeKind.dropdownMenu ||
@@ -3468,6 +3478,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.box ||
       kind == _NodeKind.scroll ||
       kind == _NodeKind.list ||
+      kind == _NodeKind.virtualList ||
       kind == _NodeKind.listItem ||
       kind == _NodeKind.dialog ||
       kind == _NodeKind.sheet ||

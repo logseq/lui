@@ -162,10 +162,10 @@
 (defn- common-property-supported? [kind property]
   (match property
     MainAlignment
-    (or (= kind Row) (= kind Column) (= kind ListContainer)
+    (or (= kind Row) (= kind Column) (= kind ListContainer) (= kind VirtualList)
         (horizontal-container? kind))
     CrossAlignment
-    (or (= kind Row) (= kind Column) (= kind ListContainer)
+    (or (= kind Row) (= kind Column) (= kind ListContainer) (= kind VirtualList)
         (horizontal-container? kind))
     GrowValue
     (and (not (= kind Avatar)) (not (modal-surface? kind))
@@ -366,7 +366,7 @@
     Connector false
     Gap
     (or (= kind Row) (= kind Column) (= kind Grid)
-        (= kind ListContainer) (= kind DropdownMenu) (= kind TableRow)
+        (= kind ListContainer) (= kind VirtualList) (= kind DropdownMenu) (= kind TableRow)
         (= kind Tree) (= kind Split)
         (horizontal-container? kind))))
 
@@ -710,6 +710,7 @@
       Box true
       Scroll true
       ListContainer true
+      VirtualList true
       RadioGroup true
       DropdownMenu true
       ContextMenu true

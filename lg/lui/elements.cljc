@@ -946,6 +946,9 @@
 (defelement list [context parent attrs & children]
   (container-expansion 'lui.ui/list! context parent attrs children))
 
+(defelement virtual-list [context parent attrs & children]
+  (container-expansion 'lui.ui/virtual-list! context parent attrs children))
+
 (defelement tabs [context parent attrs & children]
   (let [node (gensym "node")]
     `(let [~node (lui.ui/tabs! ~context)]

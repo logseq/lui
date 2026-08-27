@@ -53,6 +53,7 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.ok(summary.supported.includes('dropdown-menu'));
   assert.ok(summary.supported.includes('menu-item'));
   assert.ok(summary.supported.includes('list-item'));
+  assert.ok(summary.supported.includes('virtual-list'));
   assert.ok(summary.supported.includes('avatar'));
   assert.ok(summary.supported.includes('image'));
   assert.ok(summary.supported.includes('media-surface'));

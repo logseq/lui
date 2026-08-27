@@ -39,6 +39,7 @@
 (signature lui.ui/box! :fn<ui-context;int>)
 (signature lui.ui/scroll! :fn<ui-context;int>)
 (signature lui.ui/list! :fn<ui-context;int>)
+(signature lui.ui/virtual-list! :fn<ui-context;int>)
 (signature lui.ui/tabs! :fn<ui-context;int>)
 (signature lui.ui/button-group! :fn<ui-context;int>)
 (signature lui.ui/toggle-group! :fn<ui-context;int>)

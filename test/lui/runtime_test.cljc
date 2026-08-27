@@ -1244,6 +1244,26 @@
      (wire/encode-batch batch)
      "List uses the pinned Vercel Native wire name")))
 
+(deftest virtual-list-has-a-closed-scrollable-collection-contract
+  (let [renderer (apple/create)
+        backend (apple/backend renderer)
+        batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/VirtualList)
+                      (proto/create-node-op 2 proto/Text)
+                      (proto/create-node-op 3 proto/Text)
+                      (proto/set-prop-op 1 proto/Gap (proto/IntValue 8))
+                      (proto/insert-child-op 1 2 0)
+                      (proto/insert-child-op 1 3 1)]))]
+    ((:apply-batch backend) batch)
+    (assert-equal [2 3] (apple/children renderer 1)
+                  "VirtualList retains one flat keyed child sequence")
+    (assert-equal
+     "{\"generation\":1,\"ops\":[{\"op\":\"create-node\",\"id\":1,\"kind\":\"virtual-list\"},{\"op\":\"create-node\",\"id\":2,\"kind\":\"text\"},{\"op\":\"create-node\",\"id\":3,\"kind\":\"text\"},{\"op\":\"set-prop\",\"id\":1,\"property\":\"gap\",\"value\":8},{\"op\":\"insert-child\",\"parent\":1,\"child\":2,\"index\":0},{\"op\":\"insert-child\",\"parent\":1,\"child\":3,\"index\":1}]}"
+     (wire/encode-batch batch)
+     "VirtualList has one closed wire node name")))
+
 (deftest tree-has-the-pinned-role-driven-contract
   (let [properties
         (hash-map

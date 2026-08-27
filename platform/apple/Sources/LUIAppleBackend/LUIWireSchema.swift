@@ -33,6 +33,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case divider = "divider"
     case scroll = "scroll"
     case list = "list"
+    case virtualList = "virtual-list"
     case tabs = "tabs"
     case buttonGroup = "button-group"
     case toggleGroup = "toggle-group"

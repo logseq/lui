@@ -27,6 +27,7 @@
   (FlutterDivider)
   (FlutterViewport)
   (FlutterList)
+  (FlutterVirtualList)
   (FlutterTabs)
   (FlutterButtonGroup)
   (FlutterToggleGroup)
