@@ -343,6 +343,7 @@
       Combobox true
       MenuItem true
       ListItem true
+      Drawer true
       _ false)
     ActiveIndex false
     TitleValue false

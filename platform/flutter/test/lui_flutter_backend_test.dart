@@ -1936,6 +1936,7 @@ void main() {
         {"op":"create-node","id":2,"kind":"panel"},
         {"op":"create-node","id":3,"kind":"panel"},
         {"op":"set-prop","id":1,"property":"selected","value":false},
+        {"op":"set-prop","id":1,"property":"enabled","value":false},
         {"op":"set-prop","id":1,"property":"toggle-enabled","value":true},
         {"op":"set-prop","id":1,"property":"width","value":320},
         {"op":"insert-child","parent":1,"child":2,"index":0},
@@ -1951,12 +1952,22 @@ void main() {
     final mainElement = tester.element(main);
     final panelElement = tester.element(panel);
 
-    await tester.dragFrom(const Offset(1, 100), const Offset(200, 0));
+    await tester.dragFrom(const Offset(300, 100), const Offset(200, 0));
+    await tester.pump();
+    expect(events, isEmpty);
+
+    backend.applyJson('''
+    {"generation":2,"ops":[
+      {"op":"set-prop","id":1,"property":"enabled","value":true}
+    ]}
+    ''');
+    await tester.pump();
+    await tester.dragFrom(const Offset(300, 100), const Offset(200, 0));
     await tester.pump();
     expect(events, const [LUIEvent.toggleChanged(node: 1, checked: true)]);
 
     backend.applyJson('''
-    {"generation":2,"ops":[
+    {"generation":3,"ops":[
       {"op":"set-prop","id":1,"property":"selected","value":true}
     ]}
     ''');
@@ -1972,7 +1983,7 @@ void main() {
     ]);
 
     backend.applyJson('''
-    {"generation":3,"ops":[
+    {"generation":4,"ops":[
       {"op":"set-prop","id":1,"property":"selected","value":false},
       {"op":"set-prop","id":1,"property":"width","value":0}
     ]}

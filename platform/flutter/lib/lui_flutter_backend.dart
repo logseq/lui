@@ -1960,6 +1960,7 @@ final class LUIFlutterBackend {
       _NodeKind.bubble => bubble(),
       _NodeKind.drawer => _LUIDrawer(
         sourcePresented: state.properties['selected'] as bool? ?? false,
+        enabled: enabled,
         width: (state.properties['width'] as int? ?? 320).toDouble(),
         label: accessibilityLabel ?? 'Navigation',
         onChanged: state.properties['toggle-enabled'] == true
@@ -2809,7 +2810,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.slider ||
                 kind == _NodeKind.select ||
                 kind == _NodeKind.menuItem ||
-                kind == _NodeKind.listItem),
+                kind == _NodeKind.listItem ||
+                kind == _NodeKind.drawer),
       'value' =>
         value is double &&
             value.isFinite &&
@@ -4099,6 +4101,7 @@ extension on _NodeKind {
 final class _LUIDrawer extends StatefulWidget {
   const _LUIDrawer({
     required this.sourcePresented,
+    required this.enabled,
     required this.width,
     required this.label,
     required this.onChanged,
@@ -4107,6 +4110,7 @@ final class _LUIDrawer extends StatefulWidget {
   });
 
   final bool sourcePresented;
+  final bool enabled;
   final double width;
   final String label;
   final ValueChanged<bool>? onChanged;
@@ -4118,8 +4122,6 @@ final class _LUIDrawer extends StatefulWidget {
 }
 
 final class _LUIDrawerState extends State<_LUIDrawer> {
-  static const _edgeWidth = 24.0;
-
   late bool _presented;
   double _dragOffset = 0;
   bool _dragging = false;
@@ -4133,6 +4135,10 @@ final class _LUIDrawerState extends State<_LUIDrawer> {
   @override
   void didUpdateWidget(covariant _LUIDrawer oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!widget.enabled) {
+      _dragging = false;
+      _dragOffset = 0;
+    }
     if (widget.sourcePresented == oldWidget.sourcePresented) return;
     _presented = widget.sourcePresented;
     _dragOffset = 0;
@@ -4157,15 +4163,14 @@ final class _LUIDrawerState extends State<_LUIDrawer> {
           .clamp(0, width)
           .toDouble();
       final progress = width == 0 ? 0.0 : visibleWidth / width;
-      final canToggle = widget.onChanged != null && width > 0;
+      final canToggle = widget.enabled && widget.onChanged != null && width > 0;
 
       return GestureDetector(
         behavior: HitTestBehavior.translucent,
         onHorizontalDragStart: !canToggle
             ? null
             : (details) {
-                _dragging =
-                    _presented || details.localPosition.dx <= _edgeWidth;
+                _dragging = true;
               },
         onHorizontalDragUpdate: !canToggle
             ? null
@@ -4180,13 +4185,17 @@ final class _LUIDrawerState extends State<_LUIDrawer> {
               },
         onHorizontalDragEnd: !canToggle
             ? null
-            : (_) {
+            : (details) {
                 if (!_dragging) return;
                 _dragging = false;
                 final settledWidth = ((_presented ? width : 0) + _dragOffset)
                     .clamp(0, width)
                     .toDouble();
-                _updatePresentation(settledWidth >= width * 0.5);
+                final projectedWidth =
+                    (settledWidth + (details.primaryVelocity ?? 0) * 0.2)
+                        .clamp(0, width)
+                        .toDouble();
+                _updatePresentation(projectedWidth >= width * 0.5);
               },
         child: Stack(
           fit: StackFit.expand,

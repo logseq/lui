@@ -1,8 +1,12 @@
 import SwiftUI
 
 enum LUIDrawerGeometry {
-    static func gestureIsEligible(isPresented: Bool, startX: Double) -> Bool {
-        isPresented || startX <= 24.0
+    static func gestureIsEligible(
+        enabled: Bool,
+        translationX: Double,
+        translationY: Double
+    ) -> Bool {
+        enabled && abs(translationX) > abs(translationY)
     }
 
     static func dragOffset(
@@ -19,13 +23,15 @@ enum LUIDrawerGeometry {
     static func targetIsPresented(
         isPresented: Bool,
         translation: Double,
+        predictedTranslation: Double,
         width: Double
     ) -> Bool {
         guard width > 0 else { return false }
-        if isPresented {
-            return translation > -(width * 0.5)
-        }
-        return translation >= width * 0.5
+        let projected = abs(predictedTranslation) > abs(translation)
+            ? predictedTranslation
+            : translation
+        let visibleWidth = (isPresented ? width : 0.0) + projected
+        return visibleWidth >= width * 0.5
     }
 }
 
@@ -66,7 +72,10 @@ struct LUIDrawerView: View {
                     Color.black
                         .opacity(0.32 * Double(visibleWidth / width))
                         .ignoresSafeArea()
-                        .onTapGesture { updatePresentation(false) }
+                        .onTapGesture {
+                            guard model.isEnabled else { return }
+                            updatePresentation(false)
+                        }
                 }
 
                 if let panelID = model.children.dropFirst().first {
@@ -84,14 +93,18 @@ struct LUIDrawerView: View {
             presented = selected
             dragOffset = 0
         }
+        .onChange(of: model.isEnabled) { _, enabled in
+            if !enabled { dragOffset = 0 }
+        }
     }
 
     private func drawerGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 8)
+        DragGesture(minimumDistance: 3)
             .onChanged { value in
                 guard LUIDrawerGeometry.gestureIsEligible(
-                    isPresented: presented,
-                    startX: Double(value.startLocation.x)
+                    enabled: model.isEnabled,
+                    translationX: Double(value.translation.width),
+                    translationY: Double(value.translation.height)
                 ) else { return }
                 dragOffset = CGFloat(LUIDrawerGeometry.dragOffset(
                     isPresented: presented,
@@ -101,18 +114,21 @@ struct LUIDrawerView: View {
             }
             .onEnded { value in
                 guard LUIDrawerGeometry.gestureIsEligible(
-                    isPresented: presented,
-                    startX: Double(value.startLocation.x)
+                    enabled: model.isEnabled,
+                    translationX: Double(value.translation.width),
+                    translationY: Double(value.translation.height)
                 ) else { return }
                 updatePresentation(LUIDrawerGeometry.targetIsPresented(
                     isPresented: presented,
                     translation: Double(value.translation.width),
+                    predictedTranslation: Double(value.predictedEndTranslation.width),
                     width: Double(width)
                 ))
             }
     }
 
     private func updatePresentation(_ selected: Bool) {
+        guard model.isEnabled else { return }
         presented = selected
         dragOffset = 0
         guard selected != model.isSelected else { return }

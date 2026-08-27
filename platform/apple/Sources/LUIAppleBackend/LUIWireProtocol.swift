@@ -584,7 +584,8 @@ struct LUIRetainedTree {
             kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle ||
                 kind == .radio || kind == .slider || kind == .select ||
-                kind == .combobox || kind == .menuItem || kind == .listItem
+                kind == .combobox || kind == .menuItem || kind == .listItem ||
+                kind == .drawer
         case .gap:
             kind == .row || kind == .column || kind == .grid || kind == .list ||
                 kind == .dropdownMenu || isHorizontalGroup(kind) || kind == .split

@@ -1114,6 +1114,7 @@
       `(let [~node (lui.ui/drawer! ~context)]
          ~@(bool-attribute-expansion
             context node (:selected attrs) 'lui.protocol/Selected)
+         ~@(disabled-attribute-expansion context node attrs)
          ~@(accordion-event-expansion context node attrs)
          ~@(element-properties context node attrs)
          ~@(if parent

@@ -1007,6 +1007,7 @@ struct LUISwiftUIBackendTests {
           {"op":"create-node","id":2,"kind":"panel"},
           {"op":"create-node","id":3,"kind":"panel"},
           {"op":"set-prop","id":1,"property":"selected","value":false},
+          {"op":"set-prop","id":1,"property":"enabled","value":false},
           {"op":"set-prop","id":1,"property":"toggle-enabled","value":true},
           {"op":"set-prop","id":1,"property":"width","value":320},
           {"op":"insert-child","parent":1,"child":2,"index":0},
@@ -1020,13 +1021,22 @@ struct LUISwiftUIBackendTests {
         #expect(drawer.kind == .drawer)
         #expect(drawer.children == [2, 3])
         #expect(drawer.property(.selected) == .bool(false))
+        #expect(!drawer.isEnabled)
         #expect(drawer.property(.width) == .int(320))
 
+        #expect(throws: LUIBackendError.self) {
+            try backend.performToggle(node: 1, checked: true)
+        }
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"enabled","value":true}
+        ]}
+        """)
         try backend.performToggle(node: 1, checked: true)
         #expect(events == [.toggleChanged(node: 1, checked: true)])
 
         try backend.apply(json: """
-        {"generation":2,"ops":[
+        {"generation":3,"ops":[
           {"op":"set-prop","id":1,"property":"selected","value":true}
         ]}
         """)
@@ -1036,11 +1046,23 @@ struct LUISwiftUIBackendTests {
         #expect(drawer.isSelected)
     }
 
-    @Test("Drawer edge gestures resolve to controlled presentation state")
+    @Test("Drawer horizontal gestures resolve to controlled presentation state")
     func resolvesDrawerGestures() {
-        #expect(LUIDrawerGeometry.gestureIsEligible(isPresented: false, startX: 12))
-        #expect(!LUIDrawerGeometry.gestureIsEligible(isPresented: false, startX: 40))
-        #expect(LUIDrawerGeometry.gestureIsEligible(isPresented: true, startX: 200))
+        #expect(LUIDrawerGeometry.gestureIsEligible(
+            enabled: true,
+            translationX: 10,
+            translationY: 9
+        ))
+        #expect(!LUIDrawerGeometry.gestureIsEligible(
+            enabled: true,
+            translationX: 9,
+            translationY: 10
+        ))
+        #expect(!LUIDrawerGeometry.gestureIsEligible(
+            enabled: false,
+            translationX: 10,
+            translationY: 0
+        ))
         #expect(LUIDrawerGeometry.dragOffset(
             isPresented: false,
             translation: 400,
@@ -1054,16 +1076,25 @@ struct LUISwiftUIBackendTests {
         #expect(LUIDrawerGeometry.targetIsPresented(
             isPresented: false,
             translation: 180,
+            predictedTranslation: 180,
             width: 320
         ))
         #expect(!LUIDrawerGeometry.targetIsPresented(
             isPresented: true,
             translation: -180,
+            predictedTranslation: -180,
+            width: 320
+        ))
+        #expect(LUIDrawerGeometry.targetIsPresented(
+            isPresented: false,
+            translation: 20,
+            predictedTranslation: 220,
             width: 320
         ))
         #expect(!LUIDrawerGeometry.targetIsPresented(
             isPresented: false,
             translation: 1,
+            predictedTranslation: 1,
             width: 0
         ))
     }

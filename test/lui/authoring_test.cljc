@@ -248,9 +248,10 @@
    [:panel {:min-width 180 :padding 12} [:text "Sidebar"]]
    [:panel {:min-width 320 :padding 12} [:text "Content"]]])
 
-(defui retained-drawer [open-source on-toggle]
+(defui retained-drawer [open-source disabled-source on-toggle]
   [:drawer
-   {:selected open-source :width 320 :label "Navigation" :on-toggle on-toggle}
+   {:selected open-source :disabled disabled-source
+    :width 320 :label "Navigation" :on-toggle on-toggle}
    [:panel [:text "Content"]]
    [:panel [:text "Navigation"]]])
 
@@ -1177,11 +1178,13 @@
         application (runtime/create scheduler (apple/backend renderer))
         scope (sig/scope "retained-drawer")
         open (sig/state scheduler false)
+        disabled (sig/state scheduler false)
         received (atom [])
         callback (fn [event] (swap! received conj event) true)
         root
         (retained-drawer
-         (ui/context application scope) (sig/value open) callback)]
+         (ui/context application scope) (sig/value open) (sig/value disabled)
+         callback)]
     (sig/mount! scope)
     (runtime/flush! application)
     (let [main (nth (apple/children renderer root) 0)
@@ -1194,6 +1197,18 @@
        (Some (proto/BoolValue false))
        (apple/property renderer root proto/Selected)
        "bound selection seeds the controlled drawer state")
+      (assert-equal
+       (Some (proto/BoolValue true))
+       (apple/property renderer root proto/Enabled)
+       "an active drawer accepts platform gestures")
+      (sig/set! disabled true)
+      (runtime/flush! application)
+      (assert-equal
+       (Some (proto/BoolValue false))
+       (apple/property renderer root proto/Enabled)
+       "drawer gesture availability remains model-owned")
+      (sig/set! disabled false)
+      (runtime/flush! application)
       (runtime/dispatch! application (proto/ToggleChanged root true))
       (runtime/flush! application)
       (assert-equal [(proto/ToggleChanged root true)] @received
