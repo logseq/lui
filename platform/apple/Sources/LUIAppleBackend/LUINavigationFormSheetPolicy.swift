@@ -51,5 +51,6 @@ struct LUINavigationFormActionView: View {
         .accessibilityLabel(
             Text(verbatim: model.property(.accessibilityLabel)?.stringValue ?? model.text)
         )
+        .id(model.revision)
     }
 }
