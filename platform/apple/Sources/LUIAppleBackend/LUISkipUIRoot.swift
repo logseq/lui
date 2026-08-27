@@ -172,7 +172,28 @@ private struct LUISkipNodeView: View {
                 }
             }
         case .dialog, .sheet:
-            VStack(alignment: .leading) { children }
+            if model.kind == .sheet && LUINavigationFormSheetPolicy.isNavigationForm(
+                model.property(.styleClass)?.stringValue
+            ) {
+                NavigationStack {
+                    Form { navigationFormRows }
+                        .navigationTitle(model.text)
+                        .toolbar {
+                            if let actionID = navigationActionID(for: .cancellation) {
+                                ToolbarItem(placement: .cancellationAction) {
+                                    LUIAnyNodeView(nodeID: actionID, backend: backend)
+                                }
+                            }
+                            if let actionID = navigationActionID(for: .confirmation) {
+                                ToolbarItem(placement: .confirmationAction) {
+                                    LUIAnyNodeView(nodeID: actionID, backend: backend)
+                                }
+                            }
+                        }
+                }
+            } else {
+                VStack(alignment: .leading) { children }
+            }
         case .slider:
             Slider(
                 value: Binding(
@@ -208,6 +229,37 @@ private struct LUISkipNodeView: View {
                 )
         case .contextMenu:
             EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var navigationFormRows: some View {
+        if let contentID = model.children.first(where: {
+            backend.model(id: $0)?.kind != .toolbar
+        }), let content = backend.model(id: contentID) {
+            if LUINavigationFormSheetPolicy.isForm(
+                content.property(.styleClass)?.stringValue
+            ) {
+                ForEach(content.children, id: \.self) { childID in
+                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                }
+            } else {
+                LUIAnyNodeView(nodeID: contentID, backend: backend)
+            }
+        }
+    }
+
+    private func navigationActionID(
+        for placement: LUINavigationFormActionPlacement
+    ) -> Int? {
+        guard let toolbarID = model.children.first(where: {
+            backend.model(id: $0)?.kind == .toolbar
+        }), let toolbar = backend.model(id: toolbarID) else { return nil }
+        return toolbar.children.first { childID in
+            guard let child = backend.model(id: childID) else { return false }
+            return LUINavigationFormSheetPolicy.actionPlacement(
+                child.property(.styleClass)?.stringValue
+            ) == placement
         }
     }
 

@@ -1189,21 +1189,50 @@ private struct LUIModalSurfaceContent: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
 
+    @ViewBuilder
     var body: some View {
         let _ = model.revision
-        VStack(alignment: .leading, spacing: 16) {
-            Text(verbatim: model.text)
-                .font(.headline)
-                .accessibilityAddTraits(.isHeader)
-            ZStack {
-                ForEach(model.children, id: \.self) { childID in
-                    LUIAnyNodeView(nodeID: childID, backend: backend)
+        if LUINavigationFormSheetPolicy.isNavigationForm(
+            model.property(.styleClass)?.stringValue
+        ) {
+            NavigationStack {
+                Form {
+                    LUINavigationFormRows(
+                        contentID: navigationFormContentID,
+                        backend: backend
+                    )
+                }
+                .navigationTitle(model.text)
+                .toolbar {
+                    LUINavigationFormToolbar(
+                        toolbarID: navigationToolbarID,
+                        backend: backend
+                    )
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(verbatim: model.text)
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                ZStack {
+                    ForEach(model.children, id: \.self) { childID in
+                        LUIAnyNodeView(nodeID: childID, backend: backend)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(CGFloat(model.property(.padding)?.intValue ?? 24))
+            .frame(width: surfaceWidth, height: surfaceHeight)
         }
-        .padding(CGFloat(model.property(.padding)?.intValue ?? 24))
-        .frame(width: surfaceWidth, height: surfaceHeight)
+    }
+
+    private var navigationFormContentID: Int? {
+        model.children.first { backend.model(id: $0)?.kind != .toolbar }
+    }
+
+    private var navigationToolbarID: Int? {
+        model.children.first { backend.model(id: $0)?.kind == .toolbar }
     }
 
     private var surfaceWidth: CGFloat? {
@@ -1225,6 +1254,63 @@ private struct LUIModalSurfaceContent: View {
             model.property(.height).map { CGFloat($0.intValue ?? 0) }
         default:
             nil
+        }
+    }
+}
+
+private struct LUINavigationFormRows: View {
+    let contentID: Int?
+    let backend: LUIAppleBackend
+
+    @ViewBuilder
+    var body: some View {
+        if let contentID, let content = backend.model(id: contentID) {
+            if LUINavigationFormSheetPolicy.isForm(
+                content.property(.styleClass)?.stringValue
+            ) {
+                ForEach(content.children, id: \.self) { childID in
+                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                }
+            } else {
+                LUIAnyNodeView(nodeID: contentID, backend: backend)
+            }
+        }
+    }
+}
+
+private struct LUINavigationFormToolbar: ToolbarContent {
+    let toolbarID: Int?
+    let backend: LUIAppleBackend
+
+    @ToolbarContentBuilder
+    var body: some ToolbarContent {
+        if let cancellationActionID {
+            ToolbarItem(placement: .cancellationAction) {
+                LUIAnyNodeView(nodeID: cancellationActionID, backend: backend)
+            }
+        }
+        if let confirmationActionID {
+            ToolbarItem(placement: .confirmationAction) {
+                LUIAnyNodeView(nodeID: confirmationActionID, backend: backend)
+            }
+        }
+    }
+
+    private var cancellationActionID: Int? {
+        actionID(for: .cancellation)
+    }
+
+    private var confirmationActionID: Int? {
+        actionID(for: .confirmation)
+    }
+
+    private func actionID(for placement: LUINavigationFormActionPlacement) -> Int? {
+        guard let toolbarID, let toolbar = backend.model(id: toolbarID) else { return nil }
+        return toolbar.children.first { childID in
+            guard let child = backend.model(id: childID) else { return false }
+            return LUINavigationFormSheetPolicy.actionPlacement(
+                child.property(.styleClass)?.stringValue
+            ) == placement
         }
     }
 }
@@ -2315,7 +2401,14 @@ private struct LUITextView: View {
             .buttonStyle(.plain)
         } else {
             Text(verbatim: model.text)
+                .font(isFootnote ? .footnote : .body)
         }
+    }
+
+    private var isFootnote: Bool {
+        model.property(.styleClass)?.stringValue?
+            .split(separator: " ")
+            .contains("footnote") ?? false
     }
 }
 

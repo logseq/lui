@@ -225,8 +225,7 @@
     (and (not (= kind Avatar)) (not (modal-surface? kind))
          (not (= kind Tooltip)))
     StyleClass
-    (and (not (= kind Avatar)) (not (modal-surface? kind))
-         (not (= kind Tooltip)))
+    (and (not (= kind Avatar)) (not (= kind Tooltip)))
     AccessibilityLabel
     (or (= kind Button) (= kind ToggleButton)
         (= kind TextField) (= kind SecureField) (= kind Input) (= kind SearchField)

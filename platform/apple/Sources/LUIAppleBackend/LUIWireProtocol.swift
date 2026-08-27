@@ -556,8 +556,10 @@ struct LUIRetainedTree {
         case .grow: kind != .avatar && kind != .tooltip && !isModalSurface(kind)
         case .columns: kind == .grid
         case .padding, .width, .height: kind != .avatar && kind != .tooltip
+        case .styleClass:
+            kind != .avatar && kind != .tooltip
         case .background, .borderColor, .borderWidth,
-             .cornerRadius, .styleClass,
+             .cornerRadius,
              .minWidth, .maxWidth, .minHeight, .maxHeight:
             kind != .avatar && kind != .tooltip && !isModalSurface(kind)
         case .paddingHorizontal, .paddingVertical:

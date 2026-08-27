@@ -2083,6 +2083,20 @@ struct LUISwiftUIBackendTests {
         ))
     }
 
+    @Test("navigation form sheets map content and actions to native placements")
+    func navigationFormSheetPolicy() {
+        #expect(LUINavigationFormSheetPolicy.isNavigationForm("compact navigation-form"))
+        #expect(!LUINavigationFormSheetPolicy.isNavigationForm("compact"))
+        #expect(
+            LUINavigationFormSheetPolicy.actionPlacement("cancellation-action") == .cancellation
+        )
+        #expect(
+            LUINavigationFormSheetPolicy.actionPlacement("prominent confirmation-action")
+                == .confirmation
+        )
+        #expect(LUINavigationFormSheetPolicy.actionPlacement(nil) == nil)
+    }
+
     @Test("Tooltip hover intent delays, warms only on pointer leave, and resets on press")
     func tooltipIntentLifecycle() {
         let session = LUITooltipSession()

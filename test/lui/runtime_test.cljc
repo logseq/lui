@@ -330,7 +330,8 @@
      (wire/encode-batch batch)
      "dialog uses the pinned closed wire vocabulary")
     (doseq [property
-            [proto/TextValue proto/WidthValue proto/HeightValue proto/PaddingValue]]
+            [proto/TextValue proto/WidthValue proto/HeightValue proto/PaddingValue
+             proto/StyleClass]]
       (is (proto/property-supported? proto/Dialog property)
           "dialog admits only its authored surface state"))
     (doseq [property [proto/Gap proto/MainAlignment proto/CrossAlignment
@@ -374,7 +375,8 @@
      (wire/encode-batch batch)
      "sheet uses the pinned closed wire vocabulary")
     (doseq [property
-            [proto/TextValue proto/WidthValue proto/HeightValue proto/PaddingValue]]
+            [proto/TextValue proto/WidthValue proto/HeightValue proto/PaddingValue
+             proto/StyleClass]]
       (is (proto/property-supported? proto/Sheet property)
           "sheet admits its portable authored surface state"))
     (doseq [property [proto/Gap proto/MainAlignment proto/CrossAlignment
