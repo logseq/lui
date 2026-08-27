@@ -1349,8 +1349,6 @@ private struct LUIToolbarView: View {
             VStack(alignment: .leading, spacing: spacing) {
                 children(model.children)
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(accessibilityLabel)
         } else if let fixedChildID = layout.fixedChildID {
             HStack(spacing: spacing) {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -1360,14 +1358,10 @@ private struct LUIToolbarView: View {
                 }
                 LUIAnyNodeView(nodeID: fixedChildID, backend: backend)
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(accessibilityLabel)
         } else {
             HStack(spacing: spacing) {
                 children(model.children)
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(accessibilityLabel)
         }
     }
 
@@ -1382,9 +1376,6 @@ private struct LUIToolbarView: View {
         CGFloat(model.property(.gap)?.intValue ?? 0)
     }
 
-    private var accessibilityLabel: Text {
-        Text(verbatim: model.property(.accessibilityLabel)?.stringValue ?? "Toolbar")
-    }
 }
 
 private struct LUIToastView: View {
