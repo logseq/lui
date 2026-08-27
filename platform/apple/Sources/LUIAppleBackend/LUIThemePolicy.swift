@@ -2,6 +2,15 @@ enum LUIThemeColorPolicy {
     static func isMutedForeground(_ name: String?) -> Bool {
         name?.lowercased() == "muted-foreground"
     }
+
+    static func usesDefaultForeground(kind: LUINodeKind) -> Bool {
+        switch kind {
+        case .panel, .card, .resizable, .alert, .bubble:
+            true
+        default:
+            false
+        }
+    }
 }
 
 enum LUIHeadingTypography {

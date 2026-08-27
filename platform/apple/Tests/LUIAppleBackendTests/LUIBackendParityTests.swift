@@ -8,6 +8,32 @@ struct LUIBackendParityTests {
     func listContainersAreLazy() {
         #expect(LUIVerticalContainerPolicy.isLazy(kind: LUINodeKind.list))
         #expect(!LUIVerticalContainerPolicy.isLazy(kind: LUINodeKind.column))
+        #expect(LUIVerticalContainerPolicy.stretchesCrossAxis(nil))
+        #expect(LUIVerticalContainerPolicy.stretchesCrossAxis("stretch"))
+        #expect(!LUIVerticalContainerPolicy.stretchesCrossAxis("start"))
+    }
+
+    @Test("drawer width sizes its panel without constraining the root surface")
+    func drawerWidthOnlySizesPanel() {
+        #expect(LUIExplicitFramePolicy.width(kind: LUINodeKind.drawer, requested: 320) == nil)
+        #expect(LUIExplicitFramePolicy.width(kind: LUINodeKind.card, requested: 320) == 320)
+        #expect(
+            LUIExplicitFramePolicy.width(kind: LUINodeKind.resizable, requested: 320) == nil
+        )
+    }
+
+    @Test("alerts keep their content height inside flexible columns")
+    func alertsUseIntrinsicContentHeight() {
+        #expect(LUIVerticalContainerPolicy.usesIntrinsicHeight(kind: LUINodeKind.alert))
+        #expect(!LUIVerticalContainerPolicy.usesIntrinsicHeight(kind: LUINodeKind.column))
+    }
+
+    @Test("semantic surfaces pass their foreground color to plain children")
+    func semanticForegroundInheritance() {
+        #expect(LUIThemeColorPolicy.usesDefaultForeground(kind: LUINodeKind.alert))
+        #expect(LUIThemeColorPolicy.usesDefaultForeground(kind: LUINodeKind.card))
+        #expect(!LUIThemeColorPolicy.usesDefaultForeground(kind: LUINodeKind.column))
+        #expect(!LUIThemeColorPolicy.usesDefaultForeground(kind: LUINodeKind.text))
     }
 
     @Test("retains nodes and patches properties")

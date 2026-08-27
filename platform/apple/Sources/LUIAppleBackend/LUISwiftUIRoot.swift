@@ -48,6 +48,15 @@ public struct LUISwiftUIRoot: View {
     }
 
     public var body: some View {
+        rootContent
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .topLeading
+            )
+    }
+
+    private var rootContent: some View {
         LUIAnyNodeView(nodeID: rootID, backend: backend)
             .sheet(item: modalBinding, onDismiss: didDismissModal) { presentation in
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
@@ -385,12 +394,16 @@ private struct LUIAlertView: View {
                 Text(verbatim: model.text)
                     .font(.headline)
             }
-            ZStack {
+            VStack(alignment: .leading, spacing: 0) {
                 ForEach(model.children, id: \.self) { childID in
                     LUIAnyNodeView(nodeID: childID, backend: backend)
                 }
             }
         }
+        .fixedSize(
+            horizontal: false,
+            vertical: LUIVerticalContainerPolicy.usesIntrinsicHeight(kind: model.kind)
+        )
     }
 }
 
@@ -2343,7 +2356,8 @@ private struct LUIColumnView: View {
                 let child = backend.model(id: childID)
                 LUIAnyNodeView(nodeID: childID, backend: backend)
                     .frame(
-                        maxWidth: cross == "stretch" ? .infinity : nil,
+                        maxWidth: LUIVerticalContainerPolicy.stretchesCrossAxis(cross)
+                            ? .infinity : nil,
                         maxHeight: child?.property(.grow)?.doubleValue ?? 0 > 0
                             ? .infinity : nil,
                         alignment: .topLeading
@@ -2360,6 +2374,11 @@ private struct LUIColumnView: View {
                 Spacer(minLength: 0)
             }
         }
+        .frame(
+            maxWidth: LUIVerticalContainerPolicy.stretchesCrossAxis(cross)
+                ? .infinity : nil,
+            alignment: frameAlignment
+        )
     }
 
     private var gap: CGFloat { CGFloat(model.property(.gap)?.intValue ?? 0) }
@@ -2374,6 +2393,14 @@ private struct LUIColumnView: View {
         case "center": .center
         case "end": .trailing
         default: .leading
+        }
+    }
+
+    private var frameAlignment: Alignment {
+        switch cross {
+        case "center": .top
+        case "end": .topTrailing
+        default: .topLeading
         }
     }
 }
@@ -2656,7 +2683,10 @@ private struct LUISurfaceModifier: ViewModifier {
             .padding(.horizontal, CGFloat(horizontal))
             .padding(.vertical, CGFloat(vertical))
             .frame(
-                width: model.kind == .resizable ? nil : model.surfaceWidth.map(CGFloat.init),
+                width: LUIExplicitFramePolicy.width(
+                    kind: model.kind,
+                    requested: model.surfaceWidth
+                ).map(CGFloat.init),
                 height: model.surfaceHeight.map(CGFloat.init)
             )
             .frame(
@@ -2665,8 +2695,13 @@ private struct LUISurfaceModifier: ViewModifier {
                 minHeight: model.surfaceMinHeight.map(CGFloat.init),
                 maxHeight: model.surfaceMaxHeight.map(CGFloat.init)
             )
-            .foregroundStyle(
-                color(model.property(.foreground)?.stringValue) ?? defaultForeground
+            .modifier(
+                LUIOptionalForegroundModifier(
+                    foreground: color(model.property(.foreground)?.stringValue) ??
+                        (LUIThemeColorPolicy.usesDefaultForeground(kind: model.kind)
+                            ? defaultForeground
+                            : nil)
+                )
             )
             .background(background, in: shape)
             .shadow(
@@ -2741,6 +2776,19 @@ private struct LUISurfaceModifier: ViewModifier {
         #else
         Color(uiColor: .systemBackground)
         #endif
+    }
+}
+
+private struct LUIOptionalForegroundModifier: ViewModifier {
+    let foreground: Color?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let foreground {
+            content.foregroundStyle(foreground)
+        } else {
+            content
+        }
     }
 }
 

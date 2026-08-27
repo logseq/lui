@@ -12,6 +12,11 @@ public struct LUISwiftUIRoot: View {
 
     public var body: some View {
         LUIAnyNodeView(nodeID: rootID, backend: backend)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .topLeading
+            )
     }
 }
 
@@ -64,7 +69,22 @@ private struct LUISkipNodeView: View {
             ) {
                 children
             }
-        case .column, .box, .panel, .card, .stack, .grid, .table,
+        case .column, .box:
+            VStack(
+                alignment: columnAlignment,
+                spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+            ) {
+                if !model.text.isEmpty {
+                    Text(verbatim: model.text)
+                }
+                children
+            }
+            .frame(
+                maxWidth: LUIVerticalContainerPolicy.stretchesCrossAxis(columnCross)
+                    ? .infinity : nil,
+                alignment: columnFrameAlignment
+            )
+        case .panel, .card, .stack, .grid, .table,
              .tableRow, .tableCell, .tree, .timeline, .timelineItem, .stepper,
              .step, .alert, .bubble, .toast, .accordion,
              .menuItem, .resizable, .split:
@@ -235,6 +255,26 @@ private struct LUISkipNodeView: View {
 
     private var visibleListItemChildren: [Int] {
         model.children.filter { backend.model(id: $0)?.kind != .contextMenu }
+    }
+
+    private var columnCross: String? {
+        model.property(.cross)?.stringValue
+    }
+
+    private var columnAlignment: HorizontalAlignment {
+        switch columnCross {
+        case "center": .center
+        case "end": .trailing
+        default: .leading
+        }
+    }
+
+    private var columnFrameAlignment: Alignment {
+        switch columnCross {
+        case "center": .top
+        case "end": .topTrailing
+        default: .topLeading
+        }
     }
 
     private var listItemContent: some View {
