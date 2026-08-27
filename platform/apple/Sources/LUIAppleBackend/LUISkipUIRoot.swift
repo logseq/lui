@@ -51,10 +51,12 @@ private struct LUISkipNodeView: View {
                 LUIAnyNodeView(nodeID: childID, backend: backend)
             }
         case .row, .tabs, .buttonGroup, .toggleGroup, .breadcrumb, .pagination,
-             .toolbar, .inputGroup, .inputGroupActions:
+             .inputGroup, .inputGroupActions:
             HStack(spacing: CGFloat(model.property(.gap)?.intValue ?? 0)) {
                 children
             }
+        case .toolbar:
+            toolbar
         case .column, .list, .box, .panel, .card, .stack, .grid, .table,
              .tableRow, .tableCell, .tree, .timeline, .timelineItem, .stepper,
              .step, .alert, .bubble, .toast, .accordion,
@@ -179,6 +181,41 @@ private struct LUISkipNodeView: View {
                 )
         case .contextMenu:
             EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var toolbar: some View {
+        let spacing = CGFloat(model.property(.gap)?.intValue ?? 0)
+        let layout = LUIToolbarLayoutPolicy.layout(
+            orientation: model.property(.orientation)?.stringValue,
+            styleClass: model.property(.styleClass)?.stringValue,
+            childIDs: model.children
+        )
+        if layout.axis == .vertical {
+            VStack(alignment: .leading, spacing: spacing) {
+                children(model.children)
+            }
+        } else if let fixedChildID = layout.fixedChildID {
+            HStack(spacing: spacing) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: spacing) {
+                        children(layout.scrollingChildIDs)
+                    }
+                }
+                LUIAnyNodeView(nodeID: fixedChildID, backend: backend)
+            }
+        } else {
+            HStack(spacing: spacing) {
+                children(model.children)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func children(_ childIDs: [Int]) -> some View {
+        ForEach(childIDs, id: \.self) { childID in
+            LUIAnyNodeView(nodeID: childID, backend: backend)
         }
     }
 

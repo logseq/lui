@@ -1192,15 +1192,31 @@ private struct LUIToolbarView: View {
 
     @ViewBuilder
     var body: some View {
-        if model.property(.orientation)?.stringValue == "vertical" {
+        let layout = LUIToolbarLayoutPolicy.layout(
+            orientation: model.property(.orientation)?.stringValue,
+            styleClass: model.property(.styleClass)?.stringValue,
+            childIDs: model.children
+        )
+        if layout.axis == .vertical {
             VStack(alignment: .leading, spacing: spacing) {
-                children
+                children(model.children)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(accessibilityLabel)
+        } else if let fixedChildID = layout.fixedChildID {
+            HStack(spacing: spacing) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: spacing) {
+                        children(layout.scrollingChildIDs)
+                    }
+                }
+                LUIAnyNodeView(nodeID: fixedChildID, backend: backend)
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel(accessibilityLabel)
         } else {
             HStack(spacing: spacing) {
-                children
+                children(model.children)
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel(accessibilityLabel)
@@ -1208,8 +1224,8 @@ private struct LUIToolbarView: View {
     }
 
     @ViewBuilder
-    private var children: some View {
-        ForEach(model.children, id: \.self) { childID in
+    private func children(_ childIDs: [Int]) -> some View {
+        ForEach(childIDs, id: \.self) { childID in
             LUIAnyNodeView(nodeID: childID, backend: backend)
         }
     }

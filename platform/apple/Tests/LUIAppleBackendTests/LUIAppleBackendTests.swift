@@ -1992,6 +1992,37 @@ struct LUISwiftUIBackendTests {
         #expect(events == [.dismiss(node: 4)])
     }
 
+    @Test("toolbar layout preserves vertical stacks and fixed trailing actions")
+    func toolbarLayoutPolicy() {
+        #expect(LUIToolbarLayoutPolicy.layout(
+            orientation: "vertical",
+            styleClass: "scroll-leading",
+            childIDs: [1, 2, 3]
+        ) == LUIToolbarLayout(
+            axis: .vertical,
+            scrollingChildIDs: [],
+            fixedChildID: nil
+        ))
+        #expect(LUIToolbarLayoutPolicy.layout(
+            orientation: "horizontal",
+            styleClass: "compact scroll-leading elevated",
+            childIDs: [1, 2, 3]
+        ) == LUIToolbarLayout(
+            axis: .horizontal,
+            scrollingChildIDs: [1, 2],
+            fixedChildID: 3
+        ))
+        #expect(LUIToolbarLayoutPolicy.layout(
+            orientation: nil,
+            styleClass: nil,
+            childIDs: [1, 2]
+        ) == LUIToolbarLayout(
+            axis: .horizontal,
+            scrollingChildIDs: [],
+            fixedChildID: nil
+        ))
+    }
+
     @Test("Tooltip hover intent delays, warms only on pointer leave, and resets on press")
     func tooltipIntentLifecycle() {
         let session = LUITooltipSession()
