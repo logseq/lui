@@ -679,6 +679,16 @@ struct LUISwiftUIBackendTests {
         #expect(draft.text == "服务器更新")
     }
 
+    @Test("focused native drafts accept an authoritative clear")
+    func focusedNativeDraftAcceptsClear() {
+        var draft = LUITextDraftState(source: "Draft")
+
+        draft.edit("Draft with local composition")
+        draft.reconcile(source: "", focused: true)
+
+        #expect(draft.text == "")
+    }
+
     @Test("maps picker primitives to retained SwiftUI state and typed events")
     func mapsPickerPrimitives() throws {
         let backend = LUIAppleBackend()

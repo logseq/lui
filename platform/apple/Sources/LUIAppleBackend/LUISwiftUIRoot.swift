@@ -2692,7 +2692,7 @@ struct LUITextDraftState: Equatable {
     }
 
     mutating func reconcile(source: String, focused: Bool) {
-        if !focused, text != source {
+        if (!focused || source.isEmpty), text != source {
             text = source
         }
     }
