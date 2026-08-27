@@ -2,3 +2,8 @@
  (section lib)
  (package lui)
  (source_trees lg))
+
+(library
+ (name lui)
+ (public_name lui)
+ (modules))
