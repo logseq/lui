@@ -43,6 +43,22 @@ struct LUISwiftUIBackendTests {
         #expect(!LUIHeadingTypography.isBold(level: 2))
     }
 
+    @Test("identified containers preserve descendant accessibility identifiers")
+    func identifiedContainersPreserveDescendantAccessibilityIdentifiers() {
+        #expect(LUIAccessibilityPolicy.shouldContainChildren(
+            hasChildren: true,
+            identifier: "screen.graph-picker"
+        ))
+        #expect(!LUIAccessibilityPolicy.shouldContainChildren(
+            hasChildren: false,
+            identifier: "button.refresh"
+        ))
+        #expect(!LUIAccessibilityPolicy.shouldContainChildren(
+            hasChildren: true,
+            identifier: nil
+        ))
+    }
+
     private func image(width: Int = 64, height: Int = 64) throws -> CGImage {
         let bytes = Data(repeating: 0xff, count: width * height * 4)
         let provider = try #require(CGDataProvider(data: bytes as CFData))

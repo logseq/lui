@@ -9,3 +9,9 @@ enum LUIHeadingTypography {
         level == 1
     }
 }
+
+enum LUIAccessibilityPolicy {
+    static func shouldContainChildren(hasChildren: Bool, identifier: String?) -> Bool {
+        hasChildren && identifier != nil
+    }
+}

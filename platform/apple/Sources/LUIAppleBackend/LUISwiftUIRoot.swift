@@ -3052,25 +3052,46 @@ private struct LUIAccessibilityModifier: ViewModifier {
         let label = model.accessibilityLabel(in: backend)
         let hint = model.accessibilityHint(in: backend)
         let identifier = model.accessibilityIdentifier(in: backend) ?? label
+        let accessibleContent = content.modifier(
+            LUIAccessibilityContainmentModifier(
+                containsChildren: LUIAccessibilityPolicy.shouldContainChildren(
+                    hasChildren: !model.children.isEmpty,
+                    identifier: identifier
+                )
+            )
+        )
         if let label, let hint, let identifier {
-            content
+            accessibleContent
                 .accessibilityLabel(Text(label))
                 .accessibilityHint(Text(hint))
                 .accessibilityIdentifier(identifier)
         } else if let label, let identifier {
-            content
+            accessibleContent
                 .accessibilityLabel(Text(label))
                 .accessibilityIdentifier(identifier)
         } else if let label, let hint {
-            content
+            accessibleContent
                 .accessibilityLabel(Text(label))
                 .accessibilityHint(Text(hint))
         } else if let label {
-            content.accessibilityLabel(Text(label))
+            accessibleContent.accessibilityLabel(Text(label))
         } else if let identifier {
-            content.accessibilityIdentifier(identifier)
+            accessibleContent.accessibilityIdentifier(identifier)
         } else if let hint {
-            content.accessibilityHint(Text(hint))
+            accessibleContent.accessibilityHint(Text(hint))
+        } else {
+            accessibleContent
+        }
+    }
+}
+
+private struct LUIAccessibilityContainmentModifier: ViewModifier {
+    let containsChildren: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if containsChildren {
+            content.accessibilityElement(children: .contain)
         } else {
             content
         }
