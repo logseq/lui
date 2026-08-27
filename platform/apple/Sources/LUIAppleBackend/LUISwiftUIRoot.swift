@@ -1286,12 +1286,12 @@ private struct LUINavigationFormToolbar: ToolbarContent {
     var body: some ToolbarContent {
         if let cancellationActionID {
             ToolbarItem(placement: .cancellationAction) {
-                LUIAnyNodeView(nodeID: cancellationActionID, backend: backend)
+                actionView(cancellationActionID)
             }
         }
         if let confirmationActionID {
             ToolbarItem(placement: .confirmationAction) {
-                LUIAnyNodeView(nodeID: confirmationActionID, backend: backend)
+                actionView(confirmationActionID)
             }
         }
     }
@@ -1302,6 +1302,13 @@ private struct LUINavigationFormToolbar: ToolbarContent {
 
     private var confirmationActionID: Int? {
         actionID(for: .confirmation)
+    }
+
+    @ViewBuilder
+    private func actionView(_ actionID: Int) -> some View {
+        if let model = backend.model(id: actionID) {
+            LUINavigationFormActionView(model: model, backend: backend)
+        }
     }
 
     private func actionID(for placement: LUINavigationFormActionPlacement) -> Int? {

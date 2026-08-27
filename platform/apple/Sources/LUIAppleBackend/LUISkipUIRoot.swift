@@ -181,12 +181,12 @@ private struct LUISkipNodeView: View {
                         .toolbar {
                             if let actionID = navigationActionID(for: .cancellation) {
                                 ToolbarItem(placement: .cancellationAction) {
-                                    LUIAnyNodeView(nodeID: actionID, backend: backend)
+                                    navigationActionView(actionID)
                                 }
                             }
                             if let actionID = navigationActionID(for: .confirmation) {
                                 ToolbarItem(placement: .confirmationAction) {
-                                    LUIAnyNodeView(nodeID: actionID, backend: backend)
+                                    navigationActionView(actionID)
                                 }
                             }
                         }
@@ -260,6 +260,13 @@ private struct LUISkipNodeView: View {
             return LUINavigationFormSheetPolicy.actionPlacement(
                 child.property(.styleClass)?.stringValue
             ) == placement
+        }
+    }
+
+    @ViewBuilder
+    private func navigationActionView(_ actionID: Int) -> some View {
+        if let model = backend.model(id: actionID) {
+            LUINavigationFormActionView(model: model, backend: backend)
         }
     }
 
