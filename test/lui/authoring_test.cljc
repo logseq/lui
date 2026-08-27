@@ -98,7 +98,12 @@
    [:text "Outside"]
    [:if {:test sheet-open}
     [:sheet
-     {:text "Share" :height 320 :padding 24 :on-dismiss on-dismiss}
+     {:text "Share"
+      :height 320
+      :padding 24
+      :class "navigation-form"
+      :accessibility-identifier "sheet.share"
+      :on-dismiss on-dismiss}
      [:column [:input {:placeholder "Share link"}]]]]])
 
 (defui retained-tooltips [text-source delay-source]
@@ -819,6 +824,12 @@
       (assert-equal (Some (proto/IntValue 320))
                     (apple/property renderer sheet proto/HeightValue)
                     "sheet height is retained")
+      (assert-equal (Some (proto/StringValue "navigation-form"))
+                    (apple/property renderer sheet proto/StyleClass)
+                    "sheet forwards its presentation style")
+      (assert-equal (Some (proto/StringValue "sheet.share"))
+                    (apple/property renderer sheet proto/AccessibilityIdentifier)
+                    "sheet forwards its accessibility identifier")
       (runtime/dispatch! application (proto/Dismiss sheet))
       (runtime/flush! application)
       (assert-equal [(proto/Dismiss sheet)]

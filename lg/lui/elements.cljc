@@ -1542,11 +1542,7 @@
     `(let [~node (~constructor ~context)]
        ~@(string-attribute-expansion
           context node (:text attrs) 'lui.protocol/TextValue)
-       ~@(property-expansions
-          context node
-          [[(:width attrs) 'lui.ui/width!]
-           [(:height attrs) 'lui.ui/height!]
-           [(:padding attrs) 'lui.ui/padding!]])
+       ~@(element-properties context node attrs)
        ~@(dismiss-event-expansion context node attrs)
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
