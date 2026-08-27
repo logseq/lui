@@ -123,8 +123,11 @@ private struct LUINodeView: View {
                 content
             } else {
                 content
-                    .modifier(LUISurfaceModifier(model: model))
+                    .modifier(
+                        LUISurfaceModifier(model: model)
+                    )
                     .modifier(LUIAccessibilityModifier(model: model, backend: backend))
+                    .modifier(LUIAppearModifier(model: model, backend: backend))
             }
         }
         .modifier(
@@ -281,9 +284,7 @@ private struct LUINodeView: View {
             LUISeparatorView(model: model)
         case .scroll:
             ScrollView {
-                ZStack {
-                    children
-                }
+                LUIVerticalScrollContent(model: model, backend: backend)
             }
         case .spacer:
             Spacer()
@@ -296,7 +297,10 @@ private struct LUINodeView: View {
                     height: CGFloat(model.spinnerHeight)
                 )
         case .icon:
-            LUIIconImage(source: backend.iconSource(for: model.iconName))
+            LUIIconImage(
+                source: backend.iconSource(for: model.iconName),
+                bundle: backend.appIconBundle
+            )
                 .scaledToFit()
                 .frame(
                     width: CGFloat(model.iconWidth),
@@ -1605,7 +1609,10 @@ private struct LUITimelineItemView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if model.supportsPress {
-                LUIIconImage(source: backend.iconSource(for: "chevron-right"))
+                LUIIconImage(
+                    source: backend.iconSource(for: "chevron-right"),
+                    bundle: backend.appIconBundle
+                )
                     .frame(width: 14, height: 14)
                     .foregroundStyle(.secondary)
             }
@@ -1621,7 +1628,10 @@ private struct LUITimelineItemView: View {
     @ViewBuilder
     private var indicator: some View {
         if !model.buttonIconName.isEmpty {
-            LUIIconImage(source: backend.iconSource(for: model.buttonIconName))
+            LUIIconImage(
+                source: backend.iconSource(for: model.buttonIconName),
+                bundle: backend.appIconBundle
+            )
                 .frame(width: 16, height: 16)
                 .padding(4)
                 .background(indicatorColor.opacity(0.16), in: Circle())
@@ -1877,7 +1887,10 @@ private struct LUIMenuItemView: View {
     private var itemLabel: some View {
         HStack(spacing: 8) {
             if !model.buttonIconName.isEmpty {
-                LUIIconImage(source: backend.iconSource(for: model.buttonIconName))
+                LUIIconImage(
+                    source: backend.iconSource(for: model.buttonIconName),
+                    bundle: backend.appIconBundle
+                )
                     .frame(width: 16, height: 16)
             }
             Text(verbatim: model.text)
@@ -1914,12 +1927,13 @@ private struct LUIListItemView: View {
                     .accessibilityAction { performPrimaryAction() }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, hasExplicitPadding ? 0 : 12)
+        .padding(.vertical, hasExplicitPadding ? 0 : verticalPadding)
+        .frame(minHeight: isNavigationRow ? 44 : nil)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            model.isSelected ? Color.accentColor.opacity(0.16) : Color.clear,
-            in: RoundedRectangle(cornerRadius: 6)
+            model.isSelected ? Color.accentColor.opacity(selectedOpacity) : Color.clear,
+            in: RoundedRectangle(cornerRadius: cornerRadius)
         )
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
@@ -1945,7 +1959,7 @@ private struct LUIListItemView: View {
     }
 
     private var rowContent: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: isNavigationRow ? 10 : 8) {
             if model.isTreeItem, model.supportsToggle {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
@@ -1953,21 +1967,57 @@ private struct LUIListItemView: View {
                     .animation(.snappy, value: model.isExpanded)
                     .accessibilityHidden(true)
             }
-            if !model.buttonIconName.isEmpty {
-                LUIIconImage(source: backend.iconSource(for: model.buttonIconName))
-                    .frame(width: 16, height: 16)
+            if !model.buttonIconName.isEmpty && model.buttonIconPlacement != "trailing" {
+                LUIIconImage(
+                    source: backend.iconSource(for: model.buttonIconName),
+                    bundle: backend.appIconBundle
+                )
+                    .scaledToFit()
+                    .frame(width: iconSize, height: iconSize)
+                    .frame(width: isNavigationRow ? 22 : iconSize)
+                    .foregroundStyle(
+                        model.isSelected && isNavigationRow ? Color.accentColor : .secondary
+                    )
             }
             if visibleChildren.isEmpty {
                 Text(verbatim: model.text)
+                    .font(isNavigationHeading ? .title3 : .body)
+                    .fontWeight(
+                        isNavigationHeading || (isNavigationRow && model.isSelected)
+                            ? .semibold : .regular
+                    )
+                    .lineLimit(1)
             } else {
                 ForEach(visibleChildren, id: \.self) { childID in
                     LUIAnyNodeView(nodeID: childID, backend: backend)
                 }
             }
             Spacer(minLength: 8)
+            if !model.buttonIconName.isEmpty && model.buttonIconPlacement == "trailing" {
+                LUIIconImage(
+                    source: backend.iconSource(for: model.buttonIconName),
+                    bundle: backend.appIconBundle
+                )
+                    .scaledToFit()
+                    .frame(width: iconSize, height: iconSize)
+                    .foregroundStyle(.secondary)
+            }
         }
         .contentShape(Rectangle())
     }
+
+    private var role: String { model.property(.role)?.stringValue ?? "" }
+    private var hasExplicitPadding: Bool { model.property(.padding) != nil }
+    private var isNavigationRow: Bool {
+        role == "navigation" || role == "navigation-heading"
+    }
+    private var isNavigationHeading: Bool { role == "navigation-heading" }
+    private var verticalPadding: CGFloat {
+        isNavigationHeading ? 6 : (isNavigationRow ? 10 : 8)
+    }
+    private var cornerRadius: CGFloat { isNavigationRow ? 10 : 6 }
+    private var selectedOpacity: Double { isNavigationRow ? 0.12 : 0.16 }
+    private var iconSize: CGFloat { isNavigationRow ? 18 : 16 }
 
     private func performPrimaryAction() {
         if didLongPress {
@@ -2103,7 +2153,10 @@ private struct LUIButtonView: View {
     }
 
     private var icon: some View {
-        LUIIconImage(source: backend.iconSource(for: model.buttonIconName))
+        LUIIconImage(
+            source: backend.iconSource(for: model.buttonIconName),
+            bundle: backend.appIconBundle
+        )
             .scaledToFit()
             .frame(width: 16, height: 16)
     }
@@ -2379,6 +2432,7 @@ private struct LUISelectedButtonModifier: ViewModifier {
 
 private struct LUIIconImage: View {
     let source: LUIAppleIconSource
+    let bundle: Bundle?
 
     @ViewBuilder
     var body: some View {
@@ -2387,7 +2441,7 @@ private struct LUIIconImage: View {
             Image(systemName: name)
                 .resizable()
         case let .assetName(name):
-            Image(name)
+            Image(name, bundle: bundle)
                 .resizable()
         }
     }
@@ -2542,6 +2596,22 @@ private struct LUIListView: View {
             ForEach(model.children, id: \.self) { childID in
                 LUIAnyNodeView(nodeID: childID, backend: backend)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+}
+
+struct LUIVerticalScrollContent: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        VStack(
+            alignment: .leading,
+            spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+        ) {
+            ForEach(model.children, id: \.self) { childID in
+                LUIAnyNodeView(nodeID: childID, backend: backend)
             }
         }
     }
@@ -2776,6 +2846,12 @@ private struct LUICheckboxView: View {
     }
 }
 
+enum LUIIntrinsicSurfacePolicy {
+    static func fillsWidth(kind: LUINodeKind, grow: Double) -> Bool {
+        kind == .box && grow > 0
+    }
+}
+
 private struct LUISurfaceModifier: ViewModifier {
     let model: LUINodeModel
 
@@ -2808,6 +2884,13 @@ private struct LUISurfaceModifier: ViewModifier {
             .padding(.horizontal, CGFloat(horizontal))
             .padding(.vertical, CGFloat(vertical))
             .frame(
+                maxWidth: LUIIntrinsicSurfacePolicy.fillsWidth(
+                    kind: model.kind,
+                    grow: model.property(.grow)?.doubleValue ?? 0
+                ) ? .infinity : nil,
+                alignment: .leading
+            )
+            .frame(
                 width: LUIExplicitFramePolicy.width(
                     kind: model.kind,
                     requested: model.surfaceWidth
@@ -2819,6 +2902,11 @@ private struct LUISurfaceModifier: ViewModifier {
                 maxWidth: model.kind == .resizable ? nil : model.surfaceMaxWidth.map(CGFloat.init),
                 minHeight: model.surfaceMinHeight.map(CGFloat.init),
                 maxHeight: model.surfaceMaxHeight.map(CGFloat.init)
+            )
+            .modifier(
+                LUIContainerRelativeFrameModifier(
+                    axes: model.containerRelativeFrame
+                )
             )
             .modifier(
                 LUIOptionalForegroundModifier(

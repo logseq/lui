@@ -93,6 +93,10 @@ final class LUINodeModel: Identifiable {
     var supportsDoublePress: Bool {
         properties[.doublePressEnabled]?.boolValue ?? false
     }
+    var supportsAppear: Bool { properties[.appearEnabled]?.boolValue ?? false }
+    var containerRelativeFrame: String? {
+        properties[.containerRelativeFrame]?.stringValue
+    }
     var sliderValue: Double { properties[.progressValue]?.doubleValue ?? 0.0 }
     var splitFraction: Double { properties[.progressValue]?.doubleValue ?? 0.0 }
     var splitGap: Int { properties[.gap]?.intValue ?? 9 }
@@ -298,23 +302,30 @@ public final class LUIAppleBackend {
     #endif
     private let decoder = JSONDecoder()
     private let appIcons: [String: LUIAppleIconSource]
+    let appIconBundle: Bundle?
     private let extensionRegistry: LUIAppleExtensionRegistry
     let tooltipSession = LUITooltipSession()
     #if !SKIP
     let modalPresentation = LUIModalPresentationStore()
     #endif
 
-    public init(appIcons: [String: LUIAppleIconSource] = [:]) {
+    public init(
+        appIcons: [String: LUIAppleIconSource] = [:],
+        appIconBundle: Bundle? = nil
+    ) {
         self.appIcons = appIcons
+        self.appIconBundle = appIconBundle
         extensionRegistry = .frozenEmpty()
     }
 
     public init(
         appIcons: [String: LUIAppleIconSource] = [:],
+        appIconBundle: Bundle? = nil,
         extensionRegistry: LUIAppleExtensionRegistry
     ) throws {
         try extensionRegistry.freeze()
         self.appIcons = appIcons
+        self.appIconBundle = appIconBundle
         self.extensionRegistry = extensionRegistry
     }
 
@@ -498,6 +509,13 @@ public final class LUIAppleBackend {
             throw invalid("node \(node) is not an enabled double-press control")
         }
         onEvent?(.doublePress(node: node))
+    }
+
+    func performAppear(node: Int) throws {
+        guard let model = models[node], model.isEnabled, model.supportsAppear else {
+            throw invalid("node \(node) is not enabled for appearance events")
+        }
+        onEvent?(.appear(node: node))
     }
 
     public func performExtensionEvent(

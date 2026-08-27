@@ -166,6 +166,7 @@
     {"lg": "MaxWidth", "wire": "max-width", "swift": "maxWidth"},
     {"lg": "MinHeight", "wire": "min-height", "swift": "minHeight"},
     {"lg": "MaxHeight", "wire": "max-height", "swift": "maxHeight"},
+    {"lg": "ContainerRelativeFrameValue", "wire": "container-relative-frame", "swift": "containerRelativeFrame"},
     {"lg": "PlaceholderValue", "wire": "placeholder", "swift": "placeholder"},
     {"lg": "AccessibilityLabel", "wire": "accessibility-label", "swift": "accessibilityLabel"},
     {"lg": "AccessibilityIdentifier", "wire": "accessibility-identifier", "swift": "accessibilityIdentifier"},
@@ -188,6 +189,7 @@
     {"lg": "PressEnabled", "wire": "press-enabled", "swift": "pressEnabled"},
     {"lg": "SubmitEnabled", "wire": "submit-enabled", "swift": "submitEnabled"},
     {"lg": "DoublePressEnabled", "wire": "double-press-enabled", "swift": "doublePressEnabled"},
+    {"lg": "AppearEnabled", "wire": "appear-enabled", "swift": "appearEnabled"},
     {"lg": "ImageIdValue", "wire": "image", "swift": "image"},
     {"lg": "SurfaceIdValue", "wire": "surface", "swift": "surface"},
     {"lg": "ActiveIndex", "wire": "active", "swift": "active"},
@@ -222,6 +224,7 @@
     {"lg": "Change", "fields": [":int"]},
     {"lg": "ValueChanged", "fields": [":int", ":float"]},
     {"lg": "Dismiss", "fields": [":int"]},
-    {"lg": "DoublePress", "fields": [":int"]}
+    {"lg": "DoublePress", "fields": [":int"]},
+    {"lg": "Appear", "fields": [":int"]}
   ]
 }

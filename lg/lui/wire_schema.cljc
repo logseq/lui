@@ -14,15 +14,15 @@
                      Toolbar StatusBar TextValue Enabled Gap MainAlignment
                      CrossAlignment GrowValue GridColumns PaddingValue PaddingHorizontal PaddingVertical
                      BackgroundValue ForegroundValue BorderColorValue BorderWidth CornerRadius WidthValue
-                     HeightValue MinWidth MaxWidth MinHeight MaxHeight PlaceholderValue
-                     AccessibilityLabel AccessibilityIdentifier StyleClass HeadingLevel Checked ProgressValue
-                     OrientationValue SizeValue IconName VariantValue InlineIconName IconPlacementValue
-                     Selected Autofocus SubmitOnEnter LongPressEnabled ChangeEnabled ToggleEnabled
-                     PressEnabled SubmitEnabled DoublePressEnabled ImageIdValue SurfaceIdValue ActiveIndex
-                     TitleValue DescriptionValue MetaValue IndicatorValue Connector SourceX
-                     SourceY SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset
-                     TooltipDelay DurationValue TextAlignment RoleValue TreeLevel Expanded
-                     ResizeDuration ResizeEasing ResizeOrigin]]))
+                     HeightValue MinWidth MaxWidth MinHeight MaxHeight ContainerRelativeFrameValue
+                     PlaceholderValue AccessibilityLabel AccessibilityIdentifier StyleClass HeadingLevel Checked
+                     ProgressValue OrientationValue SizeValue IconName VariantValue InlineIconName
+                     IconPlacementValue Selected Autofocus SubmitOnEnter LongPressEnabled ChangeEnabled
+                     ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled AppearEnabled ImageIdValue
+                     SurfaceIdValue ActiveIndex TitleValue DescriptionValue MetaValue IndicatorValue
+                     Connector SourceX SourceY SourceWidth SourceHeight AnchorValue
+                     AnchorAlignmentValue AnchorOffset TooltipDelay DurationValue TextAlignment RoleValue
+                     TreeLevel Expanded ResizeDuration ResizeEasing ResizeOrigin]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -190,6 +190,7 @@
     MaxWidth "max-width"
     MinHeight "min-height"
     MaxHeight "max-height"
+    ContainerRelativeFrameValue "container-relative-frame"
     PlaceholderValue "placeholder"
     AccessibilityLabel "accessibility-label"
     AccessibilityIdentifier "accessibility-identifier"
@@ -212,6 +213,7 @@
     PressEnabled "press-enabled"
     SubmitEnabled "submit-enabled"
     DoublePressEnabled "double-press-enabled"
+    AppearEnabled "appear-enabled"
     ImageIdValue "image"
     SurfaceIdValue "surface"
     ActiveIndex "active"

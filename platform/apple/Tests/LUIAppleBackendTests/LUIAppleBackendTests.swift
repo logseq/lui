@@ -37,10 +37,11 @@ struct LUISwiftUIBackendTests {
         #expect(!LUIThemeColorPolicy.isMutedForeground(nil))
     }
 
-    @Test("level one headings use the emphasized title weight")
-    func levelOneHeadingsUseTheEmphasizedTitleWeight() {
+    @Test("semantic headings use the emphasized title weight")
+    func semanticHeadingsUseTheEmphasizedTitleWeight() {
         #expect(LUIHeadingTypography.isBold(level: 1))
-        #expect(!LUIHeadingTypography.isBold(level: 2))
+        #expect(LUIHeadingTypography.isBold(level: 3))
+        #expect(!LUIHeadingTypography.isBold(level: 7))
     }
 
     @Test("identified containers preserve descendant accessibility identifiers")
@@ -521,6 +522,27 @@ struct LUISwiftUIBackendTests {
             """)
         }
         #expect(backend.generation == 0)
+    }
+
+    @Test("navigation list roles do not require tree ancestry")
+    func acceptsNavigationListRoles() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"list"},
+          {"op":"create-node","id":2,"kind":"list-item"},
+          {"op":"create-node","id":3,"kind":"list-item"},
+          {"op":"set-prop","id":2,"property":"text","value":"Journals"},
+          {"op":"set-prop","id":2,"property":"role","value":"navigation"},
+          {"op":"set-prop","id":3,"property":"text","value":"sync 2"},
+          {"op":"set-prop","id":3,"property":"role","value":"navigation-heading"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        #expect(backend.model(id: 2)?.role == "navigation")
+        #expect(backend.model(id: 3)?.role == "navigation-heading")
     }
 
     @Test("rejects invalid batches before observable models change")
@@ -1695,10 +1717,13 @@ struct LUISwiftUIBackendTests {
 
     @Test("resolves application icons through the immutable SwiftUI registry")
     func mapsApplicationIcon() throws {
-        let backend = LUIAppleBackend(appIcons: [
-            "wave-pulse": .systemName("waveform.path"),
-            "brand": .assetName("BrandMark"),
-        ])
+        let backend = LUIAppleBackend(
+            appIcons: [
+                "wave-pulse": .systemName("waveform.path"),
+                "brand": .assetName("BrandMark"),
+            ],
+            appIconBundle: .main
+        )
         try backend.apply(json: """
         {"generation":1,"ops":[
           {"op":"create-node","id":1,"kind":"icon"},
@@ -1712,6 +1737,7 @@ struct LUISwiftUIBackendTests {
             backend.iconSource(for: "app:missing") ==
                 .systemName("questionmark.square.dashed")
         )
+        #expect(backend.appIconBundle?.bundleURL == Bundle.main.bundleURL)
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
     }
 
@@ -2291,6 +2317,13 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 3) === textarea)
         #expect(backend.model(id: 4) === actions)
         #expect(textarea.text == "Updated")
+    }
+
+    @Test("growing Box surfaces fill the width allocated by a Row")
+    func growingBoxSurfacesFillAllocatedRowWidth() {
+        #expect(LUIIntrinsicSurfacePolicy.fillsWidth(kind: .box, grow: 1.0))
+        #expect(!LUIIntrinsicSurfacePolicy.fillsWidth(kind: .column, grow: 1.0))
+        #expect(!LUIIntrinsicSurfacePolicy.fillsWidth(kind: .box, grow: 0.0))
     }
 
     @Test("rejects malformed InputGroup structure atomically")

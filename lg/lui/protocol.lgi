@@ -112,6 +112,7 @@
   (MaxWidth)
   (MinHeight)
   (MaxHeight)
+  (ContainerRelativeFrameValue)
   (PlaceholderValue)
   (AccessibilityLabel)
   (AccessibilityIdentifier)
@@ -134,6 +135,7 @@
   (PressEnabled)
   (SubmitEnabled)
   (DoublePressEnabled)
+  (AppearEnabled)
   (ImageIdValue)
   (SurfaceIdValue)
   (ActiveIndex)
@@ -175,6 +177,7 @@
   (ValueChanged :int :float)
   (Dismiss :int)
   (DoublePress :int)
+  (Appear :int)
   (ExtensionEvent :int :string :string :map<string;wire-value>))
 
 (type-variant patch-op

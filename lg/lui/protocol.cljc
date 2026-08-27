@@ -19,6 +19,7 @@
     (ValueChanged node _value) node
     (Dismiss node) node
     (DoublePress node) node
+    (Appear node) node
     (ExtensionEvent node _identifier _name _values) node))
 
 (defn- modal-surface? [kind]
@@ -67,6 +68,7 @@
     (or (= kind Select) (= kind Combobox) (= kind DropdownMenu)
         (= kind Toast) (modal-surface? kind))
     (DoublePress _node) (= kind ListItem)
+    (Appear _node) (not (= kind Root))
     (ExtensionEvent _node _identifier _name _values) false))
 
 (defn- true-property? [properties property]
@@ -80,14 +82,21 @@
     _ false))
 
 (defn event-supported-for-properties? [kind properties event]
-  (if (treeitem-properties? properties)
+  (if (match event
+        (Appear _node) (true-property? properties AppearEnabled)
+        _ false)
+    true
+    (if (treeitem-properties? properties)
     (match event
       (Press _node) (true-property? properties PressEnabled)
       (Change _node) (true-property? properties ChangeEnabled)
       (ToggleChanged _node _checked)
       (true-property? properties ToggleEnabled)
       _ (event-supported? kind event))
-    (event-supported? kind event)))
+    (event-supported? kind event))))
+
+(defn container-relative-frame-supported? [value]
+  (or (= value "horizontal") (= value "vertical") (= value "both")))
 
 (defn orientation-supported? [value]
   (or (= value "horizontal") (= value "vertical")))
@@ -224,6 +233,8 @@
     MaxHeight
     (and (not (= kind Avatar)) (not (modal-surface? kind))
          (not (= kind Tooltip)))
+    ContainerRelativeFrameValue
+    (and (not (= kind Root)) (not (modal-surface? kind)))
     StyleClass
     (and (not (= kind Avatar)) (not (= kind Tooltip)))
     AccessibilityLabel
@@ -236,6 +247,7 @@
         (= kind Avatar) (= kind Image) (= kind MediaSurface)
         (= kind Tree) (= kind Resizable) (= kind Split) (= kind Drawer)
         (= kind Alert) (= kind Bubble)
+        (= kind ListItem)
         (tree-row-kind? kind))
     AccessibilityIdentifier true
     PlaceholderValue
@@ -256,7 +268,8 @@
     InlineIconName
     (or (= kind Button) (= kind ToggleButton) (= kind MenuItem)
         (= kind ListItem))
-    IconPlacementValue (or (= kind Button) (= kind ToggleButton))
+    IconPlacementValue
+    (or (= kind Button) (= kind ToggleButton) (= kind ListItem))
     Selected
     (or (= kind Button) (= kind ToggleButton) (= kind MenuItem)
         (= kind ListItem) (= kind TableRow) (= kind Drawer)
@@ -275,6 +288,7 @@
         (tree-row-kind? kind))
     SubmitEnabled (or (= kind Combobox) (= kind ListItem))
     DoublePressEnabled (= kind ListItem)
+    AppearEnabled (not (= kind Root))
     ImageIdValue (or (= kind Avatar) (= kind Image))
     SurfaceIdValue (= kind MediaSurface)
     SourceX (or (= kind Avatar) (= kind Image))
@@ -288,7 +302,7 @@
     DurationValue false
     TextAlignment
     (or (= kind TableCell) (= kind Bubble) (= kind StatusBar))
-    RoleValue (tree-row-kind? kind)
+    RoleValue (or (tree-row-kind? kind) (= kind ListItem))
     TreeLevel (tree-row-kind? kind)
     Expanded (tree-row-kind? kind)
     ResizeDuration (= kind Split)
@@ -415,6 +429,8 @@
     (tuple MaxWidth (IntValue value)) (>= value 0)
     (tuple MinHeight (IntValue value)) (>= value 0)
     (tuple MaxHeight (IntValue value)) (>= value 0)
+    (tuple ContainerRelativeFrameValue (StringValue value))
+    (container-relative-frame-supported? value)
     (tuple PlaceholderValue (StringValue _value)) true
     (tuple AccessibilityLabel (StringValue _value)) true
     (tuple AccessibilityIdentifier (StringValue _value)) true
@@ -444,6 +460,7 @@
     (tuple PressEnabled (BoolValue _value)) true
     (tuple SubmitEnabled (BoolValue _value)) true
     (tuple DoublePressEnabled (BoolValue _value)) true
+    (tuple AppearEnabled (BoolValue _value)) true
     (tuple ImageIdValue (IntValue value)) (>= value 0)
     (tuple SurfaceIdValue (IntValue value)) (>= value 0)
     (tuple ActiveIndex (IntValue value)) (>= value 0)
@@ -468,7 +485,9 @@
     (and (>= value 0) (<= value 2147483647))
     (tuple TextAlignment (StringValue value))
     (or (= value "start") (= value "center") (= value "end"))
-    (tuple RoleValue (StringValue value)) (= value "treeitem")
+    (tuple RoleValue (StringValue value))
+    (or (= value "treeitem") (= value "navigation")
+        (= value "navigation-heading"))
     (tuple TreeLevel (IntValue value)) (> value 0)
     (tuple Expanded (BoolValue _value)) true
     (tuple ResizeDuration (IntValue value)) (>= value 0)

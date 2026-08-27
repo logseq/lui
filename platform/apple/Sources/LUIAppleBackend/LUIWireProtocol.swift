@@ -14,6 +14,7 @@ public enum LUIEvent: Equatable, Sendable {
     case valueChanged(node: Int, value: Double)
     case dismiss(node: Int)
     case doublePress(node: Int)
+    case appear(node: Int)
     case `extension`(
         node: Int,
         identifier: String,
@@ -130,7 +131,7 @@ enum LUIWireValue: Decodable, Equatable {
             return (1...6).contains(value)
         case .checked, .selected, .autofocus, .submitOnEnter, .longPressEnabled,
              .changeEnabled, .toggleEnabled, .pressEnabled, .submitEnabled,
-             .doublePressEnabled, .connector, .expanded, .enabled:
+             .doublePressEnabled, .appearEnabled, .connector, .expanded, .enabled:
             return boolValue != nil
         case .progressValue:
             return doubleValue != nil
@@ -166,6 +167,9 @@ enum LUIWireValue: Decodable, Equatable {
              .text, .background, .placeholder, .accessibilityLabel,
              .accessibilityIdentifier, .styleClass:
             return stringValue != nil
+        case .containerRelativeFrame:
+            guard let value = stringValue else { return false }
+            return value == "horizontal" || value == "vertical" || value == "both"
         case .anchor:
             guard let value = stringValue else { return false }
             return ["above", "below", "left", "right"].contains(value)
@@ -179,7 +183,9 @@ enum LUIWireValue: Decodable, Equatable {
             guard let value = stringValue else { return false }
             return Self.textAlignments.contains(value)
         case .role:
-            return stringValue == "treeitem"
+            guard let value = stringValue else { return false }
+            return value == "treeitem" || value == "navigation" ||
+                value == "navigation-heading"
         case .treeLevel:
             guard let value = intValue else { return false }
             return value > 0
@@ -562,6 +568,8 @@ struct LUIRetainedTree {
              .cornerRadius,
              .minWidth, .maxWidth, .minHeight, .maxHeight:
             kind != .avatar && kind != .tooltip && !isModalSurface(kind)
+        case .containerRelativeFrame:
+            kind != .root && !isModalSurface(kind)
         case .paddingHorizontal, .paddingVertical:
             kind == .row || kind == .column || kind == .grid || kind == .box
         case .foreground:
@@ -606,6 +614,7 @@ struct LUIRetainedTree {
                 kind == .mediaSurface || kind == .tree ||
                 kind == .resizable || kind == .split || kind == .drawer ||
                 kind == .alert || kind == .bubble ||
+                kind == .listItem ||
                 isTreeRow(kind)
         case .headingLevel: kind == .heading
         case .checked:
@@ -620,7 +629,7 @@ struct LUIRetainedTree {
         case .variant:
             kind == .button || kind == .toggleButton || kind == .alert || kind == .bubble
         case .iconPlacement:
-            kind == .button || kind == .toggleButton
+            kind == .button || kind == .toggleButton || kind == .listItem
         case .longPressEnabled:
             kind == .button || kind == .toggleButton || kind == .listItem
         case .icon:
@@ -640,6 +649,7 @@ struct LUIRetainedTree {
                 || kind == .tableCell || isTreeRow(kind)
         case .submitEnabled: kind == .combobox || kind == .listItem
         case .doublePressEnabled: kind == .listItem
+        case .appearEnabled: kind != .root
         case .image:
             kind == .avatar || kind == .image
         case .surface:
@@ -651,7 +661,8 @@ struct LUIRetainedTree {
         case .tooltipDelay: kind == .tooltip
         case .duration: false
         case .textAlignment: kind == .tableCell || kind == .bubble || kind == .statusBar
-        case .role, .treeLevel, .expanded: isTreeRow(kind)
+        case .role: isTreeRow(kind) || kind == .listItem
+        case .treeLevel, .expanded: isTreeRow(kind)
         case .active, .title, .description, .meta, .indicator, .connector: false
         }
     }
@@ -843,7 +854,7 @@ struct LUIRetainedTree {
                (node.properties[.accessibilityLabel]?.stringValue ?? "").isEmpty {
                 throw invalid("toolbar requires an accessibility label")
             }
-            let hasTreeMetadata = node.properties[.role] != nil ||
+            let hasTreeMetadata = node.properties[.role]?.stringValue == "treeitem" ||
                 node.properties[.treeLevel] != nil || node.properties[.expanded] != nil
             if hasTreeMetadata {
                 guard node.properties[.role]?.stringValue == "treeitem",

@@ -595,6 +595,11 @@
   (runtime/set-prop!
    (:ui-application context) node proto/MaxHeight (proto/IntValue height)))
 
+(defn container-relative-frame! [context node axes]
+  (runtime/set-prop!
+   (:ui-application context) node proto/ContainerRelativeFrameValue
+   (proto/StringValue axes)))
+
 (defn placeholder! [context node placeholder]
   (runtime/set-prop!
    (:ui-application context) node proto/PlaceholderValue

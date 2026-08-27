@@ -39,6 +39,7 @@ struct LUIDrawerView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var presented: Bool
     @State private var dragOffset: CGFloat = 0
 
@@ -51,8 +52,8 @@ struct LUIDrawerView: View {
     var body: some View {
         GeometryReader { geometry in
             let width = min(
-                CGFloat(model.property(.width)?.intValue ?? 320),
-                geometry.size.width * 0.9
+                CGFloat(model.property(.width)?.intValue ?? 360),
+                geometry.size.width * 0.84
             )
             let visibleWidth = min(
                 width,
@@ -61,32 +62,44 @@ struct LUIDrawerView: View {
                     (presented ? width : CGFloat(0.0)) + dragOffset
                 )
             )
+            let progress = width > 0.0 ? visibleWidth / width : 0.0
 
             ZStack(alignment: .leading) {
-                if let mainID = model.children.first {
-                    LUIAnyNodeView(nodeID: mainID, backend: backend)
-                        .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
-                }
-
-                if visibleWidth > 0 {
-                    Color.black
-                        .opacity(0.32 * Double(visibleWidth / width))
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            guard model.isEnabled else { return }
-                            updatePresentation(false)
-                        }
-                }
-
                 if let panelID = model.children.dropFirst().first {
                     LUIAnyNodeView(nodeID: panelID, backend: backend)
                         .frame(width: width)
                         .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
-                        .offset(x: -width + visibleWidth)
-                        .shadow(color: Color.black.opacity(0.18), radius: 12, x: 4)
+                        .background(platformBackground)
+                        .opacity(0.35 + (0.65 * Double(progress)))
+                        .scaleEffect(0.96 + (0.04 * Double(progress)))
+                        .offset(x: -20.0 * (1.0 - progress))
+                        .allowsHitTesting(visibleWidth > 0.0 && dragOffset == 0.0)
+                }
+
+                if let mainID = model.children.first {
+                    LUIAnyNodeView(nodeID: mainID, backend: backend)
+                        .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
+                        .overlay {
+                            if presented {
+                                Button {
+                                    updatePresentation(false)
+                                } label: {
+                                    Color.black.opacity(0.001)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Close sidebar")
+                                .accessibilityIdentifier("button.sidebar.dismiss")
+                            }
+                        }
+                        .clipShape(RoundedRectangle(
+                            cornerRadius: 40.0 * progress
+                        ))
+                        .shadow(color: Color.black.opacity(0.18), radius: 16, x: -6)
+                        .offset(x: visibleWidth)
                 }
             }
             .simultaneousGesture(drawerGesture(width: width))
+            .animation(.spring(response: 0.28, dampingFraction: 0.9), value: presented)
             .clipped()
         }
         .onChange(of: model.isSelected) { _, selected in
@@ -133,5 +146,15 @@ struct LUIDrawerView: View {
         dragOffset = 0
         guard selected != model.isSelected else { return }
         try? backend.performToggle(node: model.id, checked: selected)
+    }
+
+    private var platformBackground: Color {
+        #if SKIP
+        colorScheme == .dark ? .black : .white
+        #elseif os(macOS)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color(uiColor: .systemBackground)
+        #endif
     }
 }

@@ -500,6 +500,8 @@
                       [(:max-width attrs) 'lui.ui/max-width!]
                       [(:min-height attrs) 'lui.ui/min-height!]
                       [(:max-height attrs) 'lui.ui/max-height!]
+                      [(:container-relative-frame attrs)
+                       'lui.ui/container-relative-frame!]
                       [(:accessibility-identifier attrs)
                        'lui.ui/accessibility-identifier!]
                       [(:class attrs) 'lui.ui/style-class!]])
@@ -507,6 +509,22 @@
                       [`(lui.ui/string-property-signal!
                          ~context ~node lui.protocol/AccessibilityIdentifier
                          ~(:accessibility-identifier-signal attrs))]
+                      [])
+                    (if (:foreground-signal attrs)
+                      [`(lui.ui/string-property-signal!
+                         ~context ~node lui.protocol/ForegroundValue
+                         ~(:foreground-signal attrs))]
+                      [])
+                    (if (:on-appear attrs)
+                      [`(lui.ui/bool-property!
+                         ~context ~node lui.protocol/AppearEnabled true)
+                       `(lui.ui/on-event!
+                         ~context ~node
+                         (fn [~'event]
+                           (match ~'event
+                             (lui.protocol/Appear ~'_node)
+                             (~(:on-appear attrs) ~'event)
+                             ~'_ true)))]
                       [])))
 
 (macro-helper-defn interactive-properties [context node attrs]
@@ -1742,6 +1760,8 @@
              []))
        ~@(string-attribute-expansion
           context node (:icon attrs) 'lui.protocol/InlineIconName)
+       ~@(string-attribute-expansion
+          context node (:icon-placement attrs) 'lui.protocol/IconPlacementValue)
        ~@(tree-item-property-expansions context node attrs)
        ~@(disabled-attribute-expansion context node attrs)
        ~@(if (:on-double-press attrs)

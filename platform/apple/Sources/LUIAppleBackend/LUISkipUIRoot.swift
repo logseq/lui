@@ -45,7 +45,13 @@ private struct LUISkipNodeView: View {
         let _ = model.revision
         content
             .disabled(!model.isEnabled)
+            .modifier(
+                LUIContainerRelativeFrameModifier(
+                    axes: model.containerRelativeFrame
+                )
+            )
             .modifier(LUISkipAccessibilityModifier(model: model, backend: backend))
+            .modifier(LUIAppearModifier(model: model, backend: backend))
     }
 
     @ViewBuilder
@@ -96,9 +102,7 @@ private struct LUISkipNodeView: View {
             }
         case .scroll:
             ScrollView {
-                ZStack {
-                    children
-                }
+                LUIVerticalScrollContent(model: model, backend: backend)
             }
         case .drawer:
             LUIDrawerView(model: model, backend: backend)
@@ -127,7 +131,9 @@ private struct LUISkipNodeView: View {
                 }
             )
         case .heading:
-            Text(verbatim: model.text).font(.title)
+            Text(verbatim: model.text)
+                .font(headingFont)
+                .fontWeight(LUIHeadingTypography.isBold(level: headingLevel) ? .bold : nil)
         case .text, .paragraph, .label, .statusBar, .tooltip:
             Text(verbatim: model.text)
         case .button, .toggleButton:
@@ -336,6 +342,21 @@ private struct LUISkipNodeView: View {
         }
     }
 
+    private var headingFont: Font {
+        switch headingLevel {
+        case 1: .largeTitle
+        case 2: .title
+        case 3: .title2
+        case 4: .title3
+        case 5: .headline
+        default: .subheadline
+        }
+    }
+
+    private var headingLevel: Int {
+        model.property(.headingLevel)?.intValue ?? 1
+    }
+
     private var listItemContent: some View {
         HStack(spacing: 8) {
             if visibleListItemChildren.isEmpty {
@@ -362,6 +383,22 @@ private struct LUISkipNodeView: View {
             get: { model.text },
             set: { try? backend.performTextChange(node: model.id, text: $0) }
         )
+    }
+}
+
+struct LUIVerticalScrollContent: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        VStack(
+            alignment: .leading,
+            spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+        ) {
+            ForEach(model.children, id: \.self) { childID in
+                LUIAnyNodeView(nodeID: childID, backend: backend)
+            }
+        }
     }
 }
 

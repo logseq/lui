@@ -15,7 +15,7 @@ enum LUIThemeColorPolicy {
 
 enum LUIHeadingTypography {
     static func isBold(level: Int) -> Bool {
-        level == 1
+        (1...6).contains(level)
     }
 }
 
