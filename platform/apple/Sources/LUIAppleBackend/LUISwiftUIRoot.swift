@@ -250,26 +250,8 @@ private struct LUINodeView: View {
             LUIInputGroupActionsView(model: model, backend: backend)
         case .checkbox:
             LUICheckboxView(model: model, backend: backend)
-        case .switchControl:
-            Toggle(
-                model.text,
-                isOn: Binding(
-                    get: { model.isChecked },
-                    set: { try? backend.performToggle(node: model.id, checked: $0) }
-                )
-            )
-            .disabled(!model.isEnabled)
-            .frame(minHeight: minimumTouchHeight)
-        case .toggle:
-            Toggle(
-                model.text,
-                isOn: Binding(
-                    get: { model.isChecked },
-                    set: { try? backend.performToggle(node: model.id, checked: $0) }
-                )
-            )
-            .disabled(!model.isEnabled)
-            .frame(minHeight: minimumTouchHeight)
+        case .switchControl, .toggle:
+            LUIBinaryToggleView(model: model, backend: backend)
         case .radioGroup:
             LUIRadioGroupView(model: model, backend: backend)
         case .radio:
@@ -381,6 +363,49 @@ private struct LUINodeView: View {
         case "end": .trailing
         default: .leading
         }
+    }
+}
+
+private struct LUIBinaryToggleView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        Button {
+            try? backend.performToggle(node: model.id, checked: !model.isChecked)
+        } label: {
+            HStack(spacing: 8) {
+                Text(verbatim: model.text)
+                Spacer(minLength: 8)
+                Toggle("", isOn: .constant(model.isChecked))
+                    .labelsHidden()
+                    .allowsHitTesting(false)
+            }
+            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .disabled(!model.isEnabled)
+        .frame(minHeight: minimumTouchHeight)
+        .accessibilityRepresentation {
+            Toggle(model.text, isOn: toggleBinding)
+                .disabled(!model.isEnabled)
+        }
+    }
+
+    private var toggleBinding: Binding<Bool> {
+        Binding(
+            get: { model.isChecked },
+            set: { try? backend.performToggle(node: model.id, checked: $0) }
+        )
+    }
+
+    private var minimumTouchHeight: CGFloat? {
+        #if os(iOS)
+        44
+        #else
+        nil
+        #endif
     }
 }
 
