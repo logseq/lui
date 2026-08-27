@@ -115,6 +115,7 @@
                          (= tag :box)
                          (= tag :scroll)
                          (= tag :list)
+                         (= tag :virtual-list)
                          (= tag :tabs)
                          (= tag :button-group)
                          (= tag :toggle-group)

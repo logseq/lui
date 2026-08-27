@@ -186,6 +186,11 @@
     [:text "Base scroll layer"]
     [:text {:value copy-source}]]])
 
+(defui retained-virtual-list []
+  [:virtual-list {:gap 4}
+   [:text "First item"]
+   [:text "Second item"]])
+
 (defui retained-list-items
   [selected disabled on-select on-open on-long-press]
   [:list {:gap 2}
@@ -1847,6 +1852,23 @@
       (assert-equal (Some (StringValue "Updated overlay"))
                     (apple/property renderer overlay-copy proto/TextValue)
                     "the dependent scroll child patches locally"))))
+
+(deftest virtual-list-is-available-through-the-declarative-authoring-api
+  (let [renderer (apple/create)
+        application (runtime/create (sig/scheduler) (apple/backend renderer))
+        root
+        (retained-virtual-list
+         (ui/context application (sig/scope "virtual-list-authoring")))]
+    (runtime/flush! application)
+    (match (apple/node renderer root)
+      (Some AppleVirtualList)
+      (is true "VirtualList is a built-in declarative element")
+      _ (is false "virtual-list must not resolve as a custom namespace"))
+    (assert-equal 2 (count (apple/children renderer root))
+                  "VirtualList retains its keyed collection children")
+    (assert-equal (Some (proto/IntValue 4))
+                  (apple/property renderer root proto/Gap)
+                  "VirtualList keeps standard collection layout properties")))
 
 (deftest semantic-builders-produce-retained-ui
   (let [scheduler (sig/scheduler)
