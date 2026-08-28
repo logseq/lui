@@ -655,6 +655,15 @@ struct LUISwiftUIBackendTests {
         #expect(list.property(.gap) == .int(8))
     }
 
+    @Test("virtual list row identity changes only with retained node revision")
+    func virtualListRowIdentityTracksRevision() {
+        let original = LUIRetainedNodeSnapshot(nodeID: 7, revision: 2)
+
+        #expect(original == LUIRetainedNodeSnapshot(nodeID: 7, revision: 2))
+        #expect(original != LUIRetainedNodeSnapshot(nodeID: 7, revision: 3))
+        #expect(original != LUIRetainedNodeSnapshot(nodeID: 8, revision: 2))
+    }
+
     @Test("rejects invalid batches before observable models change")
     func rejectsInvalidBatchAtomically() throws {
         let backend = LUIAppleBackend()
@@ -1268,6 +1277,22 @@ struct LUISwiftUIBackendTests {
             translation: 1,
             predictedTranslation: 1,
             width: 0
+        ))
+    }
+
+    @Test("Drawer locks both panes while dragging or animating")
+    func drawerInteractionLockMatchesMotionState() {
+        #expect(!LUIDrawerInteractionPolicy.isLocked(
+            isDragging: false,
+            isAnimating: false
+        ))
+        #expect(LUIDrawerInteractionPolicy.isLocked(
+            isDragging: true,
+            isAnimating: false
+        ))
+        #expect(LUIDrawerInteractionPolicy.isLocked(
+            isDragging: false,
+            isAnimating: true
         ))
     }
 

@@ -274,9 +274,30 @@ private struct LUIDialogActions: View {
     }
 }
 
-struct LUIAnyNodeView: View {
+struct LUIRetainedNodeSnapshot: Equatable {
+    let nodeID: Int
+    let revision: Int
+}
+
+struct LUIAnyNodeView: View, Equatable {
     let nodeID: Int
     let backend: LUIAppleBackend
+    private let retainedSnapshot: LUIRetainedNodeSnapshot
+
+    init(nodeID: Int, backend: LUIAppleBackend) {
+        self.nodeID = nodeID
+        self.backend = backend
+        retainedSnapshot = LUIRetainedNodeSnapshot(
+            nodeID: nodeID,
+            revision: backend.model(id: nodeID)?.revision
+                ?? backend.extensionModel(id: nodeID)?.revision
+                ?? -1
+        )
+    }
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.retainedSnapshot == rhs.retainedSnapshot
+    }
 
     @ViewBuilder
     var body: some View {
@@ -3171,6 +3192,7 @@ private struct LUIVirtualListView: View {
             ) {
                 ForEach(model.children, id: \.self) { childID in
                     LUIAnyNodeView(nodeID: childID, backend: backend)
+                        .equatable()
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
