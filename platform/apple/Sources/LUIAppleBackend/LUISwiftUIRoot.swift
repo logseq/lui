@@ -2169,6 +2169,7 @@ private struct LUIMenuItemView: View {
 private struct LUIListItemView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    var isNativeListRow = false
     @State private var didLongPress = false
 
     var body: some View {
@@ -2188,9 +2189,9 @@ private struct LUIListItemView: View {
                     .accessibilityAction { performPrimaryAction() }
             }
         }
-        .padding(.horizontal, hasExplicitPadding ? 0 : 12)
-        .padding(.vertical, hasExplicitPadding ? 0 : verticalPadding)
-        .frame(minHeight: isNavigationRow ? 44 : nil)
+        .padding(.horizontal, usesSystemListInsets || hasExplicitPadding ? 0 : 12)
+        .padding(.vertical, usesSystemListInsets || hasExplicitPadding ? 0 : verticalPadding)
+        .frame(minHeight: isNavigationRow || isNativeListRow ? 44 : nil)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             model.isSelected ? Color.accentColor.opacity(selectedOpacity) : Color.clear,
@@ -2215,7 +2216,7 @@ private struct LUIListItemView: View {
     }
 
     private var rowContent: some View {
-        HStack(spacing: isNavigationRow ? 10 : 8) {
+        HStack(spacing: isNativeListRow ? 12 : (isNavigationRow ? 10 : 8)) {
             if model.isTreeItem, model.supportsToggle {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
@@ -2230,9 +2231,11 @@ private struct LUIListItemView: View {
                 )
                     .scaledToFit()
                     .frame(width: iconSize, height: iconSize)
-                    .frame(width: isNavigationRow ? 22 : iconSize)
+                    .frame(width: isNativeListRow ? 24 : (isNavigationRow ? 22 : iconSize))
                     .foregroundStyle(
-                        model.isSelected && isNavigationRow ? Color.accentColor : .secondary
+                        isNativeListRow
+                            ? Color.primary
+                            : (model.isSelected && isNavigationRow ? Color.accentColor : .secondary)
                     )
             }
             if visibleChildren.isEmpty {
@@ -2273,6 +2276,7 @@ private struct LUIListItemView: View {
 
     private var role: String { model.property(.role)?.stringValue ?? "" }
     private var hasExplicitPadding: Bool { model.property(.padding) != nil }
+    private var usesSystemListInsets: Bool { isNativeListRow }
     private var isNavigationRow: Bool {
         role == "navigation" || role == "navigation-heading"
     }
@@ -2282,7 +2286,7 @@ private struct LUIListItemView: View {
     }
     private var cornerRadius: CGFloat { isNavigationRow ? 10 : 6 }
     private var selectedOpacity: Double { isNavigationRow ? 0.12 : 0.16 }
-    private var iconSize: CGFloat { isNavigationRow ? 18 : 16 }
+    private var iconSize: CGFloat { isNativeListRow ? 18 : (isNavigationRow ? 18 : 16) }
 
     private func performPrimaryAction() {
         if didLongPress {
@@ -3082,7 +3086,11 @@ private struct LUIListView: View {
     @ViewBuilder
     private func rows(_ childIDs: [Int]) -> some View {
         ForEach(childIDs, id: \.self) { childID in
-            LUIAnyNodeView(nodeID: childID, backend: backend)
+            if let child = backend.model(id: childID), child.kind == .listItem {
+                LUIListItemView(model: child, backend: backend, isNativeListRow: true)
+            } else {
+                LUIAnyNodeView(nodeID: childID, backend: backend)
+            }
         }
     }
 
