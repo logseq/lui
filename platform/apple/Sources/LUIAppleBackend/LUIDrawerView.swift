@@ -68,7 +68,7 @@ struct LUIDrawerView: View {
                     LUIAnyNodeView(nodeID: panelID, backend: backend)
                         .frame(width: width)
                         .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
-                        .opacity(0.35 + (0.65 * Double(progress)))
+                        .opacity(Double(progress))
                         .scaleEffect(0.96 + (0.04 * Double(progress)))
                         .offset(x: -20.0 * (1.0 - progress))
                         .allowsHitTesting(visibleWidth > 0.0 && dragOffset == 0.0)
@@ -92,7 +92,11 @@ struct LUIDrawerView: View {
                         .clipShape(RoundedRectangle(
                             cornerRadius: 40.0 * progress
                         ))
-                        .shadow(color: Color.black.opacity(0.18), radius: 16, x: -6)
+                        .shadow(
+                            color: Color.black.opacity(0.18 * Double(progress)),
+                            radius: 16,
+                            x: -6
+                        )
                         .offset(x: visibleWidth)
                 }
             }

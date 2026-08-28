@@ -44,6 +44,16 @@ struct LUISwiftUIBackendTests {
         #expect(LUIButtonVisualPolicy.usesBorderedStyle(variant: "outline"))
         #expect(LUIButtonVisualPolicy.iconExtent(buttonSize: "icon") == 24)
         #expect(LUIButtonVisualPolicy.iconExtent(buttonSize: "default") == 16)
+        #expect(LUIButtonVisualPolicy.usesIntrinsicHeight(
+            variant: "ghost",
+            buttonSize: "default",
+            hasIcon: false
+        ))
+        #expect(!LUIButtonVisualPolicy.usesIntrinsicHeight(
+            variant: "ghost",
+            buttonSize: "icon",
+            hasIcon: true
+        ))
     }
 
     @Test("semantic muted foreground uses secondary text styling")

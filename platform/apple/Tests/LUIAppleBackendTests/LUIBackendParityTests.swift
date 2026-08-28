@@ -211,6 +211,77 @@ struct LUIBackendParityTests {
         #expect(undimmedMainColor.greenComponent < 0.3)
     }
 
+    @Test("a closed drawer does not bleed through transparent main content")
+    func closedDrawerDoesNotBleedThroughMainContent() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"drawer"},
+          {"op":"create-node","id":2,"kind":"stack"},
+          {"op":"create-node","id":3,"kind":"panel"},
+          {"op":"set-prop","id":1,"property":"selected","value":false},
+          {"op":"set-prop","id":1,"property":"width","value":200},
+          {"op":"set-prop","id":3,"property":"width","value":200},
+          {"op":"set-prop","id":3,"property":"height","value":200},
+          {"op":"set-prop","id":3,"property":"background","value":"red"},
+          {"op":"set-prop","id":3,"property":"border-width","value":0},
+          {"op":"set-prop","id":3,"property":"corner-radius","value":0},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let drawer = try #require(backend.model(id: 1))
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Color.green
+                LUIDrawerView(
+                    model: drawer,
+                    backend: backend
+                )
+            }
+            .frame(width: 400, height: 200)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        let closedDrawerColor = try #require(bitmap.colorAt(x: 100, y: 100))
+
+        #expect(closedDrawerColor.greenComponent > 0.75)
+        #expect(closedDrawerColor.redComponent < 0.25)
+    }
+
+    @Test("semantic surface colors are supplied without changing the wire protocol")
+    func semanticSurfaceColorsUseEnvironmentOverrides() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"list-item"},
+          {"op":"set-prop","id":1,"property":"text","value":"Graph"},
+          {"op":"set-prop","id":1,"property":"width","value":100},
+          {"op":"set-prop","id":1,"property":"height","value":50},
+          {"op":"set-prop","id":1,"property":"background","value":"surface"},
+          {"op":"set-prop","id":1,"property":"corner-radius","value":0}
+        ]}
+        """)
+
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Color.green
+                LUIAnyNodeView(nodeID: 1, backend: backend)
+                    .luiSemanticColors(["surface": .red])
+            }
+            .frame(width: 100, height: 50)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        let surfaceColor = try #require(bitmap.colorAt(x: 90, y: 25))
+
+        #expect(surfaceColor.redComponent > 0.8)
+        #expect(surfaceColor.greenComponent < 0.3)
+    }
+
     @Test("drawer preserves its host background outside its content")
     func drawerPreservesHostBackground() throws {
         let backend = LUIAppleBackend()

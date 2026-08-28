@@ -2379,6 +2379,14 @@ enum LUIButtonVisualPolicy {
     static func iconExtent(buttonSize: String) -> CGFloat {
         buttonSize == "icon" ? 24 : 16
     }
+
+    static func usesIntrinsicHeight(
+        variant: String,
+        buttonSize: String,
+        hasIcon: Bool
+    ) -> Bool {
+        variant == "ghost" && buttonSize != "icon" && !hasIcon
+    }
 }
 
 private struct LUIButtonView: View {
@@ -2557,6 +2565,13 @@ private struct LUIButtonView: View {
 
     private var buttonHeight: CGFloat? {
         #if os(iOS)
+        if LUIButtonVisualPolicy.usesIntrinsicHeight(
+            variant: model.buttonVariant,
+            buttonSize: model.buttonSize,
+            hasIcon: !model.buttonIconName.isEmpty
+        ) {
+            return nil
+        }
         return 44
         #else
         switch model.buttonSize {
@@ -2844,11 +2859,13 @@ private struct LUITextView: View {
                 try? backend.performPress(node: model.id)
             } label: {
                 Text(verbatim: model.text)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .buttonStyle(.plain)
         } else {
             Text(verbatim: model.text)
                 .font(font)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -2862,6 +2879,8 @@ private struct LUITextView: View {
         let classes = model.property(.styleClass)?.stringValue?.split(separator: " ") ?? []
         if classes.contains("headline") { return .headline }
         if classes.contains("subheadline") { return .subheadline.weight(.semibold) }
+        if classes.contains("semibold") { return .body.weight(.semibold) }
+        if classes.contains("caption") { return .caption }
         if isFootnote { return .footnote }
         return .body
     }
@@ -3326,6 +3345,7 @@ enum LUIIntrinsicSurfacePolicy {
 
 private struct LUISurfaceModifier: ViewModifier {
     let model: LUINodeModel
+    @Environment(\.luiSemanticColors) private var semanticColors
 
     func body(content: Content) -> some View {
         let isSurface = model.kind == .panel || model.kind == .card ||
@@ -3404,6 +3424,9 @@ private struct LUISurfaceModifier: ViewModifier {
     }
 
     private func color(_ name: String?) -> Color? {
+        if let name, let semanticColor = semanticColors[name.lowercased()] {
+            return semanticColor
+        }
         if LUIThemeColorPolicy.isMutedForeground(name) {
             return .secondary
         }
