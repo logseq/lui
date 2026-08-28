@@ -7,10 +7,8 @@ enum LUIListItemInteractionStyle: Equatable {
 }
 
 enum LUIListItemInteractionPolicy {
-    static let longPressMinimumDuration = 0.35
-
-    static func style(hasInteractiveChildren: Bool) -> LUIListItemInteractionStyle {
-        hasInteractiveChildren ? .composite : .button
+    static func style(hasVisibleChildren: Bool) -> LUIListItemInteractionStyle {
+        hasVisibleChildren ? .composite : .button
     }
 }
 import SwiftUI

@@ -19,13 +19,9 @@ struct LUIModalPresentation: Identifiable {
 final class LUIModalPresentationStore {
     private(set) var item: LUIModalPresentation?
     private var interactiveDismissalID: Int?
-    private var dialogActionID: Int?
 
     func synchronize(with item: LUIModalPresentation?) {
         guard self.item?.id != item?.id else { return }
-        if item == nil {
-            dialogActionID = nil
-        }
         self.item = item
     }
 
@@ -34,20 +30,6 @@ final class LUIModalPresentationStore {
             interactiveDismissalID = presentedID
         }
         self.item = item
-    }
-
-    func beginDialogAction(_ id: Int) {
-        dialogActionID = id
-    }
-
-    func dismissDialogFromPresentation() -> Int? {
-        guard let presentedID = item?.id else { return nil }
-        item = nil
-        if dialogActionID == presentedID {
-            dialogActionID = nil
-            return nil
-        }
-        return presentedID
     }
 
     func consumeInteractiveDismissal() -> Int? {
@@ -76,201 +58,27 @@ public struct LUISwiftUIRoot: View {
 
     private var rootContent: some View {
         LUIAnyNodeView(nodeID: rootID, backend: backend)
-            .sheet(item: sheetBinding, onDismiss: didDismissSheet) { presentation in
+            .sheet(item: modalBinding, onDismiss: didDismissModal) { presentation in
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
                     .modifier(LUIModalPresentationStyle(kind: presentation.model.kind))
             }
-            .alert(
-                dialogTitle,
-                isPresented: dialogBinding(for: .alert)
-            ) {
-                if let presentation = dialogPresentation {
-                    LUIDialogActions(presentation: presentation, backend: backend)
-                }
-            } message: {
-                if let presentation = dialogPresentation {
-                    Text(verbatim: LUIDialogContentPolicy.message(
-                        dialog: presentation.model,
-                        backend: backend
-                    ))
-                }
-            }
-            .confirmationDialog(
-                dialogTitle,
-                isPresented: dialogBinding(for: .confirmationDialog),
-                titleVisibility: .visible
-            ) {
-                if let presentation = dialogPresentation {
-                    LUIDialogActions(presentation: presentation, backend: backend)
-                }
-            } message: {
-                if let presentation = dialogPresentation {
-                    Text(verbatim: LUIDialogContentPolicy.message(
-                        dialog: presentation.model,
-                        backend: backend
-                    ))
-                }
-            }
     }
 
-    private var sheetBinding: Binding<LUIModalPresentation?> {
+    private var modalBinding: Binding<LUIModalPresentation?> {
         Binding(
             get: {
-                guard let item = backend.modalPresentation.item,
-                      item.rootID == rootID,
-                      item.model.kind == .sheet else { return nil }
-                return item
+                guard backend.modalPresentation.item?.rootID == rootID else { return nil }
+                return backend.modalPresentation.item
             },
             set: { backend.modalPresentation.updateFromPresentation($0) }
         )
     }
 
-    private var dialogPresentation: LUIModalPresentation? {
-        guard let item = backend.modalPresentation.item,
-              item.rootID == rootID,
-              item.model.kind == .dialog else { return nil }
-        return item
-    }
-
-    private var dialogTitle: String {
-        dialogPresentation?.model.text ?? ""
-    }
-
-    private func dialogBinding(for style: LUIDialogPresentationStyle) -> Binding<Bool> {
-        Binding(
-            get: {
-                guard let presentation = dialogPresentation else { return false }
-                return LUIDialogContentPolicy.presentationStyle(
-                    styleClass: presentation.model.property(.styleClass)?.stringValue
-                ) == style
-            },
-            set: { isPresented in
-                guard !isPresented,
-                      let nodeID = backend.modalPresentation.dismissDialogFromPresentation()
-                else { return }
-                try? backend.performDismiss(node: nodeID)
-            }
-        )
-    }
-
-    private func didDismissSheet() {
+    private func didDismissModal() {
         guard let nodeID = backend.modalPresentation.consumeInteractiveDismissal() else {
             return
         }
         try? backend.performDismiss(node: nodeID)
-    }
-}
-
-enum LUIDialogPresentationStyle: Equatable {
-    case alert
-    case confirmationDialog
-}
-
-@MainActor
-enum LUIDialogContentPolicy {
-    static func presentationStyle(styleClass: String?) -> LUIDialogPresentationStyle {
-        guard let styleClass,
-              styleClass.split(separator: " ").contains("alert") else {
-            return .confirmationDialog
-        }
-        return .alert
-    }
-
-    static func actionIDs(dialog: LUINodeModel, backend: LUIAppleBackend) -> [Int] {
-        descendants(of: dialog, backend: backend) { $0.kind == .button }
-            .map(\.id)
-    }
-
-    static func nonCancelActionIDs(
-        dialog: LUINodeModel,
-        backend: LUIAppleBackend
-    ) -> [Int] {
-        actionIDs(dialog: dialog, backend: backend).filter { actionID in
-            guard let action = backend.model(id: actionID) else { return false }
-            return role(for: action) != .cancel
-        }
-    }
-
-    static func cancelActionID(
-        dialog: LUINodeModel,
-        backend: LUIAppleBackend
-    ) -> Int? {
-        actionIDs(dialog: dialog, backend: backend).first { actionID in
-            guard let action = backend.model(id: actionID) else { return false }
-            return role(for: action) == .cancel
-        }
-    }
-
-    static func message(dialog: LUINodeModel, backend: LUIAppleBackend) -> String {
-        descendants(of: dialog, backend: backend) { $0.kind == .text }
-            .map(\.text)
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n\n")
-    }
-
-    static func role(for action: LUINodeModel) -> ButtonRole? {
-        if action.text.localizedCaseInsensitiveCompare("Cancel") == .orderedSame {
-            return .cancel
-        }
-        if action.buttonVariant == "destructive" ||
-            ["Confirm", "Delete"].contains(where: {
-                action.text.localizedCaseInsensitiveCompare($0) == .orderedSame
-            }) {
-            return .destructive
-        }
-        return nil
-    }
-
-    private static func descendants(
-        of root: LUINodeModel,
-        backend: LUIAppleBackend,
-        matching predicate: (LUINodeModel) -> Bool
-    ) -> [LUINodeModel] {
-        root.children.flatMap { childID -> [LUINodeModel] in
-            guard let child = backend.model(id: childID) else { return [] }
-            return (predicate(child) ? [child] : []) + descendants(
-                of: child,
-                backend: backend,
-                matching: predicate
-            )
-        }
-    }
-}
-
-private struct LUIDialogActions: View {
-    let presentation: LUIModalPresentation
-    let backend: LUIAppleBackend
-
-    var body: some View {
-        ForEach(
-            LUIDialogContentPolicy.nonCancelActionIDs(
-                dialog: presentation.model,
-                backend: backend
-            ),
-            id: \.self
-        ) { actionID in
-            actionButton(actionID)
-        }
-        if let cancelActionID = LUIDialogContentPolicy.cancelActionID(
-            dialog: presentation.model,
-            backend: backend
-        ) {
-            actionButton(cancelActionID)
-        }
-    }
-
-    @ViewBuilder
-    private func actionButton(_ actionID: Int) -> some View {
-        if let action = backend.model(id: actionID) {
-            Button(action.text, role: LUIDialogContentPolicy.role(for: action)) {
-                backend.modalPresentation.beginDialogAction(presentation.id)
-                try? backend.performPress(node: actionID)
-            }
-            .disabled(!action.isEnabled)
-            .accessibilityIdentifier(
-                action.property(.accessibilityIdentifier)?.stringValue ?? ""
-            )
-        }
     }
 }
 
@@ -710,44 +518,21 @@ private struct LUIContextMenuModifier: ViewModifier {
             .first(where: { $0.kind == .contextMenu }),
            menu.children.contains(where: { backend.model(id: $0)?.kind == .menuItem }) {
             content.contextMenu {
-                LUIContextMenuActions(model: menu, backend: backend)
+                ForEach(menu.children, id: \.self) { childID in
+                    if let child = backend.model(id: childID) {
+                        if child.kind == .divider {
+                            Divider()
+                        } else if child.kind == .menuItem {
+                            Button(child.text) {
+                                try? backend.performPress(node: child.id)
+                            }
+                            .disabled(!child.isEnabled)
+                        }
+                    }
+                }
             }
         } else {
             content
-        }
-    }
-}
-
-private struct LUIContextMenuActions: View {
-    let model: LUINodeModel
-    let backend: LUIAppleBackend
-
-    var body: some View {
-        ForEach(model.children, id: \.self) { childID in
-            if let child = backend.model(id: childID) {
-                if child.kind == .divider {
-                    Divider()
-                } else if child.kind == .menuItem {
-                    Button(role: child.buttonVariant == "destructive" ? .destructive : nil) {
-                        try? backend.performPress(node: child.id)
-                    } label: {
-                        Label {
-                            Text(verbatim: child.text)
-                        } icon: {
-                            if !child.buttonIconName.isEmpty {
-                                LUIIconImage(
-                                    source: backend.iconSource(for: child.buttonIconName),
-                                    bundle: backend.appIconBundle
-                                )
-                            }
-                        }
-                    }
-                    .disabled(!child.isEnabled)
-                    .accessibilityIdentifier(
-                        child.property(.accessibilityIdentifier)?.stringValue ?? ""
-                    )
-                }
-            }
         }
     }
 }
@@ -1415,15 +1200,15 @@ private struct LUIModalSurfaceContent: View {
         let _ = model.revision
         if LUINavigationFormSheetPolicy.isNavigationForm(
             model.property(.styleClass)?.stringValue
-        ) || LUINavigationFormSheetPolicy.isNavigationScroll(
-            model.property(.styleClass)?.stringValue
         ) {
             NavigationStack {
-                navigationContent
+                Form {
+                    LUINavigationFormRows(
+                        contentID: navigationFormContentID,
+                        backend: backend
+                    )
+                }
                 .navigationTitle(model.text)
-                .modifier(LUINavigationFormTitleStyle(
-                    styleClass: model.property(.styleClass)?.stringValue
-                ))
                 .toolbar {
                     LUINavigationFormToolbar(
                         toolbarID: navigationToolbarID,
@@ -1454,36 +1239,6 @@ private struct LUIModalSurfaceContent: View {
 
     private var navigationToolbarID: Int? {
         model.children.first { backend.model(id: $0)?.kind == .toolbar }
-    }
-
-    @ViewBuilder
-    private var navigationContent: some View {
-        if LUINavigationFormSheetPolicy.isNavigationScroll(
-            model.property(.styleClass)?.stringValue
-        ) {
-            ScrollView {
-                if let contentID = navigationFormContentID {
-                    LUIAnyNodeView(nodeID: contentID, backend: backend)
-                }
-            }
-            .accessibilityIdentifier(navigationFormAccessibilityIdentifier)
-        } else {
-            Form {
-                LUINavigationFormRows(
-                    contentID: navigationFormContentID,
-                    backend: backend
-                )
-            }
-            .accessibilityIdentifier(navigationFormAccessibilityIdentifier)
-        }
-    }
-
-    private var navigationFormAccessibilityIdentifier: String {
-        guard let contentID = navigationFormContentID,
-              let content = backend.model(id: contentID) else {
-            return ""
-        }
-        return content.property(.accessibilityIdentifier)?.stringValue ?? ""
     }
 
     private var surfaceWidth: CGFloat? {
@@ -1993,7 +1748,7 @@ private struct LUISelectView: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered)
         .disabled(!model.isEnabled)
     }
 
@@ -2052,10 +1807,7 @@ private struct LUIDropdownMenuView: View {
     @ViewBuilder
     var body: some View {
         if isPresented {
-            ScrollView {
-                menuItems
-            }
-            .frame(maxHeight: 420)
+            menuItems
         } else {
             menuItems
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -2154,7 +1906,7 @@ private struct LUIListItemView: View {
     var body: some View {
         Group {
             switch LUIListItemInteractionPolicy.style(
-                hasInteractiveChildren: hasInteractiveChildren
+                hasVisibleChildren: !visibleChildren.isEmpty
             ) {
             case .button:
                 Button(action: performPrimaryAction) {
@@ -2176,13 +1928,19 @@ private struct LUIListItemView: View {
             model.isSelected ? Color.accentColor.opacity(selectedOpacity) : Color.clear,
             in: RoundedRectangle(cornerRadius: cornerRadius)
         )
-        .id(model.isSelected)
-        .modifier(
-            LUIListItemSupplementaryGesturesModifier(
-                model: model,
-                backend: backend,
-                didLongPress: $didLongPress
-            )
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                if model.supportsDoublePress {
+                    try? backend.performDoublePress(node: model.id)
+                }
+            }
+        )
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                guard model.supportsLongPress, model.isEnabled else { return }
+                didLongPress = true
+                try? backend.performLongPress(node: model.id)
+            }
         )
         .onKeyPress(.return) {
             guard model.supportsSubmit else { return .ignored }
@@ -2191,7 +1949,6 @@ private struct LUIListItemView: View {
         }
         .accessibilityAddTraits(model.isSelected ? .isSelected : [])
         .disabled(!model.isEnabled)
-        .modifier(LUIListItemSwipeActionsModifier(menu: contextMenu, backend: backend))
     }
 
     private var rowContent: some View {
@@ -2229,15 +1986,6 @@ private struct LUIListItemView: View {
                 }
             }
             Spacer(minLength: 8)
-            if let contextMenu {
-                Menu {
-                    LUIContextMenuActions(model: contextMenu, backend: backend)
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .frame(width: 44, height: 44)
-                }
-                .accessibilityLabel("More actions")
-            }
             if !model.buttonIconName.isEmpty && model.buttonIconPlacement == "trailing" {
                 LUIIconImage(
                     source: backend.iconSource(for: model.buttonIconName),
@@ -2277,108 +2025,6 @@ private struct LUIListItemView: View {
     private var visibleChildren: [Int] {
         model.children.filter { backend.model(id: $0)?.kind != .contextMenu }
     }
-
-    private var hasInteractiveChildren: Bool {
-        visibleChildren.contains(where: containsInteractiveControl)
-    }
-
-    private func containsInteractiveControl(_ nodeID: Int) -> Bool {
-        guard let child = backend.model(id: nodeID) else { return true }
-        switch child.kind {
-        case .button, .toggleButton, .toggle, .radio, .slider, .textField,
-             .secureField, .input, .searchField, .textarea, .checkbox,
-             .switchControl, .select, .combobox, .menuItem, .listItem:
-            return true
-        default:
-            return child.children.contains(where: containsInteractiveControl)
-        }
-    }
-
-    private var contextMenu: LUINodeModel? {
-        model.children.compactMap(backend.model).first { menu in
-            menu.kind == .contextMenu && menu.children.contains { childID in
-                backend.model(id: childID)?.kind == .menuItem
-            }
-        }
-    }
-}
-
-private struct LUIListItemSupplementaryGesturesModifier: ViewModifier {
-    let model: LUINodeModel
-    let backend: LUIAppleBackend
-    @Binding var didLongPress: Bool
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if model.supportsDoublePress && model.supportsLongPress {
-            content
-                .simultaneousGesture(
-                    TapGesture(count: 2).onEnded {
-                        guard model.supportsDoublePress, model.isEnabled else { return }
-                        try? backend.performDoublePress(node: model.id)
-                    }
-                )
-                .onLongPressGesture(
-                    minimumDuration: LUIListItemInteractionPolicy.longPressMinimumDuration
-                ) {
-                    guard model.supportsLongPress, model.isEnabled else { return }
-                    didLongPress = true
-                    try? backend.performLongPress(node: model.id)
-                }
-        } else if model.supportsDoublePress {
-            content.simultaneousGesture(
-                TapGesture(count: 2).onEnded {
-                    guard model.isEnabled else { return }
-                    try? backend.performDoublePress(node: model.id)
-                }
-            )
-        } else if model.supportsLongPress {
-            content.onLongPressGesture(
-                minimumDuration: LUIListItemInteractionPolicy.longPressMinimumDuration
-            ) {
-                guard model.isEnabled else { return }
-                didLongPress = true
-                try? backend.performLongPress(node: model.id)
-            }
-        } else {
-            content
-        }
-    }
-}
-
-private struct LUIListItemSwipeActionsModifier: ViewModifier {
-    let menu: LUINodeModel?
-    let backend: LUIAppleBackend
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if let menu, menu.children.contains(where: {
-            backend.model(id: $0)?.kind == .menuItem
-        }) {
-            content.swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                LUIContextMenuActions(model: menu, backend: backend)
-            }
-        } else {
-            content
-        }
-    }
-}
-
-enum LUIButtonIconPlacementPolicy {
-    static func usesVerticalLayout(_ placement: String) -> Bool {
-        placement == "top"
-    }
-}
-
-enum LUIButtonVisualPolicy {
-    static func usesBorderedStyle(variant: String) -> Bool {
-        variant == "primary" || variant == "secondary" ||
-            variant == "outline" || variant == "destructive"
-    }
-
-    static func iconExtent(buttonSize: String) -> CGFloat {
-        buttonSize == "icon" ? 24 : 16
-    }
 }
 
 private struct LUIButtonView: View {
@@ -2403,7 +2049,6 @@ private struct LUIButtonView: View {
                 width: model.buttonSize == "icon" ? 40 : nil,
                 height: buttonHeight
             )
-            .accessibilityElement(children: .ignore)
             .disabled(!model.isEnabled)
             .focused($focused)
             .onAppear { requestFocusIfNeeded() }
@@ -2456,7 +2101,7 @@ private struct LUIButtonView: View {
             switch model.buttonVariant {
         case "primary":
             button.buttonStyle(.borderedProminent)
-        case "secondary", "outline":
+        case "secondary", "outline", "default":
             button.buttonStyle(.bordered)
         case "destructive":
             button.buttonStyle(.borderedProminent).tint(.red)
@@ -2466,43 +2111,19 @@ private struct LUIButtonView: View {
         }
     }
 
-    @ViewBuilder
     private var button: some View {
-        if let contextMenu {
-            Menu {
-                LUIContextMenuActions(model: contextMenu, backend: backend)
-            } label: {
-                buttonLabel
+        Button {
+            if held {
+                held = false
+            } else if isToggle {
+                selected.toggle()
+                try? backend.performToggle(node: model.id, checked: selected)
+            } else {
+                try? backend.performPress(node: model.id)
             }
-        } else {
-            Button {
-                if held {
-                    held = false
-                } else if isToggle {
-                    selected.toggle()
-                    try? backend.performToggle(node: model.id, checked: selected)
-                } else {
-                    try? backend.performPress(node: model.id)
-                }
-            } label: {
-                buttonLabel
-            }
+        } label: {
+            label
         }
-    }
-
-    private var buttonLabel: some View {
-        label
-            .frame(
-                width: model.buttonSize == "icon" ? 40 : nil,
-                height: buttonHeight
-            )
-            .contentShape(Rectangle())
-    }
-
-    private var contextMenu: LUINodeModel? {
-        model.children
-            .compactMap { backend.model(id: $0) }
-            .first { $0.kind == .contextMenu }
     }
 
     @ViewBuilder
@@ -2511,17 +2132,6 @@ private struct LUIButtonView: View {
             Text(verbatim: model.text)
         } else if model.text.isEmpty {
             icon
-        } else if LUIButtonIconPlacementPolicy.usesVerticalLayout(
-            model.buttonIconPlacement
-        ) {
-            VStack(spacing: 2) {
-                icon
-                Text(verbatim: model.text)
-                    .font(.caption2)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(height: 14)
-            }
         } else if model.buttonIconPlacement == "trailing" {
             HStack(spacing: 8) {
                 Text(verbatim: model.text)
@@ -2541,10 +2151,7 @@ private struct LUIButtonView: View {
             bundle: backend.appIconBundle
         )
             .scaledToFit()
-            .frame(
-                width: LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize),
-                height: LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize)
-            )
+            .frame(width: 16, height: 16)
     }
 
     private var controlSize: ControlSize {
@@ -2848,7 +2455,7 @@ private struct LUITextView: View {
             .buttonStyle(.plain)
         } else {
             Text(verbatim: model.text)
-                .font(font)
+                .font(isFootnote ? .footnote : .body)
         }
     }
 
@@ -2856,14 +2463,6 @@ private struct LUITextView: View {
         model.property(.styleClass)?.stringValue?
             .split(separator: " ")
             .contains("footnote") ?? false
-    }
-
-    private var font: Font {
-        let classes = model.property(.styleClass)?.stringValue?.split(separator: " ") ?? []
-        if classes.contains("headline") { return .headline }
-        if classes.contains("subheadline") { return .subheadline.weight(.semibold) }
-        if isFootnote { return .footnote }
-        return .body
     }
 }
 
@@ -2978,75 +2577,19 @@ private struct LUIColumnView: View {
     }
 }
 
-struct LUIListSection: Equatable, Identifiable {
-    let headerID: Int?
-    let childIDs: [Int]
-
-    var id: Int { headerID ?? childIDs.first ?? Int.min }
-}
-
-enum LUIListSectionPolicy {
-    static func sections(
-        childIDs: [Int],
-        isHeading: (Int) -> Bool
-    ) -> [LUIListSection] {
-        var result: [LUIListSection] = []
-        var headerID: Int?
-        var rows: [Int] = []
-
-        func appendCurrentSection() {
-            guard headerID != nil || !rows.isEmpty else { return }
-            result.append(LUIListSection(headerID: headerID, childIDs: rows))
-        }
-
-        for childID in childIDs {
-            if isHeading(childID) {
-                appendCurrentSection()
-                headerID = childID
-                rows = []
-            } else {
-                rows.append(childID)
-            }
-        }
-        appendCurrentSection()
-        return result
-    }
-}
-
 private struct LUIListView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
 
     var body: some View {
-        List {
-            ForEach(sections) { section in
-                if let headerID = section.headerID,
-                   let header = backend.model(id: headerID) {
-                    Section {
-                        rows(section.childIDs)
-                    } header: {
-                        Text(verbatim: header.text)
-                    }
-                } else {
-                    rows(section.childIDs)
-                }
+        LazyVStack(
+            alignment: .leading,
+            spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+        ) {
+            ForEach(model.children, id: \.self) { childID in
+                LUIAnyNodeView(nodeID: childID, backend: backend)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-        }
-        #if os(iOS)
-        .listStyle(.insetGrouped)
-        #endif
-    }
-
-    @ViewBuilder
-    private func rows(_ childIDs: [Int]) -> some View {
-        ForEach(childIDs, id: \.self) { childID in
-            LUIAnyNodeView(nodeID: childID, backend: backend)
-        }
-    }
-
-    private var sections: [LUIListSection] {
-        LUIListSectionPolicy.sections(childIDs: model.children) { childID in
-            backend.model(id: childID)?.kind == .heading
         }
     }
 }
@@ -3412,7 +2955,6 @@ private struct LUISurfaceModifier: ViewModifier {
         case "primary": .accentColor
         case "primary-foreground": .white
         case "secondary": .secondary.opacity(0.15)
-        case "glass-fallback": glassFallbackBackground
         case "secondary-foreground": .primary
         case "success": .green.opacity(0.15)
         case "success-foreground": .green
@@ -3428,14 +2970,6 @@ private struct LUISurfaceModifier: ViewModifier {
         case "green": .green
         default: nil
         }
-    }
-
-    private var glassFallbackBackground: Color {
-        #if SKIP
-        Color.white.opacity(0.9)
-        #else
-        .clear
-        #endif
     }
 
     private func defaultBackground(isSurface: Bool, isTabs: Bool) -> Color {

@@ -30,22 +30,6 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
-    @Test("top icon placement uses a vertical label")
-    func topIconPlacementUsesAVerticalLabel() {
-        #expect(LUIButtonIconPlacementPolicy.usesVerticalLayout("top"))
-        #expect(!LUIButtonIconPlacementPolicy.usesVerticalLayout("leading"))
-        #expect(!LUIButtonIconPlacementPolicy.usesVerticalLayout("trailing"))
-    }
-
-    @Test("plain buttons stay plain and icon buttons use system glyph metrics")
-    func plainButtonVisualPolicyMatchesNativeControls() {
-        #expect(!LUIButtonVisualPolicy.usesBorderedStyle(variant: "default"))
-        #expect(!LUIButtonVisualPolicy.usesBorderedStyle(variant: "ghost"))
-        #expect(LUIButtonVisualPolicy.usesBorderedStyle(variant: "outline"))
-        #expect(LUIButtonVisualPolicy.iconExtent(buttonSize: "icon") == 24)
-        #expect(LUIButtonVisualPolicy.iconExtent(buttonSize: "default") == 16)
-    }
-
     @Test("semantic muted foreground uses secondary text styling")
     func semanticMutedForegroundUsesSecondaryTextStyling() {
         #expect(LUIThemeColorPolicy.isMutedForeground("muted-foreground"))
@@ -827,9 +811,8 @@ struct LUISwiftUIBackendTests {
 
     @Test("custom ListItem content uses a composite interaction container")
     func listItemInteractionStylePreservesInteractiveChildren() {
-        #expect(LUIListItemInteractionPolicy.style(hasInteractiveChildren: false) == .button)
-        #expect(LUIListItemInteractionPolicy.style(hasInteractiveChildren: true) == .composite)
-        #expect(LUIListItemInteractionPolicy.longPressMinimumDuration == 0.35)
+        #expect(LUIListItemInteractionPolicy.style(hasVisibleChildren: false) == .button)
+        #expect(LUIListItemInteractionPolicy.style(hasVisibleChildren: true) == .composite)
     }
 
     @Test("maps Table structure and patches only the retained row and cell")
@@ -1499,7 +1482,7 @@ struct LUISwiftUIBackendTests {
           {"op":"set-prop","id":1,"property":"variant","value":"primary"},
           {"op":"set-prop","id":1,"property":"size","value":"lg"},
           {"op":"set-prop","id":1,"property":"icon","value":"download"},
-          {"op":"set-prop","id":1,"property":"icon-placement","value":"top"},
+          {"op":"set-prop","id":1,"property":"icon-placement","value":"trailing"},
           {"op":"set-prop","id":1,"property":"selected","value":true},
           {"op":"set-prop","id":1,"property":"autofocus","value":true},
           {"op":"set-prop","id":1,"property":"accessibility-label","value":"Download report"},
@@ -1513,7 +1496,7 @@ struct LUISwiftUIBackendTests {
         #expect(button.property(.variant) == .string("primary"))
         #expect(button.property(.size) == .string("lg"))
         #expect(button.property(.icon) == .string("download"))
-        #expect(button.property(.iconPlacement) == .string("top"))
+        #expect(button.property(.iconPlacement) == .string("trailing"))
         #expect(button.property(.selected) == .bool(true))
         #expect(button.property(.autofocus) == .bool(true))
         #expect(button.property(.longPressEnabled) == .bool(true))
@@ -1977,65 +1960,6 @@ struct LUISwiftUIBackendTests {
         }
     }
 
-    @Test("native dialog policy extracts actions and message from nested content")
-    func nativeDialogContentPolicy() throws {
-        let backend = LUIAppleBackend()
-        try backend.apply(json: """
-        {"generation":1,"ops":[
-          {"op":"create-node","id":1,"kind":"column"},
-          {"op":"create-node","id":2,"kind":"dialog"},
-          {"op":"create-node","id":3,"kind":"column"},
-          {"op":"create-node","id":4,"kind":"text"},
-          {"op":"create-node","id":5,"kind":"text"},
-          {"op":"create-node","id":6,"kind":"button"},
-          {"op":"create-node","id":7,"kind":"button"},
-          {"op":"set-prop","id":2,"property":"text","value":"Delete this graph?"},
-          {"op":"set-prop","id":4,"property":"text","value":"Delete this graph?"},
-          {"op":"set-prop","id":5,"property":"text","value":"This cannot be undone."},
-          {"op":"set-prop","id":6,"property":"text","value":"Cancel"},
-          {"op":"set-prop","id":7,"property":"text","value":"Confirm"},
-          {"op":"set-prop","id":7,"property":"variant","value":"destructive"},
-          {"op":"insert-child","parent":1,"child":2,"index":0},
-          {"op":"insert-child","parent":2,"child":3,"index":0},
-          {"op":"insert-child","parent":3,"child":4,"index":0},
-          {"op":"insert-child","parent":3,"child":5,"index":1},
-          {"op":"insert-child","parent":3,"child":6,"index":2},
-          {"op":"insert-child","parent":3,"child":7,"index":3}
-        ]}
-        """)
-
-        let dialog = try #require(backend.model(id: 2))
-        #expect(LUIDialogContentPolicy.actionIDs(dialog: dialog, backend: backend) == [6, 7])
-        #expect(LUIDialogContentPolicy.nonCancelActionIDs(
-            dialog: dialog,
-            backend: backend
-        ) == [7])
-        #expect(LUIDialogContentPolicy.cancelActionID(
-            dialog: dialog,
-            backend: backend
-        ) == 6)
-        #expect(
-            LUIDialogContentPolicy.message(dialog: dialog, backend: backend)
-                == "Delete this graph?\n\nThis cannot be undone."
-        )
-        #expect(LUIDialogContentPolicy.role(for: try #require(backend.model(id: 6))) == .cancel)
-        #expect(LUIDialogContentPolicy.role(for: try #require(backend.model(id: 7))) == .destructive)
-    }
-
-    @Test("native dialog policy selects alert presentation declaratively")
-    func nativeDialogPresentationPolicy() {
-        #expect(LUIDialogContentPolicy.presentationStyle(styleClass: "alert") == .alert)
-        #expect(
-            LUIDialogContentPolicy.presentationStyle(styleClass: "compact alert destructive")
-                == .alert
-        )
-        #expect(
-            LUIDialogContentPolicy.presentationStyle(styleClass: "confirmation-dialog")
-                == .confirmationDialog
-        )
-        #expect(LUIDialogContentPolicy.presentationStyle(styleClass: nil) == .confirmationDialog)
-    }
-
     @Test("maps Sheet to one retained native SwiftUI presentation")
     func mapsSheet() throws {
         let backend = LUIAppleBackend()
@@ -2219,10 +2143,6 @@ struct LUISwiftUIBackendTests {
     func navigationFormSheetPolicy() {
         #expect(LUINavigationFormSheetPolicy.isNavigationForm("compact navigation-form"))
         #expect(!LUINavigationFormSheetPolicy.isNavigationForm("compact"))
-        #expect(LUINavigationFormSheetPolicy.usesInlineTitle("navigation-form"))
-        #expect(LUINavigationFormSheetPolicy.usesInlineTitle("compact navigation-scroll"))
-        #expect(!LUINavigationFormSheetPolicy.usesInlineTitle("compact"))
-        #expect(!LUINavigationFormSheetPolicy.usesInlineTitle(nil))
         #expect(
             LUINavigationFormSheetPolicy.actionPlacement("cancellation-action") == .cancellation
         )
@@ -2630,12 +2550,9 @@ struct LUISwiftUIBackendTests {
           {"op":"set-prop","id":1,"property":"text","value":"Document"},
           {"op":"set-prop","id":3,"property":"text","value":"Rename"},
           {"op":"set-prop","id":3,"property":"press-enabled","value":true},
-          {"op":"set-prop","id":3,"property":"icon","value":"trash"},
-          {"op":"set-prop","id":3,"property":"accessibility-identifier","value":"menu.rename"},
           {"op":"set-prop","id":5,"property":"text","value":"Archive"},
           {"op":"set-prop","id":5,"property":"press-enabled","value":true},
           {"op":"set-prop","id":5,"property":"enabled","value":false},
-          {"op":"set-prop","id":5,"property":"variant","value":"destructive"},
           {"op":"insert-child","parent":1,"child":2,"index":0},
           {"op":"insert-child","parent":2,"child":3,"index":0},
           {"op":"insert-child","parent":2,"child":4,"index":1},
@@ -2668,20 +2585,6 @@ struct LUISwiftUIBackendTests {
             """)
         }
         #expect(backend.generation == 1)
-    }
-
-    @Test("groups native list rows under heading sections")
-    func groupsNativeListSections() {
-        let sections = LUIListSectionPolicy.sections(
-            childIDs: [1, 2, 3, 4, 5, 6],
-            isHeading: { $0 == 3 || $0 == 5 }
-        )
-
-        #expect(sections == [
-            LUIListSection(headerID: nil, childIDs: [1, 2]),
-            LUIListSection(headerID: 3, childIDs: [4]),
-            LUIListSection(headerID: 5, childIDs: [6]),
-        ])
     }
 
     @Test("maps message and status surfaces as retained native compositions")

@@ -280,7 +280,7 @@ renderer even though the Button page's generated attribute table omits it.
 - `size` is one of `sm`, `default`, `lg`, or `icon`. An icon-sized, icon-only
   button requires an explicit accessible `label`.
 - `icon` uses the same built-in or `app:<name>` registry as the `icon` leaf,
-  and `icon-placement` is `leading` by default, `trailing`, or `top`.
+  and `icon-placement` is `leading` by default or `trailing`.
 - `selected` is model-owned pressed/selected state. Hover, pointer-down, focus,
   and other transient interaction state remain backend-owned.
 - `autofocus` is edge-triggered: mount with true or false-to-true requests
