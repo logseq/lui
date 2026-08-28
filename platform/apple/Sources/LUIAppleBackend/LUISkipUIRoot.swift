@@ -45,6 +45,7 @@ private struct LUISkipNodeView: View {
         let _ = model.revision
         content
             .disabled(!model.isEnabled)
+            .modifier(LUISkipRetainedPaneModifier(model: model))
             .modifier(
                 LUIContainerRelativeFrameModifier(
                     axes: model.containerRelativeFrame
@@ -469,6 +470,28 @@ private struct LUISkipNodeView: View {
             get: { model.text },
             set: { try? backend.performTextChange(node: model.id, text: $0) }
         )
+    }
+}
+
+private struct LUISkipRetainedPaneModifier: ViewModifier {
+    let model: LUINodeModel
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isRetainedPane {
+            content
+                .opacity(model.isSelected ? 1.0 : 0.0)
+                .allowsHitTesting(model.isSelected)
+                .accessibilityHidden(!model.isSelected)
+        } else {
+            content
+        }
+    }
+
+    private var isRetainedPane: Bool {
+        model.property(.styleClass)?.stringValue?
+            .split(separator: " ")
+            .contains("retained-pane") == true
     }
 }
 

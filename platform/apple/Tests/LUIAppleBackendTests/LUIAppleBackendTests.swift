@@ -644,6 +644,8 @@ struct LUISwiftUIBackendTests {
           {"op":"create-node","id":2,"kind":"text"},
           {"op":"create-node","id":3,"kind":"text"},
           {"op":"set-prop","id":1,"property":"gap","value":8},
+          {"op":"set-prop","id":1,"property":"selected","value":false},
+          {"op":"set-prop","id":1,"property":"style-class","value":"retained-pane"},
           {"op":"insert-child","parent":1,"child":2,"index":0},
           {"op":"insert-child","parent":1,"child":3,"index":1}
         ]}
@@ -653,6 +655,8 @@ struct LUISwiftUIBackendTests {
         #expect(list.kind == .virtualList)
         #expect(list.children == [2, 3])
         #expect(list.property(.gap) == .int(8))
+        #expect(!list.isSelected)
+        #expect(list.property(.styleClass) == .string("retained-pane"))
     }
 
     @Test("virtual list row identity changes only with retained node revision")

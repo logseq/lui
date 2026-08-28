@@ -351,6 +351,7 @@ private struct LUINodeView: View {
             )
         )
         .modifier(LUIContextMenuModifier(model: model, backend: backend))
+        .modifier(LUIRetainedPaneModifier(model: model))
     }
 
     @ViewBuilder
@@ -627,6 +628,28 @@ private struct LUIBottomTabsView: View {
             }
         }
         .accessibilityLabel(model.accessibilityLabel(in: backend) ?? "")
+    }
+}
+
+private struct LUIRetainedPaneModifier: ViewModifier {
+    let model: LUINodeModel
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isRetainedPane {
+            content
+                .opacity(model.isSelected ? 1.0 : 0.0)
+                .allowsHitTesting(model.isSelected)
+                .accessibilityHidden(!model.isSelected)
+        } else {
+            content
+        }
+    }
+
+    private var isRetainedPane: Bool {
+        model.property(.styleClass)?.stringValue?
+            .split(separator: " ")
+            .contains("retained-pane") == true
     }
 }
 

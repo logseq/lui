@@ -656,7 +656,8 @@ struct LUIRetainedTree {
                 kind == .listItem
         case .selected:
             kind == .button || kind == .toggleButton || kind == .menuItem ||
-                kind == .listItem || kind == .tableRow || kind == .drawer || isTreeRow(kind)
+                kind == .listItem || kind == .tableRow || kind == .drawer ||
+                kind == .virtualList || isTreeRow(kind)
         case .autofocus:
             kind == .button || kind == .toggleButton || isTextEntry(kind)
         case .submitOnEnter: kind == .textarea

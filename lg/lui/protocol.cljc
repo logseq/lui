@@ -273,7 +273,8 @@
     Selected
     (or (= kind Button) (= kind ToggleButton) (= kind MenuItem)
         (= kind ListItem) (= kind TableRow) (= kind Drawer)
-        (= kind BottomTab) (tree-row-kind? kind))
+        (= kind BottomTab) (= kind VirtualList)
+        (tree-row-kind? kind))
     Autofocus
     (or (= kind Button) (= kind ToggleButton)
         (= kind TextField) (= kind SecureField) (= kind Input) (= kind SearchField)

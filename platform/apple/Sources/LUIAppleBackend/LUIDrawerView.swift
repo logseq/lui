@@ -45,7 +45,7 @@ enum LUIDrawerInteractionPolicy {
     }
 
     static func mainCornerRadius(visibleWidth: CGFloat) -> CGFloat {
-        visibleWidth > 0 ? 40 : 0
+        visibleWidth > 0 ? 40.0 : 0.0
     }
 }
 
