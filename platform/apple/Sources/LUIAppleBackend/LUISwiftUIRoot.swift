@@ -307,7 +307,7 @@ private struct LUINodeView: View {
     var body: some View {
         let _ = model.revision
         Group {
-            if model.kind == .root {
+            if model.kind == .root || model.kind == .drawer {
                 content
             } else if model.kind.isModalSurface {
                 content

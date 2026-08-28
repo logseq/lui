@@ -293,25 +293,18 @@ struct LUIBackendParityTests {
         renderer.scale = 1
         let image = try #require(renderer.cgImage)
         let bitmap = NSBitmapImageRep(cgImage: image)
-        let color = try #require(bitmap.colorAt(x: 50, y: 50))
 
+        let color = try #require(bitmap.colorAt(x: 50, y: 50))
         #expect(color.redComponent > 0.25)
     }
 
-    @Test("a full-screen drawer preserves the system bottom safe-area inset")
-    func fullScreenDrawerPreservesSystemBottomSafeAreaInset() {
-        #expect(LUIDrawerSafeAreaGeometry.bottomInset(
-            container: 0,
-            system: 34
-        ) == 34)
-        #expect(LUIDrawerSafeAreaGeometry.bottomInset(
-            container: 21,
-            system: 34
-        ) == 34)
+    @Test("a full-screen drawer lets main content own the bottom safe area")
+    func fullScreenDrawerLetsMainContentOwnBottomSafeArea() {
+        #expect(LUIDrawerSafeAreaGeometry.mainPanelBottomInset == 0)
     }
 
-    @Test("a closed drawer does not bleed through transparent main content")
-    func closedDrawerDoesNotBleedThroughMainContent() throws {
+    @Test("a closed drawer supplies a main surface behind transparent content")
+    func closedDrawerSuppliesMainSurfaceBehindTransparentContent() throws {
         let backend = LUIAppleBackend()
         try backend.apply(json: """
         {"generation":1,"ops":[
@@ -338,16 +331,24 @@ struct LUIBackendParityTests {
                     model: drawer,
                     backend: backend
                 )
+                .safeAreaInset(edge: .top) {
+                    Color.clear.frame(height: 20)
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 20)
+                }
             }
             .frame(width: 400, height: 200)
         )
         renderer.scale = 1
         let image = try #require(renderer.cgImage)
         let bitmap = NSBitmapImageRep(cgImage: image)
-        let closedDrawerColor = try #require(bitmap.colorAt(x: 100, y: 100))
-
-        #expect(closedDrawerColor.greenComponent > 0.75)
-        #expect(closedDrawerColor.redComponent < 0.25)
+        for point in [CGPoint(x: 100, y: 10), CGPoint(x: 100, y: 100), CGPoint(x: 100, y: 190)] {
+            let closedMainColor = try #require(
+                bitmap.colorAt(x: Int(point.x), y: Int(point.y))
+            )
+            #expect(closedMainColor.redComponent > 0.25)
+        }
     }
 
     @Test("semantic surface colors are supplied without changing the wire protocol")
@@ -403,8 +404,8 @@ struct LUIBackendParityTests {
         #endif
     }
 
-    @Test("drawer preserves its host background outside its content")
-    func drawerPreservesHostBackground() throws {
+    @Test("drawer main surface covers the full container")
+    func drawerMainSurfaceCoversFullContainer() throws {
         let backend = LUIAppleBackend()
         try backend.apply(json: """
         {"generation":1,"ops":[
@@ -450,9 +451,10 @@ struct LUIBackendParityTests {
         let bottomColor = try #require(bitmap.colorAt(x: 50, y: 10))
 
         for color in [topColor, middleColor, bottomColor] {
-            #expect(abs(color.redComponent - referenceColor.redComponent) < 0.01)
-            #expect(abs(color.greenComponent - referenceColor.greenComponent) < 0.01)
-            #expect(abs(color.blueComponent - referenceColor.blueComponent) < 0.01)
+            let difference = abs(color.redComponent - referenceColor.redComponent)
+                + abs(color.greenComponent - referenceColor.greenComponent)
+                + abs(color.blueComponent - referenceColor.blueComponent)
+            #expect(difference > 0.1)
         }
     }
 
