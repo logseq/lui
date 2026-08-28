@@ -1409,6 +1409,7 @@ private struct LUIModalPresentationStyle: ViewModifier {
 private struct LUIModalSurfaceContent: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.luiSemanticColors) private var semanticColors
 
     @ViewBuilder
     var body: some View {
@@ -1420,6 +1421,7 @@ private struct LUIModalSurfaceContent: View {
         ) {
             NavigationStack {
                 navigationContent
+                .background(modalBackground)
                 .navigationTitle(model.text)
                 .modifier(LUINavigationFormTitleStyle(
                     styleClass: model.property(.styleClass)?.stringValue
@@ -1431,6 +1433,7 @@ private struct LUIModalSurfaceContent: View {
                     )
                 }
             }
+            .background(modalBackground.ignoresSafeArea())
         } else {
             VStack(alignment: .leading, spacing: 16) {
                 Text(verbatim: model.text)
@@ -1446,6 +1449,23 @@ private struct LUIModalSurfaceContent: View {
             .padding(CGFloat(model.property(.padding)?.intValue ?? 24))
             .frame(width: surfaceWidth, height: surfaceHeight)
         }
+    }
+
+    private var modalBackground: Color {
+        LUIModalBackgroundPolicy.color(
+            semanticColors: semanticColors,
+            systemBackground: modalSystemBackground
+        )
+    }
+
+    private var modalSystemBackground: Color {
+        #if os(iOS)
+        Color(uiColor: .systemBackground)
+        #elseif os(macOS)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color.clear
+        #endif
     }
 
     private var navigationFormContentID: Int? {

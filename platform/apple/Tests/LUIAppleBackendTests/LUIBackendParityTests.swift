@@ -282,6 +282,28 @@ struct LUIBackendParityTests {
         #expect(surfaceColor.greenComponent < 0.3)
     }
 
+    @Test("modal navigation surfaces use the semantic app background")
+    func modalNavigationSurfacesUseSemanticBackground() throws {
+        #if os(macOS)
+        let renderer = ImageRenderer(
+            content: Rectangle().fill(
+                LUIModalBackgroundPolicy.color(
+                    semanticColors: ["background": .red],
+                    systemBackground: .green
+                )
+            )
+            .frame(width: 20, height: 20)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        let color = try #require(bitmap.colorAt(x: 10, y: 10))
+
+        #expect(color.redComponent > 0.8)
+        #expect(color.greenComponent < 0.3)
+        #endif
+    }
+
     @Test("drawer preserves its host background outside its content")
     func drawerPreservesHostBackground() throws {
         let backend = LUIAppleBackend()

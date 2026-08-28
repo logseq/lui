@@ -37,6 +37,15 @@ enum LUIThemeColorPolicy {
     }
 }
 
+enum LUIModalBackgroundPolicy {
+    static func color(
+        semanticColors: [String: Color],
+        systemBackground: Color
+    ) -> Color {
+        semanticColors["background"] ?? systemBackground
+    }
+}
+
 enum LUIHeadingTypography {
     static func isBold(level: Int) -> Bool {
         (1...6).contains(level)
