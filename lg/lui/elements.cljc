@@ -516,6 +516,11 @@
                          ~context ~node lui.protocol/ForegroundValue
                          ~(:foreground-signal attrs))]
                       [])
+                    (if (:background-signal attrs)
+                      [`(lui.ui/string-property-signal!
+                         ~context ~node lui.protocol/BackgroundValue
+                         ~(:background-signal attrs))]
+                      [])
                     (if (:on-appear attrs)
                       [`(lui.ui/bool-property!
                          ~context ~node lui.protocol/AppearEnabled true)
@@ -1177,9 +1182,10 @@
            [])
        ~node)))
 
-(defelement spacer [context parent _attrs & _children]
+(defelement spacer [context parent attrs & _children]
   (let [node (gensym "node")]
     `(let [~node (lui.ui/spacer! ~context)]
+       ~@(element-properties context node attrs)
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])

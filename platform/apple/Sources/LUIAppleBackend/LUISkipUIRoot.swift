@@ -118,7 +118,7 @@ private struct LUISkipNodeView: View {
         case .listItem:
             Group {
                 switch LUIListItemInteractionPolicy.style(
-                    hasVisibleChildren: !visibleListItemChildren.isEmpty
+                    hasInteractiveChildren: !visibleListItemChildren.isEmpty
                 ) {
                 case .button:
                     Button(action: { performListItemPrimaryAction() }) {
@@ -133,7 +133,9 @@ private struct LUISkipNodeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(model.isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
             .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                LongPressGesture(
+                    minimumDuration: LUIListItemInteractionPolicy.longPressMinimumDuration
+                ).onEnded { _ in
                     guard model.supportsLongPress, model.isEnabled else { return }
                     didLongPress = true
                     try? backend.performLongPress(node: model.id)
@@ -187,11 +189,15 @@ private struct LUISkipNodeView: View {
                 }
             }
         case .dialog, .sheet:
-            if model.kind == .sheet && LUINavigationFormSheetPolicy.isNavigationForm(
-                model.property(.styleClass)?.stringValue
+            if model.kind == .sheet && (
+                LUINavigationFormSheetPolicy.isNavigationForm(
+                    model.property(.styleClass)?.stringValue
+                ) || LUINavigationFormSheetPolicy.isNavigationScroll(
+                    model.property(.styleClass)?.stringValue
+                )
             ) {
                 NavigationStack {
-                    Form { navigationFormRows }
+                    navigationContent
                         .navigationTitle(model.text)
                         .toolbar {
                             if let actionID = navigationActionID(for: .cancellation) {
@@ -262,6 +268,37 @@ private struct LUISkipNodeView: View {
                 LUIAnyNodeView(nodeID: contentID, backend: backend)
             }
         }
+    }
+
+    @ViewBuilder
+    private var navigationContent: some View {
+        if LUINavigationFormSheetPolicy.isNavigationScroll(
+            model.property(.styleClass)?.stringValue
+        ) {
+            ScrollView { navigationScrollContent }
+                .accessibilityIdentifier(navigationFormAccessibilityIdentifier)
+        } else {
+            Form { navigationFormRows }
+                .accessibilityIdentifier(navigationFormAccessibilityIdentifier)
+        }
+    }
+
+    @ViewBuilder
+    private var navigationScrollContent: some View {
+        if let contentID = model.children.first(where: {
+            backend.model(id: $0)?.kind != .toolbar
+        }) {
+            LUIAnyNodeView(nodeID: contentID, backend: backend)
+        }
+    }
+
+    private var navigationFormAccessibilityIdentifier: String {
+        guard let contentID = model.children.first(where: {
+            backend.model(id: $0)?.kind != .toolbar
+        }), let content = backend.model(id: contentID) else {
+            return ""
+        }
+        return content.property(.accessibilityIdentifier)?.stringValue ?? ""
     }
 
     private func navigationActionID(

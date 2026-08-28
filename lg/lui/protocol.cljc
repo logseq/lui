@@ -118,7 +118,7 @@
    (= value "destructive")))
 
 (defn icon-placement-supported? [value]
-  (or (= value "leading") (= value "trailing")))
+  (or (= value "leading") (= value "trailing") (= value "top")))
 
 (defn- built-in-icon-name-supported? [value]
   (match value
@@ -263,7 +263,7 @@
         (= kind TableCell))
     IconName (= kind Icon)
     VariantValue
-    (or (= kind Button) (= kind ToggleButton)
+    (or (= kind Button) (= kind ToggleButton) (= kind MenuItem)
         (= kind Alert) (= kind Bubble))
     InlineIconName
     (or (= kind Button) (= kind ToggleButton) (= kind MenuItem)

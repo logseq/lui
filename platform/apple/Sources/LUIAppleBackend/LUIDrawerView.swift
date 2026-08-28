@@ -65,11 +65,16 @@ struct LUIDrawerView: View {
             let progress = width > 0.0 ? visibleWidth / width : 0.0
 
             ZStack(alignment: .leading) {
+                platformBackground
+
                 if let panelID = model.children.dropFirst().first {
                     LUIAnyNodeView(nodeID: panelID, backend: backend)
+                        .luiDrawerSafeAreaPadding(
+                            top: max(geometry.safeAreaInsets.top, 64),
+                            bottom: geometry.safeAreaInsets.bottom
+                        )
                         .frame(width: width)
                         .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
-                        .background(platformBackground)
                         .opacity(0.35 + (0.65 * Double(progress)))
                         .scaleEffect(0.96 + (0.04 * Double(progress)))
                         .offset(x: -20.0 * (1.0 - progress))
@@ -77,7 +82,17 @@ struct LUIDrawerView: View {
                 }
 
                 if let mainID = model.children.first {
-                    LUIAnyNodeView(nodeID: mainID, backend: backend)
+                    ZStack {
+                        Color.clear
+                            .luiDrawerMainBackground(fallback: platformBackground)
+
+                        LUIAnyNodeView(nodeID: mainID, backend: backend)
+                            .luiDrawerSafeAreaPadding(
+                                top: geometry.safeAreaInsets.top,
+                                bottom: 0
+                            )
+                            .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
+                    }
                         .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
                         .overlay {
                             if presented {
@@ -92,16 +107,26 @@ struct LUIDrawerView: View {
                             }
                         }
                         .clipShape(RoundedRectangle(
-                            cornerRadius: 40.0 * progress
+                            cornerRadius: 48.0 * progress,
+                            style: .continuous
                         ))
                         .shadow(color: Color.black.opacity(0.18), radius: 16, x: -6)
                         .offset(x: visibleWidth)
+                        .simultaneousGesture(drawerGesture(width: width))
                 }
             }
-            .simultaneousGesture(drawerGesture(width: width))
+            .overlay(alignment: .leading) {
+                if !presented && model.isEnabled {
+                    Color.black.opacity(0.001)
+                        .frame(width: 24)
+                        .frame(maxHeight: .infinity)
+                        .gesture(drawerGesture(width: width))
+                }
+            }
             .animation(.spring(response: 0.28, dampingFraction: 0.9), value: presented)
             .clipped()
         }
+        .luiFullScreenDrawerShell()
         .onChange(of: model.isSelected) { _, selected in
             presented = selected
             dragOffset = 0
@@ -155,6 +180,36 @@ struct LUIDrawerView: View {
         Color(nsColor: .windowBackgroundColor)
         #else
         Color(uiColor: .systemBackground)
+        #endif
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func luiDrawerSafeAreaPadding(top: CGFloat, bottom: CGFloat) -> some View {
+        #if !SKIP && os(iOS)
+        safeAreaPadding(.top, top)
+            .safeAreaPadding(.bottom, bottom)
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder
+    func luiDrawerMainBackground(fallback: Color) -> some View {
+        #if SKIP
+        background(fallback)
+        #else
+        background(.ultraThinMaterial)
+        #endif
+    }
+
+    @ViewBuilder
+    func luiFullScreenDrawerShell() -> some View {
+        #if !SKIP && os(iOS)
+        ignoresSafeArea(.container)
+        #else
+        self
         #endif
     }
 }
