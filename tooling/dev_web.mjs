@@ -1,11 +1,13 @@
-import { spawn } from "node:child_process"
+import { execFile, spawn } from "node:child_process"
 import path from "node:path"
+import { promisify } from "node:util"
 import { fileURLToPath } from "node:url"
 
 const projectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 )
+const execFileAsync = promisify(execFile)
 
 function option(name, fallback) {
   const index = process.argv.indexOf(name)
@@ -33,16 +35,52 @@ const viteBinary = path.join(
 const children = new Set()
 let stopping = false
 
-function start(command, args, extra = {}) {
+function start(
+  command,
+  args,
+  extra = {},
+  stdio = ["pipe", "inherit", "inherit"],
+) {
   const child = spawn(command, args, {
     cwd: projectRoot,
     env: { ...process.env, ...extra },
-    stdio: ["pipe", "inherit", "inherit"],
+    stdio,
     detached: process.platform !== "win32",
   })
   children.add(child)
   child.once("exit", () => children.delete(child))
   return child
+}
+
+function watchDune(duneEnvironment) {
+  return new Promise((resolve, reject) => {
+    const child = start(
+      "dune",
+      ["build", "@web", "-w", "-j", "1"],
+      duneEnvironment,
+      ["pipe", "pipe", "pipe"],
+    )
+    let ready = false
+    let output = ""
+    const consumeOutput = (chunk, destination) => {
+      destination.write(chunk)
+      output += chunk.toString()
+      if (!ready && output.includes("Success, waiting for filesystem changes")) {
+        ready = true
+        resolve()
+      }
+    }
+    child.stdout.on("data", (chunk) => consumeOutput(chunk, process.stdout))
+    child.stderr.on("data", (chunk) => consumeOutput(chunk, process.stderr))
+    child.once("error", reject)
+    child.once("exit", (code, signal) => {
+      if (!ready) reject(new Error(`Dune stopped before watch mode was ready (${signal ?? code})`))
+      else if (!stopping) {
+        console.error(`Dune stopped unexpectedly (${signal ?? code})`)
+        stop(code ?? 1)
+      }
+    })
+  })
 }
 
 function stopChild(child) {
@@ -76,9 +114,9 @@ function watch(label, command, args, extra) {
   })
 }
 
-function runOnce(label, command, args) {
+function runOnce(label, command, args, extra) {
   return new Promise((resolve, reject) => {
-    const child = start(command, args)
+    const child = start(command, args, extra)
     child.once("error", (error) => reject(error))
     child.once("exit", (code, signal) => {
       if (code === 0) resolve()
@@ -87,16 +125,33 @@ function runOnce(label, command, args) {
   })
 }
 
+async function loadOpamEnvironment() {
+  const { stdout } = await execFileAsync(
+    "opam",
+    [
+      "exec",
+      "--",
+      process.execPath,
+      "-e",
+      "process.stdout.write(JSON.stringify(process.env))",
+    ],
+    { cwd: projectRoot, maxBuffer: 1024 * 1024 },
+  )
+  return JSON.parse(stdout)
+}
+
 process.once("SIGINT", () => stop(0))
 process.once("SIGTERM", () => stop(0))
 
 try {
+  const duneEnvironment = await loadOpamEnvironment()
   await runOnce(
     "Dune initial build",
-    "opam",
-    ["exec", "--", "dune", "build", "@web", "-j", "1"],
+    "dune",
+    ["build", "@web", "-j", "1"],
+    duneEnvironment,
   )
-  watch("Dune", "opam", ["exec", "--", "dune", "build", "@web", "-w", "-j", "1"])
+  await watchDune(duneEnvironment)
   watch(
     "Tailwind",
     tailwindBinary,

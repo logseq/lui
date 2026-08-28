@@ -359,6 +359,7 @@
                     None
                     (raise
                      (Invalid_argument "candidate view did not return a node")))]
+              (runtime/retire-checkpoint-dynamic-segments! saved old-view)
               (sig/dispose-scope! old-scope)
               (prune-state-scopes!
                (:reload-state-scopes state)

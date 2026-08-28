@@ -2,6 +2,7 @@
   (:require [clojure.test :refer [deftest is]]
             [signal.core :as sig]
             [lui.app :as app]
+            [lui.dynamic :as dynamic]
             [lui.hot-reload :as hot]
             [lui.macros :refer [defui state]]
             [lui.protocol :as proto]
@@ -70,6 +71,20 @@
 (defn replacement-stateful-view [context _model-source _send]
   (stateful-view
    (ui/child-context context "local-counter") "After local "))
+
+(defn dynamic-view [context label]
+  (let [root (ui/column! context)]
+    (dynamic/conditional!
+     context root (sig/constant (:ui-scheduler context) true)
+     (fn [branch-context]
+       (ui/text! branch-context label)))
+    root))
+
+(defn initial-dynamic-view [context _model-source _send]
+  (dynamic-view context "Before dynamic"))
+
+(defn replacement-dynamic-view [context _model-source _send]
+  (dynamic-view context "After dynamic"))
 
 (defn decorated-view [context _model-source _send]
   (let [root (ui/column! context)
@@ -414,6 +429,34 @@
             (assert-equal "After local 1" text
                           "the compatible state slot retains its value")
             _ (is false "the reloaded local-state label has text")))))))
+
+(deftest reload-disposes-reconciled-dynamic-segments-without-losing-registration
+  (let [renderer (apple/create)
+        application
+        (app/create-reloadable
+         (apple/backend renderer) "source-a" "contract-a"
+         0 add-action initial-dynamic-view)]
+    (app/start! application)
+    (app/flush! application)
+    (let [stable-root (app/root-node application)
+          layout (nth (apple/children renderer stable-root) 0)
+          dynamic-label (nth (apple/children renderer layout) 0)
+          request (app/request-reload! application)]
+      (assert-equal
+       (hot/ReloadApplied request)
+       (app/reload-view!
+        application request "source-b" "contract-a"
+        replacement-dynamic-view 1)
+       "a compatible view with dynamic segments hot-applies")
+      (assert-equal layout (nth (apple/children renderer stable-root) 0)
+                    "the dynamic view root retains identity")
+      (assert-equal dynamic-label (nth (apple/children renderer layout) 0)
+                    "the dynamic child retains identity")
+      (match (apple/property renderer dynamic-label proto/TextValue)
+        (Some (proto/StringValue text))
+        (assert-equal "After dynamic" text
+                      "the replacement dynamic child is visible")
+        _ (is false "the dynamic child has text")))))
 
 (deftest reload-matches-keyed-children-across-reordering
   (let [renderer (apple/create)

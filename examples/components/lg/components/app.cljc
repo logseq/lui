@@ -5,11 +5,14 @@
             [components.view :as view]))
 
 (defn create [backend]
-  (app/create backend (model/initial) model/update view/gallery-view))
+  (app/create-reloadable
+   backend "components-gallery" "components-gallery-v1"
+   (model/initial) model/update view/gallery-view))
 
 (defn create-with-extensions [backend registry]
-  (app/create-with-extensions
-   backend registry (model/initial) model/update
+  (app/create-reloadable-with-extensions
+   backend registry "components-gallery" "components-gallery-v1"
+   (model/initial) model/update
    view/gallery-view-with-extensions))
 
 (defn model [application]

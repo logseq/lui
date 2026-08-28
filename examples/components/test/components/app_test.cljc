@@ -73,6 +73,9 @@
       (is false message)
       0)))
 
+(defn gallery-root [renderer application]
+  (nth (flutter/children renderer (driver/root-node application)) 0))
+
 (def gallery-page-contract
   ["Row" "Column" "Grid" "Text" "Spacer"
    "Button" "ToggleButton" "ButtonGroup" "ToggleGroup"
@@ -426,7 +429,7 @@
      "the retained Gallery exposes every public component on exactly one page")
     (let [batches (flutter/batches renderer)
           kinds (created-node-kinds batches)
-          pages (flutter/children renderer (driver/root-node application))]
+          pages (flutter/children renderer (gallery-root renderer application))]
       (assert-equal
        (count gallery-page-contract)
        (count pages)
@@ -452,6 +455,6 @@
      "the platform host adds one extension page without merging standard pages")
     (assert-equal
      (inc (count gallery-page-contract))
-     (count (flutter/children renderer (driver/root-node application)))
+     (count (flutter/children renderer (gallery-root renderer application)))
      "the native extension is a direct selectable Gallery page")
     (driver/dispose! application)))

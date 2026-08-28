@@ -202,6 +202,17 @@
      [root]
      children)))
 
+(defn retire-checkpoint-dynamic-segments! [saved root]
+  (doseq [node
+          (collect-subtree-nodes (:checkpoint-children saved) root)]
+    (if-some [segments
+              (clojure.core/get
+               (:checkpoint-dynamic-segments saved) node)]
+      (doseq [segment segments]
+        (reset! (:dynamic-segment-active segment) false))
+      true))
+  true)
+
 (defn- remove-node-keys [values nodes]
   (reduce (fn [current node] (dissoc current node)) values nodes))
 

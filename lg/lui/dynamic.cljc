@@ -34,9 +34,10 @@
              (sig/on-unmount!
               branch-scope
               (fn []
-                (runtime/remove-child! application parent node)
-                (runtime/resize-dynamic-segment! application segment -1)
-                (runtime/drop-subtree! application node)
+                (when (deref (:dynamic-segment-active segment))
+                  (runtime/remove-child! application parent node)
+                  (runtime/resize-dynamic-segment! application segment -1)
+                  (runtime/drop-subtree! application node))
                 (reset! node-ref None)
                 true))
              branch-scope)))]
@@ -82,9 +83,10 @@
                  (sig/on-unmount!
                   branch-scope
                   (fn []
-                    (runtime/remove-child! application parent node)
-                    (runtime/resize-dynamic-segment! application segment -1)
-                    (runtime/drop-subtree! application node)
+                    (when (deref (:dynamic-segment-active segment))
+                      (runtime/remove-child! application parent node)
+                      (runtime/resize-dynamic-segment! application segment -1)
+                      (runtime/drop-subtree! application node))
                     (reset! node-ref None)
                     true))))
              branch-scope)))]
@@ -143,11 +145,12 @@
     (sig/on-unmount!
      item-scope
      (fn []
-       (runtime/remove-child!
-        (:ui-application context) parent node)
-       (runtime/resize-dynamic-segment!
-        (:ui-application context) segment -1)
-       (runtime/drop-subtree! (:ui-application context) node)
+       (when (deref (:dynamic-segment-active segment))
+         (runtime/remove-child!
+          (:ui-application context) parent node)
+         (runtime/resize-dynamic-segment!
+          (:ui-application context) segment -1)
+         (runtime/drop-subtree! (:ui-application context) node))
        (remove-key-node! nodes-ref key compare)
        true))
     item-scope))

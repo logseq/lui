@@ -6331,7 +6331,16 @@
     None))
 
 (defn root-sections [renderer root]
-  (let [children (retained/children (:web-store renderer) root)]
+  (let [store (:web-store renderer)
+        root-children (retained/children store root)
+        children
+        (if-some [current (retained/node store root)]
+          (if (and
+               (= (standard-kind current) proto/Root)
+               (= (count root-children) 1))
+            (retained/children store (nth root-children 0))
+            root-children)
+          root-children)]
     (loop [index 0
            result []]
       (if (= index (count children))

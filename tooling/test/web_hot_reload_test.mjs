@@ -13,8 +13,14 @@ test("Web development composes Dune watch, Tailwind watch, and Vite", async () =
 
   assert.match(makefile, /dev-web:[^\n]*\n\tnode tooling\/dev_web\.mjs/)
   assert.ok(packageJson.devDependencies.vite)
-  assert.match(devRunner, /dune["'],\s*["']build["']/)
   assert.match(devRunner, /await runOnce\([^)]*["']Dune initial build["']/s)
+  assert.doesNotMatch(devRunner, /watch\(["']Dune["'],\s*["']opam["']/)
+  assert.match(devRunner, /await watchDune\(duneEnvironment\)/)
+  assert.match(devRunner, /child\.stderr\.on\(["']data["']/)
+  assert.ok(
+    devRunner.indexOf("await watchDune(duneEnvironment)") <
+      devRunner.indexOf('watch(\n    "Vite"'),
+  )
   assert.match(devRunner, /["']@web["']/)
   assert.match(devRunner, /["']-w["']/)
   assert.match(devRunner, /node_modules["'],\s*["']\.bin["'],\s*["']tailwindcss["']/)
@@ -22,7 +28,7 @@ test("Web development composes Dune watch, Tailwind watch, and Vite", async () =
   assert.match(devRunner, /["']--minify["']/)
 })
 
-test("Vite serves generated Melange modules without LG runtime integration", async () => {
+test("Vite updates generated LG definitions through the runtime HMR boundary", async () => {
   const config = await readFile(
     new URL("platform/web/vite.config.mjs", root),
     "utf8",
@@ -32,9 +38,21 @@ test("Vite serves generated Melange modules without LG runtime integration", asy
     "utf8",
   )
 
-  assert.match(config, /root:\s*projectRoot/)
-  assert.doesNotMatch(config, /handleHotUpdate/)
-  assert.doesNotMatch(config, /replace_for_redefinition/)
-  assert.doesNotMatch(componentsApp, /create-reloadable/)
-  assert.match(componentsApp, /app\/create-with-extensions/)
+  assert.match(config, /import\.meta\.hot\.accept/)
+  assert.match(config, /import\.meta\.hot\.data/)
+  assert.match(config, /handleHotUpdate/)
+  assert.match(config, /readFile/)
+  assert.match(config, /settleGeneratedFile/)
+  assert.match(config, /waitForMelangeOutput/)
+  assert.match(config, /generatedBootstrap/)
+  assert.match(config, /LG_SOURCE_EXTENSIONS/)
+  assert.match(config, /["']\.cljc["']/)
+  assert.match(config, /["']\.lgi["']/)
+  assert.match(config, /web_bootstrap\.js/)
+  assert.match(config, /ignored:/)
+  assert.match(config, /server\.moduleGraph\.getModuleById/)
+  assert.match(config, /replace_for_redefinition/)
+  assert.match(config, /__root/)
+  assert.match(config, /_build\/default/)
+  assert.match(componentsApp, /create-reloadable-with-extensions/)
 })

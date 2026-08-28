@@ -94,6 +94,8 @@
   :fn<application;runtime-checkpoint;int;int;map<int;int>;map<int;int>>)
 (signature lui.runtime/collect-subtree-nodes
   :fn<map<int;vector<int>>;int;vector<int>>)
+(signature lui.runtime/retire-checkpoint-dynamic-segments!
+  :fn<runtime-checkpoint;int;bool>)
 (signature lui.runtime/remove-node-keys [value]
   :fn<map<int;value>;vector<int>;map<int;value>>)
 (signature lui.runtime/remap-node-values [value]
