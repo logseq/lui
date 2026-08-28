@@ -162,7 +162,7 @@ enum LUIWireValue: Decodable, Equatable {
             return Self.buttonVariants.contains(value)
         case .iconPlacement:
             guard let value = stringValue else { return false }
-            return value == "leading" || value == "trailing"
+            return value == "leading" || value == "trailing" || value == "top"
         case .title, .description, .meta, .indicator, .foreground, .borderColor,
              .text, .background, .placeholder, .accessibilityLabel,
              .accessibilityIdentifier, .styleClass:
@@ -628,7 +628,8 @@ struct LUIRetainedTree {
                 kind == .icon || kind == .text || kind == .tableCell
         case .name: kind == .icon
         case .variant:
-            kind == .button || kind == .toggleButton || kind == .alert || kind == .bubble
+            kind == .button || kind == .toggleButton || kind == .menuItem ||
+                kind == .alert || kind == .bubble
         case .iconPlacement:
             kind == .button || kind == .toggleButton || kind == .listItem
         case .longPressEnabled:
@@ -818,7 +819,14 @@ struct LUIRetainedTree {
                         guard child.children.isEmpty else {
                             throw invalid("context-menu does not support nested menus")
                         }
-                        let allowed: Set<LUIProperty> = [.text, .enabled, .pressEnabled]
+                        let allowed: Set<LUIProperty> = [
+                            .text,
+                            .enabled,
+                            .pressEnabled,
+                            .icon,
+                            .variant,
+                            .accessibilityIdentifier,
+                        ]
                         guard child.properties.keys.allSatisfy({ allowed.contains($0) }) else {
                             throw invalid("context-menu menu-item has unsupported metadata")
                         }

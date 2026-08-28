@@ -1589,6 +1589,10 @@
       "ContextMenu accepts separators")
   (is (not (proto/child-kind-supported? proto/ContextMenu proto/Text))
       "ContextMenu rejects arbitrary content")
+  (doseq [property [proto/InlineIconName proto/VariantValue
+                    proto/AccessibilityIdentifier]]
+    (is (proto/property-supported? proto/MenuItem property)
+        "native menu actions retain their visual and automation metadata"))
   (let [operations
         [(proto/create-node-op 1 proto/ListItem)
          (proto/create-node-op 2 proto/ContextMenu)
@@ -2037,10 +2041,10 @@
       (is (not (proto/property-value-supported?
                 proto/VariantValue (proto/StringValue variant)))
           "non-reference Button variants are rejected"))
-    (doseq [placement ["leading" "trailing"]]
+    (doseq [placement ["leading" "trailing" "top"]]
       (is (proto/property-value-supported?
            proto/IconPlacementValue (proto/StringValue placement))
-          "both reference icon placements are accepted"))
+          "every reference icon placement is accepted"))
     (doseq [property [proto/VariantValue proto/SizeValue proto/InlineIconName
                       proto/IconPlacementValue proto/Selected proto/Autofocus
                       proto/LongPressEnabled proto/AccessibilityLabel]]
