@@ -43,6 +43,10 @@ enum LUIDrawerInteractionPolicy {
     static func isLocked(isDragging: Bool, isAnimating: Bool) -> Bool {
         isDragging || isAnimating
     }
+
+    static func mainCornerRadius(visibleWidth: CGFloat) -> CGFloat {
+        visibleWidth > 0 ? 40 : 0
+    }
 }
 
 struct LUIDrawerView: View {
@@ -88,6 +92,7 @@ struct LUIDrawerView: View {
                         .scaleEffect(0.96 + (0.04 * Double(progress)))
                         .offset(x: -20.0 * (1.0 - progress))
                         .scrollDisabled(interactionsLocked)
+                        .disabled(interactionsLocked)
                         .allowsHitTesting(presented && !interactionsLocked)
                 }
 
@@ -99,6 +104,7 @@ struct LUIDrawerView: View {
                         ))
                         .modifier(LUIDrawerMainSurfaceModifier())
                         .scrollDisabled(interactionsLocked)
+                        .disabled(interactionsLocked)
                         .allowsHitTesting(!interactionsLocked)
                         .overlay {
                             if presented {
@@ -114,7 +120,9 @@ struct LUIDrawerView: View {
                             }
                         }
                         .clipShape(RoundedRectangle(
-                            cornerRadius: 40.0 * progress
+                            cornerRadius: LUIDrawerInteractionPolicy.mainCornerRadius(
+                                visibleWidth: visibleWidth
+                            )
                         ))
                         .shadow(
                             color: Color.black.opacity(0.18 * Double(progress)),

@@ -1294,6 +1294,9 @@ struct LUISwiftUIBackendTests {
             isDragging: false,
             isAnimating: true
         ))
+        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(visibleWidth: 0) == 0)
+        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(visibleWidth: 1) == 40)
+        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(visibleWidth: 320) == 40)
     }
 
     @Test("maps Tree rows to one retained native focus set")
