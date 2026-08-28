@@ -19,7 +19,7 @@ enum LUINavigationFormSheetPolicy {
     }
 
     static func usesInlineTitle(_ styleClass: String?) -> Bool {
-        isNavigationForm(styleClass) || isNavigationScroll(styleClass)
+        isNavigationForm(styleClass)
     }
 
     static func actionPlacement(

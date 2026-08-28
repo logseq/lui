@@ -2322,7 +2322,7 @@ struct LUISwiftUIBackendTests {
         #expect(LUINavigationFormSheetPolicy.isNavigationForm("compact navigation-form"))
         #expect(!LUINavigationFormSheetPolicy.isNavigationForm("compact"))
         #expect(LUINavigationFormSheetPolicy.usesInlineTitle("navigation-form"))
-        #expect(LUINavigationFormSheetPolicy.usesInlineTitle("compact navigation-scroll"))
+        #expect(!LUINavigationFormSheetPolicy.usesInlineTitle("compact navigation-scroll"))
         #expect(!LUINavigationFormSheetPolicy.usesInlineTitle("compact"))
         #expect(!LUINavigationFormSheetPolicy.usesInlineTitle(nil))
         #expect(
