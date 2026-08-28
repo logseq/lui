@@ -210,6 +210,50 @@ struct LUIBackendParityTests {
         #expect(undimmedMainColor.redComponent > 0.8)
         #expect(undimmedMainColor.greenComponent < 0.3)
     }
+
+    @Test("drawer supplies an opaque platform background outside its content")
+    func drawerSuppliesOpaquePlatformBackground() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"drawer"},
+          {"op":"create-node","id":2,"kind":"panel"},
+          {"op":"create-node","id":3,"kind":"panel"},
+          {"op":"set-prop","id":2,"property":"width","value":20},
+          {"op":"set-prop","id":2,"property":"height","value":20},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+        let drawer = try #require(backend.model(id: 1))
+
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Color.green
+                LUIDrawerView(
+                    model: drawer,
+                    backend: backend
+                )
+                .safeAreaInset(edge: .top) {
+                    Color.clear.frame(height: 20)
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 20)
+                }
+            }
+            .frame(width: 100, height: 100)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        let topColor = try #require(bitmap.colorAt(x: 50, y: 90))
+        let bottomColor = try #require(bitmap.colorAt(x: 50, y: 10))
+
+        for color in [topColor, bottomColor] {
+            #expect(abs(color.redComponent - color.greenComponent) < 0.1)
+            #expect(abs(color.blueComponent - color.greenComponent) < 0.1)
+        }
+    }
     #endif
 
     @Test("alerts keep their content height inside flexible columns")

@@ -102,6 +102,7 @@ struct LUIDrawerView: View {
             .animation(.spring(response: 0.28, dampingFraction: 0.9), value: presented)
             .clipped()
         }
+        .background(platformBackground.ignoresSafeArea())
         .onChange(of: model.isSelected) { _, selected in
             presented = selected
             dragOffset = 0
