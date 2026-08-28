@@ -39,7 +39,6 @@ struct LUIDrawerView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
 
-    @Environment(\.colorScheme) private var colorScheme
     @State private var presented: Bool
     @State private var dragOffset: CGFloat = 0
 
@@ -69,7 +68,6 @@ struct LUIDrawerView: View {
                     LUIAnyNodeView(nodeID: panelID, backend: backend)
                         .frame(width: width)
                         .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
-                        .background(platformBackground)
                         .opacity(0.35 + (0.65 * Double(progress)))
                         .scaleEffect(0.96 + (0.04 * Double(progress)))
                         .offset(x: -20.0 * (1.0 - progress))
@@ -102,7 +100,6 @@ struct LUIDrawerView: View {
             .animation(.spring(response: 0.28, dampingFraction: 0.9), value: presented)
             .clipped()
         }
-        .background(platformBackground.ignoresSafeArea())
         .onChange(of: model.isSelected) { _, selected in
             presented = selected
             dragOffset = 0
@@ -149,13 +146,4 @@ struct LUIDrawerView: View {
         try? backend.performToggle(node: model.id, checked: selected)
     }
 
-    private var platformBackground: Color {
-        #if SKIP
-        colorScheme == .dark ? .black : .white
-        #elseif os(macOS)
-        Color(nsColor: .windowBackgroundColor)
-        #else
-        Color(uiColor: .systemBackground)
-        #endif
-    }
 }

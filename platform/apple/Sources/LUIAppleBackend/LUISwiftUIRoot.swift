@@ -3032,6 +3032,9 @@ private struct LUIListView: View {
                 }
             }
         }
+        #if !SKIP
+        .scrollContentBackground(.hidden)
+        #endif
         #if os(iOS)
         .listStyle(.insetGrouped)
         #endif

@@ -211,14 +211,14 @@ struct LUIBackendParityTests {
         #expect(undimmedMainColor.greenComponent < 0.3)
     }
 
-    @Test("drawer supplies an opaque platform background outside its content")
-    func drawerSuppliesOpaquePlatformBackground() throws {
+    @Test("drawer preserves its host background outside its content")
+    func drawerPreservesHostBackground() throws {
         let backend = LUIAppleBackend()
         try backend.apply(json: """
         {"generation":1,"ops":[
           {"op":"create-node","id":1,"kind":"drawer"},
-          {"op":"create-node","id":2,"kind":"panel"},
-          {"op":"create-node","id":3,"kind":"panel"},
+          {"op":"create-node","id":2,"kind":"stack"},
+          {"op":"create-node","id":3,"kind":"stack"},
           {"op":"set-prop","id":2,"property":"width","value":20},
           {"op":"set-prop","id":2,"property":"height","value":20},
           {"op":"insert-child","parent":1,"child":2,"index":0},
@@ -246,14 +246,24 @@ struct LUIBackendParityTests {
         renderer.scale = 1
         let image = try #require(renderer.cgImage)
         let bitmap = NSBitmapImageRep(cgImage: image)
+        let referenceRenderer = ImageRenderer(
+            content: Color.green.frame(width: 100, height: 100)
+        )
+        referenceRenderer.scale = 1
+        let referenceImage = try #require(referenceRenderer.cgImage)
+        let referenceBitmap = NSBitmapImageRep(cgImage: referenceImage)
+        let referenceColor = try #require(referenceBitmap.colorAt(x: 50, y: 50))
         let topColor = try #require(bitmap.colorAt(x: 50, y: 90))
+        let middleColor = try #require(bitmap.colorAt(x: 50, y: 50))
         let bottomColor = try #require(bitmap.colorAt(x: 50, y: 10))
 
-        for color in [topColor, bottomColor] {
-            #expect(abs(color.redComponent - color.greenComponent) < 0.1)
-            #expect(abs(color.blueComponent - color.greenComponent) < 0.1)
+        for color in [topColor, middleColor, bottomColor] {
+            #expect(abs(color.redComponent - referenceColor.redComponent) < 0.01)
+            #expect(abs(color.greenComponent - referenceColor.greenComponent) < 0.01)
+            #expect(abs(color.blueComponent - referenceColor.blueComponent) < 0.01)
         }
     }
+
     #endif
 
     @Test("alerts keep their content height inside flexible columns")
