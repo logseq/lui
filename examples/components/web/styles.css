@@ -14,10 +14,62 @@ body {
   min-height: 100vh;
 }
 
+.lui-simulator-toolbar {
+  position: fixed;
+  z-index: 60;
+  top: max(0.75rem, env(safe-area-inset-top));
+  right: max(0.75rem, env(safe-area-inset-right));
+  padding: 0.375rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--background) 92%, transparent);
+  box-shadow: 0 0.5rem 1.5rem color-mix(in srgb, var(--foreground) 10%, transparent);
+  backdrop-filter: blur(1rem);
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.lui-simulator-platform-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-left: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.lui-simulator-platform-field select {
+  min-height: 2rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  padding: 0 1.75rem 0 0.625rem;
+  font: inherit;
+}
+
+.lui-simulator-toolbar > button {
+  min-height: 2rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  padding: 0 0.625rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 .lui-gallery-shell {
   display: grid;
-  min-height: 100vh;
+  min-height: 100%;
   grid-template-columns: 16rem minmax(0, 1fr);
+}
+
+.lui-gallery-navigation-bar {
+  display: none;
 }
 
 .lui-gallery-sidebar {
@@ -82,26 +134,99 @@ body {
   @apply rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sky-950 shadow-sm;
 }
 
+[data-lui-form-factor="phone"] .lui-gallery-shell {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+[data-lui-form-factor="phone"] .lui-gallery-navigation-bar {
+  z-index: 20;
+  display: grid;
+  min-height: calc(2.75rem + var(--lui-safe-area-top));
+  grid-template-columns: minmax(5rem, 1fr) auto minmax(5rem, 1fr);
+  align-items: end;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--background) 92%, transparent);
+  padding: var(--lui-safe-area-top) 0.5rem 0.375rem;
+  backdrop-filter: blur(1rem);
+}
+
+[data-lui-form-factor="phone"] .lui-gallery-navigation-back {
+  min-height: 2.25rem;
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+}
+
+[data-lui-form-factor="phone"] .lui-gallery-navigation-back::before {
+  content: "‹";
+  margin-right: 0.25rem;
+  font-size: 1.5rem;
+  line-height: 0;
+  vertical-align: -0.1rem;
+}
+
+[data-lui-form-factor="phone"] .lui-gallery-navigation-title {
+  grid-column: 2;
+  align-self: center;
+  color: var(--foreground);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+[data-lui-form-factor="phone"] .lui-gallery-sidebar {
+  position: static;
+  z-index: 10;
+  height: auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+  border-right: 0;
+  padding: 1rem;
+}
+
+[data-lui-form-factor="phone"] .lui-gallery-nav-item {
+  width: 100%;
+  min-height: 2.75rem;
+  flex: 0 0 auto;
+}
+
+[data-lui-form-factor="phone"] .lui-gallery-shell[data-lui-navigation="detail"] .lui-gallery-sidebar {
+  display: none;
+}
+
+[data-lui-form-factor="phone"] .lui-gallery-content {
+  display: none;
+}
+
+[data-lui-form-factor="phone"] .lui-gallery-shell[data-lui-navigation="detail"] .lui-gallery-content {
+  display: block;
+}
+
 @media (max-width: 44.999rem) {
-  .lui-gallery-shell {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+  .lui-simulator-toolbar {
+    top: auto;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    justify-content: center;
   }
 
-  .lui-gallery-sidebar {
-    z-index: 10;
-    height: auto;
-    flex-direction: row;
-    overflow-x: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-    padding: 0.5rem;
+  .lui-simulator-platform-field {
+    min-width: 0;
+    flex: 1 1 0;
+    padding-left: 0;
   }
 
-  .lui-gallery-nav-item {
-    flex: 0 0 auto;
-    min-height: 2.75rem;
-    white-space: nowrap;
+  .lui-simulator-platform-field > span {
+    display: none;
+  }
+
+  .lui-simulator-platform-field select {
+    width: 100%;
+    min-width: 0;
   }
 }
 

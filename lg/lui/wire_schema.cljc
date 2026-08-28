@@ -5,24 +5,25 @@
                      Paragraph Label Button ToggleButton Toggle RadioGroup
                      Radio Slider TextField SecureField Input SearchField
                      Textarea Checkbox SwitchControl Progress Divider Scroll
-                     ListContainer VirtualList Tabs ButtonGroup ToggleGroup Spacer
-                     Spinner Icon Select Combobox DropdownMenu ContextMenu
-                     MenuItem ListItem Avatar Image MediaSurface Stepper
-                     Step Timeline TimelineItem InputGroup InputGroupActions Breadcrumb
-                     Pagination Accordion Table TableRow TableCell Tree
-                     Resizable Split Dialog Drawer Sheet Tooltip
-                     Toast Toolbar StatusBar TextValue Enabled Gap
-                     MainAlignment CrossAlignment GrowValue GridColumns PaddingValue PaddingHorizontal
-                     PaddingVertical BackgroundValue ForegroundValue BorderColorValue BorderWidth CornerRadius
-                     WidthValue HeightValue MinWidth MaxWidth MinHeight MaxHeight
-                     ContainerRelativeFrameValue PlaceholderValue AccessibilityLabel AccessibilityIdentifier StyleClass HeadingLevel
-                     Checked ProgressValue OrientationValue SizeValue IconName VariantValue
-                     InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter LongPressEnabled
-                     ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled DoublePressEnabled AppearEnabled
-                     ImageIdValue SurfaceIdValue ActiveIndex TitleValue DescriptionValue MetaValue
-                     IndicatorValue Connector SourceX SourceY SourceWidth SourceHeight
-                     AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay DurationValue TextAlignment
-                     RoleValue TreeLevel Expanded ResizeDuration ResizeEasing ResizeOrigin]]))
+                     ListContainer VirtualList Tabs BottomTabs BottomTab ButtonGroup
+                     ToggleGroup Spacer Spinner Icon Select Combobox
+                     DropdownMenu ContextMenu MenuItem ListItem Avatar Image
+                     MediaSurface Stepper Step Timeline TimelineItem InputGroup
+                     InputGroupActions Breadcrumb Pagination Accordion Table TableRow
+                     TableCell Tree Resizable Split Dialog Drawer
+                     Sheet Tooltip Toast Toolbar StatusBar TextValue
+                     Enabled Gap MainAlignment CrossAlignment GrowValue GridColumns
+                     PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue
+                     BorderWidth CornerRadius WidthValue HeightValue MinWidth MaxWidth
+                     MinHeight MaxHeight ContainerRelativeFrameValue PlaceholderValue AccessibilityLabel AccessibilityIdentifier
+                     StyleClass HeadingLevel Checked ProgressValue OrientationValue SizeValue
+                     IconName VariantValue InlineIconName IconPlacementValue Selected Autofocus
+                     SubmitOnEnter LongPressEnabled ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled
+                     DoublePressEnabled AppearEnabled ImageIdValue SurfaceIdValue ActiveIndex TitleValue
+                     DescriptionValue MetaValue IndicatorValue Connector SourceX SourceY
+                     SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay
+                     DurationValue TextAlignment RoleValue TreeLevel Expanded ResizeDuration
+                     ResizeEasing ResizeOrigin]]))
 
 (defn node-kind-name [kind]
   (match kind
@@ -59,6 +60,8 @@
     ListContainer "list"
     VirtualList "virtual-list"
     Tabs "tabs"
+    BottomTabs "bottom-tabs"
+    BottomTab "bottom-tab"
     ButtonGroup "button-group"
     ToggleGroup "toggle-group"
     Spacer "spacer"
@@ -131,6 +134,8 @@
     "list" true
     "virtual-list" true
     "tabs" true
+    "bottom-tabs" true
+    "bottom-tab" true
     "button-group" true
     "toggle-group" true
     "spacer" true

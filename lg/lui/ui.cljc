@@ -111,6 +111,12 @@
 (defn tabs! [context]
   (runtime/create-node! (:ui-application context) proto/Tabs))
 
+(defn bottom-tabs! [context]
+  (runtime/create-node! (:ui-application context) proto/BottomTabs))
+
+(defn bottom-tab! [context]
+  (runtime/create-node! (:ui-application context) proto/BottomTab))
+
 (defn button-group! [context]
   (runtime/create-node! (:ui-application context) proto/ButtonGroup))
 

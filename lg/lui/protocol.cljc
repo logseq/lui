@@ -50,7 +50,7 @@
     (Press _node)
     (or (= kind Button) (= kind Radio) (= kind Select)
         (= kind Combobox) (= kind MenuItem) (= kind ListItem) (= kind Text)
-        (= kind TableCell) (= kind TimelineItem))
+        (= kind TableCell) (= kind TimelineItem) (= kind BottomTab))
     (LongPress _node)
     (or (= kind Button) (= kind ToggleButton) (= kind ListItem))
     (TextChanged _node _text)
@@ -267,13 +267,13 @@
         (= kind Alert) (= kind Bubble))
     InlineIconName
     (or (= kind Button) (= kind ToggleButton) (= kind MenuItem)
-        (= kind ListItem))
+        (= kind ListItem) (= kind BottomTab))
     IconPlacementValue
     (or (= kind Button) (= kind ToggleButton) (= kind ListItem))
     Selected
     (or (= kind Button) (= kind ToggleButton) (= kind MenuItem)
         (= kind ListItem) (= kind TableRow) (= kind Drawer)
-        (tree-row-kind? kind))
+        (= kind BottomTab) (tree-row-kind? kind))
     Autofocus
     (or (= kind Button) (= kind ToggleButton)
         (= kind TextField) (= kind SecureField) (= kind Input) (= kind SearchField)
@@ -285,7 +285,7 @@
     PressEnabled
     (or (= kind Text) (= kind Radio) (= kind Select) (= kind Combobox)
         (= kind MenuItem) (= kind ListItem) (= kind TableCell)
-        (tree-row-kind? kind))
+        (= kind BottomTab) (tree-row-kind? kind))
     SubmitEnabled (or (= kind Combobox) (= kind ListItem))
     DoublePressEnabled (= kind ListItem)
     AppearEnabled (not (= kind Root))
@@ -357,9 +357,10 @@
       MenuItem true
       ListItem true
       Drawer true
+      BottomTab true
       _ false)
     ActiveIndex false
-    TitleValue false
+    TitleValue (= kind BottomTab)
     DescriptionValue false
     MetaValue false
     IndicatorValue false
@@ -382,6 +383,16 @@
       Toolbar
       (or (= property OrientationValue) (= property AccessibilityLabel)
           (= property Gap) (= property StyleClass))
+      BottomTabs
+      (or (= property AccessibilityLabel) (= property StyleClass)
+          (= property GrowValue) (= property WidthValue)
+          (= property HeightValue) (= property MinWidth)
+          (= property MaxWidth) (= property MinHeight)
+          (= property MaxHeight))
+      BottomTab
+      (or (= property TitleValue) (= property InlineIconName)
+          (= property Selected) (= property Enabled)
+          (= property PressEnabled))
       Accordion
       (or (= property TextValue) (= property Selected)
           (= property ToggleEnabled) (= property HeightValue))
@@ -659,6 +670,18 @@
        (Some (StringValue value)) (not (= value ""))
        _ false)
      true)
+   (if (= kind BottomTabs)
+     (match (clojure.core/get properties AccessibilityLabel)
+       (Some (StringValue value)) (not (= value ""))
+       _ false)
+     true)
+   (if (= kind BottomTab)
+     (and
+      (match (clojure.core/get properties TitleValue)
+        (Some (StringValue value)) (not (= value ""))
+        _ false)
+      (true-property? properties PressEnabled))
+     true)
    (if (or (= kind Slider) (= kind Progress))
      (match (clojure.core/get properties ProgressValue)
        (Some (FloatValue _value)) true
@@ -732,6 +755,8 @@
       Toolbar true
       Alert true
       Bubble true
+      BottomTabs true
+      BottomTab true
       _ false)))
 
 (defn child-kind-supported? [parent-kind child-kind]
@@ -746,6 +771,8 @@
     (match parent-kind
       Table (= child-kind TableRow)
       TableRow (= child-kind TableCell)
+      BottomTabs (= child-kind BottomTab)
+      BottomTab (not (= child-kind BottomTab))
       Tree (tree-row-kind? child-kind)
       Stepper (= child-kind Step)
       Timeline (= child-kind TimelineItem)

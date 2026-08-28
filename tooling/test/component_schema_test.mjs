@@ -64,6 +64,8 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.ok(summary.supported.includes('input-group'));
   assert.ok(summary.supported.includes('input-group-actions'));
   assert.ok(summary.supported.includes('tabs'));
+  assert.ok(summary.supported.includes('bottom-tabs'));
+  assert.ok(summary.supported.includes('bottom-tab'));
   assert.ok(summary.supported.includes('button-group'));
   assert.ok(summary.supported.includes('toggle-group'));
   assert.ok(summary.supported.includes('breadcrumb'));
@@ -113,6 +115,33 @@ test('schema summary preserves the pinned public API boundary', () => {
   assert.ok(!summary.pending.includes('timeline-item'));
   assert.ok(!summary.pending.includes('input-group'));
   assert.ok(!summary.pending.includes('input-group-actions'));
+});
+
+test('Bottom Tabs reserve distinct retained navigation node kinds', () => {
+  const schema = JSON.parse(
+    readFileSync(join(repository, 'schema/components.json'), 'utf8'),
+  );
+
+  assert.deepEqual(
+    schema.nodeKinds.filter((kind) =>
+      kind.wire === 'bottom-tabs' || kind.wire === 'bottom-tab'),
+    [
+      {
+        lg: 'BottomTabs',
+        wire: 'bottom-tabs',
+        dart: 'bottomTabs',
+        swift: 'bottomTabs',
+        container: true,
+      },
+      {
+        lg: 'BottomTab',
+        wire: 'bottom-tab',
+        dart: 'bottomTab',
+        swift: 'bottomTab',
+        container: true,
+      },
+    ],
+  );
 });
 
 test('schema reserves one internal transparent root node', () => {

@@ -18,6 +18,7 @@
     (gallery-avatar-image 0)
     (gallery-media-surface 1)
     (gallery-tab "overview")
+    (gallery-bottom-tab "home")
     (gallery-dialog-open false)
     (gallery-sheet-open false)
     (gallery-toast-open false)
@@ -82,6 +83,9 @@
 
     (SelectTab tab)
     (assoc model :gallery-tab tab)
+
+    (SelectBottomTab tab)
+    (assoc model :gallery-bottom-tab tab)
 
     OpenDialog
     (assoc model :gallery-dialog-open true)
@@ -171,6 +175,15 @@
 
 (defn activity-tab-selected? [model]
   (= (:gallery-tab model) "activity"))
+
+(defn home-bottom-tab-selected? [model]
+  (= (:gallery-bottom-tab model) "home"))
+
+(defn search-bottom-tab-selected? [model]
+  (= (:gallery-bottom-tab model) "search"))
+
+(defn settings-bottom-tab-selected? [model]
+  (= (:gallery-bottom-tab model) "settings"))
 
 (defn tab-content [model]
   (if (activity-tab-selected? model)

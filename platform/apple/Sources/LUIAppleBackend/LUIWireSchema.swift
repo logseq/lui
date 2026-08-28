@@ -35,6 +35,8 @@ enum LUINodeKind: String, Decodable, Equatable {
     case list = "list"
     case virtualList = "virtual-list"
     case tabs = "tabs"
+    case bottomTabs = "bottom-tabs"
+    case bottomTab = "bottom-tab"
     case buttonGroup = "button-group"
     case toggleGroup = "toggle-group"
     case spacer = "spacer"

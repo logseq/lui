@@ -11,12 +11,15 @@ to one component page at a time instead of rendering the full catalog at once.
 From the repository root:
 
 ```sh
-make serve-web
+make dev-web
 ```
 
-The Node host listens on all network interfaces. Open
+The development host watches LG, CSS, and JavaScript and listens on all network
+interfaces. Open
 <http://127.0.0.1:8765/examples/components/web/index.html> locally, or replace
 `127.0.0.1` with the computer's LAN address when opening it from a phone.
+
+Use `make serve-web` for a static, non-watching preview.
 
 Run the complete Chromium interaction suite and the focused Firefox production
 compatibility gate with:

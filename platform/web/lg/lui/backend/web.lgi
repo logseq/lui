@@ -24,11 +24,40 @@
   (root-section-node :int)
   (root-section-title :string))
 
+(type-variant web-simulator-form-factor
+  (SimulatorPhone)
+  (SimulatorTablet))
+
+(type-variant web-simulator-orientation
+  (SimulatorPortrait)
+  (SimulatorLandscape))
+
+(type-variant web-simulator-pointer
+  (SimulatorTouch)
+  (SimulatorHybrid))
+
+(type-record web-simulator-device
+  (simulator-device-platform :operating-system)
+  (simulator-device-form-factor :web-simulator-form-factor)
+  (simulator-device-orientation :web-simulator-orientation)
+  (simulator-device-pointer :web-simulator-pointer)
+  (simulator-device-width :int)
+  (simulator-device-height :int)
+  (simulator-device-scale :float)
+  (simulator-device-safe-top :int)
+  (simulator-device-safe-right :int)
+  (simulator-device-safe-bottom :int)
+  (simulator-device-safe-left :int)
+  (simulator-device-keyboard-height :int))
+
 (type-record web-renderer
   (web-store :retained-store<web-node>)
   (web-document :Dom.document)
   (web-host :web-node)
   (web-portal-root :web-node)
+  (web-simulator-platform :ref<option<operating-system>>)
+  (web-simulator-device :ref<option<web-simulator-device>>)
+  (web-simulator-keyboard-visible :ref<bool>)
   (web-toast-viewport :web-node)
   (web-event-handler :ref<fn<event;bool>>)
   (web-app-icons :map<string;string>)
@@ -48,6 +77,38 @@
   :overload<fn<Dom.element;web-renderer>;fn<Dom.element;map<string;string>;web-renderer>>)
 (signature lui.backend.web/create-with-extensions
   :fn<Dom.element;map<string;string>;extension-registry;map<string;web-extension-adapter>;web-renderer>)
+(signature lui.backend.web/create-simulator
+  :overload<fn<Dom.element;operating-system;web-renderer>;fn<Dom.element;operating-system;map<string;string>;web-renderer>>)
+(signature lui.backend.web/create-simulator-with-extensions
+  :fn<Dom.element;operating-system;map<string;string>;extension-registry;map<string;web-extension-adapter>;web-renderer>)
+(signature lui.backend.web/simulator-platform-name
+  :fn<operating-system;string>)
+(signature lui.backend.web/simulator-form-factor-name
+  :fn<web-simulator-form-factor;string>)
+(signature lui.backend.web/simulator-orientation-name
+  :fn<web-simulator-orientation;string>)
+(signature lui.backend.web/simulator-pointer-name
+  :fn<web-simulator-pointer;string>)
+(signature lui.backend.web/simulator-device
+  :fn<operating-system;web-simulator-form-factor;web-simulator-orientation;web-simulator-device>)
+(signature lui.backend.web/set-simulator-device!
+  :fn<web-renderer;web-simulator-device;bool>)
+(signature lui.backend.web/set-simulator-form-factor!
+  :fn<web-renderer;web-simulator-form-factor;bool>)
+(signature lui.backend.web/rotate-simulator!
+  :fn<web-renderer;bool>)
+(signature lui.backend.web/set-simulator-keyboard-visible!
+  :fn<web-renderer;bool;bool>)
+(signature lui.backend.web/set-simulator-platform!
+  :fn<web-renderer;operating-system;bool>)
+(signature lui.backend.web/apply-simulator-device-to-scope!
+  :fn<web-node;web-simulator-device;bool;unit>)
+(signature lui.backend.web/simulator-text-entry?
+  :fn<web-node;bool>)
+(signature lui.backend.web/compact-sheet?
+  :fn<web-renderer;bool>)
+(signature lui.backend.web/attach-simulator-keyboard-events!
+  :fn<web-renderer;bool>)
 (signature lui.backend.web/pointer-mouse-event
   :fn<Dom.event_like<Dom._baseClass>;Dom.mouseEvent>)
 (signature lui.backend.web/pointer-type
@@ -149,6 +210,7 @@
 (signature lui.backend.web/create-split-node :fn<web-renderer;web-node>)
 (signature lui.backend.web/create-step-node :fn<web-renderer;web-node>)
 (signature lui.backend.web/create-timeline-item-node :fn<web-renderer;web-node>)
+(signature lui.backend.web/create-bottom-tabs-node :fn<web-renderer;web-node>)
 (signature lui.backend.web/dom-node :fn<web-renderer;int;web-node>)
 (signature lui.backend.web/dom-node-before
   :fn<web-renderer;map<int;retained-node<web-node>>;int;web-node>)
@@ -236,6 +298,17 @@
 (signature lui.backend.web/web-color-value :fn<string;string>)
 (signature lui.backend.web/update-icon-name!
   :fn<web-renderer;web-node;string;unit>)
+(signature lui.backend.web/bottom-tab-trigger-id :fn<int;string>)
+(signature lui.backend.web/bottom-tabs-pages-node :fn<web-node;web-node>)
+(signature lui.backend.web/bottom-tabs-bar-node :fn<web-node;web-node>)
+(signature lui.backend.web/bottom-tab-trigger
+  :fn<web-renderer;int;option<web-node>>)
+(signature lui.backend.web/bottom-tab-string-property
+  :fn<web-renderer;int;property;string>)
+(signature lui.backend.web/refresh-bottom-tabs!
+  :fn<web-renderer;int;unit>)
+(signature lui.backend.web/create-bottom-tab-trigger!
+  :fn<web-renderer;int;int;int;web-node>)
 (signature lui.backend.web/refresh-node-class!
   :fn<web-renderer;int;node-kind;web-node;unit>)
 (signature lui.backend.web/apply-property!

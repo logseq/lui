@@ -10,6 +10,30 @@ test("the internal runtime root is layout-transparent", async () => {
   assert.match(css, /\.lui-root\{[^}]*display:contents/)
 })
 
+test("the simulator stylesheet exposes isolated iOS and Android token scopes", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\[data-lui-platform=ios\]\{[^}]*--lui-platform-accent:#007aff/)
+  assert.match(css, /\[data-lui-platform=ios\]\{[^}]*--lui-platform-control-radius:10px/)
+  assert.match(css, /\[data-lui-platform=android\]\{[^}]*--lui-platform-accent:#6750a4/)
+  assert.match(css, /\[data-lui-platform=android\]\{[^}]*--lui-platform-control-radius:20px/)
+})
+
+test("the simulator profiles style the initial fidelity component set without a Canvas root", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  for (const platform of ["ios", "android"]) {
+    assert.match(css, new RegExp(`\\[data-lui-platform=${platform}\\] \\.lui-button`))
+    assert.match(css, new RegExp(`\\[data-lui-platform=${platform}\\] \\.lui-text-field`))
+    assert.match(css, new RegExp(`\\[data-lui-platform=${platform}\\] \\.lui-switch-control`))
+    assert.match(css, new RegExp(`\\[data-lui-platform=${platform}\\] \\.lui-card`))
+    assert.match(css, new RegExp(`\\[data-lui-platform=${platform}\\] \\.lui-dialog`))
+    assert.match(css, new RegExp(`\\[data-lui-platform=${platform}\\] \\.lui-sheet`))
+  }
+
+  assert.doesNotMatch(css, /\[data-lui-root\][^{]*canvas\{[^}]*position:(?:fixed|absolute)/)
+})
+
 test("the production stylesheet contains the Vercel Native Button contract", async () => {
   const css = await readFile(outputUrl, "utf8")
 
@@ -46,6 +70,19 @@ test("Tabs is a retained TabsList whose direct Buttons become triggers", async (
   assert.match(css, /\.lui-tabs>\.lui-button\{[^}]*border-radius:/)
   assert.match(css, /\.lui-tabs>\.lui-button\[data-selected\]/)
   assert.doesNotMatch(css, /\.lui-tab(?:\{|-|\[)/)
+})
+
+test("Bottom Tabs reproduce native iOS Liquid Glass and Android Material navigation", async () => {
+  const css = await readFile(outputUrl, "utf8")
+
+  assert.match(css, /\.lui-bottom-tabs\{[^}]*display:grid/)
+  assert.match(css, /\.lui-bottom-tabs-bar\{[^}]*display:flex/)
+  assert.match(css, /\.lui-bottom-tabs-tab\{[^}]*min-width:0/)
+  assert.match(css, /\[data-lui-platform=ios\] \.lui-bottom-tabs-bar\{[^}]*backdrop-filter:blur\(24px\)\s*saturate\(180%\)/)
+  assert.match(css, /\[data-lui-platform=ios\] \.lui-bottom-tabs-bar\{[^}]*border-radius:32px/)
+  assert.match(css, /\[data-lui-platform=android\] \.lui-bottom-tabs-bar\{[^}]*min-height:calc\(80px \+ var\(--lui-safe-area-bottom\)\)/)
+  assert.match(css, /\[data-lui-platform=android\] \.lui-bottom-tabs-tab\[aria-selected=true\]:{1,2}before\{[^}]*width:64px/)
+  assert.match(css, /@media \(prefers-reduced-transparency:reduce\)\{[^}]*\[data-lui-platform=ios\] \.lui-bottom-tabs-bar/)
 })
 
 test("ButtonGroup and ToggleGroup use compact Tailwind horizontal layouts", async () => {
@@ -375,7 +412,10 @@ test("the production stylesheet contains direct Vercel Native toggle controls", 
   assert.match(css, /\.lui-checkbox-control\{[^}]*appearance:none/)
   assert.match(css, /\.lui-checkbox-control:checked/)
   assert.match(css, /\.lui-checkbox-control:focus-visible/)
-  assert.match(css, /\.lui-switch\{[^}]*display:inline-flex/)
+  assert.match(css, /\.lui-switch\{[^}]*display:flex/)
+  assert.match(css, /\.lui-switch\{[^}]*width:100%/)
+  assert.match(css, /\.lui-switch\{[^}]*flex-direction:row-reverse/)
+  assert.match(css, /\.lui-switch\{[^}]*justify-content:space-between/)
   assert.match(css, /\.lui-switch-control\{[^}]*appearance:none/)
   assert.match(css, /\.lui-switch-control:checked/)
   assert.match(css, /\.lui-switch-control:checked:after\{[^}]*translate:/)

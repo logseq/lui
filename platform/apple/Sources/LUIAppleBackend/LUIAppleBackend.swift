@@ -204,6 +204,9 @@ final class LUINodeModel: Identifiable {
     var timelineMeta: String { properties[.meta]?.stringValue ?? "" }
     var timelineIndicator: String { properties[.indicator]?.stringValue ?? "" }
     var timelineConnector: Bool { properties[.connector]?.boolValue ?? true }
+    var bottomTabTitle: String { properties[.title]?.stringValue ?? "" }
+    var bottomTabIconName: String { properties[.icon]?.stringValue ?? "" }
+    var bottomTabSystemIconName: String { Self.systemIconName(for: bottomTabIconName) }
 
     var mediaSurfacePlaceholderComponents: [Int] {
         let surfaceID = mediaSurfaceID
@@ -465,6 +468,7 @@ public final class LUIAppleBackend {
     func performPress(node: Int) throws {
         guard let model = models[node],
               model.kind == .button || (model.kind == .text && model.supportsPress) ||
+                (model.kind == .bottomTab && model.supportsPress) ||
                 (model.kind == .tableCell && model.supportsPress) ||
                 model.kind == .select ||
                 model.kind == .combobox || model.kind == .menuItem ||

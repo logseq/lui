@@ -3,7 +3,7 @@
 	run-components-flutter-macos build-components-ios-simulator \
 	build-components-mobile test-components-ios-e2e build-components-android build-components-android-release \
 	qualify-components-android-release test-components-android-e2e build-web build-web-css \
-	test-web-e2e test-web-firefox-e2e test-web-webkit-e2e build-web-release serve-web
+	test-web-e2e test-web-hot-reload test-web-firefox-e2e test-web-webkit-e2e test-web-visual update-web-visual-baselines fetch-web-references build-web-release serve-web dev-web
 
 test: test-schema test-lg test-apple test-flutter build-web
 
@@ -90,7 +90,15 @@ build-web: build-web-css
 	opam exec -- dune build @web -j 1
 
 test-web-e2e: build-web
+	npm --prefix platform/web exec playwright install chromium
 	node --test platform/web/test/overlay.e2e.mjs
+	node --test platform/web/test/simulator.e2e.mjs
+	node tooling/capture_web_simulator_baselines.mjs
+
+test-web-hot-reload: platform/web/node_modules/.package-lock.json
+	npm --prefix platform/web exec playwright install chromium
+	node --test tooling/test/web_hot_reload_test.mjs
+	node --test platform/web/test/hot-reload.e2e.mjs
 
 test-web-firefox-e2e: build-web
 	npm --prefix platform/web exec playwright install firefox
@@ -100,8 +108,22 @@ test-web-webkit-e2e: build-web
 	npm --prefix platform/web exec playwright install webkit
 	LUI_WEB_BROWSER=webkit node --test platform/web/test/firefox.e2e.mjs
 
+fetch-web-references:
+	node tooling/fetch_web_simulator_references.mjs
+
+test-web-visual: build-web
+	npm --prefix platform/web exec playwright install chromium
+	node tooling/capture_web_simulator_baselines.mjs
+
+update-web-visual-baselines: build-web
+	npm --prefix platform/web exec playwright install chromium
+	LUI_UPDATE_VISUAL_BASELINES=1 node tooling/capture_web_simulator_baselines.mjs
+
 build-web-release: build-web
 	node tooling/build_web_release.mjs
 
 serve-web: build-web
 	node tooling/serve_web.mjs
+
+dev-web: platform/web/node_modules/.package-lock.json
+	node tooling/dev_web.mjs

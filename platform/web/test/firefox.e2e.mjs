@@ -42,8 +42,11 @@ test(`${browserLabel} preserves the Gallery's retained interaction contract`, as
     const mobileAudit = await page.evaluate(() => {
       const content = document.querySelector(".lui-gallery-content")
       const buttons = [...document.querySelectorAll(".lui-gallery-nav-item")]
+      document.querySelector(".lui-gallery-navigation-back:not([hidden])")?.click()
+      const navigationHeights = []
       const failures = []
       for (const button of buttons) {
+        navigationHeights.push(button.getBoundingClientRect().height)
         button.click()
         const headings = content.querySelectorAll('[role="heading"]')
         if (headings.length !== 1 || content.scrollWidth > content.clientWidth + 1) {
@@ -54,17 +57,16 @@ test(`${browserLabel} preserves the Gallery's retained interaction contract`, as
             scrollWidth: content.scrollWidth,
           })
         }
+        document.querySelector(".lui-gallery-navigation-back")?.click()
       }
       return {
         count: buttons.length,
-        minNavigationHeight: Math.min(
-          ...buttons.map((button) => button.getBoundingClientRect().height),
-        ),
+        minNavigationHeight: Math.min(...navigationHeights),
         mountedPages: document.querySelectorAll(".lui-gallery-content > *").length,
         failures,
       }
     })
-    assert.equal(mobileAudit.count, 65)
+    assert.equal(mobileAudit.count, 66)
     assert.ok(mobileAudit.minNavigationHeight >= 44, JSON.stringify(mobileAudit))
     assert.equal(mobileAudit.mountedPages, 1)
     assert.deepEqual(mobileAudit.failures, [])

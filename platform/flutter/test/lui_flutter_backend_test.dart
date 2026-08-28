@@ -378,6 +378,75 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('maps BottomTabs to Material NavigationBar with retained pages', (
+    tester,
+  ) async {
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add);
+    expect(
+      () => backend.applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"bottom-tabs"},
+        {"op":"create-node","id":2,"kind":"bottom-tab"},
+        {"op":"create-node","id":3,"kind":"bottom-tab"},
+        {"op":"create-node","id":4,"kind":"paragraph"},
+        {"op":"create-node","id":5,"kind":"paragraph"},
+        {"op":"set-prop","id":1,"property":"accessibility-label","value":"Primary destinations"},
+        {"op":"set-prop","id":2,"property":"title","value":"Home"},
+        {"op":"set-prop","id":2,"property":"icon","value":"folder"},
+        {"op":"set-prop","id":2,"property":"selected","value":true},
+        {"op":"set-prop","id":2,"property":"press-enabled","value":true},
+        {"op":"set-prop","id":3,"property":"title","value":"Search"},
+        {"op":"set-prop","id":3,"property":"icon","value":"search"},
+        {"op":"set-prop","id":3,"property":"selected","value":false},
+        {"op":"set-prop","id":3,"property":"press-enabled","value":true},
+        {"op":"set-prop","id":4,"property":"text","value":"Home page"},
+        {"op":"set-prop","id":5,"property":"text","value":"Search page"},
+        {"op":"insert-child","parent":2,"child":4,"index":0},
+        {"op":"insert-child","parent":3,"child":5,"index":0},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1}
+      ]}
+      '''),
+      returnsNormally,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      0,
+    );
+    expect(find.text('Home page'), findsOneWidget);
+    expect(find.text('Search page'), findsNothing);
+
+    await tester.tap(find.text('Search'));
+    await tester.pump();
+    expect(events, const [LUIEvent.press(node: 3)]);
+
+    final tabsRevision = backend.debugRevision(1);
+    final homePageRevision = backend.debugRevision(4);
+    backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"set-prop","id":2,"property":"selected","value":false},
+        {"op":"set-prop","id":3,"property":"selected","value":true}
+      ]}
+      ''');
+    await tester.pump();
+
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      1,
+    );
+    expect(find.text('Home page'), findsNothing);
+    expect(find.text('Search page'), findsOneWidget);
+    expect(backend.debugRevision(1), tabsRevision);
+    expect(backend.debugRevision(4), homePageRevision);
+  });
+
   testWidgets('maps ButtonGroup and ToggleGroup as retained native groups', (
     tester,
   ) async {
@@ -2809,6 +2878,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(BottomSheet), findsOneWidget);
+    expect(tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle, true);
     expect(find.text('Share'), findsOneWidget);
     final surface = find.byKey(const ValueKey('lui-sheet-surface-2'));
     expect(tester.getSize(surface).height, 320);

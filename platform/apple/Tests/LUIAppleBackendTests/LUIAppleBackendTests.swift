@@ -395,6 +395,70 @@ struct LUISwiftUIBackendTests {
         #expect(activity.isSelected)
     }
 
+    @Test("maps BottomTabs to retained native TabView destinations")
+    func mapsBottomTabs() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"bottom-tabs"},
+          {"op":"create-node","id":2,"kind":"bottom-tab"},
+          {"op":"create-node","id":3,"kind":"bottom-tab"},
+          {"op":"create-node","id":4,"kind":"paragraph"},
+          {"op":"create-node","id":5,"kind":"paragraph"},
+          {"op":"set-prop","id":1,"property":"accessibility-label","value":"Primary destinations"},
+          {"op":"set-prop","id":2,"property":"title","value":"Home"},
+          {"op":"set-prop","id":2,"property":"icon","value":"folder"},
+          {"op":"set-prop","id":2,"property":"selected","value":true},
+          {"op":"set-prop","id":2,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":3,"property":"title","value":"Search"},
+          {"op":"set-prop","id":3,"property":"icon","value":"search"},
+          {"op":"set-prop","id":3,"property":"selected","value":false},
+          {"op":"set-prop","id":3,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":4,"property":"text","value":"Home page"},
+          {"op":"set-prop","id":5,"property":"text","value":"Search page"},
+          {"op":"insert-child","parent":2,"child":4,"index":0},
+          {"op":"insert-child","parent":3,"child":5,"index":0},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let tabs = try #require(backend.model(id: 1))
+        let home = try #require(backend.model(id: 2))
+        let search = try #require(backend.model(id: 3))
+        let homePage = try #require(backend.model(id: 4))
+        let tabsRevision = tabs.revision
+        let homePageRevision = homePage.revision
+        #expect(tabs.kind.rawValue == "bottom-tabs")
+        #expect(home.kind.rawValue == "bottom-tab")
+        #expect(tabs.children == [2, 3])
+        #expect(home.children == [4])
+        #expect(home.property(.title) == .string("Home"))
+        #expect(home.property(.icon) == .string("folder"))
+        #expect(home.isSelected)
+        #expect(!search.isSelected)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.performPress(node: 3)
+        #expect(events == [.press(node: 3)])
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":2,"property":"selected","value":false},
+          {"op":"set-prop","id":3,"property":"selected","value":true}
+        ]}
+        """)
+        #expect(backend.model(id: 1) === tabs)
+        #expect(backend.model(id: 2) === home)
+        #expect(backend.model(id: 3) === search)
+        #expect(backend.model(id: 4) === homePage)
+        #expect(tabs.revision == tabsRevision)
+        #expect(homePage.revision == homePageRevision)
+        #expect(search.isSelected)
+    }
+
     @Test("maps ButtonGroup and ToggleGroup without owning child selection")
     func mapsActionGroups() throws {
         let backend = LUIAppleBackend()

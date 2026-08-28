@@ -102,6 +102,8 @@
                        (symbol (str tag-namespace "/" (name tag)))
                        (if (= tag :if)
                          'lui.elements/conditional
+                         (if (or (= tag :bottom-tabs) (= tag :bottom-tab))
+                           (symbol (str "lui.bottom-tabs/" (name tag)))
                          (if
                           (or
                          (= tag :row)
@@ -174,7 +176,7 @@
                          (= tag :status-bar)
                           (= tag :keyed))
                           (symbol (str "lui.elements/" (name tag)))
-                          (symbol (str "lui." (name tag) "/" (name tag))))))))
+                          (symbol (str "lui." (name tag) "/" (name tag)))))))))
 
 (defmacro defelement [element-name params & body]
   `(defmacro ~element-name ~params ~@body))

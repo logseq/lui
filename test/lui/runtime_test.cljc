@@ -30,6 +30,55 @@
      (wire/encode-batch batch)
      "LG emits the native host wire format without dynamic values")))
 
+(deftest bottom-tabs-have-a-closed-retained-navigation-contract
+  (let [batch
+        (record proto/patch-batch
+                (generation 1)
+                (ops [(proto/create-node-op 1 proto/BottomTabs)
+                      (proto/create-node-op 2 proto/BottomTab)
+                      (proto/set-prop-op
+                       1 proto/AccessibilityLabel
+                       (proto/StringValue "Primary destinations"))
+                      (proto/set-prop-op
+                       2 proto/TitleValue (proto/StringValue "Home"))
+                      (proto/set-prop-op
+                       2 proto/InlineIconName (proto/StringValue "folder"))
+                      (proto/set-prop-op
+                       2 proto/Selected (proto/BoolValue true))
+                      (proto/set-prop-op
+                       2 proto/PressEnabled (proto/BoolValue true))
+                      (proto/insert-child-op 1 2 0)]))]
+    (assert-equal
+     (str
+      "{\"generation\":1,\"ops\":["
+      "{\"op\":\"create-node\",\"id\":1,\"kind\":\"bottom-tabs\"},"
+      "{\"op\":\"create-node\",\"id\":2,\"kind\":\"bottom-tab\"},"
+      "{\"op\":\"set-prop\",\"id\":1,\"property\":\"accessibility-label\",\"value\":\"Primary destinations\"},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"title\",\"value\":\"Home\"},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"icon\",\"value\":\"folder\"},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"selected\",\"value\":true},"
+      "{\"op\":\"set-prop\",\"id\":2,\"property\":\"press-enabled\",\"value\":true},"
+      "{\"op\":\"insert-child\",\"parent\":1,\"child\":2,\"index\":0}]}" )
+     (wire/encode-batch batch)
+     "Bottom Tabs use stable standard wire kinds and properties"))
+  (is (proto/can-contain-children? proto/BottomTabs)
+      "BottomTabs retains destinations")
+  (is (proto/can-contain-children? proto/BottomTab)
+      "BottomTab retains its page subtree")
+  (is (proto/child-kind-supported? proto/BottomTabs proto/BottomTab)
+      "BottomTabs accepts BottomTab destinations")
+  (is (not (proto/child-kind-supported? proto/BottomTabs proto/Button))
+      "BottomTabs rejects button-strip workarounds")
+  (is (proto/child-kind-supported? proto/BottomTab proto/Column)
+      "BottomTab accepts a semantic page root")
+  (doseq [property
+          [proto/TitleValue proto/InlineIconName proto/Selected
+           proto/Enabled proto/PressEnabled]]
+    (is (proto/property-supported? proto/BottomTab property)
+        "BottomTab supports its native destination contract"))
+  (is (proto/property-supported? proto/BottomTabs proto/AccessibilityLabel)
+      "BottomTabs exposes a navigation label"))
+
 (deftest property-removal-uses-a-closed-wire-operation
   (let [batch
         (record proto/patch-batch

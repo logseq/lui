@@ -3,13 +3,18 @@
   "private": true,
   "scripts": {
     "build": "tailwindcss -i src/lui.css -o dist/lui.css --minify && mkdir -p dist/icons && cp src/icons/* dist/icons/",
+    "dev:css": "tailwindcss -i src/lui.css -o dist/lui.css --watch --minify",
+    "dev:vite": "vite --config vite.config.mjs",
     "test": "node --test test/*.test.mjs",
     "check": "npm run build && npm test"
   },
   "devDependencies": {
     "@tailwindcss/cli": "4.1.4",
     "esbuild": "0.28.2",
+    "pixelmatch": "^7.1.0",
     "playwright": "1.62.1",
-    "tailwindcss": "4.1.4"
+    "pngjs": "^7.0.0",
+    "tailwindcss": "4.1.4",
+    "vite": "^8.2.2"
   }
 }

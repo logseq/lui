@@ -4,6 +4,12 @@
   :fn<extension-component-schema>)
 (signature components.extensions/apple-map-schema
   :fn<extension-component-schema>)
+(signature components.extensions/simulator-map-marker-schema
+  :fn<extension-component-schema>)
+(signature components.extensions/simulator-map-schema
+  :fn<extension-component-schema>)
+(signature components.extensions/simulator-camera-schema
+  :fn<extension-component-schema>)
 (signature components.extensions/native-card-schema
   :fn<extension-component-schema>)
 (signature components.extensions/gallery-accent-schema

@@ -324,6 +324,10 @@ final class _NodeHandle extends ChangeNotifier {
     notifyListeners();
   }
 
+  void markDependencyChanged() {
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     focusNode.dispose();
@@ -552,6 +556,7 @@ final class LUIFlutterBackend {
     _extensionStates = nextExtensions;
     generation = nextGeneration;
     final changedSources = Set<int>.of(changedIDs);
+    final dependentIDs = <int>{};
     for (final source in changedSources) {
       final sourceState = next[source];
       var parent = next[source]?.parent ?? nextExtensions[source]?.parent;
@@ -560,6 +565,7 @@ final class LUIFlutterBackend {
         final extensionAncestor = nextExtensions[parent];
         if (ancestor == null && extensionAncestor == null) break;
         if (ancestor?.kind == _NodeKind.radioGroup) changedIDs.add(parent);
+        if (ancestor?.kind == _NodeKind.bottomTabs) dependentIDs.add(parent);
         if (ancestor?.kind == _NodeKind.stack &&
             (sourceState?.kind == _NodeKind.dropdownMenu ||
                 sourceState?.kind == _NodeKind.tooltip)) {
@@ -572,6 +578,9 @@ final class LUIFlutterBackend {
     for (final id in changedIDs) {
       _handles[id]?.markChanged();
       _extensionHandles[id]?.markChanged();
+    }
+    for (final id in dependentIDs.difference(changedIDs)) {
+      _handles[id]?.markDependencyChanged();
     }
   }
 
@@ -610,6 +619,8 @@ final class LUIFlutterBackend {
         state.kind == _NodeKind.combobox ||
         state.kind == _NodeKind.menuItem ||
         state.kind == _NodeKind.listItem ||
+        (state.kind == _NodeKind.bottomTab &&
+            state.properties['press-enabled'] == true) ||
         (state.kind == _NodeKind.timelineItem &&
             state.properties['press-enabled'] == true) ||
         (treeItem && state.properties['press-enabled'] == true) ||
@@ -1943,6 +1954,59 @@ final class LUIFlutterBackend {
       ),
     );
 
+    Widget bottomTabs() {
+      final destinationIDs = state.children;
+      final selectedIndex = destinationIDs.indexWhere(
+        (nodeID) =>
+            _requireState(_states, nodeID).properties['selected'] == true,
+      );
+      final currentIndex = selectedIndex < 0 ? 0 : selectedIndex;
+      return Semantics(
+        container: true,
+        label: accessibilityLabel,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: widget(node: destinationIDs[currentIndex])),
+            NavigationBar(
+              selectedIndex: currentIndex,
+              onDestinationSelected: (index) {
+                final destinationID = destinationIDs[index];
+                final destination = _requireState(_states, destinationID);
+                if (destination.properties['enabled'] != false &&
+                    destination.properties['press-enabled'] == true) {
+                  performAction(destinationID);
+                }
+              },
+              destinations: destinationIDs
+                  .map(
+                    (nodeID) => NavigationDestination(
+                      icon: Icon(
+                        _iconData(
+                          _requireState(_states, nodeID).properties['icon']
+                                  as String? ??
+                              '',
+                        ),
+                      ),
+                      label:
+                          _requireState(_states, nodeID).properties['title']
+                              as String? ??
+                          '',
+                      enabled:
+                          _requireState(
+                            _states,
+                            nodeID,
+                          ).properties['enabled'] !=
+                          false,
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ],
+        ),
+      );
+    }
+
     final content = switch (state.kind) {
       _NodeKind.root => children.single,
       _NodeKind.row => row(),
@@ -1951,6 +2015,8 @@ final class LUIFlutterBackend {
       _NodeKind.toggleGroup ||
       _NodeKind.breadcrumb ||
       _NodeKind.pagination => horizontalGroup(),
+      _NodeKind.bottomTabs => bottomTabs(),
+      _NodeKind.bottomTab => Stack(children: children),
       _NodeKind.column || _NodeKind.list => column(),
       _NodeKind.virtualList => ListView.separated(
         itemCount: state.children.length,
@@ -2677,6 +2743,18 @@ final class LUIFlutterBackend {
         'timeline accepts only timeline-item children',
       );
     }
+    if (parent.kind == _NodeKind.bottomTabs &&
+        child.kind != _NodeKind.bottomTab) {
+      throw const LUIBackendException(
+        'bottom-tabs accepts only bottom-tab children',
+      );
+    }
+    if (parent.kind == _NodeKind.bottomTab &&
+        child.kind == _NodeKind.bottomTab) {
+      throw const LUIBackendException(
+        'bottom-tab cannot directly contain bottom-tab',
+      );
+    }
     if (parent.kind == _NodeKind.inputGroup &&
         child.kind != _NodeKind.textarea &&
         child.kind != _NodeKind.inputGroupActions) {
@@ -2757,6 +2835,30 @@ final class LUIFlutterBackend {
           value is String && (value == 'horizontal' || value == 'vertical'),
         'gap' => value is int && value >= 0,
         'accessibility-label' || 'style-class' => value is String,
+        _ => false,
+      };
+    }
+    if (kind == _NodeKind.bottomTabs) {
+      return switch (property) {
+        'accessibility-label' || 'style-class' => value is String,
+        'grow' => value is num && value.isFinite && value >= 0,
+        'width' ||
+        'height' ||
+        'min-width' ||
+        'max-width' ||
+        'min-height' ||
+        'max-height' => value is int && value >= 0,
+        _ => false,
+      };
+    }
+    if (kind == _NodeKind.bottomTab) {
+      return switch (property) {
+        'title' => value is String,
+        'icon' =>
+          value is String &&
+              (_iconNames.contains(value) ||
+                  _appIconNamePattern.hasMatch(value)),
+        'selected' || 'enabled' || 'press-enabled' => value is bool,
         _ => false,
       };
     }
@@ -3226,6 +3328,29 @@ final class LUIFlutterBackend {
           'toolbar requires an accessibility label',
         );
       }
+      if (state.kind == _NodeKind.bottomTabs) {
+        if ((state.properties['accessibility-label'] as String? ?? '')
+            .isEmpty) {
+          throw const LUIBackendException(
+            'bottom-tabs requires an accessibility label',
+          );
+        }
+        if (state.children.length < 2 || state.children.length > 5) {
+          throw const LUIBackendException(
+            'bottom-tabs requires two to five destinations',
+          );
+        }
+      }
+      if (state.kind == _NodeKind.bottomTab &&
+          ((state.properties['title'] as String? ?? '').isEmpty ||
+              state.properties['press-enabled'] != true ||
+              state.children.isEmpty ||
+              state.parent == null ||
+              states[state.parent]?.kind != _NodeKind.bottomTabs)) {
+        throw const LUIBackendException(
+          'bottom-tab requires title, press support, content, and a direct bottom-tabs parent',
+        );
+      }
       final hasTreeMetadata =
           state.properties.containsKey('role') ||
           state.properties.containsKey('tree-level') ||
@@ -3464,6 +3589,8 @@ final class LUIFlutterBackend {
       kind == _NodeKind.inputGroupActions ||
       kind == _NodeKind.toast ||
       kind == _NodeKind.toolbar ||
+      kind == _NodeKind.bottomTabs ||
+      kind == _NodeKind.bottomTab ||
       _isContextMenuLeafHost(kind) ||
       kind.isModalSurface;
 
@@ -3489,7 +3616,8 @@ final class LUIFlutterBackend {
       kind == _NodeKind.alert ||
       kind == _NodeKind.bubble ||
       kind == _NodeKind.toast ||
-      kind == _NodeKind.toolbar;
+      kind == _NodeKind.toolbar ||
+      kind == _NodeKind.bottomTab;
 
   static bool _isToolbarChild(_NodeKind kind) =>
       kind == _NodeKind.button ||
@@ -4071,6 +4199,7 @@ class _LUIModalPresenterState extends State<_LUIModalPresenter> {
         ),
         isDismissible: true,
         enableDrag: true,
+        showDragHandle: true,
         useSafeArea: true,
       ),
       _NodeKind.dialog => DialogRoute<void>(

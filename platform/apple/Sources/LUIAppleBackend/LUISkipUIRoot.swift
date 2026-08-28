@@ -66,6 +66,12 @@ private struct LUISkipNodeView: View {
             HStack(spacing: CGFloat(model.property(.gap)?.intValue ?? 0)) {
                 children
             }
+        case .bottomTabs:
+            bottomTabs
+        case .bottomTab:
+            VStack(alignment: .leading, spacing: 0) {
+                children
+            }
         case .toolbar:
             toolbar
         case .list:
@@ -361,6 +367,40 @@ private struct LUISkipNodeView: View {
     private var children: some View {
         ForEach(model.children, id: \.self) { childID in
             LUIAnyNodeView(nodeID: childID, backend: backend)
+        }
+    }
+
+    private var bottomTabDestinations: [LUINodeModel] {
+        model.children.compactMap { backend.model(id: $0) }
+    }
+
+    private var bottomTabSelection: Binding<Int> {
+        Binding(
+            get: {
+                bottomTabDestinations.first(where: \.isSelected)?.id
+                    ?? bottomTabDestinations.first?.id
+                    ?? 0
+            },
+            set: { nodeID in
+                guard let destination = backend.model(id: nodeID),
+                      destination.isEnabled, destination.supportsPress else { return }
+                try? backend.performPress(node: nodeID)
+            }
+        )
+    }
+
+    private var bottomTabs: some View {
+        TabView(selection: bottomTabSelection) {
+            ForEach(bottomTabDestinations, id: \.id) { destination in
+                LUIAnyNodeView(nodeID: destination.id, backend: backend)
+                    .tag(destination.id)
+                    .tabItem {
+                        Label(
+                            destination.bottomTabTitle,
+                            systemImage: destination.bottomTabSystemIconName
+                        )
+                    }
+            }
         }
     }
 

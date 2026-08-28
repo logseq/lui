@@ -8,6 +8,7 @@
             [lui.badge]
             [lui.separator]
             [lui.skeleton]
+            [lui.bottom-tabs]
             [lui.macros :refer [defui state effect platform host]]
             [lui.backend.apple :as apple
              :refer [AppleBox AppleCard AppleAlert AppleBubble AppleStatusBar
@@ -20,7 +21,7 @@
                      AppleImage AppleMediaSurface
                      AppleStepper AppleStep AppleTimeline AppleTimelineItem
                      AppleInputGroup AppleInputGroupActions
-                     AppleAccordion]]
+                     AppleAccordion AppleBottomTabs AppleBottomTab]]
             [lui.backend.flutter :as flutter]))
 
 (defmacro assert-equal [expected actual message]
@@ -159,6 +160,18 @@
     :min-width 80
     :max-width 160
     :class "profile-loading"}])
+
+(defui retained-bottom-tabs
+  [home-selected-source search-selected-source on-home on-search]
+  [:bottom-tabs {:label "Primary destinations"}
+   [:bottom-tab
+    {:title "Home" :icon "folder" :selected home-selected-source
+     :on-press on-home}
+    [:column [:input {:placeholder "Retained home draft"}]]]
+   [:bottom-tab
+    {:title "Search" :icon "search" :selected search-selected-source
+     :on-press on-search}
+    [:column [:paragraph "Search page"]]]])
 
 (defui activity-indicators []
   [:row {:gap 12 :cross "center"}
@@ -1561,6 +1574,69 @@
         (Some (proto/BoolValue value))
         (assert-equal true value "the model selects the second trigger")
         _ (is false "activity selection exists")))))
+
+(deftest bottom-tabs-retain-destination-pages-and-model-owned-selection
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "retained-bottom-tabs")
+        context (ui/context application scope)
+        home-selected (sig/state scheduler true)
+        search-selected (sig/state scheduler false)
+        received (atom [])
+        callback (fn [event] (swap! received conj event) true)
+        root
+        (retained-bottom-tabs
+         context (sig/value home-selected) (sig/value search-selected)
+         callback callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [tabs (apple/children renderer root)
+          home (nth tabs 0)
+          search (nth tabs 1)
+          home-page (nth (apple/children renderer home) 0)
+          search-page (nth (apple/children renderer search) 0)
+          node-count (apple/node-count renderer)]
+      (match (apple/node renderer root)
+        (Some AppleBottomTabs) (is true "BottomTabs is a native navigation root")
+        _ (is false "BottomTabs must not degrade into ordinary Tabs"))
+      (doseq [tab tabs]
+        (match (apple/node renderer tab)
+          (Some AppleBottomTab) (is true "each destination is a retained BottomTab")
+          _ (is false "BottomTabs accepts only BottomTab children")))
+      (assert-equal [home search] tabs "BottomTabs retains destination order")
+      (assert-equal 1 (count (apple/children renderer home))
+                    "a BottomTab owns its retained page subtree")
+      (match (apple/property renderer root proto/AccessibilityLabel)
+        (Some (proto/StringValue value))
+        (assert-equal "Primary destinations" value
+                      "BottomTabs keeps its accessible name")
+        _ (is false "BottomTabs accessible name exists"))
+      (match (apple/property renderer home proto/TitleValue)
+        (Some (proto/StringValue value))
+        (assert-equal "Home" value "BottomTab retains its title")
+        _ (is false "BottomTab title exists"))
+      (match (apple/property renderer home proto/InlineIconName)
+        (Some (proto/StringValue value))
+        (assert-equal "folder" value "BottomTab retains its icon")
+        _ (is false "BottomTab icon exists"))
+      (runtime/dispatch! application (proto/Press search))
+      (runtime/flush! application)
+      (assert-equal [(proto/Press search)] @received
+                    "BottomTab selection remains model-owned")
+      (sig/set! home-selected false)
+      (sig/set! search-selected true)
+      (runtime/flush! application)
+      (assert-equal node-count (apple/node-count renderer)
+                    "selection does not replace BottomTabs or page subtrees")
+      (assert-equal home-page (nth (apple/children renderer home) 0)
+                    "hidden Home content keeps its retained identity")
+      (assert-equal search-page (nth (apple/children renderer search) 0)
+                    "selected Search content keeps its retained identity")
+      (match (apple/property renderer search proto/Selected)
+        (Some (proto/BoolValue value))
+        (assert-equal true value "the model selects the Search destination")
+        _ (is false "Search selection exists")))))
 
 (deftest action-groups-compose-controlled-and-backend-owned-controls
   (let [scheduler (sig/scheduler)

@@ -46,16 +46,75 @@ Build and serve the browser example with:
 make serve-web
 ```
 
+For development, start Dune watch, Tailwind watch, and Vite together:
+
+```sh
+make dev-web
+```
+
+LG edits are compiled to JavaScript by Dune and picked up by Vite, which reloads
+the page without any LG runtime-state integration. CSS and JavaScript modules
+use Vite hot module replacement. A failed LG compilation leaves the last valid
+page running; saving valid source resumes the update automatically.
+
 Then open <http://127.0.0.1:8765/examples/todos/web/index.html>. The page loads the
 Melange output from `_build`; the renderer and Todos entrypoint are LG source
 under `platform/web/lg/lui/backend/web.cljc` and
 `examples/todos/web/lg/todos/web_main.cljc`.
+
+`make serve-web` uses the Node static server and listens on all interfaces. To
+preview from a phone on the same local network, replace `127.0.0.1` with the
+Mac's LAN address. The equivalent explicit command is:
+
+```sh
+node tooling/serve_web.mjs --host 0.0.0.0 --port 8765
+```
 
 The component showcase is at
 <http://127.0.0.1:8765/examples/components/web/index.html>. It uses the same LG
 Signal reducer and component tree as the native hosts. The Flutter host and its
 real OCaml FFI integration test are documented in
 [`examples/components/README.md`](examples/components/README.md).
+
+The Web showcase starts in the iOS simulator profile. Use its Platform control
+to switch the same retained DOM tree between iOS and Android presentation. Its
+Device and Rotate controls cover phone/tablet portrait and landscape traits,
+including safe areas, touch/hybrid pointer input, scale, and focus-driven
+virtual keyboard state. The simulator remains semantic DOM rather than a
+full-screen Canvas renderer, and the detached popup portal follows the selected
+platform and device without replacing open controls or focused text input.
+The `NativeExtension` page also demonstrates a retained semantic Map and Camera.
+The Map uses deterministic DOM geometry and accessible controls without Canvas;
+the Camera starts with a deterministic mock feed and requests `getUserMedia`
+only after an explicit user action, with denied-permission and stream-cleanup
+behavior.
+The `BottomTabs` page demonstrates the shared navigation contract: native
+SwiftUI `TabView` on Apple, native Material `NavigationBar` on Android, and
+retained semantic DOM with iOS Liquid Glass or Android Material presentation
+in the Web Simulator.
+The Switch page keeps the platform-sized control at the trailing edge, matching
+native label placement. Dialog and Sheet actions update the shared model-owned
+presentation state; phone sheets expose a drag handle and support downward
+distance/velocity dismissal. SwiftUI uses its system drag indicator, while the
+Android backend enables the Material bottom-sheet drag handle.
+
+Fetch the pinned public SwiftUI and Compose comparison corpus, then run the
+deterministic Chromium visual regression suite with:
+
+```sh
+make fetch-web-references
+make test-web-visual
+```
+
+Baseline replacement is intentionally separate and must be reviewed:
+
+```sh
+make update-web-visual-baselines
+```
+
+The committed scenarios fix viewport, device scale, locale, timezone, color
+scheme, reduced motion, time, randomness, and animation state. A failure writes
+a pixel diff under `_build/web-simulator-visual-diffs`.
 
 Build the iOS Simulator app and Android arm64 APK together with:
 

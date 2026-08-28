@@ -186,6 +186,24 @@ test("Sheet uses the same modal lifecycle with its own native surface", async ()
   )
 })
 
+test("Dialog and Sheet action buttons drive model-owned dismissal", async () => {
+  await openGalleryPage("Dialog")
+  await clickButton("Open dialog")
+  await clickButton("Cancel")
+  assert.equal(
+    await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`),
+    0,
+  )
+
+  await openGalleryPage("Sheet")
+  await clickButton("Open sheet")
+  await clickButton("Cancel")
+  assert.equal(
+    await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`),
+    0,
+  )
+})
+
 test("Reduced motion removes a closing Dialog without waiting for a fallback", async () => {
   await openGalleryPage("Dialog")
   await browser("set", "media", "light", "reduced-motion")
@@ -273,17 +291,22 @@ test("Compact Sheet arbitrates scroll, direction, distance, and velocity", async
 
   const compactSheet = await state(`(() => {
       const sheet = document.querySelector('.lui-sheet')
+      const handle = sheet?.querySelector('.lui-sheet-handle')
       const bounds = sheet?.getBoundingClientRect()
       return {
         bottomAligned: Math.abs((bounds?.bottom ?? 0) - innerHeight) < 1,
         fullWidth: Math.abs((bounds?.width ?? 0) - innerWidth) < 1,
         height: Math.round(bounds?.height ?? 0),
         viewportHeight: innerHeight,
+        handleVisible: Boolean(handle && getComputedStyle(handle).display !== 'none'),
+        handleHiddenFromAccessibility: handle?.getAttribute('aria-hidden'),
       }
     })()`)
   assert.equal(compactSheet.bottomAligned, true)
   assert.equal(compactSheet.fullWidth, true)
   assert.ok(compactSheet.height > 0 && compactSheet.height < compactSheet.viewportHeight)
+  assert.equal(compactSheet.handleVisible, true)
+  assert.equal(compactSheet.handleHiddenFromAccessibility, "true")
 
   await evaluate(`(() => {
     const sheet = document.querySelector('.lui-sheet')
@@ -374,6 +397,7 @@ test("Compact Sheet arbitrates scroll, direction, distance, and velocity", async
 
   const dismissedSheetState = await state(`(() => {
     const sheet = document.querySelector('.lui-sheet')
+    const handle = sheet.querySelector('.lui-sheet-handle')
     const dispatch = (type, y) => sheet.dispatchEvent(new PointerEvent(type, {
       bubbles: true,
       cancelable: true,
@@ -385,7 +409,10 @@ test("Compact Sheet arbitrates scroll, direction, distance, and velocity", async
       button: 0,
       buttons: type === 'pointerup' ? 0 : 1,
     }))
-    dispatch('pointerdown', 180)
+    handle.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true, cancelable: true, isPrimary: true, pointerId: 45,
+      pointerType: 'touch', clientX: 190, clientY: 180, button: 0, buttons: 1,
+    }))
     dispatch('pointermove', 240)
     dispatch('pointerup', 240)
     return {
@@ -2450,8 +2477,11 @@ test("every Gallery page fits the compact one-page mobile shell", async () => {
   const audit = await state(`(() => {
     const content = document.querySelector('.lui-gallery-content')
     const buttons = [...document.querySelectorAll('.lui-gallery-nav-item')]
+    document.querySelector('.lui-gallery-navigation-back:not([hidden])')?.click()
+    const navigationHeights = []
     const failures = []
     for (const button of buttons) {
+      navigationHeights.push(button.getBoundingClientRect().height)
       button.click()
       const headings = content.querySelectorAll('[role="heading"]')
       if (headings.length !== 1 || content.scrollWidth > content.clientWidth + 1) {
@@ -2471,16 +2501,17 @@ test("every Gallery page fits the compact one-page mobile shell", async () => {
             .slice(0, 8),
         })
       }
+      document.querySelector('.lui-gallery-navigation-back')?.click()
     }
     return {
       count: buttons.length,
-      minNavigationHeight: Math.min(...buttons.map((button) => button.getBoundingClientRect().height)),
+      minNavigationHeight: Math.min(...navigationHeights),
       mountedPages: document.querySelectorAll('.lui-gallery-content > *').length,
       failures,
     }
   })()`)
 
-  assert.equal(audit.count, 65)
+  assert.equal(audit.count, 66)
   assert.ok(audit.minNavigationHeight >= 44, JSON.stringify(audit))
   assert.equal(audit.mountedPages, 1)
   assert.deepEqual(audit.failures, [])

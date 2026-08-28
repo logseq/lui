@@ -29,6 +29,8 @@
   (FlutterList)
   (FlutterVirtualList)
   (FlutterTabs)
+  (FlutterBottomTabs)
+  (FlutterBottomTab)
   (FlutterButtonGroup)
   (FlutterToggleGroup)
   (FlutterBreadcrumb)

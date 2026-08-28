@@ -460,6 +460,12 @@ struct LUIRetainedTree {
             if parentNode.kind == .timeline, childNode.kind != .timelineItem {
                 throw invalid("timeline accepts only timeline-item children")
             }
+            if parentNode.kind == .bottomTabs, childNode.kind != .bottomTab {
+                throw invalid("bottom-tabs accepts only bottom-tab children")
+            }
+            if parentNode.kind == .bottomTab, childNode.kind == .bottomTab {
+                throw invalid("bottom-tab cannot directly contain bottom-tab")
+            }
             if parentNode.kind == .inputGroup,
                childNode.kind != .textarea, childNode.kind != .inputGroupActions {
                 throw invalid("input-group accepts textarea and input-group-actions")
@@ -554,6 +560,17 @@ struct LUIRetainedTree {
         if kind == .toolbar {
             return property == .orientation || property == .accessibilityLabel ||
                 property == .gap || property == .styleClass
+        }
+        if kind == .bottomTabs {
+            return property == .accessibilityLabel || property == .styleClass ||
+                property == .grow || property == .width || property == .height ||
+                property == .minWidth || property == .maxWidth ||
+                property == .minHeight || property == .maxHeight
+        }
+        if kind == .bottomTab {
+            return property == .title || property == .icon || property == .selected ||
+                property == .enabled || property == .pressEnabled ||
+                property == .accessibilityIdentifier
         }
         return switch property {
         case .main, .cross:
@@ -684,7 +701,7 @@ struct LUIRetainedTree {
             || kind == .split || kind == .drawer || kind == .alert || kind == .bubble ||
             kind == .stepper || kind == .timeline ||
             kind == .inputGroup || kind == .inputGroupActions ||
-            kind == .toast || kind == .toolbar ||
+            kind == .toast || kind == .toolbar || kind == .bottomTabs || kind == .bottomTab ||
             isContextMenuLeafHost(kind)
     }
 
@@ -694,7 +711,8 @@ struct LUIRetainedTree {
             kind == .list || kind == .virtualList || kind == .listItem || kind == .dialog ||
             kind == .sheet || kind == .accordion || kind == .resizable || kind == .split ||
             kind == .drawer ||
-            kind == .alert || kind == .bubble || kind == .toast || kind == .toolbar
+            kind == .alert || kind == .bubble || kind == .toast || kind == .toolbar ||
+            kind == .bottomTab
     }
 
     private static func isModalSurface(_ kind: LUINodeKind) -> Bool {
@@ -862,6 +880,22 @@ struct LUIRetainedTree {
             if node.kind == .toolbar,
                (node.properties[.accessibilityLabel]?.stringValue ?? "").isEmpty {
                 throw invalid("toolbar requires an accessibility label")
+            }
+            if node.kind == .bottomTabs {
+                guard !(node.properties[.accessibilityLabel]?.stringValue ?? "").isEmpty else {
+                    throw invalid("bottom-tabs requires an accessibility label")
+                }
+                guard (2...5).contains(node.children.count) else {
+                    throw invalid("bottom-tabs requires two to five destinations")
+                }
+            }
+            if node.kind == .bottomTab {
+                guard !(node.properties[.title]?.stringValue ?? "").isEmpty,
+                      node.properties[.pressEnabled]?.boolValue == true,
+                      !node.children.isEmpty,
+                      let parent = node.parent, nodes[parent]?.kind == .bottomTabs else {
+                    throw invalid("bottom-tab requires title, press support, content, and a direct bottom-tabs parent")
+                }
             }
             let hasTreeMetadata = node.properties[.role]?.stringValue == "treeitem" ||
                 node.properties[.treeLevel] != nil || node.properties[.expanded] != nil

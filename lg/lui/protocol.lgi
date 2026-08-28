@@ -35,6 +35,8 @@
   (ListContainer)
   (VirtualList)
   (Tabs)
+  (BottomTabs)
+  (BottomTab)
   (ButtonGroup)
   (ToggleGroup)
   (Spacer)

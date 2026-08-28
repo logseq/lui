@@ -76,7 +76,7 @@
 (def gallery-page-contract
   ["Row" "Column" "Grid" "Text" "Spacer"
    "Button" "ToggleButton" "ButtonGroup" "ToggleGroup"
-   "Breadcrumb" "Pagination" "Tabs"
+   "Breadcrumb" "Pagination" "Tabs" "BottomTabs"
    "Badge" "Separator" "Skeleton" "Spinner" "Icon" "Progress"
    "Stepper" "Step" "Timeline" "TimelineItem"
    "Stack" "Panel" "Card" "Alert" "Bubble" "Reactions" "StatusBar"
@@ -109,6 +109,7 @@
                  (gallery-avatar-image 1)
                  (gallery-media-surface 1)
                  (gallery-tab "overview")
+                 (gallery-bottom-tab "home")
                  (gallery-dialog-open false)
                  (gallery-sheet-open false)
                  (gallery-toast-open false)
@@ -134,6 +135,8 @@
                   "the media producer targets one stable SurfaceId")
     (assert-equal "overview" (:gallery-tab initial)
                   "Tabs starts with one model-owned selection")
+    (assert-equal "home" (:gallery-bottom-tab initial)
+                  "BottomTabs starts with one model-owned destination")
     (assert-equal false (:gallery-dialog-open initial)
                   "Dialog starts closed without a retained placeholder")
     (assert-equal false (:gallery-sheet-open initial)
@@ -321,6 +324,15 @@
       (assert-equal
        "activity" (:gallery-tab (components/model application))
        "the shared reducer owns tab selection across hosts"))
+    (let [mounted-count (flutter/node-count renderer)]
+      (driver/send! application (model/SelectBottomTab "search"))
+      (driver/flush! application)
+      (assert-equal
+       mounted-count (flutter/node-count renderer)
+       "bottom tab selection preserves every retained destination")
+      (assert-equal
+       "search" (:gallery-bottom-tab (components/model application))
+       "the shared reducer owns bottom tab selection across hosts"))
     (let [mounted-count (flutter/node-count renderer)]
       (driver/send! application model/OpenDialog)
       (driver/flush! application)

@@ -12,7 +12,7 @@
                      TextField SecureField Input SearchField Textarea Checkbox SwitchControl
                      Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Sheet Tooltip Toast Toolbar Accordion
                      Table TableRow TableCell Tree Resizable Split Drawer StatusBar
-                     Scroll ListContainer VirtualList Tabs ButtonGroup ToggleGroup Breadcrumb Pagination
+                     Scroll ListContainer VirtualList Tabs BottomTabs BottomTab ButtonGroup ToggleGroup Breadcrumb Pagination
                      Spacer Spinner Icon
                      Progress Divider
                      Toggle RadioGroup Radio Slider
@@ -30,6 +30,7 @@
                      Checked
                      ProgressValue ResizeDuration ResizeEasing ResizeOrigin
                      OrientationValue SizeValue IconName
+                     IOS AndroidOS
                      VariantValue InlineIconName IconPlacementValue Selected Autofocus SubmitOnEnter LongPressEnabled
                      ChangeEnabled ToggleEnabled PressEnabled
                      SubmitEnabled DoublePressEnabled
@@ -62,6 +63,198 @@
     (Some kind) (= kind expected)
     None false))
 
+(defn- simulator-platform-name [platform]
+  (match platform
+    IOS "ios"
+    AndroidOS "android"
+    _ (raise (Invalid_argument "web simulator platform must be iOS or Android"))))
+
+(defn- simulator-form-factor-name [form-factor]
+  (match form-factor
+    SimulatorPhone "phone"
+    SimulatorTablet "tablet"))
+
+(defn- simulator-orientation-name [orientation]
+  (match orientation
+    SimulatorPortrait "portrait"
+    SimulatorLandscape "landscape"))
+
+(defn- simulator-pointer-name [pointer]
+  (match pointer
+    SimulatorTouch "touch"
+    SimulatorHybrid "hybrid"))
+
+(defn simulator-device [platform form-factor orientation]
+  (let [ios (= platform IOS)
+        tablet (= form-factor SimulatorTablet)
+        portrait (= orientation SimulatorPortrait)
+        portrait-width (if tablet (if ios 1024 800) (if ios 390 412))
+        portrait-height (if tablet (if ios 1366 1280) (if ios 844 915))
+        landscape-phone (and (not tablet) (not portrait))
+        android-landscape (and (not ios) (not portrait))]
+    (simulator-platform-name platform)
+    (simulator-form-factor-name form-factor)
+    (simulator-orientation-name orientation)
+    (record web-simulator-device
+            (simulator-device-platform platform)
+            (simulator-device-form-factor form-factor)
+            (simulator-device-orientation orientation)
+            (simulator-device-pointer
+             (if tablet SimulatorHybrid SimulatorTouch))
+            (simulator-device-width
+             (if portrait portrait-width portrait-height))
+            (simulator-device-height
+             (if portrait portrait-height portrait-width))
+            (simulator-device-scale
+             (if (and ios (not tablet)) 3.0
+                 (if (and (not ios) (not tablet)) 2.625 2.0)))
+            (simulator-device-safe-top
+             (if portrait (if (and ios (not tablet)) 47 24)
+                 (if tablet 24 0)))
+            (simulator-device-safe-right
+             (if landscape-phone (if ios 47 24)
+                 (if android-landscape 24 0)))
+            (simulator-device-safe-bottom
+             (if portrait (if (and ios (not tablet)) 34 (if ios 20 24))
+                 (if ios (if tablet 20 21) 0)))
+            (simulator-device-safe-left
+             (if landscape-phone (if ios 47 24)
+                 (if android-landscape 24 0)))
+            (simulator-device-keyboard-height
+             (if portrait
+               (if tablet 350 (if ios 291 300))
+               (if tablet 280 (if ios 162 220)))))))
+
+(defn- set-style! [scope property value]
+  (Webapi.Dom.CssStyleDeclaration.setProperty
+   property value ""
+   (Webapi.Dom.HtmlElement.style
+    (Webapi.Dom.Element.unsafeAsHtmlElement scope))))
+
+(defn- apply-simulator-device-to-scope!
+  [scope device keyboard-visible]
+  (Webapi.Dom.Element.setAttribute
+   "data-lui-form-factor"
+   (simulator-form-factor-name (:simulator-device-form-factor device)) scope)
+  (Webapi.Dom.Element.setAttribute
+   "data-lui-orientation"
+   (simulator-orientation-name (:simulator-device-orientation device)) scope)
+  (Webapi.Dom.Element.setAttribute
+   "data-lui-pointer"
+   (simulator-pointer-name (:simulator-device-pointer device)) scope)
+  (Webapi.Dom.Element.setAttribute
+   "data-lui-keyboard" (if keyboard-visible "visible" "hidden") scope)
+  (set-style!
+   scope "--lui-viewport-width" (str (:simulator-device-width device) "px"))
+  (set-style!
+   scope "--lui-viewport-height" (str (:simulator-device-height device) "px"))
+  (set-style!
+   scope "--lui-device-scale" (str (:simulator-device-scale device)))
+  (set-style!
+   scope "--lui-safe-area-top" (str (:simulator-device-safe-top device) "px"))
+  (set-style!
+   scope "--lui-safe-area-right" (str (:simulator-device-safe-right device) "px"))
+  (set-style!
+   scope "--lui-safe-area-bottom" (str (:simulator-device-safe-bottom device) "px"))
+  (set-style!
+   scope "--lui-safe-area-left" (str (:simulator-device-safe-left device) "px"))
+  (set-style!
+   scope "--lui-keyboard-height"
+   (str (if keyboard-visible (:simulator-device-keyboard-height device) 0) "px")))
+
+(defn set-simulator-device! [renderer device]
+  (let [keyboard-visible (deref (:web-simulator-keyboard-visible renderer))]
+    (apply-simulator-device-to-scope!
+     (:web-host renderer) device keyboard-visible)
+    (apply-simulator-device-to-scope!
+     (:web-portal-root renderer) device keyboard-visible)
+    (reset! (:web-simulator-device renderer) (Some device))
+    true))
+
+(defn set-simulator-keyboard-visible! [renderer visible]
+  (if-some [device (deref (:web-simulator-device renderer))]
+    (do
+      (reset! (:web-simulator-keyboard-visible renderer) visible)
+      (set-simulator-device! renderer device))
+    (raise (Invalid_argument "web simulator device is unavailable"))))
+
+(defn set-simulator-form-factor! [renderer form-factor]
+  (if-some [device (deref (:web-simulator-device renderer))]
+    (set-simulator-device!
+     renderer
+     (simulator-device
+      (:simulator-device-platform device) form-factor
+      (:simulator-device-orientation device)))
+    (raise (Invalid_argument "web simulator device is unavailable"))))
+
+(defn rotate-simulator! [renderer]
+  (if-some [device (deref (:web-simulator-device renderer))]
+    (set-simulator-device!
+     renderer
+     (simulator-device
+      (:simulator-device-platform device)
+      (:simulator-device-form-factor device)
+      (match (:simulator-device-orientation device)
+        SimulatorPortrait SimulatorLandscape
+        SimulatorLandscape SimulatorPortrait)))
+    (raise (Invalid_argument "web simulator device is unavailable"))))
+
+(defn set-simulator-platform! [renderer platform]
+  (let [name (simulator-platform-name platform)]
+    (Webapi.Dom.Element.setAttribute
+     "data-lui-platform" name (:web-host renderer))
+    (Webapi.Dom.Element.setAttribute
+     "data-lui-platform" name (:web-portal-root renderer))
+    (reset! (:web-simulator-platform renderer) (Some platform))
+    (if-some [device (deref (:web-simulator-device renderer))]
+      (Stdlib.ignore
+       (set-simulator-device!
+        renderer
+        (simulator-device
+         platform (:simulator-device-form-factor device)
+         (:simulator-device-orientation device))))
+      (Stdlib.ignore true))
+    true))
+
+(defn- simulator-text-entry? [element]
+  (let [class-name (Webapi.Dom.Element.className element)]
+    (or (= class-name "lui-text-field")
+        (= class-name "lui-input")
+        (= class-name "lui-search-field")
+        (= class-name "lui-textarea")
+        (= class-name "lui-combobox-control"))))
+
+(defn- compact-sheet? [renderer]
+  (if-some [device (deref (:web-simulator-device renderer))]
+    (= (:simulator-device-form-factor device) SimulatorPhone)
+    (let [root
+          (Webapi.Dom.Document.documentElement (:web-document renderer))]
+      (<= (Webapi.Dom.Element.clientWidth root) 640))))
+
+(defn- attach-simulator-keyboard-events! [renderer]
+  (doseq [scope [(:web-host renderer) (:web-portal-root renderer)]]
+    (Webapi.Dom.Element.addEventListener
+     "focusin"
+     (fn [event]
+       (let [target
+             (Webapi.Dom.EventTarget.unsafeAsElement
+              (Webapi.Dom.Event.target event))]
+         (when (simulator-text-entry? target)
+           (set-simulator-keyboard-visible! renderer true)))
+       (Stdlib.ignore true))
+     scope)
+    (Webapi.Dom.Element.addEventListener
+     "focusout"
+     (fn [event]
+       (let [target
+             (Webapi.Dom.EventTarget.unsafeAsElement
+              (Webapi.Dom.Event.target event))]
+         (when (simulator-text-entry? target)
+           (set-simulator-keyboard-visible! renderer false)))
+       (Stdlib.ignore true))
+     scope))
+  true)
+
 (defn create-with-extensions
   [host app-icons registry adapters]
   (let [document (Webapi.Dom.Element.ownerDocument host)
@@ -86,6 +279,9 @@
             (web-document document)
             (web-host host)
             (web-portal-root portal-root)
+            (web-simulator-platform (atom None))
+            (web-simulator-device (atom None))
+            (web-simulator-keyboard-visible (atom false))
             (web-toast-viewport toast-viewport)
             (web-event-handler (atom (fn [_event] true)))
             (web-app-icons app-icons)
@@ -100,6 +296,22 @@
             (web-splits (atom {}))
             (web-extension-registry registry)
             (web-extension-adapters adapters))))
+
+(defn create-simulator-with-extensions
+  [host platform app-icons registry adapters]
+  (let [renderer
+        (create-with-extensions host app-icons registry adapters)]
+    (set-simulator-platform! renderer platform)
+    (set-simulator-device!
+     renderer (simulator-device platform SimulatorPhone SimulatorPortrait))
+    (attach-simulator-keyboard-events! renderer)
+    renderer))
+
+(defn create-simulator
+  ([host platform] (create-simulator host platform {}))
+  ([host platform app-icons]
+   (create-simulator-with-extensions
+    host platform app-icons (ext/registry) {})))
 
 (defn create
   ([host] (create host {}))
@@ -192,6 +404,8 @@
     ListContainer "lui-list"
     VirtualList "lui-virtual-list"
     Tabs "lui-tabs"
+    BottomTabs "lui-bottom-tabs"
+    BottomTab "lui-bottom-tab"
     ButtonGroup "lui-button-group"
     ToggleGroup "lui-toggle-group"
     Breadcrumb "lui-breadcrumb"
@@ -461,6 +675,7 @@
            "aria-valuemax" "1"}
           RadioGroup {"role" "radiogroup"}
           Tabs {"role" "tablist" "aria-orientation" "horizontal"}
+          BottomTab {"role" "tabpanel"}
           ButtonGroup {"role" "group"}
           ToggleGroup {"role" "group"}
           Breadcrumb {"role" "group"}
@@ -500,6 +715,15 @@
     (element
      (:web-document renderer) tag (base-class-name kind) attributes [])))
 
+(defn- create-bottom-tabs-node [renderer]
+  (let [document (:web-document renderer)]
+    (element
+     document "div" "lui-bottom-tabs" {}
+     [(element document "div" "lui-bottom-tabs-pages" {} [])
+      (element
+       document "div" "lui-bottom-tabs-bar"
+       {"role" "tablist" "aria-orientation" "horizontal"} [])])))
+
 (defn- create-modal-node [renderer kind]
   (let [document (:web-document renderer)
         class-name (base-class-name kind)
@@ -514,7 +738,11 @@
          document "section" class-name
          {"role" "dialog" "aria-modal" "true" "tabindex" "-1"}
          [(element document "div" (str class-name "-title") {} [])
-          (element document "div" (str class-name "-body") {} [])])]
+          (element document "div" (str class-name "-body") {} [])
+          (if (= kind Sheet)
+            (element
+             document "div" "lui-sheet-handle" {"aria-hidden" "true"} [])
+            (element document "span" "lui-modal-decoration" {"hidden" ""} []))])]
     (Webapi.Dom.Element.appendChild (Webapi.Dom.Element.asNode backdrop) layer)
     (Webapi.Dom.Element.appendChild (Webapi.Dom.Element.asNode surface) layer)
     surface))
@@ -552,6 +780,7 @@
     MediaSurface (create-media-node renderer kind)
     Step (create-step-node renderer)
     TimelineItem (create-timeline-item-node renderer)
+    BottomTabs (create-bottom-tabs-node renderer)
     Accordion (create-accordion-node renderer)
     Alert (create-alert-node renderer)
     Bubble (create-bubble-node renderer)
@@ -1639,8 +1868,7 @@
           (let [target
                 (Webapi.Dom.EventTarget.unsafeAsElement
                  (Webapi.Dom.Event.target event))
-                root (Webapi.Dom.Document.documentElement document)
-                compact (<= (Webapi.Dom.Element.clientWidth root) 640)
+                compact (compact-sheet? renderer)
                 ignored (swipe-ignored-target? target dom-node)
                 scroll-blocked (sheet-scroll-blocks-swipe? target dom-node)]
             (when (and sheet? compact
@@ -3670,13 +3898,6 @@
     TimelineItem (attach-pressable-text-events! renderer node dom-node)
     _ (Stdlib.ignore true)))
 
-(defn- set-style! [dom-node property value]
-  (let [element-style
-        (Webapi.Dom.HtmlElement.style
-         (Webapi.Dom.Element.unsafeAsHtmlElement dom-node))]
-    (Webapi.Dom.CssStyleDeclaration.setProperty
-     property value "" element-style)))
-
 (defn- set-accordion-open! [renderer dom-node open]
   (let [trigger (accordion-trigger-node dom-node)
         panel (accordion-panel-node dom-node)]
@@ -4321,6 +4542,102 @@
           (recur (inc index)))))
     (Stdlib.ignore true)))
 
+(defn- bottom-tab-trigger-id [node]
+  (str (node-dom-id node) "-trigger"))
+
+(defn- bottom-tabs-pages-node [dom-node]
+  (child-element dom-node 0))
+
+(defn- bottom-tabs-bar-node [dom-node]
+  (child-element dom-node 1))
+
+(defn- bottom-tab-trigger [renderer node]
+  (if-some [current (retained/node (:web-store renderer) node)]
+    (match (:retained-parent current)
+      (Some parent)
+      (Webapi.Dom.Element.querySelector
+       (str "#" (bottom-tab-trigger-id node))
+       (dom-node renderer parent))
+      None None)
+    None))
+
+(defn- bottom-tab-string-property [renderer node property]
+  (match (retained/property (:web-store renderer) node property)
+    (Some (StringValue value)) value
+    _ ""))
+
+(defn- refresh-bottom-tabs! [renderer tabs]
+  (let [children (retained/children (:web-store renderer) tabs)
+        selected
+        (loop [index 0]
+          (if (= index (count children))
+            (if (empty? children) None (Some (nth children 0)))
+            (if (= (retained/property
+                    (:web-store renderer) (nth children index) Selected)
+                   (Some (BoolValue true)))
+              (Some (nth children index))
+              (recur (inc index)))))]
+    (doseq [child children]
+      (if-some [current (retained/node (:web-store renderer) child)]
+        (let [active (= selected (Some child))
+              panel (:platform-node current)]
+          (set-state-attribute! panel "hidden" (not active))
+          (set-state-attribute! panel "inert" (not active))
+          (if-some [trigger (bottom-tab-trigger renderer child)]
+            (do
+              (Webapi.Dom.Element.setAttribute
+               "aria-selected" (if active "true" "false") trigger)
+              (Webapi.Dom.Element.setAttribute
+               "tabindex" (if active "0" "-1") trigger))
+            (Stdlib.ignore true)))
+        (Stdlib.ignore true)))
+    (Stdlib.ignore true)))
+
+(defn- create-bottom-tab-trigger! [renderer tabs node index]
+  (let [document (:web-document renderer)
+        panel (dom-node renderer node)
+        panel-id (node-dom-id node)
+        trigger-id (bottom-tab-trigger-id node)
+        icon-name (bottom-tab-string-property renderer node InlineIconName)
+        title (bottom-tab-string-property renderer node TitleValue)
+        icon (element document "span" "lui-icon" {"aria-hidden" "true"} [])
+        label (element document "span" "lui-bottom-tabs-label" {} [])
+        trigger
+        (element
+         document "button" "lui-bottom-tabs-tab"
+         {"type" "button"
+          "role" "tab"
+          "id" trigger-id
+          "aria-controls" panel-id
+          "aria-selected" "false"
+          "tabindex" "-1"}
+         [icon label])
+        enabled (enabled-node? renderer node)
+        press!
+        (fn [_event]
+          (when (and (enabled-node? renderer node)
+                     (event-capability? renderer node PressEnabled))
+            (Webapi.Dom.HtmlElement.focus
+             (Webapi.Dom.Element.unsafeAsHtmlElement trigger))
+            (Stdlib.ignore
+             ((deref (:web-event-handler renderer)) (proto/Press node))))
+          (Stdlib.ignore true))]
+    (Webapi.Dom.Element.setAttribute "aria-labelledby" trigger-id panel)
+    (Webapi.Dom.Element.setTextContent label title)
+    (Webapi.Dom.Element.setAttribute "data-name" icon-name icon)
+    (update-icon-name! renderer icon icon-name)
+    (if enabled
+      (do
+        (Webapi.Dom.Element.removeAttribute "disabled" trigger)
+        (Webapi.Dom.Element.setAttribute "aria-disabled" "false" trigger))
+      (do
+        (Webapi.Dom.Element.setAttribute "disabled" "disabled" trigger)
+        (Webapi.Dom.Element.setAttribute "aria-disabled" "true" trigger)))
+    (Webapi.Dom.Element.addEventListener "click" press! trigger)
+    (insert-dom-child!
+     (bottom-tabs-bar-node (dom-node renderer tabs)) trigger index)
+    trigger))
+
 (defn- update-stepper-parent! [renderer node]
   (if-some [current (retained/node (:web-store renderer) node)]
     (match (:retained-parent current)
@@ -4560,7 +4877,23 @@
     (apply-text-value! renderer node kind dom-node text)
 
     (tuple Enabled (BoolValue enabled))
-    (let [control-node
+    (if (= kind BottomTab)
+      (do
+        (if-some [trigger (bottom-tab-trigger renderer node)]
+          (if enabled
+            (do
+              (Webapi.Dom.Element.removeAttribute "disabled" trigger)
+              (Webapi.Dom.Element.setAttribute "aria-disabled" "false" trigger))
+            (do
+              (Webapi.Dom.Element.setAttribute "disabled" "disabled" trigger)
+              (Webapi.Dom.Element.setAttribute "aria-disabled" "true" trigger)))
+          (Stdlib.ignore true))
+        (if-some [current (retained/node (:web-store renderer) node)]
+          (match (:retained-parent current)
+            (Some parent) (refresh-bottom-tabs! renderer parent)
+            None (Stdlib.ignore true))
+          (Stdlib.ignore true)))
+      (let [control-node
           (if (direct-toggle? kind)
             (child-element dom-node 0)
             (if (= kind Combobox)
@@ -4582,7 +4915,7 @@
         (Webapi.Dom.Element.setAttribute
          "aria-disabled" (if enabled "false" "true") dom-node))
       (when (node-has-ancestor-kind? renderer node Toolbar)
-        (Stdlib.ignore (apply-toolbar-disabled-semantics! renderer node))))
+        (Stdlib.ignore (apply-toolbar-disabled-semantics! renderer node)))))
 
     (tuple Gap (IntValue gap))
     (do
@@ -4616,7 +4949,9 @@
          (str "repeat(" columns ", minmax(0, 1fr))"))))
 
     (tuple PaddingValue (IntValue padding))
-    (set-style! dom-node "padding" (str padding "px"))
+    (do
+      (set-style! dom-node "padding" (str padding "px"))
+      (set-style! dom-node "--lui-content-padding" (str padding "px")))
 
     (tuple PaddingHorizontal (IntValue padding))
     (set-style! dom-node "padding-inline" (str padding "px"))
@@ -4673,14 +5008,17 @@
        (text-control-node dom-node) placeholder))
 
     (tuple AccessibilityLabel (StringValue label))
-    (if (= kind Split)
+    (if (= kind BottomTabs)
+      (Webapi.Dom.Element.setAttribute
+       "aria-label" label (bottom-tabs-bar-node dom-node))
+      (if (= kind Split)
       (Webapi.Dom.Element.setAttribute
        "aria-label" (str label " divider") (child-element dom-node 1))
       (Webapi.Dom.Element.setAttribute
        "aria-label" label
        (if (direct-toggle? kind)
          (child-element dom-node 0)
-         dom-node)))
+         dom-node))))
 
     (tuple AccessibilityIdentifier (StringValue identifier))
     (Webapi.Dom.Element.setAttribute "id" identifier dom-node)
@@ -4741,20 +5079,32 @@
     (Webapi.Dom.Element.setAttribute "data-variant" variant dom-node)
 
     (tuple InlineIconName (StringValue name))
-    (if (= kind TimelineItem)
+    (if (= kind BottomTab)
+      (if-some [trigger (bottom-tab-trigger renderer node)]
+        (let [icon (child-element trigger 0)]
+          (Webapi.Dom.Element.setAttribute "data-name" name icon)
+          (update-icon-name! renderer icon name))
+        (Stdlib.ignore true))
+      (if (= kind TimelineItem)
       (update-timeline-indicator! renderer node dom-node)
       (let [icon
             (if (= kind ListItem)
               dom-node
               (button-icon-node dom-node))]
         (Webapi.Dom.Element.setAttribute "data-name" name icon)
-        (update-icon-name! renderer icon name)))
+        (update-icon-name! renderer icon name))))
 
     (tuple IconPlacementValue (StringValue placement))
     (Webapi.Dom.Element.setAttribute "data-icon-placement" placement dom-node)
 
     (tuple Selected (BoolValue selected))
-    (if (= kind Accordion)
+    (if (= kind BottomTab)
+      (if-some [current (retained/node (:web-store renderer) node)]
+        (match (:retained-parent current)
+          (Some parent) (refresh-bottom-tabs! renderer parent)
+          None (Stdlib.ignore true))
+        (Stdlib.ignore true))
+      (if (= kind Accordion)
       (set-accordion-open! renderer dom-node selected)
       (if (or (= kind TableRow) (= kind TimelineItem)
               (treeitem? renderer node))
@@ -4768,7 +5118,7 @@
            (if (or (= kind MenuItem) (direct-tab-trigger? renderer node))
              "aria-selected"
              "aria-pressed")
-           (if selected "true" "false") dom-node))))
+           (if selected "true" "false") dom-node)))))
 
     (tuple Autofocus (BoolValue autofocus))
     (if autofocus
@@ -4823,7 +5173,9 @@
           (do
             (Webapi.Dom.Element.removeAttribute "tabindex" dom-node)
             (Webapi.Dom.Element.setAttribute
-             "hidden" "" (child-element dom-node 2))))))
+             "hidden" "" (child-element dom-node 2)))))
+      (when (= kind BottomTab)
+        (set-state-attribute! dom-node "data-press-enabled" enabled)))
 
     (tuple RoleValue (StringValue role))
     (do
@@ -4858,10 +5210,14 @@
     (update-stepper! renderer node)
 
     (tuple TitleValue (StringValue title))
-    (do
+    (if (= kind BottomTab)
+      (if-some [trigger (bottom-tab-trigger renderer node)]
+        (Webapi.Dom.Element.setTextContent (child-element trigger 1) title)
+        (Stdlib.ignore true))
+      (do
       (Webapi.Dom.Element.setTextContent
        (child-element (child-element dom-node 1) 0) title)
-      (Webapi.Dom.Element.setAttribute "aria-label" title dom-node))
+      (Webapi.Dom.Element.setAttribute "aria-label" title dom-node)))
 
     (tuple DescriptionValue (StringValue description))
     (set-optional-text!
@@ -5567,7 +5923,10 @@
           (set-style! dom-node "grid-auto-flow" "")
           (set-style! dom-node "grid-auto-columns" "")
           (set-style! dom-node "grid-template-columns" ""))
-        PaddingValue (set-style! dom-node "padding" "")
+        PaddingValue
+        (do
+          (set-style! dom-node "padding" "")
+          (set-style! dom-node "--lui-content-padding" ""))
         PaddingHorizontal (set-style! dom-node "padding-inline" "")
         PaddingVertical (set-style! dom-node "padding-block" "")
         BackgroundValue (set-style! dom-node "background" "")
@@ -5640,6 +5999,11 @@
                   (or (= property Selected) (= property Enabled)))
                   (refresh-tabs-roving!
                    (:web-store renderer) (:web-document renderer) parent))
+                (when
+                 (and
+                  (standard-kind? parent-node BottomTabs)
+                  (or (= property Selected) (= property Enabled)))
+                  (refresh-bottom-tabs! renderer parent))
                 (when (standard-kind? parent-node DropdownMenu)
                   (Stdlib.ignore
                    (refresh-combobox-list-state! renderer parent))))
@@ -5654,12 +6018,18 @@
         (match (:retained-parent current)
           (Some parent)
           (if-some [parent-node (retained/node (:web-store renderer) parent)]
-            (when
-             (and
-              (standard-kind? parent-node Tabs)
-              (or (= property Selected) (= property Enabled)))
-              (refresh-tabs-roving!
-               (:web-store renderer) (:web-document renderer) parent))
+            (do
+              (when
+               (and
+                (standard-kind? parent-node Tabs)
+                (or (= property Selected) (= property Enabled)))
+                (refresh-tabs-roving!
+                 (:web-store renderer) (:web-document renderer) parent))
+              (when
+               (and
+                (standard-kind? parent-node BottomTabs)
+                (or (= property Selected) (= property Enabled)))
+                (refresh-bottom-tabs! renderer parent)))
             (Stdlib.ignore true))
           None (Stdlib.ignore true))
         (Stdlib.ignore true)))
@@ -5675,6 +6045,18 @@
       (if-some [current (retained/node (:web-store renderer) child)]
         (if-some [kind (retained/standard-kind current)]
           (cond
+            (and
+             (= kind BottomTab)
+             (if-some [parent-node (retained/node (:web-store renderer) parent)]
+               (standard-kind? parent-node BottomTabs)
+               false))
+            (do
+              (insert-dom-child!
+               (bottom-tabs-pages-node (dom-node renderer parent))
+               (dom-node renderer child) index)
+              (Stdlib.ignore
+               (create-bottom-tab-trigger! renderer parent child index))
+              (refresh-bottom-tabs! renderer parent))
             (= kind Toast)
             (Webapi.Dom.Element.appendChild
              (Webapi.Dom.Element.asNode (dom-node renderer child))
@@ -5754,6 +6136,14 @@
     (do
       (let [surface (dom-node-before renderer previous-nodes child)
             modal (modal-node? previous-nodes child)
+            bottom-tab
+            (if-some [previous (clojure.core/get previous-nodes child)]
+              (standard-kind? previous BottomTab)
+              false)
+            bottom-tabs
+            (if-some [previous (clojure.core/get previous-nodes parent)]
+              (standard-kind? previous BottomTabs)
+              false)
             child-node (if modal (modal-layer-node surface) surface)
             parent-node
             (if (toast-node? previous-nodes child)
@@ -5767,7 +6157,21 @@
                   (dom-child-container-before
                    renderer previous-nodes parent
                    (dom-node-before renderer previous-nodes parent)))))]
-        (if modal
+        (if (and bottom-tab bottom-tabs)
+          (let [tabs-node (dom-node-before renderer previous-nodes parent)
+                pages (bottom-tabs-pages-node tabs-node)
+                bar (bottom-tabs-bar-node tabs-node)]
+            (Stdlib.ignore
+             (Webapi.Dom.Element.removeChild
+              (Webapi.Dom.Element.asNode child-node) pages))
+            (if-some [trigger
+                      (Webapi.Dom.Element.querySelector
+                       (str "#" (bottom-tab-trigger-id child)) bar)]
+              (Stdlib.ignore
+               (Webapi.Dom.Element.removeChild
+                (Webapi.Dom.Element.asNode trigger) bar))
+              (Stdlib.ignore true)))
+          (if modal
           (if-some [previous (clojure.core/get previous-nodes child)]
             (Stdlib.ignore
              (remove-modal-layer-after-exit!
@@ -5780,9 +6184,13 @@
               (:web-document renderer) parent-node child-node))
             (Stdlib.ignore
              (Webapi.Dom.Element.removeChild
-              (Webapi.Dom.Element.asNode child-node) parent-node)))))
+              (Webapi.Dom.Element.asNode child-node) parent-node))))))
       (refresh-button-context! renderer child)
       (refresh-structured-children! renderer parent)
+      (if-some [parent-node (clojure.core/get previous-nodes parent)]
+        (when (standard-kind? parent-node BottomTabs)
+          (refresh-bottom-tabs! renderer parent))
+        (Stdlib.ignore true))
       (if-some [previous (clojure.core/get previous-nodes child)]
         (when (standard-kind? previous DropdownMenu)
           (update-picker-expanded! renderer parent false)
@@ -5809,6 +6217,14 @@
           tooltip (anchored-tooltip-node? previous-nodes child)
           toast (toast-node? previous-nodes child)
           metadata (context-menu-node? previous-nodes child)
+          bottom-tab
+          (if-some [current (retained/node (:web-store renderer) child)]
+            (standard-kind? current BottomTab)
+            false)
+          bottom-tabs
+          (if-some [current (retained/node (:web-store renderer) parent)]
+            (standard-kind? current BottomTabs)
+            false)
           parent-node
           (if toast
             (:web-toast-viewport renderer)
@@ -5822,16 +6238,34 @@
           surface-node (dom-node-before renderer previous-nodes child)
           child-node (if modal (modal-layer-node surface-node) surface-node)
           focused (focused-descendant renderer surface-node)]
-      (Stdlib.ignore
-       (Webapi.Dom.Element.removeChild
-        (Webapi.Dom.Element.asNode child-node) parent-node))
-      (if (or dropdown modal tooltip toast metadata)
+      (if (and bottom-tab bottom-tabs)
+        (let [tabs-node (dom-node renderer parent)
+              pages (bottom-tabs-pages-node tabs-node)
+              bar (bottom-tabs-bar-node tabs-node)]
+          (Stdlib.ignore
+           (Webapi.Dom.Element.removeChild
+            (Webapi.Dom.Element.asNode child-node) pages))
+          (insert-dom-child! pages child-node index)
+          (if-some [trigger (bottom-tab-trigger renderer child)]
+            (do
+              (Stdlib.ignore
+               (Webapi.Dom.Element.removeChild
+                (Webapi.Dom.Element.asNode trigger) bar))
+              (insert-dom-child! bar trigger index))
+            (Stdlib.ignore true)))
+        (do
+          (Stdlib.ignore
+           (Webapi.Dom.Element.removeChild
+            (Webapi.Dom.Element.asNode child-node) parent-node))
+          (if (or dropdown modal tooltip toast metadata)
         (Webapi.Dom.Element.appendChild
          (Webapi.Dom.Element.asNode child-node) parent-node)
         (insert-dom-child!
-         parent-node child-node (visible-child-index renderer parent index)))
+         parent-node child-node (visible-child-index renderer parent index)))))
       (update-split! renderer parent)
       (refresh-structured-children! renderer parent)
+      (when (and bottom-tab bottom-tabs)
+        (refresh-bottom-tabs! renderer parent))
       (if-some [parent-node (retained/node (:web-store renderer) parent)]
         (when (standard-kind? parent-node DropdownMenu)
           (refresh-dropdown-item-roles! renderer parent)

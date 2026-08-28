@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "cacheDirectory": "_build/web-simulator-references",
+  "references": [
+    {
+      "id": "apple-custom-layouts",
+      "platform": "ios",
+      "language": "swift",
+      "repository": "https://github.com/apple-sample-code/ComposingCustomLayoutsWithSwiftUI",
+      "commit": "9a1d0ec86596deb5d8e48e1286ea626ae3605122",
+      "license": {
+        "name": "Apple sample code MIT-style license",
+        "path": "LICENSE/LICENSE.txt"
+      },
+      "sourcePaths": [
+        "CustomLayoutSample/Views/ContentView.swift",
+        "CustomLayoutSample/Views/Leaderboard.swift",
+        "CustomLayoutSample/Views/ButtonStack.swift"
+      ],
+      "scenarios": [
+        {
+          "name": "adaptive voting layout",
+          "viewport": { "width": 390, "height": 844, "scale": 3 },
+          "assertions": [
+            "Leaderboard columns keep leading, flexible, and trailing alignment",
+            "Vote actions share the widest intrinsic button width",
+            "Actions fall back from a horizontal row to a vertical stack when constrained"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "apple-fruta",
+      "platform": "ios",
+      "language": "swift",
+      "repository": "https://github.com/apple-sample-code/FrutaBuildingAFeatureRichAppWithSwiftUI",
+      "commit": "dc9af9a5fb5dfe334630aab727fa2369f442c7f2",
+      "license": {
+        "name": "Apple sample code MIT-style license",
+        "path": "LICENSE/LICENSE.txt"
+      },
+      "sourcePaths": [
+        "iOS/AppTabNavigation.swift",
+        "Shared/Smoothie/SmoothieList.swift",
+        "Shared/Smoothie/SmoothieRow.swift",
+        "Shared/Navigation/AppSidebarNavigation.swift"
+      ],
+      "scenarios": [
+        {
+          "name": "phone smoothie list",
+          "viewport": { "width": 390, "height": 844, "scale": 3 },
+          "assertions": [
+            "Navigation title and searchable list follow iOS safe areas",
+            "Rows expose native disclosure and swipe-action behavior",
+            "The tab bar remains pinned while list content scrolls"
+          ]
+        },
+        {
+          "name": "tablet sidebar adaptation",
+          "viewport": { "width": 1024, "height": 1366, "scale": 2 },
+          "assertions": [
+            "Compact tab navigation becomes sidebar-detail navigation",
+            "Selection state survives the width-class transition"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "alexpaul-swiftui",
+      "platform": "ios",
+      "language": "swift",
+      "repository": "https://github.com/alexpaul/SwiftUI",
+      "commit": "d240d386f8ae165f2f14ce5d620bdc6e971bd30a",
+      "license": {
+        "name": "MIT",
+        "path": "LICENSE"
+      },
+      "sourcePaths": [
+        "button.md",
+        "textfield.md",
+        "segmented-control.md",
+        "presentation-detents.md",
+        "bottom-sheet.md"
+      ],
+      "scenarios": [
+        {
+          "name": "control metrics and presentation",
+          "viewport": { "width": 390, "height": 844, "scale": 3 },
+          "assertions": [
+            "Buttons and fields retain iOS touch target and typography metrics",
+            "Segmented selection remains keyboard and pointer accessible",
+            "Sheet detents preserve rounded top corners and safe-area spacing"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "android-compose-samples",
+      "platform": "android",
+      "language": "kotlin",
+      "repository": "https://github.com/android/compose-samples",
+      "commit": "018c5207fb63c4f78e5841bd8ddd4faabdf19d3a",
+      "license": {
+        "name": "Apache-2.0",
+        "path": "LICENSE"
+      },
+      "sourcePaths": [
+        "Jetchat/app/src/main/java/com/example/compose/jetchat/conversation/Conversation.kt",
+        "Jetchat/app/src/main/java/com/example/compose/jetchat/conversation/UserInput.kt",
+        "Jetsnack/app/src/main/java/com/example/jetsnack/ui/home/Home.kt",
+        "Jetsnack/app/src/main/java/com/example/jetsnack/ui/components/Button.kt"
+      ],
+      "scenarios": [
+        {
+          "name": "Material conversation",
+          "viewport": { "width": 412, "height": 915, "scale": 2.625 },
+          "assertions": [
+            "Top app bar, message list, and composer respect system insets",
+            "Composer actions use Material touch targets and state layers",
+            "Keyboard appearance keeps the latest message visible"
+          ]
+        },
+        {
+          "name": "adaptive snack catalog",
+          "viewport": { "width": 412, "height": 915, "scale": 2.625 },
+          "assertions": [
+            "Cards and pill actions follow the pinned Compose sample metrics",
+            "Bottom navigation selection animation does not shift content"
+          ]
+        }
+      ]
+    }
+  ]
+}

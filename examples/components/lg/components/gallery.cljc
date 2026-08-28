@@ -3,6 +3,7 @@
             [lui.badge]
             [lui.separator]
             [lui.skeleton]
+            [lui.bottom-tabs]
             [components.extensions :as extensions]))
 
 (defui row-gallery []
@@ -219,7 +220,9 @@
       [:box {:height 24}]
       [:paragraph "Anyone with the link can view this showcase."]
       [:input {:placeholder "Share link"}]
-      [:button {:variant "primary" :on-press close-sheet} "Done"]]]]])
+      [:row {:gap 8 :main "end"}
+       [:button {:variant "ghost" :on-press close-sheet} "Cancel"]
+       [:button {:variant "primary" :on-press close-sheet} "Done"]]]]]])
 
 (defui list-gallery []
   [:column {:gap 24 :padding 32}
@@ -968,6 +971,34 @@
    [:paragraph
     "Tabs owns layout and platform presentation; Signals own selection and content."]])
 
+(defui bottom-tabs-gallery
+  [home-selected-source search-selected-source settings-selected-source
+   select-home select-search select-settings]
+  [:column {:gap 16 :padding 32}
+   [:heading {:level 2} "BottomTabs"]
+   [:bottom-tabs {:label "Primary destinations"}
+    [:bottom-tab
+     {:title "Home" :icon "folder" :selected home-selected-source
+      :on-press select-home}
+     [:column {:gap 12 :padding 20}
+      [:text {:size "heading"} "Home"]
+      [:input {:label "Draft" :placeholder "Retained home draft"}]
+      [:paragraph "This input stays mounted while another destination is active."]]]
+    [:bottom-tab
+     {:title "Search" :icon "search" :selected search-selected-source
+      :on-press select-search}
+     [:column {:gap 12 :padding 20}
+      [:text {:size "heading"} "Search"]
+      [:paragraph "Search uses the same retained destination model."]]]
+    [:bottom-tab
+     {:title "Settings" :icon "settings" :selected settings-selected-source
+      :on-press select-settings}
+     [:column {:gap 12 :padding 20}
+      [:text {:size "heading"} "Settings"]
+      [:paragraph "Platform chrome changes without rebuilding this page."]]]]
+   [:paragraph
+    "Apple maps this component to TabView; Android maps it to Material NavigationBar."]])
+
 (defui stepper-gallery [active-source advance-step]
   [:column {:gap 16 :padding 32}
    [:heading {:level 2} "Stepper"]
@@ -1035,6 +1066,9 @@
    avatar-image-source media-surface-source toggle-avatar-image
    overview-tab-selected-source activity-tab-selected-source
    tab-content-source select-overview-tab select-activity-tab
+   home-bottom-tab-selected-source search-bottom-tab-selected-source
+   settings-bottom-tab-selected-source select-home-bottom-tab
+   select-search-bottom-tab select-settings-bottom-tab
    dialog-open-source open-dialog close-dialog
    sheet-open-source open-sheet close-sheet
    toast-open-source toast-message-source toast-description-source
@@ -1062,6 +1096,10 @@
     overview-tab-selected-source activity-tab-selected-source
     tab-content-source disabled-source select-overview-tab
     select-activity-tab]
+   [bottom-tabs-gallery
+    home-bottom-tab-selected-source search-bottom-tab-selected-source
+    settings-bottom-tab-selected-source select-home-bottom-tab
+    select-search-bottom-tab select-settings-bottom-tab]
    [badge-gallery]
    [separator-gallery]
    [skeleton-gallery]

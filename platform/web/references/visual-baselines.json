@@ -1,0 +1,246 @@
+{
+  "version": 1,
+  "engine": {
+    "name": "chromium",
+    "locale": "en-US",
+    "timezoneId": "UTC",
+    "colorScheme": "light",
+    "reducedMotion": "reduce"
+  },
+  "scenarios": [
+    {
+      "id": "ios-controls-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "Button",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": { "width": 390, "height": 844 },
+        "scale": 3
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-controls-phone.png",
+      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "dom": {
+        "requiredSelectors": [".lui-button", ".lui-gallery-navigation-back"],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "Buttons preserve iOS typography, radius, and 44 point touch targets",
+        "The phone page uses one retained push-navigation detail"
+      ]
+    },
+    {
+      "id": "android-controls-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "Button",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": { "width": 412, "height": 915 },
+        "scale": 2.625
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-controls-phone.png",
+      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "dom": {
+        "requiredSelectors": [".lui-button", ".lui-gallery-navigation-back"],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "Buttons preserve Material typography, shape, and state layers",
+        "The Android phone viewport retains system inset spacing"
+      ]
+    },
+    {
+      "id": "ios-switch-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "Switch",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": { "width": 390, "height": 844 },
+        "scale": 3
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-switch-phone.png",
+      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "dom": {
+        "requiredSelectors": [".lui-switch", ".lui-switch-control", ".lui-control-label"],
+        "metrics": [
+          { "selector": ".lui-switch-control", "dimension": "width", "value": 51, "tolerance": 0 },
+          { "selector": ".lui-switch-control", "dimension": "height", "value": 31, "tolerance": 0 }
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The label remains leading while the 51 by 31 point iOS switch is trailing",
+        "The retained semantic checkbox exposes the switch role without Canvas"
+      ]
+    },
+    {
+      "id": "android-switch-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "Switch",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": { "width": 412, "height": 915 },
+        "scale": 2.625
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-switch-phone.png",
+      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "dom": {
+        "requiredSelectors": [".lui-switch", ".lui-switch-control", ".lui-control-label"],
+        "metrics": [
+          { "selector": ".lui-switch-control", "dimension": "width", "value": 52, "tolerance": 0 },
+          { "selector": ".lui-switch-control", "dimension": "height", "value": 32, "tolerance": 0 }
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The label remains leading while the Material switch is trailing",
+        "The Material control preserves its 52 by 32 density and semantic role"
+      ]
+    },
+    {
+      "id": "ios-bottom-tabs-phone",
+      "reference": {
+        "id": "apple-fruta",
+        "scenario": "phone smoothie list"
+      },
+      "platform": "ios",
+      "galleryPage": "BottomTabs",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": { "width": 390, "height": 844 },
+        "scale": 3
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-bottom-tabs-phone.png",
+      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "dom": {
+        "requiredSelectors": [".lui-bottom-tabs", ".lui-bottom-tabs-bar", "[role=tabpanel]:not([hidden])"],
+        "roleCounts": { "tablist": 1, "tab": 3, "tabpanel": 3 },
+        "metrics": [
+          { "selector": ".lui-bottom-tabs-bar", "dimension": "height", "value": 64, "tolerance": 0 }
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The floating Liquid Glass tab bar remains above the bottom safe area",
+        "Exactly one retained destination is visible without Canvas"
+      ]
+    },
+    {
+      "id": "android-bottom-tabs-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "BottomTabs",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": { "width": 412, "height": 915 },
+        "scale": 2.625
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-bottom-tabs-phone.png",
+      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "dom": {
+        "requiredSelectors": [".lui-bottom-tabs", ".lui-bottom-tabs-bar", "[role=tabpanel]:not([hidden])"],
+        "roleCounts": { "tablist": 1, "tab": 3, "tabpanel": 3 },
+        "metrics": [
+          { "selector": ".lui-bottom-tabs-bar", "dimension": "height", "value": 104, "tolerance": 0 }
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The Material navigation indicator remains centered without shifting content",
+        "The bar includes the Android bottom safe area"
+      ]
+    },
+    {
+      "id": "ios-sheet-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "Sheet",
+      "state": "open-sheet",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": { "width": 390, "height": 844 },
+        "scale": 3
+      },
+      "scope": "viewport",
+      "baseline": "baselines/ios-sheet-phone.png",
+      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "dom": {
+        "requiredSelectors": [".lui-modal-layer[data-open]", ".lui-sheet[role=dialog]"],
+        "roleCounts": { "dialog": 1 },
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The iOS sheet is portaled, modal, rounded, and constrained to the simulated viewport",
+        "The backdrop and surface respect safe areas"
+      ]
+    },
+    {
+      "id": "android-sheet-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "Material conversation"
+      },
+      "platform": "android",
+      "galleryPage": "Sheet",
+      "state": "open-sheet",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": { "width": 412, "height": 915 },
+        "scale": 2.625
+      },
+      "scope": "viewport",
+      "baseline": "baselines/android-sheet-phone.png",
+      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "dom": {
+        "requiredSelectors": [".lui-modal-layer[data-open]", ".lui-sheet[role=dialog]"],
+        "roleCounts": { "dialog": 1 },
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The Material sheet owns the modal state and platform corner treatment",
+        "The sheet remains inside the simulated Android viewport"
+      ]
+    }
+  ]
+}

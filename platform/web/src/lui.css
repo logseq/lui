@@ -62,6 +62,28 @@ body {
   isolation: isolate;
 }
 
+[data-lui-platform="ios"] {
+  --lui-platform-accent: #007aff;
+  --lui-platform-control-radius: 10px;
+  --lui-platform-surface-radius: 14px;
+  --primary: var(--lui-platform-accent);
+  --ring: var(--lui-platform-accent);
+  --color-primary: var(--lui-platform-accent);
+  --color-ring: var(--lui-platform-accent);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+}
+
+[data-lui-platform="android"] {
+  --lui-platform-accent: #6750a4;
+  --lui-platform-control-radius: 20px;
+  --lui-platform-surface-radius: 28px;
+  --primary: var(--lui-platform-accent);
+  --ring: var(--lui-platform-accent);
+  --color-primary: var(--lui-platform-accent);
+  --color-ring: var(--lui-platform-accent);
+  font-family: Roboto, "Noto Sans", system-ui, sans-serif;
+}
+
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -611,6 +633,19 @@ body {
     transition-duration: 0ms;
   }
 
+  .lui-sheet-handle {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    display: none;
+    width: 36px;
+    height: 5px;
+    transform: translateX(-50%);
+    border-radius: 9999px;
+    background: color-mix(in srgb, currentColor 24%, transparent);
+    touch-action: none;
+  }
+
   @media (max-width: 640px) {
     .lui-sheet {
       inset: auto 0 0;
@@ -620,6 +655,10 @@ body {
       border-radius: 1rem 1rem 0 0;
       padding-bottom: env(safe-area-inset-bottom);
       transform: translateY(var(--drawer-swipe-movement-y, 0px));
+    }
+
+    .lui-sheet-handle {
+      display: block;
     }
 
     .lui-sheet[data-starting-style],
@@ -879,7 +918,7 @@ body {
   }
 
   .lui-switch {
-    @apply inline-flex cursor-pointer items-center gap-2;
+    @apply flex w-full cursor-pointer flex-row-reverse items-center justify-between gap-2;
   }
 
   .lui-switch-control {
@@ -1317,5 +1356,473 @@ body {
 
   .lui-text[data-pressable]:focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+[data-lui-platform="ios"] .lui-button {
+  min-height: 44px;
+  border-radius: var(--lui-platform-control-radius);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+[data-lui-platform="ios"] .lui-toggle-group > .lui-button {
+  padding-inline: 8px;
+  font-size: 15px;
+}
+
+[data-lui-platform="ios"] .lui-text-field,
+[data-lui-platform="ios"] .lui-input,
+[data-lui-platform="ios"] .lui-search-field,
+[data-lui-platform="ios"] .lui-textarea {
+  min-height: 44px;
+  border-radius: var(--lui-platform-control-radius);
+  font-size: 17px;
+}
+
+[data-lui-platform="ios"] .lui-switch-control {
+  width: 51px;
+  height: 31px;
+  border: 0;
+}
+
+[data-lui-platform="ios"] .lui-switch-control::after {
+  width: 27px;
+  height: 27px;
+  margin-left: 2px;
+}
+
+[data-lui-platform="ios"] .lui-switch-control:checked::after {
+  transform: translateX(20px);
+}
+
+[data-lui-platform="ios"] .lui-card {
+  border-radius: 12px;
+  padding: 16px;
+}
+
+[data-lui-platform="ios"] .lui-dialog,
+[data-lui-platform="ios"] .lui-sheet {
+  border-radius: var(--lui-platform-surface-radius);
+}
+
+[data-lui-platform="android"] .lui-button {
+  min-height: 40px;
+  border-radius: var(--lui-platform-control-radius);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.00625rem;
+}
+
+[data-lui-platform="android"] .lui-text-field,
+[data-lui-platform="android"] .lui-input,
+[data-lui-platform="android"] .lui-search-field,
+[data-lui-platform="android"] .lui-textarea {
+  min-height: 56px;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+[data-lui-platform="android"] .lui-switch-control {
+  width: 52px;
+  height: 32px;
+  border-width: 2px;
+}
+
+[data-lui-platform="android"] .lui-switch-control::after {
+  width: 24px;
+  height: 24px;
+}
+
+[data-lui-platform="android"] .lui-switch-control:checked::after {
+  transform: translateX(24px);
+}
+
+[data-lui-platform="android"] .lui-card {
+  border-radius: 12px;
+  padding: 16px;
+}
+
+[data-lui-platform="android"] .lui-dialog,
+[data-lui-platform="android"] .lui-sheet {
+  border-radius: var(--lui-platform-surface-radius);
+}
+
+[data-lui-root][data-lui-form-factor] {
+  width: min(100%, var(--lui-viewport-width));
+  height: min(100dvh, var(--lui-viewport-height));
+  min-height: 0 !important;
+  margin-block: max(0px, calc((100dvh - var(--lui-viewport-height)) / 2));
+  margin-inline: auto;
+  overflow: auto;
+  position: relative;
+}
+
+.lui-popup-portal[data-lui-form-factor] .lui-modal-layer {
+  width: min(100vw, var(--lui-viewport-width));
+  height: min(100dvh, var(--lui-viewport-height));
+  inset: 50% auto auto 50%;
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+}
+
+.lui-popup-portal[data-lui-form-factor] .lui-dialog,
+.lui-popup-portal[data-lui-form-factor] .lui-sheet {
+  position: absolute;
+}
+
+.lui-popup-portal[data-lui-form-factor="phone"] .lui-sheet {
+  inset: auto 0 var(--lui-keyboard-height) 0;
+  width: 100%;
+  min-height: 0;
+  max-width: none;
+  max-height: min(
+    90%,
+    calc(
+      var(--lui-viewport-height) - var(--lui-safe-area-top) -
+      var(--lui-keyboard-height) - 1rem
+    )
+  );
+  border-radius: var(--lui-platform-surface-radius) var(--lui-platform-surface-radius) 0 0;
+  padding-bottom: max(
+    var(--lui-content-padding, 0px),
+    var(--lui-safe-area-bottom)
+  ) !important;
+  transform: translateY(var(--drawer-swipe-movement-y, 0px));
+}
+
+.lui-popup-portal[data-lui-form-factor="phone"] .lui-sheet-handle {
+  display: block;
+}
+
+.lui-popup-portal[data-lui-form-factor="phone"] .lui-sheet[data-starting-style],
+.lui-popup-portal[data-lui-form-factor="phone"] .lui-sheet[data-ending-style] {
+  transform: translateY(100%);
+}
+
+.lui-popup-portal[data-lui-form-factor="tablet"] .lui-sheet {
+  inset: 0 0 0 auto;
+  width: min(24rem, 100%);
+  min-height: 100%;
+  max-height: none;
+  border-radius: var(--lui-platform-surface-radius) 0 0 var(--lui-platform-surface-radius);
+  padding-bottom: max(
+    var(--lui-content-padding, 0px),
+    var(--lui-safe-area-bottom)
+  ) !important;
+  transform: translateX(var(--drawer-swipe-movement-x, 0px));
+}
+
+.lui-popup-portal[data-lui-form-factor="tablet"] .lui-sheet[data-starting-style],
+.lui-popup-portal[data-lui-form-factor="tablet"] .lui-sheet[data-ending-style] {
+  transform: translateX(100%);
+}
+
+.lui-simulator-map {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 320px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 16px;
+  background: #dce7d5;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.lui-simulator-map[aria-grabbed="true"] {
+  cursor: grabbing;
+}
+
+.lui-simulator-map-texture {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    linear-gradient(28deg, transparent 46%, rgb(255 255 255 / 92%) 47% 52%, transparent 53%),
+    linear-gradient(118deg, transparent 38%, rgb(255 255 255 / 86%) 39% 44%, transparent 45%),
+    repeating-linear-gradient(0deg, transparent 0 31px, rgb(91 135 85 / 13%) 32px 33px),
+    repeating-linear-gradient(90deg, transparent 0 39px, rgb(91 135 85 / 12%) 40px 41px),
+    #dce7d5;
+}
+
+.lui-simulator-map-texture::before {
+  position: absolute;
+  inset: -20% 58% -20% -12%;
+  content: "";
+  background: #9fd5eb;
+  border-right: 3px solid rgb(255 255 255 / 80%);
+  transform: rotate(-8deg);
+}
+
+.lui-simulator-map-controls {
+  position: absolute;
+  z-index: 3;
+  top: max(12px, var(--lui-safe-area-top, 0px));
+  right: max(12px, var(--lui-safe-area-right, 0px));
+  display: grid;
+  overflow: hidden;
+  border: 1px solid rgb(0 0 0 / 12%);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 14%);
+}
+
+.lui-simulator-map-controls button {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-bottom: 1px solid rgb(0 0 0 / 10%);
+  border-radius: 0;
+  background: rgb(255 255 255 / 92%);
+  color: #111;
+  font: 600 20px/1 system-ui, sans-serif;
+}
+
+.lui-simulator-map-controls button:last-child {
+  border-bottom: 0;
+}
+
+.lui-simulator-map-marker {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 50%;
+  min-height: 0;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--lui-platform-accent, #007aff);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 22%);
+  color: white;
+  font: 600 12px/1.2 system-ui, sans-serif;
+  transform: translate(-50%, -100%);
+  white-space: nowrap;
+}
+
+.lui-simulator-map-marker::after {
+  position: absolute;
+  top: calc(100% - 3px);
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  content: "";
+  background: inherit;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.lui-simulator-camera {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: var(--lui-platform-surface-radius, 16px);
+  background: color-mix(in srgb, var(--background) 96%, currentColor 4%);
+}
+
+.lui-simulator-camera-frame {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  min-height: 240px;
+  border-radius: calc(var(--lui-platform-surface-radius, 16px) - 4px);
+  background: #111;
+  aspect-ratio: 4 / 3;
+}
+
+.lui-simulator-camera video,
+.lui-simulator-camera-mock {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.lui-simulator-camera video {
+  object-fit: cover;
+}
+
+.lui-simulator-camera-mock {
+  display: grid;
+  color: rgb(255 255 255 / 76%);
+  font: 600 12px/1 system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 43%, transparent 0 44px, rgb(255 255 255 / 12%) 45px 46px, transparent 47px),
+    linear-gradient(135deg, #1a2435, #314d5c 52%, #18222e);
+}
+
+.lui-simulator-camera-mock::before {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  content: "";
+  border: 1px solid rgb(255 255 255 / 42%);
+  border-radius: 50%;
+  box-shadow: 0 0 0 8px rgb(255 255 255 / 5%);
+}
+
+.lui-simulator-camera [role="status"] {
+  color: color-mix(in srgb, currentColor 72%, transparent);
+  font-size: 13px;
+}
+
+.lui-simulator-camera [role="alert"] {
+  margin: 0;
+  color: var(--destructive);
+  font-size: 13px;
+}
+
+[data-lui-platform="android"] .lui-simulator-map {
+  border-radius: 12px;
+  background: #e1eadb;
+}
+
+[data-lui-platform="android"] .lui-simulator-map-controls {
+  border-radius: 20px;
+}
+
+[data-lui-platform="android"] .lui-simulator-camera-frame {
+  border-radius: 24px;
+}
+
+.lui-bottom-tabs {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  width: 100%;
+  min-height: 420px;
+  overflow: hidden;
+}
+
+.lui-bottom-tabs-pages {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.lui-bottom-tab {
+  width: 100%;
+  min-height: 100%;
+}
+
+.lui-bottom-tabs-bar {
+  z-index: 1;
+  display: flex;
+  box-sizing: border-box;
+  align-items: stretch;
+  justify-content: space-around;
+  width: auto;
+}
+
+.lui-bottom-tabs-tab {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lui-bottom-tabs-tab:focus-visible {
+  outline: 2px solid var(--lui-platform-accent);
+  outline-offset: -2px;
+}
+
+.lui-bottom-tabs-tab .lui-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.lui-bottom-tabs-label {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-lui-platform="ios"] .lui-bottom-tabs-bar {
+  height: 64px;
+  min-height: 64px;
+  margin: 0 12px var(--lui-safe-area-bottom);
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 54%);
+  border-radius: 32px;
+  background: color-mix(in srgb, var(--background) 72%, transparent);
+  box-shadow:
+    0 12px 30px rgb(0 0 0 / 14%),
+    inset 0 1px 0 rgb(255 255 255 / 58%);
+  backdrop-filter: blur(24px) saturate(180%);
+}
+
+[data-lui-platform="ios"] .lui-bottom-tabs-tab {
+  gap: 2px;
+  padding: 7px 8px 6px;
+  color: color-mix(in srgb, currentColor 58%, transparent);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+[data-lui-platform="ios"] .lui-bottom-tabs-tab[aria-selected="true"] {
+  color: var(--lui-platform-accent);
+}
+
+[data-lui-platform="android"] .lui-bottom-tabs-bar {
+  height: calc(80px + var(--lui-safe-area-bottom));
+  min-height: calc(80px + var(--lui-safe-area-bottom));
+  margin: 0;
+  padding: 12px 0 var(--lui-safe-area-bottom);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--lui-platform-accent) 8%, var(--background));
+  backdrop-filter: none;
+}
+
+[data-lui-platform="android"] .lui-bottom-tabs-tab {
+  gap: 4px;
+  padding: 0 4px;
+  color: color-mix(in srgb, currentColor 70%, transparent);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+[data-lui-platform="android"] .lui-bottom-tabs-tab[aria-selected="true"] {
+  color: var(--lui-platform-accent);
+}
+
+[data-lui-platform="android"] .lui-bottom-tabs-tab[aria-selected="true"]::before {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 64px;
+  height: 32px;
+  content: "";
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--lui-platform-accent) 18%, transparent);
+  transform: translateX(-50%);
+}
+
+[data-lui-platform="android"] .lui-bottom-tabs-tab .lui-icon,
+[data-lui-platform="android"] .lui-bottom-tabs-label {
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  [data-lui-platform="ios"] .lui-bottom-tabs-bar {
+    background: var(--background);
+    backdrop-filter: none;
   }
 }

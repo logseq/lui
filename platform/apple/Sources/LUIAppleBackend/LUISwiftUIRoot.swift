@@ -343,6 +343,12 @@ private struct LUINodeView: View {
             LUIRowView(model: model, backend: backend)
         case .tabs, .buttonGroup, .toggleGroup, .breadcrumb, .pagination:
             LUIHorizontalGroupView(model: model, backend: backend)
+        case .bottomTabs:
+            LUIBottomTabsView(model: model, backend: backend)
+        case .bottomTab:
+            VStack(alignment: .leading, spacing: 0) {
+                children
+            }
         case .column, .list:
             if LUIVerticalContainerPolicy.isLazy(kind: model.kind) {
                 LUIListView(model: model, backend: backend)
@@ -561,6 +567,45 @@ private struct LUINodeView: View {
         case "end": .trailing
         default: .leading
         }
+    }
+}
+
+private struct LUIBottomTabsView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    private var destinations: [LUINodeModel] {
+        model.children.compactMap { backend.model(id: $0) }
+    }
+
+    private var selection: Binding<Int> {
+        Binding(
+            get: {
+                destinations.first(where: \.isSelected)?.id ?? destinations.first?.id ?? 0
+            },
+            set: { nodeID in
+                guard let destination = backend.model(id: nodeID),
+                      destination.isEnabled, destination.supportsPress else { return }
+                try? backend.performPress(node: nodeID)
+            }
+        )
+    }
+
+    var body: some View {
+        TabView(selection: selection) {
+            ForEach(destinations, id: \.id) { destination in
+                LUIAnyNodeView(nodeID: destination.id, backend: backend)
+                    .tag(destination.id)
+                    .tabItem {
+                        Label {
+                            Text(verbatim: destination.bottomTabTitle)
+                        } icon: {
+                            Image(systemName: destination.bottomTabSystemIconName)
+                        }
+                    }
+            }
+        }
+        .accessibilityLabel(model.accessibilityLabel(in: backend) ?? "")
     }
 }
 
