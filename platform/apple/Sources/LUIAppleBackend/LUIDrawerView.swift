@@ -1,4 +1,7 @@
 import SwiftUI
+#if !SKIP && os(iOS)
+import UIKit
+#endif
 
 enum LUIDrawerGeometry {
     static func gestureIsEligible(
@@ -32,6 +35,12 @@ enum LUIDrawerGeometry {
             : translation
         let visibleWidth = (isPresented ? width : 0.0) + projected
         return visibleWidth >= width * 0.5
+    }
+}
+
+enum LUIDrawerSafeAreaGeometry {
+    static func bottomInset(container: CGFloat, system: CGFloat) -> CGFloat {
+        max(container, system)
     }
 }
 
@@ -77,6 +86,13 @@ struct LUIDrawerView: View {
                 if let mainID = model.children.first {
                     LUIAnyNodeView(nodeID: mainID, backend: backend)
                         .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
+                        .modifier(LUIDrawerMainSafeAreaModifier(
+                            top: geometry.safeAreaInsets.top,
+                            bottom: geometry.safeAreaInsets.bottom
+                        ))
+                        .modifier(LUIDrawerMainSurfaceModifier(
+                            isActive: progress > 0
+                        ))
                         .overlay {
                             if presented {
                                 Button {
@@ -104,6 +120,7 @@ struct LUIDrawerView: View {
             .animation(.spring(response: 0.28, dampingFraction: 0.9), value: presented)
             .clipped()
         }
+        .modifier(LUIDrawerFullScreenModifier())
         .onChange(of: model.isSelected) { _, selected in
             presented = selected
             dragOffset = 0
@@ -150,4 +167,65 @@ struct LUIDrawerView: View {
         try? backend.performToggle(node: model.id, checked: selected)
     }
 
+}
+
+private struct LUIDrawerFullScreenModifier: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if !SKIP
+        content.ignoresSafeArea(.container)
+        #else
+        content
+        #endif
+    }
+}
+
+private struct LUIDrawerMainSafeAreaModifier: ViewModifier {
+    let top: CGFloat
+    let bottom: CGFloat
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if !SKIP && os(iOS)
+        content.safeAreaPadding(.top, top)
+            .padding(
+                .bottom,
+                LUIDrawerSafeAreaGeometry.bottomInset(
+                    container: bottom,
+                    system: systemBottomInset
+                )
+            )
+        #else
+        content
+        #endif
+    }
+
+    private var systemBottomInset: CGFloat {
+        #if !SKIP && os(iOS)
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)?
+            .safeAreaInsets.bottom ?? 0
+        #else
+        0
+        #endif
+    }
+}
+
+private struct LUIDrawerMainSurfaceModifier: ViewModifier {
+    let isActive: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isActive {
+            #if SKIP
+            content.background(Color.primary.opacity(0.04))
+            #else
+            content.background(.ultraThinMaterial)
+            #endif
+        } else {
+            content
+        }
+    }
 }

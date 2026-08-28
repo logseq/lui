@@ -211,6 +211,105 @@ struct LUIBackendParityTests {
         #expect(undimmedMainColor.greenComponent < 0.3)
     }
 
+    @Test("an open drawer main surface spans the container safe areas")
+    func openDrawerMainSurfaceSpansContainerSafeAreas() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"drawer"},
+          {"op":"create-node","id":2,"kind":"panel"},
+          {"op":"create-node","id":3,"kind":"panel"},
+          {"op":"set-prop","id":1,"property":"selected","value":true},
+          {"op":"set-prop","id":1,"property":"width","value":20},
+          {"op":"set-prop","id":2,"property":"width","value":100},
+          {"op":"set-prop","id":2,"property":"height","value":100},
+          {"op":"set-prop","id":2,"property":"background","value":"red"},
+          {"op":"set-prop","id":2,"property":"border-width","value":0},
+          {"op":"set-prop","id":2,"property":"corner-radius","value":0},
+          {"op":"set-prop","id":3,"property":"width","value":20},
+          {"op":"set-prop","id":3,"property":"height","value":100},
+          {"op":"set-prop","id":3,"property":"background","value":"blue"},
+          {"op":"set-prop","id":3,"property":"border-width","value":0},
+          {"op":"set-prop","id":3,"property":"corner-radius","value":0},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let drawer = try #require(backend.model(id: 1))
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Color.green
+                LUIDrawerView(
+                    model: drawer,
+                    backend: backend
+                )
+                .safeAreaInset(edge: .top) {
+                    Color.clear.frame(height: 20)
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 20)
+                }
+            }
+            .frame(width: 100, height: 100)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+
+        for point in [CGPoint(x: 50, y: 10), CGPoint(x: 50, y: 90)] {
+            let color = try #require(bitmap.colorAt(x: Int(point.x), y: Int(point.y)))
+            #expect(color.redComponent > 0.8)
+            #expect(color.greenComponent < 0.3)
+        }
+    }
+
+    @Test("an open drawer supplies a main surface behind transparent content")
+    func openDrawerSuppliesMainSurfaceBehindTransparentContent() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"drawer"},
+          {"op":"create-node","id":2,"kind":"stack"},
+          {"op":"create-node","id":3,"kind":"panel"},
+          {"op":"set-prop","id":1,"property":"selected","value":true},
+          {"op":"set-prop","id":1,"property":"width","value":20},
+          {"op":"set-prop","id":3,"property":"width","value":20},
+          {"op":"set-prop","id":3,"property":"height","value":100},
+          {"op":"set-prop","id":3,"property":"background","value":"blue"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let drawer = try #require(backend.model(id: 1))
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Color.green
+                LUIDrawerView(model: drawer, backend: backend)
+            }
+            .frame(width: 100, height: 100)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        let color = try #require(bitmap.colorAt(x: 50, y: 50))
+
+        #expect(color.redComponent > 0.25)
+    }
+
+    @Test("a full-screen drawer preserves the system bottom safe-area inset")
+    func fullScreenDrawerPreservesSystemBottomSafeAreaInset() {
+        #expect(LUIDrawerSafeAreaGeometry.bottomInset(
+            container: 0,
+            system: 34
+        ) == 34)
+        #expect(LUIDrawerSafeAreaGeometry.bottomInset(
+            container: 21,
+            system: 34
+        ) == 34)
+    }
+
     @Test("a closed drawer does not bleed through transparent main content")
     func closedDrawerDoesNotBleedThroughMainContent() throws {
         let backend = LUIAppleBackend()
