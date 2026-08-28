@@ -3073,6 +3073,18 @@ struct LUIListSection: Equatable, Identifiable {
     var id: Int { headerID ?? childIDs.first ?? Int.min }
 }
 
+enum LUIListSurfacePolicy {
+    static let scrollContentBackground: Visibility = .visible
+}
+
+public struct LUIListSurfacePreferenceKey: PreferenceKey {
+    public static let defaultValue = false
+
+    public static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
 enum LUIListSectionPolicy {
     static func sections(
         childIDs: [Int],
@@ -3121,7 +3133,8 @@ private struct LUIListView: View {
             }
         }
         #if !SKIP
-        .scrollContentBackground(.hidden)
+        .scrollContentBackground(LUIListSurfacePolicy.scrollContentBackground)
+        .preference(key: LUIListSurfacePreferenceKey.self, value: true)
         #endif
         #if os(iOS)
         .listStyle(.insetGrouped)

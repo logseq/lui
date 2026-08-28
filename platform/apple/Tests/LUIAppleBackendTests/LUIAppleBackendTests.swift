@@ -2758,6 +2758,12 @@ struct LUISwiftUIBackendTests {
         ])
     }
 
+    @Test("native lists preserve the platform grouped background")
+    func nativeListsPreserveSystemBackground() {
+        #expect(LUIListSurfacePolicy.scrollContentBackground == .visible)
+        #expect(!LUIListSurfacePreferenceKey.defaultValue)
+    }
+
     @Test("maps message and status surfaces as retained native compositions")
     func mapsMessageSurfaces() throws {
         let backend = LUIAppleBackend()
