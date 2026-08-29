@@ -2580,7 +2580,8 @@ struct LUISwiftUIBackendTests {
         #expect(LUINavigationFormSheetPolicy.actionPlacement(nil) == nil)
         #expect(!LUIModalPresentationPolicy.showsDragIndicator(kind: .sheet))
         #expect(!LUIModalPresentationPolicy.showsDragIndicator(kind: .dialog))
-        #expect(LUIBinaryTogglePolicy.iOSActiveTintName == "green")
+        #expect(LUISelectVisualPolicy.indicatorSystemName == "chevron.up.chevron.down")
+        #expect(LUISelectVisualPolicy.trailingInset == 12)
         #expect(LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
             isNativeFormRow: true,
             variant: "default"

@@ -680,7 +680,6 @@ private struct LUIBinaryToggleView: View {
                 Toggle("", isOn: .constant(model.isChecked))
                     .labelsHidden()
                     .allowsHitTesting(false)
-                    .modifier(LUIBinaryToggleTintModifier())
             }
             .contentShape(Rectangle())
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -706,21 +705,6 @@ private struct LUIBinaryToggleView: View {
         44
         #else
         nil
-        #endif
-    }
-}
-
-enum LUIBinaryTogglePolicy {
-    static let iOSActiveTintName = "green"
-}
-
-private struct LUIBinaryToggleTintModifier: ViewModifier {
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        #if !SKIP && os(iOS)
-        content.tint(.green)
-        #else
-        content
         #endif
     }
 }
@@ -2213,6 +2197,11 @@ private struct LUIInputGroupActionsView: View {
     }
 }
 
+enum LUISelectVisualPolicy {
+    static let indicatorSystemName = "chevron.up.chevron.down"
+    static let trailingInset: CGFloat = 12
+}
+
 private struct LUISelectView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
@@ -2221,12 +2210,14 @@ private struct LUISelectView: View {
         Button {
             try? backend.performPress(node: model.id)
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Text(verbatim: displayText)
-                    .foregroundStyle(model.text.isEmpty ? .secondary : .primary)
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.down")
+                Image(systemName: LUISelectVisualPolicy.indicatorSystemName)
             }
+            .foregroundStyle(
+                model.text.isEmpty ? Color.secondary : Color.accentColor
+            )
+            .padding(.trailing, LUISelectVisualPolicy.trailingInset)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
