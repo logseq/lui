@@ -23,6 +23,20 @@ public extension View {
 }
 
 enum LUIThemeColorPolicy {
+    static func menuItemForegroundName(
+        explicit: String?,
+        destructive: Bool
+    ) -> String {
+        if destructive {
+            return "red"
+        }
+        return explicit ?? "foreground"
+    }
+
+    static func menuItemTextForegroundName(destructive: Bool) -> String {
+        destructive ? "red" : "foreground"
+    }
+
     static func isMutedForeground(_ name: String?) -> Bool {
         name?.lowercased() == "muted-foreground"
     }
@@ -43,6 +57,15 @@ enum LUIThemeColorPolicy {
             false
         }
     }
+}
+
+enum LUIDropdownMenuLayoutPolicy {
+    static let contentPadding: CGFloat = 12
+    static let contentSpacing: CGFloat = 4
+    static let itemSpacing: CGFloat = 12
+    static let iconSize: CGFloat = 24
+    static let itemMinimumHeight: CGFloat = 40
+    static let trailingSpacing: CGFloat = 16
 }
 
 enum LUIModalBackgroundPolicy {

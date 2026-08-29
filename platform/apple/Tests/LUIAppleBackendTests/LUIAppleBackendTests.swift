@@ -78,6 +78,37 @@ struct LUISwiftUIBackendTests {
         #expect(!LUIThemeColorPolicy.isMutedForeground(nil))
     }
 
+    @Test("menu icons default to primary and preserve explicit semantic colors")
+    func menuIconForegroundPolicy() {
+        #expect(LUIThemeColorPolicy.menuItemForegroundName(
+            explicit: nil,
+            destructive: false
+        ) == "foreground")
+        #expect(LUIThemeColorPolicy.menuItemForegroundName(
+            explicit: "task-done",
+            destructive: false
+        ) == "task-done")
+        #expect(LUIThemeColorPolicy.menuItemForegroundName(
+            explicit: "task-done",
+            destructive: true
+        ) == "red")
+        #expect(LUIThemeColorPolicy.menuItemTextForegroundName(
+            destructive: false
+        ) == "foreground")
+        #expect(LUIThemeColorPolicy.menuItemTextForegroundName(
+            destructive: true
+        ) == "red")
+    }
+
+    @Test("dropdown menu items use the native task picker metrics")
+    func dropdownMenuLayoutPolicy() {
+        #expect(LUIDropdownMenuLayoutPolicy.contentPadding == 12)
+        #expect(LUIDropdownMenuLayoutPolicy.itemSpacing == 12)
+        #expect(LUIDropdownMenuLayoutPolicy.iconSize == 24)
+        #expect(LUIDropdownMenuLayoutPolicy.itemMinimumHeight == 40)
+        #expect(LUIDropdownMenuLayoutPolicy.trailingSpacing == 16)
+    }
+
     @Test("semantic headings use the emphasized title weight")
     func semanticHeadingsUseTheEmphasizedTitleWeight() {
         #expect(LUIHeadingTypography.isBold(level: 1))

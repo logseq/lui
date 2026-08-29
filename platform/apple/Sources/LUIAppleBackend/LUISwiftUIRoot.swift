@@ -843,6 +843,10 @@ private struct LUIContextMenuActions: View {
                                 )
                             }
                         }
+                        .modifier(LUIMenuItemForegroundModifier(
+                            model: child,
+                            usesExplicitForeground: false
+                        ))
                     }
                     .disabled(!child.isEnabled)
                     .accessibilityIdentifier(
@@ -2201,12 +2205,16 @@ private struct LUIDropdownMenuView: View {
     }
 
     private var menuItems: some View {
-        VStack(alignment: .leading, spacing: CGFloat(model.property(.gap)?.intValue ?? 2)) {
+        VStack(
+            alignment: .leading,
+            spacing: model.property(.gap)?.intValue.map(CGFloat.init) ??
+                LUIDropdownMenuLayoutPolicy.contentSpacing
+        ) {
             ForEach(model.children, id: \.self) { childID in
                 LUIAnyNodeView(nodeID: childID, backend: backend)
             }
         }
-        .padding(4)
+        .padding(LUIDropdownMenuLayoutPolicy.contentPadding)
         .frame(
             minWidth: model.surfaceMinWidth.map(CGFloat.init),
             maxWidth: model.surfaceMaxWidth.map(CGFloat.init) ?? (isStretch ? .infinity : nil),
@@ -2263,24 +2271,94 @@ private struct LUIMenuItemView: View {
     }
 
     private var itemLabel: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: LUIDropdownMenuLayoutPolicy.itemSpacing) {
             if !model.buttonIconName.isEmpty {
                 LUIIconImage(
                     source: backend.iconSource(for: model.buttonIconName),
                     bundle: backend.appIconBundle
                 )
-                    .frame(width: 16, height: 16)
+                    .frame(
+                        width: LUIDropdownMenuLayoutPolicy.iconSize,
+                        height: LUIDropdownMenuLayoutPolicy.iconSize
+                    )
+                    .modifier(LUIMenuItemForegroundModifier(model: model))
             }
             Text(verbatim: model.text)
-            Spacer(minLength: 12)
+                .modifier(LUIMenuItemForegroundModifier(
+                    model: model,
+                    usesExplicitForeground: false
+                ))
+            Spacer(minLength: LUIDropdownMenuLayoutPolicy.trailingSpacing)
             if model.isSelected {
                 Image(systemName: "checkmark")
+                    .modifier(LUIMenuItemForegroundModifier(
+                        model: model,
+                        usesExplicitForeground: false
+                    ))
             }
         }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: LUIDropdownMenuLayoutPolicy.itemMinimumHeight,
+            alignment: .leading
+        )
         .contentShape(Rectangle())
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
     }
+}
+
+private struct LUIMenuItemForegroundModifier: ViewModifier {
+    let model: LUINodeModel
+    var usesExplicitForeground = true
+
+    @Environment(\.luiSemanticColors) private var semanticColors
+
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(resolvedColor)
+            .tint(resolvedColor)
+    }
+
+    private var resolvedColor: Color {
+        let destructive = model.buttonVariant == "destructive"
+        let name = usesExplicitForeground
+            ? LUIThemeColorPolicy.menuItemForegroundName(
+                explicit: model.property(.foreground)?.stringValue,
+                destructive: destructive
+            )
+            : LUIThemeColorPolicy.menuItemTextForegroundName(
+                destructive: destructive
+            )
+        if let semantic = semanticColors[name.lowercased()] {
+            return semantic
+        }
+        #if !SKIP
+        if let hex = hexColor(name) {
+            return hex
+        }
+        #endif
+        return switch name.lowercased() {
+        case "red", "error-foreground": .red
+        case "blue": .blue
+        case "green", "success-foreground": .green
+        case "warning-foreground": .orange
+        case "secondary", "muted-foreground": .secondary
+        default: .primary
+        }
+    }
+
+    #if !SKIP
+    private func hexColor(_ name: String) -> Color? {
+        let value = name.hasPrefix("#") ? String(name.dropFirst()) : name
+        guard value.count == 6, let rgb = UInt64(value, radix: 16) else {
+            return nil
+        }
+        return Color(
+            red: Double((rgb >> 16) & 0xff) / 255.0,
+            green: Double((rgb >> 8) & 0xff) / 255.0,
+            blue: Double(rgb & 0xff) / 255.0
+        )
+    }
+    #endif
 }
 
 private struct LUIListItemView: View {
