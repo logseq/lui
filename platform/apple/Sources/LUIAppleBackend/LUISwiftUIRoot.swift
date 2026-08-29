@@ -680,6 +680,7 @@ private struct LUIBinaryToggleView: View {
                 Toggle("", isOn: .constant(model.isChecked))
                     .labelsHidden()
                     .allowsHitTesting(false)
+                    .modifier(LUIBinaryToggleTintModifier())
             }
             .contentShape(Rectangle())
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -705,6 +706,21 @@ private struct LUIBinaryToggleView: View {
         44
         #else
         nil
+        #endif
+    }
+}
+
+enum LUIBinaryTogglePolicy {
+    static let iOSActiveTintName = "green"
+}
+
+private struct LUIBinaryToggleTintModifier: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if !SKIP && os(iOS)
+        content.tint(.green)
+        #else
+        content
         #endif
     }
 }
@@ -867,10 +883,20 @@ private struct LUITreeContextKey: EnvironmentKey {
     static let defaultValue: LUITreeContext? = nil
 }
 
+private struct LUIIsNativeFormRowKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 private extension EnvironmentValues {
     var luiTreeContext: LUITreeContext? {
         get { self[LUITreeContextKey.self] }
         set { self[LUITreeContextKey.self] = newValue }
+    }
+
+
+    var luiIsNativeFormRow: Bool {
+        get { self[LUIIsNativeFormRowKey.self] }
+        set { self[LUIIsNativeFormRowKey.self] = newValue }
     }
 }
 
@@ -1503,12 +1529,19 @@ private struct LUITooltipHost<Content: View>: View {
 private struct LUIModalPresentationStyle: ViewModifier {
     let kind: LUINodeKind
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        if kind == .sheet {
+        if LUIModalPresentationPolicy.showsDragIndicator(kind: kind) {
             content.presentationDragIndicator(.visible)
         } else {
             content
         }
+    }
+}
+
+enum LUIModalPresentationPolicy {
+    static func showsDragIndicator(kind: LUINodeKind) -> Bool {
+        false
     }
 }
 
@@ -1658,13 +1691,70 @@ private struct LUINavigationFormRows: View {
             if LUINavigationFormSheetPolicy.isForm(
                 content.property(.styleClass)?.stringValue
             ) {
-                ForEach(content.children, id: \.self) { childID in
-                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                ForEach(sections(for: content)) { section in
+                    if let headerID = section.headerID,
+                       let header = backend.model(id: headerID),
+                       let footerID = section.footerID,
+                       let footer = backend.model(id: footerID) {
+                        Section {
+                            rows(section.childIDs)
+                        } header: {
+                            Text(verbatim: header.text)
+                        } footer: {
+                            Text(verbatim: footer.text)
+                        }
+                    } else if let headerID = section.headerID,
+                              let header = backend.model(id: headerID) {
+                        Section {
+                            rows(section.childIDs)
+                        } header: {
+                            Text(verbatim: header.text)
+                        }
+                    } else if let footerID = section.footerID,
+                              let footer = backend.model(id: footerID) {
+                        Section {
+                            rows(section.childIDs)
+                        } footer: {
+                            Text(verbatim: footer.text)
+                        }
+                    } else {
+                        rows(section.childIDs)
+                    }
                 }
             } else {
                 LUIAnyNodeView(nodeID: contentID, backend: backend)
             }
         }
+    }
+
+    @ViewBuilder
+    private func rows(_ childIDs: [Int]) -> some View {
+        ForEach(childIDs, id: \.self) { childID in
+            if let child = backend.model(id: childID), child.kind == .listItem {
+                LUIListItemView(model: child, backend: backend, isNativeListRow: true)
+                    .environment(\.luiIsNativeFormRow, true)
+            } else {
+                LUIAnyNodeView(nodeID: childID, backend: backend)
+                    .environment(\.luiIsNativeFormRow, true)
+            }
+        }
+    }
+
+    private func sections(for content: LUINodeModel) -> [LUIListSection] {
+        LUIListSectionPolicy.sections(
+            childIDs: content.children,
+            isHeading: { childID in
+                backend.model(id: childID)?.kind == .heading
+            },
+            isFooter: { childID in
+                guard let child = backend.model(id: childID), child.kind == .text else {
+                    return false
+                }
+                return (child.property(.styleClass)?.stringValue ?? "")
+                    .split(separator: " ")
+                    .contains("footnote") == true
+            }
+        )
     }
 }
 
@@ -2476,6 +2566,9 @@ private struct LUIListItemView: View {
                         .frame(width: 44, height: 44)
                 }
                 .accessibilityLabel("More actions")
+                .accessibilityIdentifier(
+                    contextMenu.property(.accessibilityIdentifier)?.stringValue ?? ""
+                )
             }
             if !usesInlineTrailingIcon {
                 trailingIcon
@@ -2673,6 +2766,7 @@ private struct LUIButtonView: View {
     @FocusState private var focused: Bool
     @State private var held = false
     @State private var selected: Bool
+    @Environment(\.luiIsNativeFormRow) private var isNativeFormRow
 
     init(model: LUINodeModel, backend: LUIAppleBackend, isToggle: Bool = false) {
         self.model = model
@@ -2754,7 +2848,14 @@ private struct LUIButtonView: View {
         case "destructive":
             button.buttonStyle(.borderedProminent).tint(.red)
         default:
-            button.buttonStyle(.plain)
+            if LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
+                isNativeFormRow: isNativeFormRow,
+                variant: model.buttonVariant
+            ) {
+                button.foregroundStyle(.tint)
+            } else {
+                button.buttonStyle(.plain)
+            }
             }
         }
     }

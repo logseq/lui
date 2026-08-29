@@ -1546,9 +1546,6 @@
        ~node)))
 
 (defelement context-menu [context parent attrs & children]
-  (if (empty? attrs)
-    nil
-    (throw (IllegalArgumentException. "context-menu accepts no attributes")))
   (if (context-menu-item-missing-press? children)
     (throw
      (IllegalArgumentException.
@@ -1561,6 +1558,8 @@
       "context-menu requires at least one menu-item")))
   (let [node (gensym "node")]
     `(let [~node (lui.ui/context-menu! ~context)]
+       ~@(disabled-attribute-expansion context node attrs)
+       ~@(element-properties context node attrs)
        ~@(if parent
            [`(lui.ui/append! ~context ~parent ~node)]
            [])

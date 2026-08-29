@@ -27,7 +27,7 @@ enum LUINavigationFormSheetPolicy {
     }
 
     static func usesInlineTitle(_ styleClass: String?) -> Bool {
-        isNavigationForm(styleClass)
+        hasStyle("navigation-inline-title", in: styleClass)
     }
 
     static func usesNavigationBackIcon(_ styleClass: String?) -> Bool {
@@ -49,6 +49,15 @@ enum LUINavigationFormSheetPolicy {
     private static func hasStyle(_ target: String, in styleClass: String?) -> Bool {
         guard let styleClass else { return false }
         return styleClass.split(separator: " ").contains { String($0) == target }
+    }
+}
+
+enum LUINavigationFormRowPolicy {
+    static func usesAutomaticButtonStyle(
+        isNativeFormRow: Bool,
+        variant: String
+    ) -> Bool {
+        isNativeFormRow && (variant.isEmpty || variant == "default")
     }
 }
 

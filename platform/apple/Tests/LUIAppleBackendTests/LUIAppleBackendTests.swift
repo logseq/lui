@@ -2503,7 +2503,10 @@ struct LUISwiftUIBackendTests {
         #expect(!LUINavigationFormSheetPolicy.usesNavigationBackIcon(
             "cancellation-action"
         ))
-        #expect(LUINavigationFormSheetPolicy.usesInlineTitle("navigation-form"))
+        #expect(!LUINavigationFormSheetPolicy.usesInlineTitle("navigation-form"))
+        #expect(LUINavigationFormSheetPolicy.usesInlineTitle(
+            "navigation-form navigation-inline-title"
+        ))
         #expect(!LUINavigationFormSheetPolicy.usesInlineTitle("compact navigation-scroll"))
         #expect(!LUINavigationFormSheetPolicy.usesInlineTitle("compact"))
         #expect(!LUINavigationFormSheetPolicy.usesInlineTitle(nil))
@@ -2515,6 +2518,21 @@ struct LUISwiftUIBackendTests {
                 == .confirmation
         )
         #expect(LUINavigationFormSheetPolicy.actionPlacement(nil) == nil)
+        #expect(!LUIModalPresentationPolicy.showsDragIndicator(kind: .sheet))
+        #expect(!LUIModalPresentationPolicy.showsDragIndicator(kind: .dialog))
+        #expect(LUIBinaryTogglePolicy.iOSActiveTintName == "green")
+        #expect(LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
+            isNativeFormRow: true,
+            variant: "default"
+        ))
+        #expect(!LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
+            isNativeFormRow: false,
+            variant: ""
+        ))
+        #expect(!LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
+            isNativeFormRow: true,
+            variant: "primary"
+        ))
     }
 
     @Test("Tooltip hover intent delays, warms only on pointer leave, and resets on press")
