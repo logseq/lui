@@ -39,6 +39,7 @@ enum LUIDrawerSafeAreaGeometry {
 
 enum LUIDrawerInteractionPolicy {
     static let shadowOpacity = 0.18
+    static let skipTransitionLockMilliseconds = 500
 
     static func disablesInteraction(
         isDragging: Bool,
@@ -247,14 +248,16 @@ struct LUIDrawerView: View {
             dragOffset = 0
         }
         Task {
-            try? await Task.sleep(for: .milliseconds(350))
+            try? await Task.sleep(for: .milliseconds(
+                LUIDrawerInteractionPolicy.skipTransitionLockMilliseconds
+            ))
             guard transitionGeneration == generation, presented == selected else { return }
             isAnimating = false
         }
         #else
         withAnimation(
             .spring(response: 0.28, dampingFraction: 0.9),
-            completionCriteria: .logicallyComplete
+            completionCriteria: .removed
         ) {
             presented = selected
             dragOffset = 0

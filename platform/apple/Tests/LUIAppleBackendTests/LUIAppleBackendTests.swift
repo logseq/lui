@@ -1366,6 +1366,7 @@ struct LUISwiftUIBackendTests {
 
     @Test("Drawer motion and appearance match the main application")
     func drawerMotionAndAppearanceMatchMain() {
+        #expect(LUIDrawerInteractionPolicy.skipTransitionLockMilliseconds == 500)
         #expect(!LUIDrawerInteractionPolicy.disablesInteraction(
             isDragging: false,
             isAnimating: false
