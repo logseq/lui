@@ -57,6 +57,18 @@ struct LUISwiftUIBackendTests {
         #expect(!LUIButtonVisualPolicy.fillsAvailableWidth(grow: nil))
         #expect(!LUIButtonVisualPolicy.fillsAvailableWidth(grow: 0))
         #expect(LUIButtonVisualPolicy.fillsAvailableWidth(grow: 1))
+        #expect(LUIButtonVisualPolicy.resolvedExtent(
+            explicit: 24,
+            fallback: 40
+        ) == 24)
+        #expect(LUIButtonVisualPolicy.resolvedExtent(
+            explicit: 24,
+            fallback: 44
+        ) == 24)
+        #expect(LUIButtonVisualPolicy.resolvedExtent(
+            explicit: nil,
+            fallback: 44
+        ) == 44)
     }
 
     @Test("semantic muted foreground uses secondary text styling")

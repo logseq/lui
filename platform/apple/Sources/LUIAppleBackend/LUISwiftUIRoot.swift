@@ -2579,6 +2579,13 @@ enum LUIButtonVisualPolicy {
     static func fillsAvailableWidth(grow: Double?) -> Bool {
         (grow ?? 0) > 0
     }
+
+    static func resolvedExtent(explicit: Int?, fallback: CGFloat?) -> CGFloat? {
+        if let explicit {
+            return CGFloat(explicit)
+        }
+        return fallback
+    }
 }
 
 private struct LUIButtonView: View {
@@ -2606,7 +2613,7 @@ private struct LUIButtonView: View {
                 alignment: .leading
             )
             .frame(
-                width: model.buttonSize == "icon" ? 40 : nil,
+                width: buttonWidth,
                 height: buttonHeight
             )
             .accessibilityElement(children: .ignore)
@@ -2707,7 +2714,7 @@ private struct LUIButtonView: View {
                 alignment: .leading
             )
             .frame(
-                width: model.buttonSize == "icon" ? 40 : nil,
+                width: buttonWidth,
                 height: buttonHeight
             )
             .contentShape(Rectangle())
@@ -2770,6 +2777,12 @@ private struct LUIButtonView: View {
     }
 
     private var buttonHeight: CGFloat? {
+        if model.surfaceHeight != nil {
+            return LUIButtonVisualPolicy.resolvedExtent(
+                explicit: model.surfaceHeight,
+                fallback: nil
+            )
+        }
         #if os(iOS)
         if LUIButtonVisualPolicy.usesIntrinsicHeight(
             variant: model.buttonVariant,
@@ -2780,13 +2793,20 @@ private struct LUIButtonView: View {
         }
         return 44
         #else
-        switch model.buttonSize {
+        return switch model.buttonSize {
         case "sm": 36
         case "lg": 44
         case "icon": 40
         default: 40
         }
         #endif
+    }
+
+    private var buttonWidth: CGFloat? {
+        LUIButtonVisualPolicy.resolvedExtent(
+            explicit: model.surfaceWidth,
+            fallback: model.buttonSize == "icon" ? 40 : nil
+        )
     }
 
     private func requestFocusIfNeeded() {
