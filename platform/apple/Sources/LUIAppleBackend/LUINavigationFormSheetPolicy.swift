@@ -59,6 +59,13 @@ enum LUINavigationFormRowPolicy {
     ) -> Bool {
         isNativeFormRow && (variant.isEmpty || variant == "default")
     }
+
+    static func usesBorderlessButtonStyle(
+        isNativeListRow: Bool,
+        variant: String
+    ) -> Bool {
+        isNativeListRow && variant == "ghost"
+    }
 }
 
 struct LUINavigationFormTitleStyle: ViewModifier {

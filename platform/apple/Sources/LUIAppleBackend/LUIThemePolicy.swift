@@ -75,6 +75,10 @@ enum LUIModalBackgroundPolicy {
     ) -> Color {
         semanticColors["background"] ?? systemBackground
     }
+
+    static func usesGroupedSystemBackground(styleClass: String?) -> Bool {
+        styleClass?.split(separator: " ").contains("navigation-list") == true
+    }
 }
 
 enum LUIHeadingTypography {

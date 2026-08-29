@@ -2594,6 +2594,14 @@ struct LUISwiftUIBackendTests {
             isNativeFormRow: true,
             variant: "primary"
         ))
+        #expect(LUINavigationFormRowPolicy.usesBorderlessButtonStyle(
+            isNativeListRow: true,
+            variant: "ghost"
+        ))
+        #expect(!LUINavigationFormRowPolicy.usesBorderlessButtonStyle(
+            isNativeListRow: false,
+            variant: "ghost"
+        ))
     }
 
     @Test("Tooltip hover intent delays, warms only on pointer leave, and resets on press")
@@ -3061,6 +3069,12 @@ struct LUISwiftUIBackendTests {
     @Test("native lists preserve the platform grouped background")
     func nativeListsPreserveSystemBackground() {
         #expect(LUIListSurfacePolicy.scrollContentBackground == .visible)
+        #expect(LUIModalBackgroundPolicy.usesGroupedSystemBackground(
+            styleClass: "navigation-list"
+        ))
+        #expect(!LUIModalBackgroundPolicy.usesGroupedSystemBackground(
+            styleClass: "navigation-scroll"
+        ))
         #expect(!LUIListSurfacePreferenceKey.defaultValue)
     }
 

@@ -871,6 +871,10 @@ private struct LUIIsNativeFormRowKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct LUIIsNativeListRowKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 private extension EnvironmentValues {
     var luiTreeContext: LUITreeContext? {
         get { self[LUITreeContextKey.self] }
@@ -881,6 +885,11 @@ private extension EnvironmentValues {
     var luiIsNativeFormRow: Bool {
         get { self[LUIIsNativeFormRowKey.self] }
         set { self[LUIIsNativeFormRowKey.self] = newValue }
+    }
+
+    var luiIsNativeListRow: Bool {
+        get { self[LUIIsNativeListRowKey.self] }
+        set { self[LUIIsNativeListRowKey.self] = newValue }
     }
 }
 
@@ -1579,10 +1588,25 @@ private struct LUIModalSurfaceContent: View {
     }
 
     private var modalBackground: Color {
-        LUIModalBackgroundPolicy.color(
+        if LUIModalBackgroundPolicy.usesGroupedSystemBackground(
+            styleClass: model.property(.styleClass)?.stringValue
+        ) {
+            return modalGroupedSystemBackground
+        }
+        return LUIModalBackgroundPolicy.color(
             semanticColors: semanticColors,
             systemBackground: modalSystemBackground
         )
+    }
+
+    private var modalGroupedSystemBackground: Color {
+        #if os(iOS)
+        Color(uiColor: .systemGroupedBackground)
+        #elseif os(macOS)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color.clear
+        #endif
     }
 
     private var modalSystemBackground: Color {
@@ -2537,6 +2561,7 @@ private struct LUIListItemView: View {
                 ForEach(visibleChildren, id: \.self) { childID in
                     let child = backend.model(id: childID)
                     LUIAnyNodeView(nodeID: childID, backend: backend)
+                        .environment(\.luiIsNativeListRow, isNativeListRow)
                         .frame(
                             maxWidth: LUIListItemLayoutPolicy.stretchesChild(
                                 grow: child?.property(.grow)?.doubleValue
@@ -2767,7 +2792,7 @@ private struct LUIButtonView: View {
     @State private var held = false
     @State private var selected: Bool
     @Environment(\.luiIsNativeFormRow) private var isNativeFormRow
-
+    @Environment(\.luiIsNativeListRow) private var isNativeListRow
     init(model: LUINodeModel, backend: LUIAppleBackend, isToggle: Bool = false) {
         self.model = model
         self.backend = backend
@@ -2848,7 +2873,12 @@ private struct LUIButtonView: View {
         case "destructive":
             button.buttonStyle(.borderedProminent).tint(.red)
         default:
-            if LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
+            if LUINavigationFormRowPolicy.usesBorderlessButtonStyle(
+                isNativeListRow: isNativeListRow,
+                variant: model.buttonVariant
+            ) {
+                button.buttonStyle(.borderless)
+            } else if LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
                 isNativeFormRow: isNativeFormRow,
                 variant: model.buttonVariant
             ) {
@@ -3587,6 +3617,7 @@ private struct LUIListView: View {
         }
         #if !SKIP
         .scrollContentBackground(LUIListSurfacePolicy.scrollContentBackground)
+        .foregroundStyle(.primary)
         .preference(key: LUIListSurfacePreferenceKey.self, value: true)
         #endif
         #if os(iOS)
