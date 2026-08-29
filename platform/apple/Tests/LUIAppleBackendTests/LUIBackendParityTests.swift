@@ -70,6 +70,32 @@ struct LUIBackendParityTests {
         #expect(viewportBottom.redComponent > viewportBottom.blueComponent + 0.5)
     }
 
+    @Test("a minimum vertical container frame preserves content taller than its viewport")
+    func minimumVerticalContainerFramePreservesTallerContent() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"scroll"},
+          {"op":"create-node","id":2,"kind":"column"},
+          {"op":"set-prop","id":2,"property":"container-relative-frame","value":"min-vertical"},
+          {"op":"create-node","id":3,"kind":"box"},
+          {"op":"set-prop","id":3,"property":"height","value":160},
+          {"op":"set-prop","id":3,"property":"background","value":"red"},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+
+        let host = NSHostingView(
+            rootView: LUIAnyNodeView(nodeID: 1, backend: backend)
+        )
+        host.frame = NSRect(x: 0, y: 0, width: 60, height: 100)
+        host.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+
+        #expect(host.fittingSize.height >= 160)
+    }
+
     @Test("an appear-enabled node emits once when SwiftUI presents it")
     func appearEnabledNodeEmitsWhenPresented() throws {
         let backend = LUIAppleBackend()

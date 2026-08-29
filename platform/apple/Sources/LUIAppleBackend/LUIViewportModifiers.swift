@@ -44,7 +44,6 @@ struct LUIContainerRelativeFrameModifier: ViewModifier {
                 }
         case "min-vertical":
             content
-                .fixedSize(horizontal: false, vertical: true)
                 .frame(
                     minHeight: max(0, minimumContainerSize.height - inset),
                     alignment: .topLeading
