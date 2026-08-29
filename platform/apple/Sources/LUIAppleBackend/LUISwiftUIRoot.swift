@@ -671,26 +671,9 @@ private struct LUIBinaryToggleView: View {
     let backend: LUIAppleBackend
 
     var body: some View {
-        Button {
-            try? backend.performToggle(node: model.id, checked: !model.isChecked)
-        } label: {
-            HStack(spacing: 8) {
-                Text(verbatim: model.text)
-                Spacer(minLength: 8)
-                Toggle("", isOn: .constant(model.isChecked))
-                    .labelsHidden()
-                    .allowsHitTesting(false)
-            }
-            .contentShape(Rectangle())
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.plain)
+        Toggle(model.text, isOn: toggleBinding)
         .disabled(!model.isEnabled)
         .frame(minHeight: minimumTouchHeight)
-        .accessibilityRepresentation {
-            Toggle(model.text, isOn: toggleBinding)
-                .disabled(!model.isEnabled)
-        }
     }
 
     private var toggleBinding: Binding<Bool> {
@@ -1753,14 +1736,7 @@ private struct LUINavigationFormRows: View {
             isHeading: { childID in
                 backend.model(id: childID)?.kind == .heading
             },
-            isFooter: { childID in
-                guard let child = backend.model(id: childID), child.kind == .text else {
-                    return false
-                }
-                return (child.property(.styleClass)?.stringValue ?? "")
-                    .split(separator: " ")
-                    .contains("footnote") == true
-            }
+            isFooter: { _ in false }
         )
     }
 }
@@ -2520,6 +2496,9 @@ private struct LUIListItemView: View {
             try? backend.performSubmit(node: model.id)
             return .handled
         }
+        .accessibilityIdentifier(
+            model.property(.accessibilityIdentifier)?.stringValue ?? ""
+        )
         .accessibilityAddTraits(model.isSelected ? .isSelected : [])
         .disabled(!model.isEnabled)
         .modifier(LUIListItemSwipeActionsModifier(menu: contextMenu, backend: backend))
