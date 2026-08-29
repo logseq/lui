@@ -55,6 +55,13 @@ enum LUIDrawerInteractionPolicy {
         disablesInteraction(isDragging: isDragging, isAnimating: isAnimating)
     }
 
+    static func allowsContentInteraction(
+        isDragging: Bool,
+        isAnimating: Bool
+    ) -> Bool {
+        !disablesInteraction(isDragging: isDragging, isAnimating: isAnimating)
+    }
+
     static func sidebarOpacity(progress: CGFloat) -> Double {
         0.35 + (0.65 * Double(progress))
     }
@@ -98,6 +105,11 @@ struct LUIDrawerView: View {
                 isDragging: isDragging,
                 isAnimating: isAnimating
             )
+            let contentInteractionAllowed =
+                LUIDrawerInteractionPolicy.allowsContentInteraction(
+                    isDragging: isDragging,
+                    isAnimating: isAnimating
+                )
 
             ZStack(alignment: .leading) {
                 if let panelID = model.children.dropFirst().first {
@@ -110,7 +122,7 @@ struct LUIDrawerView: View {
                         .offset(x: -20.0 * (1.0 - progress))
                         .scrollDisabled(interactionsLocked)
                         .disabled(interactionsLocked)
-                        .allowsHitTesting(presented && !interactionsLocked)
+                        .allowsHitTesting(presented && contentInteractionAllowed)
                 }
 
                 if let mainID = model.children.first {
@@ -122,7 +134,7 @@ struct LUIDrawerView: View {
                         .modifier(LUIDrawerMainSurfaceModifier())
                         .scrollDisabled(interactionsLocked)
                         .disabled(interactionsLocked)
-                        .allowsHitTesting(!interactionsLocked)
+                        .allowsHitTesting(contentInteractionAllowed)
                         .overlay {
                             if presented {
                                 Button {
@@ -133,7 +145,7 @@ struct LUIDrawerView: View {
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Close sidebar")
                                 .accessibilityIdentifier("button.sidebar.dismiss")
-                                .allowsHitTesting(!interactionsLocked)
+                                .allowsHitTesting(contentInteractionAllowed)
                             }
                         }
                         .clipShape(RoundedRectangle(
@@ -159,6 +171,7 @@ struct LUIDrawerView: View {
                         .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
                         .allowsHitTesting(true)
                         .accessibilityHidden(true)
+                        .modifier(LUIDrawerInteractionShieldModifier())
                 }
             }
             #if SKIP
@@ -242,7 +255,6 @@ struct LUIDrawerView: View {
         transitionGeneration += 1
         let generation = transitionGeneration
         isAnimating = true
-        #if SKIP
         withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
             presented = selected
             dragOffset = 0
@@ -254,18 +266,6 @@ struct LUIDrawerView: View {
             guard transitionGeneration == generation, presented == selected else { return }
             isAnimating = false
         }
-        #else
-        withAnimation(
-            .spring(response: 0.28, dampingFraction: 0.9),
-            completionCriteria: .removed
-        ) {
-            presented = selected
-            dragOffset = 0
-        } completion: {
-            guard transitionGeneration == generation, presented == selected else { return }
-            isAnimating = false
-        }
-        #endif
     }
 }
 
@@ -276,6 +276,20 @@ private struct LUIDrawerFullScreenModifier: ViewModifier {
         content.ignoresSafeArea(.container)
         #else
         content
+        #endif
+    }
+}
+
+private struct LUIDrawerInteractionShieldModifier: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if !SKIP
+        content
+            .contentShape(Rectangle())
+            .ignoresSafeArea(.container)
+            .zIndex(1_000)
+        #else
+        content.zIndex(1_000)
         #endif
     }
 }

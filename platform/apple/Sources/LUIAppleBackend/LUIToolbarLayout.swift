@@ -10,6 +10,16 @@ struct LUIToolbarLayout: Equatable, Sendable {
 }
 
 enum LUIToolbarLayoutPolicy {
+    static func outerSpacing(hasFixedChild: Bool, requested: Double) -> Double {
+        hasFixedChild ? 0.0 : requested
+    }
+
+    static func leadingInset(_ styleClass: String?) -> Double {
+        if hasStyle("leading-inset-12", in: styleClass) { return 12 }
+        if hasStyle("leading-inset-8", in: styleClass) { return 8 }
+        return 0.0
+    }
+
     static func layout(
         orientation: String?,
         styleClass: String?,

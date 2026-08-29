@@ -1824,11 +1824,17 @@ private struct LUIToolbarView: View {
                 children(model.children)
             }
         } else if !layout.scrollingChildIDs.isEmpty {
-            HStack(spacing: spacing) {
+            HStack(spacing: CGFloat(LUIToolbarLayoutPolicy.outerSpacing(
+                hasFixedChild: layout.fixedChildID != nil,
+                requested: Double(spacing)
+            ))) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: spacing) {
                         children(layout.scrollingChildIDs)
                     }
+                    .padding(.leading, CGFloat(LUIToolbarLayoutPolicy.leadingInset(
+                        model.property(.styleClass)?.stringValue
+                    )))
                 }
                 if let fixedChildID = layout.fixedChildID {
                     LUIAnyNodeView(nodeID: fixedChildID, backend: backend)
@@ -2736,7 +2742,11 @@ enum LUIButtonVisualPolicy {
     }
 
     static func iconExtent(buttonSize: String) -> CGFloat {
-        buttonSize == "icon" ? 24 : 16
+        switch buttonSize {
+        case "sm": 16
+        case "lg", "icon": 24
+        default: 18
+        }
     }
 
     static func usesIntrinsicHeight(

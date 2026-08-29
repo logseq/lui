@@ -43,7 +43,7 @@ struct LUISwiftUIBackendTests {
         #expect(!LUIButtonVisualPolicy.usesBorderedStyle(variant: "ghost"))
         #expect(LUIButtonVisualPolicy.usesBorderedStyle(variant: "outline"))
         #expect(LUIButtonVisualPolicy.iconExtent(buttonSize: "icon") == 24)
-        #expect(LUIButtonVisualPolicy.iconExtent(buttonSize: "default") == 16)
+        #expect(LUIButtonVisualPolicy.iconExtent(buttonSize: "default") == 18)
         #expect(LUIButtonVisualPolicy.usesIntrinsicHeight(
             variant: "ghost",
             buttonSize: "default",
@@ -1422,6 +1422,18 @@ struct LUISwiftUIBackendTests {
             isDragging: false,
             isAnimating: true
         ))
+        #expect(LUIDrawerInteractionPolicy.allowsContentInteraction(
+            isDragging: false,
+            isAnimating: false
+        ))
+        #expect(!LUIDrawerInteractionPolicy.allowsContentInteraction(
+            isDragging: true,
+            isAnimating: false
+        ))
+        #expect(!LUIDrawerInteractionPolicy.allowsContentInteraction(
+            isDragging: false,
+            isAnimating: true
+        ))
         #expect(!LUIDrawerInteractionPolicy.showsInteractionShield(
             isDragging: false,
             isAnimating: false
@@ -2483,6 +2495,14 @@ struct LUISwiftUIBackendTests {
             scrollingChildIDs: [],
             fixedChildID: nil
         ))
+        #expect(LUIToolbarLayoutPolicy.outerSpacing(hasFixedChild: true, requested: 6) == 0)
+        #expect(LUIToolbarLayoutPolicy.outerSpacing(hasFixedChild: false, requested: 6) == 6)
+        #expect(LUIToolbarLayoutPolicy.leadingInset("scroll-leading leading-inset-8") == 8)
+        #expect(LUIToolbarLayoutPolicy.leadingInset("scroll-leading leading-inset-12") == 12)
+        #expect(LUIToolbarLayoutPolicy.leadingInset("scroll-leading") == 0)
+        #expect(LUIButtonVisualPolicy.iconExtent(buttonSize: "sm") == 16)
+        #expect(LUIButtonVisualPolicy.iconExtent(buttonSize: "default") == 18)
+        #expect(LUIButtonVisualPolicy.iconExtent(buttonSize: "icon") == 24)
     }
 
     @Test("navigation form sheets map content and actions to native placements")
