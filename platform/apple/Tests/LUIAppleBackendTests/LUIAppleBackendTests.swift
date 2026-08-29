@@ -71,6 +71,18 @@ struct LUISwiftUIBackendTests {
         ) == 44)
     }
 
+    @Test("single-line text style matches native summary labels")
+    func singleLineTextStyleMatchesNativeSummaryLabels() {
+        #expect(LUITextLinePolicy.lineLimit(styleClass: nil) == nil)
+        #expect(LUITextLinePolicy.lineLimit(styleClass: "secondary") == nil)
+        #expect(LUITextLinePolicy.lineLimit(
+            styleClass: "secondary single-line"
+        ) == 1)
+        #expect(LUITextLinePolicy.layoutPriority(
+            styleClass: "secondary single-line"
+        ) == 1)
+    }
+
     @Test("semantic muted foreground uses secondary text styling")
     func semanticMutedForegroundUsesSecondaryTextStyling() {
         #expect(LUIThemeColorPolicy.isMutedForeground("muted-foreground"))
@@ -1013,9 +1025,26 @@ struct LUISwiftUIBackendTests {
 
     @Test("growing Row children preserve intrinsic trailing controls")
     func growingRowChildrenPreserveTrailingControls() {
-        #expect(LUIRowLayoutPolicy.childLayoutPriority(grow: nil) == 0)
-        #expect(LUIRowLayoutPolicy.childLayoutPriority(grow: 0) == 0)
-        #expect(LUIRowLayoutPolicy.childLayoutPriority(grow: 1) == 0)
+        #expect(LUIRowLayoutPolicy.childLayoutPriority(
+            grow: nil,
+            styleClass: nil
+        ) == 0)
+        #expect(LUIRowLayoutPolicy.childLayoutPriority(
+            grow: 0,
+            styleClass: "secondary"
+        ) == 0)
+        #expect(LUIRowLayoutPolicy.childLayoutPriority(
+            grow: 1,
+            styleClass: nil
+        ) == 0)
+        #expect(LUIRowLayoutPolicy.childLayoutPriority(
+            grow: nil,
+            styleClass: "secondary single-line"
+        ) == 1)
+        #expect(LUIRowLayoutPolicy.childLayoutPriority(
+            grow: 0,
+            styleClass: "single-line secondary"
+        ) == 1)
         #expect(LUIRowLayoutPolicy.showsTrailingSpacer(
             main: nil,
             hasGrowingChild: false
@@ -1409,7 +1438,8 @@ struct LUISwiftUIBackendTests {
 
     @Test("Drawer motion and appearance match the main application")
     func drawerMotionAndAppearanceMatchMain() {
-        #expect(LUIDrawerInteractionPolicy.skipTransitionLockMilliseconds == 500)
+        #expect(LUIDrawerInteractionPolicy.transitionLockMilliseconds == 350)
+        #expect(LUIDrawerInteractionPolicy.usesNativeLogicalCompletion)
         #expect(!LUIDrawerInteractionPolicy.disablesInteraction(
             isDragging: false,
             isAnimating: false
@@ -1421,6 +1451,11 @@ struct LUISwiftUIBackendTests {
         #expect(LUIDrawerInteractionPolicy.disablesInteraction(
             isDragging: false,
             isAnimating: true
+        ))
+        #expect(LUIDrawerInteractionPolicy.disablesInteraction(
+            isDragging: false,
+            isAnimating: false,
+            isGestureActive: true
         ))
         #expect(LUIDrawerInteractionPolicy.allowsContentInteraction(
             isDragging: false,
@@ -1445,6 +1480,11 @@ struct LUISwiftUIBackendTests {
         #expect(LUIDrawerInteractionPolicy.showsInteractionShield(
             isDragging: false,
             isAnimating: true
+        ))
+        #expect(LUIDrawerInteractionPolicy.showsInteractionShield(
+            isDragging: false,
+            isAnimating: false,
+            isGestureActive: true
         ))
         #expect(LUIDrawerInteractionPolicy.sidebarOpacity(progress: 0) == 0.35)
         #expect(LUIDrawerInteractionPolicy.sidebarOpacity(progress: 0.5) == 0.675)

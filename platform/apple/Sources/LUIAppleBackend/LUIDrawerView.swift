@@ -39,27 +39,39 @@ enum LUIDrawerSafeAreaGeometry {
 
 enum LUIDrawerInteractionPolicy {
     static let shadowOpacity = 0.18
-    static let skipTransitionLockMilliseconds = 500
+    static let transitionLockMilliseconds = 350
+    static let usesNativeLogicalCompletion = true
 
     static func disablesInteraction(
         isDragging: Bool,
-        isAnimating: Bool
+        isAnimating: Bool,
+        isGestureActive: Bool = false
     ) -> Bool {
-        isDragging || isAnimating
+        isDragging || isAnimating || isGestureActive
     }
 
     static func showsInteractionShield(
         isDragging: Bool,
-        isAnimating: Bool
+        isAnimating: Bool,
+        isGestureActive: Bool = false
     ) -> Bool {
-        disablesInteraction(isDragging: isDragging, isAnimating: isAnimating)
+        disablesInteraction(
+            isDragging: isDragging,
+            isAnimating: isAnimating,
+            isGestureActive: isGestureActive
+        )
     }
 
     static func allowsContentInteraction(
         isDragging: Bool,
-        isAnimating: Bool
+        isAnimating: Bool,
+        isGestureActive: Bool = false
     ) -> Bool {
-        !disablesInteraction(isDragging: isDragging, isAnimating: isAnimating)
+        !disablesInteraction(
+            isDragging: isDragging,
+            isAnimating: isAnimating,
+            isGestureActive: isGestureActive
+        )
     }
 
     static func sidebarOpacity(progress: CGFloat) -> Double {
@@ -77,6 +89,7 @@ struct LUIDrawerView: View {
 
     @State private var presented: Bool
     @State private var dragOffset: CGFloat = 0
+    @State private var isGestureActive = false
     @State private var isAnimating = false
     @State private var transitionGeneration = 0
 
@@ -103,12 +116,14 @@ struct LUIDrawerView: View {
             let isDragging = abs(dragOffset) > 0.0
             let interactionsLocked = LUIDrawerInteractionPolicy.disablesInteraction(
                 isDragging: isDragging,
-                isAnimating: isAnimating
+                isAnimating: isAnimating,
+                isGestureActive: isGestureActive
             )
             let contentInteractionAllowed =
                 LUIDrawerInteractionPolicy.allowsContentInteraction(
                     isDragging: isDragging,
-                    isAnimating: isAnimating
+                    isAnimating: isAnimating,
+                    isGestureActive: isGestureActive
                 )
 
             ZStack(alignment: .leading) {
@@ -165,7 +180,8 @@ struct LUIDrawerView: View {
 
                 if LUIDrawerInteractionPolicy.showsInteractionShield(
                     isDragging: isDragging,
-                    isAnimating: isAnimating
+                    isAnimating: isAnimating,
+                    isGestureActive: isGestureActive
                 ) {
                     Color.black.opacity(0.001)
                         .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
@@ -192,7 +208,10 @@ struct LUIDrawerView: View {
             animatePresentation(selected)
         }
         .onChange(of: model.isEnabled) { _, enabled in
-            if !enabled { dragOffset = 0 }
+            if !enabled {
+                dragOffset = 0
+                isGestureActive = false
+            }
         }
     }
 
@@ -206,14 +225,16 @@ struct LUIDrawerView: View {
             .onChanged { value in
                 guard !isAnimating else { return }
                 let activationAllowed = presented || model.isEnabled
-                if LUIDrawerGeometry.gestureIsEligible(
+                let gestureIsEligible = LUIDrawerGeometry.gestureIsEligible(
                     enabled: activationAllowed,
                     translationX: Double(value.translation.width),
                     translationY: Double(value.translation.height)
-                ) {
+                )
+                if isGestureActive || gestureIsEligible {
                     var transaction = Transaction()
                     transaction.animation = nil
                     withTransaction(transaction) {
+                        isGestureActive = true
                         dragOffset = CGFloat(LUIDrawerGeometry.dragOffset(
                             isPresented: presented,
                             translation: Double(value.translation.width),
@@ -226,12 +247,7 @@ struct LUIDrawerView: View {
             }
             .onEnded { value in
                 guard !isAnimating else { return }
-                let activationAllowed = presented || model.isEnabled
-                guard LUIDrawerGeometry.gestureIsEligible(
-                    enabled: activationAllowed,
-                    translationX: Double(value.translation.width),
-                    translationY: Double(value.translation.height)
-                ) else {
+                guard isGestureActive else {
                     dragOffset = 0
                     return
                 }
@@ -241,6 +257,7 @@ struct LUIDrawerView: View {
                     predictedTranslation: Double(value.predictedEndTranslation.width),
                     width: Double(width)
                 ))
+                isGestureActive = false
             }
     }
 
@@ -255,17 +272,40 @@ struct LUIDrawerView: View {
         transitionGeneration += 1
         let generation = transitionGeneration
         isAnimating = true
+        #if SKIP
         withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
             presented = selected
             dragOffset = 0
         }
         Task {
             try? await Task.sleep(for: .milliseconds(
-                LUIDrawerInteractionPolicy.skipTransitionLockMilliseconds
+                LUIDrawerInteractionPolicy.transitionLockMilliseconds
             ))
             guard transitionGeneration == generation, presented == selected else { return }
             isAnimating = false
         }
+        #else
+        withAnimation(
+            .spring(response: 0.28, dampingFraction: 0.9),
+            completionCriteria: .logicallyComplete
+        ) {
+            presented = selected
+            dragOffset = 0
+        } completion: {
+            finishAnimation(generation: generation, selected: selected)
+        }
+        Task {
+            try? await Task.sleep(for: .milliseconds(
+                LUIDrawerInteractionPolicy.transitionLockMilliseconds
+            ))
+            finishAnimation(generation: generation, selected: selected)
+        }
+        #endif
+    }
+
+    private func finishAnimation(generation: Int, selected: Bool) {
+        guard transitionGeneration == generation, presented == selected else { return }
+        isAnimating = false
     }
 }
 

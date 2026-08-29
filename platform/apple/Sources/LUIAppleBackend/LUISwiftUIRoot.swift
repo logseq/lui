@@ -1576,7 +1576,6 @@ private struct LUIModalSurfaceContent: View {
                     )
                 }
             }
-            .id(model.text)
             .background(modalBackground.ignoresSafeArea())
         } else {
             VStack(alignment: .leading, spacing: 16) {
@@ -3263,6 +3262,21 @@ private struct LUIIconImage: View {
     }
 }
 
+enum LUITextLinePolicy {
+    static func lineLimit(styleClass: String?) -> Int? {
+        hasStyle("single-line", in: styleClass) ? 1 : nil
+    }
+
+    static func layoutPriority(styleClass: String?) -> Double {
+        hasStyle("single-line", in: styleClass) ? 1.0 : 0.0
+    }
+
+    private static func hasStyle(_ target: String, in styleClass: String?) -> Bool {
+        guard let styleClass else { return false }
+        return styleClass.split(separator: " ").contains { String($0) == target }
+    }
+}
+
 private struct LUITextView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
@@ -3275,17 +3289,33 @@ private struct LUITextView: View {
             } label: {
                 Text(verbatim: model.text)
                     .multilineTextAlignment(textAlignment)
+                    .lineLimit(lineLimit)
                     .frame(maxWidth: alignedMaxWidth, alignment: frameAlignment)
                     .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(layoutPriority)
             }
             .buttonStyle(.plain)
         } else {
             Text(verbatim: model.text)
                 .font(font)
                 .multilineTextAlignment(textAlignment)
+                .lineLimit(lineLimit)
                 .frame(maxWidth: alignedMaxWidth, alignment: frameAlignment)
                 .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(layoutPriority)
         }
+    }
+
+    private var lineLimit: Int? {
+        LUITextLinePolicy.lineLimit(
+            styleClass: model.property(.styleClass)?.stringValue
+        )
+    }
+
+    private var layoutPriority: Double {
+        LUITextLinePolicy.layoutPriority(
+            styleClass: model.property(.styleClass)?.stringValue
+        )
     }
 
     private var isFootnote: Bool {
@@ -3328,9 +3358,12 @@ private struct LUITextView: View {
 }
 
 enum LUIRowLayoutPolicy {
-    static func childLayoutPriority(grow: Double?) -> Double {
+    static func childLayoutPriority(
+        grow: Double?,
+        styleClass: String?
+    ) -> Double {
         _ = grow
-        return 0
+        return LUITextLinePolicy.layoutPriority(styleClass: styleClass)
     }
 
     static func showsTrailingSpacer(
@@ -3361,7 +3394,8 @@ private struct LUIRowView: View {
                         maxHeight: cross == "stretch" ? .infinity : nil
                     )
                     .layoutPriority(LUIRowLayoutPolicy.childLayoutPriority(
-                        grow: child?.property(.grow)?.doubleValue
+                        grow: child?.property(.grow)?.doubleValue,
+                        styleClass: child?.property(.styleClass)?.stringValue
                     ))
                 if model.property(.main)?.stringValue == "space_between" &&
                     index < model.children.count - 1 {
