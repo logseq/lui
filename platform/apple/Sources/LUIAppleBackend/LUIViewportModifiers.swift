@@ -2,16 +2,18 @@ import SwiftUI
 
 struct LUIContainerRelativeFrameModifier: ViewModifier {
     let axes: String?
+    let inset: CGFloat
+    @State private var minimumContainerSize = CGSize.zero
 
     @ViewBuilder
     func body(content: Content) -> some View {
         #if SKIP
         switch axes {
-        case "horizontal":
+        case "horizontal", "min-horizontal":
             content.frame(maxWidth: .infinity, alignment: .topLeading)
-        case "vertical":
+        case "vertical", "min-vertical":
             content.frame(maxHeight: .infinity, alignment: .topLeading)
-        case "both":
+        case "both", "min-both":
             content.frame(
                 maxWidth: .infinity,
                 maxHeight: .infinity,
@@ -31,11 +33,54 @@ struct LUIContainerRelativeFrameModifier: ViewModifier {
                 [.horizontal, .vertical],
                 alignment: .topLeading
             )
+        case "min-horizontal":
+            content
+                .frame(
+                    minWidth: max(0, minimumContainerSize.width - inset),
+                    alignment: .topLeading
+                )
+                .background {
+                    minimumContainerMeasurement(.horizontal)
+                }
+        case "min-vertical":
+            content
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(
+                    minHeight: max(0, minimumContainerSize.height - inset),
+                    alignment: .topLeading
+                )
+                .background {
+                    minimumContainerMeasurement(.vertical)
+                }
+        case "min-both":
+            content
+                .fixedSize(horizontal: true, vertical: true)
+                .frame(
+                    minWidth: max(0, minimumContainerSize.width - inset),
+                    minHeight: max(0, minimumContainerSize.height - inset),
+                    alignment: .topLeading
+                )
+                .background {
+                    minimumContainerMeasurement([.horizontal, .vertical])
+                }
         default:
             content
         }
         #endif
     }
+
+    #if !SKIP
+    private func minimumContainerMeasurement(_ axes: Axis.Set) -> some View {
+        Color.clear
+            .containerRelativeFrame(axes, alignment: .topLeading)
+            .onGeometryChange(for: CGSize.self) { proxy in
+                proxy.size
+            } action: { size in
+                guard minimumContainerSize != size else { return }
+                minimumContainerSize = size
+            }
+    }
+    #endif
 }
 
 struct LUIAppearModifier: ViewModifier {

@@ -137,7 +137,8 @@ enum LUIWireValue: Decodable, Equatable {
             return doubleValue != nil
         case .resizeDuration, .image, .surface, .active, .columns,
              .paddingHorizontal, .paddingVertical, .borderWidth, .cornerRadius,
-             .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight:
+             .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight,
+             .containerRelativeFrameInset:
             guard let value = intValue else { return false }
             return value >= 0
         case .resizeEasing:
@@ -169,7 +170,10 @@ enum LUIWireValue: Decodable, Equatable {
             return stringValue != nil
         case .containerRelativeFrame:
             guard let value = stringValue else { return false }
-            return value == "horizontal" || value == "vertical" || value == "both"
+            return [
+                "horizontal", "vertical", "both",
+                "min-horizontal", "min-vertical", "min-both",
+            ].contains(value)
         case .anchor:
             guard let value = stringValue else { return false }
             return ["above", "below", "left", "right"].contains(value)
@@ -585,7 +589,7 @@ struct LUIRetainedTree {
              .cornerRadius,
              .minWidth, .maxWidth, .minHeight, .maxHeight:
             kind != .avatar && kind != .tooltip && !isModalSurface(kind)
-        case .containerRelativeFrame:
+        case .containerRelativeFrame, .containerRelativeFrameInset:
             kind != .root && !isModalSurface(kind)
         case .paddingHorizontal, .paddingVertical:
             kind == .row || kind == .column || kind == .grid || kind == .box
@@ -680,7 +684,8 @@ struct LUIRetainedTree {
             kind == .dropdownMenu || kind == .tooltip
         case .tooltipDelay: kind == .tooltip
         case .duration: false
-        case .textAlignment: kind == .tableCell || kind == .bubble || kind == .statusBar
+        case .textAlignment:
+            kind == .text || kind == .tableCell || kind == .bubble || kind == .statusBar
         case .role: isTreeRow(kind) || kind == .listItem
         case .treeLevel, .expanded: isTreeRow(kind)
         case .active, .title, .description, .meta, .indicator, .connector: false

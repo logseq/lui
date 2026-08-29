@@ -2274,6 +2274,52 @@
     (assert-equal 2 (runtime/generation application)
                   "runtime generation advances only for emitted batches")))
 
+(deftest unchanged-property-does-not-emit-a-patch
+  (let [renderer (apple/create)
+        application (runtime/create (sig/scheduler) (apple/backend renderer))
+        label (runtime/create-node! application proto/Text)
+        value (proto/StringValue "Stable")]
+    (runtime/set-prop! application label proto/TextValue value)
+    (runtime/flush! application)
+    (runtime/set-prop! application label proto/TextValue value)
+    (runtime/flush! application)
+    (assert-equal 1 (count (apple/batches renderer))
+                  "setting an unchanged property emits no second batch")
+    (assert-equal 1 (runtime/generation application)
+                  "an unchanged property preserves the generation")
+    (let [diagnostics (runtime/diagnostics application)]
+      (assert-equal runtime/NoBatch (:flush-status diagnostics)
+                    "an unchanged property is reported as a no-op")
+      (assert-equal 0 (:flush-operation-count diagnostics)
+                    "an unchanged property enqueues no retained operation"))))
+
+(deftest unchanged-derived-property-does-not-emit-a-patch
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        component-scope (sig/scope "stable-derived-property")
+        source-state (sig/state scheduler 0)
+        label (runtime/create-node! application proto/Text)
+        stable-value
+        (sig/map
+         (fn [_] (proto/StringValue "Stable"))
+         (sig/value source-state))]
+    (sig/mount! component-scope)
+    (runtime/bind-prop!
+     component-scope application label proto/TextValue stable-value)
+    (runtime/flush! application)
+    (sig/set! source-state 1)
+    (runtime/flush! application)
+    (assert-equal 1 (count (apple/batches renderer))
+                  "a stable derived value emits no second batch")
+    (assert-equal 1 (runtime/generation application)
+                  "a stable derived value preserves the generation")
+    (let [diagnostics (runtime/diagnostics application)]
+      (assert-equal runtime/NoBatch (:flush-status diagnostics)
+                    "a stable derived value is reported as a no-op")
+      (assert-equal 0 (:flush-operation-count diagnostics)
+                    "a stable derived value enqueues no retained operation"))))
+
 (deftest flush-diagnostics-prove-local-signal-work
   (let [scheduler (sig/scheduler)
         renderer (apple/create)

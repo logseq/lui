@@ -13,6 +13,39 @@ enum LUIListItemInteractionPolicy {
         hasInteractiveChildren ? .composite : .button
     }
 }
+
+enum LUIListItemLayoutPolicy {
+    static let navigationHeadingSpacing = 8.0
+
+    static func stretchesChild(grow: Double?) -> Bool {
+        (grow ?? 0.0) > 0.0
+    }
+
+    static func showsTrailingSpacer(childGrows: Bool) -> Bool {
+        !childGrows
+    }
+
+    static func usesInlineTrailingIcon(isNavigationHeading: Bool) -> Bool {
+        isNavigationHeading
+    }
+
+    static func minimumHeight(
+        isNativeListRow: Bool,
+        isNavigationRow: Bool,
+        isNavigationHeading: Bool,
+        explicitMinimumHeight: Int?
+    ) -> Double? {
+        _ = isNativeListRow
+        _ = isNavigationRow
+        let semanticMinimumHeight: Double? = isNavigationHeading ? 44.0 : nil
+        guard let explicitMinimumHeight else { return semanticMinimumHeight }
+        let explicit = Double(explicitMinimumHeight)
+        if let semanticMinimumHeight, semanticMinimumHeight > explicit {
+            return semanticMinimumHeight
+        }
+        return explicit
+    }
+}
 import SwiftUI
 import CoreGraphics
 
@@ -98,6 +131,9 @@ final class LUINodeModel: Identifiable {
     var supportsAppear: Bool { properties[.appearEnabled]?.boolValue ?? false }
     var containerRelativeFrame: String? {
         properties[.containerRelativeFrame]?.stringValue
+    }
+    var containerRelativeFrameInset: Int {
+        properties[.containerRelativeFrameInset]?.intValue ?? 0
     }
     var sliderValue: Double { properties[.progressValue]?.doubleValue ?? 0.0 }
     var splitFraction: Double { properties[.progressValue]?.doubleValue ?? 0.0 }

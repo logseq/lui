@@ -645,8 +645,16 @@
       (raise (Invalid_argument "property is unsupported by node kind")))
     (when (not (proto/property-value-supported-for-kind? kind property value))
       (raise (Invalid_argument "invalid property value")))
-    (swap! (:runtime-properties application) update node assoc property value)
-    (enqueue! application (proto/set-prop-op node property value))))
+    (let [properties (:runtime-properties application)
+          current
+          (if-some [values (clojure.core/get (deref properties) node)]
+            values
+            (hash-map))]
+      (if (= (clojure.core/get current property) (Some value))
+        true
+        (do
+          (swap! properties assoc node (assoc current property value))
+          (enqueue! application (proto/set-prop-op node property value)))))))
 
 (defn remove-prop! [application node property]
   (let [node (canonical-node application node)
@@ -671,8 +679,13 @@
           (if-some [values (clojure.core/get (deref properties) node)]
             values
             (hash-map))]
-      (swap! properties assoc node (assoc current property value)))
-    (enqueue! application (proto/set-extension-prop-op node property value))))
+      (if (= (clojure.core/get current property) (Some value))
+        true
+        (do
+          (swap! properties assoc node (assoc current property value))
+          (enqueue!
+           application
+           (proto/set-extension-prop-op node property value)))))))
 
 (defn remove-extension-prop! [application node property]
   (let [node (canonical-node application node)

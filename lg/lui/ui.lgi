@@ -163,6 +163,8 @@
 (signature lui.ui/max-height! :fn<ui-context;int;int;bool>)
 (signature lui.ui/container-relative-frame!
  :fn<ui-context;int;string;bool>)
+(signature lui.ui/container-relative-frame-inset!
+ :fn<ui-context;int;int;bool>)
 (signature lui.ui/placeholder! :fn<ui-context;int;string;bool>)
 (signature lui.ui/accessibility-label! :fn<ui-context;int;string;bool>)
 (signature lui.ui/accessibility-identifier! :fn<ui-context;int;string;bool>)

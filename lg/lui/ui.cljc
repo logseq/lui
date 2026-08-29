@@ -609,6 +609,11 @@
    (:ui-application context) node proto/ContainerRelativeFrameValue
    (proto/StringValue axes)))
 
+(defn container-relative-frame-inset! [context node inset]
+  (runtime/set-prop!
+   (:ui-application context) node proto/ContainerRelativeFrameInset
+   (proto/IntValue inset)))
+
 (defn placeholder! [context node placeholder]
   (runtime/set-prop!
    (:ui-application context) node proto/PlaceholderValue

@@ -505,6 +505,8 @@
                       [(:max-height attrs) 'lui.ui/max-height!]
                       [(:container-relative-frame attrs)
                        'lui.ui/container-relative-frame!]
+                      [(:container-relative-frame-inset attrs)
+                       'lui.ui/container-relative-frame-inset!]
                       [(:accessibility-identifier attrs)
                        'lui.ui/accessibility-identifier!]
                       [(:class attrs) 'lui.ui/style-class!]])
@@ -1233,6 +1235,8 @@
         node (gensym "node")]
     `(let [~node ~expression]
        ~@(element-properties context node attrs)
+       ~@(string-attribute-expansion
+          context node (:text-alignment attrs) 'lui.protocol/TextAlignment)
        ~@(if on-press
            [`(lui.ui/bool-property!
               ~context ~node lui.protocol/PressEnabled true)

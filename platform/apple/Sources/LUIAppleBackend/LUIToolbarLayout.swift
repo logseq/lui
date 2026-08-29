@@ -22,6 +22,13 @@ enum LUIToolbarLayoutPolicy {
                 fixedChildID: nil
             )
         }
+        if hasStyle("scroll", in: styleClass) {
+            return LUIToolbarLayout(
+                axis: .horizontal,
+                scrollingChildIDs: childIDs,
+                fixedChildID: nil
+            )
+        }
         guard hasStyle("scroll-leading", in: styleClass),
               let fixedChildID = childIDs.last else {
             return LUIToolbarLayout(

@@ -472,6 +472,10 @@ struct LUIBackendParityTests {
         #expect(LUIThemeColorPolicy.usesDefaultForeground(kind: LUINodeKind.card))
         #expect(!LUIThemeColorPolicy.usesDefaultForeground(kind: LUINodeKind.column))
         #expect(!LUIThemeColorPolicy.usesDefaultForeground(kind: LUINodeKind.text))
+        #expect(LUIThemeColorPolicy.isAccentForeground("accent"))
+        #expect(!LUIThemeColorPolicy.isAccentForeground("primary"))
+        #expect(LUIThemeColorPolicy.isSecondaryForeground("secondary"))
+        #expect(!LUIThemeColorPolicy.isSecondaryForeground("secondary-foreground"))
     }
 
     @Test("retains nodes and patches properties")

@@ -48,7 +48,8 @@ private struct LUISkipNodeView: View {
             .modifier(LUISkipRetainedPaneModifier(model: model))
             .modifier(
                 LUIContainerRelativeFrameModifier(
-                    axes: model.containerRelativeFrame
+                    axes: model.containerRelativeFrame,
+                    inset: CGFloat(model.containerRelativeFrameInset)
                 )
             )
             .modifier(LUISkipAccessibilityModifier(model: model, backend: backend))

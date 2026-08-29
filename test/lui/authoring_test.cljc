@@ -183,7 +183,7 @@
 (defui vercel-layout-primitives []
   [:column {:gap 12 :main "center" :cross "stretch"}
    [:row {:gap 8 :main "space_between" :cross "end"}
-    [:text {:grow 1.0} "Leading"]
+    [:text {:grow 1.0 :text-alignment "center"} "Leading"]
     [:text "Trailing"]]
    [:grid {:columns 2 :gap 6}
     [:text "One"]
@@ -1886,6 +1886,8 @@
                (tuple row proto/CrossAlignment
                       (proto/StringValue "end"))
                (tuple leading proto/GrowValue (proto/FloatValue 1.0))
+               (tuple leading proto/TextAlignment
+                      (proto/StringValue "center"))
                (tuple grid proto/GridColumns (proto/IntValue 2))]]
         (match constraint
           (tuple node property expected)

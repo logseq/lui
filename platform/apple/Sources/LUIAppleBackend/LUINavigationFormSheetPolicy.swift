@@ -14,12 +14,24 @@ enum LUINavigationFormSheetPolicy {
         hasStyle("navigation-scroll", in: styleClass)
     }
 
+    static func isNavigationList(_ styleClass: String?) -> Bool {
+        hasStyle("navigation-list", in: styleClass)
+    }
+
+    static func isNavigationContent(_ styleClass: String?) -> Bool {
+        hasStyle("navigation-content", in: styleClass)
+    }
+
     static func isForm(_ styleClass: String?) -> Bool {
         hasStyle("form", in: styleClass)
     }
 
     static func usesInlineTitle(_ styleClass: String?) -> Bool {
         isNavigationForm(styleClass)
+    }
+
+    static func usesNavigationBackIcon(_ styleClass: String?) -> Bool {
+        hasStyle("navigation-back-action", in: styleClass)
     }
 
     static func actionPlacement(
@@ -78,15 +90,30 @@ struct LUINavigationFormActionView: View {
     private var actionButton: some View {
         #if SKIP
         Button(action: performPress) {
-            Text(verbatim: model.text)
+            actionLabel
         }
         #else
         Button(action: {}) {
-            Text(verbatim: model.text)
+            actionLabel
         }
         .highPriorityGesture(TapGesture().onEnded(performPress))
         .accessibilityElement(children: .ignore)
         #endif
+    }
+
+    @ViewBuilder
+    private var actionLabel: some View {
+        if LUINavigationFormSheetPolicy.usesNavigationBackIcon(
+            model.property(.styleClass)?.stringValue
+        ) {
+            #if SKIP
+            Text(verbatim: "‹")
+            #else
+            Image(systemName: "chevron.backward")
+            #endif
+        } else {
+            Text(verbatim: model.text)
+        }
     }
 
     private func performPress() {

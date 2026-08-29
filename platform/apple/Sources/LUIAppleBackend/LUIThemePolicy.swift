@@ -27,6 +27,14 @@ enum LUIThemeColorPolicy {
         name?.lowercased() == "muted-foreground"
     }
 
+    static func isAccentForeground(_ name: String?) -> Bool {
+        name?.lowercased() == "accent"
+    }
+
+    static func isSecondaryForeground(_ name: String?) -> Bool {
+        name?.lowercased() == "secondary"
+    }
+
     static func usesDefaultForeground(kind: LUINodeKind) -> Bool {
         switch kind {
         case .panel, .card, .resizable, .alert, .bubble:

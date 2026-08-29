@@ -116,6 +116,7 @@
   (MinHeight)
   (MaxHeight)
   (ContainerRelativeFrameValue)
+  (ContainerRelativeFrameInset)
   (PlaceholderValue)
   (AccessibilityLabel)
   (AccessibilityIdentifier)

@@ -15,7 +15,7 @@
                      Enabled Gap MainAlignment CrossAlignment GrowValue GridColumns
                      PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue
                      BorderWidth CornerRadius WidthValue HeightValue MinWidth MaxWidth
-                     MinHeight MaxHeight ContainerRelativeFrameValue PlaceholderValue AccessibilityLabel AccessibilityIdentifier
+                     MinHeight MaxHeight ContainerRelativeFrameValue ContainerRelativeFrameInset PlaceholderValue AccessibilityLabel AccessibilityIdentifier
                      StyleClass HeadingLevel Checked ProgressValue OrientationValue SizeValue
                      IconName VariantValue InlineIconName IconPlacementValue Selected Autofocus
                      SubmitOnEnter LongPressEnabled ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled
@@ -198,6 +198,7 @@
     MinHeight "min-height"
     MaxHeight "max-height"
     ContainerRelativeFrameValue "container-relative-frame"
+    ContainerRelativeFrameInset "container-relative-frame-inset"
     PlaceholderValue "placeholder"
     AccessibilityLabel "accessibility-label"
     AccessibilityIdentifier "accessibility-identifier"

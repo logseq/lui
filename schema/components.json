@@ -173,6 +173,7 @@
     {"lg": "MinHeight", "wire": "min-height", "swift": "minHeight"},
     {"lg": "MaxHeight", "wire": "max-height", "swift": "maxHeight"},
     {"lg": "ContainerRelativeFrameValue", "wire": "container-relative-frame", "swift": "containerRelativeFrame"},
+    {"lg": "ContainerRelativeFrameInset", "wire": "container-relative-frame-inset", "swift": "containerRelativeFrameInset"},
     {"lg": "PlaceholderValue", "wire": "placeholder", "swift": "placeholder"},
     {"lg": "AccessibilityLabel", "wire": "accessibility-label", "swift": "accessibilityLabel"},
     {"lg": "AccessibilityIdentifier", "wire": "accessibility-identifier", "swift": "accessibilityIdentifier"},

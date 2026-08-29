@@ -246,6 +246,35 @@
     (is (= 2 (runtime/mounted-count application))
         "standard and extension nodes share lifecycle accounting")))
 
+(deftest unchanged-extension-property-does-not-emit-a-patch
+  (let [registry (ios-registry)
+        batches (atom [])
+        application
+        (runtime/create-with-extensions
+         (sig/scheduler)
+         (recording-backend
+          (proto/profile proto/IOS proto/SwiftUIHost) batches)
+         registry)
+        map-node (runtime/create-extension-node! application "map")
+        latitude (proto/FloatValue 37.3)]
+    (runtime/set-extension-prop!
+     application map-node "latitude" latitude)
+    (runtime/set-extension-prop!
+     application map-node "longitude" (proto/FloatValue -122.0))
+    (runtime/flush! application)
+    (runtime/set-extension-prop!
+     application map-node "latitude" latitude)
+    (runtime/flush! application)
+    (is (= 1 (count (deref batches)))
+        "setting an unchanged extension property emits no second batch")
+    (is (= 1 (runtime/generation application))
+        "an unchanged extension property preserves the generation")
+    (let [diagnostics (runtime/diagnostics application)]
+      (is (= runtime/NoBatch (:flush-status diagnostics))
+          "an unchanged extension property is reported as a no-op")
+      (is (= 0 (:flush-operation-count diagnostics))
+          "an unchanged extension property enqueues no retained operation"))))
+
 (deftest runtime-rejects-invalid-extension-operations-before-a-batch
   (let [registry (ios-registry)
         batches (atom [])

@@ -98,6 +98,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case minHeight = "min-height"
     case maxHeight = "max-height"
     case containerRelativeFrame = "container-relative-frame"
+    case containerRelativeFrameInset = "container-relative-frame-inset"
     case placeholder = "placeholder"
     case accessibilityLabel = "accessibility-label"
     case accessibilityIdentifier = "accessibility-identifier"

@@ -96,7 +96,13 @@
     (event-supported? kind event))))
 
 (defn container-relative-frame-supported? [value]
-  (or (= value "horizontal") (= value "vertical") (= value "both")))
+  (or
+   (= value "horizontal")
+   (= value "vertical")
+   (= value "both")
+   (= value "min-horizontal")
+   (= value "min-vertical")
+   (= value "min-both")))
 
 (defn orientation-supported? [value]
   (or (= value "horizontal") (= value "vertical")))
@@ -235,6 +241,8 @@
          (not (= kind Tooltip)))
     ContainerRelativeFrameValue
     (and (not (= kind Root)) (not (modal-surface? kind)))
+    ContainerRelativeFrameInset
+    (and (not (= kind Root)) (not (modal-surface? kind)))
     StyleClass
     (and (not (= kind Avatar)) (not (= kind Tooltip)))
     AccessibilityLabel
@@ -302,7 +310,7 @@
     TooltipDelay (= kind Tooltip)
     DurationValue false
     TextAlignment
-    (or (= kind TableCell) (= kind Bubble) (= kind StatusBar))
+    (or (= kind Text) (= kind TableCell) (= kind Bubble) (= kind StatusBar))
     RoleValue (or (tree-row-kind? kind) (= kind ListItem))
     TreeLevel (tree-row-kind? kind)
     Expanded (tree-row-kind? kind)
@@ -443,6 +451,7 @@
     (tuple MaxHeight (IntValue value)) (>= value 0)
     (tuple ContainerRelativeFrameValue (StringValue value))
     (container-relative-frame-supported? value)
+    (tuple ContainerRelativeFrameInset (IntValue value)) (>= value 0)
     (tuple PlaceholderValue (StringValue _value)) true
     (tuple AccessibilityLabel (StringValue _value)) true
     (tuple AccessibilityIdentifier (StringValue _value)) true

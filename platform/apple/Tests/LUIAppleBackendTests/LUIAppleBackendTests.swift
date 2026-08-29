@@ -54,6 +54,9 @@ struct LUISwiftUIBackendTests {
             buttonSize: "icon",
             hasIcon: true
         ))
+        #expect(!LUIButtonVisualPolicy.fillsAvailableWidth(grow: nil))
+        #expect(!LUIButtonVisualPolicy.fillsAvailableWidth(grow: 0))
+        #expect(LUIButtonVisualPolicy.fillsAvailableWidth(grow: 1))
     }
 
     @Test("semantic muted foreground uses secondary text styling")
@@ -668,6 +671,16 @@ struct LUISwiftUIBackendTests {
         #expect(original != LUIRetainedNodeSnapshot(nodeID: 8, revision: 2))
     }
 
+    @Test("only external resource nodes directly observe retained revision")
+    func directRevisionObservationIsResourceScoped() {
+        #expect(!LUIDirectRevisionObservationPolicy.requiresRevision(.row))
+        #expect(!LUIDirectRevisionObservationPolicy.requiresRevision(.virtualList))
+        #expect(!LUIDirectRevisionObservationPolicy.requiresRevision(.text))
+        #expect(LUIDirectRevisionObservationPolicy.requiresRevision(.avatar))
+        #expect(LUIDirectRevisionObservationPolicy.requiresRevision(.image))
+        #expect(LUIDirectRevisionObservationPolicy.requiresRevision(.mediaSurface))
+    }
+
     @Test("rejects invalid batches before observable models change")
     func rejectsInvalidBatchAtomically() throws {
         let backend = LUIAppleBackend()
@@ -917,6 +930,61 @@ struct LUISwiftUIBackendTests {
         #expect(LUIListItemInteractionPolicy.style(hasInteractiveChildren: false) == .button)
         #expect(LUIListItemInteractionPolicy.style(hasInteractiveChildren: true) == .composite)
         #expect(LUIListItemInteractionPolicy.longPressMinimumDuration == 0.35)
+    }
+
+    @Test("custom ListItem content honors child grow on the horizontal axis")
+    func listItemContentHonorsChildGrow() {
+        #expect(!LUIListItemLayoutPolicy.stretchesChild(grow: nil))
+        #expect(!LUIListItemLayoutPolicy.stretchesChild(grow: 0))
+        #expect(LUIListItemLayoutPolicy.stretchesChild(grow: 1))
+        #expect(LUIListItemLayoutPolicy.showsTrailingSpacer(childGrows: false))
+        #expect(!LUIListItemLayoutPolicy.showsTrailingSpacer(childGrows: true))
+        #expect(LUIListItemLayoutPolicy.usesInlineTrailingIcon(isNavigationHeading: true))
+        #expect(!LUIListItemLayoutPolicy.usesInlineTrailingIcon(isNavigationHeading: false))
+        #expect(LUIListItemLayoutPolicy.navigationHeadingSpacing == 8)
+        #expect(LUIListItemLayoutPolicy.minimumHeight(
+            isNativeListRow: true,
+            isNavigationRow: false,
+            isNavigationHeading: false,
+            explicitMinimumHeight: nil
+        ) == nil)
+        #expect(LUIListItemLayoutPolicy.minimumHeight(
+            isNativeListRow: false,
+            isNavigationRow: true,
+            isNavigationHeading: false,
+            explicitMinimumHeight: nil
+        ) == nil)
+        #expect(LUIListItemLayoutPolicy.minimumHeight(
+            isNativeListRow: false,
+            isNavigationRow: true,
+            isNavigationHeading: true,
+            explicitMinimumHeight: nil
+        ) == 44)
+        #expect(LUIListItemLayoutPolicy.minimumHeight(
+            isNativeListRow: true,
+            isNavigationRow: false,
+            isNavigationHeading: false,
+            explicitMinimumHeight: 44
+        ) == 44)
+    }
+
+    @Test("growing Row children preserve intrinsic trailing controls")
+    func growingRowChildrenPreserveTrailingControls() {
+        #expect(LUIRowLayoutPolicy.childLayoutPriority(grow: nil) == 0)
+        #expect(LUIRowLayoutPolicy.childLayoutPriority(grow: 0) == 0)
+        #expect(LUIRowLayoutPolicy.childLayoutPriority(grow: 1) == 0)
+        #expect(LUIRowLayoutPolicy.showsTrailingSpacer(
+            main: nil,
+            hasGrowingChild: false
+        ))
+        #expect(!LUIRowLayoutPolicy.showsTrailingSpacer(
+            main: nil,
+            hasGrowingChild: true
+        ))
+        #expect(LUIRowLayoutPolicy.showsTrailingSpacer(
+            main: "center",
+            hasGrowingChild: true
+        ))
     }
 
     @Test("maps Table structure and patches only the retained row and cell")
@@ -1252,16 +1320,22 @@ struct LUISwiftUIBackendTests {
             isPresented: false,
             translation: 400,
             width: 320
-        ) == 320)
+        ) == 400)
         #expect(LUIDrawerGeometry.dragOffset(
             isPresented: true,
             translation: -400,
             width: 320
-        ) == -320)
+        ) == -400)
         #expect(LUIDrawerGeometry.targetIsPresented(
             isPresented: false,
             translation: 180,
             predictedTranslation: 180,
+            width: 320
+        ))
+        #expect(!LUIDrawerGeometry.targetIsPresented(
+            isPresented: false,
+            translation: 160,
+            predictedTranslation: 160,
             width: 320
         ))
         #expect(!LUIDrawerGeometry.targetIsPresented(
@@ -1278,29 +1352,51 @@ struct LUISwiftUIBackendTests {
         ))
         #expect(!LUIDrawerGeometry.targetIsPresented(
             isPresented: false,
+            translation: 220,
+            predictedTranslation: 20,
+            width: 320
+        ))
+        #expect(LUIDrawerGeometry.targetIsPresented(
+            isPresented: false,
             translation: 1,
             predictedTranslation: 1,
             width: 0
         ))
     }
 
-    @Test("Drawer locks both panes while dragging or animating")
-    func drawerInteractionLockMatchesMotionState() {
-        #expect(!LUIDrawerInteractionPolicy.isLocked(
+    @Test("Drawer motion and appearance match the main application")
+    func drawerMotionAndAppearanceMatchMain() {
+        #expect(!LUIDrawerInteractionPolicy.disablesInteraction(
             isDragging: false,
             isAnimating: false
         ))
-        #expect(LUIDrawerInteractionPolicy.isLocked(
+        #expect(LUIDrawerInteractionPolicy.disablesInteraction(
             isDragging: true,
             isAnimating: false
         ))
-        #expect(LUIDrawerInteractionPolicy.isLocked(
+        #expect(LUIDrawerInteractionPolicy.disablesInteraction(
             isDragging: false,
             isAnimating: true
         ))
-        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(visibleWidth: 0) == 0)
-        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(visibleWidth: 1) == 40)
-        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(visibleWidth: 320) == 40)
+        #expect(!LUIDrawerInteractionPolicy.showsInteractionShield(
+            isDragging: false,
+            isAnimating: false
+        ))
+        #expect(LUIDrawerInteractionPolicy.showsInteractionShield(
+            isDragging: true,
+            isAnimating: false
+        ))
+        #expect(LUIDrawerInteractionPolicy.showsInteractionShield(
+            isDragging: false,
+            isAnimating: true
+        ))
+        #expect(LUIDrawerInteractionPolicy.sidebarOpacity(progress: 0) == 0.35)
+        #expect(LUIDrawerInteractionPolicy.sidebarOpacity(progress: 0.5) == 0.675)
+        #expect(LUIDrawerInteractionPolicy.sidebarOpacity(progress: 1) == 1)
+        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 0) == 0)
+        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 0.5) == 20)
+        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 1) == 40)
+        #expect(LUIDrawerInteractionPolicy.shadowOpacity == 0.18)
     }
 
     @Test("maps Tree rows to one retained native focus set")
@@ -1974,6 +2070,21 @@ struct LUISwiftUIBackendTests {
         #expect(box.revision == revision + 1)
     }
 
+    @Test("accepts minimum container-relative frame semantics")
+    func acceptsMinimumContainerRelativeFrame() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"set-prop","id":1,"property":"container-relative-frame","value":"min-vertical"},
+          {"op":"set-prop","id":1,"property":"container-relative-frame-inset","value":136}
+        ]}
+        """)
+
+        #expect(backend.model(id: 1)?.containerRelativeFrame == "min-vertical")
+        #expect(backend.model(id: 1)?.containerRelativeFrameInset == 136)
+    }
+
     @Test("maps the Vercel Native layout vocabulary to SwiftUI primitives")
     func mapsVercelLayoutPrimitives() throws {
         let backend = LUIAppleBackend()
@@ -2311,6 +2422,15 @@ struct LUISwiftUIBackendTests {
             fixedChildID: 3
         ))
         #expect(LUIToolbarLayoutPolicy.layout(
+            orientation: "horizontal",
+            styleClass: "compact scroll",
+            childIDs: [1, 2, 3]
+        ) == LUIToolbarLayout(
+            axis: .horizontal,
+            scrollingChildIDs: [1, 2, 3],
+            fixedChildID: nil
+        ))
+        #expect(LUIToolbarLayoutPolicy.layout(
             orientation: nil,
             styleClass: nil,
             childIDs: [1, 2]
@@ -2325,6 +2445,20 @@ struct LUISwiftUIBackendTests {
     func navigationFormSheetPolicy() {
         #expect(LUINavigationFormSheetPolicy.isNavigationForm("compact navigation-form"))
         #expect(!LUINavigationFormSheetPolicy.isNavigationForm("compact"))
+        #expect(LUINavigationFormSheetPolicy.isNavigationList("compact navigation-list"))
+        #expect(!LUINavigationFormSheetPolicy.isNavigationList("navigation-scroll"))
+        #expect(LUINavigationFormSheetPolicy.isNavigationContent(
+            "compact navigation-content"
+        ))
+        #expect(!LUINavigationFormSheetPolicy.isNavigationContent(
+            "navigation-scroll"
+        ))
+        #expect(LUINavigationFormSheetPolicy.usesNavigationBackIcon(
+            "cancellation-action navigation-back-action"
+        ))
+        #expect(!LUINavigationFormSheetPolicy.usesNavigationBackIcon(
+            "cancellation-action"
+        ))
         #expect(LUINavigationFormSheetPolicy.usesInlineTitle("navigation-form"))
         #expect(!LUINavigationFormSheetPolicy.usesInlineTitle("compact navigation-scroll"))
         #expect(!LUINavigationFormSheetPolicy.usesInlineTitle("compact"))
@@ -2780,13 +2914,24 @@ struct LUISwiftUIBackendTests {
     func groupsNativeListSections() {
         let sections = LUIListSectionPolicy.sections(
             childIDs: [1, 2, 3, 4, 5, 6],
-            isHeading: { $0 == 3 || $0 == 5 }
+            isHeading: { $0 == 3 || $0 == 5 },
+            isFooter: { _ in false }
         )
 
         #expect(sections == [
-            LUIListSection(headerID: nil, childIDs: [1, 2]),
-            LUIListSection(headerID: 3, childIDs: [4]),
-            LUIListSection(headerID: 5, childIDs: [6]),
+            LUIListSection(headerID: nil, childIDs: [1, 2], footerID: nil),
+            LUIListSection(headerID: 3, childIDs: [4], footerID: nil),
+            LUIListSection(headerID: 5, childIDs: [6], footerID: nil),
+        ])
+
+        let sectionsWithFooter = LUIListSectionPolicy.sections(
+            childIDs: [1, 2, 3, 4, 5],
+            isHeading: { $0 == 1 || $0 == 4 },
+            isFooter: { $0 == 3 }
+        )
+        #expect(sectionsWithFooter == [
+            LUIListSection(headerID: 1, childIDs: [2], footerID: 3),
+            LUIListSection(headerID: 4, childIDs: [5], footerID: nil),
         ])
     }
 
@@ -2813,6 +2958,7 @@ struct LUISwiftUIBackendTests {
           {"op":"set-prop","id":4,"property":"text","value":"2 reactions"},
           {"op":"set-prop","id":4,"property":"text-alignment","value":"start"},
           {"op":"set-prop","id":5,"property":"text","value":"Shipped"},
+          {"op":"set-prop","id":5,"property":"text-alignment","value":"center"},
           {"op":"set-prop","id":6,"property":"text","value":"3 items"},
           {"op":"insert-child","parent":1,"child":2,"index":0},
           {"op":"insert-child","parent":2,"child":3,"index":0},
@@ -2825,6 +2971,7 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 2) != nil)
         #expect(backend.model(id: 4)?.children == [5])
         #expect(backend.model(id: 4)?.property(.text) == .string("2 reactions"))
+        #expect(backend.model(id: 5)?.property(.textAlignment) == .string("center"))
         #expect(backend.model(id: 6)?.property(.text) == .string("3 items"))
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
 

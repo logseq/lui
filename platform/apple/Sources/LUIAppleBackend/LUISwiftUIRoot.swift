@@ -279,6 +279,17 @@ struct LUIRetainedNodeSnapshot: Equatable {
     let revision: Int
 }
 
+enum LUIDirectRevisionObservationPolicy {
+    static func requiresRevision(_ kind: LUINodeKind) -> Bool {
+        switch kind {
+        case .avatar, .image, .mediaSurface:
+            true
+        default:
+            false
+        }
+    }
+}
+
 struct LUIAnyNodeView: View, Equatable {
     let nodeID: Int
     let backend: LUIAppleBackend
@@ -326,7 +337,9 @@ private struct LUINodeView: View {
 
     @ViewBuilder
     var body: some View {
-        let _ = model.revision
+        let _ = LUIDirectRevisionObservationPolicy.requiresRevision(model.kind)
+            ? model.revision
+            : 0
         Group {
             if model.kind == .root || model.kind == .drawer {
                 content
@@ -1507,6 +1520,10 @@ private struct LUIModalSurfaceContent: View {
             model.property(.styleClass)?.stringValue
         ) || LUINavigationFormSheetPolicy.isNavigationScroll(
             model.property(.styleClass)?.stringValue
+        ) || LUINavigationFormSheetPolicy.isNavigationList(
+            model.property(.styleClass)?.stringValue
+        ) || LUINavigationFormSheetPolicy.isNavigationContent(
+            model.property(.styleClass)?.stringValue
         ) {
             NavigationStack {
                 navigationContent
@@ -1522,6 +1539,7 @@ private struct LUIModalSurfaceContent: View {
                     )
                 }
             }
+            .id(model.text)
             .background(modalBackground.ignoresSafeArea())
         } else {
             VStack(alignment: .leading, spacing: 16) {
@@ -1576,6 +1594,14 @@ private struct LUIModalSurfaceContent: View {
                 }
             }
             .accessibilityIdentifier(navigationFormAccessibilityIdentifier)
+        } else if LUINavigationFormSheetPolicy.isNavigationList(
+            model.property(.styleClass)?.stringValue
+        ) || LUINavigationFormSheetPolicy.isNavigationContent(
+            model.property(.styleClass)?.stringValue
+        ) {
+            if let contentID = navigationFormContentID {
+                LUIAnyNodeView(nodeID: contentID, backend: backend)
+            }
         } else {
             Form {
                 LUINavigationFormRows(
@@ -1703,14 +1729,16 @@ private struct LUIToolbarView: View {
             VStack(alignment: .leading, spacing: spacing) {
                 children(model.children)
             }
-        } else if let fixedChildID = layout.fixedChildID {
+        } else if !layout.scrollingChildIDs.isEmpty {
             HStack(spacing: spacing) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: spacing) {
                         children(layout.scrollingChildIDs)
                     }
                 }
-                LUIAnyNodeView(nodeID: fixedChildID, backend: backend)
+                if let fixedChildID = layout.fixedChildID {
+                    LUIAnyNodeView(nodeID: fixedChildID, backend: backend)
+                }
             }
         } else {
             HStack(spacing: spacing) {
@@ -2280,7 +2308,12 @@ private struct LUIListItemView: View {
         }
         .padding(.horizontal, usesSystemListInsets || hasExplicitPadding ? 0 : 12)
         .padding(.vertical, usesSystemListInsets || hasExplicitPadding ? 0 : verticalPadding)
-        .frame(minHeight: isNavigationRow || isNativeListRow ? 44 : nil)
+        .frame(minHeight: LUIListItemLayoutPolicy.minimumHeight(
+            isNativeListRow: isNativeListRow,
+            isNavigationRow: isNavigationRow,
+            isNavigationHeading: isNavigationHeading,
+            explicitMinimumHeight: model.surfaceMinHeight
+        ).map { CGFloat($0) })
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             model.isSelected ? Color.accentColor.opacity(selectedOpacity) : Color.clear,
@@ -2305,7 +2338,7 @@ private struct LUIListItemView: View {
     }
 
     private var rowContent: some View {
-        HStack(spacing: isNativeListRow ? 12 : (isNavigationRow ? 10 : 8)) {
+        HStack(spacing: horizontalSpacing) {
             if model.isTreeItem, model.supportsToggle {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
@@ -2331,16 +2364,32 @@ private struct LUIListItemView: View {
                 Text(verbatim: model.text)
                     .font(isNavigationHeading ? .title3 : .body)
                     .fontWeight(
-                        isNavigationHeading || (isNavigationRow && model.isSelected)
-                            ? .semibold : .regular
+                        isNavigationHeading
+                            ? .bold
+                            : ((isNavigationRow && model.isSelected) ? .semibold : .regular)
                     )
                     .lineLimit(1)
             } else {
                 ForEach(visibleChildren, id: \.self) { childID in
+                    let child = backend.model(id: childID)
                     LUIAnyNodeView(nodeID: childID, backend: backend)
+                        .frame(
+                            maxWidth: LUIListItemLayoutPolicy.stretchesChild(
+                                grow: child?.property(.grow)?.doubleValue
+                            ) ? .infinity : nil,
+                            alignment: .leading
+                        )
+                        .layoutPriority(child?.property(.grow)?.doubleValue ?? 0)
                 }
             }
-            Spacer(minLength: 8)
+            if usesInlineTrailingIcon {
+                trailingIcon
+            }
+            if LUIListItemLayoutPolicy.showsTrailingSpacer(
+                childGrows: hasGrowingVisibleChild
+            ) {
+                Spacer(minLength: 8)
+            }
             if let contextMenu {
                 Menu {
                     LUIContextMenuActions(model: contextMenu, backend: backend)
@@ -2350,17 +2399,24 @@ private struct LUIListItemView: View {
                 }
                 .accessibilityLabel("More actions")
             }
-            if !model.buttonIconName.isEmpty && model.buttonIconPlacement == "trailing" {
-                LUIIconImage(
-                    source: backend.iconSource(for: model.buttonIconName),
-                    bundle: backend.appIconBundle
-                )
-                    .scaledToFit()
-                    .frame(width: iconSize, height: iconSize)
-                    .foregroundStyle(.secondary)
+            if !usesInlineTrailingIcon {
+                trailingIcon
             }
         }
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var trailingIcon: some View {
+        if !model.buttonIconName.isEmpty && model.buttonIconPlacement == "trailing" {
+            LUIIconImage(
+                source: backend.iconSource(for: model.buttonIconName),
+                bundle: backend.appIconBundle
+            )
+                .scaledToFit()
+                .frame(width: iconSize, height: iconSize)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var role: String { model.property(.role)?.stringValue ?? "" }
@@ -2370,6 +2426,17 @@ private struct LUIListItemView: View {
         role == "navigation" || role == "navigation-heading"
     }
     private var isNavigationHeading: Bool { role == "navigation-heading" }
+    private var usesInlineTrailingIcon: Bool {
+        LUIListItemLayoutPolicy.usesInlineTrailingIcon(
+            isNavigationHeading: isNavigationHeading
+        )
+    }
+    private var horizontalSpacing: CGFloat {
+        if isNavigationHeading {
+            return CGFloat(LUIListItemLayoutPolicy.navigationHeadingSpacing)
+        }
+        return isNativeListRow ? 12 : (isNavigationRow ? 10 : 8)
+    }
     private var verticalPadding: CGFloat {
         isNavigationHeading ? 6 : (isNavigationRow ? 10 : 8)
     }
@@ -2393,6 +2460,14 @@ private struct LUIListItemView: View {
 
     private var hasInteractiveChildren: Bool {
         visibleChildren.contains(where: containsInteractiveControl)
+    }
+
+    private var hasGrowingVisibleChild: Bool {
+        visibleChildren.contains { childID in
+            LUIListItemLayoutPolicy.stretchesChild(
+                grow: backend.model(id: childID)?.property(.grow)?.doubleValue
+            )
+        }
     }
 
     private func containsInteractiveControl(_ nodeID: Int) -> Bool {
@@ -2500,6 +2575,10 @@ enum LUIButtonVisualPolicy {
     ) -> Bool {
         variant == "ghost" && buttonSize != "icon" && !hasIcon
     }
+
+    static func fillsAvailableWidth(grow: Double?) -> Bool {
+        (grow ?? 0) > 0
+    }
 }
 
 private struct LUIButtonView: View {
@@ -2520,6 +2599,12 @@ private struct LUIButtonView: View {
     var body: some View {
         styledButton
             .controlSize(controlSize)
+            .frame(
+                maxWidth: LUIButtonVisualPolicy.fillsAvailableWidth(
+                    grow: model.property(.grow)?.doubleValue
+                ) ? .infinity : nil,
+                alignment: .leading
+            )
             .frame(
                 width: model.buttonSize == "icon" ? 40 : nil,
                 height: buttonHeight
@@ -2577,7 +2662,9 @@ private struct LUIButtonView: View {
             switch model.buttonVariant {
         case "primary":
             button.buttonStyle(.borderedProminent)
-        case "secondary", "outline":
+        case "secondary":
+            button.buttonStyle(.bordered).tint(.secondary)
+        case "outline":
             button.buttonStyle(.bordered)
         case "destructive":
             button.buttonStyle(.borderedProminent).tint(.red)
@@ -2613,6 +2700,12 @@ private struct LUIButtonView: View {
 
     private var buttonLabel: some View {
         label
+            .frame(
+                maxWidth: LUIButtonVisualPolicy.fillsAvailableWidth(
+                    grow: model.property(.grow)?.doubleValue
+                ) ? .infinity : nil,
+                alignment: .leading
+            )
             .frame(
                 width: model.buttonSize == "icon" ? 40 : nil,
                 height: buttonHeight
@@ -2972,12 +3065,16 @@ private struct LUITextView: View {
                 try? backend.performPress(node: model.id)
             } label: {
                 Text(verbatim: model.text)
+                    .multilineTextAlignment(textAlignment)
+                    .frame(maxWidth: alignedMaxWidth, alignment: frameAlignment)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .buttonStyle(.plain)
         } else {
             Text(verbatim: model.text)
                 .font(font)
+                .multilineTextAlignment(textAlignment)
+                .frame(maxWidth: alignedMaxWidth, alignment: frameAlignment)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -2992,10 +3089,47 @@ private struct LUITextView: View {
         let classes = model.property(.styleClass)?.stringValue?.split(separator: " ") ?? []
         if classes.contains("headline") { return .headline }
         if classes.contains("subheadline") { return .subheadline.weight(.semibold) }
+        if classes.contains("caption") {
+            return classes.contains("semibold") ? .caption.weight(.semibold) : .caption
+        }
         if classes.contains("semibold") { return .body.weight(.semibold) }
-        if classes.contains("caption") { return .caption }
         if isFootnote { return .footnote }
         return .body
+    }
+
+    private var alignedMaxWidth: CGFloat? {
+        model.property(.textAlignment) == nil ? nil : .infinity
+    }
+
+    private var textAlignment: TextAlignment {
+        switch model.property(.textAlignment)?.stringValue {
+        case "center": .center
+        case "end": .trailing
+        default: .leading
+        }
+    }
+
+    private var frameAlignment: Alignment {
+        switch model.property(.textAlignment)?.stringValue {
+        case "center": .center
+        case "end": .trailing
+        default: .leading
+        }
+    }
+}
+
+enum LUIRowLayoutPolicy {
+    static func childLayoutPriority(grow: Double?) -> Double {
+        _ = grow
+        return 0
+    }
+
+    static func showsTrailingSpacer(
+        main: String?,
+        hasGrowingChild: Bool
+    ) -> Bool {
+        if main == "center" { return true }
+        return (main == nil || main == "start") && !hasGrowingChild
     }
 }
 
@@ -3017,17 +3151,26 @@ private struct LUIRowView: View {
                             ? .infinity : nil,
                         maxHeight: cross == "stretch" ? .infinity : nil
                     )
-                    .layoutPriority(child?.property(.grow)?.doubleValue ?? 0)
+                    .layoutPriority(LUIRowLayoutPolicy.childLayoutPriority(
+                        grow: child?.property(.grow)?.doubleValue
+                    ))
                 if model.property(.main)?.stringValue == "space_between" &&
                     index < model.children.count - 1 {
                     Spacer(minLength: gap)
                 }
             }
-            if model.property(.main)?.stringValue == nil ||
-                model.property(.main)?.stringValue == "start" ||
-                model.property(.main)?.stringValue == "center" {
+            if LUIRowLayoutPolicy.showsTrailingSpacer(
+                main: model.property(.main)?.stringValue,
+                hasGrowingChild: hasGrowingChild
+            ) {
                 Spacer(minLength: 0)
             }
+        }
+    }
+
+    private var hasGrowingChild: Bool {
+        model.children.contains { childID in
+            (backend.model(id: childID)?.property(.grow)?.doubleValue ?? 0) > 0
         }
     }
 
@@ -3113,8 +3256,9 @@ private struct LUIColumnView: View {
 struct LUIListSection: Equatable, Identifiable {
     let headerID: Int?
     let childIDs: [Int]
+    let footerID: Int?
 
-    var id: Int { headerID ?? childIDs.first ?? Int.min }
+    var id: Int { headerID ?? childIDs.first ?? footerID ?? Int.min }
 }
 
 enum LUIListSurfacePolicy {
@@ -3132,15 +3276,21 @@ public struct LUIListSurfacePreferenceKey: PreferenceKey {
 enum LUIListSectionPolicy {
     static func sections(
         childIDs: [Int],
-        isHeading: (Int) -> Bool
+        isHeading: (Int) -> Bool,
+        isFooter: (Int) -> Bool
     ) -> [LUIListSection] {
         var result: [LUIListSection] = []
         var headerID: Int?
         var rows: [Int] = []
+        var footerID: Int?
 
         func appendCurrentSection() {
-            guard headerID != nil || !rows.isEmpty else { return }
-            result.append(LUIListSection(headerID: headerID, childIDs: rows))
+            guard headerID != nil || !rows.isEmpty || footerID != nil else { return }
+            result.append(LUIListSection(
+                headerID: headerID,
+                childIDs: rows,
+                footerID: footerID
+            ))
         }
 
         for childID in childIDs {
@@ -3148,6 +3298,13 @@ enum LUIListSectionPolicy {
                 appendCurrentSection()
                 headerID = childID
                 rows = []
+                footerID = nil
+            } else if isFooter(childID), headerID != nil || !rows.isEmpty {
+                footerID = childID
+                appendCurrentSection()
+                headerID = nil
+                rows = []
+                footerID = nil
             } else {
                 rows.append(childID)
             }
@@ -3165,11 +3322,29 @@ private struct LUIListView: View {
         List {
             ForEach(sections) { section in
                 if let headerID = section.headerID,
-                   let header = backend.model(id: headerID) {
+                   let header = backend.model(id: headerID),
+                   let footerID = section.footerID,
+                   let footer = backend.model(id: footerID) {
                     Section {
                         rows(section.childIDs)
                     } header: {
                         Text(verbatim: header.text)
+                    } footer: {
+                        Text(verbatim: footer.text)
+                    }
+                } else if let headerID = section.headerID,
+                          let header = backend.model(id: headerID) {
+                    Section {
+                        rows(section.childIDs)
+                    } header: {
+                        Text(verbatim: header.text)
+                    }
+                } else if let footerID = section.footerID,
+                          let footer = backend.model(id: footerID) {
+                    Section {
+                        rows(section.childIDs)
+                    } footer: {
+                        Text(verbatim: footer.text)
                     }
                 } else {
                     rows(section.childIDs)
@@ -3197,9 +3372,20 @@ private struct LUIListView: View {
     }
 
     private var sections: [LUIListSection] {
-        LUIListSectionPolicy.sections(childIDs: model.children) { childID in
-            backend.model(id: childID)?.kind == .heading
-        }
+        LUIListSectionPolicy.sections(
+            childIDs: model.children,
+            isHeading: { childID in
+                backend.model(id: childID)?.kind == .heading
+            },
+            isFooter: { childID in
+                guard let child = backend.model(id: childID), child.kind == .text else {
+                    return false
+                }
+                return (child.property(.styleClass)?.stringValue ?? "")
+                    .split(separator: " ")
+                    .contains("footnote") == true
+            }
+        )
     }
 }
 
@@ -3528,12 +3714,13 @@ private struct LUISurfaceModifier: ViewModifier {
             )
             .modifier(
                 LUIContainerRelativeFrameModifier(
-                    axes: model.containerRelativeFrame
+                    axes: model.containerRelativeFrame,
+                    inset: CGFloat(model.containerRelativeFrameInset)
                 )
             )
             .modifier(
                 LUIOptionalForegroundModifier(
-                    foreground: color(model.property(.foreground)?.stringValue) ??
+                    foreground: foregroundColor(model.property(.foreground)?.stringValue) ??
                         (LUIThemeColorPolicy.usesDefaultForeground(kind: model.kind)
                             ? defaultForeground
                             : nil)
@@ -3554,12 +3741,22 @@ private struct LUISurfaceModifier: ViewModifier {
             .clipShape(shape)
     }
 
+    private func foregroundColor(_ name: String?) -> Color? {
+        if LUIThemeColorPolicy.isSecondaryForeground(name) {
+            return .secondary
+        }
+        return color(name)
+    }
+
     private func color(_ name: String?) -> Color? {
         if let name, let semanticColor = semanticColors[name.lowercased()] {
             return semanticColor
         }
         if LUIThemeColorPolicy.isMutedForeground(name) {
             return .secondary
+        }
+        if LUIThemeColorPolicy.isAccentForeground(name) {
+            return .accentColor
         }
         return switch name?.lowercased() {
         case nil: nil
