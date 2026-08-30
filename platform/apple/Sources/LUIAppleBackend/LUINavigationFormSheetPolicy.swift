@@ -112,6 +112,7 @@ struct LUINavigationFormActionView: View {
         .foregroundStyle(model.isEnabled ? Color.primary : Color.secondary)
         .accessibilityIdentifier(actionAccessibilityIdentifier)
         .accessibilityLabel(Text(verbatim: actionAccessibilityLabel))
+        .accessibilityElement(children: .ignore)
         #endif
     }
 
