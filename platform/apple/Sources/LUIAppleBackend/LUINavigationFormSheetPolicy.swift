@@ -92,14 +92,6 @@ struct LUINavigationFormActionView: View {
     var body: some View {
         let _ = model.revision
         actionButton
-        .disabled(!model.isEnabled)
-        .foregroundStyle(model.isEnabled ? Color.primary : Color.secondary)
-        .accessibilityIdentifier(
-            model.property(.accessibilityIdentifier)?.stringValue ?? ""
-        )
-        .accessibilityLabel(
-            Text(verbatim: model.property(.accessibilityLabel)?.stringValue ?? model.text)
-        )
     }
 
     @ViewBuilder
@@ -108,13 +100,27 @@ struct LUINavigationFormActionView: View {
         Button(action: performPress) {
             actionLabel
         }
+        .disabled(!model.isEnabled)
+        .foregroundStyle(model.isEnabled ? Color.primary : Color.secondary)
+        .accessibilityIdentifier(actionAccessibilityIdentifier)
+        .accessibilityLabel(Text(verbatim: actionAccessibilityLabel))
         #else
-        Button(action: {}) {
+        Button(action: performPress) {
             actionLabel
         }
-        .highPriorityGesture(TapGesture().onEnded(performPress))
-        .accessibilityElement(children: .ignore)
+        .disabled(!model.isEnabled)
+        .foregroundStyle(model.isEnabled ? Color.primary : Color.secondary)
+        .accessibilityIdentifier(actionAccessibilityIdentifier)
+        .accessibilityLabel(Text(verbatim: actionAccessibilityLabel))
         #endif
+    }
+
+    private var actionAccessibilityIdentifier: String {
+        model.property(.accessibilityIdentifier)?.stringValue ?? ""
+    }
+
+    private var actionAccessibilityLabel: String {
+        model.property(.accessibilityLabel)?.stringValue ?? model.text
     }
 
     @ViewBuilder
