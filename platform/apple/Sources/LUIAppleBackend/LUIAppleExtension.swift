@@ -285,6 +285,12 @@ public struct LUIAppleExtensionViewContext {
         return backend.anyNodeView(nodeID: childID)
     }
 
+    public func contentRevision(for childID: Int) -> Int? {
+        guard childIDs.contains(childID) else { return nil }
+        return backend.model(id: childID)?.revision
+            ?? backend.extensionModel(id: childID)?.revision
+    }
+
     public func childProperty(node childID: Int, _ name: String) -> LUIExtensionValue? {
         backend.extensionModel(id: childID)?.property(name)
     }

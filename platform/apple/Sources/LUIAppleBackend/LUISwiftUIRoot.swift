@@ -10,6 +10,7 @@ import UIKit
 struct LUIModalPresentation: Identifiable {
     let model: LUINodeModel
     let rootID: Int
+    let anchorID: Int
 
     var id: Int { model.id }
 }
@@ -80,10 +81,36 @@ public struct LUISwiftUIRoot: View {
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
                     .modifier(LUIModalPresentationStyle(kind: presentation.model.kind))
             }
-            .alert(
-                dialogTitle,
-                isPresented: dialogBinding(for: .alert)
-            ) {
+            .modifier(LUIDialogPresentationModifier(anchorID: rootID, backend: backend))
+    }
+
+    private var sheetBinding: Binding<LUIModalPresentation?> {
+        Binding(
+            get: {
+                guard let item = backend.modalPresentation.item,
+                      item.rootID == rootID,
+                      item.model.kind == .sheet else { return nil }
+                return item
+            },
+            set: { backend.modalPresentation.updateFromPresentation($0) }
+        )
+    }
+
+    private func didDismissSheet() {
+        guard let nodeID = backend.modalPresentation.consumeInteractiveDismissal() else {
+            return
+        }
+        try? backend.performDismiss(node: nodeID)
+    }
+}
+
+private struct LUIDialogPresentationModifier: ViewModifier {
+    let anchorID: Int
+    let backend: LUIAppleBackend
+
+    func body(content: Content) -> some View {
+        content
+            .alert(dialogTitle, isPresented: dialogBinding(for: .alert)) {
                 if let presentation = dialogPresentation {
                     LUIDialogActions(presentation: presentation, backend: backend)
                 }
@@ -113,21 +140,9 @@ public struct LUISwiftUIRoot: View {
             }
     }
 
-    private var sheetBinding: Binding<LUIModalPresentation?> {
-        Binding(
-            get: {
-                guard let item = backend.modalPresentation.item,
-                      item.rootID == rootID,
-                      item.model.kind == .sheet else { return nil }
-                return item
-            },
-            set: { backend.modalPresentation.updateFromPresentation($0) }
-        )
-    }
-
     private var dialogPresentation: LUIModalPresentation? {
         guard let item = backend.modalPresentation.item,
-              item.rootID == rootID,
+              item.anchorID == anchorID,
               item.model.kind == .dialog else { return nil }
         return item
     }
@@ -151,13 +166,6 @@ public struct LUISwiftUIRoot: View {
                 try? backend.performDismiss(node: nodeID)
             }
         )
-    }
-
-    private func didDismissSheet() {
-        guard let nodeID = backend.modalPresentation.consumeInteractiveDismissal() else {
-            return
-        }
-        try? backend.performDismiss(node: nodeID)
     }
 }
 
@@ -394,6 +402,9 @@ private struct LUINodeView: View {
         case .column, .list:
             if model.kind == .list {
                 LUIListView(model: model, backend: backend)
+                    .modifier(
+                        LUIDialogPresentationModifier(anchorID: model.id, backend: backend)
+                    )
             } else {
                 LUIColumnView(model: model, backend: backend)
             }
@@ -843,18 +854,19 @@ private struct LUIContextMenuActions: View {
                     } label: {
                         Label {
                             Text(verbatim: child.text)
+                                .modifier(LUIMenuItemForegroundModifier(
+                                    model: child,
+                                    usesExplicitForeground: false
+                                ))
                         } icon: {
                             if !child.buttonIconName.isEmpty {
                                 LUIIconImage(
                                     source: backend.iconSource(for: child.buttonIconName),
                                     bundle: backend.appIconBundle
                                 )
+                                .modifier(LUIMenuItemForegroundModifier(model: child))
                             }
                         }
-                        .modifier(LUIMenuItemForegroundModifier(
-                            model: child,
-                            usesExplicitForeground: false
-                        ))
                     }
                     .disabled(!child.isEnabled)
                     .accessibilityIdentifier(
@@ -2469,6 +2481,7 @@ private struct LUIMenuItemForegroundModifier: ViewModifier {
         #endif
         return switch name.lowercased() {
         case "red", "error-foreground": .red
+        case "accent": .accentColor
         case "blue": .blue
         case "green", "success-foreground": .green
         case "warning-foreground": .orange

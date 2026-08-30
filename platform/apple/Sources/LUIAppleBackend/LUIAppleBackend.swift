@@ -819,24 +819,37 @@ public final class LUIAppleBackend {
         var presentation: LUIModalPresentation?
         var visited = Set<Int>()
 
-        func visit(_ nodeID: Int, rootID: Int) {
+        func visit(_ nodeID: Int, rootID: Int, dialogAnchorID: Int?) {
             guard visited.insert(nodeID).inserted else { return }
             if let model = models[nodeID] {
                 if model.kind == .dialog || model.kind == .sheet {
-                    presentation = LUIModalPresentation(model: model, rootID: rootID)
+                    presentation = LUIModalPresentation(
+                        model: model,
+                        rootID: rootID,
+                        anchorID: model.kind == .dialog
+                            ? (dialogAnchorID ?? rootID)
+                            : rootID
+                    )
                 }
+                let childDialogAnchorID = model.kind == .list
+                    ? model.id
+                    : dialogAnchorID
                 for childID in model.children {
-                    visit(childID, rootID: rootID)
+                    visit(
+                        childID,
+                        rootID: rootID,
+                        dialogAnchorID: childDialogAnchorID
+                    )
                 }
             } else if let model = extensionModels[nodeID] {
                 for childID in model.children {
-                    visit(childID, rootID: rootID)
+                    visit(childID, rootID: rootID, dialogAnchorID: dialogAnchorID)
                 }
             }
         }
 
         for rootID in rootIDs {
-            visit(rootID, rootID: rootID)
+            visit(rootID, rootID: rootID, dialogAnchorID: nil)
         }
         modalPresentation.synchronize(with: presentation)
     }

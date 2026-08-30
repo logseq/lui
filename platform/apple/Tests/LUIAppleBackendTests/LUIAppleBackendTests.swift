@@ -189,6 +189,12 @@ struct LUISwiftUIBackendTests {
             explicit: "task-done",
             destructive: false
         ) == "task-done")
+        #expect(LUIThemeColorPolicy.isAccentForeground(
+            LUIThemeColorPolicy.menuItemForegroundName(
+                explicit: "accent",
+                destructive: false
+            )
+        ))
         #expect(LUIThemeColorPolicy.menuItemForegroundName(
             explicit: "task-done",
             destructive: true
@@ -2538,6 +2544,23 @@ struct LUISwiftUIBackendTests {
         #expect(LUIDialogContentPolicy.presentationStyle(styleClass: nil) == .confirmationDialog)
     }
 
+    @Test("native dialogs retain their nearest list presentation anchor")
+    func nativeDialogRetainsListAnchor() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"list"},
+          {"op":"create-node","id":3,"kind":"dialog"},
+          {"op":"set-prop","id":3,"property":"text","value":"Confirm"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0}
+        ]}
+        """)
+
+        #expect(backend.modalPresentation.item?.anchorID == 2)
+    }
+
     @Test("maps Sheet to one retained native SwiftUI presentation")
     func mapsSheet() throws {
         let backend = LUIAppleBackend()
@@ -3469,6 +3492,49 @@ struct LUISwiftUIBackendTests {
 
         _ = backend.extensionView(nodeID: 1)
         #expect(renderedChildIDs == [2, 3])
+    }
+
+    @Test("extension content revision tracks retained direct child updates")
+    func extensionContentRevisionTracksDirectChildUpdates() throws {
+        var childRevision: Int?
+        var unrelatedRevision: Int?
+        let registry = LUIAppleExtensionRegistry()
+        try registry.register(
+            LUIAppleExtension(
+                identifier: "deck",
+                fingerprint: "deck-v1",
+                acceptsStandardChildren: true
+            ) { context in
+                childRevision = context.contentRevision(for: 2)
+                unrelatedRevision = context.contentRevision(for: 3)
+                return AnyView(EmptyView())
+            }
+        )
+        let backend = try LUIAppleBackend(extensionRegistry: registry)
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-extension","id":1,"identifier":"deck","fingerprint":"deck-v1"},
+          {"op":"create-node","id":2,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"text","value":"First"},
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"set-prop","id":3,"property":"text","value":"Unrelated"},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+
+        _ = backend.extensionView(nodeID: 1)
+        #expect(childRevision == 0)
+        #expect(unrelatedRevision == nil)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":2,"property":"text","value":"Updated"}
+        ]}
+        """)
+        _ = backend.extensionView(nodeID: 1)
+
+        #expect(childRevision == 1)
+        #expect(unrelatedRevision == nil)
     }
 
     @Test("extension registrations cannot shadow standard nodes or name invalid children")
