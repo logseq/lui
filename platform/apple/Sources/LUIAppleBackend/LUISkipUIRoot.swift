@@ -121,6 +121,9 @@ private struct LUISkipNodeView: View {
             ScrollView {
                 LUIVerticalScrollContent(model: model, backend: backend)
             }
+            .frame(
+                maxHeight: model.surfaceMaxHeight.map { CGFloat($0) }
+            )
         case .drawer:
             LUIDrawerView(model: model, backend: backend)
         case .listItem:
@@ -288,15 +291,70 @@ private struct LUISkipNodeView: View {
         Button {
             try? backend.performAction(node: model.id)
         } label: {
-            Text(verbatim: model.text)
+            buttonLabel
                 .font(buttonLabelFont)
                 .padding(
                     .horizontal,
                     CGFloat(model.property(.paddingHorizontal)?.intValue ?? 0)
                 )
+                .frame(
+                    maxWidth: buttonFillsAvailableWidth ? .infinity : nil,
+                    alignment: buttonLabelAlignment
+                )
+                .frame(width: buttonWidth, height: buttonHeight)
+                .background(
+                    buttonBackground,
+                    in: RoundedRectangle(cornerRadius: buttonCornerRadius)
+                )
                 .accessibilityIdentifier(buttonAccessibilityIdentifier)
         }
+        .frame(
+            maxWidth: buttonFillsAvailableWidth ? .infinity : nil,
+            alignment: buttonLabelAlignment
+        )
+        .frame(width: buttonWidth, height: buttonHeight)
         .accessibilityLabel(Text(buttonAccessibilityLabel))
+    }
+
+    @ViewBuilder
+    private var buttonLabel: some View {
+        if model.buttonIconName.isEmpty {
+            Text(verbatim: model.text)
+        } else {
+            LUISkipIconImage(source: backend.iconSource(for: model.buttonIconName))
+                .scaledToFit()
+                .frame(width: 20, height: 20)
+        }
+    }
+
+    private var buttonWidth: CGFloat? {
+        model.surfaceWidth.map { CGFloat($0) }
+    }
+
+    private var buttonHeight: CGFloat? {
+        model.surfaceHeight.map { CGFloat($0) }
+    }
+
+    private var buttonFillsAvailableWidth: Bool {
+        (model.property(.grow)?.doubleValue ?? 0.0) > 0.0
+    }
+
+    private var buttonLabelAlignment: Alignment {
+        switch model.property(.textAlignment)?.stringValue {
+        case "center": .center
+        case "end": .trailing
+        default: .leading
+        }
+    }
+
+    private var buttonCornerRadius: CGFloat {
+        CGFloat(model.property(.cornerRadius)?.intValue ?? 0)
+    }
+
+    private var buttonBackground: Color {
+        model.property(.background)?.stringValue == nil
+            ? Color.clear
+            : Color.secondary.opacity(0.1)
     }
 
     private var buttonAccessibilityLabel: String {
@@ -527,6 +585,22 @@ private struct LUISkipNodeView: View {
             get: { model.text },
             set: { try? backend.performTextChange(node: model.id, text: $0) }
         )
+    }
+}
+
+private struct LUISkipIconImage: View {
+    let source: LUIAppleIconSource
+
+    @ViewBuilder
+    var body: some View {
+        switch source {
+        case let .systemName(name):
+            Image(systemName: name)
+                .resizable()
+        case let .assetName(name):
+            Image(name)
+                .resizable()
+        }
     }
 }
 
