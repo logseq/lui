@@ -685,7 +685,7 @@ private struct LUIBinaryToggleView: View {
         ) {
             toggle.tint(.accentColor)
         } else {
-            toggle
+            toggle.tint(nil)
         }
     }
 
