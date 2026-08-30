@@ -2544,6 +2544,11 @@ private struct LUIListItemView: View {
         .accessibilityAddTraits(model.isSelected ? .isSelected : [])
         .disabled(!model.isEnabled)
         .modifier(LUIListItemSwipeActionsModifier(menu: contextMenu, backend: backend))
+        .modifier(LUINativeListRowAccessibilityModifier(
+            model: model,
+            backend: backend,
+            isNativeListRow: isNativeListRow
+        ))
     }
 
     private var rowContent: some View {
@@ -2702,6 +2707,21 @@ private struct LUIListItemView: View {
             menu.kind == .contextMenu && menu.children.contains { childID in
                 backend.model(id: childID)?.kind == .menuItem
             }
+        }
+    }
+}
+
+private struct LUINativeListRowAccessibilityModifier: ViewModifier {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    let isNativeListRow: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isNativeListRow {
+            content.modifier(LUIAccessibilityModifier(model: model, backend: backend))
+        } else {
+            content
         }
     }
 }
