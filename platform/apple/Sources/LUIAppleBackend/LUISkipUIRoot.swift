@@ -290,7 +290,21 @@ private struct LUISkipNodeView: View {
         } label: {
             Text(verbatim: model.text)
                 .font(buttonLabelFont)
+                .padding(
+                    .horizontal,
+                    CGFloat(model.property(.paddingHorizontal)?.intValue ?? 0)
+                )
+                .accessibilityIdentifier(buttonAccessibilityIdentifier)
         }
+        .accessibilityLabel(Text(buttonAccessibilityLabel))
+    }
+
+    private var buttonAccessibilityLabel: String {
+        model.accessibilityLabel(in: backend) ?? model.text
+    }
+
+    private var buttonAccessibilityIdentifier: String {
+        model.accessibilityIdentifier(in: backend) ?? buttonAccessibilityLabel
     }
 
     private var radioGroupTitle: String {
@@ -562,7 +576,9 @@ private struct LUISkipAccessibilityModifier: ViewModifier {
     func body(content: Content) -> some View {
         let label = model.accessibilityLabel(in: backend)
         let identifier = model.accessibilityIdentifier(in: backend) ?? label
-        if let label, let identifier {
+        if model.kind == .button {
+            content
+        } else if let label, let identifier {
             content
                 .accessibilityLabel(Text(label))
                 .accessibilityIdentifier(identifier)
