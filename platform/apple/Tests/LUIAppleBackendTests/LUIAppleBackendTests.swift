@@ -30,6 +30,26 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    @Test("events raised during a retained batch wait for the commit boundary")
+    func retainedBatchDefersEventsUntilCommitCompletes() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"box"},
+          {"op":"set-prop","id":1,"property":"appear-enabled","value":true}
+        ]}
+        """)
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+
+        backend.withDeferredEventDelivery {
+            try? backend.performAppear(node: 1)
+            #expect(events.isEmpty)
+        }
+
+        #expect(events == [.appear(node: 1)])
+    }
+
     @Test("top icon placement uses a vertical label")
     func topIconPlacementUsesAVerticalLabel() {
         #expect(LUIButtonIconPlacementPolicy.usesVerticalLayout("top"))
@@ -57,6 +77,21 @@ struct LUISwiftUIBackendTests {
         #expect(!LUIButtonVisualPolicy.fillsAvailableWidth(grow: nil))
         #expect(!LUIButtonVisualPolicy.fillsAvailableWidth(grow: 0))
         #expect(LUIButtonVisualPolicy.fillsAvailableWidth(grow: 1))
+        #expect(LUIButtonVisualPolicy.contentHorizontalPadding(explicit: nil) == 0)
+        #expect(LUIButtonVisualPolicy.contentHorizontalPadding(explicit: 30) == 30)
+        #expect(LUIButtonVisualPolicy.labelAlignment(textAlignment: "center") == .center)
+        #expect(LUIButtonVisualPolicy.labelAlignment(textAlignment: "end") == .trailing)
+        #expect(LUIButtonVisualPolicy.labelAlignment(textAlignment: nil) == .leading)
+        #expect(LUIButtonVisualPolicy.usesSemiboldLabel(styleClass: "semibold"))
+        #expect(LUIButtonVisualPolicy.usesSemiboldLabel(
+            styleClass: "flashcard semibold"
+        ))
+        #expect(!LUIButtonVisualPolicy.usesSemiboldLabel(styleClass: nil))
+        #expect(LUIButtonVisualPolicy.usesCaptionLabel(styleClass: "caption"))
+        #expect(LUIButtonVisualPolicy.usesCaptionLabel(
+            styleClass: "muted caption"
+        ))
+        #expect(!LUIButtonVisualPolicy.usesCaptionLabel(styleClass: nil))
         #expect(LUIButtonVisualPolicy.resolvedExtent(
             explicit: 24,
             fallback: 40
@@ -69,6 +104,60 @@ struct LUISwiftUIBackendTests {
             explicit: nil,
             fallback: 44
         ) == 44)
+        #expect(LUIButtonVisualPolicy.defaultWidth(
+            buttonSize: "icon",
+            usesMinimumTouchTarget: true
+        ) == 44)
+        #expect(LUIButtonVisualPolicy.defaultWidth(
+            buttonSize: "icon",
+            usesMinimumTouchTarget: false
+        ) == 40)
+        #expect(LUIButtonVisualPolicy.defaultWidth(
+            buttonSize: "default",
+            usesMinimumTouchTarget: true
+        ) == nil)
+    }
+
+    @Test("intrinsic columns do not append layout-only spacing")
+    func intrinsicColumnsDoNotAppendLayoutOnlySpacing() {
+        #expect(!LUIColumnLayoutPolicy.showsTrailingSpacer(
+            main: nil
+        ))
+        #expect(!LUIColumnLayoutPolicy.showsTrailingSpacer(
+            main: "start"
+        ))
+        #expect(!LUIColumnLayoutPolicy.showsTrailingSpacer(
+            main: nil
+        ))
+        #expect(LUIColumnLayoutPolicy.showsTrailingSpacer(
+            main: "center"
+        ))
+    }
+
+    @Test("multiline text controls align content to their top edge")
+    func multilineTextControlsUseTopLeadingFrameAlignment() {
+        #expect(LUISurfaceFramePolicy.usesTopLeadingAlignment(kind: .textarea))
+        #expect(!LUISurfaceFramePolicy.usesTopLeadingAlignment(kind: .textField))
+        #expect(!LUISurfaceFramePolicy.usesTopLeadingAlignment(kind: .box))
+    }
+
+    @Test("disabled custom button surfaces follow native disabled emphasis")
+    func disabledCustomButtonSurfacesAreDimmed() {
+        #expect(LUISurfaceEmphasisPolicy.opacity(
+            kind: .button,
+            isEnabled: false,
+            hasExplicitBackground: true
+        ) == 0.5)
+        #expect(LUISurfaceEmphasisPolicy.opacity(
+            kind: .button,
+            isEnabled: true,
+            hasExplicitBackground: true
+        ) == 1.0)
+        #expect(LUISurfaceEmphasisPolicy.opacity(
+            kind: .text,
+            isEnabled: false,
+            hasExplicitBackground: true
+        ) == 1.0)
     }
 
     @Test("single-line text style matches native summary labels")
@@ -119,6 +208,44 @@ struct LUISwiftUIBackendTests {
         #expect(LUIDropdownMenuLayoutPolicy.iconSize == 24)
         #expect(LUIDropdownMenuLayoutPolicy.itemMinimumHeight == 40)
         #expect(LUIDropdownMenuLayoutPolicy.trailingSpacing == 16)
+    }
+
+    @Test("native Form buttons keep the system row height")
+    func nativeFormButtonHeightPolicy() {
+        #expect(LUIButtonVisualPolicy.defaultHeight(isNativeFormRow: true) == nil)
+        #expect(LUIButtonVisualPolicy.defaultHeight(isNativeFormRow: false) == 44)
+    }
+
+    @Test("empty Form headings split sections without reserving header space")
+    func emptyFormHeadingPolicy() {
+        #expect(LUINavigationFormSectionPolicy.visibleHeaderID(
+            3,
+            text: ""
+        ) == nil)
+        #expect(LUINavigationFormSectionPolicy.visibleHeaderID(
+            3,
+            text: "Last error"
+        ) == 3)
+        #expect(LUINavigationFormSectionPolicy.visibleHeaderID(
+            nil,
+            text: nil
+        ) == nil)
+    }
+
+    @Test("menu radio groups use the native Picker presentation")
+    func menuRadioGroupPolicy() {
+        #expect(LUIRadioGroupVisualPolicy.usesMenuStyle("menu"))
+        #expect(LUIRadioGroupVisualPolicy.usesMenuStyle("compact menu"))
+        #expect(!LUIRadioGroupVisualPolicy.usesMenuStyle(nil))
+        #expect(!LUIRadioGroupVisualPolicy.usesMenuStyle("segmented"))
+        #expect(LUIRadioGroupVisualPolicy.displayText(
+            explicit: "",
+            selected: "System"
+        ) == "System")
+        #expect(LUIRadioGroupVisualPolicy.displayText(
+            explicit: "Language",
+            selected: "System"
+        ) == "Language")
     }
 
     @Test("semantic headings use the emphasized title weight")
@@ -672,6 +799,20 @@ struct LUISwiftUIBackendTests {
         #expect(backend.generation == 0)
     }
 
+    @Test("accepts centered button labels")
+    func acceptsCenteredButtonLabels() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"button"},
+          {"op":"set-prop","id":1,"property":"text","value":"Continue"},
+          {"op":"set-prop","id":1,"property":"text-alignment","value":"center"}
+        ]}
+        """)
+
+        #expect(backend.model(id: 1)?.property(.textAlignment)?.stringValue == "center")
+    }
+
     @Test("navigation list roles do not require tree ancestry")
     func acceptsNavigationListRoles() throws {
         let backend = LUIAppleBackend()
@@ -719,11 +860,23 @@ struct LUISwiftUIBackendTests {
 
     @Test("virtual list row identity changes only with retained node revision")
     func virtualListRowIdentityTracksRevision() {
-        let original = LUIRetainedNodeSnapshot(nodeID: 7, revision: 2)
+        let original = LUIRetainedNodeSnapshot(
+            nodeID: 7,
+            revision: 2
+        )
 
-        #expect(original == LUIRetainedNodeSnapshot(nodeID: 7, revision: 2))
-        #expect(original != LUIRetainedNodeSnapshot(nodeID: 7, revision: 3))
-        #expect(original != LUIRetainedNodeSnapshot(nodeID: 8, revision: 2))
+        #expect(original == LUIRetainedNodeSnapshot(
+            nodeID: 7,
+            revision: 2
+        ))
+        #expect(original != LUIRetainedNodeSnapshot(
+            nodeID: 7,
+            revision: 3
+        ))
+        #expect(original != LUIRetainedNodeSnapshot(
+            nodeID: 8,
+            revision: 2
+        ))
     }
 
     @Test("only external resource nodes directly observe retained revision")
@@ -734,6 +887,13 @@ struct LUISwiftUIBackendTests {
         #expect(LUIDirectRevisionObservationPolicy.requiresRevision(.avatar))
         #expect(LUIDirectRevisionObservationPolicy.requiresRevision(.image))
         #expect(LUIDirectRevisionObservationPolicy.requiresRevision(.mediaSurface))
+    }
+
+    @Test("Spacer keeps its native flexible layout identity")
+    func spacerBypassesSurfaceDecoration() {
+        #expect(LUIUnmodifiedNodePolicy.bypassesSurface(kind: .spacer))
+        #expect(!LUIUnmodifiedNodePolicy.bypassesSurface(kind: .box))
+        #expect(!LUIUnmodifiedNodePolicy.bypassesSurface(kind: .text))
     }
 
     @Test("rejects invalid batches before observable models change")
@@ -987,11 +1147,12 @@ struct LUISwiftUIBackendTests {
         #expect(LUIListItemInteractionPolicy.longPressMinimumDuration == 0.35)
     }
 
-    @Test("custom ListItem content honors child grow on the horizontal axis")
+    @Test("custom ListItem rows fill the native row width")
     func listItemContentHonorsChildGrow() {
-        #expect(!LUIListItemLayoutPolicy.stretchesChild(grow: nil))
-        #expect(!LUIListItemLayoutPolicy.stretchesChild(grow: 0))
-        #expect(LUIListItemLayoutPolicy.stretchesChild(grow: 1))
+        #expect(LUIListItemLayoutPolicy.stretchesChild(kind: .row, grow: nil))
+        #expect(!LUIListItemLayoutPolicy.stretchesChild(kind: .text, grow: nil))
+        #expect(!LUIListItemLayoutPolicy.stretchesChild(kind: .text, grow: 0))
+        #expect(LUIListItemLayoutPolicy.stretchesChild(kind: .text, grow: 1))
         #expect(LUIListItemLayoutPolicy.showsTrailingSpacer(childGrows: false))
         #expect(!LUIListItemLayoutPolicy.showsTrailingSpacer(childGrows: true))
         #expect(LUIListItemLayoutPolicy.usesInlineTrailingIcon(isNavigationHeading: true))
@@ -1021,6 +1182,24 @@ struct LUISwiftUIBackendTests {
             isNavigationHeading: false,
             explicitMinimumHeight: 44
         ) == 44)
+    }
+
+    @Test("native form controls defer their row height to SwiftUI")
+    func nativeFormControlsUsePlatformRowHeight() {
+        #expect(LUIBinaryControlLayoutPolicy.minimumTouchHeight(
+            isIOS: true,
+            isNativeFormRow: true
+        ) == nil)
+        #expect(LUIBinaryControlLayoutPolicy.minimumTouchHeight(
+            isIOS: true,
+            isNativeFormRow: false
+        ) == nil)
+        #expect(LUIBinaryControlLayoutPolicy.minimumTouchHeight(
+            isIOS: false,
+            isNativeFormRow: false
+        ) == nil)
+        #expect(LUIBinaryControlLayoutPolicy.usesAccentTint(isNativeFormRow: false))
+        #expect(!LUIBinaryControlLayoutPolicy.usesAccentTint(isNativeFormRow: true))
     }
 
     @Test("growing Row children preserve intrinsic trailing controls")
@@ -1057,6 +1236,16 @@ struct LUISwiftUIBackendTests {
             main: "center",
             hasGrowingChild: true
         ))
+        #expect(LUIRowLayoutPolicy.isFlexibleChild(kind: .spacer, grow: nil))
+        #expect(LUIRowLayoutPolicy.isFlexibleChild(kind: .text, grow: 1))
+        #expect(!LUIRowLayoutPolicy.isFlexibleChild(kind: .text, grow: nil))
+    }
+
+    @Test("growing centered columns fill their allocated width")
+    func growingCenteredColumnsFillAllocatedWidth() {
+        #expect(LUIColumnLayoutPolicy.fillsAvailableWidth(cross: nil, grow: nil))
+        #expect(LUIColumnLayoutPolicy.fillsAvailableWidth(cross: "center", grow: 1))
+        #expect(!LUIColumnLayoutPolicy.fillsAvailableWidth(cross: "center", grow: nil))
     }
 
     @Test("maps Table structure and patches only the retained row and cell")
@@ -2582,6 +2771,7 @@ struct LUISwiftUIBackendTests {
         #expect(!LUIModalPresentationPolicy.showsDragIndicator(kind: .dialog))
         #expect(LUISelectVisualPolicy.indicatorSystemName == "chevron.up.chevron.down")
         #expect(LUISelectVisualPolicy.trailingInset == 12)
+        #expect(LUISelectVisualPolicy.verticalInset == 8)
         #expect(LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
             isNativeFormRow: true,
             variant: "default"
@@ -2805,6 +2995,59 @@ struct LUISwiftUIBackendTests {
         #expect(LUIIntrinsicSurfacePolicy.fillsWidth(kind: .box, grow: 1.0))
         #expect(!LUIIntrinsicSurfacePolicy.fillsWidth(kind: .column, grow: 1.0))
         #expect(!LUIIntrinsicSurfacePolicy.fillsWidth(kind: .box, grow: 0.0))
+    }
+
+    @Test("zero-width borders do not create shape display work")
+    func zeroWidthBordersAvoidShapeDisplayWork() {
+        #expect(!LUIBorderRenderingPolicy.drawsBorder(width: 0))
+        #expect(!LUIBorderRenderingPolicy.drawsBorder(width: -1))
+        #expect(LUIBorderRenderingPolicy.drawsBorder(width: 1))
+    }
+
+    @Test("transparent layout containers do not clip descendant effects")
+    func transparentLayoutContainersPreserveDescendantEffects() {
+        #expect(!LUIClipRenderingPolicy.clipsContent(
+            kind: .row,
+            background: nil,
+            cornerRadius: 0,
+            borderWidth: 0
+        ))
+        #expect(!LUIClipRenderingPolicy.clipsContent(
+            kind: .stack,
+            background: "transparent",
+            cornerRadius: 0,
+            borderWidth: 0
+        ))
+        #expect(LUIClipRenderingPolicy.clipsContent(
+            kind: .box,
+            background: "background",
+            cornerRadius: 0,
+            borderWidth: 0
+        ))
+        #expect(LUIClipRenderingPolicy.clipsContent(
+            kind: .column,
+            background: nil,
+            cornerRadius: 10,
+            borderWidth: 0
+        ))
+        #expect(LUIClipRenderingPolicy.clipsContent(
+            kind: .row,
+            background: nil,
+            cornerRadius: 0,
+            borderWidth: 1
+        ))
+        #expect(LUIClipRenderingPolicy.clipsContent(
+            kind: .panel,
+            background: nil,
+            cornerRadius: 0,
+            borderWidth: 0
+        ))
+        #expect(LUIClipRenderingPolicy.clipsContent(
+            kind: .tabs,
+            background: nil,
+            cornerRadius: 0,
+            borderWidth: 0
+        ))
     }
 
     @Test("rejects malformed InputGroup structure atomically")

@@ -17,8 +17,8 @@ enum LUIListItemInteractionPolicy {
 enum LUIListItemLayoutPolicy {
     static let navigationHeadingSpacing = 8.0
 
-    static func stretchesChild(grow: Double?) -> Bool {
-        (grow ?? 0.0) > 0.0
+    static func stretchesChild(kind: LUINodeKind?, grow: Double?) -> Bool {
+        kind == .row || (grow ?? 0.0) > 0.0
     }
 
     static func showsTrailingSpacer(childGrows: Bool) -> Bool {
@@ -44,6 +44,21 @@ enum LUIListItemLayoutPolicy {
             return semanticMinimumHeight
         }
         return explicit
+    }
+}
+
+enum LUIBinaryControlLayoutPolicy {
+    static func minimumTouchHeight(
+        isIOS: Bool,
+        isNativeFormRow: Bool
+    ) -> Double? {
+        _ = isIOS
+        _ = isNativeFormRow
+        return nil
+    }
+
+    static func usesAccentTint(isNativeFormRow: Bool) -> Bool {
+        !isNativeFormRow
     }
 }
 import SwiftUI
@@ -337,6 +352,8 @@ public final class LUIAppleBackend {
     private var tree = LUIRetainedTree()
     private var models: [Int: LUINodeModel] = [:]
     private var extensionModels: [Int: LUIExtensionNodeModel] = [:]
+    private var eventDeferralDepth = 0
+    private var deferredEvents: [LUIEvent] = []
     #if !SKIP
     private var images: [Int: CGImage] = [:]
     private var mediaSurfaces: [Int: CGImage] = [:]
@@ -491,14 +508,16 @@ public final class LUIAppleBackend {
             batch.ops,
             extensionRegistry: extensionRegistry
         )
-        withTransaction(Transaction(animation: nil)) {
-            commit(nextTree)
+        withDeferredEventDelivery {
+            withTransaction(Transaction(animation: nil)) {
+                commit(nextTree)
+            }
+            tree = nextTree
+            #if !SKIP
+            syncModalPresentation()
+            #endif
+            generation = batch.generation
         }
-        tree = nextTree
-        #if !SKIP
-        syncModalPresentation()
-        #endif
-        generation = batch.generation
     }
 
     func performPress(node: Int) throws {
@@ -514,7 +533,7 @@ public final class LUIAppleBackend {
               model.isEnabled else {
             throw invalid("node \(node) is not an enabled pressable control")
         }
-        onEvent?(.press(node: node))
+        emit(.press(node: node))
     }
 
     func performLongPress(node: Int) throws {
@@ -524,7 +543,7 @@ public final class LUIAppleBackend {
               model.isEnabled, model.supportsLongPress else {
             throw invalid("node \(node) is not enabled for long press")
         }
-        onEvent?(.longPress(node: node))
+        emit(.longPress(node: node))
     }
 
     func performTextChange(node: Int, text: String) throws {
@@ -532,7 +551,7 @@ public final class LUIAppleBackend {
               Self.isTextEntry(model.kind), model.isEnabled else {
             throw invalid("node \(node) is not an editable text control")
         }
-        onEvent?(.textChanged(node: node, text: text))
+        emit(.textChanged(node: node, text: text))
     }
 
     func performSubmit(node: Int) throws {
@@ -542,7 +561,7 @@ public final class LUIAppleBackend {
               model.isEnabled else {
             throw invalid("node \(node) is not an enabled text control")
         }
-        onEvent?(.submit(node: node))
+        emit(.submit(node: node))
     }
 
     func performDoublePress(node: Int) throws {
@@ -550,14 +569,14 @@ public final class LUIAppleBackend {
               model.isEnabled, model.supportsDoublePress else {
             throw invalid("node \(node) is not an enabled double-press control")
         }
-        onEvent?(.doublePress(node: node))
+        emit(.doublePress(node: node))
     }
 
     func performAppear(node: Int) throws {
         guard let model = models[node], model.isEnabled, model.supportsAppear else {
             throw invalid("node \(node) is not enabled for appearance events")
         }
-        onEvent?(.appear(node: node))
+        emit(.appear(node: node))
     }
 
     public func performExtensionEvent(
@@ -576,7 +595,7 @@ public final class LUIAppleBackend {
         }), event.fields.allSatisfy({ !$0.isRequired || values[$0.name] != nil }) else {
             throw invalid("invalid extension event payload")
         }
-        onEvent?(.extension(
+        emit(.extension(
             node: node,
             identifier: model.identifier,
             name: name,
@@ -594,7 +613,7 @@ public final class LUIAppleBackend {
                 model.supportsToggle else {
             throw invalid("node \(node) is not an enabled toggle")
         }
-        onEvent?(.toggleChanged(node: node, checked: checked))
+        emit(.toggleChanged(node: node, checked: checked))
     }
 
     func performChange(node: Int) throws {
@@ -603,11 +622,11 @@ public final class LUIAppleBackend {
             throw invalid("node \(node) is not an enabled change control")
         }
         if model.supportsChange {
-            if !model.isChecked { onEvent?(.change(node: node)) }
+            if !model.isChecked { emit(.change(node: node)) }
         } else if model.supportsToggle {
-            onEvent?(.toggleChanged(node: node, checked: true))
+            emit(.toggleChanged(node: node, checked: true))
         } else if model.supportsPress {
-            onEvent?(.press(node: node))
+            emit(.press(node: node))
         }
     }
 
@@ -618,7 +637,7 @@ public final class LUIAppleBackend {
               value.isFinite else {
             throw invalid("node \(node) is not an enabled value control")
         }
-        onEvent?(.valueChanged(node: node, value: min(max(value, 0.0), 1.0)))
+        emit(.valueChanged(node: node, value: min(max(value, 0.0), 1.0)))
     }
 
     func performDismiss(node: Int) throws {
@@ -628,7 +647,7 @@ public final class LUIAppleBackend {
                 model.kind == .sheet || model.kind == .toast else {
             throw invalid("node \(node) is not dismissible")
         }
-        onEvent?(.dismiss(node: node))
+        emit(.dismiss(node: node))
     }
 
     func performAction(node: Int) throws {
@@ -772,6 +791,26 @@ public final class LUIAppleBackend {
             } else {
                 extensionModels[id] = LUIExtensionNodeModel(id: id, state: state)
             }
+        }
+    }
+
+    func withDeferredEventDelivery(_ operation: () -> Void) {
+        eventDeferralDepth += 1
+        operation()
+        eventDeferralDepth -= 1
+        guard eventDeferralDepth == 0, !deferredEvents.isEmpty else { return }
+        let events = deferredEvents
+        deferredEvents.removeAll(keepingCapacity: true)
+        for event in events {
+            onEvent?(event)
+        }
+    }
+
+    private func emit(_ event: LUIEvent) {
+        if eventDeferralDepth > 0 {
+            deferredEvents.append(event)
+        } else {
+            onEvent?(event)
         }
     }
 

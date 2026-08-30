@@ -592,7 +592,8 @@ struct LUIRetainedTree {
         case .containerRelativeFrame, .containerRelativeFrameInset:
             kind != .root && !isModalSurface(kind)
         case .paddingHorizontal, .paddingVertical:
-            kind == .row || kind == .column || kind == .grid || kind == .box
+            kind == .row || kind == .column || kind == .grid || kind == .box ||
+                (property == .paddingHorizontal && kind == .button)
         case .foreground:
             kind == .text || kind == .heading || kind == .paragraph ||
                 kind == .label || kind == .button || kind == .toggleButton ||
@@ -685,7 +686,8 @@ struct LUIRetainedTree {
         case .tooltipDelay: kind == .tooltip
         case .duration: false
         case .textAlignment:
-            kind == .text || kind == .tableCell || kind == .bubble || kind == .statusBar
+            kind == .text || kind == .button || kind == .toggleButton ||
+                kind == .tableCell || kind == .bubble || kind == .statusBar
         case .role: isTreeRow(kind) || kind == .listItem
         case .treeLevel, .expanded: isTreeRow(kind)
         case .active, .title, .description, .meta, .indicator, .connector: false

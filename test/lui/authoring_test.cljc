@@ -9,7 +9,7 @@
             [lui.separator]
             [lui.skeleton]
             [lui.bottom-tabs]
-            [lui.macros :refer [defui state effect platform host]]
+            [lui.macros :refer [defui state effect platform host reactive]]
             [lui.backend.apple :as apple
              :refer [AppleBox AppleCard AppleAlert AppleBubble AppleStatusBar
                      AppleCheckbox AppleColumn AppleFormLabel AppleGrid
@@ -23,6 +23,10 @@
                      AppleInputGroup AppleInputGroupActions
                      AppleAccordion AppleBottomTabs AppleBottomTab]]
             [lui.backend.flutter :as flutter]))
+
+(type-record keyed-context-menu-item
+  (identifier :string)
+  (title :string))
 
 (defmacro assert-equal [expected actual message]
   `(is (= ~expected ~actual) ~message))
@@ -291,6 +295,24 @@
    "More"
    [:context-menu
     [:menu-item {:on-press on-action} "Duplicate"]]])
+
+(defn context-menu-test-item [identifier title]
+  (record keyed-context-menu-item
+    (identifier identifier)
+    (title title)))
+
+(defui retained-keyed-context-menu [items-source on-action]
+  [:button
+   "Status"
+   [:context-menu
+    [:keyed
+     {:source items-source
+      :key :identifier
+      :compare compare
+      :as item-source}
+     [:menu-item
+      {:text (reactive :title item-source)
+       :on-press on-action}]]]])
 
 (defui retained-message-surfaces
   [title-source message-source reactions-source status-source]
@@ -1319,6 +1341,36 @@
         _ (is false "leaf host ContextMenu mapping exists"))
       (assert-equal 3 (apple/node-count renderer)
                     "metadata adds no visible wrapper nodes"))))
+
+(deftest context-menu-supports-keyed-native-menu-items
+  (let [scheduler (sig/scheduler)
+        renderer (apple/create)
+        application (runtime/create scheduler (apple/backend renderer))
+        scope (sig/scope "keyed-context-menu")
+        items
+        (sig/state scheduler
+                   [(context-menu-test-item "status.todo" "Todo")
+                    (context-menu-test-item "status.done" "Done")])
+        received (atom [])
+        callback (fn [event] (swap! received conj event) true)
+        root
+        (retained-keyed-context-menu
+         (ui/context application scope) (sig/value items) callback)]
+    (sig/mount! scope)
+    (runtime/flush! application)
+    (let [menu (nth (apple/children renderer root) 0)
+          todo (nth (apple/children renderer menu) 0)
+          done (nth (apple/children renderer menu) 1)]
+      (assert-equal (Some AppleContextMenu) (apple/node renderer menu)
+                    "keyed items remain inside native button menu metadata")
+      (assert-equal (Some AppleMenuItem) (apple/node renderer todo)
+                    "the first keyed status is a native menu item")
+      (assert-equal (Some AppleMenuItem) (apple/node renderer done)
+                    "the second keyed status is a native menu item")
+      (runtime/dispatch! application (proto/Press done))
+      (runtime/flush! application)
+      (assert-equal [(proto/Press done)] @received
+                    "keyed native menu items preserve typed selection events"))))
 
 (deftest message-surface-signals-patch-retained-native-nodes
   (let [scheduler (sig/scheduler)

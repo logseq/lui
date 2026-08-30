@@ -2096,7 +2096,8 @@
           "every reference icon placement is accepted"))
     (doseq [property [proto/VariantValue proto/SizeValue proto/InlineIconName
                       proto/IconPlacementValue proto/Selected proto/Autofocus
-                      proto/LongPressEnabled proto/AccessibilityLabel]]
+                      proto/LongPressEnabled proto/AccessibilityLabel
+                      proto/TextAlignment proto/PaddingHorizontal]]
       (is (proto/property-supported? proto/Button property)
           "Button admits every typed contract property"))
     (is (proto/event-supported? proto/Button (proto/LongPress 1))
@@ -2151,7 +2152,8 @@
     (doseq [property [proto/TextValue proto/VariantValue proto/SizeValue
                       proto/InlineIconName proto/IconPlacementValue
                       proto/Selected proto/Autofocus proto/LongPressEnabled
-                      proto/Enabled proto/AccessibilityLabel]]
+                      proto/Enabled proto/AccessibilityLabel
+                      proto/TextAlignment]]
       (is (proto/property-supported? proto/ToggleButton property)
           "ToggleButton admits the exact shared control properties"))
     (is (proto/can-contain-children? proto/ToggleButton)

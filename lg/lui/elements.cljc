@@ -80,7 +80,7 @@
                      (if (empty? remaining)
                        false
                        (let [tag (first (first remaining))]
-                         (if (or (= tag :menu-item) (= tag :if))
+                         (if (or (= tag :menu-item) (= tag :if) (= tag :keyed))
                            true
                            (recur (next remaining)))))))
 
@@ -1292,6 +1292,8 @@
           context node (:icon-placement attrs) 'lui.protocol/IconPlacementValue)
        ~@(string-attribute-expansion
           context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(string-attribute-expansion
+          context node (:text-alignment attrs) 'lui.protocol/TextAlignment)
        ~@(bool-attribute-expansion
           context node (:selected attrs) 'lui.protocol/Selected)
        ~@(bool-attribute-expansion
@@ -1328,6 +1330,8 @@
           context node (:icon-placement attrs) 'lui.protocol/IconPlacementValue)
        ~@(string-attribute-expansion
           context node (:label attrs) 'lui.protocol/AccessibilityLabel)
+       ~@(string-attribute-expansion
+          context node (:text-alignment attrs) 'lui.protocol/TextAlignment)
        ~@(bool-attribute-expansion
           context node (:selected attrs) 'lui.protocol/Selected)
        ~@(bool-attribute-expansion

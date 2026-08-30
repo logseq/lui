@@ -179,7 +179,8 @@
     GridColumns (= kind Grid)
     PaddingValue (and (not (= kind Avatar)) (not (= kind Tooltip)))
     PaddingHorizontal
-    (or (= kind Row) (= kind Column) (= kind Grid) (= kind Box))
+    (or (= kind Row) (= kind Column) (= kind Grid) (= kind Box)
+        (= kind Button))
     PaddingVertical
     (or (= kind Row) (= kind Column) (= kind Grid) (= kind Box))
     BackgroundValue
@@ -310,7 +311,8 @@
     TooltipDelay (= kind Tooltip)
     DurationValue false
     TextAlignment
-    (or (= kind Text) (= kind TableCell) (= kind Bubble) (= kind StatusBar))
+    (or (= kind Text) (= kind Button) (= kind ToggleButton)
+        (= kind TableCell) (= kind Bubble) (= kind StatusBar))
     RoleValue (or (tree-row-kind? kind) (= kind ListItem))
     TreeLevel (tree-row-kind? kind)
     Expanded (tree-row-kind? kind)

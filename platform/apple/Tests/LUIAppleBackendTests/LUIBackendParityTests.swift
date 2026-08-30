@@ -96,6 +96,44 @@ struct LUIBackendParityTests {
         #expect(host.fittingSize.height >= 160)
     }
 
+    @Test("a Row spacer keeps trailing content at the far edge")
+    func rowSpacerKeepsTrailingContentAtFarEdge() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"row"},
+          {"op":"create-node","id":2,"kind":"box"},
+          {"op":"set-prop","id":2,"property":"width","value":40},
+          {"op":"set-prop","id":2,"property":"height","value":20},
+          {"op":"set-prop","id":2,"property":"background","value":"red"},
+          {"op":"create-node","id":3,"kind":"spacer"},
+          {"op":"create-node","id":4,"kind":"box"},
+          {"op":"set-prop","id":4,"property":"width","value":40},
+          {"op":"set-prop","id":4,"property":"height","value":20},
+          {"op":"set-prop","id":4,"property":"background","value":"blue"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"insert-child","parent":1,"child":4,"index":2}
+        ]}
+        """)
+
+        let host = NSHostingView(
+            rootView: LUIAnyNodeView(nodeID: 1, backend: backend)
+        )
+        host.frame = NSRect(x: 0, y: 0, width: 200, height: 20)
+        host.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        let trailing = try #require(bitmap.colorAt(
+            x: bitmap.pixelsWide * 9 / 10,
+            y: bitmap.pixelsHigh / 2
+        ))
+
+        #expect(trailing.blueComponent > 0.8)
+        #expect(trailing.blueComponent > trailing.redComponent + 0.5)
+    }
+
     @Test("an appear-enabled node emits once when SwiftUI presents it")
     func appearEnabledNodeEmitsWhenPresented() throws {
         let backend = LUIAppleBackend()

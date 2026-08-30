@@ -92,6 +92,9 @@ struct LUIDrawerView: View {
     @State private var isGestureActive = false
     @State private var isAnimating = false
     @State private var transitionGeneration = 0
+    #if DEBUG
+    @State private var transitionStartedAt = 0.0
+    #endif
 
     init(model: LUINodeModel, backend: LUIAppleBackend) {
         self.model = model
@@ -136,7 +139,6 @@ struct LUIDrawerView: View {
                         .scaleEffect(0.96 + (0.04 * Double(progress)))
                         .offset(x: -20.0 * (1.0 - progress))
                         .scrollDisabled(interactionsLocked)
-                        .disabled(interactionsLocked)
                         .allowsHitTesting(presented && contentInteractionAllowed)
                 }
 
@@ -148,7 +150,6 @@ struct LUIDrawerView: View {
                         ))
                         .modifier(LUIDrawerMainSurfaceModifier())
                         .scrollDisabled(interactionsLocked)
-                        .disabled(interactionsLocked)
                         .allowsHitTesting(contentInteractionAllowed)
                         .overlay {
                             if presented {
@@ -272,6 +273,12 @@ struct LUIDrawerView: View {
         transitionGeneration += 1
         let generation = transitionGeneration
         isAnimating = true
+        #if DEBUG
+        transitionStartedAt = ProcessInfo.processInfo.systemUptime
+        print(
+            "LUI_DRAWER transition=begin generation=\(generation) selected=\(selected)"
+        )
+        #endif
         #if SKIP
         withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
             presented = selected
@@ -304,8 +311,22 @@ struct LUIDrawerView: View {
     }
 
     private func finishAnimation(generation: Int, selected: Bool) {
-        guard transitionGeneration == generation, presented == selected else { return }
+        guard isAnimating,
+              transitionGeneration == generation,
+              presented == selected else { return }
         isAnimating = false
+        #if DEBUG
+        let elapsedMilliseconds =
+            (ProcessInfo.processInfo.systemUptime - transitionStartedAt) * 1_000
+        print(
+            String(
+                format: "LUI_DRAWER transition=end generation=%d selected=%@ duration_ms=%.3f",
+                generation,
+                selected.description,
+                elapsedMilliseconds
+            )
+        )
+        #endif
     }
 }
 

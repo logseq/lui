@@ -160,6 +160,7 @@ private struct LUISkipNodeView: View {
                 try? backend.performAction(node: model.id)
             } label: {
                 Text(verbatim: model.text)
+                    .font(buttonLabelFont)
             }
         case .checkbox, .switchControl, .toggle:
             Toggle(
@@ -190,8 +191,14 @@ private struct LUISkipNodeView: View {
             )
         case .textarea:
             TextEditor(text: textBinding)
-        case .select, .combobox, .dropdownMenu, .radioGroup:
+        case .select, .combobox, .dropdownMenu:
             Menu(model.text) {
+                ForEach(model.children, id: \.self) { childID in
+                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                }
+            }
+        case .radioGroup:
+            Menu(radioGroupTitle) {
                 ForEach(model.children, id: \.self) { childID in
                     LUIAnyNodeView(nodeID: childID, backend: backend)
                 }
@@ -259,6 +266,21 @@ private struct LUISkipNodeView: View {
         case .contextMenu:
             EmptyView()
         }
+    }
+
+    private var buttonLabelFont: Font {
+        let classes = model.property(.styleClass)?.stringValue?.split(separator: " ") ?? []
+        return classes.contains("caption") ? .caption : .body
+    }
+
+    private var radioGroupTitle: String {
+        LUIRadioGroupVisualPolicy.displayText(
+            explicit: model.text,
+            selected: model.children
+                .compactMap(backend.model)
+                .first(where: \.isChecked)?
+                .text
+        )
     }
 
     @ViewBuilder
