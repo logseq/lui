@@ -156,12 +156,7 @@ private struct LUISkipNodeView: View {
         case .text, .paragraph, .label, .statusBar, .tooltip:
             Text(verbatim: model.text)
         case .button, .toggleButton:
-            Button {
-                try? backend.performAction(node: model.id)
-            } label: {
-                Text(verbatim: model.text)
-                    .font(buttonLabelFont)
-            }
+            styledButton
         case .checkbox, .switchControl, .toggle:
             Toggle(
                 model.text,
@@ -271,6 +266,31 @@ private struct LUISkipNodeView: View {
     private var buttonLabelFont: Font {
         let classes = model.property(.styleClass)?.stringValue?.split(separator: " ") ?? []
         return classes.contains("caption") ? .caption : .body
+    }
+
+    @ViewBuilder
+    private var styledButton: some View {
+        switch model.buttonVariant {
+        case "primary":
+            actionButton.buttonStyle(.borderedProminent)
+        case "secondary":
+            actionButton.buttonStyle(.bordered).tint(.secondary)
+        case "outline":
+            actionButton.buttonStyle(.bordered)
+        case "destructive":
+            actionButton.buttonStyle(.borderedProminent).tint(.red)
+        default:
+            actionButton.buttonStyle(.plain)
+        }
+    }
+
+    private var actionButton: some View {
+        Button {
+            try? backend.performAction(node: model.id)
+        } label: {
+            Text(verbatim: model.text)
+                .font(buttonLabelFont)
+        }
     }
 
     private var radioGroupTitle: String {
