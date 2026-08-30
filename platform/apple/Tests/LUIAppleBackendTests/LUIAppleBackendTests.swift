@@ -3245,6 +3245,7 @@ struct LUISwiftUIBackendTests {
           {"op":"set-prop","id":3,"property":"text","value":"Rename"},
           {"op":"set-prop","id":3,"property":"press-enabled","value":true},
           {"op":"set-prop","id":3,"property":"icon","value":"trash"},
+          {"op":"set-prop","id":3,"property":"foreground","value":"success-foreground"},
           {"op":"set-prop","id":3,"property":"accessibility-identifier","value":"menu.rename"},
           {"op":"set-prop","id":5,"property":"text","value":"Archive"},
           {"op":"set-prop","id":5,"property":"press-enabled","value":true},

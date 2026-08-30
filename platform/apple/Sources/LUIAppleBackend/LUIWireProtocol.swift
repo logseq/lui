@@ -850,6 +850,7 @@ struct LUIRetainedTree {
                             .enabled,
                             .pressEnabled,
                             .icon,
+                            .foreground,
                             .variant,
                             .accessibilityIdentifier,
                         ]
