@@ -1690,6 +1690,18 @@ struct LUISwiftUIBackendTests {
         #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 0.5) == 20)
         #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 1) == 40)
         #expect(LUIDrawerInteractionPolicy.shadowOpacity == 0.18)
+        #expect(LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
+            isPresented: false,
+            isEnabled: true
+        ))
+        #expect(LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
+            isPresented: true,
+            isEnabled: false
+        ))
+        #expect(!LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
+            isPresented: true,
+            isEnabled: true
+        ))
     }
 
     @Test("maps Tree rows to one retained native focus set")

@@ -42,6 +42,13 @@ enum LUIDrawerInteractionPolicy {
     static let transitionLockMilliseconds = 350
     static let usesNativeLogicalCompletion = true
 
+    static func panelIsAccessibilityHidden(
+        isPresented: Bool,
+        isEnabled: Bool
+    ) -> Bool {
+        !isPresented || !isEnabled
+    }
+
     static func disablesInteraction(
         isDragging: Bool,
         isAnimating: Bool,
@@ -167,6 +174,12 @@ struct LUIDrawerView: View {
                         )
                         .scrollDisabled(interactionsLocked)
                         .allowsHitTesting(presented && contentInteractionAllowed)
+                        .accessibilityHidden(
+                            LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
+                                isPresented: presented,
+                                isEnabled: model.isEnabled
+                            )
+                        )
                 }
 
                 if LUIDrawerInteractionPolicy.showsInteractionShield(
@@ -194,6 +207,12 @@ struct LUIDrawerView: View {
                         .offset(x: -20.0 * (1.0 - progress))
                         .scrollDisabled(interactionsLocked)
                         .allowsHitTesting(presented && contentInteractionAllowed)
+                        .accessibilityHidden(
+                            LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
+                                isPresented: presented,
+                                isEnabled: model.isEnabled
+                            )
+                        )
                 }
 
                 if let mainID = model.children.first {
