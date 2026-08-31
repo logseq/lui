@@ -252,13 +252,29 @@ private struct LUISkipNodeView: View {
         case .button, .toggleButton:
             styledButton
         case .checkbox, .switchControl, .toggle:
-            Toggle(
-                model.text,
-                isOn: Binding(
-                    get: { model.isChecked },
-                    set: { try? backend.performToggle(node: model.id, checked: $0) }
+            if let identifier = model.accessibilityIdentifier(in: backend) {
+                HStack {
+                    Text(verbatim: model.text)
+                    Spacer()
+                    Toggle(
+                        "",
+                        isOn: Binding(
+                            get: { model.isChecked },
+                            set: { try? backend.performToggle(node: model.id, checked: $0) }
+                        )
+                    )
+                    .labelsHidden()
+                    .accessibilityIdentifier(identifier)
+                }
+            } else {
+                Toggle(
+                    model.text,
+                    isOn: Binding(
+                        get: { model.isChecked },
+                        set: { try? backend.performToggle(node: model.id, checked: $0) }
+                    )
                 )
-            )
+            }
         case .radio:
             Button {
                 try? backend.performChange(node: model.id)
@@ -844,23 +860,8 @@ private struct LUISkipAccessibilityModifier: ViewModifier {
     func body(content: Content) -> some View {
         let label = model.accessibilityLabel(in: backend)
         let identifier = model.accessibilityIdentifier(in: backend) ?? label
-        if LUIBinaryControlLayoutPolicy.addsIdentifierTapTarget(kind: model.kind),
-           let identifier
-        {
-            if let label {
-                content
-                    .accessibilityLabel(Text(label))
-                    .accessibilityIdentifier(identifier)
-                    .onTapGesture {
-                        try? backend.performToggle(node: model.id, checked: !model.isChecked)
-                    }
-            } else {
-                content
-                    .accessibilityIdentifier(identifier)
-                    .onTapGesture {
-                        try? backend.performToggle(node: model.id, checked: !model.isChecked)
-                    }
-            }
+        if LUIBinaryControlLayoutPolicy.rendersIdentifierOnControlLeaf(kind: model.kind) {
+            content
         } else if model.kind == .button {
             content
         } else if let label, let identifier {
