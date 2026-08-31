@@ -27,6 +27,24 @@ private enum LUISkipRowLayoutPolicy {
     }
 }
 
+private enum LUISkipColumnLayoutPolicy {
+    static func showsLeadingSpacer(main: String?) -> Bool {
+        main == "center" || main == "end"
+    }
+
+    static func showsInterItemSpacer(
+        main: String?,
+        childID: Int,
+        firstChildID: Int?
+    ) -> Bool {
+        main == "space_between" && childID != firstChildID
+    }
+
+    static func showsTrailingSpacer(main: String?) -> Bool {
+        main == "center"
+    }
+}
+
 public struct LUISwiftUIRoot: View {
     private let backend: LUIAppleBackend
     private let rootID: Int
@@ -158,10 +176,22 @@ private struct LUISkipNodeView: View {
                 alignment: columnAlignment,
                 spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
             ) {
+                if LUISkipColumnLayoutPolicy.showsLeadingSpacer(
+                    main: model.property(.main)?.stringValue
+                ) {
+                    Spacer(minLength: 0)
+                }
                 if !model.text.isEmpty {
                     Text(verbatim: model.text)
                 }
                 ForEach(model.children, id: \.self) { childID in
+                    if LUISkipColumnLayoutPolicy.showsInterItemSpacer(
+                        main: model.property(.main)?.stringValue,
+                        childID: childID,
+                        firstChildID: model.children.first
+                    ) {
+                        Spacer(minLength: 0)
+                    }
                     let child = backend.model(id: childID)
                     if child?.kind == .spacer {
                         Spacer(minLength: 0)
@@ -173,6 +203,11 @@ private struct LUISkipNodeView: View {
                                 alignment: .topLeading
                             )
                     }
+                }
+                if LUISkipColumnLayoutPolicy.showsTrailingSpacer(
+                    main: model.property(.main)?.stringValue
+                ) {
+                    Spacer(minLength: 0)
                 }
             }
             .frame(
