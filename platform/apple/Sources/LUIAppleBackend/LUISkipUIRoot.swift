@@ -156,7 +156,14 @@ private struct LUISkipNodeView: View {
                     ? .infinity : nil,
                 alignment: columnFrameAlignment
             )
-        case .panel, .card, .stack, .grid, .table,
+        case .stack:
+            ZStack(alignment: .topLeading) {
+                if !model.text.isEmpty {
+                    Text(verbatim: model.text)
+                }
+                children
+            }
+        case .panel, .card, .grid, .table,
              .tableRow, .tableCell, .tree, .timeline, .timelineItem, .stepper,
              .step, .alert, .bubble, .toast, .accordion,
              .menuItem, .resizable, .split:

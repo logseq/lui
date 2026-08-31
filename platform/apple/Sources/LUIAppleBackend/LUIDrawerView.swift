@@ -129,6 +129,58 @@ struct LUIDrawerView: View {
                     isGestureActive: isGestureActive
                 )
 
+            #if SKIP
+            ZStack(alignment: .leading) {
+                if let mainID = model.children.first {
+                    LUIAnyNodeView(nodeID: mainID, backend: backend)
+                        .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
+                        .modifier(LUIDrawerMainSurfaceModifier())
+                        .scrollDisabled(interactionsLocked)
+                        .allowsHitTesting(contentInteractionAllowed)
+                        .overlay {
+                            if progress > 0 {
+                                Button {
+                                    updatePresentation(false)
+                                } label: {
+                                    Color.black.opacity(0.32 * Double(progress))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Close sidebar")
+                                .accessibilityIdentifier("button.sidebar.dismiss")
+                                .allowsHitTesting(presented && contentInteractionAllowed)
+                            }
+                        }
+                }
+
+                if let panelID = model.children.dropFirst().first {
+                    LUIAnyNodeView(nodeID: panelID, backend: backend)
+                        .frame(width: width)
+                        .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
+                        .background(Color.black.opacity(0.001))
+                        .offset(x: -width + visibleWidth)
+                        .shadow(
+                            color: Color.black.opacity(0.18 * Double(progress)),
+                            radius: 12,
+                            x: 4
+                        )
+                        .scrollDisabled(interactionsLocked)
+                        .allowsHitTesting(presented && contentInteractionAllowed)
+                }
+
+                if LUIDrawerInteractionPolicy.showsInteractionShield(
+                    isDragging: isDragging,
+                    isAnimating: isAnimating,
+                    isGestureActive: isGestureActive
+                ) {
+                    Color.black.opacity(0.001)
+                        .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
+                        .allowsHitTesting(true)
+                        .accessibilityHidden(true)
+                        .modifier(LUIDrawerInteractionShieldModifier())
+                }
+            }
+            .simultaneousGesture(drawerGesture(width: width))
+            #else
             ZStack(alignment: .leading) {
                 if let panelID = model.children.dropFirst().first {
                     LUIAnyNodeView(nodeID: panelID, backend: backend)
@@ -191,9 +243,6 @@ struct LUIDrawerView: View {
                         .modifier(LUIDrawerInteractionShieldModifier())
                 }
             }
-            #if SKIP
-            .simultaneousGesture(drawerGesture(width: width))
-            #else
             .simultaneousGesture(
                 drawerGesture(width: width),
                 isEnabled: (presented || model.isEnabled) && !isAnimating
