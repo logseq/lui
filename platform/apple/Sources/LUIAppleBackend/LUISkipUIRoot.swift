@@ -6,6 +6,18 @@ private enum LUISkipRowLayoutPolicy {
         kind == .spacer || (grow ?? 0.0) > 0.0
     }
 
+    static func showsLeadingSpacer(main: String?) -> Bool {
+        main == "center" || main == "end"
+    }
+
+    static func showsInterItemSpacer(
+        main: String?,
+        childID: Int,
+        firstChildID: Int?
+    ) -> Bool {
+        main == "space_between" && childID != firstChildID
+    }
+
     static func showsTrailingSpacer(
         main: String?,
         hasGrowingChild: Bool
@@ -79,9 +91,21 @@ private struct LUISkipNodeView: View {
                 LUIAnyNodeView(nodeID: childID, backend: backend)
             }
         case .row, .tabs, .buttonGroup, .toggleGroup, .breadcrumb, .pagination,
-             .inputGroup, .inputGroupActions:
+            .inputGroup, .inputGroupActions:
             HStack(spacing: CGFloat(model.property(.gap)?.intValue ?? 0)) {
+                if LUISkipRowLayoutPolicy.showsLeadingSpacer(
+                    main: model.property(.main)?.stringValue
+                ) {
+                    Spacer(minLength: 0)
+                }
                 ForEach(model.children, id: \.self) { childID in
+                    if LUISkipRowLayoutPolicy.showsInterItemSpacer(
+                        main: model.property(.main)?.stringValue,
+                        childID: childID,
+                        firstChildID: model.children.first
+                    ) {
+                        Spacer(minLength: 0)
+                    }
                     let child = backend.model(id: childID)
                     if child?.kind == .spacer {
                         Spacer(minLength: 0)
