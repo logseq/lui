@@ -17,6 +17,10 @@ enum LUIListItemInteractionPolicy {
 enum LUIListItemLayoutPolicy {
     static let navigationHeadingSpacing = 8.0
 
+    static func horizontalPadding(isNavigationRow: Bool) -> Double {
+        isNavigationRow ? 12.0 : 16.0
+    }
+
     static func stretchesChild(kind: LUINodeKind?, grow: Double?) -> Bool {
         kind == .row || (grow ?? 0.0) > 0.0
     }

@@ -221,7 +221,12 @@ private struct LUISkipNodeView: View {
                         .onTapGesture { performListItemPrimaryAction() }
                 }
             }
-            .padding(.horizontal, isNavigationRow ? 12.0 : 0.0)
+            .padding(
+                .horizontal,
+                LUIListItemLayoutPolicy.horizontalPadding(
+                    isNavigationRow: isNavigationRow
+                )
+            )
             .padding(.vertical, isNavigationRow ? 8.0 : 0.0)
             .frame(minHeight: isNavigationRow ? 48.0 : nil)
             .frame(maxWidth: .infinity, alignment: .leading)

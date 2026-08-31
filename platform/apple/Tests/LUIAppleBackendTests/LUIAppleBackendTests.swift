@@ -1164,6 +1164,8 @@ struct LUISwiftUIBackendTests {
         #expect(LUIListItemLayoutPolicy.usesInlineTrailingIcon(isNavigationHeading: true))
         #expect(!LUIListItemLayoutPolicy.usesInlineTrailingIcon(isNavigationHeading: false))
         #expect(LUIListItemLayoutPolicy.navigationHeadingSpacing == 8)
+        #expect(LUIListItemLayoutPolicy.horizontalPadding(isNavigationRow: true) == 12)
+        #expect(LUIListItemLayoutPolicy.horizontalPadding(isNavigationRow: false) == 16)
         #expect(LUIListItemLayoutPolicy.minimumHeight(
             isNativeListRow: true,
             isNavigationRow: false,
