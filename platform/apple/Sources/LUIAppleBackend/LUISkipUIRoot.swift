@@ -253,19 +253,27 @@ private struct LUISkipNodeView: View {
             styledButton
         case .checkbox, .switchControl, .toggle:
             if let identifier = model.accessibilityIdentifier(in: backend) {
-                HStack {
-                    Text(verbatim: model.text)
-                    Spacer()
-                    Toggle(
-                        "",
-                        isOn: Binding(
-                            get: { model.isChecked },
-                            set: { try? backend.performToggle(node: model.id, checked: $0) }
+                Button {
+                    try? backend.performToggle(node: model.id, checked: !model.isChecked)
+                } label: {
+                    HStack {
+                        Text(verbatim: model.text)
+                        Spacer()
+                        Toggle(
+                            "",
+                            isOn: Binding(
+                                get: { model.isChecked },
+                                set: { _ in }
+                            )
                         )
-                    )
-                    .labelsHidden()
-                    .accessibilityIdentifier(identifier)
+                        .labelsHidden()
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                    }
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(model.text))
+                .accessibilityIdentifier(identifier)
             } else {
                 Toggle(
                     model.text,
@@ -860,7 +868,7 @@ private struct LUISkipAccessibilityModifier: ViewModifier {
     func body(content: Content) -> some View {
         let label = model.accessibilityLabel(in: backend)
         let identifier = model.accessibilityIdentifier(in: backend) ?? label
-        if LUIBinaryControlLayoutPolicy.rendersIdentifierOnControlLeaf(kind: model.kind) {
+        if LUIBinaryControlLayoutPolicy.wrapsIdentifiedControlInButton(kind: model.kind) {
             content
         } else if model.kind == .button {
             content

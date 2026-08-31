@@ -65,7 +65,7 @@ enum LUIBinaryControlLayoutPolicy {
         !isNativeFormRow
     }
 
-    static func rendersIdentifierOnControlLeaf(kind: LUINodeKind) -> Bool {
+    static func wrapsIdentifiedControlInButton(kind: LUINodeKind) -> Bool {
         switch kind {
         case .checkbox, .switchControl, .toggle:
             true

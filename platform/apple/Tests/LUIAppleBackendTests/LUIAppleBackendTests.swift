@@ -1208,10 +1208,10 @@ struct LUISwiftUIBackendTests {
         ) == nil)
         #expect(LUIBinaryControlLayoutPolicy.usesAccentTint(isNativeFormRow: false))
         #expect(!LUIBinaryControlLayoutPolicy.usesAccentTint(isNativeFormRow: true))
-        #expect(LUIBinaryControlLayoutPolicy.rendersIdentifierOnControlLeaf(kind: .toggle))
-        #expect(LUIBinaryControlLayoutPolicy.rendersIdentifierOnControlLeaf(kind: .switchControl))
-        #expect(LUIBinaryControlLayoutPolicy.rendersIdentifierOnControlLeaf(kind: .checkbox))
-        #expect(!LUIBinaryControlLayoutPolicy.rendersIdentifierOnControlLeaf(kind: .button))
+        #expect(LUIBinaryControlLayoutPolicy.wrapsIdentifiedControlInButton(kind: .toggle))
+        #expect(LUIBinaryControlLayoutPolicy.wrapsIdentifiedControlInButton(kind: .switchControl))
+        #expect(LUIBinaryControlLayoutPolicy.wrapsIdentifiedControlInButton(kind: .checkbox))
+        #expect(!LUIBinaryControlLayoutPolicy.wrapsIdentifiedControlInButton(kind: .button))
     }
 
     @Test("growing Row children preserve intrinsic trailing controls")
