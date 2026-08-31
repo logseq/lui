@@ -1,5 +1,15 @@
 import SwiftUI
 
+enum LUIContainerRelativeFramePolicy {
+    static func skipFillsHorizontal(_ axes: String?) -> Bool {
+        axes == "horizontal" || axes == "both"
+    }
+
+    static func skipFillsVertical(_ axes: String?) -> Bool {
+        axes == "vertical" || axes == "both"
+    }
+}
+
 struct LUIContainerRelativeFrameModifier: ViewModifier {
     let axes: String?
     let inset: CGFloat
@@ -8,18 +18,18 @@ struct LUIContainerRelativeFrameModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         #if SKIP
-        switch axes {
-        case "horizontal", "min-horizontal":
-            content.frame(maxWidth: .infinity, alignment: .topLeading)
-        case "vertical", "min-vertical":
-            content.frame(maxHeight: .infinity, alignment: .topLeading)
-        case "both", "min-both":
+        if LUIContainerRelativeFramePolicy.skipFillsHorizontal(axes),
+           LUIContainerRelativeFramePolicy.skipFillsVertical(axes) {
             content.frame(
                 maxWidth: .infinity,
                 maxHeight: .infinity,
                 alignment: .topLeading
             )
-        default:
+        } else if LUIContainerRelativeFramePolicy.skipFillsHorizontal(axes) {
+            content.frame(maxWidth: .infinity, alignment: .topLeading)
+        } else if LUIContainerRelativeFramePolicy.skipFillsVertical(axes) {
+            content.frame(maxHeight: .infinity, alignment: .topLeading)
+        } else {
             content
         }
         #else

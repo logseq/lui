@@ -41,6 +41,18 @@ struct LUIBackendParityTests {
         #expect(backend.model(id: 1) != nil)
     }
 
+    @Test("minimum viewport frames stay intrinsic on Android scroll content")
+    func minimumViewportFramesStayIntrinsicOnAndroid() {
+        #expect(LUIContainerRelativeFramePolicy.skipFillsHorizontal("horizontal"))
+        #expect(LUIContainerRelativeFramePolicy.skipFillsVertical("vertical"))
+        #expect(LUIContainerRelativeFramePolicy.skipFillsHorizontal("both"))
+        #expect(LUIContainerRelativeFramePolicy.skipFillsVertical("both"))
+        #expect(!LUIContainerRelativeFramePolicy.skipFillsHorizontal("min-horizontal"))
+        #expect(!LUIContainerRelativeFramePolicy.skipFillsVertical("min-vertical"))
+        #expect(!LUIContainerRelativeFramePolicy.skipFillsHorizontal("min-both"))
+        #expect(!LUIContainerRelativeFramePolicy.skipFillsVertical("min-both"))
+    }
+
     #if os(macOS)
     @Test("a vertical container-relative frame fills its scroll viewport")
     func verticalContainerRelativeFrameFillsViewport() throws {

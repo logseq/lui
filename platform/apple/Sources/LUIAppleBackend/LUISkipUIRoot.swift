@@ -1,6 +1,20 @@
 #if SKIP
 import SwiftUI
 
+private enum LUISkipRowLayoutPolicy {
+    static func isFlexibleChild(kind: LUINodeKind?, grow: Double?) -> Bool {
+        kind == .spacer || (grow ?? 0.0) > 0.0
+    }
+
+    static func showsTrailingSpacer(
+        main: String?,
+        hasGrowingChild: Bool
+    ) -> Bool {
+        if main == "center" { return true }
+        return (main == nil || main == "start") && !hasGrowingChild
+    }
+}
+
 public struct LUISwiftUIRoot: View {
     private let backend: LUIAppleBackend
     private let rootID: Int
@@ -45,6 +59,7 @@ private struct LUISkipNodeView: View {
         let _ = model.revision
         content
             .disabled(!model.isEnabled)
+            .modifier(LUISkipSurfaceLayoutModifier(model: model))
             .modifier(LUISkipRetainedPaneModifier(model: model))
             .modifier(
                 LUIContainerRelativeFrameModifier(
@@ -66,7 +81,29 @@ private struct LUISkipNodeView: View {
         case .row, .tabs, .buttonGroup, .toggleGroup, .breadcrumb, .pagination,
              .inputGroup, .inputGroupActions:
             HStack(spacing: CGFloat(model.property(.gap)?.intValue ?? 0)) {
-                children
+                ForEach(model.children, id: \.self) { childID in
+                    let child = backend.model(id: childID)
+                    if child?.kind == .spacer {
+                        Spacer(minLength: 0)
+                    } else {
+                        let isFlexible = LUISkipRowLayoutPolicy.isFlexibleChild(
+                            kind: child?.kind,
+                            grow: child?.property(.grow)?.doubleValue
+                        )
+                        LUIAnyNodeView(nodeID: childID, backend: backend)
+                            .fixedSize(horizontal: !isFlexible, vertical: false)
+                            .frame(
+                                maxWidth: isFlexible ? .infinity : nil,
+                                alignment: .leading
+                            )
+                    }
+                }
+                if LUISkipRowLayoutPolicy.showsTrailingSpacer(
+                    main: model.property(.main)?.stringValue,
+                    hasGrowingChild: rowHasGrowingChild
+                ) {
+                    Spacer(minLength: 0)
+                }
             }
         case .bottomTabs:
             bottomTabs
@@ -141,8 +178,14 @@ private struct LUISkipNodeView: View {
                         .onTapGesture { performListItemPrimaryAction() }
                 }
             }
+            .padding(.horizontal, isNavigationRow ? 12.0 : 0.0)
+            .padding(.vertical, isNavigationRow ? 8.0 : 0.0)
+            .frame(minHeight: isNavigationRow ? 48.0 : nil)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(model.isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+            .background(
+                model.isSelected ? Color.accentColor.opacity(0.16) : Color.clear,
+                in: RoundedRectangle(cornerRadius: isNavigationRow ? 24.0 : 0.0)
+            )
             .simultaneousGesture(
                 LongPressGesture(
                     minimumDuration: LUIListItemInteractionPolicy.longPressMinimumDuration
@@ -249,7 +292,8 @@ private struct LUISkipNodeView: View {
                     height: CGFloat(model.spinnerHeight)
                 )
         case .icon:
-            Text(verbatim: model.iconName)
+            LUISkipIconImage(source: backend.iconSource(for: model.iconName))
+                .scaledToFit()
                 .frame(
                     width: CGFloat(model.iconWidth),
                     height: CGFloat(model.iconHeight)
@@ -561,14 +605,68 @@ private struct LUISkipNodeView: View {
 
     private var listItemContent: some View {
         HStack(spacing: 8) {
+            if !model.buttonIconName.isEmpty && model.buttonIconPlacement != "trailing" {
+                LUISkipIconImage(source: backend.iconSource(for: model.buttonIconName))
+                    .scaledToFit()
+                    .frame(width: 20, height: 20)
+            }
             if visibleListItemChildren.isEmpty {
                 Text(verbatim: model.text)
+                    .font(isNavigationHeading ? .title3 : .body)
+                    .fontWeight(isNavigationHeading ? .semibold : .regular)
             } else {
                 ForEach(visibleListItemChildren, id: \.self) { childID in
+                    let child = backend.model(id: childID)
                     LUIAnyNodeView(nodeID: childID, backend: backend)
+                        .frame(
+                            maxWidth: LUIListItemLayoutPolicy.stretchesChild(
+                                kind: child?.kind,
+                                grow: child?.property(.grow)?.doubleValue
+                            ) ? .infinity : nil,
+                            alignment: .leading
+                        )
                 }
             }
-            Spacer(minLength: 8)
+            if !listItemHasGrowingChild {
+                Spacer(minLength: 8)
+            }
+            if !model.buttonIconName.isEmpty && model.buttonIconPlacement == "trailing" {
+                LUISkipIconImage(source: backend.iconSource(for: model.buttonIconName))
+                    .scaledToFit()
+                    .frame(width: 20, height: 20)
+            }
+        }
+    }
+
+    private var listItemRole: String {
+        model.property(.role)?.stringValue ?? ""
+    }
+
+    private var isNavigationRow: Bool {
+        listItemRole == "navigation" || listItemRole == "navigation-heading"
+    }
+
+    private var isNavigationHeading: Bool {
+        listItemRole == "navigation-heading"
+    }
+
+    private var rowHasGrowingChild: Bool {
+        model.children.contains { childID in
+            let child = backend.model(id: childID)
+            return LUISkipRowLayoutPolicy.isFlexibleChild(
+                kind: child?.kind,
+                grow: child?.property(.grow)?.doubleValue
+            )
+        }
+    }
+
+    private var listItemHasGrowingChild: Bool {
+        visibleListItemChildren.contains { childID in
+            let child = backend.model(id: childID)
+            return LUIListItemLayoutPolicy.stretchesChild(
+                kind: child?.kind,
+                grow: child?.property(.grow)?.doubleValue
+            )
         }
     }
 
@@ -601,6 +699,54 @@ private struct LUISkipIconImage: View {
             Image(name)
                 .resizable()
         }
+    }
+}
+
+private struct LUISkipSurfaceLayoutModifier: ViewModifier {
+    let model: LUINodeModel
+
+    func body(content: Content) -> some View {
+        let defaultPadding: Int
+        switch model.kind {
+        case .card:
+            defaultPadding = 24
+        case .alert:
+            defaultPadding = 16
+        case .bubble:
+            defaultPadding = 12
+        case .tabs:
+            defaultPadding = 2
+        default:
+            defaultPadding = 0
+        }
+        let padding = model.property(.padding)?.intValue ?? defaultPadding
+        let horizontal = model.kind == .button
+            ? 0
+            : model.property(.paddingHorizontal)?.intValue ?? padding
+        let vertical = model.property(.paddingVertical)?.intValue ?? padding
+        let grows = (model.property(.grow)?.doubleValue ?? 0.0) > 0.0
+
+        content
+            .padding(.horizontal, CGFloat(horizontal))
+            .padding(.vertical, CGFloat(vertical))
+            .frame(
+                maxWidth: grows ? .infinity : nil,
+                alignment: .leading
+            )
+            .frame(
+                width: LUIExplicitFramePolicy.width(
+                    kind: model.kind,
+                    requested: model.surfaceWidth
+                ).map { CGFloat($0) },
+                height: model.surfaceHeight.map { CGFloat($0) }
+            )
+            .frame(
+                minWidth: model.surfaceMinWidth.map { CGFloat($0) },
+                maxWidth: model.surfaceMaxWidth.map { CGFloat($0) },
+                minHeight: model.surfaceMinHeight.map { CGFloat($0) },
+                maxHeight: model.surfaceMaxHeight.map { CGFloat($0) },
+                alignment: .topLeading
+            )
     }
 }
 
