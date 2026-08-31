@@ -87,6 +87,8 @@ struct LUIDrawerView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
 
+    @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.colorScheme) private var colorScheme
     @State private var presented: Bool
     @State private var dragOffset: CGFloat = 0
     @State private var isGestureActive = false
@@ -156,7 +158,7 @@ struct LUIDrawerView: View {
                     LUIAnyNodeView(nodeID: panelID, backend: backend)
                         .frame(width: width)
                         .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
-                        .background(Color.black.opacity(0.001))
+                        .background(drawerBackground)
                         .offset(x: -width + visibleWidth)
                         .shadow(
                             color: Color.black.opacity(0.18 * Double(progress)),
@@ -263,6 +265,10 @@ struct LUIDrawerView: View {
                 isGestureActive = false
             }
         }
+    }
+
+    private var drawerBackground: Color {
+        semanticColors["background"] ?? (colorScheme == .dark ? .black : .white)
     }
 
     private func drawerGesture(width: CGFloat) -> some Gesture {
