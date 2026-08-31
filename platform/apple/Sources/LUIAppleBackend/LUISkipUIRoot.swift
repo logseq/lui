@@ -137,7 +137,19 @@ private struct LUISkipNodeView: View {
                 if !model.text.isEmpty {
                     Text(verbatim: model.text)
                 }
-                children
+                ForEach(model.children, id: \.self) { childID in
+                    let child = backend.model(id: childID)
+                    if child?.kind == .spacer {
+                        Spacer(minLength: 0)
+                    } else {
+                        LUIAnyNodeView(nodeID: childID, backend: backend)
+                            .frame(
+                                maxHeight: (child?.property(.grow)?.doubleValue ?? 0.0) > 0.0
+                                    ? .infinity : nil,
+                                alignment: .topLeading
+                            )
+                    }
+                }
             }
             .frame(
                 maxWidth: LUIVerticalContainerPolicy.stretchesCrossAxis(columnCross)
