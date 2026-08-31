@@ -64,6 +64,15 @@ enum LUIBinaryControlLayoutPolicy {
     static func usesAccentTint(isNativeFormRow: Bool) -> Bool {
         !isNativeFormRow
     }
+
+    static func addsIdentifierTapTarget(kind: LUINodeKind) -> Bool {
+        switch kind {
+        case .checkbox, .switchControl, .toggle:
+            true
+        default:
+            false
+        }
+    }
 }
 import SwiftUI
 import CoreGraphics

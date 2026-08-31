@@ -844,7 +844,24 @@ private struct LUISkipAccessibilityModifier: ViewModifier {
     func body(content: Content) -> some View {
         let label = model.accessibilityLabel(in: backend)
         let identifier = model.accessibilityIdentifier(in: backend) ?? label
-        if model.kind == .button {
+        if LUIBinaryControlLayoutPolicy.addsIdentifierTapTarget(kind: model.kind),
+           let identifier
+        {
+            if let label {
+                content
+                    .accessibilityLabel(Text(label))
+                    .accessibilityIdentifier(identifier)
+                    .onTapGesture {
+                        try? backend.performToggle(node: model.id, checked: !model.isChecked)
+                    }
+            } else {
+                content
+                    .accessibilityIdentifier(identifier)
+                    .onTapGesture {
+                        try? backend.performToggle(node: model.id, checked: !model.isChecked)
+                    }
+            }
+        } else if model.kind == .button {
             content
         } else if let label, let identifier {
             content
