@@ -7,3 +7,17 @@
  (name lui)
  (public_name lui)
  (modules))
+
+(library
+ (name lui_states)
+ (public_name lui.states)
+ (modules))
+
+(install
+ (section lib)
+ (package lui)
+ (files
+  (lg/lui/lui_native.state as states/lui_native.state)
+  (lg/lui/lui_native.ml as states/lui_native.ml)
+  (lg/lui/lui_melange.state as states/lui_melange.state)
+  (lg/lui/lui_melange.ml as states/lui_melange.ml)))
