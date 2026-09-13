@@ -14,6 +14,24 @@
    -o lui_native.ml)))
 
 (rule
+ (targets lui_native_backends.ml lui_native_backends.state)
+ (deps
+  lui_native.state
+  (source_tree backend)
+  %{bin:lg})
+ (action
+  (run
+   %{bin:lg}
+   --target native
+   --compile-files-from-state
+   lui_native.state
+   lui_native_backends.state
+   backend/retained
+   backend/apple
+   backend/flutter
+   -o lui_native_backends.ml)))
+
+(rule
  (targets lui_melange.ml lui_melange.state)
  (deps
   %{lib:signal-lg.states:signal_melange.state}
@@ -27,3 +45,21 @@
    %{lib:signal-lg.states:signal_melange.state}
    lui_melange.state
    -o lui_melange.ml)))
+
+(rule
+ (targets lui_melange_backends.ml lui_melange_backends.state)
+ (deps
+  lui_melange.state
+  (source_tree backend)
+  %{bin:lg})
+ (action
+  (run
+   %{bin:lg}
+   --target melange
+   --compile-files-from-state
+   lui_melange.state
+   lui_melange_backends.state
+   backend/retained
+   backend/apple
+   backend/flutter
+   -o lui_melange_backends.ml)))
