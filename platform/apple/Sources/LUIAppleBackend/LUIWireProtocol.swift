@@ -611,7 +611,7 @@ struct LUIRetainedTree {
                 kind == .tooltip ||
                 kind == .tableCell ||
                 kind == .alert || kind == .bubble || kind == .statusBar ||
-                isModalSurface(kind)
+                isModalSurface(kind) || kind == .drawer
         case .enabled:
             kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle ||

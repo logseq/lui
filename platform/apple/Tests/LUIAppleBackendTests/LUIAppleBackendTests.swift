@@ -1534,6 +1534,7 @@ struct LUISwiftUIBackendTests {
           {"op":"create-node","id":3,"kind":"panel"},
           {"op":"set-prop","id":1,"property":"selected","value":false},
           {"op":"set-prop","id":1,"property":"enabled","value":false},
+          {"op":"set-prop","id":1,"property":"text","value":"Navigation"},
           {"op":"set-prop","id":1,"property":"toggle-enabled","value":true},
           {"op":"set-prop","id":1,"property":"width","value":320},
           {"op":"insert-child","parent":1,"child":2,"index":0},
@@ -1547,6 +1548,7 @@ struct LUISwiftUIBackendTests {
         #expect(drawer.kind == .drawer)
         #expect(drawer.children == [2, 3])
         #expect(drawer.property(.selected) == .bool(false))
+        #expect(drawer.property(.text) == .string("Navigation"))
         #expect(!drawer.isEnabled)
         #expect(drawer.property(.width) == .int(320))
 
