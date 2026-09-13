@@ -104,7 +104,6 @@
     Tree AppleTree
     Resizable AppleResizable
     Split AppleSplit
-    Drawer AppleDrawer
     StatusBar AppleStatusBar))
 
 (defn- extension-platform-node [_node identifier]

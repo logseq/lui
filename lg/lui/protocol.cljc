@@ -760,7 +760,6 @@
       Tree true
       Resizable true
       Split true
-      Drawer true
       Stepper true
       Timeline true
       InputGroup true

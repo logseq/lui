@@ -104,7 +104,6 @@
     Tree FlutterTree
     Resizable FlutterResizable
     Split FlutterSplit
-    Drawer FlutterDrawer
     StatusBar FlutterStatusBar))
 
 (defn- extension-platform-node [_node identifier]
