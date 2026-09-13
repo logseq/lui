@@ -1042,6 +1042,7 @@ final class LUIFlutterBackend {
         'default') {
       'sm' => 16.0,
       'lg' => 24.0,
+      'icon' => 24.0,
       _ => 18.0,
     };
     final buttonVariant = state.properties['variant'] as String? ?? 'default';
@@ -1117,7 +1118,7 @@ final class LUIFlutterBackend {
     Widget buttonLabel() {
       final icon = buttonIcon == null
           ? null
-          : Icon(_iconData(buttonIcon), size: 16);
+          : Icon(_iconData(buttonIcon), size: iconExtent);
       if (text.isEmpty) return icon ?? const SizedBox.shrink();
       if (icon == null) return Text(text);
       return Row(
