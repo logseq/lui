@@ -288,6 +288,27 @@ void main() {
     expect(events, [const LUIEvent.press(node: 3)]);
   });
 
+  testWidgets('emits appear events when nodes mount', (tester) async {
+    final events = <LUIEvent>[];
+    final backend = LUIFlutterBackend(onEvent: events.add)
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"list-item"},
+        {"op":"set-prop","id":2,"property":"text","value":"Load more"},
+        {"op":"set-prop","id":2,"property":"appear-enabled","value":true},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    await tester.pump();
+
+    expect(events, const [LUIEvent.appear(node: 2)]);
+  });
+
   testWidgets('maps Tabs to retained native Button triggers', (tester) async {
     final semantics = tester.ensureSemantics();
     final events = <LUIEvent>[];
@@ -2878,7 +2899,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(BottomSheet), findsOneWidget);
-    expect(tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle, true);
+    expect(
+      tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
+      true,
+    );
     expect(find.text('Share'), findsOneWidget);
     final surface = find.byKey(const ValueKey('lui-sheet-surface-2'));
     expect(tester.getSize(surface).height, 320);

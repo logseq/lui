@@ -13,6 +13,7 @@ part 'lui_flutter_extension.dart';
 sealed class LUIEvent {
   const LUIEvent();
 
+  const factory LUIEvent.appear({required int node}) = LUIAppearEvent;
   const factory LUIEvent.press({required int node}) = LUIPressEvent;
   const factory LUIEvent.longPress({required int node}) = LUILongPressEvent;
   const factory LUIEvent.textChanged({
@@ -52,6 +53,18 @@ final class LUIRootSection {
 
   @override
   int get hashCode => Object.hash(id, title);
+}
+
+final class LUIAppearEvent extends LUIEvent {
+  const LUIAppearEvent({required this.node});
+  final int node;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIAppearEvent && other.node == node;
+
+  @override
+  int get hashCode => node.hashCode;
 }
 
 final class LUIDoublePressEvent extends LUIEvent {
@@ -335,6 +348,35 @@ final class _NodeHandle extends ChangeNotifier {
   }
 }
 
+final class _LUIAppearDispatcher extends StatefulWidget {
+  const _LUIAppearDispatcher({
+    super.key,
+    required this.node,
+    required this.onAppear,
+    required this.child,
+  });
+
+  final int node;
+  final VoidCallback onAppear;
+  final Widget child;
+
+  @override
+  State<_LUIAppearDispatcher> createState() => _LUIAppearDispatcherState();
+}
+
+final class _LUIAppearDispatcherState extends State<_LUIAppearDispatcher> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onAppear();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 final class LUIFlutterBackend {
   LUIFlutterBackend({
     this.onEvent,
@@ -597,7 +639,18 @@ final class LUIFlutterBackend {
     return ListenableBuilder(
       key: nodeKey(node),
       listenable: handle,
-      builder: (context, _) => _buildNode(context, node),
+      builder: (context, _) => _withAppear(node, _buildNode(context, node)),
+    );
+  }
+
+  Widget _withAppear(int node, Widget child) {
+    final state = _requireState(_states, node);
+    if (state.properties['appear-enabled'] != true) return child;
+    return _LUIAppearDispatcher(
+      key: ValueKey('lui-appear-$node'),
+      node: node,
+      onAppear: () => onEvent?.call(LUIEvent.appear(node: node)),
+      child: child,
     );
   }
 
@@ -3009,6 +3062,7 @@ final class LUIFlutterBackend {
         value is bool &&
             (kind == _NodeKind.combobox || kind == _NodeKind.listItem),
       'double-press-enabled' => value is bool && kind == _NodeKind.listItem,
+      'appear-enabled' => value is bool,
       'image' =>
         value is int &&
             value >= 0 &&
