@@ -3211,7 +3211,8 @@ final class LUIFlutterBackend {
       'text-alignment' =>
         value is String &&
             _textAlignments.contains(value) &&
-            (kind == _NodeKind.tableCell ||
+            (_isButtonKind(kind) ||
+                kind == _NodeKind.tableCell ||
                 kind == _NodeKind.bubble ||
                 kind == _NodeKind.statusBar),
       'role' => value == 'treeitem' && value is String && _isTreeRowKind(kind),
@@ -3339,7 +3340,13 @@ final class LUIFlutterBackend {
                 'context-menu does not support nested menus',
               );
             }
-            const allowed = {'text', 'enabled', 'press-enabled'};
+            const allowed = {
+              'text',
+              'icon',
+              'foreground',
+              'enabled',
+              'press-enabled',
+            };
             if (!child.properties.keys.every(allowed.contains)) {
               throw const LUIBackendException(
                 'context-menu menu-item has unsupported metadata',
