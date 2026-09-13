@@ -86,7 +86,6 @@
 (signature lui.ui/dropdown-menu! :fn<ui-context;int>)
 (signature lui.ui/context-menu! :fn<ui-context;int>)
 (signature lui.ui/dialog! :fn<ui-context;int>)
-(signature lui.ui/drawer! :fn<ui-context;int>)
 (signature lui.ui/sheet! :fn<ui-context;int>)
 (signature lui.ui/tooltip! :fn<ui-context;int>)
 (signature lui.ui/toast! :fn<ui-context;int>)

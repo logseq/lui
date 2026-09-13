@@ -1163,7 +1163,13 @@
          ~@(bool-attribute-expansion
             context node (:selected attrs) 'lui.protocol/Selected)
          ~@(disabled-attribute-expansion context node attrs)
-         ~@(accordion-event-expansion context node attrs)
+         ~@(string-attribute-expansion
+            context node (:label attrs) 'lui.protocol/TextValue)
+         ~@(if (:on-toggle attrs)
+             [`(lui.ui/bool-property!
+                ~context ~node lui.protocol/ToggleEnabled true)
+              `(lui.ui/on-event! ~context ~node ~(:on-toggle attrs))]
+             [])
          ~@(element-properties context node attrs)
          ~@(if parent
              [`(lui.ui/append! ~context ~parent ~node)]
@@ -1606,29 +1612,6 @@
 (defelement dialog [context parent attrs & children]
   (modal-surface-expansion
    'lui.ui/dialog! context parent attrs children))
-
-(defelement drawer [context parent attrs & children]
-  (let [node (gensym "node")]
-    `(let [~node (lui.ui/drawer! ~context)]
-       ~@(bool-attribute-expansion
-          context node (:selected attrs) 'lui.protocol/Selected)
-       ~@(disabled-attribute-expansion context node attrs)
-       ~@(string-attribute-expansion
-          context node (:label attrs) 'lui.protocol/TextValue)
-       ~@(if (:on-toggle attrs)
-           [`(lui.ui/bool-property!
-              ~context ~node lui.protocol/ToggleEnabled true)
-            `(lui.ui/on-event! ~context ~node ~(:on-toggle attrs))]
-           [])
-       ~@(element-properties context node attrs)
-       ~@(if parent
-           [`(lui.ui/append! ~context ~parent ~node)]
-           [])
-       ~@(map
-          (fn [child]
-            `(lui.elements/element ~context ~node ~child))
-          children)
-       ~node)))
 
 (defelement sheet [context parent attrs & children]
   (modal-surface-expansion
