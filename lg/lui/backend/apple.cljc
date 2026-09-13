@@ -7,8 +7,8 @@
                      Spacer Spinner Icon
                      Checkbox SwitchControl
                      Progress Divider Toggle RadioGroup Radio Slider
-                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Sheet Tooltip Toast Toolbar
-                     Accordion Table TableRow TableCell Tree Resizable Split Drawer StatusBar]]
+                     Select Combobox DropdownMenu ContextMenu MenuItem ListItem Avatar Image MediaSurface Stepper Step Timeline TimelineItem InputGroup InputGroupActions Dialog Drawer Sheet Tooltip Toast Toolbar
+                     Accordion Table TableRow TableCell Tree Resizable Split StatusBar]]
             [lui.backend.retained :as retained]
             [lui.extension :as ext]
             [lui.wire :as wire]))
@@ -92,6 +92,7 @@
     InputGroup AppleInputGroup
     InputGroupActions AppleInputGroupActions
     Dialog AppleDialog
+    Drawer AppleDrawer
     Sheet AppleSheet
     Tooltip AppleTooltip
     Toast AppleToast

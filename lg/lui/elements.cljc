@@ -156,6 +156,7 @@
                          (= tag :dropdown-menu)
                          (= tag :context-menu)
                          (= tag :dialog)
+                         (= tag :drawer)
                          (= tag :sheet)
                          (= tag :tooltip)
                          (= tag :toast)
@@ -545,9 +546,24 @@
                      [[(:disabled attrs) 'lui.ui/disabled-signal!]
                       [(:accessibility-label attrs) 'lui.ui/accessibility-label!]])))
 
+(macro-helper-defn appear-event-expansion [context node attrs]
+                   (let [on-appear (:on-appear attrs)]
+                     (if on-appear
+                       [`(lui.ui/bool-property!
+                          ~context ~node lui.protocol/AppearEnabled true)
+                        `(lui.ui/on-event!
+                          ~context ~node
+                          (fn [~'event]
+                            (match ~'event
+                              (lui.protocol/Appear ~'_node)
+                              (~on-appear ~'event)
+                              ~'_ true)))]
+                       [])))
+
 (macro-helper-defn leaf-expansion [expression context parent attrs]
                    (let [node (gensym "node")]
                      `(let [~node ~expression]
+                        ~@(appear-event-expansion context node attrs)
                         ~@(element-properties context node attrs)
                         ~@(if parent
                             [`(lui.ui/append! ~context ~parent ~node)]
@@ -828,6 +844,7 @@
                      `(let [~node (~constructor ~context)]
                         ~@(tree-item-property-expansions context node attrs)
                         ~@(tree-item-event-expansion context node attrs)
+                        ~@(appear-event-expansion context node attrs)
                         ~@(element-properties context node attrs)
                         ~@(if parent
                             [`(lui.ui/append! ~context ~parent ~node)]
@@ -1551,15 +1568,11 @@
 
 (defelement context-menu [context parent attrs & children]
   (if (context-menu-item-missing-press? children)
-    (throw
-     (IllegalArgumentException.
-      "context-menu menu-item requires :on-press"))
+    (raise (Invalid_argument "context-menu menu-item requires :on-press"))
     nil)
   (if (context-menu-has-item? children)
     nil
-    (throw
-     (IllegalArgumentException.
-      "context-menu requires at least one menu-item")))
+    (raise (Invalid_argument "context-menu requires at least one menu-item")))
   (let [node (gensym "node")]
     `(let [~node (lui.ui/context-menu! ~context)]
        ~@(disabled-attribute-expansion context node attrs)
@@ -1593,6 +1606,29 @@
 (defelement dialog [context parent attrs & children]
   (modal-surface-expansion
    'lui.ui/dialog! context parent attrs children))
+
+(defelement drawer [context parent attrs & children]
+  (let [node (gensym "node")]
+    `(let [~node (lui.ui/drawer! ~context)]
+       ~@(bool-attribute-expansion
+          context node (:selected attrs) 'lui.protocol/Selected)
+       ~@(disabled-attribute-expansion context node attrs)
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/TextValue)
+       ~@(if (:on-toggle attrs)
+           [`(lui.ui/bool-property!
+              ~context ~node lui.protocol/ToggleEnabled true)
+            `(lui.ui/on-event! ~context ~node ~(:on-toggle attrs))]
+           [])
+       ~@(element-properties context node attrs)
+       ~@(if parent
+           [`(lui.ui/append! ~context ~parent ~node)]
+           [])
+       ~@(map
+          (fn [child]
+            `(lui.elements/element ~context ~node ~child))
+          children)
+       ~node)))
 
 (defelement sheet [context parent attrs & children]
   (modal-surface-expansion
