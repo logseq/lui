@@ -1134,7 +1134,7 @@ final class LUIFlutterBackend {
       final dimensions = switch (buttonSize) {
         'sm' => (const Size(0, 36), const EdgeInsets.symmetric(horizontal: 12)),
         'lg' => (const Size(0, 44), const EdgeInsets.symmetric(horizontal: 32)),
-        'icon' => (const Size.square(40), EdgeInsets.zero),
+        'icon' => (const Size.square(48), EdgeInsets.zero),
         _ => (const Size(0, 40), const EdgeInsets.symmetric(horizontal: 16)),
       };
       return ButtonStyle(
