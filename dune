@@ -11,6 +11,11 @@
 (install
  (section lib)
  (package lui)
+ (source_trees lg))
+
+(install
+ (section lib)
+ (package lui)
  (files
   (lg/lui/lui_native.state as states/lui_native.state)
   (lg/lui/lui_native_backends.state as states/lui_native_backends.state)
