@@ -1,4 +1,5 @@
-(ns lui.migration)
+(ns lui.migration
+  (:refer-clojure :exclude [apply]))
 
 (defn capture [version fingerprint model encode]
   (if (or (< version 0) (= fingerprint ""))

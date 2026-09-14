@@ -1,4 +1,5 @@
 (ns lui.restart
+  (:refer-clojure :exclude [run!])
   (:require [lui.hot-reload :as hot]))
 
 (defn create [capture rebuild launch restore]

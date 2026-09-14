@@ -1,4 +1,5 @@
 (ns lui.subscriptions
+  (:refer-clojure :exclude [count])
   (:require [signal.core :as sig]))
 
 (defn create [dispatch]

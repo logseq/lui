@@ -1,4 +1,5 @@
-(ns lui.elements)
+(ns lui.elements
+  (:refer-clojure :exclude [list]))
 
 (macro-helper-defn element-attrs [form]
                    (if (empty? (next form))
