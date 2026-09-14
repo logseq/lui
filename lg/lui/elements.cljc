@@ -1506,6 +1506,8 @@
         text-source (:text attrs)
         literal-text (first children)]
     `(let [~node (lui.ui/select! ~context)]
+       ~@(string-attribute-expansion
+          context node (:label attrs) 'lui.protocol/AccessibilityLabel)
        ~@(if text-source
            [`(lui.ui/text-property-signal! ~context ~node ~text-source)]
            (if literal-text

@@ -248,6 +248,7 @@
     (and (not (= kind Avatar)) (not (= kind Tooltip)))
     AccessibilityLabel
     (or (= kind Button) (= kind ToggleButton)
+        (= kind Select)
         (= kind TextField) (= kind SecureField) (= kind Input) (= kind SearchField)
         (= kind Textarea)
         (= kind Checkbox) (= kind SwitchControl)
