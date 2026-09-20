@@ -270,6 +270,21 @@ void main() {
     ]);
   });
 
+  test('projects sections inside an application root container', () {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''{"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"root"},
+        {"op":"create-node","id":2,"kind":"column"},
+        {"op":"create-node","id":3,"kind":"heading"},
+        {"op":"set-prop","id":3,"property":"text","value":"Button"},
+        {"op":"insert-child","parent":2,"child":3,"index":0},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+      ]}''');
+    expect(backend.rootSections(1), const [
+      LUIRootSection(id: 3, title: 'Button'),
+    ]);
+  });
+
   testWidgets('applies one LG patch batch to real Flutter widgets', (
     tester,
   ) async {

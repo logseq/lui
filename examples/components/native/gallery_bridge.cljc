@@ -51,6 +51,12 @@
     (driver/flush! value)
     (deref latest-patch)))
 
+(defn appear [node]
+  (reset! latest-patch "")
+  (driver/dispatch-event! (app) (proto/Appear node))
+  (driver/flush! (app))
+  (deref latest-patch))
+
 (defn press [node]
   (reset! latest-patch "")
   (driver/dispatch-event! (app) (proto/Press node))
@@ -113,6 +119,7 @@
 (defn root-node [] (driver/root-node (app)))
 
 (callback/register "lui_flutter_init" initialize)
+(callback/register "lui_flutter_appear" appear)
 (callback/register "lui_flutter_press" press)
 (callback/register "lui_flutter_long_press" long-press)
 (callback/register "lui_flutter_text_changed" text-changed)

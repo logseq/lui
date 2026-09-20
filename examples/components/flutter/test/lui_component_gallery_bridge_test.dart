@@ -28,6 +28,7 @@ void main() {
     final backend = LUIFlutterBackend(
       extensionRegistry: galleryExtensionRegistry(),
       onEvent: (event) => switch (event) {
+        LUIAppearEvent(:final node) => bridge.appear(node),
         LUIPressEvent(:final node) => bridge.press(node),
         LUILongPressEvent(:final node) => bridge.longPress(node),
         LUITextChangedEvent(:final node, :final text) => bridge.textChanged(
@@ -67,6 +68,7 @@ void main() {
 
     bridge.start();
     expect(patchError, isNull);
+    bridge.appear(backend.rootSections(bridge.rootNode).first.id);
     expect(backend.generation, 1);
     final sections = backend.rootSections(bridge.rootNode);
     final sectionsByTitle = {

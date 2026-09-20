@@ -406,8 +406,12 @@ final class LUIFlutterBackend {
 
   List<LUIRootSection> rootSections(int root) {
     final rootState = _requireState(_states, root);
+    final children =
+        rootState.kind == _NodeKind.root && rootState.children.length == 1
+        ? _requireState(_states, rootState.children.single).children
+        : rootState.children;
     return List.unmodifiable(
-      rootState.children.map(
+      children.map(
         (pageID) => LUIRootSection(
           id: pageID,
           title: _firstSectionTitle(pageID) ?? 'Component $pageID',

@@ -1595,6 +1595,8 @@
                     "malformed Split batches remain atomic"))))
 
 (deftest drawer-owns-one-controlled-two-pane-presentation
+  (is (not (proto/node-properties-supported? proto/Drawer {}))
+      "Drawer requires a nonempty modal title")
   (is (proto/property-supported? proto/Drawer proto/Selected)
       "Drawer owns its controlled presentation state")
   (is (proto/property-supported? proto/Drawer proto/WidthValue)
@@ -1607,6 +1609,7 @@
         [(proto/create-node-op 1 proto/Drawer)
          (proto/create-node-op 2 proto/Panel)
          (proto/create-node-op 3 proto/Panel)
+         (proto/set-prop-op 1 proto/TextValue (proto/StringValue "Navigation"))
          (proto/set-prop-op 1 proto/Selected (proto/BoolValue false))
          (proto/set-prop-op 1 proto/WidthValue (proto/IntValue 320))
          (proto/insert-child-op 1 2 0)

@@ -49,6 +49,14 @@ LUI_EXPORT int32_t lui_ocaml_start(
       Val_long(host_code)));
 }
 
+LUI_EXPORT int32_t lui_ocaml_appear(int64_t node) {
+  const value *dispatch = caml_named_value("lui_flutter_appear");
+  if (dispatch == NULL) {
+    return 0;
+  }
+  return emit_patch(caml_callback_exn(*dispatch, Val_long(node)));
+}
+
 LUI_EXPORT int32_t lui_ocaml_press(int64_t node) {
   const value *dispatch = caml_named_value("lui_flutter_press");
   if (dispatch == NULL) {

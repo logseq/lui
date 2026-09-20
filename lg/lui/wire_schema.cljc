@@ -15,15 +15,15 @@
                      Enabled Gap MainAlignment CrossAlignment GrowValue GridColumns
                      PaddingValue PaddingHorizontal PaddingVertical BackgroundValue ForegroundValue BorderColorValue
                      BorderWidth CornerRadius WidthValue HeightValue MinWidth MaxWidth
-                     MinHeight MaxHeight ContainerRelativeFrameValue ContainerRelativeFrameInset PlaceholderValue AccessibilityLabel AccessibilityIdentifier
-                     StyleClass HeadingLevel Checked ProgressValue OrientationValue SizeValue
-                     IconName VariantValue InlineIconName IconPlacementValue Selected Autofocus
-                     SubmitOnEnter LongPressEnabled ChangeEnabled ToggleEnabled PressEnabled SubmitEnabled
-                     DoublePressEnabled AppearEnabled ImageIdValue SurfaceIdValue ActiveIndex TitleValue
-                     DescriptionValue MetaValue IndicatorValue Connector SourceX SourceY
-                     SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset TooltipDelay
-                     DurationValue TextAlignment RoleValue TreeLevel Expanded ResizeDuration
-                     ResizeEasing ResizeOrigin]]))
+                     MinHeight MaxHeight ContainerRelativeFrameValue ContainerRelativeFrameInset PlaceholderValue AccessibilityLabel
+                     AccessibilityIdentifier StyleClass HeadingLevel Checked ProgressValue OrientationValue
+                     SizeValue IconName VariantValue InlineIconName IconPlacementValue Selected
+                     Autofocus SubmitOnEnter LongPressEnabled ChangeEnabled ToggleEnabled PressEnabled
+                     SubmitEnabled DoublePressEnabled AppearEnabled ImageIdValue SurfaceIdValue ActiveIndex
+                     TitleValue DescriptionValue MetaValue IndicatorValue Connector SourceX
+                     SourceY SourceWidth SourceHeight AnchorValue AnchorAlignmentValue AnchorOffset
+                     TooltipDelay DurationValue TextAlignment RoleValue TreeLevel Expanded
+                     ResizeDuration ResizeEasing ResizeOrigin]]))
 
 (defn node-kind-name [kind]
   (match kind

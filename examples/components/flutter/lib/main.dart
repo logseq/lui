@@ -90,6 +90,8 @@ class _ComponentGalleryHostState extends State<ComponentGalleryHost> {
 
   void _dispatch(LUIEvent event) {
     switch (event) {
+      case LUIAppearEvent(:final node):
+        _bridge.appear(node);
       case LUIPressEvent(:final node):
         _bridge.press(node);
       case LUILongPressEvent(:final node):

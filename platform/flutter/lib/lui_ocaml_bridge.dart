@@ -16,6 +16,8 @@ typedef _DartStart =
       int platform,
       int host,
     );
+typedef _NativeAppear = Int32 Function(Int64 node);
+typedef _DartAppear = int Function(int node);
 typedef _NativePress = Int32 Function(Int64 node);
 typedef _DartPress = int Function(int node);
 typedef _NativeLongPress = Int32 Function(Int64 node);
@@ -43,6 +45,9 @@ final class LUIOcamlBridge {
   LUIOcamlBridge._(this.library, this.onPatch)
     : _start = library.lookupFunction<_NativeStart, _DartStart>(
         'lui_ocaml_start',
+      ),
+      _appear = library.lookupFunction<_NativeAppear, _DartAppear>(
+        'lui_ocaml_appear',
       ),
       _press = library.lookupFunction<_NativePress, _DartPress>(
         'lui_ocaml_press',
@@ -93,6 +98,7 @@ final class LUIOcamlBridge {
   final DynamicLibrary library;
   final void Function(String json) onPatch;
   final _DartStart _start;
+  final _DartAppear _appear;
   final _DartPress _press;
   final _DartLongPress _longPress;
   final _DartTextChanged _textChanged;
@@ -134,6 +140,10 @@ final class LUIOcamlBridge {
     TargetPlatform.windows => 5,
     TargetPlatform.fuchsia => 0,
   };
+
+  void appear(int node) {
+    if (_appear(node) != 1) throw StateError('OCaml appear dispatch failed');
+  }
 
   void press(int node) {
     if (_press(node) != 1) throw StateError('OCaml press dispatch failed');

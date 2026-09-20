@@ -17,6 +17,7 @@ void main() {
     late LUIOcamlBridge bridge;
     final backend = LUIFlutterBackend(
       onEvent: (event) => switch (event) {
+        LUIAppearEvent(:final node) => bridge.appear(node),
         LUIPressEvent(:final node) => bridge.press(node),
         LUILongPressEvent(:final node) => bridge.longPress(node),
         LUITextChangedEvent(:final node, :final text) => bridge.textChanged(
@@ -42,6 +43,7 @@ void main() {
     addTearDown(bridge.close);
 
     bridge.start();
+    bridge.appear(backend.rootSections(bridge.rootNode).first.id);
     expect(backend.generation, 1);
     await tester.pumpWidget(
       MaterialApp(
