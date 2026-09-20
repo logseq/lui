@@ -1,4 +1,5 @@
 (ns components.model
+  (:refer-clojure :exclude [update])
   (:require [clojure.string :as string]))
 
 (defn initial []

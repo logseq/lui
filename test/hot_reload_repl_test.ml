@@ -280,18 +280,28 @@ let () =
                   {
                     Lg.Compiler.code = "LG9000";
                     phase = `Infrastructure;
+                    title = "Resource reload rejected";
                     message;
                     location = None;
+                    related = [];
+                    hints = [];
+                    fixes = [];
+                    type_mismatch = None;
                   }
             | Hot_reload_repl_base.ResourceStale stale_generation ->
                 Error
                   {
                     Lg.Compiler.code = "LG9001";
                     phase = `Infrastructure;
+                    title = "Stale resource generation";
                     message =
                       Printf.sprintf "stale resource generation %d"
                         stale_generation;
                     location = None;
+                    related = [];
+                    hints = [];
+                    fixes = [];
+                    type_mismatch = None;
                   })
         |> expect_ok
       in

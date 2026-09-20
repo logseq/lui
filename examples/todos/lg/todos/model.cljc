@@ -1,4 +1,5 @@
-(ns todos.model)
+(ns todos.model
+  (:refer-clojure :exclude [update]))
 
 (defn initial []
   (record todo-model
