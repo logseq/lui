@@ -1,5 +1,9 @@
 import SwiftUI
 
+extension EnvironmentValues {
+    @Entry var luiUnobscuredScrollHeight: CGFloat? = nil
+}
+
 enum LUIContainerRelativeFramePolicy {
     static func skipFillsHorizontal(_ axes: String?) -> Bool {
         axes == "horizontal" || axes == "both"
@@ -14,6 +18,7 @@ struct LUIContainerRelativeFrameModifier: ViewModifier {
     let axes: String?
     let inset: CGFloat
     @State private var minimumContainerSize = CGSize.zero
+    @Environment(\.luiUnobscuredScrollHeight) private var unobscuredScrollHeight
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -55,7 +60,7 @@ struct LUIContainerRelativeFrameModifier: ViewModifier {
         case "min-vertical":
             content
                 .frame(
-                    minHeight: max(0, minimumContainerSize.height - inset),
+                    minHeight: max(0, (unobscuredScrollHeight ?? minimumContainerSize.height) - inset),
                     alignment: .topLeading
                 )
                 .background {

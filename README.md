@@ -19,6 +19,17 @@ same Melange module as the LG application and applies typed patches directly
 to DOM nodes, so it has no JSON bridge, JavaScript UI framework, or
 component-specific JavaScript coordinator.
 
+## Apple package
+
+The repository root is a native Swift package for iOS 17 and macOS 14 or later,
+using Swift 6.2. It exports `LUIAppleBackend` (dynamic) and
+`LUIAppleBackendStatic` (static); both expose the `LUIAppleBackend` module.
+Applications can depend on a Git revision and import that module without copying
+backend sources. The root package has no Skip dependencies or build plugins.
+
+The separate `platform/apple/Package.swift` remains the opt-in Skip package.
+Both package entry points use the same backend sources.
+
 ## Test
 
 Run every runtime and platform test:

@@ -367,6 +367,7 @@ public final class LUIAppleBackend {
     private var extensionModels: [Int: LUIExtensionNodeModel] = [:]
     private var eventDeferralDepth = 0
     private var deferredEvents: [LUIEvent] = []
+    private var interactionLockedDrawers: Set<Int> = []
     #if !SKIP
     private var images: [Int: CGImage] = [:]
     private var mediaSurfaces: [Int: CGImage] = [:]
@@ -424,6 +425,27 @@ public final class LUIAppleBackend {
 
     func model(id: Int) -> LUINodeModel? {
         models[id]
+    }
+
+    func setDrawerInteractionLocked(_ locked: Bool, node: Int) {
+        if locked {
+            interactionLockedDrawers.insert(node)
+        } else {
+            interactionLockedDrawers.remove(node)
+        }
+    }
+
+    func allowsControlInteraction(node: Int) -> Bool {
+        guard models[node] != nil || extensionModels[node] != nil else { return false }
+        guard !interactionLockedDrawers.isEmpty else { return true }
+        // Hit testing cannot cancel a Button press that began before a drawer drag.
+        // Check ancestors at delivery time; the drawer's own toggle remains usable.
+        var parent = models[node]?.parent ?? extensionModels[node]?.parent
+        while let ancestor = parent {
+            if interactionLockedDrawers.contains(ancestor) { return false }
+            parent = models[ancestor]?.parent ?? extensionModels[ancestor]?.parent
+        }
+        return true
     }
 
     func extensionModel(id: Int) -> LUIExtensionNodeModel? {
@@ -534,6 +556,7 @@ public final class LUIAppleBackend {
     }
 
     func performPress(node: Int) throws {
+        guard allowsControlInteraction(node: node) else { return }
         guard let model = models[node],
               model.kind == .button || (model.kind == .text && model.supportsPress) ||
                 (model.kind == .bottomTab && model.supportsPress) ||
@@ -550,6 +573,7 @@ public final class LUIAppleBackend {
     }
 
     func performLongPress(node: Int) throws {
+        guard allowsControlInteraction(node: node) else { return }
         guard let model = models[node],
               model.kind == .button || model.kind == .toggleButton ||
                 model.kind == .listItem,
@@ -617,6 +641,7 @@ public final class LUIAppleBackend {
     }
 
     func performToggle(node: Int, checked: Bool) throws {
+        guard allowsControlInteraction(node: node) else { return }
         guard let model = models[node],
               model.kind == .toggleButton || model.kind == .checkbox ||
                 model.kind == .switchControl || model.kind == .toggle ||
@@ -830,20 +855,27 @@ public final class LUIAppleBackend {
     #if !SKIP
     private func syncModalPresentation() {
         var presentation: LUIModalPresentation?
+        var nestedSheets: [Int: LUIModalPresentation] = [:]
         var visited = Set<Int>()
 
-        func visit(_ nodeID: Int, rootID: Int, dialogAnchorID: Int?) {
+        func visit(_ nodeID: Int, rootID: Int, dialogAnchorID: Int?, parentSheetID: Int?) {
             guard visited.insert(nodeID).inserted else { return }
             if let model = models[nodeID] {
                 if model.kind == .dialog || model.kind == .sheet {
-                    presentation = LUIModalPresentation(
+                    let item = LUIModalPresentation(
                         model: model,
                         rootID: rootID,
                         anchorID: model.kind == .dialog
                             ? (dialogAnchorID ?? rootID)
                             : rootID
                     )
+                    if model.kind == .sheet, let parentSheetID {
+                        nestedSheets[parentSheetID] = item
+                    } else {
+                        presentation = item
+                    }
                 }
+                let childSheetID = model.kind == .sheet ? model.id : parentSheetID
                 let childDialogAnchorID = model.kind == .list
                     ? model.id
                     : dialogAnchorID
@@ -851,19 +883,20 @@ public final class LUIAppleBackend {
                     visit(
                         childID,
                         rootID: rootID,
-                        dialogAnchorID: childDialogAnchorID
+                        dialogAnchorID: childDialogAnchorID, parentSheetID: childSheetID
                     )
                 }
             } else if let model = extensionModels[nodeID] {
                 for childID in model.children {
-                    visit(childID, rootID: rootID, dialogAnchorID: dialogAnchorID)
+                    visit(childID, rootID: rootID, dialogAnchorID: dialogAnchorID, parentSheetID: parentSheetID)
                 }
             }
         }
 
         for rootID in rootIDs {
-            visit(rootID, rootID: rootID, dialogAnchorID: nil)
+            visit(rootID, rootID: rootID, dialogAnchorID: nil, parentSheetID: nil)
         }
+        modalPresentation.nestedSheets = nestedSheets
         modalPresentation.synchronize(with: presentation)
     }
     #endif

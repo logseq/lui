@@ -633,7 +633,8 @@ struct LUIRetainedTree {
                 kind == .radioGroup || kind == .tabs ||
                 kind == .buttonGroup || kind == .toggleGroup ||
                 kind == .breadcrumb || kind == .pagination ||
-                kind == .radio || kind == .slider || kind == .avatar || kind == .image ||
+                kind == .radio || kind == .slider || kind == .select ||
+                kind == .avatar || kind == .image ||
                 kind == .mediaSurface || kind == .tree ||
                 kind == .resizable || kind == .split || kind == .drawer ||
                 kind == .alert || kind == .bubble ||

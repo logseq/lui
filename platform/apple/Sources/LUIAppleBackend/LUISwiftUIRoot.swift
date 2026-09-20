@@ -19,6 +19,7 @@ struct LUIModalPresentation: Identifiable {
 @MainActor
 final class LUIModalPresentationStore {
     private(set) var item: LUIModalPresentation?
+    var nestedSheets: [Int: LUIModalPresentation] = [:]
     private var interactiveDismissalID: Int?
     private var dialogActionID: Int?
 
@@ -321,7 +322,7 @@ struct LUIAnyNodeView: View, Equatable {
     }
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.retainedSnapshot == rhs.retainedSnapshot
+        lhs.backend === rhs.backend && lhs.retainedSnapshot == rhs.retainedSnapshot
     }
 
     @ViewBuilder
@@ -382,189 +383,211 @@ private struct LUINodeView: View {
         .modifier(LUIRetainedPaneModifier(model: model))
     }
 
-    @ViewBuilder
-    private var content: some View {
+    // Each wire node has a stable ID and one concrete control kind. Erase only
+    // this dynamic dispatch boundary, rather than building a giant conditional type.
+    private var content: AnyView {
         switch model.kind {
         case .root:
-            if let childID = model.children.first {
-                LUIAnyNodeView(nodeID: childID, backend: backend)
-            }
+            guard let childID = model.children.first else { return AnyView(EmptyView()) }
+            return AnyView(LUIAnyNodeView(nodeID: childID, backend: backend))
         case .row:
-            LUIRowView(model: model, backend: backend)
+            return AnyView(LUIRowView(model: model, backend: backend))
         case .tabs, .buttonGroup, .toggleGroup, .breadcrumb, .pagination:
-            LUIHorizontalGroupView(model: model, backend: backend)
+            return AnyView(LUIHorizontalGroupView(model: model, backend: backend))
         case .bottomTabs:
-            LUIBottomTabsView(model: model, backend: backend)
+            return AnyView(LUIBottomTabsView(model: model, backend: backend))
         case .bottomTab:
-            VStack(alignment: .leading, spacing: 0) {
-                children
-            }
-        case .column, .list:
-            if model.kind == .list {
-                LUIListView(model: model, backend: backend)
-                    .modifier(
-                        LUIDialogPresentationModifier(anchorID: model.id, backend: backend)
-                    )
-            } else {
-                LUIColumnView(model: model, backend: backend)
-            }
+            return AnyView(
+                VStack(alignment: .leading, spacing: 0) {
+                    children
+                }
+            )
+        case .list:
+            return AnyView(LUIListView(model: model, backend: backend)
+                .modifier(LUIDialogPresentationModifier(anchorID: model.id, backend: backend)))
+        case .column:
+            return AnyView(LUIColumnView(model: model, backend: backend))
         case .virtualList:
-            LUIVirtualListView(model: model, backend: backend)
+            return AnyView(LUIVirtualListView(model: model, backend: backend))
         case .grid:
-            LUIGridView(model: model, backend: backend)
+            return AnyView(LUIGridView(model: model, backend: backend))
         case .stack:
-            LUIStackView(model: model, backend: backend)
+            return AnyView(LUIStackView(model: model, backend: backend))
         case .panel, .card:
-            ZStack {
-                children
-            }
+            return AnyView(
+                ZStack {
+                    children
+                }
+            )
         case .alert:
-            LUIAlertView(model: model, backend: backend)
+            return AnyView(LUIAlertView(model: model, backend: backend))
         case .bubble:
-            LUIBubbleView(model: model, backend: backend)
+            return AnyView(LUIBubbleView(model: model, backend: backend))
         case .box:
-            VStack(
-                alignment: .leading,
-                spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+            return AnyView(
+                VStack(
+                    alignment: .leading,
+                    spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
             ) {
                 children
             }
+            )
         case .text:
-            LUITextView(model: model, backend: backend)
+            return AnyView(LUITextView(model: model, backend: backend))
         case .heading:
-            Text(verbatim: model.text)
-                .font(headingFont)
-                .fontWeight(
-                    LUIHeadingTypography.isBold(level: headingLevel) ? .bold : nil
-                )
-                .accessibilityAddTraits(.isHeader)
+            return AnyView(
+                Text(verbatim: model.text)
+                    .font(headingFont)
+                    .fontWeight(
+                        LUIHeadingTypography.isBold(level: headingLevel) ? .bold : nil
+                    )
+                    .accessibilityAddTraits(.isHeader)
+            )
         case .paragraph:
-            Text(verbatim: model.text)
-                .font(.body)
+            return AnyView(
+                Text(verbatim: model.text)
+                    .font(.body)
+            )
         case .label:
-            Text(verbatim: model.text)
-                .font(.body)
+            return AnyView(
+                Text(verbatim: model.text)
+                    .font(.body)
+            )
         case .button:
-            LUIButtonView(model: model, backend: backend)
+            return AnyView(LUIButtonView(model: model, backend: backend))
         case .toggleButton:
-            LUIButtonView(model: model, backend: backend, isToggle: true)
+            return AnyView(LUIButtonView(model: model, backend: backend, isToggle: true))
         case .textField, .secureField, .input, .searchField, .textarea:
-            LUITextControlView(model: model, backend: backend)
+            return AnyView(LUITextControlView(model: model, backend: backend))
         case .select:
-            LUISelectView(model: model, backend: backend)
+            return AnyView(LUISelectView(model: model, backend: backend))
         case .combobox:
-            LUIComboboxView(model: model, backend: backend)
+            return AnyView(LUIComboboxView(model: model, backend: backend))
         case .dropdownMenu:
-            LUIDropdownMenuView(model: model, backend: backend)
+            return AnyView(LUIDropdownMenuView(model: model, backend: backend))
         case .contextMenu:
-            EmptyView()
+            return AnyView(EmptyView())
         case .tooltip:
-            LUITooltipLabel(model: model)
+            return AnyView(LUITooltipLabel(model: model))
         case .toast:
-            LUIToastView(model: model, backend: backend)
+            return AnyView(LUIToastView(model: model, backend: backend))
         case .toolbar:
-            LUIToolbarView(model: model, backend: backend)
+            return AnyView(LUIToolbarView(model: model, backend: backend))
         case .accordion:
-            LUIAccordionView(model: model, backend: backend)
+            return AnyView(LUIAccordionView(model: model, backend: backend))
         case .dialog, .sheet:
-            EmptyView()
+            return AnyView(EmptyView())
         case .menuItem:
-            LUIMenuItemView(model: model, backend: backend)
+            return AnyView(LUIMenuItemView(model: model, backend: backend))
         case .listItem:
-            LUIListItemView(model: model, backend: backend)
+            return AnyView(LUIListItemView(model: model, backend: backend))
         case .table:
-            LUITableView(model: model, backend: backend)
+            return AnyView(LUITableView(model: model, backend: backend))
         case .tree:
-            LUITreeView(model: model, backend: backend)
+            return AnyView(LUITreeView(model: model, backend: backend))
         case .resizable:
-            LUIResizableView(model: model, backend: backend)
+            return AnyView(LUIResizableView(model: model, backend: backend))
         case .split:
-            LUISplitView(model: model, backend: backend)
+            return AnyView(LUISplitView(model: model, backend: backend))
         case .drawer:
-            LUIDrawerView(model: model, backend: backend)
+            return AnyView(LUIDrawerView(model: model, backend: backend))
         case .tableRow:
-            LUITableRowView(model: model, backend: backend, isLast: true)
+            return AnyView(LUITableRowView(model: model, backend: backend, isLast: true))
         case .tableCell:
-            LUITableCellView(model: model, backend: backend)
+            return AnyView(LUITableCellView(model: model, backend: backend))
         case .avatar:
-            LUIAvatarView(model: model, backend: backend)
+            return AnyView(LUIAvatarView(model: model, backend: backend))
         case .image:
-            LUIImageView(model: model, backend: backend)
+            return AnyView(LUIImageView(model: model, backend: backend))
         case .mediaSurface:
-            LUIMediaSurfaceView(model: model, backend: backend)
+            return AnyView(LUIMediaSurfaceView(model: model, backend: backend))
         case .stepper:
-            LUIStepperView(model: model, backend: backend)
+            return AnyView(LUIStepperView(model: model, backend: backend))
         case .step:
-            Text(verbatim: model.text)
+            return AnyView(Text(verbatim: model.text))
         case .timeline:
-            LUITimelineView(model: model, backend: backend)
+            return AnyView(LUITimelineView(model: model, backend: backend))
         case .timelineItem:
-            LUITimelineItemView(model: model, backend: backend)
+            return AnyView(LUITimelineItemView(model: model, backend: backend))
         case .inputGroup:
-            LUIInputGroupView(model: model, backend: backend)
+            return AnyView(LUIInputGroupView(model: model, backend: backend))
         case .inputGroupActions:
-            LUIInputGroupActionsView(model: model, backend: backend)
+            return AnyView(LUIInputGroupActionsView(model: model, backend: backend))
         case .checkbox:
-            LUICheckboxView(model: model, backend: backend)
+            return AnyView(LUICheckboxView(model: model, backend: backend))
         case .switchControl, .toggle:
-            LUIBinaryToggleView(model: model, backend: backend)
+            return AnyView(LUIBinaryToggleView(model: model, backend: backend))
         case .radioGroup:
-            LUIRadioGroupView(model: model, backend: backend)
+            return AnyView(LUIRadioGroupView(model: model, backend: backend))
         case .radio:
-            Button {
-                try? backend.performChange(node: model.id)
-            } label: {
-                Label(model.text, systemImage: model.isChecked ? "circle.inset.filled" : "circle")
-            }
-            .buttonStyle(.plain)
-            .disabled(!model.isEnabled)
-            .frame(minHeight: minimumTouchHeight)
-            .accessibilityAddTraits(model.isChecked ? .isSelected : [])
+            return AnyView(
+                Button {
+                    try? backend.performChange(node: model.id)
+                } label: {
+                    Label(model.text, systemImage: model.isChecked ? "circle.inset.filled" : "circle")
+                }
+                .buttonStyle(.plain)
+                .disabled(!model.isEnabled)
+                .frame(minHeight: minimumTouchHeight)
+                .accessibilityAddTraits(model.isChecked ? .isSelected : [])
+            )
         case .slider:
-            Slider(
-                value: Binding(
-                    get: { min(max(model.sliderValue, 0), 1) },
-                    set: { try? backend.performValueChange(node: model.id, value: $0) }
-                ),
-                in: 0...1
+            return AnyView(
+                Slider(
+                    value: Binding(
+                        get: { min(max(model.sliderValue, 0), 1) },
+                        set: { try? backend.performValueChange(node: model.id, value: $0) }
+                    ),
+                    in: 0...1
             )
             .disabled(!model.isEnabled)
             .frame(minHeight: minimumTouchHeight)
+            )
         case .progress:
-            ProgressView(value: model.progressFraction)
-                .accessibilityValue(Text(progressAccessibilityValue))
+            return AnyView(
+                ProgressView(value: model.progressFraction)
+                    .accessibilityValue(Text(progressAccessibilityValue))
+            )
         case .divider:
-            LUISeparatorView(model: model)
+            return AnyView(LUISeparatorView(model: model))
         case .scroll:
-            ScrollView {
-                LUIVerticalScrollContent(model: model, backend: backend)
-            }
+            return AnyView(
+                ScrollView {
+                    LUIVerticalScrollContent(model: model, backend: backend)
+                }
+            )
         case .spacer:
-            Spacer()
+            return AnyView(Spacer())
         case .spinner:
-            ProgressView()
-                .progressViewStyle(.circular)
-                .controlSize(model.spinnerControlSize)
-                .frame(
-                    width: CGFloat(model.spinnerWidth),
-                    height: CGFloat(model.spinnerHeight)
-                )
+            return AnyView(
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .controlSize(model.spinnerControlSize)
+                    .frame(
+                        width: CGFloat(model.spinnerWidth),
+                        height: CGFloat(model.spinnerHeight)
+                    )
+            )
         case .icon:
-            LUIIconImage(
-                source: backend.iconSource(for: model.iconName),
-                bundle: backend.appIconBundle
+            return AnyView(
+                LUIIconImage(
+                    source: backend.iconSource(for: model.iconName),
+                    bundle: backend.appIconBundle
             )
                 .scaledToFit()
                 .frame(
                     width: CGFloat(model.iconWidth),
                     height: CGFloat(model.iconHeight)
                 )
+            )
         case .statusBar:
-            Text(verbatim: model.text)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(messageTextAlignment)
-                .frame(maxWidth: .infinity, alignment: messageFrameAlignment)
+            return AnyView(
+                Text(verbatim: model.text)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(messageTextAlignment)
+                    .frame(maxWidth: .infinity, alignment: messageFrameAlignment)
+            )
         }
     }
 
@@ -1563,8 +1586,23 @@ private struct LUIModalSurfaceContent: View {
     let backend: LUIAppleBackend
     @Environment(\.luiSemanticColors) private var semanticColors
 
-    @ViewBuilder
     var body: some View {
+        surfaceContent.sheet(item: Binding(
+            get: { backend.modalPresentation.nestedSheets[model.id] },
+            set: { value in
+                if value == nil,
+                   let dismissed = backend.modalPresentation.nestedSheets.removeValue(forKey: model.id) {
+                    try? backend.performDismiss(node: dismissed.id)
+                }
+            }
+        )) { presentation in
+            LUIModalSurfaceContent(model: presentation.model, backend: backend)
+                .modifier(LUIModalPresentationStyle(kind: presentation.model.kind))
+        }
+    }
+
+    @ViewBuilder
+    private var surfaceContent: some View {
         let _ = model.revision
         if LUINavigationFormSheetPolicy.isNavigationForm(
             model.property(.styleClass)?.stringValue
@@ -2279,6 +2317,9 @@ private struct LUISelectView: View {
         }
         .buttonStyle(.plain)
         .disabled(!model.isEnabled)
+        .accessibilityLabel(
+            Text(verbatim: model.property(.accessibilityLabel)?.stringValue ?? displayText)
+        )
     }
 
     private var displayText: String {
@@ -2506,6 +2547,7 @@ private struct LUIMenuItemForegroundModifier: ViewModifier {
 }
 
 private struct LUIListItemView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let model: LUINodeModel
     let backend: LUIAppleBackend
     var isNativeListRow = false
@@ -2538,7 +2580,7 @@ private struct LUIListItemView: View {
         ).map { CGFloat($0) })
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            model.isSelected ? Color.accentColor.opacity(selectedOpacity) : Color.clear,
+            model.isSelected ? selectionBackground : Color.clear,
             in: RoundedRectangle(cornerRadius: cornerRadius)
         )
         .id(model.isSelected)
@@ -2584,7 +2626,7 @@ private struct LUIListItemView: View {
                     .foregroundStyle(
                         isNativeListRow
                             ? Color.primary
-                            : (model.isSelected && isNavigationRow ? Color.accentColor : .secondary)
+                            : Color.secondary
                     )
             }
             if visibleChildren.isEmpty {
@@ -2673,7 +2715,12 @@ private struct LUIListItemView: View {
         isNavigationHeading ? 6 : (isNavigationRow ? 10 : 8)
     }
     private var cornerRadius: CGFloat { isNavigationRow ? 10 : 6 }
-    private var selectedOpacity: Double { isNavigationRow ? 0.12 : 0.16 }
+    private var selectionBackground: Color {
+        if isNavigationRow && colorScheme == .light {
+            return Color.primary.opacity(0.06)
+        }
+        return Color.accentColor.opacity(isNavigationRow ? 0.12 : 0.16)
+    }
     private var iconSize: CGFloat { isNativeListRow ? 18 : (isNavigationRow ? 18 : 16) }
 
     private func performPrimaryAction() {
@@ -3080,9 +3127,15 @@ private struct LUIButtonView: View {
         )
             .scaledToFit()
             .frame(
-                width: LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize),
-                height: LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize)
+                width: iconExtent,
+                height: iconExtent
             )
+    }
+
+    private var iconExtent: CGFloat {
+        min(LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize),
+            buttonWidth ?? .greatestFiniteMagnitude,
+            buttonHeight ?? .greatestFiniteMagnitude)
     }
 
     private var controlSize: ControlSize {
@@ -3214,6 +3267,12 @@ private struct LUIHorizontalGroupView: View {
             }
             ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
                 if let child = backend.model(id: childID) {
+                    if model.kind == .breadcrumb && index > 0 {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    }
                     groupChild(child)
                         .frame(
                             maxWidth: child.property(.grow)?.doubleValue ?? 0 > 0
@@ -3404,7 +3463,8 @@ private struct LUIIconImage: View {
 
 enum LUITextLinePolicy {
     static func lineLimit(styleClass: String?) -> Int? {
-        hasStyle("single-line", in: styleClass) ? 1 : nil
+        if hasStyle("single-line", in: styleClass) { return 1 }
+        return hasStyle("line-clamp-3", in: styleClass) ? 3 : nil
     }
 
     static func layoutPriority(styleClass: String?) -> Double {
@@ -3420,6 +3480,7 @@ enum LUITextLinePolicy {
 private struct LUITextView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.luiTextHighlightQuery) private var highlightQuery
 
     @ViewBuilder
     var body: some View {
@@ -3427,7 +3488,7 @@ private struct LUITextView: View {
             Button {
                 try? backend.performPress(node: model.id)
             } label: {
-                Text(verbatim: model.text)
+                textContent
                     .multilineTextAlignment(textAlignment)
                     .lineLimit(lineLimit)
                     .frame(maxWidth: alignedMaxWidth, alignment: frameAlignment)
@@ -3436,7 +3497,7 @@ private struct LUITextView: View {
             }
             .buttonStyle(.plain)
         } else {
-            Text(verbatim: model.text)
+            textContent
                 .font(font)
                 .multilineTextAlignment(textAlignment)
                 .lineLimit(lineLimit)
@@ -3444,6 +3505,14 @@ private struct LUITextView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(layoutPriority)
         }
+    }
+
+    private var textContent: Text {
+        let classes = model.property(.styleClass)?.stringValue?.split(separator: " ") ?? []
+        if classes.contains("search-match") {
+            return Text(LUITextHighlight.preview(model.text, query: highlightQuery))
+        }
+        return Text(verbatim: model.text)
     }
 
     private var lineLimit: Int? {
@@ -3735,6 +3804,7 @@ enum LUIListSectionPolicy {
 private struct LUIListView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.luiSemanticColors) private var semanticColors
 
     var body: some View {
         List {
@@ -3770,9 +3840,16 @@ private struct LUIListView: View {
             }
         }
         #if !SKIP
-        .scrollContentBackground(LUIListSurfacePolicy.scrollContentBackground)
+        .scrollContentBackground(
+            semanticColors["background"] == nil
+                ? LUIListSurfacePolicy.scrollContentBackground : .hidden
+        )
+        .background(semanticColors["background"])
         .foregroundStyle(.primary)
-        .preference(key: LUIListSurfacePreferenceKey.self, value: true)
+        .preference(
+            key: LUIListSurfacePreferenceKey.self,
+            value: semanticColors["background"] == nil
+        )
         #endif
         #if os(iOS)
         .listStyle(.insetGrouped)
@@ -3782,11 +3859,14 @@ private struct LUIListView: View {
     @ViewBuilder
     private func rows(_ childIDs: [Int]) -> some View {
         ForEach(childIDs, id: \.self) { childID in
-            if let child = backend.model(id: childID), child.kind == .listItem {
-                LUIListItemView(model: child, backend: backend, isNativeListRow: true)
-            } else {
-                LUIAnyNodeView(nodeID: childID, backend: backend)
+            Group {
+                if let child = backend.model(id: childID), child.kind == .listItem {
+                    LUIListItemView(model: child, backend: backend, isNativeListRow: true)
+                } else {
+                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                }
             }
+            .listRowBackground(semanticColors["surface"])
         }
     }
 
@@ -3811,6 +3891,8 @@ private struct LUIListView: View {
 private struct LUIVirtualListView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @State private var unobscuredHeight: CGFloat?
+    @State private var titleTracker = LUIScrollSectionTitleTracker()
 
     var body: some View {
         ScrollView {
@@ -3818,14 +3900,68 @@ private struct LUIVirtualListView: View {
                 alignment: .leading,
                 spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
             ) {
-                ForEach(model.children, id: \.self) { childID in
-                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                ForEach(sectionRows, id: \.id) { row in
+                    LUIAnyNodeView(nodeID: row.id, backend: backend)
                         .equatable()
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .modifier(LUIScrollSectionFrameModifier(
+                            index: row.index, title: row.title,
+                            coordinateSpace: titleCoordinateSpace,
+                            onVisibilityChange: { index, title in
+                                titleTracker.update(index: index, title: title)
+                            }
+                        ))
                 }
             }
+            .environment(\.luiUnobscuredScrollHeight, unobscuredHeight)
+        }
+        .coordinateSpace(name: titleCoordinateSpace)
+        .background {
+            LUIScrollSectionTitleEmitter(tracker: titleTracker,
+                                         isActive: tracksSectionTitles && model.isSelected)
+        }
+        .background {
+            GeometryReader { _ in
+                // Minimum-height content uses the viewport before keyboard avoidance.
+                Color.clear
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                        unobscuredHeight = height
+                    }
+            }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
         }
     }
+
+    private var tracksSectionTitles: Bool {
+        model.property(.styleClass)?.stringValue?.split(separator: " ").contains("scroll-section-titles") == true
+    }
+
+    private var titleCoordinateSpace: LUIScrollTitleCoordinateSpace {
+        LUIScrollTitleCoordinateSpace(nodeID: model.id)
+    }
+
+    private struct SectionRow {
+        let id: Int
+        let index: Int
+        let title: String?
+    }
+
+    private var sectionRows: [SectionRow] {
+        var currentTitle: String?
+        return model.children.enumerated().map { index, id in
+            if tracksSectionTitles, let title = sectionTitle(in: id) { currentTitle = title }
+            return SectionRow(id: id, index: index, title: currentTitle)
+        }
+    }
+
+    private func sectionTitle(in nodeID: Int) -> String? {
+        guard let node = backend.model(id: nodeID) else { return nil }
+        if node.property(.styleClass)?.stringValue?.split(separator: " ").contains("scroll-section-title") == true {
+            return node.text.isEmpty ? nil : node.text
+        }
+        return node.children.lazy.compactMap { sectionTitle(in: $0) }.first
+    }
+
 }
 
 struct LUIVerticalScrollContent: View {
@@ -3956,7 +4092,7 @@ private struct LUITextControlView: View {
                 text: binding,
                 axis: .vertical
             )
-            .lineLimit(1...)
+            .lineLimit(1...(model.property(.styleClass)?.stringValue == "composer-input" ? 6 : Int.max))
         } else if model.kind == .searchField {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
@@ -4190,6 +4326,11 @@ private struct LUISurfaceModifier: ViewModifier {
                 ).map(CGFloat.init),
                 height: model.surfaceHeight.map(CGFloat.init)
             )
+            .modifier(LUIBodyLineControlModifier(
+                enabled: model.property(.styleClass)?.stringValue?.split(separator: " ").contains("body-line") == true,
+                width: model.surfaceWidth.map(CGFloat.init),
+                minimumHeight: CGFloat(model.surfaceHeight ?? 24)
+            ))
             .frame(
                 minWidth: model.kind == .resizable ? nil : model.surfaceMinWidth.map(CGFloat.init),
                 maxWidth: model.kind == .resizable ? nil : model.surfaceMaxWidth.map(CGFloat.init),
@@ -4207,6 +4348,10 @@ private struct LUISurfaceModifier: ViewModifier {
             )
             .modifier(
                 LUIOptionalForegroundModifier(
+                    usesSecondaryStyle:
+                        LUIThemeColorPolicy.isSecondaryForeground(model.property(.foreground)?.stringValue) ||
+                        (LUIThemeColorPolicy.isMutedForeground(model.property(.foreground)?.stringValue) &&
+                         semanticColors["muted-foreground"] == nil),
                     foreground: foregroundColor(model.property(.foreground)?.stringValue) ??
                         (LUIThemeColorPolicy.usesDefaultForeground(kind: model.kind)
                             ? defaultForeground
@@ -4327,11 +4472,14 @@ private struct LUISurfaceModifier: ViewModifier {
 }
 
 private struct LUIOptionalForegroundModifier: ViewModifier {
+    var usesSecondaryStyle = false
     let foreground: Color?
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if let foreground {
+        if usesSecondaryStyle {
+            content.foregroundStyle(.secondary)
+        } else if let foreground {
             content.foregroundStyle(foreground)
         } else {
             content
@@ -4655,6 +4803,7 @@ private struct LUIAccessibilityModifier: ViewModifier {
                 )
             )
         )
+        .modifier(LUIAppearanceTraceModifier(identifier: identifier))
         if let label, let hint, let identifier {
             accessibleContent
                 .accessibilityLabel(Text(label))
@@ -4676,6 +4825,21 @@ private struct LUIAccessibilityModifier: ViewModifier {
             accessibleContent.accessibilityHint(Text(hint))
         } else {
             accessibleContent
+        }
+    }
+}
+
+private struct LUIAppearanceTraceModifier: ViewModifier {
+    let identifier: String?
+    private static let target = ProcessInfo.processInfo.environment["LUI_TRACE_APPEAR_IDENTIFIER"]
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if let identifier, identifier == Self.target {
+            content.onAppear {
+                print(String(format: "LUI_APPEAR_METRIC identifier=%@ timestamp=%.6f", identifier, Date().timeIntervalSince1970))
+            }
+        } else {
+            content
         }
     }
 }

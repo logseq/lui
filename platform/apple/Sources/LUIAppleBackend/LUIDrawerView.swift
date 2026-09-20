@@ -6,7 +6,7 @@ enum LUIDrawerGeometry {
         translationX: Double,
         translationY: Double
     ) -> Bool {
-        enabled && abs(translationX) > abs(translationY)
+        enabled && abs(translationX) >= 18 && abs(translationX) > abs(translationY) * 2
     }
 
     static func dragOffset(
@@ -69,7 +69,7 @@ enum LUIDrawerInteractionPolicy {
         )
     }
 
-    static func allowsContentInteraction(
+    static func contentControlsAreEnabled(
         isDragging: Bool,
         isAnimating: Bool,
         isGestureActive: Bool = false
@@ -97,8 +97,10 @@ struct LUIDrawerView: View {
     @Environment(\.luiSemanticColors) private var semanticColors
     @Environment(\.colorScheme) private var colorScheme
     @State private var presented: Bool
+    @State private var hasLoadedPanel: Bool
     @State private var dragOffset: CGFloat = 0
     @State private var isGestureActive = false
+    @State private var rejectedGesture = false
     @State private var isAnimating = false
     @State private var transitionGeneration = 0
     #if DEBUG
@@ -109,6 +111,7 @@ struct LUIDrawerView: View {
         self.model = model
         self.backend = backend
         _presented = State(initialValue: model.isSelected)
+        _hasLoadedPanel = State(initialValue: model.isSelected)
     }
 
     var body: some View {
@@ -131,8 +134,8 @@ struct LUIDrawerView: View {
                 isAnimating: isAnimating,
                 isGestureActive: isGestureActive
             )
-            let contentInteractionAllowed =
-                LUIDrawerInteractionPolicy.allowsContentInteraction(
+            let contentControlsEnabled =
+                LUIDrawerInteractionPolicy.contentControlsAreEnabled(
                     isDragging: isDragging,
                     isAnimating: isAnimating,
                     isGestureActive: isGestureActive
@@ -197,7 +200,8 @@ struct LUIDrawerView: View {
             .simultaneousGesture(drawerGesture(width: width))
             #else
             ZStack(alignment: .leading) {
-                if let panelID = model.children.dropFirst().first {
+                // Retain the panel after its first reveal so closing preserves its state.
+                if hasLoadedPanel, let panelID = model.children.dropFirst().first {
                     LUIAnyNodeView(nodeID: panelID, backend: backend)
                         .frame(width: width)
                         .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
@@ -206,7 +210,7 @@ struct LUIDrawerView: View {
                         .scaleEffect(0.96 + (0.04 * Double(progress)))
                         .offset(x: -20.0 * (1.0 - progress))
                         .scrollDisabled(interactionsLocked)
-                        .allowsHitTesting(presented && contentInteractionAllowed)
+                        .allowsHitTesting(presented && contentControlsEnabled)
                         .accessibilityHidden(
                             LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
                                 isPresented: presented,
@@ -223,7 +227,7 @@ struct LUIDrawerView: View {
                         ))
                         .modifier(LUIDrawerMainSurfaceModifier())
                         .scrollDisabled(interactionsLocked)
-                        .allowsHitTesting(contentInteractionAllowed)
+                        .allowsHitTesting(contentControlsEnabled)
                         .overlay {
                             if presented {
                                 Button {
@@ -234,7 +238,7 @@ struct LUIDrawerView: View {
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Close sidebar")
                                 .accessibilityIdentifier("button.sidebar.dismiss")
-                                .allowsHitTesting(contentInteractionAllowed)
+                                .allowsHitTesting(contentControlsEnabled)
                             }
                         }
                         .clipShape(RoundedRectangle(
@@ -274,6 +278,9 @@ struct LUIDrawerView: View {
             #endif
         }
         .modifier(LUIDrawerFullScreenModifier())
+        .onDisappear {
+            backend.setDrawerInteractionLocked(false, node: model.id)
+        }
         .onChange(of: model.isSelected) { _, selected in
             guard selected != presented || abs(dragOffset) > 0.0 else { return }
             animatePresentation(selected)
@@ -282,6 +289,10 @@ struct LUIDrawerView: View {
             if !enabled {
                 dragOffset = 0
                 isGestureActive = false
+                rejectedGesture = false
+                if !isAnimating {
+                    backend.setDrawerInteractionLocked(false, node: model.id)
+                }
             }
         }
     }
@@ -294,11 +305,17 @@ struct LUIDrawerView: View {
         #if SKIP
         let gesture = DragGesture(minimumDistance: 3)
         #else
-        let gesture = DragGesture(minimumDistance: 3, coordinateSpace: .global)
+        let gesture = DragGesture(minimumDistance: 10, coordinateSpace: .global)
         #endif
         return gesture
             .onChanged { value in
-                guard !isAnimating else { return }
+                guard !isAnimating, !rejectedGesture else { return }
+                // Once a drag commits to scrolling, never turn it into a drawer swipe.
+                if !isGestureActive, abs(value.translation.height) >= 10,
+                   abs(value.translation.width) <= abs(value.translation.height) * 2 {
+                    rejectedGesture = true
+                    return
+                }
                 let activationAllowed = presented || model.isEnabled
                 let gestureIsEligible = LUIDrawerGeometry.gestureIsEligible(
                     enabled: activationAllowed,
@@ -306,9 +323,11 @@ struct LUIDrawerView: View {
                     translationY: Double(value.translation.height)
                 )
                 if isGestureActive || gestureIsEligible {
+                    backend.setDrawerInteractionLocked(true, node: model.id)
                     var transaction = Transaction()
                     transaction.animation = nil
                     withTransaction(transaction) {
+                        if value.translation.width > 0 { hasLoadedPanel = true }
                         isGestureActive = true
                         dragOffset = CGFloat(LUIDrawerGeometry.dragOffset(
                             isPresented: presented,
@@ -321,6 +340,7 @@ struct LUIDrawerView: View {
                 }
             }
             .onEnded { value in
+                rejectedGesture = false
                 guard !isAnimating else { return }
                 guard isGestureActive else {
                     dragOffset = 0
@@ -344,9 +364,11 @@ struct LUIDrawerView: View {
     }
 
     private func animatePresentation(_ selected: Bool) {
+        if selected { hasLoadedPanel = true }
         transitionGeneration += 1
         let generation = transitionGeneration
         isAnimating = true
+        backend.setDrawerInteractionLocked(true, node: model.id)
         #if DEBUG
         transitionStartedAt = ProcessInfo.processInfo.systemUptime
         print(
@@ -389,6 +411,7 @@ struct LUIDrawerView: View {
               transitionGeneration == generation,
               presented == selected else { return }
         isAnimating = false
+        backend.setDrawerInteractionLocked(false, node: model.id)
         #if DEBUG
         let elapsedMilliseconds =
             (ProcessInfo.processInfo.systemUptime - transitionStartedAt) * 1_000

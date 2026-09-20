@@ -20,7 +20,7 @@ test-performance:
 	tooling/performance/qualify_runtime.sh
 
 test-apple:
-	swift test --package-path platform/apple
+	swift test
 	LUI_APPLE_LIBRARY="$(CURDIR)/platform/apple/.build/debug/libLUIAppleBackend.dylib" \
 		opam exec -- dune build @apple-bridge-test -j 1
 	$(MAKE) test-apple-uikit-host

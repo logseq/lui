@@ -1576,9 +1576,14 @@ struct LUISwiftUIBackendTests {
 
     @Test("Drawer horizontal gestures resolve to controlled presentation state")
     func resolvesDrawerGestures() {
-        #expect(LUIDrawerGeometry.gestureIsEligible(
+        #expect(!LUIDrawerGeometry.gestureIsEligible(
             enabled: true,
             translationX: 10,
+            translationY: 9
+        ))
+        #expect(LUIDrawerGeometry.gestureIsEligible(
+            enabled: true,
+            translationX: 30,
             translationY: 9
         ))
         #expect(!LUIDrawerGeometry.gestureIsEligible(
@@ -1660,15 +1665,15 @@ struct LUISwiftUIBackendTests {
             isAnimating: false,
             isGestureActive: true
         ))
-        #expect(LUIDrawerInteractionPolicy.allowsContentInteraction(
+        #expect(LUIDrawerInteractionPolicy.contentControlsAreEnabled(
             isDragging: false,
             isAnimating: false
         ))
-        #expect(!LUIDrawerInteractionPolicy.allowsContentInteraction(
+        #expect(!LUIDrawerInteractionPolicy.contentControlsAreEnabled(
             isDragging: true,
             isAnimating: false
         ))
-        #expect(!LUIDrawerInteractionPolicy.allowsContentInteraction(
+        #expect(!LUIDrawerInteractionPolicy.contentControlsAreEnabled(
             isDragging: false,
             isAnimating: true
         ))

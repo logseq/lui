@@ -267,6 +267,12 @@ public struct LUIAppleExtensionViewContext {
     public let nodeID: Int
     let backend: LUIAppleBackend
 
+    /// Check at action delivery time, including actions that began before a drawer drag.
+    /// This does not suppress state updates sent through `emit`.
+    public var isUserInteractionEnabled: Bool {
+        backend.allowsControlInteraction(node: nodeID)
+    }
+
     public func property(_ name: String) -> LUIExtensionValue? {
         backend.extensionModel(id: nodeID)?.property(name)
     }
