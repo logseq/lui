@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lg-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.5"
+      # lg and signal-lg are private; pin-depends (melange-edn/transit)
+      # are applied automatically by `opam install .`.
+      - name: Checkout lg toolchain
+        env:
+          LOGSEQ_GITHUB_PAT: ${{ secrets.LOGSEQ_GITHUB_PAT }}
+        run: |
+          git config --global url."https://x-access-token:${LOGSEQ_GITHUB_PAT}@github.com/".insteadOf "https://github.com/"
+          git clone --depth 1 https://github.com/logseq/lg.git ~/lg
+          git clone --depth 1 https://github.com/logseq/signal-lg.git ~/signal-lg
+      - name: Install lg and lg-test
+        run: |
+          cd ~/lg
+          opam install . --deps-only --with-test -y
+          opam install . -y
+      - name: Install signal-lg
+        run: |
+          cd ~/signal-lg
+          opam install . --deps-only --with-test -y
+          opam install . -y
+      - name: Install lui dependencies
+        run: opam install . --deps-only --with-test -y
+      - name: Schema tests
+        run: node --test tooling/test/*.mjs
+      - name: LG tests
+        run: opam exec -- dune build --action-stderr-on-success=must-be-empty @runtest
+
+  apple-tests:
+    # Package.swift requires swift-tools-version 6.2 (Xcode 26).
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
