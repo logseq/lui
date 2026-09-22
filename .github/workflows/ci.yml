@@ -21,8 +21,11 @@ jobs:
         env:
           LOGSEQ_GITHUB_PAT: ${{ secrets.LOGSEQ_GITHUB_PAT }}
         run: |
+          set -euo pipefail
           git config --global url."https://x-access-token:${LOGSEQ_GITHUB_PAT}@github.com/".insteadOf "https://github.com/"
-          echo "ocaml_signal=$(git ls-remote https://github.com/logseq/ocaml-signal.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+          ocaml_signal="$(git ls-remote https://github.com/logseq/ocaml-signal.git HEAD | cut -f1)"
+          test -n "$ocaml_signal" || { echo "ocaml-signal ls-remote returned empty; check LOGSEQ_GITHUB_PAT secret" >&2; exit 1; }
+          echo "ocaml_signal=$ocaml_signal" >> "$GITHUB_OUTPUT"
       - uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: "5.5"
