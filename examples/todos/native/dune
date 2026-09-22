@@ -1,0 +1,27 @@
+(library
+ (name todos_bridge)
+ (modules todos_bridge)
+ (libraries lui ocaml-signal todos_app)
+ (wrapped false))
+
+(rule
+ (enabled_if
+  (= %{os_type} "Darwin"))
+ (target liblui_todos.dylib)
+ (deps
+  ../../../platform/native/lui_ocaml_bridge.c
+  todos_bridge.cmxa
+  ../todos_app.cmxa
+  ../../../src/lui.cmxa)
+ (action
+  (run
+   sh
+   -c
+   "ocamlfind ocamlopt -linkpkg -package ocaml-signal \
+      %{dep:../../../src/lui.cmxa} %{dep:../todos_app.cmxa} \
+      %{dep:todos_bridge.cmxa} \
+      -output-complete-obj -o todos_bridge_complete.o && \
+    cc -shared -o %{target} \
+      %{dep:../../../platform/native/lui_ocaml_bridge.c} \
+      todos_bridge_complete.o \
+      -I\"$(ocamlfind ocamlc -where)\" -lpthread")))
