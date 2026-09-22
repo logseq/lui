@@ -26,12 +26,11 @@
     (IntValue number) (str number)
     (FloatValue number)
     (let [encoded (str number)]
-      (cond
-        (string/ends-with? encoded ".") (str encoded "0")
-        (and (not (string/includes? encoded "."))
-             (not (string/includes? encoded "e"))
-             (not (string/includes? encoded "E"))) (str encoded ".0")
-        :else encoded))))
+      (if (or (string/includes? encoded ".")
+              (string/includes? encoded "e")
+              (string/includes? encoded "E"))
+        (if (string/ends-with? encoded ".") (str encoded "0") encoded)
+        (str encoded ".0")))))
 
 (defn- encode-op [operation]
   (match operation

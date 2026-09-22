@@ -45,7 +45,10 @@
   (checkpoint-next-dynamic-segment-id :int)
   (checkpoint-dynamic-segments :map<int;vector<dynamic-segment>>)
   (checkpoint-reload-keys :map<int;string>)
-  (checkpoint-node-aliases :map<int;int>))
+  (checkpoint-node-aliases :map<int;int>)
+  (checkpoint-handler-count :int)
+  (checkpoint-dynamic-segment-count :int)
+  (checkpoint-extension-dirty :bool))
 
 (type-record render-tree-snapshot
   (render-mounted-nodes :map<int;node-kind>)
@@ -74,7 +77,10 @@
   (next-dynamic-segment-id :ref<int>)
   (dynamic-segments :ref<map<int;vector<dynamic-segment>>>)
   (runtime-reload-keys :ref<map<int;string>>)
-  (runtime-node-aliases :ref<map<int;int>>))
+  (runtime-node-aliases :ref<map<int;int>>)
+  (runtime-handler-count :ref<int>)
+  (runtime-dynamic-segment-count :ref<int>)
+  (runtime-extension-dirty :ref<bool>))
 
 (signature lui.runtime/create :fn<scheduler;backend;application>)
 (signature lui.runtime/create-with-extensions
@@ -88,8 +94,8 @@
 (signature lui.runtime/map-node :fn<map<int;int>;int;int>)
 (signature lui.runtime/node-compatible?
   :fn<application;runtime-checkpoint;int;int;bool>)
-(signature lui.runtime/find-child-by-reload-key
-  :fn<vector<int>;map<int;string>;string;option<int>>)
+(signature lui.runtime/keyed-children
+  :fn<vector<int>;map<int;string>;map<string;int>>)
 (signature lui.runtime/collect-node-mapping
   :fn<application;runtime-checkpoint;int;int;map<int;int>;map<int;int>>)
 (signature lui.runtime/collect-subtree-nodes
@@ -104,11 +110,13 @@
   :fn<map<int;vector<int>>;vector<int>;map<int;int>;map<int;vector<int>>;map<int;vector<int>>>)
 (signature lui.runtime/rebuild-parents
   :fn<map<int;vector<int>>;map<int;int>>)
-(signature lui.runtime/vector-contains? :fn<vector<int>;int;bool>)
+(signature lui.runtime/index-map :fn<vector<int>;map<int;int>>)
+(signature lui.runtime/shift-right
+  :fn<vector<int>;map<int;int>;int;int;int;tuple<vector<int>;map<int;int>>>)
 (signature lui.runtime/emit-child-diff!
   :fn<application;int;vector<int>;vector<int>;bool>)
 (signature lui.runtime/emit-dropped-subtree!
-  :fn<application;runtime-checkpoint;vector<int>;int;bool>)
+  :fn<application;runtime-checkpoint;map<int;bool>;int;bool>)
 (signature lui.runtime/emit-property-diff!
   :fn<application;int;map<property;wire-value>;map<property;wire-value>;bool>)
 (signature lui.runtime/emit-extension-property-diff!

@@ -51,34 +51,33 @@
 
 (defn- move-at [values from-index to-index]
   (let [value (nth values from-index)
-        without (remove-at values from-index)]
-    (insert-at without to-index value)))
+        limit (count values)]
+    (loop [index 0
+           out 0
+           result []]
+      (if (= index limit)
+        (if (= out to-index) (conj result value) result)
+        (if (= index from-index)
+          (recur (inc index) out result)
+          (recur
+           (inc index)
+           (inc out)
+           (conj
+            (if (= out to-index) (conj result value) result)
+            (nth values index))))))))
 
 (defn- update-node
   [nodes node current properties extension-properties children]
   (assoc
-   nodes
-   node
-   (record retained-node
-           (platform-node (:platform-node current))
-     (semantic-kind (:semantic-kind current))
-     (retained-parent (:retained-parent current))
-     (retained-properties properties)
-     (retained-extension-properties extension-properties)
-     (retained-children children))))
+   nodes node
+   (assoc
+    current
+    :retained-properties properties
+    :retained-extension-properties extension-properties
+    :retained-children children)))
 
 (defn- update-parent [nodes node current parent]
-  (assoc
-   nodes
-   node
-   (record retained-node
-           (platform-node (:platform-node current))
-     (semantic-kind (:semantic-kind current))
-     (retained-parent parent)
-     (retained-properties (:retained-properties current))
-     (retained-extension-properties
-      (:retained-extension-properties current))
-     (retained-children (:retained-children current)))))
+  (assoc nodes node (assoc current :retained-parent parent)))
 
 (defn standard-kind [current]
   (match (:semantic-kind current)
@@ -96,18 +95,18 @@
     (Some (tuple identifier fingerprint))
     (StandardSemantic _kind) None))
 
+;; target is a descendant-or-self of root iff walking the retained-parent
+;; chain from target reaches root.
 (defn- descendant? [nodes root target]
-  (if (= root target)
-    true
-    (if-some [current (clojure.core/get nodes root)]
-      (loop [index 0]
-        (if (= index (count (:retained-children current)))
-          false
-          (if (descendant?
-               nodes (nth (:retained-children current) index) target)
-            true
-            (recur (inc index)))))
-      false)))
+  (loop [current target]
+    (if (= current root)
+      true
+      (match (clojure.core/get nodes current)
+        (Some node)
+        (match (:retained-parent node)
+          (Some parent) (recur parent)
+          None false)
+        None false))))
 
 (defn- extension-schema [registry identifier]
   (match (ext/schema registry identifier)

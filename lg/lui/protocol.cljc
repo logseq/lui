@@ -48,25 +48,31 @@
 (defn event-supported? [kind event]
   (match event
     (Press _node)
-    (or (= kind Button) (= kind Radio) (= kind Select)
-        (= kind Combobox) (= kind MenuItem) (= kind ListItem) (= kind Text)
-        (= kind TableCell) (= kind TimelineItem) (= kind BottomTab))
+    (match kind
+      Button true Radio true Select true Combobox true MenuItem true
+      ListItem true Text true TableCell true TimelineItem true
+      BottomTab true _ false)
     (LongPress _node)
-    (or (= kind Button) (= kind ToggleButton) (= kind ListItem))
+    (match kind Button true ToggleButton true ListItem true _ false)
     (TextChanged _node _text)
-    (or (= kind TextField) (= kind SecureField) (= kind Input) (= kind SearchField)
-        (= kind Textarea) (= kind Combobox))
+    (match kind
+      TextField true SecureField true Input true SearchField true
+      Textarea true Combobox true _ false)
     (Submit _node)
-    (or (= kind TextField) (= kind SecureField) (= kind Input) (= kind SearchField)
-        (= kind Textarea) (= kind Combobox) (= kind ListItem))
+    (match kind
+      TextField true SecureField true Input true SearchField true
+      Textarea true Combobox true ListItem true _ false)
     (ToggleChanged _node _checked)
-    (or (= kind ToggleButton) (= kind Checkbox) (= kind SwitchControl)
-        (= kind Toggle) (= kind Radio) (= kind Accordion) (= kind Drawer))
+    (match kind
+      ToggleButton true Checkbox true SwitchControl true Toggle true
+      Radio true Accordion true Drawer true _ false)
     (Change _node) (= kind Radio)
-    (ValueChanged _node _value) (or (= kind Slider) (= kind Split))
+    (ValueChanged _node _value)
+    (match kind Slider true Split true _ false)
     (Dismiss _node)
-    (or (= kind Select) (= kind Combobox) (= kind DropdownMenu)
-        (= kind Toast) (modal-surface? kind))
+    (match kind
+      Select true Combobox true DropdownMenu true Toast true
+      Dialog true Drawer true Sheet true _ false)
     (DoublePress _node) (= kind ListItem)
     (Appear _node) (not (= kind Root))
     (ExtensionEvent _node _identifier _name _values) false))
@@ -142,10 +148,13 @@
     "trash" true "volume" true "wrench" true "x" true "x-circle" true
     _ false))
 
+(def custom-icon-name-pattern
+  (re-pattern "app:[a-z0-9]+(?:-[a-z0-9]+)*"))
+
 (defn icon-name-supported? [value]
   (or
    (built-in-icon-name-supported? value)
-   (boolean (re-matches #"app:[a-z0-9]+(?:-[a-z0-9]+)*" value))))
+   (boolean (re-matches custom-icon-name-pattern value))))
 
 (defn main-alignment-supported? [value]
   (or

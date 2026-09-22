@@ -129,6 +129,7 @@
   lg.edn-backend
   lg.edn-backend.melange
   lg.runtime
+  lg.runtime-melange
   lg.rrbvec
   lg-test.runtime
   lg-test.melange

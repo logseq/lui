@@ -113,14 +113,14 @@ enum LUIWireValue: Decodable, Equatable {
 
     init(from decoder: Decoder) throws {
         let value = try decoder.singleValueContainer()
-        if let decoded = try? value.decode(Bool.self) {
+        if let decoded = try? value.decode(String.self) {
+            self = .string(decoded)
+        } else if let decoded = try? value.decode(Bool.self) {
             self = .bool(decoded)
         } else if let decoded = try? value.decode(Int.self) {
             self = .int(decoded)
-        } else if let decoded = try? value.decode(Double.self) {
-            self = .double(decoded)
         } else {
-            self = .string(try value.decode(String.self))
+            self = .double(try value.decode(Double.self))
         }
     }
 
@@ -524,9 +524,15 @@ struct LUIRetainedTree {
         }
     }
 
+    // target is a descendant-or-self of root iff walking the parent
+    // chain from target reaches root.
     private func isDescendant(_ target: Int, of root: Int) -> Bool {
-        guard let children = children(of: root) else { return false }
-        return root == target || children.contains { isDescendant(target, of: $0) }
+        var current: Int? = target
+        while let id = current {
+            if id == root { return true }
+            current = parent(of: id)
+        }
+        return false
     }
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {

@@ -43,7 +43,10 @@
     (next-dynamic-segment-id (atom 0))
     (dynamic-segments (atom (empty-dynamic-segments)))
     (runtime-reload-keys (atom (hash-map)))
-    (runtime-node-aliases (atom (hash-map)))))
+    (runtime-node-aliases (atom (hash-map)))
+    (runtime-handler-count (atom 0))
+    (runtime-dynamic-segment-count (atom 0))
+    (runtime-extension-dirty (atom false))))
 
 (defn create [scheduler backend]
   (create-with-extensions scheduler backend (ext/registry)))
@@ -67,7 +70,12 @@
      (deref (:next-dynamic-segment-id application)))
     (checkpoint-dynamic-segments (deref (:dynamic-segments application)))
     (checkpoint-reload-keys (deref (:runtime-reload-keys application)))
-    (checkpoint-node-aliases (deref (:runtime-node-aliases application)))))
+    (checkpoint-node-aliases (deref (:runtime-node-aliases application)))
+    (checkpoint-handler-count (deref (:runtime-handler-count application)))
+    (checkpoint-dynamic-segment-count
+     (deref (:runtime-dynamic-segment-count application)))
+    (checkpoint-extension-dirty
+     (deref (:runtime-extension-dirty application)))))
 
 (defn render-tree-snapshot [application]
   (record render-tree-snapshot
@@ -100,6 +108,12 @@
   (reset! (:dynamic-segments application) (:checkpoint-dynamic-segments saved))
   (reset! (:runtime-reload-keys application) (:checkpoint-reload-keys saved))
   (reset! (:runtime-node-aliases application) (:checkpoint-node-aliases saved))
+  (reset! (:runtime-handler-count application)
+          (:checkpoint-handler-count saved))
+  (reset! (:runtime-dynamic-segment-count application)
+          (:checkpoint-dynamic-segment-count saved))
+  (reset! (:runtime-extension-dirty application)
+          (:checkpoint-extension-dirty saved))
   true)
 
 (defn- canonical-node [application node]
@@ -132,17 +146,18 @@
         false)
       false)))
 
-(defn- find-child-by-reload-key [children reload-keys key]
-  (loop [index 0
-         found None]
-    (if (= index (count children))
-      found
-      (let [child (nth children index)]
-        (if (= (clojure.core/get reload-keys child) (Some key))
-          (if-some [_existing found]
-            (raise (Invalid_argument "duplicate reload key among siblings"))
-            (recur (inc index) (Some child)))
-          (recur (inc index) found))))))
+(defn- keyed-children [children reload-keys]
+  (reduce
+   (fn [result child]
+     (match (clojure.core/get reload-keys child)
+       (Some key)
+       (do
+         (when (contains? result key)
+           (raise (Invalid_argument "duplicate reload key among siblings")))
+         (assoc result key child))
+       None result))
+   (hash-map)
+   children))
 
 (defn- collect-node-mapping
   [application saved old-node candidate-node mapping]
@@ -162,7 +177,9 @@
             children
             [])
           old-reload-keys (:checkpoint-reload-keys saved)
-          candidate-reload-keys (deref (:runtime-reload-keys application))]
+          candidate-reload-keys (deref (:runtime-reload-keys application))
+          old-keyed (keyed-children old-children old-reload-keys)]
+      (keyed-children candidate-children candidate-reload-keys)
       (loop [index 0
              current mapping]
         (if (= index (count candidate-children))
@@ -172,11 +189,7 @@
                 (if-some [key
                           (clojure.core/get
                            candidate-reload-keys candidate-child)]
-                  (let [_candidate-match
-                        (find-child-by-reload-key
-                         candidate-children candidate-reload-keys key)]
-                    (find-child-by-reload-key
-                     old-children old-reload-keys key))
+                  (clojure.core/get old-keyed key)
                   (if (< index (count old-children))
                     (let [position-child (nth old-children index)]
                       (if (contains? old-reload-keys position-child)
@@ -245,40 +258,68 @@
    (hash-map)
    children-map))
 
-(defn- vector-contains? [values target]
-  (match (find-child-index values target)
-    (Some _index) true
-    None false))
+(defn- index-map [children]
+  (loop [index 0
+         result (hash-map)]
+    (if (= index (count children))
+      result
+      (recur (inc index) (assoc result (nth children index) index)))))
+
+;; Places `value` at `start`, shifting values[start .. end-1] right to
+;; start+1 .. end. Returns (tuple values positions) with the position
+;; map updated for every shifted element.
+(defn- shift-right [values positions start end value]
+  (loop [j end
+         current values
+         current-positions positions]
+    (if (= j start)
+      (tuple (assoc current start value) (assoc current-positions value start))
+      (let [moved (nth current (dec j))]
+        (recur
+         (dec j)
+         (assoc current j moved)
+         (assoc current-positions moved j))))))
 
 (defn- emit-child-diff! [application parent old-children desired-children]
-  (let [after-removals
-        (reduce
-         (fn [current child]
-           (if (vector-contains? desired-children child)
-             current
-             (do
-               (enqueue! application (proto/remove-child-op parent child))
-               (match (find-child-index current child)
-                 (Some index) (remove-at current index)
-                 None current))))
-         old-children
-         old-children)]
+  (let [desired-index (index-map desired-children)
+        surviving
+        (loop [index 0
+               result []]
+          (if (= index (count old-children))
+            result
+            (let [child (nth old-children index)]
+              (if (contains? desired-index child)
+                (recur (inc index) (conj result child))
+                (do
+                  (enqueue! application (proto/remove-child-op parent child))
+                  (recur (inc index) result))))))]
     (loop [index 0
-           current after-removals]
+           current surviving
+           positions (index-map surviving)]
       (if (= index (count desired-children))
         true
         (let [child (nth desired-children index)]
-          (if (and (< index (count current)) (= child (nth current index)))
-            (recur (inc index) current)
-            (if-some [from-index (find-child-index current child)]
+          (match (clojure.core/get positions child)
+            (Some from-index)
+            (if (= from-index index)
+              (recur (inc index) current positions)
               (do
-                (enqueue!
-                 application (proto/move-child-op parent child index))
-                (recur (inc index) (move-at current from-index index)))
-              (do
-                (enqueue!
-                 application (proto/insert-child-op parent child index))
-                (recur (inc index) (insert-at current index child))))))))))
+                (enqueue! application (proto/move-child-op parent child index))
+                (let [shifted
+                      (shift-right current positions index from-index child)]
+                  (match shifted
+                    (tuple next-current next-positions)
+                    (recur (inc index) next-current next-positions)))))
+            None
+            (do
+              (enqueue! application (proto/insert-child-op parent child index))
+              (let [shifted
+                    (shift-right
+                     (conj current child) positions index
+                     (count current) child)]
+                (match shifted
+                  (tuple next-current next-positions)
+                  (recur (inc index) next-current next-positions))))))))))
 
 (defn- emit-property-diff! [application node old-values desired-values]
   (reduce-kv
@@ -315,16 +356,16 @@
    true
    desired-values))
 
-(defn- emit-dropped-subtree! [application saved removed-nodes node]
+(defn- emit-dropped-subtree! [application saved removed-set node]
   (let [children
         (if-some [current
                   (clojure.core/get (:checkpoint-children saved) node)]
           current
           [])]
     (doseq [child children]
-      (when (vector-contains? removed-nodes child)
+      (when (contains? removed-set child)
         (enqueue! application (proto/remove-child-op node child))
-        (emit-dropped-subtree! application saved removed-nodes child)))
+        (emit-dropped-subtree! application saved removed-set child)))
     (enqueue! application (proto/drop-node-op node))))
 
 (defn reconcile-subtree!
@@ -348,6 +389,11 @@
         (filterv
          (fn [node] (not (contains? desired-node-set node)))
          old-nodes)
+        removed-set
+        (reduce
+         (fn [nodes node] (assoc nodes node true))
+         (hash-map)
+         removed-nodes)
         base-standard
         (remove-node-keys (:checkpoint-mounted-nodes saved) old-nodes)
         base-extensions
@@ -453,9 +499,9 @@
     (doseq [node removed-nodes]
       (if-some [old-parent
                 (clojure.core/get (:checkpoint-parents saved) node)]
-        (when-not (vector-contains? removed-nodes old-parent)
-          (emit-dropped-subtree! application saved removed-nodes node))
-        (emit-dropped-subtree! application saved removed-nodes node)))
+        (when-not (contains? removed-set old-parent)
+          (emit-dropped-subtree! application saved removed-set node))
+        (emit-dropped-subtree! application saved removed-set node)))
     (reset! (:mounted-nodes application) desired-standard)
     (reset! (:runtime-extension-nodes application) desired-extensions)
     (reset! (:runtime-properties application) desired-properties)
@@ -465,7 +511,15 @@
     (reset! (:runtime-parents application) (rebuild-parents desired-children))
     (reset! (:event-handlers application) desired-handlers)
     (reset! (:dynamic-segments application) desired-segments)
+    (reset! (:runtime-handler-count application)
+            (reduce-kv (fn [total _node handlers] (+ total (count handlers)))
+                       0 desired-handlers))
+    (reset! (:runtime-dynamic-segment-count application)
+            (reduce-kv (fn [total _parent segments] (+ total (count segments)))
+                       0 desired-segments))
     (reset! (:runtime-reload-keys application) desired-reload-keys)
+    (reset! (:runtime-extension-dirty application)
+            (not (empty? desired-extensions)))
     (reset!
      (:runtime-node-aliases application)
      (reduce-kv
@@ -514,21 +568,32 @@
           (nth values index)))))))
 
 (defn- move-at [values from-index to-index]
-  (insert-at (remove-at values from-index) to-index
-             (nth values from-index)))
+  (let [value (nth values from-index)
+        limit (count values)]
+    (loop [index 0
+           out 0
+           result []]
+      (if (= index limit)
+        (if (= out to-index) (conj result value) result)
+        (if (= index from-index)
+          (recur (inc index) out result)
+          (recur
+           (inc index)
+           (inc out)
+           (conj
+            (if (= out to-index) (conj result value) result)
+            (nth values index))))))))
 
+;; target is a descendant-or-self of root iff walking the parent chain
+;; from target reaches root.
 (defn- descendant? [application root target]
-  (if (= root target)
-    true
-    (if-some [children (clojure.core/get
-                        (deref (:runtime-children application)) root)]
-      (loop [index 0]
-        (if (= index (count children))
-          false
-          (if (descendant? application (nth children index) target)
-            true
-            (recur (inc index)))))
-      false)))
+  (loop [current target]
+    (if (= current root)
+      true
+      (match (clojure.core/get
+              (deref (:runtime-parents application)) current)
+        (Some parent) (recur parent)
+        None false))))
 
 (defn- require-standard-node-kind [application node]
   (if-some [kind (clojure.core/get
@@ -578,6 +643,7 @@
       (swap! (:runtime-extension-nodes application) assoc node identifier)
       (swap! (:runtime-extension-properties application) assoc node (hash-map))
       (swap! (:runtime-children application) assoc node [])
+      (reset! (:runtime-extension-dirty application) true)
       (enqueue!
        application
        (proto/create-extension-op node identifier (ext/fingerprint schema)))
@@ -599,6 +665,7 @@
         (swap! (:runtime-extension-nodes application) assoc node identifier)
         (swap! (:runtime-extension-properties application) assoc node (hash-map))
         (swap! (:runtime-children application) assoc node [])
+        (reset! (:runtime-extension-dirty application) true)
         (enqueue!
          application
          (proto/create-extension-op
@@ -625,6 +692,7 @@
   (swap! (:runtime-children application) dissoc node)
   (swap! (:runtime-parents application) dissoc node)
   (swap! (:runtime-reload-keys application) dissoc node)
+  (reset! (:runtime-extension-dirty application) true)
   (enqueue! application (proto/drop-node-op node))))
 
 (defn drop-subtree! [application node]
@@ -683,6 +751,7 @@
         true
         (do
           (swap! properties assoc node (assoc current property value))
+          (reset! (:runtime-extension-dirty application) true)
           (enqueue!
            application
            (proto/set-extension-prop-op node property value)))))))
@@ -698,6 +767,7 @@
             values
             (hash-map))]
       (swap! properties assoc node (dissoc current property)))
+    (reset! (:runtime-extension-dirty application) true)
     (enqueue! application (proto/remove-extension-prop-op node property))))
 
 (defn- standard-extension-container? [kind]
@@ -777,7 +847,8 @@
       (raise (Invalid_argument "child insertion would create a cycle")))
     (swap! (:runtime-children application)
            assoc parent (insert-at children index child))
-    (swap! (:runtime-parents application) assoc child parent))
+    (swap! (:runtime-parents application) assoc child parent)
+    (reset! (:runtime-extension-dirty application) true))
   (enqueue! application (proto/insert-child-op parent child index))))
 
 (defn remove-child! [application parent child]
@@ -790,7 +861,8 @@
       (do
         (swap! (:runtime-children application)
                assoc parent (remove-at children index))
-        (swap! (:runtime-parents application) dissoc child))
+        (swap! (:runtime-parents application) dissoc child)
+        (reset! (:runtime-extension-dirty application) true))
       (raise (Invalid_argument "child is not attached to parent"))))
   (enqueue! application (proto/remove-child-op parent child))))
 
@@ -805,7 +877,8 @@
         (when (or (< index 0) (>= index (count children)))
           (raise (Invalid_argument "child index is out of bounds")))
         (swap! (:runtime-children application)
-               assoc parent (move-at children current-index index)))
+               assoc parent (move-at children current-index index))
+        (reset! (:runtime-extension-dirty application) true))
       (raise (Invalid_argument "child is not attached to parent"))))
   (enqueue! application (proto/move-child-op parent child index))))
 
@@ -833,6 +906,8 @@
            (fn [handler]
              (not (= handler-id (:handler-id handler))))
            handlers)]
+      (swap! (:runtime-handler-count application)
+             - (- (count handlers) (count remaining)))
       (if (empty? remaining)
         (swap! (:event-handlers application) dissoc node)
         (swap! (:event-handlers application) assoc node remaining))
@@ -854,6 +929,7 @@
           (empty-handlers))]
     (swap! (:event-handlers application)
            assoc node (conj handlers handler))
+    (swap! (:runtime-handler-count application) inc)
     (sig/on-dispose!
      scope
      (fn [] (remove-handler! application node handler-id)))
@@ -908,19 +984,13 @@
      true
      (deref (:runtime-extension-nodes application)))))
 
-(defn- handler-count [application]
-  (reduce-kv
-   (fn [total _node handlers]
-     (+ total (count handlers)))
-   0
-   (deref (:event-handlers application))))
 
-(defn- dynamic-segment-count [application]
-  (reduce-kv
-   (fn [total _parent segments]
-     (+ total (count segments)))
-   0
-   (deref (:dynamic-segments application))))
+
+(defn handler-count [application]
+  (deref (:runtime-handler-count application)))
+
+(defn dynamic-segment-count [application]
+  (deref (:runtime-dynamic-segment-count application)))
 
 (defn- record-diagnostics!
   [application status operation-count pending-operation-count]
@@ -934,8 +1004,9 @@
        (flush-operation-count operation-count)
        (flush-pending-operation-count pending-operation-count)
        (flush-mounted-node-count (mounted-count application))
-       (flush-handler-count (handler-count application))
-       (flush-dynamic-segment-count (dynamic-segment-count application))
+       (flush-handler-count (deref (:runtime-handler-count application)))
+       (flush-dynamic-segment-count
+        (deref (:runtime-dynamic-segment-count application)))
        (flush-signal-generation
         (:stabilization-generation signal-diagnostics))
        (flush-signal-round-count
@@ -965,7 +1036,9 @@
 
 (defn flush! [application]
   (sig/stabilize! (:runtime-scheduler application))
-  (validate-extension-nodes! application)
+  (when (deref (:runtime-extension-dirty application))
+    (reset! (:runtime-extension-dirty application) false)
+    (validate-extension-nodes! application))
   (let [operations (deref (:pending-ops application))]
     (if (empty? operations)
       (record-diagnostics! application NoBatch 0 0)
@@ -1029,6 +1102,7 @@
           [])]
     (swap! (:dynamic-segments application)
            assoc parent (conj current segment))
+    (swap! (:runtime-dynamic-segment-count application) inc)
     segment)))
 
 (defn dynamic-segment-index [segment local-index]
@@ -1093,6 +1167,8 @@
             (if (empty? remaining)
               (swap! (:dynamic-segments application) dissoc parent)
               (swap! (:dynamic-segments application) assoc parent remaining))
+            (when (< (count remaining) (count segments))
+              (swap! (:runtime-dynamic-segment-count application) dec))
             true)
           true))
       (reset! (:dynamic-segment-active segment) false)
