@@ -19,7 +19,7 @@ const gallerySourceRoot = path.join(
   projectRoot,
   "examples/components/lg",
 )
-const LG_SOURCE_EXTENSIONS = new Set([".cljc", ".lgi"])
+const LG_SOURCE_EXTENSIONS = new Set([".cljc", ".mli"])
 
 const wait = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds))

@@ -94,9 +94,9 @@
                   (Some (proto/BoolValue false)))]))
 
 (defn runtime-extension-property [application node property]
-  (match (clojure.core/get
+  (match (get
           (deref (:runtime-extension-properties application)) node)
-    (Some properties) (clojure.core/get properties property)
+    (Some properties) (get properties property)
     None None))
 
 (deftest component-schema-has-a-deterministic-fingerprint
@@ -506,21 +506,21 @@
         root (platform-tweak-example (ui/context application scope))]
     (sig/mount! scope)
     (is (= "glass-card"
-           (match (clojure.core/get
+           (match (get
                    (deref (:runtime-extension-nodes application)) root)
              (Some identifier) identifier
              None "")))
     (let [inner (nth (runtime/children application root) 0)
           button (nth (runtime/children application inner) 0)]
       (is (= "glass-card"
-             (match (clojure.core/get
+             (match (get
                      (deref (:runtime-extension-nodes application)) inner)
                (Some identifier) identifier
                None "")))
       (is (= (Some (proto/BoolValue true))
              (runtime-extension-property application inner "prominent")))
       (is (= (Some proto/Button)
-             (clojure.core/get (deref (:mounted-nodes application)) button)))))
+             (get (deref (:mounted-nodes application)) button)))))
   (let [registry (ext/registry)
         _registered (ext/register-tweak! registry (ios-tweak-schema))
         scheduler (sig/scheduler)
@@ -534,7 +534,7 @@
         root (platform-tweak-example (ui/context application scope))]
     (sig/mount! scope)
     (is (= (Some proto/Button)
-           (clojure.core/get (deref (:mounted-nodes application)) root)))
+           (get (deref (:mounted-nodes application)) root)))
     (is (= 1 (runtime/mounted-count application))
         "non-matching platform keys create no decorator nodes"))
   (let [registry (ext/registry)

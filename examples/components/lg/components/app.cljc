@@ -16,4 +16,4 @@
    view/gallery-view-with-extensions))
 
 (defn model [application]
-  (app/model application))
+  ((.-app-read-model application) nil))

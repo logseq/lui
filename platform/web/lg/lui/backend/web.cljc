@@ -320,7 +320,7 @@
 
 (defn- extension-adapter [renderer identifier]
   (if-some [adapter
-            (clojure.core/get (:web-extension-adapters renderer) identifier)]
+            (get (:web-extension-adapters renderer) identifier)]
     adapter
     (raise (Invalid_argument "web extension adapter is not registered"))))
 
@@ -354,7 +354,7 @@
     (raise (Invalid_argument "unknown DOM node"))))
 
 (defn- cleanup-extension-node! [renderer previous-nodes node]
-  (if-some [current (clojure.core/get previous-nodes node)]
+  (if-some [current (get previous-nodes node)]
     (match (retained/extension-identity current)
       (Some (tuple identifier _fingerprint))
       ((:web-extension-cleanup (extension-adapter renderer identifier))
@@ -797,7 +797,7 @@
 (defn- dom-node-before [renderer previous-nodes node]
   (if-some [current (retained/node (:web-store renderer) node)]
     (:platform-node current)
-    (if-some [previous (clojure.core/get previous-nodes node)]
+    (if-some [previous (get previous-nodes node)]
       (:platform-node previous)
       (raise (Invalid_argument "unknown DOM node")))))
 
@@ -1644,7 +1644,7 @@
      (:web-cleanups renderer)
      assoc
      tree
-     (fn []
+     (fn [_]
        (cancel-typeahead! typeahead-timer)
        (Webapi.Dom.Element.removeKeyDownEventListener key-handler tree-node)
        (Stdlib.ignore true)))
@@ -1709,9 +1709,9 @@
     false))
 
 (defn- cleanup-node! [renderer node]
-  (if-some [cleanup (clojure.core/get (deref (:web-cleanups renderer)) node)]
+  (if-some [cleanup (get (deref (:web-cleanups renderer)) node)]
     (do
-      (cleanup)
+      (cleanup nil)
       (Stdlib.ignore (swap! (:web-cleanups renderer) dissoc node)))
     (Stdlib.ignore true)))
 
@@ -2016,7 +2016,7 @@
     (swap!
      (:web-cleanups renderer)
      assoc node
-     (fn []
+     (fn [_]
        (remove-modal-from-stack! renderer node)
        (Webapi.Dom.Element.setAttribute
         "data-lui-modal-state" "closed" layer)
@@ -2193,7 +2193,7 @@
      (:web-cleanups renderer)
      assoc
      node
-     (fn []
+     (fn [_]
        (cancel-typeahead! typeahead-timer)
        (Webapi.Dom.Document.removeEventListener
         "pointerdown" pointer-handler document)
@@ -2395,7 +2395,7 @@
               (Stdlib.ignore (dispatch-primary!))))
           (Stdlib.ignore true))
         previous-cleanup
-        (clojure.core/get (deref (:web-cleanups renderer)) node)]
+        (get (deref (:web-cleanups renderer)) node)]
     (Webapi.Dom.Element.addEventListener "pointerdown" pointer-down! dom-node)
     (Webapi.Dom.Element.addEventListener "pointermove" pointer-move! dom-node)
     (Webapi.Dom.Element.addEventListener "pointerup" pointer-end! dom-node)
@@ -2406,7 +2406,7 @@
     (Webapi.Dom.Element.addEventListener "click" click! dom-node)
     (swap!
      (:web-cleanups renderer) assoc node
-     (fn []
+     (fn [_]
        (match previous-cleanup
          (Some cleanup) (cleanup)
          None (Stdlib.ignore true))
@@ -3118,7 +3118,7 @@
     (Stdlib.ignore
      (swap!
       (:web-cleanups renderer) assoc node
-      (fn []
+      (fn [_]
         (Webapi.Dom.Document.removeEventListener
          "pointerdown" pointer-handler document)
         (Webapi.Dom.Document.removeKeyDownEventListener key-handler document)
@@ -3559,7 +3559,7 @@
     (Webapi.Dom.Document.addKeyDownEventListener key! document)
     (swap!
      (:web-cleanups renderer) assoc node
-     (fn []
+     (fn [_]
        (cancel!)
        (cancel-warm!)
        (Webapi.Dom.Element.removeAttribute "data-open" tooltip)
@@ -3802,7 +3802,7 @@
              (Webapi.Dom.Element.unsafeAsHtmlElement toast)))
           (Stdlib.ignore true))
         previous-cleanup
-        (clojure.core/get (deref (:web-cleanups renderer)) node)]
+        (get (deref (:web-cleanups renderer)) node)]
     (schedule!)
     (Webapi.Dom.Element.addEventListener "pointerenter" pointer-enter! toast)
     (Webapi.Dom.Element.addEventListener "pointerleave" pointer-leave! toast)
@@ -3815,7 +3815,7 @@
     (Webapi.Dom.Document.addKeyDownEventListener key! document)
     (swap!
      (:web-cleanups renderer) assoc node
-     (fn []
+     (fn [_]
        (match previous-cleanup
          (Some cleanup) (cleanup)
          None (Stdlib.ignore true))
@@ -4037,7 +4037,7 @@
     (Stdlib.ignore true)))
 
 (defn- reconcile-split! [renderer node root source]
-  (if-some [state (clojure.core/get (deref (:web-splits renderer)) node)]
+  (if-some [state (get (deref (:web-splits renderer)) node)]
     (let [source-changed (not (= source (:web-split-source state)))
           current (:web-split-current state)
           next-current
@@ -4132,7 +4132,7 @@
         adjust!
         (fn [delta]
           (let [current
-                (if-some [state (clojure.core/get
+                (if-some [state (get
                                  (deref (:web-splits renderer)) node)]
                   (:web-split-current state)
                   0.5)
@@ -4153,7 +4153,7 @@
         resize-observer
         (Webapi.ResizeObserver.make
          (fn [_entries]
-           (if-some [state (clojure.core/get
+           (if-some [state (get
                             (deref (:web-splits renderer)) node)]
              (render-split!
               renderer node root (:web-split-current state) false)
@@ -4184,7 +4184,7 @@
      divider)
     (swap!
      (:web-cleanups renderer) assoc node
-     (fn []
+     (fn [_]
        (Webapi.Dom.Document.removeMouseMoveEventListener move! document)
        (Webapi.Dom.Document.removeMouseUpEventListener stop! document)
        (Webapi.ResizeObserver.disconnect resize-observer)
@@ -4205,7 +4205,7 @@
     (if (string/starts-with? name "app:")
       (let [bare-name (subs name 4)
             image
-            (if-some [url (clojure.core/get (:web-app-icons renderer) bare-name)]
+            (if-some [url (get (:web-app-icons renderer) bare-name)]
               (css-url url)
               "url(\"./icons/missing.svg\")")]
         (Webapi.Dom.CssStyleDeclaration.setProperty
@@ -4315,7 +4315,7 @@
     (Some (IntValue image-id))
     (if (= image-id 0)
       None
-      (clojure.core/get (deref (:web-images renderer)) image-id))
+      (get (deref (:web-images renderer)) image-id))
     _ None))
 
 (defn- update-image! [renderer node dom-node]
@@ -4367,7 +4367,7 @@
       (Some (IntValue surface-id))
       (match (if (= surface-id 0)
                None
-               (clojure.core/get
+               (get
                 (deref (:web-media-surfaces renderer)) surface-id))
         (Some resource)
         (do
@@ -4401,7 +4401,7 @@
       (and
        (or (standard-kind? current Avatar)
            (standard-kind? current Image))
-       (= (clojure.core/get (:retained-properties current) ImageIdValue)
+       (= (get (:retained-properties current) ImageIdValue)
           (Some (IntValue image-id)))
        (if (standard-kind? current Avatar)
          (update-avatar! renderer node (:platform-node current))
@@ -4444,7 +4444,7 @@
      (when
       (and
        (standard-kind? current MediaSurface)
-       (= (clojure.core/get (:retained-properties current) SurfaceIdValue)
+       (= (get (:retained-properties current) SurfaceIdValue)
           (Some (IntValue surface-id)))
        (update-media-surface! renderer node (:platform-node current))))
      true)
@@ -5310,24 +5310,24 @@
       (raise (Invalid_argument "document body is unavailable")))))
 
 (defn- context-menu-node? [nodes node]
-  (if-some [current (clojure.core/get nodes node)]
+  (if-some [current (get nodes node)]
     (standard-kind? current ContextMenu)
     false))
 
 (defn- dropdown-node? [nodes node]
-  (if-some [current (clojure.core/get nodes node)]
+  (if-some [current (get nodes node)]
     (standard-kind? current DropdownMenu)
     false))
 
 (defn- modal-node? [nodes node]
-  (if-some [current (clojure.core/get nodes node)]
+  (if-some [current (get nodes node)]
     (if-some [kind (retained/standard-kind current)]
       (modal-surface? kind)
       false)
     false))
 
 (defn- toast-node? [nodes node]
-  (if-some [current (clojure.core/get nodes node)]
+  (if-some [current (get nodes node)]
     (standard-kind? current Toast)
     false))
 
@@ -5342,7 +5342,7 @@
    (contains? (:retained-properties current) AnchorValue)))
 
 (defn- anchored-tooltip-node? [nodes node]
-  (if-some [current (clojure.core/get nodes node)]
+  (if-some [current (get nodes node)]
     (anchored-tooltip? current)
     false))
 
@@ -5398,7 +5398,7 @@
   [renderer previous-nodes node dom-node]
   (if-some [current (retained/node (:web-store renderer) node)]
     (retained-content-container current dom-node)
-    (if-some [previous (clojure.core/get previous-nodes node)]
+    (if-some [previous (get previous-nodes node)]
       (retained-content-container previous dom-node)
       dom-node)))
 
@@ -5702,7 +5702,7 @@
                       (close-later!)))
                   (Stdlib.ignore true))
                 previous-cleanup
-                (clojure.core/get (deref (:web-cleanups renderer)) node)]
+                (get (deref (:web-cleanups renderer)) node)]
             (Webapi.Dom.Element.setAttribute
              "data-submenu-trigger" "" trigger)
             (Webapi.Dom.Element.setAttribute "aria-haspopup" "menu" trigger)
@@ -5722,7 +5722,7 @@
              "mousemove" pointer-move! (:web-document renderer))
             (swap!
              (:web-cleanups renderer) assoc node
-             (fn []
+             (fn [_]
                (match previous-cleanup
                  (Some cleanup) (cleanup)
                  None (Stdlib.ignore true))
@@ -5748,7 +5748,7 @@
               (let [control (picker-control-element renderer picker)
                     popup-id (str (node-dom-id node) "-popup")
                     previous-cleanup
-                    (clojure.core/get (deref (:web-cleanups renderer)) node)]
+                    (get (deref (:web-cleanups renderer)) node)]
                 (Webapi.Dom.Element.setAttribute "aria-controls" popup-id control)
                 (if-some [picker-node
                           (retained/node (:web-store renderer) picker)]
@@ -5776,7 +5776,7 @@
                 (Stdlib.ignore
                  (swap!
                   (:web-cleanups renderer) assoc node
-                  (fn []
+                  (fn [_]
                     (match previous-cleanup
                       (Some cleanup) (cleanup)
                       None (Stdlib.ignore true))
@@ -6137,11 +6137,11 @@
       (let [surface (dom-node-before renderer previous-nodes child)
             modal (modal-node? previous-nodes child)
             bottom-tab
-            (if-some [previous (clojure.core/get previous-nodes child)]
+            (if-some [previous (get previous-nodes child)]
               (standard-kind? previous BottomTab)
               false)
             bottom-tabs
-            (if-some [previous (clojure.core/get previous-nodes parent)]
+            (if-some [previous (get previous-nodes parent)]
               (standard-kind? previous BottomTabs)
               false)
             child-node (if modal (modal-layer-node surface) surface)
@@ -6172,7 +6172,7 @@
                 (Webapi.Dom.Element.asNode trigger) bar))
               (Stdlib.ignore true)))
           (if modal
-          (if-some [previous (clojure.core/get previous-nodes child)]
+          (if-some [previous (get previous-nodes child)]
             (Stdlib.ignore
              (remove-modal-layer-after-exit!
               (:web-document renderer)
@@ -6187,14 +6187,14 @@
               (Webapi.Dom.Element.asNode child-node) parent-node))))))
       (refresh-button-context! renderer child)
       (refresh-structured-children! renderer parent)
-      (if-some [parent-node (clojure.core/get previous-nodes parent)]
+      (if-some [parent-node (get previous-nodes parent)]
         (when (standard-kind? parent-node BottomTabs)
           (refresh-bottom-tabs! renderer parent))
         (Stdlib.ignore true))
-      (if-some [previous (clojure.core/get previous-nodes child)]
+      (if-some [previous (get previous-nodes child)]
         (when (standard-kind? previous DropdownMenu)
           (update-picker-expanded! renderer parent false)
-          (if-some [parent-node (clojure.core/get previous-nodes parent)]
+          (if-some [parent-node (get previous-nodes parent)]
             (when (standard-kind? parent-node MenuItem)
               (Webapi.Dom.Element.removeAttribute
                "data-submenu-trigger" (:platform-node parent-node))

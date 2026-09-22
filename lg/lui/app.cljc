@@ -61,7 +61,7 @@
          (app-scheduler ~scheduler)
          (app-runtime ~application)
          (app-scope ~scope)
-         (app-read-model (fn [] (signal.core/get ~model-state)))
+         (app-read-model (fn [_] (signal.core/get ~model-state)))
          (app-send-action
           (fn [~'action]
             (if (= (deref ~lifecycle) lui.app/Running)
@@ -123,7 +123,7 @@
              (app-scheduler ~scheduler)
              (app-runtime ~application)
              (app-scope ~scope)
-             (app-read-model (fn [] (signal.core/get ~model-state)))
+             (app-read-model (fn [_] (signal.core/get ~model-state)))
              (app-send-action ~send-action)
              (app-root-node ~root)
              (app-lifecycle-state ~lifecycle)
@@ -271,7 +271,7 @@
   (= (deref (:app-lifecycle-state app)) Disposed))
 
 (defmacro model [app]
-  `((:app-read-model ~app)))
+  `((.-app-read-model ~app) nil))
 
 (defn root-node [app]
   (:app-root-node app))

@@ -13,7 +13,7 @@
 (defn creates-kind? [batches expected]
   (boolean
    (some
-    (fn [batch]
+    (fn [^:proto/patch-batch batch]
       (some
        (fn [operation]
          (match operation
@@ -23,7 +23,7 @@
     batches)))
 
 (defn gallery-page-titles [batches]
-  (let [operations (mapcat :ops batches)
+  (let [operations (mapcat (fn [^:proto/patch-batch b] (:ops b)) batches)
         heading-nodes
         (keep
          (fn [operation]
@@ -53,7 +53,7 @@
        (proto/CreateNode node kind) (assoc result node kind)
        _ result))
    {}
-   (mapcat :ops batches)))
+   (mapcat (fn [^:proto/patch-batch b] (:ops b)) batches)))
 
 (defn heading-count-under [renderer kinds node]
   (+
@@ -372,7 +372,7 @@
          registry)]
     (driver/start! application)
     (driver/flush! application)
-    (let [operations (mapcat :ops (flutter/batches renderer))
+    (let [operations (mapcat (fn [^:proto/patch-batch b] (:ops b)) (flutter/batches renderer))
           combobox
           (some
            (fn [operation]

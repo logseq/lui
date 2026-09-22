@@ -52,7 +52,7 @@
             (do
               (discard target)
               (SoftRestartRejected "candidate activation failed"))
-            (if (retire-old)
+            (if (retire-old nil)
               (SoftRestartApplied target)
               (SoftRestartRequired "old application retirement failed"))))))))
 

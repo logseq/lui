@@ -1,3 +1,0 @@
-(ns todos.web-main)
-
-(signature todos.web-main/main :fn<Dom.element;bool>)

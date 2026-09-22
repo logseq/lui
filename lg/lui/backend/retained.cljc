@@ -101,7 +101,7 @@
   (loop [current target]
     (if (= current root)
       true
-      (match (clojure.core/get nodes current)
+      (match (get nodes current)
         (Some node)
         (match (:retained-parent node)
           (Some parent) (recur parent)
@@ -120,7 +120,7 @@
       (let [children (:retained-children child)]
         (and
          (= 1 (count children))
-         (if-some [inner-child (clojure.core/get nodes (nth children 0))]
+         (if-some [inner-child (get nodes (nth children 0))]
            (retained-child-supported? registry nodes parent inner-child)
            false)))
       (match (:semantic-kind parent)
@@ -196,7 +196,7 @@
            (retained-children []))))))
 
     (DropNode node)
-    (if-some [current (clojure.core/get nodes node)]
+    (if-some [current (get nodes node)]
       (cond
         (match (:retained-parent current)
           (Some _parent) true
@@ -208,7 +208,7 @@
       (raise (Invalid_argument "unknown node")))
 
     (SetProp node property value)
-    (if-some [current (clojure.core/get nodes node)]
+    (if-some [current (get nodes node)]
       (match (standard-kind current)
         (Some kind)
         (if (and
@@ -224,7 +224,7 @@
       (raise (Invalid_argument "unknown node")))
 
     (RemoveProp node property)
-    (if-some [current (clojure.core/get nodes node)]
+    (if-some [current (get nodes node)]
       (match (standard-kind current)
         (Some kind)
         (if (proto/property-supported? kind property)
@@ -238,7 +238,7 @@
       (raise (Invalid_argument "unknown node")))
 
     (SetExtensionProp node property value)
-    (if-some [current (clojure.core/get nodes node)]
+    (if-some [current (get nodes node)]
       (match (:semantic-kind current)
         (ExtensionSemantic identifier _fingerprint)
         (let [schema (extension-schema registry identifier)]
@@ -253,7 +253,7 @@
       (raise (Invalid_argument "unknown node")))
 
     (RemoveExtensionProp node property)
-    (if-some [current (clojure.core/get nodes node)]
+    (if-some [current (get nodes node)]
       (match (:semantic-kind current)
         (ExtensionSemantic identifier _fingerprint)
         (let [schema (extension-schema registry identifier)]
@@ -268,8 +268,8 @@
       (raise (Invalid_argument "unknown node")))
 
     (InsertChild parent child index)
-    (if-some [parent-node (clojure.core/get nodes parent)]
-      (if-some [child-node (clojure.core/get nodes child)]
+    (if-some [parent-node (get nodes parent)]
+      (if-some [child-node (get nodes child)]
         (cond
           (not (retained-child-supported? registry nodes parent-node child-node))
           (raise (Invalid_argument
@@ -291,10 +291,10 @@
       (raise (Invalid_argument "unknown parent")))
 
     (RemoveChild parent child)
-    (if-some [parent-node (clojure.core/get nodes parent)]
+    (if-some [parent-node (get nodes parent)]
       (if-some [index (find-child-index
                        (:retained-children parent-node) child)]
-        (if-some [child-node (clojure.core/get nodes child)]
+        (if-some [child-node (get nodes child)]
           (let [without-child
                 (update-node
                  nodes parent parent-node (:retained-properties parent-node)
@@ -306,7 +306,7 @@
       (raise (Invalid_argument "unknown parent")))
 
     (MoveChild parent child index)
-    (if-some [parent-node (clojure.core/get nodes parent)]
+    (if-some [parent-node (get nodes parent)]
       (if-some [current-index (find-child-index
                                (:retained-children parent-node) child)]
         (update-node
@@ -324,7 +324,7 @@
    nodes platform-for unavailable-extension-platform (ext/registry) operation))
 
 (defn- string-property [properties property]
-  (match (clojure.core/get properties property)
+  (match (get properties property)
     (Some (StringValue value)) value
     _ ""))
 
@@ -348,7 +348,7 @@
           "node properties conflict")))))
 
 (defn- context-menu-child? [nodes child]
-  (if-some [current (clojure.core/get nodes child)]
+  (if-some [current (get nodes child)]
     (standard-kind? current proto/ContextMenu)
     false))
 
@@ -368,7 +368,7 @@
          (Invalid_argument "list-item requires text or children"))))))
 
 (defn- bool-property-true? [properties property]
-  (match (clojure.core/get properties property)
+  (match (get properties property)
     (Some (proto/BoolValue true)) true
     _ false))
 
@@ -398,7 +398,7 @@
       None (raise (Invalid_argument "context-menu requires a direct host"))
       _ nil)
     (doseq [child-id (:retained-children current)]
-      (if-some [child (clojure.core/get nodes child-id)]
+      (if-some [child (get nodes child-id)]
         (let [properties (:retained-properties child)]
           (when (and
                  (standard-kind? child proto/MenuItem)
@@ -406,7 +406,7 @@
                  (not
                   (some
                    (fn [nested-id]
-                     (if-some [nested (clojure.core/get nodes nested-id)]
+                     (if-some [nested (get nodes nested-id)]
                        (standard-kind? nested proto/DropdownMenu)
                        false))
                    (:retained-children child))))
@@ -416,7 +416,7 @@
                  (standard-kind? child proto/MenuItem)
                  (some
                   (fn [nested-id]
-                    (if-some [nested (clojure.core/get nodes nested-id)]
+                    (if-some [nested (get nodes nested-id)]
                       (standard-kind? nested proto/ContextMenu)
                       false))
                   (:retained-children child)))
@@ -460,19 +460,19 @@
                  " source crop requires all four coordinates"))))
         (when (= source-count 4)
           (let [x
-                (match (clojure.core/get properties proto/SourceX)
+                (match (get properties proto/SourceX)
                   (Some (proto/FloatValue value)) value
                   _ -1.0)
                 y
-                (match (clojure.core/get properties proto/SourceY)
+                (match (get properties proto/SourceY)
                   (Some (proto/FloatValue value)) value
                   _ -1.0)
                 width
-                (match (clojure.core/get properties proto/SourceWidth)
+                (match (get properties proto/SourceWidth)
                   (Some (proto/FloatValue value)) value
                   _ 0.0)
                 height
-                (match (clojure.core/get properties proto/SourceHeight)
+                (match (get properties proto/SourceHeight)
                   (Some (proto/FloatValue value)) value
                   _ 0.0)]
             (when (or (< x 0.0) (< y 0.0))
@@ -513,7 +513,7 @@
       (raise (Invalid_argument "timeline-item requires title")))))
 
 (defn- child-kind [nodes child]
-  (if-some [current (clojure.core/get nodes child)]
+  (if-some [current (get nodes child)]
     (match (standard-kind current)
       (Some kind) kind
       None (raise (Invalid_argument "expected standard child")))
@@ -541,7 +541,7 @@
     (when (= kind proto/InputGroupActions)
       (match (:retained-parent current)
         (Some parent)
-        (if-some [parent-node (clojure.core/get nodes parent)]
+        (if-some [parent-node (get nodes parent)]
           (when-not (standard-kind? parent-node proto/InputGroup)
             (raise
              (Invalid_argument
@@ -555,7 +555,7 @@
 (defn- has-ancestor-kind? [nodes parent kind]
   (match parent
     (Some parent-id)
-    (if-some [parent-node (clojure.core/get nodes parent-id)]
+    (if-some [parent-node (get nodes parent-id)]
       (or
        (standard-kind? parent-node kind)
        (has-ancestor-kind? nodes (:retained-parent parent-node) kind))
@@ -689,7 +689,7 @@
   (apply-batch-with! store platform-for (fn [_batch] true) batch))
 
 (defn node [store node-id]
-  (clojure.core/get (deref (:retained-nodes store)) node-id))
+  (get (deref (:retained-nodes store)) node-id))
 
 (defn nodes [store]
   (deref (:retained-nodes store)))
@@ -701,7 +701,7 @@
 
 (defn property [store node-id property]
   (if-some [current (node store node-id)]
-    (clojure.core/get (:retained-properties current) property)
+    (get (:retained-properties current) property)
     None))
 
 (defn extension-identifier [store node-id]
@@ -713,7 +713,7 @@
 
 (defn extension-property [store node-id property]
   (if-some [current (node store node-id)]
-    (clojure.core/get (:retained-extension-properties current) property)
+    (get (:retained-extension-properties current) property)
     None))
 
 (defn children [store node-id]

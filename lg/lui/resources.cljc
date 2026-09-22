@@ -19,7 +19,7 @@
 (defn register-dependency! [session resource-id node]
   (let [dependencies (:resource-dependencies session)
         current
-        (if-some [nodes (clojure.core/get (deref dependencies) resource-id)]
+        (if-some [nodes (get (deref dependencies) resource-id)]
           nodes
           [])]
     (when-not (contains-node? current node)
@@ -28,7 +28,7 @@
 
 (defn current [session resource-id]
   (if-some [resource
-            (clojure.core/get (deref (:resource-values session)) resource-id)]
+            (get (deref (:resource-values session)) resource-id)]
     (Some (:committed-resource-value resource))
     None))
 
@@ -39,7 +39,7 @@
 (defn reload! [session generation resource-id source-hash payload prepare]
   (let [completed (deref (:resource-completed-generation session))
         values (:resource-values session)
-        previous (clojure.core/get (deref values) resource-id)]
+        previous (get (deref values) resource-id)]
     (cond
       (<= generation completed) (ResourceStale generation)
       (match previous
@@ -65,7 +65,7 @@
                         (committed-resource-generation generation))
                 dependents
                 (if-some [nodes
-                          (clojure.core/get
+                          (get
                            (deref (:resource-dependencies session)) resource-id)]
                   nodes
                   [])]

@@ -118,29 +118,29 @@
 
 (defn- canonical-node [application node]
   (if-some [canonical
-            (clojure.core/get (deref (:runtime-node-aliases application)) node)]
+            (get (deref (:runtime-node-aliases application)) node)]
     canonical
     node))
 
 (defn- map-node [mapping node]
-  (if-some [mapped (clojure.core/get mapping node)]
+  (if-some [mapped (get mapping node)]
     mapped
     node))
 
 (defn- node-compatible? [application saved old-node candidate-node]
   (if-some [old-kind
-            (clojure.core/get
+            (get
              (:checkpoint-mounted-nodes saved) old-node)]
     (if-some [candidate-kind
-              (clojure.core/get
+              (get
                (deref (:mounted-nodes application)) candidate-node)]
       (= old-kind candidate-kind)
       false)
     (if-some [old-identifier
-              (clojure.core/get
+              (get
                (:checkpoint-extension-nodes saved) old-node)]
       (if-some [candidate-identifier
-                (clojure.core/get
+                (get
                  (deref (:runtime-extension-nodes application)) candidate-node)]
         (= old-identifier candidate-identifier)
         false)
@@ -149,7 +149,7 @@
 (defn- keyed-children [children reload-keys]
   (reduce
    (fn [result child]
-     (match (clojure.core/get reload-keys child)
+     (match (get reload-keys child)
        (Some key)
        (do
          (when (contains? result key)
@@ -166,13 +166,13 @@
     (let [mapping (assoc mapping candidate-node old-node)
           old-children
           (if-some [children
-                    (clojure.core/get
+                    (get
                      (:checkpoint-children saved) old-node)]
             children
             [])
           candidate-children
           (if-some [children
-                    (clojure.core/get
+                    (get
                      (deref (:runtime-children application)) candidate-node)]
             children
             [])
@@ -187,9 +187,9 @@
           (let [candidate-child (nth candidate-children index)
                 old-child
                 (if-some [key
-                          (clojure.core/get
+                          (get
                            candidate-reload-keys candidate-child)]
-                  (clojure.core/get old-keyed key)
+                  (get old-keyed key)
                   (if (< index (count old-children))
                     (let [position-child (nth old-children index)]
                       (if (contains? old-reload-keys position-child)
@@ -206,7 +206,7 @@
 
 (defn- collect-subtree-nodes [children-map root]
   (let [children
-        (if-some [current (clojure.core/get children-map root)]
+        (if-some [current (get children-map root)]
           current
           [])]
     (reduce
@@ -219,7 +219,7 @@
   (doseq [node
           (collect-subtree-nodes (:checkpoint-children saved) root)]
     (if-some [segments
-              (clojure.core/get
+              (get
                (:checkpoint-dynamic-segments saved) node)]
       (doseq [segment segments]
         (reset! (:dynamic-segment-active segment) false))
@@ -232,7 +232,7 @@
 (defn- remap-node-values [source candidate-nodes mapping base]
   (reduce
    (fn [result candidate]
-     (if-some [value (clojure.core/get source candidate)]
+     (if-some [value (get source candidate)]
        (assoc result (map-node mapping candidate) value)
        result))
    base
@@ -242,7 +242,7 @@
   (reduce
    (fn [result candidate]
      (let [children
-           (if-some [current (clojure.core/get source candidate)]
+           (if-some [current (get source candidate)]
              current
              [])]
        (assoc
@@ -299,7 +299,7 @@
       (if (= index (count desired-children))
         true
         (let [child (nth desired-children index)]
-          (match (clojure.core/get positions child)
+          (match (get positions child)
             (Some from-index)
             (if (= from-index index)
               (recur (inc index) current positions)
@@ -331,7 +331,7 @@
    old-values)
   (reduce-kv
    (fn [_ property value]
-     (when-not (= (clojure.core/get old-values property) (Some value))
+     (when-not (= (get old-values property) (Some value))
        (enqueue! application (proto/set-prop-op node property value)))
      true)
    true
@@ -349,7 +349,7 @@
    old-values)
   (reduce-kv
    (fn [_ property value]
-     (when-not (= (clojure.core/get old-values property) (Some value))
+     (when-not (= (get old-values property) (Some value))
        (enqueue!
         application (proto/set-extension-prop-op node property value)))
      true)
@@ -359,7 +359,7 @@
 (defn- emit-dropped-subtree! [application saved removed-set node]
   (let [children
         (if-some [current
-                  (clojure.core/get (:checkpoint-children saved) node)]
+                  (get (:checkpoint-children saved) node)]
           current
           [])]
     (doseq [child children]
@@ -438,17 +438,17 @@
         (remap-node-values
          (deref (:dynamic-segments application)) candidate-nodes mapping
          (remove-node-keys (:checkpoint-dynamic-segments saved) old-nodes))]
-    (when (= (clojure.core/get
+    (when (= (get
               (deref (:mounted-nodes application)) candidate-root)
              (Some proto/Root))
       (raise (Invalid_argument "runtime root cannot be nested")))
     (reset! (:pending-ops application) (:checkpoint-pending-ops saved))
     (doseq [candidate candidate-nodes]
       (when (= candidate (map-node mapping candidate))
-        (if-some [kind (clojure.core/get desired-standard candidate)]
+        (if-some [kind (get desired-standard candidate)]
           (enqueue! application (proto/create-node-op candidate kind))
           (if-some [identifier
-                    (clojure.core/get desired-extensions candidate)]
+                    (get desired-extensions candidate)]
             (let [schema
                   (match (ext/schema
                           (:runtime-extension-registry application) identifier)
@@ -465,20 +465,20 @@
             true))))
     (doseq [candidate candidate-nodes]
       (let [node (map-node mapping candidate)]
-        (if-some [values (clojure.core/get desired-properties node)]
+        (if-some [values (get desired-properties node)]
           (emit-property-diff!
            application node
            (if-some [old-values
-                     (clojure.core/get (:checkpoint-properties saved) node)]
+                     (get (:checkpoint-properties saved) node)]
              old-values
              (hash-map))
            values)
           (if-some [values
-                    (clojure.core/get desired-extension-properties node)]
+                    (get desired-extension-properties node)]
             (emit-extension-property-diff!
              application node
              (if-some [old-values
-                       (clojure.core/get
+                       (get
                         (:checkpoint-extension-properties saved) node)]
                old-values
                (hash-map))
@@ -490,15 +490,15 @@
       (emit-child-diff!
        application node
        (if-some [children
-                 (clojure.core/get (:checkpoint-children saved) node)]
+                 (get (:checkpoint-children saved) node)]
          children
          [])
-       (if-some [children (clojure.core/get desired-children node)]
+       (if-some [children (get desired-children node)]
          children
          [])))
     (doseq [node removed-nodes]
       (if-some [old-parent
-                (clojure.core/get (:checkpoint-parents saved) node)]
+                (get (:checkpoint-parents saved) node)]
         (when-not (contains? removed-set old-parent)
           (emit-dropped-subtree! application saved removed-set node))
         (emit-dropped-subtree! application saved removed-set node)))
@@ -590,20 +590,20 @@
   (loop [current target]
     (if (= current root)
       true
-      (match (clojure.core/get
+      (match (get
               (deref (:runtime-parents application)) current)
         (Some parent) (recur parent)
         None false))))
 
 (defn- require-standard-node-kind [application node]
-  (if-some [kind (clojure.core/get
+  (if-some [kind (get
                   (deref (:mounted-nodes application))
                   (canonical-node application node))]
     kind
     (raise (Invalid_argument "unknown node"))))
 
 (defn- extension-identifier [application node]
-  (clojure.core/get
+  (get
    (deref (:runtime-extension-nodes application))
    (canonical-node application node)))
 
@@ -697,7 +697,7 @@
 
 (defn drop-subtree! [application node]
   (let [node (canonical-node application node)]
-  (if-some [children (clojure.core/get
+  (if-some [children (get
                       (deref (:runtime-children application)) node)]
     (do
       (doseq [child children]
@@ -715,10 +715,10 @@
       (raise (Invalid_argument "invalid property value")))
     (let [properties (:runtime-properties application)
           current
-          (if-some [values (clojure.core/get (deref properties) node)]
+          (if-some [values (get (deref properties) node)]
             values
             (hash-map))]
-      (if (= (clojure.core/get current property) (Some value))
+      (if (= (get current property) (Some value))
         true
         (do
           (swap! properties assoc node (assoc current property value))
@@ -731,7 +731,7 @@
       (raise (Invalid_argument "property is unsupported by node kind")))
     (let [properties (:runtime-properties application)
           current
-          (if-some [values (clojure.core/get (deref properties) node)]
+          (if-some [values (get (deref properties) node)]
             values
             (hash-map))]
       (swap! properties assoc node (dissoc current property)))
@@ -744,10 +744,10 @@
       (raise (Invalid_argument "invalid extension property value")))
     (let [properties (:runtime-extension-properties application)
           current
-          (if-some [values (clojure.core/get (deref properties) node)]
+          (if-some [values (get (deref properties) node)]
             values
             (hash-map))]
-      (if (= (clojure.core/get current property) (Some value))
+      (if (= (get current property) (Some value))
         true
         (do
           (swap! properties assoc node (assoc current property value))
@@ -763,7 +763,7 @@
       (raise (Invalid_argument "unknown extension property")))
     (let [properties (:runtime-extension-properties application)
           current
-          (if-some [values (clojure.core/get (deref properties) node)]
+          (if-some [values (get (deref properties) node)]
             values
             (hash-map))]
       (swap! properties assoc node (dissoc current property)))
@@ -780,14 +780,14 @@
   (let [standard-nodes (deref (:mounted-nodes application))
         extension-nodes (deref (:runtime-extension-nodes application))
         registry (:runtime-extension-registry application)]
-    (if-some [child-identifier (clojure.core/get extension-nodes child)]
+    (if-some [child-identifier (get extension-nodes child)]
       (if (ext/tweak? registry child-identifier)
         (let [tweak-children (children application child)]
           (and (= 1 (count tweak-children))
                (child-supported? application parent (nth tweak-children 0))))
-        (if-some [parent-kind (clojure.core/get standard-nodes parent)]
+        (if-some [parent-kind (get standard-nodes parent)]
           (standard-extension-container? parent-kind)
-          (if-some [parent-identifier (clojure.core/get extension-nodes parent)]
+          (if-some [parent-identifier (get extension-nodes parent)]
             (match (ext/schema registry parent-identifier)
               (Some schema)
               (if (ext/tweak? registry parent-identifier)
@@ -796,14 +796,14 @@
                  (:extension-child-identifiers schema) child-identifier))
               None false)
             false)))
-      (if-some [child-kind (clojure.core/get standard-nodes child)]
+      (if-some [child-kind (get standard-nodes child)]
         (if (= child-kind proto/Root)
           false
-          (if-some [parent-kind (clojure.core/get standard-nodes parent)]
+          (if-some [parent-kind (get standard-nodes parent)]
             (and
              (proto/can-contain-children? parent-kind)
              (proto/child-kind-supported? parent-kind child-kind))
-            (if-some [parent-identifier (clojure.core/get extension-nodes parent)]
+            (if-some [parent-identifier (get extension-nodes parent)]
               (match (ext/schema registry parent-identifier)
                 (Some schema)
                 (if (ext/tweak? registry parent-identifier)
@@ -820,8 +820,8 @@
   (require-node! application child)
   (let [children (children application parent)
         standard-nodes (deref (:mounted-nodes application))]
-    (if-some [parent-kind (clojure.core/get standard-nodes parent)]
-      (if-some [child-kind (clojure.core/get standard-nodes child)]
+    (if-some [parent-kind (get standard-nodes parent)]
+      (if-some [child-kind (get standard-nodes child)]
         (do
           (when-not (proto/can-contain-children? parent-kind)
             (raise (Invalid_argument "parent cannot contain children")))
@@ -900,7 +900,7 @@
 
 (defn- remove-handler! [application node handler-id]
   (let [node (canonical-node application node)]
-  (if-some [handlers (clojure.core/get (deref (:event-handlers application)) node)]
+  (if-some [handlers (get (deref (:event-handlers application)) node)]
     (let [remaining
           (filterv
            (fn [handler]
@@ -923,7 +923,7 @@
           (handler-id handler-id)
           (handler-callback callback))
         handlers
-        (if-some [current (clojure.core/get
+        (if-some [current (get
                            (deref (:event-handlers application)) node)]
           current
           (empty-handlers))]
@@ -947,13 +947,13 @@
       _
       (let [kind (require-standard-node-kind application node)
             properties
-            (if-some [current (clojure.core/get
+            (if-some [current (get
                                (deref (:runtime-properties application)) node)]
               current
               (hash-map))]
         (when-not (proto/event-supported-for-properties? kind properties event)
           (raise (Invalid_argument "event is unsupported by node kind")))))
-    (if-some [handlers (clojure.core/get
+    (if-some [handlers (get
                         (deref (:event-handlers application)) node)]
       (do
         (doseq [handler handlers]
@@ -969,7 +969,7 @@
      (fn [_valid node _identifier]
        (let [schema (require-extension-schema application node)
              values
-             (if-some [current (clojure.core/get properties node)]
+             (if-some [current (get properties node)]
                current
                (hash-map))]
          (when-not (ext/properties-supported? schema values)
@@ -1062,14 +1062,14 @@
    (count (deref (:runtime-extension-nodes application)))))
 
 (defn child-count [application node]
-  (if-some [children (clojure.core/get
+  (if-some [children (get
                       (deref (:runtime-children application))
                       (canonical-node application node))]
     (count children)
     (raise (Invalid_argument "unknown parent"))))
 
 (defn children [application node]
-  (if-some [children (clojure.core/get
+  (if-some [children (get
                       (deref (:runtime-children application))
                       (canonical-node application node))]
     children
@@ -1096,7 +1096,7 @@
           (dynamic-segment-active (atom true)))
         current
         (if-some [segments
-                  (clojure.core/get
+                  (get
                    (deref (:dynamic-segments application)) parent)]
           segments
           [])]
@@ -1128,7 +1128,7 @@
         (canonical-node application (:dynamic-segment-parent segment))
         segments
         (if-some [registered
-                  (clojure.core/get
+                  (get
                    (deref (:dynamic-segments application)) parent)]
           registered
           (raise (Invalid_argument "dynamic segment is not registered")))
@@ -1156,7 +1156,7 @@
       (let [parent
             (canonical-node application (:dynamic-segment-parent segment))]
         (if-some [segments
-                  (clojure.core/get
+                  (get
                    (deref (:dynamic-segments application)) parent)]
           (let [remaining
                 (filterv

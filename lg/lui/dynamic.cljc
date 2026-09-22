@@ -10,7 +10,7 @@
 
 (defn- segment-disposer [application segment dispose-reactive]
   (fn []
-    (dispose-reactive)
+    (dispose-reactive nil)
     (runtime/unregister-dynamic-segment! application segment)))
 
 (defn switch! [context parent source equal mount]

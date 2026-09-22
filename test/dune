@@ -13,7 +13,7 @@
   lui/hot_reload_test.cljc
   lui/hot_reload_view_test.cljc
   lui/phase2_hot_reload_test.cljc
-  lui/phase3_hot_reload_test.lgi
+  lui/phase3_hot_reload_test.mli
   lui/phase3_hot_reload_test.cljc
   lui/phase4_hot_reload_test.cljc
   lui/authoring_test.cljc
@@ -42,7 +42,7 @@
    %{dep:lui/hot_reload_test.cljc}
    %{dep:lui/hot_reload_view_test.cljc}
    %{dep:lui/phase2_hot_reload_test.cljc}
-   %{dep:lui/phase3_hot_reload_test.lgi}
+   %{dep:lui/phase3_hot_reload_test.mli}
    %{dep:lui/phase3_hot_reload_test.cljc}
    %{dep:lui/phase4_hot_reload_test.cljc}
    %{dep:lui/authoring_test.cljc}
@@ -79,7 +79,7 @@
   lui/hot_reload_test.cljc
   lui/hot_reload_view_test.cljc
   lui/phase2_hot_reload_test.cljc
-  lui/phase3_hot_reload_test.lgi
+  lui/phase3_hot_reload_test.mli
   lui/phase3_hot_reload_test.cljc
   lui/phase4_hot_reload_test.cljc
   lui/authoring_test.cljc
@@ -108,7 +108,7 @@
    %{dep:lui/hot_reload_test.cljc}
    %{dep:lui/hot_reload_view_test.cljc}
    %{dep:lui/phase2_hot_reload_test.cljc}
-   %{dep:lui/phase3_hot_reload_test.lgi}
+   %{dep:lui/phase3_hot_reload_test.mli}
    %{dep:lui/phase3_hot_reload_test.cljc}
    %{dep:lui/phase4_hot_reload_test.cljc}
    %{dep:lui/authoring_test.cljc}
@@ -156,7 +156,7 @@
   lui/hot_reload_test.cljc
   lui/hot_reload_view_test.cljc
   lui/phase2_hot_reload_test.cljc
-  lui/phase3_hot_reload_test.lgi
+  lui/phase3_hot_reload_test.mli
   lui/phase3_hot_reload_test.cljc
   lui/phase4_hot_reload_test.cljc
   %{lib:lg-test.sources:run.cljc}
@@ -175,7 +175,7 @@
    %{dep:lui/hot_reload_test.cljc}
    %{dep:lui/hot_reload_view_test.cljc}
    %{dep:lui/phase2_hot_reload_test.cljc}
-   %{dep:lui/phase3_hot_reload_test.lgi}
+   %{dep:lui/phase3_hot_reload_test.mli}
    %{dep:lui/phase3_hot_reload_test.cljc}
    %{dep:lui/phase4_hot_reload_test.cljc}
    %{lib:lg-test.sources:run.cljc}
@@ -233,7 +233,7 @@
  (modes byte)
  (deps
   hot_reload_repl_base.state
-  fixtures/repl_subscription.lgi
+  fixtures/repl_subscription.mli
   fixtures/repl_subscription_v1.cljc
   fixtures/repl_subscription_v2.cljc)
  (flags (:standard -w -27-32-37-39-69))
@@ -247,7 +247,7 @@
   (run
    %{test}
    %{dep:hot_reload_repl_base.state}
-   %{dep:fixtures/repl_subscription.lgi}
+   %{dep:fixtures/repl_subscription.mli}
    %{dep:fixtures/repl_subscription_v1.cljc}
    %{dep:fixtures/repl_subscription_v2.cljc})))
 

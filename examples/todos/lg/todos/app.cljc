@@ -8,4 +8,4 @@
   (app/create backend (model/initial) model/update view/todos-view))
 
 (defn model [application]
-  (app/model application))
+  ((.-app-read-model application) nil))

@@ -47,7 +47,7 @@ test("Vite updates generated LG definitions through the runtime HMR boundary", a
   assert.match(config, /generatedBootstrap/)
   assert.match(config, /LG_SOURCE_EXTENSIONS/)
   assert.match(config, /["']\.cljc["']/)
-  assert.match(config, /["']\.lgi["']/)
+  assert.match(config, /["']\.mli["']/)
   assert.match(config, /web_bootstrap\.js/)
   assert.match(config, /ignored:/)
   assert.match(config, /server\.moduleGraph\.getModuleById/)

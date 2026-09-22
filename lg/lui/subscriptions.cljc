@@ -2,6 +2,7 @@
   (:refer-clojure :exclude [count])
   (:require [signal.core :as sig]))
 
+
 (defn create [dispatch]
   (record subscription-coordinator
           (subscription-dispatch dispatch)
@@ -31,7 +32,7 @@
    (= (clojure.core/count active) (clojure.core/count specs))
    (every?
     (fn [spec]
-      (if-some [current (clojure.core/get active (:subscription-key spec))]
+      (if-some [current (get active (:subscription-key spec))]
         (same-active? current spec)
         false))
     specs)))
@@ -48,7 +49,7 @@
        (reduce
         (fn [result spec]
           (let [key (:subscription-key spec)]
-            (if-some [current (clojure.core/get active key)]
+            (if-some [current (get active key)]
               (if (same-active? current spec)
                 (assoc result key current)
                 (let [subscription ((:start-subscription spec) dispatch)]
@@ -94,7 +95,7 @@
               (SubscriptionsPrepared desired)
               (do
                 (doseq [[key current] active]
-                  (if-some [replacement (clojure.core/get desired key)]
+                  (if-some [replacement (get desired key)]
                     (when-not
                      (= (:active-subscription-fingerprint current)
                         (:active-subscription-fingerprint replacement))

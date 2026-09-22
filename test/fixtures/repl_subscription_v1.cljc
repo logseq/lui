@@ -3,7 +3,7 @@
            (subscription-key "clock")
            (subscription-fingerprint "v1")
            (start-subscription
-            (fn [dispatch]
+            (fn [^:fn<int;bool> dispatch]
               (swap! subscription-starts inc)
               (dispatch 0)
               (let [disposed (atom false)]

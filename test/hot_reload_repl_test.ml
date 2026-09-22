@@ -1,4 +1,5 @@
 module Session = Lg_repl.Session
+module R = Hot_reload_repl_base.Lg_interface_lui_resources_ed8978ecd4a377b398067490430d826c
 module Watch_session = Lg_repl.Watch_session
 
 let fail message = raise (Failure message)
@@ -258,7 +259,7 @@ let () =
          Hot_reload_repl_base.lui_resources_reload_bang resources 1 "hero"
            (Digest.to_hex (Digest.string "image-a")) "image-a" Fun.id
        with
-      | Hot_reload_repl_base.ResourceApplied 1 -> ()
+      | R.ResourceApplied 1 -> ()
       | _ -> fail "expected the initial resource to be applied");
       Hot_reload_repl_base.lui_resources_register_dependency_bang resources
         "hero" 99
@@ -273,9 +274,9 @@ let () =
               Hot_reload_repl_base.lui_resources_reload_bang resources
                 (generation + 1) "hero" source_hash payload Fun.id
             with
-            | Hot_reload_repl_base.ResourceApplied _
-            | Hot_reload_repl_base.ResourceUnchanged _ -> Ok ()
-            | Hot_reload_repl_base.ResourceRejected (_, message) ->
+            | R.ResourceApplied _
+            | R.ResourceUnchanged _ -> Ok ()
+            | R.ResourceRejected (_, message) ->
                 Error
                   {
                     Lg.Compiler.code = "LG9000";
@@ -288,7 +289,7 @@ let () =
                     fixes = [];
                     type_mismatch = None;
                   }
-            | Hot_reload_repl_base.ResourceStale stale_generation ->
+            | R.ResourceStale stale_generation ->
                 Error
                   {
                     Lg.Compiler.code = "LG9001";

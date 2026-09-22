@@ -1,6 +1,0 @@
-(ns todos.app)
-
-(signature todos.app/create
-  :fn<backend;reducer-app<todo-model;todo-action>>)
-(signature todos.app/model
-  :fn<reducer-app<todo-model;todo-action>;todo-model>)

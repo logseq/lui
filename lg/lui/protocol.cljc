@@ -78,12 +78,12 @@
     (ExtensionEvent _node _identifier _name _values) false))
 
 (defn- true-property? [properties property]
-  (match (clojure.core/get properties property)
+  (match (get properties property)
     (Some (BoolValue true)) true
     _ false))
 
 (defn- treeitem-properties? [properties]
-  (match (clojure.core/get properties RoleValue)
+  (match (get properties RoleValue)
     (Some (StringValue "treeitem")) true
     _ false))
 
@@ -543,14 +543,14 @@
     (property-value-supported? property value)))
 
 (defn int-property [properties property fallback]
-  (if-some [value (clojure.core/get properties property)]
+  (if-some [value (get properties property)]
     (match value
       (IntValue number) number
       _ fallback)
     fallback))
 
 (defn- float-property [properties property fallback]
-  (if-some [value (clojure.core/get properties property)]
+  (if-some [value (get properties property)]
     (match value
       (FloatValue number) number
       _ fallback)
@@ -561,7 +561,7 @@
         fixed (int-property properties fixed-property minimum)]
     (and
      (>= fixed minimum)
-     (if-some [value (clojure.core/get properties max-property)]
+     (if-some [value (get properties max-property)]
        (match value
          (IntValue maximum)
          (and (<= minimum maximum) (<= fixed maximum))
@@ -577,21 +577,21 @@
   (and
    (surface-size-supported? properties)
    (if (= kind Icon)
-     (if-some [name (clojure.core/get properties IconName)]
+     (if-some [name (get properties IconName)]
        (property-value-supported? IconName name)
        false)
      true)
    (if (or (= kind Button) (= kind ToggleButton) (= kind Toggle) (= kind Radio))
      (let [text
-           (match (clojure.core/get properties TextValue)
+           (match (get properties TextValue)
              (Some (StringValue value)) value
              _ "")
            label
-           (match (clojure.core/get properties AccessibilityLabel)
+           (match (get properties AccessibilityLabel)
              (Some (StringValue value)) value
              _ "")
            icon
-           (match (clojure.core/get properties InlineIconName)
+           (match (get properties InlineIconName)
              (Some (StringValue value)) value
              _ "")]
        (and
@@ -601,39 +601,39 @@
           true)))
      true)
    (if (or (= kind RadioGroup) (= kind Slider))
-     (match (clojure.core/get properties AccessibilityLabel)
+     (match (get properties AccessibilityLabel)
        (Some (StringValue value)) (not (= value ""))
      _ false)
      true)
    (if (or (= kind Select) (= kind Combobox))
      (let [text
-           (match (clojure.core/get properties TextValue)
+           (match (get properties TextValue)
              (Some (StringValue value)) value
              _ "")
            placeholder
-           (match (clojure.core/get properties PlaceholderValue)
+           (match (get properties PlaceholderValue)
              (Some (StringValue value)) value
              _ "")]
        (or (not (= text "")) (not (= placeholder ""))))
      true)
    (if (= kind MenuItem)
-     (match (clojure.core/get properties TextValue)
+     (match (get properties TextValue)
        (Some (StringValue value)) (not (= value ""))
        _ false)
      true)
    (if (= kind Accordion)
-     (match (clojure.core/get properties TextValue)
+     (match (get properties TextValue)
        (Some (StringValue value)) (not (= value ""))
        _ false)
      true)
    (if (modal-surface? kind)
-     (match (clojure.core/get properties TextValue)
+     (match (get properties TextValue)
        (Some (StringValue value)) (not (= value ""))
        _ false)
      true)
    (if (= kind Tooltip)
      (and
-      (match (clojure.core/get properties TextValue)
+      (match (get properties TextValue)
         (Some (StringValue value)) (not (= value ""))
         _ false)
       (if (contains? properties TooltipDelay)
@@ -663,7 +663,7 @@
            source-height (float-property properties SourceHeight 0.0)]
        (and
         (if (= kind Avatar)
-          (match (clojure.core/get properties TextValue)
+          (match (get properties TextValue)
             (Some (StringValue value)) (not (= value ""))
             _ false)
           has-image)
@@ -684,39 +684,39 @@
      (contains? properties ActiveIndex)
      true)
    (if (= kind Step)
-     (match (clojure.core/get properties TextValue)
+     (match (get properties TextValue)
        (Some (StringValue value)) (not (= value ""))
        _ false)
      true)
    (if (= kind TimelineItem)
-     (match (clojure.core/get properties TitleValue)
+     (match (get properties TitleValue)
        (Some (StringValue value)) (not (= value ""))
        _ false)
      true)
    (if (= kind BottomTabs)
-     (match (clojure.core/get properties AccessibilityLabel)
+     (match (get properties AccessibilityLabel)
        (Some (StringValue value)) (not (= value ""))
        _ false)
      true)
    (if (= kind BottomTab)
      (and
-      (match (clojure.core/get properties TitleValue)
+      (match (get properties TitleValue)
         (Some (StringValue value)) (not (= value ""))
         _ false)
       (true-property? properties PressEnabled))
      true)
    (if (or (= kind Slider) (= kind Progress))
-     (match (clojure.core/get properties ProgressValue)
+     (match (get properties ProgressValue)
        (Some (FloatValue _value)) true
        _ false)
      true)
    (if (= kind Tree)
-     (match (clojure.core/get properties AccessibilityLabel)
+     (match (get properties AccessibilityLabel)
        (Some (StringValue value)) (not (= value ""))
      _ false)
      true)
    (if (= kind Toolbar)
-     (match (clojure.core/get properties AccessibilityLabel)
+     (match (get properties AccessibilityLabel)
        (Some (StringValue value)) (not (= value ""))
        _ false)
      true)

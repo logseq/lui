@@ -34,7 +34,7 @@
         state-scopes (:ui-state-scopes parent)
         active-state-paths (:ui-active-state-paths parent)
         state-scope
-        (if-some [existing (clojure.core/get (deref state-scopes) path)]
+        (if-some [existing (get (deref state-scopes) path)]
           existing
           (let [created (sig/scope name (:ui-state-scope parent))]
             (swap! state-scopes assoc path created)

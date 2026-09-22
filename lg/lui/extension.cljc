@@ -237,7 +237,7 @@
   (deref (:extension-registry-frozen registry)))
 
 (defn schema [registry identifier]
-  (clojure.core/get (deref (:extension-schemas registry)) identifier))
+  (get (deref (:extension-schemas registry)) identifier))
 
 (defn tweak? [registry identifier]
   (contains? (deref (:extension-tweak-identifiers registry)) identifier))
