@@ -16,16 +16,37 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: ocaml/setup-ocaml@v3
-        with:
-          ocaml-compiler: "5.5"
-      # lg and signal-lg are private; pin-depends (melange-edn/transit)
-      # are applied automatically by `opam install .`.
-      - name: Checkout lg toolchain
+      - name: Resolve toolchain revisions
+        id: revs
         env:
           LOGSEQ_GITHUB_PAT: ${{ secrets.LOGSEQ_GITHUB_PAT }}
         run: |
           git config --global url."https://x-access-token:${LOGSEQ_GITHUB_PAT}@github.com/".insteadOf "https://github.com/"
+          echo "lg=$(git ls-remote https://github.com/logseq/lg.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+          echo "signal_lg=$(git ls-remote https://github.com/logseq/signal-lg.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.5"
+      - name: Cache opam switch
+        uses: actions/cache@v4
+        with:
+          path: ~/.opam
+          key: opam-${{ runner.os }}-5.5-${{ hashFiles('*.opam', 'dune-project') }}-${{ steps.revs.outputs.lg }}-${{ steps.revs.outputs.signal_lg }}
+      - name: Cache dune
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/dune
+          key: dune-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            dune-${{ runner.os }}-
+      - name: Enable dune cache
+        run: |
+          echo "DUNE_CACHE=enabled" >> "$GITHUB_ENV"
+          echo "DUNE_CACHE_TRANSPORT=direct" >> "$GITHUB_ENV"
+      # lg and signal-lg are private; pin-depends (melange-edn/transit)
+      # are applied automatically by `opam install .`.
+      - name: Checkout lg toolchain
+        run: |
           git clone --depth 1 https://github.com/logseq/lg.git ~/lg
           git clone --depth 1 https://github.com/logseq/signal-lg.git ~/signal-lg
       - name: Install lg and lg-test
@@ -50,4 +71,11 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.swift') }}-${{ github.sha }}
+          restore-keys: |
+            swiftpm-${{ runner.os }}-${{ hashFiles('Package.swift') }}-
       - run: swift test
