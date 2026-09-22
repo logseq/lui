@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  lg-tests:
+  ocaml-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,8 +22,7 @@ jobs:
           LOGSEQ_GITHUB_PAT: ${{ secrets.LOGSEQ_GITHUB_PAT }}
         run: |
           git config --global url."https://x-access-token:${LOGSEQ_GITHUB_PAT}@github.com/".insteadOf "https://github.com/"
-          echo "lg=$(git ls-remote https://github.com/logseq/lg.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
-          echo "signal_lg=$(git ls-remote https://github.com/logseq/signal-lg.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+          echo "ocaml_signal=$(git ls-remote https://github.com/logseq/ocaml-signal.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
       - uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: "5.5"
@@ -31,7 +30,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.opam
-          key: opam-${{ runner.os }}-5.5-${{ hashFiles('*.opam', 'dune-project') }}-${{ steps.revs.outputs.lg }}-${{ steps.revs.outputs.signal_lg }}
+          key: opam-${{ runner.os }}-5.5-${{ hashFiles('*.opam', 'dune-project') }}-${{ steps.revs.outputs.ocaml_signal }}
       - name: Cache dune
         uses: actions/cache@v4
         with:
@@ -43,27 +42,15 @@ jobs:
         run: |
           echo "DUNE_CACHE=enabled" >> "$GITHUB_ENV"
           echo "DUNE_CACHE_TRANSPORT=direct" >> "$GITHUB_ENV"
-      # lg and signal-lg are private; pin-depends (melange-edn/transit)
-      # are applied automatically by `opam install .`.
-      - name: Checkout lg toolchain
-        run: |
-          git clone --depth 1 https://github.com/logseq/lg.git ~/lg
-          git clone --depth 1 https://github.com/logseq/signal-lg.git ~/signal-lg
-      - name: Install lg and lg-test
-        run: |
-          cd ~/lg
-          opam install . --deps-only --with-test -y
-          opam install . -y
-      - name: Install signal-lg
-        run: |
-          cd ~/signal-lg
-          opam install . --deps-only --with-test -y
-          opam install . -y
+      # ocaml-signal is a private repo; the PAT insteadOf rule above makes
+      # this pin resolvable in CI.
+      - name: Pin ocaml-signal
+        run: opam pin add -n -y ocaml-signal git+https://github.com/logseq/ocaml-signal.git#main
       - name: Install lui dependencies
         run: opam install . --deps-only --with-test -y
       - name: Schema tests
         run: node --test tooling/test/*.mjs
-      - name: LG tests
+      - name: OCaml tests
         run: opam exec -- dune build --action-stderr-on-success=must-be-empty @runtest
 
   apple-tests:

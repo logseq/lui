@@ -1,0 +1,5 @@
+(executable
+ (name main)
+ (modules model view main)
+ (libraries lui ocaml-signal)
+ (preprocess (pps lui_ppx)))

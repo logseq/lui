@@ -1,0 +1,6 @@
+(library
+ (name lui)
+ (public_name lui)
+ (wrapped false)
+ (modes byte native melange)
+ (libraries ocaml-signal))

@@ -1,0 +1,5 @@
+(library
+ (name lui_ppx)
+ (public_name lui.ppx)
+ (kind ppx_rewriter)
+ (libraries ppxlib compiler-libs))
