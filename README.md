@@ -1,177 +1,114 @@
 # LUI
 
-LUI is a retained cross-platform UI runtime written in LG and powered by
-[`signal-lg`](../signal-lg). Application code, state, effects, diffing, and
-patch generation stay in LG. Each backend applies those patches to real UI
-objects:
+LUI is a retained, cross-platform UI runtime written in OCaml and powered by
+[`ocaml-signal`](https://github.com/logseq/ocaml-signal). Application code,
+state, diffing, and patch generation stay in OCaml; each backend applies those
+patches to real UI objects:
 
-- Apple: one SwiftUI backend shared by iOS and macOS. AppKit is used only to
-  host the SwiftUI root in command-line macOS examples.
-- Flutter: Dart and Flutter widgets (`Row`, `Column`, `Text`,
-  `TextButton`, `TextField`, and `SingleChildScrollView`).
-- Web: LG compiled by Melange, using typed `melange-webapi` bindings to the
-  browser DOM without a JavaScript UI framework.
+- **Apple**: one SwiftUI backend shared by iOS and macOS (`platform/apple`,
+  `LUIAppleBackend` Swift package).
+- **Flutter**: Dart and Flutter widgets (`platform/flutter`).
+- **Web**: a Melange companion library (`platform/web/melange`) plus the
+  shared stylesheet and icon set (`platform/web/src`).
 
-Apple and Flutter use one JSON object per atomic `PatchBatch` at their native
-host boundaries. `lui.wire` encodes the closed LG protocol directly; it does
-not erase values into a dynamic representation. The Web backend runs in the
-same Melange module as the LG application and applies typed patches directly
-to DOM nodes, so it has no JSON bridge, JavaScript UI framework, or
-component-specific JavaScript coordinator.
+Apple and Flutter use one JSON object per atomic `patch_batch` at their
+native host boundaries; `Lui_wire` encodes the protocol directly. The Web
+backend runs in the same process as the OCaml application and applies typed
+patches to DOM nodes — no JSON bridge, no JavaScript UI framework.
 
-## Apple package
+## Layout
 
-The repository root is a native Swift package for iOS 17 and macOS 14 or later,
-using Swift 6.2. It exports `LUIAppleBackend` (dynamic) and
-`LUIAppleBackendStatic` (static); both expose the `LUIAppleBackend` module.
-Applications can depend on a Git revision and import that module without copying
-backend sources. The root package has no Skip dependencies or build plugins.
-
-The separate `platform/apple/Package.swift` remains the opt-in Skip package.
-Both package entry points use the same backend sources.
-
-## Test
-
-Run every runtime and platform test:
-
-```sh
-make test
+```
+src/                  the lui library (protocol, runtime, elements, app)
+examples/todos/       headless todo demo (pure OCaml + ocaml-signal)
+examples/gallery/     headless component-gallery demo
+platform/apple/       SwiftUI backend (SwiftPM package + tests)
+platform/flutter/     Flutter backend
+platform/web/         Melange DOM library, stylesheet, icons
+schema/               canonical component schema (components.json)
+tooling/              schema code generator and tests
+test/                 alcotest suite
 ```
 
-Or run one layer independently:
+## The element DSL
 
-```sh
-make test-lg
-make test-apple
-make test-flutter
+`Lui_elements` exposes one constructor per node kind — `row`, `column`,
+`button`, `text_field`, `dialog`, `bottom_tabs`, … — each with the shape
+`?props -> children:t list -> t`: optional props first, a positional children
+list last (which is also what erases the optional args, so no extra `()` is
+needed):
+
+```ocaml
+open Lui_elements
+
+let view context model_source send : t =
+  column ~gap:14 ~padding:24
+    [ text_field
+        ~text_signal:(map (fun m -> m.draft) model_source)
+        ~label:"New todo"
+        ~on_input:(on_input send Model.ChangeDraft)
+        []
+    ; button ~text:"Add" ~on_press:(press send Model.AddTodo) []
+    ; text ~value_signal:(map summary_label model_source) []
+    ]
 ```
 
-LG tests run on both Native and Melange. Apple tests exercise the retained
-SwiftUI model, per-node invalidation, typed events, and keyed identity. Flutter
-widget tests mount real widgets, drive `TextField` input and button taps through
-the OCaml bridge, and verify that keyed moves preserve Flutter render identity.
+A view returns an element `t`; `Lui_app` mounts it against the root context.
+`press send action` wraps a bool `send` into the `event -> unit` handler the
+`~on_press`/`~on_submit` props take, and `on_input` unwraps `TextChanged`
+events the same way.
 
-Build and serve the browser example with:
+Signals (`ocaml-signal`) drive dynamic props: every value prop `~p` has a
+`~p_signal` twin taking an `'a Signal.signal`. `Lui_elements` re-exports
+`map`, `sample`, `get`, and `>|=` (`src >|= f` for `map f src`) so view code
+stays short.
 
-```sh
-make serve-web
-```
+Reactive structure mirrors lg's `reactive`/`:if`/`:keyed`. When a value
+changes, prefer `~p_signal` — inside `map`/`sample` ordinary `if`/`match`
+all work — since it updates the prop in place: `dyn f src` mounts a
+re-rendering subtree for branches that change the element *structure*
+(different kinds per branch); `if_ ~test el` shows/hides a single branch
+without an else; `keyed ~source ~key ~compare ~mount:(row_fn send)` keeps an
+identity-keyed child collection in sync (insert/remove/move patches).
 
-For development, start Dune watch, Tailwind watch, and Vite together:
+## Examples
 
-```sh
-make dev-web
-```
-
-LG edits are compiled to JavaScript by Dune and picked up by Vite, which reloads
-the page without any LG runtime-state integration. CSS and JavaScript modules
-use Vite hot module replacement. A failed LG compilation leaves the last valid
-page running; saving valid source resumes the update automatically.
-
-Then open <http://127.0.0.1:8765/examples/todos/web/index.html>. The page loads the
-Melange output from `_build`; the renderer and Todos entrypoint are LG source
-under `platform/web/lg/lui/backend/web.cljc` and
-`examples/todos/web/lg/todos/web_main.cljc`.
-
-`make serve-web` uses the Node static server and listens on all interfaces. To
-preview from a phone on the same local network, replace `127.0.0.1` with the
-Mac's LAN address. The equivalent explicit command is:
+Both demos mount a real `Lui_app` against a printing backend, so running them
+shows the generated patch batches:
 
 ```sh
-node tooling/serve_web.mjs --host 0.0.0.0 --port 8765
+eval $(opam env)
+dune exec examples/todos/main.exe
+dune exec examples/gallery/main.exe
 ```
 
-The component showcase is at
-<http://127.0.0.1:8765/examples/components/web/index.html>. It uses the same LG
-Signal reducer and component tree as the native hosts. The Flutter host and its
-real OCaml FFI integration test are documented in
-[`examples/components/README.md`](examples/components/README.md).
+`examples/todos` is the classic reducer + keyed-list app. `examples/gallery`
+exercises ~10 sections of the component schema (layout, text, controls,
+fields, pickers, lists, overlays, navigation) mirroring the original gallery.
 
-The Web showcase starts in the iOS simulator profile. Use its Platform control
-to switch the same retained DOM tree between iOS and Android presentation. Its
-Device and Rotate controls cover phone/tablet portrait and landscape traits,
-including safe areas, touch/hybrid pointer input, scale, and focus-driven
-virtual keyboard state. The simulator remains semantic DOM rather than a
-full-screen Canvas renderer, and the detached popup portal follows the selected
-platform and device without replacing open controls or focused text input.
-The `NativeExtension` page also demonstrates a retained semantic Map and Camera.
-The Map uses deterministic DOM geometry and accessible controls without Canvas;
-the Camera starts with a deterministic mock feed and requests `getUserMedia`
-only after an explicit user action, with denied-permission and stream-cleanup
-behavior.
-The `BottomTabs` page demonstrates the shared navigation contract: native
-SwiftUI `TabView` on Apple, native Material `NavigationBar` on Android, and
-retained semantic DOM with iOS Liquid Glass or Android Material presentation
-in the Web Simulator.
-The Switch page keeps the platform-sized control at the trailing edge, matching
-native label placement. Dialog and Sheet actions update the shared model-owned
-presentation state; phone sheets expose a drag handle and support downward
-distance/velocity dismissal. SwiftUI uses its system drag indicator, while the
-Android backend enables the Material bottom-sheet drag handle.
-
-Fetch the pinned public SwiftUI and Compose comparison corpus, then run the
-deterministic Chromium visual regression suite with:
+## Build and test
 
 ```sh
-make fetch-web-references
-make test-web-visual
+# pin the (private) signal dependency once
+opam pin add -n -y ocaml-signal \
+  git+https://github.com/logseq/ocaml-signal.git#main
+opam install . --deps-only --with-test
+
+make test        # schema contract tests + dune @runtest
+make test-ocaml  # alcotest suite only
+make test-apple  # SwiftUI backend tests (macOS)
 ```
 
-Baseline replacement is intentionally separate and must be reviewed:
+## Component schema
+
+`schema/components.json` is the single source of truth for node kinds,
+properties, events, and wire names. Regenerate the derived artifacts after
+editing it:
 
 ```sh
-make update-web-visual-baselines
+make generate-component-schema
 ```
 
-The committed scenarios fix viewport, device scale, locale, timezone, color
-scheme, reduced motion, time, randomness, and animation state. A failure writes
-a pixel diff under `_build/web-simulator-visual-diffs`.
-
-Build the iOS Simulator app and Android arm64 APK together with:
-
-```sh
-make build-components-mobile
-```
-
-Qualify a signed, shrunk Android release AAB without using production secrets:
-
-```sh
-make qualify-components-android-release
-```
-
-Compile the single SwiftUI Apple renderer through its public UIKit host adapter:
-
-```sh
-make test-apple-uikit-host
-```
-
-The command invokes the explicit `ios simulator` and `android` LG targets,
-then links the two host applications. Shared toolchains are installed once
-with `lg mobile setup ios simulator` and `lg mobile setup android`; LUI does
-not clone OCaml or keep per-project cross-toolchain scripts.
-
-## Declarative UI
-
-Applications define views with `defui`. Views receive reactive model signals
-and emit action values; reducers and effects remain outside the view. The
-classic example is in `examples/todos`:
-
-- `model.cljc` defines the model, actions, and pure reducer;
-- `view.cljc` contains only declarative UI;
-- `app.cljc` connects the reducer and view through `lui.app`.
-
-Primitive tags are independent `defelement` definitions. A library can add a
-qualified tag such as `:my.widgets/card` without changing `defui` or its tag
-dispatcher.
-
-## Host connection
-
-Use `lui.backend.apple/create-wire` or
-`lui.backend.flutter/create-wire` with a host function of type
-`fn<string;bool>`. Each successful LUI flush invokes that function once with a
-complete JSON batch. Return `false` to reject the batch without committing the
-LG retained state.
-
-The Web backend is `lui.backend.web`. It creates and updates DOM elements
-through `melange-webapi` directly and dispatches browser events into the same
-typed LUI event and effect pipeline used by the native backends.
+It emits `src/lui_protocol.mli`, `src/lui_wire_schema.ml`,
+`src/lui_wire_schema.mli`, the Swift enum table, and the Dart decoder.
+CI runs `--check`, so generated files must be committed.

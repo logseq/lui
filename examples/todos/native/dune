@@ -1,45 +1,27 @@
-(rule
- (target todos_bridge.ml)
- (deps
-  ../../../lg/lui/lui_native.state
-  (source_tree ../../../lg/lui/backend)
-  (source_tree ../lg/todos)
-  (source_tree .)
-  %{bin:lg})
- (action
-  (run
-   %{bin:lg}
-   --target native
-   --compile-files-from ../../../lg/lui/lui_native.state
-   ../../../lg/lui/backend/retained
-   ../../../lg/lui/backend/flutter
-   ../lg/todos
-   .
-   -o %{target})))
+(library
+ (name todos_bridge)
+ (modules todos_bridge)
+ (libraries lui ocaml-signal todos_app)
+ (wrapped false))
 
 (rule
- (target todos_bridge_complete.o)
- (deps todos_bridge.ml)
- (action
-  (run
-   ocamlfind ocamlopt
-   -package lg.edn-backend.native,lg.runtime,lg.rrbvec
-   -linkpkg
-   -output-complete-obj
-   -o %{target}
-   %{dep:todos_bridge.ml})))
-
-(rule
+ (enabled_if
+  (= %{os_type} "Darwin"))
  (target liblui_todos.dylib)
  (deps
-  todos_bridge_complete.o
-  ../../../platform/flutter/native/lui_ocaml_bridge.c)
+  ../../../platform/native/lui_ocaml_bridge.c
+  todos_bridge.cmxa
+  ../todos_app.cmxa
+  ../../../src/lui.cmxa)
  (action
   (run
-   clang
-   -dynamiclib
-   -o %{target}
-   %{dep:../../../platform/flutter/native/lui_ocaml_bridge.c}
-   %{dep:todos_bridge_complete.o}
-   -I %{ocaml_where}
-   -lpthread)))
+   sh
+   -c
+   "ocamlfind ocamlopt -linkpkg -package ocaml-signal \
+      %{dep:../../../src/lui.cmxa} %{dep:../todos_app.cmxa} \
+      %{dep:todos_bridge.cmxa} \
+      -output-complete-obj -o todos_bridge_complete.o && \
+    cc -shared -o %{target} \
+      %{dep:../../../platform/native/lui_ocaml_bridge.c} \
+      todos_bridge_complete.o \
+      -I\"$(ocamlfind ocamlc -where)\" -lpthread")))

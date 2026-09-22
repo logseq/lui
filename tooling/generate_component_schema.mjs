@@ -73,61 +73,51 @@ function mungeValue(name) {
   return name.replace(/-/g, '_').replace(/!/g, '_bang').replace(/\?/g, '_');
 }
 
-// LG type expression (:map<int;string>, :fn<a;b>, :wire-value) -> OCaml syntax.
-function lgType(source) {
-  const s = source.replace(/^:/, '');
-  const lt = s.indexOf('<');
-  if (lt === -1) return mungeType(s);
-  const gt = s.lastIndexOf('>');
-  const name = s.slice(0, lt);
-  const args = s.slice(lt + 1, gt).split(';');
-  const arg = (a) => (a.startsWith('fn<') || a.startsWith(':fn<') || a.startsWith('overload<'))
-    ? `(${lgType(a)})`
-    : lgType(a);
-  switch (name) {
-    case 'fn':
-      return args.length === 1 ? `unit -> ${arg(args[0])}` : args.map(arg).join(' -> ');
-    case 'ref':
-      return `${lgType(args[0])} ref`;
-    case 'vector':
-      return `${lgType(args[0])} Rrbvec.t`;
-    case 'map':
-      return `(${lgType(args[0])}, ${lgType(args[1])}) Lg_runtime.Runtime_map.t`;
-    case 'option':
-      return `${lgType(args[0])} option`;
-    default:
-      return args.length === 1
-        ? `${lgType(args[0])} ${mungeType(name)}`
-        : `(${args.map(lgType).join(', ')}) ${mungeType(name)}`;
-  }
+function ocamlFieldType(source) {
+  return mungeType(source.replace(/^:/, ''));
 }
 
-// :fn<a;b;c> -> `a -> b -> c`
-function lgSignatureType(source) {
-  return lgType(source);
-}
-
-function renderProtocol(schema) {
+function renderProtocolSignature(schema) {
   const variant = (name, ctors) =>
     `type ${name} =\n${ctors.map((c) => `  | ${c}`).join('\n')}`;
   const nodeKinds = schema.nodeKinds.map(({ lg }) => lg);
   const properties = schema.properties.map(({ lg }) => lg);
   const events = schema.events
     .map(({ lg, fields }) =>
-      fields.length === 0 ? lg : `${lg} of ${fields.map(lgType).join(' * ')}`)
+      fields.length === 0 ? lg : `${lg} of ${fields.map(ocamlFieldType).join(' * ')}`)
     .join('\n  | ');
-  return `(* Generated from schema/components.json. Do not edit by hand. *)
-(* ns lui.protocol *)
+  return `${'(* Generated from schema/components.json. Do not edit by hand. *)\n'}
 
-${variant('node_kind', nodeKinds)}
+type node_kind =
+${nodeKinds.map((k) => `  | ${k}`).join('\n')}
 
-${variant('operating_system', ['GenericOS', 'WebOS', 'MacOS', 'IOS', 'AndroidOS', 'LinuxOS', 'WindowsOS'])}
+type operating_system =
+  | GenericOS
+  | WebOS
+  | MacOS
+  | IOS
+  | AndroidOS
+  | LinuxOS
+  | WindowsOS
 
-${variant('host_kind', ['GenericHost', 'WebHost', 'SwiftUIHost', 'FlutterHost'])}
+type host_kind =
+  | GenericHost
+  | WebHost
+  | SwiftUIHost
+  | FlutterHost
 
-type platform_profile = { profile_os : operating_system ; profile_host : host_kind }
+type platform_profile = {
+  profile_os : operating_system;
+  profile_host : host_kind;
+}
 
-${variant('property', properties)}
+type property =
+${properties.map((p) => `  | ${p}`).join('\n')}
+
+module Property_map : Map.S with type key = property
+
+module String_map : Map.S with type key = string
+module Int_map : Map.S with type key = int
 
 type wire_value =
   | StringValue of string
@@ -137,7 +127,7 @@ type wire_value =
 
 type event =
   | ${events}
-  | ExtensionEvent of int * string * string * (string, wire_value) Lg_runtime.Runtime_map.t
+  | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
   | CreateNode of int * node_kind
@@ -151,31 +141,55 @@ type patch_op =
   | RemoveChild of int * int
   | MoveChild of int * int * int
 
-type patch_batch = { generation : int ; ops : patch_op Rrbvec.t }
+type patch_batch = {
+  generation : int;
+  ops : patch_op list;
+}
 
-type backend = { backend_profile : platform_profile ; apply_batch : patch_batch -> bool }
+type backend = {
+  backend_profile : platform_profile;
+  apply_batch : patch_batch -> bool;
+}
 
 val profile : operating_system -> host_kind -> platform_profile
 val generic_profile : unit -> platform_profile
 val event_node : event -> int
-val tree_row_kind_ : node_kind -> bool
-val event_supported_ : node_kind -> event -> bool
-val event_supported_for_properties_ : node_kind -> (property, wire_value) Lg_runtime.Runtime_map.t -> event -> bool
-val orientation_supported_ : string -> bool
-val control_size_supported_ : string -> bool
-val button_variant_supported_ : string -> bool
-val icon_placement_supported_ : string -> bool
-val icon_name_supported_ : string -> bool
-val main_alignment_supported_ : string -> bool
-val cross_alignment_supported_ : string -> bool
-val property_supported_ : node_kind -> property -> bool
-val property_value_supported_ : property -> wire_value -> bool
-val property_value_supported_for_kind_ : node_kind -> property -> wire_value -> bool
-val int_property : (property, wire_value) Lg_runtime.Runtime_map.t -> property -> int -> int
-val surface_size_supported_ : (property, wire_value) Lg_runtime.Runtime_map.t -> bool
-val node_properties_supported_ : node_kind -> (property, wire_value) Lg_runtime.Runtime_map.t -> bool
-val can_contain_children_ : node_kind -> bool
-val child_kind_supported_ : node_kind -> node_kind -> bool
+val modal_surface : node_kind -> bool
+val tree_row_kind : node_kind -> bool
+val context_menu_host_kind : node_kind -> bool
+val context_menu_leaf_host_kind : node_kind -> bool
+val event_supported : node_kind -> event -> bool
+val true_property : wire_value Property_map.t -> property -> bool
+val treeitem_properties : wire_value Property_map.t -> bool
+val event_supported_for_properties : node_kind -> wire_value Property_map.t -> event -> bool
+val container_relative_frame_supported : string -> bool
+val orientation_supported : string -> bool
+val control_size_supported : string -> bool
+val button_variant_supported : string -> bool
+val icon_placement_supported : string -> bool
+val built_in_icon_name_supported : string -> bool
+val is_slug_char : char -> bool
+val slug_segment : string -> bool
+val custom_icon_name_supported : string -> bool
+val icon_name_supported : string -> bool
+val main_alignment_supported : string -> bool
+val cross_alignment_supported : string -> bool
+val horizontal_container : node_kind -> bool
+val common_property_supported : node_kind -> property -> bool
+val property_supported : node_kind -> property -> bool
+val is_finite : float -> bool
+val property_value_supported : property -> wire_value -> bool
+val property_value_supported_for_kind : node_kind -> property -> wire_value -> bool
+val int_property : wire_value Property_map.t -> property -> int -> int
+val float_property : wire_value Property_map.t -> property -> float -> float
+val size_axis_supported : wire_value Property_map.t -> property -> property -> property -> bool
+val surface_size_supported : wire_value Property_map.t -> bool
+val string_property_or : wire_value Property_map.t -> property -> string -> string
+val string_property_nonempty : wire_value Property_map.t -> property -> bool
+val float_property_of : wire_value Property_map.t -> property -> float -> float
+val node_properties_supported : node_kind -> wire_value Property_map.t -> bool
+val can_contain_children : node_kind -> bool
+val child_kind_supported : node_kind -> node_kind -> bool
 val create_node_op : int -> node_kind -> patch_op
 val create_extension_op : int -> string -> string -> patch_op
 val drop_node_op : int -> patch_op
@@ -189,44 +203,39 @@ val move_child_op : int -> int -> int -> patch_op
 `;
 }
 
-function renderLGWire(schema) {
-  const imports = chunks(
-    [...schema.nodeKinds, ...schema.properties].map(({ lg }) => lg),
-    6,
-  ).map((line) => line.join(' ')).join('\n                     ');
+function renderOCamlWire(schema) {
   const kindCases = schema.nodeKinds
-    .map(({ lg, wire }) => `    ${lg} "${wire}"`)
-    .join('\n');
-  const standardNameCases = schema.nodeKinds
-    .map(({ wire }) => `    "${wire}" true`)
+    .map(({ lg, wire }) => `  | ${lg} -> "${wire}"`)
     .join('\n');
   const propertyCases = schema.properties
-    .map(({ lg, wire }) => `    ${lg} "${wire}"`)
+    .map(({ lg, wire }) => `  | ${lg} -> "${wire}"`)
     .join('\n');
-  return `${generatedHeader(';;')}(ns lui.wire-schema
-  (:require [lui.protocol :refer [${imports}]]))
+  return `${'(* Generated from schema/components.json. Do not edit by hand. *)\n'}
 
-(defn node-kind-name [kind]
-  (match kind
-${kindCases}))
+open Lui_protocol
 
-(defn standard-node-name? [name]
-  (match name
-${standardNameCases}
-    _ false))
+let node_kind_name kind =
+  match kind with
+${kindCases}
 
-(defn property-name [property]
-  (match property
-${propertyCases}))
+let standard_node_name name =
+  match name with
+${schema.nodeKinds.map(({ wire }) => `  | "${wire}" -> true`).join('\n')}
+  | _ -> false
+
+let property_name property =
+  match property with
+${propertyCases}
 `;
 }
 
-function renderLGWireSignature() {
-  return `(* Generated from schema/components.json. Do not edit by hand. *)
-(* ns lui.wire-schema *)
+function renderOCamlWireSignature() {
+  return `${'(* Generated from schema/components.json. Do not edit by hand. *)\n'}
+
+open Lui_protocol
 
 val node_kind_name : node_kind -> string
-val standard_node_name_ : string -> bool
+val standard_node_name : string -> bool
 val property_name : property -> string
 `;
 }
@@ -275,9 +284,9 @@ ${decoderCases}
 
 function artifacts(schema) {
   return new Map([
-    ['lg/lui/protocol.mli', renderProtocol(schema)],
-    ['lg/lui/wire_schema.cljc', renderLGWire(schema)],
-    ['lg/lui/wire_schema.mli', renderLGWireSignature()],
+    ['src/lui_protocol.mli', renderProtocolSignature(schema)],
+    ['src/lui_wire_schema.ml', renderOCamlWire(schema)],
+    ['src/lui_wire_schema.mli', renderOCamlWireSignature()],
     ['platform/apple/Sources/LUIAppleBackend/LUIWireSchema.swift', renderSwift(schema)],
     ['platform/flutter/lib/lui_wire_schema.g.dart', renderDart(schema)],
   ]);

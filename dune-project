@@ -11,16 +11,13 @@
  (maintainers "Tienson Qin <tiensonqin@gmail.com>")
  (authors "Tienson Qin")
  (license "MIT")
- (synopsis "A reactive retained cross-platform UI runtime written in LG")
+ (synopsis "A reactive retained cross-platform UI runtime in OCaml")
  (description
-  "Declarative UI, incremental patch batching, and Apple, Flutter, and Web backends powered by signal-lg.")
+  "Declarative UI, incremental patch batching, and Apple, Flutter, and Web backends powered by ocaml-signal. Element constructors follow the convention unit -> ?props -> children:t list -> unit -> t so optional props erase under a trailing unit argument.")
  (depends
-  (ocaml (>= 5.4))
+  (ocaml (>= 5.1))
   (dune (>= 3.17))
   (melange (>= 6.0))
   melange-webapi
-  lg
-  lg-test
-  ctypes
-  ctypes-foreign
-  signal-lg))
+  ocaml-signal
+  (alcotest :with-test)))

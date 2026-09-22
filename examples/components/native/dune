@@ -1,45 +1,27 @@
-(rule
- (target gallery_bridge.ml)
- (deps
-  ../../../lg/lui/lui_native.state
-  (source_tree ../../../lg/lui/backend)
-  (source_tree ../lg/components)
-  (source_tree .)
-  %{bin:lg})
- (action
-  (run
-   %{bin:lg}
-   --target native
-   --compile-files-from ../../../lg/lui/lui_native.state
-   ../../../lg/lui/backend/retained
-   ../../../lg/lui/backend/flutter
-   ../lg/components
-   .
-   -o %{target})))
+(library
+ (name components_bridge)
+ (modules components_bridge)
+ (libraries lui ocaml-signal gallery_app)
+ (wrapped false))
 
 (rule
- (target gallery_bridge_complete.o)
- (deps gallery_bridge.ml)
- (action
-  (run
-   ocamlfind ocamlopt
-   -package lg.edn-backend.native,lg.runtime,lg.rrbvec
-   -linkpkg
-   -output-complete-obj
-   -o %{target}
-   %{dep:gallery_bridge.ml})))
-
-(rule
+ (enabled_if
+  (= %{os_type} "Darwin"))
  (target liblui_components.dylib)
  (deps
-  gallery_bridge_complete.o
-  ../../../platform/flutter/native/lui_ocaml_bridge.c)
+  ../../../platform/native/lui_ocaml_bridge.c
+  components_bridge.cmxa
+  ../../gallery/gallery_app.cmxa
+  ../../../src/lui.cmxa)
  (action
   (run
-   clang
-   -dynamiclib
-   -o %{target}
-   %{dep:../../../platform/flutter/native/lui_ocaml_bridge.c}
-   %{dep:gallery_bridge_complete.o}
-   -I %{ocaml_where}
-   -lpthread)))
+   sh
+   -c
+   "ocamlfind ocamlopt -linkpkg -package ocaml-signal \
+      %{dep:../../../src/lui.cmxa} %{dep:../../gallery/gallery_app.cmxa} \
+      %{dep:components_bridge.cmxa} \
+      -output-complete-obj -o components_bridge_complete.o && \
+    cc -shared -o %{target} \
+      %{dep:../../../platform/native/lui_ocaml_bridge.c} \
+      components_bridge_complete.o \
+      -I\"$(ocamlfind ocamlc -where)\" -lpthread")))

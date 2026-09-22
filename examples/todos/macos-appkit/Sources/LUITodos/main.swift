@@ -6,7 +6,7 @@ import LUIAppleBackend
 import SwiftUI
 
 private typealias PatchCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
-private typealias StartFunction = @convention(c) (PatchCallback?, Int32) -> Int32
+private typealias StartFunction = @convention(c) (PatchCallback?, Int32, Int32) -> Int32
 private typealias StopFunction = @convention(c) () -> Int32
 private typealias PressFunction = @convention(c) (Int64) -> Int32
 private typealias LongPressFunction = @convention(c) (Int64) -> Int32
@@ -63,7 +63,7 @@ private final class NativeTodosRuntime {
     }
 
     func start() throws {
-        guard startFunction(receivePatch, 1) == 1 else {
+        guard startFunction(receivePatch, 1, 2) == 1 else {
             throw RuntimeError("LG Todos initialization failed")
         }
     }
