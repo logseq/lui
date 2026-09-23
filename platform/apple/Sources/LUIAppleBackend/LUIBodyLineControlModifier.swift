@@ -1,4 +1,3 @@
-#if !SKIP
 import SwiftUI
 
 // A one-line body text strut keeps icons centered on the first line at every
@@ -21,4 +20,3 @@ struct LUIBodyLineControlModifier: ViewModifier {
         }
     }
 }
-#endif

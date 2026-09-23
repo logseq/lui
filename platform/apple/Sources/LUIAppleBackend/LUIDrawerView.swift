@@ -141,64 +141,6 @@ struct LUIDrawerView: View {
                     isGestureActive: isGestureActive
                 )
 
-            #if SKIP
-            ZStack(alignment: .leading) {
-                if let mainID = model.children.first {
-                    LUIAnyNodeView(nodeID: mainID, backend: backend)
-                        .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
-                        .modifier(LUIDrawerMainSurfaceModifier())
-                        .scrollDisabled(interactionsLocked)
-                        .allowsHitTesting(contentInteractionAllowed)
-                        .overlay {
-                            if progress > 0 {
-                                Button {
-                                    updatePresentation(false)
-                                } label: {
-                                    Color.black.opacity(0.32 * Double(progress))
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Close sidebar")
-                                .accessibilityIdentifier("button.sidebar.dismiss")
-                                .allowsHitTesting(presented && contentInteractionAllowed)
-                            }
-                        }
-                }
-
-                if let panelID = model.children.dropFirst().first {
-                    LUIAnyNodeView(nodeID: panelID, backend: backend)
-                        .frame(width: width)
-                        .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
-                        .background(drawerBackground)
-                        .offset(x: -width + visibleWidth)
-                        .shadow(
-                            color: Color.black.opacity(0.18 * Double(progress)),
-                            radius: 12,
-                            x: 4
-                        )
-                        .scrollDisabled(interactionsLocked)
-                        .allowsHitTesting(presented && contentInteractionAllowed)
-                        .accessibilityHidden(
-                            LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
-                                isPresented: presented,
-                                isEnabled: model.isEnabled
-                            )
-                        )
-                }
-
-                if LUIDrawerInteractionPolicy.showsInteractionShield(
-                    isDragging: isDragging,
-                    isAnimating: isAnimating,
-                    isGestureActive: isGestureActive
-                ) {
-                    Color.black.opacity(0.001)
-                        .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
-                        .allowsHitTesting(true)
-                        .accessibilityHidden(true)
-                        .modifier(LUIDrawerInteractionShieldModifier())
-                }
-            }
-            .simultaneousGesture(drawerGesture(width: width))
-            #else
             ZStack(alignment: .leading) {
                 // Retain the panel after its first reveal so closing preserves its state.
                 if hasLoadedPanel, let panelID = model.children.dropFirst().first {
@@ -275,7 +217,6 @@ struct LUIDrawerView: View {
             #if os(iOS)
             .sensoryFeedback(.impact(weight: .light), trigger: presented)
             #endif
-            #endif
         }
         .modifier(LUIDrawerFullScreenModifier())
         .onDisappear {
@@ -302,11 +243,7 @@ struct LUIDrawerView: View {
     }
 
     private func drawerGesture(width: CGFloat) -> some Gesture {
-        #if SKIP
-        let gesture = DragGesture(minimumDistance: 3)
-        #else
         let gesture = DragGesture(minimumDistance: 10, coordinateSpace: .global)
-        #endif
         return gesture
             .onChanged { value in
                 guard !isAnimating, !rejectedGesture else { return }
@@ -375,19 +312,6 @@ struct LUIDrawerView: View {
             "LUI_DRAWER transition=begin generation=\(generation) selected=\(selected)"
         )
         #endif
-        #if SKIP
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
-            presented = selected
-            dragOffset = 0
-        }
-        Task {
-            try? await Task.sleep(for: .milliseconds(
-                LUIDrawerInteractionPolicy.transitionLockMilliseconds
-            ))
-            guard transitionGeneration == generation, presented == selected else { return }
-            isAnimating = false
-        }
-        #else
         withAnimation(
             .spring(response: 0.28, dampingFraction: 0.9),
             completionCriteria: .logicallyComplete
@@ -403,7 +327,6 @@ struct LUIDrawerView: View {
             ))
             finishAnimation(generation: generation, selected: selected)
         }
-        #endif
     }
 
     private func finishAnimation(generation: Int, selected: Bool) {
@@ -430,25 +353,17 @@ struct LUIDrawerView: View {
 private struct LUIDrawerFullScreenModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
-        #if !SKIP
         content.ignoresSafeArea(.container)
-        #else
-        content
-        #endif
     }
 }
 
 private struct LUIDrawerInteractionShieldModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
-        #if !SKIP
         content
             .contentShape(Rectangle())
             .ignoresSafeArea(.container)
             .zIndex(1_000)
-        #else
-        content.zIndex(1_000)
-        #endif
     }
 }
 
@@ -457,22 +372,14 @@ private struct LUIDrawerMainSafeAreaModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        #if !SKIP && os(iOS)
         content.safeAreaPadding(.top, top)
             .safeAreaPadding(.bottom, LUIDrawerSafeAreaGeometry.mainPanelBottomInset)
-        #else
-        content
-        #endif
     }
 }
 
 private struct LUIDrawerMainSurfaceModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
-        #if SKIP
-        content.background(Color.primary.opacity(0.04))
-        #else
         content.background(.ultraThinMaterial)
-        #endif
     }
 }

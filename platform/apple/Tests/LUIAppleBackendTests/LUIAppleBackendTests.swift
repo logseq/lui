@@ -1,4 +1,3 @@
-#if !SKIP
 import SwiftUI
 import Testing
 import CoreGraphics
@@ -2001,7 +2000,7 @@ struct LUISwiftUIBackendTests {
             {"generation":1,"ops":[
               {"op":"create-node","id":1,"kind":"avatar"},
               {"op":"set-prop","id":1,"property":"text","value":"ZN"},
-              {"op":"set-prop","id":1,"property":"width","value":40}
+              {"op":"set-prop","id":1,"property":"gap","value":8}
             ]}
             """)
         }
@@ -2469,12 +2468,12 @@ struct LUISwiftUIBackendTests {
         #expect(throws: LUIBackendError.self) {
             try backend.apply(json: """
             {"generation":2,"ops":[
-              {"op":"set-prop","id":3,"property":"gap","value":8}
+              {"op":"set-prop","id":3,"property":"orientation","value":"horizontal"}
             ]}
             """)
         }
         #expect(backend.generation == 1)
-        #expect(backend.model(id: 3)?.property(.gap) == nil)
+        #expect(backend.model(id: 3)?.property(.orientation) == nil)
     }
 
     @Test("maps Dialog to a retained native SwiftUI modal")
@@ -3669,4 +3668,3 @@ struct LUISwiftUIBackendTests {
     ]}
     """
 }
-#endif

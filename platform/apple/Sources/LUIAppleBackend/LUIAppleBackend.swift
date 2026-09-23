@@ -235,7 +235,6 @@ final class LUINodeModel: Identifiable {
 
     var avatarSourceRect: CGRect? { imageSourceRect }
 
-    #if !SKIP
     func registeredImage(in backend: LUIAppleBackend) -> CGImage? {
         guard let imageID = properties[.image]?.intValue, imageID > 0 else {
             return nil
@@ -267,7 +266,6 @@ final class LUINodeModel: Identifiable {
         }
         return backend.mediaSurfaceFrame(id: mediaSurfaceID)
     }
-    #endif
 
     var mediaSurfaceID: Int { properties[.surface]?.intValue ?? 0 }
     var activeStepIndex: Int { properties[.active]?.intValue ?? 0 }
@@ -376,18 +374,14 @@ public final class LUIAppleBackend {
     private var eventDeferralDepth = 0
     private var deferredEvents: [LUIEvent] = []
     private var interactionLockedDrawers: Set<Int> = []
-    #if !SKIP
     private var images: [Int: CGImage] = [:]
     private var mediaSurfaces: [Int: CGImage] = [:]
-    #endif
     private let decoder = JSONDecoder()
     private let appIcons: [String: LUIAppleIconSource]
     let appIconBundle: Bundle?
     private let extensionRegistry: LUIAppleExtensionRegistry
     let tooltipSession = LUITooltipSession()
-    #if !SKIP
     let modalPresentation = LUIModalPresentationStore()
-    #endif
 
     public init(
         appIcons: [String: LUIAppleIconSource] = [:],
@@ -491,7 +485,6 @@ public final class LUIAppleBackend {
         return nil
     }
 
-    #if !SKIP
     func registeredImage(id: Int) -> CGImage? {
         images[id]
     }
@@ -525,7 +518,6 @@ public final class LUIAppleBackend {
         guard mediaSurfaces.removeValue(forKey: id) != nil else { return }
         invalidateMediaSurfaces(surfaceID: id)
     }
-    #endif
 
     public func apply(json: String) throws {
         guard let data = json.data(using: .utf8) else {
@@ -556,9 +548,7 @@ public final class LUIAppleBackend {
                 commit(nextTree)
             }
             tree = nextTree
-            #if !SKIP
             syncModalPresentation()
-            #endif
             generation = batch.generation
         }
     }
@@ -860,7 +850,6 @@ public final class LUIAppleBackend {
         }
     }
 
-    #if !SKIP
     private func syncModalPresentation() {
         var presentation: LUIModalPresentation?
         var nestedSheets: [Int: LUIModalPresentation] = [:]
@@ -907,7 +896,6 @@ public final class LUIAppleBackend {
         modalPresentation.nestedSheets = nestedSheets
         modalPresentation.synchronize(with: presentation)
     }
-    #endif
 
     private func invalidateAvatars(imageID: Int) {
         withTransaction(Transaction(animation: nil)) {
