@@ -1460,9 +1460,15 @@ final class LUIFlutterBackend {
             childID != null && _states[childID]?.kind == _NodeKind.dropdownMenu,
         orElse: () => null,
       );
+      final menuItemIconExtent =
+          switch (state.properties['size'] as String? ?? 'default') {
+        'sm' => 16.0,
+        'lg' => 28.0,
+        _ => 16.0,
+      };
       final leadingIcon = buttonIcon == null
           ? null
-          : Icon(_iconData(buttonIcon), size: 16);
+          : Icon(_iconData(buttonIcon), size: menuItemIconExtent);
       if (submenuID != null) {
         final submenu = _requireState(_states, submenuID);
         return SubmenuButton(
@@ -3021,7 +3027,8 @@ final class LUIFlutterBackend {
             (_isButtonKind(kind) ||
                 kind == _NodeKind.spinner ||
                 kind == _NodeKind.icon ||
-                kind == _NodeKind.tableCell),
+                kind == _NodeKind.tableCell ||
+                kind == _NodeKind.menuItem),
       'name' =>
         value is String &&
             (_iconNames.contains(value) ||
