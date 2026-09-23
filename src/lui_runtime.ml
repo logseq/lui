@@ -964,7 +964,10 @@ let insert_child application parent child index =
            "table-row can contain only table-cell"
          else if parent_kind = Tree then "tree accepts only row containers"
          else if child_kind = Root then "runtime root cannot be nested"
-         else "unsupported child kind")
+         else
+           Printf.sprintf "unsupported child kind: parent=%s child=%s"
+             (Lui_wire_schema.node_kind_name parent_kind)
+             (Lui_wire_schema.node_kind_name child_kind))
   | _ ->
     if not (child_supported application parent child) then
       invalid_arg "unsupported child kind");
