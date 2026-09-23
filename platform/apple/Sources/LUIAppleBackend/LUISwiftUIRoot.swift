@@ -3076,6 +3076,8 @@ private struct LUIButtonView: View {
             button.buttonStyle(.bordered)
         case "destructive":
             button.buttonStyle(.borderedProminent).tint(.red)
+        case "ghost":
+            button.buttonStyle(.borderless)
         default:
             if LUINavigationFormRowPolicy.usesBorderlessButtonStyle(
                 isNativeListRow: isNativeListRow,
@@ -3088,7 +3090,7 @@ private struct LUIButtonView: View {
             ) {
                 button.foregroundStyle(.tint)
             } else {
-                button.buttonStyle(.plain)
+                button.buttonStyle(.bordered)
             }
             }
         }
@@ -3136,6 +3138,7 @@ private struct LUIButtonView: View {
                     styleClass: model.property(.styleClass)?.stringValue
                 ) ? .semibold : nil
             )
+            .lineLimit(1)
             .frame(
                 maxWidth: LUIButtonVisualPolicy.fillsAvailableWidth(
                     grow: model.property(.grow)?.doubleValue
@@ -4127,8 +4130,10 @@ private struct LUITextControlView: View {
         Group {
             if grouped {
                 field.textFieldStyle(.plain)
-            } else {
+            } else if model.kind == .searchField {
                 field
+            } else {
+                field.textFieldStyle(.roundedBorder)
             }
         }
             .disabled(!model.isEnabled)
@@ -4181,6 +4186,9 @@ private struct LUITextControlView: View {
                     .buttonStyle(.plain)
                 }
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
         } else {
             TextField(model.property(.placeholder)?.stringValue ?? "", text: binding)
         }
