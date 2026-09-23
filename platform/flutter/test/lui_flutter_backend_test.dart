@@ -2555,6 +2555,35 @@ void main() {
     expect(find.text('Manage your profile.'), findsOneWidget);
   });
 
+  testWidgets('text nodes accept text-alignment', (tester) async {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"box"},
+        {"op":"create-node","id":2,"kind":"text"},
+        {"op":"create-node","id":3,"kind":"text"},
+        {"op":"set-prop","id":2,"property":"text","value":"Centered"},
+        {"op":"set-prop","id":2,"property":"text-alignment","value":"center"},
+        {"op":"set-prop","id":3,"property":"text","value":"Trailing"},
+        {"op":"set-prop","id":3,"property":"text-alignment","value":"end"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    expect(find.text('Centered'), findsOneWidget);
+    expect(find.text('Trailing'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.text('Centered')).textAlign,
+      TextAlign.center,
+    );
+    expect(tester.widget<Text>(find.text('Trailing')).textAlign, TextAlign.end);
+  });
+
   testWidgets('applies reusable Surface styles without replacing widgets', (
     tester,
   ) async {

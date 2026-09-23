@@ -3217,6 +3217,7 @@ final class LUIFlutterBackend {
         value is String &&
             _textAlignments.contains(value) &&
             (_isButtonKind(kind) ||
+                kind == _NodeKind.text ||
                 kind == _NodeKind.tableCell ||
                 kind == _NodeKind.bubble ||
                 kind == _NodeKind.statusBar),
