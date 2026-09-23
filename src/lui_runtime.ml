@@ -970,7 +970,22 @@ let insert_child application parent child index =
              (Lui_wire_schema.node_kind_name child_kind))
   | _ ->
     if not (child_supported application parent child) then
-      invalid_arg "unsupported child kind");
+      invalid_arg
+        (Printf.sprintf "unsupported child kind: parent=%s child=%s"
+           (match
+              ( Hashtbl.find_opt application.mounted_nodes parent,
+                Hashtbl.find_opt application.runtime_extension_nodes parent )
+            with
+           | Some kind, _ -> Lui_wire_schema.node_kind_name kind
+           | None, Some id -> "ext:" ^ id
+           | None, None -> "?")
+           (match
+              ( Hashtbl.find_opt application.mounted_nodes child,
+                Hashtbl.find_opt application.runtime_extension_nodes child )
+            with
+           | Some kind, _ -> Lui_wire_schema.node_kind_name kind
+           | None, Some id -> "ext:" ^ id
+           | None, None -> "?")));
   if Hashtbl.mem application.runtime_parents child then
     invalid_arg "child is already attached";
   if index < 0 || index > List.length current then
