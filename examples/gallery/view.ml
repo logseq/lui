@@ -250,7 +250,7 @@ let bottom_tabs_section model_source send : t =
   let search = model_source >|= Model.search_bottom_tab_selected in
   let settings = model_source >|= Model.settings_bottom_tab_selected in
   section "BottomTabs"
-    [ bottom_tabs ~label:"Primary destinations"
+    [ bottom_tabs ~label:"Primary destinations" ~height:480
         [ bottom_tab ~title:"Home" ~icon:`folder
             ~selected:(reactive home)
             ~on_press:(press send (Model.SelectBottomTab "home"))
@@ -1084,6 +1084,211 @@ let slider_section model_source send : t =
         ~value:"The model-owned Signal patches the retained native slider." []
     ]
 
+(* 1:1 app replicas — stock lui APIs only. Visual reference: the iOS
+   Spotify and YouTube home screens. *)
+
+let spotify_bg = "#121212"
+
+let spotify_card = "#282828"
+
+let spotify_muted = "#b3b3b3"
+
+let art_tile ~size ~bg : t =
+  column ~width:size ~height:size ~padding:0 ~corner_radius:4 ~background:bg
+    ~main:`center ~cross:`center
+    [ icon ~name:`music ~foreground:"#ffffff" ~size:`lg [] ]
+
+let initial_avatar initial bg : t =
+  column ~width:32 ~height:32 ~corner_radius:16 ~background:bg ~main:`center
+    ~cross:`center
+    [ text ~value:initial ~foreground:"#ffffff" ~style_class:"caption" [] ]
+
+let spotify_recent_card title bg : t =
+  card ~padding:0 ~corner_radius:4 ~background:spotify_card ~height:56 ~grow:1.0
+    [ row ~gap:10 ~cross:`center
+        [ column ~width:56 ~height:56 ~corner_radius:4 ~padding:0 ~background:bg
+            ~main:`center ~cross:`center
+            [ icon ~name:`music ~foreground:"#ffffff" [] ]
+        ; text ~value:title ~foreground:"#ffffff" ~style_class:"subheadline" []
+        ]
+    ]
+
+let spotify_mix_card title subtitle bg : t =
+  card ~padding:0 ~corner_radius:6 ~width:112 ~background:"#181818"
+    [ column ~gap:8
+        [ column ~width:96 ~height:112 ~corner_radius:6 ~padding:0 ~background:bg
+            ~main:`center ~cross:`center
+            [ icon ~name:`music ~foreground:"#ffffff" ~size:`lg [] ]
+        ; column ~gap:2 ~padding_horizontal:8 ~padding_vertical:4
+            [ text ~value:title ~foreground:"#ffffff" ~style_class:"subheadline" []
+            ; text ~value:subtitle ~foreground:spotify_muted ~style_class:"caption" []
+            ]
+        ]
+    ]
+
+let spotify_shelf title cards : t =
+  column ~gap:8 ~padding_horizontal:16
+    [ text ~value:title ~foreground:"#ffffff" ~style_class:"headline" []
+    ; row ~gap:12 cards
+    ]
+
+let spotify_home : t =
+  column ~gap:20 ~background:spotify_bg ~padding_vertical:12
+    [ row ~gap:16 ~padding_horizontal:16 ~cross:`center
+        [ initial_avatar "T" "#5b4ec4"
+        ; text ~value:"Good evening" ~foreground:"#ffffff" ~style_class:"headline" []
+        ; spacer ~grow:1.0 []
+        ; icon ~name:`clock ~foreground:"#ffffff" []
+        ; icon ~name:`settings ~foreground:"#ffffff" []
+        ]
+    ; grid ~columns:2 ~gap:8 ~padding_horizontal:16
+        [ spotify_recent_card "Daily Mix 01" "#4f7ec9"
+        ; spotify_recent_card "Discover Weekly" "#2e8b8b"
+        ; spotify_recent_card "Focus Flow" "#b45f9e"
+        ; spotify_recent_card "Release Radar" "#7a6ac9"
+        ; spotify_recent_card "Evening Acoustic" "#c9773f"
+        ; spotify_recent_card "Top Hits 2026" "#3f8f5f"
+        ]
+    ; spotify_shelf "Your top mixes"
+        [ spotify_mix_card "Daily Mix 01" "Bonobo, Róisín Murphy" "#4f7ec9"
+        ; spotify_mix_card "Daily Mix 02" "Khruangbin, Air" "#b45f9e"
+        ; spotify_mix_card "Chill Mix" "Tycho, Boards of Canada" "#2e8b8b"
+        ]
+    ; spotify_shelf "Made for you"
+        [ spotify_mix_card "Discover Weekly" "Your weekly mixtape" "#2e8b8b"
+        ; spotify_mix_card "Release Radar" "New releases" "#7a6ac9"
+        ; spotify_mix_card "Repeat Rewind" "Tracks on repeat" "#c9773f"
+        ]
+    ]
+
+let spotify_player_bar : t =
+  card ~padding:8 ~corner_radius:8 ~background:"#333333"
+    [ row ~gap:10 ~cross:`center
+        [ art_tile ~size:40 ~bg:"#4f7ec9"
+        ; column ~gap:2
+            [ text ~value:"Sunset Lover" ~foreground:"#ffffff"
+                ~style_class:"subheadline" []
+            ; text ~value:"Petit Biscuit" ~foreground:spotify_muted
+                ~style_class:"caption" []
+            ]
+        ; spacer ~grow:1.0 []
+        ; icon ~name:`volume ~foreground:"#ffffff" []
+        ; icon ~name:`play ~foreground:"#ffffff" ~size:`lg []
+        ]
+    ]
+
+let spotify_section : t =
+  column ~gap:0 ~padding:0
+    [ heading ~level:2 ~value:"Spotify" []
+    ; bottom_tabs ~label:"Spotify" ~height:660
+        [ bottom_tab ~title:"Home" ~icon:`music ~selected:true ~on_press:noop
+            [ column ~gap:8 ~background:spotify_bg
+                [ spotify_home
+                ; column ~padding_horizontal:8 ~background:spotify_bg
+                    [ spotify_player_bar ]
+                ]
+            ]
+        ; bottom_tab ~title:"Search" ~icon:`search ~on_press:noop
+            [ column ~padding:32 ~background:spotify_bg ~grow:1.0
+                [ text ~value:"Search" ~foreground:"#ffffff" ~style_class:"headline" [] ]
+            ]
+        ; bottom_tab ~title:"Your Library" ~icon:`folder ~on_press:noop
+            [ column ~padding:32 ~background:spotify_bg ~grow:1.0
+                [ text ~value:"Your Library" ~foreground:"#ffffff"
+                    ~style_class:"headline" []
+                ]
+            ]
+        ]
+    ]
+
+let youtube_dark = "#0f0f0f"
+
+let youtube_muted = "#606060"
+
+let youtube_chip label selected : t =
+  if selected then
+    row ~padding_horizontal:10 ~padding_vertical:6 ~corner_radius:8
+      ~background:youtube_dark
+      [ text ~value:label ~foreground:"#ffffff" ~style_class:"subheadline" [] ]
+  else
+    row ~padding_horizontal:10 ~padding_vertical:6 ~corner_radius:8
+      ~background:"#f2f2f2"
+      [ text ~value:label ~foreground:youtube_dark
+          ~style_class:"subheadline single-line" [] ]
+
+let youtube_video title meta bg : t =
+  column ~gap:8
+    [ column ~padding:0 ~corner_radius:12 ~height:200 ~background:bg
+        ~container_relative_frame:`horizontal ~main:`center
+        [ row ~main:`center ~container_relative_frame:`horizontal
+            [ icon ~name:`play ~foreground:"#ffffff" ~size:`lg [] ]
+        ]
+    ; row ~gap:12 ~cross:`start ~padding_horizontal:12
+        [ initial_avatar "L" "#7755aa"
+        ; column ~gap:2 ~grow:1.0
+            [ text ~value:title ~foreground:youtube_dark ~style_class:"subheadline" []
+            ; text ~value:meta ~foreground:youtube_muted ~style_class:"caption" []
+            ]
+        ; icon ~name:`ellipsis ~foreground:youtube_dark []
+        ]
+    ]
+
+let youtube_home : t =
+  column ~gap:14 ~background:"#ffffff" ~padding_vertical:8
+    [ row ~gap:10 ~padding_horizontal:16 ~cross:`center
+        [ icon ~name:`play ~foreground:"#ff0000" []
+        ; text ~value:"YouTube" ~foreground:youtube_dark ~style_class:"headline" []
+        ; spacer ~grow:1.0 []
+        ; icon ~name:`external_link ~foreground:youtube_dark []
+        ; icon ~name:`clock ~foreground:youtube_dark []
+        ; icon ~name:`search ~foreground:youtube_dark []
+        ; initial_avatar "T" "#2e8b8b"
+        ]
+    ; row ~gap:8 ~padding_horizontal:16
+        [ youtube_chip "All" true
+        ; youtube_chip "Music" false
+        ; youtube_chip "Gaming" false
+        ; youtube_chip "Live" false
+        ]
+    ; youtube_video "OCaml multicore domains, explained"
+        "Logseq · 24K views · 3 days ago" "#8a4f3f"
+    ; youtube_video "Building a music app in 10 minutes"
+        "Devin · 182K views · 1 week ago" "#3f5f8a"
+    ; youtube_video "Lo-fi beats to ship PRs to"
+        "chill.fm · 1.1M views · 2 months ago" "#4f8a5f"
+    ]
+
+let youtube_section : t =
+  column ~gap:0 ~padding:0
+    [ heading ~level:2 ~value:"YouTube" []
+    ; bottom_tabs ~label:"YouTube" ~height:660
+        [ bottom_tab ~title:"Home" ~icon:`play ~selected:true ~on_press:noop
+            [ column ~background:"#ffffff" [ youtube_home ] ]
+        ; bottom_tab ~title:"Shorts" ~icon:`refresh_cw ~on_press:noop
+            [ column ~padding:32 ~background:"#ffffff" ~grow:1.0
+                [ text ~value:"Shorts" ~foreground:youtube_dark
+                    ~style_class:"headline" []
+                ]
+            ]
+        ; bottom_tab ~title:"Create" ~icon:`plus ~on_press:noop
+            [ column ~padding:32 ~background:"#ffffff" ~grow:1.0
+                [ text ~value:"Create" ~foreground:youtube_dark
+                    ~style_class:"headline" []
+                ]
+            ]
+        ; bottom_tab ~title:"Subscriptions" ~icon:`folder ~on_press:noop
+            [ column ~padding:32 ~background:"#ffffff" ~grow:1.0
+                [ text ~value:"Subscriptions" ~foreground:youtube_dark
+                    ~style_class:"headline" []
+                ]
+            ]
+        ; bottom_tab ~title:"You" ~icon:`circle_dot ~on_press:noop
+            [ column ~padding:32 ~background:"#ffffff" ~grow:1.0
+                [ text ~value:"You" ~foreground:youtube_dark ~style_class:"headline" [] ]
+            ]
+        ]
+    ]
+
 (* Native extensions: mounted through the raw Lui_ui bridge so the
    section stays a plain gallery page on every other platform. *)
 
@@ -1186,6 +1391,8 @@ let view context model_source send : t =
     ; toolbar_section model_source send
     ; accordion_section model_source send
     ; radio_section model_source send
+    ; spotify_section
+    ; youtube_section
     ]
   in
   let sections =
