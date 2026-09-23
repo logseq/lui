@@ -654,7 +654,8 @@ struct LUIRetainedTree {
         case .orientation: kind == .divider || kind == .tabs
         case .size:
             kind == .button || kind == .toggleButton || kind == .spinner ||
-                kind == .icon || kind == .text || kind == .tableCell
+                kind == .icon || kind == .text || kind == .tableCell ||
+                kind == .menuItem
         case .name: kind == .icon
         case .variant:
             kind == .button || kind == .toggleButton || kind == .menuItem ||
