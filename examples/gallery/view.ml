@@ -250,7 +250,7 @@ let bottom_tabs_section model_source send : t =
   let search = model_source >|= Model.search_bottom_tab_selected in
   let settings = model_source >|= Model.settings_bottom_tab_selected in
   section "BottomTabs"
-    [ bottom_tabs ~label:"Primary destinations" ~height:480
+    [ bottom_tabs ~label:"Primary destinations"
         [ bottom_tab ~title:"Home" ~icon:`folder
             ~selected:(reactive home)
             ~on_press:(press send (Model.SelectBottomTab "home"))
@@ -1099,9 +1099,8 @@ let art_tile ~size ~bg : t =
     [ icon ~name:`music ~foreground:"#ffffff" ~size:`lg [] ]
 
 let initial_avatar initial bg : t =
-  column ~width:32 ~height:32 ~corner_radius:16 ~background:bg ~main:`center
-    ~cross:`center
-    [ text ~value:initial ~foreground:"#ffffff" ~style_class:"caption" [] ]
+  avatar ~text:initial ~background:bg ~foreground:"#ffffff" ~width:32
+    ~height:32 []
 
 let spotify_recent_card title bg : t =
   card ~padding:0 ~corner_radius:4 ~background:spotify_card ~height:56 ~grow:1.0
@@ -1180,7 +1179,7 @@ let spotify_player_bar : t =
 let spotify_section : t =
   column ~gap:0 ~padding:0
     [ heading ~level:2 ~value:"Spotify" []
-    ; bottom_tabs ~label:"Spotify" ~height:660
+    ; bottom_tabs ~label:"Spotify"
         [ bottom_tab ~title:"Home" ~icon:`music ~selected:true ~on_press:noop
             [ column ~gap:8 ~background:spotify_bg
                 [ spotify_home
@@ -1207,11 +1206,11 @@ let youtube_muted = "#606060"
 
 let youtube_chip label selected : t =
   if selected then
-    row ~padding_horizontal:10 ~padding_vertical:6 ~corner_radius:8
+    box ~padding_horizontal:10 ~padding_vertical:6 ~corner_radius:8
       ~background:youtube_dark
       [ text ~value:label ~foreground:"#ffffff" ~style_class:"subheadline" [] ]
   else
-    row ~padding_horizontal:10 ~padding_vertical:6 ~corner_radius:8
+    box ~padding_horizontal:10 ~padding_vertical:6 ~corner_radius:8
       ~background:"#f2f2f2"
       [ text ~value:label ~foreground:youtube_dark
           ~style_class:"subheadline single-line" [] ]
@@ -1244,11 +1243,13 @@ let youtube_home : t =
         ; icon ~name:`search ~foreground:youtube_dark []
         ; initial_avatar "T" "#2e8b8b"
         ]
-    ; row ~gap:8 ~padding_horizontal:16
+    ; scroll ~orientation:`horizontal ~gap:8 ~padding_horizontal:16
         [ youtube_chip "All" true
         ; youtube_chip "Music" false
         ; youtube_chip "Gaming" false
+        ; youtube_chip "Mixes" false
         ; youtube_chip "Live" false
+        ; youtube_chip "Podcasts" false
         ]
     ; youtube_video "OCaml multicore domains, explained"
         "Logseq · 24K views · 3 days ago" "#8a4f3f"
@@ -1261,7 +1262,7 @@ let youtube_home : t =
 let youtube_section : t =
   column ~gap:0 ~padding:0
     [ heading ~level:2 ~value:"YouTube" []
-    ; bottom_tabs ~label:"YouTube" ~height:660
+    ; bottom_tabs ~label:"YouTube"
         [ bottom_tab ~title:"Home" ~icon:`play ~selected:true ~on_press:noop
             [ column ~background:"#ffffff" [ youtube_home ] ]
         ; bottom_tab ~title:"Shorts" ~icon:`refresh_cw ~on_press:noop
