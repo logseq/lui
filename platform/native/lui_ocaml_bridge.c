@@ -172,3 +172,30 @@ static int64_t read_node(const char *callback_name) {
 LUI_EXPORT int64_t lui_ocaml_root_node(void) {
   return read_node("lui_ocaml_root_node");
 }
+
+LUI_EXPORT int32_t lui_ocaml_extension_event(
+    int64_t node,
+    const char *identifier,
+    const char *name,
+    const char *json_values) {
+  CAMLparam0();
+  CAMLlocal4(identifier_value, name_value, values_value, result);
+  const value *dispatch = caml_named_value("lui_ocaml_extension_event");
+  if (dispatch == NULL || identifier == NULL || name == NULL) {
+    CAMLreturnT(int32_t, 0);
+  }
+  identifier_value = caml_copy_string(identifier);
+  name_value = caml_copy_string(name);
+  values_value = caml_copy_string(json_values == NULL ? "" : json_values);
+  {
+    value arguments[4];
+    int32_t accepted;
+    arguments[0] = Val_long(node);
+    arguments[1] = identifier_value;
+    arguments[2] = name_value;
+    arguments[3] = values_value;
+    result = caml_callbackN_exn(*dispatch, 4, arguments);
+    accepted = emit_patch(result);
+    CAMLreturnT(int32_t, accepted);
+  }
+}

@@ -1,0 +1,11 @@
+(library
+ (name markdown_app)
+ (modules model view extension_schemas)
+ (libraries lui ocaml-signal)
+ (preprocess (pps lui_ppx))
+ (wrapped false))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries markdown_app))

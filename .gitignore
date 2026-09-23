@@ -10,5 +10,6 @@
 /examples/*/flutter/build/
 /examples/components/flutter/android/app/src/main/jniLibs/
 /examples/components/ios-swiftui/.build/
+/examples/*/macos-appkit/.build/
 /platform/web/node_modules/
 /platform/web/dist/
