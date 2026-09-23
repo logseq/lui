@@ -16,7 +16,15 @@ val enable :
   Lui_ui.ui_context -> int -> Lui_protocol.Property_map.key -> unit
 val mount_children : 'a -> 'b -> ('a -> 'b option -> 'c) list -> unit
 val dynamic : (Lui_ui.ui_context -> int -> 'a) -> t
-val dyn : ('a -> t) -> 'a Signal.signal -> t
+
+(** [dyn ?equal f source] mounts [f model] under the parent node and remounts
+    it whenever the published model differs under [equal]. The default
+    [fun _ _ -> false] remounts on every publish; pass a structural or
+    field-wise equality (e.g. [(=)]) to keep the subtree mounted when the
+    change does not affect this branch and to avoid re-running mount-time
+    effects (focus loss, control echoes, on-appear dispatches). *)
+val dyn :
+  ?equal:('a -> 'a -> bool) -> ('a -> t) -> 'a Signal.signal -> t
 val if_ : test:bool Signal.signal -> t -> t
 val keyed :
   source:'a list Signal.signal ->
