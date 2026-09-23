@@ -510,7 +510,8 @@ val bottom_tabs :
   ?foreground_signal:string Signal.signal ->
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
-  ?on_appear:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?label:string -> t list -> t
 val bottom_tab :
   ?key:string ->
   ?gap:int ->
