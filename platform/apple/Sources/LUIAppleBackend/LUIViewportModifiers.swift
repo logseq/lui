@@ -4,6 +4,13 @@ extension EnvironmentValues {
     @Entry var luiUnobscuredScrollHeight: CGFloat? = nil
 }
 
+public extension EnvironmentValues {
+    /// Set on descendants of a `scroll`/`virtual-list` node (or by apps hosting a
+    /// LUISwiftUIRoot inside their own ScrollView) so nested scrollable views can
+    /// degrade to static layout instead of collapsing to zero height.
+    @Entry var luiInsideScroll: Bool = false
+}
+
 enum LUIContainerRelativeFramePolicy {
     static func skipFillsHorizontal(_ axes: String?) -> Bool {
         axes == "horizontal" || axes == "both"

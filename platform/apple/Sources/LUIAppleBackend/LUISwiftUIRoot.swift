@@ -600,6 +600,7 @@ private struct LUINodeView: View {
             return AnyView(
                 ScrollView {
                     LUIVerticalScrollContent(model: model, backend: backend)
+                        .environment(\.luiInsideScroll, true)
                 }
             )
         case .spacer:
@@ -3877,8 +3878,37 @@ private struct LUIListView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.luiInsideScroll) private var insideScroll
 
     var body: some View {
+        if insideScroll {
+            // A nested scrolling List collapses inside an outer ScrollView;
+            // lay rows out statically instead.
+            LazyVStack(
+                alignment: .leading,
+                spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+            ) {
+                ForEach(sections) { section in
+                    if let headerID = section.headerID,
+                       let header = backend.model(id: headerID) {
+                        Text(verbatim: header.text)
+                            .font(.headline)
+                    }
+                    rows(section.childIDs)
+                    if let footerID = section.footerID,
+                       let footer = backend.model(id: footerID) {
+                        Text(verbatim: footer.text)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        } else {
+            nativeList
+        }
+    }
+
+    private var nativeList: some View {
         List {
             ForEach(sections) { section in
                 if let headerID = section.headerID,
@@ -3988,6 +4018,7 @@ private struct LUIVirtualListView: View {
             .environment(\.luiUnobscuredScrollHeight, unobscuredHeight)
         }
         .coordinateSpace(name: titleCoordinateSpace)
+        .environment(\.luiInsideScroll, true)
         .background {
             LUIScrollSectionTitleEmitter(tracker: titleTracker,
                                          isActive: tracksSectionTitles && model.isSelected)
