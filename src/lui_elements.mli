@@ -1066,7 +1066,8 @@ val icon :
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?name:icon ->
-  ?name_signal:icon Signal.signal -> ?size:control_size -> nothing list -> t
+  ?name_signal:icon Signal.signal -> ?size:control_size ->
+  ?point_size:int -> nothing list -> t
 val text :
   ?key:string ->
   ?gap:int ->
@@ -1272,6 +1273,8 @@ val toggle_button :
   ?label:string ->
   ?text_alignment:text_alignment ->
   ?selected:bool ->
+  ?checked:bool ->
+  ?checked_signal:bool Signal.signal ->
   ?autofocus:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
@@ -1979,6 +1982,16 @@ val context_menu :
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?disabled:bool -> ?disabled_signal:bool Signal.signal -> t list -> t
+val submenu :
+  ?key:string ->
+  ?text:string ->
+  ?icon:icon ->
+  ?role:role ->
+  ?variant:variant ->
+  ?selected:bool ->
+  ?checked:bool ->
+  ?disabled:bool ->
+  ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
 val dialog :
   ?key:string ->
   ?gap:int ->
@@ -2010,6 +2023,8 @@ val dialog :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
+  ?description:string ->
+  ?description_signal:string Signal.signal ->
   ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
 val sheet :
   ?key:string ->
@@ -2208,10 +2223,14 @@ val menu_item :
   ?text_signal:string Signal.signal ->
   ?icon:icon ->
   ?role:role ->
+  ?variant:variant ->
+  ?size:control_size ->
   ?tree_level:int ->
   ?expanded:bool ->
   ?selected:bool ->
+  ?checked:bool ->
   ?selected_signal:bool Signal.signal ->
+  ?checked_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_press:(Lui_protocol.event -> unit) ->
