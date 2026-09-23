@@ -228,6 +228,7 @@ private struct GalleryRootView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 LUISwiftUIRoot(backend: host.backend, rootID: sectionID)
+                    .environment(\.luiInsideScroll, true)
             }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .padding(.horizontal, 16)
