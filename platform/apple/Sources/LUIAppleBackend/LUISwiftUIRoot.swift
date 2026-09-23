@@ -2500,6 +2500,7 @@ private struct LUIMenuItemView: View {
                 itemLabel(expands: true)
             }
             .buttonStyle(.plain)
+            .accessibilityAddTraits(model.isSelected ? .isSelected : [])
             .disabled(!model.isEnabled)
         }
     }

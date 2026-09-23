@@ -115,21 +115,12 @@ private final class GalleryHost {
 
 private struct GalleryRootView: View {
     @State private var host = GalleryHost()
-    @State private var selectedSectionID: Int?
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         splitView
             .modifier(ModalHostModifier(host: host))
             .task {
                 host.start()
-                selectDefaultForRegularWidth()
-            }
-            .onChange(of: host.sections) {
-                selectDefaultForRegularWidth()
-            }
-            .onChange(of: horizontalSizeClass) {
-                selectDefaultForRegularWidth()
             }
     }
 
@@ -152,26 +143,20 @@ private struct GalleryRootView: View {
 
     private var splitView: some View {
         NavigationSplitView {
-            List(host.sections, selection: $selectedSectionID) { section in
-                NavigationLink(value: section.id) {
-                    Text(section.title)
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(host.sections) { section in
+                        sectionRow(section)
+                    }
                 }
-                .accessibilityIdentifier("component-row-\(section.title)")
+                .modifier(LUIGalleryScrollBehavior())
             }
             .navigationTitle("Components")
+            .navigationDestination(for: Int.self) { sectionID in
+                detailView(sectionID: sectionID)
+            }
         } detail: {
-            if let section = selectedSection {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        LUISwiftUIRoot(backend: host.backend, rootID: section.id)
-                    }
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                }
-                .background(galleryBackground)
-                .navigationTitle(section.title)
-            } else if host.rootID == nil {
+            if host.rootID == nil {
                 ProgressView("Starting LG Gallery")
             } else {
                 ContentUnavailableView(
@@ -182,8 +167,74 @@ private struct GalleryRootView: View {
         }
     }
 
-    private var selectedSection: LUIRootSection? {
-        host.sections.first { $0.id == selectedSectionID }
+    private struct LUIGalleryScrollBehavior: ViewModifier {
+        func body(content: Content) -> some View {
+            #if os(iOS)
+            content.background(LUIScrollDecelerationLimiter())
+            #else
+            content
+            #endif
+        }
+    }
+
+    #if os(iOS)
+    private struct LUIScrollDecelerationLimiter: UIViewRepresentable {
+        func makeUIView(context: Context) -> UIView {
+            let view = UIView(frame: .zero)
+            view.isUserInteractionEnabled = false
+            return view
+        }
+
+        func updateUIView(_ uiView: UIView, context: Context) {
+            DispatchQueue.main.async {
+                var superview = uiView.superview
+                while let candidate = superview {
+                    if let scrollView = candidate as? UIScrollView {
+                        scrollView.decelerationRate = UIScrollView.DecelerationRate(rawValue: 0.5)
+                        NSLog("LUI scroll limiter: set decelerationRate on %@", String(describing: type(of: scrollView)))
+                        return
+                    }
+                    superview = candidate.superview
+                }
+                NSLog("LUI scroll limiter: no UIScrollView ancestor")
+            }
+        }
+    }
+    #endif
+
+    private func sectionRow(_ section: LUIRootSection) -> some View {
+        VStack(spacing: 0) {
+            NavigationLink(value: section.id) {
+                HStack {
+                    Text(section.title)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.primary)
+            .accessibilityIdentifier("component-row-\(section.title)")
+            Divider().padding(.leading, 20)
+        }
+    }
+
+    private func detailView(sectionID: Int) -> some View {
+        let section = host.sections.first { $0.id == sectionID }
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                LUISwiftUIRoot(backend: host.backend, rootID: sectionID)
+            }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+        }
+        .background(galleryBackground)
+        .navigationTitle(section?.title ?? "")
     }
 
     private var galleryBackground: Color {
@@ -192,11 +243,6 @@ private struct GalleryRootView: View {
         #else
         Color(nsColor: .windowBackgroundColor)
         #endif
-    }
-
-    private func selectDefaultForRegularWidth() {
-        guard selectedSectionID == nil, horizontalSizeClass != .compact else { return }
-        selectedSectionID = host.sections.first?.id
     }
 }
 

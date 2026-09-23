@@ -931,19 +931,24 @@ let accordion_section model_source send : t =
 let environment_menu model_source send : t =
   let disabled = model_source >|= Model.disabled in
   let dismiss = press send Model.ClosePicker in
+  let production_selected = model_source >|= Model.production_selected in
+  let staging_selected = model_source >|= Model.staging_selected in
   dropdown_menu ~anchor:"below" ~anchor_alignment:"stretch"
     ~anchor_offset:6.0 ~min_width:200 ~on_dismiss:dismiss
-    [ menu_item ~text:"Production" ~icon:"check"
+    [ menu_item ~text:"Production" ~selected:(reactive production_selected)
         ~disabled:(reactive disabled)
         ~on_press:(press send (Model.SelectEnvironment "Production")) []
-    ; menu_item ~text:"Staging" ~disabled:(reactive disabled)
+    ; menu_item ~text:"Staging" ~selected:(reactive staging_selected)
+        ~disabled:(reactive disabled)
         ~on_press:(press send (Model.SelectEnvironment "Staging")) []
     ; menu_item ~text:"More environments" ~disabled:(reactive disabled)
         [ dropdown_menu ~anchor:"right" ~anchor_alignment:"start"
             ~anchor_offset:4.0 ~min_width:180 ~on_dismiss:dismiss
             [ menu_item ~text:"Production region"
+                ~selected:(reactive production_selected)
                 ~on_press:(press send (Model.SelectEnvironment "Production")) []
             ; menu_item ~text:"Staging region"
+                ~selected:(reactive staging_selected)
                 ~on_press:(press send (Model.SelectEnvironment "Staging")) []
             ]
         ]
@@ -1002,8 +1007,6 @@ let combobox_section model_source send : t =
     ]
 
 let dropdown_menu_section model_source send : t =
-  let _prod = model_source >|= Model.production_selected in
-  let _stag = model_source >|= Model.staging_selected in
   section "DropdownMenu"
     [ environment_menu model_source send
     ; paragraph

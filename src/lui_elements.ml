@@ -1066,7 +1066,7 @@ let accordion ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal
   mount_children context node children;
   node
 
-let menu_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?icon ?role ?tree_level ?expanded ?disabled ?disabled_signal ?on_press ?on_input ?on_submit ?on_dismiss (children : t list) : t =
+let menu_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?icon ?role ?tree_level ?expanded ?selected ?selected_signal ?disabled ?disabled_signal ?on_press ?on_input ?on_submit ?on_dismiss (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.menu_item context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
@@ -1076,6 +1076,8 @@ let menu_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal
   Option.iter (Lui_ui.string_property context node RoleValue) role;
   Option.iter (Lui_ui.int_property context node TreeLevel) tree_level;
   Option.iter (Lui_ui.bool_property context node Expanded) expanded;
+  Option.iter (Lui_ui.bool_property context node Selected) selected;
+  Option.iter (Lui_ui.bool_property_signal context node Selected) selected_signal;
   Option.iter (Lui_ui.disabled context node) disabled;
   Option.iter (Lui_ui.disabled_signal context node) disabled_signal;
   (match on_press with
