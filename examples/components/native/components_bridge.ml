@@ -37,7 +37,7 @@ let backend host_profile =
          true);
   }
 
-let initialize platform_code host_code =
+let initialize_inner platform_code host_code =
   latest_patch := "";
   let value =
     Lui_app.create_with_extensions
@@ -50,6 +50,14 @@ let initialize platform_code host_code =
   ignore (Lui_app.start value);
   ignore (Lui_app.flush value);
   !latest_patch
+
+let initialize platform_code host_code =
+  try
+    initialize_inner platform_code host_code
+  with exn ->
+    Printf.eprintf "lui gallery init failed: %s\n%s%!"
+      (Printexc.to_string exn) (Printexc.get_backtrace ());
+    raise exn
 
 let dispatch event =
   latest_patch := "";
@@ -85,17 +93,25 @@ let dispose () =
 
 let root_node () = Lui_app.root_node (app ())
 
+let register prefix =
+  let open Callback in
+  register (prefix ^ "_init") initialize;
+  register (prefix ^ "_appear") appear;
+  register (prefix ^ "_press") press;
+  register (prefix ^ "_long_press") long_press;
+  register (prefix ^ "_text_changed") text_changed;
+  register (prefix ^ "_submit") submit;
+  register (prefix ^ "_dismiss") dismiss;
+  register (prefix ^ "_double_press") double_press;
+  register (prefix ^ "_toggle_changed") toggle_changed;
+  register (prefix ^ "_radio_changed") radio_changed;
+  register (prefix ^ "_slider_changed") slider_changed;
+  register (prefix ^ "_dispose") dispose;
+  register (prefix ^ "_root_node") root_node
+
+(* platform/native/lui_ocaml_bridge.c looks up "lui_ocaml_*" and
+   platform/flutter/native/lui_ocaml_bridge.c looks up "lui_flutter_*". *)
 let () =
-  Callback.register "lui_ocaml_init" initialize;
-  Callback.register "lui_ocaml_appear" appear;
-  Callback.register "lui_ocaml_press" press;
-  Callback.register "lui_ocaml_long_press" long_press;
-  Callback.register "lui_ocaml_text_changed" text_changed;
-  Callback.register "lui_ocaml_submit" submit;
-  Callback.register "lui_ocaml_dismiss" dismiss;
-  Callback.register "lui_ocaml_double_press" double_press;
-  Callback.register "lui_ocaml_toggle_changed" toggle_changed;
-  Callback.register "lui_ocaml_radio_changed" radio_changed;
-  Callback.register "lui_ocaml_slider_changed" slider_changed;
-  Callback.register "lui_ocaml_dispose" dispose;
-  Callback.register "lui_ocaml_root_node" root_node
+  Printexc.record_backtrace true;
+  register "lui_ocaml";
+  register "lui_flutter"

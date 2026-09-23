@@ -1,9 +1,12 @@
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include <caml/alloc.h>
 #include <caml/callback.h>
+#include <caml/memory.h>
 #include <caml/mlvalues.h>
+#include <caml/printexc.h>
 #include <caml/startup.h>
 
 #if defined(_WIN32)
@@ -19,6 +22,9 @@ static lui_patch_callback patch_callback = NULL;
 
 static int emit_patch(value result) {
   if (Is_exception_result(result)) {
+    char *message = caml_format_exception(Extract_exception(result));
+    fprintf(stderr, "lui_ocaml_bridge: OCaml exception: %s\n", message);
+    caml_stat_free(message);
     return 0;
   }
   const char *json = String_val(result);
