@@ -20,7 +20,7 @@ jobs:
         id: revs
         run: |
           set -euo pipefail
-          ocaml_signal="$(git ls-remote https://github.com/logseq/ocaml-signal.git HEAD | cut -f1)"
+          ocaml_signal="$(git ls-remote https://github.com/logseq/ocaml-signal.git refs/heads/devin/declare-melange-dependency | cut -f1)"
           echo "ocaml_signal=$ocaml_signal" >> "$GITHUB_OUTPUT"
       - uses: ocaml/setup-ocaml@v3
         with:
@@ -42,7 +42,10 @@ jobs:
           echo "DUNE_CACHE=enabled" >> "$GITHUB_ENV"
           echo "DUNE_CACHE_TRANSPORT=direct" >> "$GITHUB_ENV"
       - name: Pin ocaml-signal
-        run: opam pin add -n -y ocaml-signal git+https://github.com/logseq/ocaml-signal.git#main
+        # b975304 declares the melange build dep ocaml-signal needs (its
+        # library builds in melange mode); switch back to #main once
+        # logseq/ocaml-signal#2 merges.
+        run: opam pin add -n -y ocaml-signal git+https://github.com/logseq/ocaml-signal.git#b975304facce9e1e5e3f19286db1ce5d857325b6
       - name: Install lui dependencies
         run: opam install . --deps-only --with-test -y
       - name: Schema tests
