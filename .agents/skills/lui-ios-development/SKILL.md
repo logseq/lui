@@ -59,6 +59,13 @@ An extension node's declared schema must match what the app actually mounts:
   the fingerprint is computed independently on each host (Swift, Flutter) and
   in the OCaml registry. All three must stay in sync or one platform emits
   while the other rejects.
+- Keep the schemas OCaml-declared once (see `examples/gallery/extension_schemas.ml`);
+  host files carry only the `fingerprint:` literals. `Lui_extension_check.check_registry`
+  extracts every `lui-extension-v1|`/`lui-tweak-v1|` literal from the host
+  registration sources and compares it to the canonical fingerprint the OCaml
+  registry emits — run it under `dune runtest` (`test/test_lui.ml`,
+  "extension fingerprints") so drift fails CI instead of blanking a screen.
+  The reported `expected` value is the corrected literal to paste back.
 
 ## `dyn` remounts the whole tree on every publish → render loops
 

@@ -13,7 +13,11 @@ let backend =
   }
 
 let () =
-  let app = Lui_app.create backend Model.initial Model.update View.view in
+  let app =
+    Lui_app.create_with_extensions backend
+      (Extension_schemas.registry ())
+      Model.initial Model.update View.view
+  in
   ignore (Lui_app.start app);
   ignore (Lui_app.flush app);
   ignore (Lui_app.send app Model.ToggleDisabled);
