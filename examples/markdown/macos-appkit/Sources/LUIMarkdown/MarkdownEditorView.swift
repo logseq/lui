@@ -65,7 +65,12 @@ struct MarkdownEditorView: NSViewRepresentable {
             textView.isEditable = !readonly
         }
         textView.emitEvent = { name, values in
-            try? context.emit(name: name, values: values)
+            do {
+                try context.emit(name: name, values: values)
+            } catch {
+                FileHandle.standardError.write(
+                    "emit \(name) threw: \(error)\n".data(using: .utf8)!)
+            }
         }
 
         // model → view sync: only when the model diverged from what the view
