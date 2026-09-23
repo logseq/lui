@@ -464,11 +464,7 @@ private struct LUINodeView: View {
         case .stack:
             return AnyView(LUIStackView(model: model, backend: backend))
         case .panel, .card:
-            return AnyView(
-                ZStack {
-                    children
-                }
-            )
+            return AnyView(LUISurfaceStackView(model: model, backend: backend))
         case .alert:
             return AnyView(LUIAlertView(model: model, backend: backend))
         case .bubble:
@@ -601,10 +597,23 @@ private struct LUINodeView: View {
         case .divider:
             return AnyView(LUISeparatorView(model: model))
         case .scroll:
+            let horizontal = model.property(.orientation)?.stringValue == "horizontal"
             return AnyView(
-                ScrollView {
-                    LUIVerticalScrollContent(model: model, backend: backend)
+                ScrollView(horizontal ? .horizontal : .vertical) {
+                    if horizontal {
+                        HStack(
+                            alignment: .top,
+                            spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+                        ) {
+                            ForEach(model.children, id: \.self) { childID in
+                                LUIAnyNodeView(nodeID: childID, backend: backend)
+                            }
+                        }
                         .environment(\.luiInsideScroll, true)
+                    } else {
+                        LUIVerticalScrollContent(model: model, backend: backend)
+                            .environment(\.luiInsideScroll, true)
+                    }
                 }
             )
         case .spacer:
@@ -711,6 +720,7 @@ private struct LUINodeView: View {
 private struct LUIBottomTabsView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.luiInsideScroll) private var insideScroll
 
     private var destinations: [LUINodeModel] {
         model.children.compactMap { backend.model(id: $0) }
@@ -730,7 +740,7 @@ private struct LUIBottomTabsView: View {
     }
 
     var body: some View {
-        TabView(selection: selection) {
+        let tabs = TabView(selection: selection) {
             ForEach(destinations, id: \.id) { destination in
                 LUIAnyNodeView(nodeID: destination.id, backend: backend)
                     .tag(destination.id)
@@ -744,6 +754,14 @@ private struct LUIBottomTabsView: View {
             }
         }
         .accessibilityLabel(model.accessibilityLabel(in: backend) ?? "")
+
+        // TabView has no intrinsic height; inside a ScrollView it collapses to
+        // zero. With no explicit height, fill the nearest container (the host
+        // scroll's visible frame) so callers don't have to guess a height.
+        if insideScroll && model.surfaceHeight == nil {
+            return AnyView(tabs.containerRelativeFrame(.vertical))
+        }
+        return AnyView(tabs)
     }
 }
 
@@ -2049,8 +2067,9 @@ private struct LUIAvatarView: View {
     let backend: LUIAppleBackend
 
     var body: some View {
+        let extent = CGFloat(model.surfaceWidth ?? model.surfaceHeight ?? 40)
         ZStack {
-            Color.secondary.opacity(0.16)
+            avatarBackground
             if let image = model.avatarDisplayImage(in: backend) {
                 Image(decorative: image, scale: 1)
                     .resizable()
@@ -2058,11 +2077,32 @@ private struct LUIAvatarView: View {
             } else {
                 Text(verbatim: model.text)
                     .font(.callout.weight(.medium))
+                    .foregroundStyle(avatarForeground)
             }
         }
-        .frame(width: 40, height: 40)
+        .frame(width: extent, height: extent)
         .compositingGroup()
         .clipShape(Circle())
+    }
+
+    private var avatarBackground: Color {
+        #if !SKIP
+        if let name = model.property(.background)?.stringValue,
+           let color = luiHexColor(name) {
+            return color
+        }
+        #endif
+        return Color.secondary.opacity(0.16)
+    }
+
+    private var avatarForeground: Color {
+        #if !SKIP
+        if let name = model.property(.foreground)?.stringValue,
+           let color = luiHexColor(name) {
+            return color
+        }
+        #endif
+        return .primary
     }
 }
 
@@ -3817,6 +3857,58 @@ private struct LUIColumnView: View {
     }
 }
 
+// card/panel content: children stack vertically; `cross` sets horizontal
+// alignment (leading/center/trailing), `main` distributes vertically
+// (start/center/end/space_between) the same way column does.
+private struct LUISurfaceStackView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        VStack(alignment: hAlignment, spacing: spacing) {
+            if main == "center" || main == "end" {
+                Spacer(minLength: 0)
+            }
+            ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
+                let child = backend.model(id: childID)
+                LUIAnyNodeView(nodeID: childID, backend: backend)
+                    .equatable()
+                    .frame(
+                        maxWidth: cross != "start" ? .infinity : nil,
+                        maxHeight: child?.property(.grow)?.doubleValue ?? 0 > 0
+                            ? .infinity : nil
+                    )
+                    .layoutPriority(child?.property(.grow)?.doubleValue ?? 0)
+                if main == "space_between" && index < model.children.count - 1 {
+                    Spacer(minLength: gap)
+                }
+            }
+            if main == "center" {
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var gap: CGFloat { CGFloat(model.property(.gap)?.intValue ?? 0) }
+    private var cross: String {
+        model.property(.cross)?.stringValue ?? "start"
+    }
+    private var main: String {
+        model.property(.main)?.stringValue ?? "start"
+    }
+    private var spacing: CGFloat {
+        main == "space_between" ? 0 : gap
+    }
+    private var hAlignment: HorizontalAlignment {
+        switch cross {
+        case "center": .center
+        case "end": .trailing
+        case "stretch": .leading
+        default: .leading
+        }
+    }
+}
+
 struct LUIListSection: Equatable, Identifiable {
     let headerID: Int?
     let childIDs: [Int]
@@ -4071,6 +4163,8 @@ private struct LUIVirtualListView: View {
 
 }
 
+// Each scroll axis needs its own stack: VStack for vertical, HStack for
+// horizontal (`~orientation:`horizontal`).
 struct LUIVerticalScrollContent: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
@@ -4412,7 +4506,9 @@ private struct LUISurfaceModifier: ViewModifier {
             model.property(.cornerRadius)?.intValue ?? (isSurface ? 12 : (isTabs ? 8 : 0))
         )
         let borderWidth = CGFloat(model.property(.borderWidth)?.intValue ?? (isSurface ? 1 : 0))
-        let shape = RoundedRectangle(cornerRadius: radius)
+        let shape: AnyShape = model.kind == .avatar
+            ? AnyShape(Circle())
+            : AnyShape(RoundedRectangle(cornerRadius: radius))
         let backgroundName = model.property(.background)?.stringValue
         let background = color(backgroundName) ??
             defaultBackground(isSurface: isSurface, isTabs: isTabs)
