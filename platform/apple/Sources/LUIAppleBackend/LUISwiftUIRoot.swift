@@ -559,6 +559,15 @@ private struct LUINodeView: View {
         case .spacer:
             return AnyView(Spacer())
         case .spinner:
+            #if !SKIP
+            return AnyView(
+                LUIActivitySpinnerView(style: model.spinnerStyle)
+                    .frame(
+                        width: CGFloat(model.spinnerWidth),
+                        height: CGFloat(model.spinnerHeight)
+                    )
+            )
+            #else
             return AnyView(
                 ProgressView()
                     .progressViewStyle(.circular)
@@ -568,6 +577,7 @@ private struct LUINodeView: View {
                         height: CGFloat(model.spinnerHeight)
                     )
             )
+            #endif
         case .icon:
             return AnyView(
                 LUIIconImage(
@@ -4860,4 +4870,51 @@ private struct LUIAccessibilityContainmentModifier: ViewModifier {
         }
     }
 }
+#endif
+
+#if !SKIP
+/// Indeterminate spinner backed by the platform activity indicator instead of
+/// `ProgressView`: inside `List`/`Form` cells the SwiftUI progress view keeps
+/// invalidating the collection layout and can pin the main thread at 100%.
+private struct LUIActivitySpinnerView: View {
+    let style: LUISpinnerStyle
+
+    var body: some View {
+        #if os(iOS)
+        IOSActivityIndicator(style: style)
+        #else
+        MacActivityIndicator(style: style)
+        #endif
+    }
+}
+
+#if os(iOS)
+private struct IOSActivityIndicator: UIViewRepresentable {
+    let style: LUISpinnerStyle
+
+    func makeUIView(context: Context) -> UIActivityIndicatorView {
+        let view = UIActivityIndicatorView(style: style == .large ? .large : .medium)
+        view.startAnimating()
+        return view
+    }
+
+    func updateUIView(_ uiView: UIActivityIndicatorView, context: Context) {}
+}
+#else
+private struct MacActivityIndicator: NSViewRepresentable {
+    let style: LUISpinnerStyle
+
+    func makeNSView(context: Context) -> NSProgressIndicator {
+        let view = NSProgressIndicator()
+        view.style = .spinning
+        view.controlSize = style == .large ? .large : .regular
+        view.isIndeterminate = true
+        view.isDisplayedWhenStopped = false
+        view.startAnimation(nil)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSProgressIndicator, context: Context) {}
+}
+#endif
 #endif
