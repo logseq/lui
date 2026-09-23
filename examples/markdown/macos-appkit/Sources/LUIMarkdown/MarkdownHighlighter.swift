@@ -219,7 +219,7 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         // Marker treatment: concealed everywhere except the active paragraph.
         let reveal = self.revealRange(in: text)
         for range in markerRanges {
-            if reveal == nil || !NSIntersectionRange(range, reveal!).isEmpty {
+            if reveal == nil || NSIntersectionRange(range, reveal!).length > 0 {
                 storage.addAttributes([
                     .foregroundColor: theme.markerActive
                 ], range: range)
@@ -256,8 +256,7 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
     private func trimmedContent(of line: NSRange, in text: NSString) -> NSRange {
         var range = line
         while range.length > 0,
-              CharacterSet.newlines.characterIsMember(
-                text.character(at: NSMaxRange(range) - 1)) {
+              isMember(text.character(at: NSMaxRange(range) - 1), of: .newlines) {
             range.length -= 1
         }
         return range
@@ -266,6 +265,10 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
     private func substring(_ range: NSRange, in text: NSString) -> String {
         guard range.location + range.length <= text.length else { return "" }
         return text.substring(with: range)
+    }
+
+    private func isMember(_ code: unichar, of set: CharacterSet) -> Bool {
+        Unicode.Scalar(code).map(set.contains) == true
     }
 
     private static let headingRegex = try! NSRegularExpression(
@@ -599,7 +602,6 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         // inline code — protected from everything else
         for match in Self.codeRegex.matches(in: source, range: scope) {
             let ticks = match.range(at: 1)
-            let content = match.range(at: 2)
             storage.addAttributes([
                 .font: theme.codeFont,
                 .foregroundColor: theme.codeText,

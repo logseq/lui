@@ -36,7 +36,6 @@ func markdownExtensionRegistry() -> LUIAppleExtensionRegistry {
                 AnyView(MarkdownEditorView(context: context))
             }
         )
-        try registry.freeze()
     } catch {
         assertionFailure("markdown extension registry failed: \(error)")
     }

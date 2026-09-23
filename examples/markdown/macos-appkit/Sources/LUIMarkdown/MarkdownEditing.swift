@@ -82,7 +82,7 @@ final class MarkdownTextView: NSTextView, NSTextViewDelegate {
         ])
     }
 
-    func textViewDidChange(_ notification: Notification) {
+    func textDidChange(_ notification: Notification) {
         emitTextChanged()
     }
 
@@ -178,6 +178,10 @@ final class MarkdownTextView: NSTextView, NSTextViewDelegate {
         return nsString.substring(with: NSRange(location: location, length: 1)).first
     }
 
+    private func isMember(_ code: unichar, of set: CharacterSet) -> Bool {
+        Unicode.Scalar(code).map(set.contains) == true
+    }
+
     private func insertPair(_ open: Character, _ close: Character, at location: Int) {
         let inserted = String([open, close])
         applyEdit(range: NSRange(location: location, length: 0), replacement: inserted)
@@ -204,8 +208,7 @@ final class MarkdownTextView: NSTextView, NSTextViewDelegate {
         let line = text.lineRange(for: NSRange(location: min(caret, text.length), length: 0))
         var content = line
         while content.length > 0,
-              CharacterSet.newlines.characterIsMember(
-                text.character(at: NSMaxRange(content) - 1)) {
+              isMember(text.character(at: NSMaxRange(content) - 1), of: .newlines) {
             content.length -= 1
         }
         let lineText = (content.length > 0 ? text.substring(with: content) : "") as NSString
@@ -256,7 +259,7 @@ final class MarkdownTextView: NSTextView, NSTextViewDelegate {
         // line content after the marker, excluding the trailing newline
         var tailEnd = NSMaxRange(line)
         while tailEnd > line.location + NSMaxRange(match),
-              CharacterSet.newlines.characterIsMember(text.character(at: tailEnd - 1)) {
+              isMember(text.character(at: tailEnd - 1), of: .newlines) {
             tailEnd -= 1
         }
         let rest = text.substring(with: NSRange(
@@ -316,7 +319,6 @@ final class MarkdownTextView: NSTextView, NSTextViewDelegate {
         var cursor = lines.location
         var shift = 0
         for _ in 0..<lineCount where cursor <= nsString.length {
-            let line = nsString.lineRange(for: NSRange(location: cursor, length: 0))
             if outdent {
                 var remove = 0
                 while remove < 2,
@@ -411,15 +413,15 @@ final class MarkdownTextView: NSTextView, NSTextViewDelegate {
             var end = range.location
             while start > 0 {
                 let c = text.character(at: start - 1)
-                guard !CharacterSet.whitespacesAndNewlines.characterIsMember(c),
-                      !CharacterSet.punctuationCharacters.characterIsMember(c)
+                guard !isMember(c, of: .whitespacesAndNewlines),
+                      !isMember(c, of: .punctuationCharacters)
                 else { break }
                 start -= 1
             }
             while end < text.length {
                 let c = text.character(at: end)
-                guard !CharacterSet.whitespacesAndNewlines.characterIsMember(c),
-                      !CharacterSet.punctuationCharacters.characterIsMember(c)
+                guard !isMember(c, of: .whitespacesAndNewlines),
+                      !isMember(c, of: .punctuationCharacters)
                 else { break }
                 end += 1
             }
@@ -645,7 +647,7 @@ final class MarkdownTextView: NSTextView, NSTextViewDelegate {
         guard shouldChangeText(in: range, replacementString: replacement)
         else { return }
         storage.replaceCharacters(in: range, with: replacement)
-        // didChangeText fires textViewDidChange → emits to the model
+        // didChangeText fires textDidChange → emits to the model
         didChangeText()
     }
 
