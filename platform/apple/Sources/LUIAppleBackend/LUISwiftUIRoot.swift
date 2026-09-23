@@ -2434,14 +2434,14 @@ private struct LUIMenuItemView: View {
                     }
                 }
             } label: {
-                itemLabel
+                itemLabel(expands: false)
             }
             .disabled(!model.isEnabled)
         } else {
             Button {
                 try? backend.performPress(node: model.id)
             } label: {
-                itemLabel
+                itemLabel(expands: true)
             }
             .buttonStyle(.plain)
             .disabled(!model.isEnabled)
@@ -2454,7 +2454,7 @@ private struct LUIMenuItemView: View {
             .first { $0.kind == .dropdownMenu }
     }
 
-    private var itemLabel: some View {
+    private func itemLabel(expands: Bool) -> some View {
         HStack(spacing: LUIDropdownMenuLayoutPolicy.itemSpacing) {
             if !model.buttonIconName.isEmpty {
                 LUIIconImage(
@@ -2472,7 +2472,9 @@ private struct LUIMenuItemView: View {
                     model: model,
                     usesExplicitForeground: false
                 ))
-            Spacer(minLength: LUIDropdownMenuLayoutPolicy.trailingSpacing)
+            if expands {
+                Spacer(minLength: LUIDropdownMenuLayoutPolicy.trailingSpacing)
+            }
             if model.isSelected {
                 Image(systemName: "checkmark")
                     .modifier(LUIMenuItemForegroundModifier(
@@ -2482,7 +2484,7 @@ private struct LUIMenuItemView: View {
             }
         }
         .frame(
-            maxWidth: .infinity,
+            maxWidth: expands ? .infinity : nil,
             minHeight: LUIDropdownMenuLayoutPolicy.itemMinimumHeight,
             alignment: .leading
         )
@@ -3454,9 +3456,11 @@ private struct LUIIconImage: View {
         case let .systemName(name):
             Image(systemName: name)
                 .resizable()
+                .aspectRatio(contentMode: .fit)
         case let .assetName(name):
             Image(name, bundle: bundle)
                 .resizable()
+                .aspectRatio(contentMode: .fit)
         }
     }
 }
