@@ -537,51 +537,15 @@ struct LUIRetainedTree {
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         if property == .accessibilityIdentifier { return true }
+        // Restrictive per-kind allow-lists and additive extras come from
+        // schema/components.json via LUISchemaMatrix; kinds absent from the
+        // restrictive table fall back to the shared structural rules below.
+        if let matrix = LUISchemaMatrix.restrictive[kind] {
+            return matrix.contains(property)
+        }
+        if LUISchemaMatrix.extra[kind]?.contains(property) == true { return true }
         if kind == .root { return false }
         if kind == .contextMenu { return false }
-        if kind == .accordion {
-            return property == .text || property == .selected ||
-                property == .toggleEnabled || property == .height
-        }
-        if kind == .stepper {
-            return property == .active || property == .accessibilityLabel
-        }
-        if kind == .step { return property == .text }
-        if kind == .timeline {
-            return property == .gap || property == .grow ||
-                property == .accessibilityLabel
-        }
-        if kind == .timelineItem {
-            return property == .title || property == .description ||
-                property == .meta || property == .indicator ||
-                property == .icon || property == .variant ||
-                property == .connector || property == .selected ||
-                property == .pressEnabled
-        }
-        if kind == .inputGroup {
-            return property == .accessibilityLabel || property == .width ||
-                property == .height || property == .minWidth || property == .grow
-        }
-        if kind == .inputGroupActions { return property == .gap }
-        if kind == .toast {
-            return property == .duration || property == .accessibilityLabel ||
-                property == .styleClass
-        }
-        if kind == .toolbar {
-            return property == .orientation || property == .accessibilityLabel ||
-                property == .gap || property == .styleClass
-        }
-        if kind == .bottomTabs {
-            return property == .accessibilityLabel || property == .styleClass ||
-                property == .grow || property == .width || property == .height ||
-                property == .minWidth || property == .maxWidth ||
-                property == .minHeight || property == .maxHeight
-        }
-        if kind == .bottomTab {
-            return property == .title || property == .icon || property == .selected ||
-                property == .enabled || property == .pressEnabled ||
-                property == .accessibilityIdentifier
-        }
         return switch property {
         case .main, .cross:
             kind == .row || kind == .column || kind == .list || kind == .virtualList ||
@@ -704,8 +668,7 @@ struct LUIRetainedTree {
                 kind == .tableCell || kind == .bubble || kind == .statusBar
         case .role: isTreeRow(kind) || kind == .listItem
         case .treeLevel, .expanded: isTreeRow(kind)
-        case .description: kind == .dialog
-        case .active, .title, .meta, .indicator, .connector: false
+        case .active, .title, .description, .meta, .indicator, .connector: false
         }
     }
 
