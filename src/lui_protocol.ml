@@ -748,6 +748,8 @@ let property_supported kind property =
       property = AccessibilityLabel || property = WidthValue
       || property = HeightValue || property = MinWidth || property = GrowValue
     | InputGroupActions -> property = Gap
+    | Dialog ->
+      property = DescriptionValue || common_property_supported kind property
     | _ -> common_property_supported kind property
 
 let is_finite value =
