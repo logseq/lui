@@ -791,6 +791,12 @@ and drop_node application node =
     invalid_arg "cannot drop an attached node";
   if children application node <> [] then
     invalid_arg "cannot drop a node with children";
+  (match Hashtbl.find_opt application.dynamic_segments node with
+  | Some segments ->
+    List.iter
+      (fun segment -> segment.dynamic_segment_active := false)
+      segments
+  | None -> ());
   Hashtbl.remove application.mounted_nodes node;
   Hashtbl.remove application.runtime_extension_nodes node;
   Hashtbl.remove application.runtime_properties node;
