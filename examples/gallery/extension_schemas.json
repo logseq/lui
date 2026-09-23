@@ -1,0 +1,48 @@
+{
+  "profiles": {
+    "apple": [
+      {"os": "macos", "host": "swiftui"},
+      {"os": "ios", "host": "swiftui"}
+    ],
+    "all": [
+      {"os": "android", "host": "flutter"},
+      {"os": "ios", "host": "flutter"},
+      {"os": "ios", "host": "swiftui"},
+      {"os": "linux", "host": "flutter"},
+      {"os": "macos", "host": "flutter"},
+      {"os": "macos", "host": "swiftui"},
+      {"os": "web", "host": "web"},
+      {"os": "windows", "host": "flutter"}
+    ]
+  },
+  "components": [
+    {
+      "identifier": "apple-map",
+      "profiles": "apple",
+      "standardChildren": false,
+      "children": ["apple-map-marker"],
+      "properties": [
+        {"name": "latitude", "kind": "float", "required": true},
+        {"name": "longitude", "kind": "float", "required": true},
+        {"name": "latitude-delta", "kind": "float", "required": true},
+        {"name": "longitude-delta", "kind": "float", "required": true}
+      ],
+      "events": []
+    },
+    {
+      "identifier": "apple-map-marker",
+      "profiles": "apple",
+      "standardChildren": false,
+      "children": [],
+      "properties": [
+        {"name": "title", "kind": "string", "required": true},
+        {"name": "latitude", "kind": "float", "required": true},
+        {"name": "longitude", "kind": "float", "required": true}
+      ],
+      "events": []
+    }
+  ],
+  "tweaks": [
+    {"identifier": "gallery-accent", "profiles": "all", "properties": []}
+  ]
+}
