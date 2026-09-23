@@ -2566,7 +2566,7 @@ struct LUISwiftUIBackendTests {
             LUIDialogContentPolicy.presentationStyle(styleClass: "confirmation-dialog")
                 == .confirmationDialog
         )
-        #expect(LUIDialogContentPolicy.presentationStyle(styleClass: nil) == .confirmationDialog)
+        #expect(LUIDialogContentPolicy.presentationStyle(styleClass: nil) == .alert)
     }
 
     @Test("native dialogs retain their nearest list presentation anchor")
