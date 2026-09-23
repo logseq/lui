@@ -147,3 +147,23 @@ enum LUIProperty: String, Decodable, Hashable {
     case resizeEasing = "resize-easing"
     case resizeOrigin = "resize-origin"
 }
+
+enum LUISchemaMatrix {
+    static let restrictive: [LUINodeKind: Set<LUIProperty>] = [
+        .accordion: [.text, .selected, .toggleEnabled, .height],
+        .stepper: [.active, .accessibilityLabel],
+        .step: [.text],
+        .timeline: [.gap, .grow, .accessibilityLabel],
+        .timelineItem: [.title, .description, .meta, .indicator, .icon, .variant, .connector, .selected, .pressEnabled],
+        .inputGroup: [.accessibilityLabel, .width, .height, .minWidth, .grow],
+        .inputGroupActions: [.gap],
+        .toast: [.duration, .accessibilityLabel, .styleClass],
+        .toolbar: [.orientation, .accessibilityLabel, .gap, .styleClass],
+        .bottomTabs: [.accessibilityLabel, .styleClass, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight],
+        .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled],
+    ]
+
+    static let extra: [LUINodeKind: Set<LUIProperty>] = [
+        .dialog: [.description],
+    ]
+}

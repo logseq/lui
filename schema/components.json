@@ -4,234 +4,1281 @@
     "repository": "vercel-labs/native",
     "revision": "4e015e925fc9974e2ab92840d6f8bb5a8f201c2d",
     "source": "src/primitives/canvas/ui_schema.zig",
-    "excluded": ["chart", "code", "markdown", "series", "span"]
+    "excluded": [
+      "chart",
+      "code",
+      "markdown",
+      "series",
+      "span"
+    ]
   },
   "publicElements": [
-    {"name": "row", "status": "supported"},
-    {"name": "column", "status": "supported"},
-    {"name": "stack", "status": "supported"},
-    {"name": "panel", "status": "supported"},
-    {"name": "card", "status": "supported"},
-    {"name": "scroll", "status": "supported"},
-    {"name": "list", "status": "supported"},
-    {"name": "virtual-list", "status": "supported"},
-    {"name": "grid", "status": "supported"},
-    {"name": "resizable", "status": "supported"},
-    {"name": "split", "status": "supported"},
-    {"name": "tree", "status": "supported"},
-    {"name": "tabs", "status": "supported"},
-    {"name": "bottom-tabs", "status": "supported"},
-    {"name": "bottom-tab", "status": "supported"},
-    {"name": "toggle-group", "status": "supported"},
-    {"name": "button-group", "status": "supported"},
-    {"name": "radio-group", "status": "supported"},
-    {"name": "breadcrumb", "status": "supported"},
-    {"name": "pagination", "status": "supported"},
-    {"name": "table", "status": "supported"},
-    {"name": "table-row", "status": "supported"},
-    {"name": "table-cell", "status": "supported"},
-    {"name": "dropdown-menu", "status": "supported"},
-    {"name": "menu-item", "status": "supported"},
-    {"name": "accordion", "status": "supported"},
-    {"name": "list-item", "status": "supported"},
-    {"name": "alert", "status": "supported"},
-    {"name": "bubble", "status": "supported"},
-    {"name": "reactions", "status": "supported"},
-    {"name": "dialog", "status": "supported"},
-    {"name": "drawer", "status": "supported"},
-    {"name": "sheet", "status": "supported"},
-    {"name": "tooltip", "status": "supported"},
-    {"name": "toast", "status": "supported"},
-    {"name": "toolbar", "status": "supported"},
-    {"name": "context-menu", "status": "supported"},
-    {"name": "text", "status": "supported"},
-    {"name": "badge", "status": "supported"},
-    {"name": "status-bar", "status": "supported"},
-    {"name": "icon", "status": "supported"},
-    {"name": "image", "status": "supported"},
-    {"name": "media-surface", "status": "supported"},
-    {"name": "button", "status": "supported"},
-    {"name": "toggle-button", "status": "supported"},
-    {"name": "toggle", "status": "supported"},
-    {"name": "switch", "status": "supported"},
-    {"name": "select", "status": "supported"},
-    {"name": "avatar", "status": "supported"},
-    {"name": "checkbox", "status": "supported"},
-    {"name": "radio", "status": "supported"},
-    {"name": "slider", "status": "supported"},
-    {"name": "progress", "status": "supported"},
-    {"name": "text-field", "status": "supported"},
-    {"name": "secure-field", "status": "supported"},
-    {"name": "input", "status": "supported"},
-    {"name": "search-field", "status": "supported"},
-    {"name": "combobox", "status": "supported"},
-    {"name": "textarea", "status": "supported"},
-    {"name": "separator", "status": "supported"},
-    {"name": "spacer", "status": "supported"},
-    {"name": "skeleton", "status": "supported"},
-    {"name": "spinner", "status": "supported"},
-    {"name": "stepper", "status": "supported"},
-    {"name": "step", "status": "supported"},
-    {"name": "timeline", "status": "supported"},
-    {"name": "timeline-item", "status": "supported"},
-    {"name": "input-group", "status": "supported"},
-    {"name": "input-group-actions", "status": "supported"}
+    {
+      "name": "row",
+      "status": "supported"
+    },
+    {
+      "name": "column",
+      "status": "supported"
+    },
+    {
+      "name": "stack",
+      "status": "supported"
+    },
+    {
+      "name": "panel",
+      "status": "supported"
+    },
+    {
+      "name": "card",
+      "status": "supported"
+    },
+    {
+      "name": "scroll",
+      "status": "supported"
+    },
+    {
+      "name": "list",
+      "status": "supported"
+    },
+    {
+      "name": "virtual-list",
+      "status": "supported"
+    },
+    {
+      "name": "grid",
+      "status": "supported"
+    },
+    {
+      "name": "resizable",
+      "status": "supported"
+    },
+    {
+      "name": "split",
+      "status": "supported"
+    },
+    {
+      "name": "tree",
+      "status": "supported"
+    },
+    {
+      "name": "tabs",
+      "status": "supported"
+    },
+    {
+      "name": "bottom-tabs",
+      "status": "supported"
+    },
+    {
+      "name": "bottom-tab",
+      "status": "supported"
+    },
+    {
+      "name": "toggle-group",
+      "status": "supported"
+    },
+    {
+      "name": "button-group",
+      "status": "supported"
+    },
+    {
+      "name": "radio-group",
+      "status": "supported"
+    },
+    {
+      "name": "breadcrumb",
+      "status": "supported"
+    },
+    {
+      "name": "pagination",
+      "status": "supported"
+    },
+    {
+      "name": "table",
+      "status": "supported"
+    },
+    {
+      "name": "table-row",
+      "status": "supported"
+    },
+    {
+      "name": "table-cell",
+      "status": "supported"
+    },
+    {
+      "name": "dropdown-menu",
+      "status": "supported"
+    },
+    {
+      "name": "menu-item",
+      "status": "supported"
+    },
+    {
+      "name": "accordion",
+      "status": "supported"
+    },
+    {
+      "name": "list-item",
+      "status": "supported"
+    },
+    {
+      "name": "alert",
+      "status": "supported"
+    },
+    {
+      "name": "bubble",
+      "status": "supported"
+    },
+    {
+      "name": "reactions",
+      "status": "supported"
+    },
+    {
+      "name": "dialog",
+      "status": "supported"
+    },
+    {
+      "name": "drawer",
+      "status": "supported"
+    },
+    {
+      "name": "sheet",
+      "status": "supported"
+    },
+    {
+      "name": "tooltip",
+      "status": "supported"
+    },
+    {
+      "name": "toast",
+      "status": "supported"
+    },
+    {
+      "name": "toolbar",
+      "status": "supported"
+    },
+    {
+      "name": "context-menu",
+      "status": "supported"
+    },
+    {
+      "name": "text",
+      "status": "supported"
+    },
+    {
+      "name": "badge",
+      "status": "supported"
+    },
+    {
+      "name": "status-bar",
+      "status": "supported"
+    },
+    {
+      "name": "icon",
+      "status": "supported"
+    },
+    {
+      "name": "image",
+      "status": "supported"
+    },
+    {
+      "name": "media-surface",
+      "status": "supported"
+    },
+    {
+      "name": "button",
+      "status": "supported"
+    },
+    {
+      "name": "toggle-button",
+      "status": "supported"
+    },
+    {
+      "name": "toggle",
+      "status": "supported"
+    },
+    {
+      "name": "switch",
+      "status": "supported"
+    },
+    {
+      "name": "select",
+      "status": "supported"
+    },
+    {
+      "name": "avatar",
+      "status": "supported"
+    },
+    {
+      "name": "checkbox",
+      "status": "supported"
+    },
+    {
+      "name": "radio",
+      "status": "supported"
+    },
+    {
+      "name": "slider",
+      "status": "supported"
+    },
+    {
+      "name": "progress",
+      "status": "supported"
+    },
+    {
+      "name": "text-field",
+      "status": "supported"
+    },
+    {
+      "name": "secure-field",
+      "status": "supported"
+    },
+    {
+      "name": "input",
+      "status": "supported"
+    },
+    {
+      "name": "search-field",
+      "status": "supported"
+    },
+    {
+      "name": "combobox",
+      "status": "supported"
+    },
+    {
+      "name": "textarea",
+      "status": "supported"
+    },
+    {
+      "name": "separator",
+      "status": "supported"
+    },
+    {
+      "name": "spacer",
+      "status": "supported"
+    },
+    {
+      "name": "skeleton",
+      "status": "supported"
+    },
+    {
+      "name": "spinner",
+      "status": "supported"
+    },
+    {
+      "name": "stepper",
+      "status": "supported"
+    },
+    {
+      "name": "step",
+      "status": "supported"
+    },
+    {
+      "name": "timeline",
+      "status": "supported"
+    },
+    {
+      "name": "timeline-item",
+      "status": "supported"
+    },
+    {
+      "name": "input-group",
+      "status": "supported"
+    },
+    {
+      "name": "input-group-actions",
+      "status": "supported"
+    }
   ],
   "nodeKinds": [
-    {"lg": "Root", "wire": "root", "dart": "root", "swift": "root", "container": true},
-    {"lg": "Row", "wire": "row", "dart": "row", "swift": "row", "container": true},
-    {"lg": "Column", "wire": "column", "dart": "column", "swift": "column", "container": true},
-    {"lg": "Grid", "wire": "grid", "dart": "grid", "swift": "grid", "container": true},
-    {"lg": "Stack", "wire": "stack", "dart": "stack", "swift": "stack", "container": true},
-    {"lg": "Panel", "wire": "panel", "dart": "panel", "swift": "panel", "container": true},
-    {"lg": "Card", "wire": "card", "dart": "card", "swift": "card", "container": true},
-    {"lg": "Alert", "wire": "alert", "dart": "alert", "swift": "alert", "container": true},
-    {"lg": "Bubble", "wire": "bubble", "dart": "bubble", "swift": "bubble", "container": true},
-    {"lg": "Box", "wire": "box", "dart": "box", "swift": "box", "container": true},
-    {"lg": "Text", "wire": "text", "dart": "text", "swift": "text", "container": false},
-    {"lg": "Heading", "wire": "heading", "dart": "heading", "swift": "heading", "container": false},
-    {"lg": "Paragraph", "wire": "paragraph", "dart": "paragraph", "swift": "paragraph", "container": false},
-    {"lg": "Label", "wire": "label", "dart": "label", "swift": "label", "container": false},
-    {"lg": "Button", "wire": "button", "dart": "button", "swift": "button", "container": false},
-    {"lg": "ToggleButton", "wire": "toggle-button", "dart": "toggleButton", "swift": "toggleButton", "container": false},
-    {"lg": "Toggle", "wire": "toggle", "dart": "toggle", "swift": "toggle", "container": false},
-    {"lg": "RadioGroup", "wire": "radio-group", "dart": "radioGroup", "swift": "radioGroup", "container": true},
-    {"lg": "Radio", "wire": "radio", "dart": "radio", "swift": "radio", "container": false},
-    {"lg": "Slider", "wire": "slider", "dart": "slider", "swift": "slider", "container": false},
-    {"lg": "TextField", "wire": "text-field", "dart": "textField", "swift": "textField", "container": false},
-    {"lg": "SecureField", "wire": "secure-field", "dart": "secureField", "swift": "secureField", "container": false},
-    {"lg": "Input", "wire": "input", "dart": "input", "swift": "input", "container": false},
-    {"lg": "SearchField", "wire": "search-field", "dart": "searchField", "swift": "searchField", "container": false},
-    {"lg": "Textarea", "wire": "textarea", "dart": "textarea", "swift": "textarea", "container": false},
-    {"lg": "Checkbox", "wire": "checkbox", "dart": "checkbox", "swift": "checkbox", "container": false},
-    {"lg": "SwitchControl", "wire": "switch", "dart": "switchControl", "swift": "switchControl", "container": false},
-    {"lg": "Progress", "wire": "progress", "dart": "progress", "swift": "progress", "container": false},
-    {"lg": "Divider", "wire": "divider", "dart": "divider", "swift": "divider", "container": false},
-    {"lg": "Scroll", "wire": "scroll", "dart": "scroll", "swift": "scroll", "container": true},
-    {"lg": "ListContainer", "wire": "list", "dart": "list", "swift": "list", "container": true},
-    {"lg": "VirtualList", "wire": "virtual-list", "dart": "virtualList", "swift": "virtualList", "container": true},
-    {"lg": "Tabs", "wire": "tabs", "dart": "tabs", "swift": "tabs", "container": true},
-    {"lg": "BottomTabs", "wire": "bottom-tabs", "dart": "bottomTabs", "swift": "bottomTabs", "container": true},
-    {"lg": "BottomTab", "wire": "bottom-tab", "dart": "bottomTab", "swift": "bottomTab", "container": true},
-    {"lg": "ButtonGroup", "wire": "button-group", "dart": "buttonGroup", "swift": "buttonGroup", "container": true},
-    {"lg": "ToggleGroup", "wire": "toggle-group", "dart": "toggleGroup", "swift": "toggleGroup", "container": true},
-    {"lg": "Spacer", "wire": "spacer", "dart": "spacer", "swift": "spacer", "container": false},
-    {"lg": "Spinner", "wire": "spinner", "dart": "spinner", "swift": "spinner", "container": false},
-    {"lg": "Icon", "wire": "icon", "dart": "icon", "swift": "icon", "container": false},
-    {"lg": "Select", "wire": "select", "dart": "select", "swift": "select", "container": false},
-    {"lg": "Combobox", "wire": "combobox", "dart": "combobox", "swift": "combobox", "container": false},
-    {"lg": "DropdownMenu", "wire": "dropdown-menu", "dart": "dropdownMenu", "swift": "dropdownMenu", "container": true},
-    {"lg": "ContextMenu", "wire": "context-menu", "dart": "contextMenu", "swift": "contextMenu", "container": true},
-    {"lg": "MenuItem", "wire": "menu-item", "dart": "menuItem", "swift": "menuItem", "container": true},
-    {"lg": "ListItem", "wire": "list-item", "dart": "listItem", "swift": "listItem", "container": true},
-    {"lg": "Avatar", "wire": "avatar", "dart": "avatar", "swift": "avatar", "container": false},
-    {"lg": "Image", "wire": "image", "dart": "image", "swift": "image", "container": false},
-    {"lg": "MediaSurface", "wire": "media-surface", "dart": "mediaSurface", "swift": "mediaSurface", "container": false},
-    {"lg": "Stepper", "wire": "stepper", "dart": "stepper", "swift": "stepper", "container": true},
-    {"lg": "Step", "wire": "step", "dart": "step", "swift": "step", "container": false},
-    {"lg": "Timeline", "wire": "timeline", "dart": "timeline", "swift": "timeline", "container": true},
-    {"lg": "TimelineItem", "wire": "timeline-item", "dart": "timelineItem", "swift": "timelineItem", "container": false},
-    {"lg": "InputGroup", "wire": "input-group", "dart": "inputGroup", "swift": "inputGroup", "container": true},
-    {"lg": "InputGroupActions", "wire": "input-group-actions", "dart": "inputGroupActions", "swift": "inputGroupActions", "container": true},
-    {"lg": "Breadcrumb", "wire": "breadcrumb", "dart": "breadcrumb", "swift": "breadcrumb", "container": true},
-    {"lg": "Pagination", "wire": "pagination", "dart": "pagination", "swift": "pagination", "container": true},
-    {"lg": "Accordion", "wire": "accordion", "dart": "accordion", "swift": "accordion", "container": true},
-    {"lg": "Table", "wire": "table", "dart": "table", "swift": "table", "container": true},
-    {"lg": "TableRow", "wire": "table-row", "dart": "tableRow", "swift": "tableRow", "container": true},
-    {"lg": "TableCell", "wire": "table-cell", "dart": "tableCell", "swift": "tableCell", "container": false},
-    {"lg": "Tree", "wire": "tree", "dart": "tree", "swift": "tree", "container": true},
-    {"lg": "Resizable", "wire": "resizable", "dart": "resizable", "swift": "resizable", "container": true},
-    {"lg": "Split", "wire": "split", "dart": "split", "swift": "split", "container": true},
-    {"lg": "Dialog", "wire": "dialog", "dart": "dialog", "swift": "dialog", "container": true},
-    {"lg": "Drawer", "wire": "drawer", "dart": "drawer", "swift": "drawer", "container": true},
-    {"lg": "Sheet", "wire": "sheet", "dart": "sheet", "swift": "sheet", "container": true},
-    {"lg": "Tooltip", "wire": "tooltip", "dart": "tooltip", "swift": "tooltip", "container": false},
-    {"lg": "Toast", "wire": "toast", "dart": "toast", "swift": "toast", "container": true},
-    {"lg": "Toolbar", "wire": "toolbar", "dart": "toolbar", "swift": "toolbar", "container": true},
-    {"lg": "StatusBar", "wire": "status-bar", "dart": "statusBar", "swift": "statusBar", "container": false}
+    {
+      "lg": "Root",
+      "wire": "root",
+      "dart": "root",
+      "swift": "root",
+      "container": true
+    },
+    {
+      "lg": "Row",
+      "wire": "row",
+      "dart": "row",
+      "swift": "row",
+      "container": true
+    },
+    {
+      "lg": "Column",
+      "wire": "column",
+      "dart": "column",
+      "swift": "column",
+      "container": true
+    },
+    {
+      "lg": "Grid",
+      "wire": "grid",
+      "dart": "grid",
+      "swift": "grid",
+      "container": true
+    },
+    {
+      "lg": "Stack",
+      "wire": "stack",
+      "dart": "stack",
+      "swift": "stack",
+      "container": true
+    },
+    {
+      "lg": "Panel",
+      "wire": "panel",
+      "dart": "panel",
+      "swift": "panel",
+      "container": true
+    },
+    {
+      "lg": "Card",
+      "wire": "card",
+      "dart": "card",
+      "swift": "card",
+      "container": true
+    },
+    {
+      "lg": "Alert",
+      "wire": "alert",
+      "dart": "alert",
+      "swift": "alert",
+      "container": true
+    },
+    {
+      "lg": "Bubble",
+      "wire": "bubble",
+      "dart": "bubble",
+      "swift": "bubble",
+      "container": true
+    },
+    {
+      "lg": "Box",
+      "wire": "box",
+      "dart": "box",
+      "swift": "box",
+      "container": true
+    },
+    {
+      "lg": "Text",
+      "wire": "text",
+      "dart": "text",
+      "swift": "text",
+      "container": false
+    },
+    {
+      "lg": "Heading",
+      "wire": "heading",
+      "dart": "heading",
+      "swift": "heading",
+      "container": false
+    },
+    {
+      "lg": "Paragraph",
+      "wire": "paragraph",
+      "dart": "paragraph",
+      "swift": "paragraph",
+      "container": false
+    },
+    {
+      "lg": "Label",
+      "wire": "label",
+      "dart": "label",
+      "swift": "label",
+      "container": false
+    },
+    {
+      "lg": "Button",
+      "wire": "button",
+      "dart": "button",
+      "swift": "button",
+      "container": false
+    },
+    {
+      "lg": "ToggleButton",
+      "wire": "toggle-button",
+      "dart": "toggleButton",
+      "swift": "toggleButton",
+      "container": false
+    },
+    {
+      "lg": "Toggle",
+      "wire": "toggle",
+      "dart": "toggle",
+      "swift": "toggle",
+      "container": false
+    },
+    {
+      "lg": "RadioGroup",
+      "wire": "radio-group",
+      "dart": "radioGroup",
+      "swift": "radioGroup",
+      "container": true
+    },
+    {
+      "lg": "Radio",
+      "wire": "radio",
+      "dart": "radio",
+      "swift": "radio",
+      "container": false
+    },
+    {
+      "lg": "Slider",
+      "wire": "slider",
+      "dart": "slider",
+      "swift": "slider",
+      "container": false
+    },
+    {
+      "lg": "TextField",
+      "wire": "text-field",
+      "dart": "textField",
+      "swift": "textField",
+      "container": false
+    },
+    {
+      "lg": "SecureField",
+      "wire": "secure-field",
+      "dart": "secureField",
+      "swift": "secureField",
+      "container": false
+    },
+    {
+      "lg": "Input",
+      "wire": "input",
+      "dart": "input",
+      "swift": "input",
+      "container": false
+    },
+    {
+      "lg": "SearchField",
+      "wire": "search-field",
+      "dart": "searchField",
+      "swift": "searchField",
+      "container": false
+    },
+    {
+      "lg": "Textarea",
+      "wire": "textarea",
+      "dart": "textarea",
+      "swift": "textarea",
+      "container": false
+    },
+    {
+      "lg": "Checkbox",
+      "wire": "checkbox",
+      "dart": "checkbox",
+      "swift": "checkbox",
+      "container": false
+    },
+    {
+      "lg": "SwitchControl",
+      "wire": "switch",
+      "dart": "switchControl",
+      "swift": "switchControl",
+      "container": false
+    },
+    {
+      "lg": "Progress",
+      "wire": "progress",
+      "dart": "progress",
+      "swift": "progress",
+      "container": false
+    },
+    {
+      "lg": "Divider",
+      "wire": "divider",
+      "dart": "divider",
+      "swift": "divider",
+      "container": false
+    },
+    {
+      "lg": "Scroll",
+      "wire": "scroll",
+      "dart": "scroll",
+      "swift": "scroll",
+      "container": true
+    },
+    {
+      "lg": "ListContainer",
+      "wire": "list",
+      "dart": "list",
+      "swift": "list",
+      "container": true
+    },
+    {
+      "lg": "VirtualList",
+      "wire": "virtual-list",
+      "dart": "virtualList",
+      "swift": "virtualList",
+      "container": true
+    },
+    {
+      "lg": "Tabs",
+      "wire": "tabs",
+      "dart": "tabs",
+      "swift": "tabs",
+      "container": true
+    },
+    {
+      "lg": "BottomTabs",
+      "wire": "bottom-tabs",
+      "dart": "bottomTabs",
+      "swift": "bottomTabs",
+      "container": true
+    },
+    {
+      "lg": "BottomTab",
+      "wire": "bottom-tab",
+      "dart": "bottomTab",
+      "swift": "bottomTab",
+      "container": true
+    },
+    {
+      "lg": "ButtonGroup",
+      "wire": "button-group",
+      "dart": "buttonGroup",
+      "swift": "buttonGroup",
+      "container": true
+    },
+    {
+      "lg": "ToggleGroup",
+      "wire": "toggle-group",
+      "dart": "toggleGroup",
+      "swift": "toggleGroup",
+      "container": true
+    },
+    {
+      "lg": "Spacer",
+      "wire": "spacer",
+      "dart": "spacer",
+      "swift": "spacer",
+      "container": false
+    },
+    {
+      "lg": "Spinner",
+      "wire": "spinner",
+      "dart": "spinner",
+      "swift": "spinner",
+      "container": false
+    },
+    {
+      "lg": "Icon",
+      "wire": "icon",
+      "dart": "icon",
+      "swift": "icon",
+      "container": false
+    },
+    {
+      "lg": "Select",
+      "wire": "select",
+      "dart": "select",
+      "swift": "select",
+      "container": false
+    },
+    {
+      "lg": "Combobox",
+      "wire": "combobox",
+      "dart": "combobox",
+      "swift": "combobox",
+      "container": false
+    },
+    {
+      "lg": "DropdownMenu",
+      "wire": "dropdown-menu",
+      "dart": "dropdownMenu",
+      "swift": "dropdownMenu",
+      "container": true
+    },
+    {
+      "lg": "ContextMenu",
+      "wire": "context-menu",
+      "dart": "contextMenu",
+      "swift": "contextMenu",
+      "container": true
+    },
+    {
+      "lg": "MenuItem",
+      "wire": "menu-item",
+      "dart": "menuItem",
+      "swift": "menuItem",
+      "container": true
+    },
+    {
+      "lg": "ListItem",
+      "wire": "list-item",
+      "dart": "listItem",
+      "swift": "listItem",
+      "container": true
+    },
+    {
+      "lg": "Avatar",
+      "wire": "avatar",
+      "dart": "avatar",
+      "swift": "avatar",
+      "container": false
+    },
+    {
+      "lg": "Image",
+      "wire": "image",
+      "dart": "image",
+      "swift": "image",
+      "container": false
+    },
+    {
+      "lg": "MediaSurface",
+      "wire": "media-surface",
+      "dart": "mediaSurface",
+      "swift": "mediaSurface",
+      "container": false
+    },
+    {
+      "lg": "Stepper",
+      "wire": "stepper",
+      "dart": "stepper",
+      "swift": "stepper",
+      "container": true
+    },
+    {
+      "lg": "Step",
+      "wire": "step",
+      "dart": "step",
+      "swift": "step",
+      "container": false
+    },
+    {
+      "lg": "Timeline",
+      "wire": "timeline",
+      "dart": "timeline",
+      "swift": "timeline",
+      "container": true
+    },
+    {
+      "lg": "TimelineItem",
+      "wire": "timeline-item",
+      "dart": "timelineItem",
+      "swift": "timelineItem",
+      "container": false
+    },
+    {
+      "lg": "InputGroup",
+      "wire": "input-group",
+      "dart": "inputGroup",
+      "swift": "inputGroup",
+      "container": true
+    },
+    {
+      "lg": "InputGroupActions",
+      "wire": "input-group-actions",
+      "dart": "inputGroupActions",
+      "swift": "inputGroupActions",
+      "container": true
+    },
+    {
+      "lg": "Breadcrumb",
+      "wire": "breadcrumb",
+      "dart": "breadcrumb",
+      "swift": "breadcrumb",
+      "container": true
+    },
+    {
+      "lg": "Pagination",
+      "wire": "pagination",
+      "dart": "pagination",
+      "swift": "pagination",
+      "container": true
+    },
+    {
+      "lg": "Accordion",
+      "wire": "accordion",
+      "dart": "accordion",
+      "swift": "accordion",
+      "container": true
+    },
+    {
+      "lg": "Table",
+      "wire": "table",
+      "dart": "table",
+      "swift": "table",
+      "container": true
+    },
+    {
+      "lg": "TableRow",
+      "wire": "table-row",
+      "dart": "tableRow",
+      "swift": "tableRow",
+      "container": true
+    },
+    {
+      "lg": "TableCell",
+      "wire": "table-cell",
+      "dart": "tableCell",
+      "swift": "tableCell",
+      "container": false
+    },
+    {
+      "lg": "Tree",
+      "wire": "tree",
+      "dart": "tree",
+      "swift": "tree",
+      "container": true
+    },
+    {
+      "lg": "Resizable",
+      "wire": "resizable",
+      "dart": "resizable",
+      "swift": "resizable",
+      "container": true
+    },
+    {
+      "lg": "Split",
+      "wire": "split",
+      "dart": "split",
+      "swift": "split",
+      "container": true
+    },
+    {
+      "lg": "Dialog",
+      "wire": "dialog",
+      "dart": "dialog",
+      "swift": "dialog",
+      "container": true
+    },
+    {
+      "lg": "Drawer",
+      "wire": "drawer",
+      "dart": "drawer",
+      "swift": "drawer",
+      "container": true
+    },
+    {
+      "lg": "Sheet",
+      "wire": "sheet",
+      "dart": "sheet",
+      "swift": "sheet",
+      "container": true
+    },
+    {
+      "lg": "Tooltip",
+      "wire": "tooltip",
+      "dart": "tooltip",
+      "swift": "tooltip",
+      "container": false
+    },
+    {
+      "lg": "Toast",
+      "wire": "toast",
+      "dart": "toast",
+      "swift": "toast",
+      "container": true
+    },
+    {
+      "lg": "Toolbar",
+      "wire": "toolbar",
+      "dart": "toolbar",
+      "swift": "toolbar",
+      "container": true
+    },
+    {
+      "lg": "StatusBar",
+      "wire": "status-bar",
+      "dart": "statusBar",
+      "swift": "statusBar",
+      "container": false
+    }
   ],
   "properties": [
-    {"lg": "TextValue", "wire": "text", "swift": "text"},
-    {"lg": "Enabled", "wire": "enabled", "swift": "enabled"},
-    {"lg": "Gap", "wire": "gap", "swift": "gap"},
-    {"lg": "MainAlignment", "wire": "main", "swift": "main"},
-    {"lg": "CrossAlignment", "wire": "cross", "swift": "cross"},
-    {"lg": "GrowValue", "wire": "grow", "swift": "grow"},
-    {"lg": "GridColumns", "wire": "columns", "swift": "columns"},
-    {"lg": "PaddingValue", "wire": "padding", "swift": "padding"},
-    {"lg": "PaddingHorizontal", "wire": "padding-horizontal", "swift": "paddingHorizontal"},
-    {"lg": "PaddingVertical", "wire": "padding-vertical", "swift": "paddingVertical"},
-    {"lg": "BackgroundValue", "wire": "background", "swift": "background"},
-    {"lg": "ForegroundValue", "wire": "foreground", "swift": "foreground"},
-    {"lg": "BorderColorValue", "wire": "border-color", "swift": "borderColor"},
-    {"lg": "BorderWidth", "wire": "border-width", "swift": "borderWidth"},
-    {"lg": "CornerRadius", "wire": "corner-radius", "swift": "cornerRadius"},
-    {"lg": "WidthValue", "wire": "width", "swift": "width"},
-    {"lg": "HeightValue", "wire": "height", "swift": "height"},
-    {"lg": "MinWidth", "wire": "min-width", "swift": "minWidth"},
-    {"lg": "MaxWidth", "wire": "max-width", "swift": "maxWidth"},
-    {"lg": "MinHeight", "wire": "min-height", "swift": "minHeight"},
-    {"lg": "MaxHeight", "wire": "max-height", "swift": "maxHeight"},
-    {"lg": "ContainerRelativeFrameValue", "wire": "container-relative-frame", "swift": "containerRelativeFrame"},
-    {"lg": "ContainerRelativeFrameInset", "wire": "container-relative-frame-inset", "swift": "containerRelativeFrameInset"},
-    {"lg": "PlaceholderValue", "wire": "placeholder", "swift": "placeholder"},
-    {"lg": "AccessibilityLabel", "wire": "accessibility-label", "swift": "accessibilityLabel"},
-    {"lg": "AccessibilityIdentifier", "wire": "accessibility-identifier", "swift": "accessibilityIdentifier"},
-    {"lg": "StyleClass", "wire": "style-class", "swift": "styleClass"},
-    {"lg": "HeadingLevel", "wire": "heading-level", "swift": "headingLevel"},
-    {"lg": "Checked", "wire": "checked", "swift": "checked"},
-    {"lg": "ProgressValue", "wire": "value", "swift": "progressValue"},
-    {"lg": "OrientationValue", "wire": "orientation", "swift": "orientation"},
-    {"lg": "SizeValue", "wire": "size", "swift": "size"},
-    {"lg": "IconName", "wire": "name", "swift": "name"},
-    {"lg": "VariantValue", "wire": "variant", "swift": "variant"},
-    {"lg": "InlineIconName", "wire": "icon", "swift": "icon"},
-    {"lg": "IconPlacementValue", "wire": "icon-placement", "swift": "iconPlacement"},
-    {"lg": "Selected", "wire": "selected", "swift": "selected"},
-    {"lg": "Autofocus", "wire": "autofocus", "swift": "autofocus"},
-    {"lg": "SubmitOnEnter", "wire": "submit-on-enter", "swift": "submitOnEnter"},
-    {"lg": "LongPressEnabled", "wire": "long-press-enabled", "swift": "longPressEnabled"},
-    {"lg": "ChangeEnabled", "wire": "change-enabled", "swift": "changeEnabled"},
-    {"lg": "ToggleEnabled", "wire": "toggle-enabled", "swift": "toggleEnabled"},
-    {"lg": "PressEnabled", "wire": "press-enabled", "swift": "pressEnabled"},
-    {"lg": "SubmitEnabled", "wire": "submit-enabled", "swift": "submitEnabled"},
-    {"lg": "DoublePressEnabled", "wire": "double-press-enabled", "swift": "doublePressEnabled"},
-    {"lg": "AppearEnabled", "wire": "appear-enabled", "swift": "appearEnabled"},
-    {"lg": "ImageIdValue", "wire": "image", "swift": "image"},
-    {"lg": "SurfaceIdValue", "wire": "surface", "swift": "surface"},
-    {"lg": "ActiveIndex", "wire": "active", "swift": "active"},
-    {"lg": "TitleValue", "wire": "title", "swift": "title"},
-    {"lg": "DescriptionValue", "wire": "description", "swift": "description"},
-    {"lg": "MetaValue", "wire": "meta", "swift": "meta"},
-    {"lg": "IndicatorValue", "wire": "indicator", "swift": "indicator"},
-    {"lg": "Connector", "wire": "connector", "swift": "connector"},
-    {"lg": "SourceX", "wire": "source-x", "swift": "sourceX"},
-    {"lg": "SourceY", "wire": "source-y", "swift": "sourceY"},
-    {"lg": "SourceWidth", "wire": "source-width", "swift": "sourceWidth"},
-    {"lg": "SourceHeight", "wire": "source-height", "swift": "sourceHeight"},
-    {"lg": "AnchorValue", "wire": "anchor", "swift": "anchor"},
-    {"lg": "AnchorAlignmentValue", "wire": "anchor-alignment", "swift": "anchorAlignment"},
-    {"lg": "AnchorOffset", "wire": "anchor-offset", "swift": "anchorOffset"},
-    {"lg": "TooltipDelay", "wire": "tooltip-delay", "swift": "tooltipDelay"},
-    {"lg": "DurationValue", "wire": "duration", "swift": "duration"},
-    {"lg": "TextAlignment", "wire": "text-alignment", "swift": "textAlignment"},
-    {"lg": "RoleValue", "wire": "role", "swift": "role"},
-    {"lg": "TreeLevel", "wire": "tree-level", "swift": "treeLevel"},
-    {"lg": "Expanded", "wire": "expanded", "swift": "expanded"},
-    {"lg": "ResizeDuration", "wire": "resize-duration", "swift": "resizeDuration"},
-    {"lg": "ResizeEasing", "wire": "resize-easing", "swift": "resizeEasing"},
-    {"lg": "ResizeOrigin", "wire": "resize-origin", "swift": "resizeOrigin"}
+    {
+      "lg": "TextValue",
+      "wire": "text",
+      "swift": "text"
+    },
+    {
+      "lg": "Enabled",
+      "wire": "enabled",
+      "swift": "enabled"
+    },
+    {
+      "lg": "Gap",
+      "wire": "gap",
+      "swift": "gap"
+    },
+    {
+      "lg": "MainAlignment",
+      "wire": "main",
+      "swift": "main"
+    },
+    {
+      "lg": "CrossAlignment",
+      "wire": "cross",
+      "swift": "cross"
+    },
+    {
+      "lg": "GrowValue",
+      "wire": "grow",
+      "swift": "grow"
+    },
+    {
+      "lg": "GridColumns",
+      "wire": "columns",
+      "swift": "columns"
+    },
+    {
+      "lg": "PaddingValue",
+      "wire": "padding",
+      "swift": "padding"
+    },
+    {
+      "lg": "PaddingHorizontal",
+      "wire": "padding-horizontal",
+      "swift": "paddingHorizontal"
+    },
+    {
+      "lg": "PaddingVertical",
+      "wire": "padding-vertical",
+      "swift": "paddingVertical"
+    },
+    {
+      "lg": "BackgroundValue",
+      "wire": "background",
+      "swift": "background"
+    },
+    {
+      "lg": "ForegroundValue",
+      "wire": "foreground",
+      "swift": "foreground"
+    },
+    {
+      "lg": "BorderColorValue",
+      "wire": "border-color",
+      "swift": "borderColor"
+    },
+    {
+      "lg": "BorderWidth",
+      "wire": "border-width",
+      "swift": "borderWidth"
+    },
+    {
+      "lg": "CornerRadius",
+      "wire": "corner-radius",
+      "swift": "cornerRadius"
+    },
+    {
+      "lg": "WidthValue",
+      "wire": "width",
+      "swift": "width"
+    },
+    {
+      "lg": "HeightValue",
+      "wire": "height",
+      "swift": "height"
+    },
+    {
+      "lg": "MinWidth",
+      "wire": "min-width",
+      "swift": "minWidth"
+    },
+    {
+      "lg": "MaxWidth",
+      "wire": "max-width",
+      "swift": "maxWidth"
+    },
+    {
+      "lg": "MinHeight",
+      "wire": "min-height",
+      "swift": "minHeight"
+    },
+    {
+      "lg": "MaxHeight",
+      "wire": "max-height",
+      "swift": "maxHeight"
+    },
+    {
+      "lg": "ContainerRelativeFrameValue",
+      "wire": "container-relative-frame",
+      "swift": "containerRelativeFrame"
+    },
+    {
+      "lg": "ContainerRelativeFrameInset",
+      "wire": "container-relative-frame-inset",
+      "swift": "containerRelativeFrameInset"
+    },
+    {
+      "lg": "PlaceholderValue",
+      "wire": "placeholder",
+      "swift": "placeholder"
+    },
+    {
+      "lg": "AccessibilityLabel",
+      "wire": "accessibility-label",
+      "swift": "accessibilityLabel"
+    },
+    {
+      "lg": "AccessibilityIdentifier",
+      "wire": "accessibility-identifier",
+      "swift": "accessibilityIdentifier"
+    },
+    {
+      "lg": "StyleClass",
+      "wire": "style-class",
+      "swift": "styleClass"
+    },
+    {
+      "lg": "HeadingLevel",
+      "wire": "heading-level",
+      "swift": "headingLevel"
+    },
+    {
+      "lg": "Checked",
+      "wire": "checked",
+      "swift": "checked"
+    },
+    {
+      "lg": "ProgressValue",
+      "wire": "value",
+      "swift": "progressValue"
+    },
+    {
+      "lg": "OrientationValue",
+      "wire": "orientation",
+      "swift": "orientation"
+    },
+    {
+      "lg": "SizeValue",
+      "wire": "size",
+      "swift": "size"
+    },
+    {
+      "lg": "IconName",
+      "wire": "name",
+      "swift": "name"
+    },
+    {
+      "lg": "VariantValue",
+      "wire": "variant",
+      "swift": "variant"
+    },
+    {
+      "lg": "InlineIconName",
+      "wire": "icon",
+      "swift": "icon"
+    },
+    {
+      "lg": "IconPlacementValue",
+      "wire": "icon-placement",
+      "swift": "iconPlacement"
+    },
+    {
+      "lg": "Selected",
+      "wire": "selected",
+      "swift": "selected"
+    },
+    {
+      "lg": "Autofocus",
+      "wire": "autofocus",
+      "swift": "autofocus"
+    },
+    {
+      "lg": "SubmitOnEnter",
+      "wire": "submit-on-enter",
+      "swift": "submitOnEnter"
+    },
+    {
+      "lg": "LongPressEnabled",
+      "wire": "long-press-enabled",
+      "swift": "longPressEnabled"
+    },
+    {
+      "lg": "ChangeEnabled",
+      "wire": "change-enabled",
+      "swift": "changeEnabled"
+    },
+    {
+      "lg": "ToggleEnabled",
+      "wire": "toggle-enabled",
+      "swift": "toggleEnabled"
+    },
+    {
+      "lg": "PressEnabled",
+      "wire": "press-enabled",
+      "swift": "pressEnabled"
+    },
+    {
+      "lg": "SubmitEnabled",
+      "wire": "submit-enabled",
+      "swift": "submitEnabled"
+    },
+    {
+      "lg": "DoublePressEnabled",
+      "wire": "double-press-enabled",
+      "swift": "doublePressEnabled"
+    },
+    {
+      "lg": "AppearEnabled",
+      "wire": "appear-enabled",
+      "swift": "appearEnabled"
+    },
+    {
+      "lg": "ImageIdValue",
+      "wire": "image",
+      "swift": "image"
+    },
+    {
+      "lg": "SurfaceIdValue",
+      "wire": "surface",
+      "swift": "surface"
+    },
+    {
+      "lg": "ActiveIndex",
+      "wire": "active",
+      "swift": "active"
+    },
+    {
+      "lg": "TitleValue",
+      "wire": "title",
+      "swift": "title"
+    },
+    {
+      "lg": "DescriptionValue",
+      "wire": "description",
+      "swift": "description"
+    },
+    {
+      "lg": "MetaValue",
+      "wire": "meta",
+      "swift": "meta"
+    },
+    {
+      "lg": "IndicatorValue",
+      "wire": "indicator",
+      "swift": "indicator"
+    },
+    {
+      "lg": "Connector",
+      "wire": "connector",
+      "swift": "connector"
+    },
+    {
+      "lg": "SourceX",
+      "wire": "source-x",
+      "swift": "sourceX"
+    },
+    {
+      "lg": "SourceY",
+      "wire": "source-y",
+      "swift": "sourceY"
+    },
+    {
+      "lg": "SourceWidth",
+      "wire": "source-width",
+      "swift": "sourceWidth"
+    },
+    {
+      "lg": "SourceHeight",
+      "wire": "source-height",
+      "swift": "sourceHeight"
+    },
+    {
+      "lg": "AnchorValue",
+      "wire": "anchor",
+      "swift": "anchor"
+    },
+    {
+      "lg": "AnchorAlignmentValue",
+      "wire": "anchor-alignment",
+      "swift": "anchorAlignment"
+    },
+    {
+      "lg": "AnchorOffset",
+      "wire": "anchor-offset",
+      "swift": "anchorOffset"
+    },
+    {
+      "lg": "TooltipDelay",
+      "wire": "tooltip-delay",
+      "swift": "tooltipDelay"
+    },
+    {
+      "lg": "DurationValue",
+      "wire": "duration",
+      "swift": "duration"
+    },
+    {
+      "lg": "TextAlignment",
+      "wire": "text-alignment",
+      "swift": "textAlignment"
+    },
+    {
+      "lg": "RoleValue",
+      "wire": "role",
+      "swift": "role"
+    },
+    {
+      "lg": "TreeLevel",
+      "wire": "tree-level",
+      "swift": "treeLevel"
+    },
+    {
+      "lg": "Expanded",
+      "wire": "expanded",
+      "swift": "expanded"
+    },
+    {
+      "lg": "ResizeDuration",
+      "wire": "resize-duration",
+      "swift": "resizeDuration"
+    },
+    {
+      "lg": "ResizeEasing",
+      "wire": "resize-easing",
+      "swift": "resizeEasing"
+    },
+    {
+      "lg": "ResizeOrigin",
+      "wire": "resize-origin",
+      "swift": "resizeOrigin"
+    }
   ],
   "events": [
-    {"lg": "Press", "fields": [":int"]},
-    {"lg": "LongPress", "fields": [":int"]},
-    {"lg": "TextChanged", "fields": [":int", ":string"]},
-    {"lg": "Submit", "fields": [":int"]},
-    {"lg": "ToggleChanged", "fields": [":int", ":bool"]},
-    {"lg": "Change", "fields": [":int"]},
-    {"lg": "ValueChanged", "fields": [":int", ":float"]},
-    {"lg": "Dismiss", "fields": [":int"]},
-    {"lg": "DoublePress", "fields": [":int"]},
-    {"lg": "Appear", "fields": [":int"]}
-  ]
+    {
+      "lg": "Press",
+      "fields": [
+        ":int"
+      ]
+    },
+    {
+      "lg": "LongPress",
+      "fields": [
+        ":int"
+      ]
+    },
+    {
+      "lg": "TextChanged",
+      "fields": [
+        ":int",
+        ":string"
+      ]
+    },
+    {
+      "lg": "Submit",
+      "fields": [
+        ":int"
+      ]
+    },
+    {
+      "lg": "ToggleChanged",
+      "fields": [
+        ":int",
+        ":bool"
+      ]
+    },
+    {
+      "lg": "Change",
+      "fields": [
+        ":int"
+      ]
+    },
+    {
+      "lg": "ValueChanged",
+      "fields": [
+        ":int",
+        ":float"
+      ]
+    },
+    {
+      "lg": "Dismiss",
+      "fields": [
+        ":int"
+      ]
+    },
+    {
+      "lg": "DoublePress",
+      "fields": [
+        ":int"
+      ]
+    },
+    {
+      "lg": "Appear",
+      "fields": [
+        ":int"
+      ]
+    }
+  ],
+  "kindProperties": {
+    "accordion": [
+      "text",
+      "selected",
+      "toggle-enabled",
+      "height"
+    ],
+    "stepper": [
+      "active",
+      "accessibility-label"
+    ],
+    "step": [
+      "text"
+    ],
+    "timeline": [
+      "gap",
+      "grow",
+      "accessibility-label"
+    ],
+    "timeline-item": [
+      "title",
+      "description",
+      "meta",
+      "indicator",
+      "icon",
+      "variant",
+      "connector",
+      "selected",
+      "press-enabled"
+    ],
+    "input-group": [
+      "accessibility-label",
+      "width",
+      "height",
+      "min-width",
+      "grow"
+    ],
+    "input-group-actions": [
+      "gap"
+    ],
+    "toast": [
+      "duration",
+      "accessibility-label",
+      "style-class"
+    ],
+    "toolbar": [
+      "orientation",
+      "accessibility-label",
+      "gap",
+      "style-class"
+    ],
+    "bottom-tabs": [
+      "accessibility-label",
+      "style-class",
+      "grow",
+      "width",
+      "height",
+      "min-width",
+      "max-width",
+      "min-height",
+      "max-height"
+    ],
+    "bottom-tab": [
+      "title",
+      "icon",
+      "selected",
+      "enabled",
+      "press-enabled"
+    ]
+  },
+  "kindExtraProperties": {
+    "dialog": [
+      "description"
+    ]
+  }
 }

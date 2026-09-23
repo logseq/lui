@@ -357,6 +357,37 @@ let test_drift_is_caught () =
       (contains expected "standard-children:0")
   | _ -> Alcotest.fail "expected exactly one drifted Dart fingerprint"
 
+
+let test_property_matrix_sync () =
+  (* property_supported's restrictive arms and additive extras must mirror
+     schema/components.json (kindProperties / kindExtraProperties) as emitted
+     into Lui_wire_schema — the shared single source for OCaml and Swift. *)
+  List.iter
+    (fun kind ->
+       List.iter
+         (fun property ->
+            match Lui_wire_schema.kind_property_matrix kind with
+            | Some allowed ->
+              let expected =
+                property = Lui_protocol.AccessibilityIdentifier
+                || List.mem property allowed
+              in
+              Alcotest.(check bool)
+                (Printf.sprintf "matrix %s x %s"
+                   (Lui_wire_schema.node_kind_name kind)
+                   (Lui_wire_schema.property_name property))
+                expected (Lui_protocol.property_supported kind property)
+            | None ->
+              if List.mem property (Lui_wire_schema.kind_extra_properties kind)
+              then
+                Alcotest.(check bool)
+                  (Printf.sprintf "extra %s x %s"
+                     (Lui_wire_schema.node_kind_name kind)
+                     (Lui_wire_schema.property_name property))
+                  true (Lui_protocol.property_supported kind property))
+         Lui_wire_schema.all_properties)
+    Lui_wire_schema.all_node_kinds
+
 let () =
   Alcotest.run "lui"
     [
@@ -367,7 +398,11 @@ let () =
             test_backend_receives_patches;
         ] );
       ( "protocol",
-        [ Alcotest.test_case "helpers" `Quick test_protocol_helpers ] );
+        [
+          Alcotest.test_case "helpers" `Quick test_protocol_helpers;
+          Alcotest.test_case "property matrix sync" `Quick
+            test_property_matrix_sync;
+        ] );
       ( "dyn",
         [
           Alcotest.test_case "equal skips remount" `Quick
