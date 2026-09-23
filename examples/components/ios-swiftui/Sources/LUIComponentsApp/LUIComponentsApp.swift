@@ -235,7 +235,9 @@ private struct GalleryRootView: View {
                 .padding(.vertical, 12)
         }
         .background(galleryBackground)
-        .navigationTitle(section?.title ?? "")
+        // The section's own heading is the page title; repeating it as the
+        // nav-bar title renders the same text twice.
+        .navigationTitle("")
     }
 
     private var galleryBackground: Color {
