@@ -2584,6 +2584,44 @@ void main() {
     expect(tester.widget<Text>(find.text('Trailing')).textAlign, TextAlign.end);
   });
 
+  testWidgets('accepts drawer text, select accessibility-label, destructive menu-item', (
+    tester,
+  ) async {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"drawer"},
+        {"op":"create-node","id":2,"kind":"box"},
+        {"op":"create-node","id":3,"kind":"box"},
+        {"op":"create-node","id":4,"kind":"select"},
+        {"op":"create-node","id":5,"kind":"context-menu"},
+        {"op":"create-node","id":6,"kind":"menu-item"},
+        {"op":"create-node","id":7,"kind":"button"},
+        {"op":"set-prop","id":1,"property":"text","value":"Navigation"},
+        {"op":"set-prop","id":4,"property":"text","value":"Dark"},
+        {"op":"set-prop","id":4,"property":"accessibility-label","value":"Theme"},
+        {"op":"set-prop","id":4,"property":"press-enabled","value":true},
+        {"op":"set-prop","id":6,"property":"text","value":"Delete"},
+        {"op":"set-prop","id":6,"property":"variant","value":"destructive"},
+        {"op":"set-prop","id":6,"property":"press-enabled","value":true},
+        {"op":"set-prop","id":7,"property":"text","value":"More"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":1,"child":3,"index":1},
+        {"op":"insert-child","parent":2,"child":4,"index":0},
+        {"op":"insert-child","parent":2,"child":7,"index":1},
+        {"op":"insert-child","parent":7,"child":5,"index":0},
+        {"op":"insert-child","parent":5,"child":6,"index":0}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+
+    expect(find.text('Dark'), findsOneWidget);
+    expect(backend.generation, 1);
+  });
+
   testWidgets('applies reusable Surface styles without replacing widgets', (
     tester,
   ) async {

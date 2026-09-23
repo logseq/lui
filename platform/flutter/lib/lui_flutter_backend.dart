@@ -1409,22 +1409,25 @@ final class LUIFlutterBackend {
       );
     }
 
-    Widget select() => OutlinedButton(
-      onPressed: enabled ? () => performAction(id) : null,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Expanded(
-            child: Text(
-              text.isEmpty ? placeholder ?? '' : text,
-              style: text.isEmpty
-                  ? TextStyle(color: Theme.of(context).hintColor)
-                  : null,
+    Widget select() => Semantics(
+      label: accessibilityLabel,
+      child: OutlinedButton(
+        onPressed: enabled ? () => performAction(id) : null,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Expanded(
+              child: Text(
+                text.isEmpty ? placeholder ?? '' : text,
+                style: text.isEmpty
+                    ? TextStyle(color: Theme.of(context).hintColor)
+                    : null,
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          const Icon(Icons.arrow_drop_down),
-        ],
+            const SizedBox(width: 8),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
       ),
     );
     Widget dropdownMenu() => CallbackShortcuts(
@@ -1474,6 +1477,13 @@ final class LUIFlutterBackend {
           child: Text(text),
         );
       }
+      final destructive = buttonVariant == 'destructive';
+      final menuItemText = Text(
+        text,
+        style: destructive
+            ? TextStyle(color: Theme.of(context).colorScheme.error)
+            : null,
+      );
       return MergeSemantics(
         child: Semantics(
           selected: buttonSelected,
@@ -1481,7 +1491,7 @@ final class LUIFlutterBackend {
             onPressed: enabled ? () => performAction(id) : null,
             leadingIcon: leadingIcon,
             trailingIcon: buttonSelected ? const Icon(Icons.check) : null,
-            child: Text(text),
+            child: menuItemText,
           ),
         ),
       );
@@ -2092,7 +2102,7 @@ final class LUIFlutterBackend {
         sourcePresented: state.properties['selected'] as bool? ?? false,
         enabled: enabled,
         width: (state.properties['width'] as int? ?? 320).toDouble(),
-        label: accessibilityLabel ?? 'Navigation',
+        label: accessibilityLabel ?? (text.isEmpty ? 'Navigation' : text),
         onChanged: state.properties['toggle-enabled'] == true
             ? (presented) => performToggle(id, presented)
             : null,
@@ -2966,6 +2976,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.alert ||
                 kind == _NodeKind.bubble ||
                 kind == _NodeKind.statusBar ||
+                kind == _NodeKind.drawer ||
                 kind.isModalSurface),
       'enabled' =>
         value is bool &&
@@ -3021,7 +3032,8 @@ final class LUIFlutterBackend {
             _buttonVariants.contains(value) &&
             (_isButtonKind(kind) ||
                 kind == _NodeKind.alert ||
-                kind == _NodeKind.bubble),
+                kind == _NodeKind.bubble ||
+                kind == _NodeKind.menuItem),
       'icon' =>
         value is String &&
             (_iconNames.contains(value) ||
@@ -3212,6 +3224,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.drawer ||
                 kind == _NodeKind.alert ||
                 kind == _NodeKind.bubble ||
+                kind == _NodeKind.select ||
                 _isTreeRowKind(kind)),
       'text-alignment' =>
         value is String &&
@@ -3352,6 +3365,7 @@ final class LUIFlutterBackend {
               'foreground',
               'enabled',
               'press-enabled',
+              'variant',
             };
             if (!child.properties.keys.every(allowed.contains)) {
               throw const LUIBackendException(
