@@ -2454,6 +2454,14 @@ private struct LUIMenuItemView: View {
             .first { $0.kind == .dropdownMenu }
     }
 
+    private var menuItemIconSize: CGFloat {
+        switch model.property(.size)?.stringValue {
+        case "sm": 16
+        case "lg": 28
+        default: LUIDropdownMenuLayoutPolicy.iconSize
+        }
+    }
+
     private func itemLabel(expands: Bool) -> some View {
         HStack(spacing: LUIDropdownMenuLayoutPolicy.itemSpacing) {
             if !model.buttonIconName.isEmpty {
@@ -2462,8 +2470,8 @@ private struct LUIMenuItemView: View {
                     bundle: backend.appIconBundle
                 )
                     .frame(
-                        width: LUIDropdownMenuLayoutPolicy.iconSize,
-                        height: LUIDropdownMenuLayoutPolicy.iconSize
+                        width: menuItemIconSize,
+                        height: menuItemIconSize
                     )
                     .modifier(LUIMenuItemForegroundModifier(model: model))
             }

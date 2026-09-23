@@ -571,7 +571,7 @@ let common_property_supported kind property =
   | OrientationValue -> kind = Divider || kind = Tabs
   | SizeValue ->
     kind = Button || kind = ToggleButton || kind = Spinner || kind = Icon
-    || kind = TableCell
+    || kind = TableCell || kind = MenuItem
   | IconName -> kind = Icon
   | VariantValue ->
     kind = Button || kind = ToggleButton || kind = MenuItem || kind = Alert
