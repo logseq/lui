@@ -255,7 +255,11 @@ enum LUIDialogContentPolicy {
     }
 
     static func message(dialog: LUINodeModel, backend: LUIAppleBackend) -> String {
-        descendants(of: dialog, backend: backend) { $0.kind == .text }
+        if let description = dialog.property(.description)?.stringValue,
+           !description.isEmpty {
+            return description
+        }
+        return descendants(of: dialog, backend: backend) { $0.kind == .text }
             .map(\.text)
             .filter { !$0.isEmpty }
             .joined(separator: "\n\n")

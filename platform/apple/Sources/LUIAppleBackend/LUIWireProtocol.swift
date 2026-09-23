@@ -704,7 +704,8 @@ struct LUIRetainedTree {
                 kind == .tableCell || kind == .bubble || kind == .statusBar
         case .role: isTreeRow(kind) || kind == .listItem
         case .treeLevel, .expanded: isTreeRow(kind)
-        case .active, .title, .description, .meta, .indicator, .connector: false
+        case .description: kind == .dialog
+        case .active, .title, .meta, .indicator, .connector: false
         }
     }
 
