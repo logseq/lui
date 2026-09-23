@@ -1033,38 +1033,68 @@ let on_event scope application node callback =
   Signal.on_dispose scope
     (fun () -> remove_handler application node handler_id)
 
+(* A change event whose payload already equals the property last sent to the
+   host carries no new state: the control is reporting the value the runtime
+   itself rendered (or its unset default). Dropping it suppresses mount-time
+   echoes — freshly mounted controls re-reporting their bound value — while
+   genuine edits still reach handlers. *)
+let event_is_value_echo properties event =
+  match event with
+  | TextChanged (_, text) ->
+    (match Property_map.find_opt TextValue properties with
+    | Some (StringValue current) -> current = text
+    | Some _ -> false
+    | None -> text = "")
+  | ToggleChanged (_, checked_value) ->
+    (match Property_map.find_opt Checked properties with
+    | Some (BoolValue current) -> current = checked_value
+    | Some _ -> false
+    | None -> not checked_value)
+  | ValueChanged (_, value) ->
+    (match Property_map.find_opt ProgressValue properties with
+    | Some (FloatValue current) -> current = value
+    | Some _ -> false
+    | None -> value = 0.0)
+  | _ -> false
+
 let dispatch application event =
   let node = canonical_node application (event_node event) in
-  (match event with
-  | ExtensionEvent (_event_node, identifier, name, values) ->
-    let extension_schema = require_extension_schema application node in
-    if identifier <> extension_schema.extension_identifier then
-      invalid_arg "extension event identifier mismatch";
-    if
-      not
-        (Lui_extension.event_payload_supported extension_schema name
-           values)
-    then invalid_arg "invalid extension event payload"
-  | _ ->
-    let kind = require_standard_node_kind application node in
-    let properties =
-      match Hashtbl.find_opt application.runtime_properties node with
-      | Some current -> current
-      | None -> Property_map.empty
-    in
-    if
-      not
-        (event_supported_for_properties kind properties event)
-    then invalid_arg "event is unsupported by node kind");
-  (match Hashtbl.find_opt application.event_handlers node with
-  | Some handlers ->
-    List.iter
-      (fun handler ->
-         Signal.enqueue_effect application.runtime_scheduler (fun () ->
-             handler.handler_callback event))
-      handlers;
-    true
-  | None -> true)
+  let suppressed =
+    match event with
+    | ExtensionEvent (_event_node, identifier, name, values) ->
+      let extension_schema = require_extension_schema application node in
+      if identifier <> extension_schema.extension_identifier then
+        invalid_arg "extension event identifier mismatch";
+      if
+        not
+          (Lui_extension.event_payload_supported extension_schema name
+             values)
+      then invalid_arg "invalid extension event payload";
+      false
+    | _ ->
+      let kind = require_standard_node_kind application node in
+      let properties =
+        match Hashtbl.find_opt application.runtime_properties node with
+        | Some current -> current
+        | None -> Property_map.empty
+      in
+      if
+        not
+          (event_supported_for_properties kind properties event)
+      then invalid_arg "event is unsupported by node kind";
+      event_is_value_echo properties event
+  in
+  if suppressed then true
+  else
+    match Hashtbl.find_opt application.event_handlers node with
+    | Some handlers ->
+      List.iter
+        (fun handler ->
+           Signal.enqueue_effect application.runtime_scheduler (fun () ->
+               handler.handler_callback event))
+        handlers;
+      true
+    | None -> true
 
 let validate_extension_nodes application =
   let properties = application.runtime_extension_properties in

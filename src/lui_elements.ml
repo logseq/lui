@@ -43,13 +43,12 @@ let dynamic mount : t =
     node
   | None -> invalid_arg "dynamic element requires a parent node"
 
-let dyn f (source : 'a Signal.signal) : t =
+let dyn ?(equal = fun _ _ -> false) f (source : 'a Signal.signal) : t =
  fun context parent ->
   dynamic
     (fun context node ->
-       Lui_dynamic.switch context node (Signal.map f source)
-         (fun _ _ -> false)
-         (fun branch_context element -> element branch_context None))
+       Lui_dynamic.switch context node source equal
+         (fun branch_context value -> f value branch_context None))
     context parent
 
 let if_ ~test (children : t) : t =
