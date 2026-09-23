@@ -5,6 +5,59 @@
     props in place. *)
 
 type t = Lui_ui.ui_context -> int option -> int
+
+(** Closed vocabularies from the wire schema: every parameter that only
+    accepts a fixed set of values is a polymorphic variant so wrong values
+    fail [dune build] instead of erroring inside [emit_patch]. *)
+
+type variant =
+  [ `default | `primary | `secondary | `outline | `ghost | `destructive ]
+
+type control_size = [ `default | `sm | `lg | `icon ]
+type text_size = [ `heading | `display ]
+
+(** [table_cell] accepts control sizes and text sizes on its [~size]. *)
+type cell_size = [ control_size | text_size ]
+
+type main_alignment = [ `start | `center | `end_ | `space_between ]
+type cross_alignment = [ `stretch | `start | `center | `end_ ]
+type text_alignment = [ `start | `center | `end_ ]
+type orientation = [ `horizontal | `vertical ]
+type icon_placement = [ `leading | `trailing | `top ]
+type anchor = [ `above | `below | `left | `right ]
+type anchor_alignment = [ `start | `end_ | `stretch ]
+
+type frame_axes =
+  [ `horizontal | `vertical | `both
+  | `min_horizontal | `min_vertical | `min_both ]
+
+type resize_easing = [ `linear | `standard | `emphasized | `spring ]
+type role = [ `treeitem | `navigation | `navigation_heading ]
+
+(** [~icon]/[~name] values: the schema icon names, or [`app "name"] for an
+    application-registered icon ([app:name] on the wire). *)
+type icon =
+  [ `alert | `archive | `arrow_down | `arrow_right | `arrow_up | `check | `check_circle | `chevron_down | `chevron_left | `chevron_right | `chevron_up | `circle_dot | `clock | `copy | `download | `edit | `ellipsis | `external_link | `eye | `file_text | `folder | `folder_open | `git_branch | `git_merge | `git_pull_request | `info | `menu | `mic | `moon | `music | `panel_left | `panel_right | `pause | `play | `plus | `refresh_cw | `repeat | `save | `search | `send | `settings | `shuffle | `skip_back | `skip_forward | `sun | `terminal | `trash | `volume | `wrench | `x | `x_circle
+  | `app of string ]
+
+(** Element kinds the schema restricts to specific parents. These are
+    abstract so illegal nesting fails at compile time: [step_el] inside
+    [stepper], [timeline_item_el] inside [timeline], [bottom_tab_el] inside
+    [bottom_tabs], [table_row_el] inside [table], [table_cell_el] inside
+    [table_row], [radio_el] inside [radio_group], and
+    [input_group_actions_el] as the optional [~actions] of [input_group]. *)
+
+type step_el
+type timeline_item_el
+type bottom_tab_el
+type table_row_el
+type table_cell_el
+type radio_el
+type input_group_actions_el
+
+(** Empty type: [leaf] constructors take a [nothing list] children slot, so
+    [] compiles and any real child is a type error. *)
+type nothing = |
 val mount : 'a -> ?parent:'b -> ('a -> 'b option -> 'c) -> 'c
 val reactive : ('a -> 'b) -> 'a Signal.signal -> 'b Signal.signal
 val map : ('a -> 'b) -> 'a Signal.signal -> 'b Signal.signal
@@ -72,8 +125,8 @@ val apply_universal :
   int ->
   key:string option ->
   gap:int option ->
-  main:string option ->
-  cross:string option ->
+  main:main_alignment option ->
+  cross:cross_alignment option ->
   grow:float option ->
   columns:int option ->
   padding:int option ->
@@ -90,7 +143,7 @@ val apply_universal :
   max_width:int option ->
   min_height:int option ->
   max_height:int option ->
-  container_relative_frame:string option ->
+  container_relative_frame:frame_axes option ->
   container_relative_frame_inset:int option ->
   accessibility_identifier:string option ->
   accessibility_identifier_signal:string Signal.signal option ->
@@ -101,8 +154,8 @@ val apply_universal :
 val row :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -119,7 +172,7 @@ val row :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -130,8 +183,8 @@ val row :
 val column :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -148,7 +201,7 @@ val column :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -159,8 +212,8 @@ val column :
 val grid :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -177,7 +230,7 @@ val grid :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -188,8 +241,8 @@ val grid :
 val stack :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -206,7 +259,7 @@ val stack :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -217,8 +270,8 @@ val stack :
 val panel :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -235,7 +288,7 @@ val panel :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -246,8 +299,8 @@ val panel :
 val card :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -264,7 +317,7 @@ val card :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -275,8 +328,8 @@ val card :
 val alert :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -293,7 +346,7 @@ val alert :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -303,12 +356,12 @@ val alert :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
-  ?variant:string -> ?text_alignment:string -> ?label:string -> t list -> t
+  ?variant:variant -> ?text_alignment:text_alignment -> ?label:string -> t list -> t
 val bubble :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -325,7 +378,7 @@ val bubble :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -335,12 +388,12 @@ val bubble :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
-  ?variant:string -> ?label:string -> t list -> t
+  ?variant:variant -> ?label:string -> t list -> t
 val box :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -357,7 +410,7 @@ val box :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -368,8 +421,8 @@ val box :
 val scroll :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -386,7 +439,7 @@ val scroll :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -397,8 +450,8 @@ val scroll :
 val list :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -415,7 +468,7 @@ val list :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -426,8 +479,8 @@ val list :
 val virtual_list :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -444,7 +497,7 @@ val virtual_list :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -455,8 +508,8 @@ val virtual_list :
 val tabs :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -473,7 +526,7 @@ val tabs :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -481,12 +534,12 @@ val tabs :
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
-  ?label:string -> ?orientation:string -> t list -> t
+  ?label:string -> ?orientation:orientation -> t list -> t
 val bottom_tabs :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -503,7 +556,7 @@ val bottom_tabs :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -511,12 +564,12 @@ val bottom_tabs :
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
-  ?label:string -> t list -> t
+  ?label:string -> bottom_tab_el list -> t
 val bottom_tab :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -533,7 +586,7 @@ val bottom_tab :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -542,17 +595,17 @@ val bottom_tab :
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?title:string ->
-  ?icon:string ->
+  ?icon:icon ->
   ?selected:bool ->
   ?selected_signal:bool Signal.signal ->
   ?enabled:bool ->
   ?enabled_signal:bool Signal.signal ->
-  ?on_press:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_press:(Lui_protocol.event -> unit) -> t list -> bottom_tab_el
 val button_group :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -569,7 +622,7 @@ val button_group :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -580,8 +633,8 @@ val button_group :
 val toggle_group :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -598,7 +651,7 @@ val toggle_group :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -609,8 +662,8 @@ val toggle_group :
 val breadcrumb :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -627,7 +680,7 @@ val breadcrumb :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -638,8 +691,8 @@ val breadcrumb :
 val pagination :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -656,7 +709,7 @@ val pagination :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -667,8 +720,8 @@ val pagination :
 val table :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -685,19 +738,19 @@ val table :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
   ?foreground_signal:string Signal.signal ->
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
-  ?on_appear:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_appear:(Lui_protocol.event -> unit) -> table_row_el list -> t
 val table_row :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -714,7 +767,7 @@ val table_row :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -722,12 +775,12 @@ val table_row :
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
-  ?selected:bool -> ?selected_signal:bool Signal.signal -> t list -> t
+  ?selected:bool -> ?selected_signal:bool Signal.signal -> table_cell_el list -> table_row_el
 val table_cell :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -744,7 +797,7 @@ val table_cell :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -754,14 +807,14 @@ val table_cell :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
-  ?size:string ->
-  ?text_alignment:string ->
-  ?on_press:(Lui_protocol.event -> unit) -> t list -> t
+  ?size:cell_size ->
+  ?text_alignment:text_alignment ->
+  ?on_press:(Lui_protocol.event -> unit) -> t list -> table_cell_el
 val tree :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -778,7 +831,7 @@ val tree :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -787,7 +840,7 @@ val tree :
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?label:string ->
-  ?role:string ->
+  ?role:role ->
   ?tree_level:int ->
   ?expanded:bool ->
   ?expanded_signal:bool Signal.signal ->
@@ -797,8 +850,8 @@ val tree :
 val resizable :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -815,7 +868,7 @@ val resizable :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -827,8 +880,8 @@ val resizable :
 val split :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -845,7 +898,7 @@ val split :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -856,14 +909,14 @@ val split :
   ?value:float ->
   ?value_signal:float Signal.signal ->
   ?resize_duration:int ->
-  ?resize_easing:string ->
+  ?resize_easing:resize_easing ->
   ?resize_origin:float ->
-  ?label:string -> ?on_resize:(Lui_protocol.event -> unit) -> t list -> t
+  ?label:string -> ?on_resize:(Lui_protocol.event -> unit) -> t -> t -> t
 val drawer :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -880,7 +933,7 @@ val drawer :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -892,12 +945,12 @@ val drawer :
   ?selected_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?label:string -> ?on_toggle:(Lui_protocol.event -> unit) -> t list -> t
+  ?label:string -> ?on_toggle:(Lui_protocol.event -> unit) -> t -> t -> t
 val status_bar :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -914,7 +967,7 @@ val status_bar :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -923,12 +976,12 @@ val status_bar :
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?value:string ->
-  ?value_signal:string Signal.signal -> ?text_alignment:string -> t list -> t
+  ?value_signal:string Signal.signal -> ?text_alignment:text_alignment -> nothing list -> t
 val spacer :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -945,19 +998,19 @@ val spacer :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
   ?foreground_signal:string Signal.signal ->
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
-  ?on_appear:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_appear:(Lui_protocol.event -> unit) -> nothing list -> t
 val spinner :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -974,19 +1027,19 @@ val spinner :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
   ?foreground_signal:string Signal.signal ->
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
-  ?on_appear:(Lui_protocol.event -> unit) -> ?size:string -> t list -> t
+  ?on_appear:(Lui_protocol.event -> unit) -> ?size:control_size -> nothing list -> t
 val icon :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1003,7 +1056,7 @@ val icon :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1011,13 +1064,13 @@ val icon :
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
-  ?name:string ->
-  ?name_signal:string Signal.signal -> ?size:string -> t list -> t
+  ?name:icon ->
+  ?name_signal:icon Signal.signal -> ?size:control_size -> nothing list -> t
 val text :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1034,7 +1087,7 @@ val text :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1044,13 +1097,13 @@ val text :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?value:string ->
   ?value_signal:string Signal.signal ->
-  ?text_alignment:string ->
+  ?text_alignment:text_alignment ->
   ?on_press:(Lui_protocol.event -> unit) -> t list -> t
 val heading :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1067,7 +1120,7 @@ val heading :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1076,12 +1129,12 @@ val heading :
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?level:int ->
-  ?value:string -> ?value_signal:string Signal.signal -> t list -> t
+  ?value:string -> ?value_signal:string Signal.signal -> nothing list -> t
 val paragraph :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1098,7 +1151,7 @@ val paragraph :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1106,12 +1159,12 @@ val paragraph :
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
-  ?value:string -> ?value_signal:string Signal.signal -> t list -> t
+  ?value:string -> ?value_signal:string Signal.signal -> nothing list -> t
 val label :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1128,7 +1181,7 @@ val label :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1136,12 +1189,12 @@ val label :
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
-  ?value:string -> ?value_signal:string Signal.signal -> t list -> t
+  ?value:string -> ?value_signal:string Signal.signal -> nothing list -> t
 val button :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1158,7 +1211,7 @@ val button :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1168,12 +1221,12 @@ val button :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
-  ?variant:string ->
-  ?size:string ->
-  ?icon:string ->
-  ?icon_placement:string ->
+  ?variant:variant ->
+  ?size:control_size ->
+  ?icon:icon ->
+  ?icon_placement:icon_placement ->
   ?label:string ->
-  ?text_alignment:string ->
+  ?text_alignment:text_alignment ->
   ?selected:bool ->
   ?autofocus:bool ->
   ?disabled:bool ->
@@ -1183,8 +1236,8 @@ val button :
 val toggle_button :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1201,7 +1254,7 @@ val toggle_button :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1211,12 +1264,12 @@ val toggle_button :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
-  ?variant:string ->
-  ?size:string ->
-  ?icon:string ->
-  ?icon_placement:string ->
+  ?variant:variant ->
+  ?size:control_size ->
+  ?icon:icon ->
+  ?icon_placement:icon_placement ->
   ?label:string ->
-  ?text_alignment:string ->
+  ?text_alignment:text_alignment ->
   ?selected:bool ->
   ?autofocus:bool ->
   ?disabled:bool ->
@@ -1227,8 +1280,8 @@ val toggle_button :
 val checkbox :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1245,7 +1298,7 @@ val checkbox :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1264,8 +1317,8 @@ val checkbox :
 val switch_ :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1282,7 +1335,7 @@ val switch_ :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1301,8 +1354,8 @@ val switch_ :
 val toggle :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1319,7 +1372,7 @@ val toggle :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1338,8 +1391,8 @@ val toggle :
 val radio_group :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1356,19 +1409,19 @@ val radio_group :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
   ?foreground_signal:string Signal.signal ->
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
-  ?on_appear:(Lui_protocol.event -> unit) -> ?label:string -> t list -> t
+  ?on_appear:(Lui_protocol.event -> unit) -> ?label:string -> radio_el list -> t
 val radio :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1385,7 +1438,7 @@ val radio :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1403,12 +1456,12 @@ val radio :
   ?disabled_signal:bool Signal.signal ->
   ?on_change:(Lui_protocol.event -> unit) ->
   ?on_toggle:(Lui_protocol.event -> unit) ->
-  ?on_press:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_press:(Lui_protocol.event -> unit) -> t list -> radio_el
 val slider :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1425,7 +1478,7 @@ val slider :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1442,8 +1495,8 @@ val slider :
 val progress :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1460,7 +1513,7 @@ val progress :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1468,12 +1521,12 @@ val progress :
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
-  ?value:float -> ?value_signal:float Signal.signal -> t list -> t
+  ?value:float -> ?value_signal:float Signal.signal -> nothing list -> t
 val divider :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1490,7 +1543,7 @@ val divider :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1498,12 +1551,12 @@ val divider :
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
-  ?orientation:string -> t list -> t
+  ?orientation:orientation -> nothing list -> t
 val separator :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1520,7 +1573,7 @@ val separator :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1528,12 +1581,12 @@ val separator :
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
-  ?orientation:string -> t list -> t
+  ?orientation:orientation -> nothing list -> t
 val text_field :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1550,7 +1603,7 @@ val text_field :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1571,8 +1624,8 @@ val text_field :
 val secure_field :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1589,7 +1642,7 @@ val secure_field :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1610,8 +1663,8 @@ val secure_field :
 val input :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1628,7 +1681,7 @@ val input :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1649,8 +1702,8 @@ val input :
 val search_field :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1667,7 +1720,7 @@ val search_field :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1688,8 +1741,8 @@ val search_field :
 val textarea :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1706,7 +1759,7 @@ val textarea :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1727,8 +1780,8 @@ val textarea :
 val input_group :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1745,19 +1798,19 @@ val input_group :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
   ?foreground_signal:string Signal.signal ->
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
-  ?on_appear:(Lui_protocol.event -> unit) -> ?label:string -> t list -> t
+  ?on_appear:(Lui_protocol.event -> unit) -> ?label:string -> ?actions:input_group_actions_el -> t -> t
 val input_group_actions :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1774,19 +1827,19 @@ val input_group_actions :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
   ?foreground_signal:string Signal.signal ->
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
-  ?on_appear:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_appear:(Lui_protocol.event -> unit) -> t list -> input_group_actions_el
 val select :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1803,7 +1856,7 @@ val select :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1824,8 +1877,8 @@ val select :
 val combobox :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1842,7 +1895,7 @@ val combobox :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1862,8 +1915,8 @@ val combobox :
 val dropdown_menu :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1880,7 +1933,7 @@ val dropdown_menu :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1888,8 +1941,8 @@ val dropdown_menu :
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
-  ?anchor:string ->
-  ?anchor_alignment:string ->
+  ?anchor:anchor ->
+  ?anchor_alignment:anchor_alignment ->
   ?anchor_offset:float ->
   ?on_press:(Lui_protocol.event -> unit) ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -1898,8 +1951,8 @@ val dropdown_menu :
 val context_menu :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1916,7 +1969,7 @@ val context_menu :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1928,8 +1981,8 @@ val context_menu :
 val dialog :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1946,7 +1999,7 @@ val dialog :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1960,8 +2013,8 @@ val dialog :
 val sheet :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -1978,7 +2031,7 @@ val sheet :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -1992,8 +2045,8 @@ val sheet :
 val tooltip :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -2010,7 +2063,7 @@ val tooltip :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -2020,14 +2073,14 @@ val tooltip :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
-  ?anchor:string ->
-  ?anchor_alignment:string ->
-  ?anchor_offset:float -> ?tooltip_delay:int -> t list -> t
+  ?anchor:anchor ->
+  ?anchor_alignment:anchor_alignment ->
+  ?anchor_offset:float -> ?tooltip_delay:int -> nothing list -> t
 val toast :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -2044,7 +2097,7 @@ val toast :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -2059,8 +2112,8 @@ val toast :
 val toolbar :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -2077,7 +2130,7 @@ val toolbar :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -2085,13 +2138,13 @@ val toolbar :
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
-  ?orientation:string ->
+  ?orientation:orientation ->
   ?label:string -> ?toolbar_gap:int -> ?toolbar_class:string -> t list -> t
 val accordion :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -2108,7 +2161,7 @@ val accordion :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -2124,8 +2177,8 @@ val accordion :
 val menu_item :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -2142,7 +2195,7 @@ val menu_item :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -2152,8 +2205,8 @@ val menu_item :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
-  ?icon:string ->
-  ?role:string ->
+  ?icon:icon ->
+  ?role:role ->
   ?tree_level:int ->
   ?expanded:bool ->
   ?selected:bool ->
@@ -2167,8 +2220,8 @@ val menu_item :
 val list_item :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -2185,7 +2238,7 @@ val list_item :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -2195,9 +2248,9 @@ val list_item :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
-  ?icon:string ->
-  ?icon_placement:string ->
-  ?role:string ->
+  ?icon:icon ->
+  ?icon_placement:icon_placement ->
+  ?role:role ->
   ?tree_level:int ->
   ?expanded:bool ->
   ?selected:bool ->
@@ -2213,8 +2266,8 @@ val list_item :
 val avatar :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -2231,7 +2284,7 @@ val avatar :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -2245,12 +2298,12 @@ val avatar :
   ?image_signal:int Signal.signal ->
   ?source_x:float ->
   ?source_y:float ->
-  ?source_width:float -> ?source_height:float -> ?label:string -> t list -> t
+  ?source_width:float -> ?source_height:float -> ?label:string -> nothing list -> t
 val image :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -2267,7 +2320,7 @@ val image :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -2279,12 +2332,12 @@ val image :
   ?image_signal:int Signal.signal ->
   ?source_x:float ->
   ?source_y:float ->
-  ?source_width:float -> ?source_height:float -> ?label:string -> t list -> t
+  ?source_width:float -> ?source_height:float -> ?label:string -> nothing list -> t
 val media_surface :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -2301,7 +2354,7 @@ val media_surface :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -2310,12 +2363,12 @@ val media_surface :
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?surface:int ->
-  ?surface_signal:int Signal.signal -> ?label:string -> t list -> t
+  ?surface_signal:int Signal.signal -> ?label:string -> nothing list -> t
 val stepper :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -2332,7 +2385,7 @@ val stepper :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -2341,12 +2394,12 @@ val stepper :
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?active:int ->
-  ?active_signal:int Signal.signal -> ?label:string -> t list -> t
+  ?active_signal:int Signal.signal -> ?label:string -> step_el list -> t
 val step :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -2363,7 +2416,7 @@ val step :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -2371,12 +2424,12 @@ val step :
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
-  ?text:string -> ?text_signal:string Signal.signal -> t list -> t
+  ?text:string -> ?text_signal:string Signal.signal -> nothing list -> step_el
 val timeline :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -2393,19 +2446,19 @@ val timeline :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
   ?foreground_signal:string Signal.signal ->
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
-  ?on_appear:(Lui_protocol.event -> unit) -> ?label:string -> t list -> t
+  ?on_appear:(Lui_protocol.event -> unit) -> ?label:string -> timeline_item_el list -> t
 val timeline_item :
   ?key:string ->
   ?gap:int ->
-  ?main:string ->
-  ?cross:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
   ?padding:int ->
@@ -2422,7 +2475,7 @@ val timeline_item :
   ?max_width:int ->
   ?min_height:int ->
   ?max_height:int ->
-  ?container_relative_frame:string ->
+  ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
@@ -2435,7 +2488,7 @@ val timeline_item :
   ?description:string ->
   ?meta:string ->
   ?indicator:string ->
-  ?icon:string ->
-  ?variant:string ->
+  ?icon:icon ->
+  ?variant:variant ->
   ?connector:bool ->
-  ?selected:bool -> ?on_press:(Lui_protocol.event -> unit) -> t list -> t
+  ?selected:bool -> ?on_press:(Lui_protocol.event -> unit) -> nothing list -> timeline_item_el
