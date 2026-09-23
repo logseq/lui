@@ -1,4 +1,5 @@
 import LUIAppleBackend
+import Foundation
 import Observation
 import SwiftUI
 #if os(iOS)
@@ -118,6 +119,38 @@ private struct GalleryRootView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
+        splitView
+            .modifier(ModalHostModifier(host: host))
+            .task {
+                host.start()
+                selectDefaultForRegularWidth()
+            }
+            .onChange(of: host.sections) {
+                selectDefaultForRegularWidth()
+            }
+            .onChange(of: horizontalSizeClass) {
+                selectDefaultForRegularWidth()
+            }
+    }
+
+    /// Dialogs/sheets anchor to the traversal root, but each detail page is a
+    /// separate `LUISwiftUIRoot` keyed by section — so the app hosts modals at
+    /// the split-view level instead.
+    private struct ModalHostModifier: ViewModifier {
+        let host: GalleryHost
+
+        func body(content: Content) -> some View {
+            if let rootID = host.rootID {
+                content.modifier(
+                    LUIModalHostModifier(rootID: rootID, backend: host.backend)
+                )
+            } else {
+                content
+            }
+        }
+    }
+
+    private var splitView: some View {
         NavigationSplitView {
             List(host.sections, selection: $selectedSectionID) { section in
                 NavigationLink(value: section.id) {
@@ -146,16 +179,6 @@ private struct GalleryRootView: View {
                     systemImage: "square.grid.2x2"
                 )
             }
-        }
-        .task {
-            host.start()
-            selectDefaultForRegularWidth()
-        }
-        .onChange(of: host.sections) {
-            selectDefaultForRegularWidth()
-        }
-        .onChange(of: horizontalSizeClass) {
-            selectDefaultForRegularWidth()
         }
     }
 

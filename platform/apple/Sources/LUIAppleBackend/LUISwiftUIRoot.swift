@@ -1,4 +1,5 @@
 #if !SKIP
+import Foundation
 import Observation
 import SwiftUI
 #if os(macOS)
@@ -105,6 +106,49 @@ public struct LUISwiftUIRoot: View {
     }
 }
 
+/// Hosts modal presentations (dialogs and sheets) for a traversal root on an
+/// arbitrary view. Use this when the app's structure mounts several
+/// `LUISwiftUIRoot`s under one backend root (e.g. a sectioned gallery where
+/// each detail page is a separate root): modals anchor to the traversal root,
+/// so a detail root's own `LUISwiftUIRoot` can never present them.
+public struct LUIModalHostModifier: ViewModifier {
+    private let rootID: Int
+    private let backend: LUIAppleBackend
+
+    public init(rootID: Int, backend: LUIAppleBackend) {
+        self.rootID = rootID
+        self.backend = backend
+    }
+
+    public func body(content: Content) -> some View {
+        content
+            .sheet(item: sheetBinding, onDismiss: didDismissSheet) { presentation in
+                LUIModalSurfaceContent(model: presentation.model, backend: backend)
+                    .modifier(LUIModalPresentationStyle(kind: presentation.model.kind))
+            }
+            .modifier(LUIDialogPresentationModifier(anchorID: rootID, backend: backend))
+    }
+
+    private var sheetBinding: Binding<LUIModalPresentation?> {
+        Binding(
+            get: {
+                guard let item = backend.modalPresentation.item,
+                      item.rootID == rootID,
+                      item.model.kind == .sheet else { return nil }
+                return item
+            },
+            set: { backend.modalPresentation.updateFromPresentation($0) }
+        )
+    }
+
+    private func didDismissSheet() {
+        guard let nodeID = backend.modalPresentation.consumeInteractiveDismissal() else {
+            return
+        }
+        try? backend.performDismiss(node: nodeID)
+    }
+}
+
 private struct LUIDialogPresentationModifier: ViewModifier {
     let anchorID: Int
     let backend: LUIAppleBackend
@@ -178,8 +222,9 @@ enum LUIDialogPresentationStyle: Equatable {
 @MainActor
 enum LUIDialogContentPolicy {
     static func presentationStyle(styleClass: String?) -> LUIDialogPresentationStyle {
-        guard let styleClass,
-              styleClass.split(separator: " ").contains("alert") else {
+        guard let styleClass else { return .alert }
+        let tokens = styleClass.split(separator: " ")
+        if tokens.contains("confirmation-dialog") || tokens.contains("action-sheet") {
             return .confirmationDialog
         }
         return .alert
@@ -275,6 +320,7 @@ private struct LUIDialogActions: View {
                 backend.modalPresentation.beginDialogAction(presentation.id)
                 try? backend.performPress(node: actionID)
             }
+            .buttonStyle(.plain)
             .disabled(!action.isEnabled)
             .accessibilityIdentifier(
                 action.property(.accessibilityIdentifier)?.stringValue ?? ""
