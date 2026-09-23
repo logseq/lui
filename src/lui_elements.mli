@@ -2156,6 +2156,8 @@ val menu_item :
   ?role:string ->
   ?tree_level:int ->
   ?expanded:bool ->
+  ?selected:bool ->
+  ?selected_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_press:(Lui_protocol.event -> unit) ->
