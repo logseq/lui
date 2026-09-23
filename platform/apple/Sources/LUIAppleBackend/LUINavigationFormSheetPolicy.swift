@@ -96,15 +96,6 @@ struct LUINavigationFormActionView: View {
 
     @ViewBuilder
     private var actionButton: some View {
-        #if SKIP
-        Button(action: performPress) {
-            actionLabel
-        }
-        .disabled(!model.isEnabled)
-        .foregroundStyle(model.isEnabled ? Color.primary : Color.secondary)
-        .accessibilityIdentifier(actionAccessibilityIdentifier)
-        .accessibilityLabel(Text(verbatim: actionAccessibilityLabel))
-        #else
         Button(action: performPress) {
             actionLabel
         }
@@ -113,7 +104,6 @@ struct LUINavigationFormActionView: View {
         .accessibilityIdentifier(actionAccessibilityIdentifier)
         .accessibilityLabel(Text(verbatim: actionAccessibilityLabel))
         .accessibilityElement(children: .ignore)
-        #endif
     }
 
     private var actionAccessibilityIdentifier: String {
@@ -129,11 +119,7 @@ struct LUINavigationFormActionView: View {
         if LUINavigationFormSheetPolicy.usesNavigationBackIcon(
             model.property(.styleClass)?.stringValue
         ) {
-            #if SKIP
-            Text(verbatim: "‹")
-            #else
             Image(systemName: "chevron.backward")
-            #endif
         } else {
             Text(verbatim: model.text)
         }

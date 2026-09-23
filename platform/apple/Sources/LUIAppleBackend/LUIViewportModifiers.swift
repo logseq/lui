@@ -29,22 +29,6 @@ struct LUIContainerRelativeFrameModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        #if SKIP
-        if LUIContainerRelativeFramePolicy.skipFillsHorizontal(axes),
-           LUIContainerRelativeFramePolicy.skipFillsVertical(axes) {
-            content.frame(
-                maxWidth: .infinity,
-                maxHeight: .infinity,
-                alignment: .topLeading
-            )
-        } else if LUIContainerRelativeFramePolicy.skipFillsHorizontal(axes) {
-            content.frame(maxWidth: .infinity, alignment: .topLeading)
-        } else if LUIContainerRelativeFramePolicy.skipFillsVertical(axes) {
-            content.frame(maxHeight: .infinity, alignment: .topLeading)
-        } else {
-            content
-        }
-        #else
         switch axes {
         case "horizontal":
             content.containerRelativeFrame(.horizontal, alignment: .topLeading)
@@ -87,10 +71,8 @@ struct LUIContainerRelativeFrameModifier: ViewModifier {
         default:
             content
         }
-        #endif
     }
 
-    #if !SKIP
     private func minimumContainerMeasurement(_ axes: Axis.Set) -> some View {
         Color.clear
             .containerRelativeFrame(axes, alignment: .topLeading)
@@ -101,7 +83,6 @@ struct LUIContainerRelativeFrameModifier: ViewModifier {
                 minimumContainerSize = size
             }
     }
-    #endif
 }
 
 struct LUIAppearModifier: ViewModifier {

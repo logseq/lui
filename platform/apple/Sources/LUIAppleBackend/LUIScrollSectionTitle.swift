@@ -1,4 +1,3 @@
-#if !SKIP
 import SwiftUI
 import Observation
 
@@ -61,4 +60,3 @@ struct LUIScrollSectionTitleEmitter: View {
                                value: isActive ? tracker.title : nil)
     }
 }
-#endif
