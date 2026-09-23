@@ -62,19 +62,31 @@ An extension node's declared schema must match what the app actually mounts:
 
 ## `dyn` remounts the whole tree on every publish → render loops
 
-`Lui_elements.dyn`'s switch uses `equal = (fun _ _ -> false)` — every model
-publish remounts the ENTIRE view subtree. Mount-time emitters turn that into
-a ~10 Hz infinite loop:
+`Lui_elements.dyn` remounts its ENTIRE view subtree on every published model
+change under its `?equal` — the default `equal` is `(fun _ _ -> false)`
+(always remount). Mount-time emitters turn an always-remount `dyn` into a
+~10 Hz infinite loop:
 
 - fresh `SecureField`/`Input` fire `TextChanged("")` on mount;
 - extension views with `.task` handlers (e.g. an on-appear settings refresh)
   fire their event on every mount;
 - reducers that rebuild an identical record keep republishing.
 
-Defenses (apply at the reducer/signal boundary):
+Defenses:
 
+- **`dyn ~equal:` (first line)**: pass a structural or field-wise equality —
+  `dyn ~equal:(=) f model_source` for immutable record models, or a narrower
+  compare on just the fields the branch reads — so the subtree stays mounted
+  when a publish doesn't change this branch. `equal` compares model values
+  before `f` runs (and `f` only recomputes on real remounts).
+- Value-echo dedup is built in: `Lui_runtime.dispatch` drops
+  `TextChanged`/`ToggleChanged`/`ValueChanged` events whose payload equals
+  the property last sent to the host (or the unset default `""`/`false`/
+  `0.0`), so a mounted control re-reporting its bound value no longer
+  reaches the reducer. Genuine edits still deliver. (`Appear`/`ExtensionEvent`
+  echoes have no recorded value to compare — stop them at the `?equal` gate.)
 - `Signal.cutoff (==)` (or structural equality) on the model signal feeding
-  `dyn` — no republish when the model didn't actually change;
+  `dyn` — still useful to stop republishing identical models at all;
 - editor `apply_text_edit` (and equivalents) return `None`/`same` when the new
   document is identical to the stored one;
 - gate mount-triggered effects by comparing against last-applied state
