@@ -444,9 +444,13 @@ private struct LUINodeView: View {
             return AnyView(LUIBottomTabsView(model: model, backend: backend))
         case .bottomTab:
             return AnyView(
-                VStack(alignment: .leading, spacing: 0) {
-                    children
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        children
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .scrollBounceBehavior(.basedOnSize)
             )
         case .list:
             return AnyView(LUIListView(model: model, backend: backend)
@@ -4513,6 +4517,11 @@ private struct LUISurfaceModifier: ViewModifier {
         if LUIThemeColorPolicy.isAccentForeground(name) {
             return .accentColor
         }
+        #if !SKIP
+        if let name, let hex = hexColor(name) {
+            return hex
+        }
+        #endif
         return switch name?.lowercased() {
         case nil: nil
         case "transparent": .clear
@@ -4538,6 +4547,20 @@ private struct LUISurfaceModifier: ViewModifier {
         default: nil
         }
     }
+
+    #if !SKIP
+    private func hexColor(_ name: String) -> Color? {
+        let value = name.hasPrefix("#") ? String(name.dropFirst()) : name
+        guard value.count == 6, let rgb = UInt64(value, radix: 16) else {
+            return nil
+        }
+        return Color(
+            red: Double((rgb >> 16) & 0xff) / 255.0,
+            green: Double((rgb >> 8) & 0xff) / 255.0,
+            blue: Double(rgb & 0xff) / 255.0
+        )
+    }
+    #endif
 
     private var glassFallbackBackground: Color {
         #if SKIP
