@@ -45,8 +45,10 @@ let toggle_section model_source send : t =
     [ toggle ~checked:(reactive checked) ~label:"Enable notifications" ~on_toggle:on_toggle []
     ; checkbox ~checked:(reactive checked) ~label:"Remember choice" ~on_toggle:on_toggle []
     ; switch_ ~checked:(reactive checked) ~label:"Airplane mode" ~on_toggle:on_toggle []
-    ; radio ~checked:(reactive Model.density_comfortable model_source) ~label:"Comfortable" ~on_toggle:(fun _event -> ignore (send (Model.SetDensity "comfortable"))) []
-    ; radio ~checked:(reactive Model.density_compact model_source) ~label:"Compact" ~on_toggle:(fun _event -> ignore (send (Model.SetDensity "compact"))) []
+    ; radio_group ~label:"Density"
+        [ radio ~checked:(reactive Model.density_comfortable model_source) ~label:"Comfortable" ~on_toggle:(fun _event -> ignore (send (Model.SetDensity "comfortable"))) []
+        ; radio ~checked:(reactive Model.density_compact model_source) ~label:"Compact" ~on_toggle:(fun _event -> ignore (send (Model.SetDensity "compact"))) []
+        ]
     ]
 
 let field_section model_source send : t =
@@ -177,7 +179,7 @@ let navigation_section model_source send : t =
            then paragraph ~value:"Recent retained updates" []
            else paragraph ~value:"Signal updates remain local" [])
         model_source
-    ; bottom_tabs ~accessibility_identifier:"primary-destinations" [bottom_tab ~icon:"folder" ~title:"Home" ~selected:(reactive Model.home_bottom_tab_selected model_source) ~on_press:(press send (Model.SelectBottomTab "home")) [column ~gap:12 ~padding:20 [heading ~level:2 ~value:"Home" [] ; input ~label:"Draft" ~placeholder:"Retained home draft" [] ; paragraph ~value:"This input stays mounted while another destination is active." []]] ; bottom_tab ~icon:"search" ~title:"Search" ~selected:(reactive Model.search_bottom_tab_selected model_source) ~on_press:(press send (Model.SelectBottomTab "search")) [column ~gap:12 ~padding:20 [heading ~level:2 ~value:"Search" [] ; paragraph ~value:"Search uses the same retained destination model." []]] ; bottom_tab ~icon:"settings" ~title:"Settings" ~selected:(reactive Model.settings_bottom_tab_selected model_source) ~on_press:(press send (Model.SelectBottomTab "settings")) [column ~gap:12 ~padding:20 [heading ~level:2 ~value:"Settings" [] ; paragraph ~value:"Platform chrome changes without rebuilding this page." []]]]
+    ; bottom_tabs ~label:"Primary destinations" ~accessibility_identifier:"primary-destinations" [bottom_tab ~icon:"folder" ~title:"Home" ~selected:(reactive Model.home_bottom_tab_selected model_source) ~on_press:(press send (Model.SelectBottomTab "home")) [column ~gap:12 ~padding:20 [heading ~level:2 ~value:"Home" [] ; input ~label:"Draft" ~placeholder:"Retained home draft" [] ; paragraph ~value:"This input stays mounted while another destination is active." []]] ; bottom_tab ~icon:"search" ~title:"Search" ~selected:(reactive Model.search_bottom_tab_selected model_source) ~on_press:(press send (Model.SelectBottomTab "search")) [column ~gap:12 ~padding:20 [heading ~level:2 ~value:"Search" [] ; paragraph ~value:"Search uses the same retained destination model." []]] ; bottom_tab ~icon:"settings" ~title:"Settings" ~selected:(reactive Model.settings_bottom_tab_selected model_source) ~on_press:(press send (Model.SelectBottomTab "settings")) [column ~gap:12 ~padding:20 [heading ~level:2 ~value:"Settings" [] ; paragraph ~value:"Platform chrome changes without rebuilding this page." []]]]
     ; paragraph ~value:"Apple maps this component to TabView; Android maps it to Material NavigationBar." []
     ]
 

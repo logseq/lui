@@ -35,6 +35,8 @@ private func luiOCamlToggleChanged(_ node: Int64, _ checked: Int32) -> Int32
 private func luiOCamlRadioChanged(_ node: Int64) -> Int32
 @_silgen_name("lui_ocaml_slider_changed")
 private func luiOCamlSliderChanged(_ node: Int64, _ value: Double) -> Int32
+@_silgen_name("lui_ocaml_appear")
+private func luiOCamlAppear(_ node: Int64) -> Int32
 
 nonisolated(unsafe) private var activeHost: GalleryHost?
 
@@ -76,6 +78,7 @@ private final class GalleryHost {
             case let .change(node): _ = luiOCamlRadioChanged(Int64(node))
             case let .valueChanged(node, value):
                 _ = luiOCamlSliderChanged(Int64(node), value)
+            case let .appear(node): _ = luiOCamlAppear(Int64(node))
             case .extension:
                 assertionFailure("Gallery extensions do not declare LG events")
             }
