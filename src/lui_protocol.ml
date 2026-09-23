@@ -716,6 +716,8 @@ let common_property_supported kind property =
 let property_supported kind property =
   if property = AccessibilityIdentifier then true
   else
+    (* The restrictive arms below mirror schema/components.json
+       kindProperties; test/property_matrix asserts the two stay in sync. *)
     match kind with
     | Root | ContextMenu -> false
     | Toast ->

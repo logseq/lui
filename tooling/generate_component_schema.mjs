@@ -45,6 +45,27 @@ function validate(schema) {
   unique(schema.properties, 'swift', 'property Swift name');
   unique(schema.events, 'lg', 'event LG name');
 
+  const kindWires = new Set(schema.nodeKinds.map(({ wire }) => wire));
+  const propertyWires = new Set(schema.properties.map(({ wire }) => wire));
+  for (const [tableName, table] of [
+    ['kindProperties', schema.kindProperties ?? {}],
+    ['kindExtraProperties', schema.kindExtraProperties ?? {}],
+  ]) {
+    for (const [kindWire, propWires] of Object.entries(table)) {
+      if (!kindWires.has(kindWire)) {
+        fail(`${tableName}: unknown node kind ${kindWire}`);
+      }
+      if (!Array.isArray(propWires)) {
+        fail(`${tableName}.${kindWire} must be an array of property wire names`);
+      }
+      for (const propWire of propWires) {
+        if (!propertyWires.has(propWire)) {
+          fail(`${tableName}.${kindWire}: unknown property ${propWire}`);
+        }
+      }
+    }
+  }
+
   const statuses = new Set(['supported', 'partial', 'pending']);
   for (const element of schema.publicElements) {
     if (!statuses.has(element.status)) {
@@ -210,6 +231,16 @@ function renderOCamlWire(schema) {
   const propertyCases = schema.properties
     .map(({ lg, wire }) => `  | ${lg} -> "${wire}"`)
     .join('\n');
+  const kindLg = new Map(schema.nodeKinds.map(({ wire, lg }) => [wire, lg]));
+  const propLg = new Map(schema.properties.map(({ wire, lg }) => [wire, lg]));
+  const matrixCases = Object.entries(schema.kindProperties ?? {})
+    .map(([kindWire, propWires]) =>
+      `  | ${kindLg.get(kindWire)} -> Some [ ${propWires.map((w) => propLg.get(w)).join('; ')} ]`)
+    .join('\n');
+  const extraCases = Object.entries(schema.kindExtraProperties ?? {})
+    .map(([kindWire, propWires]) =>
+      `  | ${kindLg.get(kindWire)} -> [ ${propWires.map((w) => propLg.get(w)).join('; ')} ]`)
+    .join('\n');
   return `${'(* Generated from schema/components.json. Do not edit by hand. *)\n'}
 
 open Lui_protocol
@@ -226,6 +257,20 @@ ${schema.nodeKinds.map(({ wire }) => `  | "${wire}" -> true`).join('\n')}
 let property_name property =
   match property with
 ${propertyCases}
+
+let kind_property_matrix kind =
+  match kind with
+${matrixCases}
+  | _ -> None
+
+let kind_extra_properties kind =
+  match kind with
+${extraCases}
+  | _ -> []
+
+let all_node_kinds = [ ${schema.nodeKinds.map(({ lg }) => lg).join('; ')} ]
+
+let all_properties = [ ${schema.properties.map(({ lg }) => lg).join('; ')} ]
 `;
 }
 
@@ -237,6 +282,10 @@ open Lui_protocol
 val node_kind_name : node_kind -> string
 val standard_node_name : string -> bool
 val property_name : property -> string
+val kind_property_matrix : node_kind -> property list option
+val kind_extra_properties : node_kind -> property list
+val all_node_kinds : node_kind list
+val all_properties : property list
 `;
 }
 
@@ -247,6 +296,16 @@ function renderSwift(schema) {
   const properties = schema.properties
     .map(({ swift, wire }) => `    case ${swift} = "${wire}"`)
     .join('\n');
+  const kindSwift = new Map(schema.nodeKinds.map(({ wire, swift }) => [wire, swift]));
+  const propSwift = new Map(schema.properties.map(({ wire, swift }) => [wire, swift]));
+  const matrixEntries = Object.entries(schema.kindProperties ?? {})
+    .map(([kindWire, propWires]) =>
+      `        .${kindSwift.get(kindWire)}: [${propWires.map((w) => `.${propSwift.get(w)}`).join(', ')}],`)
+    .join('\n');
+  const extraEntries = Object.entries(schema.kindExtraProperties ?? {})
+    .map(([kindWire, propWires]) =>
+      `        .${kindSwift.get(kindWire)}: [${propWires.map((w) => `.${propSwift.get(w)}`).join(', ')}],`)
+    .join('\n');
   return `${generatedHeader('//')}import Foundation
 
 enum LUINodeKind: String, Decodable, Equatable {
@@ -255,6 +314,16 @@ ${nodeKinds}
 
 enum LUIProperty: String, Decodable, Hashable {
 ${properties}
+}
+
+enum LUISchemaMatrix {
+    static let restrictive: [LUINodeKind: Set<LUIProperty>] = [
+${matrixEntries}
+    ]
+
+    static let extra: [LUINodeKind: Set<LUIProperty>] = [
+${extraEntries}
+    ]
 }
 `;
 }
