@@ -826,9 +826,16 @@ let set_prop application node property value =
   let node = canonical_node application node in
   let kind = require_standard_node_kind application node in
   if not (property_supported kind property) then
-    invalid_arg "property is unsupported by node kind";
+    invalid_arg
+      (Printf.sprintf "property is unsupported by node kind: kind=%s prop=%s"
+         (Lui_wire_schema.node_kind_name kind)
+         (Lui_wire_schema.property_name property));
   if not (property_value_supported_for_kind kind property value) then
-    invalid_arg "invalid property value";
+    invalid_arg
+      (Printf.sprintf "invalid property value: kind=%s prop=%s value=%s"
+         (Lui_wire_schema.node_kind_name kind)
+         (Lui_wire_schema.property_name property)
+         (Lui_wire.encode_value value));
   let current =
     match Hashtbl.find_opt application.runtime_properties node with
     | Some values -> values
