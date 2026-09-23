@@ -202,6 +202,14 @@ final class LUINodeModel: Identifiable {
         }
     }
 
+    var spinnerStyle: LUISpinnerStyle {
+        switch properties[.size]?.stringValue ?? "default" {
+        case "sm": .small
+        case "lg": .large
+        default: .regular
+        }
+    }
+
     var iconExtent: Int {
         switch properties[.size]?.stringValue ?? "default" {
         case "sm": 16
@@ -1033,4 +1041,11 @@ final class LUITooltipIntent {
         origin = nil
         isPresented = false
     }
+}
+
+/// Spinner sizing tier shared by the platform spinner views.
+public enum LUISpinnerStyle: Sendable {
+    case small
+    case regular
+    case large
 }
