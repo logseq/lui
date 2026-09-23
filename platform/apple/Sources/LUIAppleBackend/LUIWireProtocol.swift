@@ -585,23 +585,28 @@ struct LUIRetainedTree {
         return switch property {
         case .main, .cross:
             kind == .row || kind == .column || kind == .list || kind == .virtualList ||
+                kind == .card || kind == .panel || kind == .box ||
                 isHorizontalGroup(kind)
         case .grow: kind != .avatar && kind != .tooltip && !isModalSurface(kind)
         case .columns: kind == .grid
-        case .padding, .width, .height: kind != .avatar && kind != .tooltip
+        case .padding, .width, .height: kind != .tooltip
         case .styleClass:
-            kind != .avatar && kind != .tooltip
+            kind != .tooltip
         case .background, .borderColor, .borderWidth,
              .cornerRadius,
              .minWidth, .maxWidth, .minHeight, .maxHeight:
-            kind != .avatar && kind != .tooltip && !isModalSurface(kind)
+            kind != .tooltip && !isModalSurface(kind)
         case .containerRelativeFrame, .containerRelativeFrameInset:
             kind != .root && !isModalSurface(kind)
         case .paddingHorizontal, .paddingVertical:
             kind == .row || kind == .column || kind == .grid || kind == .box ||
+                kind == .card || kind == .panel || kind == .scroll ||
                 (property == .paddingHorizontal && kind == .button)
         case .foreground:
-            kind == .text || kind == .heading || kind == .paragraph ||
+            kind == .row || kind == .column || kind == .grid || kind == .box ||
+                kind == .panel || kind == .card || kind == .stack ||
+                kind == .scroll || kind == .avatar ||
+                kind == .text || kind == .heading || kind == .paragraph ||
                 kind == .label || kind == .button || kind == .toggleButton ||
                 isTextEntry(kind) || kind == .checkbox || kind == .toggle ||
                 kind == .radio || kind == .slider || kind == .spinner || kind == .icon
@@ -626,7 +631,8 @@ struct LUIRetainedTree {
                 kind == .drawer
         case .gap:
             kind == .row || kind == .column || kind == .grid || kind == .list ||
-                kind == .virtualList ||
+                kind == .virtualList || kind == .scroll || kind == .card ||
+                kind == .panel || kind == .box ||
                 kind == .dropdownMenu || isHorizontalGroup(kind) || kind == .split
                 || kind == .tableRow || kind == .tree
         case .placeholder:
@@ -651,7 +657,7 @@ struct LUIRetainedTree {
             kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
         case .progressValue: kind == .progress || kind == .slider || kind == .split
         case .resizeDuration, .resizeEasing, .resizeOrigin: kind == .split
-        case .orientation: kind == .divider || kind == .tabs
+        case .orientation: kind == .divider || kind == .tabs || kind == .scroll
         case .size:
             kind == .button || kind == .toggleButton || kind == .spinner ||
                 kind == .icon || kind == .text || kind == .tableCell ||

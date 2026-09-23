@@ -505,6 +505,9 @@ let common_property_supported kind property =
     || kind = Column
     || kind = ListContainer
     || kind = VirtualList
+    || kind = Card
+    || kind = Panel
+    || kind = Box
     || horizontal_container kind
   | GrowValue ->
     kind <> Avatar && (not (modal_surface kind)) && kind <> Tooltip
@@ -512,22 +515,26 @@ let common_property_supported kind property =
   | PaddingValue -> kind <> Avatar && kind <> Tooltip
   | PaddingHorizontal ->
     kind = Row || kind = Column || kind = Grid || kind = Box || kind = Button
-  | PaddingVertical -> kind = Row || kind = Column || kind = Grid || kind = Box
+    || kind = Card || kind = Panel || kind = Scroll
+  | PaddingVertical ->
+    kind = Row || kind = Column || kind = Grid || kind = Box || kind = Card
+    || kind = Panel || kind = Scroll
   | BackgroundValue | BorderColorValue | BorderWidth | CornerRadius ->
-    kind <> Avatar && (not (modal_surface kind)) && kind <> Tooltip
+    (not (modal_surface kind)) && kind <> Tooltip
   | ForegroundValue ->
     (match kind with
+    | Row | Column | Grid | Box | Panel | Card | Stack | Scroll | Avatar
     | Text | Heading | Paragraph | Label | Button | ToggleButton | TextField
     | SecureField | Input | SearchField | Textarea | Checkbox | Toggle | Radio
     | Slider | Spinner | Icon | Select | Combobox | DropdownMenu | MenuItem
     | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar -> true
     | _ -> false)
-  | WidthValue | HeightValue -> kind <> Avatar && kind <> Tooltip
+  | WidthValue | HeightValue -> kind <> Tooltip
   | MinWidth | MaxWidth | MinHeight | MaxHeight ->
-    kind <> Avatar && (not (modal_surface kind)) && kind <> Tooltip
+    (not (modal_surface kind)) && kind <> Tooltip
   | ContainerRelativeFrameValue | ContainerRelativeFrameInset ->
     kind <> Root && not (modal_surface kind)
-  | StyleClass -> kind <> Avatar && kind <> Tooltip
+  | StyleClass -> kind <> Tooltip
   | AccessibilityLabel ->
     kind = Button
     || kind = ToggleButton
@@ -568,7 +575,7 @@ let common_property_supported kind property =
   | Checked ->
     kind = Checkbox || kind = SwitchControl || kind = Toggle || kind = Radio
   | ProgressValue -> kind = Progress || kind = Slider || kind = Split
-  | OrientationValue -> kind = Divider || kind = Tabs
+  | OrientationValue -> kind = Divider || kind = Tabs || kind = Scroll
   | SizeValue ->
     kind = Button || kind = ToggleButton || kind = Spinner || kind = Icon
     || kind = TableCell || kind = MenuItem
@@ -699,6 +706,10 @@ let common_property_supported kind property =
     || kind = DropdownMenu
     || kind = TableRow
     || kind = Tree
+    || kind = Scroll
+    || kind = Card
+    || kind = Panel
+    || kind = Box
     || kind = Split
     || horizontal_container kind
 

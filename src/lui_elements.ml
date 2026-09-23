@@ -413,10 +413,11 @@ let box ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padd
   mount_children context node children;
   node
 
-let scroll ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear (children : t list) : t =
+let scroll ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?orientation (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.scroll context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Option.iter (Lui_ui.string_property context node OrientationValue) (Option.map orientation_value orientation);
   attach context parent node;
   mount_children context node children;
   node

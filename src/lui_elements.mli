@@ -446,7 +446,8 @@ val scroll :
   ?foreground_signal:string Signal.signal ->
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
-  ?on_appear:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?orientation:orientation -> t list -> t
 val list :
   ?key:string ->
   ?gap:int ->
