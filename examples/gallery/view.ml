@@ -489,7 +489,9 @@ let dialog_section model_source send : t =
         ~value:"The same model-owned conditional drives the native modal on every host."
         []
     ; if_ ~test:open_
-        (dialog ~text:"Rename note" ~width:380 ~height:240 ~padding:24
+        (dialog ~text:"Rename note"
+           ~description:"Choose a new name for this note."
+           ~width:380 ~height:240 ~padding:24
            ~on_dismiss:(press send Model.CloseDialog)
            [ column ~gap:16
                [ box ~height:24 []
@@ -620,6 +622,8 @@ let menu_item_section model_source send : t =
             ]
         ; menu_item ~text:"Archive" ~disabled:(reactive disabled)
             ~on_press:(press send (Model.PerformContextAction "Archive")) []
+        ; menu_item ~text:"Delete" ~variant:`destructive ~icon:`trash ~size:`sm
+            ~on_press:(press send (Model.PerformContextAction "Delete")) []
         ]
     ]
 
@@ -1304,17 +1308,14 @@ let native_extension_section : t =
       ]
   in
   let page_id = page context parent in
-  let map = Lui_ui.extension context "apple-map" in
-  Lui_ui.extension_property context map "latitude" (FloatValue 37.3349);
-  Lui_ui.extension_property context map "longitude" (FloatValue (-122.0090));
-  Lui_ui.extension_property context map "latitude-delta" (FloatValue 0.02);
-  Lui_ui.extension_property context map "longitude-delta" (FloatValue 0.02);
-  Lui_elements.attach context (Some page_id) map;
-  let marker = Lui_ui.extension context "apple-map-marker" in
-  Lui_ui.extension_property context marker "title" (StringValue "Apple Park");
-  Lui_ui.extension_property context marker "latitude" (FloatValue 37.3349);
-  Lui_ui.extension_property context marker "longitude" (FloatValue (-122.0090));
-  Lui_elements.attach context (Some map) marker;
+  ignore
+    (Extension_schemas.apple_map ~latitude:37.3349 ~longitude:(-122.0090)
+       ~latitude_delta:0.02 ~longitude_delta:0.02
+       [
+         Extension_schemas.apple_map_marker ~title:"Apple Park"
+           ~latitude:37.3349 ~longitude:(-122.0090) ();
+       ]
+       context (Some page_id));
   page_id
 
 let tweak_paragraph : t =
