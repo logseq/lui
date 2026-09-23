@@ -1,6 +1,6 @@
 (library
  (name gallery_app)
- (modules model view)
+ (modules model view extension_schemas)
  (libraries lui ocaml-signal)
  (preprocess (pps lui_ppx))
  (wrapped false))

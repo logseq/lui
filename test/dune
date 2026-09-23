@@ -1,3 +1,5 @@
 (test
  (name test_lui)
- (libraries lui ocaml-signal alcotest))
+ (libraries lui ocaml-signal alcotest gallery_app)
+ (deps
+  ../examples/components/ios-swiftui/Sources/LUIComponentsApp/GalleryExtensions.swift))

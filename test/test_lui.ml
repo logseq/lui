@@ -230,6 +230,133 @@ let test_dispatch_drops_unset_default_echoes () =
   Alcotest.(check int) "typed text delivered" 1 !inputs;
   ignore (Lui_app.dispose app)
 
+(* Extension fingerprint sync: the gallery declares its extension schemas
+   once in Extension_schemas (OCaml); host apps mirror the canonical
+   fingerprint strings as literals. Lui_extension_check compares the two so
+   drift fails here instead of surfacing as a runtime "extension fingerprint
+   mismatch" blank screen. *)
+
+let source_root () =
+  match Sys.getenv_opt "DUNE_SOURCEROOT" with
+  | Some root -> root
+  | None ->
+    let rec ascend depth dir =
+      if depth > 12 then
+        failwith "could not locate repository root (dune-project)"
+      else if
+        Sys.file_exists (Filename.concat dir "dune-project")
+        && not
+             (String.equal (Filename.basename dir) "_build"
+             || String.equal (Filename.basename (Filename.dirname dir))
+                  "_build")
+      then dir
+      else ascend (depth + 1) (Filename.dirname dir)
+    in
+    ascend 0 (Sys.getcwd ())
+
+let read_file path =
+  let channel = open_in_bin path in
+  let contents =
+    really_input_string channel (in_channel_length channel)
+  in
+  close_in channel;
+  contents
+
+let gallery_source () =
+  read_file
+    (Filename.concat (source_root ())
+       "examples/components/ios-swiftui/Sources/LUIComponentsApp/GalleryExtensions.swift")
+
+let contains source pattern =
+  let n = String.length pattern in
+  let last = String.length source - n in
+  let rec loop i = i <= last && (String.sub source i n = pattern || loop (i + 1)) in
+  loop 0
+
+let replace_first source pattern replacement =
+  let n = String.length pattern in
+  let last = String.length source - n in
+  let rec loop i =
+    if i > last then None
+    else if String.sub source i n = pattern then
+      Some
+        (String.sub source 0 i ^ replacement
+        ^ String.sub source (i + n) (String.length source - i - n))
+    else loop (i + 1)
+  in
+  loop 0
+
+let gallery_schema identifier =
+  let registry = Extension_schemas.registry () in
+  match Lui_extension.schema registry identifier with
+  | Some schema -> schema
+  | None -> Alcotest.fail ("unregistered schema " ^ identifier)
+
+let test_fingerprint_format () =
+  Alcotest.(check string) "apple-map fingerprint"
+    "lui-extension-v1|9:apple-map|profiles:ios/swiftui,macos/swiftui|standard-children:0|children:16:apple-map-marker|properties:14:latitude-delta:float:required:none,15:longitude-delta:float:required:none,8:latitude:float:required:none,9:longitude:float:required:none|events:"
+    (Lui_extension.fingerprint (gallery_schema "apple-map"));
+  Alcotest.(check string) "marker fingerprint"
+    "lui-extension-v1|16:apple-map-marker|profiles:ios/swiftui,macos/swiftui|standard-children:0|children:|properties:5:title:string:required:none,8:latitude:float:required:none,9:longitude:float:required:none|events:"
+    (Lui_extension.fingerprint (gallery_schema "apple-map-marker"));
+  Alcotest.(check string) "tweak fingerprint"
+    "lui-tweak-v1|14:gallery-accent|profiles:android/flutter,ios/flutter,ios/swiftui,linux/flutter,macos/flutter,macos/swiftui,web/web,windows/flutter|properties:"
+    (Lui_extension.tweak_fingerprint (gallery_schema "gallery-accent"))
+
+let test_host_literals_in_sync () =
+  let registry = Extension_schemas.registry () in
+  match
+    Lui_extension_check.check_registry registry (gallery_source ())
+  with
+  | [] -> ()
+  | mismatches ->
+    Alcotest.failf "extension fingerprint drift:\n%s"
+      (Lui_extension_check.describe_mismatches mismatches)
+
+let test_drift_is_caught () =
+  let registry = Extension_schemas.registry () in
+  let source = gallery_source () in
+  (* Drop the marker child from apple-map's host literal only. *)
+  let drifted =
+    match
+      replace_first source "|children:16:apple-map-marker|" "|children:|"
+    with
+    | Some value -> value
+    | None -> Alcotest.fail "gallery source did not contain the expected literal"
+  in
+  (match Lui_extension_check.check_registry registry drifted with
+   | [ Lui_extension_check.Drifted { declaration; expected } ] ->
+     Alcotest.(check string) "drifted identifier" "apple-map"
+       declaration.host_identifier;
+     Alcotest.(check bool) "expected keeps the child" true
+       (contains expected "16:apple-map-marker")
+   | _ -> Alcotest.fail "expected exactly one drifted fingerprint");
+  (* A host literal for an extension the OCaml side never declared. *)
+  let undeclared =
+    source
+    ^ "\n    fingerprint: \"lui-extension-v1|8:fake-map|profiles:ios/swiftui|standard-children:0|children:|properties:|events:\"\n"
+  in
+  (match Lui_extension_check.check_registry registry undeclared with
+   | [ Lui_extension_check.Undeclared_identifier declaration ] ->
+     Alcotest.(check string) "undeclared identifier" "fake-map"
+       declaration.host_identifier
+   | _ -> Alcotest.fail "expected exactly one undeclared identifier");
+  (* Dart host registrations use single-quoted literals: same extraction. *)
+  let dart_source =
+    "LUIFlutterExtension(\n\
+    \  identifier: 'apple-map',\n\
+    \  fingerprint: 'lui-extension-v1|9:apple-map|profiles:ios/swiftui,macos/swiftui|standard-children:1|children:16:apple-map-marker|properties:14:latitude-delta:float:required:none,15:longitude-delta:float:required:none,8:latitude:float:required:none,9:longitude:float:required:none|events:',\n\
+    \  builder: (_) => const SizedBox.shrink(),\n\
+    )"
+  in
+  match Lui_extension_check.check_registry registry dart_source with
+  | [ Lui_extension_check.Drifted { declaration; expected } ] ->
+    Alcotest.(check string) "dart identifier" "apple-map"
+      declaration.host_identifier;
+    Alcotest.(check bool) "expected has standard-children:0" true
+      (contains expected "standard-children:0")
+  | _ -> Alcotest.fail "expected exactly one drifted Dart fingerprint"
+
 let () =
   Alcotest.run "lui"
     [
@@ -254,5 +381,13 @@ let () =
             test_dispatch_drops_value_echoes;
           Alcotest.test_case "unset default echoes dropped" `Quick
             test_dispatch_drops_unset_default_echoes;
+        ] );
+      ( "extension fingerprints",
+        [
+          Alcotest.test_case "canonical format" `Quick
+            test_fingerprint_format;
+          Alcotest.test_case "host literals in sync" `Quick
+            test_host_literals_in_sync;
+          Alcotest.test_case "drift is caught" `Quick test_drift_is_caught;
         ] );
     ]

@@ -40,9 +40,10 @@ let backend host_profile =
 let initialize platform_code host_code =
   latest_patch := "";
   let value =
-    Lui_app.create
+    Lui_app.create_with_extensions
       (backend
          (profile (operating_system platform_code) (host_kind host_code)))
+      (Extension_schemas.registry ())
       Model.initial Model.update View.view
   in
   current_app := Some value;
