@@ -9,23 +9,14 @@ let package = Package(
         .library(name: "LUIAppleBackend", type: .dynamic, targets: ["LUIAppleBackend"]),
         .library(name: "LUIAppleBackendStatic", type: .static, targets: ["LUIAppleBackend"]),
     ],
-    dependencies: [
-        .package(url: "https://source.skip.tools/skip.git", exact: "1.9.5"),
-        .package(url: "https://source.skip.tools/skip-ui.git", exact: "1.59.1"),
-    ],
     targets: [
         .target(
             name: "LUIAppleBackend",
-            dependencies: [.product(name: "SkipUI", package: "skip-ui")],
-            plugins: [.plugin(name: "skipstone", package: "skip")]
+            dependencies: []
         ),
         .testTarget(
             name: "LUIAppleBackendTests",
-            dependencies: [
-                "LUIAppleBackend",
-                .product(name: "SkipTest", package: "skip"),
-            ],
-            plugins: [.plugin(name: "skipstone", package: "skip")]
+            dependencies: ["LUIAppleBackend"]
         ),
     ]
 )

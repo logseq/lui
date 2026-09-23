@@ -1,4 +1,3 @@
-#if !SKIP
 import SwiftUI
 
 extension EnvironmentValues {
@@ -30,4 +29,3 @@ enum LUITextHighlight {
         return result
     }
 }
-#endif

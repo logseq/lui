@@ -22,7 +22,6 @@ public extension View {
     }
 }
 
-#if !SKIP
 // Shared "#rrggbb" resolver for views that style themselves from color-name
 // props (avatar background/foreground). Returns nil for non-hex names.
 func luiHexColor(_ name: String) -> Color? {
@@ -36,7 +35,6 @@ func luiHexColor(_ name: String) -> Color? {
         blue: Double(rgb & 0xff) / 255.0
     )
 }
-#endif
 
 enum LUIThemeColorPolicy {
     static func menuItemForegroundName(

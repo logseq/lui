@@ -1,4 +1,3 @@
-#if !SKIP
 import Foundation
 import Observation
 import SwiftUI
@@ -619,7 +618,6 @@ private struct LUINodeView: View {
         case .spacer:
             return AnyView(Spacer())
         case .spinner:
-            #if !SKIP
             return AnyView(
                 LUIActivitySpinnerView(style: model.spinnerStyle)
                     .frame(
@@ -627,17 +625,6 @@ private struct LUINodeView: View {
                         height: CGFloat(model.spinnerHeight)
                     )
             )
-            #else
-            return AnyView(
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .controlSize(model.spinnerControlSize)
-                    .frame(
-                        width: CGFloat(model.spinnerWidth),
-                        height: CGFloat(model.spinnerHeight)
-                    )
-            )
-            #endif
         case .icon:
             return AnyView(
                 LUIIconImage(
@@ -2086,22 +2073,18 @@ private struct LUIAvatarView: View {
     }
 
     private var avatarBackground: Color {
-        #if !SKIP
         if let name = model.property(.background)?.stringValue,
            let color = luiHexColor(name) {
             return color
         }
-        #endif
         return Color.secondary.opacity(0.16)
     }
 
     private var avatarForeground: Color {
-        #if !SKIP
         if let name = model.property(.foreground)?.stringValue,
            let color = luiHexColor(name) {
             return color
         }
-        #endif
         return .primary
     }
 }
@@ -2627,11 +2610,9 @@ private struct LUIMenuItemForegroundModifier: ViewModifier {
         if let semantic = semanticColors[name.lowercased()] {
             return semantic
         }
-        #if !SKIP
         if let hex = hexColor(name) {
             return hex
         }
-        #endif
         return switch name.lowercased() {
         case "red", "error-foreground": .red
         case "accent": .accentColor
@@ -2643,7 +2624,6 @@ private struct LUIMenuItemForegroundModifier: ViewModifier {
         }
     }
 
-    #if !SKIP
     private func hexColor(_ name: String) -> Color? {
         let value = name.hasPrefix("#") ? String(name.dropFirst()) : name
         guard value.count == 6, let rgb = UInt64(value, radix: 16) else {
@@ -2655,7 +2635,6 @@ private struct LUIMenuItemForegroundModifier: ViewModifier {
             blue: Double(rgb & 0xff) / 255.0
         )
     }
-    #endif
 }
 
 private struct LUIListItemView: View {
@@ -4037,7 +4016,6 @@ private struct LUIListView: View {
                 }
             }
         }
-        #if !SKIP
         .scrollContentBackground(
             semanticColors["background"] == nil
                 ? LUIListSurfacePolicy.scrollContentBackground : .hidden
@@ -4048,7 +4026,6 @@ private struct LUIListView: View {
             key: LUIListSurfacePreferenceKey.self,
             value: semanticColors["background"] == nil
         )
-        #endif
         #if os(iOS)
         .listStyle(.insetGrouped)
         #endif
@@ -4613,11 +4590,9 @@ private struct LUISurfaceModifier: ViewModifier {
         if LUIThemeColorPolicy.isAccentForeground(name) {
             return .accentColor
         }
-        #if !SKIP
         if let name, let hex = hexColor(name) {
             return hex
         }
-        #endif
         return switch name?.lowercased() {
         case nil: nil
         case "transparent": .clear
@@ -4644,7 +4619,6 @@ private struct LUISurfaceModifier: ViewModifier {
         }
     }
 
-    #if !SKIP
     private func hexColor(_ name: String) -> Color? {
         let value = name.hasPrefix("#") ? String(name.dropFirst()) : name
         guard value.count == 6, let rgb = UInt64(value, radix: 16) else {
@@ -4656,14 +4630,9 @@ private struct LUISurfaceModifier: ViewModifier {
             blue: Double(rgb & 0xff) / 255.0
         )
     }
-    #endif
 
     private var glassFallbackBackground: Color {
-        #if SKIP
-        Color.white.opacity(0.9)
-        #else
         .clear
-        #endif
     }
 
     private func defaultBackground(isSurface: Bool, isTabs: Bool) -> Color {
@@ -5083,9 +5052,7 @@ private struct LUIAccessibilityContainmentModifier: ViewModifier {
         }
     }
 }
-#endif
 
-#if !SKIP
 /// Indeterminate spinner backed by the platform activity indicator instead of
 /// `ProgressView`: inside `List`/`Form` cells the SwiftUI progress view keeps
 /// invalidating the collection layout and can pin the main thread at 100%.
@@ -5129,5 +5096,4 @@ private struct MacActivityIndicator: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSProgressIndicator, context: Context) {}
 }
-#endif
 #endif
