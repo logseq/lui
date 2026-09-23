@@ -69,33 +69,33 @@ let spacer_section : t =
 let button_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "Button"
-    [ button ~variant:"outline" ~text:"Toggle disabled"
+    [ button ~variant:`outline ~text:"Toggle disabled"
         ~on_press:(press send Model.ToggleDisabled) []
     ; if_ ~test:disabled (paragraph ~value:"Controls are disabled." [])
     ; grid ~columns:2 ~gap:12
         [ button ~text:"Default" ~disabled:(reactive disabled)
             ~on_press:noop []
-        ; button ~variant:"primary" ~icon:"download" ~text:"Primary"
+        ; button ~variant:`primary ~icon:`download ~text:"Primary"
             ~disabled:(reactive disabled) ~on_press:noop
             ~on_long_press:(press send Model.ToggleDisabled) []
-        ; button ~variant:"secondary" ~text:"Secondary"
+        ; button ~variant:`secondary ~text:"Secondary"
             ~disabled:(reactive disabled) ~on_press:noop []
-        ; button ~variant:"outline" ~text:"Outline"
+        ; button ~variant:`outline ~text:"Outline"
             ~disabled:(reactive disabled) ~on_press:noop []
-        ; button ~variant:"ghost" ~text:"Selected" ~selected:true
+        ; button ~variant:`ghost ~text:"Selected" ~selected:true
             ~disabled:(reactive disabled) ~on_press:noop []
-        ; button ~variant:"destructive" ~text:"Destructive"
+        ; button ~variant:`destructive ~text:"Destructive"
             ~disabled:(reactive disabled) ~on_press:noop []
         ]
     ; row ~gap:12
-        [ button ~size:"sm" ~text:"Small" ~disabled:(reactive disabled)
+        [ button ~size:`sm ~text:"Small" ~disabled:(reactive disabled)
             ~on_press:noop []
         ; button ~text:"Default" ~disabled:(reactive disabled)
             ~on_press:noop []
-        ; button ~size:"lg" ~icon:"chevron-right"
-            ~icon_placement:"trailing" ~text:"Large"
+        ; button ~size:`lg ~icon:`chevron_right
+            ~icon_placement:`trailing ~text:"Large"
             ~disabled:(reactive disabled) ~on_press:noop []
-        ; button ~size:"icon" ~icon:"plus" ~label:"New note"
+        ; button ~size:`icon ~icon:`plus ~label:"New note"
             ~disabled:(reactive disabled) ~on_press:noop []
         ]
     ; paragraph
@@ -111,15 +111,15 @@ let toggle_button_section model_source send : t =
             ~equal:(fun (a : Model.t) (b : Model.t) ->
               a.Model.checked = b.Model.checked)
             (fun (m : Model.t) ->
-              toggle_button ~variant:"outline" ~size:"sm" ~icon:"edit"
+              toggle_button ~variant:`outline ~size:`sm ~icon:`edit
                 ~text:"Controlled" ~selected:m.Model.checked
                 ~disabled:(reactive disabled)
                 ~on_toggle:(on_toggle send (fun v -> Model.SetChecked v))
                 ~on_long_press:(press send Model.ToggleDisabled) [])
             model_source
-        ; toggle_button ~variant:"ghost" ~text:"Backend-owned"
+        ; toggle_button ~variant:`ghost ~text:"Backend-owned"
             ~disabled:(reactive disabled) ~on_toggle:noop []
-        ; toggle_button ~size:"icon" ~icon:"check"
+        ; toggle_button ~size:`icon ~icon:`check
             ~label:"Toggle approval" ~disabled:(reactive disabled)
             ~on_toggle:noop []
         ]
@@ -132,13 +132,13 @@ let button_group_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "ButtonGroup"
     [ button_group ~accessibility_identifier:"Document actions"
-        [ button ~icon:"save" ~text:"Save" ~disabled:(reactive disabled)
+        [ button ~icon:`save ~text:"Save" ~disabled:(reactive disabled)
             ~on_press:(press send Model.ToggleDisabled) []
         ; dyn
             ~equal:(fun (a : Model.t) (b : Model.t) ->
               a.Model.checked = b.Model.checked)
             (fun (m : Model.t) ->
-              toggle_button ~icon:"check" ~text:"Pin"
+              toggle_button ~icon:`check ~text:"Pin"
                 ~selected:m.Model.checked ~disabled:(reactive disabled)
                 ~on_toggle:(on_toggle send (fun v -> Model.SetChecked v)) [])
             model_source
@@ -163,7 +163,7 @@ let toggle_group_section model_source send : t =
             ~equal:(fun (a : Model.t) (b : Model.t) ->
               a.Model.checked = b.Model.checked)
             (fun (m : Model.t) ->
-              button ~variant:"outline" ~text:"Action chip"
+              button ~variant:`outline ~text:"Action chip"
                 ~selected:m.Model.checked ~disabled:(reactive disabled)
                 ~on_press:(press send Model.ToggleDisabled) [])
             model_source
@@ -180,7 +180,7 @@ let breadcrumb_section send : t =
     [ breadcrumb ~accessibility_identifier:"Component path"
         [ text ~value:"Gallery" ~foreground:"muted-foreground"
             ~on_press:(press send (Model.SelectTab "overview")) []
-        ; icon ~name:"chevron-right" ~size:"sm"
+        ; icon ~name:`chevron_right ~size:`sm
             ~foreground:"muted-foreground" []
         ; text ~value:"Navigation" []
         ]
@@ -193,21 +193,21 @@ let pagination_section model_source send : t =
       ~equal:(fun (a : Model.t) (b : Model.t) ->
         a.Model.tab = b.Model.tab && a.Model.disabled = b.Model.disabled)
       (fun (m : Model.t) ->
-        button ~variant:"outline" ~text ~selected:(m.Model.tab = tab)
+        button ~variant:`outline ~text ~selected:(m.Model.tab = tab)
           ~disabled:m.Model.disabled
           ~on_press:(press send (Model.SelectTab tab)) [])
       model_source
   in
   section "Pagination"
     [ pagination ~accessibility_identifier:"Gallery pages"
-        [ button ~variant:"ghost" ~icon:"chevron-left" ~text:"Previous"
+        [ button ~variant:`ghost ~icon:`chevron_left ~text:"Previous"
             ~disabled:(reactive disabled)
             ~on_press:(press send (Model.SelectTab "overview")) []
         ; tab_button ~text:"1" "overview"
-        ; icon ~name:"ellipsis" ~foreground:"muted-foreground" []
+        ; icon ~name:`ellipsis ~foreground:"muted-foreground" []
         ; tab_button ~text:"2" "activity"
-        ; button ~variant:"ghost" ~icon:"chevron-right"
-            ~icon_placement:"trailing" ~text:"Next"
+        ; button ~variant:`ghost ~icon:`chevron_right
+            ~icon_placement:`trailing ~text:"Next"
             ~disabled:(reactive disabled)
             ~on_press:(press send (Model.SelectTab "activity")) []
         ]
@@ -238,7 +238,7 @@ let tabs_section model_source send : t =
         [ paragraph
             ~value:(reactive Model.tab_content model_source) []
         ]
-    ; tabs ~label:"Workspace sections vertical" ~orientation:"vertical"
+    ; tabs ~label:"Workspace sections vertical" ~orientation:`vertical
         (tabs_buttons model_source send)
     ; paragraph
         ~value:"Tabs owns layout and platform presentation; Signals own selection and content."
@@ -251,7 +251,7 @@ let bottom_tabs_section model_source send : t =
   let settings = model_source >|= Model.settings_bottom_tab_selected in
   section "BottomTabs"
     [ bottom_tabs ~label:"Primary destinations"
-        [ bottom_tab ~title:"Home" ~icon:"folder"
+        [ bottom_tab ~title:"Home" ~icon:`folder
             ~selected:(reactive home)
             ~on_press:(press send (Model.SelectBottomTab "home"))
             [ column ~gap:12 ~padding:20
@@ -262,7 +262,7 @@ let bottom_tabs_section model_source send : t =
                     []
                 ]
             ]
-        ; bottom_tab ~title:"Search" ~icon:"search"
+        ; bottom_tab ~title:"Search" ~icon:`search
             ~selected:(reactive search)
             ~on_press:(press send (Model.SelectBottomTab "search"))
             [ column ~gap:12 ~padding:20
@@ -271,7 +271,7 @@ let bottom_tabs_section model_source send : t =
                     ~value:"Search uses the same retained destination model." []
                 ]
             ]
-        ; bottom_tab ~title:"Settings" ~icon:"settings"
+        ; bottom_tab ~title:"Settings" ~icon:`settings
             ~selected:(reactive settings)
             ~on_press:(press send (Model.SelectBottomTab "settings"))
             [ column ~gap:12 ~padding:20
@@ -294,18 +294,18 @@ let separator_section : t =
     ; separator []
     ; row ~gap:12
         [ text ~value:"Left" []
-        ; separator ~orientation:"vertical" []
+        ; separator ~orientation:`vertical []
         ; text ~value:"Right" []
         ]
     ]
 
 let spinner_section : t =
   section "Spinner"
-    [ row ~gap:16 ~cross:"center"
-        [ spinner ~size:"sm" []
+    [ row ~gap:16 ~cross:`center
+        [ spinner ~size:`sm []
         ; spinner []
-        ; spinner ~size:"lg" []
-        ; spinner ~size:"icon" []
+        ; spinner ~size:`lg []
+        ; spinner ~size:`icon []
         ]
     ]
 
@@ -313,14 +313,14 @@ let icon_section : t =
   section "Icon"
     [ paragraph
         ~value:"Common actions, navigation, status, files, and media" []
-    ; row ~gap:16 ~cross:"center"
-        [ icon ~name:"search" ~size:"sm" []
-        ; icon ~name:"check-circle" []
-        ; icon ~name:"git-pull-request" []
-        ; icon ~name:"folder-open" []
-        ; icon ~name:"play" []
-        ; icon ~name:"settings" []
-        ; icon ~name:"trash" ~size:"lg" ~foreground:"destructive" []
+    ; row ~gap:16 ~cross:`center
+        [ icon ~name:`search ~size:`sm []
+        ; icon ~name:`check_circle []
+        ; icon ~name:`git_pull_request []
+        ; icon ~name:`folder_open []
+        ; icon ~name:`play []
+        ; icon ~name:`settings []
+        ; icon ~name:`trash ~size:`lg ~foreground:"destructive" []
         ]
     ]
 
@@ -330,7 +330,7 @@ let progress_section model_source send : t =
     [ paragraph ~value:"Uploading files" []
     ; progress ~value:(reactive progress_value) ~width:280 []
     ; text ~value:(reactive Model.progress_label model_source) []
-    ; button ~variant:"outline" ~text:"Advance progress"
+    ; button ~variant:`outline ~text:"Advance progress"
         ~on_press:(press send Model.AdvanceProgress) []
     ]
 
@@ -345,7 +345,7 @@ let stepper_section model_source send : t =
   section "Stepper"
     [ stepper ~active:(reactive active) ~label:"Release progress"
         stepper_steps
-    ; button ~variant:"outline" ~text:"Advance stage"
+    ; button ~variant:`outline ~text:"Advance stage"
         ~on_press:(press send Model.AdvanceStep) []
     ]
 
@@ -360,7 +360,7 @@ let timeline_section send : t =
     [ timeline ~gap:4 ~label:"Release activity"
         [ timeline_item ~title:"Validated"
             ~description:"All platform checks passed" ~meta:"CI · 2m"
-            ~icon:"check" ~variant:"primary"
+            ~icon:`check ~variant:`primary
             ~on_press:(press send Model.AdvanceStep) []
         ; timeline_item ~title:"Published"
             ~description:"Waiting for the next model action"
@@ -373,7 +373,7 @@ let timeline_item_section send : t =
     [ timeline ~gap:4 ~label:"Activity item"
         [ timeline_item ~title:"Validated"
             ~description:"One retained timeline row" ~meta:"CI · now"
-            ~icon:"check" ~variant:"primary" ~connector:false
+            ~icon:`check ~variant:`primary ~connector:false
             ~on_press:(press send Model.AdvanceStep) []
         ]
     ; paragraph
@@ -415,14 +415,14 @@ let card_section model_source : t =
 
 let alert_section : t =
   section "Alert"
-    [ alert ~text:"Sync paused" ~variant:"secondary"
+    [ alert ~text:"Sync paused" ~variant:`secondary
         [ paragraph ~value:"Reconnect to resume model-owned updates." [] ]
     ]
 
 let bubble_section model_source : t =
   section "Bubble"
-    [ row ~main:"end"
-        [ bubble ~variant:"primary"
+    [ row ~main:`end_
+        [ bubble ~variant:`primary
             [ paragraph
                 ~value:(reactive Model.document_action model_source) []
             ]
@@ -432,7 +432,7 @@ let bubble_section model_source : t =
 let status_bar_section model_source : t =
   section "StatusBar"
     [ status_bar ~value:(reactive Model.document_action model_source)
-        ~text_alignment:"end" []
+        ~text_alignment:`end_ []
     ]
 
 let resizable_section : t =
@@ -457,24 +457,23 @@ let split_section model_source send : t =
   let fraction = model_source >|= Model.split_fraction in
   section "Split"
     [ split ~value:(reactive fraction) ~gap:8 ~height:220
-        ~resize_duration:180 ~resize_easing:"standard"
+        ~resize_duration:180 ~resize_easing:`standard
         ~label:"Gallery workspace"
         ~on_resize:(value_changed send (fun v -> Model.SetSplitFraction v))
-        [ panel ~min_width:96 ~padding:16
-            [ column ~gap:8
-                [ text ~value:"Sidebar" []
-                ; paragraph
-                    ~value:"Drag, use arrow keys, or adjust with assistive controls." []
-                ]
-            ]
-        ; panel ~min_width:140 ~padding:16
-            [ column ~gap:8
-                [ text ~value:"Content" []
-                ; paragraph
-                    ~value:"The shared model echoes the effective pane fraction." []
-                ]
-            ]
-        ]
+        (panel ~min_width:96 ~padding:16
+           [ column ~gap:8
+               [ text ~value:"Sidebar" []
+               ; paragraph
+                   ~value:"Drag, use arrow keys, or adjust with assistive controls." []
+               ]
+           ])
+        (panel ~min_width:140 ~padding:16
+           [ column ~gap:8
+               [ text ~value:"Content" []
+               ; paragraph
+                   ~value:"The shared model echoes the effective pane fraction." []
+               ]
+           ])
     ; paragraph
         ~value:"Exactly two retained panes share one model-owned divider fraction." []
     ]
@@ -484,7 +483,7 @@ let split_section model_source send : t =
 let dialog_section model_source send : t =
   let open_ = model_source >|= Model.dialog_open in
   section "Dialog"
-    [ button ~variant:"outline" ~text:"Open dialog"
+    [ button ~variant:`outline ~text:"Open dialog"
         ~on_press:(press send Model.OpenDialog) []
     ; paragraph
         ~value:"The same model-owned conditional drives the native modal on every host."
@@ -495,10 +494,10 @@ let dialog_section model_source send : t =
            [ column ~gap:16
                [ box ~height:24 []
                ; input ~placeholder:"Note name" ~autofocus:true []
-               ; row ~gap:8 ~main:"end"
-                   [ button ~variant:"ghost" ~text:"Cancel"
+               ; row ~gap:8 ~main:`end_
+                   [ button ~variant:`ghost ~text:"Cancel"
                        ~on_press:(press send Model.CloseDialog) []
-                   ; button ~variant:"primary" ~text:"Save"
+                   ; button ~variant:`primary ~text:"Save"
                        ~on_press:(press send Model.CloseDialog) []
                    ]
                ]
@@ -508,7 +507,7 @@ let dialog_section model_source send : t =
 let sheet_section model_source send : t =
   let open_ = model_source >|= Model.sheet_open in
   section "Sheet"
-    [ button ~variant:"outline" ~text:"Open sheet"
+    [ button ~variant:`outline ~text:"Open sheet"
         ~on_press:(press send Model.OpenSheet) []
     ; paragraph
         ~value:"Sheet uses the host platform's native modal presentation." []
@@ -520,10 +519,10 @@ let sheet_section model_source send : t =
                ; paragraph
                    ~value:"Anyone with the link can view this showcase." []
                ; input ~placeholder:"Share link" []
-               ; row ~gap:8 ~main:"end"
-                   [ button ~variant:"ghost" ~text:"Cancel"
+               ; row ~gap:8 ~main:`end_
+                   [ button ~variant:`ghost ~text:"Cancel"
                        ~on_press:(press send Model.CloseSheet) []
-                   ; button ~variant:"primary" ~text:"Done"
+                   ; button ~variant:`primary ~text:"Done"
                        ~on_press:(press send Model.CloseSheet) []
                    ]
                ]
@@ -534,7 +533,7 @@ let sheet_section model_source send : t =
 
 let list_section : t =
   section "List"
-    [ list ~gap:8 ~cross:"stretch" ~max_width:480
+    [ list ~gap:8 ~cross:`stretch ~max_width:480
         [ card ~padding:16 [ text ~value:"List item one" [] ]
         ; card ~padding:16 [ text ~value:"List item two" [] ]
         ; card ~padding:16 [ text ~value:"List item three" [] ]
@@ -544,7 +543,7 @@ let list_section : t =
 let scroll_section : t =
   section "Scroll"
     [ scroll ~width:320 ~height:160
-        [ list ~gap:8 ~cross:"stretch"
+        [ list ~gap:8 ~cross:`stretch
             [ card ~padding:16 [ text ~value:"Scrollable item one" [] ]
             ; card ~padding:16 [ text ~value:"Scrollable item two" [] ]
             ; card ~padding:16 [ text ~value:"Scrollable item three" [] ]
@@ -558,8 +557,8 @@ let list_item_section model_source send : t =
   let checklist = model_source >|= Model.checklist_selected in
   let disabled = model_source >|= Model.disabled in
   section "ListItem"
-    [ list ~gap:2 ~cross:"stretch" ~max_width:480
-        [ list_item ~icon:"file-text" ~text:"Quarterly report.md"
+    [ list ~gap:2 ~cross:`stretch ~max_width:480
+        [ list_item ~icon:`file_text ~text:"Quarterly report.md"
             ~selected:(reactive report) ~disabled:(reactive disabled)
             ~on_press:(press send (Model.SelectDocument "Quarterly report.md"))
             ~on_double_press:(press send (Model.OpenDocument "Quarterly report.md"))
@@ -570,14 +569,14 @@ let list_item_section model_source send : t =
             ~on_press:(press send (Model.SelectDocument "Launch checklist.md"))
             ~on_double_press:(press send (Model.OpenDocument "Launch checklist.md"))
             ~on_submit:(press send (Model.OpenDocument "Launch checklist.md"))
-            [ row ~gap:8 ~cross:"center"
-                [ icon ~name:"check-circle" ~size:"sm" []
+            [ row ~gap:8 ~cross:`center
+                [ icon ~name:`check_circle ~size:`sm []
                 ; text ~value:"Launch checklist.md" []
                 ; spacer []
                 ; text ~value:"Ready" ~foreground:"success" []
                 ]
             ]
-        ; list_item ~icon:"music" ~text:"demo-track.wav" ~disabled:true []
+        ; list_item ~icon:`music ~text:"demo-track.wav" ~disabled:true []
         ]
     ; paragraph ~value:(reactive Model.document_action model_source) []
     ; paragraph
@@ -588,7 +587,7 @@ let list_item_section model_source send : t =
 let context_menu_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "ContextMenu"
-    [ list ~gap:2 ~cross:"stretch" ~max_width:480
+    [ list ~gap:2 ~cross:`stretch ~max_width:480
         [ list_item ~text:"Quarterly report.md"
             [ context_menu
                 [ menu_item ~text:"Rename"
@@ -609,10 +608,10 @@ let menu_item_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "MenuItem"
     [ dropdown_menu ~min_width:200
-        [ menu_item ~text:"Rename" ~icon:"edit"
+        [ menu_item ~text:"Rename" ~icon:`edit
             ~on_press:(press send (Model.PerformContextAction "Rename")) []
         ; menu_item ~text:"Share"
-            [ dropdown_menu ~anchor:"right" ~anchor_offset:6.0
+            [ dropdown_menu ~anchor:`right ~anchor_offset:6.0
                 [ menu_item ~text:"Copy link"
                     ~on_press:(press send (Model.PerformContextAction "Rename")) []
                 ; menu_item ~text:"Export"
@@ -628,7 +627,7 @@ let table_section model_source send : t =
   let overview = model_source >|= Model.overview_tab_selected in
   let activity = model_source >|= Model.activity_tab_selected in
   let header_cell text_ =
-    table_cell ~grow:1.0 ~size:"sm" ~foreground:"muted-foreground"
+    table_cell ~grow:1.0 ~size:`sm ~foreground:"muted-foreground"
       ~text:text_ []
   in
   section "Table"
@@ -636,21 +635,21 @@ let table_section model_source send : t =
         [ table_row ~gap:8
             [ header_cell "Invoice"
             ; header_cell "Status"
-            ; table_cell ~grow:1.0 ~size:"sm"
-                ~foreground:"muted-foreground" ~text_alignment:"end"
+            ; table_cell ~grow:1.0 ~size:`sm
+                ~foreground:"muted-foreground" ~text_alignment:`end_
                 ~text:"Amount" []
             ]
         ; table_row ~gap:8 ~selected:(reactive overview)
             [ table_cell ~grow:1.0 ~text:"INV-002"
                 ~on_press:(press send (Model.SelectTab "overview")) []
             ; table_cell ~grow:1.0 ~text:"Pending" []
-            ; table_cell ~grow:1.0 ~text_alignment:"end" ~text:"$150.00" []
+            ; table_cell ~grow:1.0 ~text_alignment:`end_ ~text:"$150.00" []
             ]
         ; table_row ~gap:8 ~selected:(reactive activity)
             [ table_cell ~grow:1.0 ~text:"INV-003"
                 ~on_press:(press send (Model.SelectTab "activity")) []
             ; table_cell ~grow:1.0 ~text:"Paid" []
-            ; table_cell ~grow:1.0 ~text_alignment:"end" ~text:"$275.00" []
+            ; table_cell ~grow:1.0 ~text_alignment:`end_ ~text:"$275.00" []
             ]
         ]
     ; paragraph
@@ -687,7 +686,7 @@ let tree_section model_source send : t =
             ~equal:(fun (a : Model.t) (b : Model.t) ->
               a.Model.accordion_open = b.Model.accordion_open)
             (fun (m : Model.t) ->
-              list_item ~role:"treeitem" ~tree_level:1 ~icon:"folder-open"
+              list_item ~role:`treeitem ~tree_level:1 ~icon:`folder_open
                 ~text:"Documents" ~expanded:m.Model.accordion_open
                 ~on_toggle:(on_toggle send (fun v -> Model.SetAccordionOpen v))
                 ~on_press:(press send (Model.SelectDocument "Quarterly report.md"))
@@ -695,11 +694,11 @@ let tree_section model_source send : t =
             model_source
         ; if_ ~test:open_
             (column ~padding_horizontal:20
-               [ list_item ~role:"treeitem" ~tree_level:2 ~icon:"file-text"
+               [ list_item ~role:`treeitem ~tree_level:2 ~icon:`file_text
                    ~text:"Quarterly report.md" ~selected:(reactive report)
                    ~on_press:(press send (Model.SelectDocument "Quarterly report.md"))
                    []
-               ; list_item ~role:"treeitem" ~tree_level:2
+               ; list_item ~role:`treeitem ~tree_level:2
                    ~text:"Launch checklist.md" ~selected:(reactive checklist)
                    ~on_press:(press send (Model.SelectDocument "Launch checklist.md"))
                    []
@@ -715,12 +714,12 @@ let tree_section model_source send : t =
 let avatar_section model_source send : t =
   let image = model_source >|= Model.avatar_image in
   section "Avatar"
-    [ row ~gap:12 ~cross:"center"
+    [ row ~gap:12 ~cross:`center
         [ avatar ~text:"ZN" ~image:(reactive image)
             ~label:"Registered profile image" []
         ; avatar ~text:"CT" []
         ]
-    ; button ~variant:"outline" ~text:"Toggle registered image"
+    ; button ~variant:`outline ~text:"Toggle registered image"
         ~on_press:(press send Model.ToggleAvatarImage) []
     ; paragraph
         ~value:"The host owns image resources; changing the ImageId Signal retains the Avatar node."
@@ -791,17 +790,16 @@ let input_group_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "InputGroup"
     [ input_group ~label:"Message composer" ~height:120 ~min_width:240
-        [ textarea ~text:(reactive value) ~placeholder:"Message the team"
-            ~disabled:(reactive disabled)
-            ~on_input:(on_input send (fun v -> Model.SetFieldValue v)) []
-        ; input_group_actions ~gap:8
-            [ button ~variant:"ghost" ~icon:"plus" ~text:"Attach"
-                ~disabled:(reactive disabled) ~on_press:noop []
-            ; spacer ~grow:1.0 []
-            ; button ~variant:"primary" ~icon:"send" ~text:"Send"
-                ~disabled:(reactive disabled) ~on_press:noop []
-            ]
-        ]
+        ~actions:(input_group_actions ~gap:8
+           [ button ~variant:`ghost ~icon:`plus ~text:"Attach"
+               ~disabled:(reactive disabled) ~on_press:noop []
+           ; spacer ~grow:1.0 []
+           ; button ~variant:`primary ~icon:`send ~text:"Send"
+               ~disabled:(reactive disabled) ~on_press:noop []
+           ])
+        (textarea ~text:(reactive value) ~placeholder:"Message the team"
+           ~disabled:(reactive disabled)
+           ~on_input:(on_input send (fun v -> Model.SetFieldValue v)) [])
     ; paragraph
         ~value:"The textarea and actions share one native focus surface while retaining their own nodes."
         []
@@ -812,29 +810,28 @@ let input_group_actions_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "InputGroupActions"
     [ input_group ~label:"Compact composer" ~min_width:240
-        [ textarea ~text:(reactive value) ~placeholder:"Write a reply"
-            ~disabled:(reactive disabled)
-            ~on_input:(on_input send (fun v -> Model.SetFieldValue v)) []
-        ; input_group_actions ~gap:8
-            [ button ~variant:"ghost" ~icon:"plus" ~text:"Attach"
-                ~disabled:(reactive disabled) ~on_press:noop []
-            ; spacer ~grow:1.0 []
-            ; button ~variant:"primary" ~icon:"send" ~text:"Send"
-                ~disabled:(reactive disabled) ~on_press:noop []
-            ]
-        ]
+        ~actions:(input_group_actions ~gap:8
+           [ button ~variant:`ghost ~icon:`plus ~text:"Attach"
+               ~disabled:(reactive disabled) ~on_press:noop []
+           ; spacer ~grow:1.0 []
+           ; button ~variant:`primary ~icon:`send ~text:"Send"
+               ~disabled:(reactive disabled) ~on_press:noop []
+           ])
+        (textarea ~text:(reactive value) ~placeholder:"Write a reply"
+           ~disabled:(reactive disabled)
+           ~on_input:(on_input send (fun v -> Model.SetFieldValue v)) [])
     ]
 
 (* Anchored overlays *)
 
 let tooltip_section : t =
   section "Tooltip"
-    [ row ~gap:16 ~cross:"center"
+    [ row ~gap:16 ~cross:`center
         [ stack
-            [ button ~size:"icon" ~icon:"edit" ~label:"Edit document"
-                ~variant:"outline" ~on_press:noop []
-            ; tooltip ~text:"Edit this document" ~anchor:"above"
-                ~anchor_alignment:"end" ~anchor_offset:8.0
+            [ button ~size:`icon ~icon:`edit ~label:"Edit document"
+                ~variant:`outline ~on_press:noop []
+            ; tooltip ~text:"Edit this document" ~anchor:`above
+                ~anchor_alignment:`end_ ~anchor_offset:8.0
                 ~tooltip_delay:250 []
             ]
         ; tooltip ~text:"Saved" []
@@ -847,7 +844,7 @@ let tooltip_section : t =
 let toast_section model_source send : t =
   let open_ = model_source >|= Model.toast_open in
   section "Toast"
-    [ button ~variant:"outline" ~text:"Show notifications"
+    [ button ~variant:`outline ~text:"Show notifications"
         ~on_press:(press send Model.ShowToasts) []
     ; if_ ~test:open_
         (column
@@ -858,9 +855,9 @@ let toast_section model_source send : t =
                    ; paragraph
                        ~value:(reactive Model.toast_description model_source) []
                    ]
-               ; button ~variant:"outline" ~text:"Update notification"
+               ; button ~variant:`outline ~text:"Update notification"
                    ~on_press:(press send Model.UpdateToast) []
-               ; button ~variant:"ghost" ~text:"Close"
+               ; button ~variant:`ghost ~text:"Close"
                    ~on_press:(press send Model.CloseToasts) []
                ]
            ; toast ~duration:0 ~label:"Changes synced"
@@ -870,7 +867,7 @@ let toast_section model_source send : t =
                    ; paragraph
                        ~value:"Changes are available on every device" []
                    ]
-               ; button ~variant:"ghost" ~text:"Close"
+               ; button ~variant:`ghost ~text:"Close"
                    ~on_press:(press send Model.CloseToasts) []
                ]
            ])
@@ -884,21 +881,21 @@ let toolbar_section model_source send : t =
   let checked = model_source >|= Model.checked in
   let disabled = model_source >|= Model.disabled in
   section "Toolbar"
-    [ toolbar ~orientation:"horizontal" ~label:"Formatting" ~gap:4
-        [ button ~variant:"ghost" ~text:"Bold" ~on_press:noop []
+    [ toolbar ~orientation:`horizontal ~label:"Formatting" ~gap:4
+        [ button ~variant:`ghost ~text:"Bold" ~on_press:noop []
         ; button_group ~accessibility_identifier:"Text style"
-            [ button ~variant:"ghost" ~text:"Italic" ~on_press:noop []
-            ; button ~variant:"ghost" ~text:"Underline" ~on_press:noop []
+            [ button ~variant:`ghost ~text:"Italic" ~on_press:noop []
+            ; button ~variant:`ghost ~text:"Underline" ~on_press:noop []
             ]
-        ; button ~variant:"ghost" ~text:"Redo" ~disabled:true ~on_press:noop []
-        ; button ~variant:"ghost" ~text:"More" ~on_press:noop []
+        ; button ~variant:`ghost ~text:"Redo" ~disabled:true ~on_press:noop []
+        ; button ~variant:`ghost ~text:"More" ~on_press:noop []
         ; input ~text:(reactive value) ~placeholder:"Format value"
             ~label:"Format value"
             ~on_input:(on_input send (fun v -> Model.SetFieldValue v)) []
         ]
-    ; toolbar ~orientation:"vertical" ~label:"Insert" ~gap:4
-        [ button ~variant:"ghost" ~text:"Link" ~on_press:noop []
-        ; button ~variant:"ghost" ~text:"Image" ~on_press:noop []
+    ; toolbar ~orientation:`vertical ~label:"Insert" ~gap:4
+        [ button ~variant:`ghost ~text:"Link" ~on_press:noop []
+        ; button ~variant:`ghost ~text:"Image" ~on_press:noop []
         ; checkbox ~text:"Locked option" ~checked:(reactive checked)
             ~disabled:(reactive disabled) []
         ; select ~text:(reactive value) ~placeholder:"Locked picker"
@@ -933,7 +930,7 @@ let environment_menu model_source send : t =
   let dismiss = press send Model.ClosePicker in
   let production_selected = model_source >|= Model.production_selected in
   let staging_selected = model_source >|= Model.staging_selected in
-  dropdown_menu ~anchor:"below" ~anchor_alignment:"stretch"
+  dropdown_menu ~anchor:`below ~anchor_alignment:`stretch
     ~anchor_offset:6.0 ~min_width:200 ~on_dismiss:dismiss
     [ menu_item ~text:"Production" ~selected:(reactive production_selected)
         ~disabled:(reactive disabled)
@@ -942,7 +939,7 @@ let environment_menu model_source send : t =
         ~disabled:(reactive disabled)
         ~on_press:(press send (Model.SelectEnvironment "Staging")) []
     ; menu_item ~text:"More environments" ~disabled:(reactive disabled)
-        [ dropdown_menu ~anchor:"right" ~anchor_alignment:"start"
+        [ dropdown_menu ~anchor:`right ~anchor_alignment:`start
             ~anchor_offset:4.0 ~min_width:180 ~on_dismiss:dismiss
             [ menu_item ~text:"Production region"
                 ~selected:(reactive production_selected)
@@ -986,10 +983,10 @@ let combobox_section model_source send : t =
             ~on_press:(press send (Model.OpenPicker "combobox"))
             ~on_dismiss:dismiss []
         ; if_ ~test:open_
-            (dropdown_menu ~anchor:"below" ~anchor_alignment:"stretch"
+            (dropdown_menu ~anchor:`below ~anchor_alignment:`stretch
                ~anchor_offset:6.0 ~min_width:200 ~on_dismiss:dismiss
                [ if_ ~test:production_visible
-                   (menu_item ~text:"Production" ~icon:"check"
+                   (menu_item ~text:"Production" ~icon:`check
                       ~disabled:(reactive disabled)
                       ~on_press:(press send (Model.SelectEnvironment "Production")) [])
                ; if_ ~test:staging_visible
@@ -997,7 +994,7 @@ let combobox_section model_source send : t =
                       ~on_press:(press send (Model.SelectEnvironment "Staging")) [])
                ])
         ]
-    ; row ~gap:8 ~cross:"center"
+    ; row ~gap:8 ~cross:`center
         [ text ~value:"Shared query:" []
         ; text ~value:(reactive query) []
         ]
