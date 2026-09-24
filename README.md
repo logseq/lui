@@ -89,10 +89,9 @@ fields, pickers, lists, overlays, navigation) mirroring the original gallery.
 ## Build and test
 
 ```sh
-# pin the (private) signal dependency once
-opam pin add -n -y ocaml-signal \
-  git+https://github.com/logseq/ocaml-signal.git#main
-opam install . --deps-only --with-test
+# the (private) ocaml-signal pin lives in lui.opam.locked (pin-depends);
+# --locked makes opam resolve it without a manual `opam pin`
+opam install . --deps-only --with-test --locked
 
 make test        # schema contract tests + dune @runtest
 make test-ocaml  # alcotest suite only
