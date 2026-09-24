@@ -73,6 +73,55 @@ enum LUIThemeColorPolicy {
     }
 }
 
+enum LUIThemeColorResolver {
+    static func color(_ name: String?, semanticColors: [String: Color]) -> Color? {
+        if let name, let semanticColor = semanticColors[name.lowercased()] {
+            return semanticColor
+        }
+        if LUIThemeColorPolicy.isMutedForeground(name) {
+            return .secondary
+        }
+        if LUIThemeColorPolicy.isAccentForeground(name) {
+            return .accentColor
+        }
+        if let name, let hex = luiHexColor(name) {
+            return hex
+        }
+        return switch name?.lowercased() {
+        case nil: nil
+        case "transparent": .clear
+        case "background": systemBackground
+        case "foreground": .primary
+        case "primary": .accentColor
+        case "primary-foreground": .white
+        case "secondary": .secondary.opacity(0.15)
+        case "glass-fallback": .clear
+        case "secondary-foreground": .primary
+        case "success": .green.opacity(0.15)
+        case "success-foreground": .green
+        case "warning": .orange.opacity(0.15)
+        case "warning-foreground": .orange
+        case "error": .red.opacity(0.15)
+        case "error-foreground": .red
+        case "border": .secondary.opacity(0.35)
+        case "black": .black
+        case "white": .white
+        case "red": .red
+        case "blue": .blue
+        case "green": .green
+        default: nil
+        }
+    }
+
+    static var systemBackground: Color {
+        #if os(macOS)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color(uiColor: .systemBackground)
+        #endif
+    }
+}
+
 enum LUIDropdownMenuLayoutPolicy {
     static let contentPadding: CGFloat = 12
     static let contentSpacing: CGFloat = 4

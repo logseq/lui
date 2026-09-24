@@ -80,7 +80,6 @@ public struct LUISwiftUIRoot: View {
         LUIAnyNodeView(nodeID: rootID, backend: backend)
             .sheet(item: sheetBinding, onDismiss: didDismissSheet) { presentation in
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
-                    .modifier(LUIModalPresentationStyle(kind: presentation.model.kind))
             }
             .modifier(LUIDialogPresentationModifier(anchorID: rootID, backend: backend))
     }
@@ -123,7 +122,6 @@ public struct LUIModalHostModifier: ViewModifier {
         content
             .sheet(item: sheetBinding, onDismiss: didDismissSheet) { presentation in
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
-                    .modifier(LUIModalPresentationStyle(kind: presentation.model.kind))
             }
             .modifier(LUIDialogPresentationModifier(anchorID: rootID, backend: backend))
     }
@@ -182,6 +180,11 @@ private struct LUIDialogPresentationModifier: ViewModifier {
                     ))
                 }
             }
+            .sheet(isPresented: customSurfaceBinding) {
+                if let presentation = dialogPresentation {
+                    LUIDialogCustomSurface(presentation: presentation, backend: backend)
+                }
+            }
     }
 
     private var dialogPresentation: LUIModalPresentation? {
@@ -191,6 +194,26 @@ private struct LUIDialogPresentationModifier: ViewModifier {
         return item
     }
 
+    private var usesCustomSurface: Bool {
+        guard let presentation = dialogPresentation else { return false }
+        return LUIDialogContentPolicy.hasRichContent(
+            dialog: presentation.model,
+            backend: backend
+        )
+    }
+
+    private var customSurfaceBinding: Binding<Bool> {
+        Binding(
+            get: { usesCustomSurface },
+            set: { isPresented in
+                guard !isPresented,
+                      let nodeID = backend.modalPresentation.dismissDialogFromPresentation()
+                else { return }
+                try? backend.performDismiss(node: nodeID)
+            }
+        )
+    }
+
     private var dialogTitle: String {
         dialogPresentation?.model.text ?? ""
     }
@@ -198,7 +221,8 @@ private struct LUIDialogPresentationModifier: ViewModifier {
     private func dialogBinding(for style: LUIDialogPresentationStyle) -> Binding<Bool> {
         Binding(
             get: {
-                guard let presentation = dialogPresentation else { return false }
+                guard let presentation = dialogPresentation,
+                      !usesCustomSurface else { return false }
                 return LUIDialogContentPolicy.presentationStyle(
                     styleClass: presentation.model.property(.styleClass)?.stringValue
                 ) == style
@@ -229,9 +253,32 @@ enum LUIDialogContentPolicy {
         return .alert
     }
 
+    /// Native alert/action-sheet presentations cannot render arbitrary
+    /// children, so a dialog with non-text/non-button content falls back to a
+    /// sheet surface that renders the subtree directly.
+    static func hasRichContent(dialog: LUINodeModel, backend: LUIAppleBackend) -> Bool {
+        dialog.children.contains { childID in
+            guard let child = backend.model(id: childID) else { return false }
+            return isRichContent(child, backend: backend)
+        }
+    }
+
+    private static func isRichContent(_ node: LUINodeModel, backend: LUIAppleBackend) -> Bool {
+        if node.kind == .button { return false }
+        if node.kind != .text { return true }
+        return node.children.contains { childID in
+            guard let child = backend.model(id: childID) else { return false }
+            return isRichContent(child, backend: backend)
+        }
+    }
+
     static func actionIDs(dialog: LUINodeModel, backend: LUIAppleBackend) -> [Int] {
-        descendants(of: dialog, backend: backend) { $0.kind == .button }
-            .map(\.id)
+        // Alert/confirmationDialog actions ignore .disabled, so disabled
+        // buttons must not reach them (they'd look tappable but emit nothing).
+        descendants(of: dialog, backend: backend) {
+            $0.kind == .button && $0.isEnabled
+        }
+        .map(\.id)
     }
 
     static func nonCancelActionIDs(
@@ -297,6 +344,7 @@ enum LUIDialogContentPolicy {
 private struct LUIDialogActions: View {
     let presentation: LUIModalPresentation
     let backend: LUIAppleBackend
+    var dismissesOnPress = false
 
     var body: some View {
         ForEach(
@@ -322,12 +370,52 @@ private struct LUIDialogActions: View {
             Button(action.text, role: LUIDialogContentPolicy.role(for: action)) {
                 backend.modalPresentation.beginDialogAction(presentation.id)
                 try? backend.performPress(node: actionID)
+                if dismissesOnPress {
+                    _ = backend.modalPresentation.dismissDialogFromPresentation()
+                }
             }
             .disabled(!action.isEnabled)
             .accessibilityIdentifier(
                 action.property(.accessibilityIdentifier)?.stringValue ?? ""
             )
         }
+    }
+}
+
+/// Sheet-style surface for dialogs whose children the native
+/// alert/confirmationDialog presentations cannot render. Non-button children
+/// render directly; action buttons reuse `LUIDialogActions` and close the
+/// sheet on press, matching the native presentations' dismiss-on-action
+/// behavior.
+private struct LUIDialogCustomSurface: View {
+    let presentation: LUIModalPresentation
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if !presentation.model.text.isEmpty {
+                Text(verbatim: presentation.model.text)
+                    .font(.headline)
+            }
+            ForEach(presentation.model.children, id: \.self) { childID in
+                if backend.model(id: childID)?.kind != .button {
+                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                }
+            }
+            HStack(spacing: 12) {
+                Spacer()
+                LUIDialogActions(
+                    presentation: presentation,
+                    backend: backend,
+                    dismissesOnPress: true
+                )
+            }
+        }
+        .padding()
+        .frame(
+            width: presentation.model.property(.width).map { CGFloat($0.intValue ?? 0) },
+            height: presentation.model.property(.height).map { CGFloat($0.intValue ?? 0) }
+        )
     }
 }
 
@@ -397,6 +485,7 @@ private struct LUINodeView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @Environment(\.luiTreeContext) private var treeContext
+    @Environment(\.luiSemanticColors) private var semanticColors
 
     @ViewBuilder
     var body: some View {
@@ -404,13 +493,18 @@ private struct LUINodeView: View {
             ? model.revision
             : 0
         Group {
-            if model.kind == .root || model.kind == .drawer ||
-                LUIUnmodifiedNodePolicy.bypassesSurface(kind: model.kind) {
+            if model.kind == .root || model.kind == .drawer {
                 content
+            } else if LUIUnmodifiedNodePolicy.bypassesSurface(kind: model.kind) {
+                content
+                    .modifier(LUIAccessibilityModifier(model: model, backend: backend))
+                    .modifier(LUIAppearModifier(model: model, backend: backend))
             } else if model.kind.isModalSurface {
                 content
             } else if model.kind == .resizable {
                 content
+                    .modifier(LUIAccessibilityModifier(model: model, backend: backend))
+                    .modifier(LUIAppearModifier(model: model, backend: backend))
             } else {
                 content
                     .modifier(
@@ -446,11 +540,6 @@ private struct LUINodeView: View {
             }
             return AnyView(LUIHorizontalGroupView(model: model, backend: backend))
         case .toggleGroup:
-            #if os(iOS)
-            if LUISegmentedToggleGroupView.supports(model: model, backend: backend) {
-                return AnyView(LUISegmentedToggleGroupView(model: model, backend: backend))
-            }
-            #endif
             return AnyView(LUIHorizontalGroupView(model: model, backend: backend))
         case .buttonGroup, .breadcrumb, .pagination:
             return AnyView(LUIHorizontalGroupView(model: model, backend: backend))
@@ -459,7 +548,10 @@ private struct LUINodeView: View {
         case .bottomTab:
             return AnyView(
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
+                    VStack(
+                        alignment: .leading,
+                        spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+                    ) {
                         children
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -475,10 +567,8 @@ private struct LUINodeView: View {
             return AnyView(LUIVirtualListView(model: model, backend: backend))
         case .grid:
             return AnyView(LUIGridView(model: model, backend: backend))
-        case .stack:
+        case .stack, .panel, .card:
             return AnyView(LUIStackView(model: model, backend: backend))
-        case .panel, .card:
-            return AnyView(LUISurfaceStackView(model: model, backend: backend))
         case .alert:
             return AnyView(LUIAlertView(model: model, backend: backend))
         case .bubble:
@@ -552,7 +642,12 @@ private struct LUINodeView: View {
         case .drawer:
             return AnyView(LUIDrawerView(model: model, backend: backend))
         case .tableRow:
-            return AnyView(LUITableRowView(model: model, backend: backend, isLast: true))
+            return AnyView(LUITableRowView(
+                model: model,
+                backend: backend,
+                isLast: true,
+                cellGap: model.property(.gap)?.intValue ?? 0
+            ))
         case .tableCell:
             return AnyView(LUITableCellView(model: model, backend: backend))
         case .avatar:
@@ -612,12 +707,14 @@ private struct LUINodeView: View {
                     ),
                     in: 0...1
             )
+            .tint(foregroundTint)
             .disabled(!model.isEnabled)
             .frame(minHeight: minimumTouchHeight)
             )
         case .progress:
             return AnyView(
                 ProgressView(value: model.progressFraction)
+                    .tint(foregroundTint)
                     .accessibilityValue(Text(progressAccessibilityValue))
             )
         case .divider:
@@ -626,20 +723,12 @@ private struct LUINodeView: View {
             let horizontal = model.property(.orientation)?.stringValue == "horizontal"
             return AnyView(
                 ScrollView(horizontal ? .horizontal : .vertical) {
-                    if horizontal {
-                        HStack(
-                            alignment: .top,
-                            spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
-                        ) {
-                            ForEach(model.children, id: \.self) { childID in
-                                LUIAnyNodeView(nodeID: childID, backend: backend)
-                            }
+                    ZStack(alignment: .topLeading) {
+                        ForEach(visibleChildren, id: \.self) { childID in
+                            LUIAnyNodeView(nodeID: childID, backend: backend)
                         }
-                        .environment(\.luiInsideScroll, true)
-                    } else {
-                        LUIVerticalScrollContent(model: model, backend: backend)
-                            .environment(\.luiInsideScroll, true)
                     }
+                    .environment(\.luiInsideScroll, true)
                 }
             )
         case .spacer:
@@ -647,10 +736,12 @@ private struct LUINodeView: View {
         case .spinner:
             return AnyView(
                 LUIActivitySpinnerView(style: model.spinnerStyle)
+                    .scaleEffect(spinnerScale)
                     .frame(
                         width: CGFloat(model.spinnerWidth),
                         height: CGFloat(model.spinnerHeight)
                     )
+                    .clipped()
             )
         case .icon:
             return AnyView(
@@ -700,6 +791,21 @@ private struct LUINodeView: View {
 
     private var headingLevel: Int {
         model.property(.headingLevel)?.intValue ?? 1
+    }
+
+    private var foregroundTint: Color? {
+        LUIThemeColorResolver.color(
+            model.property(.foreground)?.stringValue,
+            semanticColors: semanticColors
+        )
+    }
+
+    private var spinnerScale: CGFloat {
+        let extent = max(CGFloat(model.spinnerWidth), CGFloat(model.spinnerHeight))
+        guard extent > 0, extent < model.spinnerStyle.intrinsicExtent else {
+            return 1
+        }
+        return extent / model.spinnerStyle.intrinsicExtent
     }
 
     private var progressAccessibilityValue: String {
@@ -759,11 +865,21 @@ private struct LUIBottomTabsView: View {
                 LUIAnyNodeView(nodeID: destination.id, backend: backend)
                     .tag(destination.id)
                     .tabItem {
-                        Label {
-                            Text(verbatim: destination.bottomTabTitle)
-                        } icon: {
-                            Image(systemName: destination.bottomTabSystemIconName)
+                        Group {
+                            if destination.bottomTabIconName.isEmpty {
+                                Text(verbatim: destination.bottomTabTitle)
+                            } else {
+                                Label {
+                                    Text(verbatim: destination.bottomTabTitle)
+                                } icon: {
+                                    Image(systemName: destination.bottomTabSystemIconName)
+                                }
+                            }
                         }
+                        // TabView has no per-tab disabled affordance; dim the
+                        // item so a disabled destination doesn't look tappable
+                        // (the selection setter still rejects it).
+                        .opacity(destination.isEnabled ? 1 : 0.5)
                     }
             }
         }
@@ -819,7 +935,6 @@ private struct LUIBinaryToggleView: View {
     private var toggle: some View {
         Toggle(model.text, isOn: toggleBinding)
             .disabled(!model.isEnabled)
-            .frame(minHeight: minimumTouchHeight)
     }
 
     private var toggleBinding: Binding<Bool> {
@@ -827,20 +942,6 @@ private struct LUIBinaryToggleView: View {
             get: { model.isChecked },
             set: { try? backend.performToggle(node: model.id, checked: $0) }
         )
-    }
-
-    private var minimumTouchHeight: CGFloat? {
-        #if os(iOS)
-        LUIBinaryControlLayoutPolicy.minimumTouchHeight(
-            isIOS: true,
-            isNativeFormRow: isNativeFormRow
-        ).map { CGFloat($0) }
-        #else
-        LUIBinaryControlLayoutPolicy.minimumTouchHeight(
-            isIOS: false,
-            isNativeFormRow: isNativeFormRow
-        ).map { CGFloat($0) }
-        #endif
     }
 }
 
@@ -1004,14 +1105,17 @@ private struct LUINativeMenuActions: View {
                     usesExplicitForeground: false
                 ))
         } icon: {
-            if !item.buttonIconName.isEmpty {
-                LUIIconImage(
-                    source: backend.iconSource(for: item.buttonIconName),
-                    bundle: backend.appIconBundle
-                )
-                .modifier(LUIMenuItemForegroundModifier(model: item))
-            } else if item.isSelected {
-                Image(systemName: "checkmark")
+            HStack(spacing: 4) {
+                if item.isSelected {
+                    Image(systemName: "checkmark")
+                }
+                if !item.buttonIconName.isEmpty {
+                    LUIIconImage(
+                        source: backend.iconSource(for: item.buttonIconName),
+                        bundle: backend.appIconBundle
+                    )
+                    .modifier(LUIMenuItemForegroundModifier(model: item))
+                }
             }
         }
     }
@@ -1200,13 +1304,19 @@ private struct LUITreeOutlineRow: View {
                     ForEach(children) { child in
                         LUITreeOutlineRow(element: child, backend: backend)
                     }
-                    .padding(.leading, 16)
                 } label: {
                     rowLabel
                 }
                 .disabled(item?.isEnabled == false)
             } else {
-                rowLabel
+                // Emitted children without a toggle handler still render,
+                // statically expanded under the label row.
+                VStack(alignment: .leading, spacing: 0) {
+                    rowLabel
+                    ForEach(children) { child in
+                        LUITreeOutlineRow(element: child, backend: backend)
+                    }
+                }
             }
         } else {
             LUIAnyNodeView(nodeID: element.id, backend: backend)
@@ -1299,19 +1409,30 @@ private struct LUIAccordionView: View {
     let backend: LUIAppleBackend
 
     var body: some View {
-        DisclosureGroup(
-            isExpanded: Binding(
-                get: { model.isSelected },
-                set: { try? backend.performToggle(node: model.id, checked: $0) }
-            )
-        ) {
-            ForEach(model.children, id: \.self) { childID in
-                LUIAnyNodeView(nodeID: childID, backend: backend)
+        if model.supportsToggle {
+            DisclosureGroup(
+                isExpanded: Binding(
+                    get: { model.isSelected },
+                    set: { try? backend.performToggle(node: model.id, checked: $0) }
+                )
+            ) {
+                accordionChildren
+            } label: {
+                Text(verbatim: model.text)
             }
-        } label: {
-            Text(verbatim: model.text)
+        } else {
+            VStack(alignment: .leading) {
+                Text(verbatim: model.text)
+                    .font(.headline)
+                accordionChildren
+            }
         }
-        .disabled(!model.supportsToggle)
+    }
+
+    private var accordionChildren: some View {
+        ForEach(model.children, id: \.self) { childID in
+            LUIAnyNodeView(nodeID: childID, backend: backend)
+        }
     }
 }
 
@@ -1326,7 +1447,9 @@ private struct LUITableView: View {
                     LUITableRowView(
                         model: row,
                         backend: backend,
-                        isLast: rowID == model.children.last
+                        isLast: rowID == model.children.last,
+                        cellGap: row.property(.gap)?.intValue
+                            ?? model.property(.gap)?.intValue ?? 0
                     )
                 }
             }
@@ -1339,13 +1462,14 @@ private struct LUITableRowView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     let isLast: Bool
+    let cellGap: Int
 
     var body: some View {
         GridRow {
             ForEach(model.children, id: \.self) { cellID in
                 if let cell = backend.model(id: cellID) {
                     LUINodeView(model: cell, backend: backend)
-                        .padding(.horizontal, CGFloat(model.property(.gap)?.intValue ?? 0) / 2)
+                        .padding(.horizontal, CGFloat(cellGap) / 2)
                 }
             }
         }
@@ -1519,8 +1643,8 @@ private struct LUIAnchoredComboboxMenuHost<Content: View>: View {
                         LUINativeMenuActions(model: model, backend: backend)
                     }
                 }
-                .onChange(of: model?.id, initial: true) { _, menuID in
-                    isPresented = menuID != nil
+                .onChange(of: model?.revision, initial: true) { _, _ in
+                    isPresented = model != nil
                 }
         }
         #else
@@ -1695,11 +1819,15 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
                             backend: backend,
                             isPresented: true
                         )
+                        .padding(arrowEdgeOffset)
                         .presentationCompactAdaptation(.popover)
                     }
                 }
-                .onChange(of: model?.id, initial: true) { _, menuID in
-                    isPresented = menuID != nil
+                .onChange(of: model?.revision, initial: true) { _, _ in
+                    // A mounted menu node means presented: re-present whenever
+                    // the model patches, so a reducer that ignored the dismiss
+                    // still reopens on the next trigger press.
+                    isPresented = model != nil
                 }
         } else {
             content
@@ -1712,8 +1840,8 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
                         LUINativeMenuActions(model: model, backend: backend)
                     }
                 }
-                .onChange(of: model?.id, initial: true) { _, menuID in
-                    isPresented = menuID != nil
+                .onChange(of: model?.revision, initial: true) { _, _ in
+                    isPresented = model != nil
                 }
         }
         #else
@@ -1729,13 +1857,24 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
                         backend: backend,
                         isPresented: true
                     )
+                    .padding(arrowEdgeOffset)
                     .presentationCompactAdaptation(.popover)
                 }
             }
-            .onChange(of: model?.id, initial: true) { _, menuID in
-                isPresented = menuID != nil
+            .onChange(of: model?.revision, initial: true) { _, _ in
+                isPresented = model != nil
             }
         #endif
+    }
+
+    private var arrowEdgeOffset: EdgeInsets {
+        let offset = CGFloat(model?.property(.anchorOffset)?.doubleValue ?? 0)
+        return switch arrowEdge {
+        case .top: EdgeInsets(top: offset, leading: 0, bottom: 0, trailing: 0)
+        case .bottom: EdgeInsets(top: 0, leading: 0, bottom: offset, trailing: 0)
+        case .leading: EdgeInsets(top: 0, leading: offset, bottom: 0, trailing: 0)
+        case .trailing: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: offset)
+        }
     }
 
     private var presentationBinding: Binding<Bool> {
@@ -1895,6 +2034,7 @@ private struct LUITooltipHost<Content: View>: View {
                 arrowEdge: arrowEdge
             ) {
                 LUITooltipLabel(model: model)
+                    .padding(arrowEdgeOffset)
                     .presentationCompactAdaptation(.popover)
             }
             .accessibilityHint(Text(model.text))
@@ -1911,19 +2051,44 @@ private struct LUITooltipHost<Content: View>: View {
     }
 
     private var attachmentPoint: UnitPoint {
-        switch model.property(.anchorAlignment)?.stringValue ?? "start" {
-        case "end": UnitPoint(x: 1, y: anchorY)
-        case "stretch": UnitPoint(x: 0.5, y: anchorY)
-        default: UnitPoint(x: 0, y: anchorY)
+        let alignment = model.property(.anchorAlignment)?.stringValue ?? "start"
+        switch model.property(.anchor)?.stringValue ?? "below" {
+        case "left":
+            return UnitPoint(x: 0, y: Self.alignmentFraction(alignment))
+        case "right":
+            return UnitPoint(x: 1, y: Self.alignmentFraction(alignment))
+        case "above":
+            return UnitPoint(x: Self.alignmentFraction(alignment), y: 0)
+        default:
+            return UnitPoint(x: Self.alignmentFraction(alignment), y: 1)
         }
     }
 
-    private var anchorY: CGFloat {
-        model.property(.anchor)?.stringValue == "above" ? 0 : 1
+    private static func alignmentFraction(_ alignment: String) -> CGFloat {
+        switch alignment {
+        case "end": 1
+        case "center", "stretch": 0.5
+        default: 0
+        }
     }
 
     private var arrowEdge: Edge {
-        model.property(.anchor)?.stringValue == "above" ? .bottom : .top
+        switch model.property(.anchor)?.stringValue ?? "below" {
+        case "above": .bottom
+        case "left": .trailing
+        case "right": .leading
+        default: .top
+        }
+    }
+
+    private var arrowEdgeOffset: EdgeInsets {
+        let offset = CGFloat(model.property(.anchorOffset)?.doubleValue ?? 0)
+        return switch arrowEdge {
+        case .top: EdgeInsets(top: offset, leading: 0, bottom: 0, trailing: 0)
+        case .bottom: EdgeInsets(top: 0, leading: 0, bottom: offset, trailing: 0)
+        case .leading: EdgeInsets(top: 0, leading: offset, bottom: 0, trailing: 0)
+        case .trailing: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: offset)
+        }
     }
 
     private func hoverChanged(_ hovered: Bool) {
@@ -1997,7 +2162,6 @@ private struct LUIModalSurfaceContent: View {
             }
         )) { presentation in
             LUIModalSurfaceContent(model: presentation.model, backend: backend)
-                .modifier(LUIModalPresentationStyle(kind: presentation.model.kind))
         }
     }
 
@@ -2145,25 +2309,15 @@ private struct LUIModalSurfaceContent: View {
     }
 
     private var surfaceWidth: CGFloat? {
-        switch model.kind {
-        case .dialog:
-            CGFloat(model.property(.width)?.intValue ?? 420)
-        case .sheet:
-            model.property(.width).map { CGFloat($0.intValue ?? 0) }
-        default:
-            nil
-        }
+        model.kind == .sheet
+            ? model.property(.width).map { CGFloat($0.intValue ?? 0) }
+            : nil
     }
 
     private var surfaceHeight: CGFloat? {
-        switch model.kind {
-        case .dialog:
-            CGFloat(model.property(.height)?.intValue ?? 220)
-        case .sheet:
-            model.property(.height).map { CGFloat($0.intValue ?? 0) }
-        default:
-            nil
-        }
+        model.kind == .sheet
+            ? model.property(.height).map { CGFloat($0.intValue ?? 0) }
+            : nil
     }
 }
 
@@ -2540,6 +2694,7 @@ private struct LUIToastView: View {
             .onEnded { value in
                 if abs(value.translation.width) >= 80 {
                     try? backend.performDismiss(node: model.id)
+                    dragOffset = 0
                 } else {
                     withAnimation(reduceMotion ? nil : .snappy) {
                         dragOffset = 0
@@ -2552,6 +2707,7 @@ private struct LUIToastView: View {
 private struct LUIAvatarView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.luiSemanticColors) private var semanticColors
 
     var body: some View {
         let extent = CGFloat(model.surfaceWidth ?? model.surfaceHeight ?? 40)
@@ -2573,19 +2729,17 @@ private struct LUIAvatarView: View {
     }
 
     private var avatarBackground: Color {
-        if let name = model.property(.background)?.stringValue,
-           let color = luiHexColor(name) {
-            return color
-        }
-        return Color.secondary.opacity(0.16)
+        LUIThemeColorResolver.color(
+            model.property(.background)?.stringValue,
+            semanticColors: semanticColors
+        ) ?? Color.secondary.opacity(0.16)
     }
 
     private var avatarForeground: Color {
-        if let name = model.property(.foreground)?.stringValue,
-           let color = luiHexColor(name) {
-            return color
-        }
-        return .primary
+        LUIThemeColorResolver.color(
+            model.property(.foreground)?.stringValue,
+            semanticColors: semanticColors
+        ) ?? .primary
     }
 }
 
@@ -2727,9 +2881,11 @@ private struct LUITimelineItemView: View {
                 if model.timelineConnector {
                     Rectangle()
                         .fill(Color.secondary.opacity(0.35))
-                        .frame(width: 1, height: 24)
+                        .frame(width: 1)
+                        .frame(maxHeight: .infinity)
                 }
             }
+            .frame(maxHeight: .infinity)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: model.timelineTitle).fontWeight(.semibold)
                 if !model.timelineDescription.isEmpty {
@@ -2894,19 +3050,25 @@ enum LUIMenuPresentationPolicy {
             return true
         }
         guard let model else { return false }
-        return model.children.contains { childID in
-            guard let child = backend.model(id: childID) else { return false }
+        var hasEnabledLeafItem = false
+        for childID in model.children {
+            guard let child = backend.model(id: childID) else { continue }
             switch child.kind {
             case .divider:
-                return false
+                continue
             case .menuItem:
-                return !child.isEnabled || child.children.contains {
+                if !child.isEnabled || child.children.contains(where: {
                     backend.model(id: $0)?.kind == .dropdownMenu
+                }) {
+                    return true
                 }
+                hasEnabledLeafItem = true
             default:
                 return true
             }
         }
+        // A confirmationDialog with zero actions renders an empty sheet.
+        return !hasEnabledLeafItem
     }
 }
 
@@ -2922,7 +3084,7 @@ private struct LUISelectView: View {
             Label {
                 Text(verbatim: displayText)
             } icon: {
-                Image(systemName: LUISelectVisualPolicy.indicatorSystemName)
+                Image(systemName: "chevron.down")
             }
             .foregroundStyle(
                 model.text.isEmpty ? Color.secondary : Color.accentColor
@@ -2966,25 +3128,20 @@ private struct LUISelectView: View {
 private struct LUIComboboxView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @State private var draftState: LUITextDraftState
+    @FocusState private var focused: Bool
+
+    init(model: LUINodeModel, backend: LUIAppleBackend) {
+        self.model = model
+        self.backend = backend
+        _draftState = State(initialValue: LUITextDraftState(source: model.text))
+    }
 
     var body: some View {
         #if os(iOS)
         HStack(spacing: 8) {
-            TextField(
-                model.property(.placeholder)?.stringValue ?? "",
-                text: Binding(
-                    get: { model.text },
-                    set: { try? backend.performTextChange(node: model.id, text: $0) }
-                )
-            )
-            .textFieldStyle(.roundedBorder)
-            .onSubmit {
-                if model.supportsSubmit {
-                    try? backend.performSubmit(node: model.id)
-                } else {
-                    try? backend.performPress(node: model.id)
-                }
-            }
+            textField
+                .textFieldStyle(.roundedBorder)
             Button {
                 try? backend.performPress(node: model.id)
             } label: {
@@ -2996,21 +3153,8 @@ private struct LUIComboboxView: View {
         .disabled(!model.isEnabled)
         #else
         HStack(spacing: 4) {
-            TextField(
-                model.property(.placeholder)?.stringValue ?? "",
-                text: Binding(
-                    get: { model.text },
-                    set: { try? backend.performTextChange(node: model.id, text: $0) }
-                )
-            )
-            .textFieldStyle(.plain)
-            .onSubmit {
-                if model.supportsSubmit {
-                    try? backend.performSubmit(node: model.id)
-                } else {
-                    try? backend.performPress(node: model.id)
-                }
-            }
+            textField
+                .textFieldStyle(.plain)
             Button {
                 try? backend.performPress(node: model.id)
             } label: {
@@ -3028,6 +3172,39 @@ private struct LUIComboboxView: View {
         }
         .disabled(!model.isEnabled)
         #endif
+    }
+
+    private var textField: some View {
+        TextField(
+            model.property(.placeholder)?.stringValue ?? "",
+            text: Binding(
+                get: { draftState.text },
+                set: { next in
+                    draftState.edit(next)
+                    try? backend.performTextChange(node: model.id, text: next)
+                }
+            )
+        )
+        .autocorrectionDisabled()
+        #if os(iOS)
+        .textInputAutocapitalization(.never)
+        #endif
+        .focused($focused)
+        .onSubmit {
+            if model.supportsSubmit {
+                try? backend.performSubmit(node: model.id)
+            } else {
+                try? backend.performPress(node: model.id)
+            }
+        }
+        .onChange(of: model.text) { _, next in
+            draftState.reconcile(source: next, focused: focused)
+        }
+        .onChange(of: focused) { _, next in
+            if !next {
+                draftState.reconcile(source: model.text, focused: false)
+            }
+        }
     }
 }
 
@@ -3264,7 +3441,6 @@ private struct LUIListItemView: View {
             model.isSelected ? selectionBackground : Color.clear,
             in: RoundedRectangle(cornerRadius: cornerRadius)
         )
-        .id(model.isSelected)
         .modifier(
             LUIListItemSupplementaryGesturesModifier(
                 model: model,
@@ -3279,7 +3455,7 @@ private struct LUIListItemView: View {
         }
         .accessibilityAddTraits(model.isSelected ? .isSelected : [])
         .disabled(!model.isEnabled)
-        .modifier(LUIListItemSwipeActionsModifier(menu: contextMenu, backend: backend))
+        .modifier(LUIListItemSwipeActionsModifier(menu: swipeMenu, backend: backend))
         .modifier(LUINativeListRowAccessibilityModifier(
             model: model,
             backend: backend,
@@ -3289,15 +3465,13 @@ private struct LUIListItemView: View {
 
     private var rowContent: some View {
         HStack(spacing: horizontalSpacing) {
-            #if os(macOS)
-            if model.isTreeItem, model.supportsToggle {
+            if showsTreeToggleChevron {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .rotationEffect(.degrees(model.isExpanded == true ? 90 : 0))
                     .animation(.snappy, value: model.isExpanded)
                     .accessibilityHidden(true)
             }
-            #endif
             if !model.buttonIconName.isEmpty && model.buttonIconPlacement != "trailing" {
                 LUIIconImage(
                     source: backend.iconSource(for: model.buttonIconName),
@@ -3344,7 +3518,7 @@ private struct LUIListItemView: View {
             ) {
                 Spacer(minLength: 8)
             }
-            if let contextMenu {
+            if let contextMenu, swipeMenu == nil {
                 Menu {
                     LUINativeMenuActions(model: contextMenu, backend: backend)
                 } label: {
@@ -3457,6 +3631,32 @@ private struct LUIListItemView: View {
                 backend.model(id: childID)?.kind == .menuItem
             }
         }
+    }
+
+    private var showsTreeToggleChevron: Bool {
+        guard model.isTreeItem, model.supportsToggle else { return false }
+        #if os(iOS)
+        // iOS outline rows get their disclosure indicator from the system.
+        return !isNativeListRow
+        #else
+        return true
+        #endif
+    }
+
+    /// Swipe actions only fit enabled leaf items — menus containing dividers,
+    /// submenus, disabled rows, or other children keep the ellipsis button.
+    private var swipeMenu: LUINodeModel? {
+        #if os(iOS)
+        guard isNativeListRow, let contextMenu else { return nil }
+        let items = contextMenu.children.compactMap { backend.model(id: $0) }
+        guard !items.isEmpty, items.allSatisfy({
+            $0.kind == .menuItem && $0.isEnabled &&
+                !$0.children.contains { backend.model(id: $0)?.kind == .dropdownMenu }
+        }) else { return nil }
+        return contextMenu
+        #else
+        return nil
+        #endif
     }
 }
 
@@ -3640,6 +3840,8 @@ private struct LUIButtonView: View {
                 height: buttonHeight
             )
             .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(verbatim: model.accessibilityLabel(in: backend)
+                ?? (model.text.isEmpty ? model.buttonIconName : model.text)))
             .disabled(!model.isEnabled)
             .focused($focused)
             .onAppear { requestFocusIfNeeded() }
@@ -3647,7 +3849,7 @@ private struct LUIButtonView: View {
                 if requested { focused = true }
             }
             .onChange(of: model.isSelected) { _, modelSelected in
-                if isToggle, model.property(.selected) != nil {
+                if isToggle {
                     selected = modelSelected
                 }
             }
@@ -3657,6 +3859,13 @@ private struct LUIButtonView: View {
                         guard model.supportsLongPress, model.isEnabled else { return }
                         held = true
                         try? backend.performLongPress(node: model.id)
+                        // A long-press released outside the button never runs the
+                        // Button action that would reset `held` — clear it shortly
+                        // after so it can't swallow the next tap.
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 300_000_000)
+                            held = false
+                        }
                     }
             )
             .modifier(
@@ -3667,7 +3876,8 @@ private struct LUIButtonView: View {
             )
             .modifier(
                 LUISelectedButtonModifier(
-                    selected: isToggle ? selected : model.isSelected
+                    selected: isToggle ? selected : model.isSelected,
+                    showsSelectionTint: isToggle && !isTabTrigger
                 )
             )
     }
@@ -3933,8 +4143,10 @@ private struct LUISegmentedTabsView: View {
 
     static func supports(model: LUINodeModel, backend: LUIAppleBackend) -> Bool {
         let segments = model.children.compactMap { backend.model(id: $0) }
+        // A segmented Picker models a single selection and has no per-segment
+        // disabled state — groups that need either keep the button-row path.
         return !segments.isEmpty && segments.allSatisfy {
-            $0.kind == .button || $0.kind == .toggleButton
+            $0.kind == .button && $0.isEnabled
         }
     }
 
@@ -3942,22 +4154,14 @@ private struct LUISegmentedTabsView: View {
         model.children.compactMap { backend.model(id: $0) }
     }
 
-    private var selection: Binding<Int> {
+    private var selection: Binding<Int?> {
         Binding(
-            get: { segments.first(where: \.isSelected)?.id ?? segments.first?.id ?? 0 },
+            get: { segments.first(where: \.isSelected)?.id },
             set: { nodeID in
-                guard let segment = backend.model(id: nodeID), segment.isEnabled else {
-                    return
-                }
-                switch segment.kind {
-                case .button:
-                    guard segment.supportsPress else { return }
-                    try? backend.performPress(node: nodeID)
-                case .toggleButton:
-                    try? backend.performToggle(node: nodeID, checked: !segment.isSelected)
-                default:
-                    break
-                }
+                guard let nodeID,
+                      let segment = backend.model(id: nodeID),
+                      segment.supportsPress else { return }
+                try? backend.performPress(node: nodeID)
             }
         )
     }
@@ -3965,7 +4169,7 @@ private struct LUISegmentedTabsView: View {
     var body: some View {
         Picker(selection: selection) {
             ForEach(segments, id: \.id) { segment in
-                segmentLabel(segment).tag(segment.id)
+                segmentLabel(segment).tag(segment.id as Int?)
             }
         } label: {
             Text(verbatim: model.accessibilityLabel(in: backend) ?? "")
@@ -3990,60 +4194,6 @@ private struct LUISegmentedTabsView: View {
         }
     }
 }
-
-#if os(iOS)
-private struct LUISegmentedToggleGroupView: View {
-    let model: LUINodeModel
-    let backend: LUIAppleBackend
-
-    static func supports(model: LUINodeModel, backend: LUIAppleBackend) -> Bool {
-        let toggles = model.children.compactMap { backend.model(id: $0) }
-        return !toggles.isEmpty && toggles.allSatisfy { $0.kind == .toggleButton }
-    }
-
-    private var toggles: [LUINodeModel] {
-        model.children.compactMap { backend.model(id: $0) }
-    }
-
-    private var selection: Binding<Int> {
-        Binding(
-            get: { toggles.first(where: \.isSelected)?.id ?? toggles.first?.id ?? 0 },
-            set: { nodeID in
-                guard let toggle = backend.model(id: nodeID), toggle.isEnabled else { return }
-                try? backend.performToggle(node: nodeID, checked: !toggle.isSelected)
-            }
-        )
-    }
-
-    var body: some View {
-        Picker(selection: selection) {
-            ForEach(toggles, id: \.id) { toggle in
-                toggleLabel(toggle).tag(toggle.id)
-            }
-        } label: {
-            Text(verbatim: model.accessibilityLabel(in: backend) ?? "")
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-    }
-
-    @ViewBuilder
-    private func toggleLabel(_ toggle: LUINodeModel) -> some View {
-        if toggle.buttonIconName.isEmpty {
-            Text(verbatim: toggle.text)
-        } else {
-            Label {
-                Text(verbatim: toggle.text)
-            } icon: {
-                LUIIconImage(
-                    source: backend.iconSource(for: toggle.buttonIconName),
-                    bundle: backend.appIconBundle
-                )
-            }
-        }
-    }
-}
-#endif
 
 private struct LUIHorizontalGroupView: View {
     let model: LUINodeModel
@@ -4226,10 +4376,13 @@ final class LUISecondaryLongPressView: NSView {
 
 private struct LUISelectedButtonModifier: ViewModifier {
     let selected: Bool
+    let showsSelectionTint: Bool
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if selected {
+        if selected, showsSelectionTint {
+            content.accessibilityAddTraits(.isSelected).tint(.accentColor)
+        } else if selected {
             content.accessibilityAddTraits(.isSelected)
         } else {
             content
@@ -4284,6 +4437,7 @@ private struct LUITextView: View {
                 try? backend.performPress(node: model.id)
             } label: {
                 textContent
+                    .font(font)
                     .multilineTextAlignment(textAlignment)
                     .lineLimit(lineLimit)
                     .frame(maxWidth: alignedMaxWidth, alignment: frameAlignment)
@@ -4373,6 +4527,8 @@ enum LUIRowLayoutPolicy {
         grow: Double?,
         styleClass: String?
     ) -> Double {
+        // layoutPriority can only order, not split space proportionally —
+        // equal priority keeps grow children from starving one another.
         _ = grow
         return LUITextLinePolicy.layoutPriority(styleClass: styleClass)
     }
@@ -4513,7 +4669,9 @@ private struct LUIColumnView: View {
                         ? .infinity : nil,
                     alignment: .topLeading
                 )
-                .layoutPriority(child?.property(.grow)?.doubleValue ?? 0)
+                .layoutPriority(
+                    (child?.property(.grow)?.doubleValue ?? 0) > 0 ? 1 : 0
+                )
             if model.property(.main)?.stringValue == "space_between" &&
                 index < model.children.count - 1 {
                 Spacer(minLength: gap)
@@ -4549,58 +4707,6 @@ private struct LUIColumnView: View {
         case "center": .top
         case "end": .topTrailing
         default: .topLeading
-        }
-    }
-}
-
-// card/panel content: children stack vertically; `cross` sets horizontal
-// alignment (leading/center/trailing), `main` distributes vertically
-// (start/center/end/space_between) the same way column does.
-private struct LUISurfaceStackView: View {
-    let model: LUINodeModel
-    let backend: LUIAppleBackend
-
-    var body: some View {
-        VStack(alignment: hAlignment, spacing: spacing) {
-            if main == "center" || main == "end" {
-                Spacer(minLength: 0)
-            }
-            ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
-                let child = backend.model(id: childID)
-                LUIAnyNodeView(nodeID: childID, backend: backend)
-                    .equatable()
-                    .frame(
-                        maxWidth: cross != "start" ? .infinity : nil,
-                        maxHeight: child?.property(.grow)?.doubleValue ?? 0 > 0
-                            ? .infinity : nil
-                    )
-                    .layoutPriority(child?.property(.grow)?.doubleValue ?? 0)
-                if main == "space_between" && index < model.children.count - 1 {
-                    Spacer(minLength: gap)
-                }
-            }
-            if main == "center" {
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    private var gap: CGFloat { CGFloat(model.property(.gap)?.intValue ?? 0) }
-    private var cross: String {
-        model.property(.cross)?.stringValue ?? "start"
-    }
-    private var main: String {
-        model.property(.main)?.stringValue ?? "start"
-    }
-    private var spacing: CGFloat {
-        main == "space_between" ? 0 : gap
-    }
-    private var hAlignment: HorizontalAlignment {
-        switch cross {
-        case "center": .center
-        case "end": .trailing
-        case "stretch": .leading
-        default: .leading
         }
     }
 }
@@ -4734,10 +4840,10 @@ private struct LUIListView: View {
             }
         }
         .scrollContentBackground(
-            semanticColors["background"] == nil
+            listBackground == nil
                 ? LUIListSurfacePolicy.scrollContentBackground : .hidden
         )
-        .background(semanticColors["background"])
+        .background(listBackground)
         .foregroundStyle(.primary)
         .preference(
             key: LUIListSurfacePreferenceKey.self,
@@ -4747,6 +4853,13 @@ private struct LUIListView: View {
         .listStyle(.insetGrouped)
         .modifier(LUISearchableNodeModifier(model: searchableField, backend: backend))
         #endif
+    }
+
+    private var listBackground: Color? {
+        LUIThemeColorResolver.color(
+            model.property(.background)?.stringValue,
+            semanticColors: semanticColors
+        ) ?? semanticColors["background"]
     }
 
     private var searchableField: LUINodeModel? {
@@ -4761,7 +4874,10 @@ private struct LUIListView: View {
 
     @ViewBuilder
     private func rows(_ childIDs: [Int]) -> some View {
-        ForEach(childIDs.filter { $0 != searchableField?.id }, id: \.self) { childID in
+        ForEach(childIDs.filter {
+            $0 != searchableField?.id &&
+                backend.model(id: $0)?.kind != .contextMenu
+        }, id: \.self) { childID in
             Group {
                 if let child = backend.model(id: childID), child.kind == .listItem {
                     LUIListItemView(model: child, backend: backend, isNativeListRow: true)
@@ -4775,7 +4891,10 @@ private struct LUIListView: View {
 
     private var sections: [LUIListSection] {
         LUIListSectionPolicy.sections(
-            childIDs: model.children,
+            childIDs: model.children.filter { childID in
+                childID != searchableField?.id &&
+                    backend.model(id: childID)?.kind != .contextMenu
+            },
             isHeading: { childID in
                 backend.model(id: childID)?.kind == .heading
             },
@@ -4852,7 +4971,9 @@ private struct LUIVirtualListView: View {
 
     private var sectionRows: [SectionRow] {
         var currentTitle: String?
-        return model.children.enumerated().map { index, id in
+        return model.children.filter {
+            backend.model(id: $0)?.kind != .contextMenu
+        }.enumerated().map { index, id in
             if tracksSectionTitles, let title = sectionTitle(in: id) { currentTitle = title }
             return SectionRow(id: id, index: index, title: currentTitle)
         }
@@ -4868,6 +4989,8 @@ private struct LUIVirtualListView: View {
 
 }
 
+// Each scroll axis needs its own stack: VStack for vertical, HStack for
+// horizontal (`~orientation:`horizontal`).
 // Each scroll axis needs its own stack: VStack for vertical, HStack for
 // horizontal (`~orientation:`horizontal`).
 struct LUIVerticalScrollContent: View {
@@ -4892,7 +5015,9 @@ private struct LUIGridView: View {
 
     var body: some View {
         LazyVGrid(columns: gridItems, spacing: gap) {
-            ForEach(model.children, id: \.self) { childID in
+            ForEach(model.children.filter {
+                backend.model(id: $0)?.kind != .contextMenu
+            }, id: \.self) { childID in
                 LUIAnyNodeView(nodeID: childID, backend: backend)
             }
         }
@@ -4916,15 +5041,25 @@ private struct LUISeparatorView: View {
 
     @ViewBuilder
     var body: some View {
+        // Rectangle honors the declared orientation regardless of the parent
+        // stack axis — Divider adapts to its container instead.
         if model.property(.orientation)?.stringValue == "vertical" {
-            Divider()
-                .frame(maxHeight: .infinity)
+            separatorColor
                 .frame(width: 1)
+                .frame(maxHeight: .infinity)
         } else {
-            Divider()
-                .frame(maxWidth: .infinity)
+            separatorColor
                 .frame(height: 1)
+                .frame(maxWidth: .infinity)
         }
+    }
+
+    private var separatorColor: Color {
+        #if os(macOS)
+        Color(nsColor: .separatorColor)
+        #else
+        Color(uiColor: .separator)
+        #endif
     }
 }
 
@@ -5001,13 +5136,10 @@ private struct LUITextControlView: View {
                 axis: .vertical
             )
             .lineLimit(1...(model.property(.styleClass)?.stringValue == "composer-input" ? 6 : Int.max))
+            .submitLabel(model.property(.submitOnEnter)?.boolValue == true ? .send : .return)
         } else if model.kind == .searchField {
             #if os(iOS)
-            if grouped {
-                iosSearchFieldRow.textFieldStyle(.plain)
-            } else {
-                iosSearchFieldRow.textFieldStyle(.roundedBorder)
-            }
+            iosSearchFieldRow.textFieldStyle(.roundedBorder)
             #else
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
@@ -5045,6 +5177,16 @@ private struct LUITextControlView: View {
                 model.property(.placeholder)?.stringValue ?? "",
                 text: binding
             )
+            if !draftState.text.isEmpty {
+                Button {
+                    draftState.edit("")
+                    try? backend.performTextChange(node: model.id, text: "")
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
     #endif
@@ -5093,7 +5235,7 @@ private struct LUISearchableNodeModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if let model {
+        if let model, model.isEnabled {
             content
                 .searchable(
                     text: Binding(
@@ -5106,8 +5248,14 @@ private struct LUISearchableNodeModifier: ViewModifier {
                     isPresented: $presented,
                     prompt: Text(verbatim: model.property(.placeholder)?.stringValue ?? "")
                 )
+                .onSubmit(of: .search) {
+                    try? backend.performSubmit(node: model.id)
+                }
                 .onChange(of: model.text) { _, next in
                     draft.reconcile(source: next, focused: presented)
+                }
+                .onChange(of: model.id) { _, _ in
+                    draft.reconcile(source: model.text, focused: presented)
                 }
         } else {
             content
@@ -5211,7 +5359,7 @@ private struct LUICheckboxView: View {
         .buttonStyle(.plain)
         .disabled(!model.isEnabled)
         .frame(minHeight: 44)
-        .accessibilityValue(Text(model.isChecked ? "1" : "0"))
+        .accessibilityAddTraits(model.isChecked ? .isSelected : [])
         #endif
     }
 
@@ -5428,58 +5576,7 @@ private struct LUISurfaceModifier: ViewModifier {
     }
 
     private func color(_ name: String?) -> Color? {
-        if let name, let semanticColor = semanticColors[name.lowercased()] {
-            return semanticColor
-        }
-        if LUIThemeColorPolicy.isMutedForeground(name) {
-            return .secondary
-        }
-        if LUIThemeColorPolicy.isAccentForeground(name) {
-            return .accentColor
-        }
-        if let name, let hex = hexColor(name) {
-            return hex
-        }
-        return switch name?.lowercased() {
-        case nil: nil
-        case "transparent": .clear
-        case "background": systemBackground
-        case "foreground": .primary
-        case "primary": .accentColor
-        case "primary-foreground": .white
-        case "secondary": .secondary.opacity(0.15)
-        case "glass-fallback": glassFallbackBackground
-        case "secondary-foreground": .primary
-        case "success": .green.opacity(0.15)
-        case "success-foreground": .green
-        case "warning": .orange.opacity(0.15)
-        case "warning-foreground": .orange
-        case "error": .red.opacity(0.15)
-        case "error-foreground": .red
-        case "border": .secondary.opacity(0.35)
-        case "black": .black
-        case "white": .white
-        case "red": .red
-        case "blue": .blue
-        case "green": .green
-        default: nil
-        }
-    }
-
-    private func hexColor(_ name: String) -> Color? {
-        let value = name.hasPrefix("#") ? String(name.dropFirst()) : name
-        guard value.count == 6, let rgb = UInt64(value, radix: 16) else {
-            return nil
-        }
-        return Color(
-            red: Double((rgb >> 16) & 0xff) / 255.0,
-            green: Double((rgb >> 8) & 0xff) / 255.0,
-            blue: Double(rgb & 0xff) / 255.0
-        )
-    }
-
-    private var glassFallbackBackground: Color {
-        .clear
+        LUIThemeColorResolver.color(name, semanticColors: semanticColors)
     }
 
     private func defaultBackground(isSurface: Bool, isTabs: Bool) -> Color {
@@ -5506,11 +5603,7 @@ private struct LUISurfaceModifier: ViewModifier {
     }
 
     private var systemBackground: Color {
-        #if os(macOS)
-        Color(nsColor: .windowBackgroundColor)
-        #else
-        Color(uiColor: .systemBackground)
-        #endif
+        LUIThemeColorResolver.systemBackground
     }
 }
 
@@ -5579,6 +5672,7 @@ private struct LUISplitView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.luiInsideScroll) private var insideScroll
     @State private var fractionState: LUISplitFractionState
     @State private var dragStartFraction: Double?
     #if os(iOS)
@@ -5596,13 +5690,28 @@ private struct LUISplitView: View {
     }
 
     var body: some View {
+        splitContent
+            .onAppear { reconcile(sourceFraction: model.splitFraction) }
+            .onChange(of: model.splitFraction) { _, value in
+                reconcile(sourceFraction: value)
+            }
+    }
+
+    @ViewBuilder
+    private var splitContent: some View {
         #if os(iOS)
-        // On iOS the split renders as a NavigationSplitView so the divider,
-        // collapse behavior, and column chrome are system-provided. The model
-        // fraction maps onto the sidebar column's ideal width.
-        iOSSplit
+        // NavigationSplitView owns a ScrollView; nested inside scrolling
+        // content it fails to lay out, so the manual layout renders instead.
+        if insideScroll {
+            manualSplit
+        } else {
+            // On iOS the split renders as a NavigationSplitView so the divider,
+            // collapse behavior, and column chrome are system-provided. The model
+            // fraction maps onto the sidebar column's ideal width.
+            iOSSplit
+        }
         #else
-        macOSSplit
+        manualSplit
         #endif
     }
 
@@ -5617,6 +5726,24 @@ private struct LUISplitView: View {
                 Group {
                     if let firstID {
                         LUIAnyNodeView(nodeID: firstID, backend: backend)
+                    }
+                }
+                .background {
+                    // NavigationSplitView exposes no drag callback; observe the
+                    // rendered column width so user resizes still emit the
+                    // declared value-change event.
+                    GeometryReader { columnGeometry in
+                        Color.clear.onChange(of: columnGeometry.size.width) { _, width in
+                            guard width > 0, geometry.size.width > 0 else { return }
+                            let fraction = Double(width / geometry.size.width)
+                            guard abs(fraction - fractionState.fraction) > 0.005 else {
+                                return
+                            }
+                            try? backend.performValueChange(
+                                node: model.id,
+                                value: fraction
+                            )
+                        }
                     }
                 }
                 .navigationSplitViewColumnWidth(
@@ -5645,15 +5772,16 @@ private struct LUISplitView: View {
         secondModel: LUINodeModel?
     ) -> CGFloat {
         let fraction = LUISplitGeometry.effectiveFraction(
-            value: model.splitResizeOrigin ?? model.splitFraction,
+            value: fractionState.fraction,
             available: Double(available),
             firstMinimum: Double(firstModel?.surfaceMinWidth ?? 0),
             secondMinimum: Double(secondModel?.surfaceMinWidth ?? 0)
         )
         return available * CGFloat(fraction)
     }
-    #else
-    private var macOSSplit: some View {
+    #endif
+
+    private var manualSplit: some View {
         GeometryReader { geometry in
             let gap = max(CGFloat(model.splitGap), 0)
             let available = max(geometry.size.width - gap, 0)
@@ -5732,8 +5860,6 @@ private struct LUISplitView: View {
                     }
             }
         }
-        .onAppear { reconcile(sourceFraction: model.splitFraction) }
-        .onChange(of: model.splitFraction) { _, value in reconcile(sourceFraction: value) }
     }
 
     private var splitAnimation: Animation? {
@@ -5783,7 +5909,6 @@ private struct LUISplitView: View {
         fractionState.applyUserFraction(effective)
         try? backend.performValueChange(node: model.id, value: effective)
     }
-    #endif
 }
 
 struct LUIResizableWidthState: Equatable {
@@ -5857,7 +5982,6 @@ private struct LUIResizableView: View {
             GeometryReader { geometry in
                 Color.clear
                     .frame(width: 12)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
                     .contentShape(Rectangle())
                     .gesture(
                         DragGesture()
@@ -5868,6 +5992,7 @@ private struct LUIResizableView: View {
                             }
                             .onEnded { _ in previousTranslation = 0 }
                     )
+                    .disabled(!model.isEnabled)
             }
         }
         .accessibilityLabel(model.property(.accessibilityLabel)?.stringValue ?? "Resizable")

@@ -213,7 +213,7 @@ final class LUINodeModel: Identifiable {
     var iconExtent: Int {
         switch properties[.size]?.stringValue ?? "default" {
         case "sm": 16
-        case "lg": 24
+        case "lg", "icon": 24
         default: 18
         }
     }
@@ -556,7 +556,8 @@ public final class LUIAppleBackend {
     func performPress(node: Int) throws {
         guard allowsControlInteraction(node: node) else { return }
         guard let model = models[node],
-              model.kind == .button || (model.kind == .text && model.supportsPress) ||
+              model.kind == .button || model.kind == .toggleButton ||
+                (model.kind == .text && model.supportsPress) ||
                 (model.kind == .bottomTab && model.supportsPress) ||
                 (model.kind == .tableCell && model.supportsPress) ||
                 model.kind == .select ||
@@ -1036,4 +1037,21 @@ public enum LUISpinnerStyle: Sendable {
     case small
     case regular
     case large
+
+    /// Intrinsic drawing extent of the platform activity indicator for this
+    /// style; the representables do not shrink below it, so callers scale when
+    /// the declared frame is smaller.
+    var intrinsicExtent: CGFloat {
+        #if os(iOS)
+        switch self {
+        case .small, .regular: 20
+        case .large: 37
+        }
+        #else
+        switch self {
+        case .small: 16
+        case .regular, .large: 32
+        }
+        #endif
+    }
 }

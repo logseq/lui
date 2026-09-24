@@ -238,10 +238,6 @@ struct LUIDrawerView: View {
         }
     }
 
-    private var drawerBackground: Color {
-        semanticColors["background"] ?? (colorScheme == .dark ? .black : .white)
-    }
-
     private func drawerGesture(width: CGFloat) -> some Gesture {
         let gesture = DragGesture(minimumDistance: 10, coordinateSpace: .global)
         return gesture
@@ -295,9 +291,13 @@ struct LUIDrawerView: View {
 
     private func updatePresentation(_ selected: Bool) {
         guard presented || model.isEnabled else { return }
+        if selected != model.isSelected,
+           (try? backend.performToggle(node: model.id, checked: selected)) == nil {
+            // The toggle was rejected (e.g. the node went disabled) — keep the
+            // presented state in sync with the model instead of animating.
+            return
+        }
         animatePresentation(selected)
-        guard selected != model.isSelected else { return }
-        try? backend.performToggle(node: model.id, checked: selected)
     }
 
     private func animatePresentation(_ selected: Bool) {

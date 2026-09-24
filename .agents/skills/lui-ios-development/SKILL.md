@@ -161,3 +161,24 @@ for sim verification only; sheets work on real devices.
 - `xcrun simctl io <udid> recordVideo out.mov` (SIGINT to stop) /
   `screenshot out.png`; `ps -o %cpu` distinguishes render-loop (~100%) from
   dead-end idle (~0%).
+
+## Gallery insideScroll + PressEnabled-on-Button caveats
+
+- The components gallery (`LUIComponents.app`) wraps every detail page in a
+  `ScrollView` and sets `luiInsideScroll=true`. Views with a
+  scroll-unaware List path (`LUITreeOutlineList`, `LUITableView`
+  `listContent`) are forced down their `flatContent`/`gridContent` fallback —
+  so the List/OutlineGroup and inset-grouped-table renderings are NOT
+  reachable from the gallery; verify them in a non-scroll host instead.
+- `PressEnabled` is not a supported property for the `Button` kind
+  (`property_supported` in `src/lui_protocol.ml` omits it), so `supportsPress`
+  is always false on button children. Any view that guards dispatch with
+  `segment.supportsPress` on `.button` segments (e.g. `LUISegmentedTabsView`)
+  silently swallows taps — taps reach the binding setter, the guard returns.
+  Plain `performPress` calls are unaffected (`performPress` allows `.button`).
+- `.confirmationDialog` action sheets accept only buttons — `Menu`
+  children (nested submenus) and disabled items inside are silently dropped
+  on iOS. If a dropdown/select needs submenu or disabled items, verify them in
+  the inline card rendering, not the presented sheet.
+- Sim scrolling needs click-drag, not mouse wheel; taps near the nav-bar top
+  edge can miss — scroll the target row to mid-screen before tapping.
