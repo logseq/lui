@@ -1383,6 +1383,7 @@ private struct LUITreeItemModifier: ViewModifier {
             content
                 .focusable(model.isEnabled)
                 .focused(context.focus, equals: model.id)
+                .focusEffectDisabled()
                 .onKeyPress(.upArrow) { handle(.up, context: context) }
                 .onKeyPress(.downArrow) { handle(.down, context: context) }
                 .onKeyPress(.leftArrow) { handle(.left, context: context) }
@@ -3483,6 +3484,10 @@ private struct LUIListItemView: View {
 
     private var rowContent: some View {
         HStack(spacing: horizontalSpacing) {
+            if model.isTreeItem {
+                Spacer()
+                    .frame(width: CGFloat(max((model.treeLevel ?? 1) - 1, 0)) * 14)
+            }
             if showsTreeToggleChevron {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
