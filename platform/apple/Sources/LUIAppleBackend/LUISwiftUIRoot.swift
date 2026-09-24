@@ -22,8 +22,16 @@ final class LUIModalPresentationStore {
     var nestedSheets: [Int: LUIModalPresentation] = [:]
     private var interactiveDismissalID: Int?
     private var dialogActionID: Int?
+    // A node interactively dismissed in SwiftUI stays mounted on the wire
+    // until the reducer consumes the dismiss event; teardown patches can
+    // re-assert it (already stripped of children) in the meantime, which
+    // would re-present it on another path. Suppress that id until the wire
+    // stops reporting it.
+    private var pendingDismissalID: Int?
 
     func synchronize(with item: LUIModalPresentation?) {
+        if item?.id == pendingDismissalID { return }
+        pendingDismissalID = nil
         guard self.item?.id != item?.id else { return }
         if item == nil {
             dialogActionID = nil
@@ -34,6 +42,7 @@ final class LUIModalPresentationStore {
     func updateFromPresentation(_ item: LUIModalPresentation?) {
         if item == nil, let presentedID = self.item?.id {
             interactiveDismissalID = presentedID
+            pendingDismissalID = presentedID
         }
         self.item = item
     }
@@ -44,6 +53,7 @@ final class LUIModalPresentationStore {
 
     func dismissDialogFromPresentation() -> Int? {
         guard let presentedID = item?.id else { return nil }
+        pendingDismissalID = presentedID
         item = nil
         if dialogActionID == presentedID {
             dialogActionID = nil
