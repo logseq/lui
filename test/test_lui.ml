@@ -484,7 +484,7 @@ let json_view_json =
 let test_json_view_render () =
   let events = ref [] in
   let view _context _model_source _send =
-    match Lui_json_view.parse json_view_json with
+    match Lui_json_view_parse.parse json_view_json with
     | Ok v ->
       Lui_json_view.render
         ~on_event:(fun ~id ~kind ~fields ->
@@ -548,6 +548,46 @@ let test_json_view_render () =
    | None -> Alcotest.fail "toggle-button node not created");
   ignore (Lui_app.dispose app)
 
+let test_json_view_parse () =
+  (* malformed input is rejected wholesale — never a partial mount *)
+  Alcotest.(check bool) "trailing junk rejected" true
+    (match Lui_json_view_parse.parse {|{"kind":"text"} junk|} with
+     | Error _ -> true
+     | Ok _ -> false);
+  Alcotest.(check bool) "unterminated rejected" true
+    (match Lui_json_view_parse.parse {|{"kind":"tex|} with
+     | Error _ -> true
+     | Ok _ -> false);
+  Alcotest.(check bool) "partial object rejected" true
+    (match Lui_json_view_parse.parse {|{"kind":"text",|} with
+     | Error _ -> true
+     | Ok _ -> false);
+  (* escaped surrogate pairs decode to the real emoji *)
+  Alcotest.(check bool) "surrogate pair decodes" true
+    (match Lui_json_view_parse.parse {|{"kind":"text","value":"\uD83D\uDE00"}|} with
+     | Ok (Lui_json_view.Obj fields) ->
+       (match List.assoc_opt "value" fields with
+        | Some (Lui_json_view.Str s) -> s = "\xF0\x9F\x98\x80"
+        | _ -> false)
+     | _ -> false);
+  (* pathological nesting is capped *)
+  let deep =
+    let b = Buffer.create 4096 in
+    for _ = 1 to 600 do Buffer.add_string b "{\"kind\":\"row\",\"children\":[" done;
+    Buffer.add_string b "null";
+    for _ = 1 to 600 do Buffer.add_string b "]}" done;
+    Buffer.contents b
+  in
+  Alcotest.(check bool) "deep nesting rejected" true
+    (match Lui_json_view_parse.parse deep with
+     | Error _ -> true
+     | Ok _ -> false);
+  (* app: icon names pass through without double-prefixing *)
+  Alcotest.(check bool) "app: icon kept" true
+    (match Lui_json_view_parse.parse {|{"kind":"icon","name":"app:mine"}|} with
+     | Ok _ -> true
+     | Error _ -> false)
+
 let () =
   Alcotest.run "lui"
     [
@@ -580,7 +620,10 @@ let () =
             test_dispatch_drops_unset_default_echoes;
         ] );
       ( "json_view",
-        [ Alcotest.test_case "render + events" `Quick test_json_view_render ] );
+        [
+          Alcotest.test_case "render + events" `Quick test_json_view_render;
+          Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;
+        ] );
       ( "extension fingerprints",
         [
           Alcotest.test_case "canonical format" `Quick

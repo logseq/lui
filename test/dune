@@ -1,5 +1,5 @@
 (test
  (name test_lui)
- (libraries lui ocaml-signal alcotest gallery_app)
+ (libraries lui lui.json_view_parse ocaml-signal alcotest gallery_app)
  (deps
   ../examples/components/ios-swiftui/Sources/LUIComponentsApp/GalleryExtensions.swift))

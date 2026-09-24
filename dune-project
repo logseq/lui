@@ -20,4 +20,5 @@
   (melange (>= 6.0))
   melange-webapi
   ocaml-signal
+  yojson
   (alcotest :with-test)))
