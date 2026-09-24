@@ -290,7 +290,8 @@ let standard_container_supported kind =
   match kind with
   | Root | Row | Column | Grid | Stack | Panel | Card | Box | Scroll
   | ListContainer | VirtualList | ListItem | Dialog | Sheet | Accordion
-  | Resizable | Split | Drawer | Alert | Bubble -> true
+  | Resizable | Split | Drawer | Alert | Bubble | Toast | Toolbar
+  | BottomTab -> true
   | _ -> false
 
 let identifier_allowed identifiers identifier = List.mem identifier identifiers
