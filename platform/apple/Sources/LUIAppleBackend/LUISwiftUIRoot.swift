@@ -415,7 +415,7 @@ private struct LUINodeView: View {
             } else {
                 content
                     .modifier(
-                        LUISurfaceModifier(model: model)
+                        LUISurfaceModifier(model: model, backend: backend)
                     )
                     .modifier(LUIAccessibilityModifier(model: model, backend: backend))
                     .modifier(LUIAppearModifier(model: model, backend: backend))
@@ -441,7 +441,12 @@ private struct LUINodeView: View {
             return AnyView(LUIAnyNodeView(nodeID: childID, backend: backend))
         case .row:
             return AnyView(LUIRowView(model: model, backend: backend))
-        case .tabs, .buttonGroup, .toggleGroup, .breadcrumb, .pagination:
+        case .tabs:
+            if LUISegmentedTabsView.supports(model: model, backend: backend) {
+                return AnyView(LUISegmentedTabsView(model: model, backend: backend))
+            }
+            return AnyView(LUIHorizontalGroupView(model: model, backend: backend))
+        case .buttonGroup, .toggleGroup, .breadcrumb, .pagination:
             return AnyView(LUIHorizontalGroupView(model: model, backend: backend))
         case .bottomTabs:
             return AnyView(LUIBottomTabsView(model: model, backend: backend))
@@ -3350,6 +3355,59 @@ enum LUIHorizontalGroupDefaults {
     }
 }
 
+private struct LUISegmentedTabsView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    static func supports(model: LUINodeModel, backend: LUIAppleBackend) -> Bool {
+        let segments = model.children.compactMap { backend.model(id: $0) }
+        return !segments.isEmpty && segments.allSatisfy { $0.kind == .button }
+    }
+
+    private var segments: [LUINodeModel] {
+        model.children.compactMap { backend.model(id: $0) }
+    }
+
+    private var selection: Binding<Int> {
+        Binding(
+            get: { segments.first(where: \.isSelected)?.id ?? segments.first?.id ?? 0 },
+            set: { nodeID in
+                guard let segment = backend.model(id: nodeID),
+                      segment.isEnabled, segment.supportsPress else { return }
+                try? backend.performPress(node: nodeID)
+            }
+        )
+    }
+
+    var body: some View {
+        Picker(selection: selection) {
+            ForEach(segments, id: \.id) { segment in
+                segmentLabel(segment).tag(segment.id)
+            }
+        } label: {
+            Text(verbatim: model.accessibilityLabel(in: backend) ?? "")
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+    }
+
+    @ViewBuilder
+    private func segmentLabel(_ segment: LUINodeModel) -> some View {
+        if segment.buttonIconName.isEmpty {
+            Text(verbatim: segment.text)
+        } else {
+            Label {
+                Text(verbatim: segment.text)
+            } icon: {
+                LUIIconImage(
+                    source: backend.iconSource(for: segment.buttonIconName),
+                    bundle: backend.appIconBundle
+                )
+            }
+        }
+    }
+}
+
 private struct LUIHorizontalGroupView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
@@ -4466,12 +4524,14 @@ private struct LUIOptionalClipModifier: ViewModifier {
 
 private struct LUISurfaceModifier: ViewModifier {
     let model: LUINodeModel
+    let backend: LUIAppleBackend
     @Environment(\.luiSemanticColors) private var semanticColors
 
     func body(content: Content) -> some View {
         let isSurface = model.kind == .panel || model.kind == .card ||
             model.kind == .resizable || model.kind == .alert || model.kind == .bubble
-        let isTabs = model.kind == .tabs
+        let isTabs = model.kind == .tabs &&
+            !LUISegmentedTabsView.supports(model: model, backend: backend)
         let defaultPadding = switch model.kind {
         case .card: 24
         case .alert: 16
@@ -4946,7 +5006,7 @@ private struct LUIResizableView: View {
                 LUIAnyNodeView(nodeID: childID, backend: backend)
             }
         }
-        .modifier(LUISurfaceModifier(model: model))
+        .modifier(LUISurfaceModifier(model: model, backend: backend))
         .frame(width: widthState.width)
         .overlay(alignment: .trailing) {
             GeometryReader { geometry in
