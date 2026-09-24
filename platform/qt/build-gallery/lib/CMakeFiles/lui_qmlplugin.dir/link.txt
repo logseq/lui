@@ -1,2 +1,0 @@
-/usr/bin/ar qc liblui_qmlplugin.a CMakeFiles/lui_qmlplugin.dir/lui_qmlplugin_autogen/mocs_compilation.cpp.o CMakeFiles/lui_qmlplugin.dir/lui_qmlplugin_LuiPlugin.cpp.o
-/usr/bin/ranlib liblui_qmlplugin.a
