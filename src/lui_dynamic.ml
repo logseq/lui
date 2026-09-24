@@ -68,6 +68,11 @@ let switch context parent source equal mount =
         else
           match !node_ref with
           | None -> ()
+          | Some _ when not (Lui_runtime.node_live application parent) ->
+            (* The parent was torn down in the same pass (reconcile/restore
+               rebuilds mounted_nodes wholesale); this branch goes down with
+               it, so the remount is moot. *)
+            ()
           | Some old_node ->
             let old_scope = !current_scope in
             let saved = Lui_runtime.checkpoint application in
@@ -133,7 +138,7 @@ let conditional context parent source mount =
            Lui_ui.child_context context "conditional-branch"
          in
          let branch_scope = branch_context.Lui_ui.ui_scope in
-         (if visible then
+         (if visible && Lui_runtime.node_live application parent then
             let node = mount branch_context in
             node_ref := Some node;
             Lui_runtime.insert_child application parent node

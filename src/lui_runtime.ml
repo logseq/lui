@@ -956,6 +956,15 @@ let rec child_supported application parent child =
           | None -> false))
     | None -> false)
 
+(* A node stays live while the runtime knows it — reconciles and restores
+   rebuild [mounted_nodes] wholesale, so a cached node id can fall out of the
+   table without [drop_node] ever running. Remount paths check this before
+   re-linking children under a parent that is already gone. *)
+let node_live application node =
+  let node = canonical_node application node in
+  Hashtbl.mem application.mounted_nodes node
+  || Hashtbl.mem application.runtime_extension_nodes node
+
 let insert_child application parent child index =
   let parent = canonical_node application parent in
   let child = canonical_node application child in
