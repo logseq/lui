@@ -15,3 +15,5 @@
 /platform/web/dist/
 /platform/qt/build*/
 /platform/qt/demo/lui_*_runtime.o
+/platform/winui/**/bin/
+/platform/winui/**/obj/

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <UseWinUI>true</UseWinUI>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>LUI.Demo</RootNamespace>
+    <AssemblyName>LUI.Demo</AssemblyName>
+    <!-- Unpackaged app: requires the Windows App SDK runtime installed. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKBootstrapVersion>1.6.240923002</WindowsAppSDKBootstrapVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LUI.Core\LUI.Core.csproj" />
+    <ProjectReference Include="..\LUI.WinUI\LUI.WinUI.csproj" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.240923002" />
+  </ItemGroup>
+
+</Project>

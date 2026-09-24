@@ -57,3 +57,15 @@ jobs:
           restore-keys: |
             swiftpm-${{ runner.os }}-${{ hashFiles('Package.swift') }}-
       - run: swift test
+
+  winui-tests:
+    # LUI.Core is plain net8.0: protocol semantics are verified on Linux;
+    # the WinUI layer itself requires Windows to package/run.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: WinUI protocol tests
+        run: dotnet test platform/winui/LUI.Core.Tests/LUI.Core.Tests.csproj

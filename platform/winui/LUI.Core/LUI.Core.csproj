@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>LUI</RootNamespace>
+    <AssemblyName>LUI.Core</AssemblyName>
+    <Description>Platform-neutral LUI wire protocol backend: patch batch application, retained node tree, protocol validation, event gating, extension registry, and the OCaml runtime bridge.</Description>
+  </PropertyGroup>
+
+</Project>
