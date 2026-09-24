@@ -23,6 +23,10 @@ type t = {
   toast_message : string;
   accordion_open : bool;
   split_fraction : float;
+  (* Combine (composite) demos *)
+  combine_dialog_open : bool;
+  combine_sheet_open : bool;
+  combine_menu_open : bool;
 }
 
 type action =
@@ -53,6 +57,12 @@ type action =
   | CloseToasts
   | SetAccordionOpen of bool
   | SetSplitFraction of float
+  | OpenCombineDialog
+  | CloseCombineDialog
+  | OpenCombineSheet
+  | CloseCombineSheet
+  | OpenCombineMenu
+  | CloseCombineMenu
 
 let initial =
   {
@@ -78,6 +88,9 @@ let initial =
     toast_message = "Saved";
     accordion_open = false;
     split_fraction = 0.35;
+    combine_dialog_open = false;
+    combine_sheet_open = false;
+    combine_menu_open = false;
   }
 
 let update model action =
@@ -132,6 +145,12 @@ let update model action =
   | CloseToasts -> { model with toast_open = false }
   | SetAccordionOpen open_ -> { model with accordion_open = open_ }
   | SetSplitFraction fraction -> { model with split_fraction = fraction }
+  | OpenCombineDialog -> { model with combine_dialog_open = true }
+  | CloseCombineDialog -> { model with combine_dialog_open = false }
+  | OpenCombineSheet -> { model with combine_sheet_open = true }
+  | CloseCombineSheet -> { model with combine_sheet_open = false }
+  | OpenCombineMenu -> { model with combine_menu_open = true }
+  | CloseCombineMenu -> { model with combine_menu_open = false }
 
 let progress_label model =
   Printf.sprintf "Progress fraction: %.1f" model.progress
@@ -218,3 +237,6 @@ let toast_open model = model.toast_open
 let toast_message model = model.toast_message
 let accordion_open model = model.accordion_open
 let split_fraction model = model.split_fraction
+let combine_dialog_open model = model.combine_dialog_open
+let combine_sheet_open model = model.combine_sheet_open
+let combine_menu_open model = model.combine_menu_open

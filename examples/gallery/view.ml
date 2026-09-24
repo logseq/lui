@@ -1328,6 +1328,144 @@ let tweak_paragraph : t =
   Lui_elements.attach context parent node;
   node
 
+(* Composite components (lui_element_combine): generic layouts built
+   purely from primitives — composer, banners, settings rows, sidebar. *)
+
+let combine_section model_source send : t =
+  let open Lui_element_combine in
+  let dialog_open_ = model_source >|= Model.combine_dialog_open in
+  let sheet_open_ = model_source >|= Model.combine_sheet_open in
+  let field_value_ = model_source >|= Model.field_value in
+  let checked_ = model_source >|= Model.checked in
+  let suggestions =
+    model_source
+    >|= fun m ->
+      let q = String.lowercase_ascii m.Model.field_value in
+      List.filter
+        (fun name ->
+           q = ""
+           || (let hay = String.lowercase_ascii name in
+               let qlen = String.length q in
+               let hlen = String.length hay in
+               let rec go i =
+                 i <= hlen - qlen
+                 && (String.sub hay i qlen = q || go (i + 1))
+               in
+               qlen <= hlen && go 0))
+        [ "Production"; "Staging"; "Development"; "Preview" ]
+  in
+  section "Combine"
+    [ section_heading ~icon:`settings ~title:"WORKSPACE" ()
+    ; breadcrumb_trail
+        ~items:[ "Home", noop; "Docs", noop; "README", noop ] ()
+    ; settings_section ~title:"Preferences"
+        ~rows:
+          [ settings_row ~label:"Account" ~icon:`settings ~on_press:noop ()
+          ; labeled_row ~label:"Sync status" ~value:"Synced" ()
+          ; toggle_row ~label:"Notifications" ~checked_signal:checked_
+              ~on_toggle:(on_toggle send (fun v -> Model.SetChecked v)) ()
+          ]
+        ()
+    ; feedback_banner ~kind:`error ~message:"Sync failed - retrying in 5s" ()
+    ; feedback_banner ~kind:`info ~message:"All changes saved" ()
+    ; loading ~message:"Loading blocks..." ()
+    ; box ~height:96
+        [ loading ~message:"Loading page..." ~centered:true () ]
+    ; empty_state ~icon:`search ~title:"No results"
+        ~description:"Try a different search or clear the filters."
+        ~actions:[ button ~variant:`secondary ~text:"Clear filters"
+                     ~on_press:noop [] ]
+        ()
+    ; action_toolbar
+        ~items:
+          [ toolbar_item ~label:"Edit" ~icon:`edit ~on_press:noop ()
+          ; toolbar_item ~label:"Copy" ~icon:`copy ~on_press:noop ()
+          ; toolbar_item ~label:"Trash" ~icon:`trash ~on_press:noop ()
+          ; toolbar_item ~label:"Open" ~icon:`external_link ~on_press:noop ()
+          ]
+        ()
+    ; composer ~placeholder:"Message the team"
+        ~text_signal:field_value_
+        ~on_input:(on_input send (fun v -> Model.SetFieldValue v))
+        ~actions:[ button ~variant:`ghost ~icon:`plus ~label:"Attach"
+                     ~on_press:noop [] ]
+        ~send_disabled:(field_value_ >|= fun v -> v = "")
+        ~on_send:(press send (Model.SetFieldValue "")) ()
+    ; composer_collapsed ~label:"New capture" ~icon:`plus ~on_press:noop ()
+    ; suggestion_list ~source:suggestions ~item_key:(fun s -> s)
+        ~label:(fun s -> s)
+        ~icon:(fun _ -> `file_text)
+        ~on_select:(fun item _ -> ignore (send (Model.SelectEnvironment item)))
+        ()
+    ; button ~variant:`outline ~text:"Open confirm dialog"
+        ~on_press:(press send Model.OpenCombineDialog) []
+    ; button ~variant:`outline ~text:"Open form sheet"
+        ~on_press:(press send Model.OpenCombineSheet) []
+    ; if_ ~test:dialog_open_
+        (confirm_dialog ~title:"Delete note?"
+           ~message:"This cannot be undone." ~destructive:true
+           ~on_dismiss:(press send Model.CloseCombineDialog)
+           ~on_confirm:(press send Model.CloseCombineDialog) ())
+    ; if_ ~test:sheet_open_
+        (form_sheet ~title:"New page"
+           ~content:
+             [ input ~placeholder:"Page title" ~text_signal:field_value_
+                 ~on_input:(on_input send (fun v -> Model.SetFieldValue v)) []
+             ; toggle_row ~label:"Add to favorites" ~checked_signal:checked_
+                 ~on_toggle:(on_toggle send (fun v -> Model.SetChecked v)) ()
+             ]
+           ~cancel:("Cancel", press send Model.CloseCombineSheet)
+           ~confirm:("Create", press send Model.CloseCombineSheet)
+           ~on_dismiss:(press send Model.CloseCombineSheet) ())
+    ]
+
+let combine_sidebar_section model_source send : t =
+  let open Lui_element_combine in
+  let menu_open_ = model_source >|= Model.combine_menu_open in
+  section "Sidebar"
+    [ sidebar
+        ~header:
+          (menu_button ~label:"Logseq Docs" ~icon:`folder_open
+             ~open_:menu_open_
+             ~menu:
+               [ check_menu_item ~label:"Personal" ~checked:true
+                   ~on_press:noop ()
+               ; check_menu_item ~label:"Work" ~on_press:noop ()
+               ; menu_item ~text:"Add workspace" ~on_press:noop []
+               ]
+             ~on_dismiss:(press send Model.CloseCombineMenu)
+             ~on_press:(press send Model.OpenCombineMenu) ())
+        ~items:
+          [ nav_item ~label:"Home" ~icon:`menu ~selected:true ~on_press:noop ()
+          ; nav_item ~label:"Search" ~icon:`search ~on_press:noop ()
+          ]
+        ~sections:
+          [ sidebar_section ~title:"PAGES"
+              ~items:
+                [ nav_item ~label:"Getting started" ~on_press:noop ()
+                ; nav_item ~label:"Changelog" ~on_press:noop ()
+                ]
+              ()
+          ; sidebar_section ~title:"FAVORITES"
+              ~items:
+                [ nav_item ~label:"Quarterly report" ~icon:`file_text
+                    ~on_press:noop ()
+                ; nav_item ~label:"Launch checklist" ~icon:`check_circle
+                    ~on_press:noop ()
+                ]
+              ()
+          ]
+        ()
+    ; section_heading ~title:"WORKSPACE SWITCHER" ()
+    ; dropdown_menu ~min_width:200
+        [ check_menu_item ~label:"Personal" ~checked:true ~on_press:noop ()
+        ; check_menu_item ~label:"Work" ~on_press:noop ()
+        ; menu_item ~text:"Add workspace" ~on_press:noop []
+        ]
+    ; paragraph ~value:(reactive (fun m -> "Current: " ^ Model.document m)
+                          model_source) []
+    ]
+
 let view context model_source send : t =
   let sections =
     [ (* Maestro-tested components first, in .maestro/ios-components-interactions.yaml order *)
@@ -1393,6 +1531,8 @@ let view context model_source send : t =
     ; toolbar_section model_source send
     ; accordion_section model_source send
     ; radio_section model_source send
+    ; combine_section model_source send
+    ; combine_sidebar_section model_source send
     ; spotify_section
     ; youtube_section
     ]

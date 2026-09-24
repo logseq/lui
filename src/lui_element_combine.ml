@@ -549,7 +549,9 @@ let menu_button
       ~label
       ?icon
       ?(anchor = `below)
+      ~open_
       ~menu
+      ?on_dismiss
       ?on_press
       ()
   =
@@ -560,7 +562,7 @@ let menu_button
       ~icon:`chevron_down
       ~icon_placement:`trailing
       ?on_press
-      [ dropdown_menu ~anchor ~anchor_alignment:`start menu ]
+      []
   in
   let trigger =
     match icon with
@@ -568,7 +570,13 @@ let menu_button
     | Some leading ->
       row ~gap:4 ~cross:`center [ Lui_elements.icon ~name:leading []; trigger ]
   in
-  box ?key ?accessibility_identifier [ trigger ]
+  stack
+    ?key
+    ?accessibility_identifier
+    [ trigger
+    ; if_ ~test:open_
+        (dropdown_menu ~anchor ~anchor_alignment:`start ?on_dismiss menu)
+    ]
 ;;
 
 type sidebar_section =
