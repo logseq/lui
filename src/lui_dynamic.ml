@@ -30,27 +30,86 @@ let switch context parent source equal mount =
   let application = context.Lui_ui.ui_application in
   let segment = Lui_runtime.register_dynamic_segment application parent in
   let node_ref = ref None in
-  let switch_value =
-    Signal.switch context.Lui_ui.ui_scope source equal (fun key ->
-        let branch_context = Lui_ui.child_context context "switch-branch" in
-        let branch_scope = branch_context.Lui_ui.ui_scope in
-        let node = mount branch_context key in
-        node_ref := Some node;
-        Lui_runtime.insert_child application parent node
-          (Lui_runtime.dynamic_segment_insert_index segment 0);
-        Lui_runtime.resize_dynamic_segment application segment 1;
-        Signal.on_unmount branch_scope (fun () ->
-            if !(segment.Lui_runtime.dynamic_segment_active) then begin
-              Lui_runtime.remove_child application parent node;
-              Lui_runtime.resize_dynamic_segment application segment (-1);
-              Lui_runtime.drop_subtree application node
-            end;
-            node_ref := None);
-        branch_scope)
+  let disposed = ref false in
+  let mount_branch key =
+    let branch_context = Lui_ui.child_context context "switch-branch" in
+    let branch_scope = branch_context.Lui_ui.ui_scope in
+    (* Reconciled branches must skip node teardown: their nodes were handed
+       to the new tree (or already dropped by [emit_dropped_subtree]), so the
+       unmount hook may not remove or drop them. *)
+    let retired = ref false in
+    let node = mount branch_context key in
+    Signal.on_unmount branch_scope (fun () ->
+        if !(segment.Lui_runtime.dynamic_segment_active) && not !retired
+        then begin
+          Lui_runtime.remove_child application parent node;
+          Lui_runtime.resize_dynamic_segment application segment (-1);
+          Lui_runtime.drop_subtree application node
+        end;
+        if !node_ref = Some node then node_ref := None);
+    branch_context, node, retired
   in
+  let initial_key = Signal.sample source in
+  let initial_context, initial_node, initial_retired =
+    mount_branch initial_key
+  in
+  node_ref := Some initial_node;
+  Lui_runtime.insert_child application parent initial_node
+    (Lui_runtime.dynamic_segment_insert_index segment 0);
+  Lui_runtime.resize_dynamic_segment application segment 1;
+  Signal.mount initial_context.Lui_ui.ui_scope;
+  let current_key = ref initial_key in
+  let current_scope = ref initial_context.Lui_ui.ui_scope in
+  let current_retired = ref initial_retired in
+  let subscription =
+    Signal.subscribe ~emit_initial:false source (fun next_key ->
+        if !disposed || equal !current_key next_key
+        then ()
+        else
+          match !node_ref with
+          | None -> ()
+          | Some old_node ->
+            let old_scope = !current_scope in
+            let saved = Lui_runtime.checkpoint application in
+            let new_scope = ref None in
+            (try
+               let branch_context, new_node, new_retired =
+                 mount_branch next_key
+               in
+               new_scope := Some branch_context.Lui_ui.ui_scope;
+               (* Link the candidate into the live graph so reconcile can map
+                  it; the mount-time ops this emits are discarded by
+                  [reconcile_subtree]'s pending-ops reset. *)
+               Lui_runtime.insert_child application parent new_node
+                 (Lui_runtime.dynamic_segment_insert_index segment 0);
+               let desired_root =
+                 Lui_runtime.reconcile_subtree application saved parent
+                   old_node new_node
+               in
+               !current_retired := true;
+               Lui_runtime.retire_checkpoint_dynamic_segments saved old_node;
+               Signal.dispose_scope old_scope;
+               current_key := next_key;
+               node_ref := Some desired_root;
+               current_scope := branch_context.Lui_ui.ui_scope;
+               current_retired := new_retired;
+               Signal.mount branch_context.Lui_ui.ui_scope
+             with failure ->
+               (* A mount or reconcile failure can leave tables half rebuilt;
+                  restore the checkpoint and discard the candidate branch so
+                  the old branch stays mounted. *)
+               Lui_runtime.restore application saved;
+               (match !new_scope with
+               | Some scope -> Signal.dispose_scope scope
+               | None -> ());
+               raise failure))
+  in
+  ignore (Signal.own context.Lui_ui.ui_scope subscription);
   let dispose_callback =
     segment_disposer application segment (fun () ->
-        Signal.dispose_switch switch_value)
+        disposed := true;
+        Signal.dispose_subscription subscription;
+        Signal.dispose_scope !current_scope)
   in
   Signal.on_dispose context.Lui_ui.ui_scope dispose_callback;
   { dispose_dynamic_switch = dispose_callback; switch_node_ref = node_ref }

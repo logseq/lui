@@ -530,7 +530,19 @@ let reconcile_subtree application saved parent old_root candidate_root =
   let desired_children =
     remap_children current_children candidate_nodes mapping base_children
   in
-  Hashtbl.replace desired_children parent [ desired_root ];
+  let siblings =
+    match Hashtbl.find_opt base_children parent with
+    | Some children -> children
+    | None -> []
+  in
+  let desired_parent_children =
+    if List.mem old_root siblings then
+      List.map
+        (fun child -> if child = old_root then desired_root else child)
+        siblings
+    else siblings @ [ desired_root ]
+  in
+  Hashtbl.replace desired_children parent desired_parent_children;
   let base_handlers = Hashtbl.copy saved.checkpoint_event_handlers in
   remove_node_keys base_handlers old_nodes;
   let desired_handlers =

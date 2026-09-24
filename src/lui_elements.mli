@@ -80,9 +80,12 @@ val dynamic : (Lui_ui.ui_context -> int -> 'a) -> t
 (** [dyn ~equal f source] mounts [f model] under the parent node and remounts
     it whenever the published model differs under [equal]. There is no
     default: always pass a structural or field-wise equality (e.g. [(=)] or
-    [fun a b -> a.id = b.id]) so the subtree stays mounted when the change
-    does not affect this branch — remounting re-runs mount-time effects
-    (focus loss, control echoes, on-appear dispatches). *)
+    [fun a b -> a.id = b.id]) so the subtree is left untouched when the change
+    does not affect this branch. A remount reconciles the new branch against
+    the old one: nodes of the same kind at the same position keep their ids
+    (platform views stay alive, scroll/focus state survives) and receive prop
+    diffs instead of drop+create churn. Structural changes remount only the
+    divergent nodes. *)
 val dyn :
   equal:('a -> 'a -> bool) -> ('a -> t) -> 'a Signal.signal -> t
 val if_ : test:bool Signal.signal -> t -> t
