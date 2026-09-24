@@ -1965,6 +1965,30 @@ private struct LUIToolbarView: View {
 
     @ViewBuilder
     var body: some View {
+        let placement = model.property(.placement)?.stringValue ?? "automatic"
+        if placement == "bottom" {
+            #if os(iOS)
+            if #available(iOS 26.0, *) {
+                // Each child anchors its own toolbar item; the zero-size
+                // anchors take no space while the platform renders the bar
+                // (floating capsules, system scroll insets).
+                ForEach(model.children, id: \.self) { childID in
+                    LUIBottomBarAnchor(childID: childID, backend: backend)
+                }
+            } else {
+                inlineContent
+            }
+            #else
+            // macOS has no bottom bar — fall back to the inline toolbar.
+            inlineContent
+            #endif
+        } else {
+            inlineContent
+        }
+    }
+
+    @ViewBuilder
+    private var inlineContent: some View {
         let layout = LUIToolbarLayoutPolicy.layout(
             orientation: model.property(.orientation)?.stringValue,
             styleClass: model.property(.styleClass)?.stringValue,
@@ -2010,6 +2034,35 @@ private struct LUIToolbarView: View {
     }
 
 }
+
+#if os(iOS)
+/// One child of a `placement "bottom"` toolbar, anchored by a zero-size view
+/// carrying its own `.toolbar` modifier (ToolbarContentBuilder cannot emit a
+/// dynamic child list from a single content closure): spacers become flexible
+/// `ToolbarSpacer`s, every other child a `ToolbarItem` — a button-group's
+/// HStack sits inside its own item, so each group renders one capsule.
+@available(iOS 26.0, *)
+private struct LUIBottomBarAnchor: View {
+    let childID: Int
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        if backend.model(id: childID)?.kind == .spacer {
+            Color.clear
+                .frame(width: 0, height: 0)
+                .toolbar { ToolbarSpacer(.flexible, placement: .bottomBar) }
+        } else {
+            Color.clear
+                .frame(width: 0, height: 0)
+                .toolbar {
+                    ToolbarItem(placement: .bottomBar) {
+                        LUIAnyNodeView(nodeID: childID, backend: backend)
+                    }
+                }
+        }
+    }
+}
+#endif
 
 private struct LUIToastView: View {
     let model: LUINodeModel

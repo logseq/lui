@@ -946,6 +946,11 @@
       "swift": "orientation"
     },
     {
+      "lg": "PlacementValue",
+      "wire": "placement",
+      "swift": "placement"
+    },
+    {
       "lg": "SizeValue",
       "wire": "size",
       "swift": "size"
@@ -1255,7 +1260,8 @@
       "orientation",
       "accessibility-label",
       "gap",
-      "style-class"
+      "style-class",
+      "placement"
     ],
     "bottom-tabs": [
       "accessibility-label",

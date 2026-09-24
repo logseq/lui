@@ -182,6 +182,7 @@ val min_height : ui_context -> int -> int -> unit
 val max_height : ui_context -> int -> int -> unit
 val container_relative_frame : ui_context -> int -> string -> unit
 val container_relative_frame_inset : ui_context -> int -> int -> unit
+val placement : ui_context -> int -> string -> unit
 val placeholder : ui_context -> int -> string -> unit
 val accessibility_label : ui_context -> int -> string -> unit
 val accessibility_identifier : ui_context -> int -> string -> unit

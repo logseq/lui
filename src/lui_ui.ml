@@ -385,6 +385,8 @@ let container_relative_frame context node axes =
   string_property context node ContainerRelativeFrameValue axes
 let container_relative_frame_inset context node inset =
   int_property context node ContainerRelativeFrameInset inset
+let placement context node placement =
+  string_property context node PlacementValue placement
 let placeholder context node placeholder =
   string_property context node PlaceholderValue placeholder
 let accessibility_label context node label =

@@ -151,6 +151,9 @@ enum LUIWireValue: Decodable, Equatable {
         case .orientation:
             guard let value = stringValue else { return false }
             return value == "horizontal" || value == "vertical"
+        case .placement:
+            guard let value = stringValue else { return false }
+            return ["automatic", "bottom"].contains(value)
         case .size:
             guard let value = stringValue else { return false }
             return Self.controlSizes.contains(value) ||
@@ -623,6 +626,7 @@ struct LUIRetainedTree {
         case .progressValue: kind == .progress || kind == .slider || kind == .split
         case .resizeDuration, .resizeEasing, .resizeOrigin: kind == .split
         case .orientation: kind == .divider || kind == .tabs || kind == .scroll
+        case .placement: kind == .toolbar
         case .size:
             kind == .button || kind == .toggleButton || kind == .spinner ||
                 kind == .icon || kind == .text || kind == .tableCell ||
@@ -716,7 +720,8 @@ struct LUIRetainedTree {
             kind == .toggleGroup || kind == .checkbox || kind == .switchControl ||
             kind == .toggle || kind == .radioGroup || kind == .select ||
             kind == .combobox || kind == .textField || kind == .secureField || kind == .input ||
-            kind == .searchField || kind == .menuItem || kind == .divider
+            kind == .searchField || kind == .menuItem || kind == .spacer ||
+            kind == .divider
     }
 
     private static func isTreeRow(_ kind: LUINodeKind) -> Bool {

@@ -127,6 +127,7 @@ type property =
   | Checked
   | ProgressValue
   | OrientationValue
+  | PlacementValue
   | SizeValue
   | IconName
   | VariantValue
@@ -226,6 +227,7 @@ val treeitem_properties : wire_value Property_map.t -> bool
 val event_supported_for_properties : node_kind -> wire_value Property_map.t -> event -> bool
 val container_relative_frame_supported : string -> bool
 val orientation_supported : string -> bool
+val placement_supported : string -> bool
 val control_size_supported : string -> bool
 val button_variant_supported : string -> bool
 val icon_placement_supported : string -> bool
