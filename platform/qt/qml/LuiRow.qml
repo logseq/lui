@@ -17,9 +17,11 @@ RowLayout {
             required property var modelData
             node: modelData
             Layout.fillWidth: Style.fillMainWidth(node ? node.properties : ({})) ||
-                              Style.mainAlign(props) === "space_between"
+                              Style.mainAlign(props) === "space_between" ||
+                               contentFillsLayout
             Layout.fillHeight: Style.fillMainHeight(node ? node.properties : ({})) ||
-                               Style.stretchCross(props)
+                               Style.stretchCross(props) ||
+                              contentFillsLayout
         }
     }
     Item { Layout.fillWidth: true; visible: Style.needsTrailFiller(props) }

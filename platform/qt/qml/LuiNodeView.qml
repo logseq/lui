@@ -38,17 +38,36 @@ Item {
     implicitWidth: content.implicitWidth
     implicitHeight: content.implicitHeight
 
+    // Extension components opt into filling their layout slot by declaring
+    // `property bool fillsLayout: true` on their root item — grow/frame can
+    // never reach extension nodes (their properties map is the schema).
+    readonly property bool contentFillsLayout:
+        node !== null && node.extension &&
+        content.item !== null && content.item.fillsLayout === true
+
     property real _w: Number(prop("width", 0))
     property real _h: Number(prop("height", 0))
-    width: _w > 0 ? _w : implicitWidth
-    height: _h > 0 ? _h : implicitHeight
+
+    // Inside a Layout with fill flags the parent assigns the size — an
+    // eager width/height binding would re-assert the implicit size (0 for
+    // extension surfaces) and silently defeat the fill.
+    Binding on width {
+        when: view._w > 0 || !view.Layout.fillWidth
+        value: view._w > 0 ? view._w : view.implicitWidth
+    }
+    Binding on height {
+        when: view._h > 0 || !view.Layout.fillHeight
+        value: view._h > 0 ? view._h : view.implicitHeight
+    }
 
     Layout.fillWidth: Number(prop("grow", 0)) > 0 ||
                       prop("container-relative-frame", "") === "horizontal" ||
-                      prop("container-relative-frame", "") === "both"
+                      prop("container-relative-frame", "") === "both" ||
+                      view.contentFillsLayout
     Layout.fillHeight: Number(prop("grow", 0)) > 0 ||
                        prop("container-relative-frame", "") === "vertical" ||
-                       prop("container-relative-frame", "") === "both"
+                       prop("container-relative-frame", "") === "both" ||
+                       view.contentFillsLayout
     Layout.minimumWidth: Number(prop("min-width", 0))
     Layout.minimumHeight: Number(prop("min-height", 0))
     Layout.maximumWidth: Number(prop("max-width", 0)) > 0

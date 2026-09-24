@@ -39,9 +39,11 @@ Rectangle {
                 required property var modelData
                 node: modelData
                 Layout.fillHeight: Style.fillMainHeight(node ? node.properties : ({})) ||
-                                   Style.mainAlign(props) === "space_between"
+                                   Style.mainAlign(props) === "space_between" ||
+                               contentFillsLayout
                 Layout.fillWidth: Style.fillMainWidth(node ? node.properties : ({})) ||
-                                  Style.stretchCross(props)
+                                  Style.stretchCross(props) ||
+                              contentFillsLayout
             }
         }
         Item { Layout.fillHeight: true; visible: Style.needsTrailFiller(props) }

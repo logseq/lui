@@ -17,7 +17,8 @@ GridLayout {
             required property var modelData
             node: modelData
             Layout.fillWidth: true
-            Layout.fillHeight: Style.fillMainHeight(node ? node.properties : ({}))
+            Layout.fillHeight: Style.fillMainHeight(node ? node.properties : ({})) ||
+                                   contentFillsLayout
         }
     }
 }
