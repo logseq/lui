@@ -999,6 +999,14 @@ final class LUIFlutterBackend {
           return Expanded(flex: scaled < 1 ? 1 : scaled, child: childWidget);
         })
         .toList(growable: false);
+    // A flex child is illegal when the flex parent's main-axis constraints are
+    // unbounded; in that case the child falls back to its content size.
+    List<Widget> flexChildren(bool mainAxisBounded) => mainAxisBounded
+        ? children
+        : [
+            for (final child in children)
+              child is Flexible ? child.child : child,
+          ];
     final enabled = state.properties['enabled'] as bool? ?? true;
     final text = state.properties['text'] as String? ?? '';
     final placeholder = state.properties['placeholder'] as String?;
@@ -1296,7 +1304,7 @@ final class LUIFlutterBackend {
           canStretch: constraints.hasBoundedHeight,
         ),
         spacing: gap,
-        children: children,
+        children: flexChildren(constraints.hasBoundedWidth),
       ),
     );
     Widget horizontalGroup() => CallbackShortcuts(
@@ -1328,7 +1336,7 @@ final class LUIFlutterBackend {
                 canStretch: constraints.hasBoundedHeight,
               ),
               spacing: gap,
-              children: children,
+              children: flexChildren(constraints.hasBoundedWidth),
             ),
           );
         },
@@ -1345,7 +1353,7 @@ final class LUIFlutterBackend {
           canStretch: constraints.hasBoundedWidth,
         ),
         spacing: gap,
-        children: children,
+        children: flexChildren(constraints.hasBoundedHeight),
       ),
     );
     Widget stack() {
@@ -2020,11 +2028,13 @@ final class LUIFlutterBackend {
 
     Widget inputGroupActions() => Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-      child: Row(
-        mainAxisSize: MainAxisSize.max,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        spacing: gap,
-        children: children,
+      child: LayoutBuilder(
+        builder: (context, constraints) => Row(
+          mainAxisSize: MainAxisSize.max,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          spacing: gap,
+          children: flexChildren(constraints.hasBoundedWidth),
+        ),
       ),
     );
 
