@@ -407,7 +407,14 @@ bool LuiQmlBackend::applyJson(const QVariantMap &batch, QString *error) {
   }
 
   emit generationChanged();
-  emit rootNodeChanged();
+  // Emit only when the root handle actually changed: var-typed QML bindings
+  // refire onNodeChanged for the same object, which would reload (destroy
+  // and rebuild) the entire view on every batch — dropping input focus.
+  LuiNode *root = rootNode();
+  if (root != m_rootHandle) {
+    m_rootHandle = root;
+    emit rootNodeChanged();
+  }
   return true;
 }
 

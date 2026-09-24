@@ -94,11 +94,18 @@ Item {
                : view.componentFor(view.node.kind))
             : ""
         onComponentUrlChanged: reload()
+        // setSource() always destroys and recreates the item; var-typed node
+        // bindings refire onNodeChanged for the same object, so reloading
+        // unconditionally would tear down the subtree (and input focus) on
+        // every patch. Skip when the loaded item already serves this node.
         function reload() {
             if (!view.node || componentUrl === "") {
-                setSource("")
+                if (source != "") setSource("")
                 return
             }
+            if (status === Loader.Ready && source == componentUrl &&
+                item && item.node === view.node)
+                return
             setSource(componentUrl, {"node": view.node})
         }
         onLoaded: {
