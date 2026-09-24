@@ -397,9 +397,14 @@ private struct LUIDialogCustomSurface: View {
                 Text(verbatim: presentation.model.text)
                     .font(.headline)
             }
+            if let description = presentation.model.property(.description)?.stringValue,
+               !description.isEmpty {
+                Text(verbatim: description)
+            }
             ForEach(presentation.model.children, id: \.self) { childID in
                 if backend.model(id: childID)?.kind != .button {
                     LUIAnyNodeView(nodeID: childID, backend: backend)
+                        .environment(\.luiDialogButtonsExtracted, true)
                 }
             }
             HStack(spacing: 12) {
@@ -486,6 +491,7 @@ private struct LUINodeView: View {
     let backend: LUIAppleBackend
     @Environment(\.luiTreeContext) private var treeContext
     @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.luiDialogButtonsExtracted) private var dialogButtonsExtracted
 
     @ViewBuilder
     var body: some View {
@@ -604,8 +610,10 @@ private struct LUINodeView: View {
                     .font(.body)
             )
         case .button:
+            if dialogButtonsExtracted { return AnyView(EmptyView()) }
             return AnyView(LUIButtonView(model: model, backend: backend))
         case .toggleButton:
+            if dialogButtonsExtracted { return AnyView(EmptyView()) }
             return AnyView(LUIButtonView(model: model, backend: backend, isToggle: true))
         case .textField, .secureField, .input, .searchField, .textarea:
             return AnyView(LUITextControlView(model: model, backend: backend))
