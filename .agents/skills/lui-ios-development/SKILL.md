@@ -1,6 +1,6 @@
 ---
 name: lui-ios-development
-description: Develop and debug LUI apps on iOS/macOS with the Apple backend — schema vocabulary limits, extension child rules, emit-error diagnosis, dyn remount render loops, OCaml-5 multi-domain threading hazards, iOS simulator entitlements/keychain, and V.Sheet presentation freezes.
+description: Develop and debug LUI apps on iOS/macOS with the Apple backend — schema vocabulary limits, extension child rules, emit-error diagnosis, dyn remount semantics (reconcile preserves node ids; mount-time emitters still fire), OCaml-5 multi-domain threading hazards, iOS simulator entitlements/keychain, and V.Sheet presentation freezes.
 ---
 
 # LUI iOS/Apple development
@@ -67,12 +67,18 @@ An extension node's declared schema must match what the app actually mounts:
   "extension fingerprints") so drift fails CI instead of blanking a screen.
   The reported `expected` value is the corrected literal to paste back.
 
-## `dyn` remounts the whole tree on every publish → render loops
+## `dyn` remounts re-run mount-time emitters → render loops
 
-`Lui_elements.dyn` remounts its ENTIRE view subtree on every published model
-change under its `?equal` — the default `equal` is `(fun _ _ -> false)`
-(always remount). Mount-time emitters turn an always-remount `dyn` into a
-~10 Hz infinite loop:
+`Lui_elements.dyn` remounts its branch on every published model change under
+its `?equal` — the default `equal` is `(fun _ _ -> false)` (always remount).
+A remount mounts a fresh candidate branch and reconciles it against the old
+one (`Lui_runtime.reconcile_subtree`): same-kind nodes at the same position
+keep their ids, so host views (List/UICollectionView, `LUIAnyNodeView`)
+survive and scroll/focus state is preserved — earlier drop+create remounts
+destroyed the platform view and snapped scroll to top on every publish.
+
+However, the candidate mount still runs mount-time emitters, which can turn
+an always-remount `dyn` into a ~10 Hz loop:
 
 - fresh `SecureField`/`Input` fire `TextChanged("")` on mount;
 - extension views with `.task` handlers (e.g. an on-appear settings refresh)
@@ -83,8 +89,8 @@ Defenses:
 
 - **`dyn ~equal:` (first line)**: pass a structural or field-wise equality —
   `dyn ~equal:(=) f model_source` for immutable record models, or a narrower
-  compare on just the fields the branch reads — so the subtree stays mounted
-  when a publish doesn't change this branch. `equal` compares model values
+  compare on just the fields the branch reads — so the branch is left
+  untouched when a publish doesn't change it. `equal` compares model values
   before `f` runs (and `f` only recomputes on real remounts).
 - Value-echo dedup is built in: `Lui_runtime.dispatch` drops
   `TextChanged`/`ToggleChanged`/`ValueChanged` events whose payload equals
