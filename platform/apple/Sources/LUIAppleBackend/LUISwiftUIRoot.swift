@@ -948,7 +948,7 @@ private struct LUIContextMenuModifier: ViewModifier {
             .first(where: { $0.kind == .contextMenu }),
            menu.children.contains(where: { backend.model(id: $0)?.kind == .menuItem }) {
             content.contextMenu {
-                LUIContextMenuActions(model: menu, backend: backend)
+                LUINativeMenuActions(model: menu, backend: backend)
             }
         } else {
             content
@@ -956,40 +956,63 @@ private struct LUIContextMenuModifier: ViewModifier {
     }
 }
 
-private struct LUIContextMenuActions: View {
+private struct LUINativeMenuActions: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
 
     var body: some View {
         ForEach(model.children, id: \.self) { childID in
             if let child = backend.model(id: childID) {
-                if child.kind == .divider {
+                switch child.kind {
+                case .divider:
                     Divider()
-                } else if child.kind == .menuItem {
-                    Button(role: child.buttonVariant == "destructive" ? .destructive : nil) {
-                        try? backend.performPress(node: child.id)
-                    } label: {
-                        Label {
-                            Text(verbatim: child.text)
-                                .modifier(LUIMenuItemForegroundModifier(
-                                    model: child,
-                                    usesExplicitForeground: false
-                                ))
-                        } icon: {
-                            if !child.buttonIconName.isEmpty {
-                                LUIIconImage(
-                                    source: backend.iconSource(for: child.buttonIconName),
-                                    bundle: backend.appIconBundle
-                                )
-                                .modifier(LUIMenuItemForegroundModifier(model: child))
-                            }
+                case .menuItem:
+                    if let submenu = child.children
+                        .compactMap({ backend.model(id: $0) })
+                        .first(where: { $0.kind == .dropdownMenu }) {
+                        Menu {
+                            LUINativeMenuActions(model: submenu, backend: backend)
+                        } label: {
+                            itemLabel(for: child)
                         }
+                        .disabled(!child.isEnabled)
+                        .accessibilityIdentifier(
+                            child.property(.accessibilityIdentifier)?.stringValue ?? ""
+                        )
+                    } else {
+                        Button(role: child.buttonVariant == "destructive" ? .destructive : nil) {
+                            try? backend.performPress(node: child.id)
+                        } label: {
+                            itemLabel(for: child)
+                        }
+                        .disabled(!child.isEnabled)
+                        .accessibilityIdentifier(
+                            child.property(.accessibilityIdentifier)?.stringValue ?? ""
+                        )
                     }
-                    .disabled(!child.isEnabled)
-                    .accessibilityIdentifier(
-                        child.property(.accessibilityIdentifier)?.stringValue ?? ""
-                    )
+                default:
+                    LUIAnyNodeView(nodeID: childID, backend: backend)
                 }
+            }
+        }
+    }
+
+    private func itemLabel(for item: LUINodeModel) -> some View {
+        Label {
+            Text(verbatim: item.text)
+                .modifier(LUIMenuItemForegroundModifier(
+                    model: item,
+                    usesExplicitForeground: false
+                ))
+        } icon: {
+            if !item.buttonIconName.isEmpty {
+                LUIIconImage(
+                    source: backend.iconSource(for: item.buttonIconName),
+                    bundle: backend.appIconBundle
+                )
+                .modifier(LUIMenuItemForegroundModifier(model: item))
+            } else if item.isSelected {
+                Image(systemName: "checkmark")
             }
         }
     }
@@ -1293,6 +1316,8 @@ private struct LUIAnchoredComboboxMenuHost<Content: View>: View {
     let backend: LUIAppleBackend
     let content: Content
 
+    @State private var isPresented = false
+
     init(
         model: LUINodeModel?,
         backend: LUIAppleBackend,
@@ -1304,6 +1329,32 @@ private struct LUIAnchoredComboboxMenuHost<Content: View>: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        if LUIMenuPresentationPolicy.usesAnchoredPopover(
+            model?.property(.styleClass)?.stringValue
+        ) {
+            anchoredLayout
+        } else {
+            content
+                .confirmationDialog(
+                    dialogTitle,
+                    isPresented: presentationBinding,
+                    titleVisibility: dialogTitleVisibility
+                ) {
+                    if let model {
+                        LUINativeMenuActions(model: model, backend: backend)
+                    }
+                }
+                .onChange(of: model?.id, initial: true) { _, menuID in
+                    isPresented = menuID != nil
+                }
+        }
+        #else
+        anchoredLayout
+        #endif
+    }
+
+    private var anchoredLayout: some View {
         LUIAnchoredComboboxMenuLayout(
             anchor: model?.property(.anchor)?.stringValue ?? "below",
             alignment: model?.property(.anchorAlignment)?.stringValue ?? "start",
@@ -1317,6 +1368,30 @@ private struct LUIAnchoredComboboxMenuHost<Content: View>: View {
         }
         .zIndex(model == nil ? 0 : 1)
     }
+
+    #if os(iOS)
+    private var presentationBinding: Binding<Bool> {
+        Binding(
+            get: { isPresented },
+            set: { presented in
+                isPresented = presented
+                if !presented, let model {
+                    try? backend.performDismiss(node: model.id)
+                }
+            }
+        )
+    }
+
+    private var dialogTitle: Text {
+        Text(verbatim: model?.property(.accessibilityLabel)?.stringValue ?? "")
+    }
+
+    private var dialogTitleVisibility: Visibility {
+        model?.property(.accessibilityLabel)?.stringValue?.isEmpty == false
+            ? .automatic
+            : .hidden
+    }
+    #endif
 }
 
 private struct LUIAnchoredComboboxMenuLayout: Layout {
@@ -1428,17 +1503,47 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        if LUIMenuPresentationPolicy.usesAnchoredPopover(
+            model?.property(.styleClass)?.stringValue
+        ) {
+            content
+                .popover(
+                    isPresented: presentationBinding,
+                    attachmentAnchor: .point(attachmentPoint),
+                    arrowEdge: arrowEdge
+                ) {
+                    if let model {
+                        LUIDropdownMenuView(
+                            model: model,
+                            backend: backend,
+                            isPresented: true
+                        )
+                        .presentationCompactAdaptation(.popover)
+                    }
+                }
+                .onChange(of: model?.id, initial: true) { _, menuID in
+                    isPresented = menuID != nil
+                }
+        } else {
+            content
+                .confirmationDialog(
+                    dialogTitle,
+                    isPresented: presentationBinding,
+                    titleVisibility: dialogTitleVisibility
+                ) {
+                    if let model {
+                        LUINativeMenuActions(model: model, backend: backend)
+                    }
+                }
+                .onChange(of: model?.id, initial: true) { _, menuID in
+                    isPresented = menuID != nil
+                }
+        }
+        #else
         content
             .popover(
-                isPresented: Binding(
-                    get: { isPresented },
-                    set: { presented in
-                        isPresented = presented
-                        if !presented, let model {
-                            try? backend.performDismiss(node: model.id)
-                        }
-                    }
-                ),
+                isPresented: presentationBinding,
                 attachmentAnchor: .point(attachmentPoint),
                 arrowEdge: arrowEdge
             ) {
@@ -1454,7 +1559,32 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
             .onChange(of: model?.id, initial: true) { _, menuID in
                 isPresented = menuID != nil
             }
+        #endif
     }
+
+    private var presentationBinding: Binding<Bool> {
+        Binding(
+            get: { isPresented },
+            set: { presented in
+                isPresented = presented
+                if !presented, let model {
+                    try? backend.performDismiss(node: model.id)
+                }
+            }
+        )
+    }
+
+    #if os(iOS)
+    private var dialogTitle: Text {
+        Text(verbatim: model?.property(.accessibilityLabel)?.stringValue ?? "")
+    }
+
+    private var dialogTitleVisibility: Visibility {
+        model?.property(.accessibilityLabel)?.stringValue?.isEmpty == false
+            ? .automatic
+            : .hidden
+    }
+    #endif
 
     private var attachmentPoint: UnitPoint {
         let alignment = model?.property(.anchorAlignment)?.stringValue ?? "start"
@@ -2408,11 +2538,36 @@ enum LUISelectVisualPolicy {
     static let verticalInset: CGFloat = 8
 }
 
+enum LUIMenuPresentationPolicy {
+    static func usesAnchoredPopover(_ styleClass: String?) -> Bool {
+        styleClass?.split(separator: " ").contains("anchored-popover") == true
+    }
+}
+
 private struct LUISelectView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
 
     var body: some View {
+        #if os(iOS)
+        Button {
+            try? backend.performPress(node: model.id)
+        } label: {
+            Label {
+                Text(verbatim: displayText)
+            } icon: {
+                Image(systemName: LUISelectVisualPolicy.indicatorSystemName)
+            }
+            .foregroundStyle(
+                model.text.isEmpty ? Color.secondary : Color.accentColor
+            )
+        }
+        .buttonStyle(.bordered)
+        .disabled(!model.isEnabled)
+        .accessibilityLabel(
+            Text(verbatim: model.property(.accessibilityLabel)?.stringValue ?? displayText)
+        )
+        #else
         Button {
             try? backend.performPress(node: model.id)
         } label: {
@@ -2432,6 +2587,7 @@ private struct LUISelectView: View {
         .accessibilityLabel(
             Text(verbatim: model.property(.accessibilityLabel)?.stringValue ?? displayText)
         )
+        #endif
     }
 
     private var displayText: String {
@@ -2446,6 +2602,33 @@ private struct LUIComboboxView: View {
     let backend: LUIAppleBackend
 
     var body: some View {
+        #if os(iOS)
+        HStack(spacing: 8) {
+            TextField(
+                model.property(.placeholder)?.stringValue ?? "",
+                text: Binding(
+                    get: { model.text },
+                    set: { try? backend.performTextChange(node: model.id, text: $0) }
+                )
+            )
+            .textFieldStyle(.roundedBorder)
+            .onSubmit {
+                if model.supportsSubmit {
+                    try? backend.performSubmit(node: model.id)
+                } else {
+                    try? backend.performPress(node: model.id)
+                }
+            }
+            Button {
+                try? backend.performPress(node: model.id)
+            } label: {
+                Image(systemName: "chevron.down")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Show options")
+        }
+        .disabled(!model.isEnabled)
+        #else
         HStack(spacing: 4) {
             TextField(
                 model.property(.placeholder)?.stringValue ?? "",
@@ -2478,6 +2661,7 @@ private struct LUIComboboxView: View {
                 .stroke(.separator)
         }
         .disabled(!model.isEnabled)
+        #endif
     }
 }
 
@@ -2495,8 +2679,15 @@ private struct LUIDropdownMenuView: View {
             .frame(maxHeight: 420)
         } else {
             menuItems
+                #if os(iOS)
+                .background(
+                    Color(uiColor: .secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: 10)
+                )
+                #else
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                 .shadow(radius: 8, y: 4)
+                #endif
         }
     }
 
@@ -2536,15 +2727,7 @@ private struct LUIMenuItemView: View {
     var body: some View {
         if let submenu {
             Menu {
-                ForEach(submenu.children, id: \.self) { childID in
-                    if let child = backend.model(id: childID) {
-                        if child.kind == .divider {
-                            Divider()
-                        } else if child.kind == .menuItem {
-                            LUIMenuItemView(model: child, backend: backend)
-                        }
-                    }
-                }
+                LUINativeMenuActions(model: submenu, backend: backend)
             } label: {
                 itemLabel(expands: false)
             }
@@ -2597,11 +2780,17 @@ private struct LUIMenuItemView: View {
                 Spacer(minLength: LUIDropdownMenuLayoutPolicy.trailingSpacing)
             }
             if model.isSelected {
+                #if os(iOS)
+                Image(systemName: "checkmark")
+                    .foregroundStyle(Color.accentColor)
+                    .accessibilityHidden(true)
+                #else
                 Image(systemName: "checkmark")
                     .modifier(LUIMenuItemForegroundModifier(
                         model: model,
                         usesExplicitForeground: false
                     ))
+                #endif
             }
         }
         .frame(
@@ -2782,7 +2971,7 @@ private struct LUIListItemView: View {
             }
             if let contextMenu {
                 Menu {
-                    LUIContextMenuActions(model: contextMenu, backend: backend)
+                    LUINativeMenuActions(model: contextMenu, backend: backend)
                 } label: {
                     Image(systemName: "ellipsis")
                         .frame(width: 44, height: 44)
@@ -2964,7 +3153,7 @@ private struct LUIListItemSwipeActionsModifier: ViewModifier {
             backend.model(id: $0)?.kind == .menuItem
         }) {
             content.swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                LUIContextMenuActions(model: menu, backend: backend)
+                LUINativeMenuActions(model: menu, backend: backend)
             }
         } else {
             content
@@ -3160,7 +3349,7 @@ private struct LUIButtonView: View {
     private var button: some View {
         if let contextMenu {
             Menu {
-                LUIContextMenuActions(model: contextMenu, backend: backend)
+                LUINativeMenuActions(model: contextMenu, backend: backend)
             } label: {
                 buttonLabel
             }
