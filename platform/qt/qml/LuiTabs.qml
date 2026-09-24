@@ -8,10 +8,12 @@ Rectangle {
     required property var node
     readonly property var props: node ? node.properties : ({})
 
+    SystemPalette { id: tabsPal }
+
     implicitWidth: group.implicitWidth + 8
     implicitHeight: group.implicitHeight + 8
     radius: 8
-    color: "#f4f4f5"
+    color: tabsPal.alternateBase
 
     RowLayout {
         id: group

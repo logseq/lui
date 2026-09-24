@@ -34,13 +34,13 @@ Item {
                 width: 36
                 height: 4
                 radius: 2
-                color: "#d4d4d8"
+                color: sheet.palette.mid
             }
 
             Text {
                 visible: Style.str(host.props, "text", "") !== ""
                 text: Style.str(host.props, "text", "")
-                color: "#18181b"
+                color: sheet.palette.text
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
                 Layout.fillWidth: true
@@ -62,18 +62,7 @@ Item {
             Item { implicitHeight: 16 }
         }
 
-        background: Rectangle {
-            color: "#ffffff"
-            border.color: "#e4e4e7"
-            border.width: 1
-            radius: 12
-            Rectangle {
-                anchors.bottom: parent.bottom
-                width: parent.width
-                height: 12
-                color: "#ffffff"
-            }
-        }
+
     }
 
     Component.onCompleted: sheet.open()

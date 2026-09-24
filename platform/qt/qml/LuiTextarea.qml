@@ -16,7 +16,7 @@ ScrollView {
         id: area
         placeholderText: Style.str(view.props, "placeholder", "")
         enabled: view.props["enabled"] !== false
-        color: Style.color(view.props["foreground"], "#18181b")
+        color: Style.color(view.props["foreground"], palette.text)
         wrapMode: TextArea.Wrap
         Component.onCompleted: {
             if (view.props["autofocus"] === true) forceActiveFocus()
@@ -51,10 +51,5 @@ ScrollView {
         }
     }
 
-    background: Rectangle {
-        radius: 6
-        color: area.enabled ? "#ffffff" : "#f4f4f5"
-        border.color: area.activeFocus ? "#007aff" : "#d4d4d8"
-        border.width: 1
-    }
+
 }

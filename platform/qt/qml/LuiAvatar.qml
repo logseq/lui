@@ -10,10 +10,11 @@ Rectangle {
 
     readonly property int imageId: Style.num(props, "image", 0)
     readonly property int avatarSize: Style.num(props, "size", 40)
+    SystemPalette { id: avatarPal }
     implicitWidth: avatarSize
     implicitHeight: avatarSize
     radius: avatarSize / 2
-    color: "#e4e4e7"
+    color: avatarPal.mid
     clip: true
 
     Image {
@@ -29,7 +30,7 @@ Rectangle {
     Text {
         anchors.centerIn: parent
         text: Style.str(avatar.props, "text", "")
-        color: "#52525b"
+        color: avatarPal.text
         font.pixelSize: Math.max(10, avatar.avatarSize * 0.38)
         visible: avatar.imageId <= 0
     }

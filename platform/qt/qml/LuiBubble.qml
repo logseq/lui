@@ -5,11 +5,14 @@ import "LuiStyle.js" as Style
 // Wire kind: bubble — chat/message bubble tinted by variant.
 Rectangle {
     id: bubble
+
+    SystemPalette { id: bubblePal }
     required property var node
     readonly property var props: node ? node.properties : ({})
 
     color: Style.str(props, "variant", "default") === "primary"
-           ? "#007aff" : Style.color(props["background"], "#f4f4f5")
+           ? bubblePal.highlight
+           : Style.color(props["background"], bubblePal.base)
     radius: Style.num(props, "corner-radius", 16)
     border.color: Style.color(props["border-color"], "transparent")
     border.width: Style.num(props, "border-width", 0)
@@ -29,8 +32,8 @@ Rectangle {
             visible: Style.str(bubble.props, "text", "") !== ""
             text: Style.str(bubble.props, "text", "")
             color: Style.str(bubble.props, "variant", "default") === "primary"
-                   ? "#ffffff"
-                   : Style.color(bubble.props["foreground"], "#18181b")
+                   ? bubblePal.highlightedText
+                   : Style.color(bubble.props["foreground"], bubblePal.text)
             font.pixelSize: 14
             horizontalAlignment: Style.textAlignEnum(bubble.props)
             wrapMode: Text.WordWrap

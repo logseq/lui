@@ -9,9 +9,10 @@ Rectangle {
     required property var node
     readonly property var props: node ? node.properties : ({})
 
+    SystemPalette { id: groupPal }
     radius: 8
-    color: "#ffffff"
-    border.color: "#d4d4d8"
+    color: groupPal.base
+    border.color: groupPal.mid
     border.width: 1
     clip: true
     implicitWidth: body.implicitWidth + 2

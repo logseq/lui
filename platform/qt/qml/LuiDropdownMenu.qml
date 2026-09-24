@@ -33,12 +33,6 @@ Item {
             return p.y
         }
 
-        background: Rectangle {
-            radius: 8
-            color: "#ffffff"
-            border.color: "#e4e4e7"
-            border.width: 1
-        }
 
         contentItem: ColumnLayout {
             spacing: Style.num(menu.props, "gap", 0)

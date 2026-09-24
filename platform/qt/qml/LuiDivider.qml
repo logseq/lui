@@ -10,9 +10,10 @@ Rectangle {
 
     readonly property bool horizontal:
         !node || !node.parent || String(node.parent.kind) !== "row"
+    SystemPalette { id: divPal }
     implicitWidth: horizontal ? 40 : 1
     implicitHeight: horizontal ? 1 : 40
     Layout.fillWidth: horizontal
     Layout.fillHeight: !horizontal
-    color: Style.color(props["foreground"], "#e4e4e7")
+    color: Style.color(props["foreground"], divPal.mid)
 }

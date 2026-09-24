@@ -29,8 +29,8 @@ Button {
                   ? Style.str(select.props, "text", "")
                   : Style.str(select.props, "placeholder", "")
             color: Style.str(select.props, "text", "") !== ""
-                   ? Style.color(select.props["foreground"], "#18181b")
-                   : "#a1a1aa"
+                   ? Style.color(select.props["foreground"], select.palette.text)
+                   : select.palette.placeholderText
             font.pixelSize: 14
             elide: Text.ElideRight
         }
@@ -38,7 +38,7 @@ Button {
 
     indicator: Text {
         text: "▾"
-        color: "#71717a"
+        color: select.palette.mid
         anchors {
             right: parent.right
             rightMargin: 8
@@ -46,12 +46,7 @@ Button {
         }
     }
 
-    background: Rectangle {
-        radius: 6
-        color: select.enabled ? "#ffffff" : "#f4f4f5"
-        border.color: select.down ? "#007aff" : "#d4d4d8"
-        border.width: 1
-    }
+
 
     onClicked: node.press()
 }

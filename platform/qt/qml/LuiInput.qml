@@ -10,7 +10,7 @@ TextField {
 
     placeholderText: Style.str(props, "placeholder", "")
     enabled: props["enabled"] !== false
-    color: Style.color(props["foreground"], "#18181b")
+    color: Style.color(props["foreground"], palette.text)
     implicitWidth: 180
     Component.onCompleted: {
         if (props["autofocus"] === true) forceActiveFocus()
@@ -30,12 +30,6 @@ TextField {
     onTextChanged: if (!updating) node.textChanged(text)
     onAccepted: node.submit()
 
-    background: Rectangle {
-        implicitWidth: 180
-        implicitHeight: 30
-        radius: 5
-        color: field.enabled ? "#ffffff" : "#f4f4f5"
-        border.color: field.activeFocus ? "#007aff" : "#d4d4d8"
-        border.width: 1
-    }
+    implicitHeight: 30
+    background.implicitHeight: 30
 }

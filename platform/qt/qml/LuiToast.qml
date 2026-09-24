@@ -13,16 +13,12 @@ Item {
     implicitWidth: card.implicitWidth
     implicitHeight: card.implicitHeight
 
-    Rectangle {
+    Frame {
         id: card
         implicitWidth: row.implicitWidth + 32
         implicitHeight: row.implicitHeight + 32
-        radius: 8
-        color: "#ffffff"
-        border.color: "#e4e4e7"
-        border.width: 1
 
-        RowLayout {
+        contentItem: RowLayout {
             id: row
             anchors.centerIn: parent
             spacing: 12

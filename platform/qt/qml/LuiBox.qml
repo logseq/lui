@@ -8,8 +8,9 @@ Rectangle {
     required property var node
     readonly property var props: node ? node.properties : ({})
 
+    SystemPalette { id: boxPal }
     color: Style.color(props["background"], "transparent")
-    border.color: Style.color(props["border-color"], "#e4e4e7")
+    border.color: Style.color(props["border-color"], boxPal.mid)
     border.width: Style.num(props, "border-width", 1)
     radius: Style.num(props, "corner-radius", 6)
 

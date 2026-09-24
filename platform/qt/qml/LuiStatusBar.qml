@@ -8,8 +8,9 @@ Rectangle {
     required property var node
     readonly property var props: node ? node.properties : ({})
 
-    color: Style.color(props["background"], "#f4f4f5")
-    border.color: Style.color(props["border-color"], "#e4e4e7")
+    SystemPalette { id: barPal }
+    color: Style.color(props["background"], barPal.window)
+    border.color: Style.color(props["border-color"], barPal.mid)
     border.width: Style.num(props, "border-width", 0)
     implicitHeight: 26
     implicitWidth: 160
@@ -21,7 +22,7 @@ Rectangle {
             rightMargin: 10
         }
         text: Style.str(bar.props, "text", "")
-        color: Style.color(bar.props["foreground"], "#52525b")
+        color: Style.color(bar.props["foreground"], barPal.text)
         font.pixelSize: 12
         horizontalAlignment: Style.textAlignEnum(bar.props)
         verticalAlignment: Text.AlignVCenter

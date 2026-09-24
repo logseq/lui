@@ -23,7 +23,7 @@ ColumnLayout {
             spacing: 8
             Text {
                 text: Style.str(accordion.props, "text", "")
-                color: header.enabled ? "#18181b" : "#a1a1aa"
+                color: header.enabled ? header.palette.text : header.palette.placeholderText
                 font.pixelSize: 14
                 font.weight: Font.Medium
                 Layout.fillWidth: true
@@ -35,10 +35,6 @@ ColumnLayout {
                 Layout.preferredHeight: 14
                 rotation: accordion.expanded ? 0 : -90
             }
-        }
-        background: Rectangle {
-            color: header.down ? "#e4e4e7" : header.hovered ? "#f4f4f5" : "transparent"
-            radius: 6
         }
         onClicked: accordion.node.toggle(!accordion.expanded)
     }

@@ -9,9 +9,10 @@ Rectangle {
     required property var node
     readonly property var props: node ? node.properties : ({})
 
+    SystemPalette { id: rowPal }
     implicitHeight: cells.implicitHeight + (divider.visible ? 1 : 0)
     implicitWidth: cells.implicitWidth
-    color: props["selected"] === true ? "#f4f4f5" : "transparent"
+    color: props["selected"] === true ? rowPal.alternateBase : "transparent"
 
     readonly property bool isLast: {
         if (!node || !node.parent) return true
@@ -41,6 +42,6 @@ Rectangle {
         anchors.bottom: parent.bottom
         width: parent.width
         height: 1
-        color: "#e4e4e7"
+        color: rowPal.mid
     }
 }

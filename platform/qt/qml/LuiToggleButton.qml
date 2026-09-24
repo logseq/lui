@@ -19,19 +19,10 @@ Button {
 
     padding: Style.controlPadding(Style.str(props, "size", "default"))
 
-    background: Rectangle {
-        implicitWidth: 80
-        implicitHeight: 32
-        radius: 6
-        color: !button.enabled ? "#e4e4e7"
-               : button.selected ? (button.down ? "#0060c9" : "#007aff")
-               : button.down ? "#f4f4f5" : "transparent"
-        border.color: button.selected ? "transparent" : "#d4d4d8"
-        border.width: button.selected ? 0 : 1
-    }
-
-    palette.buttonText: !button.enabled ? "#a1a1aa"
-                        : button.selected ? "#ffffff" : "#18181b"
+    highlighted: button.selected
+    implicitHeight: 32
+    background.implicitWidth: 80
+    background.implicitHeight: 32
 
     onClicked: node.toggle(!selected)
     onPressAndHold: if (props["long-press-enabled"] === true) node.longPress()

@@ -29,7 +29,7 @@ Item {
         header: Text {
             visible: Style.str(host.props, "text", "") !== ""
             text: Style.str(host.props, "text", "")
-            color: "#18181b"
+            color: dialog.palette.text
             font.pixelSize: 16
             font.weight: Font.DemiBold
             padding: 4
@@ -46,12 +46,7 @@ Item {
             }
         }
 
-        background: Rectangle {
-            radius: 12
-            color: "#ffffff"
-            border.color: "#e4e4e7"
-            border.width: 1
-        }
+
     }
 
     Component.onCompleted: dialog.open()

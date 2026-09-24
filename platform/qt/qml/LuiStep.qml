@@ -10,6 +10,7 @@ RowLayout {
     readonly property var props: node ? node.properties : ({})
 
     spacing: 6
+    SystemPalette { id: stepPal }
     readonly property int index: {
         if (!node || !node.parent) return 0
         var siblings = node.parent.children
@@ -29,8 +30,8 @@ RowLayout {
         width: 24
         height: 24
         radius: 12
-        color: step.state === "pending" ? "transparent" : "#007aff"
-        border.color: step.state === "pending" ? "#a1a1aa" : "#007aff"
+        color: step.state === "pending" ? "transparent" : stepPal.highlight
+        border.color: step.state === "pending" ? stepPal.mid : stepPal.highlight
         border.width: 1
 
         Image {
@@ -44,7 +45,7 @@ RowLayout {
             visible: step.state !== "completed"
             anchors.centerIn: parent
             text: String(step.index + 1)
-            color: step.state === "active" ? "#ffffff" : "#71717a"
+            color: step.state === "active" ? stepPal.highlightedText : stepPal.mid
             font.pixelSize: 12
             font.weight: Font.DemiBold
         }
@@ -52,7 +53,7 @@ RowLayout {
 
     Text {
         text: Style.str(step.props, "text", "")
-        color: step.state === "pending" ? "#71717a" : "#18181b"
+        color: step.state === "pending" ? stepPal.mid : stepPal.text
         font.pixelSize: 14
         font.weight: step.state === "active" ? Font.DemiBold : Font.Normal
     }
@@ -63,6 +64,6 @@ RowLayout {
         Layout.preferredHeight: 1
         Layout.leftMargin: 8
         Layout.rightMargin: 8
-        color: "#e4e4e7"
+        color: stepPal.mid
     }
 }

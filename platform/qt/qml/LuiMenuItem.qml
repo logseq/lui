@@ -35,8 +35,8 @@ ItemDelegate {
         }
         Text {
             text: Style.str(item.props, "text", "")
-            color: !item.enabled ? "#a1a1aa"
-                   : item.destructive ? "#dc2626" : "#18181b"
+            color: !item.enabled ? item.palette.placeholderText
+                   : item.destructive ? "#dc2626" : item.palette.text
             font.pixelSize: 13
             Layout.fillWidth: true
             elide: Text.ElideRight
@@ -50,14 +50,10 @@ ItemDelegate {
         Text {
             visible: item.submenu !== null
             text: "▸"
-            color: "#71717a"
+            color: item.palette.mid
         }
     }
 
-    background: Rectangle {
-        color: item.down || item.hovered ? "#f4f4f5" : "transparent"
-        radius: 4
-    }
 
     onClicked: {
         if (item.submenu !== null) {
@@ -74,12 +70,6 @@ ItemDelegate {
         padding: 4
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-        background: Rectangle {
-            radius: 8
-            color: "#ffffff"
-            border.color: "#e4e4e7"
-            border.width: 1
-        }
 
         contentItem: ColumnLayout {
             spacing: 0

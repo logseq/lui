@@ -46,11 +46,7 @@ Item {
             sourceComponent: panelContent
         }
 
-        background: Rectangle {
-            color: "#ffffff"
-            border.color: "#e4e4e7"
-            border.width: 1
-        }
+
     }
 
     Component {

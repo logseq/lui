@@ -11,15 +11,16 @@ Rectangle {
 
     readonly property bool pressable: props["press-enabled"] === true
     readonly property bool connector: props["connector"] !== false
+    SystemPalette { id: itemPal }
     readonly property color markerColor:
-        Style.str(props, "variant", "") === "primary" ? "#007aff"
+        Style.str(props, "variant", "") === "primary" ? itemPal.highlight
         : Style.str(props, "variant", "") === "destructive" ? "#dc2626"
-        : "#a1a1aa"
+        : itemPal.mid
 
     implicitHeight: body.implicitHeight + 16
     implicitWidth: body.implicitWidth + 16
     radius: 8
-    color: props["selected"] === true ? "#f4f4f5" : "transparent"
+    color: props["selected"] === true ? itemPal.alternateBase : "transparent"
 
     RowLayout {
         id: body
@@ -70,7 +71,7 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.fillHeight: true
                 width: 1
-                color: "#e4e4e7"
+                color: itemPal.mid
             }
         }
 
@@ -81,7 +82,7 @@ Rectangle {
 
             Text {
                 text: Style.str(item.props, "title", "")
-                color: "#18181b"
+                color: itemPal.text
                 font.pixelSize: 14
                 font.weight: Font.DemiBold
                 Layout.fillWidth: true
@@ -89,7 +90,7 @@ Rectangle {
             Text {
                 visible: Style.str(item.props, "description", "") !== ""
                 text: Style.str(item.props, "description", "")
-                color: "#71717a"
+                color: itemPal.mid
                 font.pixelSize: 13
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
@@ -97,7 +98,7 @@ Rectangle {
             Text {
                 visible: Style.str(item.props, "meta", "") !== ""
                 text: Style.str(item.props, "meta", "")
-                color: "#71717a"
+                color: itemPal.mid
                 font.pixelSize: 12
                 Layout.fillWidth: true
             }

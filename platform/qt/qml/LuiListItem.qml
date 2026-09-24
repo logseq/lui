@@ -10,6 +10,7 @@ ItemDelegate {
     readonly property var props: node ? node.properties : ({})
 
     enabled: props["enabled"] !== false
+    highlighted: props["selected"] === true
     padding: 8
     implicitHeight: Math.max(40, contentItem.implicitHeight + 16)
 
@@ -27,7 +28,7 @@ ItemDelegate {
             Layout.fillWidth: true
             Text {
                 text: Style.str(item.props, "text", "")
-                color: item.enabled ? "#18181b" : "#a1a1aa"
+                color: item.enabled ? item.palette.text : item.palette.placeholderText
                 font.pixelSize: 14
                 Layout.fillWidth: true
                 elide: Text.ElideRight
@@ -35,7 +36,7 @@ ItemDelegate {
             Text {
                 visible: Style.str(item.props, "subtitle", "") !== ""
                 text: Style.str(item.props, "subtitle", "")
-                color: "#71717a"
+                color: item.palette.placeholderText
                 font.pixelSize: 12
                 Layout.fillWidth: true
                 elide: Text.ElideRight
@@ -43,10 +44,6 @@ ItemDelegate {
         }
     }
 
-    background: Rectangle {
-        color: item.down ? "#e4e4e7" : item.hovered ? "#f4f4f5" : "transparent"
-        radius: 6
-    }
 
     onClicked: {
         // treeitem rows select/expand via the change cascade, not press.

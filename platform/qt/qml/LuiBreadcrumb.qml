@@ -9,6 +9,7 @@ RowLayout {
     required property var node
     readonly property var props: node ? node.properties : ({})
 
+    SystemPalette { id: crumbPal }
     spacing: Style.num(props, "gap", 4)
 
     Repeater {
@@ -23,7 +24,7 @@ RowLayout {
             Text {
                 visible: index < crumb.node.children.length - 1
                 text: "/"
-                color: "#a1a1aa"
+                color: crumbPal.mid
                 font.pixelSize: 12
             }
         }

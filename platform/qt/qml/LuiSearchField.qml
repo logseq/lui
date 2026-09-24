@@ -11,7 +11,7 @@ TextField {
 
     placeholderText: Style.str(props, "placeholder", "")
     enabled: props["enabled"] !== false
-    color: Style.color(props["foreground"], "#18181b")
+    color: Style.color(props["foreground"], palette.text)
     implicitWidth: 220
     leftPadding: 30
     Component.onCompleted: {
@@ -40,12 +40,6 @@ TextField {
     onTextChanged: if (!updating) node.textChanged(text)
     onAccepted: node.submit()
 
-    background: Rectangle {
-        implicitWidth: 220
-        implicitHeight: 32
-        radius: 6
-        color: field.enabled ? "#f4f4f5" : "#e4e4e7"
-        border.color: field.activeFocus ? "#007aff" : "transparent"
-        border.width: 1
-    }
+    implicitHeight: 32
+    background.implicitHeight: 32
 }

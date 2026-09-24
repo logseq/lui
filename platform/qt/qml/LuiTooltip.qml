@@ -1,4 +1,5 @@
 import QtQuick
+import QtQml
 import "LuiStyle.js" as Style
 
 // Wire kind: tooltip — overlay surface anchored to the preceding sibling.
@@ -10,6 +11,8 @@ Item {
 
     implicitWidth: 0
     implicitHeight: 0
+
+    SystemPalette { id: tipPal }
 
     Rectangle {
         x: {
@@ -23,13 +26,13 @@ Item {
         implicitWidth: label.implicitWidth + 16
         implicitHeight: label.implicitHeight + 10
         radius: 6
-        color: "#27272a"
+        color: tipPal.toolTipBase
 
         Text {
             id: label
             anchors.centerIn: parent
             text: Style.str(tip.props, "text", "")
-            color: "#fafafa"
+            color: tipPal.toolTipText
             font.pixelSize: 12
         }
     }

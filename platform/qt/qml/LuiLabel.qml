@@ -7,8 +7,9 @@ Text {
     required property var node
     readonly property var props: node ? node.properties : ({})
 
+    SystemPalette { id: labelPal }
     text: Style.str(props, "text", "")
-    color: Style.color(props["foreground"], "#52525b")
+    color: Style.color(props["foreground"], labelPal.placeholderText)
     font.pixelSize: 12
     wrapMode: Text.WordWrap
 }

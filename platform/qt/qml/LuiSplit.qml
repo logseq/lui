@@ -11,6 +11,7 @@ Item {
 
     readonly property real fraction:
         Math.min(1, Math.max(0, Style.num(props, "value", 0.5)))
+    SystemPalette { id: splitPal }
     readonly property real handleWidth: 8
     readonly property var first: node && node.children.length > 0
                                  ? node.children[0] : null
@@ -32,13 +33,13 @@ Item {
         width: split.handleWidth
         height: split.height
         color: handleMouse.containsMouse || handleMouse.pressed
-               ? "#d4d4d8" : "transparent"
+               ? splitPal.midlight : "transparent"
 
         Rectangle {
             anchors.centerIn: parent
             width: 1
             height: parent.height
-            color: "#e4e4e7"
+            color: splitPal.mid
         }
 
         MouseArea {

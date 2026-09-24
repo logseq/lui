@@ -8,6 +8,8 @@ Item {
     required property var node
     readonly property var props: node ? node.properties : ({})
 
+    SystemPalette { id: cellPal }
+
     implicitWidth: label.implicitWidth + 16
     implicitHeight: label.implicitHeight + 12
 
@@ -19,7 +21,7 @@ Item {
             rightMargin: 8
         }
         text: Style.str(cell.props, "text", "")
-        color: Style.color(cell.props["foreground"], "#18181b")
+        color: Style.color(cell.props["foreground"], cellPal.text)
         font.pixelSize: 14
         verticalAlignment: Text.AlignVCenter
         horizontalAlignment: Style.textAlignEnum(cell.props["text-alignment"])

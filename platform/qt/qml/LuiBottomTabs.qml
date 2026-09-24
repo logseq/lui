@@ -9,6 +9,7 @@ ColumnLayout {
     required property var node
     readonly property var props: node ? node.properties : ({})
 
+    SystemPalette { id: tabsPal }
     spacing: 0
     readonly property var pages: node ? node.children : []
     readonly property int selectedIndex: {
@@ -36,8 +37,8 @@ ColumnLayout {
     Rectangle {
         Layout.fillWidth: true
         implicitHeight: 56
-        color: "#ffffff"
-        border.color: "#e4e4e7"
+        color: tabsPal.window
+        border.color: tabsPal.mid
         border.width: 1
 
         RowLayout {
@@ -74,7 +75,7 @@ ColumnLayout {
                         }
                         Text {
                             text: Style.str(parent.parent.tabProps, "title", "")
-                            color: parent.parent.selected ? "#007aff" : "#71717a"
+                            color: parent.parent.selected ? tabsPal.highlight : tabsPal.mid
                             font.pixelSize: 11
                             Layout.alignment: Qt.AlignHCenter
                         }
