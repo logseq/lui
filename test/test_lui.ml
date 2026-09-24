@@ -452,6 +452,102 @@ let test_property_matrix_sync () =
          Lui_wire_schema.all_properties)
     Lui_wire_schema.all_node_kinds
 
+(* ---------- Lui_json_view: the language-neutral view-model layer ---------- *)
+
+let str_contains ~needle s =
+  let n = String.length s and m = String.length needle in
+  let rec go i =
+    i + m <= n
+    && (String.sub s i m = needle || go (i + 1))
+  in
+  m = 0 || go 0
+
+let json_view_json =
+  {|{"kind":"column","children":[
+      {"kind":"card","children":[{"kind":"text","value":"hi"}]},
+      {"kind":"switch","id":"sw","checked":true},
+      {"kind":"slider","id":"sl","value":0.5},
+      {"kind":"icon","name":"plus"},
+      {"kind":"toggle-button","id":"b1","text":"Go"},
+      {"kind":"table","children":[{"kind":"table-row","children":[
+         {"kind":"table-cell","text":"c"}]}]},
+      {"kind":"radio-group","children":[{"kind":"radio","label":"r"}]},
+      {"kind":"stepper","children":[{"kind":"step","text":"s"}]},
+      {"kind":"bottom-tabs","children":[{"kind":"bottom-tab","title":"t"}]},
+      {"kind":"input-group","children":[
+        {"kind":"textarea","id":"tf"},
+        {"kind":"input-group-actions","children":[{"kind":"button","text":"a"}]}]},
+      {"kind":"split","children":[{"kind":"text","value":"l"},{"kind":"text","value":"r"}]},
+      {"kind":"totally-bogus"}
+    ]}|}
+
+let test_json_view_render () =
+  let events = ref [] in
+  let view _context _model_source _send =
+    match Lui_json_view.parse json_view_json with
+    | Ok v ->
+      Lui_json_view.render
+        ~on_event:(fun ~id ~kind ~fields ->
+           events := (id, kind, fields) :: !events)
+        v
+    | Error e -> Lui_elements.text ~value:("parse error: " ^ e) []
+  in
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model) view
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let created k =
+    List.exists
+      (function Lui_protocol.CreateNode (_, k') -> k' = k | _ -> false)
+      ops
+  in
+  List.iter
+    (fun k ->
+       Alcotest.(check bool)
+         (Printf.sprintf "created %s"
+            (Lui_wire_schema.node_kind_name k))
+         true (created k))
+    [ Lui_protocol.Card; SwitchControl; Slider; Icon; ToggleButton;
+      Table; TableRow; TableCell; RadioGroup; Radio; Stepper; Step;
+      BottomTabs; BottomTab; InputGroup; InputGroupActions; Button;
+      Split; Textarea; Text ];
+  (* unknown kinds render a visible placeholder, never a blank/raise *)
+  Alcotest.(check bool) "placeholder text" true
+    (List.exists
+       (function
+          | Lui_protocol.SetProp (_, Lui_protocol.TextValue,
+                                  Lui_protocol.StringValue s) ->
+            str_contains ~needle:"unsupported component" s
+          | _ -> false)
+       ops);
+  (* press on the node carrying "id" routes through the event sink *)
+  let b1 =
+    List.find_map
+      (function
+         | Lui_protocol.CreateNode (id, Lui_protocol.ToggleButton) ->
+           Some id
+         | _ -> None)
+      ops
+  in
+  (match b1 with
+   | Some id ->
+     ignore
+       (Lui_app.dispatch_event app
+          (Lui_protocol.ToggleChanged (id, true)));
+     flush_app app;
+     Alcotest.(check (list (pair string string))) "event routed"
+       [ ("b1", "toggle") ]
+       (List.map (fun (id, k, _) -> (id, k)) !events);
+     Alcotest.(check bool) "checked field decoded" true
+       (match !events with
+        | [ (_, _, [ ("checked", Lui_json_view.Bool true) ]) ] -> true
+        | _ -> false)
+   | None -> Alcotest.fail "toggle-button node not created");
+  ignore (Lui_app.dispose app)
+
 let () =
   Alcotest.run "lui"
     [
@@ -483,6 +579,8 @@ let () =
           Alcotest.test_case "unset default echoes dropped" `Quick
             test_dispatch_drops_unset_default_echoes;
         ] );
+      ( "json_view",
+        [ Alcotest.test_case "render + events" `Quick test_json_view_render ] );
       ( "extension fingerprints",
         [
           Alcotest.test_case "canonical format" `Quick
