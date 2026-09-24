@@ -1,7 +1,9 @@
-(** Dynamic UI structure over signals: [switch] re-mounts a branch when
-    its key signal changes, [conditional] shows/hides a branch on a bool
-    signal, and [keyed] keeps an identity-keyed collection of children in
-    sync with an item-list signal (Insert/Remove/Move patches). *)
+(** Dynamic UI structure over signals: [switch] reconciles a new branch
+    against the old one when its key signal changes (same-kind nodes keep
+    their ids; only divergent nodes drop+create), [conditional] shows/hides
+    a branch on a bool signal, and [keyed] keeps an identity-keyed
+    collection of children in sync with an item-list signal
+    (Insert/Remove/Move patches). *)
 
 type ui_switch = {
   dispose_dynamic_switch : unit -> unit;

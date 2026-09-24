@@ -108,6 +108,16 @@ let creates_text ops =
      | _ -> false)
     ops
 
+(* A remount reconciles the branch: nodes that map onto their predecessors
+   keep their ids, so changed content arrives as prop updates rather than
+   drop+create churn. *)
+let updates_text ops =
+  List.exists
+    (function
+     | Lui_protocol.SetProp (_, Lui_protocol.TextValue, _) -> true
+     | _ -> false)
+    ops
+
 let dyn_reducer model action =
   match action with
   | `Tick -> { model with ticks = model.ticks + 1 }
@@ -130,7 +140,9 @@ let test_dyn_equal_skips_remount () =
     ((Lui_app.model app).ticks = 1);
   ignore (Lui_app.send app (`Rename "second"));
   flush_app app;
-  Alcotest.(check bool) "changed publish remounts" true
+  Alcotest.(check bool) "changed publish updates in place" true
+    (updates_text (all_ops ()));
+  Alcotest.(check bool) "changed publish mounts nothing" false
     (creates_text (all_ops ()));
   ignore (Lui_app.dispose app)
 
@@ -142,10 +154,62 @@ let test_dyn_default_remounts () =
   ignore (Lui_app.start app);
   flush_app app;
   batches := [];
+  (* An unchanged publish reconciles to zero ops — no drop+create churn and
+     no prop diff. *)
   ignore (Lui_app.send app `Tick);
   flush_app app;
-  Alcotest.(check bool) "default republish remounts" true
+  Alcotest.(check bool) "default republish emits nothing" true
+    (all_ops () = []);
+  ignore (Lui_app.send app (`Rename "second"));
+  flush_app app;
+  Alcotest.(check bool) "default republish updates in place" true
+    (updates_text (all_ops ()));
+  Alcotest.(check bool) "default republish mounts nothing" false
     (creates_text (all_ops ()));
+  ignore (Lui_app.dispose app)
+
+type swap_model = { sm_label : string; sm_button : bool }
+
+let swap_view _context model_source _send =
+  Lui_elements.column
+    [
+      Lui_elements.dyn ~equal:(fun _ _ -> false)
+        (fun (m : swap_model) ->
+           if m.sm_button
+           then Lui_elements.button ~text:m.sm_label []
+           else Lui_elements.text ~value:m.sm_label [])
+        model_source;
+    ]
+
+let creates_button ops =
+  List.exists
+    (function
+     | Lui_protocol.CreateNode (_, Lui_protocol.Button) -> true
+     | _ -> false)
+    ops
+
+let drops_node ops =
+  List.exists (function Lui_protocol.DropNode _ -> true | _ -> false) ops
+
+let test_dyn_remount_swaps_incompatible_kind () =
+  let app =
+    Lui_app.create (recording_backend ())
+      { sm_label = "first"; sm_button = false }
+      (fun model action ->
+         match action with `Swap -> { model with sm_button = true })
+      swap_view
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  batches := [];
+  ignore (Lui_app.send app `Swap);
+  flush_app app;
+  (* An incompatible root cannot be mapped: reconcile falls back to a real
+     drop+create for the branch. *)
+  Alcotest.(check bool) "swap mounts the new kind" true
+    (creates_button (all_ops ()));
+  Alcotest.(check bool) "swap drops the old kind" true
+    (drops_node (all_ops ()));
   ignore (Lui_app.dispose app)
 
 let capture_node cell element : Lui_elements.t =
@@ -409,6 +473,8 @@ let () =
             test_dyn_equal_skips_remount;
           Alcotest.test_case "default remounts" `Quick
             test_dyn_default_remounts;
+          Alcotest.test_case "remount swaps incompatible kind" `Quick
+            test_dyn_remount_swaps_incompatible_kind;
         ] );
       ( "dispatch",
         [
