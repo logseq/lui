@@ -3,4 +3,13 @@
  (public_name lui)
  (wrapped false)
  (modes byte native melange)
+ (modules :standard \ lui_json_view_parse)
  (libraries ocaml-signal))
+
+(library
+ (name lui_json_view_parse)
+ (public_name lui.json_view_parse)
+ (wrapped false)
+ (modes byte native)
+ (modules lui_json_view_parse)
+ (libraries lui yojson))
