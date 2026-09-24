@@ -391,7 +391,23 @@ let container_relative_frame_supported value =
 
 let orientation_supported value = value = "horizontal" || value = "vertical"
 
-let placement_supported value = value = "automatic" || value = "bottom"
+let placement_supported value =
+  List.mem
+    value
+    [ "automatic"
+    ; "bottom"
+    ; "navigation"
+    ; "principal"
+    ; "primary-action"
+    ; "secondary-action"
+    ; "status"
+    ; "confirmation-action"
+    ; "cancellation-action"
+    ; "destructive-action"
+    ; "top-bar-leading"
+    ; "top-bar-trailing"
+    ]
+;;
 
 let control_size_supported value =
   value = "default" || value = "sm" || value = "lg" || value = "icon"
@@ -1076,7 +1092,8 @@ let child_kind_supported parent_kind child_kind =
       | SearchField
       | MenuItem
       | Spacer
-      | Divider -> true
+      | Divider
+      | Text -> true
       | _ -> false)
     | DropdownMenu | ContextMenu -> child_kind = MenuItem || child_kind = Divider
     | _ -> true

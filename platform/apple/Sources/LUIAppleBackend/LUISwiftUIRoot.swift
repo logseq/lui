@@ -1965,15 +1965,20 @@ private struct LUIToolbarView: View {
 
     @ViewBuilder
     var body: some View {
-        let placement = model.property(.placement)?.stringValue ?? "automatic"
-        if placement == "bottom" {
+        // The prop itself distinguishes inline from hoisted: absent means
+        // inline content; any explicit value lifts the children into the
+        // platform chrome at that placement.
+        let placement = model.property(.placement)?.stringValue
+        if placement == nil {
+            inlineContent
+        } else if placement == "bottom" {
             #if os(iOS)
             if #available(iOS 26.0, *) {
                 // Each child anchors its own toolbar item; the zero-size
                 // anchors take no space while the platform renders the bar
                 // (floating capsules, system scroll insets).
                 ForEach(model.children, id: \.self) { childID in
-                    LUIBottomBarAnchor(childID: childID, backend: backend)
+                    LUIToolbarItemAnchor(childID: childID, backend: backend, placement: .bottomBar)
                 }
             } else {
                 inlineContent
@@ -1982,8 +1987,37 @@ private struct LUIToolbarView: View {
             // macOS has no bottom bar — fall back to the inline toolbar.
             inlineContent
             #endif
+        } else if let resolved = Self.toolbarPlacement(placement!) {
+            // Hoist children into the platform chrome at the resolved
+            // placement (navigation bar on iOS, window toolbar on macOS).
+            if #available(iOS 26.0, macOS 26.0, *) {
+                ForEach(model.children, id: \.self) { childID in
+                    LUIToolbarItemAnchor(childID: childID, backend: backend, placement: resolved)
+                }
+            } else {
+                inlineContent
+            }
         } else {
             inlineContent
+        }
+    }
+
+    private static func toolbarPlacement(_ value: String) -> ToolbarItemPlacement? {
+        switch value {
+        case "automatic": return .automatic
+        case "navigation": return .navigation
+        case "principal": return .principal
+        case "primary-action": return .primaryAction
+        case "secondary-action": return .secondaryAction
+        case "status": return .status
+        case "confirmation-action": return .confirmationAction
+        case "cancellation-action": return .cancellationAction
+        case "destructive-action": return .destructiveAction
+        #if os(iOS)
+        case "top-bar-leading": return .topBarLeading
+        case "top-bar-trailing": return .topBarTrailing
+        #endif
+        default: return nil
         }
     }
 
@@ -2035,34 +2069,50 @@ private struct LUIToolbarView: View {
 
 }
 
-#if os(iOS)
-/// One child of a `placement "bottom"` toolbar, anchored by a zero-size view
-/// carrying its own `.toolbar` modifier (ToolbarContentBuilder cannot emit a
-/// dynamic child list from a single content closure): spacers become flexible
-/// `ToolbarSpacer`s, every other child a `ToolbarItem` — a button-group's
-/// HStack sits inside its own item, so each group renders one capsule.
-@available(iOS 26.0, *)
-private struct LUIBottomBarAnchor: View {
+/// One child of a hoisted (`placement` != "automatic") toolbar, anchored by a
+/// zero-size view carrying its own `.toolbar` modifier — ToolbarContentBuilder
+/// cannot emit a dynamic child list from a single content closure. Spacers
+/// become `ToolbarSpacer`s, a button-group becomes one `ToolbarItem` whose
+/// `ControlGroup` content the platform fuses into a single capsule, and every
+/// other child becomes its own `ToolbarItem`.
+@available(iOS 26.0, macOS 26.0, *)
+private struct LUIToolbarItemAnchor: View {
     let childID: Int
     let backend: LUIAppleBackend
+    let placement: ToolbarItemPlacement
 
     var body: some View {
-        if backend.model(id: childID)?.kind == .spacer {
+        switch backend.model(id: childID)?.kind {
+        case .spacer:
             Color.clear
                 .frame(width: 0, height: 0)
-                .toolbar { ToolbarSpacer(.flexible, placement: .bottomBar) }
-        } else {
+                .toolbar { ToolbarSpacer(.flexible, placement: placement) }
+        case .buttonGroup:
             Color.clear
                 .frame(width: 0, height: 0)
                 .toolbar {
-                    ToolbarItem(placement: .bottomBar) {
+                    ToolbarItem(placement: placement) {
+                        ControlGroup {
+                            ForEach(
+                                backend.model(id: childID)?.children ?? [],
+                                id: \.self
+                            ) { grandchildID in
+                                LUIAnyNodeView(nodeID: grandchildID, backend: backend)
+                            }
+                        }
+                    }
+                }
+        default:
+            Color.clear
+                .frame(width: 0, height: 0)
+                .toolbar {
+                    ToolbarItem(placement: placement) {
                         LUIAnyNodeView(nodeID: childID, backend: backend)
                     }
                 }
         }
     }
 }
-#endif
 
 private struct LUIToastView: View {
     let model: LUINodeModel

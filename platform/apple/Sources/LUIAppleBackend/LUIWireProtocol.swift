@@ -153,7 +153,7 @@ enum LUIWireValue: Decodable, Equatable {
             return value == "horizontal" || value == "vertical"
         case .placement:
             guard let value = stringValue else { return false }
-            return ["automatic", "bottom"].contains(value)
+            return Self.toolbarPlacements.contains(value)
         case .size:
             guard let value = stringValue else { return false }
             return Self.controlSizes.contains(value) ||
@@ -226,6 +226,12 @@ enum LUIWireValue: Decodable, Equatable {
     private static let textSizes: Set<String> = ["heading", "display"]
 
     private static let textAlignments: Set<String> = ["start", "center", "end"]
+
+    private static let toolbarPlacements: Set<String> = [
+        "automatic", "bottom", "navigation", "principal", "primary-action",
+        "secondary-action", "status", "confirmation-action", "cancellation-action",
+        "destructive-action", "top-bar-leading", "top-bar-trailing",
+    ]
 
     private static let buttonVariants: Set<String> = [
         "default", "primary", "secondary", "outline", "ghost", "destructive",
@@ -721,7 +727,7 @@ struct LUIRetainedTree {
             kind == .toggle || kind == .radioGroup || kind == .select ||
             kind == .combobox || kind == .textField || kind == .secureField || kind == .input ||
             kind == .searchField || kind == .menuItem || kind == .spacer ||
-            kind == .divider
+            kind == .divider || kind == .text
     }
 
     private static func isTreeRow(_ kind: LUINodeKind) -> Bool {
