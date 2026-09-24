@@ -74,6 +74,13 @@ private:
              const QList<qint64> &childIds);
   void setChildren(const QVariantList &children);
   void notifyChanged() { emit changed(); }
+  // Bumps revision and notifies; used when pixels behind an "image" or
+  // "surface" id are (re)presented so QML provider URLs versioned by
+  // node.revision reload.
+  void bumpRevision() {
+    ++m_revision;
+    emit changed();
+  }
 
   qint64 m_id;
   QString m_kind;

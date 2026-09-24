@@ -19,8 +19,10 @@ Item {
 
     Image {
         anchors.fill: parent
+        // node.revision versions the URL so newly presented frames reload.
         source: wrapper.surfaceId > 0
-                ? "image://lui/surface/" + wrapper.surfaceId : ""
+                ? "image://lui/surface/" + wrapper.surfaceId +
+                  "?v=" + (wrapper.node ? wrapper.node.revision : 0) : ""
         fillMode: Image.PreserveAspectFit
         cache: false
     }
