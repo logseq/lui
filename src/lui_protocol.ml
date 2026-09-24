@@ -1068,6 +1068,7 @@ let child_kind_supported parent_kind child_kind =
       | SecureField
       | Input
       | SearchField
+      | MenuItem
       | Divider -> true
       | _ -> false)
     | DropdownMenu | ContextMenu -> child_kind = MenuItem || child_kind = Divider

@@ -3722,6 +3722,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.secureField ||
       kind == _NodeKind.input ||
       kind == _NodeKind.searchField ||
+      kind == _NodeKind.menuItem ||
       kind == _NodeKind.divider;
 
   static bool _isContextMenuLeafHost(_NodeKind kind) {
