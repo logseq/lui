@@ -18,8 +18,10 @@ Rectangle {
 
     Image {
         anchors.fill: parent
+        // node.revision versions the URL so re-registered pixels reload.
         source: avatar.imageId > 0
-                ? "image://lui/image/" + avatar.imageId : ""
+                ? "image://lui/image/" + avatar.imageId +
+                  "?v=" + (avatar.node ? avatar.node.revision : 0) : ""
         fillMode: Image.PreserveAspectCrop
         visible: avatar.imageId > 0
     }

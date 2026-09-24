@@ -29,7 +29,11 @@ public:
     const int slash = id.indexOf(QLatin1Char('/'));
     const QString scope = slash < 0 ? QStringLiteral("image")
                                     : id.left(slash);
-    const QString name = slash < 0 ? id : id.mid(slash + 1);
+    const int question = id.indexOf(QLatin1Char('?'));
+    const QString name =
+        slash < 0
+            ? id.left(question < 0 ? -1 : question)
+            : id.mid(slash + 1, question < 0 ? -1 : question - slash - 1);
     bool ok = false;
     const qint64 number = name.toLongLong(&ok);
     QImage image;
@@ -1370,7 +1374,7 @@ void LuiQmlBackend::registerImage(qint64 id, const QImage &image) {
         it.value().properties.value(QStringLiteral("image")) ==
             QVariant::fromValue(id)) {
       if (LuiNode *handle = m_handles.value(it.key()))
-        handle->notifyChanged();
+        handle->bumpRevision();
     }
   }
 }
@@ -1383,7 +1387,7 @@ void LuiQmlBackend::unregisterImage(qint64 id) {
         it.value().properties.value(QStringLiteral("image")) ==
             QVariant::fromValue(id)) {
       if (LuiNode *handle = m_handles.value(it.key()))
-        handle->notifyChanged();
+        handle->bumpRevision();
     }
   }
 }
@@ -1399,7 +1403,7 @@ void LuiQmlBackend::presentMediaSurfaceFrame(qint64 id, const QImage &image) {
         it.value().properties.value(QStringLiteral("surface")) ==
             QVariant::fromValue(id)) {
       if (LuiNode *handle = m_handles.value(it.key()))
-        handle->notifyChanged();
+        handle->bumpRevision();
     }
   }
 }
@@ -1411,7 +1415,7 @@ void LuiQmlBackend::unregisterMediaSurface(qint64 id) {
         it.value().properties.value(QStringLiteral("surface")) ==
             QVariant::fromValue(id)) {
       if (LuiNode *handle = m_handles.value(it.key()))
-        handle->notifyChanged();
+        handle->bumpRevision();
     }
   }
 }

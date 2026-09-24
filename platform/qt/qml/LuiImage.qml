@@ -24,8 +24,10 @@ Item {
 
     Image {
         anchors.fill: parent
+        // node.revision versions the URL so re-registered pixels reload.
         source: wrapper.imageId > 0
-                ? "image://lui/image/" + wrapper.imageId : ""
+                ? "image://lui/image/" + wrapper.imageId +
+                  "?v=" + (wrapper.node ? wrapper.node.revision : 0) : ""
         sourceClipRect: wrapper.hasCrop
             ? Qt.rect(Style.num(wrapper.props, "source-x", 0),
                       Style.num(wrapper.props, "source-y", 0),
