@@ -8,7 +8,7 @@ ApplicationWindow {
     visible: true
     width: 480
     height: 640
-    title: "LUI — Qt/QML todos demo"
+    title: "LUI — Qt/QML " + luiAppName + " demo"
     color: "#ffffff"
 
     ColumnLayout {
@@ -31,13 +31,24 @@ ApplicationWindow {
             }
         }
 
-        Loader {
+        // The window scrolls apps whose root content is taller than the
+        // viewport (e.g. the components gallery is a ~50-section column),
+        // matching the browser/SwiftUI hosts where the page scrolls.
+        ScrollView {
+            id: scroll
             Layout.fillWidth: true
             Layout.fillHeight: true
-            active: luiBackend.rootNode !== null
-            sourceComponent: LuiNodeView {
-                node: luiBackend.rootNode
-                anchors.fill: parent
+            clip: true
+
+            Loader {
+                active: luiBackend.rootNode !== null
+                width: scroll.availableWidth
+                sourceComponent: LuiNodeView {
+                    node: luiBackend.rootNode
+                    width: parent.width
+                    height: Math.max(implicitHeight,
+                                     scroll.availableHeight)
+                }
             }
         }
     }

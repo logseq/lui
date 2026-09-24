@@ -22,6 +22,7 @@ if [ -z "$BIN" ]; then
     exit 1
 fi
 
+export LUI_APP_NAME="$APP"
 if [ -z "${DISPLAY:-}" ]; then
     exec xvfb-run -a "$BIN"
 else
