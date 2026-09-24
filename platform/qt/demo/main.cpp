@@ -38,6 +38,7 @@ LUI::LuiQmlBackend *g_backend = nullptr;
 
 void onPatch(const char *json) {
   if (g_backend != nullptr && json != nullptr && json[0] != '\0') {
+    qDebug("LUI-PATCH %s", json);
     if (!g_backend->applyJson(QByteArray(json))) {
       qWarning("applyJson failed: %s", qPrintable(g_backend->lastError()));
     }
@@ -55,6 +56,10 @@ int main(int argc, char *argv[]) {
   QObject::connect(&backend, &LUI::LuiQmlBackend::luiEvent,
                    [](qint64 node, const QString &name,
                       const QVariantMap &payload) {
+    qDebug("LUI-EVENT node=%lld name=%s payload=%s", (long long)node,
+           qPrintable(name),
+           qPrintable(QString::fromUtf8(QJsonDocument::fromVariant(payload)
+                                        .toJson(QJsonDocument::Compact))));
     if (name == QLatin1String("press")) {
       lui_ocaml_press(node);
     } else if (name == QLatin1String("long-press")) {

@@ -14,4 +14,4 @@
 /platform/web/node_modules/
 /platform/web/dist/
 /platform/qt/build/
-/platform/qt/demo/lui_todos_runtime.o
+/platform/qt/demo/lui_*_runtime.o
