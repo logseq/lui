@@ -4467,7 +4467,7 @@ private struct LUIOptionalClipModifier: ViewModifier {
 private struct LUIBackgroundStyleModifier: ViewModifier {
     let name: String?
     let color: Color
-    let shape: RoundedRectangle
+    let shape: AnyShape
 
     @ViewBuilder
     func body(content: Content) -> some View {
