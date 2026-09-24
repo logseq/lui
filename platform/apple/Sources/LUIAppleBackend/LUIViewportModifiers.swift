@@ -9,6 +9,11 @@ public extension EnvironmentValues {
     /// LUISwiftUIRoot inside their own ScrollView) so nested scrollable views can
     /// degrade to static layout instead of collapsing to zero height.
     @Entry var luiInsideScroll: Bool = false
+
+    /// Set inside dialog sheet surfaces, whose action buttons are extracted
+    /// from the subtree and rendered by `LUIDialogActions`; wire buttons left
+    /// in the content would duplicate them.
+    @Entry var luiDialogButtonsExtracted: Bool = false
 }
 
 enum LUIContainerRelativeFramePolicy {
