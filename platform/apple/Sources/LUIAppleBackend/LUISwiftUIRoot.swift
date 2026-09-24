@@ -1124,7 +1124,7 @@ private struct LUINativeMenuActions: View {
                 ))
         } icon: {
             HStack(spacing: 4) {
-                if item.isSelected {
+                if item.isSelected || item.isChecked {
                     Image(systemName: "checkmark")
                 }
                 if !item.buttonIconName.isEmpty {
@@ -3341,7 +3341,7 @@ private struct LUIMenuItemView: View {
             if expands {
                 Spacer(minLength: LUIDropdownMenuLayoutPolicy.trailingSpacing)
             }
-            if model.isSelected {
+            if model.isSelected || model.isChecked {
                 #if os(iOS)
                 Image(systemName: "checkmark")
                     .foregroundStyle(Color.accentColor)

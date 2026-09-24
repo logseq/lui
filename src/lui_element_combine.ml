@@ -613,5 +613,9 @@ let sidebar
       | None -> []
       | Some view -> [ view ])
      @ items
-     @ [ scroll ~grow:1.0 ~orientation:`vertical section_views ])
+     @ [ scroll
+           ~grow:1.0
+           ~orientation:`vertical
+           [ column ~gap:4 ~cross:`stretch section_views ]
+       ])
 ;;
