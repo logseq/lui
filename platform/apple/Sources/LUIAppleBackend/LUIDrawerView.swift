@@ -96,6 +96,7 @@ struct LUIDrawerView: View {
 
     @Environment(\.luiSemanticColors) private var semanticColors
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var presented: Bool
     @State private var hasLoadedPanel: Bool
     @State private var dragOffset: CGFloat = 0
@@ -114,13 +115,83 @@ struct LUIDrawerView: View {
         _hasLoadedPanel = State(initialValue: model.isSelected)
     }
 
+    /// On regular-width windows (iPad, the iPhone Duo inner display) the panel
+    /// pins beside the main content instead of overlaying it; compact widths
+    /// keep the edge-swipe overlay drawer. Once the iOS 27.1 SDK is the build
+    /// floor this pinned layout should map to `ArrangementView` so the split
+    /// aligns to the fold.
+    private var pinsSidebar: Bool {
+        horizontalSizeClass == .regular
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let width = min(
                 CGFloat(model.property(.width)?.intValue ?? 360),
                 geometry.size.width * 0.84
             )
-            let visibleWidth = min(
+            if pinsSidebar {
+                pinnedBody(width: width, geometry: geometry)
+            } else {
+                overlayBody(width: width, geometry: geometry)
+            }
+        }
+        .modifier(LUIDrawerFullScreenModifier())
+        .onDisappear {
+            backend.setDrawerInteractionLocked(false, node: model.id)
+        }
+        .onChange(of: model.isSelected) { _, selected in
+            guard selected != presented || abs(dragOffset) > 0.0 else { return }
+            animatePresentation(selected)
+        }
+        .onChange(of: model.isEnabled) { _, enabled in
+            if !enabled {
+                dragOffset = 0
+                isGestureActive = false
+                rejectedGesture = false
+                if !isAnimating {
+                    backend.setDrawerInteractionLocked(false, node: model.id)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func pinnedBody(width: CGFloat, geometry: GeometryProxy) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            if hasLoadedPanel, let panelID = model.children.dropFirst().first {
+                LUIAnyNodeView(nodeID: panelID, backend: backend)
+                    .frame(
+                        width: presented ? width : 0,
+                        alignment: .leading
+                    )
+                    .clipped()
+                    .frame(maxHeight: .infinity, alignment: .leading)
+                    .opacity(presented ? 1.0 : 0.0)
+                    .allowsHitTesting(presented)
+                    .accessibilityHidden(
+                        LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
+                            isPresented: presented,
+                            isEnabled: model.isEnabled
+                        )
+                    )
+            }
+            Divider()
+                .opacity(presented ? 1.0 : 0.0)
+            if let mainID = model.children.first {
+                LUIAnyNodeView(nodeID: mainID, backend: backend)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .modifier(LUIDrawerMainSafeAreaModifier(
+                        top: geometry.safeAreaInsets.top
+                    ))
+                    .modifier(LUIDrawerMainSurfaceModifier())
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func overlayBody(width: CGFloat, geometry: GeometryProxy) -> some View {
+        let visibleWidth = min(
                 width,
                 max(
                     CGFloat(0.0),
@@ -217,25 +288,6 @@ struct LUIDrawerView: View {
             #if os(iOS)
             .sensoryFeedback(.impact(weight: .light), trigger: presented)
             #endif
-        }
-        .modifier(LUIDrawerFullScreenModifier())
-        .onDisappear {
-            backend.setDrawerInteractionLocked(false, node: model.id)
-        }
-        .onChange(of: model.isSelected) { _, selected in
-            guard selected != presented || abs(dragOffset) > 0.0 else { return }
-            animatePresentation(selected)
-        }
-        .onChange(of: model.isEnabled) { _, enabled in
-            if !enabled {
-                dragOffset = 0
-                isGestureActive = false
-                rejectedGesture = false
-                if !isAnimating {
-                    backend.setDrawerInteractionLocked(false, node: model.id)
-                }
-            }
-        }
     }
 
     private func drawerGesture(width: CGFloat) -> some Gesture {
