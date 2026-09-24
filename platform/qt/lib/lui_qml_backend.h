@@ -117,6 +117,7 @@ private:
                  const QVariantMap &payload = {});
 
   ExtensionRegistry m_extensions;
+  LuiNode *m_rootHandle = nullptr;
   QHash<qint64, NodeState> m_states;
   QHash<qint64, ExtensionState> m_extensionStates;
   QHash<qint64, LuiNode *> m_handles;
