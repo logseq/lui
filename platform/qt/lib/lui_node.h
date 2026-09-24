@@ -86,6 +86,7 @@ private:
   QVariantMap m_properties;
   QVariantList m_children;
   int m_revision = 0;
+  bool m_initialized = false;
   LuiQmlBackend *m_backend;
 };
 

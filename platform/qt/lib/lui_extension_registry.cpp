@@ -1,5 +1,7 @@
 #include "lui_extension_registry.h"
 
+#include "lui_wire_schema.h"
+
 #include <QSet>
 #include <cmath>
 
@@ -93,6 +95,12 @@ bool ExtensionRegistry::add(const ExtensionSpec &spec, QString *error) {
     *error = QStringLiteral("Invalid extension identifier: %1").arg(copy.identifier);
     return false;
   }
+  if (standardNodeName(qPrintable(copy.identifier))) {
+    *error = QStringLiteral(
+        "Extension identifier %1 shadows a standard node")
+        .arg(copy.identifier);
+    return false;
+  }
   if (copy.fingerprint.isEmpty() || copy.componentSource.isEmpty()) {
     *error = QStringLiteral(
         "Extension %1 requires a fingerprint and componentSource")
@@ -142,9 +150,10 @@ bool ExtensionRegistry::add(const ExtensionSpec &spec, QString *error) {
     }
   }
   if (m_frozen) {
-    const ExtensionSpec *existing = m_registrations.constFind(copy.identifier).value();
     const ExtensionSpec *found =
-        m_registrations.contains(copy.identifier) ? &m_registrations[copy.identifier] : nullptr;
+        m_registrations.contains(copy.identifier)
+            ? &m_registrations[copy.identifier]
+            : nullptr;
     if (found == nullptr || found->fingerprint != copy.fingerprint) {
       *error = QStringLiteral(
           "Cannot register extension %1 after the registry was frozen")

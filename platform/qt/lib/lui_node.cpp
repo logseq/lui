@@ -42,13 +42,18 @@ void LuiNode::markExtension(const QString &identifier,
 
 bool LuiNode::apply(qint64 parent, const QVariantMap &properties,
                     const QList<qint64> &childIds) {
-  const bool differs = m_parent != parent || m_properties != properties ||
-                       m_childIds != childIds;
+  // The first apply after construction leaves revision at 0; each later
+  // diff bumps it, mirroring the Flutter backend's debugRevision.
+  const bool firstApply = !m_initialized;
+  const bool differs = firstApply || m_parent != parent ||
+                       m_properties != properties || m_childIds != childIds;
+  if (!differs) return false;
+  m_initialized = true;
   m_parent = parent;
   m_childIds = childIds;
   m_properties = properties;
-  ++m_revision;
-  return differs;
+  if (!firstApply) ++m_revision;
+  return true;
 }
 
 void LuiNode::setChildren(const QVariantList &children) {

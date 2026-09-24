@@ -153,9 +153,9 @@ bool LuiQmlBackend::applyJson(const QByteArray &source) {
 
 namespace {
 
-bool containsNode(const QHash<qint64, NodeState> &states,
-                  const QHash<qint64, ExtensionState> &extensions,
-                  qint64 id) {
+bool containsNodeId(const QHash<qint64, NodeState> &states,
+                    const QHash<qint64, ExtensionState> &extensions,
+                    qint64 id) {
   return states.contains(id) || extensions.contains(id);
 }
 
@@ -425,7 +425,7 @@ bool LuiQmlBackend::applyOp(QHash<qint64, NodeState> &states,
                         error)) {
       return false;
     }
-    if (containsNode(states, extensions, id)) {
+    if (containsNodeId(states, extensions, id)) {
       *error = QStringLiteral("node already exists");
       return false;
     }
@@ -450,7 +450,7 @@ bool LuiQmlBackend::applyOp(QHash<qint64, NodeState> &states,
                         error)) {
       return false;
     }
-    if (containsNode(states, extensions, id)) {
+    if (containsNodeId(states, extensions, id)) {
       *error = QStringLiteral("node already exists");
       return false;
     }
@@ -626,8 +626,8 @@ bool LuiQmlBackend::applyOp(QHash<qint64, NodeState> &states,
                         &index, error)) {
       return false;
     }
-    if (!containsNode(states, extensions, parentID) ||
-        !containsNode(states, extensions, childID)) {
+    if (!containsNodeId(states, extensions, parentID) ||
+        !containsNodeId(states, extensions, childID)) {
       *error = QStringLiteral("unknown parent or child node");
       return false;
     }
@@ -1202,8 +1202,12 @@ bool LuiQmlBackend::performToggle(qint64 node, bool checked) {
   const NodeState *state = standardState(m_states, node);
   if (state == nullptr) return fail(QStringLiteral("unknown node %1").arg(node));
   const bool treeItem = isTreeItem(state->properties);
+  // Flutter emits toggleChanged directly from its checkbox/switch controls
+  // (only gated on enabled); the other kinds route through this gate.
   const bool isToggle = state->kind == NodeKind::ToggleButton ||
                         state->kind == NodeKind::Toggle ||
+                        state->kind == NodeKind::Checkbox ||
+                        state->kind == NodeKind::SwitchControl ||
                         state->kind == NodeKind::Accordion ||
                         state->kind == NodeKind::Drawer || treeItem;
   const bool hasHandler =
@@ -1335,7 +1339,16 @@ LuiNode *LuiQmlBackend::rootNode() const {
   for (auto it = m_states.constBegin(); it != m_states.constEnd(); ++it) {
     if (it.value().kind == NodeKind::Root) return m_handles.value(it.key());
   }
-  return nullptr;
+  // Apps created without a Root wrapper (Lui_app.create) top out at a
+  // single detached node — that orphan is the root.
+  LuiNode *orphan = nullptr;
+  for (auto it = m_states.constBegin(); it != m_states.constEnd(); ++it) {
+    if (it.value().parent < 0) {
+      if (orphan != nullptr) return nullptr; // ambiguous
+      orphan = m_handles.value(it.key());
+    }
+  }
+  return orphan;
 }
 
 bool LuiQmlBackend::containsNode(qint64 id) const {

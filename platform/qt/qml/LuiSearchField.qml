@@ -1,0 +1,51 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import "LuiStyle.js" as Style
+
+// Wire kind: search-field — search input with a leading glyph.
+TextField {
+    id: field
+    required property var node
+    readonly property var props: node ? node.properties : ({})
+
+    placeholderText: Style.str(props, "placeholder", "")
+    enabled: props["enabled"] !== false
+    color: Style.color(props["foreground"], "#18181b")
+    implicitWidth: 220
+    leftPadding: 30
+    Component.onCompleted: {
+        if (props["autofocus"] === true) forceActiveFocus()
+        sync()
+    }
+
+    Image {
+        x: 8
+        anchors.verticalCenter: parent.verticalCenter
+        width: 14
+        height: 14
+        source: "icons/search.svg"
+    }
+
+    property string wireText: Style.str(props, "text", "")
+    property bool updating: false
+    function sync() {
+        if (text !== wireText) {
+            updating = true
+            text = wireText
+            updating = false
+        }
+    }
+    onWireTextChanged: sync()
+    onTextChanged: if (!updating) node.textChanged(text)
+    onAccepted: node.submit()
+
+    background: Rectangle {
+        implicitWidth: 220
+        implicitHeight: 32
+        radius: 6
+        color: field.enabled ? "#f4f4f5" : "#e4e4e7"
+        border.color: field.activeFocus ? "#007aff" : "transparent"
+        border.width: 1
+    }
+}

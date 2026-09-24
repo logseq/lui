@@ -1,6 +1,8 @@
 // Generated from schema/components.json. Do not edit by hand.
 #pragma once
 
+#include <cstring>
+
 namespace LUI {
 
 enum class NodeKind {
@@ -228,77 +230,77 @@ inline const char *nodeKindWireName(NodeKind kind) {
 }
 
 inline bool decodeNodeKind(const char *name, NodeKind *kind) {
-  if (name == "root") { *kind = NodeKind::Root; return true; }
-  if (name == "row") { *kind = NodeKind::Row; return true; }
-  if (name == "column") { *kind = NodeKind::Column; return true; }
-  if (name == "grid") { *kind = NodeKind::Grid; return true; }
-  if (name == "stack") { *kind = NodeKind::Stack; return true; }
-  if (name == "panel") { *kind = NodeKind::Panel; return true; }
-  if (name == "card") { *kind = NodeKind::Card; return true; }
-  if (name == "alert") { *kind = NodeKind::Alert; return true; }
-  if (name == "bubble") { *kind = NodeKind::Bubble; return true; }
-  if (name == "box") { *kind = NodeKind::Box; return true; }
-  if (name == "text") { *kind = NodeKind::Text; return true; }
-  if (name == "heading") { *kind = NodeKind::Heading; return true; }
-  if (name == "paragraph") { *kind = NodeKind::Paragraph; return true; }
-  if (name == "label") { *kind = NodeKind::Label; return true; }
-  if (name == "button") { *kind = NodeKind::Button; return true; }
-  if (name == "toggle-button") { *kind = NodeKind::ToggleButton; return true; }
-  if (name == "toggle") { *kind = NodeKind::Toggle; return true; }
-  if (name == "radio-group") { *kind = NodeKind::RadioGroup; return true; }
-  if (name == "radio") { *kind = NodeKind::Radio; return true; }
-  if (name == "slider") { *kind = NodeKind::Slider; return true; }
-  if (name == "text-field") { *kind = NodeKind::TextField; return true; }
-  if (name == "secure-field") { *kind = NodeKind::SecureField; return true; }
-  if (name == "input") { *kind = NodeKind::Input; return true; }
-  if (name == "search-field") { *kind = NodeKind::SearchField; return true; }
-  if (name == "textarea") { *kind = NodeKind::Textarea; return true; }
-  if (name == "checkbox") { *kind = NodeKind::Checkbox; return true; }
-  if (name == "switch") { *kind = NodeKind::SwitchControl; return true; }
-  if (name == "progress") { *kind = NodeKind::Progress; return true; }
-  if (name == "divider") { *kind = NodeKind::Divider; return true; }
-  if (name == "scroll") { *kind = NodeKind::Scroll; return true; }
-  if (name == "list") { *kind = NodeKind::ListContainer; return true; }
-  if (name == "virtual-list") { *kind = NodeKind::VirtualList; return true; }
-  if (name == "tabs") { *kind = NodeKind::Tabs; return true; }
-  if (name == "bottom-tabs") { *kind = NodeKind::BottomTabs; return true; }
-  if (name == "bottom-tab") { *kind = NodeKind::BottomTab; return true; }
-  if (name == "button-group") { *kind = NodeKind::ButtonGroup; return true; }
-  if (name == "toggle-group") { *kind = NodeKind::ToggleGroup; return true; }
-  if (name == "spacer") { *kind = NodeKind::Spacer; return true; }
-  if (name == "spinner") { *kind = NodeKind::Spinner; return true; }
-  if (name == "icon") { *kind = NodeKind::Icon; return true; }
-  if (name == "select") { *kind = NodeKind::Select; return true; }
-  if (name == "combobox") { *kind = NodeKind::Combobox; return true; }
-  if (name == "dropdown-menu") { *kind = NodeKind::DropdownMenu; return true; }
-  if (name == "context-menu") { *kind = NodeKind::ContextMenu; return true; }
-  if (name == "menu-item") { *kind = NodeKind::MenuItem; return true; }
-  if (name == "list-item") { *kind = NodeKind::ListItem; return true; }
-  if (name == "avatar") { *kind = NodeKind::Avatar; return true; }
-  if (name == "image") { *kind = NodeKind::Image; return true; }
-  if (name == "media-surface") { *kind = NodeKind::MediaSurface; return true; }
-  if (name == "stepper") { *kind = NodeKind::Stepper; return true; }
-  if (name == "step") { *kind = NodeKind::Step; return true; }
-  if (name == "timeline") { *kind = NodeKind::Timeline; return true; }
-  if (name == "timeline-item") { *kind = NodeKind::TimelineItem; return true; }
-  if (name == "input-group") { *kind = NodeKind::InputGroup; return true; }
-  if (name == "input-group-actions") { *kind = NodeKind::InputGroupActions; return true; }
-  if (name == "breadcrumb") { *kind = NodeKind::Breadcrumb; return true; }
-  if (name == "pagination") { *kind = NodeKind::Pagination; return true; }
-  if (name == "accordion") { *kind = NodeKind::Accordion; return true; }
-  if (name == "table") { *kind = NodeKind::Table; return true; }
-  if (name == "table-row") { *kind = NodeKind::TableRow; return true; }
-  if (name == "table-cell") { *kind = NodeKind::TableCell; return true; }
-  if (name == "tree") { *kind = NodeKind::Tree; return true; }
-  if (name == "resizable") { *kind = NodeKind::Resizable; return true; }
-  if (name == "split") { *kind = NodeKind::Split; return true; }
-  if (name == "dialog") { *kind = NodeKind::Dialog; return true; }
-  if (name == "drawer") { *kind = NodeKind::Drawer; return true; }
-  if (name == "sheet") { *kind = NodeKind::Sheet; return true; }
-  if (name == "tooltip") { *kind = NodeKind::Tooltip; return true; }
-  if (name == "toast") { *kind = NodeKind::Toast; return true; }
-  if (name == "toolbar") { *kind = NodeKind::Toolbar; return true; }
-  if (name == "status-bar") { *kind = NodeKind::StatusBar; return true; }
+  if (std::strcmp(name, "root") == 0) { *kind = NodeKind::Root; return true; }
+  if (std::strcmp(name, "row") == 0) { *kind = NodeKind::Row; return true; }
+  if (std::strcmp(name, "column") == 0) { *kind = NodeKind::Column; return true; }
+  if (std::strcmp(name, "grid") == 0) { *kind = NodeKind::Grid; return true; }
+  if (std::strcmp(name, "stack") == 0) { *kind = NodeKind::Stack; return true; }
+  if (std::strcmp(name, "panel") == 0) { *kind = NodeKind::Panel; return true; }
+  if (std::strcmp(name, "card") == 0) { *kind = NodeKind::Card; return true; }
+  if (std::strcmp(name, "alert") == 0) { *kind = NodeKind::Alert; return true; }
+  if (std::strcmp(name, "bubble") == 0) { *kind = NodeKind::Bubble; return true; }
+  if (std::strcmp(name, "box") == 0) { *kind = NodeKind::Box; return true; }
+  if (std::strcmp(name, "text") == 0) { *kind = NodeKind::Text; return true; }
+  if (std::strcmp(name, "heading") == 0) { *kind = NodeKind::Heading; return true; }
+  if (std::strcmp(name, "paragraph") == 0) { *kind = NodeKind::Paragraph; return true; }
+  if (std::strcmp(name, "label") == 0) { *kind = NodeKind::Label; return true; }
+  if (std::strcmp(name, "button") == 0) { *kind = NodeKind::Button; return true; }
+  if (std::strcmp(name, "toggle-button") == 0) { *kind = NodeKind::ToggleButton; return true; }
+  if (std::strcmp(name, "toggle") == 0) { *kind = NodeKind::Toggle; return true; }
+  if (std::strcmp(name, "radio-group") == 0) { *kind = NodeKind::RadioGroup; return true; }
+  if (std::strcmp(name, "radio") == 0) { *kind = NodeKind::Radio; return true; }
+  if (std::strcmp(name, "slider") == 0) { *kind = NodeKind::Slider; return true; }
+  if (std::strcmp(name, "text-field") == 0) { *kind = NodeKind::TextField; return true; }
+  if (std::strcmp(name, "secure-field") == 0) { *kind = NodeKind::SecureField; return true; }
+  if (std::strcmp(name, "input") == 0) { *kind = NodeKind::Input; return true; }
+  if (std::strcmp(name, "search-field") == 0) { *kind = NodeKind::SearchField; return true; }
+  if (std::strcmp(name, "textarea") == 0) { *kind = NodeKind::Textarea; return true; }
+  if (std::strcmp(name, "checkbox") == 0) { *kind = NodeKind::Checkbox; return true; }
+  if (std::strcmp(name, "switch") == 0) { *kind = NodeKind::SwitchControl; return true; }
+  if (std::strcmp(name, "progress") == 0) { *kind = NodeKind::Progress; return true; }
+  if (std::strcmp(name, "divider") == 0) { *kind = NodeKind::Divider; return true; }
+  if (std::strcmp(name, "scroll") == 0) { *kind = NodeKind::Scroll; return true; }
+  if (std::strcmp(name, "list") == 0) { *kind = NodeKind::ListContainer; return true; }
+  if (std::strcmp(name, "virtual-list") == 0) { *kind = NodeKind::VirtualList; return true; }
+  if (std::strcmp(name, "tabs") == 0) { *kind = NodeKind::Tabs; return true; }
+  if (std::strcmp(name, "bottom-tabs") == 0) { *kind = NodeKind::BottomTabs; return true; }
+  if (std::strcmp(name, "bottom-tab") == 0) { *kind = NodeKind::BottomTab; return true; }
+  if (std::strcmp(name, "button-group") == 0) { *kind = NodeKind::ButtonGroup; return true; }
+  if (std::strcmp(name, "toggle-group") == 0) { *kind = NodeKind::ToggleGroup; return true; }
+  if (std::strcmp(name, "spacer") == 0) { *kind = NodeKind::Spacer; return true; }
+  if (std::strcmp(name, "spinner") == 0) { *kind = NodeKind::Spinner; return true; }
+  if (std::strcmp(name, "icon") == 0) { *kind = NodeKind::Icon; return true; }
+  if (std::strcmp(name, "select") == 0) { *kind = NodeKind::Select; return true; }
+  if (std::strcmp(name, "combobox") == 0) { *kind = NodeKind::Combobox; return true; }
+  if (std::strcmp(name, "dropdown-menu") == 0) { *kind = NodeKind::DropdownMenu; return true; }
+  if (std::strcmp(name, "context-menu") == 0) { *kind = NodeKind::ContextMenu; return true; }
+  if (std::strcmp(name, "menu-item") == 0) { *kind = NodeKind::MenuItem; return true; }
+  if (std::strcmp(name, "list-item") == 0) { *kind = NodeKind::ListItem; return true; }
+  if (std::strcmp(name, "avatar") == 0) { *kind = NodeKind::Avatar; return true; }
+  if (std::strcmp(name, "image") == 0) { *kind = NodeKind::Image; return true; }
+  if (std::strcmp(name, "media-surface") == 0) { *kind = NodeKind::MediaSurface; return true; }
+  if (std::strcmp(name, "stepper") == 0) { *kind = NodeKind::Stepper; return true; }
+  if (std::strcmp(name, "step") == 0) { *kind = NodeKind::Step; return true; }
+  if (std::strcmp(name, "timeline") == 0) { *kind = NodeKind::Timeline; return true; }
+  if (std::strcmp(name, "timeline-item") == 0) { *kind = NodeKind::TimelineItem; return true; }
+  if (std::strcmp(name, "input-group") == 0) { *kind = NodeKind::InputGroup; return true; }
+  if (std::strcmp(name, "input-group-actions") == 0) { *kind = NodeKind::InputGroupActions; return true; }
+  if (std::strcmp(name, "breadcrumb") == 0) { *kind = NodeKind::Breadcrumb; return true; }
+  if (std::strcmp(name, "pagination") == 0) { *kind = NodeKind::Pagination; return true; }
+  if (std::strcmp(name, "accordion") == 0) { *kind = NodeKind::Accordion; return true; }
+  if (std::strcmp(name, "table") == 0) { *kind = NodeKind::Table; return true; }
+  if (std::strcmp(name, "table-row") == 0) { *kind = NodeKind::TableRow; return true; }
+  if (std::strcmp(name, "table-cell") == 0) { *kind = NodeKind::TableCell; return true; }
+  if (std::strcmp(name, "tree") == 0) { *kind = NodeKind::Tree; return true; }
+  if (std::strcmp(name, "resizable") == 0) { *kind = NodeKind::Resizable; return true; }
+  if (std::strcmp(name, "split") == 0) { *kind = NodeKind::Split; return true; }
+  if (std::strcmp(name, "dialog") == 0) { *kind = NodeKind::Dialog; return true; }
+  if (std::strcmp(name, "drawer") == 0) { *kind = NodeKind::Drawer; return true; }
+  if (std::strcmp(name, "sheet") == 0) { *kind = NodeKind::Sheet; return true; }
+  if (std::strcmp(name, "tooltip") == 0) { *kind = NodeKind::Tooltip; return true; }
+  if (std::strcmp(name, "toast") == 0) { *kind = NodeKind::Toast; return true; }
+  if (std::strcmp(name, "toolbar") == 0) { *kind = NodeKind::Toolbar; return true; }
+  if (std::strcmp(name, "status-bar") == 0) { *kind = NodeKind::StatusBar; return true; }
   return false;
 }
 
@@ -510,76 +512,76 @@ inline const char *propertyWireName(Property property) {
 }
 
 inline bool decodePropertyWireName(const char *name, Property *property) {
-  if (name == "text") { *property = Property::TextValue; return true; }
-  if (name == "enabled") { *property = Property::Enabled; return true; }
-  if (name == "gap") { *property = Property::Gap; return true; }
-  if (name == "main") { *property = Property::MainAlignment; return true; }
-  if (name == "cross") { *property = Property::CrossAlignment; return true; }
-  if (name == "grow") { *property = Property::GrowValue; return true; }
-  if (name == "columns") { *property = Property::GridColumns; return true; }
-  if (name == "padding") { *property = Property::PaddingValue; return true; }
-  if (name == "padding-horizontal") { *property = Property::PaddingHorizontal; return true; }
-  if (name == "padding-vertical") { *property = Property::PaddingVertical; return true; }
-  if (name == "background") { *property = Property::BackgroundValue; return true; }
-  if (name == "foreground") { *property = Property::ForegroundValue; return true; }
-  if (name == "border-color") { *property = Property::BorderColorValue; return true; }
-  if (name == "border-width") { *property = Property::BorderWidth; return true; }
-  if (name == "corner-radius") { *property = Property::CornerRadius; return true; }
-  if (name == "width") { *property = Property::WidthValue; return true; }
-  if (name == "height") { *property = Property::HeightValue; return true; }
-  if (name == "min-width") { *property = Property::MinWidth; return true; }
-  if (name == "max-width") { *property = Property::MaxWidth; return true; }
-  if (name == "min-height") { *property = Property::MinHeight; return true; }
-  if (name == "max-height") { *property = Property::MaxHeight; return true; }
-  if (name == "container-relative-frame") { *property = Property::ContainerRelativeFrameValue; return true; }
-  if (name == "container-relative-frame-inset") { *property = Property::ContainerRelativeFrameInset; return true; }
-  if (name == "placeholder") { *property = Property::PlaceholderValue; return true; }
-  if (name == "accessibility-label") { *property = Property::AccessibilityLabel; return true; }
-  if (name == "accessibility-identifier") { *property = Property::AccessibilityIdentifier; return true; }
-  if (name == "style-class") { *property = Property::StyleClass; return true; }
-  if (name == "heading-level") { *property = Property::HeadingLevel; return true; }
-  if (name == "checked") { *property = Property::Checked; return true; }
-  if (name == "value") { *property = Property::ProgressValue; return true; }
-  if (name == "orientation") { *property = Property::OrientationValue; return true; }
-  if (name == "size") { *property = Property::SizeValue; return true; }
-  if (name == "name") { *property = Property::IconName; return true; }
-  if (name == "variant") { *property = Property::VariantValue; return true; }
-  if (name == "icon") { *property = Property::InlineIconName; return true; }
-  if (name == "icon-placement") { *property = Property::IconPlacementValue; return true; }
-  if (name == "selected") { *property = Property::Selected; return true; }
-  if (name == "autofocus") { *property = Property::Autofocus; return true; }
-  if (name == "submit-on-enter") { *property = Property::SubmitOnEnter; return true; }
-  if (name == "long-press-enabled") { *property = Property::LongPressEnabled; return true; }
-  if (name == "change-enabled") { *property = Property::ChangeEnabled; return true; }
-  if (name == "toggle-enabled") { *property = Property::ToggleEnabled; return true; }
-  if (name == "press-enabled") { *property = Property::PressEnabled; return true; }
-  if (name == "submit-enabled") { *property = Property::SubmitEnabled; return true; }
-  if (name == "double-press-enabled") { *property = Property::DoublePressEnabled; return true; }
-  if (name == "appear-enabled") { *property = Property::AppearEnabled; return true; }
-  if (name == "image") { *property = Property::ImageIdValue; return true; }
-  if (name == "surface") { *property = Property::SurfaceIdValue; return true; }
-  if (name == "active") { *property = Property::ActiveIndex; return true; }
-  if (name == "title") { *property = Property::TitleValue; return true; }
-  if (name == "description") { *property = Property::DescriptionValue; return true; }
-  if (name == "meta") { *property = Property::MetaValue; return true; }
-  if (name == "indicator") { *property = Property::IndicatorValue; return true; }
-  if (name == "connector") { *property = Property::Connector; return true; }
-  if (name == "source-x") { *property = Property::SourceX; return true; }
-  if (name == "source-y") { *property = Property::SourceY; return true; }
-  if (name == "source-width") { *property = Property::SourceWidth; return true; }
-  if (name == "source-height") { *property = Property::SourceHeight; return true; }
-  if (name == "anchor") { *property = Property::AnchorValue; return true; }
-  if (name == "anchor-alignment") { *property = Property::AnchorAlignmentValue; return true; }
-  if (name == "anchor-offset") { *property = Property::AnchorOffset; return true; }
-  if (name == "tooltip-delay") { *property = Property::TooltipDelay; return true; }
-  if (name == "duration") { *property = Property::DurationValue; return true; }
-  if (name == "text-alignment") { *property = Property::TextAlignment; return true; }
-  if (name == "role") { *property = Property::RoleValue; return true; }
-  if (name == "tree-level") { *property = Property::TreeLevel; return true; }
-  if (name == "expanded") { *property = Property::Expanded; return true; }
-  if (name == "resize-duration") { *property = Property::ResizeDuration; return true; }
-  if (name == "resize-easing") { *property = Property::ResizeEasing; return true; }
-  if (name == "resize-origin") { *property = Property::ResizeOrigin; return true; }
+  if (std::strcmp(name, "text") == 0) { *property = Property::TextValue; return true; }
+  if (std::strcmp(name, "enabled") == 0) { *property = Property::Enabled; return true; }
+  if (std::strcmp(name, "gap") == 0) { *property = Property::Gap; return true; }
+  if (std::strcmp(name, "main") == 0) { *property = Property::MainAlignment; return true; }
+  if (std::strcmp(name, "cross") == 0) { *property = Property::CrossAlignment; return true; }
+  if (std::strcmp(name, "grow") == 0) { *property = Property::GrowValue; return true; }
+  if (std::strcmp(name, "columns") == 0) { *property = Property::GridColumns; return true; }
+  if (std::strcmp(name, "padding") == 0) { *property = Property::PaddingValue; return true; }
+  if (std::strcmp(name, "padding-horizontal") == 0) { *property = Property::PaddingHorizontal; return true; }
+  if (std::strcmp(name, "padding-vertical") == 0) { *property = Property::PaddingVertical; return true; }
+  if (std::strcmp(name, "background") == 0) { *property = Property::BackgroundValue; return true; }
+  if (std::strcmp(name, "foreground") == 0) { *property = Property::ForegroundValue; return true; }
+  if (std::strcmp(name, "border-color") == 0) { *property = Property::BorderColorValue; return true; }
+  if (std::strcmp(name, "border-width") == 0) { *property = Property::BorderWidth; return true; }
+  if (std::strcmp(name, "corner-radius") == 0) { *property = Property::CornerRadius; return true; }
+  if (std::strcmp(name, "width") == 0) { *property = Property::WidthValue; return true; }
+  if (std::strcmp(name, "height") == 0) { *property = Property::HeightValue; return true; }
+  if (std::strcmp(name, "min-width") == 0) { *property = Property::MinWidth; return true; }
+  if (std::strcmp(name, "max-width") == 0) { *property = Property::MaxWidth; return true; }
+  if (std::strcmp(name, "min-height") == 0) { *property = Property::MinHeight; return true; }
+  if (std::strcmp(name, "max-height") == 0) { *property = Property::MaxHeight; return true; }
+  if (std::strcmp(name, "container-relative-frame") == 0) { *property = Property::ContainerRelativeFrameValue; return true; }
+  if (std::strcmp(name, "container-relative-frame-inset") == 0) { *property = Property::ContainerRelativeFrameInset; return true; }
+  if (std::strcmp(name, "placeholder") == 0) { *property = Property::PlaceholderValue; return true; }
+  if (std::strcmp(name, "accessibility-label") == 0) { *property = Property::AccessibilityLabel; return true; }
+  if (std::strcmp(name, "accessibility-identifier") == 0) { *property = Property::AccessibilityIdentifier; return true; }
+  if (std::strcmp(name, "style-class") == 0) { *property = Property::StyleClass; return true; }
+  if (std::strcmp(name, "heading-level") == 0) { *property = Property::HeadingLevel; return true; }
+  if (std::strcmp(name, "checked") == 0) { *property = Property::Checked; return true; }
+  if (std::strcmp(name, "value") == 0) { *property = Property::ProgressValue; return true; }
+  if (std::strcmp(name, "orientation") == 0) { *property = Property::OrientationValue; return true; }
+  if (std::strcmp(name, "size") == 0) { *property = Property::SizeValue; return true; }
+  if (std::strcmp(name, "name") == 0) { *property = Property::IconName; return true; }
+  if (std::strcmp(name, "variant") == 0) { *property = Property::VariantValue; return true; }
+  if (std::strcmp(name, "icon") == 0) { *property = Property::InlineIconName; return true; }
+  if (std::strcmp(name, "icon-placement") == 0) { *property = Property::IconPlacementValue; return true; }
+  if (std::strcmp(name, "selected") == 0) { *property = Property::Selected; return true; }
+  if (std::strcmp(name, "autofocus") == 0) { *property = Property::Autofocus; return true; }
+  if (std::strcmp(name, "submit-on-enter") == 0) { *property = Property::SubmitOnEnter; return true; }
+  if (std::strcmp(name, "long-press-enabled") == 0) { *property = Property::LongPressEnabled; return true; }
+  if (std::strcmp(name, "change-enabled") == 0) { *property = Property::ChangeEnabled; return true; }
+  if (std::strcmp(name, "toggle-enabled") == 0) { *property = Property::ToggleEnabled; return true; }
+  if (std::strcmp(name, "press-enabled") == 0) { *property = Property::PressEnabled; return true; }
+  if (std::strcmp(name, "submit-enabled") == 0) { *property = Property::SubmitEnabled; return true; }
+  if (std::strcmp(name, "double-press-enabled") == 0) { *property = Property::DoublePressEnabled; return true; }
+  if (std::strcmp(name, "appear-enabled") == 0) { *property = Property::AppearEnabled; return true; }
+  if (std::strcmp(name, "image") == 0) { *property = Property::ImageIdValue; return true; }
+  if (std::strcmp(name, "surface") == 0) { *property = Property::SurfaceIdValue; return true; }
+  if (std::strcmp(name, "active") == 0) { *property = Property::ActiveIndex; return true; }
+  if (std::strcmp(name, "title") == 0) { *property = Property::TitleValue; return true; }
+  if (std::strcmp(name, "description") == 0) { *property = Property::DescriptionValue; return true; }
+  if (std::strcmp(name, "meta") == 0) { *property = Property::MetaValue; return true; }
+  if (std::strcmp(name, "indicator") == 0) { *property = Property::IndicatorValue; return true; }
+  if (std::strcmp(name, "connector") == 0) { *property = Property::Connector; return true; }
+  if (std::strcmp(name, "source-x") == 0) { *property = Property::SourceX; return true; }
+  if (std::strcmp(name, "source-y") == 0) { *property = Property::SourceY; return true; }
+  if (std::strcmp(name, "source-width") == 0) { *property = Property::SourceWidth; return true; }
+  if (std::strcmp(name, "source-height") == 0) { *property = Property::SourceHeight; return true; }
+  if (std::strcmp(name, "anchor") == 0) { *property = Property::AnchorValue; return true; }
+  if (std::strcmp(name, "anchor-alignment") == 0) { *property = Property::AnchorAlignmentValue; return true; }
+  if (std::strcmp(name, "anchor-offset") == 0) { *property = Property::AnchorOffset; return true; }
+  if (std::strcmp(name, "tooltip-delay") == 0) { *property = Property::TooltipDelay; return true; }
+  if (std::strcmp(name, "duration") == 0) { *property = Property::DurationValue; return true; }
+  if (std::strcmp(name, "text-alignment") == 0) { *property = Property::TextAlignment; return true; }
+  if (std::strcmp(name, "role") == 0) { *property = Property::RoleValue; return true; }
+  if (std::strcmp(name, "tree-level") == 0) { *property = Property::TreeLevel; return true; }
+  if (std::strcmp(name, "expanded") == 0) { *property = Property::Expanded; return true; }
+  if (std::strcmp(name, "resize-duration") == 0) { *property = Property::ResizeDuration; return true; }
+  if (std::strcmp(name, "resize-easing") == 0) { *property = Property::ResizeEasing; return true; }
+  if (std::strcmp(name, "resize-origin") == 0) { *property = Property::ResizeOrigin; return true; }
   return false;
 }
 
