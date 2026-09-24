@@ -3753,8 +3753,9 @@ private struct LUIRowView: View {
     var body: some View {
         // Cross-axis stretch makes children accept any offered height, which
         // also makes the row greedy in a VStack. Keep it at its ideal height
-        // unless the wire explicitly grows it.
-        if model.property(.grow)?.doubleValue ?? 0 > 0 {
+        // unless the wire explicitly sizes it.
+        if model.property(.grow)?.doubleValue ?? 0 > 0
+            || model.surfaceHeight != nil || model.surfaceMinHeight != nil {
             rowContent
         } else {
             rowContent.fixedSize(horizontal: false, vertical: true)
