@@ -60,7 +60,7 @@ Item {
                 ? "lui-" + prop("accessibility-identifier", "")
                 : (node ? "lui-node-" + node.nodeId : "lui-node")
 
-    Accessible.role: Accessible.ClientArea
+    Accessible.role: Accessible.Client
     Accessible.name: prop("accessibility-label", "")
 
     Rectangle {
@@ -73,26 +73,45 @@ Item {
         radius: Number(view.prop("corner-radius", 0))
     }
 
+    readonly property real _padAll: Number(prop("padding", 0))
+    readonly property real _padH: Math.max(_padAll,
+        Number(prop("padding-horizontal", 0)))
+    readonly property real _padV: Math.max(_padAll,
+        Number(prop("padding-vertical", 0)))
+
     Loader {
         id: content
         anchors {
             fill: parent
-            margins: Number(view.prop("padding", 0))
-            leftMargin: Math.max(margins, Number(view.prop("padding-horizontal", 0)))
-            rightMargin: leftMargin
-            topMargin: Math.max(margins, Number(view.prop("padding-vertical", 0)))
-            bottomMargin: topMargin
+            leftMargin: view._padH
+            rightMargin: view._padH
+            topMargin: view._padV
+            bottomMargin: view._padV
         }
-        source: view.node
-                ? (view.node.extension
-                   ? view.node.componentSource
-                   : view.componentFor(view.node.kind))
-                : ""
+        readonly property string componentUrl: view.node
+            ? (view.node.extension
+               ? String(view.node.componentSource)
+               : view.componentFor(view.node.kind))
+            : ""
+        onComponentUrlChanged: reload()
+        function reload() {
+            if (!view.node || componentUrl === "") {
+                setSource("")
+                return
+            }
+            setSource(componentUrl, {"node": view.node})
+        }
         onLoaded: {
-            item.node = Qt.binding(function() { return view.node })
             if ("anchorItem" in item)
                 item.anchorItem = Qt.binding(function() { return view.overlayAnchor })
         }
+    }
+
+    // The same component URL can serve a different node object when a
+    // delegate is reused; re-inject the node in that case.
+    Connections {
+        target: view
+        function onNodeChanged() { content.reload() }
     }
 
     // Context menus open on right-click or long-press on their host.

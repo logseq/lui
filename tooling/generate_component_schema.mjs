@@ -359,7 +359,7 @@ function renderCpp(schema) {
     .map(({ lg, wire }) => `    case NodeKind::${lg}: return "${wire}";`)
     .join('\n');
   const decodeCases = schema.nodeKinds
-    .map(({ lg, wire }) => `  if (name == "${wire}") { *kind = NodeKind::${lg}; return true; }`)
+    .map(({ lg, wire }) => `  if (std::strcmp(name, "${wire}") == 0) { *kind = NodeKind::${lg}; return true; }`)
     .join('\n');
   const containerKinds = schema.nodeKinds
     .filter(({ container }) => container)
@@ -374,9 +374,11 @@ function renderCpp(schema) {
     .map(({ lg, wire }) => `    case Property::${lg}: return "${wire}";`)
     .join('\n');
   const propertyDecodeCases = schema.properties
-    .map(({ lg, wire }) => `  if (name == "${wire}") { *property = Property::${lg}; return true; }`)
+    .map(({ lg, wire }) => `  if (std::strcmp(name, "${wire}") == 0) { *property = Property::${lg}; return true; }`)
     .join('\n');
   return `${generatedHeader('//')}#pragma once
+
+#include <cstring>
 
 namespace LUI {
 

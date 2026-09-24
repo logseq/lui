@@ -172,7 +172,7 @@ bool toolbarChild(NodeKind kind) {
                 NodeKind::SwitchControl, NodeKind::Toggle,
                 NodeKind::RadioGroup, NodeKind::Select, NodeKind::Combobox,
                 NodeKind::TextField, NodeKind::SecureField, NodeKind::Input,
-                NodeKind::SearchField, NodeKind::Divider});
+                NodeKind::SearchField, NodeKind::MenuItem, NodeKind::Divider});
 }
 
 bool canContainChildren(NodeKind kind) {
@@ -222,7 +222,7 @@ bool childKindSupported(NodeKind parent, NodeKind child) {
   case NodeKind::BottomTab:
     return child != NodeKind::BottomTab;
   case NodeKind::Tree:
-    return treeRowKind(child);
+    return treeRowKind(child) || child == NodeKind::VirtualList;
   case NodeKind::Stepper:
     return child == NodeKind::Step;
   case NodeKind::Timeline:

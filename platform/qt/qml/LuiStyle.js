@@ -9,6 +9,7 @@ var palette = {
     "primary-foreground": "#ffffff",
     "secondary": "#f4f4f5",
     "secondary-foreground": "#18181b",
+    "glass": "#bfffffff",
     "success": "#dcfce7",
     "success-foreground": "#166534",
     "warning": "#fef9c3",
@@ -71,6 +72,18 @@ function headingPixelSize(level) {
     var sizes = [32, 28, 24, 20, 18, 16]
     var index = Math.max(0, Math.min(5, level - 1))
     return sizes[index]
+}
+
+function fillMainWidth(props) {
+    return num(props, "grow", 0) > 0 ||
+            props["container-relative-frame"] === "horizontal" ||
+            props["container-relative-frame"] === "both"
+}
+
+function fillMainHeight(props) {
+    return num(props, "grow", 0) > 0 ||
+            props["container-relative-frame"] === "vertical" ||
+            props["container-relative-frame"] === "both"
 }
 
 function mainAlign(props) {
