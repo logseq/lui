@@ -42,9 +42,10 @@ val composer_collapsed :
 (** {1 Dialogs and sheets} *)
 
 (** Destructive-or-primary confirmation dialog: title, optional message
-    text, a Cancel button (default label "Cancel") and a confirm button
-    (default label "Confirm", {!destructive} picks the destructive
-    variant). *)
+    (rendered as the native alert description), a Cancel button (default
+    label "Cancel") and a confirm button (default label "Confirm";
+    [~destructive] picks the destructive variant). Buttons are direct
+    children so hosts render the native alert when supported. *)
 val confirm_dialog :
   ?key:string ->
   ?accessibility_identifier:string ->
@@ -180,14 +181,14 @@ val action_toolbar :
 
 (** Scrollable autocomplete-style list: a keyed column of full-width
     ghost buttons, bounded in height. [source] supplies the candidate
-    items; [key] identifies them for reconciliation, [label] renders the
+    items; [item_key] identifies them for reconciliation, [label] renders the
     caption, optional [icon] renders a reactive per-item glyph,
     [on_select] receives the selected item. *)
 val suggestion_list :
   ?key:string ->
   ?accessibility_identifier:string ->
   source:'a list Signal.signal ->
-  key:('a -> string) ->
+  item_key:('a -> string) ->
   label:('a -> string) ->
   ?icon:('a -> icon) ->
   on_select:('a -> Lui_protocol.event -> unit) ->
@@ -234,14 +235,18 @@ val check_menu_item :
 
 (** Label + trailing chevron button that opens [menu] (a list of
     {!menu_item}/{!check_menu_item}/{!submenu} children) as an anchored
-    dropdown menu. *)
+    dropdown menu. The menu is a stack sibling gated by [open_], matching
+    the wire contract (menus may not nest under [button]); drive [open_]
+    from your model and clear it in [on_dismiss]. *)
 val menu_button :
   ?key:string ->
   ?accessibility_identifier:string ->
   label:string ->
   ?icon:icon ->
   ?anchor:anchor ->
+  open_:bool Signal.signal ->
   menu:t list ->
+  ?on_dismiss:(Lui_protocol.event -> unit) ->
   ?on_press:(Lui_protocol.event -> unit) ->
   unit -> t
 

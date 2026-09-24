@@ -113,33 +113,26 @@ let confirm_dialog
       ~on_confirm
       ()
   =
-  let body =
-    match message with
-    | None -> []
-    | Some value -> [ text ~value [] ]
-  in
   dialog
     ?key
     ?accessibility_identifier
     ~text:title
+    ?description:message
     ?on_dismiss
-    [ column
-        (body
-         @ [ button
-               ~variant:`ghost
-               ~text:cancel_label
-               ~on_press:
-                 (match on_cancel, on_dismiss with
-                  | Some handler, _ -> handler
-                  | None, Some handler -> handler
-                  | None, None -> fun _ -> ())
-               []
-           ; button
-               ~variant:(if destructive then `destructive else `primary)
-               ~text:confirm_label
-               ~on_press:on_confirm
-               []
-           ])
+    [ button
+        ~variant:`ghost
+        ~text:cancel_label
+        ~on_press:
+          (match on_cancel, on_dismiss with
+           | Some handler, _ -> handler
+           | None, Some handler -> handler
+           | None, None -> fun _ -> ())
+        []
+    ; button
+        ~variant:(if destructive then `destructive else `primary)
+        ~text:confirm_label
+        ~on_press:on_confirm
+        []
     ]
 ;;
 
@@ -435,7 +428,7 @@ let suggestion_list
       ?key
       ?accessibility_identifier
       ~source
-      ~key:item_key
+      ~item_key
       ~label
       ?icon
       ~on_select
