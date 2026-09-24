@@ -2333,10 +2333,12 @@ val list_item :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
   ?icon_placement:icon_placement ->
   ?role:role ->
   ?tree_level:int ->
   ?expanded:bool ->
+  ?expanded_signal:bool Signal.signal ->
   ?selected:bool ->
   ?selected_signal:bool Signal.signal ->
   ?disabled:bool ->
