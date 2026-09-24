@@ -63,30 +63,55 @@ val reactive : ('a -> 'b) -> 'a Signal.signal -> 'b Signal.signal
 val map : ('a -> 'b) -> 'a Signal.signal -> 'b Signal.signal
 val sample : 'a Signal.signal -> 'a
 val ( >|= ) : 'a Signal.signal -> ('a -> 'b) -> 'b Signal.signal
-val get : 'a Signal.state -> 'a
+
+(** [get sig] reads a signal's current value without subscribing — alias of
+    {!Signal.sample}. Use {!get_state} on a [Signal.state]. *)
+val get : 'a Signal.signal -> 'a
+
+(** [get_state st] reads a state's current value — {!get} of
+    {!Signal.value} [st]. *)
+val get_state : 'a Signal.state -> 'a
 val attach : Lui_ui.ui_context -> int option -> int -> unit
 val enable :
   Lui_ui.ui_context -> int -> Lui_protocol.Property_map.key -> unit
 val mount_children : 'a -> 'b -> ('a -> 'b option -> 'c) list -> unit
 val dynamic : (Lui_ui.ui_context -> int -> 'a) -> t
 
-(** [dyn ?equal f source] mounts [f model] under the parent node and remounts
-    it whenever the published model differs under [equal]. The default
-    [fun _ _ -> false] remounts on every publish; pass a structural or
-    field-wise equality (e.g. [(=)]) to keep the subtree mounted when the
-    change does not affect this branch and to avoid re-running mount-time
-    effects (focus loss, control echoes, on-appear dispatches). *)
+(** [dyn ~equal f source] mounts [f model] under the parent node and remounts
+    it whenever the published model differs under [equal]. There is no
+    default: always pass a structural or field-wise equality (e.g. [(=)] or
+    [fun a b -> a.id = b.id]) so the subtree stays mounted when the change
+    does not affect this branch — remounting re-runs mount-time effects
+    (focus loss, control echoes, on-appear dispatches). *)
 val dyn :
-  ?equal:('a -> 'a -> bool) -> ('a -> t) -> 'a Signal.signal -> t
+  equal:('a -> 'a -> bool) -> ('a -> t) -> 'a Signal.signal -> t
 val if_ : test:bool Signal.signal -> t -> t
+
+(** [keyed ~source ~key ~cmp ~mount] renders one mounted child per item of
+    [source], keyed by [key item] and diffed with [cmp] — a three-way
+    comparator returning [int] like {!Stdlib.compare}
+    ([~cmp:Stdlib.compare] for most cases), not a less-than predicate. *)
 val keyed :
   source:'a list Signal.signal ->
   key:('a -> 'b) ->
-  compare:('b -> 'b -> int) ->
+  cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> t) -> t
+
+(** Event-handler builders: element [~on_*] parameters take an
+    [event -> unit] callback and imply their enable flags automatically
+    (never pass [*-enabled] props yourself). [press send action] dispatches
+    [action] on press — e.g. [~on_press:(press send Save)]. *)
 val press : ('a -> bool) -> 'a -> Lui_protocol.event -> unit
+
+(** [on_input send wrap] builds a text-input handler: decodes the
+    [TextChanged] payload and dispatches [wrap text] — e.g.
+    [~on_input:(on_input send (fun s -> Changed s))]. *)
 val on_input :
   ('a -> bool) -> (string -> 'a) -> Lui_protocol.event -> unit
+
+(** [on_event ctx node filter handler] registers [handler] for raw events
+    matching [filter] (see {!is_press}, {!is_input}, ...) — the low-level
+    escape hatch when the [~on_*] parameters are not enough. *)
 val on_event :
   Lui_ui.ui_context ->
   int -> (Lui_protocol.event -> bool) -> (Lui_protocol.event -> unit) -> unit

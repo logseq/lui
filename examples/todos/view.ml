@@ -46,7 +46,7 @@ let item_list model_source send : t =
   keyed
     ~source:(map Model.items model_source)
     ~key:(fun (i : Model.todo) -> i.id)
-    ~compare
+    ~cmp:Stdlib.compare
     ~mount:(todo_row send)
 
 let view context model_source send : t =

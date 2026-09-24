@@ -199,6 +199,8 @@ let ( >|= ) source f = Signal.map f source
 
 let get = Signal.get
 
+let get_state = Signal.get_state
+
 let attach context parent node =
   match parent with
   | Some parent -> Lui_ui.append context parent node
@@ -222,7 +224,7 @@ let dynamic mount : t =
     node
   | None -> invalid_arg "dynamic element requires a parent node"
 
-let dyn ?(equal = fun _ _ -> false) f (source : 'a Signal.signal) : t =
+let dyn ~equal f (source : 'a Signal.signal) : t =
  fun context parent ->
   dynamic
     (fun context node ->
@@ -238,11 +240,11 @@ let if_ ~test (children : t) : t =
            children branch_context None))
     context parent
 
-let keyed ~source ~key ~compare ~mount : t =
+let keyed ~source ~key ~cmp ~mount : t =
  fun context parent ->
   dynamic
     (fun context node ->
-       Lui_dynamic.keyed context node source key compare
+       Lui_dynamic.keyed context node source key cmp
          (fun item_context item_source ->
             mount item_source item_context None))
     context parent
