@@ -280,16 +280,141 @@ struct LUIRetainedTree {
             extensionNodes.compactMap { id, node in node.parent == nil ? id : nil }
     }
 
-    func applying(
+    struct PatchEffects {
+        /// Nodes created or mutated by an op. Ops only mutate the nodes they
+        /// name, so this set covers every state difference between `self` and
+        /// the result.
+        var touched: Set<Int> = []
+        /// Nodes removed from the tree (only `dropNode` deletes).
+        var dropped: Set<Int> = []
+        /// Structural ops (insert/remove/move child) that can change ancestry.
+        var structural = false
+        /// Nodes whose own kind can affect modal presentation (`dialog`/`sheet`
+        /// membership or `list` dialog anchoring).
+        var modalRelevant: Set<Int> = []
+        /// Nodes whose invariants must be revalidated: touched nodes, their
+        /// parents and children (checks read one level up/down), and the whole
+        /// subtree of children moved by structural ops (ancestry-dependent
+        /// checks like "treeitem inside tree" change for every descendant).
+        var validationScope: Set<Int> = []
+    }
+
+    /// Applies a batch in place and reports which nodes changed. Ops only
+    /// mutate the nodes they name, so `effects.touched` covers every state
+    /// difference the batch makes; the caller uses it to reconcile, validate,
+    /// and resync modals in O(touched) instead of O(tree).
+    ///
+    /// Pre-op states are snapshotted per touched node so a rejected batch
+    /// rolls the tree back completely — failure keeps the pre-batch state.
+    @discardableResult
+    mutating func applying(
         _ operations: [LUIPatchOperation],
         extensionRegistry: LUIAppleExtensionRegistry
-    ) throws -> Self {
-        var next = self
-        for operation in operations {
-            try next.apply(operation, extensionRegistry: extensionRegistry)
+    ) throws -> PatchEffects {
+        var effects = PatchEffects()
+        var structuralChildren = Set<Int>()
+        var snapshotted = Set<Int>()
+        var oldNodes: [Int: LUINodeState] = [:]
+        var oldExtensions: [Int: LUIExtensionNodeState] = [:]
+        do {
+            for operation in operations {
+                for id in Self.affectedIDs(of: operation) where !snapshotted.contains(id) {
+                    snapshotted.insert(id)
+                    oldNodes[id] = nodes[id]
+                    oldExtensions[id] = extensionNodes[id]
+                }
+                // `dropNode` erases the state, so its kind must be read first.
+                if case let .dropNode(id) = operation,
+                   let kind = nodes[id]?.kind,
+                   kind == .dialog || kind == .sheet || kind == .list {
+                    effects.modalRelevant.insert(id)
+                }
+                try apply(operation, extensionRegistry: extensionRegistry)
+                switch operation {
+                case let .createNode(id, _), let .setProp(id, _, _),
+                     let .removeProp(id, _):
+                    effects.touched.insert(id)
+                case let .createExtension(id, _, _),
+                     let .setExtensionProp(id, _, _),
+                     let .removeExtensionProp(id, _):
+                    effects.touched.insert(id)
+                case let .dropNode(id):
+                    effects.touched.insert(id)
+                    effects.dropped.insert(id)
+                case let .insertChild(parent, child, _):
+                    effects.structural = true
+                    effects.touched.formUnion([parent, child])
+                    structuralChildren.insert(child)
+                case let .removeChild(parent, child):
+                    effects.structural = true
+                    effects.touched.formUnion([parent, child])
+                    structuralChildren.insert(child)
+                case let .moveChild(parent, child, _):
+                    effects.structural = true
+                    effects.touched.formUnion([parent, child])
+                    structuralChildren.insert(child)
+                }
+            }
+            effects.modalRelevant.formUnion(effects.touched.filter {
+                let kind = nodes[$0]?.kind
+                return kind == .dialog || kind == .sheet || kind == .list
+            })
+            // Revalidate every check whose inputs could have changed: the
+            // touched node itself, its parent (a changed child list or parent
+            // property is an input to sibling/child checks), its children
+            // (they read the parent's kind/properties), and the whole subtree
+            // of children moved by structural ops (ancestor-dependent checks
+            // change per descendant).
+            var scope = effects.touched
+            for id in effects.touched {
+                if let node = nodes[id] {
+                    scope.formUnion(node.children)
+                    if let parent = node.parent { scope.insert(parent) }
+                } else if let node = extensionNodes[id] {
+                    scope.formUnion(node.children)
+                    if let parent = node.parent { scope.insert(parent) }
+                }
+            }
+            for child in structuralChildren {
+                var pending = [child]
+                while let id = pending.popLast() {
+                    guard scope.insert(id).inserted else { continue }
+                    if let node = nodes[id] {
+                        pending.append(contentsOf: node.children)
+                    } else if let node = extensionNodes[id] {
+                        pending.append(contentsOf: node.children)
+                    }
+                }
+            }
+            effects.validationScope = scope
+            try validateNodeProperties(
+                extensionRegistry: extensionRegistry,
+                scope: scope
+            )
+        } catch {
+            for id in snapshotted {
+                nodes[id] = oldNodes[id]
+                extensionNodes[id] = oldExtensions[id]
+            }
+            throw error
         }
-        try next.validateNodeProperties(extensionRegistry: extensionRegistry)
-        return next
+        return effects
+    }
+
+    /// The node ids an op can mutate: the named node, plus parent and child
+    /// for structural ops (child-list membership and parent pointer).
+    private static func affectedIDs(of operation: LUIPatchOperation) -> [Int] {
+        switch operation {
+        case let .createNode(id, _), let .setProp(id, _, _),
+             let .removeProp(id, _), let .createExtension(id, _, _),
+             let .setExtensionProp(id, _, _), let .removeExtensionProp(id, _),
+             let .dropNode(id):
+            return [id]
+        case let .insertChild(parent, child, _),
+             let .removeChild(parent, child),
+             let .moveChild(parent, child, _):
+            return [parent, child]
+        }
     }
 
     private mutating func apply(
@@ -736,9 +861,10 @@ struct LUIRetainedTree {
     }
 
     private func validateNodeProperties(
-        extensionRegistry: LUIAppleExtensionRegistry
+        extensionRegistry: LUIAppleExtensionRegistry,
+        scope: Set<Int>? = nil
     ) throws {
-        for node in nodes.values {
+        for (id, node) in nodes where scope?.contains(id) ?? true {
             if node.kind == .root {
                 guard node.parent == nil else {
                     throw invalid("runtime root cannot have a parent")
@@ -995,7 +1121,7 @@ struct LUIRetainedTree {
                 }
             }
         }
-        for node in extensionNodes.values {
+        for (id, node) in extensionNodes where scope?.contains(id) ?? true {
             guard let registration = extensionRegistry.registration(node.identifier) else {
                 throw invalid("unknown extension identifier")
             }

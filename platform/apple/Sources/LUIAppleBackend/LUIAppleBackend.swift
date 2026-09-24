@@ -539,16 +539,20 @@ public final class LUIAppleBackend {
             )
         }
 
-        let nextTree = try tree.applying(
+        let effects = try tree.applying(
             batch.ops,
             extensionRegistry: extensionRegistry
         )
         withDeferredEventDelivery {
             withTransaction(Transaction(animation: nil)) {
-                commit(nextTree)
+                commit(tree, touched: effects.touched, dropped: effects.dropped)
             }
-            tree = nextTree
-            syncModalPresentation()
+            // A dialog/sheet's membership, anchor, or nesting only changes when
+            // the structure moves or a presentation-relevant node mutates —
+            // property-only patches elsewhere never do, so skip the tree walk.
+            if effects.structural || !effects.modalRelevant.isEmpty {
+                syncModalPresentation()
+            }
             generation = batch.generation
         }
     }
@@ -808,25 +812,34 @@ public final class LUIAppleBackend {
         }
     }
 
-    private func commit(_ nextTree: LUIRetainedTree) {
-        for id in Array(models.keys) where nextTree.nodes[id] == nil {
+    private func commit(
+        _ tree: LUIRetainedTree,
+        touched: Set<Int>,
+        dropped: Set<Int>
+    ) {
+        // Untouched nodes are identical by construction (ops only mutate the
+        // nodes they name), so reconciliation only walks the patched set.
+        for id in dropped {
             models[id] = nil
-        }
-        for (id, state) in nextTree.nodes {
-            if let model = models[id] {
-                model.apply(state: state)
-            } else {
-                models[id] = LUINodeModel(id: id, state: state)
-            }
-        }
-        for id in Array(extensionModels.keys) where nextTree.extensionNodes[id] == nil {
             extensionModels[id] = nil
         }
-        for (id, state) in nextTree.extensionNodes {
-            if let model = extensionModels[id] {
-                model.apply(state: state)
-            } else {
-                extensionModels[id] = LUIExtensionNodeModel(id: id, state: state)
+        for id in touched where !dropped.contains(id) {
+            if let state = tree.nodes[id] {
+                if let model = models[id] {
+                    model.apply(state: state)
+                } else {
+                    models[id] = LUINodeModel(id: id, state: state)
+                }
+            }
+            if let state = tree.extensionNodes[id] {
+                if let model = extensionModels[id] {
+                    model.apply(state: state)
+                } else {
+                    extensionModels[id] = LUIExtensionNodeModel(
+                        id: id,
+                        state: state
+                    )
+                }
             }
         }
     }
