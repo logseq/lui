@@ -91,9 +91,20 @@ final class MarkdownTextView: NSTextView, NSTextViewDelegate {
         // Reveal markers only when the caret crosses into another paragraph —
         // same-line moves don't change what is shown.
         if let highlighter {
-            let paragraph = nsString.paragraphRange(for: selectedRange())
+            // paragraphRange reads the character at range.location — clamp to
+            // the last char since a caret at the end of the string is out of bounds.
+            let sel = selectedRange()
+            let last = nsString.length - 1
+            let start = min(sel.location, last)
+            var paragraph = nsString.paragraphRange(for: NSRange(
+                location: start, length: 0))
+            let end = min(NSMaxRange(sel), last)
+            if end > start {
+                paragraph = NSUnionRange(paragraph, nsString.paragraphRange(
+                    for: NSRange(location: start, length: end - start)))
+            }
             let previous = nsString.paragraphRange(for: NSRange(
-                location: min(highlighter.activeCharacterRange.location, nsString.length),
+                location: min(highlighter.activeCharacterRange.location, last),
                 length: 0))
             if paragraph != previous
                 || highlighter.activeCharacterRange.length != selectedRange().length {
