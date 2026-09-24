@@ -96,7 +96,7 @@ let dyn_view ?equal _context model_source _send =
           (fun (m : dyn_model) -> Lui_elements.text ~value:m.label [])
           model_source
       | None ->
-        Lui_elements.dyn
+        Lui_elements.dyn ~equal:(fun _ _ -> false)
           (fun (m : dyn_model) -> Lui_elements.text ~value:m.label [])
           model_source);
     ]
