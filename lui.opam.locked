@@ -1,0 +1,45 @@
+# Hand-maintained lock overlay for lui.opam (which dune generates from
+# dune-project). `opam install . --locked` reads this file instead of
+# lui.opam. Keep `depends` in sync with dune-project; the only locked-
+# specific part is `pin-depends`, which replaces the manual `opam pin`
+# step that CI, the blueprint, and README used to run.
+#
+# ocaml-signal is pinned to logseq/ocaml-signal#2's head (declares the
+# melange build dep); switch to #main once that PR merges.
+opam-version: "2.0"
+version: "0.1.0"
+synopsis: "A reactive retained cross-platform UI runtime in OCaml"
+description:
+  "Declarative UI, incremental patch batching, and Apple, Flutter, and Web backends powered by ocaml-signal. Element constructors follow the convention unit -> ?props -> children:t list -> unit -> t so optional props erase under a trailing unit argument."
+maintainer: ["Tienson Qin <tiensonqin@gmail.com>"]
+authors: ["Tienson Qin"]
+license: "MIT"
+depends: [
+  "ocaml" {>= "5.1"}
+  "dune" {>= "3.17" & >= "3.17"}
+  "melange" {>= "6.0"}
+  "melange-webapi"
+  "ocaml-signal"
+  "alcotest" {with-test}
+  "odoc" {with-doc}
+]
+pin-depends: [
+  [
+    "ocaml-signal.0.1.0"
+    "git+https://github.com/logseq/ocaml-signal.git#b975304facce9e1e5e3f19286db1ce5d857325b6"
+  ]
+]
+build: [
+  ["dune" "subst"] {dev}
+  [
+    "dune"
+    "build"
+    "-p"
+    name
+    "-j"
+    jobs
+    "@install"
+    "@runtest" {with-test}
+    "@doc" {with-doc}
+  ]
+]
