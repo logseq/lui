@@ -822,7 +822,8 @@ bool LuiQmlBackend::validateChildRelationship(
     *error = QStringLiteral("table-row can contain only table-cell");
     return false;
   }
-  if (parent->kind == NodeKind::Tree && !treeRowKind(child->kind)) {
+  if (parent->kind == NodeKind::Tree &&
+      !(treeRowKind(child->kind) || child->kind == NodeKind::VirtualList)) {
     *error = QStringLiteral("tree accepts only row containers");
     return false;
   }
