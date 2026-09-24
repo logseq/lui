@@ -100,6 +100,42 @@ val keyed :
   cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> t) -> t
 
+(** [keyed_*] are {!keyed} specialised to the abstract child types: a
+    keyed collection mounts its items directly under the restricted
+    parent node, so each variant can sit in the corresponding [_el list]
+    child slot — e.g. [radio_group [keyed_radio ~mount:(fun s -> radio ...)]] —
+    while [~mount] is still checked to produce that element kind. *)
+val keyed_step :
+  source:'a list Signal.signal ->
+  key:('a -> 'b) ->
+  cmp:('b -> 'b -> int) ->
+  mount:('a Signal.signal -> step_el) -> step_el
+val keyed_timeline_item :
+  source:'a list Signal.signal ->
+  key:('a -> 'b) ->
+  cmp:('b -> 'b -> int) ->
+  mount:('a Signal.signal -> timeline_item_el) -> timeline_item_el
+val keyed_bottom_tab :
+  source:'a list Signal.signal ->
+  key:('a -> 'b) ->
+  cmp:('b -> 'b -> int) ->
+  mount:('a Signal.signal -> bottom_tab_el) -> bottom_tab_el
+val keyed_table_row :
+  source:'a list Signal.signal ->
+  key:('a -> 'b) ->
+  cmp:('b -> 'b -> int) ->
+  mount:('a Signal.signal -> table_row_el) -> table_row_el
+val keyed_table_cell :
+  source:'a list Signal.signal ->
+  key:('a -> 'b) ->
+  cmp:('b -> 'b -> int) ->
+  mount:('a Signal.signal -> table_cell_el) -> table_cell_el
+val keyed_radio :
+  source:'a list Signal.signal ->
+  key:('a -> 'b) ->
+  cmp:('b -> 'b -> int) ->
+  mount:('a Signal.signal -> radio_el) -> radio_el
+
 (** Event-handler builders: element [~on_*] parameters take an
     [event -> unit] callback and imply their enable flags automatically
     (never pass [*-enabled] props yourself). [press send action] dispatches

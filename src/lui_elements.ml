@@ -249,6 +249,16 @@ let keyed ~source ~key ~cmp ~mount : t =
             mount item_source item_context None))
     context parent
 
+(* Every *_el is a t underneath, so the same keyed collection mounts
+   children directly under the restricted parent; the .mli signatures
+   are what pin each variant's item type. *)
+let keyed_step = keyed
+let keyed_timeline_item = keyed
+let keyed_bottom_tab = keyed
+let keyed_table_row = keyed
+let keyed_table_cell = keyed
+let keyed_radio = keyed
+
 let press send action _event = ignore (send action)
 
 let on_input send wrap event =

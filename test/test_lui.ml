@@ -191,6 +191,61 @@ let creates_button ops =
 let drops_node ops =
   List.exists (function Lui_protocol.DropNode _ -> true | _ -> false) ops
 
+let keyed_radio_group_view _context model_source _send =
+  Lui_elements.radio_group ~label:"Language"
+    [
+      Lui_elements.keyed_radio ~source:model_source
+        ~key:(fun (choice : string) -> choice)
+        ~cmp:String.compare
+        ~mount:(fun choice_source ->
+          Lui_elements.radio ~text_signal:choice_source []);
+    ]
+
+let creates ops kind =
+  List.exists
+    (function Lui_protocol.CreateNode (_, k) -> k = kind | _ -> false)
+    ops
+
+let attached_under ops parent =
+  List.exists
+    (function
+     | Lui_protocol.InsertChild (p, _child, _index) -> p = parent
+     | _ -> false)
+    ops
+
+let test_keyed_radio_mounts_under_group () =
+  let app =
+    Lui_app.create (recording_backend ()) [ "en"; "fr" ]
+      (fun model action ->
+         match action with `Add choice -> model @ [ choice ])
+      keyed_radio_group_view
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let group_node =
+    List.find_map
+      (function
+       | Lui_protocol.CreateNode (node, Lui_protocol.RadioGroup) ->
+         Some node
+       | _ -> None)
+      ops
+  in
+  Alcotest.(check bool) "radio-group created" true (group_node <> None);
+  Alcotest.(check bool) "radios created" true
+    (creates ops Lui_protocol.Radio);
+  (match group_node with
+   | Some node ->
+     Alcotest.(check bool) "radios attach under group" true
+       (attached_under ops node)
+   | None -> ());
+  batches := [];
+  ignore (Lui_app.send app (`Add "de"));
+  flush_app app;
+  Alcotest.(check bool) "insert adds a radio" true
+    (creates (all_ops ()) Lui_protocol.Radio);
+  ignore (Lui_app.dispose app)
+
 let test_dyn_remount_swaps_incompatible_kind () =
   let app =
     Lui_app.create (recording_backend ())
@@ -611,6 +666,8 @@ let () =
             test_dyn_default_remounts;
           Alcotest.test_case "remount swaps incompatible kind" `Quick
             test_dyn_remount_swaps_incompatible_kind;
+          Alcotest.test_case "keyed_radio mounts under group" `Quick
+            test_keyed_radio_mounts_under_group;
         ] );
       ( "dispatch",
         [
