@@ -1057,8 +1057,23 @@ private struct LUITreeView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @FocusState private var focusedNode: Int?
+    @Environment(\.luiInsideScroll) private var insideScroll
 
     var body: some View {
+        #if os(iOS)
+        if insideScroll {
+            // A nested scrolling List collapses inside an outer ScrollView;
+            // lay rows out statically instead.
+            flatContent
+        } else {
+            LUITreeOutlineList(model: model, backend: backend)
+        }
+        #else
+        flatContent
+        #endif
+    }
+
+    private var flatContent: some View {
         VStack(alignment: .leading, spacing: CGFloat(model.property(.gap)?.intValue ?? 0)) {
             ForEach(model.children, id: \.self) { childID in
                 if let child = backend.model(id: childID) {
@@ -1081,6 +1096,154 @@ private struct LUITreeView: View {
     }
 }
 
+#if os(iOS)
+/// One row in the flattened outline: `children == nil` is a non-tree-item node
+/// rendered in place; otherwise an expandable/collapsed outline row.
+private struct LUITreeOutlineElement: Identifiable {
+    let id: Int
+    var children: [LUITreeOutlineElement]?
+}
+
+/// Native iOS outline: expandable rows become DisclosureGroups inside a
+/// sidebar-styled List, so the disclosure chevron, expand animation, and row
+/// chrome are all system-provided. The wire stays flat — collapsed items emit
+/// no children, so expansion is bound to the model's `expanded` prop and taps
+/// route through `performTreeTap` (press + toggle events) instead of
+/// OutlineGroup's local expansion state.
+private struct LUITreeOutlineList: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    @Environment(\.luiSemanticColors) private var semanticColors
+
+    var body: some View {
+        List {
+            ForEach(elements) { element in
+                LUITreeOutlineRow(element: element, backend: backend)
+            }
+        }
+        .listStyle(.sidebar)
+        .scrollContentBackground(
+            semanticColors["background"] == nil
+                ? LUIListSurfacePolicy.scrollContentBackground : .hidden
+        )
+        .background(semanticColors["background"])
+        .preference(
+            key: LUIListSurfacePreferenceKey.self,
+            value: semanticColors["background"] == nil
+        )
+        .accessibilityElement(children: .contain)
+    }
+
+    /// Rebuilds the outline from the flat pre-order wire list: `tree-level`
+    /// marks depth, and children only exist when the model emits them.
+    private var elements: [LUITreeOutlineElement] {
+        struct Token {
+            let nodeID: Int
+            let level: Int?
+        }
+
+        var tokens: [Token] = []
+
+        func containsTreeItem(_ nodeID: Int) -> Bool {
+            guard let node = backend.model(id: nodeID) else { return false }
+            if node.isTreeItem { return true }
+            return node.children.contains(where: containsTreeItem)
+        }
+
+        func collect(_ nodeID: Int) {
+            guard let node = backend.model(id: nodeID) else { return }
+            if node.isTreeItem {
+                tokens.append(Token(nodeID: nodeID, level: node.treeLevel ?? 1))
+                for childID in node.children { collect(childID) }
+            } else if containsTreeItem(nodeID) {
+                for childID in node.children { collect(childID) }
+            } else {
+                tokens.append(Token(nodeID: nodeID, level: nil))
+            }
+        }
+
+        for childID in model.children { collect(childID) }
+
+        var index = 0
+        func parseChildren(minLevel: Int) -> [LUITreeOutlineElement] {
+            var result: [LUITreeOutlineElement] = []
+            while index < tokens.count {
+                let token = tokens[index]
+                guard let level = token.level else {
+                    index += 1
+                    result.append(LUITreeOutlineElement(id: token.nodeID, children: nil))
+                    continue
+                }
+                if level < minLevel { break }
+                index += 1
+                result.append(LUITreeOutlineElement(
+                    id: token.nodeID,
+                    children: parseChildren(minLevel: level + 1)
+                ))
+            }
+            return result
+        }
+
+        return parseChildren(minLevel: 1)
+    }
+}
+
+private struct LUITreeOutlineRow: View {
+    let element: LUITreeOutlineElement
+    let backend: LUIAppleBackend
+
+    private var item: LUINodeModel? { backend.model(id: element.id) }
+
+    var body: some View {
+        if let children = element.children {
+            if item?.supportsToggle == true {
+                DisclosureGroup(isExpanded: expansion) {
+                    ForEach(children) { child in
+                        LUITreeOutlineRow(element: child, backend: backend)
+                    }
+                    .padding(.leading, 16)
+                } label: {
+                    rowLabel
+                }
+                .disabled(item?.isEnabled == false)
+            } else {
+                rowLabel
+            }
+        } else {
+            LUIAnyNodeView(nodeID: element.id, backend: backend)
+        }
+    }
+
+    @ViewBuilder
+    private var rowLabel: some View {
+        if let item {
+            if item.kind == .listItem {
+                LUIListItemView(
+                    model: item,
+                    backend: backend,
+                    isNativeListRow: true,
+                    suppressesPrimaryAction: item.supportsToggle
+                )
+                .modifier(LUIAppearModifier(model: item, backend: backend))
+                .modifier(LUIContextMenuModifier(model: item, backend: backend))
+            } else {
+                LUINodeView(model: item, backend: backend)
+            }
+        }
+    }
+
+    private var expansion: Binding<Bool> {
+        Binding(
+            get: { item?.isExpanded == true },
+            set: { expanded in
+                guard let item, expanded != (item.isExpanded == true) else { return }
+                try? backend.performTreeTap(node: item.id)
+            }
+        )
+    }
+}
+#endif
+
 private struct LUITreeItemModifier: ViewModifier {
     let model: LUINodeModel
     let backend: LUIAppleBackend
@@ -1088,6 +1251,7 @@ private struct LUITreeItemModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
+        #if os(macOS)
         if model.isTreeItem, let context {
             content
                 .focusable(model.isEnabled)
@@ -1101,6 +1265,15 @@ private struct LUITreeItemModifier: ViewModifier {
         } else {
             content
         }
+        #else
+        if model.isTreeItem {
+            content
+                .accessibilityAddTraits(model.isSelected ? .isSelected : [])
+                .accessibilityValue(Text(accessibilityValue))
+        } else {
+            content
+        }
+        #endif
     }
 
     private var accessibilityValue: String {
@@ -1146,8 +1319,24 @@ private struct LUIAccordionView: View {
 private struct LUITableView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.luiInsideScroll) private var insideScroll
 
     var body: some View {
+        #if os(iOS)
+        if insideScroll {
+            // A nested scrolling List collapses inside an outer ScrollView;
+            // lay rows out statically instead.
+            gridContent
+        } else {
+            listContent
+        }
+        #else
+        gridContent
+        #endif
+    }
+
+    private var gridContent: some View {
         Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
             ForEach(model.children, id: \.self) { rowID in
                 if let row = backend.model(id: rowID) {
@@ -1161,6 +1350,39 @@ private struct LUITableView: View {
         }
         .accessibilityElement(children: .contain)
     }
+
+    /// iOS has no table control: rows render as an inset-grouped List so row
+    /// spacing, separators, and selection tint are system-provided.
+    #if os(iOS)
+    private var listContent: some View {
+        List {
+            ForEach(model.children, id: \.self) { rowID in
+                if let row = backend.model(id: rowID), row.kind == .tableRow {
+                    LUITableRowView(model: row, backend: backend, isLast: true)
+                        .listRowBackground(
+                            row.isSelected
+                                ? Color.accentColor.opacity(0.16)
+                                : semanticColors["surface"]
+                        )
+                } else {
+                    LUIAnyNodeView(nodeID: rowID, backend: backend)
+                        .listRowBackground(semanticColors["surface"])
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(
+            semanticColors["background"] == nil
+                ? LUIListSurfacePolicy.scrollContentBackground : .hidden
+        )
+        .background(semanticColors["background"])
+        .preference(
+            key: LUIListSurfacePreferenceKey.self,
+            value: semanticColors["background"] == nil
+        )
+        .accessibilityElement(children: .contain)
+    }
+    #endif
 }
 
 private struct LUITableRowView: View {
@@ -1169,6 +1391,18 @@ private struct LUITableRowView: View {
     let isLast: Bool
 
     var body: some View {
+        #if os(iOS)
+        HStack(spacing: CGFloat(model.property(.gap)?.intValue ?? 0)) {
+            ForEach(model.children, id: \.self) { cellID in
+                if let cell = backend.model(id: cellID) {
+                    LUINodeView(model: cell, backend: backend)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(model.isSelected ? .isSelected : [])
+        #else
         GridRow {
             ForEach(model.children, id: \.self) { cellID in
                 if let cell = backend.model(id: cellID) {
@@ -1185,6 +1419,7 @@ private struct LUITableRowView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(model.isSelected ? .isSelected : [])
+        #endif
     }
 }
 
@@ -2859,23 +3094,30 @@ private struct LUIListItemView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     var isNativeListRow = false
+    /// Rows nested inside a parent toggle affordance (e.g. a DisclosureGroup
+    /// label) leave taps to the parent so they don't fire twice.
+    var suppressesPrimaryAction = false
     @State private var didLongPress = false
 
     var body: some View {
         Group {
-            switch LUIListItemInteractionPolicy.style(
-                hasInteractiveChildren: hasInteractiveChildren
-            ) {
-            case .button:
-                Button(action: performPrimaryAction) {
-                    rowContent
-                }
-                .buttonStyle(.plain)
-            case .composite:
+            if suppressesPrimaryAction {
                 rowContent
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: performPrimaryAction)
-                    .accessibilityAction { performPrimaryAction() }
+            } else {
+                switch LUIListItemInteractionPolicy.style(
+                    hasInteractiveChildren: hasInteractiveChildren
+                ) {
+                case .button:
+                    Button(action: performPrimaryAction) {
+                        rowContent
+                    }
+                    .buttonStyle(.plain)
+                case .composite:
+                    rowContent
+                        .contentShape(Rectangle())
+                        .onTapGesture(perform: performPrimaryAction)
+                        .accessibilityAction { performPrimaryAction() }
+                }
             }
         }
         .padding(.horizontal, usesSystemListInsets || hasExplicitPadding ? 0 : 12)
@@ -2916,6 +3158,7 @@ private struct LUIListItemView: View {
 
     private var rowContent: some View {
         HStack(spacing: horizontalSpacing) {
+            #if os(macOS)
             if model.isTreeItem, model.supportsToggle {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
@@ -2923,6 +3166,7 @@ private struct LUIListItemView: View {
                     .animation(.snappy, value: model.isExpanded)
                     .accessibilityHidden(true)
             }
+            #endif
             if !model.buttonIconName.isEmpty && model.buttonIconPlacement != "trailing" {
                 LUIIconImage(
                     source: backend.iconSource(for: model.buttonIconName),
@@ -5086,6 +5330,9 @@ private struct LUISplitView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var fractionState: LUISplitFractionState
     @State private var dragStartFraction: Double?
+    #if os(iOS)
+    @State private var columnVisibility = NavigationSplitViewVisibility.doubleColumn
+    #endif
 
     init(model: LUINodeModel, backend: LUIAppleBackend) {
         self.model = model
@@ -5098,6 +5345,64 @@ private struct LUISplitView: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        // On iOS the split renders as a NavigationSplitView so the divider,
+        // collapse behavior, and column chrome are system-provided. The model
+        // fraction maps onto the sidebar column's ideal width.
+        iOSSplit
+        #else
+        macOSSplit
+        #endif
+    }
+
+    #if os(iOS)
+    private var iOSSplit: some View {
+        let firstID = model.children.first
+        let secondID = model.children.dropFirst().first
+        let firstModel = firstID.flatMap(backend.model(id:))
+        let secondModel = secondID.flatMap(backend.model(id:))
+        return GeometryReader { geometry in
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                Group {
+                    if let firstID {
+                        LUIAnyNodeView(nodeID: firstID, backend: backend)
+                    }
+                }
+                .navigationSplitViewColumnWidth(
+                    min: firstModel?.surfaceMinWidth.map(CGFloat.init),
+                    ideal: sidebarWidth(
+                        available: geometry.size.width,
+                        firstModel: firstModel,
+                        secondModel: secondModel
+                    ),
+                    max: secondModel?.surfaceMinWidth.map {
+                        max(geometry.size.width - CGFloat($0), 0)
+                    }
+                )
+            } detail: {
+                if let secondID {
+                    LUIAnyNodeView(nodeID: secondID, backend: backend)
+                }
+            }
+            .navigationSplitViewStyle(.balanced)
+        }
+    }
+
+    private func sidebarWidth(
+        available: CGFloat,
+        firstModel: LUINodeModel?,
+        secondModel: LUINodeModel?
+    ) -> CGFloat {
+        let fraction = LUISplitGeometry.effectiveFraction(
+            value: model.splitResizeOrigin ?? model.splitFraction,
+            available: Double(available),
+            firstMinimum: Double(firstModel?.surfaceMinWidth ?? 0),
+            secondMinimum: Double(secondModel?.surfaceMinWidth ?? 0)
+        )
+        return available * CGFloat(fraction)
+    }
+    #else
+    private var macOSSplit: some View {
         GeometryReader { geometry in
             let gap = max(CGFloat(model.splitGap), 0)
             let available = max(geometry.size.width - gap, 0)
@@ -5227,6 +5532,7 @@ private struct LUISplitView: View {
         fractionState.applyUserFraction(effective)
         try? backend.performValueChange(node: model.id, value: effective)
     }
+    #endif
 }
 
 struct LUIResizableWidthState: Equatable {
