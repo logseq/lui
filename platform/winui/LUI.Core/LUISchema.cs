@@ -129,7 +129,9 @@ namespace LUI
                 case LUINodeKind.Input:
                 case LUINodeKind.SearchField:
                 case LUINodeKind.MenuItem:
+                case LUINodeKind.Spacer:
                 case LUINodeKind.Divider:
+                case LUINodeKind.Text:
                     return true;
                 default:
                     return false;
@@ -271,6 +273,14 @@ namespace LUI
 
         public static bool OrientationSupported(string value) =>
             value == "horizontal" || value == "vertical";
+
+        public static bool PlacementSupported(string value) =>
+            value == "automatic" || value == "bottom" || value == "navigation" ||
+            value == "principal" || value == "primary-action" ||
+            value == "secondary-action" || value == "status" ||
+            value == "confirmation-action" || value == "cancellation-action" ||
+            value == "destructive-action" || value == "top-bar-leading" ||
+            value == "top-bar-trailing";
 
         public static bool ControlSizeSupported(string value) =>
             value == "default" || value == "sm" || value == "lg" ||
@@ -537,6 +547,8 @@ namespace LUI
                     return kind == LUINodeKind.Divider ||
                         kind == LUINodeKind.Tabs ||
                         kind == LUINodeKind.Scroll;
+                case LUIProperty.PlacementValue:
+                    return kind == LUINodeKind.Toolbar;
                 case LUIProperty.SizeValue:
                     return kind == LUINodeKind.Button ||
                         kind == LUINodeKind.ToggleButton ||
@@ -890,6 +902,11 @@ namespace LUI
                 {
                     return value is LUIWireValue.String text &&
                         OrientationSupported(text.Value);
+                }
+                case LUIProperty.PlacementValue:
+                {
+                    return value is LUIWireValue.String text &&
+                        PlacementSupported(text.Value);
                 }
                 case LUIProperty.SizeValue:
                 {
