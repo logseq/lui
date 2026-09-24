@@ -126,6 +126,7 @@ type host_kind =
   | WebHost
   | SwiftUIHost
   | FlutterHost
+  | QMLHost
 
 type platform_profile = {
   profile_os : operating_system;
@@ -351,6 +352,92 @@ ${decoderCases}
 `;
 }
 
+function renderCpp(schema) {
+  const enumCases = schema.nodeKinds.map(({ lg }) => `  ${lg},`).join('\n');
+  const propertyCases = schema.properties.map(({ lg }) => `  ${lg},`).join('\n');
+  const kindWireCases = schema.nodeKinds
+    .map(({ lg, wire }) => `    case NodeKind::${lg}: return "${wire}";`)
+    .join('\n');
+  const decodeCases = schema.nodeKinds
+    .map(({ lg, wire }) => `  if (name == "${wire}") { *kind = NodeKind::${lg}; return true; }`)
+    .join('\n');
+  const containerKinds = schema.nodeKinds
+    .filter(({ container }) => container)
+    .map(({ lg }) => `    case NodeKind::${lg}:`)
+    .join('\n');
+  const componentName = (wire) =>
+    `Lui${wire.split('-').map((part) => part[0].toUpperCase() + part.slice(1)).join('')}.qml`;
+  const componentCases = schema.nodeKinds
+    .map(({ lg, wire }) => `    case NodeKind::${lg}: return "${componentName(wire)}";`)
+    .join('\n');
+  const propertyWireCases = schema.properties
+    .map(({ lg, wire }) => `    case Property::${lg}: return "${wire}";`)
+    .join('\n');
+  const propertyDecodeCases = schema.properties
+    .map(({ lg, wire }) => `  if (name == "${wire}") { *property = Property::${lg}; return true; }`)
+    .join('\n');
+  return `${generatedHeader('//')}#pragma once
+
+namespace LUI {
+
+enum class NodeKind {
+${enumCases}
+};
+
+enum class Property {
+${propertyCases}
+};
+
+inline const char *nodeKindWireName(NodeKind kind) {
+  switch (kind) {
+${kindWireCases}
+  }
+  return "unknown";
+}
+
+inline bool decodeNodeKind(const char *name, NodeKind *kind) {
+${decodeCases}
+  return false;
+}
+
+inline bool standardNodeName(const char *name) {
+  NodeKind ignored;
+  return decodeNodeKind(name, &ignored);
+}
+
+inline bool containerNodeKind(NodeKind kind) {
+  switch (kind) {
+${containerKinds}
+    return true;
+    default:
+    return false;
+  }
+}
+
+// QML file (inside the Lui module) rendering this node kind.
+inline const char *nodeKindComponentName(NodeKind kind) {
+  switch (kind) {
+${componentCases}
+  }
+  return "LuiBox.qml";
+}
+
+inline const char *propertyWireName(Property property) {
+  switch (property) {
+${propertyWireCases}
+  }
+  return "unknown";
+}
+
+inline bool decodePropertyWireName(const char *name, Property *property) {
+${propertyDecodeCases}
+  return false;
+}
+
+} // namespace LUI
+`;
+}
+
 function artifacts(schema) {
   return new Map([
     ['src/lui_protocol.mli', renderProtocolSignature(schema)],
@@ -358,6 +445,7 @@ function artifacts(schema) {
     ['src/lui_wire_schema.mli', renderOCamlWireSignature()],
     ['platform/apple/Sources/LUIAppleBackend/LUIWireSchema.swift', renderSwift(schema)],
     ['platform/flutter/lib/lui_wire_schema.g.dart', renderDart(schema)],
+    ['platform/qt/lib/lui_wire_schema.h', renderCpp(schema)],
   ]);
 }
 

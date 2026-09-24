@@ -158,6 +158,7 @@ let host_name host =
   | WebHost -> "web"
   | SwiftUIHost -> "swiftui"
   | FlutterHost -> "flutter"
+  | QMLHost -> "qml"
 
 let token value = string_of_int (String.length value) ^ ":" ^ value
 
