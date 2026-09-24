@@ -3960,6 +3960,7 @@ final class LUIFlutterBackend {
       'primary-foreground' => colors.onPrimary,
       'secondary' => colors.secondaryContainer,
       'secondary-foreground' => colors.onSecondaryContainer,
+      'glass' => colors.surface.withValues(alpha: 0.75),
       'success' => colors.tertiaryContainer,
       'success-foreground' => colors.onTertiaryContainer,
       'warning' => colors.secondaryContainer,
