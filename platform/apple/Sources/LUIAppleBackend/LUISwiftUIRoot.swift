@@ -1974,12 +1974,7 @@ private struct LUIToolbarView: View {
         } else if placement == "bottom" {
             #if os(iOS)
             if #available(iOS 26.0, *) {
-                // Each child anchors its own toolbar item; the zero-size
-                // anchors take no space while the platform renders the bar
-                // (floating capsules, system scroll insets).
-                ForEach(model.children, id: \.self) { childID in
-                    LUIToolbarItemAnchor(childID: childID, backend: backend, placement: .bottomBar)
-                }
+                LUIToolbarGroupAnchor(model: model, backend: backend, placement: .bottomBar)
             } else {
                 inlineContent
             }
@@ -1991,9 +1986,7 @@ private struct LUIToolbarView: View {
             // Hoist children into the platform chrome at the resolved
             // placement (navigation bar on iOS, window toolbar on macOS).
             if #available(iOS 26.0, macOS 26.0, *) {
-                ForEach(model.children, id: \.self) { childID in
-                    LUIToolbarItemAnchor(childID: childID, backend: backend, placement: resolved)
-                }
+                LUIToolbarGroupAnchor(model: model, backend: backend, placement: resolved)
             } else {
                 inlineContent
             }
@@ -2069,48 +2062,93 @@ private struct LUIToolbarView: View {
 
 }
 
-/// One child of a hoisted (`placement` != "automatic") toolbar, anchored by a
-/// zero-size view carrying its own `.toolbar` modifier — ToolbarContentBuilder
-/// cannot emit a dynamic child list from a single content closure. Spacers
-/// become `ToolbarSpacer`s, a button-group becomes one `ToolbarItem` whose
-/// `ControlGroup` content the platform fuses into a single capsule, and every
-/// other child becomes its own `ToolbarItem`.
+/// A hoisted (`placement` != nil) toolbar anchored by a single zero-size
+/// carrier view whose `.toolbar` modifier emits one `ToolbarItem`/`ToolbarSpacer`
+/// per segment — per-child `.toolbar` modifiers churned `ToolbarModel` into a
+/// layout feedback loop, while a single `ToolbarItemGroup` loses the system's
+/// per-item capsule fusion. `ToolbarContentBuilder` cannot emit a dynamic
+/// list, so the builder enumerates a bounded arity; segments beyond the cap
+/// are dropped rather than hoisted.
 @available(iOS 26.0, macOS 26.0, *)
-private struct LUIToolbarItemAnchor: View {
-    let childID: Int
+private struct LUIToolbarGroupAnchor: View {
+    let model: LUINodeModel
     let backend: LUIAppleBackend
     let placement: ToolbarItemPlacement
 
     var body: some View {
-        switch backend.model(id: childID)?.kind {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .toolbar { content }
+    }
+
+    @ToolbarContentBuilder
+    private var content: some ToolbarContent {
+        if segments.count > 0 { segment(at: 0) }
+        if segments.count > 1 { segment(at: 1) }
+        if segments.count > 2 { segment(at: 2) }
+        if segments.count > 3 { segment(at: 3) }
+        if segments.count > 4 { segment(at: 4) }
+        if segments.count > 5 { segment(at: 5) }
+        if segments.count > 6 { segment(at: 6) }
+        if segments.count > 7 { segment(at: 7) }
+        if segments.count > 8 { segment(at: 8) }
+        if segments.count > 9 { segment(at: 9) }
+    }
+
+    @ToolbarContentBuilder
+    private func segment(at index: Int) -> some ToolbarContent {
+        switch segments[index] {
         case .spacer:
-            Color.clear
-                .frame(width: 0, height: 0)
-                .toolbar { ToolbarSpacer(.flexible, placement: placement) }
-        case .buttonGroup:
-            Color.clear
-                .frame(width: 0, height: 0)
-                .toolbar {
-                    ToolbarItem(placement: placement) {
-                        ControlGroup {
-                            ForEach(
-                                backend.model(id: childID)?.children ?? [],
-                                id: \.self
-                            ) { grandchildID in
-                                LUIAnyNodeView(nodeID: grandchildID, backend: backend)
-                            }
-                        }
-                    }
-                }
-        default:
-            Color.clear
-                .frame(width: 0, height: 0)
-                .toolbar {
-                    ToolbarItem(placement: placement) {
+            ToolbarSpacer(.flexible, placement: placement)
+        case let .bare(childID):
+            ToolbarItem(placement: placement) {
+                LUIAnyNodeView(nodeID: childID, backend: backend)
+            }
+        case let .capsule(childIDs):
+            // Consecutive interactive children fuse into one toolbar item so
+            // the platform draws its shared capsule.
+            ToolbarItem(placement: placement) {
+                ControlGroup {
+                    ForEach(childIDs, id: \.self) { childID in
                         LUIAnyNodeView(nodeID: childID, backend: backend)
                     }
                 }
+            }
         }
+    }
+
+    private enum Segment {
+        case spacer
+        case bare(Int)
+        case capsule([Int])
+    }
+
+    /// Consecutive interactive children merge into one `ToolbarItem` carrying
+    /// a `ControlGroup` (the fused toolbar capsule); spacers, text and
+    /// non-interactive children stay bare so a principal title never gains
+    /// chrome.
+    private var segments: [Segment] {
+        var result: [Segment] = []
+        var run: [Int] = []
+        func flush() {
+            if !run.isEmpty { result.append(.capsule(run)); run = [] }
+        }
+        for childID in model.children {
+            switch backend.model(id: childID)?.kind {
+            case .spacer:
+                flush(); result.append(.spacer)
+            case .buttonGroup:
+                flush(); result.append(.capsule(backend.model(id: childID)?.children ?? []))
+            case .button, .toggleButton, .toggleGroup, .checkbox, .switchControl,
+                 .toggle, .radioGroup, .select, .combobox, .menuItem, .textField,
+                 .secureField, .input, .searchField:
+                run.append(childID)
+            default:
+                flush(); result.append(.bare(childID))
+            }
+        }
+        flush()
+        return result
     }
 }
 
