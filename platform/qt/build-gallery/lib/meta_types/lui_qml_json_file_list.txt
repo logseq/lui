@@ -1,2 +1,0 @@
-/home/ubuntu/repos/lui/platform/qt/build-gallery/lib/lui_qml_autogen/include/../EWIEGA46WW/moc_lui_node.cpp.json
-/home/ubuntu/repos/lui/platform/qt/build-gallery/lib/lui_qml_autogen/include/../EWIEGA46WW/moc_lui_qml_backend.cpp.json

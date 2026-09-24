@@ -1,6 +1,0 @@
-<RCC>
-  <qresource prefix="/qt/qml/LuiDemo">
-    <file alias="qmldir">/home/ubuntu/repos/lui/platform/qt/build-gallery/demo/LuiDemo/qmldir</file>
-  </qresource>
-</RCC>
-
