@@ -4525,6 +4525,25 @@ private struct LUIOptionalClipModifier: ViewModifier {
     }
 }
 
+private struct LUIBackgroundStyleModifier: ViewModifier {
+    let name: String?
+    let color: Color
+    let shape: AnyShape
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if name == "glass" {
+            if #available(iOS 26.0, macOS 26.0, *) {
+                content.glassEffect(in: shape)
+            } else {
+                content.background(.regularMaterial, in: shape)
+            }
+        } else {
+            content.background(color, in: shape)
+        }
+    }
+}
+
 private struct LUISurfaceModifier: ViewModifier {
     let model: LUINodeModel
     let backend: LUIAppleBackend
@@ -4610,7 +4629,11 @@ private struct LUISurfaceModifier: ViewModifier {
                             : nil)
                 )
             )
-            .background(background, in: shape)
+            .modifier(LUIBackgroundStyleModifier(
+                name: backgroundName,
+                color: background,
+                shape: shape
+            ))
             .shadow(
                 color: castsShadow ? .black.opacity(0.12) : .clear,
                 radius: castsShadow ? 4 : 0,
