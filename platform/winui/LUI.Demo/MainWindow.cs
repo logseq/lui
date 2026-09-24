@@ -65,6 +65,7 @@ namespace LUI.Demo
             + "{\"op\":\"set-prop\",\"id\":10,\"property\":\"placeholder\",\"value\":\"Type here…\"},"
             + "{\"op\":\"insert-child\",\"parent\":2,\"child\":10,\"index\":4},"
             + "{\"op\":\"create-node\",\"id\":11,\"kind\":\"slider\"},"
+            + "{\"op\":\"set-prop\",\"id\":11,\"property\":\"accessibility-label\",\"value\":\"A slider\"},"
             + "{\"op\":\"insert-child\",\"parent\":2,\"child\":11,\"index\":5}"
             + "]}";
 
