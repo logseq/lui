@@ -323,7 +323,6 @@ private struct LUIDialogActions: View {
                 backend.modalPresentation.beginDialogAction(presentation.id)
                 try? backend.performPress(node: actionID)
             }
-            .buttonStyle(.plain)
             .disabled(!action.isEnabled)
             .accessibilityIdentifier(
                 action.property(.accessibilityIdentifier)?.stringValue ?? ""
@@ -2167,11 +2166,32 @@ private struct LUIModalSurfaceContent: View {
             Form {
                 LUINavigationFormRows(
                     contentID: navigationFormContentID,
-                    backend: backend
+                    backend: backend,
+                    excludedChildIDs: formSearchableField.map { [$0.id] } ?? []
                 )
             }
             .accessibilityIdentifier(navigationFormAccessibilityIdentifier)
+            #if os(iOS)
+            .modifier(LUISearchableNodeModifier(
+                model: formSearchableField,
+                backend: backend
+            ))
+            #endif
         }
+    }
+
+    private var formSearchableField: LUINodeModel? {
+        guard let contentID = navigationFormContentID,
+              let content = backend.model(id: contentID),
+              LUINavigationFormSheetPolicy.isForm(
+                  content.property(.styleClass)?.stringValue
+              ),
+              let fieldID = LUISearchFieldPlacementPolicy.searchableChildID(
+                  of: content,
+                  backend: backend
+              )
+        else { return nil }
+        return backend.model(id: fieldID)
     }
 
     private var navigationFormAccessibilityIdentifier: String {
@@ -2208,6 +2228,7 @@ private struct LUIModalSurfaceContent: View {
 private struct LUINavigationFormRows: View {
     let contentID: Int?
     let backend: LUIAppleBackend
+    var excludedChildIDs: [Int] = []
 
     @ViewBuilder
     var body: some View {
@@ -2255,7 +2276,7 @@ private struct LUINavigationFormRows: View {
 
     @ViewBuilder
     private func rows(_ childIDs: [Int]) -> some View {
-        ForEach(childIDs, id: \.self) { childID in
+        ForEach(childIDs.filter { !excludedChildIDs.contains($0) }, id: \.self) { childID in
             if let child = backend.model(id: childID), child.kind == .listItem {
                 LUIListItemView(model: child, backend: backend, isNativeListRow: true)
                     .environment(\.luiIsNativeFormRow, true)
@@ -2408,7 +2429,10 @@ private struct LUIToastView: View {
             }
         }
         .padding()
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .background(
+            .regularMaterial,
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
         .shadow(radius: 8, y: 4)
         .offset(x: dragOffset)
         .gesture(dismissGesture)
@@ -3710,24 +3734,10 @@ private struct LUIButtonView: View {
     }
 
     private var buttonHeight: CGFloat? {
-        if model.surfaceHeight != nil {
-            return LUIButtonVisualPolicy.resolvedExtent(
-                explicit: model.surfaceHeight,
-                fallback: nil
-            )
-        }
-        #if os(iOS)
-        if LUIButtonVisualPolicy.usesIntrinsicHeight(
-            variant: model.buttonVariant,
-            buttonSize: model.buttonSize,
-            hasIcon: !model.buttonIconName.isEmpty
-        ) {
-            return nil
-        }
-        return LUIButtonVisualPolicy.defaultHeight(isNativeFormRow: isNativeFormRow)
-        #else
-        return nil
-        #endif
+        LUIButtonVisualPolicy.resolvedExtent(
+            explicit: model.surfaceHeight,
+            fallback: nil
+        )
     }
 
     private var buttonWidth: CGFloat? {
@@ -3816,7 +3826,9 @@ private struct LUISegmentedTabsView: View {
 
     static func supports(model: LUINodeModel, backend: LUIAppleBackend) -> Bool {
         let segments = model.children.compactMap { backend.model(id: $0) }
-        return !segments.isEmpty && segments.allSatisfy { $0.kind == .button }
+        return !segments.isEmpty && segments.allSatisfy {
+            $0.kind == .button || $0.kind == .toggleButton
+        }
     }
 
     private var segments: [LUINodeModel] {
@@ -3827,9 +3839,18 @@ private struct LUISegmentedTabsView: View {
         Binding(
             get: { segments.first(where: \.isSelected)?.id ?? segments.first?.id ?? 0 },
             set: { nodeID in
-                guard let segment = backend.model(id: nodeID),
-                      segment.isEnabled, segment.supportsPress else { return }
-                try? backend.performPress(node: nodeID)
+                guard let segment = backend.model(id: nodeID), segment.isEnabled else {
+                    return
+                }
+                switch segment.kind {
+                case .button:
+                    guard segment.supportsPress else { return }
+                    try? backend.performPress(node: nodeID)
+                case .toggleButton:
+                    try? backend.performToggle(node: nodeID, checked: !segment.isSelected)
+                default:
+                    break
+                }
             }
         )
     }
@@ -4605,12 +4626,23 @@ private struct LUIListView: View {
         )
         #if os(iOS)
         .listStyle(.insetGrouped)
+        .modifier(LUISearchableNodeModifier(model: searchableField, backend: backend))
         #endif
+    }
+
+    private var searchableField: LUINodeModel? {
+        guard !insideScroll,
+              let fieldID = LUISearchFieldPlacementPolicy.searchableChildID(
+                  of: model,
+                  backend: backend
+              )
+        else { return nil }
+        return backend.model(id: fieldID)
     }
 
     @ViewBuilder
     private func rows(_ childIDs: [Int]) -> some View {
-        ForEach(childIDs, id: \.self) { childID in
+        ForEach(childIDs.filter { $0 != searchableField?.id }, id: \.self) { childID in
             Group {
                 if let child = backend.model(id: childID), child.kind == .listItem {
                     LUIListItemView(model: child, backend: backend, isNativeListRow: true)
@@ -4851,6 +4883,17 @@ private struct LUITextControlView: View {
             )
             .lineLimit(1...(model.property(.styleClass)?.stringValue == "composer-input" ? 6 : Int.max))
         } else if model.kind == .searchField {
+            #if os(iOS)
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField(
+                    model.property(.placeholder)?.stringValue ?? "",
+                    text: binding
+                )
+            }
+            .textFieldStyle(grouped ? .plain : .roundedBorder)
+            #else
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
@@ -4872,6 +4915,7 @@ private struct LUITextControlView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 7)
             .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+            #endif
         } else {
             TextField(model.property(.placeholder)?.stringValue ?? "", text: binding)
         }
@@ -4887,6 +4931,61 @@ private struct LUITextControlView: View {
         )
     }
 }
+
+enum LUISearchFieldPlacementPolicy {
+    /// A direct `search-field` child renders through the container's native
+    /// search affordance instead of an inline control.
+    static func searchableChildID(
+        of parent: LUINodeModel,
+        backend: LUIAppleBackend
+    ) -> Int? {
+        #if os(iOS)
+        parent.children.first { backend.model(id: $0)?.kind == .searchField }
+        #else
+        nil
+        #endif
+    }
+}
+
+#if os(iOS)
+/// Bridges a `search-field` node into `.searchable` on its container so the
+/// system search bar (navigation bar or list header) replaces the inline field.
+private struct LUISearchableNodeModifier: ViewModifier {
+    let model: LUINodeModel?
+    let backend: LUIAppleBackend
+    @State private var draft: LUITextDraftState
+    @State private var presented = false
+
+    init(model: LUINodeModel?, backend: LUIAppleBackend) {
+        self.model = model
+        self.backend = backend
+        _draft = State(initialValue: LUITextDraftState(source: model?.text ?? ""))
+    }
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let model {
+            content
+                .searchable(
+                    text: Binding(
+                        get: { draft.text },
+                        set: { next in
+                            draft.edit(next)
+                            try? backend.performTextChange(node: model.id, text: next)
+                        }
+                    ),
+                    isPresented: $presented,
+                    prompt: Text(verbatim: model.property(.placeholder)?.stringValue ?? "")
+                )
+                .onChange(of: model.text) { _, next in
+                    draft.reconcile(source: next, focused: presented)
+                }
+        } else {
+            content
+        }
+    }
+}
+#endif
 
 private struct LUIRadioGroupView: View {
     let model: LUINodeModel
