@@ -104,6 +104,9 @@ int main(int argc, char *argv[]) {
   backend.installImageProvider(&engine);
   engine.rootContext()->setContextProperty(QStringLiteral("luiBackend"),
                                            &backend);
+  engine.rootContext()->setContextProperty(
+      QStringLiteral("luiAppName"),
+      qEnvironmentVariable("LUI_APP_NAME", "todos"));
   engine.addImportPath(QStringLiteral("qrc:/qt/qml"));
   engine.load(QUrl(QStringLiteral("qrc:/qt/qml/LuiDemo/main.qml")));
   if (engine.rootObjects().isEmpty()) return 2;

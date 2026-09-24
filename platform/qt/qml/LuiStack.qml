@@ -9,11 +9,28 @@ Item {
     required property var node
     readonly property var props: node ? node.properties : ({})
 
-    implicitWidth: childrenRect.width
-    implicitHeight: childrenRect.height
+    // Size to the largest non-overlay child's intrinsic size. childrenRect
+    // must not be used here: delegate width/height bind to stack.width/
+    // height, so childrenRect would feed implicit size back through the
+    // delegates' actual sizes and spin a layout loop.
+    implicitWidth: rep.maxChildImplicitWidth
+    implicitHeight: rep.maxChildImplicitHeight
 
     Repeater {
         id: rep
+        readonly property real maxChildImplicitWidth: _maxChildImplicit(true)
+        readonly property real maxChildImplicitHeight: _maxChildImplicit(false)
+        function _maxChildImplicit(horizontal) {
+            var m = 0
+            for (var i = 0; i < count; ++i) {
+                var c = itemAt(i)
+                if (!c || c._overlay) continue
+                var v = horizontal ? c.implicitWidth : c.implicitHeight
+                if (v > m) m = v
+            }
+            return m
+        }
+
         model: stack.node ? stack.node.children : []
         delegate: LuiNodeView {
             required property var modelData
