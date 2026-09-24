@@ -237,16 +237,26 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
 
         decorations = self.mergedDecorations()
         (textView.layoutManager as? MarkdownLayoutManager)?.decorations = decorations
-        textView.layoutManager?.invalidateDisplay(forCharacterRange: full)
+        // Mid-edit the glyph layout can lag the storage by a character, so an
+        // invalidation anchored at the doc end reads past the last index.
+        // Defer it until after the current editing turn settles.
+        OperationQueue.main.addOperation {
+            textView.layoutManager?.invalidateDisplay(forCharacterRange: full)
+        }
     }
 
     /// Paragraph range(s) that keep their markers visible.
     private func revealRange(in text: NSString) -> NSRange? {
-        guard text.length <= activeRevealLimit else { return nil }
-        let location = min(activeCharacterRange.location, text.length)
-        var range = text.paragraphRange(for: NSRange(location: location, length: 0))
-        if activeCharacterRange.length > 0 {
-            range = NSUnionRange(range, text.paragraphRange(for: activeCharacterRange))
+        guard text.length <= activeRevealLimit, text.length > 0 else { return nil }
+        // paragraphRange reads the character at range.location — out of bounds
+        // when the caret sits at the end of the string, so clamp to the last char.
+        let last = text.length - 1
+        let start = min(activeCharacterRange.location, last)
+        var range = text.paragraphRange(for: NSRange(location: start, length: 0))
+        let end = min(NSMaxRange(activeCharacterRange), last)
+        if end > start {
+            range = NSUnionRange(range, text.paragraphRange(for: NSRange(
+                location: start, length: end - start)))
         }
         return range
     }
