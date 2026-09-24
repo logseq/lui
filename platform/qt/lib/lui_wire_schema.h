@@ -111,6 +111,7 @@ enum class Property {
   Checked,
   ProgressValue,
   OrientationValue,
+  PlacementValue,
   SizeValue,
   IconName,
   VariantValue,
@@ -468,6 +469,7 @@ inline const char *propertyWireName(Property property) {
     case Property::Checked: return "checked";
     case Property::ProgressValue: return "value";
     case Property::OrientationValue: return "orientation";
+    case Property::PlacementValue: return "placement";
     case Property::SizeValue: return "size";
     case Property::IconName: return "name";
     case Property::VariantValue: return "variant";
@@ -543,6 +545,7 @@ inline bool decodePropertyWireName(const char *name, Property *property) {
   if (std::strcmp(name, "checked") == 0) { *property = Property::Checked; return true; }
   if (std::strcmp(name, "value") == 0) { *property = Property::ProgressValue; return true; }
   if (std::strcmp(name, "orientation") == 0) { *property = Property::OrientationValue; return true; }
+  if (std::strcmp(name, "placement") == 0) { *property = Property::PlacementValue; return true; }
   if (std::strcmp(name, "size") == 0) { *property = Property::SizeValue; return true; }
   if (std::strcmp(name, "name") == 0) { *property = Property::IconName; return true; }
   if (std::strcmp(name, "variant") == 0) { *property = Property::VariantValue; return true; }
