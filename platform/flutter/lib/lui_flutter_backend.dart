@@ -2907,6 +2907,22 @@ final class LUIFlutterBackend {
       return switch (property) {
         'orientation' =>
           value is String && (value == 'horizontal' || value == 'vertical'),
+        'placement' =>
+          value is String &&
+              const {
+                'automatic',
+                'bottom',
+                'navigation',
+                'principal',
+                'primary-action',
+                'secondary-action',
+                'status',
+                'confirmation-action',
+                'cancellation-action',
+                'destructive-action',
+                'top-bar-leading',
+                'top-bar-trailing',
+              }.contains(value),
         'gap' => value is int && value >= 0,
         'accessibility-label' || 'style-class' => value is String,
         _ => false,
@@ -3723,7 +3739,9 @@ final class LUIFlutterBackend {
       kind == _NodeKind.input ||
       kind == _NodeKind.searchField ||
       kind == _NodeKind.menuItem ||
-      kind == _NodeKind.divider;
+      kind == _NodeKind.spacer ||
+      kind == _NodeKind.divider ||
+      kind == _NodeKind.text;
 
   static bool _isContextMenuLeafHost(_NodeKind kind) {
     const kinds = {

@@ -107,6 +107,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case checked = "checked"
     case progressValue = "value"
     case orientation = "orientation"
+    case placement = "placement"
     case size = "size"
     case name = "name"
     case variant = "variant"
@@ -158,7 +159,7 @@ enum LUISchemaMatrix {
         .inputGroup: [.accessibilityLabel, .width, .height, .minWidth, .grow],
         .inputGroupActions: [.gap],
         .toast: [.duration, .accessibilityLabel, .styleClass],
-        .toolbar: [.orientation, .accessibilityLabel, .gap, .styleClass],
+        .toolbar: [.orientation, .accessibilityLabel, .gap, .styleClass, .placement],
         .bottomTabs: [.accessibilityLabel, .styleClass, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight],
         .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled],
     ]

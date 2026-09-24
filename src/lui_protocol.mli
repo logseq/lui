@@ -127,6 +127,7 @@ type property =
   | Checked
   | ProgressValue
   | OrientationValue
+  | PlacementValue
   | SizeValue
   | IconName
   | VariantValue

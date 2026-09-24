@@ -151,6 +151,9 @@ enum LUIWireValue: Decodable, Equatable {
         case .orientation:
             guard let value = stringValue else { return false }
             return value == "horizontal" || value == "vertical"
+        case .placement:
+            guard let value = stringValue else { return false }
+            return Self.toolbarPlacements.contains(value)
         case .size:
             guard let value = stringValue else { return false }
             return Self.controlSizes.contains(value) ||
@@ -223,6 +226,12 @@ enum LUIWireValue: Decodable, Equatable {
     private static let textSizes: Set<String> = ["heading", "display"]
 
     private static let textAlignments: Set<String> = ["start", "center", "end"]
+
+    private static let toolbarPlacements: Set<String> = [
+        "automatic", "bottom", "navigation", "principal", "primary-action",
+        "secondary-action", "status", "confirmation-action", "cancellation-action",
+        "destructive-action", "top-bar-leading", "top-bar-trailing",
+    ]
 
     private static let buttonVariants: Set<String> = [
         "default", "primary", "secondary", "outline", "ghost", "destructive",
@@ -623,6 +632,7 @@ struct LUIRetainedTree {
         case .progressValue: kind == .progress || kind == .slider || kind == .split
         case .resizeDuration, .resizeEasing, .resizeOrigin: kind == .split
         case .orientation: kind == .divider || kind == .tabs || kind == .scroll
+        case .placement: kind == .toolbar
         case .size:
             kind == .button || kind == .toggleButton || kind == .spinner ||
                 kind == .icon || kind == .text || kind == .tableCell ||
@@ -716,7 +726,8 @@ struct LUIRetainedTree {
             kind == .toggleGroup || kind == .checkbox || kind == .switchControl ||
             kind == .toggle || kind == .radioGroup || kind == .select ||
             kind == .combobox || kind == .textField || kind == .secureField || kind == .input ||
-            kind == .searchField || kind == .menuItem || kind == .divider
+            kind == .searchField || kind == .menuItem || kind == .spacer ||
+            kind == .divider || kind == .text
     }
 
     private static func isTreeRow(_ kind: LUINodeKind) -> Bool {

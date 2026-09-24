@@ -129,6 +129,7 @@ type property =
   | Checked
   | ProgressValue
   | OrientationValue
+  | PlacementValue
   | SizeValue
   | IconName
   | VariantValue
@@ -390,6 +391,24 @@ let container_relative_frame_supported value =
 
 let orientation_supported value = value = "horizontal" || value = "vertical"
 
+let placement_supported value =
+  List.mem
+    value
+    [ "automatic"
+    ; "bottom"
+    ; "navigation"
+    ; "principal"
+    ; "primary-action"
+    ; "secondary-action"
+    ; "status"
+    ; "confirmation-action"
+    ; "cancellation-action"
+    ; "destructive-action"
+    ; "top-bar-leading"
+    ; "top-bar-trailing"
+    ]
+;;
+
 let control_size_supported value =
   value = "default" || value = "sm" || value = "lg" || value = "icon"
 
@@ -577,6 +596,7 @@ let common_property_supported kind property =
     kind = Checkbox || kind = SwitchControl || kind = Toggle || kind = Radio
   | ProgressValue -> kind = Progress || kind = Slider || kind = Split
   | OrientationValue -> kind = Divider || kind = Tabs || kind = Scroll
+  | PlacementValue -> kind = Toolbar
   | SizeValue ->
     kind = Button || kind = ToggleButton || kind = Spinner || kind = Icon
     || kind = TableCell || kind = MenuItem
@@ -726,7 +746,7 @@ let property_supported kind property =
       || property = StyleClass
     | Toolbar ->
       property = OrientationValue || property = AccessibilityLabel
-      || property = Gap || property = StyleClass
+      || property = Gap || property = StyleClass || property = PlacementValue
     | BottomTabs ->
       property = AccessibilityLabel || property = StyleClass
       || property = GrowValue || property = WidthValue || property = HeightValue
@@ -792,6 +812,7 @@ let property_value_supported property value =
   | Checked, BoolValue _ -> true
   | ProgressValue, FloatValue _ -> true
   | OrientationValue, StringValue value -> orientation_supported value
+  | PlacementValue, StringValue value -> placement_supported value
   | SizeValue, StringValue value -> control_size_supported value
   | IconName, StringValue value -> icon_name_supported value
   | VariantValue, StringValue value -> button_variant_supported value
@@ -1070,7 +1091,9 @@ let child_kind_supported parent_kind child_kind =
       | Input
       | SearchField
       | MenuItem
-      | Divider -> true
+      | Spacer
+      | Divider
+      | Text -> true
       | _ -> false)
     | DropdownMenu | ContextMenu -> child_kind = MenuItem || child_kind = Divider
     | _ -> true
