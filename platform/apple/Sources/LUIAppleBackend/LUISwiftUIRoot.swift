@@ -446,7 +446,14 @@ private struct LUINodeView: View {
                 return AnyView(LUISegmentedTabsView(model: model, backend: backend))
             }
             return AnyView(LUIHorizontalGroupView(model: model, backend: backend))
-        case .buttonGroup, .toggleGroup, .breadcrumb, .pagination:
+        case .toggleGroup:
+            #if os(iOS)
+            if LUISegmentedToggleGroupView.supports(model: model, backend: backend) {
+                return AnyView(LUISegmentedToggleGroupView(model: model, backend: backend))
+            }
+            #endif
+            return AnyView(LUIHorizontalGroupView(model: model, backend: backend))
+        case .buttonGroup, .breadcrumb, .pagination:
             return AnyView(LUIHorizontalGroupView(model: model, backend: backend))
         case .bottomTabs:
             return AnyView(LUIBottomTabsView(model: model, backend: backend))
@@ -578,7 +585,19 @@ private struct LUINodeView: View {
                 Button {
                     try? backend.performChange(node: model.id)
                 } label: {
+                    #if os(iOS)
+                    HStack {
+                        Text(verbatim: model.text)
+                        Spacer()
+                        if model.isChecked {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(Color.accentColor)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    #else
                     Label(model.text, systemImage: model.isChecked ? "circle.inset.filled" : "circle")
+                    #endif
                 }
                 .buttonStyle(.plain)
                 .disabled(!model.isEnabled)
@@ -2814,7 +2833,13 @@ private struct LUIListItemView: View {
     private var verticalPadding: CGFloat {
         isNavigationHeading ? 6 : (isNavigationRow ? 10 : 8)
     }
-    private var cornerRadius: CGFloat { isNavigationRow ? 10 : 6 }
+    private var cornerRadius: CGFloat {
+        #if os(iOS)
+        return 0
+        #else
+        return isNavigationRow ? 10 : 6
+        #endif
+    }
     private var selectionBackground: Color {
         if isNavigationRow && colorScheme == .light {
             return Color.primary.opacity(0.06)
@@ -3404,6 +3429,60 @@ private struct LUISegmentedTabsView: View {
         }
     }
 }
+
+#if os(iOS)
+private struct LUISegmentedToggleGroupView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    static func supports(model: LUINodeModel, backend: LUIAppleBackend) -> Bool {
+        let toggles = model.children.compactMap { backend.model(id: $0) }
+        return !toggles.isEmpty && toggles.allSatisfy { $0.kind == .toggleButton }
+    }
+
+    private var toggles: [LUINodeModel] {
+        model.children.compactMap { backend.model(id: $0) }
+    }
+
+    private var selection: Binding<Int> {
+        Binding(
+            get: { toggles.first(where: \.isSelected)?.id ?? toggles.first?.id ?? 0 },
+            set: { nodeID in
+                guard let toggle = backend.model(id: nodeID), toggle.isEnabled else { return }
+                try? backend.performToggle(node: nodeID, checked: !toggle.isSelected)
+            }
+        )
+    }
+
+    var body: some View {
+        Picker(selection: selection) {
+            ForEach(toggles, id: \.id) { toggle in
+                toggleLabel(toggle).tag(toggle.id)
+            }
+        } label: {
+            Text(verbatim: model.accessibilityLabel(in: backend) ?? "")
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+    }
+
+    @ViewBuilder
+    private func toggleLabel(_ toggle: LUINodeModel) -> some View {
+        if toggle.buttonIconName.isEmpty {
+            Text(verbatim: toggle.text)
+        } else {
+            Label {
+                Text(verbatim: toggle.text)
+            } icon: {
+                LUIIconImage(
+                    source: backend.iconSource(for: toggle.buttonIconName),
+                    bundle: backend.appIconBundle
+                )
+            }
+        }
+    }
+}
+#endif
 
 private struct LUIHorizontalGroupView: View {
     let model: LUINodeModel
@@ -4382,17 +4461,23 @@ private struct LUIRadioGroupView: View {
 
     @ViewBuilder
     var body: some View {
+        #if os(macOS)
         if LUIRadioGroupVisualPolicy.usesMenuStyle(
             model.property(.styleClass)?.stringValue
         ) {
             picker.pickerStyle(.menu)
         } else {
-            #if os(macOS)
             picker.pickerStyle(.radioGroup)
-            #else
-            picker.pickerStyle(.segmented)
-            #endif
         }
+        #else
+        if LUIRadioGroupVisualPolicy.usesSegmentedStyle(
+            model.property(.styleClass)?.stringValue
+        ) {
+            picker.pickerStyle(.segmented)
+        } else {
+            picker.pickerStyle(.menu)
+        }
+        #endif
     }
 
     private var picker: some View {
@@ -4453,7 +4538,14 @@ private struct LUICheckboxView: View {
                 checked: !model.isChecked
             )
         } label: {
-            Label(model.text, systemImage: checkboxImageName)
+            Label {
+                Text(model.text)
+            } icon: {
+                Image(systemName: checkboxImageName)
+                    .foregroundStyle(
+                        model.isChecked ? Color.accentColor : Color.secondary
+                    )
+            }
         }
         .buttonStyle(.plain)
         .disabled(!model.isEnabled)
@@ -4463,7 +4555,11 @@ private struct LUICheckboxView: View {
     }
 
     private var checkboxImageName: String {
+        #if os(iOS)
+        return model.isChecked ? "checkmark.circle.fill" : "circle"
+        #else
         return model.isChecked ? "checkmark.square.fill" : "square"
+        #endif
     }
 }
 
