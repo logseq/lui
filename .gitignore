@@ -13,5 +13,5 @@
 /examples/*/macos-appkit/.build/
 /platform/web/node_modules/
 /platform/web/dist/
-/platform/qt/build/
+/platform/qt/build*/
 /platform/qt/demo/lui_*_runtime.o
