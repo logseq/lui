@@ -3122,6 +3122,8 @@ private struct LUIButtonView: View {
                 variant: model.buttonVariant
             ) {
                 button.foregroundStyle(.tint)
+            } else if !model.buttonIconName.isEmpty && model.text.isEmpty {
+                button.buttonStyle(.borderless)
             } else {
                 button.buttonStyle(.bordered)
             }
