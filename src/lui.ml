@@ -11,6 +11,7 @@ module Runtime = Lui_runtime
 module Wire = Lui_wire
 module Wire_schema = Lui_wire_schema
 module Json = Lui_json
+module Json_view = Lui_json_view
 module Extension = Lui_extension
 module Extension_check = Lui_extension_check
 module Migration = Lui_migration
