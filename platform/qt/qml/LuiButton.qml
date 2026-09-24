@@ -17,9 +17,15 @@ Button {
 
     text: Style.str(props, "text", "")
     enabled: props["enabled"] !== false
+    // Primary actions map to the style's highlighted button; everything
+    // else renders with the stock QQC2 chrome so buttons look native.
+    highlighted: button.variant === "primary"
     Component.onCompleted: if (props["autofocus"] === true) forceActiveFocus()
 
     padding: Style.controlPadding(size)
+    implicitHeight: button.size === "icon" ? 28
+                    : button.size === "sm" ? 28
+                    : button.size === "lg" ? 40 : 34
 
     contentItem: GridLayout {
         rows: button.placement === "top" ? 2 : 1
@@ -49,35 +55,7 @@ Button {
         }
     }
 
-    background: Rectangle {
-        implicitWidth: 80
-        implicitHeight: button.size === "icon" ? 28
-                        : button.size === "sm" ? 28
-                        : button.size === "lg" ? 40 : 34
-        radius: 6
-        color: {
-            if (!button.enabled) return "#e4e4e7"
-            switch (button.variant) {
-            case "primary": return button.down ? "#0060c9" : "#007aff"
-            case "secondary": return button.down ? "#e4e4e7" : "#f4f4f5"
-            case "outline": return button.down ? "#f4f4f5" : "transparent"
-            case "ghost": return button.down ? "#f4f4f5" : "transparent"
-            case "destructive": return button.down ? "#b91c1c" : "#ef4444"
-            default: return button.down ? "#0060c9" : "#007aff"
-            }
-        }
-        border.color: button.variant === "outline" ? "#d4d4d8" : "transparent"
-        border.width: button.variant === "outline" ? 1 : 0
-    }
-
-    palette.buttonText: {
-        if (!button.enabled) return "#a1a1aa"
-        switch (button.variant) {
-        case "primary":
-        case "destructive": return "#ffffff"
-        default: return "#18181b"
-        }
-    }
+    background.implicitWidth: 80
 
     onClicked: node.press()
     onPressAndHold: if (props["long-press-enabled"] === true) node.longPress()
