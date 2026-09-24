@@ -1048,7 +1048,7 @@ let child_kind_supported parent_kind child_kind =
     | TableRow -> child_kind = TableCell
     | BottomTabs -> child_kind = BottomTab
     | BottomTab -> child_kind <> BottomTab
-    | Tree -> tree_row_kind child_kind
+    | Tree -> tree_row_kind child_kind || child_kind = VirtualList
     | Stepper -> child_kind = Step
     | Timeline -> child_kind = TimelineItem
     | InputGroup -> child_kind = Textarea || child_kind = InputGroupActions

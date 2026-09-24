@@ -455,7 +455,8 @@ struct LUIRetainedTree {
             if parentNode.kind == .tableRow, childNode.kind != .tableCell {
                 throw invalid("table-row can contain only table-cell")
             }
-            if parentNode.kind == .tree, !Self.isTreeRow(childNode.kind) {
+            if parentNode.kind == .tree,
+               !Self.isTreeRow(childNode.kind), childNode.kind != .virtualList {
                 throw invalid("tree accepts only row containers")
             }
             if parentNode.kind == .stepper, childNode.kind != .step {
