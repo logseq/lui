@@ -40,7 +40,7 @@ namespace LUI.Demo
             + "{\"op\":\"set-prop\",\"id\":3,\"property\":\"heading-level\",\"value\":1},"
             + "{\"op\":\"insert-child\",\"parent\":2,\"child\":3,\"index\":0},"
             + "{\"op\":\"create-node\",\"id\":4,\"kind\":\"alert\"},"
-            + "{\"op\":\"set-prop\",\"id\":4,\"property\":\"variant\",\"value\":\"warning\"},"
+            + "{\"op\":\"set-prop\",\"id\":4,\"property\":\"variant\",\"value\":\"secondary\"},"
             + "{\"op\":\"set-prop\",\"id\":4,\"property\":\"text\",\"value\":\"OCaml bridge unavailable — this tree comes from a canned patch batch via ApplyJson.\"},"
             + "{\"op\":\"insert-child\",\"parent\":2,\"child\":4,\"index\":1},"
             + "{\"op\":\"create-node\",\"id\":5,\"kind\":\"text\"},"

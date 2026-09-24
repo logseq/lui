@@ -246,14 +246,14 @@ namespace LUI.WinUI
                 ?? LUIPropertyApplier.Text(state);
             bar.Message = LUIPropertyApplier.Prop(
                 state, LUIProperty.DescriptionValue)?.AsString ?? "";
-            bar.Severity = LUIPropertyApplier.Prop(
-                state, LUIProperty.VariantValue)?.AsString switch
-            {
-                "error" => InfoBarSeverity.Error,
-                "warning" => InfoBarSeverity.Warning,
-                "success" => InfoBarSeverity.Success,
-                _ => InfoBarSeverity.Informational,
-            };
+            // The wire variant set is the button enum
+            // (default|primary|secondary|outline|ghost|destructive);
+            // only `destructive` carries severity color on alert (the
+            // SwiftUI backend does the same).
+            bar.Severity =
+                LUIPropertyApplier.Prop(state, LUIProperty.VariantValue)?.AsString == "destructive"
+                    ? InfoBarSeverity.Error
+                    : InfoBarSeverity.Informational;
             Panel? panel = ChildrenPanel;
             if (panel == null)
             {
