@@ -127,6 +127,7 @@ type host_kind =
   | SwiftUIHost
   | FlutterHost
   | QMLHost
+  | WinUIHost
 
 type platform_profile = {
   profile_os : operating_system;
@@ -440,6 +441,116 @@ ${propertyDecodeCases}
 `;
 }
 
+function renderCSharp(schema) {
+  const nodeKinds = schema.nodeKinds.map(({ lg }) => `        ${lg},`).join('\n');
+  const properties = schema.properties.map(({ lg }) => `        ${lg},`).join('\n');
+  const kindWireEntries = schema.nodeKinds
+    .map(({ lg, wire }) => `            { "${wire}", LUINodeKind.${lg} },`)
+    .join('\n');
+  const kindNameCases = schema.nodeKinds
+    .map(({ lg, wire }) => `            LUINodeKind.${lg} => "${wire}",`)
+    .join('\n');
+  const containerCases = schema.nodeKinds
+    .filter(({ container }) => container)
+    .map(({ lg }) => `            LUINodeKind.${lg}`)
+    .join(' or\n');
+  const propertyWireEntries = schema.properties
+    .map(({ lg, wire }) => `            { "${wire}", LUIProperty.${lg} },`)
+    .join('\n');
+  const propertyNameCases = schema.properties
+    .map(({ lg, wire }) => `            LUIProperty.${lg} => "${wire}",`)
+    .join('\n');
+  const kindLg = new Map(schema.nodeKinds.map(({ wire, lg }) => [wire, lg]));
+  const propLg = new Map(schema.properties.map(({ wire, lg }) => [wire, lg]));
+  const matrixEntries = Object.entries(schema.kindProperties ?? {})
+    .map(([kindWire, propWires]) =>
+      `            { LUINodeKind.${kindLg.get(kindWire)}, Set(${propWires
+        .map((w) => `LUIProperty.${propLg.get(w)}`)
+        .join(', ')}) },`)
+    .join('\n');
+  const extraEntries = Object.entries(schema.kindExtraProperties ?? {})
+    .map(([kindWire, propWires]) =>
+      `            { LUINodeKind.${kindLg.get(kindWire)}, Set(${propWires
+        .map((w) => `LUIProperty.${propLg.get(w)}`)
+        .join(', ')}) },`)
+    .join('\n');
+  return `${generatedHeader('//')}
+#nullable enable
+
+using System.Collections.Generic;
+
+namespace LUI
+{
+    public enum LUINodeKind
+    {
+${nodeKinds}
+    }
+
+    public enum LUIProperty
+    {
+${properties}
+    }
+
+    public static class LUIWireSchema
+    {
+        private static readonly Dictionary<string, LUINodeKind> NodeKindsByWireName =
+            new Dictionary<string, LUINodeKind>
+        {
+${kindWireEntries}
+        };
+
+        private static readonly Dictionary<string, LUIProperty> PropertiesByWireName =
+            new Dictionary<string, LUIProperty>
+        {
+${propertyWireEntries}
+        };
+
+        public static string WireName(this LUINodeKind kind) => kind switch
+        {
+${kindNameCases}
+            _ => "unknown",
+        };
+
+        public static bool TryDecodeNodeKind(string? name, out LUINodeKind kind) =>
+            NodeKindsByWireName.TryGetValue(name ?? "", out kind);
+
+        public static bool IsStandardNodeName(string? name) =>
+            TryDecodeNodeKind(name, out _);
+
+        public static bool IsContainerKind(LUINodeKind kind) => kind switch
+        {
+${containerCases} => true,
+            _ => false,
+        };
+
+        public static string WireName(this LUIProperty property) => property switch
+        {
+${propertyNameCases}
+            _ => "unknown",
+        };
+
+        public static bool TryDecodeProperty(string? name, out LUIProperty property) =>
+            PropertiesByWireName.TryGetValue(name ?? "", out property);
+
+        private static HashSet<LUIProperty> Set(params LUIProperty[] values) =>
+            new HashSet<LUIProperty>(values);
+
+        public static readonly IReadOnlyDictionary<LUINodeKind, IReadOnlySet<LUIProperty>> RestrictiveMatrix =
+            new Dictionary<LUINodeKind, IReadOnlySet<LUIProperty>>
+        {
+${matrixEntries}
+        };
+
+        public static readonly IReadOnlyDictionary<LUINodeKind, IReadOnlySet<LUIProperty>> ExtraMatrix =
+            new Dictionary<LUINodeKind, IReadOnlySet<LUIProperty>>
+        {
+${extraEntries}
+        };
+    }
+}
+`;
+}
+
 function artifacts(schema) {
   return new Map([
     ['src/lui_protocol.mli', renderProtocolSignature(schema)],
@@ -448,6 +559,7 @@ function artifacts(schema) {
     ['platform/apple/Sources/LUIAppleBackend/LUIWireSchema.swift', renderSwift(schema)],
     ['platform/flutter/lib/lui_wire_schema.g.dart', renderDart(schema)],
     ['platform/qt/lib/lui_wire_schema.h', renderCpp(schema)],
+    ['platform/winui/LUI.Core/LUIWireSchema.g.cs', renderCSharp(schema)],
   ]);
 }
 

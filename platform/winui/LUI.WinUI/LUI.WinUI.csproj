@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <UseWinUI>true</UseWinUI>
+    <WindowsAppSDKBootstrapVersion>1.6.240923002</WindowsAppSDKBootstrapVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>LUI.WinUI</RootNamespace>
+    <AssemblyName>LUI.WinUI</AssemblyName>
+    <Description>WinUI 3 rendering layer for the LUI wire protocol: maps the retained node tree onto WinUI controls and routes gestures back through the protocol event gates.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LUI.Core\LUI.Core.csproj" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.240923002" />
+  </ItemGroup>
+
+</Project>

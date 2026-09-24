@@ -89,6 +89,7 @@ type host_kind =
   | SwiftUIHost
   | FlutterHost
   | QMLHost
+  | WinUIHost
 
 type platform_profile = {
   profile_os : operating_system;

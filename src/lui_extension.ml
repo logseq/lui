@@ -159,6 +159,7 @@ let host_name host =
   | SwiftUIHost -> "swiftui"
   | FlutterHost -> "flutter"
   | QMLHost -> "qml"
+  | WinUIHost -> "winui"
 
 let token value = string_of_int (String.length value) ^ ":" ^ value
 
