@@ -3806,8 +3806,11 @@ private struct LUIRowView: View {
     private var cross: String {
         model.property(.cross)?.stringValue ?? "stretch"
     }
-    private var spacing: CGFloat {
-        model.property(.main)?.stringValue == "space_between" ? 0 : gap
+    private var spacing: CGFloat? {
+        if model.property(.main)?.stringValue == "space_between" {
+            return 0
+        }
+        return model.property(.gap)?.intValue.map { CGFloat($0) }
     }
     private var alignment: VerticalAlignment {
         switch cross {
@@ -3880,8 +3883,11 @@ private struct LUIColumnView: View {
     private var cross: String {
         model.property(.cross)?.stringValue ?? "stretch"
     }
-    private var spacing: CGFloat {
-        model.property(.main)?.stringValue == "space_between" ? 0 : gap
+    private var spacing: CGFloat? {
+        if model.property(.main)?.stringValue == "space_between" {
+            return 0
+        }
+        return model.property(.gap)?.intValue.map { CGFloat($0) }
     }
     private var alignment: HorizontalAlignment {
         switch cross {
