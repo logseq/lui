@@ -100,14 +100,19 @@ final class LUINodeModel: Identifiable {
 
     private(set) var properties: [LUIProperty: LUIWireValue]
     private(set) var children: [Int]
+    /// `children` minus context-menu entries. Child kinds are immutable, so it
+    /// only changes when `children` does — maintained by the backend at commit
+    /// time so view bodies don't refilter on every evaluation.
+    private(set) var visibleChildren: [Int]
     private(set) var parent: Int?
     private(set) var revision = 0
 
-    init(id: Int, state: LUINodeState) {
+    init(id: Int, state: LUINodeState, visibleChildren: [Int]) {
         self.id = id
         kind = state.kind
         properties = state.properties
         children = state.children
+        self.visibleChildren = visibleChildren
         parent = state.parent
     }
 
@@ -115,13 +120,15 @@ final class LUINodeModel: Identifiable {
         properties[property]
     }
 
-    func apply(state: LUINodeState) {
+    func apply(state: LUINodeState, visibleChildren: [Int]) {
         guard properties != state.properties || children != state.children ||
+            self.visibleChildren != visibleChildren ||
             parent != state.parent else {
             return
         }
         properties = state.properties
         children = state.children
+        self.visibleChildren = visibleChildren
         parent = state.parent
         revision += 1
     }
@@ -376,7 +383,6 @@ public final class LUIAppleBackend {
     private var interactionLockedDrawers: Set<Int> = []
     private var images: [Int: CGImage] = [:]
     private var mediaSurfaces: [Int: CGImage] = [:]
-    private let decoder = JSONDecoder()
     private let appIcons: [String: LUIAppleIconSource]
     let appIconBundle: Bundle?
     private let extensionRegistry: LUIAppleExtensionRegistry
@@ -519,19 +525,36 @@ public final class LUIAppleBackend {
         invalidateMediaSurfaces(surfaceID: id)
     }
 
-    public func apply(json: String) throws {
-        guard let data = json.data(using: .utf8) else {
-            throw invalid("patch batch is not UTF-8")
-        }
+    /// A patch batch decoded ahead of application — the JSON parse is pure,
+    /// so hosts running a 120Hz UI can decode on a background executor and
+    /// hand the result to `apply(decoded:)` on the main actor.
+    public struct DecodedPatchBatch: Sendable {
         let batch: LUIPatchBatch
+    }
+
+    /// Decodes a patch batch. Pure and `nonisolated` — safe to call off the
+    /// main actor; pair with `apply(decoded:)` which preserves generation
+    /// ordering and must still run on the main actor.
+    public nonisolated static func decode(_ json: String) throws -> DecodedPatchBatch {
+        guard let data = json.data(using: .utf8) else {
+            throw LUIBackendError.invalidBatch("patch batch is not UTF-8")
+        }
         do {
-            batch = try decoder.decode(LUIPatchBatch.self, from: data)
+            let batch = try JSONDecoder().decode(LUIPatchBatch.self, from: data)
+            return DecodedPatchBatch(batch: batch)
         } catch let error as LUIBackendError {
             throw error
         } catch {
-            throw invalid(error.localizedDescription)
+            throw LUIBackendError.invalidBatch(error.localizedDescription)
         }
+    }
 
+    public func apply(json: String) throws {
+        try apply(decoded: try Self.decode(json))
+    }
+
+    public func apply(decoded: DecodedPatchBatch) throws {
+        let batch = decoded.batch
         let expectedGeneration = generation + 1
         guard batch.generation == expectedGeneration else {
             throw invalid(
@@ -825,10 +848,19 @@ public final class LUIAppleBackend {
         }
         for id in touched where !dropped.contains(id) {
             if let state = tree.nodes[id] {
+                // Kinds are immutable, so context-menu membership in the
+                // child list is fixed until the list itself changes.
+                let visibleChildren = state.children.filter {
+                    tree.nodes[$0]?.kind != .contextMenu
+                }
                 if let model = models[id] {
-                    model.apply(state: state)
+                    model.apply(state: state, visibleChildren: visibleChildren)
                 } else {
-                    models[id] = LUINodeModel(id: id, state: state)
+                    models[id] = LUINodeModel(
+                        id: id,
+                        state: state,
+                        visibleChildren: visibleChildren
+                    )
                 }
             }
             if let state = tree.extensionNodes[id] {

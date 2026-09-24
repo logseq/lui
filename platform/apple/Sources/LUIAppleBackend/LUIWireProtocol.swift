@@ -23,12 +23,12 @@ public enum LUIEvent: Equatable, Sendable {
     )
 }
 
-struct LUIPatchBatch: Decodable {
+struct LUIPatchBatch: Decodable, Sendable {
     let generation: Int
     let ops: [LUIPatchOperation]
 }
 
-enum LUIPatchOperation: Decodable {
+enum LUIPatchOperation: Decodable, Sendable {
     case createNode(id: Int, kind: LUINodeKind)
     case createExtension(id: Int, identifier: String, fingerprint: String)
     case dropNode(id: Int)

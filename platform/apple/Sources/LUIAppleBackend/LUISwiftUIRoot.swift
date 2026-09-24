@@ -87,7 +87,7 @@ public struct LUISwiftUIRoot: View {
     }
 
     private var rootContent: some View {
-        LUIAnyNodeView(nodeID: rootID, backend: backend)
+        LUIAnyNodeView(nodeID: rootID, backend: backend).equatable()
             .sheet(item: sheetBinding, onDismiss: didDismissSheet) { presentation in
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
             }
@@ -413,7 +413,7 @@ private struct LUIDialogCustomSurface: View {
             }
             ForEach(presentation.model.children, id: \.self) { childID in
                 if backend.model(id: childID)?.kind != .button {
-                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                    LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                         .environment(\.luiDialogButtonsExtracted, true)
                 }
             }
@@ -547,7 +547,7 @@ private struct LUINodeView: View {
         switch model.kind {
         case .root:
             guard let childID = model.children.first else { return AnyView(EmptyView()) }
-            return AnyView(LUIAnyNodeView(nodeID: childID, backend: backend))
+            return AnyView(LUIAnyNodeView(nodeID: childID, backend: backend).equatable())
         case .row:
             return AnyView(LUIRowView(model: model, backend: backend))
         case .tabs:
@@ -743,7 +743,7 @@ private struct LUINodeView: View {
                 ScrollView(horizontal ? .horizontal : .vertical) {
                     ZStack(alignment: .topLeading) {
                         ForEach(visibleChildren, id: \.self) { childID in
-                            LUIAnyNodeView(nodeID: childID, backend: backend)
+                            LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                         }
                     }
                     .environment(\.luiInsideScroll, true)
@@ -793,7 +793,7 @@ private struct LUINodeView: View {
     }
 
     private var visibleChildren: [Int] {
-        model.children.filter { backend.model(id: $0)?.kind != .contextMenu }
+        model.visibleChildren
     }
 
     private var headingFont: Font {
@@ -880,7 +880,7 @@ private struct LUIBottomTabsView: View {
     var body: some View {
         let tabs = TabView(selection: selection) {
             ForEach(destinations, id: \.id) { destination in
-                LUIAnyNodeView(nodeID: destination.id, backend: backend)
+                LUIAnyNodeView(nodeID: destination.id, backend: backend).equatable()
                     .tag(destination.id)
                     .tabItem {
                         Group {
@@ -975,7 +975,7 @@ private struct LUIAlertView: View {
             }
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(model.children, id: \.self) { childID in
-                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                    LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                 }
             }
         }
@@ -995,7 +995,7 @@ private struct LUIBubbleView: View {
             ZStack(alignment: reactionAlignment) {
                 ZStack {
                     ForEach(model.children, id: \.self) { childID in
-                        LUIAnyNodeView(nodeID: childID, backend: backend)
+                        LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                     }
                 }
                 if !model.text.isEmpty {
@@ -1109,7 +1109,7 @@ private struct LUINativeMenuActions: View {
                         )
                     }
                 default:
-                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                    LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                 }
             }
         }
@@ -1337,7 +1337,7 @@ private struct LUITreeOutlineRow: View {
                 }
             }
         } else {
-            LUIAnyNodeView(nodeID: element.id, backend: backend)
+            LUIAnyNodeView(nodeID: element.id, backend: backend).equatable()
         }
     }
 
@@ -1450,7 +1450,7 @@ private struct LUIAccordionView: View {
 
     private var accordionChildren: some View {
         ForEach(model.children, id: \.self) { childID in
-            LUIAnyNodeView(nodeID: childID, backend: backend)
+            LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
         }
     }
 }
@@ -1620,7 +1620,7 @@ private struct LUIStackView: View {
     private func stackChildren(excluding excludedIDs: [Int]) -> some View {
         ZStack {
             ForEach(model.children.filter { !excludedIDs.contains($0) }, id: \.self) { childID in
-                LUIAnyNodeView(nodeID: childID, backend: backend)
+                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
             }
         }
     }
@@ -2218,7 +2218,7 @@ private struct LUIModalSurfaceContent: View {
                     .accessibilityAddTraits(.isHeader)
                 ZStack {
                     ForEach(model.children, id: \.self) { childID in
-                        LUIAnyNodeView(nodeID: childID, backend: backend)
+                        LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2275,7 +2275,7 @@ private struct LUIModalSurfaceContent: View {
         ) {
             ScrollView {
                 if let contentID = navigationFormContentID {
-                    LUIAnyNodeView(nodeID: contentID, backend: backend)
+                    LUIAnyNodeView(nodeID: contentID, backend: backend).equatable()
                 }
             }
             .accessibilityIdentifier(navigationFormAccessibilityIdentifier)
@@ -2285,7 +2285,7 @@ private struct LUIModalSurfaceContent: View {
             model.property(.styleClass)?.stringValue
         ) {
             if let contentID = navigationFormContentID {
-                LUIAnyNodeView(nodeID: contentID, backend: backend)
+                LUIAnyNodeView(nodeID: contentID, backend: backend).equatable()
             }
         } else {
             Form {
@@ -2384,7 +2384,7 @@ private struct LUINavigationFormRows: View {
                     }
                 }
             } else {
-                LUIAnyNodeView(nodeID: contentID, backend: backend)
+                LUIAnyNodeView(nodeID: contentID, backend: backend).equatable()
             }
         }
     }
@@ -2396,7 +2396,7 @@ private struct LUINavigationFormRows: View {
                 LUIListItemView(model: child, backend: backend, isNativeListRow: true)
                     .environment(\.luiIsNativeFormRow, true)
             } else {
-                LUIAnyNodeView(nodeID: childID, backend: backend)
+                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                     .environment(\.luiIsNativeFormRow, true)
             }
         }
@@ -2559,7 +2559,7 @@ private struct LUIToolbarView: View {
                     )))
                 }
                 if let fixedChildID = layout.fixedChildID {
-                    LUIAnyNodeView(nodeID: fixedChildID, backend: backend)
+                    LUIAnyNodeView(nodeID: fixedChildID, backend: backend).equatable()
                 }
             }
         } else {
@@ -2572,7 +2572,7 @@ private struct LUIToolbarView: View {
     @ViewBuilder
     private func children(_ childIDs: [Int]) -> some View {
         ForEach(childIDs, id: \.self) { childID in
-            LUIAnyNodeView(nodeID: childID, backend: backend)
+            LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
         }
     }
 
@@ -2622,7 +2622,7 @@ private struct LUIToolbarGroupAnchor: View {
             ToolbarSpacer(.flexible, placement: placement)
         case let .bare(childID):
             ToolbarItem(placement: placement) {
-                LUIAnyNodeView(nodeID: childID, backend: backend)
+                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
             }
         case let .capsule(childIDs):
             // Consecutive interactive children fuse into one toolbar item so
@@ -2630,7 +2630,7 @@ private struct LUIToolbarGroupAnchor: View {
             ToolbarItem(placement: placement) {
                 ControlGroup {
                     ForEach(childIDs, id: \.self) { childID in
-                        LUIAnyNodeView(nodeID: childID, backend: backend)
+                        LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                     }
                 }
             }
@@ -2681,7 +2681,7 @@ private struct LUIToastView: View {
     var body: some View {
         HStack(spacing: 12) {
             ForEach(model.children, id: \.self) { childID in
-                LUIAnyNodeView(nodeID: childID, backend: backend)
+                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
             }
         }
         .padding()
@@ -3260,7 +3260,7 @@ private struct LUIDropdownMenuView: View {
                 LUIDropdownMenuLayoutPolicy.contentSpacing
         ) {
             ForEach(model.children, id: \.self) { childID in
-                LUIAnyNodeView(nodeID: childID, backend: backend)
+                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
             }
         }
         .padding(LUIDropdownMenuLayoutPolicy.contentPadding)
@@ -3521,7 +3521,7 @@ private struct LUIListItemView: View {
             } else {
                 ForEach(visibleChildren, id: \.self) { childID in
                     let child = backend.model(id: childID)
-                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                    LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                         .environment(\.luiIsNativeListRow, isNativeListRow)
                         .frame(
                             maxWidth: LUIListItemLayoutPolicy.stretchesChild(
@@ -3620,7 +3620,7 @@ private struct LUIListItemView: View {
     }
 
     private var visibleChildren: [Int] {
-        model.children.filter { backend.model(id: $0)?.kind != .contextMenu }
+        model.visibleChildren
     }
 
     private var hasInteractiveChildren: Bool {
@@ -4898,14 +4898,13 @@ private struct LUIListView: View {
     @ViewBuilder
     private func rows(_ childIDs: [Int]) -> some View {
         ForEach(childIDs.filter {
-            $0 != searchableField?.id &&
-                backend.model(id: $0)?.kind != .contextMenu
+            $0 != searchableField?.id
         }, id: \.self) { childID in
             Group {
                 if let child = backend.model(id: childID), child.kind == .listItem {
                     LUIListItemView(model: child, backend: backend, isNativeListRow: true)
                 } else {
-                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                    LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                 }
             }
             .listRowBackground(semanticColors["surface"])
@@ -4914,9 +4913,8 @@ private struct LUIListView: View {
 
     private var sections: [LUIListSection] {
         LUIListSectionPolicy.sections(
-            childIDs: model.children.filter { childID in
-                childID != searchableField?.id &&
-                    backend.model(id: childID)?.kind != .contextMenu
+            childIDs: model.visibleChildren.filter { childID in
+                childID != searchableField?.id
             },
             isHeading: { childID in
                 backend.model(id: childID)?.kind == .heading
@@ -4994,9 +4992,7 @@ private struct LUIVirtualListView: View {
 
     private var sectionRows: [SectionRow] {
         var currentTitle: String?
-        return model.children.filter {
-            backend.model(id: $0)?.kind != .contextMenu
-        }.enumerated().map { index, id in
+        return model.visibleChildren.enumerated().map { index, id in
             if tracksSectionTitles, let title = sectionTitle(in: id) { currentTitle = title }
             return SectionRow(id: id, index: index, title: currentTitle)
         }
@@ -5026,7 +5022,7 @@ struct LUIVerticalScrollContent: View {
             spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
         ) {
             ForEach(model.children, id: \.self) { childID in
-                LUIAnyNodeView(nodeID: childID, backend: backend)
+                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
             }
         }
     }
@@ -5041,7 +5037,7 @@ private struct LUIGridView: View {
             ForEach(model.children.filter {
                 backend.model(id: $0)?.kind != .contextMenu
             }, id: \.self) { childID in
-                LUIAnyNodeView(nodeID: childID, backend: backend)
+                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
             }
         }
     }
@@ -5748,7 +5744,7 @@ private struct LUISplitView: View {
             NavigationSplitView(columnVisibility: $columnVisibility) {
                 Group {
                     if let firstID {
-                        LUIAnyNodeView(nodeID: firstID, backend: backend)
+                        LUIAnyNodeView(nodeID: firstID, backend: backend).equatable()
                     }
                 }
                 .background {
@@ -5782,7 +5778,7 @@ private struct LUISplitView: View {
                 )
             } detail: {
                 if let secondID {
-                    LUIAnyNodeView(nodeID: secondID, backend: backend)
+                    LUIAnyNodeView(nodeID: secondID, backend: backend).equatable()
                 }
             }
             .navigationSplitViewStyle(.balanced)
@@ -5824,11 +5820,11 @@ private struct LUISplitView: View {
             ZStack(alignment: .leading) {
                 HStack(spacing: gap) {
                     if let firstID {
-                        LUIAnyNodeView(nodeID: firstID, backend: backend)
+                        LUIAnyNodeView(nodeID: firstID, backend: backend).equatable()
                             .frame(width: firstWidth)
                     }
                     if let secondID {
-                        LUIAnyNodeView(nodeID: secondID, backend: backend)
+                        LUIAnyNodeView(nodeID: secondID, backend: backend).equatable()
                             .frame(width: secondWidth)
                     }
                 }
@@ -5996,7 +5992,7 @@ private struct LUIResizableView: View {
     var body: some View {
         ZStack {
             ForEach(model.children, id: \.self) { childID in
-                LUIAnyNodeView(nodeID: childID, backend: backend)
+                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
             }
         }
         .modifier(LUISurfaceModifier(model: model, backend: backend))
