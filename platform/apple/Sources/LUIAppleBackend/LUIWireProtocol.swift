@@ -715,7 +715,7 @@ struct LUIRetainedTree {
             kind == .toggleGroup || kind == .checkbox || kind == .switchControl ||
             kind == .toggle || kind == .radioGroup || kind == .select ||
             kind == .combobox || kind == .textField || kind == .secureField || kind == .input ||
-            kind == .searchField || kind == .divider
+            kind == .searchField || kind == .menuItem || kind == .divider
     }
 
     private static func isTreeRow(_ kind: LUINodeKind) -> Bool {
