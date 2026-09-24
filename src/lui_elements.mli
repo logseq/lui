@@ -2219,7 +2219,7 @@ val toolbar :
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?orientation:orientation ->
-  ?label:string -> ?toolbar_gap:int -> ?toolbar_class:string -> t list -> t
+  ?label:string -> ?toolbar_gap:int -> ?toolbar_class:string -> ?placement:string -> t list -> t
 val accordion :
   ?key:string ->
   ?gap:int ->
