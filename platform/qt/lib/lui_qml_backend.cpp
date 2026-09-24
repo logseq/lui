@@ -280,7 +280,14 @@ bool LuiQmlBackend::applyJson(const QVariantMap &batch, QString *error) {
   if (!validateStates(next, error)) return false;
   if (!validateExtensionStates(next, nextExtensions, error)) return false;
 
-  // Commit: update handles in place so QML bindings keep their object
+  // Commit the new snapshot before notifying any handles: QML bindings
+  // re-evaluated by the notify below may call back into this object
+  // (performPress, rootNode, ...), and those must see the committed state.
+  m_states = next;
+  m_extensionStates = nextExtensions;
+  m_generation = static_cast<int>(nextGeneration);
+
+  // Update handles in place so QML bindings keep their object
   // identity; drop handles for removed nodes.
   QSet<qint64> changed;
   QSet<qint64> dependents;
@@ -395,9 +402,6 @@ bool LuiQmlBackend::applyJson(const QVariantMap &batch, QString *error) {
     }
   }
 
-  m_states = next;
-  m_extensionStates = nextExtensions;
-  m_generation = static_cast<int>(nextGeneration);
   emit generationChanged();
   emit rootNodeChanged();
   return true;
@@ -843,13 +847,6 @@ bool LuiQmlBackend::validateChildRelationship(
   if (parent->kind == NodeKind::Toolbar && !toolbarChild(child->kind)) {
     *error = QStringLiteral(
         "toolbar accepts only interactive controls and dividers");
-    return false;
-  }
-  if (horizontalContainer(parent->kind) &&
-      !horizontalGroupChild(parent->kind, child->kind)) {
-    *error = QStringLiteral("unsupported %1 child: %2")
-                 .arg(QString::fromLatin1(nodeKindWireName(parent->kind)),
-                      QString::fromLatin1(nodeKindWireName(child->kind)));
     return false;
   }
   return true;

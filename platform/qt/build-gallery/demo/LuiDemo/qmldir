@@ -1,0 +1,4 @@
+module LuiDemo
+typeinfo lui_qt_todos.qmltypes
+prefer :/qt/qml/LuiDemo/
+

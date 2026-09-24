@@ -89,8 +89,7 @@ bool ExtensionRegistry::validName(const QString &value) {
 }
 
 bool ExtensionRegistry::add(const ExtensionSpec &spec, QString *error) {
-  ExtensionSpec copy = spec;
-  copy.isTweak = false;
+  const ExtensionSpec copy = spec;
   if (!validName(copy.identifier)) {
     *error = QStringLiteral("Invalid extension identifier: %1").arg(copy.identifier);
     return false;
@@ -107,15 +106,21 @@ bool ExtensionRegistry::add(const ExtensionSpec &spec, QString *error) {
         .arg(copy.identifier);
     return false;
   }
-  if (copy.isTweak && copy.childIdentifiers.size() != 1) {
+  if (copy.isTweak && !copy.childIdentifiers.isEmpty()) {
     *error = QStringLiteral(
-        "Tweak component %1 must list exactly one child identifier")
+        "Tweak component %1 cannot register child identifiers")
         .arg(copy.identifier);
     return false;
   }
-  if (copy.isTweak && copy.acceptsStandardChildren) {
+  if (copy.isTweak && !copy.acceptsStandardChildren) {
     *error = QStringLiteral(
-        "Tweak component %1 cannot accept standard children")
+        "Tweak component %1 must accept standard children")
+        .arg(copy.identifier);
+    return false;
+  }
+  if (copy.isTweak && !copy.events.isEmpty()) {
+    *error = QStringLiteral(
+        "Tweak component %1 cannot declare events")
         .arg(copy.identifier);
     return false;
   }
@@ -189,6 +194,9 @@ bool ExtensionRegistry::add(const ExtensionSpec &spec, QString *error) {
 bool ExtensionRegistry::addTweak(const ExtensionSpec &spec, QString *error) {
   ExtensionSpec copy = spec;
   copy.isTweak = true;
+  copy.acceptsStandardChildren = true;
+  copy.childIdentifiers.clear();
+  copy.events.clear();
   return add(copy, error);
 }
 
@@ -203,15 +211,6 @@ bool ExtensionRegistry::freeze(QString *error) {
   for (auto it = m_registrations.constBegin(); it != m_registrations.constEnd();
        ++it) {
     const ExtensionSpec &spec = it.value();
-    if (spec.isTweak) {
-      const QString &childId = spec.childIdentifiers.first();
-      if (!m_registrations.contains(childId)) {
-        *error = QStringLiteral(
-            "Tweak component %1 requires child %2")
-            .arg(spec.identifier, childId);
-        return false;
-      }
-    }
     for (const QString &childId : spec.childIdentifiers) {
       if (childId == spec.identifier) {
         *error = QStringLiteral(

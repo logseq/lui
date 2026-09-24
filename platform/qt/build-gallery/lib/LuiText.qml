@@ -1,0 +1,22 @@
+import QtQuick
+import "LuiStyle.js" as Style
+
+// Wire kind: text — plain text; tappable when press-enabled.
+Text {
+    id: label
+    required property var node
+    readonly property var props: node ? node.properties : ({})
+
+    text: Style.str(props, "text", "")
+    color: Style.color(props["foreground"], "#18181b")
+    font.pixelSize: Style.fontSize(Style.str(props, "size", "default"))
+    horizontalAlignment: Style.textAlignEnum(props)
+    wrapMode: Text.WordWrap
+
+    MouseArea {
+        anchors.fill: parent
+        enabled: label.props["press-enabled"] === true
+        onClicked: label.node.press()
+        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+    }
+}
