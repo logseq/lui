@@ -3268,12 +3268,7 @@ private struct LUIButtonView: View {
         }
         return LUIButtonVisualPolicy.defaultHeight(isNativeFormRow: isNativeFormRow)
         #else
-        return switch model.buttonSize {
-        case "sm": 36
-        case "lg": 44
-        case "icon": 40
-        default: 40
-        }
+        return nil
         #endif
     }
 
