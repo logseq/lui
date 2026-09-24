@@ -1503,7 +1503,9 @@ private struct LUIAnchoredComboboxMenuHost<Content: View>: View {
     var body: some View {
         #if os(iOS)
         if LUIMenuPresentationPolicy.usesAnchoredPopover(
-            model?.property(.styleClass)?.stringValue
+            styleClass: model?.property(.styleClass)?.stringValue,
+            model: model,
+            backend: backend
         ) {
             anchoredLayout
         } else {
@@ -1677,7 +1679,9 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
     var body: some View {
         #if os(iOS)
         if LUIMenuPresentationPolicy.usesAnchoredPopover(
-            model?.property(.styleClass)?.stringValue
+            styleClass: model?.property(.styleClass)?.stringValue,
+            model: model,
+            backend: backend
         ) {
             content
                 .popover(
@@ -2736,8 +2740,32 @@ enum LUISelectVisualPolicy {
 }
 
 enum LUIMenuPresentationPolicy {
-    static func usesAnchoredPopover(_ styleClass: String?) -> Bool {
-        styleClass?.split(separator: " ").contains("anchored-popover") == true
+    /// `.confirmationDialog` cannot represent disabled rows, nested submenu
+    /// containers, or arbitrary non-item children — menus containing any of
+    /// those keep the anchored popover so nothing is silently dropped.
+    @MainActor
+    static func usesAnchoredPopover(
+        styleClass: String?,
+        model: LUINodeModel?,
+        backend: LUIAppleBackend
+    ) -> Bool {
+        if styleClass?.split(separator: " ").contains("anchored-popover") == true {
+            return true
+        }
+        guard let model else { return false }
+        return model.children.contains { childID in
+            guard let child = backend.model(id: childID) else { return false }
+            switch child.kind {
+            case .divider:
+                return false
+            case .menuItem:
+                return !child.isEnabled || child.children.contains {
+                    backend.model(id: $0)?.kind == .dropdownMenu
+                }
+            default:
+                return true
+            }
+        }
     }
 }
 
@@ -4822,15 +4850,11 @@ private struct LUITextControlView: View {
             .lineLimit(1...(model.property(.styleClass)?.stringValue == "composer-input" ? 6 : Int.max))
         } else if model.kind == .searchField {
             #if os(iOS)
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(
-                    model.property(.placeholder)?.stringValue ?? "",
-                    text: binding
-                )
+            if grouped {
+                iosSearchFieldRow.textFieldStyle(.plain)
+            } else {
+                iosSearchFieldRow.textFieldStyle(.roundedBorder)
             }
-            .textFieldStyle(grouped ? .plain : .roundedBorder)
             #else
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
@@ -4859,6 +4883,19 @@ private struct LUITextControlView: View {
         }
     }
 
+    #if os(iOS)
+    private var iosSearchFieldRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField(
+                model.property(.placeholder)?.stringValue ?? "",
+                text: binding
+            )
+        }
+    }
+    #endif
+
     private var binding: Binding<String> {
         Binding(
             get: { draftState.text },
@@ -4873,6 +4910,7 @@ private struct LUITextControlView: View {
 enum LUISearchFieldPlacementPolicy {
     /// A direct `search-field` child renders through the container's native
     /// search affordance instead of an inline control.
+    @MainActor
     static func searchableChildID(
         of parent: LUINodeModel,
         backend: LUIAppleBackend
