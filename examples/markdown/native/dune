@@ -6,7 +6,7 @@
 
 (rule
  (enabled_if
-  (= %{os_type} "Darwin"))
+  (= %{system} "macosx"))
  (target liblui_markdown.dylib)
  (deps
   ../../../platform/native/lui_ocaml_bridge.c
@@ -17,7 +17,7 @@
   (run
    sh
    -c
-   "ocamlfind ocamlopt -linkpkg -package ocaml-signal \
+   "ocamlfind ocamlopt -linkpkg -linkall -package ocaml-signal \
       %{dep:../../../src/lui.cmxa} %{dep:../markdown_app.cmxa} \
       %{dep:markdown_bridge.cmxa} \
       -output-complete-obj -o markdown_bridge_complete.o && \
