@@ -1318,24 +1318,8 @@ private struct LUIAccordionView: View {
 private struct LUITableView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
-    @Environment(\.luiSemanticColors) private var semanticColors
-    @Environment(\.luiInsideScroll) private var insideScroll
 
     var body: some View {
-        #if os(iOS)
-        if insideScroll {
-            // A nested scrolling List collapses inside an outer ScrollView;
-            // lay rows out statically instead.
-            gridContent
-        } else {
-            listContent
-        }
-        #else
-        gridContent
-        #endif
-    }
-
-    private var gridContent: some View {
         Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
             ForEach(model.children, id: \.self) { rowID in
                 if let row = backend.model(id: rowID) {
@@ -1349,39 +1333,6 @@ private struct LUITableView: View {
         }
         .accessibilityElement(children: .contain)
     }
-
-    /// iOS has no table control: rows render as an inset-grouped List so row
-    /// spacing, separators, and selection tint are system-provided.
-    #if os(iOS)
-    private var listContent: some View {
-        List {
-            ForEach(model.children, id: \.self) { rowID in
-                if let row = backend.model(id: rowID), row.kind == .tableRow {
-                    LUITableRowView(model: row, backend: backend, isLast: true)
-                        .listRowBackground(
-                            row.isSelected
-                                ? Color.accentColor.opacity(0.16)
-                                : semanticColors["surface"]
-                        )
-                } else {
-                    LUIAnyNodeView(nodeID: rowID, backend: backend)
-                        .listRowBackground(semanticColors["surface"])
-                }
-            }
-        }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(
-            semanticColors["background"] == nil
-                ? LUIListSurfacePolicy.scrollContentBackground : .hidden
-        )
-        .background(semanticColors["background"])
-        .preference(
-            key: LUIListSurfacePreferenceKey.self,
-            value: semanticColors["background"] == nil
-        )
-        .accessibilityElement(children: .contain)
-    }
-    #endif
 }
 
 private struct LUITableRowView: View {
@@ -1390,18 +1341,6 @@ private struct LUITableRowView: View {
     let isLast: Bool
 
     var body: some View {
-        #if os(iOS)
-        HStack(spacing: CGFloat(model.property(.gap)?.intValue ?? 0)) {
-            ForEach(model.children, id: \.self) { cellID in
-                if let cell = backend.model(id: cellID) {
-                    LUINodeView(model: cell, backend: backend)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(model.isSelected ? .isSelected : [])
-        #else
         GridRow {
             ForEach(model.children, id: \.self) { cellID in
                 if let cell = backend.model(id: cellID) {
@@ -1418,7 +1357,6 @@ private struct LUITableRowView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(model.isSelected ? .isSelected : [])
-        #endif
     }
 }
 
