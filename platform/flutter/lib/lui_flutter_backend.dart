@@ -1022,6 +1022,7 @@ final class LUIFlutterBackend {
     final foreground = _color(
       context,
       state.properties['foreground'] as String?,
+      foreground: true,
     );
     final background = _color(
       context,
@@ -1417,27 +1418,26 @@ final class LUIFlutterBackend {
       );
     }
 
-    Widget select() => Semantics(
-      label: accessibilityLabel,
-      child: OutlinedButton(
-        onPressed: enabled ? () => performAction(id) : null,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Expanded(
-              child: Text(
-                text.isEmpty ? placeholder ?? '' : text,
-                style: text.isEmpty
-                    ? TextStyle(color: Theme.of(context).hintColor)
-                    : null,
-              ),
-            ),
-            const SizedBox(width: 8),
-            const Icon(Icons.arrow_drop_down),
-          ],
+    Widget select() {
+      final colors = Theme.of(context).colorScheme;
+      final title = accessibilityLabel ?? placeholder ?? '';
+      final value = text.isEmpty ? placeholder ?? '' : text;
+      return Semantics(
+        label: accessibilityLabel,
+        child: ListTile(
+          enabled: enabled,
+          onTap: enabled ? () => performAction(id) : null,
+          title: Text(title.isEmpty ? value : title),
+          subtitle: title.isNotEmpty && value != title && value.isNotEmpty
+              ? Text(value)
+              : null,
+          trailing: Icon(
+            Icons.expand_more_rounded,
+            color: colors.onSurfaceVariant,
+          ),
         ),
-      ),
-    );
+      );
+    }
     Widget dropdownMenu() => CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.escape): () =>
@@ -2199,10 +2199,13 @@ final class LUIFlutterBackend {
                 spacing: gap,
                 children: children,
               )
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                spacing: gap,
-                children: children,
+            : SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: gap,
+                  children: children,
+                ),
               ),
       ),
       _NodeKind.accordion => accordion(),
@@ -2297,7 +2300,7 @@ final class LUIFlutterBackend {
                 )
               : null,
           title: Text(text),
-          controlAffinity: ListTileControlAffinity.leading,
+          controlAffinity: ListTileControlAffinity.trailing,
           contentPadding: EdgeInsets.zero,
           dense: true,
         ),
@@ -2312,6 +2315,9 @@ final class LUIFlutterBackend {
             ? const VerticalDivider(width: 1)
             : const Divider(height: 1),
       _NodeKind.scroll => SingleChildScrollView(
+        scrollDirection: orientation == 'vertical'
+            ? Axis.vertical
+            : Axis.horizontal,
         child: Stack(children: children),
       ),
       _NodeKind.spacer => const SizedBox.shrink(),
@@ -2395,7 +2401,10 @@ final class LUIFlutterBackend {
             decoration: BoxDecoration(
               color:
                   background ??
-                  (state.kind == _NodeKind.tabs
+                  (state.kind == _NodeKind.box &&
+                          state.properties['selected'] == true
+                      ? Theme.of(context).colorScheme.secondaryContainer
+                      : state.kind == _NodeKind.tabs
                       ? Theme.of(context).colorScheme.secondaryContainer
                       : null),
               border: effectiveBorderWidth == 0
@@ -2533,10 +2542,35 @@ final class LUIFlutterBackend {
                 if (child.kind == _NodeKind.divider) {
                   return const PopupMenuDivider();
                 }
+                final childIcon = child.properties['icon'] as String?;
+                final childSelected =
+                    child.properties['selected'] as bool? ?? false;
+                final childForeground = _color(
+                  context,
+                  child.properties['foreground'] as String?,
+                  foreground: true,
+                );
                 return PopupMenuItem<int>(
                   value: childID,
                   enabled: child.properties['enabled'] as bool? ?? true,
-                  child: Text(child.properties['text'] as String? ?? ''),
+                  child: Row(
+                    spacing: 12,
+                    children: [
+                      if (childIcon != null)
+                        Icon(
+                          _iconData(childIcon),
+                          size: 20,
+                          color: childForeground,
+                        ),
+                      Expanded(
+                        child: Text(
+                          child.properties['text'] as String? ?? '',
+                          style: TextStyle(color: childForeground),
+                        ),
+                      ),
+                      if (childSelected) const Icon(Icons.check, size: 20),
+                    ],
+                  ),
                 );
               })
               .toList(growable: false),
@@ -3978,18 +4012,39 @@ final class LUIFlutterBackend {
     return value;
   }
 
-  static Color? _color(BuildContext context, String? name) {
+  static Color? _color(
+    BuildContext context,
+    String? name, {
+    bool foreground = false,
+  }) {
     final colors = Theme.of(context).colorScheme;
     return switch (name?.toLowerCase()) {
       null => null,
       'transparent' => Colors.transparent,
       'background' => colors.surface,
       'foreground' => colors.onSurface,
+      'surface' => colors.surface,
+      'surface-container-lowest' => colors.surfaceContainerLowest,
+      'surface-container-low' => colors.surfaceContainerLow,
+      'surface-container' => colors.surfaceContainer,
+      'surface-container-high' => colors.surfaceContainerHigh,
+      'surface-container-highest' => colors.surfaceContainerHighest,
+      'surface-variant' => colors.surfaceContainerHighest,
+      'autocomplete-row-background' => colors.surfaceContainerHigh,
+      'glass' => colors.surface.withValues(alpha: 0.75),
+      'glass-fallback' => colors.surface.withValues(alpha: 0.9),
       'primary' => colors.primary,
       'primary-foreground' => colors.onPrimary,
-      'secondary' => colors.secondaryContainer,
-      'glass' => colors.surface.withValues(alpha: 0.75),
+      'accent' => foreground ? colors.primary : colors.secondaryContainer,
+      'accent-foreground' =>
+        foreground ? colors.onPrimary : colors.onSecondaryContainer,
+      'secondary' =>
+        foreground ? colors.onSurfaceVariant : colors.secondaryContainer,
       'secondary-foreground' => colors.onSecondaryContainer,
+      'muted' => colors.surfaceContainerHigh,
+      'muted-foreground' => colors.onSurfaceVariant,
+      'destructive' => colors.error,
+      'destructive-foreground' => colors.onError,
       'success' => colors.tertiaryContainer,
       'success-foreground' => colors.onTertiaryContainer,
       'warning' => colors.secondaryContainer,
@@ -4422,14 +4477,24 @@ final class _LUIDrawerState extends State<_LUIDrawer> {
           .toDouble();
       final progress = width == 0 ? 0.0 : visibleWidth / width;
       final canToggle = widget.enabled && widget.onChanged != null && width > 0;
+      // Opening the drawer is an edge gesture: drags starting farther into
+      // the content only close it (or drag it further open once presented).
+      const edgeDragWidth = 24.0;
 
-      return GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onHorizontalDragStart: !canToggle
-            ? null
-            : (details) {
-                _dragging = true;
-              },
+      return PopScope(
+        canPop: !_presented,
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop) _updatePresentation(false);
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onHorizontalDragStart: !canToggle
+              ? null
+              : (details) {
+                  _dragging =
+                      _presented ||
+                      details.localPosition.dx <= edgeDragWidth;
+                },
         onHorizontalDragUpdate: !canToggle
             ? null
             : (details) {
@@ -4485,6 +4550,7 @@ final class _LUIDrawerState extends State<_LUIDrawer> {
             ),
           ],
         ),
+      ),
       );
     },
   );
@@ -4907,71 +4973,6 @@ final class _LUIListItem extends StatefulWidget {
 }
 
 final class _LUIListItemState extends State<_LUIListItem> {
-  int? _primaryPointer;
-  Duration? _lastRelease;
-  Offset? _lastPosition;
-  Timer? _releaseTimer;
-  Timer? _longPressTimer;
-  var _didLongPress = false;
-
-  void _handlePointerDown(PointerDownEvent event) {
-    if (widget.enabled && event.buttons & kPrimaryButton != 0) {
-      _primaryPointer = event.pointer;
-      _didLongPress = false;
-      _longPressTimer?.cancel();
-      if (widget.onLongPress != null) {
-        _longPressTimer = Timer(const Duration(milliseconds: 450), () {
-          if (_primaryPointer != event.pointer || !mounted) return;
-          _didLongPress = true;
-          widget.onLongPress?.call();
-        });
-      }
-    }
-  }
-
-  void _handlePointerCancel(PointerCancelEvent event) {
-    if (_primaryPointer == event.pointer) _primaryPointer = null;
-    _longPressTimer?.cancel();
-  }
-
-  void _handlePointerUp(PointerUpEvent event) {
-    if (_primaryPointer != event.pointer) return;
-    _primaryPointer = null;
-    _longPressTimer?.cancel();
-    if (!widget.enabled) return;
-    if (_didLongPress) return;
-    widget.onPress?.call();
-
-    final previousRelease = _lastRelease;
-    final previousPosition = _lastPosition;
-    final isDoublePress =
-        previousRelease != null &&
-        previousPosition != null &&
-        event.timeStamp - previousRelease <= kDoubleTapTimeout &&
-        (event.position - previousPosition).distance <= kDoubleTapSlop;
-    if (isDoublePress) {
-      _releaseTimer?.cancel();
-      _lastRelease = null;
-      _lastPosition = null;
-      widget.onDoublePress?.call();
-    } else {
-      _lastRelease = event.timeStamp;
-      _lastPosition = event.position;
-      _releaseTimer?.cancel();
-      _releaseTimer = Timer(kDoubleTapTimeout, () {
-        _lastRelease = null;
-        _lastPosition = null;
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _releaseTimer?.cancel();
-    _longPressTimer?.cancel();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final press = widget.enabled ? widget.onPress : null;
@@ -4995,20 +4996,23 @@ final class _LUIListItemState extends State<_LUIListItem> {
         child: Focus(
           canRequestFocus: widget.enabled && widget.focusable,
           skipTraversal: !widget.focusable,
-          child: Listener(
-            behavior: HitTestBehavior.opaque,
-            onPointerDown: _handlePointerDown,
-            onPointerCancel: _handlePointerCancel,
-            onPointerUp: _handlePointerUp,
-            child: ListTile(
-              enabled: widget.enabled,
-              selected: widget.selected,
-              leading: widget.leading,
-              title: widget.content,
-              dense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(6),
+          child: Material(
+            color: widget.selected
+                ? Theme.of(context).colorScheme.secondaryContainer
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: press,
+              onLongPress: widget.enabled ? widget.onLongPress : null,
+              onDoubleTap: widget.enabled ? widget.onDoublePress : null,
+              canRequestFocus: false,
+              child: ListTile(
+                enabled: widget.enabled,
+                leading: widget.leading,
+                title: widget.content,
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
               ),
             ),
           ),
