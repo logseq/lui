@@ -13,9 +13,10 @@ namespace LUI.WinUI
     public static class LUIThemeScope
     {
         /// Decodes the `theme` wire prop. Entries are lower-cased so lookup
-        /// matches semantic names case-insensitively; values stay strings —
-        /// non-color tokens may join the table later.
-        public static Dictionary<string, string>? Parse(string? json)
+        /// matches semantic names case-insensitively; values keep their
+        /// JsonElement — a token is either a plain string or a
+        /// {"light", "dark"} object resolved per mode.
+        public static Dictionary<string, JsonElement>? Parse(string? json)
         {
             if (string.IsNullOrEmpty(json)) return null;
             try
@@ -23,15 +24,12 @@ namespace LUI.WinUI
                 using var document = JsonDocument.Parse(json);
                 if (document.RootElement.ValueKind != JsonValueKind.Object)
                     return null;
-                var tokens = new Dictionary<string, string>();
+                var tokens = new Dictionary<string, JsonElement>();
                 foreach (JsonProperty entry in
                     document.RootElement.EnumerateObject())
                 {
-                    if (entry.Value.ValueKind == JsonValueKind.String)
-                    {
-                        tokens[entry.Name.ToLowerInvariant()] =
-                            entry.Value.GetString() ?? "";
-                    }
+                    tokens[entry.Name.ToLowerInvariant()] =
+                        entry.Value.Clone();
                 }
                 return tokens;
             }
@@ -43,9 +41,10 @@ namespace LUI.WinUI
 
         /// Nearest-scope token lookup: the node's own `theme` prop first,
         /// then each wire ancestor's, so a themed subtree overrides the
-        /// app-level theme.
+        /// app-level theme. `dark` picks adaptive token values.
         public static string? Token(
-            LUISyncContext context, LUINodeState? state, string? name)
+            LUISyncContext context, LUINodeState? state, string? name,
+            bool dark)
         {
             if (state == null || name == null) return null;
             string key = name.ToLowerInvariant();
@@ -54,9 +53,18 @@ namespace LUI.WinUI
                 if (current.Properties.TryGetValue(
                         LUIProperty.ThemeValue, out LUIWireValue? theme) &&
                     Parse(theme?.AsString)?.TryGetValue(
-                        key, out string? value) == true)
+                        key, out JsonElement value) == true)
                 {
-                    return value;
+                    if (value.ValueKind == JsonValueKind.String)
+                        return value.GetString();
+                    if (value.ValueKind == JsonValueKind.Object &&
+                        value.TryGetProperty(
+                            dark ? "dark" : "light",
+                            out JsonElement picked) &&
+                        picked.ValueKind == JsonValueKind.String)
+                    {
+                        return picked.GetString();
+                    }
                 }
                 current = current.Parent is long parentId &&
                     context.Backend.States.TryGetValue(

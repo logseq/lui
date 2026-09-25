@@ -12,12 +12,17 @@ namespace LUI.WinUI
     {
         /// Resolves a semantic color name: scoped `theme` tokens on the node
         /// or its wire ancestors win, then platform theme resources.
+        /// `control` resolves adaptive token values by its ActualTheme.
         public static SolidColorBrush? Brush(
-            LUISyncContext? context, LUINodeState? state, string? name)
+            LUISyncContext? context, LUINodeState? state,
+            FrameworkElement? control, string? name)
         {
             if (name == null) return null;
+            bool dark = control != null &&
+                control.ActualTheme == ElementTheme.Dark;
             if (context != null &&
-                LUIThemeScope.Token(context, state, name) is string token &&
+                LUIThemeScope.Token(context, state, name, dark)
+                    is string token &&
                 TokenColor(token) is Color tokenColor)
             {
                 return new SolidColorBrush(tokenColor);

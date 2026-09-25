@@ -1,14 +1,34 @@
 #include "lui_node.h"
 
 #include "lui_qml_backend.h"
+#include <QGuiApplication>
 #include <QList>
+#include <QStyleHints>
 
 namespace LUI {
 
 LuiNode::LuiNode(qint64 id, QString kind, LuiQmlBackend *backend)
-    : QObject(backend), m_id(id), m_kind(std::move(kind)), m_backend(backend) {}
+    : QObject(backend), m_id(id), m_kind(std::move(kind)), m_backend(backend) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+  QObject::connect(QGuiApplication::styleHints(),
+                   &QStyleHints::colorSchemeChanged, this,
+                   &LuiNode::notifyChanged);
+#endif
+}
 
 LuiNode *LuiNode::parentNode() const { return m_backend->node(m_parent); }
+
+// The root `theme-mode` feeds QGuiApplication::styleHints()->setColorScheme,
+// whose colorScheme() reports the resolved scheme (system followed when
+// unset), so every node's effective mode comes from here.
+bool LuiNode::darkMode() const {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+  return QGuiApplication::styleHints()->colorScheme() ==
+         Qt::ColorScheme::Dark;
+#else
+  return false;
+#endif
+}
 
 void LuiNode::appear() { m_backend->performAppear(m_id); }
 void LuiNode::press() { m_backend->performPress(m_id); }

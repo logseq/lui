@@ -36,10 +36,11 @@ function color(name, fallback) {
     return fallback !== undefined ? fallback : "transparent"
 }
 
-// Scoped theme lookup: a node's `theme` prop is a flat JSON string/string
-// map defining a token table that covers the node and its descendants —
-// the nearest scope wins before the shared palette above. Returns the raw
-// token string (any CSS/QML color syntax) or undefined when unresolved.
+// Scoped theme lookup: a node's `theme` prop is a JSON token table that
+// covers the node and its descendants — the nearest scope wins before the
+// shared palette above. A token value is a plain string or a
+// {"light": ..., "dark": ...} object picked by the node's effective
+// scheme (node.darkMode). Returns the resolved token string or undefined.
 function themeToken(node, name) {
     if (name === undefined || name === null || name === "")
         return undefined
@@ -53,8 +54,13 @@ function themeToken(node, name) {
             try {
                 var dict = JSON.parse(raw)
                 for (var k in dict) {
-                    if (k.toLowerCase() === key && typeof dict[k] === "string")
-                        return dict[k]
+                    if (k.toLowerCase() !== key) continue
+                    var v = dict[k]
+                    if (typeof v === "string") return v
+                    if (v !== null && typeof v === "object") {
+                        var picked = cur.darkMode === true ? v.dark : v.light
+                        if (typeof picked === "string") return picked
+                    }
                 }
             } catch (e) { }
         }

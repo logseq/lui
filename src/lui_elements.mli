@@ -2588,7 +2588,8 @@ val timeline_item :
     the given token table, merging over the platform defaults, and
     optionally overrides light/dark appearance. *)
 val themed :
-  ?tokens:(string * string) list ->
-  ?tokens_signal:(string * string) list Signal.signal ->
+  ?tokens:(string * Lui_ui.theme_token_value) list ->
+  ?tokens_signal:
+    (string * Lui_ui.theme_token_value) list Signal.signal ->
   ?mode:Lui_ui.theme_mode ->
   ?mode_signal:Lui_ui.theme_mode Signal.signal -> t -> t
