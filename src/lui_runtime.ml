@@ -662,7 +662,14 @@ let reconcile_subtree application saved parent old_root candidate_root =
   replace application.runtime_reload_keys desired_reload_keys;
   application.runtime_extension_dirty :=
     Hashtbl.length desired_extensions > 0;
-  Hashtbl.reset application.runtime_node_aliases;
+  (* Aliases established by earlier reconciles still map other branches'
+     mount-time ids onto the live ids they were reconciled into — clearing
+     the whole table here would orphan every dynamic segment whose parent
+     was renamed before this reconcile ran. Only this reconcile's own
+     candidate keys may be (re)written; drop keys reconciled away. *)
+  List.iter
+    (fun node -> Hashtbl.remove application.runtime_node_aliases node)
+    removed_nodes;
   Hashtbl.iter
     (fun candidate node ->
        if candidate <> node then

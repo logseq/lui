@@ -168,6 +168,224 @@ let test_dyn_default_remounts () =
     (creates_text (all_ops ()));
   ignore (Lui_app.dispose app)
 
+type ext_dyn_model = { ex_url : string }
+
+let ext_dyn_registry () =
+  let registry = Lui_extension.registry () in
+  Lui_extension.register_component registry
+    (Lui_extension.component "web-view"
+       [ Lui_protocol.generic_profile () ]
+       false []
+       [ Lui_extension.property "url" Lui_extension.StringScalar true None ]
+       [ Lui_extension.event "navigated"
+           [ Lui_extension.event_field "url" Lui_extension.StringScalar true ] ]);
+  Lui_extension.freeze registry;
+  registry
+
+let ext_dyn_view _context model_source _send =
+  Lui_elements.column
+    [
+      Lui_elements.dyn ~equal:(fun a b -> a.ex_url = b.ex_url)
+        (fun (m : ext_dyn_model) ->
+           Lui_elements.column
+             [
+               Lui_elements.text ~value:"before" [];
+               (fun context parent ->
+                 let node = Lui_ui.extension context "web-view" in
+                 Lui_ui.extension_property context node "url"
+                   (Lui_protocol.StringValue m.ex_url);
+                 Lui_ui.on_event context node (fun _event -> ());
+                 (match parent with
+                 | Some parent -> Lui_ui.append context parent node
+                 | None -> ());
+                 node);
+               Lui_elements.text ~value:"after" [];
+             ])
+        model_source;
+    ]
+
+let test_dyn_remount_with_extension () =
+  let app =
+    Lui_app.create_with_extensions (recording_backend ())
+      (ext_dyn_registry ()) { ex_url = "about:blank" }
+      (fun _model action -> match action with `Set ex_url -> { ex_url })
+      ext_dyn_view
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  batches := [];
+  ignore (Lui_app.send app (`Set "https://example.com"));
+  flush_app app;
+  let ops = all_ops () in
+  Alcotest.(check bool) "remount emits prop update" true
+    (List.exists
+       (function
+         | Lui_protocol.SetExtensionProp (_, "url", _) -> true
+         | _ -> false)
+       ops);
+  (* a SECOND publish must also remount — the subscription has to survive
+     the first reconcile *)
+  batches := [];
+  ignore (Lui_app.send app (`Set "https://example.org"));
+  flush_app app;
+  Alcotest.(check bool) "second remount emits prop update" true
+    (List.exists
+       (function
+         | Lui_protocol.SetExtensionProp (_, "url", _) -> true
+         | _ -> false)
+       (all_ops ()));
+  ignore (Lui_app.dispose app)
+
+(* meng's plugin drawer: outer dyn over a slot list, each card carrying an
+   inner dyn over a plugin-owned view tree containing an extension node.
+   Both dyns have to keep updating across repeated publishes. *)
+type drawer_model = { slots : (string * string) list; views : (string * string) list }
+
+let drawer_view _context model_source _send =
+  Lui_elements.column
+    [
+      Lui_elements.dyn ~equal:(fun a b -> a = b)
+    (fun (slots : (string * string) list) ->
+       match slots with
+       | [] -> Lui_elements.spacer ~width:0 []
+       | slots ->
+         Lui_elements.column
+           (List.map
+              (fun (_plugin_id, panel_id) ->
+                 Lui_elements.column
+                   [
+                     Lui_elements.text ~value:panel_id [];
+                     Lui_elements.dyn ~equal:(fun a b -> a = b)
+                       (fun (url : string option) ->
+                          match url with
+                          | Some url ->
+                            Lui_elements.column
+                              [
+                                (fun context parent ->
+                                  let node =
+                                    Lui_ui.extension context "web-view"
+                                  in
+                                  Lui_ui.extension_property context node "url"
+                                    (Lui_protocol.StringValue url);
+                                  Lui_ui.on_event context node (fun _ -> ());
+                                  (match parent with
+                                  | Some parent ->
+                                    Lui_ui.append context parent node
+                                  | None -> ());
+                                  node);
+                              ]
+                          | None -> Lui_elements.spacer ~width:0 [])
+                       (Signal.map
+                          (fun (m : drawer_model) ->
+                             List.assoc_opt panel_id m.views)
+                          model_source);
+                   ])
+              slots))
+        (Signal.map (fun (m : drawer_model) -> m.slots) model_source);
+    ]
+
+(* An outer dyn remount renames the card columns an inner dyn mounts
+   under; each inner reconcile must not wipe the aliases other branches
+   still rely on (or their remounts are skipped forever). *)
+let test_alias_preserved_across_reconciles () =
+  let initial =
+    { slots = [ ("p1", "browser") ]; views = [ ("browser", "u0") ] }
+  in
+  let app =
+    Lui_app.create_with_extensions (recording_backend ())
+      (ext_dyn_registry ()) initial
+      (fun model action ->
+         match action with
+         | `View (panel_id, url) ->
+           {
+             model with
+             views =
+               (panel_id, url)
+               :: List.remove_assoc panel_id model.views;
+           }
+         | `Slots slots -> { model with slots })
+      drawer_view
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  (* add a second card: outer remount reconciles the first card's column
+     onto the existing node, leaving the new inner dyns' parents as
+     aliases *)
+  ignore
+    (Lui_app.send app
+       (`Slots [ ("p1", "browser"); ("p2", "main") ]
+       |> fun a -> a));
+  ignore
+    (Lui_app.send app (`View ("main", "m0")));
+  flush_app app;
+  let has_url_op url =
+    List.exists
+      (function
+        | Lui_protocol.SetExtensionProp (_, "url", Lui_protocol.StringValue v)
+          -> v = url
+        | _ -> false)
+      (all_ops ())
+  in
+  batches := [];
+  ignore (Lui_app.send app (`View ("browser", "b1")));
+  flush_app app;
+  Alcotest.(check bool) "first inner remount emits" true (has_url_op "b1");
+  batches := [];
+  ignore (Lui_app.send app (`View ("main", "m1")));
+  flush_app app;
+  Alcotest.(check bool) "sibling inner remount still emits" true
+    (has_url_op "m1");
+  batches := [];
+  ignore (Lui_app.send app (`View ("browser", "b2")));
+  flush_app app;
+  Alcotest.(check bool) "first inner dyn still alive after own reconcile"
+    true (has_url_op "b2");
+  ignore (Lui_app.dispose app)
+
+let test_nested_dyn_extension () =
+  let initial =
+    {
+      slots = [ ("p1", "browser") ];
+      views = [ ("browser", "about:blank") ];
+    }
+  in
+  let app =
+    Lui_app.create_with_extensions (recording_backend ())
+      (ext_dyn_registry ()) initial
+      (fun model action ->
+         match action with
+         | `View (panel_id, url) ->
+           {
+             model with
+             views =
+               (panel_id, url)
+               :: List.remove_assoc panel_id model.views;
+           }
+         | `Slots slots -> { model with slots })
+      drawer_view
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  batches := [];
+  ignore (Lui_app.send app (`View ("browser", "https://one.test")));
+  flush_app app;
+  Alcotest.(check bool) "first inner remount" true
+    (List.exists
+       (function
+         | Lui_protocol.SetExtensionProp (_, "url", _) -> true
+         | _ -> false)
+       (all_ops ()));
+  batches := [];
+  ignore (Lui_app.send app (`View ("browser", "https://two.test")));
+  flush_app app;
+  Alcotest.(check bool) "second inner remount" true
+    (List.exists
+       (function
+         | Lui_protocol.SetExtensionProp (_, "url", _) -> true
+         | _ -> false)
+       (all_ops ()));
+  ignore (Lui_app.dispose app)
+
 type swap_model = { sm_label : string; sm_button : bool }
 
 let swap_view _context model_source _send =
@@ -666,6 +884,12 @@ let () =
             test_dyn_default_remounts;
           Alcotest.test_case "remount swaps incompatible kind" `Quick
             test_dyn_remount_swaps_incompatible_kind;
+          Alcotest.test_case "remount with extension node" `Quick
+            test_dyn_remount_with_extension;
+          Alcotest.test_case "nested dyn with extension node" `Quick
+            test_nested_dyn_extension;
+          Alcotest.test_case "aliases preserved across reconciles" `Quick
+            test_alias_preserved_across_reconciles;
           Alcotest.test_case "keyed_radio mounts under group" `Quick
             test_keyed_radio_mounts_under_group;
         ] );
