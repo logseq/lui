@@ -46,8 +46,9 @@ Button {
         }
         Text {
             text: button.text
-            color: button.variant === "destructive" ? "#b91c1c"
-                   : button.palette.buttonText
+            color: Style.color(button.props["foreground"],
+                               button.variant === "destructive" ? "#b91c1c"
+                               : button.palette.buttonText)
             font.pixelSize: Style.fontSize(button.size)
             horizontalAlignment: Style.textAlignEnum(button.props)
             elide: Text.ElideRight

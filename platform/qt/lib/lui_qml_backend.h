@@ -97,6 +97,9 @@ signals:
 
 private:
   bool fail(const QString &message);
+  // Like fail but for events arriving on nodes a patch already
+  // removed — logs a warning without setting lastError.
+  bool staleNode(qint64 node);
   bool applyOp(QHash<qint64, NodeState> &states,
                QHash<qint64, ExtensionState> &extensions,
                const QVariantMap &operation, QString *error);
