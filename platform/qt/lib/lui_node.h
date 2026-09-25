@@ -24,6 +24,9 @@ class LuiNode : public QObject {
   Q_PROPERTY(QVariantList children READ children NOTIFY changed)
   Q_PROPERTY(LuiNode *parent READ parentNode NOTIFY changed)
   Q_PROPERTY(int revision READ revision NOTIFY changed)
+  // Effective color scheme (root `theme-mode` or system). Used to pick
+  // adaptive {"light", "dark"} token values in LuiStyle.themeToken.
+  Q_PROPERTY(bool darkMode READ darkMode NOTIFY changed)
 
 public:
   LuiNode(qint64 id, QString kind, LuiQmlBackend *backend);
@@ -37,6 +40,7 @@ public:
   QVariantList children() const { return m_children; }
   LuiNode *parentNode() const;
   int revision() const { return m_revision; }
+  bool darkMode() const;
 
   // Convenience accessor for QML: node.prop("text", "")
   Q_INVOKABLE QVariant prop(const QString &name,

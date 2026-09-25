@@ -522,7 +522,7 @@ namespace LUI.WinUI
                 ? VerticalAlignment.Center
                 : VerticalAlignment.Stretch;
             divider.Background =
-                LUIThemeColors.Brush(context, state, "border");
+                LUIThemeColors.Brush(context, state, divider, "border");
         }
 
         void SyncIcon(LUINodeState state, LUISyncContext context)
@@ -910,7 +910,7 @@ namespace LUI.WinUI
                 if (selected == null ? index == 0 : selected == index)
                 {
                     button.Foreground =
-                        LUIThemeColors.Brush(context, tab, "primary");
+                        LUIThemeColors.Brush(context, tab, button, "primary");
                 }
                 bar.ColumnDefinitions.Add(new ColumnDefinition
                 {

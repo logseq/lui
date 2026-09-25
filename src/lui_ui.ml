@@ -396,17 +396,31 @@ let accessibility_identifier context node identifier =
 
 type theme_mode = [ `system | `light | `dark ]
 
+(* A token may be a single value used in both modes, or a light/dark pair
+   resolved per-node by the backend's effective color scheme. *)
+type theme_token_value =
+  | Fixed of string
+  | Adaptive of { light : string; dark : string }
+
 let theme_mode_value = function
   | `system -> "system"
   | `light -> "light"
   | `dark -> "dark"
 
 (* Theme tokens travel as one JSON object so the wire value stays a plain
-   string; backends merge them over their platform defaults. *)
+   string; backends merge them over their platform defaults. Adaptive
+   tokens serialize as {"light": ..., "dark": ...} objects. *)
 let theme_tokens_json tokens =
+  let encode_value = function
+    | Fixed value -> Lui_wire.quoted value
+    | Adaptive { light; dark } ->
+      "{\"light\":" ^ Lui_wire.quoted light ^ ",\"dark\":"
+      ^ Lui_wire.quoted dark ^ "}"
+  in
   let fields =
     List.map
-      (fun (name, value) -> Lui_wire.quoted name ^ ":" ^ Lui_wire.quoted value)
+      (fun (name, value) ->
+         Lui_wire.quoted name ^ ":" ^ encode_value value)
       tokens
   in
   "{" ^ String.concat "," fields ^ "}"

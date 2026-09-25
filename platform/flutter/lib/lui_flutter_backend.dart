@@ -356,9 +356,9 @@ final class _NodeHandle extends ChangeNotifier {
 final class _LUIThemeScope extends InheritedWidget {
   const _LUIThemeScope({required this.tokens, required super.child});
 
-  final Map<String, String> tokens;
+  final Map<String, Object> tokens;
 
-  static Map<String, String>? maybeTokens(BuildContext context) => context
+  static Map<String, Object>? maybeTokens(BuildContext context) => context
       .dependOnInheritedWidgetOfExactType<_LUIThemeScope>()
       ?.tokens;
 
@@ -4162,18 +4162,30 @@ final class LUIFlutterBackend {
     return value;
   }
 
-  static Map<String, String>? _themeTokens(Object? value) {
+  static Map<String, Object>? _themeTokens(Object? value) {
     if (value is! String || value.isEmpty) return null;
     try {
       final decoded = jsonDecode(value);
       if (decoded is! Map) return null;
       return {
         for (final entry in decoded.entries)
-          entry.key.toString().toLowerCase(): entry.value.toString(),
+          entry.key.toString().toLowerCase(): entry.value,
       };
     } on FormatException {
       return null;
     }
+  }
+
+  // A token value is either a plain color string or a {"light", "dark"}
+  // object picked by the effective brightness.
+  static String? _tokenValue(BuildContext context, Object? value) {
+    if (value is String) return value;
+    if (value is Map) {
+      final dark = Theme.of(context).brightness == Brightness.dark;
+      final picked = dark ? value['dark'] : value['light'];
+      if (picked is String) return picked;
+    }
+    return null;
   }
 
   static Color? _tokenColor(String? value) {
@@ -4210,7 +4222,10 @@ final class LUIFlutterBackend {
     bool foreground = false,
   }) {
     final colors = Theme.of(context).colorScheme;
-    final token = _LUIThemeScope.maybeTokens(context)?[name?.toLowerCase()];
+    final token = _tokenValue(
+      context,
+      _LUIThemeScope.maybeTokens(context)?[name?.toLowerCase()],
+    );
     if (token != null) {
       final parsed = _tokenColor(token);
       if (parsed != null) return parsed;

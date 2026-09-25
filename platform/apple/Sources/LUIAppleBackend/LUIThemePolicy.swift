@@ -163,11 +163,13 @@ enum LUIAccessibilityPolicy {
 }
 
 enum LUIThemeTokenDecoder {
-    /// Parses the `theme` wire prop (a flat JSON string/string map) into
-    /// semantic-color entries the resolver consults before platform
-    /// defaults. Entries that do not decode to a color are ignored so
-    /// non-color tokens can join the table later without breaking hosts.
-    static func colors(_ json: String?) -> [String: Color] {
+    /// Parses the `theme` wire prop into semantic-color entries the
+    /// resolver consults before platform defaults. A token value is either
+    /// a color string used in both modes or a `{"light": ..., "dark": ...}`
+    /// object picked by `dark`. Entries that do not decode to a color are
+    /// ignored so non-color tokens can join the table later without
+    /// breaking hosts.
+    static func colors(_ json: String?, dark: Bool) -> [String: Color] {
         guard let json,
               let data = json.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data),
@@ -175,9 +177,15 @@ enum LUIThemeTokenDecoder {
         else { return [:] }
         var colors: [String: Color] = [:]
         for (key, value) in dict {
-            guard let string = value as? String,
-                  let color = luiHexColor(string)
-            else { continue }
+            let raw: String?
+            if let string = value as? String {
+                raw = string
+            } else if let modes = value as? [String: Any] {
+                raw = modes[dark ? "dark" : "light"] as? String
+            } else {
+                raw = nil
+            }
+            guard let raw, let color = luiHexColor(raw) else { continue }
             colors[key.lowercased()] = color
         }
         return colors
@@ -198,14 +206,16 @@ enum LUIThemeTokenDecoder {
 struct LUIThemeScopeModifier: ViewModifier {
     let model: LUINodeModel
     @Environment(\.luiSemanticColors) private var inheritedColors
+    @Environment(\.colorScheme) private var systemScheme
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        let ownColors = LUIThemeTokenDecoder.colors(
-            model.property(.theme)?.stringValue
-        )
         let scheme = LUIThemeTokenDecoder.colorScheme(
             model.property(.themeMode)?.stringValue
+        )
+        let ownColors = LUIThemeTokenDecoder.colors(
+            model.property(.theme)?.stringValue,
+            dark: (scheme ?? systemScheme) == .dark
         )
         if ownColors.isEmpty && scheme == nil {
             content

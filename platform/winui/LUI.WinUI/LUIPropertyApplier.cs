@@ -101,11 +101,11 @@ namespace LUI.WinUI
             FrameworkElement control, LUINodeState state,
             LUISyncContext context)
         {
-            Brush? background = LUIThemeColors.Brush(context, state,
+            Brush? background = LUIThemeColors.Brush(context, state, control,
                 Prop(state, LUIProperty.BackgroundValue)?.AsString);
-            Brush? foreground = LUIThemeColors.Brush(context, state,
+            Brush? foreground = LUIThemeColors.Brush(context, state, control,
                 Prop(state, LUIProperty.ForegroundValue)?.AsString);
-            Brush? border = LUIThemeColors.Brush(context, state,
+            Brush? border = LUIThemeColors.Brush(context, state, control,
                 Prop(state, LUIProperty.BorderColorValue)?.AsString);
             double borderWidth = Prop(
                 state, LUIProperty.BorderWidth)?.AsFloat ??
