@@ -8,7 +8,7 @@ BusyIndicator {
     readonly property var props: node ? node.properties : ({})
 
     running: props["enabled"] !== false
-    palette.dark: Style.color(props["foreground"], palette.dark)
+    palette.dark: Style.nodeColor(node, props["foreground"], palette.dark)
     implicitWidth: 20
     implicitHeight: 20
 }

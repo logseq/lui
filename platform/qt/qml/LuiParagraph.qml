@@ -9,7 +9,7 @@ Text {
 
     SystemPalette { id: paraPal }
     text: Style.str(props, "text", "")
-    color: Style.color(props["foreground"], paraPal.text)
+    color: Style.nodeColor(node, props["foreground"], paraPal.text)
     font.pixelSize: 14
     lineHeight: 1.4
     wrapMode: Text.WordWrap

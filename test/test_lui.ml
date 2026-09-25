@@ -732,6 +732,14 @@ let test_property_matrix_sync () =
          Lui_wire_schema.all_properties)
     Lui_wire_schema.all_node_kinds
 
+let test_theme_tokens_json () =
+  Alcotest.(check string) "fixed + adaptive values"
+    {|{"background":{"light":"#fff","dark":"#000"},"primary":"#7c3aed"}|}
+    (Lui_ui.theme_tokens_json
+       [ ( "background",
+           Lui_ui.Adaptive { light = "#fff"; dark = "#000" } );
+         ("primary", Lui_ui.Fixed "#7c3aed") ])
+
 (* ---------- Lui_json_view: the language-neutral view-model layer ---------- *)
 
 let str_contains ~needle s =
@@ -906,6 +914,11 @@ let () =
             test_dispatch_drops_value_echoes;
           Alcotest.test_case "unset default echoes dropped" `Quick
             test_dispatch_drops_unset_default_echoes;
+        ] );
+      ( "theming",
+        [
+          Alcotest.test_case "theme_tokens_json" `Quick
+            test_theme_tokens_json;
         ] );
       ( "json_view",
         [

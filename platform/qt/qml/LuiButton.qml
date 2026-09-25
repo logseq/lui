@@ -46,7 +46,7 @@ Button {
         }
         Text {
             text: button.text
-            color: Style.color(button.props["foreground"],
+            color: Style.nodeColor(button.node, button.props["foreground"],
                                button.variant === "destructive" ? "#b91c1c"
                                : button.palette.buttonText)
             font.pixelSize: Style.fontSize(button.size)

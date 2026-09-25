@@ -1144,6 +1144,16 @@
       "lg": "ResizeOrigin",
       "wire": "resize-origin",
       "swift": "resizeOrigin"
+    },
+    {
+      "lg": "ThemeValue",
+      "wire": "theme",
+      "swift": "theme"
+    },
+    {
+      "lg": "ThemeMode",
+      "wire": "theme-mode",
+      "swift": "themeMode"
     }
   ],
   "events": [

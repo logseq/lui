@@ -654,6 +654,9 @@ namespace LUI
                 case LUIProperty.ResizeEasing:
                 case LUIProperty.ResizeOrigin:
                     return kind == LUINodeKind.Split;
+                case LUIProperty.ThemeValue:
+                case LUIProperty.ThemeMode:
+                    return CanContainChildren(kind);
                 case LUIProperty.TextValue:
                     switch (kind)
                     {
@@ -752,6 +755,8 @@ namespace LUI
             switch (kind)
             {
                 case LUINodeKind.Root:
+                    return property == LUIProperty.ThemeValue ||
+                        property == LUIProperty.ThemeMode;
                 case LUINodeKind.ContextMenu:
                     return false;
                 case LUINodeKind.Dialog:
@@ -1071,6 +1076,16 @@ namespace LUI
                 {
                     return value is LUIWireValue.Float number &&
                         IsFinite(number.Value);
+                }
+                case LUIProperty.ThemeValue:
+                {
+                    return value is LUIWireValue.String;
+                }
+                case LUIProperty.ThemeMode:
+                {
+                    return value is LUIWireValue.String text &&
+                        (text.Value == "system" || text.Value == "light" ||
+                         text.Value == "dark");
                 }
                 default:
                 {

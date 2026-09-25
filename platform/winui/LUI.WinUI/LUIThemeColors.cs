@@ -10,6 +10,56 @@ namespace LUI.WinUI
 {
     public static class LUIThemeColors
     {
+        /// Resolves a semantic color name: scoped `theme` tokens on the node
+        /// or its wire ancestors win, then platform theme resources.
+        /// `control` resolves adaptive token values by its ActualTheme.
+        public static SolidColorBrush? Brush(
+            LUISyncContext? context, LUINodeState? state,
+            FrameworkElement? control, string? name)
+        {
+            if (name == null) return null;
+            bool dark = control != null &&
+                control.ActualTheme == ElementTheme.Dark;
+            if (context != null &&
+                LUIThemeScope.Token(context, state, name, dark)
+                    is string token &&
+                TokenColor(token) is Color tokenColor)
+            {
+                return new SolidColorBrush(tokenColor);
+            }
+            return Brush(name);
+        }
+
+        /// Parses theme token values: #rgb, #rrggbb, #rrggbbaa (CSS
+        /// alpha-suffix). Returns null for non-hex names.
+        static Color? TokenColor(string? value)
+        {
+            if (value == null) return null;
+            string raw = value.StartsWith("#") ? value.Substring(1) : value;
+            if (raw.Length == 3 || raw.Length == 4)
+            {
+                var expanded = new char[raw.Length * 2];
+                for (int i = 0; i < raw.Length; i++)
+                {
+                    expanded[i * 2] = expanded[i * 2 + 1] = raw[i];
+                }
+                raw = new string(expanded);
+            }
+            if (raw.Length != 6 && raw.Length != 8) return null;
+            if (!uint.TryParse(raw,
+                    System.Globalization.NumberStyles.HexNumber,
+                    null, out uint rgba))
+            {
+                return null;
+            }
+            if (raw.Length == 6) rgba = (rgba << 8) | 0xff;
+            return Color.FromArgb(
+                (byte)(rgba & 0xff),
+                (byte)((rgba >> 24) & 0xff),
+                (byte)((rgba >> 16) & 0xff),
+                (byte)((rgba >> 8) & 0xff));
+        }
+
         public static SolidColorBrush? Brush(string? name)
         {
             if (name == null) return null;

@@ -15,5 +15,5 @@ Rectangle {
     implicitHeight: horizontal ? 1 : 40
     Layout.fillWidth: horizontal
     Layout.fillHeight: !horizontal
-    color: Style.color(props["foreground"], divPal.mid)
+    color: Style.nodeColor(node, props["foreground"], divPal.mid)
 }

@@ -350,6 +350,23 @@ final class _NodeHandle extends ChangeNotifier {
   }
 }
 
+// Scoped theme tokens: a `theme` prop carries a name→value table that merges
+// over the nearest ancestor scope, and `_color` consults it before the
+// platform-default semantic map.
+final class _LUIThemeScope extends InheritedWidget {
+  const _LUIThemeScope({required this.tokens, required super.child});
+
+  final Map<String, Object> tokens;
+
+  static Map<String, Object>? maybeTokens(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<_LUIThemeScope>()
+      ?.tokens;
+
+  @override
+  bool updateShouldNotify(_LUIThemeScope oldWidget) =>
+      !mapEquals(tokens, oldWidget.tokens);
+}
+
 final class _LUIAppearDispatcher extends StatefulWidget {
   const _LUIAppearDispatcher({
     super.key,
@@ -799,8 +816,40 @@ final class LUIFlutterBackend {
     return ListenableBuilder(
       key: nodeKey(node),
       listenable: handle,
-      builder: (context, _) => _withAppear(node, _buildNode(context, node)),
+      // The Builder under _withTheme gives _buildNode a context that already
+      // carries this node's tokens, so a themed scope covers the node
+      // itself, not only its descendants.
+      builder: (context, _) => _withTheme(
+        context,
+        node,
+        Builder(
+          builder: (inner) => _withAppear(node, _buildNode(inner, node)),
+        ),
+      ),
     );
+  }
+
+  Widget _withTheme(BuildContext context, int node, Widget child) {
+    final state = _requireState(_states, node);
+    final tokens = _themeTokens(state.properties['theme']);
+    final mode = state.properties['theme-mode'] as String?;
+    if (tokens == null && (mode != 'light' && mode != 'dark')) {
+      return child;
+    }
+    Widget result = child;
+    if (mode == 'light' || mode == 'dark') {
+      result = Theme(
+        data: _themeForMode(context, dark: mode == 'dark'),
+        child: result,
+      );
+    }
+    if (tokens != null) {
+      result = _LUIThemeScope(
+        tokens: {...?_LUIThemeScope.maybeTokens(context), ...tokens},
+        child: result,
+      );
+    }
+    return result;
   }
 
   Widget _withAppear(int node, Widget child) {
@@ -3010,7 +3059,12 @@ final class LUIFlutterBackend {
 
   static bool _supports(_NodeKind kind, String property, Object? value) {
     if (property == 'accessibility-identifier') return value is String;
-    if (kind == _NodeKind.root) return false;
+    if (kind == _NodeKind.root) {
+      return (property == 'theme' && value is String) ||
+          (property == 'theme-mode' &&
+              value is String &&
+              _themeModes.contains(value));
+    }
     if (kind == _NodeKind.contextMenu) return false;
     if (kind == _NodeKind.accordion) {
       return switch (property) {
@@ -3116,6 +3170,16 @@ final class LUIFlutterBackend {
         'selected' || 'enabled' || 'press-enabled' => value is bool,
         _ => false,
       };
+    }
+    // Mirrors OCaml common_property_supported: theme props are admitted on
+    // every non-restrictive container kind.
+    if (property == 'theme') {
+      return value is String && _canContainChildren(kind);
+    }
+    if (property == 'theme-mode') {
+      return value is String &&
+          _themeModes.contains(value) &&
+          _canContainChildren(kind);
     }
     return switch (property) {
       'main' =>
@@ -4135,12 +4199,74 @@ final class LUIFlutterBackend {
     return value;
   }
 
+  static Map<String, Object>? _themeTokens(Object? value) {
+    if (value is! String || value.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is! Map) return null;
+      return {
+        for (final entry in decoded.entries)
+          entry.key.toString().toLowerCase(): entry.value,
+      };
+    } on FormatException {
+      return null;
+    }
+  }
+
+  // A token value is either a plain color string or a {"light", "dark"}
+  // object picked by the effective brightness.
+  static String? _tokenValue(BuildContext context, Object? value) {
+    if (value is String) return value;
+    if (value is Map) {
+      final dark = Theme.of(context).brightness == Brightness.dark;
+      final picked = dark ? value['dark'] : value['light'];
+      if (picked is String) return picked;
+    }
+    return null;
+  }
+
+  static Color? _tokenColor(String? value) {
+    if (value == null) return null;
+    var raw = value.startsWith('#') ? value.substring(1) : value;
+    if (raw.length == 3 || raw.length == 4) {
+      raw = raw.split('').map((c) => c + c).join();
+    }
+    if (raw.length == 6) {
+      raw = 'ff$raw';
+    } else if (raw.length == 8) {
+      // CSS hex is #rrggbbaa; Color() takes ARGB.
+      raw = raw.substring(6) + raw.substring(0, 6);
+    }
+    if (raw.length != 8) return null;
+    final parsed = int.tryParse(raw, radix: 16);
+    return parsed == null ? null : Color(parsed);
+  }
+
+  static ThemeData _themeForMode(BuildContext context, {required bool dark}) {
+    final base = Theme.of(context);
+    final brightness = dark ? Brightness.dark : Brightness.light;
+    return base.copyWith(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: base.colorScheme.primary,
+        brightness: brightness,
+      ),
+    );
+  }
+
   static Color? _color(
     BuildContext context,
     String? name, {
     bool foreground = false,
   }) {
     final colors = Theme.of(context).colorScheme;
+    final token = _tokenValue(
+      context,
+      _LUIThemeScope.maybeTokens(context)?[name?.toLowerCase()],
+    );
+    if (token != null) {
+      final parsed = _tokenColor(token);
+      if (parsed != null) return parsed;
+    }
     return switch (name?.toLowerCase()) {
       null => null,
       'transparent' => Colors.transparent,
@@ -4270,6 +4396,7 @@ final class LUIFlutterBackend {
   };
 
   static const _mainAlignments = {'start', 'center', 'end', 'space_between'};
+  static const _themeModes = {'system', 'light', 'dark'};
 
   static const _crossAlignments = {'stretch', 'start', 'center', 'end'};
 
@@ -4485,25 +4612,39 @@ class _LUIModalPresenterState extends State<_LUIModalPresenter> {
       widget.node,
     );
     final localizations = MaterialLocalizations.of(context);
-    Widget surface(BuildContext context) {
+    // The route renders outside the LUI tree, so neither ancestor token
+    // scopes nor the modal node's own `_withTheme` reach it. Capture the
+    // merged inherited scope at present time and re-apply the node's own
+    // scope inside the route so themed modals keep their overrides.
+    final inheritedTokens = _LUIThemeScope.maybeTokens(context);
+    final capturedThemes = InheritedTheme.capture(
+      from: context,
+      to: navigator.context,
+    );
+    Widget surface(BuildContext routeContext) {
       if (!widget.backend._states.containsKey(widget.node)) {
         return const SizedBox.shrink();
       }
-      return ListenableBuilder(
+      Widget content = ListenableBuilder(
         listenable: widget.backend._requireHandle(widget.node),
-        builder: (context, _) => widget.backend._states.containsKey(widget.node)
-            ? widget.backend._modalSurface(context, widget.node)
+        builder: (routeContext, _) =>
+            widget.backend._states.containsKey(widget.node)
+            ? widget.backend._withTheme(
+                routeContext,
+                widget.node,
+                widget.backend._modalSurface(routeContext, widget.node),
+              )
             : const SizedBox.shrink(),
       );
+      return inheritedTokens == null
+          ? content
+          : _LUIThemeScope(tokens: {...inheritedTokens}, child: content);
     }
 
     return switch (state.kind) {
       _NodeKind.sheet => ModalBottomSheetRoute<void>(
         builder: surface,
-        capturedThemes: InheritedTheme.capture(
-          from: context,
-          to: navigator.context,
-        ),
+        capturedThemes: capturedThemes,
         isScrollControlled: true,
         barrierLabel: localizations.scrimLabel,
         barrierOnTapHint: localizations.scrimOnTapHint(
@@ -4519,6 +4660,7 @@ class _LUIModalPresenterState extends State<_LUIModalPresenter> {
         barrierDismissible: true,
         barrierLabel: localizations.modalBarrierDismissLabel,
         builder: surface,
+        themes: capturedThemes,
       ),
       _ => throw const LUIBackendException('node is not a modal surface'),
     };
