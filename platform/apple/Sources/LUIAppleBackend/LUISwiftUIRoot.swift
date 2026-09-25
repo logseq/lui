@@ -2644,15 +2644,31 @@ private struct LUIToolbarGroupAnchor: View {
             ToolbarSpacer(.flexible, placement: placement)
         case let .bare(childID):
             ToolbarItem(placement: placement) {
-                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                // The toolbar node's own identifier has no element of its own
+                // in the platform chrome — carry it on the first item.
+                if index == 0, let identifier = model.accessibilityIdentifier(in: backend) {
+                    LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                        .accessibilityIdentifier(identifier)
+                } else {
+                    LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                }
             }
         case let .capsule(childIDs):
             // Consecutive interactive children fuse into one toolbar item so
             // the platform draws its shared capsule.
             ToolbarItem(placement: placement) {
-                ControlGroup {
-                    ForEach(childIDs, id: \.self) { childID in
-                        LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                if index == 0, let identifier = model.accessibilityIdentifier(in: backend) {
+                    ControlGroup {
+                        ForEach(childIDs, id: \.self) { childID in
+                            LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                        }
+                    }
+                    .accessibilityIdentifier(identifier)
+                } else {
+                    ControlGroup {
+                        ForEach(childIDs, id: \.self) { childID in
+                            LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                        }
                     }
                 }
             }
