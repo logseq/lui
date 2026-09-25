@@ -22,6 +22,19 @@ type 'key ui_keyed = {
   key_compare : 'key -> 'key -> int;
 }
 
+(* Teardown can race an outer drop: branch scopes still dispose while the
+   runtime already dropped part of the branch (app teardown, reconcile), so
+   remove_child/drop_subtree may only touch ids that are still live. The
+   segment bookkeeping always unwinds so unregister sees an empty segment. *)
+let teardown_branch application segment parent node =
+  if
+    Lui_runtime.node_live application parent
+    && Lui_runtime.node_live application node
+  then Lui_runtime.remove_child application parent node;
+  Lui_runtime.resize_dynamic_segment application segment (-1);
+  if Lui_runtime.node_live application node then
+    Lui_runtime.drop_subtree application node
+
 let segment_disposer application segment dispose_reactive () =
   dispose_reactive ();
   Lui_runtime.unregister_dynamic_segment application segment
@@ -41,11 +54,7 @@ let switch context parent source equal mount =
     let node = mount branch_context key in
     Signal.on_unmount branch_scope (fun () ->
         if !(segment.Lui_runtime.dynamic_segment_active) && not !retired
-        then begin
-          Lui_runtime.remove_child application parent node;
-          Lui_runtime.resize_dynamic_segment application segment (-1);
-          Lui_runtime.drop_subtree application node
-        end;
+        then teardown_branch application segment parent node;
         if !node_ref = Some node then node_ref := None);
     branch_context, node, retired
   in
@@ -145,11 +154,8 @@ let conditional context parent source mount =
               (Lui_runtime.dynamic_segment_insert_index segment 0);
             Lui_runtime.resize_dynamic_segment application segment 1;
             Signal.on_unmount branch_scope (fun () ->
-                if !(segment.Lui_runtime.dynamic_segment_active) then begin
-                  Lui_runtime.remove_child application parent node;
-                  Lui_runtime.resize_dynamic_segment application segment (-1);
-                  Lui_runtime.drop_subtree application node
-                end;
+                if !(segment.Lui_runtime.dynamic_segment_active) then
+                  teardown_branch application segment parent node;
                 node_ref := None));
          branch_scope)
   in
@@ -195,12 +201,8 @@ let mount_keyed_item context parent segment key_fn compare mount nodes_ref
   let node = mount item_context item_source in
   nodes_ref := !nodes_ref @ [ { ui_key = key; ui_node = node } ];
   Signal.on_unmount item_scope (fun () ->
-      if !(segment.Lui_runtime.dynamic_segment_active) then begin
-        Lui_runtime.remove_child context.Lui_ui.ui_application parent node;
-        Lui_runtime.resize_dynamic_segment context.Lui_ui.ui_application
-          segment (-1);
-        Lui_runtime.drop_subtree context.Lui_ui.ui_application node
-      end;
+      if !(segment.Lui_runtime.dynamic_segment_active) then
+        teardown_branch context.Lui_ui.ui_application segment parent node;
       remove_key_node nodes_ref key compare);
   item_scope
 
