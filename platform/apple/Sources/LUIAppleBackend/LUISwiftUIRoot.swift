@@ -2644,7 +2644,7 @@ private struct LUIToolbarGroupAnchor: View {
             ToolbarSpacer(.flexible, placement: placement)
         case let .bare(childID):
             ToolbarItem(placement: placement) {
-                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                itemIdentity(LUIAnyNodeView(nodeID: childID, backend: backend).equatable(), at: index)
             }
         case let .capsule(childIDs):
             // Consecutive interactive children fuse into one toolbar item so
@@ -2652,10 +2652,39 @@ private struct LUIToolbarGroupAnchor: View {
             ToolbarItem(placement: placement) {
                 ControlGroup {
                     ForEach(childIDs, id: \.self) { childID in
-                        LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                        // A capsule renders one bar item per child, so the
+                        // identifier rides only the first — applying it to the
+                        // group would stamp the id onto every child.
+                        itemIdentity(
+                            LUIAnyNodeView(nodeID: childID, backend: backend).equatable(),
+                            at: index,
+                            firstChild: childID == childIDs.first
+                        )
                     }
                 }
             }
+        }
+    }
+
+    /// The zero-size anchor is invisible to accessibility, so a hoisted
+    /// toolbar node's identifier would be dropped with it. Surface it on the
+    /// first non-spacer item's content as a container element — children keep
+    /// their own identifiers.
+    @ViewBuilder
+    private func itemIdentity(_ content: some View, at index: Int, firstChild: Bool = true) -> some View {
+        if firstChild, index == identitySegmentIndex, let identifier = model.accessibilityIdentifier(in: backend) {
+            content
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier(identifier)
+        } else {
+            content
+        }
+    }
+
+    private var identitySegmentIndex: Int? {
+        segments.firstIndex { segment in
+            if case .spacer = segment { return false }
+            return true
         }
     }
 
