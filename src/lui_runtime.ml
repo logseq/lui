@@ -665,11 +665,25 @@ let reconcile_subtree application saved parent old_root candidate_root =
   (* Aliases established by earlier reconciles still map other branches'
      mount-time ids onto the live ids they were reconciled into — clearing
      the whole table here would orphan every dynamic segment whose parent
-     was renamed before this reconcile ran. Only this reconcile's own
-     candidate keys may be (re)written; drop keys reconciled away. *)
+     was renamed before this reconcile ran. Aliases pointing into the
+     replaced subtree are dead by ownership though: a mount-time
+     candidate id lives only inside the branch that produced it, and its
+     target sits in that branch's live subtree, so entries targeting
+     old_nodes die with the branch (their owning scopes were disposed
+     above). Pruning them here keeps the table bounded by the live
+     branches' candidate ids instead of growing on every remount. *)
+  let old_node_set = Hashtbl.create 16 in
+  List.iter (fun node -> Hashtbl.replace old_node_set node ()) old_nodes;
+  let stale_aliases =
+    Hashtbl.fold
+      (fun candidate target acc ->
+         if Hashtbl.mem old_node_set target then candidate :: acc else acc)
+      application.runtime_node_aliases []
+  in
   List.iter
-    (fun node -> Hashtbl.remove application.runtime_node_aliases node)
-    removed_nodes;
+    (fun candidate ->
+      Hashtbl.remove application.runtime_node_aliases candidate)
+    stale_aliases;
   Hashtbl.iter
     (fun candidate node ->
        if candidate <> node then
@@ -816,6 +830,19 @@ and drop_node application node =
       (fun segment -> segment.dynamic_segment_active := false)
       segments
   | None -> ());
+  (* Aliases targeting a dropped node belong to the branch that died
+     with it; clearing them keeps the table bounded (they would resolve
+     to a dead id anyway). *)
+  let stale_aliases =
+    Hashtbl.fold
+      (fun candidate target acc ->
+         if target = node then candidate :: acc else acc)
+      application.runtime_node_aliases []
+  in
+  List.iter
+    (fun candidate ->
+      Hashtbl.remove application.runtime_node_aliases candidate)
+    stale_aliases;
   Hashtbl.remove application.mounted_nodes node;
   Hashtbl.remove application.runtime_extension_nodes node;
   Hashtbl.remove application.runtime_properties node;
