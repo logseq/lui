@@ -36,6 +36,11 @@ ColumnLayout {
                 rotation: accordion.expanded ? 0 : -90
             }
         }
+        background: Rectangle {
+            color: header.down ? header.palette.mid
+                   : header.hovered ? header.palette.midlight
+                   : "transparent"
+        }
         onClicked: accordion.node.toggle(!accordion.expanded)
     }
 

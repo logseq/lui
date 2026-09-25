@@ -17,9 +17,10 @@ Button {
 
     text: Style.str(props, "text", "")
     enabled: props["enabled"] !== false
-    // Primary actions map to the style's highlighted button; everything
-    // else renders with the stock QQC2 chrome so buttons look native.
-    highlighted: button.variant === "primary"
+    // Primary and selected actions map to the style's highlighted button;
+    // ghost drops the chrome entirely; everything else is stock.
+    highlighted: button.variant === "primary" || props["selected"] === true
+    flat: button.variant === "ghost"
     Component.onCompleted: if (props["autofocus"] === true) forceActiveFocus()
 
     padding: Style.controlPadding(size)
@@ -45,7 +46,8 @@ Button {
         }
         Text {
             text: button.text
-            color: button.palette.buttonText
+            color: button.variant === "destructive" ? "#b91c1c"
+                   : button.palette.buttonText
             font.pixelSize: Style.fontSize(button.size)
             horizontalAlignment: Style.textAlignEnum(button.props)
             elide: Text.ElideRight

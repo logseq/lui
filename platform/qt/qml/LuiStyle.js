@@ -92,12 +92,15 @@ function mainAlign(props) {
 
 function needsLeadFiller(props) {
     var a = mainAlign(props)
-    return a === "center" || a === "end" || a === "space_between"
+    return a === "center" || a === "end"
 }
 
 function needsTrailFiller(props) {
+    // Qt Quick Layouts distribute slack proportionally across cells when
+    // nothing fills, so a start-aligned row still needs a trailing stretch
+    // item to keep its children packed to the left.
     var a = mainAlign(props)
-    return a === "center" || a === "space_between"
+    return a === "center" || a === "start"
 }
 
 function stretchCross(props) {

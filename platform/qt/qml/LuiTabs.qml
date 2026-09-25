@@ -17,7 +17,11 @@ Rectangle {
 
     RowLayout {
         id: group
-        anchors.centerIn: parent
+        anchors {
+            left: parent.left
+            leftMargin: 4
+            verticalCenter: parent.verticalCenter
+        }
         spacing: Style.num(tabs.props, "gap", 4)
 
         Repeater {

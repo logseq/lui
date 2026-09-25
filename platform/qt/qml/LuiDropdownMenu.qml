@@ -4,15 +4,30 @@ import QtQuick.Layouts
 import "LuiStyle.js" as Style
 
 // Wire kind: dropdown-menu — overlay surface anchored to the preceding
-// sibling (LuiStack hands it `anchorItem` through LuiNodeView).
+// sibling (LuiStack hands it `anchorItem` through LuiNodeView). With no
+// anchor it renders its items inline instead of opening a Popup that
+// would hover over unrelated content.
 Item {
     id: menu
     required property var node
     property Item anchorItem: null
     readonly property var props: node ? node.properties : ({})
 
-    implicitWidth: popup.width
-    implicitHeight: 0
+    implicitWidth: menu.anchorItem ? popup.width : inlineCol.implicitWidth
+    implicitHeight: menu.anchorItem ? 0 : inlineCol.implicitHeight
+
+    ColumnLayout {
+        id: inlineCol
+        visible: !menu.anchorItem
+        spacing: Style.num(menu.props, "gap", 0)
+
+        Repeater {
+            model: menu.node ? menu.node.children : []
+            delegate: LuiNodeView {
+            required property var modelData
+            node: modelData }
+        }
+    }
 
     Popup {
         id: popup
@@ -33,7 +48,6 @@ Item {
             return p.y
         }
 
-
         contentItem: ColumnLayout {
             spacing: Style.num(menu.props, "gap", 0)
 
@@ -46,5 +60,6 @@ Item {
         }
     }
 
-    Component.onCompleted: popup.open()
+    Component.onCompleted: if (menu.anchorItem) popup.open()
+    onAnchorItemChanged: if (menu.anchorItem && !popup.opened) popup.open()
 }

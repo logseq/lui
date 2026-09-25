@@ -36,6 +36,7 @@ ItemDelegate {
         Text {
             text: Style.str(item.props, "text", "")
             color: !item.enabled ? item.palette.placeholderText
+                   : (item.hovered || item.down) ? item.palette.highlightedText
                    : item.destructive ? "#dc2626" : item.palette.text
             font.pixelSize: 13
             Layout.fillWidth: true
@@ -54,6 +55,10 @@ ItemDelegate {
         }
     }
 
+
+    background: Rectangle {
+        color: item.down || item.hovered ? item.palette.highlight : "transparent"
+    }
 
     onClicked: {
         if (item.submenu !== null) {

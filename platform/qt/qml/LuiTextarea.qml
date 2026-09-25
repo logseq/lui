@@ -51,5 +51,11 @@ ScrollView {
         }
     }
 
-
+    background: Rectangle {
+        color: area.enabled ? view.palette.base : view.palette.alternateBase
+        border.color: area.activeFocus ? view.palette.highlight
+                                       : view.palette.mid
+        border.width: 1
+        radius: 2
+    }
 }

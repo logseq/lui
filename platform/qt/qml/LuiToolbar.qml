@@ -22,6 +22,7 @@ Loader {
             required property var modelData
             node: modelData }
             }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -36,6 +37,7 @@ Loader {
             required property var modelData
             node: modelData }
             }
+            Item { Layout.fillHeight: true }
         }
     }
 }

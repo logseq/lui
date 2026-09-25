@@ -29,4 +29,6 @@ RowLayout {
             }
         }
     }
+
+    Item { Layout.fillWidth: true }
 }

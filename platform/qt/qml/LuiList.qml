@@ -11,8 +11,10 @@ ListView {
     model: node ? node.children : []
     spacing: Style.num(props, "gap", 0)
     clip: true
-    implicitWidth: 200
-    implicitHeight: 120
+    implicitWidth: 240
+    // Size to the content so a list without an explicit height shows its
+    // rows instead of clipping mid-item; capped so long lists still scroll.
+    implicitHeight: Math.max(32, Math.min(contentHeight + spacing, 240))
     interactive: contentHeight > height
 
     delegate: LuiNodeView {

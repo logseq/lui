@@ -20,6 +20,7 @@ Button {
     padding: Style.controlPadding(Style.str(props, "size", "default"))
 
     highlighted: button.selected
+    flat: Style.str(props, "variant", "default") === "ghost"
     implicitHeight: 32
     background.implicitWidth: 80
     background.implicitHeight: 32

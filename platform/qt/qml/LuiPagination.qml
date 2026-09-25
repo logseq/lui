@@ -15,4 +15,6 @@ RowLayout {
             required property var modelData
             node: modelData }
     }
+
+    Item { Layout.fillWidth: true }
 }

@@ -35,8 +35,11 @@ Item {
         return null
     }
 
-    implicitWidth: content.implicitWidth
-    implicitHeight: content.implicitHeight
+    // The frame chrome reserves space around the loaded component, so the
+    // implicit size must include it — otherwise a padded node claims a slot
+    // smaller than its content and children overflow into neighbours.
+    implicitWidth: content.implicitWidth + _padH * 2
+    implicitHeight: content.implicitHeight + _padV * 2
 
     // Extension components opt into filling their layout slot by declaring
     // `property bool fillsLayout: true` on their root item — grow/frame can
@@ -60,6 +63,8 @@ Item {
         value: view._h > 0 ? view._h : view.implicitHeight
     }
 
+    Layout.preferredWidth: view._w > 0 ? view._w : view.implicitWidth
+    Layout.preferredHeight: view._h > 0 ? view._h : view.implicitHeight
     Layout.fillWidth: Number(prop("grow", 0)) > 0 ||
                       prop("container-relative-frame", "") === "horizontal" ||
                       prop("container-relative-frame", "") === "both" ||

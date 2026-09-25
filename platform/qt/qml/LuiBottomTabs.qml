@@ -30,6 +30,8 @@ ColumnLayout {
             delegate: LuiNodeView {
                 required property var modelData
                 node: modelData
+                Layout.fillWidth: true
+                Layout.fillHeight: true
             }
         }
     }
