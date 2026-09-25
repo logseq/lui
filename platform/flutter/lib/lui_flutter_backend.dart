@@ -1438,6 +1438,7 @@ final class LUIFlutterBackend {
         ),
       );
     }
+
     Widget dropdownMenu() => CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.escape): () =>
@@ -1468,8 +1469,8 @@ final class LUIFlutterBackend {
             childID != null && _states[childID]?.kind == _NodeKind.dropdownMenu,
         orElse: () => null,
       );
-      final menuItemIconExtent =
-          switch (state.properties['size'] as String? ?? 'default') {
+      final menuItemIconExtent = switch (state.properties['size'] as String? ??
+          'default') {
         'sm' => 16.0,
         'lg' => 28.0,
         _ => 16.0,
@@ -2315,9 +2316,9 @@ final class LUIFlutterBackend {
             ? const VerticalDivider(width: 1)
             : const Divider(height: 1),
       _NodeKind.scroll => SingleChildScrollView(
-        scrollDirection: orientation == 'vertical'
-            ? Axis.vertical
-            : Axis.horizontal,
+        scrollDirection: state.properties['orientation'] == 'horizontal'
+            ? Axis.horizontal
+            : Axis.vertical,
         child: Stack(children: children),
       ),
       _NodeKind.spacer => const SizedBox.shrink(),
@@ -3079,7 +3080,9 @@ final class LUIFlutterBackend {
       'orientation' =>
         value is String &&
             (value == 'horizontal' || value == 'vertical') &&
-            (kind == _NodeKind.divider || kind == _NodeKind.tabs),
+            (kind == _NodeKind.divider ||
+                kind == _NodeKind.tabs ||
+                kind == _NodeKind.scroll),
       'size' =>
         value is String &&
             (_controlSizes.contains(value) ||
@@ -4492,65 +4495,64 @@ final class _LUIDrawerState extends State<_LUIDrawer> {
               ? null
               : (details) {
                   _dragging =
-                      _presented ||
-                      details.localPosition.dx <= edgeDragWidth;
+                      _presented || details.localPosition.dx <= edgeDragWidth;
                 },
-        onHorizontalDragUpdate: !canToggle
-            ? null
-            : (details) {
-                if (!_dragging) return;
-                setState(() {
-                  final next = _dragOffset + details.delta.dx;
-                  _dragOffset = _presented
-                      ? next.clamp(-width, 0).toDouble()
-                      : next.clamp(0, width).toDouble();
-                });
-              },
-        onHorizontalDragEnd: !canToggle
-            ? null
-            : (details) {
-                if (!_dragging) return;
-                _dragging = false;
-                final settledWidth = ((_presented ? width : 0) + _dragOffset)
-                    .clamp(0, width)
-                    .toDouble();
-                final projectedWidth =
-                    (settledWidth + (details.primaryVelocity ?? 0) * 0.2)
-                        .clamp(0, width)
-                        .toDouble();
-                _updatePresentation(projectedWidth >= width * 0.5);
-              },
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            widget.main,
-            if (visibleWidth > 0)
-              Positioned.fill(
-                key: const ValueKey('lui-drawer-scrim'),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: !canToggle ? null : () => _updatePresentation(false),
-                  child: ColoredBox(
-                    color: Colors.black.withValues(alpha: 0.32 * progress),
+          onHorizontalDragUpdate: !canToggle
+              ? null
+              : (details) {
+                  if (!_dragging) return;
+                  setState(() {
+                    final next = _dragOffset + details.delta.dx;
+                    _dragOffset = _presented
+                        ? next.clamp(-width, 0).toDouble()
+                        : next.clamp(0, width).toDouble();
+                  });
+                },
+          onHorizontalDragEnd: !canToggle
+              ? null
+              : (details) {
+                  if (!_dragging) return;
+                  _dragging = false;
+                  final settledWidth = ((_presented ? width : 0) + _dragOffset)
+                      .clamp(0, width)
+                      .toDouble();
+                  final projectedWidth =
+                      (settledWidth + (details.primaryVelocity ?? 0) * 0.2)
+                          .clamp(0, width)
+                          .toDouble();
+                  _updatePresentation(projectedWidth >= width * 0.5);
+                },
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              widget.main,
+              if (visibleWidth > 0)
+                Positioned.fill(
+                  key: const ValueKey('lui-drawer-scrim'),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: !canToggle ? null : () => _updatePresentation(false),
+                    child: ColoredBox(
+                      color: Colors.black.withValues(alpha: 0.32 * progress),
+                    ),
                   ),
                 ),
+              Positioned(
+                key: const ValueKey('lui-drawer-panel'),
+                left: -width + visibleWidth,
+                top: 0,
+                bottom: 0,
+                width: width,
+                child: Semantics(
+                  container: true,
+                  label: widget.label,
+                  hidden: visibleWidth == 0,
+                  child: widget.panel,
+                ),
               ),
-            Positioned(
-              key: const ValueKey('lui-drawer-panel'),
-              left: -width + visibleWidth,
-              top: 0,
-              bottom: 0,
-              width: width,
-              child: Semantics(
-                container: true,
-                label: widget.label,
-                hidden: visibleWidth == 0,
-                child: widget.panel,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
       );
     },
   );
