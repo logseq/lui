@@ -859,14 +859,32 @@ final class LUIFlutterBackend {
         for (final view in RendererBinding.instance.renderViews)
           view.owner?.semanticsOwner?.rootSemanticsNode,
       ];
+      // Walk in traversal order — the order serialized into
+      // childrenInTraversalOrder, which is what the platform a11y bridge
+      // exposes. OverlayPortal children graft under their traversal parent;
+      // a child whose parent never emitted exists in paint order but never
+      // reaches the a11y tree, so paint-order presence is not sufficient.
       void walk(SemanticsNode node) {
         if (node.identifier.isNotEmpty) {
           present.add(node.identifier);
         }
-        node.visitChildren((SemanticsNode child) {
+        List<SemanticsNode>? children;
+        try {
+          children = node.debugListChildrenInOrder(
+            DebugSemanticsDumpOrder.traversalOrder,
+          );
+        } on FlutterError {
+          // A malformed traversal graft (cycle) throws; fall back to the
+          // paint-order children so the walk cannot wedge the heal loop.
+          children = <SemanticsNode>[];
+          node.visitChildren((SemanticsNode child) {
+            children!.add(child);
+            return true;
+          });
+        }
+        for (final child in children) {
           walk(child);
-          return true;
-        });
+        }
       }
 
       for (final root in roots) {
@@ -5698,26 +5716,37 @@ final class _LUIAnchoredStackState extends State<_LUIAnchoredStack> {
 
   @override
   Widget build(BuildContext context) {
-    return MenuAnchor(
-      controller: _menu,
-      useRootOverlay: true,
-      animated: true,
-      crossAxisUnconstrained: widget.alignment != 'stretch',
-      alignmentOffset: _alignmentOffset,
-      style: MenuStyle(
-        alignment: _menuAlignment,
-        minimumSize: widget.minimumWidth == null
-            ? null
-            : WidgetStatePropertyAll(Size(widget.minimumWidth!, 0)),
-        maximumSize: widget.maximumWidth == null
-            ? null
-            : WidgetStatePropertyAll(
-                Size(widget.maximumWidth!, double.infinity),
-              ),
+    // OverlayPortal wraps its child in a non-container Semantics carrying
+    // traversalParentIdentifier, so the property never forms its own node;
+    // it merges upward into the nearest ancestor boundary, and the merge
+    // keeps only the first non-null identifier. Sibling anchors under one
+    // boundary (e.g. two anchored stacks in a row) then lose every graft
+    // except the first, leaving later portals' menus permanently absent
+    // from the platform accessibility tree. An explicit container boundary
+    // keeps each portal's identifier on its own node.
+    return Semantics(
+      container: true,
+      child: MenuAnchor(
+        controller: _menu,
+        useRootOverlay: true,
+        animated: true,
+        crossAxisUnconstrained: widget.alignment != 'stretch',
+        alignmentOffset: _alignmentOffset,
+        style: MenuStyle(
+          alignment: _menuAlignment,
+          minimumSize: widget.minimumWidth == null
+              ? null
+              : WidgetStatePropertyAll(Size(widget.minimumWidth!, 0)),
+          maximumSize: widget.maximumWidth == null
+              ? null
+              : WidgetStatePropertyAll(
+                  Size(widget.maximumWidth!, double.infinity),
+                ),
+        ),
+        onClose: _menuClosed,
+        menuChildren: widget.menuChildren,
+        child: widget.trigger,
       ),
-      onClose: _menuClosed,
-      menuChildren: widget.menuChildren,
-      child: widget.trigger,
     );
   }
 }
@@ -6212,20 +6241,29 @@ class _RenderLUIStack extends RenderStack {
 
   @override
   void performLayout() {
-    // A grow child fills via Positioned(top: 0, bottom: 0), which the stack
+    // A grow child fills via a full Positioned rect, which the stack
     // resolves against `constraints.biggest` — so filling requires a finite
-    // biggest on BOTH axes, not just bounded height. Under unbounded
-    // constraints the child falls back to non-positioned content sizing and
-    // RenderStack's all-positioned path can never produce an infinite size.
+    // biggest on BOTH axes. Positioned(top/bottom) alone would leave
+    // RenderStack.layoutPositionedChild handing the child completely
+    // unbounded width constraints; a subtree that then sizes to the max
+    // reports an infinite size and the stack computes a NaN offset for it
+    // (invalid paint transform, zero-bounds semantics). Under unbounded
+    // constraints the child falls back to non-positioned content sizing
+    // and RenderStack's all-positioned path can never produce an infinite
+    // size.
     final bool bounded = constraints.biggest.isFinite;
     RenderBox? child = firstChild;
     while (child != null) {
       final parentData = child.parentData! as _LUIStackParentData;
       if (parentData.growFill) {
         if (bounded) {
+          parentData.left = 0.0;
+          parentData.right = 0.0;
           parentData.top = 0.0;
           parentData.bottom = 0.0;
         } else {
+          parentData.left = null;
+          parentData.right = null;
           parentData.top = null;
           parentData.bottom = null;
         }
