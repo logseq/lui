@@ -604,6 +604,11 @@ final class LUIFlutterBackend {
       }
     }
     for (final id in removed) {
+      final identifier =
+          _handles[id]?.state.properties['accessibility-identifier'];
+      if (identifier is String) {
+        _staleSemanticsIdentifiers.add(identifier);
+      }
       _handles.remove(id)?.dispose();
       final modal = _modalRoutes.remove(id);
       if (modal != null) {
@@ -633,6 +638,9 @@ final class LUIFlutterBackend {
       _scheduleRouteRemoval(modal.$1, modal.$2);
       return true;
     });
+    if (removed.isNotEmpty) {
+      _scheduleSemanticsHeal();
+    }
     generation = nextGeneration;
     final changedSources = Set<int>.of(changedIDs);
     final dependentIDs = <int>{};
@@ -732,6 +740,85 @@ final class LUIFlutterBackend {
     SchedulerBinding.instance.addPostFrameCallback(step);
   }
 
+  // A dropped subtree can leave its SemanticsNodes attached forever:
+  // flushSemantics clears _nodesNeedingSemanticsUpdate wholesale but only
+  // runs updateChildren on boundaries that are not needsLayout at flush
+  // time, so a boundary marked while mid-layout loses its update and the
+  // stale child list (e.g. a removed sheet subtree) is never re-derived.
+  // Re-mark every built boundary each frame until the identifiers of the
+  // dropped nodes leave the semantics tree — or a bounded frame count for
+  // subtrees that carry no identifiers — so the platform a11y tree cannot
+  // freeze on the removed subtree.
+  final Set<String> _staleSemanticsIdentifiers = <String>{};
+  bool _semanticsHealScheduled = false;
+
+  void _collectSubtreeIdentifiers(
+    Map<int, _NodeState> states,
+    int id,
+    Set<String> out,
+  ) {
+    final state = states[id];
+    if (state == null) {
+      return;
+    }
+    final identifier = state.properties['accessibility-identifier'];
+    if (identifier is String) {
+      out.add(identifier);
+    }
+    for (final child in state.children) {
+      _collectSubtreeIdentifiers(states, child, out);
+    }
+  }
+
+  void _scheduleSemanticsHeal() {
+    if (_semanticsHealScheduled) {
+      return;
+    }
+    _semanticsHealScheduled = true;
+    var attempts = 0;
+    void step([Duration? _]) {
+      attempts += 1;
+      var retained = attempts < 5;
+      final root = RendererBinding
+          .instance.rootPipelineOwner.semanticsOwner?.rootSemanticsNode;
+      if (root != null && _staleSemanticsIdentifiers.isNotEmpty) {
+        void walk(SemanticsNode node) {
+          if (_staleSemanticsIdentifiers.contains(node.identifier)) {
+            retained = true;
+          }
+          node.visitChildren((SemanticsNode child) {
+            walk(child);
+            return true;
+          });
+        }
+
+        walk(root);
+      }
+      void markBoundaries(RenderObject ro) {
+        if (!ro.attached) {
+          return;
+        }
+        // Marking a non-boundary walks up to the nearest semantics
+        // boundary, so marking every attached render object re-dirties all
+        // of them; the dirty set deduplicates.
+        ro.markNeedsSemanticsUpdate();
+        ro.visitChildren(markBoundaries);
+      }
+
+      for (final view in RendererBinding.instance.renderViews) {
+        markBoundaries(view);
+      }
+      if (retained && attempts < 60) {
+        SchedulerBinding.instance.addPostFrameCallback(step);
+      } else {
+        _staleSemanticsIdentifiers.clear();
+        _semanticsHealScheduled = false;
+      }
+    }
+
+    SchedulerBinding.instance.addPostFrameCallback(step);
+  }
+
   void _registerModalRoute(
     int node,
     Route<void> route,
@@ -792,6 +879,7 @@ final class LUIFlutterBackend {
       final entries = route?.overlayEntries ?? const <OverlayEntry>[];
       mark();
       _scheduleLayoutSettle();
+      _scheduleSemanticsHeal();
       if (entries.any((entry) => entry.mounted) && attempts < 30) {
         attempts += 1;
         SchedulerBinding.instance.addPostFrameCallback(step);
@@ -2899,6 +2987,12 @@ final class LUIFlutterBackend {
         if (!children.remove(childID)) {
           throw const LUIBackendException('child is not attached to parent');
         }
+        _collectSubtreeIdentifiers(
+          states,
+          childID,
+          _staleSemanticsIdentifiers,
+        );
+        _scheduleSemanticsHeal();
         _setNodeParent(states, extensions, childID, null);
       case 'move-child':
         final parentID = _integer(operation['parent'], 'parent');
