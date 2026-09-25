@@ -5,6 +5,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 part 'lui_wire_schema.g.dart';
@@ -393,6 +395,9 @@ final class LUIFlutterBackend {
   final _LUITooltipSession _tooltipSession = _LUITooltipSession();
   Map<int, _NodeState> _states = {};
   final Map<int, _NodeHandle> _handles = {};
+  // Live modal routes by owning node, so a patch that drops the node can
+  // remove the route even if the presenter's element never unmounts.
+  final Map<int, (Route<void>, NavigatorState)> _modalRoutes = {};
   Map<int, _ExtensionNodeState> _extensionStates = {};
   final Map<int, _ExtensionNodeHandle> _extensionHandles = {};
   final Map<int, ui.Image> _images = {};
@@ -583,6 +588,10 @@ final class LUIFlutterBackend {
     }
     for (final id in removed) {
       _handles.remove(id)?.dispose();
+      final modal = _modalRoutes.remove(id);
+      if (modal != null) {
+        _scheduleRouteRemoval(modal.$1, modal.$2);
+      }
     }
     for (final entry in nextExtensions.entries) {
       final handle = _extensionHandles[entry.key];
@@ -600,6 +609,13 @@ final class LUIFlutterBackend {
     }
     _states = next;
     _extensionStates = nextExtensions;
+    // A route whose node vanished without going through `removed` (e.g. its
+    // handle was already gone) still must not linger.
+    _modalRoutes.removeWhere((node, modal) {
+      if (next.containsKey(node)) return false;
+      _scheduleRouteRemoval(modal.$1, modal.$2);
+      return true;
+    });
     generation = nextGeneration;
     final changedSources = Set<int>.of(changedIDs);
     final dependentIDs = <int>{};
@@ -628,6 +644,49 @@ final class LUIFlutterBackend {
     for (final id in dependentIDs.difference(changedIDs)) {
       _handles[id]?.markDependencyChanged();
     }
+  }
+
+  void _registerModalRoute(
+    int node,
+    Route<void> route,
+    NavigatorState navigator,
+  ) {
+    _modalRoutes[node] = (route, navigator);
+  }
+
+  void _unregisterModalRoute(int node, Route<void> route) {
+    final entry = _modalRoutes[node];
+    if (entry != null && identical(entry.$1, route)) {
+      _modalRoutes.remove(node);
+    }
+  }
+
+  // The Navigator can be mid-flush when the owning node disappears; removing
+  // the route must wait until it is idle or the route's overlay entries are
+  // stranded in the theater (and removeRoute asserts in debug builds).
+  void _scheduleRouteRemoval(Route<void> route, NavigatorState navigator) {
+    scheduleMicrotask(() {
+      if (!route.isActive) return;
+      if (route.isCurrent) {
+        // Pop runs the normal transition lifecycle — reverse animation,
+        // history flush, observer notifications — which removeRoute skips.
+        navigator.pop();
+      } else {
+        navigator.removeRoute(route);
+      }
+      _refreshSemanticsAfterModalRemoval();
+    });
+  }
+
+  // The overlay's removed markers detach without dirtying their semantics
+  // ancestors; the a11y tree then freezes on the last emit (which still
+  // contains the sheet). Force the root to re-derive its semantics children
+  // so a post-removal update reaches the platform.
+  void _refreshSemanticsAfterModalRemoval() {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      final root = RendererBinding.instance.rootPipelineOwner.rootNode;
+      root?.markNeedsSemanticsUpdate();
+    });
   }
 
   Widget widget({required int node}) {
@@ -957,7 +1016,10 @@ final class LUIFlutterBackend {
   }
 
   void performDismiss(int node) {
-    final state = _requireState(_states, node);
+    // Route completions can race the patch that already dropped the node;
+    // a stale dismiss is a no-op.
+    final state = _states[node];
+    if (state == null) return;
     if (state.kind != _NodeKind.select &&
         state.kind != _NodeKind.combobox &&
         state.kind != _NodeKind.dropdownMenu &&
@@ -4359,12 +4421,21 @@ class _LUIModalPresenterState extends State<_LUIModalPresenter> {
   }
 
   void _present() {
-    if (!mounted || _route != null) return;
+    // The node can be dropped between mount and this post-frame callback;
+    // presenting for a stale node would throw in _requireState.
+    if (!mounted ||
+        _route != null ||
+        !widget.backend._states.containsKey(widget.node)) {
+      return;
+    }
     final navigator = Navigator.of(context, rootNavigator: true);
     final route = _modalRoute(navigator);
     _navigator = navigator;
     _route = route;
+    widget.backend._registerModalRoute(widget.node, route, navigator);
     navigator.push(route).whenComplete(() {
+      widget.backend._unregisterModalRoute(widget.node, route);
+      widget.backend._refreshSemanticsAfterModalRemoval();
       if (!mounted || _route != route) return;
       _route = null;
       widget.backend.performDismiss(widget.node);
@@ -4377,11 +4448,18 @@ class _LUIModalPresenterState extends State<_LUIModalPresenter> {
       widget.node,
     );
     final localizations = MaterialLocalizations.of(context);
-    Widget surface(BuildContext context) => ListenableBuilder(
-      listenable: widget.backend._requireHandle(widget.node),
-      builder: (context, _) =>
-          widget.backend._modalSurface(context, widget.node),
-    );
+    Widget surface(BuildContext context) {
+      if (!widget.backend._states.containsKey(widget.node)) {
+        return const SizedBox.shrink();
+      }
+      return ListenableBuilder(
+        listenable: widget.backend._requireHandle(widget.node),
+        builder: (context, _) =>
+            widget.backend._states.containsKey(widget.node)
+            ? widget.backend._modalSurface(context, widget.node)
+            : const SizedBox.shrink(),
+      );
+    }
     return switch (state.kind) {
       _NodeKind.sheet => ModalBottomSheetRoute<void>(
         builder: surface,
@@ -4412,11 +4490,16 @@ class _LUIModalPresenterState extends State<_LUIModalPresenter> {
   @override
   void dispose() {
     final route = _route;
+    final navigator = _navigator;
+    _route = null;
+    _navigator = null;
     if (route != null) {
-      _route = null;
-      _navigator?.removeRoute(route);
+      widget.backend._unregisterModalRoute(widget.node, route);
     }
     super.dispose();
+    if (route != null && navigator != null) {
+      widget.backend._scheduleRouteRemoval(route, navigator);
+    }
   }
 
   @override
