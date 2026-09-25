@@ -5181,7 +5181,7 @@ private struct LUITextControlView: View {
         Group {
             if grouped {
                 field.textFieldStyle(.plain)
-            } else if model.kind == .searchField {
+            } else if model.kind == .searchField || model.kind == .textarea {
                 field
             } else {
                 field.textFieldStyle(.roundedBorder)
