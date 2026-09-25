@@ -191,7 +191,9 @@ Per-backend resolution:
   table before Fluent resources; `theme-mode` maps to
   `FrameworkElement.RequestedTheme`.
 - **Qt**: `LuiStyle.nodeColor` walks wire ancestors for the nearest token
-  table; `theme-mode` sets `QStyleHints::setColorScheme` (Qt 6.5+).
+  table; `theme-mode` sets `QStyleHints::setColorScheme` (Qt 6.5+). The
+  scheme is process-global, so on Qt `theme-mode` is honored on `root`
+  only — scoped tokens still apply anywhere.
 
 ## Component admission
 

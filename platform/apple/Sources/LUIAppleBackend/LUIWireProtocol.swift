@@ -196,6 +196,11 @@ enum LUIWireValue: Decodable, Equatable {
         case .treeLevel:
             guard let value = intValue else { return false }
             return value > 0
+        case .theme:
+            return stringValue != nil
+        case .themeMode:
+            guard let value = stringValue else { return false }
+            return ["system", "light", "dark"].contains(value)
         case .main:
             guard let value = stringValue else { return false }
             return Self.mainAlignments.contains(value)
@@ -679,9 +684,13 @@ struct LUIRetainedTree {
             return matrix.contains(property)
         }
         if LUISchemaMatrix.extra[kind]?.contains(property) == true { return true }
-        if kind == .root { return false }
+        if kind == .root { return property == .theme || property == .themeMode }
         if kind == .contextMenu { return false }
         return switch property {
+        case .theme, .themeMode:
+            // Mirrors OCaml common_property_supported: theme props are
+            // admitted on every non-restrictive container kind.
+            canContainChildren(kind)
         case .main, .cross:
             kind == .row || kind == .column || kind == .list || kind == .virtualList ||
                 kind == .card || kind == .panel || kind == .box ||

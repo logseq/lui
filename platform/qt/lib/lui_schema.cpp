@@ -548,6 +548,9 @@ bool commonPropertySupported(NodeKind kind, Property property) {
   case Property::ResizeEasing:
   case Property::ResizeOrigin:
     return kind == NodeKind::Split;
+  case Property::ThemeValue:
+  case Property::ThemeMode:
+    return canContainChildren(kind);
   case Property::TextValue:
     return oneOf(kind,
                  {NodeKind::Text, NodeKind::Heading, NodeKind::Paragraph,
@@ -595,6 +598,8 @@ bool propertySupported(NodeKind kind, Property property) {
   // The restrictive arms below mirror schema/components.json kindProperties.
   switch (kind) {
   case NodeKind::Root:
+    return property == Property::ThemeValue ||
+           property == Property::ThemeMode;
   case NodeKind::ContextMenu:
     return false;
   case NodeKind::Toast:
@@ -793,6 +798,11 @@ bool propertyValueSupported(Property property, const QVariant &value) {
                  {"linear", "standard", "emphasized", "spring"});
   case Property::ResizeOrigin:
     return isNumeric(value);
+  case Property::ThemeValue:
+    return isString(value);
+  case Property::ThemeMode:
+    return isString(value) &&
+           inSet(value.toString(), {"system", "light", "dark"});
   }
   return false;
 }
