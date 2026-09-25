@@ -683,7 +683,10 @@ final class LUIFlutterBackend {
   // stranded in the theater (and removeRoute asserts in debug builds).
   void _scheduleRouteRemoval(Route<void> route, NavigatorState navigator) {
     scheduleMicrotask(() {
-      if (!route.isActive) return;
+      if (!route.isActive) {
+        _refreshSemanticsAfterModalRemoval();
+        return;
+      }
       if (route.isCurrent) {
         // Pop runs the normal transition lifecycle — reverse animation,
         // history flush, observer notifications — which removeRoute skips.
@@ -696,13 +699,26 @@ final class LUIFlutterBackend {
   }
 
   // The overlay's removed markers detach without dirtying their semantics
-  // ancestors; the a11y tree then freezes on the last emit (which still
-  // contains the sheet). Force the root to re-derive its semantics children
-  // so a post-removal update reaches the platform.
+  // ancestors — a detached RenderObject's markNeedsSemanticsUpdate is a no-op
+  // (`!attached` early-returns), so no ancestor boundary is ever re-dirtied
+  // and the a11y tree freezes on the last emit (which still contains the
+  // sheet). Force the whole tree to re-derive so a post-removal update
+  // reaches the platform. Detach can land a frame later than the removal, so
+  // mark twice across consecutive frames to cover that window.
   void _refreshSemanticsAfterModalRemoval() {
-    SchedulerBinding.instance.addPostFrameCallback((_) {
+    void markAll(RenderObject node) {
+      node.markNeedsSemanticsUpdate();
+      node.visitChildren(markAll);
+    }
+
+    void markFrame() {
       final root = RendererBinding.instance.rootPipelineOwner.rootNode;
-      root?.markNeedsSemanticsUpdate();
+      if (root != null) markAll(root);
+    }
+
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      markFrame();
+      SchedulerBinding.instance.addPostFrameCallback((_) => markFrame());
     });
   }
 
