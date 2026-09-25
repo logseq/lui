@@ -769,48 +769,69 @@ final class LUIFlutterBackend {
   // therefore go out every fourth frame: a dropped mark is retried a few
   // frames later, which is all the wedge needs to converge.
   static const int _semanticsHealMarkStride = 4;
+  // Mounted-but-hidden subtrees (a closed drawer, offstage content) carry
+  // identifiers that legitimately never emit, and shared identifiers keep
+  // a stale name present — so a nonzero unresolved count alone cannot
+  // hold the heal open. The heal converges only while each mark round
+  // actually shrinks the unresolved set; a plateau means the remainder
+  // are intentional exclusions and the heal exits.
+  static const int _semanticsHealPlateauRounds = 3;
 
   void _collectSubtreeIdentifiers(
     Map<int, _NodeState> states,
+    Map<int, _ExtensionNodeState> extensions,
     int id,
     Set<String> out,
   ) {
-    final state = states[id];
-    if (state == null) {
+    if (!_containsState(states, extensions, id)) {
       return;
     }
-    final identifier = state.properties['accessibility-identifier'];
+    final properties = states[id]?.properties ??
+        _requireExtensionStateFrom(extensions, id).properties;
+    final identifier = properties['accessibility-identifier'];
     if (identifier is String) {
       out.add(identifier);
     }
-    for (final child in state.children) {
-      _collectSubtreeIdentifiers(states, child, out);
+    for (final child in _nodeChildren(states, extensions, id)) {
+      _collectSubtreeIdentifiers(states, extensions, child, out);
     }
   }
 
   // Identifiers of every mounted subtree — the nodes the semantics tree
-  // should contain once all pending boundary updates have landed.
+  // should contain once all pending boundary updates have landed. Mounted
+  // subtrees hang under the host's root state (a parentless node of any
+  // kind — the app root here is a stack, not kind 'root'); orphan tops
+  // detached by remove-child are parentless too, so identifiers already
+  // tracked as stale are excluded to keep stale and missing disjoint.
   Set<String> _mountedSemanticsIdentifiers() {
     final out = <String>{};
     void walk(int id) {
-      final state = _states[id];
-      if (state == null) {
+      if (!_containsState(_states, _extensionStates, id)) {
         return;
       }
-      final identifier = state.properties['accessibility-identifier'];
-      if (identifier is String) {
+      final properties = _states[id]?.properties ??
+          _requireExtensionStateFrom(_extensionStates, id).properties;
+      final identifier = properties['accessibility-identifier'];
+      if (identifier is String &&
+          !_staleSemanticsIdentifiers.contains(identifier)) {
         out.add(identifier);
       }
-      for (final child in state.children) {
+      for (final child in _nodeChildren(_states, _extensionStates, id)) {
         walk(child);
       }
     }
 
-    for (final state in _states.values) {
-      if (state.kind == _NodeKind.root) {
-        for (final child in state.children) {
-          walk(child);
-        }
+    // Whole panes mount under extension states as well as standard states —
+    // both maps have to feed the expected set or a never-emitted extension
+    // subtree would go undetected.
+    for (final id in _states.keys) {
+      if (_nodeParent(_states, _extensionStates, id) == null) {
+        walk(id);
+      }
+    }
+    for (final id in _extensionStates.keys) {
+      if (_nodeParent(_states, _extensionStates, id) == null) {
+        walk(id);
       }
     }
     return out;
@@ -823,29 +844,41 @@ final class LUIFlutterBackend {
     _semanticsHealScheduled = true;
     var attempts = 0;
     var tailFramesLeft = _semanticsHealTailFrames;
+    var lastUnresolved = -1;
+    var unchangedRounds = 0;
     void step([Duration? _]) {
       attempts += 1;
+      // Each RenderView flushes semantics through its own child
+      // PipelineOwner (each carries its own SemanticsOwner +
+      // rootSemanticsNode); the rootPipelineOwner's owner alone does not
+      // see them.
       final present = <String>{};
-      final root = RendererBinding
-          .instance.rootPipelineOwner.semanticsOwner?.rootSemanticsNode;
-      if (root != null) {
-        void walk(SemanticsNode node) {
-          if (node.identifier.isNotEmpty) {
-            present.add(node.identifier);
-          }
-          node.visitChildren((SemanticsNode child) {
-            walk(child);
-            return true;
-          });
+      final roots = <SemanticsNode?>[
+        RendererBinding
+            .instance.rootPipelineOwner.semanticsOwner?.rootSemanticsNode,
+        for (final view in RendererBinding.instance.renderViews)
+          view.owner?.semanticsOwner?.rootSemanticsNode,
+      ];
+      void walk(SemanticsNode node) {
+        if (node.identifier.isNotEmpty) {
+          present.add(node.identifier);
         }
-
-        walk(root);
+        node.visitChildren((SemanticsNode child) {
+          walk(child);
+          return true;
+        });
       }
-      final retained =
-          present.any(_staleSemanticsIdentifiers.contains);
-      final missing = _mountedSemanticsIdentifiers().any(
-        (identifier) => !present.contains(identifier),
-      );
+
+      for (final root in roots) {
+        if (root != null) {
+          walk(root);
+        }
+      }
+      final retainedSet =
+          _staleSemanticsIdentifiers.intersection(present);
+      final mountedIds = _mountedSemanticsIdentifiers();
+      final missingSet = mountedIds.difference(present);
+      final unresolved = retainedSet.length + missingSet.length;
       if (attempts == 1 || attempts % _semanticsHealMarkStride == 0) {
         void markBoundaries(RenderObject ro) {
           if (!ro.attached) {
@@ -861,10 +894,18 @@ final class LUIFlutterBackend {
         for (final view in RendererBinding.instance.renderViews) {
           markBoundaries(view);
         }
+        if (unresolved == lastUnresolved) {
+          unchangedRounds += 1;
+        } else {
+          unchangedRounds = 0;
+          lastUnresolved = unresolved;
+        }
       }
+      final stuck =
+          unresolved > 0 && unchangedRounds >= _semanticsHealPlateauRounds;
       final keepRetaining =
-          (retained || missing) && attempts < _semanticsHealMaxFrames;
-      final tail = !retained && !missing && tailFramesLeft-- > 0;
+          unresolved > 0 && !stuck && attempts < _semanticsHealMaxFrames;
+      final tail = unresolved == 0 && tailFramesLeft-- > 0;
       if (keepRetaining || tail) {
         SchedulerBinding.instance.addPostFrameCallback(step);
       } else {
@@ -3050,6 +3091,7 @@ final class LUIFlutterBackend {
         }
         _collectSubtreeIdentifiers(
           states,
+          extensions,
           childID,
           _staleSemanticsIdentifiers,
         );
