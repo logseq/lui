@@ -755,7 +755,10 @@ final class LUIFlutterBackend {
   // (identifier/label never arrive) while remaining a live semantics node.
   // The heal therefore keeps re-marking for a short settle tail after the
   // stale identifiers leave, giving every dropped boundary update another
-  // chance to land.
+  // chance to land. The same drop can also hit a *mount*: a subtree whose
+  // boundary mark is lost never materializes a SemanticsNode at all, so the
+  // heal additionally waits until every mounted subtree's identifiers have
+  // appeared in the semantics tree.
   final Set<String> _staleSemanticsIdentifiers = <String>{};
   bool _semanticsHealScheduled = false;
   static const int _semanticsHealMaxFrames = 120;
@@ -785,6 +788,34 @@ final class LUIFlutterBackend {
     }
   }
 
+  // Identifiers of every mounted subtree — the nodes the semantics tree
+  // should contain once all pending boundary updates have landed.
+  Set<String> _mountedSemanticsIdentifiers() {
+    final out = <String>{};
+    void walk(int id) {
+      final state = _states[id];
+      if (state == null) {
+        return;
+      }
+      final identifier = state.properties['accessibility-identifier'];
+      if (identifier is String) {
+        out.add(identifier);
+      }
+      for (final child in state.children) {
+        walk(child);
+      }
+    }
+
+    for (final state in _states.values) {
+      if (state.kind == _NodeKind.root) {
+        for (final child in state.children) {
+          walk(child);
+        }
+      }
+    }
+    return out;
+  }
+
   void _scheduleSemanticsHeal() {
     if (_semanticsHealScheduled) {
       return;
@@ -794,13 +825,13 @@ final class LUIFlutterBackend {
     var tailFramesLeft = _semanticsHealTailFrames;
     void step([Duration? _]) {
       attempts += 1;
-      var retained = false;
+      final present = <String>{};
       final root = RendererBinding
           .instance.rootPipelineOwner.semanticsOwner?.rootSemanticsNode;
-      if (root != null && _staleSemanticsIdentifiers.isNotEmpty) {
+      if (root != null) {
         void walk(SemanticsNode node) {
-          if (_staleSemanticsIdentifiers.contains(node.identifier)) {
-            retained = true;
+          if (node.identifier.isNotEmpty) {
+            present.add(node.identifier);
           }
           node.visitChildren((SemanticsNode child) {
             walk(child);
@@ -810,6 +841,11 @@ final class LUIFlutterBackend {
 
         walk(root);
       }
+      final retained =
+          present.any(_staleSemanticsIdentifiers.contains);
+      final missing = _mountedSemanticsIdentifiers().any(
+        (identifier) => !present.contains(identifier),
+      );
       if (attempts == 1 || attempts % _semanticsHealMarkStride == 0) {
         void markBoundaries(RenderObject ro) {
           if (!ro.attached) {
@@ -826,8 +862,9 @@ final class LUIFlutterBackend {
           markBoundaries(view);
         }
       }
-      final keepRetaining = retained && attempts < _semanticsHealMaxFrames;
-      final tail = !retained && tailFramesLeft-- > 0;
+      final keepRetaining =
+          (retained || missing) && attempts < _semanticsHealMaxFrames;
+      final tail = !retained && !missing && tailFramesLeft-- > 0;
       if (keepRetaining || tail) {
         SchedulerBinding.instance.addPostFrameCallback(step);
       } else {
@@ -3000,6 +3037,10 @@ final class LUIFlutterBackend {
         }
         children.insert(index, childID);
         _setNodeParent(states, extensions, childID, parentID);
+        // A mounted subtree whose boundary's mark is dropped mid-flush
+        // never materializes SemanticsNodes — the heal's missing check
+        // re-marks until its identifiers appear.
+        _scheduleSemanticsHeal();
       case 'remove-child':
         final parentID = _integer(operation['parent'], 'parent');
         final childID = _integer(operation['child'], 'child');
