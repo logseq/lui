@@ -4,7 +4,7 @@ private struct LUISemanticColorsKey: EnvironmentKey {
     static let defaultValue: [String: Color] = [:]
 }
 
-extension EnvironmentValues {
+public extension EnvironmentValues {
     var luiSemanticColors: [String: Color] {
         get { self[LUISemanticColorsKey.self] }
         set { self[LUISemanticColorsKey.self] = newValue }
