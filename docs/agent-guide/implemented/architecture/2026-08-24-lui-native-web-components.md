@@ -5,8 +5,16 @@ Date: 2026-08-25
 Status: active Web implementation decision
 
 The public component API remains bounded by
-`001-production-components_vercel_native_matrix.md`. Base UI defines the Web
+`docs/agent-guide/implemented/architecture/2026-08-24-vercel-native-ui-api-parity.md`.
+Base UI defines the Web
 visual and interaction reference; it does not define LUI's public API.
+
+## Problem
+
+LUI needs a production Web backend for the public component catalog. The
+candidates are shipping a third-party custom-element provider, shipping React
+with a component library, or implementing LUI's own component layer on
+retained native DOM.
 
 ## Decision
 
@@ -44,15 +52,23 @@ class strings are not part of the LUI runtime or cross-platform authoring API.
 - Applications consume components as library APIs instead of copying generated
   source into each project.
 
-## Why not a provider
+## Alternatives considered
+
+### Third-party custom-element provider
 
 Provider experiments showed that third-party custom elements can preserve LUI
 retained identity, but they add another component lifecycle, theming contract,
-and baseline bundle. Vaadin was briefly selected for its catalog and measured
-size, then explicitly removed from the product direction. Lion requires LUI to
-create nearly all visual styling. Spectrum imposes a larger bundle and Adobe's
-design language. Base UI requires React as a dependency, so LUI uses it as a
-source-level behavioral and visual reference rather than a runtime provider.
+and baseline bundle.
+
+- Vaadin was briefly selected for its catalog and measured size, then
+  explicitly removed from the product direction.
+- Lion requires LUI to create nearly all visual styling.
+- Spectrum imposes a larger bundle and Adobe's design language.
+
+### React component library (Base UI as runtime)
+
+Base UI requires React as a dependency, so LUI uses it as a source-level
+behavioral and visual reference rather than a runtime provider.
 
 Implementing LUI's styled layer directly makes platform tweaks, semantic tokens,
 and incremental diagnostics part of one cross-platform component contract.
@@ -220,3 +236,14 @@ The rejected provider experiment measured a minified common set of Button,
 TextField, TextArea, Select, and Dialog at 48.3 KB gzip for Vaadin 25.2.8 and
 93.7 KB gzip for Spectrum 1.12.2. These numbers remain useful comparison data,
 but they are not LUI's bundle budget.
+
+## Consequences
+
+- LUI's Web backend is its own component layer on retained native DOM, with
+  Base UI pinned as the behavior/motion reference and Tailwind as a locked
+  build-time CSS compiler only.
+- No React, provider runtime, or generated-source copying ships to
+  applications; components are consumed as library APIs.
+- Safari qualification stays explicit: the system Safari driver requires the
+  user-controlled Allow Remote Automation setting, and LUI does not weaken
+  or bypass that OS boundary.

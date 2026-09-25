@@ -2,12 +2,20 @@
 
 Status: implemented and qualified within the pinned LUI public API
 
-## Scope and reference
+## Problem
 
-This report defines how LUI's Web backend should use Base UI as its behavior
-and motion reference without adding React or copying Base UI's public compound
-component API. The reference is the local Base UI checkout at commit
+LUI's interactive Web elements need a defined behavior and motion contract —
+portal lifecycle, focus, keyboard, pointer, dismissal, and transitions —
+without adding React or copying Base UI's public compound component API.
+
+## Decision
+
+LUI's Web backend uses Base UI as its behavior and motion reference: it copies
+contracts, not framework architecture. This report defines that usage. The
+reference is the local Base UI checkout at commit
 `1e208a9`, together with the official component and animation documentation.
+
+## Scope and reference
 
 The comparison applies to LUI's interactive Web elements. Pure layout and
 display elements keep native DOM semantics and do not need a Base UI state
@@ -291,3 +299,28 @@ Tests should assert behavior and lifecycle, not only screenshots:
    visual qualification.
 
 Each large completed slice is committed and pushed independently.
+
+## Alternatives considered
+
+### Adopt Base UI as the runtime
+
+Rejected: Base UI's public API is compound React components. LUI's public API
+stays LG element and attribute vocabulary; Base UI is used only as a behavior
+and motion reference, so no React, provider state, or DOM abstraction leaks
+into the schema.
+
+### Invent LUI-only interaction contracts
+
+Rejected: keyboard, focus, pointer, popup lifecycle, and transition contracts
+are already standardized in a maintained, accessibility-reviewed reference.
+Copying contracts from Base UI keeps Web behavior predictable and reviewable.
+
+## Consequences
+
+- Web interactive elements follow Base UI's behavior and motion contracts
+  inside one LG-owned implementation; platform objects, the retained tree, and
+  the schema stay LUI-owned.
+- SwiftUI and Flutter keep native controls; this report does not make Web
+  behavior a cross-platform detail.
+- Interaction gaps close in tested slices; each slice carries its own
+  qualification evidence before moving on.
