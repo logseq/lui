@@ -1474,7 +1474,7 @@ final class LUIFlutterBackend {
       );
       if (state.properties['press-enabled'] == true) {
         return GestureDetector(
-          onTap: () => performAction(state.id),
+          onTap: () => performAction(id),
           child: body,
         );
       }
