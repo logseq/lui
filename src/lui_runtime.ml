@@ -1035,15 +1035,21 @@ let move_child application parent child index =
   | None -> invalid_arg "child is not attached to parent");
   enqueue application (move_child_op parent child index)
 
+(* A bound-property observer enqueued in the current stabilization round can
+   outlive its node: a dyn remount dropped mid-round disposes the scope lazily,
+   so the callback still fires on a stale id. Live nodes keep their writes;
+   dropped ones are skipped rather than failing on the host's behalf. *)
 let bind_prop scope application node property source =
   Signal.own scope
-    (Signal.observe source
-       (fun value -> set_prop application node property value))
+    (Signal.observe source (fun value ->
+         if node_live application node then
+           set_prop application node property value))
 
 let bind_extension_prop scope application node property source =
   Signal.own scope
-    (Signal.observe source
-       (fun value -> set_extension_prop application node property value))
+    (Signal.observe source (fun value ->
+         if node_live application node then
+           set_extension_prop application node property value))
 
 let remove_handler application node handler_id =
   let node = canonical_node application node in
