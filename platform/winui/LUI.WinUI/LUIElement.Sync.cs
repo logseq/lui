@@ -521,7 +521,8 @@ namespace LUI.WinUI
             divider.VerticalAlignment = horizontal
                 ? VerticalAlignment.Center
                 : VerticalAlignment.Stretch;
-            divider.Background = LUIThemeColors.Brush("border");
+            divider.Background =
+                LUIThemeColors.Brush(context, state, divider, "border");
         }
 
         void SyncIcon(LUINodeState state, LUISyncContext context)
@@ -769,7 +770,8 @@ namespace LUI.WinUI
                     var thumb = new Border
                     {
                         Name = SplitThumbName,
-                        Background = LUIThemeColors.Brush("border"),
+                        Background = LUIThemeColors.Brush(
+                            context, state, "border"),
                         Opacity = 0.4,
                     };
                     thumb.ManipulationMode =
@@ -907,7 +909,8 @@ namespace LUI.WinUI
                 };
                 if (selected == null ? index == 0 : selected == index)
                 {
-                    button.Foreground = LUIThemeColors.Brush("primary");
+                    button.Foreground =
+                        LUIThemeColors.Brush(context, tab, button, "primary");
                 }
                 bar.ColumnDefinitions.Add(new ColumnDefinition
                 {

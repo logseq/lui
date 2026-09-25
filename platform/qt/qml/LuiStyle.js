@@ -36,6 +36,46 @@ function color(name, fallback) {
     return fallback !== undefined ? fallback : "transparent"
 }
 
+// Scoped theme lookup: a node's `theme` prop is a JSON token table that
+// covers the node and its descendants — the nearest scope wins before the
+// shared palette above. A token value is a plain string or a
+// {"light": ..., "dark": ...} object picked by the node's effective
+// scheme (node.darkMode). Returns the resolved token string or undefined.
+function themeToken(node, name) {
+    if (name === undefined || name === null || name === "")
+        return undefined
+    var key = String(name).toLowerCase()
+    var cur = node
+    var guard = 0
+    while (cur !== null && cur !== undefined && guard++ < 512) {
+        var props = cur.properties
+        var raw = props ? props["theme"] : undefined
+        if (typeof raw === "string" && raw.length > 0) {
+            try {
+                var dict = JSON.parse(raw)
+                for (var k in dict) {
+                    if (k.toLowerCase() !== key) continue
+                    var v = dict[k]
+                    if (typeof v === "string") return v
+                    if (v !== null && typeof v === "object") {
+                        var picked = cur.darkMode === true ? v.dark : v.light
+                        if (typeof picked === "string") return picked
+                    }
+                }
+            } catch (e) { }
+        }
+        cur = cur.parent
+    }
+    return undefined
+}
+
+// Like color() but resolves `name` against `node`'s theme scopes first.
+function nodeColor(node, name, fallback) {
+    var token = themeToken(node, name)
+    if (token !== undefined) return token
+    return color(name, fallback)
+}
+
 function has(props, name) {
     return props !== undefined && props !== null &&
             props[name] !== undefined && props[name] !== null

@@ -71,6 +71,16 @@ re-rendering subtree for branches that change the element *structure*
 without an else; `keyed ~source ~key ~compare ~mount:(row_fn send)` keeps an
 identity-keyed child collection in sync (insert/remove/move patches).
 
+Theming is scoped per subtree: `themed ~tokens ~mode el` wraps any element
+with a JSON token table (`["primary", "#7c3aed"]` overrides the semantic
+`primary` slot) and an optional `` `system`/`` `light`/`` `dark`` mode —
+`~tokens_signal`/`~mode_signal` hot-switch either in place. Backends
+resolve semantic color names through the merged token table first, then the
+platform default theme, so an app gets platform-native styling unless it
+opts into overrides (`Lui_app.set_theme`/`set_theme_mode` patch the mounted
+root directly). See the Theming section of
+`docs/agent-guide/001-production-components.md`.
+
 ## Examples
 
 Both demos mount a real `Lui_app` against a printing backend, so running them

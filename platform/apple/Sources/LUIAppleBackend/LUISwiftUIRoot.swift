@@ -71,6 +71,8 @@ final class LUIModalPresentationStore {
 public struct LUISwiftUIRoot: View {
     private let backend: LUIAppleBackend
     private let rootID: Int
+    @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(backend: LUIAppleBackend, rootID: Int) {
         self.backend = backend
@@ -90,6 +92,7 @@ public struct LUISwiftUIRoot: View {
         LUIAnyNodeView(nodeID: rootID, backend: backend).equatable()
             .sheet(item: sheetBinding, onDismiss: didDismissSheet) { presentation in
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
+                    .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
             }
             .modifier(LUIDialogPresentationModifier(anchorID: rootID, backend: backend))
     }
@@ -128,10 +131,14 @@ public struct LUIModalHostModifier: ViewModifier {
         self.backend = backend
     }
 
+    @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.colorScheme) private var colorScheme
+
     public func body(content: Content) -> some View {
         content
             .sheet(item: sheetBinding, onDismiss: didDismissSheet) { presentation in
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
+                    .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
             }
             .modifier(LUIDialogPresentationModifier(anchorID: rootID, backend: backend))
     }
@@ -159,6 +166,8 @@ public struct LUIModalHostModifier: ViewModifier {
 private struct LUIDialogPresentationModifier: ViewModifier {
     let anchorID: Int
     let backend: LUIAppleBackend
+    @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         content
@@ -193,6 +202,7 @@ private struct LUIDialogPresentationModifier: ViewModifier {
             .sheet(isPresented: customSurfaceBinding) {
                 if let presentation = dialogPresentation {
                     LUIDialogCustomSurface(presentation: presentation, backend: backend)
+                        .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
                 }
             }
     }
@@ -539,6 +549,7 @@ private struct LUINodeView: View {
         )
         .modifier(LUIContextMenuModifier(model: model, backend: backend))
         .modifier(LUIRetainedPaneModifier(model: model))
+        .modifier(LUIThemeScopeModifier(model: model))
     }
 
     // Each wire node has a stable ID and one concrete control kind. Erase only
@@ -2178,6 +2189,7 @@ private struct LUIModalSurfaceContent: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         surfaceContent.sheet(item: Binding(
@@ -2190,6 +2202,7 @@ private struct LUIModalSurfaceContent: View {
             }
         )) { presentation in
             LUIModalSurfaceContent(model: presentation.model, backend: backend)
+                .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
         }
     }
 

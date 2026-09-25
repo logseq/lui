@@ -11,7 +11,7 @@ TextField {
 
     placeholderText: Style.str(props, "placeholder", "")
     enabled: props["enabled"] !== false
-    color: Style.color(props["foreground"], palette.text)
+    color: Style.nodeColor(node, props["foreground"], palette.text)
     implicitWidth: 220
     leftPadding: 30
     Component.onCompleted: {

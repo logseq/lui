@@ -152,6 +152,8 @@ enum class Property {
   ResizeDuration,
   ResizeEasing,
   ResizeOrigin,
+  ThemeValue,
+  ThemeMode,
 };
 
 inline const char *nodeKindWireName(NodeKind kind) {
@@ -514,6 +516,8 @@ inline const char *propertyWireName(Property property) {
     case Property::ResizeDuration: return "resize-duration";
     case Property::ResizeEasing: return "resize-easing";
     case Property::ResizeOrigin: return "resize-origin";
+    case Property::ThemeValue: return "theme";
+    case Property::ThemeMode: return "theme-mode";
   }
   return "unknown";
 }
@@ -590,6 +594,8 @@ inline bool decodePropertyWireName(const char *name, Property *property) {
   if (std::strcmp(name, "resize-duration") == 0) { *property = Property::ResizeDuration; return true; }
   if (std::strcmp(name, "resize-easing") == 0) { *property = Property::ResizeEasing; return true; }
   if (std::strcmp(name, "resize-origin") == 0) { *property = Property::ResizeOrigin; return true; }
+  if (std::strcmp(name, "theme") == 0) { *property = Property::ThemeValue; return true; }
+  if (std::strcmp(name, "theme-mode") == 0) { *property = Property::ThemeMode; return true; }
   return false;
 }
 

@@ -1503,3 +1503,12 @@ let timeline_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizo
   attach context parent node;
   
   node
+
+let themed ?tokens ?tokens_signal ?mode ?mode_signal (element : t) : t =
+ fun context parent ->
+  let node = element context parent in
+  Option.iter (Lui_ui.theme context node) tokens;
+  Option.iter (Lui_ui.theme_signal context node) tokens_signal;
+  Option.iter (Lui_ui.theme_mode context node) mode;
+  Option.iter (Lui_ui.theme_mode_signal context node) mode_signal;
+  node

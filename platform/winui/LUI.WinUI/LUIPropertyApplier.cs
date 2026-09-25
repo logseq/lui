@@ -30,8 +30,9 @@ namespace LUI.WinUI
         {
             ApplyFrame(control, state);
             ApplyPadding(control, state);
-            ApplyAppearance(control, state);
+            ApplyAppearance(control, state, context);
             ApplyAccessibility(control, state);
+            ApplyTheme(control, state);
             if (control is Control ctl)
             {
                 bool enabled =
@@ -84,14 +85,27 @@ namespace LUI.WinUI
             }
         }
 
-        static void ApplyAppearance(
-            FrameworkElement control, LUINodeState state)
+        static void ApplyTheme(FrameworkElement control, LUINodeState state)
         {
-            Brush? background = LUIThemeColors.Brush(
+            control.RequestedTheme =
+                Prop(state, LUIProperty.ThemeMode)?.AsString switch
+                {
+                    "dark" => ElementTheme.Dark,
+                    "light" => ElementTheme.Light,
+                    "system" => ElementTheme.Default,
+                    _ => control.RequestedTheme,
+                };
+        }
+
+        static void ApplyAppearance(
+            FrameworkElement control, LUINodeState state,
+            LUISyncContext context)
+        {
+            Brush? background = LUIThemeColors.Brush(context, state, control,
                 Prop(state, LUIProperty.BackgroundValue)?.AsString);
-            Brush? foreground = LUIThemeColors.Brush(
+            Brush? foreground = LUIThemeColors.Brush(context, state, control,
                 Prop(state, LUIProperty.ForegroundValue)?.AsString);
-            Brush? border = LUIThemeColors.Brush(
+            Brush? border = LUIThemeColors.Brush(context, state, control,
                 Prop(state, LUIProperty.BorderColorValue)?.AsString);
             double borderWidth = Prop(
                 state, LUIProperty.BorderWidth)?.AsFloat ??

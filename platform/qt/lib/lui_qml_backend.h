@@ -115,6 +115,9 @@ private:
   bool supports(NodeKind kind, const QString &property,
                 const QVariant &value) const;
   bool isContextMenuHost(const NodeState &state) const;
+  // Applies a node's `theme-mode` prop globally (Qt 6.5+); color tokens are
+  // resolved scoped in QML (LuiStyle.nodeColor walks wire ancestors).
+  void applyThemeMode(const QVariantMap &properties);
 
   void emitEvent(qint64 node, const QString &name,
                  const QVariantMap &payload = {});

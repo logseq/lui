@@ -171,6 +171,8 @@ type property =
   | ResizeDuration
   | ResizeEasing
   | ResizeOrigin
+  | ThemeValue
+  | ThemeMode
 
 module Property_map =
   Map.Make
@@ -510,6 +512,9 @@ let custom_icon_name_supported value =
 let icon_name_supported value =
   built_in_icon_name_supported value || custom_icon_name_supported value
 
+let theme_mode_supported value =
+  value = "system" || value = "light" || value = "dark"
+
 let main_alignment_supported value =
   value = "start" || value = "center" || value = "end" || value = "space_between"
 
@@ -519,6 +524,47 @@ let cross_alignment_supported value =
 let horizontal_container kind =
   kind = Tabs || kind = ButtonGroup || kind = ToggleGroup || kind = Breadcrumb
   || kind = Pagination
+
+let can_contain_children kind =
+  if horizontal_container kind || context_menu_leaf_host_kind kind then true
+  else
+    match kind with
+    | Root
+    | Row
+    | Column
+    | Grid
+    | Stack
+    | Panel
+    | Card
+    | Box
+    | Scroll
+    | ListContainer
+    | VirtualList
+    | RadioGroup
+    | DropdownMenu
+    | ContextMenu
+    | MenuTrigger
+    | ListItem
+    | Dialog
+    | Drawer
+    | Sheet
+    | Accordion
+    | Table
+    | TableRow
+    | Tree
+    | Resizable
+    | Split
+    | Stepper
+    | Timeline
+    | InputGroup
+    | InputGroupActions
+    | Toast
+    | Toolbar
+    | Alert
+    | Bubble
+    | BottomTabs
+    | BottomTab -> true
+    | _ -> false
 
 let common_property_supported kind property =
   match property with
@@ -665,6 +711,7 @@ let common_property_supported kind property =
   | RoleValue -> tree_row_kind kind || kind = ListItem
   | TreeLevel | Expanded -> tree_row_kind kind
   | ResizeDuration | ResizeEasing | ResizeOrigin -> kind = Split
+  | ThemeValue | ThemeMode -> can_contain_children kind
   | TextValue ->
     (match kind with
     | Text
@@ -742,7 +789,8 @@ let property_supported kind property =
     (* The restrictive arms below mirror schema/components.json
        kindProperties; test/property_matrix asserts the two stay in sync. *)
     match kind with
-    | Root | ContextMenu -> false
+    | Root -> property = ThemeValue || property = ThemeMode
+    | ContextMenu -> false
     | Toast ->
       property = DurationValue || property = AccessibilityLabel
       || property = StyleClass
@@ -865,6 +913,8 @@ let property_value_supported property value =
     value = "linear" || value = "standard" || value = "emphasized"
     || value = "spring"
   | ResizeOrigin, FloatValue value -> is_finite value
+  | ThemeValue, StringValue _ -> true
+  | ThemeMode, StringValue value -> theme_mode_supported value
   | _ -> false
 
 let property_value_supported_for_kind kind property value =
@@ -1030,47 +1080,6 @@ let node_properties_supported kind properties =
           true_property properties ToggleEnabled
         else true)
   else true
-
-let can_contain_children kind =
-  if horizontal_container kind || context_menu_leaf_host_kind kind then true
-  else
-    match kind with
-    | Root
-    | Row
-    | Column
-    | Grid
-    | Stack
-    | Panel
-    | Card
-    | Box
-    | Scroll
-    | ListContainer
-    | VirtualList
-    | RadioGroup
-    | DropdownMenu
-    | ContextMenu
-    | MenuTrigger
-    | ListItem
-    | Dialog
-    | Drawer
-    | Sheet
-    | Accordion
-    | Table
-    | TableRow
-    | Tree
-    | Resizable
-    | Split
-    | Stepper
-    | Timeline
-    | InputGroup
-    | InputGroupActions
-    | Toast
-    | Toolbar
-    | Alert
-    | Bubble
-    | BottomTabs
-    | BottomTab -> true
-    | _ -> false
 
 let child_kind_supported parent_kind child_kind =
   if child_kind = Root then false

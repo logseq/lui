@@ -187,3 +187,31 @@ val placement : ui_context -> int -> string -> unit
 val placeholder : ui_context -> int -> string -> unit
 val accessibility_label : ui_context -> int -> string -> unit
 val accessibility_identifier : ui_context -> int -> string -> unit
+
+(** Scoped theming: [theme] merges app-defined tokens (a kebab-case
+    name/value table) over the platform's defaults for the node's subtree —
+    semantic names in [background], [foreground], [border-color] resolve
+    against it first. A token value may be [Fixed] (one value for both
+    modes) or [Adaptive] (light/dark pair picked by the effective color
+    scheme). [theme_mode] overrides light/dark appearance for the subtree.
+    Both are plain node properties, so signals hot-switch them like any
+    other prop. *)
+
+type theme_mode = [ `system | `light | `dark ]
+
+(** A token is either a single value used in both modes, or a light/dark
+    pair the backend resolves against the node's effective color scheme. *)
+type theme_token_value =
+  | Fixed of string
+  | Adaptive of { light : string; dark : string }
+
+val theme_mode_value : theme_mode -> string
+val theme_tokens_json : (string * theme_token_value) list -> string
+val theme :
+  ui_context -> int -> (string * theme_token_value) list -> unit
+val theme_signal :
+  ui_context ->
+  int -> (string * theme_token_value) list Signal.signal -> unit
+val theme_mode : ui_context -> int -> theme_mode -> unit
+val theme_mode_signal :
+  ui_context -> int -> theme_mode Signal.signal -> unit

@@ -261,6 +261,16 @@ let root_node app = app.app_root_node
 
 let runtime app = app.app_runtime
 
+let set_theme app tokens =
+  Lui_runtime.set_prop app.app_runtime app.app_root_node
+    Lui_protocol.ThemeValue
+    (Lui_protocol.StringValue (Lui_ui.theme_tokens_json tokens))
+
+let set_theme_mode app mode =
+  Lui_runtime.set_prop app.app_runtime app.app_root_node
+    Lui_protocol.ThemeMode
+    (Lui_protocol.StringValue (Lui_ui.theme_mode_value mode))
+
 let send app action = app.app_send_action action
 
 let dispatch_event app event =
