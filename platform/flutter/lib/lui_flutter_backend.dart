@@ -3022,7 +3022,12 @@ final class LUIFlutterBackend {
 
   static bool _supports(_NodeKind kind, String property, Object? value) {
     if (property == 'accessibility-identifier') return value is String;
-    if (kind == _NodeKind.root) return false;
+    if (kind == _NodeKind.root) {
+      return (property == 'theme' && value is String) ||
+          (property == 'theme-mode' &&
+              value is String &&
+              _themeModes.contains(value));
+    }
     if (kind == _NodeKind.contextMenu) return false;
     if (kind == _NodeKind.accordion) {
       return switch (property) {
@@ -3128,6 +3133,16 @@ final class LUIFlutterBackend {
         'selected' || 'enabled' || 'press-enabled' => value is bool,
         _ => false,
       };
+    }
+    // Mirrors OCaml common_property_supported: theme props are admitted on
+    // every non-restrictive container kind.
+    if (property == 'theme') {
+      return value is String && _canContainChildren(kind);
+    }
+    if (property == 'theme-mode') {
+      return value is String &&
+          _themeModes.contains(value) &&
+          _canContainChildren(kind);
     }
     return switch (property) {
       'main' =>
@@ -4329,6 +4344,7 @@ final class LUIFlutterBackend {
   };
 
   static const _mainAlignments = {'start', 'center', 'end', 'space_between'};
+  static const _themeModes = {'system', 'light', 'dark'};
 
   static const _crossAlignments = {'stretch', 'start', 'center', 'end'};
 
@@ -4544,25 +4560,38 @@ class _LUIModalPresenterState extends State<_LUIModalPresenter> {
       widget.node,
     );
     final localizations = MaterialLocalizations.of(context);
-    Widget surface(BuildContext context) {
+    // The route renders outside the LUI tree, so neither ancestor token
+    // scopes nor the modal node's own `_withTheme` reach it. Capture the
+    // merged inherited scope at present time and re-apply the node's own
+    // scope inside the route so themed modals keep their overrides.
+    final inheritedTokens = _LUIThemeScope.maybeTokens(context);
+    final capturedThemes = InheritedTheme.capture(
+      from: context,
+      to: navigator.context,
+    );
+    Widget surface(BuildContext routeContext) {
       if (!widget.backend._states.containsKey(widget.node)) {
         return const SizedBox.shrink();
       }
-      return ListenableBuilder(
+      Widget content = ListenableBuilder(
         listenable: widget.backend._requireHandle(widget.node),
-        builder: (context, _) =>
+        builder: (routeContext, _) =>
             widget.backend._states.containsKey(widget.node)
-            ? widget.backend._modalSurface(context, widget.node)
+            ? widget.backend._withTheme(
+                routeContext,
+                widget.node,
+                widget.backend._modalSurface(routeContext, widget.node),
+              )
             : const SizedBox.shrink(),
       );
+      return inheritedTokens == null
+          ? content
+          : _LUIThemeScope(tokens: {...inheritedTokens}, child: content);
     }
     return switch (state.kind) {
       _NodeKind.sheet => ModalBottomSheetRoute<void>(
         builder: surface,
-        capturedThemes: InheritedTheme.capture(
-          from: context,
-          to: navigator.context,
-        ),
+        capturedThemes: capturedThemes,
         isScrollControlled: true,
         barrierLabel: localizations.scrimLabel,
         barrierOnTapHint: localizations.scrimOnTapHint(
@@ -4578,6 +4607,7 @@ class _LUIModalPresenterState extends State<_LUIModalPresenter> {
         barrierDismissible: true,
         barrierLabel: localizations.modalBarrierDismissLabel,
         builder: surface,
+        themes: capturedThemes,
       ),
       _ => throw const LUIBackendException('node is not a modal surface'),
     };

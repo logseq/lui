@@ -356,7 +356,12 @@ bool LuiQmlBackend::applyJson(const QVariantMap &batch, QString *error) {
     if (handle->apply(state.parent, state.properties, state.children)) {
       changed.insert(id);
     }
-    applyThemeMode(state.properties);
+    // QGuiApplication::styleHints()->setColorScheme is process-global, so
+    // theme-mode is honored on the root node only. Scoped token lookup via
+    // LuiStyle.nodeColor still applies on any node.
+    if (state.kind == NodeKind::Root) {
+      applyThemeMode(state.properties);
+    }
   }
   for (auto it = nextExtensions.constBegin(); it != nextExtensions.constEnd();
        ++it) {
@@ -375,7 +380,6 @@ bool LuiQmlBackend::applyJson(const QVariantMap &batch, QString *error) {
     if (handle->apply(state.parent, state.properties, state.children)) {
       changed.insert(id);
     }
-    applyThemeMode(state.properties);
   }
   // Refresh child object lists now that every handle exists.
   for (auto it = next.constBegin(); it != next.constEnd(); ++it) {
