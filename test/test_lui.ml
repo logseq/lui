@@ -340,6 +340,13 @@ let test_alias_preserved_across_reconciles () =
   flush_app app;
   Alcotest.(check bool) "first inner dyn still alive after own reconcile"
     true (has_url_op "b2");
+  (* discarded candidate ids from finished reconciles must not pile up:
+     the table holds only aliases live branches still reference *)
+  let alias_count =
+    Hashtbl.length
+      (Lui_app.runtime app).Lui_runtime.runtime_node_aliases
+  in
+  Alcotest.(check bool) "alias table stays bounded" true (alias_count < 10);
   ignore (Lui_app.dispose app)
 
 let test_nested_dyn_extension () =
