@@ -3817,6 +3817,7 @@ final class LUIFlutterBackend {
               'enabled',
               'press-enabled',
               'variant',
+              'accessibility-identifier',
             };
             if (!child.properties.keys.every(allowed.contains)) {
               throw const LUIBackendException(
