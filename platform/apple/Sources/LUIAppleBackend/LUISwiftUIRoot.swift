@@ -30,7 +30,7 @@ final class LUIModalPresentationStore {
     private var pendingDismissalID: Int?
 
     func synchronize(with item: LUIModalPresentation?) {
-        if item?.id == pendingDismissalID { return }
+        if let pendingDismissalID, item?.id == pendingDismissalID { return }
         pendingDismissalID = nil
         guard self.item?.id != item?.id else { return }
         if item == nil {
