@@ -320,7 +320,11 @@ namespace LUI.WinUI
         void SyncToggleSwitch(LUINodeState state, LUISyncContext context)
         {
             if (Control is not ToggleSwitch toggle) return;
-            toggle.OnContent = LUIPropertyApplier.Text(state);
+            // `text` is the switch's always-visible label (Apple
+            // Toggle(model.text, isOn:), Flutter SwitchListTile title);
+            // Header is the label slot — OnContent/OffContent are the
+            // on/off captions.
+            toggle.Header = LUIPropertyApplier.Text(state);
             bool? isOn = LUIPropertyApplier.Prop(
                 state, LUIProperty.Checked)?.AsBool;
             toggle.IsOn = isOn == true;
