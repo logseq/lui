@@ -1079,12 +1079,12 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.widgetWithText(OutlinedButton, 'Production'), findsOneWidget);
+    expect(find.widgetWithText(ListTile, 'Production'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
     final retainedSelect = tester.renderObject(
       find.byKey(LUIFlutterBackend.nodeKey(2)),
     );
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Production'));
+    await tester.tap(find.widgetWithText(ListTile, 'Production'));
     backend.applyJson('''
       {"generation":2,"ops":[
         {"op":"insert-child","parent":6,"child":4,"index":1}
@@ -2057,7 +2057,7 @@ void main() {
     final mainElement = tester.element(main);
     final panelElement = tester.element(panel);
 
-    await tester.dragFrom(const Offset(300, 100), const Offset(200, 0));
+    await tester.dragFrom(const Offset(12, 100), const Offset(200, 0));
     await tester.pump();
     expect(events, isEmpty);
 
@@ -2067,7 +2067,12 @@ void main() {
     ]}
     ''');
     await tester.pump();
+    // Drags that start inside the content do not open the drawer; only a
+    // drag beginning in the edge strip does.
     await tester.dragFrom(const Offset(300, 100), const Offset(200, 0));
+    await tester.pump();
+    expect(events, isEmpty);
+    await tester.dragFrom(const Offset(12, 100), const Offset(200, 0));
     await tester.pump();
     expect(events, const [LUIEvent.toggleChanged(node: 1, checked: true)]);
 

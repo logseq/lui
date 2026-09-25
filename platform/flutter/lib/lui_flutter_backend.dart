@@ -5079,6 +5079,74 @@ final class _LUIListItem extends StatefulWidget {
 }
 
 final class _LUIListItemState extends State<_LUIListItem> {
+  int? _primaryPointer;
+  Duration? _lastRelease;
+  Offset? _lastPosition;
+  Timer? _releaseTimer;
+  Timer? _longPressTimer;
+  var _didLongPress = false;
+
+  void _handlePointerDown(PointerDownEvent event) {
+    if (widget.enabled && event.buttons & kPrimaryButton != 0) {
+      _primaryPointer = event.pointer;
+      _didLongPress = false;
+      _longPressTimer?.cancel();
+      if (widget.onLongPress != null) {
+        _longPressTimer = Timer(const Duration(milliseconds: 450), () {
+          if (_primaryPointer != event.pointer || !mounted) return;
+          _didLongPress = true;
+          widget.onLongPress?.call();
+        });
+      }
+    }
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    if (_primaryPointer == event.pointer) _primaryPointer = null;
+    _longPressTimer?.cancel();
+  }
+
+  // Events are emitted per physical tap so press and double-press stay
+  // independent: InkWell's gesture arena would suppress the taps that make
+  // up a double-tap.
+  void _handlePointerUp(PointerUpEvent event) {
+    if (_primaryPointer != event.pointer) return;
+    _primaryPointer = null;
+    _longPressTimer?.cancel();
+    if (!widget.enabled) return;
+    if (_didLongPress) return;
+    widget.onPress?.call();
+
+    final previousRelease = _lastRelease;
+    final previousPosition = _lastPosition;
+    final isDoublePress =
+        previousRelease != null &&
+        previousPosition != null &&
+        event.timeStamp - previousRelease <= kDoubleTapTimeout &&
+        (event.position - previousPosition).distance <= kDoubleTapSlop;
+    if (isDoublePress) {
+      _releaseTimer?.cancel();
+      _lastRelease = null;
+      _lastPosition = null;
+      widget.onDoublePress?.call();
+    } else {
+      _lastRelease = event.timeStamp;
+      _lastPosition = event.position;
+      _releaseTimer?.cancel();
+      _releaseTimer = Timer(kDoubleTapTimeout, () {
+        _lastRelease = null;
+        _lastPosition = null;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _releaseTimer?.cancel();
+    _longPressTimer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final press = widget.enabled ? widget.onPress : null;
@@ -5102,23 +5170,27 @@ final class _LUIListItemState extends State<_LUIListItem> {
         child: Focus(
           canRequestFocus: widget.enabled && widget.focusable,
           skipTraversal: !widget.focusable,
-          child: Material(
-            color: widget.selected
-                ? Theme.of(context).colorScheme.secondaryContainer
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(6),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: press,
-              onLongPress: widget.enabled ? widget.onLongPress : null,
-              onDoubleTap: widget.enabled ? widget.onDoublePress : null,
-              canRequestFocus: false,
-              child: ListTile(
-                enabled: widget.enabled,
-                leading: widget.leading,
-                title: widget.content,
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: _handlePointerDown,
+            onPointerCancel: _handlePointerCancel,
+            onPointerUp: _handlePointerUp,
+            child: Material(
+              color: widget.selected
+                  ? Theme.of(context).colorScheme.secondaryContainer
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: widget.enabled ? () {} : null,
+                canRequestFocus: false,
+                child: ListTile(
+                  enabled: widget.enabled,
+                  leading: widget.leading,
+                  title: widget.content,
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
               ),
             ),
           ),
