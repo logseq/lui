@@ -988,6 +988,7 @@ final class LUIFlutterBackend {
           }
           if (state.kind != _NodeKind.row &&
               state.kind != _NodeKind.column &&
+              state.kind != _NodeKind.box &&
               state.kind != _NodeKind.list &&
               state.kind != _NodeKind.virtualList &&
               state.kind != _NodeKind.inputGroupActions) {
@@ -1376,7 +1377,16 @@ final class LUIFlutterBackend {
           : _requireState(_states, tooltipID);
       final triggerChildren = state.children
           .where((childID) => childID != menuID && childID != tooltipID)
-          .map((childID) => widget(node: childID))
+          .map((childID) {
+            final childWidget = widget(node: childID);
+            final grow = _states[childID]?.properties['grow'] as num? ?? 0;
+            // A growing stack child fills the stack's height, matching the
+            // Apple backend's maxHeight: .infinity + layoutPriority(1).
+            if (grow > 0) {
+              return Positioned(top: 0, bottom: 0, child: childWidget);
+            }
+            return childWidget;
+          })
           .toList(growable: false);
       Widget trigger = Stack(
         clipBehavior: Clip.none,
@@ -2144,10 +2154,14 @@ final class LUIFlutterBackend {
         first: children[0],
         second: children[1],
       ),
-      _NodeKind.box => Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: children,
+      _NodeKind.box => LayoutBuilder(
+        builder: (context, constraints) => Column(
+          mainAxisSize: constraints.hasBoundedHeight
+              ? MainAxisSize.max
+              : MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: flexChildren(constraints.hasBoundedHeight),
+        ),
       ),
       _NodeKind.text => textNode(),
       _NodeKind.heading => Semantics(
