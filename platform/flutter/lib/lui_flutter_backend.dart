@@ -758,8 +758,14 @@ final class LUIFlutterBackend {
   // chance to land.
   final Set<String> _staleSemanticsIdentifiers = <String>{};
   bool _semanticsHealScheduled = false;
-  static const int _semanticsHealMaxFrames = 300;
+  static const int _semanticsHealMaxFrames = 120;
   static const int _semanticsHealTailFrames = 30;
+  // Marking every boundary each frame recompiles the whole semantics tree
+  // per frame — enough main-thread churn to starve the platform a11y
+  // channel (UIAutomator/Maestro driver startup) on a slow device. Marks
+  // therefore go out every fourth frame: a dropped mark is retried a few
+  // frames later, which is all the wedge needs to converge.
+  static const int _semanticsHealMarkStride = 4;
 
   void _collectSubtreeIdentifiers(
     Map<int, _NodeState> states,
@@ -804,19 +810,21 @@ final class LUIFlutterBackend {
 
         walk(root);
       }
-      void markBoundaries(RenderObject ro) {
-        if (!ro.attached) {
-          return;
+      if (attempts == 1 || attempts % _semanticsHealMarkStride == 0) {
+        void markBoundaries(RenderObject ro) {
+          if (!ro.attached) {
+            return;
+          }
+          // Marking a non-boundary walks up to the nearest semantics
+          // boundary, so marking every attached render object re-dirties
+          // all of them; the dirty set deduplicates.
+          ro.markNeedsSemanticsUpdate();
+          ro.visitChildren(markBoundaries);
         }
-        // Marking a non-boundary walks up to the nearest semantics
-        // boundary, so marking every attached render object re-dirties all
-        // of them; the dirty set deduplicates.
-        ro.markNeedsSemanticsUpdate();
-        ro.visitChildren(markBoundaries);
-      }
 
-      for (final view in RendererBinding.instance.renderViews) {
-        markBoundaries(view);
+        for (final view in RendererBinding.instance.renderViews) {
+          markBoundaries(view);
+        }
       }
       final keepRetaining = retained && attempts < _semanticsHealMaxFrames;
       final tail = !retained && tailFramesLeft-- > 0;
@@ -2992,9 +3000,6 @@ final class LUIFlutterBackend {
         }
         children.insert(index, childID);
         _setNodeParent(states, extensions, childID, parentID);
-        // A mount's boundary mark can be dropped by the same flush race;
-        // the heal tail re-emits it.
-        _scheduleSemanticsHeal();
       case 'remove-child':
         final parentID = _integer(operation['parent'], 'parent');
         final childID = _integer(operation['child'], 'child');
@@ -3021,7 +3026,6 @@ final class LUIFlutterBackend {
           throw const LUIBackendException('child index is out of bounds');
         }
         children.insert(index, childID);
-        _scheduleSemanticsHeal();
       default:
         throw const LUIBackendException('unknown patch operation');
     }
