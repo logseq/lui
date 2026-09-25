@@ -1375,22 +1375,29 @@ final class LUIFlutterBackend {
       final tooltipState = tooltipID == null
           ? null
           : _requireState(_states, tooltipID);
-      final triggerChildren = state.children
-          .where((childID) => childID != menuID && childID != tooltipID)
-          .map((childID) {
-            final childWidget = widget(node: childID);
-            final grow = _states[childID]?.properties['grow'] as num? ?? 0;
-            // A growing stack child fills the stack's height, matching the
-            // Apple backend's maxHeight: .infinity + layoutPriority(1).
-            if (grow > 0) {
-              return Positioned(top: 0, bottom: 0, child: childWidget);
-            }
-            return childWidget;
-          })
-          .toList(growable: false);
-      Widget trigger = Stack(
-        clipBehavior: Clip.none,
-        children: triggerChildren,
+      Widget trigger = LayoutBuilder(
+        builder: (context, constraints) {
+          final triggerChildren = state.children
+              .where((childID) => childID != menuID && childID != tooltipID)
+              .map((childID) {
+                final childWidget = widget(node: childID);
+                final grow =
+                    _states[childID]?.properties['grow'] as num? ?? 0;
+                // A growing stack child fills the stack's height, matching
+                // the Apple backend's maxHeight: .infinity +
+                // layoutPriority(1) — only under bounded height, like
+                // flexChildren's gate.
+                if (grow > 0 && constraints.hasBoundedHeight) {
+                  return Positioned(top: 0, bottom: 0, child: childWidget);
+                }
+                return childWidget;
+              })
+              .toList(growable: false);
+          return Stack(
+            clipBehavior: Clip.none,
+            children: triggerChildren,
+          );
+        },
       );
       if (tooltipState != null) {
         trigger = _LUIRetainedTooltip(
