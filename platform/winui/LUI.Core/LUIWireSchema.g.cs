@@ -154,6 +154,8 @@ namespace LUI
         ResizeDuration,
         ResizeEasing,
         ResizeOrigin,
+        ThemeValue,
+        ThemeMode,
     }
 
     public static class LUIWireSchema
@@ -308,6 +310,8 @@ namespace LUI
             { "resize-duration", LUIProperty.ResizeDuration },
             { "resize-easing", LUIProperty.ResizeEasing },
             { "resize-origin", LUIProperty.ResizeOrigin },
+            { "theme", LUIProperty.ThemeValue },
+            { "theme-mode", LUIProperty.ThemeMode },
         };
 
         public static string WireName(this LUINodeKind kind) => kind switch
@@ -510,6 +514,8 @@ namespace LUI
             LUIProperty.ResizeDuration => "resize-duration",
             LUIProperty.ResizeEasing => "resize-easing",
             LUIProperty.ResizeOrigin => "resize-origin",
+            LUIProperty.ThemeValue => "theme",
+            LUIProperty.ThemeMode => "theme-mode",
             _ => "unknown",
         };
 

@@ -142,6 +142,57 @@ A tweak cannot change the semantic component type, controlled state contract or
 accessibility meaning. Backend-specific props are not admitted to the standard
 component map.
 
+## Theming
+
+Each platform resolves semantic color names to its own best-practice theme:
+the shared `--*` custom-property palette on Web, SwiftUI semantic colors on
+Apple, Material `colorScheme` on Flutter, Fluent theme resources on WinUI,
+and the `LuiStyle` palette on Qt. Applications override those defaults
+through two scoped props rather than per-platform code:
+
+- `theme`: a flat JSON string/string dictionary of design-token overrides,
+  for example `{"primary": "#7c3aed", "primary-foreground": "#ffffff"}`.
+  The table covers the node it is set on and its whole subtree — a themed
+  scope merges over the scopes of its ancestors, so a subtree can restyle
+  itself without disturbing the rest of the app. When a color prop names a
+  semantic token, backends consult the merged token table first and fall
+  back to the platform default for any name the table does not define.
+  Token values may use any host color syntax (`#rgb`, `#rrggbb`,
+  `#rrggbbaa`, `rgb(...)`, `oklch(...)`); entries that a backend cannot
+  decode as a color are ignored, so non-color tokens can join the table
+  later without breaking older hosts.
+- `theme-mode`: `system` (default, follow the host), `light`, or `dark`.
+  Scoped the same way — a subtree can be forced dark while the rest of the
+  app follows the system.
+
+`theme` is admitted on `root` and every container kind; `theme-mode`
+follows the same matrix. Because both are ordinary retained props, a signal
+bound to `theme` or `theme-mode` hot-switches the theme in place with one
+patch — no remount and no per-platform notification code.
+
+LG exposes this as `Lui_elements.themed ~tokens ~mode element` (with
+`*_signal` twins) for any element, and `Lui_app.set_theme` /
+`Lui_app.set_theme_mode` for the mounted root. The OCaml API serializes the
+token association list to the `theme` wire value; hosts parse it back.
+
+Per-backend resolution:
+
+- **Web**: each entry becomes an inline `--<name>: <value>` custom property
+  on the node's element — CSS cascade gives subtree scoping for free.
+  `theme-mode` maps to the `data-kb-theme` attribute (`light`/`dark`);
+  `system` removes it.
+- **Apple**: decoded entries merge over the `luiSemanticColors` environment
+  dictionary that `LUIThemeColorResolver` already consults; `theme-mode`
+  maps to `.preferredColorScheme` on the subtree.
+- **Flutter**: an inherited `_LUIThemeScope` widget merges tokens down the
+  tree; `theme-mode` wraps the subtree in a `Theme` with a light/dark
+  `ColorScheme`.
+- **WinUI**: brush resolution walks wire ancestors for the nearest token
+  table before Fluent resources; `theme-mode` maps to
+  `FrameworkElement.RequestedTheme`.
+- **Qt**: `LuiStyle.nodeColor` walks wire ancestors for the nearest token
+  table; `theme-mode` sets `QStyleHints::setColorScheme` (Qt 6.5+).
+
 ## Component admission
 
 A Vercel Native element becomes a distinct retained protocol kind when it needs

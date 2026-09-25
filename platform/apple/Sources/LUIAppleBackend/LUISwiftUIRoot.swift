@@ -539,6 +539,7 @@ private struct LUINodeView: View {
         )
         .modifier(LUIContextMenuModifier(model: model, backend: backend))
         .modifier(LUIRetainedPaneModifier(model: model))
+        .modifier(LUIThemeScopeModifier(model: model))
     }
 
     // Each wire node has a stable ID and one concrete control kind. Erase only

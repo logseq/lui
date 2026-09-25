@@ -97,8 +97,8 @@ Item {
         id: backdrop
         anchors.fill: parent
         visible: color !== "transparent" || border.width > 0
-        color: Style.color(view.prop("background", ""), "transparent")
-        border.color: Style.color(view.prop("border-color", ""), "transparent")
+        color: Style.nodeColor(view.node, view.prop("background", ""), "transparent")
+        border.color: Style.nodeColor(view.node, view.prop("border-color", ""), "transparent")
         border.width: Number(view.prop("border-width", 0))
         radius: Number(view.prop("corner-radius", 0))
     }

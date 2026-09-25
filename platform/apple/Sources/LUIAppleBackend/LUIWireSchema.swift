@@ -147,6 +147,8 @@ enum LUIProperty: String, Decodable, Hashable {
     case resizeDuration = "resize-duration"
     case resizeEasing = "resize-easing"
     case resizeOrigin = "resize-origin"
+    case theme = "theme"
+    case themeMode = "theme-mode"
 }
 
 enum LUISchemaMatrix {

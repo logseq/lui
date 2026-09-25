@@ -11,7 +11,7 @@ TextField {
     placeholderText: Style.str(props, "placeholder", "")
     echoMode: TextInput.Password
     enabled: props["enabled"] !== false
-    color: Style.color(props["foreground"], palette.text)
+    color: Style.nodeColor(node, props["foreground"], palette.text)
     implicitWidth: 200
     Component.onCompleted: {
         if (props["autofocus"] === true) forceActiveFocus()
