@@ -4725,6 +4725,7 @@ private struct LUIColumnView: View {
                 ? .infinity : nil,
             alignment: frameAlignment
         )
+        .modifier(LUIColumnPressModifier(model: model, backend: backend))
     }
 
     @ViewBuilder
@@ -4793,6 +4794,24 @@ private struct LUIColumnView: View {
         case "center": .top
         case "end": .topTrailing
         default: .topLeading
+        }
+    }
+}
+
+private struct LUIColumnPressModifier: ViewModifier {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    func body(content: Content) -> some View {
+        if model.supportsPress {
+            content
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard model.isEnabled else { return }
+                    try? backend.performPress(node: model.id)
+                }
+        } else {
+            content
         }
     }
 }

@@ -296,6 +296,7 @@ let event_supported kind event =
   | Press _ ->
     (match kind with
     | Button
+    | Column
     | Radio
     | Select
     | Combobox
@@ -683,6 +684,7 @@ let common_property_supported kind property =
   | ToggleEnabled -> kind = Radio || kind = Drawer || tree_row_kind kind
   | PressEnabled ->
     kind = Text
+    || kind = Column
     || kind = Radio
     || kind = Select
     || kind = Combobox

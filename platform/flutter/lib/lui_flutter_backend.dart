@@ -791,6 +791,8 @@ final class LUIFlutterBackend {
         (treeItem && state.properties['press-enabled'] == true) ||
         (state.kind == _NodeKind.tableCell &&
             state.properties['press-enabled'] == true) ||
+        (state.kind == _NodeKind.column &&
+            state.properties['press-enabled'] == true) ||
         (state.kind == _NodeKind.text &&
             state.properties['press-enabled'] == true);
     if (!pressable || state.properties['enabled'] == false) {
@@ -1455,20 +1457,29 @@ final class LUIFlutterBackend {
         },
       ),
     );
-    Widget column() => LayoutBuilder(
-      builder: (context, constraints) => Column(
-        mainAxisSize: constraints.hasBoundedHeight
-            ? MainAxisSize.max
-            : MainAxisSize.min,
-        mainAxisAlignment: _mainAxisAlignment(main),
-        crossAxisAlignment: _crossAxisAlignment(
-          cross,
-          canStretch: constraints.hasBoundedWidth,
+    Widget column() {
+      final body = LayoutBuilder(
+        builder: (context, constraints) => Column(
+          mainAxisSize: constraints.hasBoundedHeight
+              ? MainAxisSize.max
+              : MainAxisSize.min,
+          mainAxisAlignment: _mainAxisAlignment(main),
+          crossAxisAlignment: _crossAxisAlignment(
+            cross,
+            canStretch: constraints.hasBoundedWidth,
+          ),
+          spacing: gap,
+          children: flexChildren(constraints.hasBoundedHeight),
         ),
-        spacing: gap,
-        children: flexChildren(constraints.hasBoundedHeight),
-      ),
-    );
+      );
+      if (state.properties['press-enabled'] == true) {
+        return GestureDetector(
+          onTap: () => performAction(state.id),
+          child: body,
+        );
+      }
+      return body;
+    }
     Widget stack() {
       final menuID = state.children.cast<int?>().firstWhere(
         (childID) =>
@@ -3337,6 +3348,7 @@ final class LUIFlutterBackend {
       'press-enabled' =>
         value is bool &&
             (kind == _NodeKind.text ||
+                kind == _NodeKind.column ||
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.select ||
                 kind == _NodeKind.combobox ||

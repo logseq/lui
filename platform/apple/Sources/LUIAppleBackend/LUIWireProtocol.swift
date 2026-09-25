@@ -795,8 +795,8 @@ struct LUIRetainedTree {
         case .changeEnabled: kind == .radio || isTreeRow(kind)
         case .toggleEnabled: kind == .radio || kind == .drawer || isTreeRow(kind)
         case .pressEnabled:
-            kind == .text || kind == .radio || kind == .select || kind == .combobox ||
-                kind == .menuItem || kind == .listItem
+            kind == .text || kind == .column || kind == .radio || kind == .select ||
+                kind == .combobox || kind == .menuItem || kind == .listItem
                 || kind == .tableCell || isTreeRow(kind)
         case .submitEnabled: kind == .combobox || kind == .listItem
         case .doublePressEnabled: kind == .listItem
