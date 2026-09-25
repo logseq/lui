@@ -2,6 +2,7 @@
 
 #include "lui_qml_backend.h"
 
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -9,6 +10,7 @@
 #include <QQmlEngine>
 #include <QQuickImageProvider>
 #include <QSet>
+#include <QStyleHints>
 #include <QVariantList>
 #include <algorithm>
 #include <cmath>
@@ -139,6 +141,25 @@ bool LuiQmlBackend::fail(const QString &message) {
   m_lastError = message;
   emit lastErrorChanged();
   return false;
+}
+
+void LuiQmlBackend::applyThemeMode(const QVariantMap &properties) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+  const QVariant mode = properties.value(QStringLiteral("theme-mode"));
+  if (mode.typeId() != QMetaType::QString) return;
+  const QString value = mode.toString();
+  Qt::ColorScheme scheme;
+  if (value == QLatin1String("dark")) {
+    scheme = Qt::ColorScheme::Dark;
+  } else if (value == QLatin1String("light")) {
+    scheme = Qt::ColorScheme::Light;
+  } else {
+    scheme = Qt::ColorScheme::Unknown; // "system": follow the host setting.
+  }
+  QGuiApplication::styleHints()->setColorScheme(scheme);
+#else
+  Q_UNUSED(properties);
+#endif
 }
 
 // An event arriving for a node the latest patch already removed is a
@@ -335,6 +356,7 @@ bool LuiQmlBackend::applyJson(const QVariantMap &batch, QString *error) {
     if (handle->apply(state.parent, state.properties, state.children)) {
       changed.insert(id);
     }
+    applyThemeMode(state.properties);
   }
   for (auto it = nextExtensions.constBegin(); it != nextExtensions.constEnd();
        ++it) {
@@ -353,6 +375,7 @@ bool LuiQmlBackend::applyJson(const QVariantMap &batch, QString *error) {
     if (handle->apply(state.parent, state.properties, state.children)) {
       changed.insert(id);
     }
+    applyThemeMode(state.properties);
   }
   // Refresh child object lists now that every handle exists.
   for (auto it = next.constBegin(); it != next.constEnd(); ++it) {

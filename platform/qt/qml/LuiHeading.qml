@@ -9,7 +9,7 @@ Text {
 
     SystemPalette { id: headingPal }
     text: Style.str(props, "text", "")
-    color: Style.color(props["foreground"], headingPal.text)
+    color: Style.nodeColor(node, props["foreground"], headingPal.text)
     font.pixelSize: Style.headingPixelSize(
         Math.max(1, Math.min(6, Style.num(props, "heading-level", 1))))
     font.weight: Font.DemiBold

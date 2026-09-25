@@ -68,6 +68,8 @@ val disposed : ('a, 'b) reducer_app -> bool
 val model : ('a, 'b) reducer_app -> 'a
 val root_node : ('a, 'b) reducer_app -> int
 val runtime : ('a, 'b) reducer_app -> Lui_runtime.application
+val set_theme : ('a, 'b) reducer_app -> (string * string) list -> unit
+val set_theme_mode : ('a, 'b) reducer_app -> Lui_ui.theme_mode -> unit
 val send : ('a, 'b) reducer_app -> 'b -> bool
 val dispatch_event : ('a, 'b) reducer_app -> Lui_protocol.event -> bool
 val require_reload_state :

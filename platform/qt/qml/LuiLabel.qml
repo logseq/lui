@@ -9,7 +9,7 @@ Text {
 
     SystemPalette { id: labelPal }
     text: Style.str(props, "text", "")
-    color: Style.color(props["foreground"], labelPal.placeholderText)
+    color: Style.nodeColor(node, props["foreground"], labelPal.placeholderText)
     font.pixelSize: 12
     wrapMode: Text.WordWrap
 }

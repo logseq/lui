@@ -12,9 +12,9 @@ Rectangle {
 
     color: Style.str(props, "variant", "default") === "primary"
            ? bubblePal.highlight
-           : Style.color(props["background"], bubblePal.base)
+           : Style.nodeColor(node, props["background"], bubblePal.base)
     radius: Style.num(props, "corner-radius", 16)
-    border.color: Style.color(props["border-color"], "transparent")
+    border.color: Style.nodeColor(node, props["border-color"], "transparent")
     border.width: Style.num(props, "border-width", 0)
 
     implicitWidth: col.implicitWidth + 24
@@ -33,7 +33,7 @@ Rectangle {
             text: Style.str(bubble.props, "text", "")
             color: Style.str(bubble.props, "variant", "default") === "primary"
                    ? bubblePal.highlightedText
-                   : Style.color(bubble.props["foreground"], bubblePal.text)
+                   : Style.nodeColor(bubble.node, bubble.props["foreground"], bubblePal.text)
             font.pixelSize: 14
             horizontalAlignment: Style.textAlignEnum(bubble.props)
             wrapMode: Text.WordWrap

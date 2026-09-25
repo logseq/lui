@@ -19,7 +19,7 @@ Frame {
         Text {
             visible: Style.str(alert.props, "text", "") !== ""
             text: Style.str(alert.props, "text", "")
-            color: Style.color(alert.props["foreground"], alert.palette.text)
+            color: Style.nodeColor(alert.node, alert.props["foreground"], alert.palette.text)
             font.pixelSize: 14
             font.weight: Font.DemiBold
             wrapMode: Text.WordWrap

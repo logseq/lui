@@ -29,7 +29,7 @@ Button {
                   ? Style.str(select.props, "text", "")
                   : Style.str(select.props, "placeholder", "")
             color: Style.str(select.props, "text", "") !== ""
-                   ? Style.color(select.props["foreground"], select.palette.text)
+                   ? Style.nodeColor(select.node, select.props["foreground"], select.palette.text)
                    : select.palette.placeholderText
             font.pixelSize: 14
             elide: Text.ElideRight

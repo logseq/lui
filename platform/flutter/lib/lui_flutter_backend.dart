@@ -350,6 +350,23 @@ final class _NodeHandle extends ChangeNotifier {
   }
 }
 
+// Scoped theme tokens: a `theme` prop carries a name→value table that merges
+// over the nearest ancestor scope, and `_color` consults it before the
+// platform-default semantic map.
+final class _LUIThemeScope extends InheritedWidget {
+  const _LUIThemeScope({required this.tokens, required super.child});
+
+  final Map<String, String> tokens;
+
+  static Map<String, String>? maybeTokens(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<_LUIThemeScope>()
+      ?.tokens;
+
+  @override
+  bool updateShouldNotify(_LUIThemeScope oldWidget) =>
+      !mapEquals(tokens, oldWidget.tokens);
+}
+
 final class _LUIAppearDispatcher extends StatefulWidget {
   const _LUIAppearDispatcher({
     super.key,
@@ -702,8 +719,40 @@ final class LUIFlutterBackend {
     return ListenableBuilder(
       key: nodeKey(node),
       listenable: handle,
-      builder: (context, _) => _withAppear(node, _buildNode(context, node)),
+      // The Builder under _withTheme gives _buildNode a context that already
+      // carries this node's tokens, so a themed scope covers the node
+      // itself, not only its descendants.
+      builder: (context, _) => _withTheme(
+        context,
+        node,
+        Builder(
+          builder: (inner) => _withAppear(node, _buildNode(inner, node)),
+        ),
+      ),
     );
+  }
+
+  Widget _withTheme(BuildContext context, int node, Widget child) {
+    final state = _requireState(_states, node);
+    final tokens = _themeTokens(state.properties['theme']);
+    final mode = state.properties['theme-mode'] as String?;
+    if (tokens == null && (mode != 'light' && mode != 'dark')) {
+      return child;
+    }
+    Widget result = child;
+    if (mode == 'light' || mode == 'dark') {
+      result = Theme(
+        data: _themeForMode(context, dark: mode == 'dark'),
+        child: result,
+      );
+    }
+    if (tokens != null) {
+      result = _LUIThemeScope(
+        tokens: {...?_LUIThemeScope.maybeTokens(context), ...tokens},
+        child: result,
+      );
+    }
+    return result;
   }
 
   Widget _withAppear(int node, Widget child) {
@@ -4098,12 +4147,59 @@ final class LUIFlutterBackend {
     return value;
   }
 
+  static Map<String, String>? _themeTokens(Object? value) {
+    if (value is! String || value.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is! Map) return null;
+      return {
+        for (final entry in decoded.entries)
+          entry.key.toString().toLowerCase(): entry.value.toString(),
+      };
+    } on FormatException {
+      return null;
+    }
+  }
+
+  static Color? _tokenColor(String? value) {
+    if (value == null) return null;
+    var raw = value.startsWith('#') ? value.substring(1) : value;
+    if (raw.length == 3 || raw.length == 4) {
+      raw = raw.split('').map((c) => c + c).join();
+    }
+    if (raw.length == 6) {
+      raw = 'ff$raw';
+    } else if (raw.length == 8) {
+      // CSS hex is #rrggbbaa; Color() takes ARGB.
+      raw = raw.substring(6) + raw.substring(0, 6);
+    }
+    if (raw.length != 8) return null;
+    final parsed = int.tryParse(raw, radix: 16);
+    return parsed == null ? null : Color(parsed);
+  }
+
+  static ThemeData _themeForMode(BuildContext context, {required bool dark}) {
+    final base = Theme.of(context);
+    final brightness = dark ? Brightness.dark : Brightness.light;
+    return base.copyWith(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: base.colorScheme.primary,
+        brightness: brightness,
+      ),
+    );
+  }
+
   static Color? _color(
     BuildContext context,
     String? name, {
     bool foreground = false,
   }) {
     final colors = Theme.of(context).colorScheme;
+    final token = _LUIThemeScope.maybeTokens(context)?[name?.toLowerCase()];
+    if (token != null) {
+      final parsed = _tokenColor(token);
+      if (parsed != null) return parsed;
+    }
     return switch (name?.toLowerCase()) {
       null => null,
       'transparent' => Colors.transparent,

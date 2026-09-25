@@ -168,6 +168,8 @@ type property =
   | ResizeDuration
   | ResizeEasing
   | ResizeOrigin
+  | ThemeValue
+  | ThemeMode
 
 module Property_map : Map.S with type key = property
 

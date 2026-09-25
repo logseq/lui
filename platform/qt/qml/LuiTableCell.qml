@@ -21,7 +21,7 @@ Item {
             rightMargin: 8
         }
         text: Style.str(cell.props, "text", "")
-        color: Style.color(cell.props["foreground"], cellPal.text)
+        color: Style.nodeColor(cell.node, cell.props["foreground"], cellPal.text)
         font.pixelSize: 14
         verticalAlignment: Text.AlignVCenter
         horizontalAlignment: Style.textAlignEnum(cell.props["text-alignment"])

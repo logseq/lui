@@ -393,3 +393,34 @@ let accessibility_label context node label =
   string_property context node AccessibilityLabel label
 let accessibility_identifier context node identifier =
   string_property context node AccessibilityIdentifier identifier
+
+type theme_mode = [ `system | `light | `dark ]
+
+let theme_mode_value = function
+  | `system -> "system"
+  | `light -> "light"
+  | `dark -> "dark"
+
+(* Theme tokens travel as one JSON object so the wire value stays a plain
+   string; backends merge them over their platform defaults. *)
+let theme_tokens_json tokens =
+  let fields =
+    List.map
+      (fun (name, value) -> Lui_wire.quoted name ^ ":" ^ Lui_wire.quoted value)
+      tokens
+  in
+  "{" ^ String.concat "," fields ^ "}"
+
+let theme context node tokens =
+  string_property context node ThemeValue (theme_tokens_json tokens)
+
+let theme_signal context node source =
+  string_property_signal context node ThemeValue
+    (Signal.map theme_tokens_json source)
+
+let theme_mode context node mode =
+  string_property context node ThemeMode (theme_mode_value mode)
+
+let theme_mode_signal context node source =
+  string_property_signal context node ThemeMode
+    (Signal.map theme_mode_value source)

@@ -2583,3 +2583,12 @@ val timeline_item :
   ?variant:variant ->
   ?connector:bool ->
   ?selected:bool -> ?on_press:(Lui_protocol.event -> unit) -> nothing list -> timeline_item_el
+
+(** Wraps an element so its subtree resolves semantic color names against
+    the given token table, merging over the platform defaults, and
+    optionally overrides light/dark appearance. *)
+val themed :
+  ?tokens:(string * string) list ->
+  ?tokens_signal:(string * string) list Signal.signal ->
+  ?mode:Lui_ui.theme_mode ->
+  ?mode_signal:Lui_ui.theme_mode Signal.signal -> t -> t
