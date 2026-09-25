@@ -22,6 +22,18 @@ public extension View {
     }
 }
 
+extension View {
+    /// Sheets present in a separate window, so the scoped theme environment
+    /// does not reach them; re-apply the ambient colors and effective scheme
+    /// captured at the presentation site.
+    func luiSheetScope(semanticColors: [String: Color], colorScheme: ColorScheme)
+        -> some View
+    {
+        environment(\.luiSemanticColors, semanticColors)
+            .preferredColorScheme(colorScheme)
+    }
+}
+
 // Shared hex resolver for views that style themselves from color-name props
 // (avatar background/foreground) and theme tokens. Accepts #rgb, #rrggbb and
 // #rrggbbaa (CSS alpha-suffix). Returns nil for non-hex names.
