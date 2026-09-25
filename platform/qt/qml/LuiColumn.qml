@@ -5,6 +5,7 @@ import "LuiStyle.js" as Style
 // Wire kind: column — vertical layout honoring gap, main-alignment, and
 // cross-alignment.
 ColumnLayout {
+    id: col
     required property var node
     readonly property var props: node ? node.properties : ({})
 
@@ -20,11 +21,12 @@ ColumnLayout {
             required property var modelData
             node: modelData
             Layout.fillHeight: Style.fillMainHeight(node ? node.properties : ({})) ||
-                               Style.mainAlign(props) === "space_between" ||
+                               Style.mainAlign(col.props) === "space_between" ||
                                contentFillsLayout
             Layout.fillWidth: Style.fillMainWidth(node ? node.properties : ({})) ||
-                              Style.stretchCross(props) ||
+                              Style.stretchCross(col.props) ||
                               contentFillsLayout
+            Layout.alignment: Style.crossAlignmentEnum(col.props, false)
         }
     }
     Item { Layout.fillHeight: true; visible: Style.needsTrailFiller(props) && !_anyFillH }

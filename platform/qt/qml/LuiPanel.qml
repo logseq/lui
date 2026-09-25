@@ -29,6 +29,7 @@ Frame {
                 Layout.fillWidth: Style.fillMainWidth(node ? node.properties : ({})) ||
                                   Style.stretchCross(panel.props) ||
                               contentFillsLayout
+                Layout.alignment: Style.crossAlignmentEnum(panel.props, false)
             }
         }
         Item { Layout.fillHeight: true; visible: Style.needsTrailFiller(panel.props) && !_anyFillH }

@@ -43,11 +43,12 @@ Rectangle {
                 required property var modelData
                 node: modelData
                 Layout.fillHeight: Style.fillMainHeight(node ? node.properties : ({})) ||
-                                   Style.mainAlign(props) === "space_between" ||
+                                   Style.mainAlign(box.props) === "space_between" ||
                                contentFillsLayout
                 Layout.fillWidth: Style.fillMainWidth(node ? node.properties : ({})) ||
-                                  Style.stretchCross(props) ||
+                                  Style.stretchCross(box.props) ||
                               contentFillsLayout
+                Layout.alignment: Style.crossAlignmentEnum(box.props, false)
             }
         }
         Item { Layout.fillHeight: true; visible: Style.needsTrailFiller(props) && !_anyFillH }

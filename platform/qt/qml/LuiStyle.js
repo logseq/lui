@@ -121,11 +121,15 @@ function stretchCross(props) {
 }
 
 function crossAlignmentEnum(props, horizontal) {
+    // .pragma library has no Qt object — use the raw alignment flag
+    // values (Qt.AlignHCenter=4, AlignVCenter=128, AlignTop=32,
+    // AlignBottom=64, AlignLeft=1, AlignRight=2).
+    // `horizontal` = the container is a row: its cross axis is vertical.
     switch (str(props, "cross", "stretch")) {
-    case "start": return horizontal ? Qt.AlignTop : Qt.AlignLeft
-    case "center": return Qt.AlignCenter
-    case "end": return horizontal ? Qt.AlignBottom : Qt.AlignRight
-    default: return horizontal ? Qt.AlignTop : Qt.AlignLeft
+    case "start": return horizontal ? 32 : 1
+    case "center": return horizontal ? 128 : 4
+    case "end": return horizontal ? 64 : 2
+    default: return horizontal ? 32 : 1
     }
 }
 
