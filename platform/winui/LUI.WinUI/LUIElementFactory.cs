@@ -15,11 +15,15 @@ namespace LUI.WinUI
         {
             switch (kind)
             {
-                case LUINodeKind.Root:
                 case LUINodeKind.Stack:
+                    return new Grid();
+                case LUINodeKind.Root:
                 case LUINodeKind.Resizable:
                 case LUINodeKind.Split:
-                    return new Grid();
+                    // These kinds diff element children through
+                    // ChildrenPanel, which only resolves LUIGrid — a plain
+                    // Grid makes them render empty.
+                    return new LUIGrid();
                 case LUINodeKind.Row:
                 case LUINodeKind.Column:
                 case LUINodeKind.Grid:
