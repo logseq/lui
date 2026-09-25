@@ -749,8 +749,17 @@ final class LUIFlutterBackend {
   // dropped nodes leave the semantics tree — or a bounded frame count for
   // subtrees that carry no identifiers — so the platform a11y tree cannot
   // freeze on the removed subtree.
+  //
+  // Marks lost at a flush are not limited to child lists: a node that
+  // mounted or changed during the same churn can lose its own config emit
+  // (identifier/label never arrive) while remaining a live semantics node.
+  // The heal therefore keeps re-marking for a short settle tail after the
+  // stale identifiers leave, giving every dropped boundary update another
+  // chance to land.
   final Set<String> _staleSemanticsIdentifiers = <String>{};
   bool _semanticsHealScheduled = false;
+  static const int _semanticsHealMaxFrames = 300;
+  static const int _semanticsHealTailFrames = 30;
 
   void _collectSubtreeIdentifiers(
     Map<int, _NodeState> states,
@@ -776,9 +785,10 @@ final class LUIFlutterBackend {
     }
     _semanticsHealScheduled = true;
     var attempts = 0;
+    var tailFramesLeft = _semanticsHealTailFrames;
     void step([Duration? _]) {
       attempts += 1;
-      var retained = attempts < 5;
+      var retained = false;
       final root = RendererBinding
           .instance.rootPipelineOwner.semanticsOwner?.rootSemanticsNode;
       if (root != null && _staleSemanticsIdentifiers.isNotEmpty) {
@@ -808,7 +818,9 @@ final class LUIFlutterBackend {
       for (final view in RendererBinding.instance.renderViews) {
         markBoundaries(view);
       }
-      if (retained && attempts < 60) {
+      final keepRetaining = retained && attempts < _semanticsHealMaxFrames;
+      final tail = !retained && tailFramesLeft-- > 0;
+      if (keepRetaining || tail) {
         SchedulerBinding.instance.addPostFrameCallback(step);
       } else {
         _staleSemanticsIdentifiers.clear();
@@ -2980,6 +2992,9 @@ final class LUIFlutterBackend {
         }
         children.insert(index, childID);
         _setNodeParent(states, extensions, childID, parentID);
+        // A mount's boundary mark can be dropped by the same flush race;
+        // the heal tail re-emits it.
+        _scheduleSemanticsHeal();
       case 'remove-child':
         final parentID = _integer(operation['parent'], 'parent');
         final childID = _integer(operation['child'], 'child');
@@ -3006,6 +3021,7 @@ final class LUIFlutterBackend {
           throw const LUIBackendException('child index is out of bounds');
         }
         children.insert(index, childID);
+        _scheduleSemanticsHeal();
       default:
         throw const LUIBackendException('unknown patch operation');
     }
