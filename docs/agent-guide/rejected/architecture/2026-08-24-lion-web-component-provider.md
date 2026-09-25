@@ -5,35 +5,17 @@ Date: 2026-08-24
 Status: rejected as a runtime dependency; retained-behavior findings remain
 valid.
 
-## Question
+## Problem
 
 Can LUI reuse an existing Web Component library for complex controls without
 introducing React, a second application state tree or a Web-only semantic API?
 
-## Candidate result at the time of the spike
+## Proposal
 
-[Lion](https://lion.js.org/) is the best fit for the default behavior
-foundation. It is framework-agnostic, MIT licensed, accessibility-focused and
-intentionally white-label. It exposes custom elements, properties and custom
-events that a retained backend can drive directly.
-
-[Web Awesome](https://webawesome.com/) is the strongest ready-styled optional
-provider. Its open-source catalog is broad, but combobox, date picker and data
-grid are among its commercial Pro components. It should not define LUI's core
-capability floor.
-
-[Spectrum Web Components](https://opensource.adobe.com/spectrum-web-components/)
-is comprehensive and production-used, but intentionally implements Adobe's
-Spectrum design language. It is a good optional provider rather than the
-neutral default.
-
-[UI5 Web Components](https://ui5.github.io/webcomponents/docs/getting-started/first-steps/)
-has strong complex controls and accessibility support, but is optimized around
-SAP Fiori and is heavier than the default LUI Web layer should be.
-
-[Material Web](https://github.com/material-components/material-web/discussions/5642)
-was excluded because the official project remains in maintenance mode and does
-not plan new components or features.
+Adopt an existing Web Component library as the default behavior foundation for
+complex controls, behind a LUI-owned adapter that keeps LG as the application
+state owner. The spike evaluated provider candidates against bundle cost and
+retained-browser behavior.
 
 ## Bundle experiment
 
@@ -74,14 +56,51 @@ with the current explicit remove-and-insert implementation. It is a browser DOM
 movement limitation, not a Lion state recreation. The tested browser did not
 expose the newer state-preserving `moveBefore` API.
 
-## Superseded decision
+## Alternatives considered
+
+### Lion
+
+[Lion](https://lion.js.org/) is the best fit for the default behavior
+foundation. It is framework-agnostic, MIT licensed, accessibility-focused and
+intentionally white-label. It exposes custom elements, properties and custom
+events that a retained backend can drive directly. Rejected as the finished
+default: it is intentionally white-label and does not meet the requirement
+for a polished, ready-to-use default visual component set.
+
+### Web Awesome
+
+[Web Awesome](https://webawesome.com/) is the strongest ready-styled optional
+provider. Its open-source catalog is broad, but combobox, date picker and data
+grid are among its commercial Pro components. It should not define LUI's core
+capability floor and was explicitly excluded.
+
+### Spectrum Web Components
+
+[Spectrum Web Components](https://opensource.adobe.com/spectrum-web-components/)
+is comprehensive and production-used, but intentionally implements Adobe's
+Spectrum design language. It is a good optional provider rather than the
+neutral default.
+
+### UI5 Web Components
+
+[UI5 Web Components](https://ui5.github.io/webcomponents/docs/getting-started/first-steps/)
+has strong complex controls and accessibility support, but is optimized around
+SAP Fiori and is heavier than the default LUI Web layer should be.
+
+### Material Web
+
+[Material Web](https://github.com/material-components/material-web/discussions/5642)
+was excluded because the official project remains in maintenance mode and does
+not plan new components or features.
+
+## Rejection reason
 
 Lion proved that an opaque custom-element implementation can coexist with the
 LUI retained tree, but it is intentionally white-label and does not meet the
 later requirement for a polished, ready-to-use default visual component set.
 Web Awesome was also explicitly excluded. The current LUI-native decision and
 historical bundle comparison are recorded in
-`001-production-components_web_report.md`.
+`docs/agent-guide/implemented/architecture/2026-08-24-lui-native-web-components.md`.
 
 The adapter and focus findings below remain useful evidence about opaque custom
 elements, although the current Web design uses retained semantic HTML.

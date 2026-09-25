@@ -8,7 +8,7 @@ Reference: `vercel-labs/native` revision
 Reference source: `skill-data/native-ui/SKILL.md` and the closed schema in
 `src/primitives/canvas/ui_schema.zig`.
 
-LUI's implementation registry is [`schema/components.json`](../../schema/components.json).
+LUI's implementation registry is [`schema/components.json`](../../../schema/components.json).
 It records the pinned public boundary and the currently implemented wire kinds
 and properties once. `make generate-component-schema` derives:
 
@@ -22,7 +22,16 @@ Component-specific semantics, native widget behavior, and bespoke validation
 remain handwritten and must pass the platform parity gates; the manifest does
 not replace those platform decisions.
 
-## Compatibility rule
+## Problem
+
+LUI adopts Vercel Native's UI component API as its own public boundary, but
+LG notation, Signal reactivity and the retained runtime differ from the
+reference implementation. Without an explicit vocabulary contract, the API
+surface would drift — provisional names, aliases and invented props would
+accumulate until LUI had its own second vocabulary.
+
+## Decision
+
 
 LUI's supported public UI component API is a deliberate subset of the Vercel
 Native UI API expressed as LG data. Inside that subset, the syntax changes;
@@ -211,3 +220,32 @@ Each delivered element must have:
 
 Updating the pinned Vercel Native revision requires a reviewed matrix diff
 before implementation changes.
+
+## Alternatives considered
+
+### Invent a LUI-specific component vocabulary
+
+Rejected: a second vocabulary would duplicate names, defaults and behavior
+the reference already standardizes, and would make parity unmeasurable.
+
+### Keep provisional LUI APIs with compatibility aliases
+
+Rejected: provisional names are broken in favor of the pinned reference
+vocabulary without keeping aliases; the completed removals are recorded above
+so the public API carries no legacy surface.
+
+### Include the full Vercel Native API surface
+
+Rejected: `span`, `code`, `markdown`, `chart`, and `series` are deliberately
+excluded; LUI keeps `text` as a plain-text leaf and does not own rich-text
+runs, syntax highlighting, Markdown parsing/rendering, or a chart engine.
+
+## Consequences
+
+- `schema/components.json` is the single registry for the pinned public
+  boundary and implemented wire surface; `make generate-component-schema`
+  derives LG, Swift and Dart protocol tables from it.
+- Every delivered element passes the parity gate before the matrix marks it
+  implemented.
+- Updating the pinned Vercel Native revision is itself a reviewed change:
+  the matrix diff lands before implementation changes.
