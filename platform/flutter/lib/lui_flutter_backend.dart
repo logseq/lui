@@ -703,23 +703,25 @@ final class LUIFlutterBackend {
   // (`!attached` early-returns), so no ancestor boundary is ever re-dirtied
   // and the a11y tree freezes on the last emit (which still contains the
   // sheet). Force the whole tree to re-derive so a post-removal update
-  // reaches the platform. Detach can land a frame later than the removal, so
-  // mark twice across consecutive frames to cover that window.
+  // reaches the platform. Route exit animations detach the entries many
+  // frames after the removal is scheduled, so keep marking every frame for
+  // a window that outlasts any dismiss transition.
   void _refreshSemanticsAfterModalRemoval() {
     void markAll(RenderObject node) {
       node.markNeedsSemanticsUpdate();
       node.visitChildren(markAll);
     }
 
+    var remaining = 45; // ~750ms — longer than a sheet exit animation
     void markFrame() {
       final root = RendererBinding.instance.rootPipelineOwner.rootNode;
       if (root != null) markAll(root);
+      if (--remaining > 0) {
+        SchedulerBinding.instance.addPostFrameCallback((_) => markFrame());
+      }
     }
 
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      markFrame();
-      SchedulerBinding.instance.addPostFrameCallback((_) => markFrame());
-    });
+    SchedulerBinding.instance.addPostFrameCallback((_) => markFrame());
   }
 
   Widget widget({required int node}) {
