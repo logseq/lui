@@ -2638,6 +2638,32 @@ struct LUISwiftUIBackendTests {
         #expect(backend.generation == 2)
     }
 
+    @Test("removing a presented sheet node clears the modal presentation")
+    func removesPresentedSheetClearsPresentation() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":4,"kind":"sheet"},
+          {"op":"create-node","id":5,"kind":"input"},
+          {"op":"set-prop","id":4,"property":"text","value":"Go to File"},
+          {"op":"insert-child","parent":1,"child":4,"index":0},
+          {"op":"insert-child","parent":4,"child":5,"index":0}
+        ]}
+        """)
+        #expect(backend.modalPresentation.item?.id == 4)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"remove-child","parent":4,"child":5},
+          {"op":"drop-node","id":5},
+          {"op":"remove-child","parent":1,"child":4},
+          {"op":"drop-node","id":4}
+        ]}
+        """)
+        #expect(backend.modalPresentation.item == nil)
+    }
+
     @Test("maps static and anchored Tooltip to one retained SwiftUI leaf")
     func mapsTooltip() throws {
         let backend = LUIAppleBackend()
