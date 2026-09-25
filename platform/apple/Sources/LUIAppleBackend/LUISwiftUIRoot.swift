@@ -647,6 +647,8 @@ private struct LUINodeView: View {
             return AnyView(EmptyView())
         case .menuItem:
             return AnyView(LUIMenuItemView(model: model, backend: backend))
+        case .menuTrigger:
+            return AnyView(LUIMenuTriggerView(model: model, backend: backend))
         case .listItem:
             return AnyView(LUIListItemView(model: model, backend: backend))
         case .table:
@@ -1085,6 +1087,16 @@ private struct LUINativeMenuActions: View {
                 case .divider:
                     Divider()
                 case .menuItem:
+                    Button(role: child.buttonVariant == "destructive" ? .destructive : nil) {
+                        try? backend.performPress(node: child.id)
+                    } label: {
+                        itemLabel(for: child)
+                    }
+                    .disabled(!child.isEnabled)
+                    .accessibilityIdentifier(
+                        child.property(.accessibilityIdentifier)?.stringValue ?? ""
+                    )
+                case .menuTrigger:
                     if let submenu = child.children
                         .compactMap({ backend.model(id: $0) })
                         .first(where: { $0.kind == .dropdownMenu }) {
@@ -1094,16 +1106,7 @@ private struct LUINativeMenuActions: View {
                             itemLabel(for: child)
                         }
                         .disabled(!child.isEnabled)
-                        .accessibilityIdentifier(
-                            child.property(.accessibilityIdentifier)?.stringValue ?? ""
-                        )
-                    } else {
-                        Button(role: child.buttonVariant == "destructive" ? .destructive : nil) {
-                            try? backend.performPress(node: child.id)
-                        } label: {
-                            itemLabel(for: child)
-                        }
-                        .disabled(!child.isEnabled)
+                        .accessibilityLabel(triggerLabel(for: child))
                         .accessibilityIdentifier(
                             child.property(.accessibilityIdentifier)?.stringValue ?? ""
                         )
@@ -1113,6 +1116,12 @@ private struct LUINativeMenuActions: View {
                 }
             }
         }
+    }
+
+    private func triggerLabel(for item: LUINodeModel) -> String {
+        let text = item.text
+        if !text.isEmpty { return text }
+        return item.property(.accessibilityLabel)?.stringValue ?? ""
     }
 
     private func itemLabel(for item: LUINodeModel) -> some View {
@@ -2660,7 +2669,8 @@ private struct LUIToolbarGroupAnchor: View {
             case .buttonGroup:
                 flush(); result.append(.capsule(backend.model(id: childID)?.children ?? []))
             case .button, .toggleButton, .toggleGroup, .checkbox, .switchControl,
-                 .toggle, .radioGroup, .select, .combobox, .menuItem, .textField,
+                 .toggle, .radioGroup, .select, .combobox, .menuItem,
+                 .menuTrigger, .textField,
                  .secureField, .input, .searchField:
                 run.append(childID)
             default:
@@ -3076,9 +3086,7 @@ enum LUIMenuPresentationPolicy {
             case .divider:
                 continue
             case .menuItem:
-                if !child.isEnabled || child.children.contains(where: {
-                    backend.model(id: $0)?.kind == .dropdownMenu
-                }) {
+                if !child.isEnabled {
                     return true
                 }
                 hasEnabledLeafItem = true
@@ -3285,31 +3293,15 @@ private struct LUIMenuItemView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
 
-    @ViewBuilder
     var body: some View {
-        if let submenu {
-            Menu {
-                LUINativeMenuActions(model: submenu, backend: backend)
-            } label: {
-                itemLabel(expands: false)
-            }
-            .disabled(!model.isEnabled)
-        } else {
-            Button {
-                try? backend.performPress(node: model.id)
-            } label: {
-                itemLabel(expands: true)
-            }
-            .buttonStyle(.plain)
-            .accessibilityAddTraits(model.isSelected ? .isSelected : [])
-            .disabled(!model.isEnabled)
+        Button {
+            try? backend.performPress(node: model.id)
+        } label: {
+            itemLabel(expands: true)
         }
-    }
-
-    private var submenu: LUINodeModel? {
-        model.children
-            .compactMap(backend.model)
-            .first { $0.kind == .dropdownMenu }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(model.isSelected ? .isSelected : [])
+        .disabled(!model.isEnabled)
     }
 
     private var menuItemIconSize: CGFloat {
@@ -3361,6 +3353,53 @@ private struct LUIMenuItemView: View {
             alignment: .leading
         )
         .contentShape(Rectangle())
+    }
+}
+
+private struct LUIMenuTriggerView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    private var menu: LUINodeModel? {
+        model.children
+            .compactMap(backend.model)
+            .first { $0.kind == .dropdownMenu }
+    }
+
+    private var spokenLabel: String {
+        let text = model.text
+        if !text.isEmpty { return text }
+        return model.property(.accessibilityLabel)?.stringValue ?? ""
+    }
+
+    var body: some View {
+        Menu {
+            if let menu {
+                LUINativeMenuActions(model: menu, backend: backend)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                if !model.buttonIconName.isEmpty {
+                    LUIIconImage(
+                        source: backend.iconSource(for: model.buttonIconName),
+                        bundle: backend.appIconBundle
+                    )
+                    .modifier(LUIMenuItemForegroundModifier(model: model))
+                }
+                if !model.text.isEmpty {
+                    Text(verbatim: model.text)
+                        .modifier(LUIMenuItemForegroundModifier(
+                            model: model,
+                            usesExplicitForeground: false
+                        ))
+                }
+            }
+        }
+        .disabled(!model.isEnabled)
+        .accessibilityLabel(spokenLabel)
+        .accessibilityIdentifier(
+            model.property(.accessibilityIdentifier)?.stringValue ?? ""
+        )
     }
 }
 

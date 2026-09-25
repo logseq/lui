@@ -49,6 +49,7 @@ type node_kind =
   | DropdownMenu
   | ContextMenu
   | MenuItem
+  | MenuTrigger
   | ListItem
   | Avatar
   | Image
@@ -756,6 +757,10 @@ let property_supported kind property =
     | BottomTab ->
       property = TitleValue || property = InlineIconName
       || property = Selected || property = Enabled || property = PressEnabled
+    | MenuTrigger ->
+      property = TextValue || property = InlineIconName
+      || property = AccessibilityLabel || property = Enabled
+      || property = ForegroundValue || property = StyleClass
     | Accordion ->
       property = TextValue || property = Selected
       || property = ToggleEnabled || property = HeightValue
@@ -937,6 +942,13 @@ let node_properties_supported kind properties =
   && (if kind = MenuItem || kind = Accordion then
         string_property_nonempty properties TextValue
       else true)
+  && (if kind = MenuTrigger then
+        let text = string_property_or properties TextValue "" in
+        let icon = string_property_or properties InlineIconName "" in
+        let label = string_property_or properties AccessibilityLabel "" in
+        (text <> "" || icon <> "")
+        && (if text = "" then label <> "" else true)
+      else true)
   && (if modal_surface kind then string_property_nonempty properties TextValue
       else true)
   && (if kind = Tooltip then
@@ -1037,6 +1049,7 @@ let can_contain_children kind =
     | RadioGroup
     | DropdownMenu
     | ContextMenu
+    | MenuTrigger
     | ListItem
     | Dialog
     | Drawer
@@ -1062,8 +1075,8 @@ let can_contain_children kind =
 let child_kind_supported parent_kind child_kind =
   if child_kind = Root then false
   else if parent_kind = Root then true
-  else if parent_kind = MenuItem then
-    child_kind = ContextMenu || child_kind = DropdownMenu
+  else if parent_kind = MenuItem then child_kind = ContextMenu
+  else if parent_kind = MenuTrigger then child_kind = DropdownMenu
   else if context_menu_leaf_host_kind parent_kind then child_kind = ContextMenu
   else
     match parent_kind with
@@ -1092,11 +1105,15 @@ let child_kind_supported parent_kind child_kind =
       | Input
       | SearchField
       | MenuItem
+      | MenuTrigger
       | Spacer
       | Divider
       | Text -> true
       | _ -> false)
-    | DropdownMenu | ContextMenu -> child_kind = MenuItem || child_kind = Divider
+    | DropdownMenu ->
+      child_kind = MenuItem || child_kind = MenuTrigger
+      || child_kind = Divider
+    | ContextMenu -> child_kind = MenuItem || child_kind = Divider
     | _ -> true
 
 let create_node_op node kind = CreateNode (node, kind)

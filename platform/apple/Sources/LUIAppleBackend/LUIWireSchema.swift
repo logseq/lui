@@ -47,6 +47,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case dropdownMenu = "dropdown-menu"
     case contextMenu = "context-menu"
     case menuItem = "menu-item"
+    case menuTrigger = "menu-trigger"
     case listItem = "list-item"
     case avatar = "avatar"
     case image = "image"
@@ -162,6 +163,7 @@ enum LUISchemaMatrix {
         .toolbar: [.orientation, .accessibilityLabel, .gap, .styleClass, .placement],
         .bottomTabs: [.accessibilityLabel, .styleClass, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight],
         .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled],
+        .menuTrigger: [.text, .icon, .accessibilityLabel, .enabled, .foreground, .styleClass],
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [

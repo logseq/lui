@@ -47,6 +47,7 @@ type node_kind =
   | DropdownMenu
   | ContextMenu
   | MenuItem
+  | MenuTrigger
   | ListItem
   | Avatar
   | Image

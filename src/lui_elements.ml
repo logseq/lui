@@ -1322,15 +1322,40 @@ let menu_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal
   mount_children context node children;
   node
 
-let submenu ?key ?text ?icon ?role ?variant ?selected ?checked ?disabled
+let menu_trigger ?key ?accessibility_identifier ?accessibility_identifier_signal ?foreground ?foreground_signal ?style_class ?text ?text_signal ?icon ?icon_signal ?label ?disabled ?disabled_signal (children : t list) : t =
+ fun context parent ->
+  let node = Lui_ui.menu_trigger context in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter (Lui_ui.string_property context node AccessibilityIdentifier) accessibility_identifier;
+  Option.iter (Lui_ui.string_property_signal context node AccessibilityIdentifier) accessibility_identifier_signal;
+  Option.iter (Lui_ui.string_property context node ForegroundValue) foreground;
+  Option.iter (Lui_ui.string_property_signal context node ForegroundValue) foreground_signal;
+  Option.iter (Lui_ui.string_property context node StyleClass) style_class;
+  Option.iter (Lui_ui.string_property context node TextValue) text;
+  Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
+  Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
+  Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
+  Option.iter (Lui_ui.disabled context node) disabled;
+  Option.iter (Lui_ui.disabled_signal context node) disabled_signal;
+  attach context parent node;
+  mount_children context node children;
+  node
+
+let menu ?key ?accessibility_identifier ?foreground ?style_class ?text
+    ?text_signal ?icon ?icon_signal ?label ?disabled ?disabled_signal
     ?on_dismiss entries : t =
  fun context parent ->
   let host =
-    menu_item ?key ?text ?icon ?role ?variant ?selected ?checked ?disabled
-      ?on_dismiss [] context parent
+    menu_trigger ?key ?accessibility_identifier ?foreground ?style_class
+      ?text ?text_signal ?icon ?icon_signal ?label ?disabled
+      ?disabled_signal [] context parent
   in
-  ignore (dropdown_menu entries context (Some host));
+  ignore (dropdown_menu ?on_dismiss entries context (Some host));
   host
+
+let submenu ?key ?text ?icon ?label ?disabled ?disabled_signal ?on_dismiss entries : t =
+  menu ?key ?text ?icon ?label ?disabled ?disabled_signal ?on_dismiss entries
 
 let list_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?icon ?icon_signal ?icon_placement ?role ?tree_level ?expanded ?expanded_signal ?selected ?selected_signal ?disabled ?disabled_signal ?on_press ?on_long_press ?on_double_press ?on_submit ?on_input ?on_toggle (children : t list) : t =
  fun context parent ->

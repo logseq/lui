@@ -1041,7 +1041,7 @@ struct LUISwiftUIBackendTests {
           {"op":"create-node","id":3,"kind":"combobox"},
           {"op":"create-node","id":4,"kind":"dropdown-menu"},
           {"op":"create-node","id":5,"kind":"menu-item"},
-          {"op":"create-node","id":6,"kind":"menu-item"},
+          {"op":"create-node","id":6,"kind":"menu-trigger"},
           {"op":"create-node","id":7,"kind":"dropdown-menu"},
           {"op":"create-node","id":8,"kind":"menu-item"},
           {"op":"set-prop","id":2,"property":"text","value":"Production"},
@@ -1073,6 +1073,7 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 3)?.kind == .combobox)
         #expect(menu.kind == .dropdownMenu)
         #expect(backend.model(id: 5)?.kind == .menuItem)
+        #expect(backend.model(id: 6)?.kind == .menuTrigger)
         #expect(menu.children == [5, 6])
         #expect(menu.property(.anchor) == .string("below"))
         #expect(menu.property(.anchorAlignment) == .string("stretch"))
@@ -1093,6 +1094,105 @@ struct LUISwiftUIBackendTests {
             .press(node: 5),
             .dismiss(node: 4),
         ])
+    }
+
+    @Test("menu-trigger mounts icon-only with an accessibility label")
+    func menuTriggerIconOnly() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"row"},
+          {"op":"create-node","id":2,"kind":"menu-trigger"},
+          {"op":"create-node","id":3,"kind":"dropdown-menu"},
+          {"op":"create-node","id":4,"kind":"menu-item"},
+          {"op":"set-prop","id":2,"property":"icon","value":"ellipsis"},
+          {"op":"set-prop","id":2,"property":"accessibility-label","value":"Account menu"},
+          {"op":"set-prop","id":4,"property":"text","value":"Rename"},
+          {"op":"set-prop","id":4,"property":"press-enabled","value":true},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":3,"child":4,"index":0}
+        ]}
+        """)
+        #expect(backend.model(id: 2)?.kind == .menuTrigger)
+        #expect(backend.model(id: 2)?.children == [3])
+    }
+
+    @Test("menu-trigger requires a label, a dropdown-menu child, and rejects extra children")
+    func menuTriggerValidation() throws {
+        let backend = LUIAppleBackend()
+        // icon-only without an accessibility label
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"row"},
+              {"op":"create-node","id":2,"kind":"menu-trigger"},
+              {"op":"create-node","id":3,"kind":"dropdown-menu"},
+              {"op":"set-prop","id":2,"property":"icon","value":"ellipsis"},
+              {"op":"insert-child","parent":1,"child":2,"index":0},
+              {"op":"insert-child","parent":2,"child":3,"index":0}
+            ]}
+            """)
+        }
+        // neither text nor icon
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"row"},
+              {"op":"create-node","id":2,"kind":"menu-trigger"},
+              {"op":"create-node","id":3,"kind":"dropdown-menu"},
+              {"op":"insert-child","parent":1,"child":2,"index":0},
+              {"op":"insert-child","parent":2,"child":3,"index":0}
+            ]}
+            """)
+        }
+        // missing the dropdown-menu child
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"row"},
+              {"op":"create-node","id":2,"kind":"menu-trigger"},
+              {"op":"create-node","id":3,"kind":"menu-item"},
+              {"op":"set-prop","id":2,"property":"text","value":"More"},
+              {"op":"insert-child","parent":1,"child":2,"index":0},
+              {"op":"insert-child","parent":2,"child":3,"index":0}
+            ]}
+            """)
+        }
+    }
+
+    @Test("menu-item rejects a dropdown-menu child; toolbar accepts menu-trigger")
+    func menuItemNoLongerHostsMenus() throws {
+        let backend = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"dropdown-menu"},
+              {"op":"create-node","id":2,"kind":"menu-item"},
+              {"op":"create-node","id":3,"kind":"dropdown-menu"},
+              {"op":"set-prop","id":2,"property":"text","value":"Share"},
+              {"op":"insert-child","parent":1,"child":2,"index":0},
+              {"op":"insert-child","parent":2,"child":3,"index":0}
+            ]}
+            """)
+        }
+        let toolbar = LUIAppleBackend()
+        try toolbar.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"toolbar"},
+          {"op":"create-node","id":2,"kind":"menu-trigger"},
+          {"op":"create-node","id":3,"kind":"dropdown-menu"},
+          {"op":"create-node","id":4,"kind":"menu-item"},
+          {"op":"set-prop","id":1,"property":"accessibility-label","value":"Actions"},
+          {"op":"set-prop","id":2,"property":"text","value":"More"},
+          {"op":"set-prop","id":4,"property":"text","value":"Archive"},
+          {"op":"set-prop","id":4,"property":"press-enabled","value":true},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":3,"child":4,"index":0}
+        ]}
+        """)
+        #expect(toolbar.model(id: 1)?.children == [2])
     }
 
     @Test("maps ListItem text and custom content to one retained native row")

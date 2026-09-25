@@ -610,8 +610,12 @@ struct LUIRetainedTree {
                 throw invalid("input-group accepts textarea and input-group-actions")
             }
             if parentNode.kind == .dropdownMenu,
-               childNode.kind != .menuItem, childNode.kind != .divider {
-                throw invalid("dropdown-menu accepts only menu-item or separator children")
+               childNode.kind != .menuItem, childNode.kind != .menuTrigger,
+               childNode.kind != .divider {
+                throw invalid("dropdown-menu accepts only menu-item, menu-trigger, or separator children")
+            }
+            if parentNode.kind == .menuTrigger, childNode.kind != .dropdownMenu {
+                throw invalid("menu-trigger accepts only a dropdown-menu child")
             }
             if parentNode.kind == .contextMenu,
                childNode.kind != .menuItem, childNode.kind != .divider {
@@ -620,9 +624,8 @@ struct LUIRetainedTree {
             if parentNode.kind == .toolbar, !Self.isToolbarChild(childNode.kind) {
                 throw invalid("toolbar accepts only interactive controls and dividers")
             }
-            if parentNode.kind == .menuItem,
-               childNode.kind != .contextMenu, childNode.kind != .dropdownMenu {
-                throw invalid("menu-item accepts only nested menu metadata")
+            if parentNode.kind == .menuItem, childNode.kind != .contextMenu {
+                throw invalid("menu-item accepts only context-menu metadata")
             }
             if parentNode.kind != .menuItem,
                Self.isContextMenuLeafHost(parentNode.kind),
@@ -824,7 +827,7 @@ struct LUIRetainedTree {
             kind == .stepper || kind == .timeline ||
             kind == .inputGroup || kind == .inputGroupActions ||
             kind == .toast || kind == .toolbar || kind == .bottomTabs || kind == .bottomTab ||
-            isContextMenuLeafHost(kind)
+            kind == .menuTrigger || isContextMenuLeafHost(kind)
     }
 
     private static func acceptsExtensionChildren(_ kind: LUINodeKind) -> Bool {
@@ -851,8 +854,8 @@ struct LUIRetainedTree {
             kind == .toggleGroup || kind == .checkbox || kind == .switchControl ||
             kind == .toggle || kind == .radioGroup || kind == .select ||
             kind == .combobox || kind == .textField || kind == .secureField || kind == .input ||
-            kind == .searchField || kind == .menuItem || kind == .spacer ||
-            kind == .divider || kind == .text
+            kind == .searchField || kind == .menuItem || kind == .menuTrigger ||
+            kind == .spacer || kind == .divider || kind == .text
     }
 
     private static func isTreeRow(_ kind: LUINodeKind) -> Bool {
@@ -941,6 +944,22 @@ struct LUIRetainedTree {
             if node.kind == .menuItem {
                 guard !(node.properties[.text]?.stringValue ?? "").isEmpty else {
                     throw invalid("menu-item requires text")
+                }
+            }
+            if node.kind == .menuTrigger {
+                let text = node.properties[.text]?.stringValue ?? ""
+                let icon = node.properties[.icon]?.stringValue ?? ""
+                let label = node.properties[.accessibilityLabel]?.stringValue ?? ""
+                guard !text.isEmpty || !icon.isEmpty else {
+                    throw invalid("menu-trigger requires text or icon")
+                }
+                if text.isEmpty && label.isEmpty {
+                    throw invalid("icon-only menu-trigger requires an accessibility label")
+                }
+                guard node.children.count == 1,
+                      let menuID = node.children.first,
+                      nodes[menuID]?.kind == .dropdownMenu else {
+                    throw invalid("menu-trigger requires exactly one dropdown-menu child")
                 }
             }
             if node.kind == .contextMenu {

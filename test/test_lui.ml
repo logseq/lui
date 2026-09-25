@@ -702,6 +702,48 @@ let test_drift_is_caught () =
   | _ -> Alcotest.fail "expected exactly one drifted Dart fingerprint"
 
 
+let test_menu_trigger_rules () =
+  let open Lui_protocol in
+  Alcotest.(check bool) "trigger hosts dropdown-menu" true
+    (child_kind_supported MenuTrigger DropdownMenu);
+  Alcotest.(check bool) "trigger rejects menu-item child" false
+    (child_kind_supported MenuTrigger MenuItem);
+  Alcotest.(check bool) "dropdown-menu accepts trigger" true
+    (child_kind_supported DropdownMenu MenuTrigger);
+  Alcotest.(check bool) "menu-item keeps context-menu" true
+    (child_kind_supported MenuItem ContextMenu);
+  Alcotest.(check bool) "menu-item drops dropdown-menu" false
+    (child_kind_supported MenuItem DropdownMenu);
+  Alcotest.(check bool) "context-menu rejects trigger" false
+    (child_kind_supported ContextMenu MenuTrigger);
+  Alcotest.(check bool) "toolbar accepts trigger" true
+    (child_kind_supported Toolbar MenuTrigger);
+  Alcotest.(check bool) "trigger allows text" true
+    (property_supported MenuTrigger TextValue);
+  Alcotest.(check bool) "trigger allows icon" true
+    (property_supported MenuTrigger InlineIconName);
+  Alcotest.(check bool) "trigger allows label" true
+    (property_supported MenuTrigger AccessibilityLabel);
+  Alcotest.(check bool) "trigger drops width" false
+    (property_supported MenuTrigger WidthValue);
+  Alcotest.(check bool) "trigger drops size" false
+    (property_supported MenuTrigger SizeValue);
+  Alcotest.(check bool) "trigger drops press" false
+    (property_supported MenuTrigger PressEnabled);
+  let props entries = List.to_seq entries |> Property_map.of_seq in
+  Alcotest.(check bool) "icon+label ok" true
+    (node_properties_supported MenuTrigger
+       (props [ (InlineIconName, StringValue "ellipsis");
+                (AccessibilityLabel, StringValue "Account menu") ]));
+  Alcotest.(check bool) "icon without label rejected" false
+    (node_properties_supported MenuTrigger
+       (props [ (InlineIconName, StringValue "ellipsis") ]));
+  Alcotest.(check bool) "empty trigger rejected" false
+    (node_properties_supported MenuTrigger (props []));
+  Alcotest.(check bool) "text-only ok" true
+    (node_properties_supported MenuTrigger
+       (props [ (TextValue, StringValue "More") ]))
+
 let test_property_matrix_sync () =
   (* property_supported's restrictive arms and additive extras must mirror
      schema/components.json (kindProperties / kindExtraProperties) as emitted
@@ -880,6 +922,8 @@ let () =
       ( "protocol",
         [
           Alcotest.test_case "helpers" `Quick test_protocol_helpers;
+          Alcotest.test_case "menu-trigger rules" `Quick
+            test_menu_trigger_rules;
           Alcotest.test_case "property matrix sync" `Quick
             test_property_matrix_sync;
         ] );
