@@ -2,7 +2,14 @@
 
 Status: accepted design
 
-## Goal
+## Problem
+
+The component showcase must present one component page at a time on every
+host while using each platform's adaptive navigation idioms, without adding a
+public navigation component to LUI's bounded API or duplicating component
+state outside the LG model.
+
+## Decision
 
 Present the component showcase as one component page at a time on every host:
 
@@ -76,3 +83,33 @@ text events, but an echoed or transformed Signal value cannot replace the
 native draft during marked-text composition. This preserves Chinese IME
 composition, selection, and the insertion point; external values reconcile
 after editing ends.
+
+## Alternatives considered
+
+### Public Sidebar/NavigationSplitView component in the LUI API
+
+Rejected: the API boundary keeps navigation chrome private to each gallery
+host. Adding a public navigation container would widen the bounded component
+API for a showcase-only need.
+
+### One bespoke gallery per host
+
+Rejected: per-host galleries would fork the component pages and state wiring;
+one retained subtree with per-platform navigation chrome keeps parity
+checkable.
+
+### Cross-platform navigation component abstraction
+
+Rejected: navigation idioms differ enough across SwiftUI, Material and Web
+that a shared abstraction would import platform-specific vocabulary into the
+schema for no user-facing gain.
+
+## Consequences
+
+- Each host adapts navigation to its platform idiom while the detail pane
+  reuses the same LG retained subtree and model-owned state.
+- The gallery stays an ordinary consumer of the bounded public API; no
+  gallery-specific navigation component enters the schema.
+- Maestro navigation suites plus Apple unit tests qualify the adaptive
+  shell; IME-safe text entry is preserved by keeping the native draft during
+  composition.

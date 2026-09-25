@@ -2,7 +2,15 @@
 
 Status: accepted design
 
-## Goal
+## Problem
+
+Developing and comparing LUI's Apple and Android experiences requires Xcode,
+an iOS Simulator or physical hardware — an expensive inner loop. A DOM-first
+simulator that projects the same retained application into platform-specific
+Web behavior and styling gives development and comparison an affordable
+target.
+
+## Decision
 
 Add a DOM-first Web Simulator platform to LUI that can render the same retained
 application as a high-fidelity iOS or Android experience without Xcode, an iOS
@@ -197,3 +205,35 @@ per-scenario fidelity budgets cover buttons, switches, Bottom Tabs, and Sheet on
 platforms. Remaining component interaction parity and expanded tablet/native
 comparison coverage stay explicit delivery gates rather than being inferred
 from DOM behavior tests.
+
+## Alternatives considered
+
+### Run UIKit/SwiftUI or Android binaries in the browser
+
+Rejected: the simulator does not claim to run platform binaries; it projects
+the same semantic component tree into platform-specific Web behavior and
+styling instead.
+
+### Canvas/WASM-rendered simulator
+
+Rejected: DOM-first keeps retained DOM semantics, native accessibility, and
+existing Web qualification infrastructure; a canvas renderer would forfeit
+those to gain pixel fidelity the comparison harness does not need.
+
+### Test only against real devices and simulators
+
+Rejected as the sole workflow: real devices remain the qualification
+authority, but requiring them for every inner-loop iteration is too slow and
+blocks development on non-Apple hosts.
+
+## Consequences
+
+- The Web Simulator is a development and comparison target, not a
+  qualification authority: real simulators and devices still decide
+  platform parity.
+- Typed platform profiles, device shells, and deterministic screenshot
+  baselines exist as implemented slices; remaining component parity and
+  tablet coverage are explicit delivery gates.
+- The same retained tree and Signal model drive simulator and native hosts,
+  so fidelity drift is attributable to projection code, not to divergent
+  application wiring.

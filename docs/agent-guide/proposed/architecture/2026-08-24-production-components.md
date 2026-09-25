@@ -2,7 +2,18 @@
 
 Status: active design and delivery plan
 
-## Outcome
+## Problem
+
+LUI needs a production-grade retained, incremental UI runtime that targets
+Web, Apple platforms, and Flutter from one typed protocol, plus a component
+showcase that exercises the complete public catalog without becoming a
+separate complex application. The decision under consideration is the public
+component vocabulary, the runtime and platform strategy, and the delivery
+shape of that catalog.
+
+## Proposal
+
+*Status: active design and delivery plan.*
 
 LUI becomes a production-grade retained, incremental UI runtime for Web,
 Apple platforms through one SwiftUI backend, and Flutter platforms. A small
@@ -15,13 +26,14 @@ supplies reactivity; LUI does not invent a second component vocabulary.
 Rich-text `span`, `code`, `markdown`, and charting (`chart`/`series`) are
 intentionally excluded. The pinned source, exclusions, and exact parity rules
 live in
-`001-production-components_vercel_native_matrix.md`. The source-level runtime,
-backend and Web research behind the implementation strategy lives in
-`001-production-components_vercel_native_architecture_report.md`.
+`docs/agent-guide/implemented/architecture/2026-08-24-vercel-native-ui-api-parity.md`.
+The source-level runtime, backend and Web research behind the implementation
+strategy lives in
+`docs/agent-guide/implemented/architecture/2026-08-24-vercel-native-architecture-research.md`.
 Base UI motion, keyboard, pointer, touch, and popup lifecycle contracts for the
 Web backend are pinned in
-`001-production-components_base-ui_report.md`; implementation must follow that
-report before visual tuning.
+`docs/agent-guide/implemented/architecture/2026-08-26-base-ui-web-interaction.md`;
+implementation must follow that report before visual tuning.
 
 ## Non-negotiable API boundary
 
@@ -1159,7 +1171,29 @@ macOS 26.4, arm64, and OCaml 5.5.0:
 | scroll background patch | 0.002 ms | 10 ms |
 | 10,000 sustained local mutations | 20.790 ms | 1,000 ms |
 
-## Definition of done
+## Alternatives considered
+
+### Adopt Vercel Native wholesale
+
+Rejected: only the public component vocabulary is pinned to Vercel Native.
+LG notation, the Signal graph, and the retained incremental runtime remain
+LUI-owned; the custom-renderer backend strategy is not copied (recorded in
+the architecture research document).
+
+### Invent a LUI-specific component vocabulary
+
+Rejected: a second vocabulary would invent names, defaults and behavior the
+reference already standardizes, and would break the parity gate.
+
+### Ship a third-party provider runtime on Web
+
+Rejected: provider experiments added another component lifecycle, theming
+contract and baseline bundle, and Base UI requires React. The LUI-native Web
+decision records the provider comparison and rejection in detail.
+
+## Acceptance criteria
+
+The goal is complete only when:
 
 The goal is complete only when:
 
@@ -1173,3 +1207,15 @@ The goal is complete only when:
 - production diagnostics and performance evidence are documented.
 
 Passing a demo or one backend test is not sufficient evidence of completion.
+
+## Risks
+
+- The pinned Vercel Native and Base UI revisions can drift from upstream;
+  parity claims stay honest only while the pins, reviewed matrix diffs, and
+  recorded measurements remain current.
+- Transient-state ownership differs per backend (focus, IME composition,
+  gestures, popup lifecycle); a divergence can pass compile-time checks and
+  only surface in platform qualification suites.
+- The delivery plan is sliced; a partially landed slice can leave the public
+  API or showcase inconsistent, so the acceptance criteria stay the gate for
+  calling the goal complete.

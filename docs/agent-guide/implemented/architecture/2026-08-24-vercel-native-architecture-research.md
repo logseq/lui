@@ -15,7 +15,18 @@ This report records how Vercel Native works below its public component API,
 with special attention to its two different Web paths. It complements the
 API parity matrix; it does not replace Vercel Native as the API authority.
 
-## Executive conclusion
+## Problem
+
+LUI pins its public component vocabulary to Vercel Native but has its own LG
+notation, Signal graph and retained incremental runtime. Before implementing
+the production catalog, LUI needs to know how Vercel Native actually works
+below the public API — engine, schema, reconciliation, display list and both
+Web paths — so it can decide which internals to adopt, which to adapt and
+which to reject.
+
+## Decision
+
+*Executive conclusion.*
 
 Vercel Native is not a platform-widget adapter comparable to React Native. Its
 main UI path is a custom Zig retained canvas engine:
@@ -331,7 +342,7 @@ The LUI showcase should borrow the source-of-truth relationship:
 - static fallback images for documentation, not as the application UI;
 - viewport resource budgets only for genuinely expensive embedded surfaces.
 
-## Adopt, adapt and reject
+## Adopt and adapt
 
 ### Adopt directly
 
@@ -359,17 +370,6 @@ The LUI showcase should borrow the source-of-truth relationship:
    updates in Flutter.
 5. Generate documentation and showcase metadata in a language-neutral artifact
    consumable by all LUI build stages.
-
-### Reject for the primary LUI architecture
-
-1. A canvas-only Web backend for the standard component catalog.
-2. Full view rebuild as the normal Signal update path.
-3. CPU RGBA copy and canvas blit for ordinary browser UI.
-4. One large fixed-capacity runtime per Web component or preview.
-5. Canvas-level accessibility in place of native DOM semantics.
-6. Maintaining a second markup/template language alongside LG.
-7. Copying Vercel Native's custom-renderer backend strategy merely because LUI
-   shares its public component API.
 
 ## Concrete LUI decisions
 
@@ -421,3 +421,39 @@ is updated.
 - [WASM TypeScript wrapper](https://github.com/vercel-labs/native/blob/main/docs/src/lib/live-preview.ts)
 - [Browser preview lifecycle](https://github.com/vercel-labs/native/blob/main/docs/src/components/component-preview-live.tsx)
 - [Docs preview generator](https://github.com/vercel-labs/native/blob/main/tools/docs_component_previews.zig)
+
+## Alternatives considered
+
+### Canvas-only or WASM-rendered Web backend
+
+Rejected for the standard component catalog: CPU RGBA copy and canvas blit for
+ordinary browser UI, one large fixed-capacity runtime per component or
+preview, and canvas-level accessibility in place of native DOM semantics all
+trade away the retained DOM advantages LUI keeps as its primary Web renderer.
+
+### Full view rebuild per update
+
+Rejected as the normal Signal update path: LUI keeps Signal-granular
+dependency tracking and retained incremental patches instead.
+
+### Second markup language alongside LG
+
+Rejected: maintaining a `.native`-style markup next to LG would create a
+second authoring surface with no additional expressiveness.
+
+### Copying the custom-renderer backend strategy
+
+Rejected merely because LUI shares the public component API: the Zig retained
+canvas engine is one backend strategy among several, and each LUI backend
+uses native layout and controls where that preserves the Vercel Native
+contract.
+
+## Consequences
+
+- The generated schema, structural identity, explicit state-reconciliation
+  rules, retained display-list revisions, deterministic headless rendering
+  and build-time capability elimination are adopted from Vercel Native.
+- LUI keeps its own retained DOM primary Web renderer, native layout and
+  controls per backend, and Signal-granular updates.
+- The pinned checkout stays the research reference; API parity remains
+  governed by the parity matrix document, not by this report.
