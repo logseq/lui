@@ -1220,6 +1220,7 @@ final class LUIFlutterBackend {
             placeholder: placeholder,
             foreground: foreground,
             autofocus: state.properties['autofocus'] as bool? ?? false,
+            focusNode: _requireHandle(id).focusNode,
             multiline: multiline,
             secure: kind == _NodeKind.secureField,
             search: kind == _NodeKind.searchField,
@@ -5734,6 +5735,7 @@ final class _LUITextInput extends StatefulWidget {
     required this.placeholder,
     required this.foreground,
     required this.autofocus,
+    required this.focusNode,
     required this.multiline,
     required this.secure,
     required this.search,
@@ -5749,6 +5751,7 @@ final class _LUITextInput extends StatefulWidget {
   final String? placeholder;
   final Color? foreground;
   final bool autofocus;
+  final FocusNode focusNode;
   final bool multiline;
   final bool secure;
   final bool search;
@@ -5774,6 +5777,9 @@ final class _LUITextInputState extends State<_LUITextInput> {
   @override
   void didUpdateWidget(_LUITextInput oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.autofocus != widget.autofocus) {
+      widget.focusNode.requestFocus();
+    }
     if (_controller.text != widget.text) {
       _controller.value = TextEditingValue(
         text: widget.text,
@@ -5788,6 +5794,7 @@ final class _LUITextInputState extends State<_LUITextInput> {
       controller: _controller,
       enabled: widget.enabled,
       autofocus: widget.autofocus,
+      focusNode: widget.focusNode,
       keyboardType: widget.multiline
           ? TextInputType.multiline
           : TextInputType.text,
