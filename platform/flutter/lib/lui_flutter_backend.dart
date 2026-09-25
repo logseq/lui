@@ -1640,6 +1640,48 @@ final class LUIFlutterBackend {
       );
     }
 
+    Widget menuTrigger() {
+      final menuID = state.children.cast<int?>().firstWhere(
+        (childID) =>
+            childID != null && _states[childID]?.kind == _NodeKind.dropdownMenu,
+        orElse: () => null,
+      );
+      final menuState = menuID == null ? null : _requireState(_states, menuID);
+      final icon = buttonIcon == null
+          ? null
+          : Icon(_iconData(buttonIcon), size: 16, color: foreground);
+      final label = icon == null
+          ? Text(text, style: TextStyle(color: foreground))
+          : text.isEmpty
+          ? icon
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              spacing: 4,
+              children: [
+                icon,
+                Text(text, style: TextStyle(color: foreground)),
+              ],
+            );
+      return MenuAnchor(
+        builder: (context, controller, child) => Semantics(
+          label: accessibilityLabel ?? text,
+          button: true,
+          child: TextButton(
+            onPressed: enabled
+                ? () =>
+                      controller.isOpen ? controller.close() : controller.open()
+                : null,
+            child: label,
+          ),
+        ),
+        menuChildren:
+            menuState?.children
+                .map((childID) => widget(node: childID))
+                .toList(growable: false) ??
+            const <Widget>[],
+      );
+    }
+
     Widget listItem() => _LUIListItem(
       enabled: enabled,
       focusable: state.properties['role'] != 'treeitem',
@@ -2345,6 +2387,7 @@ final class LUIFlutterBackend {
       _NodeKind.dialog ||
       _NodeKind.sheet => _LUIModalPresenter(backend: this, node: id),
       _NodeKind.menuItem => menuItem(),
+      _NodeKind.menuTrigger => menuTrigger(),
       _NodeKind.listItem => listItem(),
       _NodeKind.table => table(),
       _NodeKind.tree => tree(),
@@ -2956,9 +2999,16 @@ final class LUIFlutterBackend {
     if ((parent.kind == _NodeKind.dropdownMenu ||
             parent.kind == _NodeKind.contextMenu) &&
         child.kind != _NodeKind.menuItem &&
+        child.kind != _NodeKind.menuTrigger &&
         child.kind != _NodeKind.divider) {
       throw const LUIBackendException(
         'menu accepts only menu-item or separator children',
+      );
+    }
+    if (parent.kind == _NodeKind.menuTrigger &&
+        child.kind != _NodeKind.dropdownMenu) {
+      throw const LUIBackendException(
+        'menu-trigger accepts only a dropdown-menu child',
       );
     }
     if (parent.kind == _NodeKind.menuItem &&
@@ -3183,6 +3233,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.select ||
                 kind == _NodeKind.menuItem ||
+                kind == _NodeKind.menuTrigger ||
                 kind == _NodeKind.listItem ||
                 kind == _NodeKind.tableCell ||
                 kind == _NodeKind.avatar ||
@@ -3257,6 +3308,7 @@ final class LUIFlutterBackend {
                 _appIconNamePattern.hasMatch(value)) &&
             (_isButtonKind(kind) ||
                 kind == _NodeKind.menuItem ||
+                kind == _NodeKind.menuTrigger ||
                 kind == _NodeKind.listItem),
       'icon-placement' =>
         value is String &&
@@ -3367,6 +3419,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.select ||
                 kind == _NodeKind.dropdownMenu ||
                 kind == _NodeKind.menuItem ||
+                kind == _NodeKind.menuTrigger ||
                 kind == _NodeKind.listItem ||
                 kind == _NodeKind.tableCell ||
                 kind == _NodeKind.resizable ||
@@ -3442,6 +3495,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.alert ||
                 kind == _NodeKind.bubble ||
                 kind == _NodeKind.select ||
+                kind == _NodeKind.menuTrigger ||
                 _isTreeRowKind(kind)),
       'text-alignment' =>
         value is String &&
@@ -3884,6 +3938,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.stepper ||
       kind == _NodeKind.timeline ||
       kind == _NodeKind.inputGroup ||
+      kind == _NodeKind.menuTrigger ||
       kind == _NodeKind.inputGroupActions ||
       kind == _NodeKind.toast ||
       kind == _NodeKind.toolbar ||
@@ -3933,6 +3988,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.input ||
       kind == _NodeKind.searchField ||
       kind == _NodeKind.menuItem ||
+      kind == _NodeKind.menuTrigger ||
       kind == _NodeKind.spacer ||
       kind == _NodeKind.divider ||
       kind == _NodeKind.text;
@@ -4603,6 +4659,7 @@ class _LUIModalPresenterState extends State<_LUIModalPresenter> {
           ? content
           : _LUIThemeScope(tokens: {...inheritedTokens}, child: content);
     }
+
     return switch (state.kind) {
       _NodeKind.sheet => ModalBottomSheetRoute<void>(
         builder: surface,
