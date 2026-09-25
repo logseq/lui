@@ -120,16 +120,20 @@ struct LUISwiftUIBackendTests {
     @Test("intrinsic columns do not append layout-only spacing")
     func intrinsicColumnsDoNotAppendLayoutOnlySpacing() {
         #expect(!LUIColumnLayoutPolicy.showsTrailingSpacer(
-            main: nil
+            main: nil,
+            hasGrowingChild: false
         ))
         #expect(!LUIColumnLayoutPolicy.showsTrailingSpacer(
-            main: "start"
-        ))
-        #expect(!LUIColumnLayoutPolicy.showsTrailingSpacer(
-            main: nil
+            main: "start",
+            hasGrowingChild: false
         ))
         #expect(LUIColumnLayoutPolicy.showsTrailingSpacer(
-            main: "center"
+            main: "center",
+            hasGrowingChild: false
+        ))
+        #expect(!LUIColumnLayoutPolicy.showsTrailingSpacer(
+            main: "center",
+            hasGrowingChild: true
         ))
     }
 
@@ -1244,6 +1248,10 @@ struct LUISwiftUIBackendTests {
             hasGrowingChild: true
         ))
         #expect(LUIRowLayoutPolicy.showsTrailingSpacer(
+            main: "center",
+            hasGrowingChild: false
+        ))
+        #expect(!LUIRowLayoutPolicy.showsTrailingSpacer(
             main: "center",
             hasGrowingChild: true
         ))

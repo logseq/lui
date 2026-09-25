@@ -4560,7 +4560,7 @@ enum LUIRowLayoutPolicy {
         main: String?,
         hasGrowingChild: Bool
     ) -> Bool {
-        if main == "center" { return true }
+        if main == "center" { return !hasGrowingChild }
         return (main == nil || main == "start") && !hasGrowingChild
     }
 }
@@ -4583,8 +4583,8 @@ private struct LUIRowView: View {
 
     private var rowContent: some View {
         HStack(alignment: alignment, spacing: spacing) {
-            if model.property(.main)?.stringValue == "center" ||
-                model.property(.main)?.stringValue == "end" {
+            if (model.property(.main)?.stringValue == "center" ||
+                model.property(.main)?.stringValue == "end") && !hasGrowingChild {
                 Spacer(minLength: 0)
             }
             ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
@@ -4652,8 +4652,8 @@ enum LUIColumnLayoutPolicy {
         LUIVerticalContainerPolicy.stretchesCrossAxis(cross) || (grow ?? 0) > 0
     }
 
-    static func showsTrailingSpacer(main: String?) -> Bool {
-        main == "center"
+    static func showsTrailingSpacer(main: String?, hasGrowingChild: Bool) -> Bool {
+        main == "center" && !hasGrowingChild
     }
 }
 
@@ -4677,8 +4677,8 @@ private struct LUIColumnView: View {
 
     @ViewBuilder
     private var columnChildren: some View {
-        if model.property(.main)?.stringValue == "center" ||
-            model.property(.main)?.stringValue == "end" {
+        if (model.property(.main)?.stringValue == "center" ||
+            model.property(.main)?.stringValue == "end") && !hasGrowingChild {
             Spacer(minLength: 0)
         }
         ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
@@ -4701,9 +4701,20 @@ private struct LUIColumnView: View {
             }
         }
         if LUIColumnLayoutPolicy.showsTrailingSpacer(
-            main: model.property(.main)?.stringValue
+            main: model.property(.main)?.stringValue,
+            hasGrowingChild: hasGrowingChild
         ) {
             Spacer(minLength: 0)
+        }
+    }
+
+    private var hasGrowingChild: Bool {
+        model.children.contains { childID in
+            let child = backend.model(id: childID)
+            return LUIRowLayoutPolicy.isFlexibleChild(
+                kind: child?.kind,
+                grow: child?.property(.grow)?.doubleValue
+            )
         }
     }
 
