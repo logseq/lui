@@ -141,6 +141,14 @@ bool LuiQmlBackend::fail(const QString &message) {
   return false;
 }
 
+// An event arriving for a node the latest patch already removed is a
+// benign delivery race, not an error — drop it without touching
+// lastError (which surfaces as a fatal page).
+bool LuiQmlBackend::staleNode(qint64 node) {
+  qWarning("dropping event on removed node %lld", (long long)node);
+  return false;
+}
+
 bool LuiQmlBackend::applyJson(const QByteArray &source) {
   QJsonParseError parseError;
   const QJsonDocument doc =
@@ -297,7 +305,10 @@ bool LuiQmlBackend::applyJson(const QVariantMap &batch, QString *error) {
   QSet<qint64> dependents;
   for (auto it = m_handles.begin(); it != m_handles.end();) {
     if (!next.contains(it.key()) && !nextExtensions.contains(it.key())) {
-      delete it.value();
+      // Deferred deletion: QML may still hold this handle in bindings
+      // that re-evaluate during the notify phase below; freeing it here
+      // is a use-after-free inside the QV4 property getter.
+      it.value()->deleteLater();
       it = m_handles.erase(it);
     } else {
       ++it;
@@ -1124,7 +1135,7 @@ void LuiQmlBackend::emitEvent(qint64 node, const QString &name,
 
 bool LuiQmlBackend::performPress(qint64 node) {
   const NodeState *state = standardState(m_states, node);
-  if (state == nullptr) return fail(QStringLiteral("unknown node %1").arg(node));
+  if (state == nullptr) return staleNode(node);
   const bool treeItem = isTreeItem(state->properties);
   const bool pressable =
       state->kind == NodeKind::Button || state->kind == NodeKind::Select ||
@@ -1150,7 +1161,7 @@ bool LuiQmlBackend::performPress(qint64 node) {
 
 bool LuiQmlBackend::performLongPress(qint64 node) {
   const NodeState *state = standardState(m_states, node);
-  if (state == nullptr) return fail(QStringLiteral("unknown node %1").arg(node));
+  if (state == nullptr) return staleNode(node);
   if (!(buttonKind(state->kind) || state->kind == NodeKind::ListItem) ||
       isFalse(state->properties.value(QStringLiteral("enabled"))) ||
       !isTrue(state->properties.value(QStringLiteral("long-press-enabled")))) {
@@ -1163,7 +1174,7 @@ bool LuiQmlBackend::performLongPress(qint64 node) {
 
 bool LuiQmlBackend::performDoublePress(qint64 node) {
   const NodeState *state = standardState(m_states, node);
-  if (state == nullptr) return fail(QStringLiteral("unknown node %1").arg(node));
+  if (state == nullptr) return staleNode(node);
   if (state->kind != NodeKind::ListItem ||
       isFalse(state->properties.value(QStringLiteral("enabled"))) ||
       !isTrue(state->properties.value(QStringLiteral("double-press-enabled")))) {
@@ -1176,7 +1187,7 @@ bool LuiQmlBackend::performDoublePress(qint64 node) {
 
 bool LuiQmlBackend::performSubmit(qint64 node) {
   const NodeState *state = standardState(m_states, node);
-  if (state == nullptr) return fail(QStringLiteral("unknown node %1").arg(node));
+  if (state == nullptr) return staleNode(node);
   if (state->kind == NodeKind::ListItem) {
     if (isFalse(state->properties.value(QStringLiteral("enabled"))) ||
         !isTrue(state->properties.value(QStringLiteral("submit-enabled")))) {
@@ -1197,7 +1208,7 @@ bool LuiQmlBackend::performSubmit(qint64 node) {
 
 bool LuiQmlBackend::performDismiss(qint64 node) {
   const NodeState *state = standardState(m_states, node);
-  if (state == nullptr) return fail(QStringLiteral("unknown node %1").arg(node));
+  if (state == nullptr) return staleNode(node);
   if (state->kind != NodeKind::Select && state->kind != NodeKind::Combobox &&
       state->kind != NodeKind::DropdownMenu &&
       state->kind != NodeKind::Toast && !modalSurface(state->kind)) {
@@ -1209,7 +1220,7 @@ bool LuiQmlBackend::performDismiss(qint64 node) {
 
 bool LuiQmlBackend::performToggle(qint64 node, bool checked) {
   const NodeState *state = standardState(m_states, node);
-  if (state == nullptr) return fail(QStringLiteral("unknown node %1").arg(node));
+  if (state == nullptr) return staleNode(node);
   const bool treeItem = isTreeItem(state->properties);
   // Flutter emits toggleChanged directly from its checkbox/switch controls
   // (only gated on enabled); the other kinds route through this gate.
@@ -1236,7 +1247,7 @@ bool LuiQmlBackend::performToggle(qint64 node, bool checked) {
 
 bool LuiQmlBackend::performChange(qint64 node) {
   const NodeState *state = standardState(m_states, node);
-  if (state == nullptr) return fail(QStringLiteral("unknown node %1").arg(node));
+  if (state == nullptr) return staleNode(node);
   if ((state->kind != NodeKind::Radio && !isTreeItem(state->properties)) ||
       isFalse(state->properties.value(QStringLiteral("enabled")))) {
     return fail(QStringLiteral("node %1 is not an enabled change control")
@@ -1257,7 +1268,7 @@ bool LuiQmlBackend::performChange(qint64 node) {
 
 bool LuiQmlBackend::performValueChanged(qint64 node, double value) {
   const NodeState *state = standardState(m_states, node);
-  if (state == nullptr) return fail(QStringLiteral("unknown node %1").arg(node));
+  if (state == nullptr) return staleNode(node);
   if ((state->kind != NodeKind::Slider && state->kind != NodeKind::Split) ||
       isFalse(state->properties.value(QStringLiteral("enabled"))) ||
       !std::isfinite(value)) {
@@ -1271,7 +1282,7 @@ bool LuiQmlBackend::performValueChanged(qint64 node, double value) {
 
 bool LuiQmlBackend::performTextChanged(qint64 node, const QString &text) {
   const NodeState *state = standardState(m_states, node);
-  if (state == nullptr) return fail(QStringLiteral("unknown node %1").arg(node));
+  if (state == nullptr) return staleNode(node);
   if (!textControlKind(state->kind) ||
       isFalse(state->properties.value(QStringLiteral("enabled")))) {
     return fail(QStringLiteral("node %1 is not an enabled text control")
@@ -1284,7 +1295,7 @@ bool LuiQmlBackend::performTextChanged(qint64 node, const QString &text) {
 
 bool LuiQmlBackend::performAppear(qint64 node) {
   const NodeState *state = standardState(m_states, node);
-  if (state == nullptr) return fail(QStringLiteral("unknown node %1").arg(node));
+  if (state == nullptr) return staleNode(node);
   if (state->kind == NodeKind::Root ||
       !isTrue(state->properties.value(QStringLiteral("appear-enabled")))) {
     return false; // appear is best-effort; no error raised
@@ -1297,7 +1308,12 @@ bool LuiQmlBackend::performExtensionEvent(qint64 node, const QString &name,
                                           const QVariantMap &values) {
   const ExtensionState *state = extensionState(m_extensionStates, node);
   if (state == nullptr) {
-    return fail(QStringLiteral("unknown extension node %1").arg(node));
+    // A surface torn down by the latest patch can still deliver an
+    // in-flight emit against its old node id — drop it rather than
+    // surfacing a fatal error for a benign race.
+    qWarning("dropping event on removed extension node %lld",
+             (long long)node);
+    return false;
   }
   const ExtensionSpec *spec = m_extensions.registration(state->identifier);
   if (spec == nullptr) {
