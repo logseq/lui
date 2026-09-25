@@ -3920,8 +3920,11 @@ private struct LUIButtonView: View {
             .disabled(!model.isEnabled)
             .focused($focused)
             .onAppear { requestFocusIfNeeded() }
-            .onChange(of: model.requestsAutofocus) { _, requested in
-                if requested { focused = true }
+            // autofocus is an edge-triggered focus request: any transition
+            // counts, so repeated requests refocus even when the flag was
+            // already true while the control was unfocused.
+            .onChange(of: model.requestsAutofocus) { _, _ in
+                focused = true
             }
             .onChange(of: model.isSelected) { _, modelSelected in
                 if isToggle {
@@ -5210,8 +5213,11 @@ private struct LUITextControlView: View {
             .focused($focused)
             .onSubmit { try? backend.performSubmit(node: model.id) }
             .onAppear { if model.requestsAutofocus { focused = true } }
-            .onChange(of: model.requestsAutofocus) { _, requested in
-                if requested { focused = true }
+            // autofocus is an edge-triggered focus request: any transition
+            // is a request, so repeated requests refocus even when the flag
+            // was already true while the field was unfocused.
+            .onChange(of: model.requestsAutofocus) { _, _ in
+                focused = true
             }
             .onChange(of: model.text) { _, next in
                 draftState.reconcile(source: next, focused: focused)
