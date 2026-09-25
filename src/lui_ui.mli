@@ -87,6 +87,7 @@ val tooltip : ui_context -> int
 val toast : ui_context -> int
 val accordion : ui_context -> int
 val menu_item : ui_context -> int
+val menu_trigger : ui_context -> int
 val list_item : ui_context -> int
 val avatar : ui_context -> int
 val image : ui_context -> int

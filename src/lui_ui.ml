@@ -131,6 +131,7 @@ let tooltip context = create context Tooltip
 let toast context = create context Toast
 let accordion context = create context Accordion
 let menu_item context = create context MenuItem
+let menu_trigger context = create context MenuTrigger
 let list_item context = create context ListItem
 let avatar context = create context Avatar
 let image context = create context Image

@@ -53,6 +53,7 @@ namespace LUI
         DropdownMenu,
         ContextMenu,
         MenuItem,
+        MenuTrigger,
         ListItem,
         Avatar,
         Image,
@@ -208,6 +209,7 @@ namespace LUI
             { "dropdown-menu", LUINodeKind.DropdownMenu },
             { "context-menu", LUINodeKind.ContextMenu },
             { "menu-item", LUINodeKind.MenuItem },
+            { "menu-trigger", LUINodeKind.MenuTrigger },
             { "list-item", LUINodeKind.ListItem },
             { "avatar", LUINodeKind.Avatar },
             { "image", LUINodeKind.Image },
@@ -361,6 +363,7 @@ namespace LUI
             LUINodeKind.DropdownMenu => "dropdown-menu",
             LUINodeKind.ContextMenu => "context-menu",
             LUINodeKind.MenuItem => "menu-item",
+            LUINodeKind.MenuTrigger => "menu-trigger",
             LUINodeKind.ListItem => "list-item",
             LUINodeKind.Avatar => "avatar",
             LUINodeKind.Image => "image",
@@ -420,6 +423,7 @@ namespace LUI
             LUINodeKind.DropdownMenu or
             LUINodeKind.ContextMenu or
             LUINodeKind.MenuItem or
+            LUINodeKind.MenuTrigger or
             LUINodeKind.ListItem or
             LUINodeKind.Stepper or
             LUINodeKind.Timeline or
@@ -539,6 +543,7 @@ namespace LUI
             { LUINodeKind.Toolbar, Set(LUIProperty.OrientationValue, LUIProperty.AccessibilityLabel, LUIProperty.Gap, LUIProperty.StyleClass, LUIProperty.PlacementValue) },
             { LUINodeKind.BottomTabs, Set(LUIProperty.AccessibilityLabel, LUIProperty.StyleClass, LUIProperty.GrowValue, LUIProperty.WidthValue, LUIProperty.HeightValue, LUIProperty.MinWidth, LUIProperty.MaxWidth, LUIProperty.MinHeight, LUIProperty.MaxHeight) },
             { LUINodeKind.BottomTab, Set(LUIProperty.TitleValue, LUIProperty.InlineIconName, LUIProperty.Selected, LUIProperty.Enabled, LUIProperty.PressEnabled) },
+            { LUINodeKind.MenuTrigger, Set(LUIProperty.TextValue, LUIProperty.InlineIconName, LUIProperty.AccessibilityLabel, LUIProperty.Enabled, LUIProperty.ForegroundValue, LUIProperty.StyleClass) },
         };
 
         public static readonly IReadOnlyDictionary<LUINodeKind, IReadOnlySet<LUIProperty>> ExtraMatrix =

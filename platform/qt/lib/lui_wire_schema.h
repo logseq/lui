@@ -51,6 +51,7 @@ enum class NodeKind {
   DropdownMenu,
   ContextMenu,
   MenuItem,
+  MenuTrigger,
   ListItem,
   Avatar,
   Image,
@@ -202,6 +203,7 @@ inline const char *nodeKindWireName(NodeKind kind) {
     case NodeKind::DropdownMenu: return "dropdown-menu";
     case NodeKind::ContextMenu: return "context-menu";
     case NodeKind::MenuItem: return "menu-item";
+    case NodeKind::MenuTrigger: return "menu-trigger";
     case NodeKind::ListItem: return "list-item";
     case NodeKind::Avatar: return "avatar";
     case NodeKind::Image: return "image";
@@ -278,6 +280,7 @@ inline bool decodeNodeKind(const char *name, NodeKind *kind) {
   if (std::strcmp(name, "dropdown-menu") == 0) { *kind = NodeKind::DropdownMenu; return true; }
   if (std::strcmp(name, "context-menu") == 0) { *kind = NodeKind::ContextMenu; return true; }
   if (std::strcmp(name, "menu-item") == 0) { *kind = NodeKind::MenuItem; return true; }
+  if (std::strcmp(name, "menu-trigger") == 0) { *kind = NodeKind::MenuTrigger; return true; }
   if (std::strcmp(name, "list-item") == 0) { *kind = NodeKind::ListItem; return true; }
   if (std::strcmp(name, "avatar") == 0) { *kind = NodeKind::Avatar; return true; }
   if (std::strcmp(name, "image") == 0) { *kind = NodeKind::Image; return true; }
@@ -336,6 +339,7 @@ inline bool containerNodeKind(NodeKind kind) {
     case NodeKind::DropdownMenu:
     case NodeKind::ContextMenu:
     case NodeKind::MenuItem:
+    case NodeKind::MenuTrigger:
     case NodeKind::ListItem:
     case NodeKind::Stepper:
     case NodeKind::Timeline:
@@ -408,6 +412,7 @@ inline const char *nodeKindComponentName(NodeKind kind) {
     case NodeKind::DropdownMenu: return "LuiDropdownMenu.qml";
     case NodeKind::ContextMenu: return "LuiContextMenu.qml";
     case NodeKind::MenuItem: return "LuiMenuItem.qml";
+    case NodeKind::MenuTrigger: return "LuiMenuTrigger.qml";
     case NodeKind::ListItem: return "LuiListItem.qml";
     case NodeKind::Avatar: return "LuiAvatar.qml";
     case NodeKind::Image: return "LuiImage.qml";

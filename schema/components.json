@@ -114,6 +114,10 @@
       "status": "supported"
     },
     {
+      "name": "menu-trigger",
+      "status": "supported"
+    },
+    {
       "name": "accordion",
       "status": "supported"
     },
@@ -604,6 +608,13 @@
       "wire": "menu-item",
       "dart": "menuItem",
       "swift": "menuItem",
+      "container": true
+    },
+    {
+      "lg": "MenuTrigger",
+      "wire": "menu-trigger",
+      "dart": "menuTrigger",
+      "swift": "menuTrigger",
       "container": true
     },
     {
@@ -1290,6 +1301,14 @@
       "selected",
       "enabled",
       "press-enabled"
+    ],
+    "menu-trigger": [
+      "text",
+      "icon",
+      "accessibility-label",
+      "enabled",
+      "foreground",
+      "style-class"
     ]
   },
   "kindExtraProperties": {

@@ -2049,15 +2049,40 @@ val context_menu :
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?disabled:bool -> ?disabled_signal:bool Signal.signal -> t list -> t
+val menu_trigger :
+  ?key:string ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground:string ->
+  ?foreground_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?label:string ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal -> t list -> t
+val menu :
+  ?key:string ->
+  ?accessibility_identifier:string ->
+  ?foreground:string ->
+  ?style_class:string ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?label:string ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
 val submenu :
   ?key:string ->
   ?text:string ->
   ?icon:icon ->
-  ?role:role ->
-  ?variant:variant ->
-  ?selected:bool ->
-  ?checked:bool ->
+  ?label:string ->
   ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
   ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
 val dialog :
   ?key:string ->

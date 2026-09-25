@@ -612,13 +612,11 @@ let menu_item_section model_source send : t =
     [ dropdown_menu ~min_width:200
         [ menu_item ~text:"Rename" ~icon:`edit
             ~on_press:(press send (Model.PerformContextAction "Rename")) []
-        ; menu_item ~text:"Share"
-            [ dropdown_menu ~anchor:`right ~anchor_offset:6.0
-                [ menu_item ~text:"Copy link"
-                    ~on_press:(press send (Model.PerformContextAction "Rename")) []
-                ; menu_item ~text:"Export"
-                    ~on_press:(press send (Model.PerformContextAction "Archive")) []
-                ]
+        ; submenu ~text:"Share"
+            [ menu_item ~text:"Copy link"
+                ~on_press:(press send (Model.PerformContextAction "Rename")) []
+            ; menu_item ~text:"Export"
+                ~on_press:(press send (Model.PerformContextAction "Archive")) []
             ]
         ; menu_item ~text:"Archive" ~disabled:(reactive disabled)
             ~on_press:(press send (Model.PerformContextAction "Archive")) []
@@ -942,16 +940,14 @@ let environment_menu model_source send : t =
     ; menu_item ~text:"Staging" ~selected:(reactive staging_selected)
         ~disabled:(reactive disabled)
         ~on_press:(press send (Model.SelectEnvironment "Staging")) []
-    ; menu_item ~text:"More environments" ~disabled:(reactive disabled)
-        [ dropdown_menu ~anchor:`right ~anchor_alignment:`start
-            ~anchor_offset:4.0 ~min_width:180 ~on_dismiss:dismiss
-            [ menu_item ~text:"Production region"
-                ~selected:(reactive production_selected)
-                ~on_press:(press send (Model.SelectEnvironment "Production")) []
-            ; menu_item ~text:"Staging region"
-                ~selected:(reactive staging_selected)
-                ~on_press:(press send (Model.SelectEnvironment "Staging")) []
-            ]
+    ; submenu ~text:"More environments" ~disabled:(reactive disabled)
+        ~on_dismiss:dismiss
+        [ menu_item ~text:"Production region"
+            ~selected:(reactive production_selected)
+            ~on_press:(press send (Model.SelectEnvironment "Production")) []
+        ; menu_item ~text:"Staging region"
+            ~selected:(reactive staging_selected)
+            ~on_press:(press send (Model.SelectEnvironment "Staging")) []
         ]
     ; menu_item ~text:"Development" ~disabled:true []
     ]
