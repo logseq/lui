@@ -469,12 +469,13 @@ let bottom_tabs ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizont
   mount_children context node children;
   node
 
-let bottom_tab ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?title ?icon ?selected ?selected_signal ?enabled ?enabled_signal ?on_press (children : t list) : bottom_tab_el =
+let bottom_tab ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?title ?icon ?icon_signal ?selected ?selected_signal ?enabled ?enabled_signal ?on_press (children : t list) : bottom_tab_el =
  fun context parent ->
   let node = Lui_ui.bottom_tab context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
   Option.iter (Lui_ui.string_property context node TitleValue) title;
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
   Option.iter (Lui_ui.bool_property context node Selected) selected;
   Option.iter (Lui_ui.bool_property_signal context node Selected) selected_signal;
   Option.iter (Lui_ui.bool_property context node Enabled) enabled;
@@ -722,7 +723,7 @@ let label ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pa
   
   node
 
-let button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?variant ?size ?icon ?icon_placement ?label ?text_alignment ?selected ?autofocus ?disabled ?disabled_signal ?on_press ?on_long_press (children : t list) : t =
+let button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?variant ?size ?icon ?icon_signal ?icon_placement ?label ?text_alignment ?selected ?autofocus ?disabled ?disabled_signal ?on_press ?on_long_press (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.button context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
@@ -731,6 +732,7 @@ let button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?p
   Option.iter (Lui_ui.string_property context node VariantValue) (Option.map variant_value variant);
   Option.iter (Lui_ui.string_property context node SizeValue) (Option.map control_size_value size);
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
   Option.iter (Lui_ui.string_property context node IconPlacementValue) (Option.map icon_placement_value icon_placement);
   Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
   Option.iter (Lui_ui.string_property context node TextAlignment) (Option.map text_alignment_value text_alignment);
@@ -752,7 +754,7 @@ let button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?p
   mount_children context node children;
   node
 
-let toggle_button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?variant ?size ?icon ?icon_placement ?label ?text_alignment ?selected ?checked ?checked_signal ?autofocus ?disabled ?disabled_signal ?on_press ?on_toggle ?on_long_press (children : t list) : t =
+let toggle_button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?variant ?size ?icon ?icon_signal ?icon_placement ?label ?text_alignment ?selected ?checked ?checked_signal ?autofocus ?disabled ?disabled_signal ?on_press ?on_toggle ?on_long_press (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.toggle_button context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
@@ -761,6 +763,7 @@ let toggle_button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizo
   Option.iter (Lui_ui.string_property context node VariantValue) (Option.map variant_value variant);
   Option.iter (Lui_ui.string_property context node SizeValue) (Option.map control_size_value size);
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
   Option.iter (Lui_ui.string_property context node IconPlacementValue) (Option.map icon_placement_value icon_placement);
   Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
   Option.iter (Lui_ui.string_property context node TextAlignment) (Option.map text_alignment_value text_alignment);
@@ -1274,13 +1277,14 @@ let accordion ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal
   mount_children context node children;
   node
 
-let menu_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?icon ?role ?variant ?size ?tree_level ?expanded ?selected ?checked ?selected_signal ?checked_signal ?disabled ?disabled_signal ?on_press ?on_input ?on_submit ?on_dismiss (children : t list) : t =
+let menu_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?icon ?icon_signal ?role ?variant ?size ?tree_level ?expanded ?selected ?checked ?selected_signal ?checked_signal ?disabled ?disabled_signal ?on_press ?on_input ?on_submit ?on_dismiss (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.menu_item context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
   Option.iter (Lui_ui.string_property context node TextValue) text;
   Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
   Option.iter (Lui_ui.string_property context node RoleValue) (Option.map role_value role);
   Option.iter (Lui_ui.string_property context node VariantValue) (Option.map variant_value variant);
   Option.iter (Lui_ui.string_property context node SizeValue) (Option.map control_size_value size);
@@ -1452,7 +1456,7 @@ let timeline ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal 
   mount_children context node children;
   node
 
-let timeline_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?title ?title_signal ?description ?meta ?indicator ?icon ?variant ?connector ?selected ?on_press (_children : nothing list) : timeline_item_el =
+let timeline_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?title ?title_signal ?description ?meta ?indicator ?icon ?icon_signal ?variant ?connector ?selected ?on_press (_children : nothing list) : timeline_item_el =
  fun context parent ->
   let node = Lui_ui.timeline_item context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
@@ -1462,6 +1466,7 @@ let timeline_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizo
   Option.iter (Lui_ui.string_property context node MetaValue) meta;
   Option.iter (Lui_ui.string_property context node IndicatorValue) indicator;
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
   Option.iter (Lui_ui.string_property context node VariantValue) (Option.map variant_value variant);
   Option.iter (Lui_ui.bool_property context node Connector) connector;
   Option.iter (Lui_ui.bool_property context node Selected) selected;

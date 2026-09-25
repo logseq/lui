@@ -661,6 +661,7 @@ val bottom_tab :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?title:string ->
   ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
   ?selected:bool ->
   ?selected_signal:bool Signal.signal ->
   ?enabled:bool ->
@@ -1290,6 +1291,7 @@ val button :
   ?variant:variant ->
   ?size:control_size ->
   ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
   ?icon_placement:icon_placement ->
   ?label:string ->
   ?text_alignment:text_alignment ->
@@ -1333,6 +1335,7 @@ val toggle_button :
   ?variant:variant ->
   ?size:control_size ->
   ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
   ?icon_placement:icon_placement ->
   ?label:string ->
   ?text_alignment:text_alignment ->
@@ -2286,6 +2289,7 @@ val menu_item :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
   ?role:role ->
   ?variant:variant ->
   ?size:control_size ->
@@ -2575,6 +2579,7 @@ val timeline_item :
   ?meta:string ->
   ?indicator:string ->
   ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
   ?variant:variant ->
   ?connector:bool ->
   ?selected:bool -> ?on_press:(Lui_protocol.event -> unit) -> nothing list -> timeline_item_el

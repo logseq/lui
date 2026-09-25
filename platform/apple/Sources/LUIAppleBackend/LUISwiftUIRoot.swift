@@ -30,7 +30,7 @@ final class LUIModalPresentationStore {
     private var pendingDismissalID: Int?
 
     func synchronize(with item: LUIModalPresentation?) {
-        if item?.id == pendingDismissalID { return }
+        if let pendingDismissalID, item?.id == pendingDismissalID { return }
         pendingDismissalID = nil
         guard self.item?.id != item?.id else { return }
         if item == nil {
@@ -1124,7 +1124,7 @@ private struct LUINativeMenuActions: View {
                 ))
         } icon: {
             HStack(spacing: 4) {
-                if item.isSelected {
+                if item.isSelected || item.isChecked {
                     Image(systemName: "checkmark")
                 }
                 if !item.buttonIconName.isEmpty {
@@ -3341,7 +3341,7 @@ private struct LUIMenuItemView: View {
             if expands {
                 Spacer(minLength: LUIDropdownMenuLayoutPolicy.trailingSpacing)
             }
-            if model.isSelected {
+            if model.isSelected || model.isChecked {
                 #if os(iOS)
                 Image(systemName: "checkmark")
                     .foregroundStyle(Color.accentColor)
