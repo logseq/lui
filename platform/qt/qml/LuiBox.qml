@@ -33,8 +33,11 @@ Rectangle {
         }
         spacing: Style.num(props, "gap", 0)
 
-        Item { Layout.fillHeight: true; visible: Style.needsLeadFiller(props) }
+        readonly property bool _anyFillH: Style.anyFillMain(boxRep, false)
+
+        Item { Layout.fillHeight: true; visible: Style.needsLeadFiller(props) && !_anyFillH }
         Repeater {
+            id: boxRep
             model: box.node ? box.node.children : []
             delegate: LuiNodeView {
                 required property var modelData
@@ -47,6 +50,6 @@ Rectangle {
                               contentFillsLayout
             }
         }
-        Item { Layout.fillHeight: true; visible: Style.needsTrailFiller(props) }
+        Item { Layout.fillHeight: true; visible: Style.needsTrailFiller(props) && !_anyFillH }
     }
 }

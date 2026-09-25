@@ -23,8 +23,11 @@ Frame {
         id: col
         spacing: Style.num(props, "gap", 8)
 
-        Item { Layout.fillHeight: true; visible: Style.needsLeadFiller(props) }
+        readonly property bool _anyFillH: Style.anyFillMain(cardRep, false)
+
+        Item { Layout.fillHeight: true; visible: Style.needsLeadFiller(props) && !_anyFillH }
         Repeater {
+            id: cardRep
             model: card.node ? card.node.children : []
             delegate: LuiNodeView {
                 required property var modelData
@@ -37,6 +40,6 @@ Frame {
                               contentFillsLayout
             }
         }
-        Item { Layout.fillHeight: true; visible: Style.needsTrailFiller(props) }
+        Item { Layout.fillHeight: true; visible: Style.needsTrailFiller(props) && !_anyFillH }
     }
 }

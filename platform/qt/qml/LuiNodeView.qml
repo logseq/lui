@@ -48,6 +48,12 @@ Item {
         node !== null && node.extension &&
         content.item !== null && content.item.fillsLayout === true
 
+    // Mirrors of the attached Layout fill flags — Layout.* cannot be read
+    // through an object reference (item.Layout is undefined outside the
+    // item), so parent containers inspect these instead.
+    readonly property bool layoutFillWidth: Layout.fillWidth
+    readonly property bool layoutFillHeight: Layout.fillHeight
+
     property real _w: Number(prop("width", 0))
     property real _h: Number(prop("height", 0))
 

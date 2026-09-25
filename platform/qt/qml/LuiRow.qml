@@ -10,8 +10,11 @@ RowLayout {
 
     spacing: Style.num(props, "gap", 0)
 
-    Item { Layout.fillWidth: true; visible: Style.needsLeadFiller(props) }
+    readonly property bool _anyFillW: Style.anyFillMain(rowRep, true)
+
+    Item { Layout.fillWidth: true; visible: Style.needsLeadFiller(props) && !_anyFillW }
     Repeater {
+        id: rowRep
         model: node ? node.children : []
         delegate: LuiNodeView {
             required property var modelData
@@ -24,5 +27,5 @@ RowLayout {
                               contentFillsLayout
         }
     }
-    Item { Layout.fillWidth: true; visible: Style.needsTrailFiller(props) }
+    Item { Layout.fillWidth: true; visible: Style.needsTrailFiller(props) && !_anyFillW }
 }

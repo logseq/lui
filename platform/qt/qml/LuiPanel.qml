@@ -14,8 +14,11 @@ Frame {
     contentItem: ColumnLayout {
         spacing: Style.num(panel.props, "gap", 0)
 
-        Item { Layout.fillHeight: true; visible: Style.needsLeadFiller(panel.props) }
+        readonly property bool _anyFillH: Style.anyFillMain(panelRep, false)
+
+        Item { Layout.fillHeight: true; visible: Style.needsLeadFiller(panel.props) && !_anyFillH }
         Repeater {
+            id: panelRep
             model: panel.node ? panel.node.children : []
             delegate: LuiNodeView {
                 required property var modelData
@@ -28,6 +31,6 @@ Frame {
                               contentFillsLayout
             }
         }
-        Item { Layout.fillHeight: true; visible: Style.needsTrailFiller(panel.props) }
+        Item { Layout.fillHeight: true; visible: Style.needsTrailFiller(panel.props) && !_anyFillH }
     }
 }

@@ -103,6 +103,19 @@ function needsTrailFiller(props) {
     return a === "center" || a === "start"
 }
 
+// A lead/trail filler only packs non-filling children toward the main
+// axis. Qt divides leftover space equally across every filling cell, so
+// once a real child fills, the filler must drop out or it steals half the
+// slack. Returns true when any delegate fills the main axis.
+function anyFillMain(repeater, horizontal) {
+    for (let i = 0; i < repeater.count; ++i) {
+        const d = repeater.itemAt(i)
+        if (d && (horizontal ? d.layoutFillWidth : d.layoutFillHeight) === true)
+            return true
+    }
+    return false
+}
+
 function stretchCross(props) {
     return !has(props, "cross") || props["cross"] === "stretch"
 }
