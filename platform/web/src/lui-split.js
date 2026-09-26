@@ -448,31 +448,33 @@ const LUISplit = (() => {
             if (p.properties.focused) el.dataset.focused = 'true';
             else delete el.dataset.focused;
           });
+          setTimeout(focusModelPane, 0);
           return;
         }
         redraw();
       },
     };
 
+    const focusModelPane = () => {
+      // Model focus is authoritative — point real DOM focus at it so
+      // navigate/close chains keep working after redraws.
+      const pane = allPanes(tree).find((p) => p.properties.focused);
+      const el = pane && paneEls.get(pane.id);
+      if (el && typeof document !== 'undefined'
+          && document.activeElement !== el) {
+        el.focus();
+      }
+    };
+
     function redraw() {
-      // Structural redraw replaces the DOM; carry focus to the rebuilt
-      // element so keyboard navigation survives a close/split.
-      const focusedPaneId =
-        typeof document !== 'undefined'
-          && document.activeElement
-          && document.activeElement.dataset
-          ? document.activeElement.dataset.paneId
-          : null;
       byId.clear();
       paneEls.clear();
       intern(tree);
       root.replaceChildren(render(tree.id, host));
-      if (focusedPaneId) {
-        const pane = allPanes(tree).find(
-          (p) => p.properties['pane-id'] === focusedPaneId);
-        const el = pane && paneEls.get(pane.id);
-        if (el) el.focus();
-      }
+      // Defer past the in-flight event: replacing the focused element
+      // mid-handler makes the browser drop focus to <body> afterwards.
+      const refocus = () => setTimeout(focusModelPane, 0);
+      if (typeof setTimeout !== 'undefined') refocus();
     }
     redraw();
 
