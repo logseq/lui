@@ -424,7 +424,7 @@ const LUISplit = (() => {
       // Accepts node ids (normal render path) or child objects (demo trees
       // keep children inline).
       extState: (n) => (typeof n === 'object' ? n : byId.get(n)),
-      registerPane: (node, el) => paneEls.set(node.id, el),
+      registerPane: (node, el) => paneEls.set(node, el),
       render: (id) => {
         const node = byId.get(id) || id;
         if (node.identifier) return render(node.id, host);

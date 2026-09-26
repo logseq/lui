@@ -638,8 +638,10 @@ private struct LUISplitPaneKeys: ViewModifier {
             // ⌘⌥D: Option rewrites the typed character ('∂' on US layouts),
             // so inspect the press rather than matching a KeyEquivalent.
             .onKeyPress(phases: .down) { press in
+                // ⌥D types '∂' and ⇧⌥D types 'Î' on US layouts; ⌘⌥D itself is
+                // eaten by macOS Dock autohide before it reaches the app.
                 let chars = press.characters.lowercased()
-                guard chars == "d" || chars == "∂",
+                guard chars == "d" || chars == "∂" || chars == "î",
                       press.modifiers.isSuperset(of: [.command, .option])
                 else { return .ignored }
                 return split(
