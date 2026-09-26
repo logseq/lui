@@ -1413,7 +1413,7 @@ let combine_section model_source send : t =
               ~foreground:"border" ~label:"Voice input"
               ~accessibility_identifier:"button.mic" ~on_press:noop []
           ]
-        ~send_disabled:(field_value_ >|= fun v -> v = "")
+        ~send_disabled_signal:(field_value_ >|= fun v -> v = "")
         ~on_send:(press send (Model.SetFieldValue "")) ()
     ; composer_collapsed ~label:"Capture" ~icon:`plus ~on_press:noop ()
     ; suggestion_list ~source:suggestions ~item_key:(fun s -> s)

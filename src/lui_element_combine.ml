@@ -111,7 +111,7 @@ let composer
       ?key
       ?accessibility_identifier
       ?attachments
-      ?attachments_visible
+      ?attachments_visible_signal
       ?(actions = [])
       ~placeholder
       ?label
@@ -120,7 +120,7 @@ let composer
       ?(autofocus = false)
       ?autofocus_signal
       ?submit_on_enter
-      ?send_disabled
+      ?send_disabled_signal
       ?on_input
       ?on_submit
       ?on_send
@@ -137,7 +137,7 @@ let composer
        let strip =
          scroll ~orientation:`horizontal ~height:140 [ row ~gap:8 [ content ] ]
        in
-       [ (match attachments_visible with
+       [ (match attachments_visible_signal with
           | None -> strip
           | Some test -> if_ ~test strip)
        ]
@@ -158,7 +158,7 @@ let composer
    let send_button =
      match on_send with
      | None -> []
-     | Some on_send -> [ composer_send_button context send_disabled on_send ]
+     | Some on_send -> [ composer_send_button context send_disabled_signal on_send ]
    in
    let capsule =
      column
