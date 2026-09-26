@@ -146,6 +146,7 @@ namespace LUI
                     switch (kind)
                     {
                         case LUINodeKind.Button:
+                        case LUINodeKind.Column:
                         case LUINodeKind.Radio:
                         case LUINodeKind.Select:
                         case LUINodeKind.Combobox:
@@ -605,6 +606,7 @@ namespace LUI
                         kind == LUINodeKind.Drawer || TreeRowKind(kind);
                 case LUIProperty.PressEnabled:
                     return kind == LUINodeKind.Text ||
+                        kind == LUINodeKind.Column ||
                         kind == LUINodeKind.Radio ||
                         kind == LUINodeKind.Select ||
                         kind == LUINodeKind.Combobox ||

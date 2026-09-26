@@ -1347,6 +1347,9 @@ namespace LUI
                 (state.Kind == LUINodeKind.TableCell &&
                  LUISchema.TrueProperty(
                      state.Properties, LUIProperty.PressEnabled)) ||
+                (state.Kind == LUINodeKind.Column &&
+                 LUISchema.TrueProperty(
+                     state.Properties, LUIProperty.PressEnabled)) ||
                 (state.Kind == LUINodeKind.Text &&
                  LUISchema.TrueProperty(
                      state.Properties, LUIProperty.PressEnabled));

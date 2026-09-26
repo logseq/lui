@@ -584,6 +584,7 @@ public final class LUIAppleBackend {
         guard allowsControlInteraction(node: node) else { return }
         guard let model = models[node],
               model.kind == .button || model.kind == .toggleButton ||
+                (model.kind == .column && model.supportsPress) ||
                 (model.kind == .text && model.supportsPress) ||
                 (model.kind == .bottomTab && model.supportsPress) ||
                 (model.kind == .tableCell && model.supportsPress) ||

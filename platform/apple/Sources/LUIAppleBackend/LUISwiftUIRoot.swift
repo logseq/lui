@@ -3949,8 +3949,11 @@ private struct LUIButtonView: View {
             .disabled(!model.isEnabled)
             .focused($focused)
             .onAppear { requestFocusIfNeeded() }
-            .onChange(of: model.requestsAutofocus) { _, requested in
-                if requested { focused = true }
+            // autofocus is an edge-triggered focus request: any transition
+            // counts, so repeated requests refocus even when the flag was
+            // already true while the control was unfocused.
+            .onChange(of: model.requestsAutofocus) { _, _ in
+                focused = true
             }
             .onChange(of: model.isSelected) { _, modelSelected in
                 if isToggle {
@@ -4754,6 +4757,7 @@ private struct LUIColumnView: View {
                 ? .infinity : nil,
             alignment: frameAlignment
         )
+        .modifier(LUIColumnPressModifier(model: model, backend: backend))
     }
 
     @ViewBuilder
@@ -4822,6 +4826,24 @@ private struct LUIColumnView: View {
         case "center": .top
         case "end": .topTrailing
         default: .topLeading
+        }
+    }
+}
+
+private struct LUIColumnPressModifier: ViewModifier {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    func body(content: Content) -> some View {
+        if model.supportsPress {
+            content
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard model.isEnabled else { return }
+                    try? backend.performPress(node: model.id)
+                }
+        } else {
+            content
         }
     }
 }
@@ -5210,7 +5232,7 @@ private struct LUITextControlView: View {
         Group {
             if grouped {
                 field.textFieldStyle(.plain)
-            } else if model.kind == .searchField {
+            } else if model.kind == .searchField || model.kind == .textarea {
                 field
             } else {
                 field.textFieldStyle(.roundedBorder)
@@ -5220,8 +5242,11 @@ private struct LUITextControlView: View {
             .focused($focused)
             .onSubmit { try? backend.performSubmit(node: model.id) }
             .onAppear { if model.requestsAutofocus { focused = true } }
-            .onChange(of: model.requestsAutofocus) { _, requested in
-                if requested { focused = true }
+            // autofocus is an edge-triggered focus request: any transition
+            // is a request, so repeated requests refocus even when the flag
+            // was already true while the field was unfocused.
+            .onChange(of: model.requestsAutofocus) { _, _ in
+                focused = true
             }
             .onChange(of: model.text) { _, next in
                 draftState.reconcile(source: next, focused: focused)

@@ -1176,6 +1176,8 @@ bool LuiQmlBackend::performPress(qint64 node) {
        isTrue(state->properties.value(QStringLiteral("press-enabled")))) ||
       (state->kind == NodeKind::TableCell &&
        isTrue(state->properties.value(QStringLiteral("press-enabled")))) ||
+      (state->kind == NodeKind::Column &&
+       isTrue(state->properties.value(QStringLiteral("press-enabled")))) ||
       (state->kind == NodeKind::Text &&
        isTrue(state->properties.value(QStringLiteral("press-enabled"))));
   if (!pressable || isFalse(state->properties.value(QStringLiteral("enabled")))) {

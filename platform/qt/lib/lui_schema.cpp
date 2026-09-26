@@ -243,8 +243,8 @@ bool childKindSupported(NodeKind parent, NodeKind child) {
 bool eventSupported(NodeKind kind, Event event) {
   switch (event) {
   case Event::Press:
-    return oneOf(kind, {NodeKind::Button, NodeKind::Radio, NodeKind::Select,
-                        NodeKind::Combobox, NodeKind::MenuItem,
+    return oneOf(kind, {NodeKind::Button, NodeKind::Column, NodeKind::Radio,
+                        NodeKind::Select, NodeKind::Combobox, NodeKind::MenuItem,
                         NodeKind::ListItem, NodeKind::Text,
                         NodeKind::TableCell, NodeKind::TimelineItem,
                         NodeKind::BottomTab});
@@ -508,8 +508,8 @@ bool commonPropertySupported(NodeKind kind, Property property) {
     return kind == NodeKind::Radio || kind == NodeKind::Drawer ||
            treeRowKind(kind);
   case Property::PressEnabled:
-    return oneOf(kind, {NodeKind::Text, NodeKind::Radio, NodeKind::Select,
-                        NodeKind::Combobox, NodeKind::MenuItem,
+    return oneOf(kind, {NodeKind::Text, NodeKind::Column, NodeKind::Radio,
+                        NodeKind::Select, NodeKind::Combobox, NodeKind::MenuItem,
                         NodeKind::ListItem, NodeKind::TableCell,
                         NodeKind::BottomTab}) ||
            treeRowKind(kind);

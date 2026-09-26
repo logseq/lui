@@ -3692,6 +3692,60 @@ void main() {
     );
     expect(backend.generation, 1);
   });
+  testWidgets('dropping a sheet node refreshes the semantics tree', (
+    tester,
+  ) async {
+    final backend = LUIFlutterBackend()
+      ..applyJson('''
+      {"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"sheet"},
+        {"op":"create-node","id":3,"kind":"text"},
+        {"op":"set-prop","id":2,"property":"text","value":"Add sync graph"},
+        {"op":"set-prop","id":2,"property":"accessibility-identifier","value":"sheet.graph-create"},
+        {"op":"set-prop","id":3,"property":"text","value":"Sheet content"},
+        {"op":"set-prop","id":3,"property":"accessibility-identifier","value":"text.in-sheet"},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"insert-child","parent":2,"child":3,"index":0}
+      ]}
+      ''');
+
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
+    );
+    await tester.pumpAndSettle();
+    final semanticsHandle = tester.ensureSemantics();
+    await tester.pump();
+
+    expect(find.byType(BottomSheet), findsOneWidget);
+    expect(
+      _collectSemanticsIdentifiers(tester),
+      contains('text.in-sheet'),
+    );
+
+    backend.applyJson('''
+      {"generation":2,"ops":[
+        {"op":"create-node","id":4,"kind":"button"},
+        {"op":"set-prop","id":4,"property":"text","value":"Sidebar"},
+        {"op":"set-prop","id":4,"property":"accessibility-identifier","value":"button.sidebar"},
+        {"op":"remove-child","parent":2,"child":3},
+        {"op":"remove-child","parent":1,"child":2},
+        {"op":"drop-node","id":3},
+        {"op":"drop-node","id":2},
+        {"op":"insert-child","parent":1,"child":4,"index":0}
+      ]}
+      ''');
+    await tester.pumpAndSettle();
+    await tester.pump();
+
+    expect(find.byType(BottomSheet), findsNothing);
+    final identifiers = _collectSemanticsIdentifiers(tester);
+    expect(identifiers, isNot(contains('sheet.graph-create')));
+    expect(identifiers, isNot(contains('text.in-sheet')));
+    expect(identifiers, contains('button.sidebar'));
+    semanticsHandle.dispose();
+  });
+
 }
 
 const _initialBatch = '''
@@ -3707,3 +3761,11 @@ const _initialBatch = '''
   {"op":"insert-child","parent":1,"child":3,"index":1}
 ]}
 ''';
+
+Set<String?> _collectSemanticsIdentifiers(WidgetTester tester) {
+  return tester.semantics
+      .simulatedAccessibilityTraversal(view: tester.view)
+      .map((node) => node.identifier)
+      .toSet();
+}
+
