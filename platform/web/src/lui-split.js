@@ -149,7 +149,9 @@ const LUISplit = (() => {
     const el = document.createElement('div');
     el.className = 'lui-split-pane';
     el.tabIndex = 0;
+    el.dataset.paneId = paneId;
     if (focused) el.dataset.focused = 'true';
+    if (host.registerPane) host.registerPane(node, el);
     const accId = prop(state, 'accessibility-identifier', '');
     if (accId) el.dataset.testid = accId;
 
@@ -169,6 +171,22 @@ const LUISplit = (() => {
       strip.append(renderChip(node, tabNode, index, selected, host));
     });
     strip.append(trailingIndicator(el));
+
+    // Dropping on the strip body (past the last chip) appends to the pane.
+    strip.addEventListener('dragover', (event) => {
+      if (!event.dataTransfer.types.includes(MIME)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+    });
+    strip.addEventListener('drop', (event) => {
+      const payload = event.dataTransfer.getData(MIME);
+      event.preventDefault();
+      const [fromPane, tab] = payload.split('\t');
+      if (!tab) return;
+      host.emit(node, 'tab-moved', {
+        tab, 'from-pane': fromPane, index: tabs.length,
+      });
+    });
 
     tabs.forEach((tabNode, index) => {
       const child = host.render(tabNode);
@@ -241,7 +259,7 @@ const LUISplit = (() => {
           event.preventDefault();
           return;
         }
-        if (event.key === 'd' || event.key === 'D') {
+        if (event.code === 'KeyD') {
           host.emit(node, 'split-requested', {
             orientation: event.shiftKey ? 'vertical' : 'horizontal',
           });
@@ -344,6 +362,7 @@ const LUISplit = (() => {
     });
     chip.addEventListener('drop', (event) => {
       event.preventDefault();
+      event.stopPropagation();
       const payload = event.dataTransfer.getData(MIME);
       const [fromPane, tab] = payload.split('\t');
       if (!tab) return;
@@ -400,10 +419,12 @@ const LUISplit = (() => {
     };
     intern(tree);
 
+    const paneEls = new Map();
     const host = {
       // Accepts node ids (normal render path) or child objects (demo trees
       // keep children inline).
       extState: (n) => (typeof n === 'object' ? n : byId.get(n)),
+      registerPane: (node, el) => paneEls.set(node.id, el),
       render: (id) => {
         const node = byId.get(id) || id;
         if (node.identifier) return render(node.id, host);
@@ -417,20 +438,56 @@ const LUISplit = (() => {
       },
       emit: (node, name, values) => {
         onEvent(name, values);
-        apply(tree, node, name, values);
+        const kind = apply(tree, node, name, values);
+        if (kind === 'focus') {
+          // Focus is visual-only: patch the border in place so the
+          // in-flight click/keyboard event keeps its target and focus.
+          allPanes(tree).forEach((p) => {
+            const el = paneEls.get(p.id);
+            if (!el) return;
+            if (p.properties.focused) el.dataset.focused = 'true';
+            else delete el.dataset.focused;
+          });
+          return;
+        }
         redraw();
       },
     };
 
     function redraw() {
+      // Structural redraw replaces the DOM; carry focus to the rebuilt
+      // element so keyboard navigation survives a close/split.
+      const focusedPaneId =
+        typeof document !== 'undefined'
+          && document.activeElement
+          && document.activeElement.dataset
+          ? document.activeElement.dataset.paneId
+          : null;
       byId.clear();
+      paneEls.clear();
       intern(tree);
       root.replaceChildren(render(tree.id, host));
+      if (focusedPaneId) {
+        const pane = allPanes(tree).find(
+          (p) => p.properties['pane-id'] === focusedPaneId);
+        const el = pane && paneEls.get(pane.id);
+        if (el) el.focus();
+      }
     }
     redraw();
 
     // Minimal local semantics so demos feel alive: the real backend applies
     // these in OCaml and re-emits the tree.
+    const allPanes = (rootNode) => {
+      const panes = [];
+      (function walk(n) {
+        if (!n) return;
+        if (n.identifier === 'split-pane') panes.push(n);
+        (n.children || []).forEach(walk);
+      })(rootNode);
+      return panes;
+    };
+
     function apply(rootNode, nodeId, name, values) {
       const node = byId.get(nodeId);
       if (!node) return;
@@ -454,10 +511,110 @@ const LUISplit = (() => {
         }
         return null;
       };
+      const setFocused = (pane) => {
+        allPanes(rootNode).forEach(
+          (p) => { p.properties.focused = p === pane; });
+      };
+      // Remove emptied panes and collapse degenerate branches; the root
+      // view always keeps at least one pane.
+      const prune = () => {
+        let lastRemoved = null;
+        (function walk(n) {
+          if (!n.children) return;
+          n.children.forEach(walk);
+          n.children = n.children.filter((c) => {
+            if (c.identifier === 'split-pane' && c.children.length === 0) {
+              lastRemoved = c;
+              return false;
+            }
+            return true;
+          });
+          n.children = n.children.flatMap((c) =>
+            (c.identifier === 'split-branch' && c.children.length === 1)
+              ? c.children
+              : [c]);
+        })(rootNode);
+        if (!rootNode.children.length && lastRemoved) {
+          rootNode.children = [lastRemoved];
+        }
+      };
+      const splitPane = (pane, orientation, before = false) => {
+        if (pane.children.length < 2) return;
+        const selectedId = String(
+          pane.properties.selected
+          || (pane.children[0] ? pane.children[0].properties['tab-id'] : ''));
+        if (!selectedId) return;
+        const i = pane.children.findIndex(
+          (c) => c.properties['tab-id'] === selectedId);
+        if (i < 0) return;
+        const [tab] = pane.children.splice(i, 1);
+        if (pane.children.length) {
+          pane.properties.selected =
+            pane.children[Math.min(i, pane.children.length - 1)]
+              .properties['tab-id'];
+        }
+        const freshPane = {
+          identifier: 'split-pane',
+          properties: { 'pane-id': fresh(), selected: selectedId,
+                        focused: true },
+          children: [tab],
+        };
+        const branch = {
+          identifier: 'split-branch',
+          properties: {
+            orientation,
+            // the fresh edge gets a quarter share, like Bonsplit
+            ratio: before ? 0.25 : 0.75,
+          },
+          children: before ? [freshPane, pane] : [pane, freshPane],
+        };
+        const parent = parentOf(pane.id);
+        if (parent) {
+          parent.children[parent.children.indexOf(pane)] = branch;
+        } else {
+          Object.assign(rootNode, branch);
+        }
+        setFocused(freshPane);
+        prune();
+      };
+
       switch (name) {
         case 'tab-selected':
           node.properties.selected = values.tab;
           break;
+        case 'pane-focused':
+          setFocused(node);
+          return 'focus';
+        case 'ratio-changed':
+          node.properties.ratio = values.ratio;
+          break;
+        case 'navigate': {
+          const panes = allPanes(rootNode);
+          const cur = panes.indexOf(node);
+          if (cur < 0 || panes.length < 2) break;
+          const step =
+            (values.direction === 'left' || values.direction === 'up')
+              ? -1 : 1;
+          setFocused(
+            panes[(cur + step + panes.length) % panes.length]);
+          return 'focus';
+        }
+        case 'split-requested':
+          splitPane(node, values.orientation);
+          break;
+        case 'pane-closed': {
+          const panes = allPanes(rootNode);
+          const cur = panes.indexOf(node);
+          const parent = parentOf(node.id);
+          if (!parent) break; // last pane stays
+          parent.children.splice(parent.children.indexOf(node), 1);
+          prune();
+          const rest = allPanes(rootNode);
+          if (rest.length) {
+            setFocused(rest[Math.max(0, Math.min(cur, rest.length - 1))]);
+          }
+          break;
+        }
         case 'tab-closed': {
           const i = (node.children || []).findIndex(
             (c) => c.properties['tab-id'] === values.tab);
@@ -466,6 +623,16 @@ const LUISplit = (() => {
             node.properties.selected = node.children[0]
               ? node.children[0].properties['tab-id']
               : '';
+          }
+          const hadTabs = node.children.length > 0;
+          if (!hadTabs) {
+            const panes = allPanes(rootNode);
+            const cur = panes.indexOf(node);
+            prune();
+            const rest = allPanes(rootNode);
+            if (rest.length) {
+              setFocused(rest[Math.max(0, Math.min(cur, rest.length - 1))]);
+            }
           }
           break;
         }
@@ -484,51 +651,49 @@ const LUISplit = (() => {
           target.children.splice(
             Math.min(index, target.children.length), 0, tab);
           target.properties.selected = values.tab;
-          if (source !== target && source.children.length > 0) {
-            source.properties.selected = source.children[0]
-              .properties['tab-id'];
+          setFocused(target);
+          if (source !== target) {
+            if (source.children.length > 0) {
+              source.properties.selected = source.children[0]
+                .properties['tab-id'];
+            } else {
+              prune();
+            }
           }
           break;
         }
         case 'split-drop': {
           const source = findPane(values['from-pane']);
+          const target = node;
           if (!source) break;
-          const i = (source.children || []).findIndex(
-            (c) => c.properties['tab-id'] === values.tab);
-          if (i < 0) break;
-          const [tab] = source.children.splice(i, 1);
-          if (source.properties.selected === values.tab
-              && source.children.length > 0) {
-            source.properties.selected = source.children[0]
-              .properties['tab-id'];
-          }
-          const freshPane = {
-            identifier: 'split-pane',
-            properties: {
-              'pane-id': fresh(),
-              selected: tab.properties['tab-id'],
-            },
-            children: [tab],
-          };
-          const vertical = values.edge === 'left' || values.edge === 'right';
-          const before = values.edge === 'left' || values.edge === 'top';
-          const branch = {
-            identifier: 'split-branch',
-            properties: {
-              orientation: vertical ? 'horizontal' : 'vertical',
-              ratio: 0.5,
-            },
-            children: before
-              ? [freshPane, node]
-              : [node, freshPane],
-          };
-          // Replace `node` in its parent with the new branch.
-          const parent = parentOf(node.id);
-          if (parent) {
-            const j = parent.children.indexOf(node);
-            parent.children[j] = branch;
+          const horizontal =
+            values.edge === 'left' || values.edge === 'right';
+          const before =
+            values.edge === 'left' || values.edge === 'top';
+          if (source === target) {
+            // Self split: move the dragged tab to a new edge pane.
+            if (source.children.length < 2) break;
+            const idx = source.children.findIndex(
+              (c) => c.properties['tab-id'] === values.tab);
+            if (idx < 0) break;
+            source.properties.selected = values.tab;
+            splitPane(source, horizontal ? 'horizontal' : 'vertical',
+                      before);
           } else {
-            Object.assign(rootNode, branch);
+            const i = (source.children || []).findIndex(
+              (c) => c.properties['tab-id'] === values.tab);
+            if (i < 0) break;
+            // Move the tab into the target pane first, then split it out
+            // toward the edge so focus/orientation handling stays shared.
+            const [tab] = source.children.splice(i, 1);
+            target.children.push(tab);
+            target.properties.selected = values.tab;
+            if (source.children.length > 0) {
+              source.properties.selected = source.children[0]
+                .properties['tab-id'];
+            }
+            splitPane(target, horizontal ? 'horizontal' : 'vertical',
+                      before);
           }
           break;
         }
