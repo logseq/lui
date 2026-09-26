@@ -111,6 +111,7 @@ let composer
       ?key
       ?accessibility_identifier
       ?attachments
+      ?attachments_visible
       ?(actions = [])
       ~placeholder
       ?label
@@ -133,8 +134,12 @@ let composer
      match attachments with
      | None -> []
      | Some content ->
-       [ scroll
-           ~orientation:`horizontal ~height:140 [ row ~gap:8 [ content ] ]
+       let strip =
+         scroll ~orientation:`horizontal ~height:140 [ row ~gap:8 [ content ] ]
+       in
+       [ (match attachments_visible with
+          | None -> strip
+          | Some test -> if_ ~test strip)
        ]
    in
    let field =

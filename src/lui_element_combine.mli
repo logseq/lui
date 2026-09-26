@@ -24,7 +24,8 @@ val buttons : actions:action list -> t
 
 (** {1 Composer} *)
 
-(** Message/capture input capsule: optional horizontal attachment strip,
+(** Message/capture input capsule: optional horizontal attachment strip
+    ([attachments_visible] mounts the strip only while its signal holds),
     a growing [composer-input] textarea, and a controls row of caller
     [actions] followed by an optional send button. [on_press] fires when
     the capsule itself is pressed (e.g. to focus the field);
@@ -33,6 +34,7 @@ val composer :
   ?key:string ->
   ?accessibility_identifier:string ->
   ?attachments:t ->
+  ?attachments_visible:bool Signal.signal ->
   ?actions:t list ->
   placeholder:string ->
   ?label:string ->
