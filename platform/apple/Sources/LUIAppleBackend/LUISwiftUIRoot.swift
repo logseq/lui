@@ -1176,6 +1176,10 @@ private struct LUIIsNativeListRowKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct LUIInHoistedToolbarKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 private extension EnvironmentValues {
     var luiTreeContext: LUITreeContext? {
         get { self[LUITreeContextKey.self] }
@@ -1191,6 +1195,11 @@ private extension EnvironmentValues {
     var luiIsNativeListRow: Bool {
         get { self[LUIIsNativeListRowKey.self] }
         set { self[LUIIsNativeListRowKey.self] = newValue }
+    }
+
+    var luiInHoistedToolbar: Bool {
+        get { self[LUIInHoistedToolbarKey.self] }
+        set { self[LUIInHoistedToolbarKey.self] = newValue }
     }
 }
 
@@ -2645,6 +2654,7 @@ private struct LUIToolbarGroupAnchor: View {
         case let .bare(childID):
             ToolbarItem(placement: placement) {
                 itemIdentity(LUIAnyNodeView(nodeID: childID, backend: backend).equatable(), at: index)
+                    .environment(\.luiInHoistedToolbar, true)
             }
         case let .capsule(childIDs):
             // Consecutive interactive children fuse into one toolbar item so
@@ -2697,19 +2707,28 @@ private struct LUIToolbarGroupAnchor: View {
     /// Consecutive interactive children merge into one `ToolbarItem` carrying
     /// a `ControlGroup` (the fused toolbar capsule); spacers, text and
     /// non-interactive children stay bare so a principal title never gains
-    /// chrome.
+    /// chrome. A lone interactive child stays bare too — inside a capsule only
+    /// the label glyph hit-tests, leaving the rest of the bar item dead.
     private var segments: [Segment] {
         var result: [Segment] = []
         var run: [Int] = []
+        func appendInteractive(_ childIDs: [Int]) {
+            guard !childIDs.isEmpty else { return }
+            if childIDs.count == 1 {
+                result.append(.bare(childIDs[0]))
+            } else {
+                result.append(.capsule(childIDs))
+            }
+        }
         func flush() {
-            if !run.isEmpty { result.append(.capsule(run)); run = [] }
+            appendInteractive(run); run = []
         }
         for childID in model.children {
             switch backend.model(id: childID)?.kind {
             case .spacer:
                 flush(); result.append(.spacer)
             case .buttonGroup:
-                flush(); result.append(.capsule(backend.model(id: childID)?.children ?? []))
+                flush(); appendInteractive(backend.model(id: childID)?.children ?? [])
             case .button, .toggleButton, .toggleGroup, .checkbox, .switchControl,
                  .toggle, .radioGroup, .select, .combobox, .menuItem,
                  .menuTrigger, .textField,
@@ -3921,6 +3940,7 @@ private struct LUIButtonView: View {
     @State private var selected: Bool
     @Environment(\.luiIsNativeFormRow) private var isNativeFormRow
     @Environment(\.luiIsNativeListRow) private var isNativeListRow
+    @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
     init(model: LUINodeModel, backend: LUIAppleBackend, isToggle: Bool = false) {
         self.model = model
         self.backend = backend
@@ -4158,20 +4178,34 @@ private struct LUIButtonView: View {
     }
 
     private var buttonHeight: CGFloat? {
-        LUIButtonVisualPolicy.resolvedExtent(
+        let height = LUIButtonVisualPolicy.resolvedExtent(
             explicit: model.surfaceHeight,
             fallback: nil
         )
+        return hitTargetFloor(height)
     }
 
     private var buttonWidth: CGFloat? {
-        LUIButtonVisualPolicy.resolvedExtent(
+        let width = LUIButtonVisualPolicy.resolvedExtent(
             explicit: model.surfaceWidth,
             fallback: LUIButtonVisualPolicy.defaultWidth(
                 buttonSize: model.buttonSize,
                 usesMinimumTouchTarget: usesMinimumTouchTarget
             )
         )
+        return hitTargetFloor(width)
+    }
+
+    private var isIconOnly: Bool {
+        !model.buttonIconName.isEmpty && model.text.isEmpty
+    }
+
+    /// Hoisted icon-only controls keep the platform's 44pt bar-item hit target:
+    /// the floor rides on the label frame (inside the `Button`) so the
+    /// `contentShape` covers the whole cell rather than just the glyph.
+    private func hitTargetFloor(_ extent: CGFloat?) -> CGFloat? {
+        guard isIconOnly, inHoistedToolbar, usesMinimumTouchTarget else { return extent }
+        return max(extent ?? 0, 44)
     }
 
     private var usesMinimumTouchTarget: Bool {
@@ -5589,6 +5623,22 @@ private struct LUISurfaceModifier: ViewModifier {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
+
+    /// The inner label of a hoisted icon-only button is floored to the 44pt
+    /// bar-item target (see `LUIButtonView.hitTargetFloor`); this keeps the
+    /// node's outer surface frame in step so it can't clip the hit region.
+    private func floored(_ extent: Int?) -> Int? {
+        guard inHoistedToolbar,
+              model.kind == .button || model.kind == .toggleButton,
+              !model.buttonIconName.isEmpty, model.text.isEmpty
+        else { return extent }
+        #if os(iOS)
+        return max(extent ?? 0, 44)
+        #else
+        return extent
+        #endif
+    }
 
     func body(content: Content) -> some View {
         let isSurface = model.kind == .panel || model.kind == .card ||
@@ -5634,9 +5684,9 @@ private struct LUISurfaceModifier: ViewModifier {
             .frame(
                 width: LUIExplicitFramePolicy.width(
                     kind: model.kind,
-                    requested: model.surfaceWidth
+                    requested: floored(model.surfaceWidth)
                 ).map(CGFloat.init),
-                height: model.surfaceHeight.map(CGFloat.init)
+                height: floored(model.surfaceHeight).map(CGFloat.init)
             )
             .modifier(LUIBodyLineControlModifier(
                 enabled: model.property(.styleClass)?.stringValue?.split(separator: " ").contains("body-line") == true,
