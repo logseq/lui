@@ -65,7 +65,7 @@ const osNames = {
 
 const hostNames = {
   generic: 'GenericHost', web: 'WebHost', swiftui: 'SwiftUIHost',
-  flutter: 'FlutterHost',
+  flutter: 'FlutterHost', qml: 'QMLHost', winui: 'WinUIHost',
 };
 
 const munge = (name) => name.replace(/-/g, '_');
@@ -178,16 +178,24 @@ function eventDecoder(comp, event) {
       ? `      ${munge(f.name)} = ${munge(f.name)};`
       : `      ${munge(f.name)} = (match ${munge(f.name)}_opt with Some (${scalarKinds[f.kind].wire} value) -> Some value | _ -> None);`
   );
+  if (fields.length === 0) {
+    return `let decode_${name} = function
+  | ExtensionEvent (node, identifier, event_name, _values)
+    when String.equal event_name ${JSON.stringify(event.name)}
+         && String.equal identifier ${JSON.stringify(comp.identifier)} ->
+    Some ({ event_node = node } : ${name})
+  | _ -> None`;
+  }
   return `let decode_${name} = function
   | ExtensionEvent (node, identifier, event_name, values)
     when String.equal event_name ${JSON.stringify(event.name)}
          && String.equal identifier ${JSON.stringify(comp.identifier)} ->
     (match (${lookups.join(', ')}) with
      | (${pattern.join(', ')})${guard.length ? ` when ${guard.join(' && ')}` : ''} ->
-       Some {
+       Some ({
          event_node = node;
 ${bindings.join('\n')}
-       }
+       } : ${name})
      | _ -> None)
   | _ -> None`;
 }

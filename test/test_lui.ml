@@ -1031,6 +1031,309 @@ let test_json_view_parse () =
      | Ok _ -> true
      | Error _ -> false)
 
+(* Lui_split: the Bonsplit-style tabbed split-pane extension set. *)
+
+let split_fingerprint identifier =
+  let registry = Lui_split.registry () in
+  match Lui_extension.schema registry identifier with
+  | Some schema -> Lui_extension.fingerprint schema
+  | None -> Alcotest.fail ("unregistered schema " ^ identifier)
+
+let test_split_fingerprints () =
+  Alcotest.(check string) "split-view fingerprint"
+    "lui-extension-v1|10:split-view|profiles:android/flutter,ios/flutter,ios/swiftui,linux/flutter,linux/qml,macos/flutter,macos/qml,macos/swiftui,web/web,windows/flutter,windows/qml,windows/winui|standard-children:0|children:12:split-branch,10:split-pane|properties:17:divider-thickness:float:optional:none,24:accessibility-identifier:string:optional:none,9:animation:bool:optional:none|events:"
+    (split_fingerprint "split-view");
+  Alcotest.(check string) "split-branch fingerprint"
+    "lui-extension-v1|12:split-branch|profiles:android/flutter,ios/flutter,ios/swiftui,linux/flutter,linux/qml,macos/flutter,macos/qml,macos/swiftui,web/web,windows/flutter,windows/qml,windows/winui|standard-children:0|children:12:split-branch,10:split-pane|properties:11:orientation:string:required:none,5:ratio:float:required:none|events:13:ratio-changed[5:ratio:float:required]"
+    (split_fingerprint "split-branch");
+  Alcotest.(check string) "split-pane fingerprint"
+    "lui-extension-v1|10:split-pane|profiles:android/flutter,ios/flutter,ios/swiftui,linux/flutter,linux/qml,macos/flutter,macos/qml,macos/swiftui,web/web,windows/flutter,windows/qml,windows/winui|standard-children:0|children:9:split-tab|properties:24:accessibility-identifier:string:optional:none,7:focused:bool:optional:none,7:pane-id:string:required:none,8:selected:string:optional:none|events:10:split-drop[3:tab:string:required,4:edge:string:required,9:from-pane:string:required],10:tab-closed[3:tab:string:required],11:pane-closed[],12:pane-focused[],12:tab-selected[3:tab:string:required],15:split-requested[11:orientation:string:required],8:navigate[9:direction:string:required],9:tab-moved[3:tab:string:required,5:index:int:required,9:from-pane:string:required]"
+    (split_fingerprint "split-pane");
+  Alcotest.(check string) "split-tab fingerprint"
+    "lui-extension-v1|9:split-tab|profiles:android/flutter,ios/flutter,ios/swiftui,linux/flutter,linux/qml,macos/flutter,macos/qml,macos/swiftui,web/web,windows/flutter,windows/qml,windows/winui|standard-children:1|children:|properties:24:accessibility-identifier:string:optional:none,4:icon:string:optional:none,5:dirty:bool:optional:none,5:title:string:required:none,6:tab-id:string:required:none,8:closable:bool:optional:none|events:"
+    (split_fingerprint "split-tab")
+
+(* Every host source that carries lui-extension-v1 literals is checked so
+   drift fails here rather than as a blank screen on that platform. The
+   files are read from the source tree directly; test/dune only tracks the
+   gallery source as a dependency. *)
+let split_host_sources () =
+  let root = source_root () in
+  [ "platform/apple/Sources/LUIAppleBackend/LUISplit.swift";
+    "platform/qt/lib/lui_split_extensions.cpp";
+    "platform/flutter/lib/lui_flutter_split.dart";
+    "platform/winui/LUI.WinUI/LUISplitExtensions.cs";
+    "platform/web/src/lui-split.js" ]
+  |> List.filter_map (fun rel ->
+       let path = Filename.concat root rel in
+       if Sys.file_exists path then Some (read_file path) else None)
+
+let test_split_host_literals_in_sync () =
+  let registry = Lui_split.registry () in
+  let mismatches =
+    split_host_sources ()
+    |> List.concat_map (Lui_extension_check.check_registry registry)
+  in
+  match mismatches with
+  | [] -> ()
+  | _ ->
+    Alcotest.failf "extension fingerprint drift:\n%s"
+      (Lui_extension_check.describe_mismatches mismatches)
+
+let split_view_fixture _context _model_source _send =
+  Lui_split.split_view
+    [ Lui_split.split_branch ~orientation:`horizontal ~ratio:0.4
+        [ Lui_split.split_pane ~pane_id:"editor"
+            [ Lui_split.split_tab ~tab_id:"welcome" ~title:"Welcome"
+                [ Lui_elements.text ~value:"editor content" [] ];
+              Lui_split.split_tab ~tab_id:"repl" ~title:"REPL" ~closable:false
+                [ Lui_elements.text ~value:"repl content" [] ] ];
+          Lui_split.split_pane ~pane_id:"outline"
+            [ Lui_split.split_tab ~tab_id:"toc" ~title:"Outline"
+                [ Lui_elements.text ~value:"outline content" [] ] ] ] ]
+
+let test_split_extension_ops () =
+  batches := [];
+  let backend =
+    {
+      Lui_protocol.backend_profile =
+        Lui_protocol.profile Lui_protocol.MacOS Lui_protocol.SwiftUIHost;
+      apply_batch = (fun batch -> batches := batch :: !batches; true);
+    }
+  in
+  let app =
+    Lui_app.create_with_extensions backend
+      (Lui_split.registry ()) ()
+      (fun model _action -> model)
+      split_view_fixture
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let creates identifier =
+    List.exists
+      (function
+       | Lui_protocol.CreateExtension (_, id, _) -> String.equal id identifier
+       | _ -> false)
+      ops
+  in
+  Alcotest.(check bool) "creates split-view" true (creates "split-view");
+  Alcotest.(check bool) "creates split-branch" true (creates "split-branch");
+  Alcotest.(check bool) "creates split-pane (x2)" true
+    (List.length
+       (List.filter
+          (function
+           | Lui_protocol.CreateExtension (_, "split-pane", _) -> true
+           | _ -> false)
+          ops)
+     = 2);
+  Alcotest.(check bool) "creates split-tab (x3)" true
+    (List.length
+       (List.filter
+          (function
+           | Lui_protocol.CreateExtension (_, "split-tab", _) -> true
+           | _ -> false)
+          ops)
+     = 3);
+  Alcotest.(check bool) "pane-id prop lands" true
+    (List.exists
+       (function
+        | Lui_protocol.SetExtensionProp (_, "pane-id",
+                                         Lui_protocol.StringValue "outline") ->
+          true
+        | _ -> false)
+       ops);
+  Alcotest.(check bool) "ratio prop lands" true
+    (List.exists
+       (function
+        | Lui_protocol.SetExtensionProp (_, "ratio",
+                                         Lui_protocol.FloatValue r) ->
+          Float.abs (r -. 0.4) < 0.001
+        | _ -> false)
+       ops);
+  Alcotest.(check bool) "orientation prop lands" true
+    (List.exists
+       (function
+        | Lui_protocol.SetExtensionProp (_, "orientation",
+                                         Lui_protocol.StringValue "horizontal") ->
+          true
+        | _ -> false)
+       ops);
+  ignore (Lui_app.dispose app)
+
+let test_split_event_decoders () =
+  let open Lui_protocol in
+  let event name entries =
+    ExtensionEvent
+      (42, "split-pane", name,
+       String_map.of_list entries)
+  in
+  (match
+     Lui_split.decode_split_pane_tab_moved
+       (event "tab-moved"
+          [ ("tab", StringValue "a");
+            ("index", IntValue 2);
+            ("from-pane", StringValue "p1") ])
+   with
+   | Some { Lui_split.event_node; tab; index; from_pane } ->
+     Alcotest.(check int) "node" 42 event_node;
+     Alcotest.(check string) "tab" "a" tab;
+     Alcotest.(check int) "index" 2 index;
+     Alcotest.(check string) "from-pane" "p1" from_pane
+   | None -> Alcotest.fail "tab-moved did not decode");
+  (match
+     Lui_split.decode_split_pane_split_drop
+       (event "split-drop"
+          [ ("tab", StringValue "a");
+            ("from-pane", StringValue "p1");
+            ("edge", StringValue "right") ])
+   with
+   | Some { Lui_split.event_node; tab; from_pane; edge } ->
+     Alcotest.(check int) "node" 42 event_node;
+     Alcotest.(check string) "tab" "a" tab;
+     Alcotest.(check string) "from-pane" "p1" from_pane;
+     Alcotest.(check string) "edge" "right" edge
+   | None -> Alcotest.fail "split-drop did not decode");
+  (* cross-identifier and missing-field events must not decode *)
+  Alcotest.(check bool) "wrong identifier rejected" true
+    (Lui_split.decode_split_pane_tab_selected
+       (ExtensionEvent
+          (42, "other", "tab-selected",
+           String_map.of_list [ ("tab", StringValue "a") ]))
+     = None);
+  Alcotest.(check bool) "missing required field rejected" true
+    (Lui_split.decode_split_pane_tab_moved
+       (event "tab-moved" [ ("tab", StringValue "a") ])
+     = None);
+  match
+    Lui_split.decode_split_branch_ratio_changed
+      (ExtensionEvent
+         (7, "split-branch", "ratio-changed",
+          String_map.of_list [ ("ratio", FloatValue 0.7) ]))
+  with
+  | Some { Lui_split.event_node; ratio } ->
+    Alcotest.(check int) "branch node" 7 event_node;
+    Alcotest.(check bool) "ratio" true (Float.abs (ratio -. 0.7) < 0.001)
+  | None -> Alcotest.fail "ratio-changed did not decode"
+
+
+let two_pane_state () =
+  Lui_split.Model.create ~focused:"editor"
+    (Lui_split.Model.Split
+       {
+         split_id = "root-split";
+         split_orientation = `horizontal;
+         split_ratio = 0.5;
+         split_first =
+           Lui_split.Model.Leaf
+             (Lui_split.Model.pane ~pane_id:"editor"
+                [
+                  Lui_split.Model.tab ~tab_id:"a" ~title:"A" ();
+                  Lui_split.Model.tab ~tab_id:"b" ~title:"B" ();
+                ]);
+         split_second =
+           Lui_split.Model.Leaf
+             (Lui_split.Model.pane ~pane_id:"outline"
+                [ Lui_split.Model.tab ~tab_id:"c" ~title:"C" () ]);
+       })
+
+let pane_ids node =
+  let rec collect acc = function
+    | Lui_split.Model.Leaf p -> p.pane_id :: acc
+    | Split { split_first; split_second; _ } ->
+      collect (collect acc split_first) split_second
+  in
+  List.rev (collect [] node)
+
+let tab_ids pane =
+  List.map (fun t -> t.Lui_split.Model.tab_id) pane.Lui_split.Model.pane_tabs
+
+let find_pane pane_id node =
+  let rec go = function
+    | Lui_split.Model.Leaf p ->
+      if String.equal p.pane_id pane_id then Some p else None
+    | Split { split_first; split_second; _ } -> (
+        match go split_first with
+        | Some _ as hit -> hit
+        | None -> go split_second)
+  in
+  go node
+
+let test_split_model () =
+  let open Lui_split.Model in
+  let state = two_pane_state () in
+  (* tab selection *)
+  let state =
+    update state (Select_tab ("editor", "b"))
+  in
+  Alcotest.(check (option string)) "selected tab" (Some "b")
+    (find_pane "editor" (root state)
+     |> Option.map (fun p -> p.pane_selected)
+     |> Option.join);
+  (* moving a tab across panes selects it in the target *)
+  let state =
+    update state
+      (Move_tab
+         { move_tab = "a"; move_from = "editor"; move_to = "outline";
+           move_index = 1 })
+  in
+  Alcotest.(check (list string)) "outline tabs" [ "c"; "a" ]
+    (find_pane "outline" (root state) |> Option.map tab_ids
+     |> Option.value ~default:[]);
+  Alcotest.(check (option string)) "moved tab selected" (Some "a")
+    (find_pane "outline" (root state)
+     |> Option.map (fun p -> p.pane_selected)
+     |> Option.join);
+  (* same-pane move adjusts the index for the removed slot *)
+  let state =
+    update state
+      (Move_tab
+         { move_tab = "c"; move_from = "outline"; move_to = "outline";
+           move_index = 2 })
+  in
+  Alcotest.(check (list string)) "reordered" [ "a"; "c" ]
+    (find_pane "outline" (root state) |> Option.map tab_ids
+     |> Option.value ~default:[]);
+  (* edge drop splits the pane and the dropped edge gets the small share;
+     dropping a foreign tab keeps the source pane in place *)
+  let state =
+    update state
+      (Split_drop
+         { drop_tab = "c"; drop_from = "outline"; drop_target = "editor";
+           drop_edge = `right })
+  in
+  Alcotest.(check int) "three panes" 3 (List.length (pane_ids (root state)));
+  (match root state with
+  | Split { split_first = Split s; _ } ->
+    Alcotest.(check bool) "split axis" true
+      (match s.split_orientation with
+      | `horizontal -> true
+      | `vertical -> false);
+    Alcotest.(check (float 0.001)) "dropped edge share" 0.75 s.split_ratio;
+    (match s.split_first with
+    | Leaf p -> Alcotest.(check string) "source keeps id" "editor" p.pane_id
+    | Split _ -> Alcotest.fail "expected leaf")
+  | _ -> Alcotest.fail "expected an inner edge split");
+  (* navigation crosses the split in the matching axis *)
+  let state = update state (Focus_pane "editor") in
+  let state = update state (Navigate ("editor", `right)) in
+  Alcotest.(check (option string)) "focus moved right" (Some "pane-0")
+    (focused state);
+  let state = update state (Navigate ("pane-0", `up)) in
+  Alcotest.(check (option string)) "no pane above" (Some "pane-0")
+    (focused state);
+  (* closing the last tab removes the pane and collapses the split *)
+  let state =
+    List.fold_left update state
+      [ Close_tab ("outline", "a") ]
+  in
+  Alcotest.(check (list string)) "pane collapsed" [ "editor"; "pane-0" ]
+    (pane_ids (root state));
+  (* the last pane never closes *)
+  let state = update state (Close_pane "editor") in
+  let state = update state (Close_pane "pane-0") in
+  Alcotest.(check int) "last pane survives" 1 (List.length (pane_ids (root state)))
+
 let () =
   Alcotest.run "lui"
     [
@@ -1097,5 +1400,15 @@ let () =
           Alcotest.test_case "host literals in sync" `Quick
             test_host_literals_in_sync;
           Alcotest.test_case "drift is caught" `Quick test_drift_is_caught;
+        ] );
+      ( "split",
+        [
+          Alcotest.test_case "canonical fingerprints" `Quick
+            test_split_fingerprints;
+          Alcotest.test_case "host literals in sync" `Quick
+            test_split_host_literals_in_sync;
+          Alcotest.test_case "extension ops" `Quick test_split_extension_ops;
+          Alcotest.test_case "event decoders" `Quick test_split_event_decoders;
+          Alcotest.test_case "model reduce" `Quick test_split_model;
         ] );
     ]

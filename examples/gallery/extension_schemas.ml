@@ -2,9 +2,163 @@
 
 open Lui_protocol
 
+type split_branch_ratio_changed = {
+  event_node : int;
+  ratio : float;
+}
 
+type split_pane_tab_selected = {
+  event_node : int;
+  tab : string;
+}
 
+type split_pane_tab_closed = {
+  event_node : int;
+  tab : string;
+}
 
+type split_pane_tab_moved = {
+  event_node : int;
+  tab : string;
+  index : int;
+  from_pane : string;
+}
+
+type split_pane_pane_focused = {
+  event_node : int;
+
+}
+
+type split_pane_navigate = {
+  event_node : int;
+  direction : string;
+}
+
+type split_pane_split_requested = {
+  event_node : int;
+  orientation : string;
+}
+
+type split_pane_split_drop = {
+  event_node : int;
+  tab : string;
+  from_pane : string;
+  edge : string;
+}
+
+type split_pane_pane_closed = {
+  event_node : int;
+
+}
+
+let decode_split_branch_ratio_changed = function
+  | ExtensionEvent (node, identifier, event_name, values)
+    when String.equal event_name "ratio-changed"
+         && String.equal identifier "split-branch" ->
+    (match (String_map.find_opt "ratio" values) with
+     | (Some (FloatValue ratio)) ->
+       Some ({
+         event_node = node;
+      ratio = ratio;
+       } : split_branch_ratio_changed)
+     | _ -> None)
+  | _ -> None
+
+let decode_split_pane_tab_selected = function
+  | ExtensionEvent (node, identifier, event_name, values)
+    when String.equal event_name "tab-selected"
+         && String.equal identifier "split-pane" ->
+    (match (String_map.find_opt "tab" values) with
+     | (Some (StringValue tab)) ->
+       Some ({
+         event_node = node;
+      tab = tab;
+       } : split_pane_tab_selected)
+     | _ -> None)
+  | _ -> None
+
+let decode_split_pane_tab_closed = function
+  | ExtensionEvent (node, identifier, event_name, values)
+    when String.equal event_name "tab-closed"
+         && String.equal identifier "split-pane" ->
+    (match (String_map.find_opt "tab" values) with
+     | (Some (StringValue tab)) ->
+       Some ({
+         event_node = node;
+      tab = tab;
+       } : split_pane_tab_closed)
+     | _ -> None)
+  | _ -> None
+
+let decode_split_pane_tab_moved = function
+  | ExtensionEvent (node, identifier, event_name, values)
+    when String.equal event_name "tab-moved"
+         && String.equal identifier "split-pane" ->
+    (match (String_map.find_opt "tab" values, String_map.find_opt "index" values, String_map.find_opt "from-pane" values) with
+     | (Some (StringValue tab), Some (IntValue index), Some (StringValue from_pane)) ->
+       Some ({
+         event_node = node;
+      tab = tab;
+      index = index;
+      from_pane = from_pane;
+       } : split_pane_tab_moved)
+     | _ -> None)
+  | _ -> None
+
+let decode_split_pane_pane_focused = function
+  | ExtensionEvent (node, identifier, event_name, _values)
+    when String.equal event_name "pane-focused"
+         && String.equal identifier "split-pane" ->
+    Some ({ event_node = node } : split_pane_pane_focused)
+  | _ -> None
+
+let decode_split_pane_navigate = function
+  | ExtensionEvent (node, identifier, event_name, values)
+    when String.equal event_name "navigate"
+         && String.equal identifier "split-pane" ->
+    (match (String_map.find_opt "direction" values) with
+     | (Some (StringValue direction)) ->
+       Some ({
+         event_node = node;
+      direction = direction;
+       } : split_pane_navigate)
+     | _ -> None)
+  | _ -> None
+
+let decode_split_pane_split_requested = function
+  | ExtensionEvent (node, identifier, event_name, values)
+    when String.equal event_name "split-requested"
+         && String.equal identifier "split-pane" ->
+    (match (String_map.find_opt "orientation" values) with
+     | (Some (StringValue orientation)) ->
+       Some ({
+         event_node = node;
+      orientation = orientation;
+       } : split_pane_split_requested)
+     | _ -> None)
+  | _ -> None
+
+let decode_split_pane_split_drop = function
+  | ExtensionEvent (node, identifier, event_name, values)
+    when String.equal event_name "split-drop"
+         && String.equal identifier "split-pane" ->
+    (match (String_map.find_opt "tab" values, String_map.find_opt "from-pane" values, String_map.find_opt "edge" values) with
+     | (Some (StringValue tab), Some (StringValue from_pane), Some (StringValue edge)) ->
+       Some ({
+         event_node = node;
+      tab = tab;
+      from_pane = from_pane;
+      edge = edge;
+       } : split_pane_split_drop)
+     | _ -> None)
+  | _ -> None
+
+let decode_split_pane_pane_closed = function
+  | ExtensionEvent (node, identifier, event_name, _values)
+    when String.equal event_name "pane-closed"
+         && String.equal identifier "split-pane" ->
+    Some ({ event_node = node } : split_pane_pane_closed)
+  | _ -> None
 
 let apple_map_schema =
   Lui_extension.component "apple-map" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost } ]
@@ -20,6 +174,34 @@ let apple_map_marker_schema =
     [ Lui_extension.property "title" Lui_extension.StringScalar true None; Lui_extension.property "latitude" Lui_extension.FloatScalar true None; Lui_extension.property "longitude" Lui_extension.FloatScalar true None ]
     [  ]
 
+let split_view_schema =
+  Lui_extension.component "split-view" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = WinUIHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost } ]
+    false
+    [ "split-branch"; "split-pane" ]
+    [ Lui_extension.property "divider-thickness" Lui_extension.FloatScalar false None; Lui_extension.property "animation" Lui_extension.BoolScalar false None; Lui_extension.property "accessibility-identifier" Lui_extension.StringScalar false None ]
+    [  ]
+
+let split_branch_schema =
+  Lui_extension.component "split-branch" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = WinUIHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost } ]
+    false
+    [ "split-branch"; "split-pane" ]
+    [ Lui_extension.property "orientation" Lui_extension.StringScalar true None; Lui_extension.property "ratio" Lui_extension.FloatScalar true None ]
+    [ Lui_extension.event "ratio-changed" [ Lui_extension.event_field "ratio" Lui_extension.FloatScalar true ] ]
+
+let split_pane_schema =
+  Lui_extension.component "split-pane" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = WinUIHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost } ]
+    false
+    [ "split-tab" ]
+    [ Lui_extension.property "pane-id" Lui_extension.StringScalar true None; Lui_extension.property "selected" Lui_extension.StringScalar false None; Lui_extension.property "focused" Lui_extension.BoolScalar false None; Lui_extension.property "accessibility-identifier" Lui_extension.StringScalar false None ]
+    [ Lui_extension.event "tab-selected" [ Lui_extension.event_field "tab" Lui_extension.StringScalar true ]; Lui_extension.event "tab-closed" [ Lui_extension.event_field "tab" Lui_extension.StringScalar true ]; Lui_extension.event "tab-moved" [ Lui_extension.event_field "tab" Lui_extension.StringScalar true; Lui_extension.event_field "index" Lui_extension.IntScalar true; Lui_extension.event_field "from-pane" Lui_extension.StringScalar true ]; Lui_extension.event "pane-focused" [  ]; Lui_extension.event "navigate" [ Lui_extension.event_field "direction" Lui_extension.StringScalar true ]; Lui_extension.event "split-requested" [ Lui_extension.event_field "orientation" Lui_extension.StringScalar true ]; Lui_extension.event "split-drop" [ Lui_extension.event_field "tab" Lui_extension.StringScalar true; Lui_extension.event_field "from-pane" Lui_extension.StringScalar true; Lui_extension.event_field "edge" Lui_extension.StringScalar true ]; Lui_extension.event "pane-closed" [  ] ]
+
+let split_tab_schema =
+  Lui_extension.component "split-tab" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = WinUIHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost } ]
+    true
+    [  ]
+    [ Lui_extension.property "tab-id" Lui_extension.StringScalar true None; Lui_extension.property "title" Lui_extension.StringScalar true None; Lui_extension.property "icon" Lui_extension.StringScalar false None; Lui_extension.property "dirty" Lui_extension.BoolScalar false None; Lui_extension.property "closable" Lui_extension.BoolScalar false None; Lui_extension.property "accessibility-identifier" Lui_extension.StringScalar false None ]
+    [  ]
+
 let gallery_accent_schema =
   Lui_extension.tweak "gallery-accent" [ { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost } ]
     [  ]
@@ -28,6 +210,10 @@ let registry () =
   let registry = Lui_extension.registry () in
   Lui_extension.register_component registry apple_map_schema;
   Lui_extension.register_component registry apple_map_marker_schema;
+  Lui_extension.register_component registry split_view_schema;
+  Lui_extension.register_component registry split_branch_schema;
+  Lui_extension.register_component registry split_pane_schema;
+  Lui_extension.register_component registry split_tab_schema;
   Lui_extension.register_tweak registry gallery_accent_schema;
   Lui_extension.freeze registry;
   registry
@@ -122,4 +308,259 @@ let apple_map_marker ?key ~title ~latitude ~longitude ?title_signal ?latitude_si
    | Some parent -> Lui_ui.append context parent node
    | None -> ());
 
+  node
+
+let split_view ?key ?divider_thickness ?animation ?accessibility_identifier ?divider_thickness_signal ?animation_signal ?accessibility_identifier_signal (children : Lui_elements.t list) : Lui_elements.t =
+ fun context parent ->
+  let node = Lui_ui.extension context "split-view" in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "divider-thickness"
+         (FloatValue value))
+    divider_thickness;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "divider-thickness"
+         (Signal.map (fun value -> FloatValue value) signal))
+    divider_thickness_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "animation"
+         (BoolValue value))
+    animation;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "animation"
+         (Signal.map (fun value -> BoolValue value) signal))
+    animation_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "accessibility-identifier"
+         (StringValue value))
+    accessibility_identifier;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "accessibility-identifier"
+         (Signal.map (fun value -> StringValue value) signal))
+    accessibility_identifier_signal;
+
+  (match parent with
+   | Some parent -> Lui_ui.append context parent node
+   | None -> ());
+  Lui_elements.mount_children context node children;
+  node
+
+let split_branch ?key ~orientation ~ratio ?orientation_signal ?ratio_signal ?on_ratio_changed (children : Lui_elements.t list) : Lui_elements.t =
+ fun context parent ->
+  let node = Lui_ui.extension context "split-branch" in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "orientation"
+         (StringValue value))
+    (Some orientation);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "orientation"
+         (Signal.map (fun value -> StringValue value) signal))
+    orientation_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "ratio"
+         (FloatValue value))
+    (Some ratio);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "ratio"
+         (Signal.map (fun value -> FloatValue value) signal))
+    ratio_signal;
+  Option.iter
+    (fun handler ->
+       Lui_ui.on_event context node (fun raw ->
+         match decode_split_branch_ratio_changed raw with
+         | Some event -> handler event
+         | None -> ()))
+    on_ratio_changed;
+  (match parent with
+   | Some parent -> Lui_ui.append context parent node
+   | None -> ());
+  Lui_elements.mount_children context node children;
+  node
+
+let split_pane ?key ~pane_id ?selected ?focused ?accessibility_identifier ?pane_id_signal ?selected_signal ?focused_signal ?accessibility_identifier_signal ?on_tab_selected ?on_tab_closed ?on_tab_moved ?on_pane_focused ?on_navigate ?on_split_requested ?on_split_drop ?on_pane_closed (children : Lui_elements.t list) : Lui_elements.t =
+ fun context parent ->
+  let node = Lui_ui.extension context "split-pane" in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "pane-id"
+         (StringValue value))
+    (Some pane_id);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "pane-id"
+         (Signal.map (fun value -> StringValue value) signal))
+    pane_id_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "selected"
+         (StringValue value))
+    selected;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "selected"
+         (Signal.map (fun value -> StringValue value) signal))
+    selected_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "focused"
+         (BoolValue value))
+    focused;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "focused"
+         (Signal.map (fun value -> BoolValue value) signal))
+    focused_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "accessibility-identifier"
+         (StringValue value))
+    accessibility_identifier;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "accessibility-identifier"
+         (Signal.map (fun value -> StringValue value) signal))
+    accessibility_identifier_signal;
+  Option.iter
+    (fun handler ->
+       Lui_ui.on_event context node (fun raw ->
+         match decode_split_pane_tab_selected raw with
+         | Some event -> handler event
+         | None -> ()))
+    on_tab_selected;
+  Option.iter
+    (fun handler ->
+       Lui_ui.on_event context node (fun raw ->
+         match decode_split_pane_tab_closed raw with
+         | Some event -> handler event
+         | None -> ()))
+    on_tab_closed;
+  Option.iter
+    (fun handler ->
+       Lui_ui.on_event context node (fun raw ->
+         match decode_split_pane_tab_moved raw with
+         | Some event -> handler event
+         | None -> ()))
+    on_tab_moved;
+  Option.iter
+    (fun handler ->
+       Lui_ui.on_event context node (fun raw ->
+         match decode_split_pane_pane_focused raw with
+         | Some event -> handler event
+         | None -> ()))
+    on_pane_focused;
+  Option.iter
+    (fun handler ->
+       Lui_ui.on_event context node (fun raw ->
+         match decode_split_pane_navigate raw with
+         | Some event -> handler event
+         | None -> ()))
+    on_navigate;
+  Option.iter
+    (fun handler ->
+       Lui_ui.on_event context node (fun raw ->
+         match decode_split_pane_split_requested raw with
+         | Some event -> handler event
+         | None -> ()))
+    on_split_requested;
+  Option.iter
+    (fun handler ->
+       Lui_ui.on_event context node (fun raw ->
+         match decode_split_pane_split_drop raw with
+         | Some event -> handler event
+         | None -> ()))
+    on_split_drop;
+  Option.iter
+    (fun handler ->
+       Lui_ui.on_event context node (fun raw ->
+         match decode_split_pane_pane_closed raw with
+         | Some event -> handler event
+         | None -> ()))
+    on_pane_closed;
+  (match parent with
+   | Some parent -> Lui_ui.append context parent node
+   | None -> ());
+  Lui_elements.mount_children context node children;
+  node
+
+let split_tab ?key ~tab_id ~title ?icon ?dirty ?closable ?accessibility_identifier ?tab_id_signal ?title_signal ?icon_signal ?dirty_signal ?closable_signal ?accessibility_identifier_signal (children : Lui_elements.t list) : Lui_elements.t =
+ fun context parent ->
+  let node = Lui_ui.extension context "split-tab" in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "tab-id"
+         (StringValue value))
+    (Some tab_id);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "tab-id"
+         (Signal.map (fun value -> StringValue value) signal))
+    tab_id_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "title"
+         (StringValue value))
+    (Some title);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "title"
+         (Signal.map (fun value -> StringValue value) signal))
+    title_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "icon"
+         (StringValue value))
+    icon;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "icon"
+         (Signal.map (fun value -> StringValue value) signal))
+    icon_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "dirty"
+         (BoolValue value))
+    dirty;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "dirty"
+         (Signal.map (fun value -> BoolValue value) signal))
+    dirty_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "closable"
+         (BoolValue value))
+    closable;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "closable"
+         (Signal.map (fun value -> BoolValue value) signal))
+    closable_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "accessibility-identifier"
+         (StringValue value))
+    accessibility_identifier;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "accessibility-identifier"
+         (Signal.map (fun value -> StringValue value) signal))
+    accessibility_identifier_signal;
+
+  (match parent with
+   | Some parent -> Lui_ui.append context parent node
+   | None -> ());
+  Lui_elements.mount_children context node children;
   node
