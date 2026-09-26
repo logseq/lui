@@ -24,23 +24,31 @@ val buttons : actions:action list -> t
 
 (** {1 Composer} *)
 
-(** Message/capture input capsule: optional horizontal attachment strip,
+(** Message/capture input capsule: optional horizontal attachment strip
+    ([attachments_visible_signal] mounts the strip only while its signal holds),
     a growing [composer-input] textarea, and a controls row of caller
-    actions followed by an optional send button. *)
+    [actions] followed by an optional send button. [on_press] fires when
+    the capsule itself is pressed (e.g. to focus the field);
+    [autofocus_signal] drives the textarea's autofocus reactively. *)
 val composer :
   ?key:string ->
   ?accessibility_identifier:string ->
   ?attachments:t ->
+  ?attachments_visible_signal:bool Signal.signal ->
   ?actions:t list ->
   placeholder:string ->
+  ?label:string ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?autofocus:bool ->
+  ?autofocus_signal:bool Signal.signal ->
   ?submit_on_enter:bool ->
-  ?send_disabled:bool Signal.signal ->
+  ?send_icon:icon ->
+  ?send_disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
   ?on_send:(Lui_protocol.event -> unit) ->
+  ?on_press:(Lui_protocol.event -> unit) ->
   unit -> t
 
 (** Collapsed form of the composer: a capsule button the host expands back
@@ -49,7 +57,7 @@ val composer_collapsed :
   ?key:string ->
   ?accessibility_identifier:string ->
   label:string ->
-  icon:icon ->
+  ?icon:icon ->
   on_press:(Lui_protocol.event -> unit) ->
   unit -> t
 
