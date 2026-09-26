@@ -23,20 +23,24 @@ type action =
   ; on_press : Lui_protocol.event -> unit
   }
 
-let glass_action_button ?background ?corner_radius ?min_width action =
-  let icon_only = Option.is_none action.text in
+let glass_action_button ?background ?corner_radius action =
+  let visible_text =
+    match action.text with
+    | Some text when text <> "" -> Some text
+    | _ -> None
+  in
+  let icon_only = Option.is_none visible_text in
   button
     ~variant:`ghost
     ~size:(if icon_only then `icon else `default)
     ~icon:action.icon
-    ?text:action.text
+    ?text:visible_text
     ~label:action.label
     ~foreground:"foreground"
     ?background
     ?corner_radius
-    ?padding_horizontal:(if icon_only then None else Some 8)
+    ?padding_horizontal:(if icon_only then None else Some 12)
     ?width:(if icon_only then Some 44 else None)
-    ?min_width
     ~height:44
     ~on_press:action.on_press
     []
@@ -45,11 +49,7 @@ let glass_action_button ?background ?corner_radius ?min_width action =
 let glass_buttons ~actions =
   match actions with
   | [ action ] ->
-    glass_action_button
-      ~background:"glass"
-      ~corner_radius:999
-      ?min_width:(Option.map (fun _ -> 160) action.text)
-      action
+    glass_action_button ~background:"glass" ~corner_radius:999 action
   | _ :: _ :: _ ->
     button_group
       ~gap:0
