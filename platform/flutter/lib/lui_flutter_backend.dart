@@ -396,6 +396,51 @@ final class _LUIAppearDispatcherState extends State<_LUIAppearDispatcher> {
   Widget build(BuildContext context) => widget.child;
 }
 
+/// Registers the node's element in the backend's frame-probe table so
+/// `_measureFrames` can locate its render object each frame. Transparent
+/// to layout.
+final class _FrameProbe extends StatefulWidget {
+  const _FrameProbe({
+    super.key,
+    required this.backend,
+    required this.node,
+    required this.child,
+  });
+
+  final LUIFlutterBackend backend;
+  final int node;
+  final Widget child;
+
+  @override
+  State<_FrameProbe> createState() => _FrameProbeState();
+}
+
+final class _FrameProbeState extends State<_FrameProbe> {
+  @override
+  void initState() {
+    super.initState();
+    widget.backend._frameProbes[widget.node] = context;
+  }
+
+  @override
+  void didUpdateWidget(_FrameProbe oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.node != widget.node) {
+      widget.backend._frameProbes.remove(oldWidget.node);
+      widget.backend._frameProbes[widget.node] = context;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.backend._frameProbes.remove(widget.node);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 final class LUIFlutterBackend {
   LUIFlutterBackend({
     this.onEvent,
@@ -408,6 +453,51 @@ final class LUIFlutterBackend {
 
   final void Function(LUIEvent event)? onEvent;
   final Map<String, IconData> appIcons;
+
+  /// Called once per frame while [frameReportingEnabled] is on, with the
+  /// full node-id → rect map in global coordinates — feeds drive's
+  /// live-attach `tap x y` hit-testing.
+  void Function(Map<int, Rect> frames)? onFrames;
+
+  final Map<int, BuildContext> _frameProbes = {};
+  Map<int, Rect>? _lastFrames;
+  bool _frameReportingEnabled = false;
+  bool _frameMeasureScheduled = false;
+
+  bool get frameReportingEnabled => _frameReportingEnabled;
+  set frameReportingEnabled(bool value) {
+    if (value == _frameReportingEnabled) return;
+    _frameReportingEnabled = value;
+    if (value) _scheduleFrameMeasure();
+  }
+
+  void _scheduleFrameMeasure() {
+    if (_frameMeasureScheduled) return;
+    _frameMeasureScheduled = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _frameMeasureScheduled = false;
+      _measureFrames();
+      // A persistent loop: scrolling moves nodes without rebuilds, so
+      // frames must be re-measured every frame while reporting is on.
+      if (_frameReportingEnabled) _scheduleFrameMeasure();
+    });
+  }
+
+  void _measureFrames() {
+    final frames = <int, Rect>{};
+    for (final entry in _frameProbes.entries) {
+      final renderObject = entry.value.findRenderObject();
+      if (renderObject is RenderBox && renderObject.attached) {
+        frames[entry.key] =
+            renderObject.localToGlobal(Offset.zero) & renderObject.size;
+      }
+    }
+    if (!mapEquals(frames, _lastFrames)) {
+      _lastFrames = frames;
+      onFrames?.call(frames);
+    }
+  }
+
   final LUIFlutterExtensionRegistry _extensionRegistry;
   final _LUITooltipSession _tooltipSession = _LUITooltipSession();
   Map<int, _NodeState> _states = {};
@@ -1013,24 +1103,32 @@ final class LUIFlutterBackend {
   Widget widget({required int node}) {
     final extensionHandle = _extensionHandles[node];
     if (extensionHandle != null) {
-      return ListenableBuilder(
+      return _FrameProbe(
         key: nodeKey(node),
-        listenable: extensionHandle,
-        builder: (context, _) => _buildExtensionNode(node),
+        backend: this,
+        node: node,
+        child: ListenableBuilder(
+          listenable: extensionHandle,
+          builder: (context, _) => _buildExtensionNode(node),
+        ),
       );
     }
     final handle = _requireHandle(node);
-    return ListenableBuilder(
+    return _FrameProbe(
       key: nodeKey(node),
-      listenable: handle,
-      // The Builder under _withTheme gives _buildNode a context that already
-      // carries this node's tokens, so a themed scope covers the node
-      // itself, not only its descendants.
-      builder: (context, _) => _withTheme(
-        context,
-        node,
-        Builder(
-          builder: (inner) => _withAppear(node, _buildNode(inner, node)),
+      backend: this,
+      node: node,
+      child: ListenableBuilder(
+        listenable: handle,
+        // The Builder under _withTheme gives _buildNode a context that already
+        // carries this node's tokens, so a themed scope covers the node
+        // itself, not only its descendants.
+        builder: (context, _) => _withTheme(
+          context,
+          node,
+          Builder(
+            builder: (inner) => _withAppear(node, _buildNode(inner, node)),
+          ),
         ),
       ),
     );

@@ -375,6 +375,58 @@ public final class LUIAppleBackend {
     public private(set) var generation = 0
     public var onEvent: ((LUIEvent) -> Void)?
 
+    // MARK: - Node frame reporting
+
+    /// Gates emission of `onFramesReport`. Frames are collected
+    /// unconditionally (a dict write per layout change) so a driver can
+    /// attach mid-session and still see every node's latest geometry.
+    public var frameReportingEnabled = false {
+        didSet {
+            if frameReportingEnabled && !oldValue {
+                scheduleFramesReport()
+            }
+        }
+    }
+
+    /// Called once per coalesced layout flush with the full node-id →
+    /// frame map in the scene's global coordinate space. Feeds drive's
+    /// live-attach `tap x y` hit-testing; set `frameReportingEnabled` to
+    /// start receiving reports.
+    public var onFramesReport: (([Int: CGRect]) -> Void)?
+
+    private var nodeFrames: [Int: CGRect] = [:]
+    private var framesReportScheduled = false
+
+    func reportNodeFrame(_ nodeID: Int, _ rect: CGRect) {
+        if nodeFrames[nodeID] == rect { return }
+        nodeFrames[nodeID] = rect
+        scheduleFramesReport()
+    }
+
+    func removeNodeFrame(_ nodeID: Int) {
+        if nodeFrames.removeValue(forKey: nodeID) != nil {
+            scheduleFramesReport()
+        }
+    }
+
+    /// Push the current frame table to `onFramesReport` immediately —
+    /// for a driver/handler that attached after the last layout flush.
+    public func emitFramesSnapshot() {
+        guard frameReportingEnabled else { return }
+        onFramesReport?(nodeFrames)
+    }
+
+    private func scheduleFramesReport() {
+        guard !framesReportScheduled else { return }
+        framesReportScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.framesReportScheduled = false
+            guard self.frameReportingEnabled else { return }
+            self.onFramesReport?(self.nodeFrames)
+        }
+    }
+
     private var tree = LUIRetainedTree()
     private var models: [Int: LUINodeModel] = [:]
     private var extensionModels: [Int: LUIExtensionNodeModel] = [:]
