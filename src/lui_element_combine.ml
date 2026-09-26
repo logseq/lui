@@ -85,23 +85,25 @@ let with_bool_prop_signal prop signal_ (elem : t) : t =
    node
 ;;
 
-let composer_send_button context send_disabled on_send : t =
+let composer_send_button context ?send_icon send_disabled on_send : t =
+  let android_icon = Option.value send_icon ~default:(`send : icon) in
+  let apple_icon = Option.value send_icon ~default:(`arrow_up : icon) in
   if Lui_ui.platform context = Lui_protocol.AndroidOS
   then
     if Lui_ui.host context = Lui_protocol.FlutterHost
     then
       button
-        ~icon:`send ~variant:`primary ~size:`icon ~width:48 ~height:48
+        ~icon:android_icon ~variant:`primary ~size:`icon ~width:48 ~height:48
         ~label:"Send" ~accessibility_identifier:"button.send"
         ?disabled_signal:send_disabled ~on_press:on_send []
     else
       button
-        ~icon:`send ~variant:`primary ~label:"Send"
+        ~icon:android_icon ~variant:`primary ~label:"Send"
         ~accessibility_identifier:"button.send" ?disabled_signal:send_disabled
         ~on_press:on_send ~text:"Send" []
   else
     button
-      ~icon:`arrow_up ~variant:`ghost ~width:36 ~height:36
+      ~icon:apple_icon ~variant:`ghost ~width:36 ~height:36
       ~background:"black" ~foreground:"white" ~corner_radius:18 ~label:"Send"
       ~accessibility_identifier:"button.send" ?disabled_signal:send_disabled
       ~on_press:on_send []
@@ -120,6 +122,7 @@ let composer
       ?(autofocus = false)
       ?autofocus_signal
       ?submit_on_enter
+      ?send_icon
       ?send_disabled_signal
       ?on_input
       ?on_submit
@@ -158,11 +161,13 @@ let composer
    let send_button =
      match on_send with
      | None -> []
-     | Some on_send -> [ composer_send_button context send_disabled_signal on_send ]
+     | Some on_send ->
+      [ composer_send_button context ?send_icon send_disabled_signal on_send ]
    in
    let capsule =
      column
-       ~grow:1.0 ~main:`end_ ~gap:0
+       ?key ?accessibility_identifier
+       ~grow:1.0 ~min_height:58 ~main:`end_ ~gap:0
        ~padding_horizontal:(if flutter then 12 else 16)
        ~padding_vertical:(if flutter then 12 else 8)
        ~background:(if flutter then "surface-container-high" else "glass")
@@ -183,12 +188,9 @@ let composer
                @ send_button)
           ])
    in
-   let capsule =
-     match on_press with
-     | None -> capsule
-     | Some handler -> with_press handler capsule
-   in
-   (box ?key ?accessibility_identifier ~grow:1.0 ~min_height:58 [ capsule ])
+   (match on_press with
+    | None -> capsule
+    | Some handler -> with_press handler capsule)
      context parent
 ;;
 
@@ -205,16 +207,15 @@ let composer_collapsed
    if Lui_ui.host context = Lui_protocol.FlutterHost
    then
      (button
-        ?key ?accessibility_identifier ~variant:`secondary ?icon
-        ~icon_placement:`leading ~grow:1.0 ~height:58 ~padding_horizontal:20
-        ~text:label ~on_press [])
+        ?key ?accessibility_identifier ~variant:`secondary ?icon ~grow:1.0
+        ~height:58 ~padding_horizontal:20 ~label ~text:label ~on_press [])
        context parent
    else
      (button
         ?key ?accessibility_identifier ~variant:`ghost ~grow:1.0 ~height:58
         ~padding_horizontal:30 ~background:"glass"
-        ~foreground:"muted-foreground" ~corner_radius:999 ?icon
-        ~icon_placement:`leading ~text:label ~on_press [])
+        ~foreground:"muted-foreground" ~corner_radius:999 ?icon ~text:label
+        ~on_press [])
        context parent
 ;;
 

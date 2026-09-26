@@ -43,6 +43,7 @@ val composer :
   ?autofocus:bool ->
   ?autofocus_signal:bool Signal.signal ->
   ?submit_on_enter:bool ->
+  ?send_icon:icon ->
   ?send_disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
