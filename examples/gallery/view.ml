@@ -1402,14 +1402,20 @@ let combine_section model_source send : t =
           ; toolbar_item ~label:"Open" ~icon:`external_link ~on_press:noop ()
           ]
         ()
-    ; composer ~placeholder:"Message the team"
+    ; composer ~placeholder:"Capture"
         ~text_signal:field_value_
         ~on_input:(on_input send (fun v -> Model.SetFieldValue v))
-        ~actions:[ button ~variant:`ghost ~icon:`plus ~label:"Attach"
-                     ~on_press:noop [] ]
+        ~actions:
+          [ button ~variant:`ghost ~icon:`plus ~width:32 ~height:32
+              ~label:"Add attachment" ~accessibility_identifier:"button.attachment"
+              ~on_press:noop []
+          ; button ~variant:`ghost ~icon:`mic ~width:32 ~height:32
+              ~foreground:"border" ~label:"Voice input"
+              ~accessibility_identifier:"button.mic" ~on_press:noop []
+          ]
         ~send_disabled:(field_value_ >|= fun v -> v = "")
         ~on_send:(press send (Model.SetFieldValue "")) ()
-    ; composer_collapsed ~label:"New capture" ~icon:`plus ~on_press:noop ()
+    ; composer_collapsed ~label:"Capture" ~icon:`plus ~on_press:noop ()
     ; suggestion_list ~source:suggestions ~item_key:(fun s -> s)
         ~label:(fun s -> s)
         ~icon:(fun _ -> `file_text)

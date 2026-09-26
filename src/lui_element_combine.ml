@@ -70,78 +70,147 @@ let rec intersperse separator_ = function
 (* Composer                                                            *)
 (* ------------------------------------------------------------------ *)
 
+let with_press handler (elem : t) : t =
+ fun context parent ->
+   let node = elem context parent in
+   enable context node Lui_protocol.PressEnabled;
+   register_press context node handler;
+   node
+;;
+
+let with_bool_prop_signal prop signal_ (elem : t) : t =
+ fun context parent ->
+   let node = elem context parent in
+   Lui_ui.bool_property_signal context node prop signal_;
+   node
+;;
+
+let composer_send_button context send_disabled on_send : t =
+  if Lui_ui.platform context = Lui_protocol.AndroidOS
+  then
+    if Lui_ui.host context = Lui_protocol.FlutterHost
+    then
+      button
+        ~icon:`send ~variant:`primary ~size:`icon ~width:48 ~height:48
+        ~label:"Send" ~accessibility_identifier:"button.send"
+        ?disabled_signal:send_disabled ~on_press:on_send []
+    else
+      button
+        ~icon:`send ~variant:`primary ~label:"Send"
+        ~accessibility_identifier:"button.send" ?disabled_signal:send_disabled
+        ~on_press:on_send ~text:"Send" []
+  else
+    button
+      ~icon:`arrow_up ~variant:`ghost ~width:36 ~height:36
+      ~background:"black" ~foreground:"white" ~corner_radius:18 ~label:"Send"
+      ~accessibility_identifier:"button.send" ?disabled_signal:send_disabled
+      ~on_press:on_send []
+;;
+
 let composer
       ?key
       ?accessibility_identifier
       ?attachments
       ?(actions = [])
       ~placeholder
+      ?label
       ?text
       ?text_signal
       ?(autofocus = false)
+      ?autofocus_signal
       ?submit_on_enter
       ?send_disabled
       ?on_input
       ?on_submit
       ?on_send
+      ?on_press
       ()
+  : t
   =
-  let attachment_strip =
-    match attachments with
-    | None -> []
-    | Some content -> [ scroll ~orientation:`horizontal ~gap:8 [ content ] ]
-  in
-  let send_button =
-    match on_send with
-    | None -> []
-    | Some on_press ->
-      [ button
-          ~icon:`send
-          ~variant:`primary
-          ~size:`icon
-          ~label:"Send"
-          ?disabled_signal:send_disabled
-          ~on_press
-          []
-      ]
-  in
-  column
-    ?key
-    ?accessibility_identifier
-    ~gap:8
-    ~padding:12
-    ~background:"surface"
-    ~corner_radius:24
-    (attachment_strip
-     @ [ textarea
-           ~style_class:"composer-input"
-           ~placeholder
-           ?text
-           ?text_signal
-           ~autofocus
-           ?submit_on_enter
-           ?on_input
-           ?on_submit
-           []
-       ; row
-           ~gap:8
-           ~cross:`center
-           (actions @ [ spacer ~grow:1.0 [] ] @ send_button)
-       ])
+ fun context parent ->
+   let flutter = Lui_ui.host context = Lui_protocol.FlutterHost in
+   let attachment_strip =
+     match attachments with
+     | None -> []
+     | Some content ->
+       [ scroll
+           ~orientation:`horizontal ~height:140 [ row ~gap:8 [ content ] ]
+       ]
+   in
+   let field =
+     textarea
+       ~min_height:36 ~style_class:"composer-input" ~placeholder
+       ~label:(match label with Some value -> value | None -> placeholder)
+       ?text ?text_signal ~autofocus ?submit_on_enter
+       ~accessibility_identifier:"field.composer" ?on_input ?on_submit []
+   in
+   let field =
+     match autofocus_signal with
+     | None -> field
+     | Some signal_ ->
+       with_bool_prop_signal Lui_protocol.Autofocus signal_ field
+   in
+   let send_button =
+     match on_send with
+     | None -> []
+     | Some on_send -> [ composer_send_button context send_disabled on_send ]
+   in
+   let capsule =
+     column
+       ~grow:1.0 ~main:`end_ ~gap:0
+       ~padding_horizontal:(if flutter then 12 else 16)
+       ~padding_vertical:(if flutter then 12 else 8)
+       ~background:(if flutter then "surface-container-high" else "glass")
+       ~corner_radius:24
+       ([ box ~height:6 ~accessibility_identifier:"spacer.composer.top" [] ]
+        @ attachment_strip
+        @ [ field
+          ; box ~height:8
+              ~accessibility_identifier:"spacer.composer.field-controls" []
+          ; row
+              ~gap:8 ~height:44 ~cross:`center
+              ~accessibility_identifier:"row.composer.controls"
+              (actions
+               @ [ spacer
+                     ~grow:1.0
+                     ~accessibility_identifier:"spacer.composer.controls" []
+                 ]
+               @ send_button)
+          ])
+   in
+   let capsule =
+     match on_press with
+     | None -> capsule
+     | Some handler -> with_press handler capsule
+   in
+   (box ?key ?accessibility_identifier ~grow:1.0 ~min_height:58 [ capsule ])
+     context parent
 ;;
 
-let composer_collapsed ?key ?accessibility_identifier ~label ~icon ~on_press () =
-  button
-    ?key
-    ?accessibility_identifier
-    ~variant:`secondary
-    ~icon
-    ~icon_placement:`leading
-    ~text:label
-    ~height:48
-    ~corner_radius:24
-    ~on_press
-    []
+let composer_collapsed
+      ?key
+      ?accessibility_identifier
+      ~label
+      ?icon
+      ~on_press
+      ()
+  : t
+  =
+ fun context parent ->
+   if Lui_ui.host context = Lui_protocol.FlutterHost
+   then
+     (button
+        ?key ?accessibility_identifier ~variant:`secondary ?icon
+        ~icon_placement:`leading ~grow:1.0 ~height:58 ~padding_horizontal:20
+        ~text:label ~on_press [])
+       context parent
+   else
+     (button
+        ?key ?accessibility_identifier ~variant:`ghost ~grow:1.0 ~height:58
+        ~padding_horizontal:30 ~background:"glass"
+        ~foreground:"muted-foreground" ~corner_radius:999 ?icon
+        ~icon_placement:`leading ~text:label ~on_press [])
+       context parent
 ;;
 
 (* ------------------------------------------------------------------ *)
