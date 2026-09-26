@@ -58,7 +58,8 @@ Button {
         }
     }
 
-    background.implicitWidth: 80
+    background.implicitWidth:
+        button.size === "default" || button.size === "lg" ? 80 : 0
 
     onClicked: node.press()
     onPressAndHold: if (props["long-press-enabled"] === true) node.longPress()

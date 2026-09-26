@@ -22,7 +22,9 @@ Button {
     highlighted: button.selected
     flat: Style.str(props, "variant", "default") === "ghost"
     implicitHeight: 32
-    background.implicitWidth: 80
+    background.implicitWidth:
+        Style.str(props, "size", "default") === "default"
+            || Style.str(props, "size", "default") === "lg" ? 80 : 0
     background.implicitHeight: 32
 
     onClicked: node.toggle(!selected)
