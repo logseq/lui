@@ -604,6 +604,11 @@ final class LUIFlutterBackend {
       }
     }
     for (final id in removed) {
+      final identifier =
+          _handles[id]?.state.properties['accessibility-identifier'];
+      if (identifier is String) {
+        _staleSemanticsIdentifiers.add(identifier);
+      }
       _handles.remove(id)?.dispose();
       final modal = _modalRoutes.remove(id);
       if (modal != null) {
@@ -633,6 +638,9 @@ final class LUIFlutterBackend {
       _scheduleRouteRemoval(modal.$1, modal.$2);
       return true;
     });
+    if (removed.isNotEmpty) {
+      _scheduleSemanticsHeal();
+    }
     generation = nextGeneration;
     final changedSources = Set<int>.of(changedIDs);
     final dependentIDs = <int>{};
@@ -661,6 +669,270 @@ final class LUIFlutterBackend {
     for (final id in dependentIDs.difference(changedIDs)) {
       _handles[id]?.markDependencyChanged();
     }
+    _scheduleLayoutSettle();
+  }
+
+  // Render objects adopted or moved into a subtree that is already clean
+  // can keep the needsLayout flag set by attach() forever: layout()
+  // early-returns on their clean ancestors so the flag is never cleared,
+  // and debug semantics integrity asserts then abort every semantics
+  // flush — the platform a11y tree freezes on the last good emit while
+  // the app renders fine. Re-mark the orphaned node so propagation
+  // reaches its relayout boundary and the next layout pass lays it out.
+  bool _layoutSettleScheduled = false;
+  bool _layoutSettleDirtySeen = false;
+
+  // markNeedsLayout() early-returns on an already-dirty node, so an orphan
+  // cannot be healed by marking it directly. Instead mark the nearest clean
+  // render ancestor: propagation from it reaches its relayout boundary, the
+  // boundary re-lays out, and the layout descent passes through the (dirty)
+  // chain to the orphan and finally lays it out.
+  void _settleOrphanedLayout(RenderObject node) {
+    if (node.attached && node.debugNeedsLayout) {
+      // An orphan's ancestor chain can itself contain attach-orphans whose
+      // dirty flag never propagated, so propagation may early-return before
+      // reaching a relayout boundary. Mark every clean ancestor on the path
+      // to the root: the whole path ends up dirty, some relayout boundary is
+      // queued, and the next layout descent reaches the orphan.
+      void walk(RenderObject ro) {
+        if (!ro.attached) return;
+        if (!ro.debugNeedsLayout) {
+          ro.markNeedsLayout();
+          _layoutSettleDirtySeen = true;
+        }
+        final parent = ro.parent;
+        if (parent is RenderObject) walk(parent);
+      }
+
+      final parent = node.parent;
+      if (parent is RenderObject) walk(parent);
+    } else if (node is RenderBox && node.attached && !node.hasSize) {
+      // Poisoned node: clean but never laid out. This happens when the first
+      // layout attempt threw inside performLayout — layout() marks the node
+      // clean anyway (debug only), so every later layout() early-returns and
+      // any parent that reads child.size hits the hasSize assert. Re-mark it
+      // so its next layout actually performs and assigns a size.
+      node.markNeedsLayout();
+      _layoutSettleDirtySeen = true;
+    }
+    node.visitChildren(_settleOrphanedLayout);
+  }
+
+  // Orphans can appear frames after the patch that built their subtree
+  // (deferred element reactivation), so keep checking while any are found.
+  void _scheduleLayoutSettle() {
+    if (_layoutSettleScheduled) return;
+    _layoutSettleScheduled = true;
+    var attempts = 0;
+    void step([Duration? _]) {
+      _layoutSettleDirtySeen = false;
+      for (final view in RendererBinding.instance.renderViews) {
+        _settleOrphanedLayout(view);
+      }
+      attempts += 1;
+      if (_layoutSettleDirtySeen && attempts < 120) {
+        SchedulerBinding.instance.addPostFrameCallback(step);
+      } else {
+        _layoutSettleScheduled = false;
+      }
+    }
+
+    SchedulerBinding.instance.addPostFrameCallback(step);
+  }
+
+  // A dropped subtree can leave its SemanticsNodes attached forever:
+  // flushSemantics clears _nodesNeedingSemanticsUpdate wholesale but only
+  // runs updateChildren on boundaries that are not needsLayout at flush
+  // time, so a boundary marked while mid-layout loses its update and the
+  // stale child list (e.g. a removed sheet subtree) is never re-derived.
+  // Re-mark every built boundary each frame until the identifiers of the
+  // dropped nodes leave the semantics tree — or a bounded frame count for
+  // subtrees that carry no identifiers — so the platform a11y tree cannot
+  // freeze on the removed subtree.
+  //
+  // Marks lost at a flush are not limited to child lists: a node that
+  // mounted or changed during the same churn can lose its own config emit
+  // (identifier/label never arrive) while remaining a live semantics node.
+  // The heal therefore keeps re-marking for a short settle tail after the
+  // stale identifiers leave, giving every dropped boundary update another
+  // chance to land. The same drop can also hit a *mount*: a subtree whose
+  // boundary mark is lost never materializes a SemanticsNode at all, so the
+  // heal additionally waits until every mounted subtree's identifiers have
+  // appeared in the semantics tree.
+  final Set<String> _staleSemanticsIdentifiers = <String>{};
+  bool _semanticsHealScheduled = false;
+  static const int _semanticsHealMaxFrames = 120;
+  static const int _semanticsHealTailFrames = 30;
+  // Marking every boundary each frame recompiles the whole semantics tree
+  // per frame — enough main-thread churn to starve the platform a11y
+  // channel (UIAutomator/Maestro driver startup) on a slow device. Marks
+  // therefore go out every fourth frame: a dropped mark is retried a few
+  // frames later, which is all the wedge needs to converge.
+  static const int _semanticsHealMarkStride = 4;
+  // Mounted-but-hidden subtrees (a closed drawer, offstage content) carry
+  // identifiers that legitimately never emit, and shared identifiers keep
+  // a stale name present — so a nonzero unresolved count alone cannot
+  // hold the heal open. The heal converges only while each mark round
+  // actually shrinks the unresolved set; a plateau means the remainder
+  // are intentional exclusions and the heal exits.
+  static const int _semanticsHealPlateauRounds = 3;
+
+  void _collectSubtreeIdentifiers(
+    Map<int, _NodeState> states,
+    Map<int, _ExtensionNodeState> extensions,
+    int id,
+    Set<String> out,
+  ) {
+    if (!_containsState(states, extensions, id)) {
+      return;
+    }
+    final properties = states[id]?.properties ??
+        _requireExtensionStateFrom(extensions, id).properties;
+    final identifier = properties['accessibility-identifier'];
+    if (identifier is String) {
+      out.add(identifier);
+    }
+    for (final child in _nodeChildren(states, extensions, id)) {
+      _collectSubtreeIdentifiers(states, extensions, child, out);
+    }
+  }
+
+  // Identifiers of every mounted subtree — the nodes the semantics tree
+  // should contain once all pending boundary updates have landed. Mounted
+  // subtrees hang under the host's root state (a parentless node of any
+  // kind — the app root here is a stack, not kind 'root'); orphan tops
+  // detached by remove-child are parentless too, so identifiers already
+  // tracked as stale are excluded to keep stale and missing disjoint.
+  Set<String> _mountedSemanticsIdentifiers() {
+    final out = <String>{};
+    void walk(int id) {
+      if (!_containsState(_states, _extensionStates, id)) {
+        return;
+      }
+      final properties = _states[id]?.properties ??
+          _requireExtensionStateFrom(_extensionStates, id).properties;
+      final identifier = properties['accessibility-identifier'];
+      if (identifier is String &&
+          !_staleSemanticsIdentifiers.contains(identifier)) {
+        out.add(identifier);
+      }
+      for (final child in _nodeChildren(_states, _extensionStates, id)) {
+        walk(child);
+      }
+    }
+
+    // Whole panes mount under extension states as well as standard states —
+    // both maps have to feed the expected set or a never-emitted extension
+    // subtree would go undetected.
+    for (final id in _states.keys) {
+      if (_nodeParent(_states, _extensionStates, id) == null) {
+        walk(id);
+      }
+    }
+    for (final id in _extensionStates.keys) {
+      if (_nodeParent(_states, _extensionStates, id) == null) {
+        walk(id);
+      }
+    }
+    return out;
+  }
+
+  void _scheduleSemanticsHeal() {
+    if (_semanticsHealScheduled) {
+      return;
+    }
+    _semanticsHealScheduled = true;
+    var attempts = 0;
+    var tailFramesLeft = _semanticsHealTailFrames;
+    var lastUnresolved = -1;
+    var unchangedRounds = 0;
+    void step([Duration? _]) {
+      attempts += 1;
+      // Each RenderView flushes semantics through its own child
+      // PipelineOwner (each carries its own SemanticsOwner +
+      // rootSemanticsNode); the rootPipelineOwner's owner alone does not
+      // see them.
+      final present = <String>{};
+      final roots = <SemanticsNode?>[
+        RendererBinding
+            .instance.rootPipelineOwner.semanticsOwner?.rootSemanticsNode,
+        for (final view in RendererBinding.instance.renderViews)
+          view.owner?.semanticsOwner?.rootSemanticsNode,
+      ];
+      // Walk in traversal order — the order serialized into
+      // childrenInTraversalOrder, which is what the platform a11y bridge
+      // exposes. OverlayPortal children graft under their traversal parent;
+      // a child whose parent never emitted exists in paint order but never
+      // reaches the a11y tree, so paint-order presence is not sufficient.
+      void walk(SemanticsNode node) {
+        if (node.identifier.isNotEmpty) {
+          present.add(node.identifier);
+        }
+        List<SemanticsNode>? children;
+        try {
+          children = node.debugListChildrenInOrder(
+            DebugSemanticsDumpOrder.traversalOrder,
+          );
+        } on FlutterError {
+          // A malformed traversal graft (cycle) throws; fall back to the
+          // paint-order children so the walk cannot wedge the heal loop.
+          children = <SemanticsNode>[];
+          node.visitChildren((SemanticsNode child) {
+            children!.add(child);
+            return true;
+          });
+        }
+        for (final child in children) {
+          walk(child);
+        }
+      }
+
+      for (final root in roots) {
+        if (root != null) {
+          walk(root);
+        }
+      }
+      final retainedSet =
+          _staleSemanticsIdentifiers.intersection(present);
+      final mountedIds = _mountedSemanticsIdentifiers();
+      final missingSet = mountedIds.difference(present);
+      final unresolved = retainedSet.length + missingSet.length;
+      if (attempts == 1 || attempts % _semanticsHealMarkStride == 0) {
+        void markBoundaries(RenderObject ro) {
+          if (!ro.attached) {
+            return;
+          }
+          // Marking a non-boundary walks up to the nearest semantics
+          // boundary, so marking every attached render object re-dirties
+          // all of them; the dirty set deduplicates.
+          ro.markNeedsSemanticsUpdate();
+          ro.visitChildren(markBoundaries);
+        }
+
+        for (final view in RendererBinding.instance.renderViews) {
+          markBoundaries(view);
+        }
+        if (unresolved == lastUnresolved) {
+          unchangedRounds += 1;
+        } else {
+          unchangedRounds = 0;
+          lastUnresolved = unresolved;
+        }
+      }
+      final stuck =
+          unresolved > 0 && unchangedRounds >= _semanticsHealPlateauRounds;
+      final keepRetaining =
+          unresolved > 0 && !stuck && attempts < _semanticsHealMaxFrames;
+      final tail = unresolved == 0 && tailFramesLeft-- > 0;
+      if (keepRetaining || tail) {
+        SchedulerBinding.instance.addPostFrameCallback(step);
+      } else {
+        _staleSemanticsIdentifiers.clear();
+        _semanticsHealScheduled = false;
+      }
+    }
+
+    SchedulerBinding.instance.addPostFrameCallback(step);
   }
 
   void _registerModalRoute(
@@ -694,34 +966,48 @@ final class LUIFlutterBackend {
       } else {
         navigator.removeRoute(route);
       }
-      _refreshSemanticsAfterModalRemoval();
+      _refreshSemanticsAfterModalRemoval(route);
     });
   }
 
   // The overlay's removed markers detach without dirtying their semantics
-  // ancestors — a detached RenderObject's markNeedsSemanticsUpdate is a no-op
-  // (`!attached` early-returns), so no ancestor boundary is ever re-dirtied
-  // and the a11y tree freezes on the last emit (which still contains the
-  // sheet). Force the whole tree to re-derive so a post-removal update
-  // reaches the platform. Route exit animations detach the entries many
-  // frames after the removal is scheduled, so keep marking every frame for
-  // a window that outlasts any dismiss transition.
-  void _refreshSemanticsAfterModalRemoval() {
-    void markAll(RenderObject node) {
-      node.markNeedsSemanticsUpdate();
-      node.visitChildren(markAll);
-    }
-
-    var remaining = 45; // ~750ms — longer than a sheet exit animation
-    void markFrame() {
-      final root = RendererBinding.instance.rootPipelineOwner.rootNode;
-      if (root != null) markAll(root);
-      if (--remaining > 0) {
-        SchedulerBinding.instance.addPostFrameCallback((_) => markFrame());
+  // ancestors; the a11y tree then freezes on the last emit (which still
+  // contains the sheet). Force the root to re-derive its semantics children
+  // so a post-removal update reaches the platform.
+  //
+  // The emit must happen after the route's overlay entries have left the
+  // theater: they stay mounted (and semantically attached) for the whole
+  // exit transition, and route.popped/whenComplete resolve at didPop —
+  // before the transition finishes. Wait until every entry is unmounted
+  // (or ~1.5s, whichever comes first), then mark every RenderView. The
+  // root pipeline owner has no rootNode on multi-view SDKs — render trees
+  // live in per-view child owners — so renderViews must be marked directly.
+  void _refreshSemanticsAfterModalRemoval([Route<void>? route]) {
+    var attempts = 0;
+    void mark() {
+      for (final view in RendererBinding.instance.renderViews) {
+        view.markNeedsSemanticsUpdate();
       }
     }
 
-    SchedulerBinding.instance.addPostFrameCallback((_) => markFrame());
+    // Chained frame callbacks rather than a Timer: marking a view requests
+    // a visual update, which schedules the frame the next callback runs
+    // on, so the loop keeps pace with the exit transition without pending
+    // timers outliving the widget tree.
+    void step([Duration? _]) {
+      final entries = route?.overlayEntries ?? const <OverlayEntry>[];
+      mark();
+      _scheduleLayoutSettle();
+      _scheduleSemanticsHeal();
+      if (entries.any((entry) => entry.mounted) && attempts < 30) {
+        attempts += 1;
+        SchedulerBinding.instance.addPostFrameCallback(step);
+      }
+    }
+
+    // Mark once immediately so removals without a transition update right
+    // away, then re-mark once the entries are gone.
+    step();
   }
 
   Widget widget({required int node}) {
@@ -1131,14 +1417,6 @@ final class LUIFlutterBackend {
           return Expanded(flex: scaled < 1 ? 1 : scaled, child: childWidget);
         })
         .toList(growable: false);
-    // A flex child is illegal when the flex parent's main-axis constraints are
-    // unbounded; in that case the child falls back to its content size.
-    List<Widget> flexChildren(bool mainAxisBounded) => mainAxisBounded
-        ? children
-        : [
-            for (final child in children)
-              child is Flexible ? child.child : child,
-          ];
     final enabled = state.properties['enabled'] as bool? ?? true;
     final text = state.properties['text'] as String? ?? '';
     final placeholder = state.properties['placeholder'] as String?;
@@ -1402,45 +1680,40 @@ final class LUIFlutterBackend {
       ),
     );
 
-    Widget grid() => LayoutBuilder(
-      builder: (context, constraints) {
-        final requested = state.properties['columns'] as int? ?? 0;
-        final columns = requested > 0
-            ? requested
-            : (children.isEmpty ? 1 : children.length);
-        final available = constraints.maxWidth.isFinite
-            ? constraints.maxWidth
-            : 0.0;
-        final cellWidth = available > 0
-            ? (available - gap * (columns - 1)) / columns
-            : 0.0;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: children
-              .map(
-                (child) => cellWidth > 0
-                    ? SizedBox(width: cellWidth, child: child)
-                    : child,
-              )
-              .toList(growable: false),
-        );
-      },
-    );
-    Widget row() => LayoutBuilder(
-      builder: (context, constraints) => Row(
-        mainAxisSize: constraints.hasBoundedWidth
-            ? MainAxisSize.max
-            : MainAxisSize.min,
-        mainAxisAlignment: _mainAxisAlignment(main),
-        crossAxisAlignment: _crossAxisAlignment(
-          cross,
-          canStretch: constraints.hasBoundedHeight,
-        ),
+    Widget grid() {
+      final requested = state.properties['columns'] as int? ?? 0;
+      final columns = requested > 0
+          ? requested
+          : (children.isEmpty ? 1 : children.length);
+      return Wrap(
         spacing: gap,
-        children: flexChildren(constraints.hasBoundedWidth),
-      ),
+        runSpacing: gap,
+        children: [
+          for (final child in children)
+            _LUIGridCell(columns: columns, gap: gap, child: child),
+        ],
+      );
+    }
+
+    // RenderFlex requires a bounded cross axis for
+    // CrossAxisAlignment.stretch; _RenderLUIFlex.downgrades stretch to
+    // `start` when the cross axis is unbounded at layout time.
+    Widget row() => LUIFlex(
+      direction: Axis.horizontal,
+      mainAxisAlignment: _mainAxisAlignment(main),
+      crossAxisAlignment: _crossAxisAlignment(cross, canStretch: true),
+      spacing: gap,
+      children: children,
     );
+    Widget horizontalGroupFlex() => LUIFlex(
+      direction: Axis.horizontal,
+      expandsForAlignment: state.properties.containsKey('main'),
+      mainAxisAlignment: _mainAxisAlignment(main),
+      crossAxisAlignment: _crossAxisAlignment(cross, canStretch: true),
+      spacing: gap,
+      children: children,
+    );
+
     Widget horizontalGroup() => CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
@@ -1452,44 +1725,19 @@ final class LUIFlutterBackend {
         const SingleActivator(LogicalKeyboardKey.end): () =>
             _moveHorizontalFocus(id, LogicalKeyboardKey.end),
       },
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final expandsForAlignment =
-              state.properties.containsKey('main') &&
-              constraints.hasBoundedWidth;
-          return Semantics(
-            container: true,
-            label: accessibilityLabel,
-            child: Row(
-              mainAxisSize: expandsForAlignment
-                  ? MainAxisSize.max
-                  : MainAxisSize.min,
-              mainAxisAlignment: _mainAxisAlignment(main),
-              crossAxisAlignment: _crossAxisAlignment(
-                cross,
-                canStretch: constraints.hasBoundedHeight,
-              ),
-              spacing: gap,
-              children: flexChildren(constraints.hasBoundedWidth),
-            ),
-          );
-        },
+      child: Semantics(
+        container: true,
+        label: accessibilityLabel,
+        child: horizontalGroupFlex(),
       ),
     );
     Widget column() {
-      final body = LayoutBuilder(
-        builder: (context, constraints) => Column(
-          mainAxisSize: constraints.hasBoundedHeight
-              ? MainAxisSize.max
-              : MainAxisSize.min,
-          mainAxisAlignment: _mainAxisAlignment(main),
-          crossAxisAlignment: _crossAxisAlignment(
-            cross,
-            canStretch: constraints.hasBoundedWidth,
-          ),
-          spacing: gap,
-          children: flexChildren(constraints.hasBoundedHeight),
-        ),
+      final body = LUIFlex(
+        direction: Axis.vertical,
+        mainAxisAlignment: _mainAxisAlignment(main),
+        crossAxisAlignment: _crossAxisAlignment(cross, canStretch: true),
+        spacing: gap,
+        children: children,
       );
       if (state.properties['press-enabled'] == true) {
         return GestureDetector(
@@ -1516,29 +1764,20 @@ final class LUIFlutterBackend {
       final tooltipState = tooltipID == null
           ? null
           : _requireState(_states, tooltipID);
-      Widget trigger = LayoutBuilder(
-        builder: (context, constraints) {
-          final triggerChildren = state.children
-              .where((childID) => childID != menuID && childID != tooltipID)
-              .map((childID) {
-                final childWidget = widget(node: childID);
-                final grow =
-                    _states[childID]?.properties['grow'] as num? ?? 0;
-                // A growing stack child fills the stack's height, matching
-                // the Apple backend's maxHeight: .infinity +
-                // layoutPriority(1) — only under bounded height, like
-                // flexChildren's gate.
-                if (grow > 0 && constraints.hasBoundedHeight) {
-                  return Positioned(top: 0, bottom: 0, child: childWidget);
-                }
-                return childWidget;
-              })
-              .toList(growable: false);
-          return Stack(
-            clipBehavior: Clip.none,
-            children: triggerChildren,
-          );
-        },
+      Widget trigger = LUIStack(
+        clipBehavior: Clip.none,
+        children: state.children
+            .where((childID) => childID != menuID && childID != tooltipID)
+            .map((childID) {
+              final childWidget = widget(node: childID);
+              final grow = _states[childID]?.properties['grow'] as num? ?? 0;
+              // A growing stack child fills the stack's height, matching
+              // the Apple backend's maxHeight: .infinity +
+              // layoutPriority(1). _RenderLUIStack only fills under
+              // bounded height, like the flex gate.
+              return _LUIStackGrowFill(fill: grow > 0, child: childWidget);
+            })
+            .toList(growable: false),
       );
       if (tooltipState != null) {
         trigger = _LUIRetainedTooltip(
@@ -2229,13 +2468,11 @@ final class LUIFlutterBackend {
 
     Widget inputGroupActions() => Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-      child: LayoutBuilder(
-        builder: (context, constraints) => Row(
-          mainAxisSize: MainAxisSize.max,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          spacing: gap,
-          children: flexChildren(constraints.hasBoundedWidth),
-        ),
+      child: LUIFlex(
+        direction: Axis.horizontal,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        spacing: gap,
+        children: children,
       ),
     );
 
@@ -2316,6 +2553,7 @@ final class LUIFlutterBackend {
       _NodeKind.alert => alert(),
       _NodeKind.bubble => bubble(),
       _NodeKind.drawer => _LUIDrawer(
+        backend: this,
         sourcePresented: state.properties['selected'] as bool? ?? false,
         enabled: enabled,
         width: (state.properties['width'] as int? ?? 320).toDouble(),
@@ -2327,6 +2565,7 @@ final class LUIFlutterBackend {
         panel: children[1],
       ),
       _NodeKind.split => _LUISplit(
+        backend: this,
         sourceFraction: (state.properties['value'] as double?) ?? 0,
         gap: (state.properties['gap'] as int? ?? 9).toDouble(),
         firstMinimum:
@@ -2345,14 +2584,10 @@ final class LUIFlutterBackend {
         first: children[0],
         second: children[1],
       ),
-      _NodeKind.box => LayoutBuilder(
-        builder: (context, constraints) => Column(
-          mainAxisSize: constraints.hasBoundedHeight
-              ? MainAxisSize.max
-              : MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: flexChildren(constraints.hasBoundedHeight),
-        ),
+      _NodeKind.box => LUIFlex(
+        direction: Axis.vertical,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
       ),
       _NodeKind.text => textNode(),
       _NodeKind.heading => Semantics(
@@ -2629,16 +2864,7 @@ final class LUIFlutterBackend {
         buttonVariant != 'ghost' &&
         !state.properties.containsKey('width')) {
       final bubbleSurface = surface;
-      surface = LayoutBuilder(
-        builder: (context, constraints) => constraints.hasBoundedWidth
-            ? ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: constraints.maxWidth * 0.8,
-                ),
-                child: bubbleSurface,
-              )
-            : bubbleSurface,
-      );
+      surface = _LUIWidthCap(widthFactor: 0.8, child: bubbleSurface);
     }
     if (state.kind == _NodeKind.resizable) {
       surface = _LUIResizable(
@@ -2928,6 +3154,10 @@ final class LUIFlutterBackend {
         }
         children.insert(index, childID);
         _setNodeParent(states, extensions, childID, parentID);
+        // A mounted subtree whose boundary's mark is dropped mid-flush
+        // never materializes SemanticsNodes — the heal's missing check
+        // re-marks until its identifiers appear.
+        _scheduleSemanticsHeal();
       case 'remove-child':
         final parentID = _integer(operation['parent'], 'parent');
         final childID = _integer(operation['child'], 'child');
@@ -2935,6 +3165,13 @@ final class LUIFlutterBackend {
         if (!children.remove(childID)) {
           throw const LUIBackendException('child is not attached to parent');
         }
+        _collectSubtreeIdentifiers(
+          states,
+          extensions,
+          childID,
+          _staleSemanticsIdentifiers,
+        );
+        _scheduleSemanticsHeal();
         _setNodeParent(states, extensions, childID, null);
       case 'move-child':
         final parentID = _integer(operation['parent'], 'parent');
@@ -3668,6 +3905,7 @@ final class LUIFlutterBackend {
               'enabled',
               'press-enabled',
               'variant',
+              'accessibility-identifier',
             };
             if (!child.properties.keys.every(allowed.contains)) {
               throw const LUIBackendException(
@@ -4649,7 +4887,7 @@ class _LUIModalPresenterState extends State<_LUIModalPresenter> {
     widget.backend._registerModalRoute(widget.node, route, navigator);
     navigator.push(route).whenComplete(() {
       widget.backend._unregisterModalRoute(widget.node, route);
-      widget.backend._refreshSemanticsAfterModalRemoval();
+      widget.backend._refreshSemanticsAfterModalRemoval(route);
       if (!mounted || _route != route) return;
       _route = null;
       widget.backend.performDismiss(widget.node);
@@ -4749,6 +4987,7 @@ extension on _NodeKind {
 
 final class _LUIDrawer extends StatefulWidget {
   const _LUIDrawer({
+    required this.backend,
     required this.sourcePresented,
     required this.enabled,
     required this.width,
@@ -4758,6 +4997,7 @@ final class _LUIDrawer extends StatefulWidget {
     required this.panel,
   });
 
+  final LUIFlutterBackend backend;
   final bool sourcePresented;
   final bool enabled;
   final double width;
@@ -4774,6 +5014,7 @@ final class _LUIDrawerState extends State<_LUIDrawer> {
   late bool _presented;
   double _dragOffset = 0;
   bool _dragging = false;
+  double? _reportedWidth;
 
   @override
   void initState() {
@@ -4802,22 +5043,34 @@ final class _LUIDrawerState extends State<_LUIDrawer> {
   }
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final availableWidth = constraints.hasBoundedWidth
-          ? constraints.maxWidth
-          : widget.width;
-      final width = widget.width.clamp(0, availableWidth * 0.9).toDouble();
-      final visibleWidth = ((_presented ? width : 0) + _dragOffset)
-          .clamp(0, width)
-          .toDouble();
-      final progress = width == 0 ? 0.0 : visibleWidth / width;
-      final canToggle = widget.enabled && widget.onChanged != null && width > 0;
-      // Opening the drawer is an edge gesture: drags starting farther into
-      // the content only close it (or drag it further open once presented).
-      const edgeDragWidth = 24.0;
+  Widget build(BuildContext context) {
+    final availableWidth = _reportedWidth ?? widget.width;
+    final width = widget.width.clamp(0, availableWidth * 0.9).toDouble();
+    final visibleWidth = ((_presented ? width : 0) + _dragOffset)
+        .clamp(0, width)
+        .toDouble();
+    final progress = width == 0 ? 0.0 : visibleWidth / width;
+    final canToggle = widget.enabled && widget.onChanged != null && width > 0;
+    // Opening the drawer is an edge gesture: drags starting farther into
+    // the content only close it (or drag it further open once presented).
+    const edgeDragWidth = 24.0;
 
-      return PopScope(
+    return _LUIConstraintProbe(
+      onConstraints: (constraints) {
+        final next = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : widget.width;
+        if (next != _reportedWidth) {
+          _reportedWidth = next;
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {});
+              widget.backend._scheduleLayoutSettle();
+            }
+          });
+        }
+      },
+      child: PopScope(
         canPop: !_presented,
         onPopInvokedWithResult: (didPop, result) {
           if (!didPop) _updatePresentation(false);
@@ -4886,13 +5139,14 @@ final class _LUIDrawerState extends State<_LUIDrawer> {
             ],
           ),
         ),
-      );
-    },
-  );
+      ),
+    );
+  }
 }
 
 final class _LUISplit extends StatefulWidget {
   const _LUISplit({
+    required this.backend,
     required this.sourceFraction,
     required this.gap,
     required this.firstMinimum,
@@ -4906,6 +5160,7 @@ final class _LUISplit extends StatefulWidget {
     required this.second,
   });
 
+  final LUIFlutterBackend backend;
   final double sourceFraction;
   final double gap;
   final double firstMinimum;
@@ -4927,6 +5182,7 @@ final class _LUISplitState extends State<_LUISplit>
   late final AnimationController _controller;
   late double _fraction;
   Animation<double>? _animation;
+  double? _reportedMaxWidth;
 
   @override
   void initState() {
@@ -5023,61 +5279,74 @@ final class _LUISplitState extends State<_LUISplit>
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final gap = widget.gap.clamp(0, constraints.maxWidth).toDouble();
-        final available = (constraints.maxWidth - gap)
-            .clamp(0, double.infinity)
-            .toDouble();
-        final effective = _effective(
-          _fraction,
-          available,
-          widget.firstMinimum,
-          widget.secondMinimum,
-        );
-        final firstWidth = available * effective;
-        final secondWidth = available - firstWidth;
-        return Row(
-          children: [
-            SizedBox(width: firstWidth, child: widget.first),
-            Semantics(
-              label: '${widget.label} divider',
-              value: '${(effective * 100).round()}%',
-              increasedValue:
-                  '${((_effective(effective + 0.05, available, widget.firstMinimum, widget.secondMinimum)) * 100).round()}%',
-              decreasedValue:
-                  '${((_effective(effective - 0.05, available, widget.firstMinimum, widget.secondMinimum)) * 100).round()}%',
-              onIncrease: () => _updateUser(
-                effective + 0.05,
-                available,
-                widget.firstMinimum,
-                widget.secondMinimum,
-              ),
-              onDecrease: () => _updateUser(
-                effective - 0.05,
-                available,
-                widget.firstMinimum,
-                widget.secondMinimum,
-              ),
-              child: MouseRegion(
-                cursor: SystemMouseCursors.resizeLeftRight,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onHorizontalDragUpdate: (details) => _updateUser(
-                    effective +
-                        details.delta.dx / available.clamp(1, double.infinity),
-                    available,
-                    widget.firstMinimum,
-                    widget.secondMinimum,
-                  ),
-                  child: SizedBox(width: gap, height: double.infinity),
+    final reported =
+        _reportedMaxWidth ??
+        (widget.firstMinimum + widget.secondMinimum + widget.gap);
+    final gap = widget.gap.clamp(0, reported).toDouble();
+    final available = (reported - gap).clamp(0, double.infinity).toDouble();
+    final effective = _effective(
+      _fraction,
+      available,
+      widget.firstMinimum,
+      widget.secondMinimum,
+    );
+    final firstWidth = available * effective;
+    final secondWidth = available - firstWidth;
+    return _LUIConstraintProbe(
+      onConstraints: (constraints) {
+        final next = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : reported;
+        if (next != _reportedMaxWidth) {
+          _reportedMaxWidth = next;
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {});
+              widget.backend._scheduleLayoutSettle();
+            }
+          });
+        }
+      },
+      child: Row(
+        children: [
+          SizedBox(width: firstWidth, child: widget.first),
+          Semantics(
+            label: '${widget.label} divider',
+            value: '${(effective * 100).round()}%',
+            increasedValue:
+                '${((_effective(effective + 0.05, available, widget.firstMinimum, widget.secondMinimum)) * 100).round()}%',
+            decreasedValue:
+                '${((_effective(effective - 0.05, available, widget.firstMinimum, widget.secondMinimum)) * 100).round()}%',
+            onIncrease: () => _updateUser(
+              effective + 0.05,
+              available,
+              widget.firstMinimum,
+              widget.secondMinimum,
+            ),
+            onDecrease: () => _updateUser(
+              effective - 0.05,
+              available,
+              widget.firstMinimum,
+              widget.secondMinimum,
+            ),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.resizeLeftRight,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragUpdate: (details) => _updateUser(
+                  effective +
+                      details.delta.dx / available.clamp(1, double.infinity),
+                  available,
+                  widget.firstMinimum,
+                  widget.secondMinimum,
                 ),
+                child: SizedBox(width: gap, height: double.infinity),
               ),
             ),
-            SizedBox(width: secondWidth, child: widget.second),
-          ],
-        );
-      },
+          ),
+          SizedBox(width: secondWidth, child: widget.second),
+        ],
+      ),
     );
   }
 }
@@ -5519,26 +5788,37 @@ final class _LUIAnchoredStackState extends State<_LUIAnchoredStack> {
 
   @override
   Widget build(BuildContext context) {
-    return MenuAnchor(
-      controller: _menu,
-      useRootOverlay: true,
-      animated: true,
-      crossAxisUnconstrained: widget.alignment != 'stretch',
-      alignmentOffset: _alignmentOffset,
-      style: MenuStyle(
-        alignment: _menuAlignment,
-        minimumSize: widget.minimumWidth == null
-            ? null
-            : WidgetStatePropertyAll(Size(widget.minimumWidth!, 0)),
-        maximumSize: widget.maximumWidth == null
-            ? null
-            : WidgetStatePropertyAll(
-                Size(widget.maximumWidth!, double.infinity),
-              ),
+    // OverlayPortal wraps its child in a non-container Semantics carrying
+    // traversalParentIdentifier, so the property never forms its own node;
+    // it merges upward into the nearest ancestor boundary, and the merge
+    // keeps only the first non-null identifier. Sibling anchors under one
+    // boundary (e.g. two anchored stacks in a row) then lose every graft
+    // except the first, leaving later portals' menus permanently absent
+    // from the platform accessibility tree. An explicit container boundary
+    // keeps each portal's identifier on its own node.
+    return Semantics(
+      container: true,
+      child: MenuAnchor(
+        controller: _menu,
+        useRootOverlay: true,
+        animated: true,
+        crossAxisUnconstrained: widget.alignment != 'stretch',
+        alignmentOffset: _alignmentOffset,
+        style: MenuStyle(
+          alignment: _menuAlignment,
+          minimumSize: widget.minimumWidth == null
+              ? null
+              : WidgetStatePropertyAll(Size(widget.minimumWidth!, 0)),
+          maximumSize: widget.maximumWidth == null
+              ? null
+              : WidgetStatePropertyAll(
+                  Size(widget.maximumWidth!, double.infinity),
+                ),
+        ),
+        onClose: _menuClosed,
+        menuChildren: widget.menuChildren,
+        child: widget.trigger,
       ),
-      onClose: _menuClosed,
-      menuChildren: widget.menuChildren,
-      child: widget.trigger,
     );
   }
 }
@@ -5845,5 +6125,390 @@ final class _LUITextInputState extends State<_LUITextInput> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+}
+
+// Constraint-aware containers that decide flex/stretch/fill at layout time.
+//
+// They deliberately avoid LayoutBuilder: a LayoutBuilder schedules a layout
+// callback that rebuilds its widget subtree inside the layout phase, and
+// while it runs the callback flushes every dirty element in its build
+// scope — including mid-teardown overlay subtrees. Rebuilding or
+// deactivating elements inside a layout callback trips debug asserts
+// (updating inactive elements, relayout-boundary gaps), which can orphan
+// deactivated elements: they stay mounted forever with render objects still
+// attached, their semantics nodes never receive parent data, and every
+// subsequent frame's flushSemantics assert then skips finalizeTree — so the
+// inactive elements never unmount and the accessibility tree stays frozen
+// on the last emitted (stale) tree.
+
+/// A [Flex] that drops child flex when the incoming main-axis constraints
+/// are unbounded (children size to content, matching the previous
+/// build-time flex unwrap) and falls back from
+/// [CrossAxisAlignment.stretch] when the cross axis is unbounded.
+class LUIFlex extends Flex {
+  const LUIFlex({
+    super.key,
+    required super.direction,
+    this.expandsForAlignment = true,
+    super.mainAxisAlignment,
+    super.crossAxisAlignment,
+    super.spacing,
+    super.children,
+  });
+
+  /// Whether the flex expands to the maximum main-axis constraint when
+  /// bounded. When the main axis is unbounded the flex always sizes to its
+  /// children regardless of this flag.
+  final bool expandsForAlignment;
+
+  @override
+  RenderFlex createRenderObject(BuildContext context) => _RenderLUIFlex(
+    direction: direction,
+    mainAxisAlignment: mainAxisAlignment,
+    mainAxisSize: expandsForAlignment ? MainAxisSize.max : MainAxisSize.min,
+    crossAxisAlignment: crossAxisAlignment,
+    spacing: spacing,
+    // Stretch downgraded to start under an unbounded cross axis needs a
+    // direction to resolve; default to LTR when no Directionality is
+    // reachable (e.g. a subtree hosted outside the app root).
+    textDirection: getEffectiveTextDirection(context) ?? TextDirection.ltr,
+    verticalDirection: verticalDirection,
+    textBaseline: textBaseline,
+    clipBehavior: clipBehavior,
+  );
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant RenderFlex renderObject,
+  ) {
+    renderObject
+      ..direction = direction
+      ..mainAxisAlignment = mainAxisAlignment
+      ..mainAxisSize = expandsForAlignment ? MainAxisSize.max : MainAxisSize.min
+      ..crossAxisAlignment = crossAxisAlignment
+      ..textDirection = getEffectiveTextDirection(context) ?? TextDirection.ltr
+      ..verticalDirection = verticalDirection
+      ..textBaseline = textBaseline
+      ..clipBehavior = clipBehavior
+      ..spacing = spacing;
+  }
+}
+
+class _RenderLUIFlex extends RenderFlex {
+  _RenderLUIFlex({
+    super.direction,
+    super.mainAxisAlignment,
+    super.mainAxisSize,
+    super.crossAxisAlignment,
+    super.spacing,
+    super.textDirection,
+    super.verticalDirection,
+    super.textBaseline,
+    super.clipBehavior,
+  });
+
+  final Map<RenderBox, int> _strippedFlex = <RenderBox, int>{};
+
+  // RenderFlex requires a bounded cross axis for
+  // CrossAxisAlignment.stretch; downgrade to `start` when the cross axis
+  // is unbounded at layout time. RenderFlex internals read the getter, so
+  // no field mutation (and no markNeedsLayout) is needed.
+  @override
+  CrossAxisAlignment get crossAxisAlignment {
+    final CrossAxisAlignment value = super.crossAxisAlignment;
+    if (value == CrossAxisAlignment.stretch) {
+      final bool bounded = direction == Axis.vertical
+          ? constraints.hasBoundedWidth
+          : constraints.hasBoundedHeight;
+      if (!bounded) {
+        return CrossAxisAlignment.start;
+      }
+    }
+    return value;
+  }
+
+  @override
+  void performLayout() {
+    // Restore flex stripped by a previous unbounded layout; children keep
+    // their Flexible/Expanded widgets (and their intent) across layouts.
+    for (final MapEntry<RenderBox, int> entry in _strippedFlex.entries) {
+      (entry.key.parentData! as FlexParentData).flex = entry.value;
+    }
+    _strippedFlex.clear();
+
+    final bool boundedMain = direction == Axis.vertical
+        ? constraints.hasBoundedHeight
+        : constraints.hasBoundedWidth;
+    if (!boundedMain) {
+      // A flex child is illegal when the flex parent's main-axis
+      // constraints are unbounded; strip flex so children fall back to
+      // their content size. FlexParentData.flex is a plain field, so
+      // mutating it never marks the render dirty mid-layout.
+      RenderBox? child = firstChild;
+      while (child != null) {
+        final FlexParentData parentData = child.parentData! as FlexParentData;
+        if (parentData.flex != null) {
+          _strippedFlex[child] = parentData.flex!;
+          parentData.flex = null;
+        }
+        child = parentData.nextSibling;
+      }
+    }
+    super.performLayout();
+  }
+}
+
+/// Stack parent data carrying the lui `grow` flag for [stack]'s children.
+class _LUIStackParentData extends StackParentData {
+  /// Whether this child fills the stack's height when bounded.
+  bool growFill = false;
+}
+
+/// Marks a [LUIStack] child as growing: under bounded height it is laid
+/// out like `Positioned(top: 0, bottom: 0)` (the Flutter equivalent of the
+/// Apple backend's `maxHeight: .infinity` + `layoutPriority(1)`); under
+/// unbounded height it is laid out like a normal non-positioned child.
+class _LUIStackGrowFill extends ParentDataWidget<_LUIStackParentData> {
+  const _LUIStackGrowFill({required this.fill, required super.child});
+
+  final bool fill;
+
+  @override
+  void applyParentData(RenderObject renderObject) {
+    final parentData = renderObject.parentData! as _LUIStackParentData;
+    if (parentData.growFill != fill) {
+      parentData.growFill = fill;
+      renderObject.parent?.markNeedsLayout();
+    }
+  }
+
+  @override
+  Type get debugTypicalAncestorWidgetClass => LUIStack;
+}
+
+/// A [Stack] that applies grow fill to [_LUIStackGrowFill] children at
+/// layout time based on the incoming height constraints.
+class LUIStack extends Stack {
+  const LUIStack({super.key, super.clipBehavior, super.children});
+
+  @override
+  RenderStack createRenderObject(BuildContext context) => _RenderLUIStack(
+    alignment: alignment,
+    textDirection: textDirection ?? Directionality.maybeOf(context),
+    fit: fit,
+    clipBehavior: clipBehavior,
+  );
+}
+
+class _RenderLUIStack extends RenderStack {
+  _RenderLUIStack({
+    super.alignment,
+    super.textDirection,
+    super.fit,
+    super.clipBehavior,
+  });
+
+  @override
+  void setupParentData(RenderObject child) {
+    if (child.parentData is! _LUIStackParentData) {
+      child.parentData = _LUIStackParentData();
+    }
+  }
+
+  @override
+  void performLayout() {
+    // A grow child fills via a full Positioned rect, which the stack
+    // resolves against `constraints.biggest` — so filling requires a finite
+    // biggest on BOTH axes. Positioned(top/bottom) alone would leave
+    // RenderStack.layoutPositionedChild handing the child completely
+    // unbounded width constraints; a subtree that then sizes to the max
+    // reports an infinite size and the stack computes a NaN offset for it
+    // (invalid paint transform, zero-bounds semantics). Under unbounded
+    // constraints the child falls back to non-positioned content sizing
+    // and RenderStack's all-positioned path can never produce an infinite
+    // size.
+    final bool bounded = constraints.biggest.isFinite;
+    RenderBox? child = firstChild;
+    while (child != null) {
+      final parentData = child.parentData! as _LUIStackParentData;
+      if (parentData.growFill) {
+        if (bounded) {
+          parentData.left = 0.0;
+          parentData.right = 0.0;
+          parentData.top = 0.0;
+          parentData.bottom = 0.0;
+        } else {
+          parentData.left = null;
+          parentData.right = null;
+          parentData.top = null;
+          parentData.bottom = null;
+        }
+      }
+      child = parentData.nextSibling;
+    }
+    super.performLayout();
+  }
+}
+
+/// A grid cell that sizes itself to the column width computed from the
+/// incoming constraints, replacing the previous LayoutBuilder + SizedBox
+/// cell sizing inside `grid`.
+class _LUIGridCell extends SingleChildRenderObjectWidget {
+  const _LUIGridCell({required this.columns, required this.gap, super.child});
+
+  final int columns;
+  final double gap;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderLUIGridCell(columns: columns, gap: gap);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderLUIGridCell renderObject,
+  ) {
+    renderObject
+      ..columns = columns
+      ..gap = gap;
+  }
+}
+
+class _RenderLUIGridCell extends RenderProxyBox {
+  _RenderLUIGridCell({required int columns, required double gap})
+    : _columns = columns,
+      _gap = gap;
+
+  int get columns => _columns;
+  int _columns;
+  set columns(int value) {
+    if (_columns != value) {
+      _columns = value;
+      markNeedsLayout();
+    }
+  }
+
+  double get gap => _gap;
+  double _gap;
+  set gap(double value) {
+    if (_gap != value) {
+      _gap = value;
+      markNeedsLayout();
+    }
+  }
+
+  @override
+  void performLayout() {
+    final child = this.child;
+    if (child == null) {
+      size = constraints.smallest;
+      return;
+    }
+    final double available = constraints.maxWidth.isFinite
+        ? constraints.maxWidth
+        : 0.0;
+    final double cellWidth = available > 0
+        ? (available - gap * (columns - 1)) / columns
+        : 0.0;
+    child.layout(
+      cellWidth > 0
+          ? constraints.enforce(BoxConstraints.tightFor(width: cellWidth))
+          : constraints,
+      parentUsesSize: true,
+    );
+    size = child.size;
+  }
+}
+
+/// Caps a child's width at a fraction of the incoming constraints, used by
+/// `bubble` to limit surfaces to 80% of the available width.
+class _LUIWidthCap extends SingleChildRenderObjectWidget {
+  const _LUIWidthCap({required this.widthFactor, super.child});
+
+  final double widthFactor;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderLUIWidthCap(widthFactor: widthFactor);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderLUIWidthCap renderObject,
+  ) {
+    renderObject.widthFactor = widthFactor;
+  }
+}
+
+class _RenderLUIWidthCap extends RenderProxyBox {
+  _RenderLUIWidthCap({required double widthFactor})
+    : _widthFactor = widthFactor;
+
+  double get widthFactor => _widthFactor;
+  double _widthFactor;
+  set widthFactor(double value) {
+    if (_widthFactor != value) {
+      _widthFactor = value;
+      markNeedsLayout();
+    }
+  }
+
+  @override
+  void performLayout() {
+    final child = this.child;
+    if (child == null) {
+      size = constraints.smallest;
+      return;
+    }
+    final BoxConstraints childConstraints = constraints.hasBoundedWidth
+        ? constraints.copyWith(
+            minWidth: 0.0,
+            maxWidth: constraints.maxWidth * widthFactor,
+          )
+        : constraints;
+    child.layout(childConstraints, parentUsesSize: true);
+    size = constraints.constrain(child.size);
+  }
+}
+
+/// Reports its incoming constraints to the owning [State] so constraint-
+/// dependent widget structure can rebuild on the next frame instead of in
+/// a LayoutBuilder layout callback (which would run a nested buildScope
+/// during layout — the mechanism that orphaned elements during teardown).
+class _LUIConstraintProbe extends SingleChildRenderObjectWidget {
+  const _LUIConstraintProbe({required this.onConstraints, super.child});
+
+  /// Called from `performLayout` when the constraints change; must only
+  /// schedule work (e.g. a post-frame setState), never mutate the tree.
+  final ValueChanged<BoxConstraints> onConstraints;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderLUIConstraintProbe(onConstraints: onConstraints);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderLUIConstraintProbe renderObject,
+  ) {
+    renderObject.onConstraints = onConstraints;
+  }
+}
+
+class _RenderLUIConstraintProbe extends RenderProxyBox {
+  _RenderLUIConstraintProbe({required this.onConstraints});
+
+  ValueChanged<BoxConstraints> onConstraints;
+  BoxConstraints? _lastConstraints;
+
+  @override
+  void performLayout() {
+    if (_lastConstraints != constraints) {
+      _lastConstraints = constraints;
+      onConstraints(constraints);
+    }
+    super.performLayout();
   }
 }

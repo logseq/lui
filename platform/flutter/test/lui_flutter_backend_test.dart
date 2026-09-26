@@ -296,7 +296,7 @@ void main() {
       MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
     );
 
-    final row = tester.widget<Row>(find.byType(Row));
+    final row = tester.widget<LUIFlex>(find.byType(LUIFlex));
     expect(row.spacing, 12);
     expect(find.text('Hello from LG'), findsOneWidget);
     await tester.tap(find.widgetWithText(TextButton, 'Continue'));
@@ -353,11 +353,13 @@ void main() {
       MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
     );
 
-    final tabs = tester.widget<Row>(
+    final tabs = tester.widget<LUIFlex>(
       find
           .descendant(
             of: find.byKey(LUIFlutterBackend.nodeKey(1)),
-            matching: find.byType(Row),
+            matching: find.byWidgetPredicate(
+              (widget) => widget is LUIFlex && widget.direction == Axis.horizontal,
+            ),
           )
           .first,
     );
@@ -514,19 +516,23 @@ void main() {
       MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
     );
 
-    final buttonGroup = tester.widget<Row>(
+    final buttonGroup = tester.widget<LUIFlex>(
       find
           .descendant(
             of: find.byKey(LUIFlutterBackend.nodeKey(2)),
-            matching: find.byType(Row),
+            matching: find.byWidgetPredicate(
+              (widget) => widget is LUIFlex && widget.direction == Axis.horizontal,
+            ),
           )
           .first,
     );
-    final toggleGroup = tester.widget<Row>(
+    final toggleGroup = tester.widget<LUIFlex>(
       find
           .descendant(
             of: find.byKey(LUIFlutterBackend.nodeKey(3)),
-            matching: find.byType(Row),
+            matching: find.byWidgetPredicate(
+              (widget) => widget is LUIFlex && widget.direction == Axis.horizontal,
+            ),
           )
           .first,
     );
@@ -662,11 +668,13 @@ void main() {
       MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
     );
 
-    Row groupRow(int node) => tester.widget<Row>(
+    LUIFlex groupRow(int node) => tester.widget<LUIFlex>(
       find
           .descendant(
             of: find.byKey(LUIFlutterBackend.nodeKey(node)),
-            matching: find.byType(Row),
+            matching: find.byWidgetPredicate(
+              (widget) => widget is LUIFlex && widget.direction == Axis.horizontal,
+            ),
           )
           .first,
     );
@@ -1915,6 +1923,9 @@ void main() {
       ),
     );
 
+    // The constraint probe rebuilds the split after the first layout
+    // reports the real available width.
+    await tester.pump();
     final first = find.byKey(LUIFlutterBackend.nodeKey(2));
     final second = find.byKey(LUIFlutterBackend.nodeKey(3));
     final firstElement = tester.element(first);
@@ -1978,6 +1989,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
     );
+    // The constraint probe rebuilds the split after the first layout
+    // reports the real available width.
+    await tester.pump();
     final first = find.byKey(LUIFlutterBackend.nodeKey(2));
     expect(tester.getSize(first).width, closeTo(237.6, 0.01));
 
@@ -2548,7 +2562,11 @@ void main() {
       MaterialApp(home: Scaffold(body: backend.widget(node: 1))),
     );
 
-    final box = tester.widget<Column>(find.byType(Column));
+    final box = tester.widget<LUIFlex>(
+      find.byWidgetPredicate(
+        (widget) => widget is LUIFlex && widget.direction == Axis.vertical,
+      ),
+    );
     final headingSemantics = tester.widget<Semantics>(
       find.byWidgetPredicate(
         (widget) => widget is Semantics && widget.properties.header == true,
@@ -2783,7 +2801,13 @@ void main() {
       ),
     );
 
-    final row = tester.widget<Row>(find.byType(Row).first);
+    final row = tester.widget<LUIFlex>(
+      find
+          .byWidgetPredicate(
+            (widget) => widget is LUIFlex && widget.direction == Axis.horizontal,
+          )
+          .first,
+    );
     expect(row.mainAxisAlignment, MainAxisAlignment.spaceBetween);
     expect(row.crossAxisAlignment, CrossAxisAlignment.end);
     expect(tester.getSize(find.byKey(LUIFlutterBackend.nodeKey(2))).width, 250);
@@ -2847,7 +2871,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(LUIFlutterBackend.nodeKey(1)),
-        matching: find.byType(Stack),
+        matching: find.byWidgetPredicate((widget) => widget is Stack),
       ),
       findsNWidgets(3),
     );
@@ -3057,11 +3081,13 @@ void main() {
       ),
     );
 
-    final list = tester.widget<Column>(
+    final list = tester.widget<LUIFlex>(
       find
           .descendant(
             of: find.byKey(LUIFlutterBackend.nodeKey(2)),
-            matching: find.byType(Column),
+            matching: find.byWidgetPredicate(
+              (widget) => widget is LUIFlex && widget.direction == Axis.vertical,
+            ),
           )
           .first,
     );
