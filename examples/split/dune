@@ -1,0 +1,11 @@
+(library
+ (name split_app)
+ (modules model view)
+ (libraries lui ocaml-signal)
+ (preprocess (pps lui_ppx))
+ (wrapped false))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries split_app))
