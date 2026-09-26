@@ -507,17 +507,18 @@ private struct LUISplitPaneNode: View {
                 .lineLimit(1)
                 .foregroundStyle(isSelected ? .primary : .secondary)
             if tab.closable {
-                Button {
-                    context.tryEmit("tab-closed", values: ["tab": .string(tab.tabID)])
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .frame(width: 14, height: 14)
-                .contentShape(Rectangle())
-                .accessibilityLabel("Close \(tab.title)")
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 14, height: 14)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel("Close \(tab.title)")
+                    .accessibilityAddTraits(.isButton)
+                    .highPriorityGesture(
+                        TapGesture().onEnded {
+                            context.tryEmit(
+                                "tab-closed", values: ["tab": .string(tab.tabID)])
+                        })
             }
         }
         .padding(.horizontal, 10)
@@ -638,6 +639,12 @@ private struct LUISplitPaneKeys: ViewModifier {
                 guard press.modifiers.contains([.command, .option]) else { return .ignored }
                 return split(press.modifiers.contains(.shift) ? "vertical" : "horizontal")
             }
+            // Option+D produces '∂' rather than 'd', so the letter key never
+            // reaches the handler above on macOS.
+            .onKeyPress(KeyEquivalent("∂"), phases: .down) { press in
+                guard press.modifiers.contains([.command, .option]) else { return .ignored }
+                return split(press.modifiers.contains(.shift) ? "vertical" : "horizontal")
+            }
             .onKeyPress(KeyEquivalent("\\"), phases: .down) { press in
                 guard press.modifiers.contains(.command) else { return .ignored }
                 return split(press.modifiers.contains(.shift) ? "vertical" : "horizontal")
@@ -656,7 +663,9 @@ private struct LUISplitPaneKeys: ViewModifier {
     private func navigate(
         _ press: KeyPress, modifiers: EventModifiers, direction: String
     ) -> KeyPress.Result {
-        guard press.modifiers == modifiers else { return .ignored }
+        // Arrow presses carry an implicit .function modifier, so compare
+        // only the command/option bits we actually require.
+        guard press.modifiers.isSuperset(of: modifiers) else { return .ignored }
         context.tryEmit("navigate", values: ["direction": .string(direction)])
         return .handled
     }
