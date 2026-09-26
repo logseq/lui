@@ -498,6 +498,119 @@ let capture_node cell element : Lui_elements.t =
   cell := node;
   node
 
+let test_glass_button_actions () =
+  let single_presses = ref 0 in
+  let information_presses = ref 0 in
+  let settings_presses = ref 0 in
+  let single_node = ref 0 in
+  let group_node = ref 0 in
+  let action label icon presses : Lui_element_combine.action =
+    { label; icon; text = None; on_press = (fun _ -> incr presses) }
+  in
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      (fun _context _model_source _send ->
+         Lui_elements.column
+           [ capture_node single_node
+               (Lui_element_combine.glass_buttons
+                  ~actions:[ action "New note" `plus single_presses ]);
+             capture_node group_node
+               (Lui_element_combine.glass_buttons
+                  ~actions:
+                    [ action "Information" `info information_presses;
+                      action "Settings" `settings settings_presses ]);
+           ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let group_children =
+    all_ops ()
+    |> List.filter_map (function
+         | Lui_protocol.InsertChild (parent, child, index)
+           when parent = !group_node -> Some (index, child)
+         | _ -> None)
+    |> List.sort (fun (left, _) (right, _) -> Int.compare left right)
+    |> List.map snd
+  in
+  Alcotest.(check int) "group has two actions" 2 (List.length group_children);
+  List.iter
+    (fun node ->
+       ignore (Lui_app.dispatch_event app (Lui_protocol.Press node)))
+    (!single_node :: group_children);
+  flush_app app;
+  Alcotest.(check (list int)) "each action has its own callback"
+    [ 1; 1; 1 ]
+    [ !single_presses; !information_presses; !settings_presses ];
+  ignore (Lui_app.dispose app)
+
+let test_glass_buttons_require_an_action () =
+  let rejected =
+    try
+      let _element = Lui_element_combine.glass_buttons ~actions:[] in
+      false
+    with Invalid_argument _ -> true
+  in
+  Alcotest.(check bool) "empty group rejected" true rejected
+
+let test_glass_button_text_is_optional () =
+  let icon_only_node = ref 0 in
+  let text_node = ref 0 in
+  let group_node = ref 0 in
+  let action : Lui_element_combine.action =
+    { label = "New note"; icon = `plus; text = None; on_press = (fun _ -> ()) }
+  in
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      (fun _context _model_source _send ->
+         Lui_elements.column
+           [ capture_node icon_only_node
+               (Lui_element_combine.glass_buttons ~actions:[ action ]);
+             capture_node text_node
+               (Lui_element_combine.glass_buttons
+                  ~actions:[ { action with text = Some "New note" } ]);
+             capture_node group_node
+               (Lui_element_combine.glass_buttons
+                  ~actions:
+                    [ { action with label = "Information"; icon = `info
+                      ; text = Some "Info" }
+                    ; { action with label = "Settings"; icon = `settings }
+                    ]);
+           ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let has_property node property value =
+    List.exists
+      (function
+       | Lui_protocol.SetProp (id, key, Lui_protocol.StringValue text) ->
+         id = node && key = property && text = value
+       | _ -> false)
+      (all_ops ())
+  in
+  Alcotest.(check bool) "icon-only button keeps accessible label" true
+    (has_property !icon_only_node Lui_protocol.AccessibilityLabel "New note");
+  Alcotest.(check bool) "icon-only button has no visible text" false
+    (has_property !icon_only_node Lui_protocol.TextValue "New note");
+  Alcotest.(check bool) "text button shows its text" true
+    (has_property !text_node Lui_protocol.TextValue "New note");
+  let group_children =
+    all_ops ()
+    |> List.filter_map (function
+         | Lui_protocol.InsertChild (parent, child, index)
+           when parent = !group_node -> Some (index, child)
+         | _ -> None)
+    |> List.sort (fun (left, _) (right, _) -> Int.compare left right)
+    |> List.map snd
+  in
+  Alcotest.(check int) "group has two actions" 2 (List.length group_children);
+  Alcotest.(check bool) "first group action shows text" true
+    (has_property (List.hd group_children) Lui_protocol.TextValue "Info");
+  Alcotest.(check bool) "second group action is icon-only" false
+    (has_property (List.nth group_children 1) Lui_protocol.TextValue "Settings");
+  ignore (Lui_app.dispose app)
+
 let test_dispatch_drops_value_echoes () =
   let inputs = ref 0 in
   let toggles = ref 0 in
@@ -963,6 +1076,14 @@ let () =
         [
           Alcotest.test_case "theme_tokens_json" `Quick
             test_theme_tokens_json;
+        ] );
+      ( "glass buttons",
+        [
+          Alcotest.test_case "action callbacks" `Quick test_glass_button_actions;
+          Alcotest.test_case "requires an action" `Quick
+            test_glass_buttons_require_an_action;
+          Alcotest.test_case "optional visible text" `Quick
+            test_glass_button_text_is_optional;
         ] );
       ( "json_view",
         [

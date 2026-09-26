@@ -145,6 +145,28 @@ let button_group_section model_source send : t =
         ]
     ]
 
+let glass_buttons_section : t =
+  let action ?text label icon : Lui_element_combine.action =
+    { label; icon; text; on_press = noop }
+  in
+  section "Glass Buttons"
+    [ paragraph ~value:"A single icon-only glass button" []
+    ; Lui_element_combine.glass_buttons
+        ~actions:[ action "New note" `plus ]
+    ; paragraph ~value:"A single glass button with text" []
+    ; Lui_element_combine.glass_buttons
+        ~actions:[ action ~text:"New note" "New note" `plus ]
+    ; paragraph ~value:"Buttons sharing one glass capsule" []
+    ; Lui_element_combine.glass_buttons
+        ~actions:[ action "Information" `info; action "Settings" `settings ]
+    ; paragraph ~value:"Mixed text and icon actions" []
+    ; Lui_element_combine.glass_buttons
+        ~actions:
+          [ action ~text:"Info" "Information" `info
+          ; action "Settings" `settings
+          ]
+    ]
+
 let toggle_group_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "ToggleGroup"
@@ -1487,6 +1509,7 @@ let view context model_source send : t =
     ; spacer_section
     ; toggle_button_section model_source send
     ; button_group_section model_source send
+    ; glass_buttons_section
     ; toggle_group_section model_source send
     ; breadcrumb_section send
     ; pagination_section model_source send

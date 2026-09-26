@@ -12,6 +12,54 @@ open Lui_elements
 
 type t = Lui_elements.t
 
+(* ------------------------------------------------------------------ *)
+(* Glass buttons                                                      *)
+(* ------------------------------------------------------------------ *)
+
+type action =
+  { label : string
+  ; icon : icon
+  ; text : string option
+  ; on_press : Lui_protocol.event -> unit
+  }
+
+let glass_action_button ?background ?corner_radius ?min_width action =
+  let icon_only = Option.is_none action.text in
+  button
+    ~variant:`ghost
+    ~size:(if icon_only then `icon else `default)
+    ~icon:action.icon
+    ?text:action.text
+    ~label:action.label
+    ~foreground:"foreground"
+    ?background
+    ?corner_radius
+    ?padding_horizontal:(if icon_only then None else Some 8)
+    ?width:(if icon_only then Some 44 else None)
+    ?min_width
+    ~height:44
+    ~on_press:action.on_press
+    []
+;;
+
+let glass_buttons ~actions =
+  match actions with
+  | [ action ] ->
+    glass_action_button
+      ~background:"glass"
+      ~corner_radius:999
+      ?min_width:(Option.map (fun _ -> 160) action.text)
+      action
+  | _ :: _ :: _ ->
+    button_group
+      ~gap:0
+      ~height:44
+      ~background:"glass"
+      ~corner_radius:999
+      (List.map glass_action_button actions)
+  | [] -> invalid_arg "glass_buttons requires at least one action"
+;;
+
 let rec intersperse separator_ = function
   | [] -> []
   | [ x ] -> [ x ]

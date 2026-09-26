@@ -8,6 +8,20 @@
 
 open Lui_elements
 
+(** {1 Glass buttons} *)
+
+type action =
+  { label : string
+  ; icon : icon
+  ; text : string option
+  ; on_press : Lui_protocol.event -> unit
+  }
+
+(** Each action may have visible [text]; [label] is its accessibility name.
+    One action renders a glass button. Multiple actions share one glass
+    capsule. The list must not be empty. *)
+val glass_buttons : actions:action list -> t
+
 (** {1 Composer} *)
 
 (** Message/capture input capsule: optional horizontal attachment strip,
