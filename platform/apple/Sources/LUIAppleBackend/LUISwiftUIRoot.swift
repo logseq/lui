@@ -488,11 +488,34 @@ struct LUIAnyNodeView: View, Equatable {
 
     @ViewBuilder
     var body: some View {
-        if let model = backend.model(id: nodeID) {
-            LUINodeView(model: model, backend: backend)
-        } else if let model = backend.extensionModel(id: nodeID) {
-            LUIExtensionNodeView(model: model, backend: backend)
+        Group {
+            if let model = backend.model(id: nodeID) {
+                LUINodeView(model: model, backend: backend)
+            } else if let model = backend.extensionModel(id: nodeID) {
+                LUIExtensionNodeView(model: model, backend: backend)
+            }
         }
+        .modifier(LUIFrameReportModifier(nodeID: nodeID, backend: backend))
+    }
+}
+
+/// Feeds `LUIAppleBackend.reportNodeFrame` with each node's frame in the
+/// scene's global coordinate space. Collection is unconditional (cheap
+/// dict writes) so `frameReportingEnabled` can turn on mid-session.
+private struct LUIFrameReportModifier: ViewModifier {
+    let nodeID: Int
+    let backend: LUIAppleBackend
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: CGRect.self) { proxy in
+                proxy.frame(in: .global)
+            } action: { rect in
+                backend.reportNodeFrame(nodeID, rect)
+            }
+            .onDisappear {
+                backend.removeNodeFrame(nodeID)
+            }
     }
 }
 
