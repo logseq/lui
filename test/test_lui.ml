@@ -1329,6 +1329,36 @@ let test_split_model () =
   in
   Alcotest.(check (list string)) "pane collapsed" [ "editor"; "pane-0" ]
     (pane_ids (root state));
+  (* a stale move to a vanished pane leaves the tab in place *)
+  let state =
+    update state
+      (Move_tab
+         { move_tab = "b"; move_from = "editor"; move_to = "ghost";
+           move_index = 0 })
+  in
+  Alcotest.(check bool) "tab survived stale move" true
+    (Option.is_some
+       (Option.bind
+          (find_pane "editor" (root state))
+          (fun p ->
+            List.find_opt
+              (fun t -> String.equal t.Lui_split.Model.tab_id "b")
+              p.pane_tabs)));
+  (* non-closable tabs reject Close_tab *)
+  let guarded =
+    create
+      (Leaf
+         (pane ~pane_id:"locked"
+            [
+              tab ~tab_id:"open" ~title:"Open" ();
+              tab ~tab_id:"fixed" ~title:"Fixed" ~closable:false ();
+            ]))
+  in
+  let guarded = update guarded (Close_tab ("locked", "fixed")) in
+  Alcotest.(check int) "protected tab kept" 2
+    (match find_pane "locked" (root guarded) with
+    | Some p -> List.length p.pane_tabs
+    | None -> -1);
   (* the last pane never closes *)
   let state = update state (Close_pane "editor") in
   let state = update state (Close_pane "pane-0") in
