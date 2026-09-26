@@ -2646,6 +2646,23 @@ private struct LUIToolbarGroupAnchor: View {
             ToolbarItem(placement: placement) {
                 itemIdentity(LUIAnyNodeView(nodeID: childID, backend: backend).equatable(), at: index)
             }
+        case let .scrollCapsule(childIDs):
+            // scroll-leading: the leading controls live in a horizontally
+            // scrolling fused capsule so a pinned trailing sibling stays
+            // reachable when the content overflows the bar.
+            ToolbarItem(placement: placement) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    ControlGroup {
+                        ForEach(childIDs, id: \.self) { childID in
+                            itemIdentity(
+                                LUIAnyNodeView(nodeID: childID, backend: backend).equatable(),
+                                at: index,
+                                firstChild: childID == childIDs.first
+                            )
+                        }
+                    }
+                }
+            }
         case let .capsule(childIDs):
             // Consecutive interactive children fuse into one toolbar item so
             // the platform draws its shared capsule.
@@ -2692,6 +2709,7 @@ private struct LUIToolbarGroupAnchor: View {
         case spacer
         case bare(Int)
         case capsule([Int])
+        case scrollCapsule([Int])
     }
 
     /// Consecutive interactive children merge into one `ToolbarItem` carrying
@@ -2699,17 +2717,25 @@ private struct LUIToolbarGroupAnchor: View {
     /// non-interactive children stay bare so a principal title never gains
     /// chrome.
     private var segments: [Segment] {
+        // scroll-leading keeps the last child pinned at the trailing edge;
+        // the leading children scroll inside their own fused capsule so the
+        // pinned item is never pushed off-screen by overflow.
+        let pinnedID = LUIToolbarLayoutPolicy.pinsTrailing(
+            model.property(.styleClass)?.stringValue
+        ) && model.children.count >= 2 ? model.children.last : nil
+        if let pinnedID {
+            return [
+                .scrollCapsule(Array(model.children.dropLast())),
+                .spacer,
+                .capsule([pinnedID]),
+            ]
+        }
         var result: [Segment] = []
         var run: [Int] = []
         func flush() {
             if !run.isEmpty { result.append(.capsule(run)); run = [] }
         }
-        // scroll-leading keeps the last child pinned at the trailing edge
-        // instead of fusing it into the scrolling capsule.
-        let pinnedID = LUIToolbarLayoutPolicy.pinsTrailing(
-            model.property(.styleClass)?.stringValue
-        ) && model.children.count >= 2 ? model.children.last : nil
-        for childID in model.children where childID != pinnedID {
+        for childID in model.children {
             switch backend.model(id: childID)?.kind {
             case .spacer:
                 flush(); result.append(.spacer)
@@ -2725,10 +2751,6 @@ private struct LUIToolbarGroupAnchor: View {
             }
         }
         flush()
-        if let pinnedID {
-            result.append(.spacer)
-            result.append(.capsule([pinnedID]))
-        }
         return result
     }
 }
