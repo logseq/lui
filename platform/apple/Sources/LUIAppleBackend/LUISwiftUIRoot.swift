@@ -2713,6 +2713,7 @@ private struct LUIToolbarGroupAnchor: View {
         var result: [Segment] = []
         var run: [Int] = []
         func appendInteractive(_ childIDs: [Int]) {
+            guard !childIDs.isEmpty else { return }
             if childIDs.count == 1 {
                 result.append(.bare(childIDs[0]))
             } else {
@@ -5622,6 +5623,22 @@ private struct LUISurfaceModifier: ViewModifier {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
+
+    /// The inner label of a hoisted icon-only button is floored to the 44pt
+    /// bar-item target (see `LUIButtonView.hitTargetFloor`); this keeps the
+    /// node's outer surface frame in step so it can't clip the hit region.
+    private func floored(_ extent: Int?) -> Int? {
+        guard inHoistedToolbar,
+              model.kind == .button || model.kind == .toggleButton,
+              !model.buttonIconName.isEmpty, model.text.isEmpty
+        else { return extent }
+        #if os(iOS)
+        return max(extent ?? 0, 44)
+        #else
+        return extent
+        #endif
+    }
 
     func body(content: Content) -> some View {
         let isSurface = model.kind == .panel || model.kind == .card ||
@@ -5667,9 +5684,9 @@ private struct LUISurfaceModifier: ViewModifier {
             .frame(
                 width: LUIExplicitFramePolicy.width(
                     kind: model.kind,
-                    requested: model.surfaceWidth
+                    requested: floored(model.surfaceWidth)
                 ).map(CGFloat.init),
-                height: model.surfaceHeight.map(CGFloat.init)
+                height: floored(model.surfaceHeight).map(CGFloat.init)
             )
             .modifier(LUIBodyLineControlModifier(
                 enabled: model.property(.styleClass)?.stringValue?.split(separator: " ").contains("body-line") == true,
