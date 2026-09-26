@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>lui-split demo</title>
+  <link rel="stylesheet" href="../src/lui-split.css" />
+  <style>
+    html, body { height: 100%; margin: 0; font-family: system-ui, sans-serif; }
+    body { display: flex; flex-direction: column; }
+    header {
+      padding: 8px 14px;
+      font-size: 13px;
+      border-bottom: 1px solid #e4e4e7;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex: none;
+    }
+    header code { font-size: 12px; color: #71717a; }
+    #log { margin-left: auto; font-size: 11px; color: #a1a1aa; }
+    #root { flex: 1; min-height: 0; padding: 8px; }
+    .page { height: 100%; padding: 16px; box-sizing: border-box; overflow: auto; }
+    .page h1 { font-size: 18px; margin: 0 0 8px; }
+    .page p { font-size: 13px; color: #52525b; max-width: 46em; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>lui-split</strong>
+    <code>⌘/Ctrl+Alt+arrows navigate</code>
+    <code>⌘/Ctrl+Alt+D split</code>
+    <code>⌘/Ctrl+\ split</code>
+    <code>⌘/Ctrl+W close tab</code>
+    <code>drag tabs to reorder / drop on edges to split</code>
+    <span id="log"></span>
+  </header>
+  <div id="root"></div>
+  <script src="../src/lui-split.js"></script>
+  <script>
+    const page = (title, hue) => ({
+      html: `<div class="page" style="background:oklch(0.97 0.02 ${hue})">
+               <h1>${title}</h1>
+               <p>Pane content stays mounted when its tab is deselected —
+                  scroll position and form state survive switching.</p>
+               <p>Drag this tab onto an edge of any pane to split it, or onto
+                  another strip to move it.</p>
+             </div>`,
+    });
+    const tab = (id, title, hue) => ({
+      identifier: 'split-tab',
+      properties: { 'tab-id': id, title, closable: true },
+      children: [page(title, hue)],
+    });
+    const pane = (id, tabs) => ({
+      identifier: 'split-pane',
+      properties: { 'pane-id': id, selected: tabs[0].properties['tab-id'] },
+      children: tabs,
+    });
+    const tree = {
+      identifier: 'split-view',
+      properties: { 'divider-thickness': 9, animation: true },
+      children: [{
+        identifier: 'split-branch',
+        properties: { orientation: 'horizontal', ratio: 0.5 },
+        children: [
+          pane('left', [tab('a', 'alpha', 250), tab('b', 'beta', 200)]),
+          pane('right', [tab('c', 'gamma', 150), tab('d', 'delta', 100)]),
+        ],
+      }],
+    };
+    const log = document.getElementById('log');
+    LUISplit.mount(document.getElementById('root'), tree,
+      (name, values) => {
+        log.textContent = `${name} ${JSON.stringify(values)}`;
+      });
+  </script>
+</body>
+</html>

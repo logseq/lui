@@ -36,6 +36,8 @@ qt_add_qml_module(lui_qml
         lui_extension_registry.cpp
         lui_qml_backend.h
         lui_qml_backend.cpp
+        lui_split_extensions.h
+        lui_split_extensions.cpp
     QML_FILES
         ../qml/LuiAccordion.qml
         ../qml/LuiAlert.qml
@@ -87,6 +89,11 @@ qt_add_qml_module(lui_qml
         ../qml/LuiSpacer.qml
         ../qml/LuiSpinner.qml
         ../qml/LuiSplit.qml
+        ../qml/LuiSplitBranch.qml
+        ../qml/LuiSplitPane.qml
+        ../qml/LuiSplitTab.qml
+        ../qml/LuiSplitTabChip.qml
+        ../qml/LuiSplitView.qml
         ../qml/LuiStack.qml
         ../qml/LuiStatusBar.qml
         ../qml/LuiStep.qml

@@ -27,7 +27,33 @@ type t = {
   combine_dialog_open : bool;
   combine_sheet_open : bool;
   combine_menu_open : bool;
+  split_panes : Lui_split.Model.t;
 }
+
+let gallery_split_state =
+  let open Lui_split.Model in
+  create ~focused:"editor"
+    (Split
+       {
+         split_id = "gallery-root";
+         split_orientation = `horizontal;
+         split_ratio = 0.62;
+         split_first =
+           Leaf
+             (pane ~pane_id:"editor" ~selected:"welcome"
+                [
+                  tab ~tab_id:"welcome" ~title:"Welcome" ();
+                  tab ~tab_id:"notes" ~title:"Notes.md" ~dirty:true ();
+                  tab ~tab_id:"repl" ~title:"REPL" ~closable:false ();
+                ]);
+         split_second =
+           Leaf
+             (pane ~pane_id:"sidebar" ~selected:"outline"
+                [
+                  tab ~tab_id:"outline" ~title:"Outline" ();
+                  tab ~tab_id:"backlinks" ~title:"Backlinks" ();
+                ]);
+       })
 
 type action =
   | ToggleDisabled
@@ -63,6 +89,7 @@ type action =
   | CloseCombineSheet
   | OpenCombineMenu
   | CloseCombineMenu
+  | SplitPanes of Lui_split.Model.action
 
 let initial =
   {
@@ -91,6 +118,7 @@ let initial =
     combine_dialog_open = false;
     combine_sheet_open = false;
     combine_menu_open = false;
+    split_panes = gallery_split_state;
   }
 
 let update model action =
@@ -151,6 +179,8 @@ let update model action =
   | CloseCombineSheet -> { model with combine_sheet_open = false }
   | OpenCombineMenu -> { model with combine_menu_open = true }
   | CloseCombineMenu -> { model with combine_menu_open = false }
+  | SplitPanes action ->
+    { model with split_panes = Lui_split.Model.update model.split_panes action }
 
 let progress_label model =
   Printf.sprintf "Progress fraction: %.1f" model.progress

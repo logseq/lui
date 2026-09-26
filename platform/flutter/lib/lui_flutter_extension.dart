@@ -249,6 +249,25 @@ final class LUIFlutterExtensionContext {
         : const SizedBox.shrink();
   }
 
+  /// Renders one declared child of this extension node (e.g. a `split-pane`
+  /// showing a specific `split-tab`). Unknown ids render nothing.
+  Widget contentFor(int childID) => childIDs.contains(childID)
+      ? _backend.widget(node: childID)
+      : const SizedBox.shrink();
+
+  /// Reads a property from the nearest ancestor extension node with the
+  /// given identifier (e.g. `split-view` settings from a nested branch).
+  Object? ancestorProperty(String identifier, String name) {
+    var parent = _backend._requireExtensionState(nodeID).parent;
+    while (parent != null) {
+      final state = _backend._extensionStates[parent];
+      if (state == null) return null;
+      if (state.identifier == identifier) return state.properties[name];
+      parent = state.parent;
+    }
+    return null;
+  }
+
   Object? childProperty(int childID, String name) =>
       _backend._requireExtensionState(childID).properties[name];
 

@@ -1,18 +1,98 @@
 {
   "profiles": {
     "apple": [
-      {"os": "macos", "host": "swiftui"},
-      {"os": "ios", "host": "swiftui"}
+      {
+        "os": "macos",
+        "host": "swiftui"
+      },
+      {
+        "os": "ios",
+        "host": "swiftui"
+      }
     ],
     "all": [
-      {"os": "android", "host": "flutter"},
-      {"os": "ios", "host": "flutter"},
-      {"os": "ios", "host": "swiftui"},
-      {"os": "linux", "host": "flutter"},
-      {"os": "macos", "host": "flutter"},
-      {"os": "macos", "host": "swiftui"},
-      {"os": "web", "host": "web"},
-      {"os": "windows", "host": "flutter"}
+      {
+        "os": "android",
+        "host": "flutter"
+      },
+      {
+        "os": "ios",
+        "host": "flutter"
+      },
+      {
+        "os": "ios",
+        "host": "swiftui"
+      },
+      {
+        "os": "linux",
+        "host": "flutter"
+      },
+      {
+        "os": "macos",
+        "host": "flutter"
+      },
+      {
+        "os": "macos",
+        "host": "swiftui"
+      },
+      {
+        "os": "web",
+        "host": "web"
+      },
+      {
+        "os": "windows",
+        "host": "flutter"
+      }
+    ],
+    "splits": [
+      {
+        "os": "macos",
+        "host": "swiftui"
+      },
+      {
+        "os": "ios",
+        "host": "swiftui"
+      },
+      {
+        "os": "linux",
+        "host": "qml"
+      },
+      {
+        "os": "macos",
+        "host": "qml"
+      },
+      {
+        "os": "windows",
+        "host": "qml"
+      },
+      {
+        "os": "android",
+        "host": "flutter"
+      },
+      {
+        "os": "ios",
+        "host": "flutter"
+      },
+      {
+        "os": "linux",
+        "host": "flutter"
+      },
+      {
+        "os": "macos",
+        "host": "flutter"
+      },
+      {
+        "os": "windows",
+        "host": "flutter"
+      },
+      {
+        "os": "windows",
+        "host": "winui"
+      },
+      {
+        "os": "web",
+        "host": "web"
+      }
     ]
   },
   "components": [
@@ -20,12 +100,30 @@
       "identifier": "apple-map",
       "profiles": "apple",
       "standardChildren": false,
-      "children": ["apple-map-marker"],
+      "children": [
+        "apple-map-marker"
+      ],
       "properties": [
-        {"name": "latitude", "kind": "float", "required": true},
-        {"name": "longitude", "kind": "float", "required": true},
-        {"name": "latitude-delta", "kind": "float", "required": true},
-        {"name": "longitude-delta", "kind": "float", "required": true}
+        {
+          "name": "latitude",
+          "kind": "float",
+          "required": true
+        },
+        {
+          "name": "longitude",
+          "kind": "float",
+          "required": true
+        },
+        {
+          "name": "latitude-delta",
+          "kind": "float",
+          "required": true
+        },
+        {
+          "name": "longitude-delta",
+          "kind": "float",
+          "required": true
+        }
       ],
       "events": []
     },
@@ -35,14 +133,239 @@
       "standardChildren": false,
       "children": [],
       "properties": [
-        {"name": "title", "kind": "string", "required": true},
-        {"name": "latitude", "kind": "float", "required": true},
-        {"name": "longitude", "kind": "float", "required": true}
+        {
+          "name": "title",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "latitude",
+          "kind": "float",
+          "required": true
+        },
+        {
+          "name": "longitude",
+          "kind": "float",
+          "required": true
+        }
+      ],
+      "events": []
+    },
+    {
+      "identifier": "split-view",
+      "profiles": "splits",
+      "standardChildren": false,
+      "children": [
+        "split-branch",
+        "split-pane"
+      ],
+      "properties": [
+        {
+          "name": "divider-thickness",
+          "kind": "float"
+        },
+        {
+          "name": "animation",
+          "kind": "bool"
+        },
+        {
+          "name": "accessibility-identifier",
+          "kind": "string"
+        }
+      ],
+      "events": []
+    },
+    {
+      "identifier": "split-branch",
+      "profiles": "splits",
+      "standardChildren": false,
+      "children": [
+        "split-branch",
+        "split-pane"
+      ],
+      "properties": [
+        {
+          "name": "orientation",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "ratio",
+          "kind": "float",
+          "required": true
+        }
+      ],
+      "events": [
+        {
+          "name": "ratio-changed",
+          "fields": [
+            {
+              "name": "ratio",
+              "kind": "float",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "identifier": "split-pane",
+      "profiles": "splits",
+      "standardChildren": false,
+      "children": [
+        "split-tab"
+      ],
+      "properties": [
+        {
+          "name": "pane-id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "selected",
+          "kind": "string"
+        },
+        {
+          "name": "focused",
+          "kind": "bool"
+        },
+        {
+          "name": "accessibility-identifier",
+          "kind": "string"
+        }
+      ],
+      "events": [
+        {
+          "name": "tab-selected",
+          "fields": [
+            {
+              "name": "tab",
+              "kind": "string",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "tab-closed",
+          "fields": [
+            {
+              "name": "tab",
+              "kind": "string",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "tab-moved",
+          "fields": [
+            {
+              "name": "tab",
+              "kind": "string",
+              "required": true
+            },
+            {
+              "name": "index",
+              "kind": "int",
+              "required": true
+            },
+            {
+              "name": "from-pane",
+              "kind": "string",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "pane-focused",
+          "fields": []
+        },
+        {
+          "name": "navigate",
+          "fields": [
+            {
+              "name": "direction",
+              "kind": "string",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "split-requested",
+          "fields": [
+            {
+              "name": "orientation",
+              "kind": "string",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "split-drop",
+          "fields": [
+            {
+              "name": "tab",
+              "kind": "string",
+              "required": true
+            },
+            {
+              "name": "from-pane",
+              "kind": "string",
+              "required": true
+            },
+            {
+              "name": "edge",
+              "kind": "string",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "pane-closed",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "identifier": "split-tab",
+      "profiles": "splits",
+      "standardChildren": true,
+      "children": [],
+      "properties": [
+        {
+          "name": "tab-id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "title",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "icon",
+          "kind": "string"
+        },
+        {
+          "name": "dirty",
+          "kind": "bool"
+        },
+        {
+          "name": "closable",
+          "kind": "bool"
+        },
+        {
+          "name": "accessibility-identifier",
+          "kind": "string"
+        }
       ],
       "events": []
     }
   ],
   "tweaks": [
-    {"identifier": "gallery-accent", "profiles": "all", "properties": []}
+    {
+      "identifier": "gallery-accent",
+      "profiles": "all",
+      "properties": []
+    }
   ]
 }

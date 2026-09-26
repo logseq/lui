@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 
 part 'lui_wire_schema.g.dart';
 part 'lui_flutter_extension.dart';
+part 'lui_flutter_split.dart';
 
 sealed class LUIEvent {
   const LUIEvent();

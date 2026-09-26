@@ -1336,6 +1336,31 @@ let native_extension_section : t =
        context (Some page_id));
   page_id
 
+let split_panes_section model_source send : t =
+  let pane_body (tab : Lui_split.Model.tab) =
+    column ~gap:8 ~padding:16
+      [ text ~value:tab.Lui_split.Model.tab_title []
+      ; paragraph ~value:"Tab bodies stay mounted per tab; selection, splits,
+          edge drops and shortcuts dispatch through the shared model." []
+      ]
+  in
+  section "Split Panes (extension)"
+    [ paragraph
+        ~value:"Bonsplit-style tabbed panes: LUISplit.register renders them
+          natively with drag-to-reorder, edge-drop splits and keyboard
+          navigation."
+        []
+    ; dyn
+        ~equal:(fun (a : Model.t) (b : Model.t) ->
+          a.Model.split_panes == b.Model.split_panes)
+        (fun (m : Model.t) ->
+          Lui_split.Model.render
+            ~build:(fun tab -> [ pane_body tab ])
+            ~dispatch:(fun action -> ignore (send (Model.SplitPanes action)))
+            m.Model.split_panes)
+        model_source
+    ]
+
 let tweak_paragraph : t =
  fun context parent ->
   let node = Lui_ui.platform_tweak context "gallery-accent" in
@@ -1564,7 +1589,13 @@ let view context model_source send : t =
   in
   let sections =
     match Lui_ui.platform context with
-    | IOS | MacOS -> sections @ [ native_extension_section; tweak_paragraph ]
+    | IOS | MacOS ->
+      sections
+      @ [
+          native_extension_section;
+          tweak_paragraph;
+          split_panes_section model_source send;
+        ]
     | _ -> sections
   in
   column sections
