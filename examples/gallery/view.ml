@@ -151,16 +151,16 @@ let glass_buttons_section : t =
   in
   section "Glass Buttons"
     [ paragraph ~value:"A single icon-only glass button" []
-    ; Lui_element_combine.glass_buttons
+    ; Lui_element_combine.buttons
         ~actions:[ action "New note" `plus ]
     ; paragraph ~value:"A single glass button with text" []
-    ; Lui_element_combine.glass_buttons
+    ; Lui_element_combine.buttons
         ~actions:[ action ~text:"New note" "New note" `plus ]
     ; paragraph ~value:"Buttons sharing one glass capsule" []
-    ; Lui_element_combine.glass_buttons
+    ; Lui_element_combine.buttons
         ~actions:[ action "Information" `info; action "Settings" `settings ]
     ; paragraph ~value:"Mixed text and icon actions" []
-    ; Lui_element_combine.glass_buttons
+    ; Lui_element_combine.buttons
         ~actions:
           [ action ~text:"Info" "Information" `info
           ; action "Settings" `settings

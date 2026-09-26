@@ -46,7 +46,7 @@ let glass_action_button ?background ?corner_radius action =
     []
 ;;
 
-let glass_buttons ~actions =
+let buttons ~actions =
   match actions with
   | [ action ] ->
     glass_action_button ~background:"glass" ~corner_radius:999 action
@@ -57,7 +57,7 @@ let glass_buttons ~actions =
       ~background:"glass"
       ~corner_radius:999
       (List.map glass_action_button actions)
-  | [] -> invalid_arg "glass_buttons requires at least one action"
+  | [] -> invalid_arg "buttons requires at least one action"
 ;;
 
 let rec intersperse separator_ = function

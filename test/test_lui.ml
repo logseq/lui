@@ -513,10 +513,10 @@ let test_glass_button_actions () =
       (fun _context _model_source _send ->
          Lui_elements.column
            [ capture_node single_node
-               (Lui_element_combine.glass_buttons
+               (Lui_element_combine.buttons
                   ~actions:[ action "New note" `plus single_presses ]);
              capture_node group_node
-               (Lui_element_combine.glass_buttons
+               (Lui_element_combine.buttons
                   ~actions:
                     [ action "Information" `info information_presses;
                       action "Settings" `settings settings_presses ]);
@@ -547,7 +547,7 @@ let test_glass_button_actions () =
 let test_glass_buttons_require_an_action () =
   let rejected =
     try
-      let _element = Lui_element_combine.glass_buttons ~actions:[] in
+      let _element = Lui_element_combine.buttons ~actions:[] in
       false
     with Invalid_argument _ -> true
   in
@@ -566,12 +566,12 @@ let test_glass_button_text_is_optional () =
       (fun _context _model_source _send ->
          Lui_elements.column
            [ capture_node icon_only_node
-               (Lui_element_combine.glass_buttons ~actions:[ action ]);
+               (Lui_element_combine.buttons ~actions:[ action ]);
              capture_node text_node
-               (Lui_element_combine.glass_buttons
+               (Lui_element_combine.buttons
                   ~actions:[ { action with text = Some "New note" } ]);
              capture_node group_node
-               (Lui_element_combine.glass_buttons
+               (Lui_element_combine.buttons
                   ~actions:
                     [ { action with label = "Information"; icon = `info
                       ; text = Some "Info" }

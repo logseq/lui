@@ -8,7 +8,7 @@
 
 open Lui_elements
 
-(** {1 Glass buttons} *)
+(** {1 Buttons} *)
 
 type action =
   { label : string
@@ -18,9 +18,9 @@ type action =
   }
 
 (** Each action may have visible [text]; [label] is its accessibility name.
-    One action renders a glass button. Multiple actions share one glass
+    One action renders a capsule button. Multiple actions share one
     capsule. The list must not be empty. *)
-val glass_buttons : actions:action list -> t
+val buttons : actions:action list -> t
 
 (** {1 Composer} *)
 
