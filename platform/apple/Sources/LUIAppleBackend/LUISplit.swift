@@ -635,15 +635,15 @@ private struct LUISplitPaneKeys: ViewModifier {
                 navigate(press, modifiers: [.command, .option], direction: "down")
             }
         let splits = navigation
-            .onKeyPress(KeyEquivalent("d"), phases: .down) { press in
-                guard press.modifiers.contains([.command, .option]) else { return .ignored }
-                return split(press.modifiers.contains(.shift) ? "vertical" : "horizontal")
-            }
-            // Option+D produces '∂' rather than 'd', so the letter key never
-            // reaches the handler above on macOS.
-            .onKeyPress(KeyEquivalent("∂"), phases: .down) { press in
-                guard press.modifiers.contains([.command, .option]) else { return .ignored }
-                return split(press.modifiers.contains(.shift) ? "vertical" : "horizontal")
+            // ⌘⌥D: Option rewrites the typed character ('∂' on US layouts),
+            // so inspect the press rather than matching a KeyEquivalent.
+            .onKeyPress(phases: .down) { press in
+                let chars = press.characters.lowercased()
+                guard chars == "d" || chars == "∂",
+                      press.modifiers.isSuperset(of: [.command, .option])
+                else { return .ignored }
+                return split(
+                    press.modifiers.contains(.shift) ? "vertical" : "horizontal")
             }
             .onKeyPress(KeyEquivalent("\\"), phases: .down) { press in
                 guard press.modifiers.contains(.command) else { return .ignored }
