@@ -2704,7 +2704,12 @@ private struct LUIToolbarGroupAnchor: View {
         func flush() {
             if !run.isEmpty { result.append(.capsule(run)); run = [] }
         }
-        for childID in model.children {
+        // scroll-leading keeps the last child pinned at the trailing edge
+        // instead of fusing it into the scrolling capsule.
+        let pinnedID = LUIToolbarLayoutPolicy.pinsTrailing(
+            model.property(.styleClass)?.stringValue
+        ) && model.children.count >= 2 ? model.children.last : nil
+        for childID in model.children where childID != pinnedID {
             switch backend.model(id: childID)?.kind {
             case .spacer:
                 flush(); result.append(.spacer)
@@ -2720,6 +2725,10 @@ private struct LUIToolbarGroupAnchor: View {
             }
         }
         flush()
+        if let pinnedID {
+            result.append(.spacer)
+            result.append(.capsule([pinnedID]))
+        }
         return result
     }
 }
