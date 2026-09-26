@@ -1705,6 +1705,41 @@ final class LUIFlutterBackend {
       spacing: gap,
       children: children,
     );
+
+    // `scroll-leading` pins the last child at the trailing edge while the
+    // rest scroll, matching the Apple backend's LUIToolbarLayoutPolicy.
+    Widget horizontalToolbar(List<Widget> children, double gap) {
+      final pinTrailing = (state.properties['style-class'] as String? ?? '')
+              .split(' ')
+              .contains('scroll-leading') &&
+          children.length >= 2;
+      if (!pinTrailing) {
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: gap,
+            children: children,
+          ),
+        );
+      }
+      return Row(
+        spacing: gap,
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                spacing: gap,
+                children: children.sublist(0, children.length - 1),
+              ),
+            ),
+          ),
+          children.last,
+        ],
+      );
+    }
     Widget horizontalGroupFlex() => LUIFlex(
       direction: Axis.horizontal,
       expandsForAlignment: state.properties.containsKey('main'),
@@ -2639,14 +2674,7 @@ final class LUIFlutterBackend {
                 spacing: gap,
                 children: children,
               )
-            : SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  spacing: gap,
-                  children: children,
-                ),
-              ),
+            : horizontalToolbar(children, gap),
       ),
       _NodeKind.accordion => accordion(),
       _NodeKind.dialog ||

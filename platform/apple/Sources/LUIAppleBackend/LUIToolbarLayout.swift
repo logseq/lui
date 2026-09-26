@@ -58,6 +58,13 @@ enum LUIToolbarLayoutPolicy {
         )
     }
 
+    /// `scroll-leading` pins the last toolbar child at the trailing edge; the
+    /// hoisted bottom-bar path uses it to keep a trailing action (e.g. hide
+    /// keyboard) fixed while the rest of the capsule scrolls.
+    static func pinsTrailing(_ styleClass: String?) -> Bool {
+        hasStyle("scroll-leading", in: styleClass)
+    }
+
     private static func hasStyle(_ target: String, in styleClass: String?) -> Bool {
         guard let styleClass else { return false }
         return styleClass.split(separator: " ").contains { String($0) == target }
