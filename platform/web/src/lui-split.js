@@ -388,7 +388,7 @@ const LUISplit = (() => {
   //   { identifier, properties, children: [node | {kind:'element', html}] }
   // and applies split semantics locally: move/split/close mutate the tree and
   // re-render. Useful for demos and for wiring a real transport later.
-  function mount(root, tree, onEvent = () => {}) {
+  function mount(root, tree, onEvent = () => {}, options = {}) {
     let index = 0;
     const byId = new Map();
     const fresh = () => `n${++index}`;
@@ -407,10 +407,12 @@ const LUISplit = (() => {
       render: (id) => {
         const node = byId.get(id) || id;
         if (node.identifier) return render(node.id, host);
-        // Standard leaf: { html } or { element }.
+        // Standard leaf: { element } wins; { html } renders as text unless
+        // the caller marks the tree trusted with { allowHTML: true }.
         const div = document.createElement('div');
         if (node.element) div.append(node.element);
-        else div.innerHTML = node.html || '';
+        else if (node.html && options.allowHTML) div.innerHTML = node.html;
+        else div.textContent = node.html || '';
         return div;
       },
       emit: (node, name, values) => {
@@ -432,11 +434,22 @@ const LUISplit = (() => {
     function apply(rootNode, nodeId, name, values) {
       const node = byId.get(nodeId);
       if (!node) return;
-      const paneOf = (pred, from) => {
+      const parentOf = (from) => {
         const stack = [rootNode];
         while (stack.length) {
           const cur = stack.pop();
           if ((cur.children || []).some((c) => c.id === from)) return cur;
+          (cur.children || []).forEach((c) => stack.push(c));
+        }
+        return null;
+      };
+      const findPane = (paneId) => {
+        const stack = [rootNode];
+        while (stack.length) {
+          const cur = stack.pop();
+          if (cur.properties && cur.properties['pane-id'] === paneId) {
+            return cur;
+          }
           (cur.children || []).forEach((c) => stack.push(c));
         }
         return null;
@@ -457,27 +470,38 @@ const LUISplit = (() => {
           break;
         }
         case 'tab-moved': {
-          const source = paneOf(
-            null, findPaneId(rootNode, values['from-pane']));
-          const target = paneOf(null, node.id);
-          if (!source || !target) break;
+          const source = findPane(values['from-pane']);
+          const target = node;
+          if (!source || !target || !target.children) break;
           const i = (source.children || []).findIndex(
             (c) => c.properties['tab-id'] === values.tab);
           if (i < 0) break;
           const [tab] = source.children.splice(i, 1);
+          // Same-pane move: the removed slot shifts the drop index.
+          const index = source === target && values.index > i
+            ? values.index - 1
+            : values.index;
           target.children.splice(
-            Math.min(values.index, target.children.length), 0, tab);
+            Math.min(index, target.children.length), 0, tab);
           target.properties.selected = values.tab;
+          if (source !== target && source.children.length > 0) {
+            source.properties.selected = source.children[0]
+              .properties['tab-id'];
+          }
           break;
         }
         case 'split-drop': {
-          const sourceId = findPaneId(rootNode, values['from-pane']);
-          const source = paneOf(null, sourceId);
+          const source = findPane(values['from-pane']);
           if (!source) break;
           const i = (source.children || []).findIndex(
             (c) => c.properties['tab-id'] === values.tab);
           if (i < 0) break;
           const [tab] = source.children.splice(i, 1);
+          if (source.properties.selected === values.tab
+              && source.children.length > 0) {
+            source.properties.selected = source.children[0]
+              .properties['tab-id'];
+          }
           const freshPane = {
             identifier: 'split-pane',
             properties: {
@@ -499,7 +523,7 @@ const LUISplit = (() => {
               : [node, freshPane],
           };
           // Replace `node` in its parent with the new branch.
-          const parent = paneOf(null, node.id);
+          const parent = parentOf(node.id);
           if (parent) {
             const j = parent.children.indexOf(node);
             parent.children[j] = branch;
@@ -513,17 +537,6 @@ const LUISplit = (() => {
       }
     }
 
-    function findPaneId(rootNode, paneId) {
-      const stack = [rootNode];
-      while (stack.length) {
-        const cur = stack.pop();
-        if (cur.properties && cur.properties['pane-id'] === paneId) {
-          return cur.id;
-        }
-        (cur.children || []).forEach((c) => stack.push(c));
-      }
-      return null;
-    }
 
     return { tree, redraw };
   }

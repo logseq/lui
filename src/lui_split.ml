@@ -756,14 +756,28 @@ module Model = struct
               }
       in
       { state with root = apply state.root }
-    | Close_tab (pane_id, tab_id) ->
-      let _, root = detach_tab pane_id tab_id state.root in
-      let root = prune pane_id root in
-      let state = { state with root } in
-      (match state.focused with
-      | Some f when Option.is_none (find_pane f state.root) ->
-        { state with focused = None }
-      | _ -> state)
+    | Close_tab (pane_id, tab_id) -> (
+        let closable =
+          match find_pane pane_id state.root with
+          | Some pane ->
+            (match
+               List.find_opt
+                 (fun (t : tab) -> String.equal t.tab_id tab_id)
+                 pane.pane_tabs
+             with
+            | Some t -> t.tab_closable
+            | None -> false)
+          | None -> false
+        in
+        if not closable then state
+        else
+          let _, root = detach_tab pane_id tab_id state.root in
+          let root = prune pane_id root in
+          let state = { state with root } in
+          (match state.focused with
+          | Some f when Option.is_none (find_pane f state.root) ->
+            { state with focused = None }
+          | _ -> state))
     | Close_pane pane_id -> (
         match remove_pane pane_id state.root with
         | `Removed last ->
@@ -779,8 +793,11 @@ module Model = struct
           | Some f when Option.is_none (find_pane f state.root) ->
             { state with focused = None }
           | _ -> state))
-    | Move_tab { move_tab; move_from; move_to; move_index } ->
-      if String.equal move_from move_to then
+    | Move_tab { move_tab; move_from; move_to; move_index } -> (
+        match find_pane move_to state.root with
+        | None -> state
+        | Some _ ->
+          if String.equal move_from move_to then
         match find_pane move_from state.root with
         | None -> state
         | Some source ->
@@ -800,13 +817,13 @@ module Model = struct
             | None -> state
             | Some tab ->
               { state with root = insert_tab move_to tab index root }))
-      else (
+          else (
         let tab, root = detach_tab move_from move_tab state.root in
         match tab with
         | None -> state
         | Some tab ->
           let root = prune move_from root in
-          { state with root = insert_tab move_to tab move_index root })
+          { state with root = insert_tab move_to tab move_index root }))
     | Split_drop { drop_tab; drop_from; drop_target; drop_edge } -> (
         match find_pane drop_from state.root with
         | None -> state

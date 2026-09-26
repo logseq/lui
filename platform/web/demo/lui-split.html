@@ -73,7 +73,7 @@
     LUISplit.mount(document.getElementById('root'), tree,
       (name, values) => {
         log.textContent = `${name} ${JSON.stringify(values)}`;
-      });
+      }, { allowHTML: true });
   </script>
 </body>
 </html>

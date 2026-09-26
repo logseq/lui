@@ -33,6 +33,7 @@ func galleryExtensionRegistry() throws -> LUIAppleExtensionRegistry {
             AnyView(EmptyView())
         }
     )
+    try LUISplit.register(in: registry)
     try registry.registerTweak(
         LUIAppleTweak(
             identifier: "gallery-accent",

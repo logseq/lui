@@ -13,8 +13,12 @@ Item {
 
     readonly property bool horizontal:
         node.prop("orientation", "horizontal") !== "vertical"
-    readonly property real sourceRatio:
-        Math.min(1, Math.max(0, Number(node.prop("ratio", 0.5)) || 0.5))
+    readonly property real sourceRatio: {
+        // `0` is a valid ratio — only fall back when the prop is absent.
+        var value = Number(node.prop("ratio", 0.5))
+        if (!isFinite(value)) value = 0.5
+        return Math.min(1, Math.max(0, value))
+    }
 
     // Local ratio: follows user drags instantly; reconciles to sourceRatio
     // when the app moves it.
@@ -103,12 +107,15 @@ Item {
             onPressed: function(mouse) {
                 divider.dragging = true
                 startRatio = branch.ratio
-                grab = branch.horizontal ? mouse.x : mouse.y
+                // Measure in the branch's frame: the divider itself moves.
+                var point = mapToItem(branch, mouse.x, mouse.y)
+                grab = branch.horizontal ? point.x : point.y
                 mouse.accepted = true
             }
             onPositionChanged: function(mouse) {
                 if (!divider.dragging || branch.available <= 0) return
-                var delta = (branch.horizontal ? mouse.x : mouse.y) - grab
+                var point = mapToItem(branch, mouse.x, mouse.y)
+                var delta = (branch.horizontal ? point.x : point.y) - grab
                 branch.ratio = Math.min(1, Math.max(0,
                     startRatio + delta / branch.available))
             }

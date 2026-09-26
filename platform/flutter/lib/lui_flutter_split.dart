@@ -288,7 +288,6 @@ final class _SplitBranch extends StatefulWidget {
 
 final class _SplitBranchState extends State<_SplitBranch> {
   late double _ratio = _sourceRatio;
-  double? _dragStart;
   bool _dragging = false;
 
   double get _sourceRatio =>
@@ -358,19 +357,15 @@ final class _SplitBranchState extends State<_SplitBranch> {
               child: _Divider(
                 horizontal: _horizontal,
                 animate: settings.animationEnabled && !_dragging,
-                onDragStart: () {
-                  _dragging = true;
-                  _dragStart = _ratio;
-                },
+                onDragStart: () => _dragging = true,
                 onDrag: (delta) {
                   setState(
-                    () => _ratio = ((_dragStart ?? _ratio) + delta / available)
+                    () => _ratio = (_ratio + delta / available)
                         .clamp(0.0, 1.0),
                   );
                 },
                 onDragEnd: () {
                   _dragging = false;
-                  _dragStart = null;
                   _emit();
                 },
                 onNudge: _nudge,
