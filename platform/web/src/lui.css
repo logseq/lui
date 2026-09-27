@@ -15,7 +15,7 @@
   --accent-foreground: oklch(0.205 0 0);
   --muted-foreground: oklch(0.556 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
   --error: oklch(0.93 0.0314 17.73);
   --error-foreground: oklch(0.64 0.2082 25.38);
   --success: oklch(0.95 0.0506 162.83);
@@ -574,6 +574,7 @@ body {
   .lui-modal-layer {
     @apply fixed inset-0 isolate;
     z-index: 1000;
+    pointer-events: auto;
   }
 
   .lui-modal-layer[data-ending-style] {

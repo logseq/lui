@@ -471,13 +471,53 @@ let attach_picker_trigger_events_bang = attach_picker_trigger_events
 
 (* --- dropdown event wiring --- *)
 
+(* Nested dropdowns are siblings in the DOM (each gets its own positioner in
+   the portal), so a press inside a child submenu is "outside" the parent menu
+   and vice versa. The outside-press check has to consider the whole menu
+   group: walk up through menu-row parents to the root dropdown, then accept a
+   target inside any positioner in that dropdown's subtree. *)
+let rec dropdown_group_root renderer current =
+  match current.retained_parent with
+  | Some parent -> (
+      match Store.node renderer.web_store parent with
+      | Some parent_node when Store.menu_item_row parent_node -> (
+          match parent_node.retained_parent with
+          | Some grandparent -> (
+              match Store.node renderer.web_store grandparent with
+              | Some grandparent_node
+                when Store.standard_kind_is grandparent_node DropdownMenu ->
+                  dropdown_group_root renderer grandparent_node
+              | _ -> current)
+          | None -> current)
+      | _ -> current)
+  | None -> current
+
+let rec group_positioners renderer acc current =
+  let acc =
+    if Store.standard_kind_is current DropdownMenu then
+      current.platform_node :: acc
+    else acc
+  in
+  List.fold_left
+    (fun acc child ->
+      match Store.node renderer.web_store child with
+      | Some child_node -> group_positioners renderer acc child_node
+      | None -> acc)
+    acc current.retained_children
+
 let dropdown_group_contains_event renderer node event =
   match Store.node renderer.web_store node with
   | Some current ->
       let target =
         Lui_web_util.event_target_to_element (W.Event.target event)
       in
-      W.Element.contains (W.Element.asNode target) current.platform_node
+      let group_nodes =
+        group_positioners renderer [] (dropdown_group_root renderer current)
+      in
+      List.exists
+        (fun positioner ->
+          W.Element.contains (W.Element.asNode target) positioner)
+        group_nodes
       ||
       (match current.retained_parent with
        | Some parent ->
@@ -606,8 +646,11 @@ let attach_dropdown_events renderer node _dropdown_node =
         | None -> ())
   in
   let pointer_handler event =
-    if not (dropdown_group_contains_event renderer node event) then
-      emit renderer (Dismiss node);
+    let menu_node = Lui_web_nodes.dom_node renderer node in
+    if
+      W.Element.hasAttribute "data-open" menu_node
+      && not (dropdown_group_contains_event renderer node event)
+    then emit renderer (Dismiss node);
     refresh_position event
   in
   let key_handler event =

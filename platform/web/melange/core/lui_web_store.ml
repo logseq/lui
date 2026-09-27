@@ -27,7 +27,7 @@ let insert_at values inserted_index value =
     invalid_arg "child index is out of bounds";
   let rec loop index rest acc =
     match rest with
-    | [] -> List.rev_append acc [ value ] |> (fun xs -> xs)
+    | [] -> List.rev acc
     | head :: tail ->
         let acc = if index = inserted_index then value :: acc else acc in
         loop (index + 1) tail (head :: acc)
