@@ -1018,7 +1018,8 @@ let combobox_section model_source send : t =
         ]
     ; row ~gap:8 ~cross:`center
         [ text ~value:"Shared query:" []
-        ; text ~value:(reactive query) []
+        ; text ~value:(reactive query)
+            ~style_class:"lui-combobox-query-value" []
         ]
     ; paragraph
         ~value:"Signals filter the retained options while the native input keeps focus and identity."
