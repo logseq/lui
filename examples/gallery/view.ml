@@ -277,7 +277,7 @@ let bottom_tabs_section model_source send : t =
             ~selected:(reactive home)
             ~on_press:(press send (Model.SelectBottomTab "home"))
             [ column ~gap:12 ~padding:20
-                [ heading ~level:3 ~value:"Home" []
+                [ text ~style_class:"headline" ~value:"Home" []
                 ; input ~label:"Draft" ~placeholder:"Retained home draft" []
                 ; paragraph
                     ~value:"This input stays mounted while another destination is active."
@@ -288,7 +288,7 @@ let bottom_tabs_section model_source send : t =
             ~selected:(reactive search)
             ~on_press:(press send (Model.SelectBottomTab "search"))
             [ column ~gap:12 ~padding:20
-                [ heading ~level:3 ~value:"Search" []
+                [ text ~style_class:"headline" ~value:"Search" []
                 ; paragraph
                     ~value:"Search uses the same retained destination model." []
                 ]
@@ -297,7 +297,7 @@ let bottom_tabs_section model_source send : t =
             ~selected:(reactive settings)
             ~on_press:(press send (Model.SelectBottomTab "settings"))
             [ column ~gap:12 ~padding:20
-                [ heading ~level:3 ~value:"Settings" []
+                [ text ~style_class:"headline" ~value:"Settings" []
                 ; paragraph
                     ~value:"Platform chrome changes without rebuilding this page." []
                 ]
@@ -935,7 +935,7 @@ let accordion_section model_source send : t =
   let open_ = model_source >|= Model.accordion_open in
   section "Accordion"
     [ accordion ~text:"Do collapsed children stay retained?"
-        ~selected:(sample open_)
+        ~selected:(reactive open_)
         ~on_toggle:(on_toggle send (fun v -> Model.SetAccordionOpen v))
         [ paragraph
             ~value:"Yes. The native disclosure hides this content while LUI preserves its node identity."
@@ -1390,6 +1390,8 @@ let tweak_paragraph : t =
   Lui_elements.attach context parent node;
   node
 
+let tweak_section : t = section "Tweaks" [ tweak_paragraph ]
+
 (* Composite components (lui_element_combine): generic layouts built
    purely from primitives — composer, banners, settings rows, sidebar. *)
 
@@ -1612,10 +1614,10 @@ let view context model_source send : t =
       sections
       @ [
           native_extension_section;
-          tweak_paragraph;
+          tweak_section;
           split_panes_section model_source send;
         ]
-    | WebOS -> sections @ [ native_extension_section; tweak_paragraph ]
+    | WebOS -> sections @ [ native_extension_section; tweak_section ]
     | _ -> sections
   in
   column sections
