@@ -443,7 +443,7 @@ let attach_events renderer node kind dom_node =
       ignore (Lui_web_menu.attach_context_menu_events renderer node dom_node)
   | Dialog | Sheet ->
       ignore (Lui_web_overlay.attach_modal_events renderer node dom_node)
-  | MenuItem ->
+  | MenuItem | MenuTrigger ->
       ignore (Lui_web_menu.attach_picker_press_event renderer node dom_node);
       W.Element.addEventListener "focusin"
         (fun _event ->

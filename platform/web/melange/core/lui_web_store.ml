@@ -52,6 +52,13 @@ let standard_kind_is current expected =
   | Some kind -> kind = expected
   | None -> false
 
+(* MenuTrigger renders as a menu row (a submenu's trigger), so menu
+   behaviour that matches MenuItem rows covers both kinds. *)
+let menu_item_row current =
+  match standard_kind current with
+  | Some kind -> kind = MenuItem || kind = MenuTrigger
+  | None -> false
+
 let extension_identity current =
   match current.semantic_kind with
   | ExtensionSemantic (identifier, fingerprint) -> Some (identifier, fingerprint)

@@ -161,7 +161,7 @@ let picker_menu_items renderer dropdown =
         (fun child ->
           match Store.node renderer.web_store child with
           | Some child_node ->
-              Store.standard_kind_is child_node MenuItem
+              Store.menu_item_row child_node
               && Store.enabled_node renderer child
           | None -> false)
         current.retained_children
@@ -240,7 +240,7 @@ let refresh_dropdown_item_roles renderer dropdown =
     (fun item ->
       match Store.node renderer.web_store item with
       | Some current ->
-          if Store.standard_kind_is current MenuItem then
+          if Store.menu_item_row current then
             if listbox then begin
               W.Element.setAttribute "role" "option" current.platform_node;
               W.Element.setAttribute "aria-selected"
@@ -372,7 +372,7 @@ let context_menu_focus_items renderer menu =
         (fun child ->
           match Store.node renderer.web_store child with
           | Some child_node ->
-              Store.standard_kind_is child_node MenuItem
+              Store.menu_item_row child_node
               && Store.enabled_node renderer child
           | None -> false)
         current.retained_children
@@ -493,7 +493,7 @@ let dropdown_submenu_trigger renderer node =
        | Some candidate ->
            (match Store.node renderer.web_store candidate with
             | Some candidate_node ->
-                if Store.standard_kind_is candidate_node MenuItem then
+                if Store.menu_item_row candidate_node then
                   Some candidate
                 else None
             | None -> None)
@@ -849,9 +849,32 @@ let attach_context_menu_events_bang = attach_context_menu_events
 
 (* --- mount --- *)
 
+(* A dropdown hanging off a menu row (MenuItem/MenuTrigger) that lives inside
+   another menu opens to the side by default, like the original gallery's
+   explicit {:anchor "right"} submenu declaration. *)
+let nested_submenu renderer current =
+  match current.retained_parent with
+  | Some trigger ->
+      (match Store.node renderer.web_store trigger with
+       | Some trigger_node ->
+           (match trigger_node.retained_parent with
+            | Some container ->
+                (match Store.node renderer.web_store container with
+                 | Some container_node ->
+                     Store.standard_kind_is container_node DropdownMenu
+                 | None -> false)
+            | None -> false)
+       | None -> false)
+  | None -> false
+
 let attach_submenu_hover renderer node current trigger =
   let positioner = current.platform_node in
   let popup = Lui_web_util.child_element current.platform_node 0 in
+  (match Store.property renderer.web_store node AnchorValue with
+   | Some _ -> ()
+   | None ->
+       if nested_submenu renderer current then
+         W.Element.setAttribute "data-anchor" "right" positioner);
   let close_timer = ref None in
   let grace_active = ref false in
   let grace_x = ref 0.0 in
@@ -931,6 +954,18 @@ let attach_submenu_hover renderer node current trigger =
         renderer.web_document);
   Lui_web_position.position_dropdown renderer node
 
+(* The batch that mounts a picker dropdown can still be mid-flight, with
+   the popup's items inserted by later ops in the same batch, so work that
+   touches the items has to wait for the synchronous apply to unwind. A
+   microtask runs as soon as the current task's JS completes, ahead of any
+   subsequently queued task. *)
+let after_batch_apply f =
+  ignore
+    (Js.Promise.resolve ()
+     |> Js.Promise.then_ (fun () ->
+            f ();
+            Js.Promise.resolve ()))
+
 let mount_picker_dropdown renderer node =
   set_dropdown_open renderer node true;
   match picker_for_dropdown renderer node with
@@ -942,24 +977,17 @@ let mount_picker_dropdown renderer node =
       (match Store.node renderer.web_store picker with
        | Some picker_node ->
            if Store.standard_kind_is picker_node Combobox then
-             ignore
-               (Js.Global.setTimeout
-                  ~f:(fun () ->
-                    match Store.node renderer.web_store node with
-                    | Some _menu ->
-                        set_combobox_active renderer picker node 0
-                    | None -> ())
-                  0)
+             after_batch_apply (fun () ->
+                 match Store.node renderer.web_store node with
+                 | Some _menu -> set_combobox_active renderer picker node 0
+                 | None -> ())
            else
-             ignore
-               (Js.Global.setTimeout
-                  ~f:(fun () ->
-                    match Store.node renderer.web_store node with
-                    | Some _menu ->
-                        focus_context_menu_item renderer node
-                          (picker_selected_index renderer node)
-                    | None -> ())
-                  0)
+             after_batch_apply (fun () ->
+                 match Store.node renderer.web_store node with
+                 | Some _menu ->
+                     focus_context_menu_item renderer node
+                       (picker_selected_index renderer node)
+                 | None -> ())
        | None -> ());
       Hashtbl.replace renderer.web_cleanups node (fun () ->
           (match previous_cleanup with
@@ -987,7 +1015,7 @@ let mount_dropdown renderer node =
        | Some parent ->
            (match Store.node renderer.web_store parent with
             | Some parent_node ->
-                if Store.standard_kind_is parent_node MenuItem then
+                if Store.menu_item_row parent_node then
                   ignore
                     (attach_submenu_hover renderer node current
                        parent_node.platform_node)
