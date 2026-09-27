@@ -1,7 +1,7 @@
 (* STUB — replaced by the porting pass for this module. *)
 (* Source: /tmp/lui-web-ref/web.cljc — see PORTING.md. *)
 
-let attach_events _a0 _a1 _a2 _a3  = failwith "unimplemented attach_events_bang"
+let attach_events _a0 _a1 _a2 _a3 : unit = failwith "unimplemented attach_events_bang"
 let attach_events_bang = attach_events
 let attach_text_events _a0 _a1 _a2 _a3  = failwith "unimplemented attach_text_events_bang"
 let attach_text_events_bang = attach_text_events

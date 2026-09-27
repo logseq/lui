@@ -69,51 +69,16 @@ let create ?(app_icons = String_map.empty) host =
   create_with_extensions host app_icons (Lui_extension.registry ())
     String_map.empty
 
-let extension_adapter renderer identifier =
-  match Hashtbl.find_opt renderer.web_extension_adapters identifier with
-  | Some adapter -> adapter
-  | None -> invalid_arg "web extension adapter is not registered"
+let extension_adapter = Lui_web_extensions.extension_adapter
+let extension_platform_node = Lui_web_extensions.extension_platform_node
 
-let extension_platform_node renderer node identifier =
-  let adapter = extension_adapter renderer identifier in
-  let emit name values =
-    ignore
-      (!(renderer.web_event_handler)
-         (ExtensionEvent (node, identifier, name, values)))
-  in
-  adapter.web_extension_create node renderer.web_document emit
+let apply_extension_property =
+  Lui_web_extensions.apply_extension_property
 
-let apply_extension_property renderer node property value =
-  match Store.node renderer.web_store node with
-  | Some current ->
-      (match Store.extension_identity current with
-       | Some (identifier, _) ->
-           (extension_adapter renderer identifier).web_extension_set_property
-             current.platform_node property value
-       | None ->
-           invalid_arg "extension property targets standard DOM node")
-  | None -> invalid_arg "unknown DOM node"
+let remove_extension_property =
+  Lui_web_extensions.remove_extension_property
 
-let remove_extension_property renderer node property =
-  match Store.node renderer.web_store node with
-  | Some current ->
-      (match Store.extension_identity current with
-       | Some (identifier, _) ->
-           (extension_adapter renderer identifier)
-             .web_extension_remove_property current.platform_node property
-       | None ->
-           invalid_arg "extension property targets standard DOM node")
-  | None -> invalid_arg "unknown DOM node"
-
-let cleanup_extension_node renderer previous_nodes node =
-  match Hashtbl.find_opt previous_nodes node with
-  | Some current ->
-      (match Store.extension_identity current with
-       | Some (identifier, _) ->
-           (extension_adapter renderer identifier).web_extension_cleanup
-             current.platform_node
-       | None -> ())
-  | None -> ()
+let cleanup_extension_node = Lui_web_extensions.cleanup_extension_node
 
 let set_event_handler renderer handler =
   renderer.web_event_handler := handler;
@@ -128,7 +93,7 @@ let backend renderer =
           (Store.apply_batch_with_extensions renderer.web_store
              (fun kind -> Lui_web_nodes.platform_node renderer kind)
              (fun node identifier ->
-               extension_platform_node renderer node identifier)
+               Lui_web_extensions.extension_platform_node renderer node identifier)
              renderer.web_extension_registry (fun _batch -> true) batch);
         Lui_web_apply.apply_dom_batch renderer previous_nodes batch;
         true) }
