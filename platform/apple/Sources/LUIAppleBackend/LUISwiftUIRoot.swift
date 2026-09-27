@@ -2771,12 +2771,11 @@ private struct LUIToolbarGroupAnchor: View {
         var run: [Int] = []
         func appendInteractive(_ childIDs: [Int]) {
             guard !childIDs.isEmpty else { return }
-            // Even a lone interactive child takes the capsule path so it
-            // renders the same system-fused chrome as a multi-child group.
-            // Hit area stays full-cell: capsule children get the
-            // `luiInHoistedToolbar` environment below, which floors icon-only
-            // controls at the 44pt bar-item target.
-            result.append(.capsule(childIDs))
+            if childIDs.count == 1 {
+                result.append(.bare(childIDs[0]))
+            } else {
+                result.append(.capsule(childIDs))
+            }
         }
         func flush() {
             appendInteractive(run); run = []
