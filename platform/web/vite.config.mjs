@@ -11,6 +11,10 @@ const buildOutputRoot = path.join(
   projectRoot,
   "_build/default/examples/components/web/lui-components-web",
 )
+const generatedEntryModules = [
+  "examples/components/web/web_bootstrap.js",
+  "examples/components/web/web_main.js",
+].map((file) => path.join(buildOutputRoot, file))
 const examplesRoot = path.join(projectRoot, "examples")
 const OCAML_SOURCE_EXTENSIONS = new Set([".ml", ".mli"])
 
@@ -44,16 +48,37 @@ function generatedModuleFor(sourceFile) {
 function melangeHotReload() {
   let sourceGeneration = 0
 
+  async function modulesPresent() {
+    for (const moduleFile of generatedEntryModules) {
+      try {
+        await stat(moduleFile)
+      } catch {
+        return false
+      }
+    }
+    return true
+  }
+
   async function waitForMelangeOutput(generation, generatedModule, since) {
+    let settled = false
     for (let attempt = 0; attempt < 1200; attempt += 1) {
       if (generation !== sourceGeneration) return false
-      try {
-        const info = await stat(generatedModule)
-        if (info.mtimeMs > since) {
-          return (await settleGeneratedFile(generatedModule)) !== undefined
+      if (settled) {
+        if (await modulesPresent()) return true
+      } else {
+        try {
+          const info = await stat(generatedModule)
+          if (info.mtimeMs > since) {
+            // Dune replaces the whole emit tree during a rebuild, so the
+            // changed module can settle while sibling entries are still
+            // missing. Wait for a quiet window with all entries present.
+            await settleGeneratedFile(generatedModule)
+            await wait(300)
+            settled = true
+          }
+        } catch {
+          // Dune replaces the generated output tree atomically.
         }
-      } catch {
-        // Dune replaces the generated output tree atomically.
       }
       await wait(50)
     }
