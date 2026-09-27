@@ -144,10 +144,24 @@ private struct LUISplitSettingsKey: EnvironmentKey {
     static let defaultValue = LUISplitSettings.fallback
 }
 
+/// Tracks whether the split-view already presented once, so branches that
+/// appear later (a fresh split) can slide open instead of popping in.
+private final class LUISplitInsertionState: @unchecked Sendable {
+    var didPresent = false
+}
+
+private struct LUISplitInsertionKey: EnvironmentKey {
+    static let defaultValue = LUISplitInsertionState()
+}
+
 private extension EnvironmentValues {
     var splitSettings: LUISplitSettings {
         get { self[LUISplitSettingsKey.self] }
         set { self[LUISplitSettingsKey.self] = newValue }
+    }
+    var splitInsertion: LUISplitInsertionState {
+        get { self[LUISplitInsertionKey.self] }
+        set { self[LUISplitInsertionKey.self] = newValue }
     }
 }
 
@@ -206,6 +220,7 @@ private var luiSplitSelectedTabColor: Color {
 
 private struct LUISplitViewNode: View {
     let context: LUIAppleExtensionViewContext
+    @State private var insertion = LUISplitInsertionState()
 
     var body: some View {
         let settings = LUISplitSettings(
@@ -214,7 +229,9 @@ private struct LUISplitViewNode: View {
         )
         context.content
             .environment(\.splitSettings, settings)
+            .environment(\.splitInsertion, insertion)
             .accessibilityIdentifier(context.string("accessibility-identifier") ?? "")
+            .onAppear { insertion.didPresent = true }
     }
 }
 
@@ -224,8 +241,10 @@ private struct LUISplitBranchNode: View {
     let context: LUIAppleExtensionViewContext
     @Environment(\.splitSettings) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.splitInsertion) private var insertion
     @State private var fractionState: LUISplitFractionState
     @State private var dragStartFraction: Double?
+    @State private var didAppear = false
 
     init(context: LUIAppleExtensionViewContext) {
         self.context = context
@@ -284,7 +303,25 @@ private struct LUISplitBranchNode: View {
                 )
             }
         }
-        .onAppear { reconcile(sourceRatio: context.double("ratio", default: 0.5)) }
+        .onAppear {
+            let target = context.double("ratio", default: 0.5)
+            guard !didAppear else { reconcile(sourceRatio: target); return }
+            didAppear = true
+            if insertion.didPresent, animation != nil {
+                // Fresh split: start collapsed on the new side — the fresh
+                // pane holds the smaller share (edge drops) or is the
+                // second child (split requests) — then spring it open.
+                fractionState.applyUserFraction(target < 0.5 ? 0 : 1)
+                let spring = Animation.spring(duration: 0.25, bounce: 0.1)
+                DispatchQueue.main.async {
+                    withAnimation(spring) {
+                        fractionState.applyUserFraction(target)
+                    }
+                }
+            } else {
+                reconcile(sourceRatio: target)
+            }
+        }
         .onChange(of: context.double("ratio", default: 0.5)) { _, value in
             reconcile(sourceRatio: value)
         }
