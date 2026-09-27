@@ -180,8 +180,9 @@ let set_text_control_value dom_node text =
 let set_visible_text kind dom_node text =
   let target =
     if Store.direct_toggle kind then Util.toggle_label_node dom_node
-    else if Store.button_like kind || kind = MenuItem then
-      Util.button_label_node dom_node
+    else if
+      (Store.button_like kind && kind <> ListItem) || kind = MenuItem
+    then Util.button_label_node dom_node
     else dom_node
   in
   if text <> W.Element.textContent target then
@@ -590,6 +591,13 @@ and apply_secondary_property renderer node kind dom_node property value =
       if kind = Bubble then
         W.Element.setAttribute "data-reactions-alignment" alignment dom_node
       else set_style dom_node "text-align" alignment
+  | ContainerRelativeFrameValue, StringValue axes ->
+      W.Element.setAttribute "data-container-relative-frame" axes dom_node;
+      set_style dom_node "position" "relative"
+  | ContainerRelativeFrameInset, IntValue inset ->
+      W.Element.setAttribute "data-container-relative-frame-inset"
+        (string_of_int inset) dom_node;
+      set_style dom_node "position" "absolute"
   | _ -> invalid_arg "invalid DOM property value"
 
 let apply_property_bang = apply_property

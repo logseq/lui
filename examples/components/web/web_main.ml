@@ -598,8 +598,8 @@ let main host =
       registry adapters
   in
   let app =
-    Lui_app.create_with_extensions (Lui_web.backend renderer) registry
-      Model.initial Model.update View.view
+    Lui_app.create_with_extensions (Lui_web.backend renderer)
+      registry Model.initial Model.update View.view
   in
   Hashtbl.replace renderer.web_images 1
     { web_image_url = app_icon_url
