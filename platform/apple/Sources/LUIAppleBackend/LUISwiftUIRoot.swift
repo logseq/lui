@@ -3487,6 +3487,21 @@ private struct LUIMenuTriggerView: View {
         return model.property(.accessibilityLabel)?.stringValue ?? ""
     }
 
+    /// The `capsule` style class marks the trigger as a cell inside a glass
+    /// button capsule (`Lui_element_combine.buttons` menu actions): the label
+    /// carries the cell's frame and hit shape so presses anywhere on the
+    /// capsule open the menu, not just glyph presses. Icon-only cells fill
+    /// their pinned wrapper; text cells stay hug-sized with the capsule's
+    /// 12pt side padding inside the hit region.
+    private var capsuleCell: Bool {
+        model.property(.styleClass)?.stringValue?
+            .split(separator: " ").contains("capsule") == true
+    }
+
+    private var iconOnly: Bool {
+        !model.buttonIconName.isEmpty && model.text.isEmpty
+    }
+
     var body: some View {
         Menu {
             if let menu {
@@ -3499,6 +3514,11 @@ private struct LUIMenuTriggerView: View {
                         source: backend.iconSource(for: model.buttonIconName),
                         bundle: backend.appIconBundle
                     )
+                    .scaledToFit()
+                    .frame(
+                        width: LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize),
+                        height: LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize)
+                    )
                     .modifier(LUIMenuItemForegroundModifier(model: model))
                 }
                 if !model.text.isEmpty {
@@ -3509,6 +3529,12 @@ private struct LUIMenuTriggerView: View {
                         ))
                 }
             }
+            .padding(.horizontal, capsuleCell && !iconOnly ? 12 : 0)
+            .frame(
+                maxWidth: capsuleCell && iconOnly ? .infinity : nil,
+                maxHeight: capsuleCell ? .infinity : nil
+            )
+            .contentShape(Rectangle())
         }
         .disabled(!model.isEnabled)
         .accessibilityLabel(spokenLabel)

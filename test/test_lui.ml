@@ -505,7 +505,8 @@ let test_glass_button_actions () =
   let single_node = ref 0 in
   let group_node = ref 0 in
   let action label icon presses : Lui_element_combine.action =
-    { label; icon; text = None; on_press = (fun _ -> incr presses) }
+    Lui_element_combine.Press
+      { label; icon; text = None; on_press = (fun _ -> incr presses) }
   in
   let app =
     Lui_app.create (recording_backend ()) ()
@@ -558,7 +559,12 @@ let test_glass_button_text_is_optional () =
   let text_node = ref 0 in
   let group_node = ref 0 in
   let action : Lui_element_combine.action =
-    { label = "New note"; icon = `plus; text = None; on_press = (fun _ -> ()) }
+    Lui_element_combine.Press
+      { label = "New note"; icon = `plus; text = None; on_press = (fun _ -> ()) }
+  in
+  let with_press ~label ~icon ~text : Lui_element_combine.action =
+    Lui_element_combine.Press
+      { label; icon; text; on_press = (fun _ -> ()) }
   in
   let app =
     Lui_app.create (recording_backend ()) ()
@@ -569,13 +575,15 @@ let test_glass_button_text_is_optional () =
                (Lui_element_combine.buttons ~actions:[ action ]);
              capture_node text_node
                (Lui_element_combine.buttons
-                  ~actions:[ { action with text = Some "New note" } ]);
+                  ~actions:
+                    [ with_press ~label:"New note" ~icon:`plus
+                        ~text:(Some "New note") ]);
              capture_node group_node
                (Lui_element_combine.buttons
                   ~actions:
-                    [ { action with label = "Information"; icon = `info
-                      ; text = Some "Info" }
-                    ; { action with label = "Settings"; icon = `settings }
+                    [ with_press ~label:"Information" ~icon:`info
+                        ~text:(Some "Info")
+                    ; with_press ~label:"Settings" ~icon:`settings ~text:None
                     ]);
            ])
   in
@@ -609,6 +617,103 @@ let test_glass_button_text_is_optional () =
     (has_property (List.hd group_children) Lui_protocol.TextValue "Info");
   Alcotest.(check bool) "second group action is icon-only" false
     (has_property (List.nth group_children 1) Lui_protocol.TextValue "Settings");
+  ignore (Lui_app.dispose app)
+
+let test_glass_button_menu_action () =
+  let picked = ref 0 in
+  let single_node = ref 0 in
+  let group_node = ref 0 in
+  let menu_entries () =
+    [ Lui_elements.menu_item ~text:"Duplicate"
+        ~on_press:(fun _ -> incr picked) [] ]
+  in
+  let menu_action : Lui_element_combine.action =
+    Lui_element_combine.Menu
+      { label = "More actions"; icon = `ellipsis; text = None
+      ; menu = menu_entries (); on_dismiss = None }
+  in
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      (fun _context _model_source _send ->
+         Lui_elements.column
+           [ capture_node single_node
+               (Lui_element_combine.buttons ~actions:[ menu_action ]);
+             capture_node group_node
+               (Lui_element_combine.buttons
+                  ~actions:
+                    [ Lui_element_combine.Press
+                        { label = "New note"; icon = `plus; text = None
+                        ; on_press = (fun _ -> ()) }
+                    ; menu_action
+                    ]);
+           ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let children_of parent =
+    ops
+    |> List.filter_map (function
+         | Lui_protocol.InsertChild (p, child, index)
+           when p = parent -> Some (index, child)
+         | _ -> None)
+    |> List.sort (fun (left, _) (right, _) -> Int.compare left right)
+    |> List.map snd
+  in
+  let kind_of node =
+    List.find_map
+      (function
+       | Lui_protocol.CreateNode (id, kind) when id = node -> Some kind
+       | _ -> None)
+      ops
+  in
+  let has_property node property value =
+    List.exists
+      (function
+       | Lui_protocol.SetProp (id, key, Lui_protocol.StringValue text) ->
+         id = node && key = property && text = value
+       | _ -> false)
+      ops
+  in
+  (* A lone menu action still shares the glass capsule shape: a one-member
+     button group wraps the sizing cell (box is not a legal toolbar child). *)
+  Alcotest.(check bool) "single menu action capsule is a button group" true
+    (kind_of !single_node = Some Lui_protocol.ButtonGroup);
+  Alcotest.(check bool) "single menu action capsule is glass" true
+    (has_property !single_node Lui_protocol.BackgroundValue "glass");
+  let cells = children_of !single_node in
+  Alcotest.(check int) "single capsule wraps one cell" 1
+    (List.length cells);
+  let single_cell = children_of (List.hd cells) in
+  Alcotest.(check int) "single cell wraps one trigger" 1
+    (List.length single_cell);
+  let trigger = List.hd single_cell in
+  Alcotest.(check bool) "menu action mounts a menu-trigger" true
+    (kind_of trigger = Some Lui_protocol.MenuTrigger);
+  let menu_children = children_of trigger in
+  Alcotest.(check int) "trigger hosts one dropdown-menu" 1
+    (List.length menu_children);
+  Alcotest.(check bool) "trigger child is a dropdown-menu" true
+    (kind_of (List.hd menu_children) = Some Lui_protocol.DropdownMenu);
+  let items = children_of (List.hd menu_children) in
+  Alcotest.(check int) "menu has its items" 1 (List.length items);
+  Alcotest.(check bool) "menu item is a menu-item node" true
+    (kind_of (List.hd items) = Some Lui_protocol.MenuItem);
+  (* Mixed press + menu actions share one group capsule *)
+  let group_children = children_of !group_node in
+  Alcotest.(check int) "group has two cells" 2 (List.length group_children);
+  Alcotest.(check bool) "first cell is the press button" true
+    (kind_of (List.hd group_children) = Some Lui_protocol.Button);
+  Alcotest.(check bool) "second cell wraps the trigger" true
+    (kind_of (List.nth group_children 1) = Some Lui_protocol.Box);
+  (* Menu items dispatch their own presses *)
+  List.iter
+    (fun node ->
+       ignore (Lui_app.dispatch_event app (Lui_protocol.Press node)))
+    items;
+  flush_app app;
+  Alcotest.(check int) "menu item press fires its handler" 1 !picked;
   ignore (Lui_app.dispose app)
 
 let test_dispatch_drops_value_echoes () =
@@ -1417,6 +1522,8 @@ let () =
             test_glass_buttons_require_an_action;
           Alcotest.test_case "optional visible text" `Quick
             test_glass_button_text_is_optional;
+          Alcotest.test_case "menu action" `Quick
+            test_glass_button_menu_action;
         ] );
       ( "json_view",
         [

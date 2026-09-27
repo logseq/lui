@@ -17,46 +17,97 @@ type t = Lui_elements.t
 (* ------------------------------------------------------------------ *)
 
 type action =
-  { label : string
-  ; icon : icon
-  ; text : string option
-  ; on_press : Lui_protocol.event -> unit
-  }
+  | Press of
+      { label : string
+      ; icon : icon
+      ; text : string option
+      ; on_press : Lui_protocol.event -> unit
+      }
+  | Menu of
+      { label : string
+      ; icon : icon
+      ; text : string option
+      ; menu : t list
+      ; on_dismiss : (Lui_protocol.event -> unit) option
+      }
 
-let glass_action_button ?background ?corner_radius action =
-  let visible_text =
-    match action.text with
-    | Some text when text <> "" -> Some text
-    | _ -> None
-  in
-  let icon_only = Option.is_none visible_text in
+let action_text = function
+  | Press { text; _ } | Menu { text; _ } ->
+    (match text with
+     | Some text when text <> "" -> Some text
+     | _ -> None)
+;;
+
+let glass_press_button ?background ?corner_radius ~label ~icon ~text ~on_press =
+  let icon_only = Option.is_none text in
   button
     ~variant:`ghost
     ~size:(if icon_only then `icon else `default)
-    ~icon:action.icon
-    ?text:visible_text
-    ~label:action.label
+    ~icon
+    ?text
+    ~label
     ~foreground:"foreground"
     ?background
     ?corner_radius
     ?padding_horizontal:(if icon_only then None else Some 12)
     ?width:(if icon_only then Some 44 else None)
     ~height:44
-    ~on_press:action.on_press
+    ~on_press
     []
+;;
+
+(* A menu action mounts a native [menu_trigger] (press-to-open [Menu]) inside
+   a sizing cell; the capsule chrome rides on the enclosing surface since
+   menu triggers carry no surface properties. The ["capsule"] style class
+   asks the host to give the trigger label the cell's full frame and hit
+   shape. *)
+let menu_action_cell ?background ?corner_radius ~label ~icon ~text ~menu:entries ~on_dismiss =
+  box
+    ~height:44
+    ?background
+    ?corner_radius
+    ?width:(if Option.is_none text then Some 44 else None)
+    [ menu
+        ~label
+        ~icon
+        ?text
+        ~foreground:"foreground"
+        ~style_class:"capsule"
+        ?on_dismiss
+        entries
+    ]
+;;
+
+let glass_action ?background ?corner_radius action =
+  let text = action_text action in
+  match action with
+  | Press { label; icon; text = _; on_press } ->
+    glass_press_button ?background ?corner_radius ~label ~icon ~text ~on_press
+  | Menu { label; icon; text = _; menu; on_dismiss } ->
+    menu_action_cell ?background ?corner_radius ~label ~icon ~text ~menu ~on_dismiss
 ;;
 
 let buttons ~actions =
   match actions with
-  | [ action ] ->
-    glass_action_button ~background:"glass" ~corner_radius:999 action
+  | [ Press _ as action ] ->
+    glass_action ~background:"glass" ~corner_radius:999 action
+  | [ Menu { label; icon; text; menu; on_dismiss } ] ->
+    (* Menu triggers size through a box cell, and box is not a legal toolbar
+       child — a single-member button group carries the capsule so the menu
+       remains mountable inside toolbars like the press capsules. *)
+    button_group
+      ~gap:0
+      ~height:44
+      ~background:"glass"
+      ~corner_radius:999
+      [ menu_action_cell ~label ~icon ~text ~menu ~on_dismiss ]
   | _ :: _ :: _ ->
     button_group
       ~gap:0
       ~height:44
       ~background:"glass"
       ~corner_radius:999
-      (List.map glass_action_button actions)
+      (List.map glass_action actions)
   | [] -> invalid_arg "buttons requires at least one action"
 ;;
 
