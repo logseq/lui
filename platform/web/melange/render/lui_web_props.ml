@@ -252,7 +252,7 @@ let apply_enabled renderer node kind dom_node enabled =
         (if enabled then "false" else "true") dom_node;
     if Store.node_has_ancestor_kind renderer.web_store node Toolbar then
       ignore
-        (Focus.apply_toolbar_disabled_semantics renderer node dom_node)
+        (Focus.apply_toolbar_disabled_semantics renderer node)
   end
 
 let apply_grid_columns dom_node columns =

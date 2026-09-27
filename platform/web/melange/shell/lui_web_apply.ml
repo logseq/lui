@@ -357,15 +357,25 @@ let apply_move_child renderer previous_nodes parent child index =
 
 let apply_set_prop renderer node property value =
   match Store.node renderer.web_store node with
-  | Some current ->
-      Lui_web_props.apply_property renderer node
-        (Store.standard_kind current) current.platform_node property value;
-      refresh_parent_for_prop renderer node property
+  | Some current -> (
+      match Store.standard_kind current with
+      | Some kind ->
+          Lui_web_props.apply_property renderer node kind
+            current.platform_node property value;
+          refresh_parent_for_prop renderer node property
+      | None -> invalid_arg "standard property targets extension node")
   | None -> invalid_arg "unknown DOM node"
 
 let apply_remove_prop renderer node property =
-  Lui_web_props.remove_property renderer node property;
-  refresh_parent_for_prop renderer node property
+  (match Store.node renderer.web_store node with
+   | Some current -> (
+       match Store.standard_kind current with
+       | Some kind ->
+           Lui_web_props.remove_property renderer node kind
+             current.platform_node property;
+           refresh_parent_for_prop renderer node property
+       | None -> invalid_arg "standard property targets extension node")
+   | None -> ())
 
 let apply_dom_op renderer previous_nodes operation =
   match operation with
@@ -394,6 +404,6 @@ let apply_dom_batch renderer previous_nodes batch =
   List.iter
     (fun operation -> apply_dom_op renderer previous_nodes operation)
     batch.ops;
-  Lui_web_focus.update_all_horizontal_group_roving renderer;
-  Lui_web_focus.update_all_tree_roving renderer;
-  Lui_web_focus.update_all_toolbar_roving renderer
+  ignore (Lui_web_focus.update_all_horizontal_group_roving renderer);
+  ignore (Lui_web_focus.update_all_tree_roving renderer);
+  ignore (Lui_web_focus.update_all_toolbar_roving renderer)
