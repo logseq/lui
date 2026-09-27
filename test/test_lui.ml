@@ -676,11 +676,17 @@ let test_glass_button_menu_action () =
        | _ -> false)
       ops
   in
-  (* A lone menu action gets its own glass capsule cell *)
+  (* A lone menu action still shares the glass capsule shape: a one-member
+     button group wraps the sizing cell (box is not a legal toolbar child). *)
+  Alcotest.(check bool) "single menu action capsule is a button group" true
+    (kind_of !single_node = Some Lui_protocol.ButtonGroup);
   Alcotest.(check bool) "single menu action capsule is glass" true
     (has_property !single_node Lui_protocol.BackgroundValue "glass");
-  let single_cell = children_of !single_node in
-  Alcotest.(check int) "single capsule wraps one trigger" 1
+  let cells = children_of !single_node in
+  Alcotest.(check int) "single capsule wraps one cell" 1
+    (List.length cells);
+  let single_cell = children_of (List.hd cells) in
+  Alcotest.(check int) "single cell wraps one trigger" 1
     (List.length single_cell);
   let trigger = List.hd single_cell in
   Alcotest.(check bool) "menu action mounts a menu-trigger" true

@@ -30,7 +30,10 @@ type action =
     native dropdown menu ([menu] holds its {!menu_item}/
     {!check_menu_item}/{!submenu} entries) — no model round-trip is needed
     to open it. One action renders a capsule control; multiple actions
-    share one capsule. The list must not be empty. *)
+    share one capsule. A lone [Menu] mounts its trigger inside a
+    single-member button group: the trigger's sizing cell is a container
+    node, which would not be a legal [toolbar] child. The list must not be
+    empty. *)
 val buttons : actions:action list -> t
 
 (** {1 Composer} *)

@@ -57,9 +57,10 @@ let glass_press_button ?background ?corner_radius ~label ~icon ~text ~on_press =
 ;;
 
 (* A menu action mounts a native [menu_trigger] (press-to-open [Menu]) inside
-   a sizing cell; the capsule chrome rides on the cell since menu triggers
-   carry no surface properties. The ["capsule"] style class asks the host to
-   give the trigger label the cell's full frame and hit shape. *)
+   a sizing cell; the capsule chrome rides on the enclosing surface since
+   menu triggers carry no surface properties. The ["capsule"] style class
+   asks the host to give the trigger label the cell's full frame and hit
+   shape. *)
 let menu_action_cell ?background ?corner_radius ~label ~icon ~text ~menu:entries ~on_dismiss =
   box
     ~height:44
@@ -88,8 +89,18 @@ let glass_action ?background ?corner_radius action =
 
 let buttons ~actions =
   match actions with
-  | [ action ] ->
+  | [ Press _ as action ] ->
     glass_action ~background:"glass" ~corner_radius:999 action
+  | [ Menu { label; icon; text; menu; on_dismiss } ] ->
+    (* Menu triggers size through a box cell, and box is not a legal toolbar
+       child — a single-member button group carries the capsule so the menu
+       remains mountable inside toolbars like the press capsules. *)
+    button_group
+      ~gap:0
+      ~height:44
+      ~background:"glass"
+      ~corner_radius:999
+      [ menu_action_cell ~label ~icon ~text ~menu ~on_dismiss ]
   | _ :: _ :: _ ->
     button_group
       ~gap:0
