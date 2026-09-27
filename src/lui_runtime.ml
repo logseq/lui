@@ -1153,8 +1153,16 @@ let event_is_value_echo properties event =
 
 let dispatch application event =
   let node = canonical_node application (event_node event) in
-  let suppressed =
-    match event with
+  if
+    (not (Hashtbl.mem application.mounted_nodes node))
+    && not (Hashtbl.mem application.runtime_extension_nodes node)
+  then
+    (* a DOM element can receive an in-flight event after being unmounted
+       mid-dispatch (e.g. a capture-phase handler re-renders); ignore it *)
+    false
+  else
+    let suppressed =
+      match event with
     | ExtensionEvent (_event_node, identifier, name, values) ->
       let extension_schema = require_extension_schema application node in
       if identifier <> extension_schema.extension_identifier then
