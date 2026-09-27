@@ -448,7 +448,7 @@ let dropdown_anchor_node renderer node =
        | Some parent ->
            (match Store.node renderer.web_store parent with
             | Some parent_node ->
-                if Store.standard_kind_is parent_node MenuItem then
+                if Store.menu_item_row parent_node then
                   parent_node.platform_node
                 else
                   let container =

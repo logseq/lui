@@ -245,7 +245,7 @@ let picker_menu_items renderer dropdown =
         (fun child ->
            match Store.node renderer.web_store child with
            | Some child_node ->
-               Store.standard_kind_is child_node MenuItem
+               Store.menu_item_row child_node
                && Store.enabled_node renderer child
            | None -> false)
         current.retained_children

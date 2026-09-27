@@ -153,7 +153,7 @@ let apply_create renderer node kind =
   Lui_web_events.attach_events renderer node kind created
 
 let insert_menu_item_role renderer _child current parent =
-  if Store.standard_kind_is current MenuItem then
+  if Store.menu_item_row current then
     match Store.node renderer.web_store parent with
     | Some parent_node ->
         if
@@ -256,7 +256,7 @@ let remove_bottom_tab renderer parent child =
 let clear_submenu_trigger _renderer previous_nodes parent =
   match prev_node previous_nodes parent with
   | Some parent_node ->
-      if Store.standard_kind_is parent_node MenuItem then begin
+      if Store.menu_item_row parent_node then begin
         W.Element.removeAttribute "data-submenu-trigger"
           parent_node.platform_node;
         W.Element.removeAttribute "aria-haspopup" parent_node.platform_node;

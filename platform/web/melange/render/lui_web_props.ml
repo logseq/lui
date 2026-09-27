@@ -180,8 +180,9 @@ let set_text_control_value dom_node text =
 let set_visible_text kind dom_node text =
   let target =
     if Store.direct_toggle kind then Util.toggle_label_node dom_node
-    else if Store.button_like kind || kind = MenuItem then
-      Util.button_label_node dom_node
+    else if
+      Store.button_like kind || kind = MenuItem || kind = MenuTrigger
+    then Util.button_label_node dom_node
     else dom_node
   in
   if text <> W.Element.textContent target then
