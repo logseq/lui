@@ -1203,6 +1203,10 @@ private struct LUIInHoistedToolbarKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct LUIInFusedCapsuleKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 private extension EnvironmentValues {
     var luiTreeContext: LUITreeContext? {
         get { self[LUITreeContextKey.self] }
@@ -1223,6 +1227,11 @@ private extension EnvironmentValues {
     var luiInHoistedToolbar: Bool {
         get { self[LUIInHoistedToolbarKey.self] }
         set { self[LUIInHoistedToolbarKey.self] = newValue }
+    }
+
+    var luiInFusedCapsule: Bool {
+        get { self[LUIInFusedCapsuleKey.self] }
+        set { self[LUIInFusedCapsuleKey.self] = newValue }
     }
 }
 
@@ -2675,10 +2684,15 @@ private struct LUIToolbarGroupAnchor: View {
         case .spacer:
             ToolbarSpacer(.flexible, placement: placement)
         case let .bare(childID):
+            // A lone item whose node carries its own glass capsule would
+            // double up with the bar's shared item background — hide the
+            // latter so the node's glass supplies the capsule and matches
+            // the fused ControlGroup material exactly.
             ToolbarItem(placement: placement) {
                 itemIdentity(LUIAnyNodeView(nodeID: childID, backend: backend).equatable(), at: index)
                     .environment(\.luiInHoistedToolbar, true)
             }
+            .sharedBackgroundVisibility(ownsCapsule(childID) ? .hidden : .automatic)
         case let .scrollCapsule(childIDs):
             // scroll-leading: the leading controls live in a horizontally
             // scrolling fused capsule so a pinned trailing sibling stays
@@ -2693,6 +2707,7 @@ private struct LUIToolbarGroupAnchor: View {
                                 firstChild: childID == childIDs.first
                             )
                             .environment(\.luiInHoistedToolbar, true)
+                            .environment(\.luiInFusedCapsule, true)
                         }
                     }
                 }
@@ -2712,6 +2727,7 @@ private struct LUIToolbarGroupAnchor: View {
                             firstChild: childID == childIDs.first
                         )
                         .environment(\.luiInHoistedToolbar, true)
+                        .environment(\.luiInFusedCapsule, true)
                     }
                 }
             }
@@ -2731,6 +2747,12 @@ private struct LUIToolbarGroupAnchor: View {
         } else {
             content
         }
+    }
+
+    /// Whether a bare item's node supplies its own glass capsule — in which
+    /// case the bar's shared item background would only double the chrome.
+    private func ownsCapsule(_ childID: Int) -> Bool {
+        backend.model(id: childID)?.property(.background)?.stringValue == "glass"
     }
 
     private var identitySegmentIndex: Int? {
@@ -5698,15 +5720,16 @@ private struct LUIBackgroundStyleModifier: ViewModifier {
     let color: Color
     let shape: AnyShape
     let isPill: Bool
-    @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
+    @Environment(\.luiInFusedCapsule) private var inFusedCapsule
 
-    /// Inside a hoisted iOS toolbar the system's fused capsule already draws
-    /// the chrome — applying the node's own glass on top stacks into a dense,
-    /// opaque-looking disk. macOS toolbars draw no capsule, so the node's own
-    /// glass stays.
+    /// Inside a hoisted toolbar's fused `ControlGroup` capsule the system
+    /// chrome already draws the glass — applying the node's own glass on top
+    /// stacks into a dense, opaque-looking disk. Bare items keep their glass
+    /// (their shared item background is hidden instead, where the node owns
+    /// the capsule — see `LUIToolbarGroupAnchor`).
     private var suppressesOwnGlass: Bool {
         #if os(iOS)
-        return inHoistedToolbar
+        return inFusedCapsule
         #else
         return false
         #endif
