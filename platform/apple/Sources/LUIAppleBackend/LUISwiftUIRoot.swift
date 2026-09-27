@@ -5654,18 +5654,40 @@ private struct LUIOptionalClipModifier: ViewModifier {
     }
 }
 
+enum LUIGlassShapePolicy {
+    /// Wire `corner_radius` values that already describe a full pill — the
+    /// 999 sentinel used by capsule chrome, or any radius at least half the
+    /// declared height — select `Capsule()` on glass surfaces so Liquid
+    /// Glass gets capsule geometry instead of a clamped rounded rectangle.
+    static func isPill(cornerRadius: CGFloat, height: CGFloat?) -> Bool {
+        cornerRadius >= 999 || height.map { cornerRadius >= $0 / 2 } == true
+    }
+}
+
 private struct LUIBackgroundStyleModifier: ViewModifier {
     let name: String?
     let color: Color
     let shape: AnyShape
+    let isPill: Bool
 
     @ViewBuilder
     func body(content: Content) -> some View {
+        let glassShape: AnyShape = isPill ? AnyShape(Capsule()) : shape
         if name == "glass" {
             if #available(iOS 26.0, macOS 26.0, *) {
-                content.glassEffect(in: shape)
+                content.glassEffect(.regular.interactive(), in: glassShape)
             } else {
-                content.background(.regularMaterial, in: shape)
+                content.background(.regularMaterial, in: glassShape)
+            }
+        } else if name == "glass-container" {
+            // `content` is the node's whole subtree, so wrapping it groups
+            // descendant glass surfaces into one fused Liquid Glass region.
+            if #available(iOS 26.0, macOS 26.0, *) {
+                GlassEffectContainer {
+                    content.background(color, in: shape)
+                }
+            } else {
+                content.background(color, in: shape)
             }
         } else {
             content.background(color, in: shape)
@@ -5777,7 +5799,11 @@ private struct LUISurfaceModifier: ViewModifier {
             .modifier(LUIBackgroundStyleModifier(
                 name: backgroundName,
                 color: background,
-                shape: shape
+                shape: shape,
+                isPill: model.kind != .avatar && LUIGlassShapePolicy.isPill(
+                    cornerRadius: radius,
+                    height: floored(model.surfaceHeight).map(CGFloat.init)
+                )
             ))
             .shadow(
                 color: castsShadow ? .black.opacity(0.12) : .clear,
