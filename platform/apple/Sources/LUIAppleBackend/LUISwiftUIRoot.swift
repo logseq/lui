@@ -3514,6 +3514,11 @@ private struct LUIMenuTriggerView: View {
                         source: backend.iconSource(for: model.buttonIconName),
                         bundle: backend.appIconBundle
                     )
+                    .scaledToFit()
+                    .frame(
+                        width: LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize),
+                        height: LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize)
+                    )
                     .modifier(LUIMenuItemForegroundModifier(model: model))
                 }
                 if !model.text.isEmpty {
