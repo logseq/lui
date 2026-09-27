@@ -62,3 +62,30 @@ Gotchas:
 - Arrow key events carry an implicit `.function` modifier; handlers that check
   `press.modifiers == [.command, .option]` (strict equality) never fire for
   arrows — `.contains` is required.
+- Drag drops land on three distinct targets with different code paths: tab
+  chips (insert-at-index), pane edges (split-drop, outer 25% clamped
+  [48,160]pt — the strip row itself counts as the *top edge* zone, so
+  "drop onto the strip" can split instead of move), and pane body center
+  (append move). Verify each path separately — a pass on one does not
+  prove the others.
+- Beware large-int sentinel values in event payloads: the JSON bridge's
+  OCaml parser only accepts ints < 2^62 (`lui_json.ml` guard), so a
+  `.int(Int.max)` "append" sentinel decodes as a Float and the whole event
+  can silently fail to decode. If a drop emits but nothing happens, check
+  the payload magnitudes.
+- Model focus (border ring) and real SwiftUI key focus (`hasKeyFocus`) can
+  diverge — `navigate` moves the border but keys may still hit the
+  previously-clicked pane. After navigating, verify a subsequent shortcut
+  acts on the navigated-to pane, not the previously focused one.
+- To verify split/insert animations in a recording: record at 60fps (the
+  spring is ~250ms), then extract frames with ffmpeg around the moment —
+  `recording_stop` writes a `*-annotations.json` next to the video whose
+  `edited_time_s` values map annotation/action timestamps into the
+  exported video's timeline.
+- Window positioning via System Events: batching
+  `set {size, position} of window 1 to {...}` fails with -10003; set
+  `position` and `size` in two separate commands.
+- Synthesized drags need real gesture timing: `left_click_drag` can commit
+  edge drops, but chip/strip targets are more reliable with an explicit
+  `left_mouse_down` → several `mouse_move` steps → pause (`wait` ~0.7s,
+  pane highlight/ghost visible) → `left_mouse_up` sequence.
