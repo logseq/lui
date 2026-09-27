@@ -145,9 +145,17 @@ let button_group_section model_source send : t =
         ]
     ]
 
-let glass_buttons_section : t =
+let glass_buttons_section model_source send : t =
   let action ?text label icon : Lui_element_combine.action =
-    { label; icon; text; on_press = noop }
+    Lui_element_combine.Press
+      { label; icon; text; on_press = press send (Model.PerformContextAction label) }
+  in
+  let menu_action ?text label icon menu : Lui_element_combine.action =
+    Lui_element_combine.Menu { label; icon; text; menu; on_dismiss = None }
+  in
+  let entry name =
+    menu_item ~text:name
+      ~on_press:(press send (Model.PerformContextAction name)) []
   in
   section "Glass Buttons"
     [ paragraph ~value:"A single icon-only glass button" []
@@ -165,6 +173,18 @@ let glass_buttons_section : t =
           [ action ~text:"Info" "Information" `info
           ; action "Settings" `settings
           ]
+    ; paragraph ~value:"A single icon-only menu action opens a native menu" []
+    ; Lui_element_combine.buttons
+        ~actions:
+          [ menu_action "More actions" `ellipsis
+              [ entry "Duplicate"; entry "Rename"; entry "Archive" ] ]
+    ; paragraph ~value:"Press and menu actions share one capsule" []
+    ; Lui_element_combine.buttons
+        ~actions:
+          [ action "New note" `plus
+          ; menu_action "More actions" `ellipsis
+              [ entry "Duplicate"; entry "Rename"; entry "Archive" ] ]
+    ; paragraph ~value:(reactive Model.document_action model_source) []
     ]
 
 let toggle_group_section model_source send : t =
@@ -1540,7 +1560,7 @@ let view context model_source send : t =
     ; spacer_section
     ; toggle_button_section model_source send
     ; button_group_section model_source send
-    ; glass_buttons_section
+    ; glass_buttons_section model_source send
     ; toggle_group_section model_source send
     ; breadcrumb_section send
     ; pagination_section model_source send

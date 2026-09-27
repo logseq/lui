@@ -11,15 +11,26 @@ open Lui_elements
 (** {1 Buttons} *)
 
 type action =
-  { label : string
-  ; icon : icon
-  ; text : string option
-  ; on_press : Lui_protocol.event -> unit
-  }
+  | Press of
+      { label : string
+      ; icon : icon
+      ; text : string option
+      ; on_press : Lui_protocol.event -> unit
+      }
+  | Menu of
+      { label : string
+      ; icon : icon
+      ; text : string option
+      ; menu : t list
+      ; on_dismiss : (Lui_protocol.event -> unit) option
+      }
 
 (** Each action may have visible [text]; [label] is its accessibility name.
-    One action renders a capsule button. Multiple actions share one
-    capsule. The list must not be empty. *)
+    [Press] renders a pressable button; [Menu] renders a press-to-open
+    native dropdown menu ([menu] holds its {!menu_item}/
+    {!check_menu_item}/{!submenu} entries) — no model round-trip is needed
+    to open it. One action renders a capsule control; multiple actions
+    share one capsule. The list must not be empty. *)
 val buttons : actions:action list -> t
 
 (** {1 Composer} *)
