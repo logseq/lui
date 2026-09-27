@@ -243,9 +243,9 @@ let remove_bottom_tab renderer parent child =
   let tabs_dom = Nodes.dom_node renderer parent in
   let pages = Util.bottom_tabs_pages_node tabs_dom in
   let bar = Util.bottom_tabs_bar_node tabs_dom in
-  ignore
-    (W.Element.removeChild
-       (W.Element.asNode (Nodes.dom_node renderer child)) pages);
+  let child_dom = Nodes.dom_node renderer child in
+  if W.Element.contains (W.Element.asNode child_dom) pages then
+    ignore (W.Element.removeChild (W.Element.asNode child_dom) pages);
   match
     W.Element.querySelector ("#" ^ Util.bottom_tab_trigger_id child) bar
   with
@@ -285,8 +285,16 @@ let apply_remove_child renderer previous_nodes parent child =
    else if prev_kind_is previous_nodes child DropdownMenu then
      Lui_web_menu.remove_dropdown_after_exit renderer.web_document parent_node
        child_node
-   else
-     ignore (W.Element.removeChild (W.Element.asNode child_node) parent_node));
+   else (
+     (* parent_node is re-resolved from the previous snapshot and can be
+        stale for portal-rendered children; remove from the actual DOM
+        parent instead *)
+     match W.Element.parentElement child_node with
+     | Some actual_parent ->
+         ignore
+           (W.Element.removeChild
+              (W.Element.asNode child_node) actual_parent)
+     | None -> ()));
   Lui_web_focus.refresh_button_context renderer child;
   refresh_structured_children renderer parent;
   (match prev_node previous_nodes parent with
@@ -308,11 +316,13 @@ let move_bottom_tab renderer parent child index =
   let pages = Util.bottom_tabs_pages_node tabs_dom in
   let bar = Util.bottom_tabs_bar_node tabs_dom in
   let child_node = Nodes.dom_node renderer child in
-  ignore (W.Element.removeChild (W.Element.asNode child_node) pages);
+  if W.Element.contains (W.Element.asNode child_node) pages then
+    ignore (W.Element.removeChild (W.Element.asNode child_node) pages);
   Util.insert_dom_child pages child_node index;
   match Lui_web_widgets.bottom_tab_trigger renderer child with
   | Some trigger ->
-      ignore (W.Element.removeChild (W.Element.asNode trigger) bar);
+      if W.Element.contains (W.Element.asNode trigger) bar then
+        ignore (W.Element.removeChild (W.Element.asNode trigger) bar);
       Util.insert_dom_child bar trigger index
   | None -> ()
 
@@ -340,7 +350,14 @@ let apply_move_child renderer previous_nodes parent child index =
   let focused = focused_descendant renderer surface_node in
   if bottom_tab && bottom_tabs then move_bottom_tab renderer parent child index
   else begin
-    ignore (W.Element.removeChild (W.Element.asNode child_node) parent_node);
+    (* the resolved parent can be stale for portal children; detach via the
+       actual DOM parent *)
+    (match W.Element.parentElement child_node with
+     | Some actual_parent ->
+         ignore
+           (W.Element.removeChild
+              (W.Element.asNode child_node) actual_parent)
+     | None -> ());
     if dropdown || modal || tooltip || toast || metadata then
       W.Element.appendChild (W.Element.asNode child_node) parent_node
     else
