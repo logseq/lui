@@ -89,13 +89,17 @@ let backend renderer =
     apply_batch =
       (fun batch ->
         let previous_nodes = Hashtbl.copy renderer.web_store.retained_nodes in
-        ignore
-          (Store.apply_batch_with_extensions renderer.web_store
-             (fun kind -> Lui_web_nodes.platform_node renderer kind)
-             (fun node identifier ->
-               Lui_web_extensions.extension_platform_node renderer node identifier)
-             renderer.web_extension_registry (fun _batch -> true) batch);
-        Lui_web_apply.apply_dom_batch renderer previous_nodes batch;
+        (try
+           ignore
+             (Store.apply_batch_with_extensions renderer.web_store
+                (fun kind -> Lui_web_nodes.platform_node renderer kind)
+                (fun node identifier ->
+                  Lui_web_extensions.extension_platform_node renderer node
+                    identifier)
+                renderer.web_extension_registry (fun _batch -> true) batch)
+         with Invalid_argument msg -> invalid_arg ("store batch: " ^ msg));
+        (try Lui_web_apply.apply_dom_batch renderer previous_nodes batch
+         with Invalid_argument msg -> invalid_arg ("dom batch: " ^ msg));
         true) }
 
 let mount renderer root host =

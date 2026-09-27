@@ -608,6 +608,10 @@ body {
     @apply text-lg font-semibold;
   }
 
+  .lui-dialog-description {
+    @apply text-sm font-normal text-muted-foreground;
+  }
+
   .lui-dialog-body {
     @apply grid;
   }
@@ -669,6 +673,10 @@ body {
 
   .lui-sheet-title {
     @apply text-lg font-semibold;
+  }
+
+  .lui-sheet-description {
+    @apply text-sm font-normal text-muted-foreground;
   }
 
   .lui-sheet-body {

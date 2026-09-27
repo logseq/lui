@@ -93,7 +93,7 @@ let apply_simulator_device_to_scope scope device keyboard_visible =
   set_style scope "--lui-viewport-height"
     (string_of_int device.simulator_device_height ^ "px");
   set_style scope "--lui-device-scale"
-    (string_of_float device.simulator_device_scale);
+    (Js.Float.toString device.simulator_device_scale);
   set_style scope "--lui-safe-area-top"
     (string_of_int device.simulator_device_safe_top ^ "px");
   set_style scope "--lui-safe-area-right"

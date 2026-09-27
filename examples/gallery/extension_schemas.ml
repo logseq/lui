@@ -2,6 +2,19 @@
 
 open Lui_protocol
 
+type simulator_map_region_change = {
+  event_node : int;
+  latitude : float;
+  longitude : float;
+  latitude_delta : float;
+  longitude_delta : float;
+}
+
+type simulator_camera_state_change = {
+  event_node : int;
+  state : string;
+}
+
 type split_branch_ratio_changed = {
   event_node : int;
   ratio : float;
@@ -50,6 +63,35 @@ type split_pane_pane_closed = {
   event_node : int;
 
 }
+
+let decode_simulator_map_region_change = function
+  | ExtensionEvent (node, identifier, event_name, values)
+    when String.equal event_name "region-change"
+         && String.equal identifier "simulator-map" ->
+    (match (String_map.find_opt "latitude" values, String_map.find_opt "longitude" values, String_map.find_opt "latitude-delta" values, String_map.find_opt "longitude-delta" values) with
+     | (Some (FloatValue latitude), Some (FloatValue longitude), Some (FloatValue latitude_delta), Some (FloatValue longitude_delta)) ->
+       Some ({
+         event_node = node;
+      latitude = latitude;
+      longitude = longitude;
+      latitude_delta = latitude_delta;
+      longitude_delta = longitude_delta;
+       } : simulator_map_region_change)
+     | _ -> None)
+  | _ -> None
+
+let decode_simulator_camera_state_change = function
+  | ExtensionEvent (node, identifier, event_name, values)
+    when String.equal event_name "state-change"
+         && String.equal identifier "simulator-camera" ->
+    (match (String_map.find_opt "state" values) with
+     | (Some (StringValue state)) ->
+       Some ({
+         event_node = node;
+      state = state;
+       } : simulator_camera_state_change)
+     | _ -> None)
+  | _ -> None
 
 let decode_split_branch_ratio_changed = function
   | ExtensionEvent (node, identifier, event_name, values)
@@ -174,6 +216,34 @@ let apple_map_marker_schema =
     [ Lui_extension.property "title" Lui_extension.StringScalar true None; Lui_extension.property "latitude" Lui_extension.FloatScalar true None; Lui_extension.property "longitude" Lui_extension.FloatScalar true None ]
     [  ]
 
+let simulator_map_schema =
+  Lui_extension.component "simulator-map" [ { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost } ]
+    false
+    [ "simulator-map-marker" ]
+    [ Lui_extension.property "label" Lui_extension.StringScalar true None; Lui_extension.property "latitude" Lui_extension.FloatScalar true None; Lui_extension.property "longitude" Lui_extension.FloatScalar true None; Lui_extension.property "latitude-delta" Lui_extension.FloatScalar true None; Lui_extension.property "longitude-delta" Lui_extension.FloatScalar true None ]
+    [ Lui_extension.event "region-change" [ Lui_extension.event_field "latitude" Lui_extension.FloatScalar true; Lui_extension.event_field "longitude" Lui_extension.FloatScalar true; Lui_extension.event_field "latitude-delta" Lui_extension.FloatScalar true; Lui_extension.event_field "longitude-delta" Lui_extension.FloatScalar true ] ]
+
+let simulator_map_marker_schema =
+  Lui_extension.component "simulator-map-marker" [ { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost } ]
+    false
+    [  ]
+    [ Lui_extension.property "title" Lui_extension.StringScalar true None; Lui_extension.property "latitude" Lui_extension.FloatScalar true None; Lui_extension.property "longitude" Lui_extension.FloatScalar true None ]
+    [  ]
+
+let simulator_camera_schema =
+  Lui_extension.component "simulator-camera" [ { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost } ]
+    false
+    [  ]
+    [ Lui_extension.property "label" Lui_extension.StringScalar true None; Lui_extension.property "facing" Lui_extension.StringScalar true None ]
+    [ Lui_extension.event "state-change" [ Lui_extension.event_field "state" Lui_extension.StringScalar true ] ]
+
+let native_card_schema =
+  Lui_extension.component "native-card" [ { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost } ]
+    false
+    [  ]
+    [ Lui_extension.property "title" Lui_extension.StringScalar true None ]
+    [  ]
+
 let split_view_schema =
   Lui_extension.component "split-view" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = QMLHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = WinUIHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost } ]
     false
@@ -210,6 +280,10 @@ let registry () =
   let registry = Lui_extension.registry () in
   Lui_extension.register_component registry apple_map_schema;
   Lui_extension.register_component registry apple_map_marker_schema;
+  Lui_extension.register_component registry simulator_map_schema;
+  Lui_extension.register_component registry simulator_map_marker_schema;
+  Lui_extension.register_component registry simulator_camera_schema;
+  Lui_extension.register_component registry native_card_schema;
   Lui_extension.register_component registry split_view_schema;
   Lui_extension.register_component registry split_branch_schema;
   Lui_extension.register_component registry split_pane_schema;
@@ -303,6 +377,172 @@ let apple_map_marker ?key ~title ~latitude ~longitude ?title_signal ?latitude_si
        Lui_ui.extension_property_signal context node "longitude"
          (Signal.map (fun value -> FloatValue value) signal))
     longitude_signal;
+
+  (match parent with
+   | Some parent -> Lui_ui.append context parent node
+   | None -> ());
+
+  node
+
+let simulator_map ?key ~label ~latitude ~longitude ~latitude_delta ~longitude_delta ?label_signal ?latitude_signal ?longitude_signal ?latitude_delta_signal ?longitude_delta_signal ?on_region_change (children : Lui_elements.t list) : Lui_elements.t =
+ fun context parent ->
+  let node = Lui_ui.extension context "simulator-map" in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "label"
+         (StringValue value))
+    (Some label);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "label"
+         (Signal.map (fun value -> StringValue value) signal))
+    label_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "latitude"
+         (FloatValue value))
+    (Some latitude);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "latitude"
+         (Signal.map (fun value -> FloatValue value) signal))
+    latitude_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "longitude"
+         (FloatValue value))
+    (Some longitude);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "longitude"
+         (Signal.map (fun value -> FloatValue value) signal))
+    longitude_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "latitude-delta"
+         (FloatValue value))
+    (Some latitude_delta);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "latitude-delta"
+         (Signal.map (fun value -> FloatValue value) signal))
+    latitude_delta_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "longitude-delta"
+         (FloatValue value))
+    (Some longitude_delta);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "longitude-delta"
+         (Signal.map (fun value -> FloatValue value) signal))
+    longitude_delta_signal;
+  Option.iter
+    (fun handler ->
+       Lui_ui.on_event context node (fun raw ->
+         match decode_simulator_map_region_change raw with
+         | Some event -> handler event
+         | None -> ()))
+    on_region_change;
+  (match parent with
+   | Some parent -> Lui_ui.append context parent node
+   | None -> ());
+  Lui_elements.mount_children context node children;
+  node
+
+let simulator_map_marker ?key ~title ~latitude ~longitude ?title_signal ?latitude_signal ?longitude_signal () : Lui_elements.t =
+ fun context parent ->
+  let node = Lui_ui.extension context "simulator-map-marker" in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "title"
+         (StringValue value))
+    (Some title);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "title"
+         (Signal.map (fun value -> StringValue value) signal))
+    title_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "latitude"
+         (FloatValue value))
+    (Some latitude);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "latitude"
+         (Signal.map (fun value -> FloatValue value) signal))
+    latitude_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "longitude"
+         (FloatValue value))
+    (Some longitude);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "longitude"
+         (Signal.map (fun value -> FloatValue value) signal))
+    longitude_signal;
+
+  (match parent with
+   | Some parent -> Lui_ui.append context parent node
+   | None -> ());
+
+  node
+
+let simulator_camera ?key ~label ~facing ?label_signal ?facing_signal ?on_state_change () : Lui_elements.t =
+ fun context parent ->
+  let node = Lui_ui.extension context "simulator-camera" in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "label"
+         (StringValue value))
+    (Some label);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "label"
+         (Signal.map (fun value -> StringValue value) signal))
+    label_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "facing"
+         (StringValue value))
+    (Some facing);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "facing"
+         (Signal.map (fun value -> StringValue value) signal))
+    facing_signal;
+  Option.iter
+    (fun handler ->
+       Lui_ui.on_event context node (fun raw ->
+         match decode_simulator_camera_state_change raw with
+         | Some event -> handler event
+         | None -> ()))
+    on_state_change;
+  (match parent with
+   | Some parent -> Lui_ui.append context parent node
+   | None -> ());
+
+  node
+
+let native_card ?key ~title ?title_signal () : Lui_elements.t =
+ fun context parent ->
+  let node = Lui_ui.extension context "native-card" in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "title"
+         (StringValue value))
+    (Some title);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "title"
+         (Signal.map (fun value -> StringValue value) signal))
+    title_signal;
 
   (match parent with
    | Some parent -> Lui_ui.append context parent node

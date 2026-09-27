@@ -197,7 +197,8 @@ let apply_text_value renderer node kind dom_node text =
       W.Element.setTextContent (Util.child_element dom_node 1) text;
       Widgets.update_stepper_parent renderer node
   | Dialog | Sheet ->
-      W.Element.setTextContent (Util.child_element dom_node 0) text
+      W.Element.setTextContent
+        (Util.child_element (Util.child_element dom_node 0) 0) text
   | Avatar ->
       W.Element.setTextContent (Util.child_element dom_node 1) text;
       Widgets.update_avatar renderer node dom_node
@@ -313,7 +314,7 @@ let apply_progress_value renderer node kind dom_node value =
   else if kind = Progress then Widgets.update_progress renderer node dom_node
   else
     W.HtmlInputElement.setValue (Util.text_control_node dom_node)
-      (string_of_float value)
+      (Js.Float.toString value)
 
 let apply_inline_icon_name renderer node kind dom_node name =
   if kind = BottomTab then
@@ -428,11 +429,44 @@ let apply_media_source renderer node kind dom_node =
   if kind = Avatar then Widgets.update_avatar renderer node dom_node
   else Widgets.update_image renderer node dom_node
 
+(* container-relative-frame: fills (or min-sizes against) the nearest
+   container. Axes and inset arrive as separate properties, so each is cached
+   on the element and the styles recomputed on either update. *)
+let apply_container_frame dom_node axes inset =
+  let inset_px = "calc(100% - " ^ string_of_int inset ^ "px)" in
+  match axes with
+  | "horizontal" -> set_style dom_node "width" "100%"
+  | "vertical" -> set_style dom_node "height" "100%"
+  | "both" ->
+      set_style dom_node "width" "100%";
+      set_style dom_node "height" "100%"
+  | "min-horizontal" -> set_style dom_node "min-width" inset_px
+  | "min-vertical" -> set_style dom_node "min-height" inset_px
+  | "min-both" ->
+      set_style dom_node "min-width" inset_px;
+      set_style dom_node "min-height" inset_px
+  | _ -> ()
+
+let apply_frame_axes dom_node axes =
+  W.Element.setAttribute "data-lui-frame-axes" axes dom_node;
+  let inset =
+    match W.Element.getAttribute "data-lui-frame-inset" dom_node with
+    | Some value -> int_of_string_opt value |> Option.value ~default:0
+    | None -> 0
+  in
+  apply_container_frame dom_node axes inset
+
+let apply_frame_inset dom_node inset =
+  W.Element.setAttribute "data-lui-frame-inset" (string_of_int inset) dom_node;
+  match W.Element.getAttribute "data-lui-frame-axes" dom_node with
+  | Some axes -> apply_container_frame dom_node axes inset
+  | None -> ()
+
 let apply_anchor_offset kind dom_node offset =
-  set_style dom_node "--lui-anchor-offset" (string_of_float offset ^ "px");
+  set_style dom_node "--lui-anchor-offset" (Js.Float.toString offset ^ "px");
   if kind = Tooltip then
     W.Element.setAttribute "data-anchor-offset"
-      (string_of_float offset) dom_node
+      (Js.Float.toString offset) dom_node
 
 let rec apply_property renderer node kind dom_node property value =
   match (property, value) with
@@ -446,7 +480,7 @@ let rec apply_property renderer node kind dom_node property value =
   | CrossAlignment, StringValue alignment ->
       set_style dom_node "align-items" (cross_alignment_value alignment)
   | GrowValue, FloatValue grow ->
-      set_style dom_node "flex-grow" (string_of_float grow)
+      set_style dom_node "flex-grow" (Js.Float.toString grow)
   | GridColumns, IntValue columns -> apply_grid_columns dom_node columns
   | PaddingValue, IntValue padding ->
       set_style dom_node "padding" (string_of_int padding ^ "px");
@@ -557,7 +591,9 @@ and apply_secondary_property renderer node kind dom_node property value =
       apply_title renderer node kind dom_node title
   | DescriptionValue, StringValue description ->
       Util.set_optional_text
-        (Util.child_element (Util.child_element dom_node 1) 1)
+        (if modal_surface kind then
+           Util.child_element (Util.child_element dom_node 0) 1
+         else Util.child_element (Util.child_element dom_node 1) 1)
         description
   | MetaValue, StringValue meta ->
       Util.set_optional_text
@@ -590,7 +626,13 @@ and apply_secondary_property renderer node kind dom_node property value =
       if kind = Bubble then
         W.Element.setAttribute "data-reactions-alignment" alignment dom_node
       else set_style dom_node "text-align" alignment
-  | _ -> invalid_arg "invalid DOM property value"
+  | ContainerRelativeFrameValue, StringValue axes ->
+      apply_frame_axes dom_node axes
+  | ContainerRelativeFrameInset, IntValue inset ->
+      apply_frame_inset dom_node inset
+  | _ ->
+      invalid_arg
+        ("invalid DOM property value: " ^ Lui_wire_schema.property_name property)
 
 let apply_property_bang = apply_property
 
@@ -628,6 +670,14 @@ let remove_property renderer node kind dom_node property =
        | MaxWidth -> set_style dom_node "max-width" ""
        | MinHeight -> set_style dom_node "min-height" ""
        | MaxHeight -> set_style dom_node "max-height" ""
+       | ContainerRelativeFrameValue ->
+           W.Element.removeAttribute "data-lui-frame-axes" dom_node;
+           set_style dom_node "width" "";
+           set_style dom_node "height" "";
+           set_style dom_node "min-width" "";
+           set_style dom_node "min-height" ""
+       | ContainerRelativeFrameInset ->
+           W.Element.removeAttribute "data-lui-frame-inset" dom_node
        | PlaceholderValue ->
            W.HtmlInputElement.setPlaceholder (Util.text_control_node dom_node)
              ""

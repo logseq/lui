@@ -334,7 +334,10 @@ let create_modal_node renderer kind =
   let surface =
     Util.element document "section" class_name
       [ ("role", "dialog"); ("aria-modal", "true"); ("tabindex", "-1") ]
-      [ Util.element document "div" (class_name ^ "-title") [] [];
+      [ Util.element document "div" (class_name ^ "-title") []
+          [ Util.element document "div" (class_name ^ "-heading") [] [];
+            Util.element document "div" (class_name ^ "-description")
+              [ ("hidden", "") ] [] ];
         Util.element document "div" (class_name ^ "-body") [] [];
         (if kind = Sheet then
            Util.element document "div" "lui-sheet-handle"

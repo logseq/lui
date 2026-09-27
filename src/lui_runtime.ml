@@ -1135,7 +1135,11 @@ let event_is_value_echo properties event =
     (match Property_map.find_opt Checked properties with
     | Some (BoolValue current) -> current = checked_value
     | Some _ -> false
-    | None -> not checked_value)
+    | None -> (
+        match Property_map.find_opt Expanded properties with
+        | Some (BoolValue current) -> current = checked_value
+        | Some _ -> false
+        | None -> not checked_value))
   | ValueChanged (_, value) ->
     (match Property_map.find_opt ProgressValue properties with
     | Some (FloatValue current) -> current = value

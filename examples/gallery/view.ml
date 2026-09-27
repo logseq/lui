@@ -1319,21 +1319,40 @@ let native_extension_section : t =
  fun context parent ->
   let page =
     column ~gap:16 ~padding:32
-      [ heading ~level:2 ~value:"Native Extensions" []
+      [ heading ~level:2 ~value:"NativeExtension" []
       ; paragraph
           ~value:"apple-map renders a real MapKit map; its marker children stay retained."
           []
       ]
   in
   let page_id = page context parent in
-  ignore
-    (Extension_schemas.apple_map ~latitude:37.3349 ~longitude:(-122.0090)
-       ~latitude_delta:0.02 ~longitude_delta:0.02
-       [
-         Extension_schemas.apple_map_marker ~title:"Apple Park"
-           ~latitude:37.3349 ~longitude:(-122.0090) ();
-       ]
-       context (Some page_id));
+  (match Lui_ui.host context with
+   | Lui_protocol.WebHost ->
+       ignore
+         (column ~gap:16
+            [ label ~value:"Map" []
+            ; Extension_schemas.simulator_map ~label:"Map of San Francisco"
+                ~latitude:37.7793 ~longitude:(-122.4193) ~latitude_delta:0.08
+                ~longitude_delta:0.08 ~on_region_change:(fun _ -> ())
+                [
+                  Extension_schemas.simulator_map_marker ~title:"San Francisco"
+                    ~latitude:37.7793 ~longitude:(-122.4193) ();
+                ]
+            ; label ~value:"Camera" []
+            ; Extension_schemas.simulator_camera ~label:"Back camera preview"
+                ~facing:"environment" ~on_state_change:(fun _ -> ())
+                ();
+            ]
+            context (Some page_id))
+   | _ ->
+       ignore
+         (Extension_schemas.apple_map ~latitude:37.3349 ~longitude:(-122.0090)
+            ~latitude_delta:0.02 ~longitude_delta:0.02
+            [
+              Extension_schemas.apple_map_marker ~title:"Apple Park"
+                ~latitude:37.3349 ~longitude:(-122.0090) ();
+            ]
+            context (Some page_id)));
   page_id
 
 let split_panes_section model_source send : t =
@@ -1596,6 +1615,7 @@ let view context model_source send : t =
           tweak_paragraph;
           split_panes_section model_source send;
         ]
+    | WebOS -> sections @ [ native_extension_section; tweak_paragraph ]
     | _ -> sections
   in
   column sections

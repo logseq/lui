@@ -700,6 +700,7 @@ test("iOS and Android produce deterministic computed control metrics", async () 
   })()`)
 
   await selectPlatform("android")
+  await browser("wait", "300")
 
   const android = await state(`(() => {
     const button = document.querySelector('.lui-button[data-variant="primary"]')

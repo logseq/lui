@@ -38,7 +38,12 @@ let element document tag class_name attributes children =
 let child_element dom_node index =
   match W.HtmlCollection.item index (W.Element.children dom_node) with
   | Some child -> child
-  | None -> invalid_arg "DOM node child is missing"
+  | None ->
+      invalid_arg
+        ("DOM node child is missing: " ^ W.Element.tagName dom_node ^ "."
+        ^ W.Element.className dom_node ^ "[" ^ string_of_int index ^ "] of "
+        ^ string_of_int
+            (W.HtmlCollection.length (W.Element.children dom_node)))
 
 let text_control_node dom_node =
   let tag_name = W.Element.tagName dom_node in

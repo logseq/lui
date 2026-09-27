@@ -93,6 +93,38 @@
         "os": "web",
         "host": "web"
       }
+    ],
+    "web": [
+      {
+        "os": "web",
+        "host": "web"
+      }
+    ],
+    "web-and-flutter": [
+      {
+        "os": "web",
+        "host": "web"
+      },
+      {
+        "os": "macos",
+        "host": "flutter"
+      },
+      {
+        "os": "ios",
+        "host": "flutter"
+      },
+      {
+        "os": "android",
+        "host": "flutter"
+      },
+      {
+        "os": "linux",
+        "host": "flutter"
+      },
+      {
+        "os": "windows",
+        "host": "flutter"
+      }
     ]
   },
   "components": [
@@ -146,6 +178,136 @@
         {
           "name": "longitude",
           "kind": "float",
+          "required": true
+        }
+      ],
+      "events": []
+    },
+    {
+      "identifier": "simulator-map",
+      "profiles": "web",
+      "standardChildren": false,
+      "children": [
+        "simulator-map-marker"
+      ],
+      "properties": [
+        {
+          "name": "label",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "latitude",
+          "kind": "float",
+          "required": true
+        },
+        {
+          "name": "longitude",
+          "kind": "float",
+          "required": true
+        },
+        {
+          "name": "latitude-delta",
+          "kind": "float",
+          "required": true
+        },
+        {
+          "name": "longitude-delta",
+          "kind": "float",
+          "required": true
+        }
+      ],
+      "events": [
+        {
+          "name": "region-change",
+          "fields": [
+            {
+              "name": "latitude",
+              "kind": "float",
+              "required": true
+            },
+            {
+              "name": "longitude",
+              "kind": "float",
+              "required": true
+            },
+            {
+              "name": "latitude-delta",
+              "kind": "float",
+              "required": true
+            },
+            {
+              "name": "longitude-delta",
+              "kind": "float",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "identifier": "simulator-map-marker",
+      "profiles": "web",
+      "standardChildren": false,
+      "children": [],
+      "properties": [
+        {
+          "name": "title",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "latitude",
+          "kind": "float",
+          "required": true
+        },
+        {
+          "name": "longitude",
+          "kind": "float",
+          "required": true
+        }
+      ],
+      "events": []
+    },
+    {
+      "identifier": "simulator-camera",
+      "profiles": "web",
+      "standardChildren": false,
+      "children": [],
+      "properties": [
+        {
+          "name": "label",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "facing",
+          "kind": "string",
+          "required": true
+        }
+      ],
+      "events": [
+        {
+          "name": "state-change",
+          "fields": [
+            {
+              "name": "state",
+              "kind": "string",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "identifier": "native-card",
+      "profiles": "web-and-flutter",
+      "standardChildren": false,
+      "children": [],
+      "properties": [
+        {
+          "name": "title",
+          "kind": "string",
           "required": true
         }
       ],

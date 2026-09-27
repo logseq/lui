@@ -682,7 +682,10 @@ let true_property renderer node prop =
   | Some (BoolValue true) -> true
   | _ -> false
 
-let enabled_node renderer node = true_property renderer node Enabled
+let enabled_node renderer node =
+  match property renderer.web_store node Enabled with
+  | Some (BoolValue false) -> false
+  | _ -> true
 let event_capability renderer node prop = true_property renderer node prop
 
 let submit_on_enter renderer node = true_property renderer node SubmitOnEnter
@@ -716,7 +719,7 @@ let direct_toggle kind =
 
 let button_like kind =
   match kind with
-  | Button | ToggleButton | Toggle | ListItem | Radio -> true
+  | Button | ToggleButton | Toggle -> true
   | _ -> false
 
 let treeitem renderer node =
