@@ -131,7 +131,7 @@ let toggle_button_section model_source send : t =
 let button_group_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "ButtonGroup"
-    [ button_group ~accessibility_identifier:"Document actions"
+    [ button_group ~label:"Document actions"
         [ button ~icon:`save ~text:"Save" ~disabled:(reactive disabled)
             ~on_press:(press send Model.ToggleDisabled) []
         ; dyn
@@ -170,7 +170,7 @@ let glass_buttons_section : t =
 let toggle_group_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "ToggleGroup"
-    [ toggle_group ~accessibility_identifier:"View options"
+    [ toggle_group ~label:"View options"
         [ dyn
             ~equal:(fun (a : Model.t) (b : Model.t) ->
               a.Model.checked = b.Model.checked)
@@ -199,7 +199,7 @@ let toggle_group_section model_source send : t =
 
 let breadcrumb_section send : t =
   section "Breadcrumb"
-    [ breadcrumb ~accessibility_identifier:"Component path"
+    [ breadcrumb ~label:"Component path"
         [ text ~value:"Gallery" ~foreground:"muted-foreground"
             ~on_press:(press send (Model.SelectTab "overview")) []
         ; icon ~name:`chevron_right ~size:`sm
@@ -221,7 +221,7 @@ let pagination_section model_source send : t =
       model_source
   in
   section "Pagination"
-    [ pagination ~accessibility_identifier:"Gallery pages"
+    [ pagination ~label:"Gallery pages"
         [ button ~variant:`ghost ~icon:`chevron_left ~text:"Previous"
             ~disabled:(reactive disabled)
             ~on_press:(press send (Model.SelectTab "overview")) []
@@ -277,7 +277,7 @@ let bottom_tabs_section model_source send : t =
             ~selected:(reactive home)
             ~on_press:(press send (Model.SelectBottomTab "home"))
             [ column ~gap:12 ~padding:20
-                [ heading ~level:3 ~value:"Home" []
+                [ text ~style_class:"headline" ~value:"Home" []
                 ; input ~label:"Draft" ~placeholder:"Retained home draft" []
                 ; paragraph
                     ~value:"This input stays mounted while another destination is active."
@@ -288,7 +288,7 @@ let bottom_tabs_section model_source send : t =
             ~selected:(reactive search)
             ~on_press:(press send (Model.SelectBottomTab "search"))
             [ column ~gap:12 ~padding:20
-                [ heading ~level:3 ~value:"Search" []
+                [ text ~style_class:"headline" ~value:"Search" []
                 ; paragraph
                     ~value:"Search uses the same retained destination model." []
                 ]
@@ -297,7 +297,7 @@ let bottom_tabs_section model_source send : t =
             ~selected:(reactive settings)
             ~on_press:(press send (Model.SelectBottomTab "settings"))
             [ column ~gap:12 ~padding:20
-                [ heading ~level:3 ~value:"Settings" []
+                [ text ~style_class:"headline" ~value:"Settings" []
                 ; paragraph
                     ~value:"Platform chrome changes without rebuilding this page." []
                 ]
@@ -903,11 +903,10 @@ let toast_section model_source send : t =
 let toolbar_section model_source send : t =
   let value = model_source >|= Model.field_value in
   let checked = model_source >|= Model.checked in
-  let disabled = model_source >|= Model.disabled in
   section "Toolbar"
     [ toolbar ~orientation:`horizontal ~label:"Formatting" ~gap:4
         [ button ~variant:`ghost ~text:"Bold" ~on_press:noop []
-        ; button_group ~accessibility_identifier:"Text style"
+        ; button_group ~label:"Text style"
             [ button ~variant:`ghost ~text:"Italic" ~on_press:noop []
             ; button ~variant:`ghost ~text:"Underline" ~on_press:noop []
             ]
@@ -921,11 +920,11 @@ let toolbar_section model_source send : t =
         [ button ~variant:`ghost ~text:"Link" ~on_press:noop []
         ; button ~variant:`ghost ~text:"Image" ~on_press:noop []
         ; checkbox ~text:"Locked option" ~checked:(reactive checked)
-            ~disabled:(reactive disabled) []
+            ~disabled:true []
         ; select ~text:(reactive value) ~placeholder:"Locked picker"
-            ~disabled:(reactive disabled) []
+            ~disabled:true []
         ; input ~text:(reactive value) ~label:"Locked input"
-            ~disabled:(reactive disabled) []
+            ~disabled:true []
         ]
     ; paragraph
         ~value:"Toolbar composes ordinary controls and owns only orientation-aware roving focus."
@@ -936,7 +935,7 @@ let accordion_section model_source send : t =
   let open_ = model_source >|= Model.accordion_open in
   section "Accordion"
     [ accordion ~text:"Do collapsed children stay retained?"
-        ~selected:(sample open_)
+        ~selected:(reactive open_)
         ~on_toggle:(on_toggle send (fun v -> Model.SetAccordionOpen v))
         [ paragraph
             ~value:"Yes. The native disclosure hides this content while LUI preserves its node identity."
@@ -1018,7 +1017,8 @@ let combobox_section model_source send : t =
         ]
     ; row ~gap:8 ~cross:`center
         [ text ~value:"Shared query:" []
-        ; text ~value:(reactive query) []
+        ; text ~value:(reactive query)
+            ~style_class:"lui-combobox-query-value" []
         ]
     ; paragraph
         ~value:"Signals filter the retained options while the native input keeps focus and identity."
@@ -1319,21 +1319,40 @@ let native_extension_section : t =
  fun context parent ->
   let page =
     column ~gap:16 ~padding:32
-      [ heading ~level:2 ~value:"Native Extensions" []
+      [ heading ~level:2 ~value:"NativeExtension" []
       ; paragraph
           ~value:"apple-map renders a real MapKit map; its marker children stay retained."
           []
       ]
   in
   let page_id = page context parent in
-  ignore
-    (Extension_schemas.apple_map ~latitude:37.3349 ~longitude:(-122.0090)
-       ~latitude_delta:0.02 ~longitude_delta:0.02
-       [
-         Extension_schemas.apple_map_marker ~title:"Apple Park"
-           ~latitude:37.3349 ~longitude:(-122.0090) ();
-       ]
-       context (Some page_id));
+  (match Lui_ui.host context with
+   | Lui_protocol.WebHost ->
+       ignore
+         (column ~gap:16
+            [ label ~value:"Map" []
+            ; Extension_schemas.simulator_map ~label:"Map of San Francisco"
+                ~latitude:37.7793 ~longitude:(-122.4193) ~latitude_delta:0.08
+                ~longitude_delta:0.08 ~on_region_change:(fun _ -> ())
+                [
+                  Extension_schemas.simulator_map_marker ~title:"San Francisco"
+                    ~latitude:37.7793 ~longitude:(-122.4193) ();
+                ]
+            ; label ~value:"Camera" []
+            ; Extension_schemas.simulator_camera ~label:"Back camera preview"
+                ~facing:"environment" ~on_state_change:(fun _ -> ())
+                ();
+            ]
+            context (Some page_id))
+   | _ ->
+       ignore
+         (Extension_schemas.apple_map ~latitude:37.3349 ~longitude:(-122.0090)
+            ~latitude_delta:0.02 ~longitude_delta:0.02
+            [
+              Extension_schemas.apple_map_marker ~title:"Apple Park"
+                ~latitude:37.3349 ~longitude:(-122.0090) ();
+            ]
+            context (Some page_id)));
   page_id
 
 let split_panes_section model_source send : t =
@@ -1370,6 +1389,8 @@ let tweak_paragraph : t =
        [] context (Some node));
   Lui_elements.attach context parent node;
   node
+
+let tweak_section : t = section "Tweaks" [ tweak_paragraph ]
 
 (* Composite components (lui_element_combine): generic layouts built
    purely from primitives — composer, banners, settings rows, sidebar. *)
@@ -1593,9 +1614,10 @@ let view context model_source send : t =
       sections
       @ [
           native_extension_section;
-          tweak_paragraph;
+          tweak_section;
           split_panes_section model_source send;
         ]
+    | WebOS -> sections @ [ native_extension_section; tweak_section ]
     | _ -> sections
   in
   column sections

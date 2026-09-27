@@ -1,0 +1,411 @@
+(* DOM application of retained patch batches — port of web.cljc apply-dom-op. *)
+
+open Lui_protocol
+open Lui_web_types
+module W = Webapi.Dom
+module Store = Lui_web_store
+module Nodes = Lui_web_nodes
+module Util = Lui_web_util
+module Ext = Lui_web_extensions
+
+let prev_node previous_nodes node_id = Hashtbl.find_opt previous_nodes node_id
+
+let prev_kind_is previous_nodes node_id expected =
+  match prev_node previous_nodes node_id with
+  | Some current -> Store.standard_kind_is current expected
+  | None -> false
+
+let prev_modal previous_nodes node_id =
+  match prev_node previous_nodes node_id with
+  | Some current -> (
+      match Store.standard_kind current with
+      | Some kind -> modal_surface kind
+      | None -> false)
+  | None -> false
+
+let prev_anchored_tooltip previous_nodes node_id =
+  match prev_node previous_nodes node_id with
+  | Some current -> Store.anchored_tooltip current
+  | None -> false
+
+let retained_content_container current dom_node =
+  match Store.standard_kind current with
+  | Some kind -> Util.content_container kind dom_node
+  | None -> dom_node
+
+let dom_child_container renderer node dom_node =
+  match Store.node renderer.web_store node with
+  | Some current -> retained_content_container current dom_node
+  | None -> dom_node
+
+let dom_child_container_before renderer previous_nodes node dom_node =
+  match Store.node renderer.web_store node with
+  | Some current -> retained_content_container current dom_node
+  | None -> (
+      match prev_node previous_nodes node with
+      | Some previous -> retained_content_container previous dom_node
+      | None -> dom_node)
+
+let portal_parent renderer previous_nodes parent child =
+  if prev_kind_is previous_nodes child Toast then renderer.web_toast_viewport
+  else if
+    prev_kind_is previous_nodes child DropdownMenu
+    || prev_modal previous_nodes child
+    || prev_anchored_tooltip previous_nodes child
+  then renderer.web_portal_root
+  else if prev_kind_is previous_nodes child ContextMenu then
+    Util.document_body renderer
+  else
+    dom_child_container_before renderer previous_nodes parent
+      (Nodes.dom_node_before renderer previous_nodes parent)
+
+let cleanup_node renderer node =
+  match Hashtbl.find_opt renderer.web_cleanups node with
+  | Some cleanup ->
+      cleanup ();
+      Hashtbl.remove renderer.web_cleanups node
+  | None -> ()
+
+let child_hidden_in_parent renderer child =
+  match Store.node renderer.web_store child with
+  | Some child_node -> (
+      match Store.standard_kind child_node with
+      | Some (ContextMenu | DropdownMenu | Toast) -> true
+      | Some kind -> modal_surface kind
+      | None -> Store.anchored_tooltip child_node)
+  | None -> true
+
+let visible_child_index renderer parent index =
+  match Store.node renderer.web_store parent with
+  | None -> index
+  | Some current ->
+      let rec loop children source_index result =
+        if source_index >= index then result
+        else
+          match children with
+          | [] -> result
+          | child :: rest ->
+              loop rest (source_index + 1)
+                (if child_hidden_in_parent renderer child then result
+                 else result + 1)
+      in
+      loop current.retained_children 0 0
+
+let focused_descendant renderer dom_node =
+  let document =
+    W.Document.unsafeAsHtmlDocument renderer.web_document
+  in
+  match W.HtmlDocument.activeElement document with
+  | Some focused ->
+      if W.Element.contains (W.Element.asNode focused) dom_node then
+        Some focused
+      else None
+  | None -> None
+
+let refresh_structured_children renderer parent =
+  match Store.node renderer.web_store parent with
+  | Some current -> (
+      match Store.standard_kind current with
+      | Some Stepper -> Lui_web_widgets.update_stepper renderer parent
+      | Some Timeline -> Lui_web_widgets.update_timeline renderer parent
+      | _ -> ())
+  | None -> ()
+
+let refresh_dropdown_parent renderer parent =
+  match Store.node renderer.web_store parent with
+  | Some parent_node ->
+      if Store.standard_kind_is parent_node DropdownMenu then begin
+        Lui_web_menu.refresh_dropdown_item_roles renderer parent;
+        ignore (Lui_web_menu.refresh_combobox_list_state renderer parent)
+      end
+  | None -> ()
+
+let refresh_parent_for_prop renderer node property =
+  match Store.node renderer.web_store node with
+  | Some current -> (
+      match current.retained_parent with
+      | Some parent -> (
+          if property = MinWidth then
+            Lui_web_split.update_split renderer parent;
+          match Store.node renderer.web_store parent with
+          | Some parent_node ->
+              if
+                Store.standard_kind_is parent_node Tabs
+                && (property = Selected || property = Enabled)
+              then
+                Lui_web_focus.refresh_tabs_roving renderer.web_store
+                  renderer.web_document parent;
+              if
+                Store.standard_kind_is parent_node BottomTabs
+                && (property = Selected || property = Enabled)
+              then Lui_web_widgets.refresh_bottom_tabs renderer parent;
+              if Store.standard_kind_is parent_node DropdownMenu then
+                ignore
+                  (Lui_web_menu.refresh_combobox_list_state renderer parent)
+          | None -> ())
+      | None -> ())
+  | None -> ()
+
+let apply_create renderer node kind =
+  let created = Nodes.dom_node renderer node in
+  W.Element.setAttribute "id" (Util.node_dom_id node) created;
+  if kind = Accordion then Util.initialize_accordion_semantics node created;
+  Lui_web_events.attach_events renderer node kind created
+
+let insert_menu_item_role renderer _child current parent =
+  if Store.menu_item_row current then
+    match Store.node renderer.web_store parent with
+    | Some parent_node ->
+        if
+          Store.standard_kind_is parent_node ContextMenu
+          || (Store.standard_kind_is parent_node DropdownMenu
+             && not (Nodes.dropdown_listbox renderer parent))
+        then begin
+          W.Element.setAttribute "role" "menuitem" current.platform_node;
+          W.Element.removeAttribute "aria-selected" current.platform_node
+        end
+    | None -> ()
+
+let mount_inserted_child renderer child current =
+  match Store.standard_kind current with
+  | Some Radio -> Lui_web_focus.update_radio_group renderer child
+  | Some DropdownMenu ->
+      (match current.retained_parent with
+       | Some parent ->
+           Lui_web_menu.update_picker_expanded renderer parent true
+       | None -> ());
+      Lui_web_menu.mount_dropdown renderer child
+  | Some (Dialog | Sheet) ->
+      Lui_web_overlay.open_modal renderer child current.platform_node
+  | Some Tooltip ->
+      if Store.anchored_tooltip current then
+        Lui_web_overlay.mount_tooltip renderer child current.platform_node
+  | Some Toast ->
+      Lui_web_overlay.mount_toast renderer child current.platform_node
+  | _ -> ()
+
+let insert_child_dom renderer parent child index =
+  let parent_dom = Nodes.dom_node renderer parent in
+  let child_dom = Nodes.dom_node renderer child in
+  match Store.node renderer.web_store child with
+  | None -> invalid_arg "unknown DOM child"
+  | Some current -> (
+      match Store.standard_kind current with
+      | Some BottomTab -> (
+          match Store.node renderer.web_store parent with
+          | Some parent_node
+            when Store.standard_kind_is parent_node BottomTabs ->
+              Util.insert_dom_child
+                (Util.bottom_tabs_pages_node parent_dom) child_dom index;
+              ignore
+                (Lui_web_widgets.create_bottom_tab_trigger renderer parent
+                   child index);
+              Lui_web_widgets.refresh_bottom_tabs renderer parent
+          | _ ->
+              Util.insert_dom_child
+                (dom_child_container renderer parent parent_dom) child_dom
+                (visible_child_index renderer parent index))
+      | Some Toast ->
+          W.Element.appendChild (W.Element.asNode child_dom)
+            renderer.web_toast_viewport
+      | Some DropdownMenu ->
+          W.Element.appendChild (W.Element.asNode child_dom)
+            renderer.web_portal_root
+      | Some Tooltip when Store.anchored_tooltip current ->
+          W.Element.appendChild (W.Element.asNode child_dom)
+            renderer.web_portal_root
+      | Some kind when modal_surface kind ->
+          W.Element.appendChild
+            (W.Element.asNode (Util.modal_layer_node child_dom))
+            renderer.web_portal_root
+      | Some ContextMenu ->
+          W.Element.appendChild (W.Element.asNode child_dom)
+            (Util.document_body renderer)
+      | _ ->
+          Util.insert_dom_child
+            (dom_child_container renderer parent parent_dom) child_dom
+            (visible_child_index renderer parent index))
+
+let apply_insert_child renderer parent child index =
+  insert_child_dom renderer parent child index;
+  Lui_web_split.update_split renderer parent;
+  Lui_web_focus.refresh_button_context renderer child;
+  Lui_web_split.update_split renderer parent;
+  refresh_structured_children renderer parent;
+  (match Store.node renderer.web_store child with
+   | Some current ->
+       insert_menu_item_role renderer child current parent;
+       mount_inserted_child renderer child current
+   | None -> ());
+  refresh_dropdown_parent renderer parent
+
+let remove_bottom_tab renderer parent child =
+  let tabs_dom = Nodes.dom_node renderer parent in
+  let pages = Util.bottom_tabs_pages_node tabs_dom in
+  let bar = Util.bottom_tabs_bar_node tabs_dom in
+  ignore
+    (W.Element.removeChild
+       (W.Element.asNode (Nodes.dom_node renderer child)) pages);
+  match
+    W.Element.querySelector ("#" ^ Util.bottom_tab_trigger_id child) bar
+  with
+  | Some trigger ->
+      ignore (W.Element.removeChild (W.Element.asNode trigger) bar)
+  | None -> ()
+
+let clear_submenu_trigger _renderer previous_nodes parent =
+  match prev_node previous_nodes parent with
+  | Some parent_node ->
+      if Store.menu_item_row parent_node then begin
+        W.Element.removeAttribute "data-submenu-trigger"
+          parent_node.platform_node;
+        W.Element.removeAttribute "aria-haspopup" parent_node.platform_node;
+        W.Element.removeAttribute "aria-expanded" parent_node.platform_node
+      end
+  | None -> ()
+
+let apply_remove_child renderer previous_nodes parent child =
+  let surface = Nodes.dom_node_before renderer previous_nodes child in
+  let modal = prev_modal previous_nodes child in
+  let bottom_tab = prev_kind_is previous_nodes child BottomTab in
+  let bottom_tabs = prev_kind_is previous_nodes parent BottomTabs in
+  let child_node =
+    if modal then Util.modal_layer_node surface else surface
+  in
+  let parent_node = portal_parent renderer previous_nodes parent child in
+  (if bottom_tab && bottom_tabs then remove_bottom_tab renderer parent child
+   else if modal then
+     match prev_node previous_nodes child with
+     | Some previous ->
+         ignore
+           (Lui_web_overlay.remove_modal_layer_after_exit
+              renderer.web_document parent_node child_node surface
+              (Store.standard_kind previous))
+     | None -> ()
+   else if prev_kind_is previous_nodes child DropdownMenu then
+     Lui_web_menu.remove_dropdown_after_exit renderer.web_document parent_node
+       child_node
+   else
+     ignore (W.Element.removeChild (W.Element.asNode child_node) parent_node));
+  Lui_web_focus.refresh_button_context renderer child;
+  refresh_structured_children renderer parent;
+  (match prev_node previous_nodes parent with
+   | Some parent_node ->
+       if Store.standard_kind_is parent_node BottomTabs then
+         Lui_web_widgets.refresh_bottom_tabs renderer parent
+   | None -> ());
+  (match prev_node previous_nodes child with
+   | Some previous ->
+       if Store.standard_kind_is previous DropdownMenu then begin
+         Lui_web_menu.update_picker_expanded renderer parent false;
+         clear_submenu_trigger renderer previous_nodes parent
+       end
+   | None -> ());
+  refresh_dropdown_parent renderer parent
+
+let move_bottom_tab renderer parent child index =
+  let tabs_dom = Nodes.dom_node renderer parent in
+  let pages = Util.bottom_tabs_pages_node tabs_dom in
+  let bar = Util.bottom_tabs_bar_node tabs_dom in
+  let child_node = Nodes.dom_node renderer child in
+  ignore (W.Element.removeChild (W.Element.asNode child_node) pages);
+  Util.insert_dom_child pages child_node index;
+  match Lui_web_widgets.bottom_tab_trigger renderer child with
+  | Some trigger ->
+      ignore (W.Element.removeChild (W.Element.asNode trigger) bar);
+      Util.insert_dom_child bar trigger index
+  | None -> ()
+
+let apply_move_child renderer previous_nodes parent child index =
+  let dropdown = prev_kind_is previous_nodes child DropdownMenu in
+  let modal = prev_modal previous_nodes child in
+  let tooltip = prev_anchored_tooltip previous_nodes child in
+  let toast = prev_kind_is previous_nodes child Toast in
+  let metadata = prev_kind_is previous_nodes child ContextMenu in
+  let bottom_tab =
+    match Store.node renderer.web_store child with
+    | Some current -> Store.standard_kind_is current BottomTab
+    | None -> false
+  in
+  let bottom_tabs =
+    match Store.node renderer.web_store parent with
+    | Some current -> Store.standard_kind_is current BottomTabs
+    | None -> false
+  in
+  let parent_node = portal_parent renderer previous_nodes parent child in
+  let surface_node = Nodes.dom_node_before renderer previous_nodes child in
+  let child_node =
+    if modal then Util.modal_layer_node surface_node else surface_node
+  in
+  let focused = focused_descendant renderer surface_node in
+  if bottom_tab && bottom_tabs then move_bottom_tab renderer parent child index
+  else begin
+    ignore (W.Element.removeChild (W.Element.asNode child_node) parent_node);
+    if dropdown || modal || tooltip || toast || metadata then
+      W.Element.appendChild (W.Element.asNode child_node) parent_node
+    else
+      Util.insert_dom_child parent_node child_node
+        (visible_child_index renderer parent index)
+  end;
+  Lui_web_split.update_split renderer parent;
+  refresh_structured_children renderer parent;
+  if bottom_tab && bottom_tabs then
+    Lui_web_widgets.refresh_bottom_tabs renderer parent;
+  refresh_dropdown_parent renderer parent;
+  if dropdown then Lui_web_position.position_dropdown renderer child;
+  if tooltip && W.Element.hasAttribute "data-open" surface_node then
+    Lui_web_position.position_tooltip renderer child;
+  Lui_web_focus.restore_focus renderer focused
+
+let apply_set_prop renderer node property value =
+  match Store.node renderer.web_store node with
+  | Some current -> (
+      match Store.standard_kind current with
+      | Some kind ->
+          Lui_web_props.apply_property renderer node kind
+            current.platform_node property value;
+          refresh_parent_for_prop renderer node property
+      | None -> invalid_arg "standard property targets extension node")
+  | None -> invalid_arg "unknown DOM node"
+
+let apply_remove_prop renderer node property =
+  (match Store.node renderer.web_store node with
+   | Some current -> (
+       match Store.standard_kind current with
+       | Some kind ->
+           Lui_web_props.remove_property renderer node kind
+             current.platform_node property;
+           refresh_parent_for_prop renderer node property
+       | None -> invalid_arg "standard property targets extension node")
+   | None -> ())
+
+let apply_dom_op renderer previous_nodes operation =
+  match operation with
+  | CreateNode (node, kind) -> apply_create renderer node kind
+  | CreateExtension (node, _identifier, _fingerprint) ->
+      W.Element.setAttribute "id" (Util.node_dom_id node)
+        (Nodes.dom_node renderer node)
+  | DropNode node ->
+      Ext.cleanup_extension_node renderer previous_nodes node;
+      cleanup_node renderer node
+  | SetProp (node, property, value) ->
+      apply_set_prop renderer node property value
+  | RemoveProp (node, property) -> apply_remove_prop renderer node property
+  | SetExtensionProp (node, property, value) ->
+      Ext.apply_extension_property renderer node property value
+  | RemoveExtensionProp (node, property) ->
+      Ext.remove_extension_property renderer node property
+  | InsertChild (parent, child, index) ->
+      apply_insert_child renderer parent child index
+  | RemoveChild (parent, child) ->
+      apply_remove_child renderer previous_nodes parent child
+  | MoveChild (parent, child, index) ->
+      apply_move_child renderer previous_nodes parent child index
+
+let apply_dom_batch renderer previous_nodes batch =
+  List.iter
+    (fun operation -> apply_dom_op renderer previous_nodes operation)
+    batch.ops;
+  ignore (Lui_web_focus.update_all_horizontal_group_roving renderer);
+  ignore (Lui_web_focus.update_all_tree_roving renderer);
+  ignore (Lui_web_focus.update_all_toolbar_roving renderer)
