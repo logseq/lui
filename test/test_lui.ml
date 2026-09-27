@@ -498,6 +498,14 @@ let capture_node cell element : Lui_elements.t =
   cell := node;
   node
 
+let children_of parent =
+  all_ops ()
+  |> List.filter_map (function
+       | Lui_protocol.InsertChild (p, child, index) when p = parent -> Some (index, child)
+       | _ -> None)
+  |> List.sort (fun (left, _) (right, _) -> Int.compare left right)
+  |> List.map snd
+
 let test_glass_button_actions () =
   let single_presses = ref 0 in
   let information_presses = ref 0 in
@@ -525,20 +533,17 @@ let test_glass_button_actions () =
   in
   ignore (Lui_app.start app);
   flush_app app;
-  let group_children =
-    all_ops ()
-    |> List.filter_map (function
-         | Lui_protocol.InsertChild (parent, child, index)
-           when parent = !group_node -> Some (index, child)
-         | _ -> None)
-    |> List.sort (fun (left, _) (right, _) -> Int.compare left right)
-    |> List.map snd
-  in
+  let group_children = children_of !group_node in
   Alcotest.(check int) "group has two actions" 2 (List.length group_children);
+  (* A single action also mounts inside its own capsule group, so its button
+     is the group's child rather than the element root. *)
+  let single_children = children_of !single_node in
+  Alcotest.(check int) "single capsule has one action" 1
+    (List.length single_children);
   List.iter
     (fun node ->
        ignore (Lui_app.dispatch_event app (Lui_protocol.Press node)))
-    (!single_node :: group_children);
+    (single_children @ group_children);
   flush_app app;
   Alcotest.(check (list int)) "each action has its own callback"
     [ 1; 1; 1 ]
@@ -597,21 +602,16 @@ let test_glass_button_text_is_optional () =
        | _ -> false)
       (all_ops ())
   in
+  (* Single-action capsules are groups too — assert on their child buttons. *)
+  let icon_only_button = List.hd (children_of !icon_only_node) in
+  let text_button = List.hd (children_of !text_node) in
   Alcotest.(check bool) "icon-only button keeps accessible label" true
-    (has_property !icon_only_node Lui_protocol.AccessibilityLabel "New note");
+    (has_property icon_only_button Lui_protocol.AccessibilityLabel "New note");
   Alcotest.(check bool) "icon-only button has no visible text" false
-    (has_property !icon_only_node Lui_protocol.TextValue "New note");
+    (has_property icon_only_button Lui_protocol.TextValue "New note");
   Alcotest.(check bool) "text button shows its text" true
-    (has_property !text_node Lui_protocol.TextValue "New note");
-  let group_children =
-    all_ops ()
-    |> List.filter_map (function
-         | Lui_protocol.InsertChild (parent, child, index)
-           when parent = !group_node -> Some (index, child)
-         | _ -> None)
-    |> List.sort (fun (left, _) (right, _) -> Int.compare left right)
-    |> List.map snd
-  in
+    (has_property text_button Lui_protocol.TextValue "New note");
+  let group_children = children_of !group_node in
   Alcotest.(check int) "group has two actions" 2 (List.length group_children);
   Alcotest.(check bool) "first group action shows text" true
     (has_property (List.hd group_children) Lui_protocol.TextValue "Info");
