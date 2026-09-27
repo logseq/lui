@@ -263,6 +263,11 @@ let apply_move_child nodes parent_id child_id index =
            (move_at parent_node.retained_children current_index index))
   | None -> invalid_arg "child is not attached to parent"
 
+(* Property writes to a node that was dropped earlier in the same batch (or
+   by an earlier batch before its signal subscription was torn down) are moot;
+   dropping them keeps one stale write from aborting the rest of the batch.
+   Structural ops stay strict — a stale child/parent id there means a real
+   reconcile bug. *)
 let apply_op nodes platform_for extension_platform_for registry operation =
   match operation with
   | CreateNode (node, kind) -> apply_create_node nodes platform_for node kind
@@ -270,12 +275,17 @@ let apply_op nodes platform_for extension_platform_for registry operation =
       apply_create_extension nodes extension_platform_for registry node
         identifier fingerprint
   | DropNode node -> apply_drop_node nodes node
-  | SetProp (node, property, value) -> apply_set_prop nodes node property value
-  | RemoveProp (node, property) -> apply_remove_prop nodes node property
+  | SetProp (node, property, value) ->
+      if Hashtbl.mem nodes node then
+        apply_set_prop nodes node property value
+  | RemoveProp (node, property) ->
+      if Hashtbl.mem nodes node then apply_remove_prop nodes node property
   | SetExtensionProp (node, property, value) ->
-      apply_set_extension_prop nodes registry node property value
+      if Hashtbl.mem nodes node then
+        apply_set_extension_prop nodes registry node property value
   | RemoveExtensionProp (node, property) ->
-      apply_remove_extension_prop nodes registry node property
+      if Hashtbl.mem nodes node then
+        apply_remove_extension_prop nodes registry node property
   | InsertChild (parent, child, index) ->
       apply_insert_child nodes registry parent child index
   | RemoveChild (parent, child) -> apply_remove_child nodes parent child

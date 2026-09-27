@@ -1243,17 +1243,19 @@ let record_diagnostics application status operation_count
     };
   true
 
+(* A batch is consumed once attempted: ops already committed store-side must
+   not re-run, and leaving them queued would make the next flush re-apply the
+   same operations under a stale generation (which also breaks the retained
+   store's sequential-generation check and wedges every later flush). *)
 let apply_pending_batch application batch operation_count next_generation =
+  application.pending_ops := [];
+  application.runtime_generation := next_generation;
   try
     if not (application.runtime_backend.apply_batch batch) then
       invalid_arg "backend rejected patch batch";
-    application.pending_ops := [];
-    application.runtime_generation := next_generation;
     record_diagnostics application Applied operation_count 0
   with Invalid_argument message ->
-    ignore
-      (record_diagnostics application Rejected operation_count
-         (List.length !(application.pending_ops)));
+    ignore (record_diagnostics application Rejected operation_count 0);
     invalid_arg message
 
 let flush application =

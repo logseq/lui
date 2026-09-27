@@ -366,7 +366,7 @@ let apply_set_prop renderer node property value =
             current.platform_node property value;
           refresh_parent_for_prop renderer node property
       | None -> invalid_arg "standard property targets extension node")
-  | None -> invalid_arg "unknown DOM node"
+  | None -> ()
 
 let apply_remove_prop renderer node property =
   (match Store.node renderer.web_store node with
