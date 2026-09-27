@@ -42,6 +42,45 @@ Gotchas discovered while testing lui-split:
   a pane between keyboard assertions, and verify each shortcut by the #log
   text, not just by layout.
 
+## Web gallery demo (examples/components/web)
+
+The shared OCaml gallery (`examples/gallery`) rendered by the pure
+OCaml/Melange web backend (`platform/web/melange/`).
+
+Run it:
+
+    cd ~/repos/lui && opam exec --switch=default -- dune build
+    cd platform/web && npm run build        # emits dist/lui.css
+    cd ~/repos/lui && node tooling/serve_web.mjs --port 8977
+    open http://127.0.0.1:8977/examples/components/web/index.html
+
+Notes:
+
+- The shell defaults to `data-lui-form-factor="phone"` — a compact
+  one-page list→detail→back shell. The simulator toolbar (top-right, or
+  bottom edge under ~720px) has Platform/Device/Rotate controls; switch
+  Device to "Tablet" for the two-pane sidebar+content layout. Viewport
+  width alone does NOT change the shell mode.
+- The managed/headless Chrome's windows never paint; for visual testing
+  launch a separate visible instance:
+  `open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir=/tmp/lui-web-chrome <url>`
+  then drive it with Playwright `chromium.connectOverCDP('http://127.0.0.1:9222')`
+  (playwright is in platform/web/node_modules; import via absolute
+  `file://` path when the script lives outside that tree). CDP is also
+  the way to read console errors — the computer-tool browser target may
+  be unavailable.
+- Known failure modes seen on the melange port (2025-09): popups live in
+  `.lui-popup-portal` which is `pointer-events:none`; anything without a
+  `pointer-events:auto` re-enable (modals — `.lui-modal-layer`/`.lui-dialog`)
+  is click-through even though it renders correctly, and Escape still works.
+  Transient menus can dismiss on their own `mousedown` before `click`
+  dispatches — check with `page.mouse.click`, not `dispatchEvent`, and
+  instrument `data-open` between `mouse.down()`/`mouse.up()` to prove it.
+  `Invalid_argument "unknown node"` from `store.children` (called by
+  `update_splits_under` during `Lui_web.mount`) leaves a section
+  half-mounted: content swaps but `data-lui-navigation` stays "list" and
+  `data-selected` stays "false".
+
 ## Native macOS demo app (examples/split)
 
 Build/run: `bash examples/split/macos-appkit/build-app.sh`, then the bundle is

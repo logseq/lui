@@ -19,6 +19,8 @@ let extension_platform_node renderer node identifier =
   in
   adapter.web_extension_create node renderer.web_document emit
 
+(* A property write can arrive for a node dropped earlier in the same batch —
+   the store already skipped it, so skip the DOM write too. *)
 let apply_extension_property renderer node property value =
   match Store.node renderer.web_store node with
   | Some current -> (
@@ -27,7 +29,7 @@ let apply_extension_property renderer node property value =
           (extension_adapter renderer identifier).web_extension_set_property
             current.platform_node property value
       | None -> invalid_arg "extension property targets standard DOM node")
-  | None -> invalid_arg "unknown DOM node"
+  | None -> ()
 
 let remove_extension_property renderer node property =
   match Store.node renderer.web_store node with
@@ -37,7 +39,7 @@ let remove_extension_property renderer node property =
           (extension_adapter renderer identifier).web_extension_remove_property
             current.platform_node property
       | None -> invalid_arg "extension property targets standard DOM node")
-  | None -> invalid_arg "unknown DOM node"
+  | None -> ()
 
 let cleanup_extension_node renderer previous_nodes node =
   match Hashtbl.find_opt previous_nodes node with
