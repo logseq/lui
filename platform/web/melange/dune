@@ -1,7 +1,9 @@
+(include_subdirs unqualified)
+
 (library
  (name lui_web_dom)
  (public_name lui.web.dom)
  (wrapped false)
  (modes melange)
- (libraries melange-webapi)
+ (libraries lui melange-webapi melange.dom)
  (preprocess (pps melange.ppx)))
