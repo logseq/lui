@@ -463,7 +463,7 @@ let empty_state
       | None -> []
       | Some name ->
         [ Lui_elements.icon ~name ~size:`lg ~foreground:"muted-foreground" [] ])
-     @ [ heading ~level:4 ~value:title [] ]
+     @ [ text ~style_class:"headline" ~value:title [] ]
      @ (match description with
         | None -> []
         | Some value ->

@@ -66,7 +66,7 @@ test(`${browserLabel} preserves the Gallery's retained interaction contract`, as
         failures,
       }
     })
-    assert.equal(mobileAudit.count, 66)
+    assert.equal(mobileAudit.count, 69)
     assert.ok(mobileAudit.minNavigationHeight >= 44, JSON.stringify(mobileAudit))
     assert.equal(mobileAudit.mountedPages, 1)
     assert.deepEqual(mobileAudit.failures, [])

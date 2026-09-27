@@ -2280,6 +2280,7 @@ val accordion :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?selected:bool ->
+  ?selected_signal:bool Signal.signal ->
   ?accordion_height:int ->
   ?on_toggle:(Lui_protocol.event -> unit) -> t list -> t
 val menu_item :
