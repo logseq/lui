@@ -586,6 +586,10 @@ body {
     transition: opacity 150ms ease-out;
   }
 
+  .lui-modal-description {
+    @apply text-sm font-normal text-muted-foreground;
+  }
+
   .lui-modal-layer[data-starting-style] .lui-modal-backdrop,
   .lui-modal-layer[data-ending-style] .lui-modal-backdrop {
     opacity: 0;
@@ -606,10 +610,6 @@ body {
 
   .lui-dialog-title {
     @apply text-lg font-semibold;
-  }
-
-  .lui-dialog-description {
-    @apply text-sm font-normal text-muted-foreground;
   }
 
   .lui-dialog-body {
@@ -673,10 +673,6 @@ body {
 
   .lui-sheet-title {
     @apply text-lg font-semibold;
-  }
-
-  .lui-sheet-description {
-    @apply text-sm font-normal text-muted-foreground;
   }
 
   .lui-sheet-body {

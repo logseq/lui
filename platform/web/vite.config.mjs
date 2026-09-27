@@ -7,19 +7,12 @@ const projectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 )
-const generatedBundle = path.join(
+const buildOutputRoot = path.join(
   projectRoot,
-  "_build/default/examples/components/web/lui-components-web/examples/components/web/lui_components_web.js",
+  "_build/default/examples/components/web/lui-components-web",
 )
-const generatedBootstrap = path.join(
-  projectRoot,
-  "_build/default/examples/components/web/lui-components-web/examples/components/web/web_bootstrap.js",
-)
-const gallerySourceRoot = path.join(
-  projectRoot,
-  "examples/components/lg",
-)
-const LG_SOURCE_EXTENSIONS = new Set([".cljc", ".mli"])
+const examplesRoot = path.join(projectRoot, "examples")
+const OCAML_SOURCE_EXTENSIONS = new Set([".ml", ".mli"])
 
 const wait = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds))
@@ -39,123 +32,61 @@ async function settleGeneratedFile(file) {
   return previous
 }
 
+function generatedModuleFor(sourceFile) {
+  const relative = path.relative(examplesRoot, sourceFile)
+  return path.join(
+    buildOutputRoot,
+    "examples",
+    relative.replace(/\.(ml|mli)$/, ".js"),
+  )
+}
+
 function melangeHotReload() {
-  const generatedFiles = new Map()
   let sourceGeneration = 0
 
-  async function waitForMelangeOutput(generation, previousBundle, bootstrapTime) {
+  async function waitForMelangeOutput(generation, generatedModule, since) {
     for (let attempt = 0; attempt < 1200; attempt += 1) {
-      if (generation !== sourceGeneration) return undefined
+      if (generation !== sourceGeneration) return false
       try {
-        const [bundle, bootstrapInfo] = await Promise.all([
-          readFile(generatedBundle, "utf8"),
-          stat(generatedBootstrap),
-        ])
-        if (bundle !== previousBundle && bootstrapInfo.mtimeMs > bootstrapTime) {
-          return settleGeneratedFile(generatedBundle)
+        const info = await stat(generatedModule)
+        if (info.mtimeMs > since) {
+          return (await settleGeneratedFile(generatedModule)) !== undefined
         }
       } catch {
         // Dune replaces the generated output tree atomically.
       }
       await wait(50)
     }
-    return undefined
+    return false
   }
 
   return {
     name: "lui-melange-hot-reload",
     enforce: "post",
-    async transform(code, id) {
-      const normalizedId = id.split("?", 1)[0].split(path.sep).join("/")
-      const generatedJavaScript =
-        normalizedId.includes("/_build/default/") &&
-        normalizedId.endsWith(".js")
-      if (generatedJavaScript) {
-        try {
-          generatedFiles.set(normalizedId, await readFile(normalizedId, "utf8"))
-        } catch {
-          generatedFiles.set(normalizedId, code)
-        }
-      }
-      if (
-        !generatedJavaScript ||
-        !code.includes("Lg_runtime__Runtime_reference") ||
-        !code.includes("__root")
-      ) {
-        return null
-      }
-
-      const rootNames = [
-        ...new Set(code.match(/\b[A-Za-z_$][\w$]*__root\b/g) ?? []),
-      ]
-      if (rootNames.length === 0) return null
-
-      const hotReloadBoundary = `
-
-const __luiHmrRoots = import.meta.hot?.data.luiRoots ?? {
-  ${rootNames.join(",\n  ")}
-}
-
-if (import.meta.hot) {
-  import.meta.hot.data.luiRoots = __luiHmrRoots
-  import.meta.hot.accept((nextModule) => {
-    if (!nextModule) return
-
-    Object.entries(__luiHmrRoots)
-      .filter(
-        ([name, current]) =>
-          nextModule[name] && current.replacement_observers !== 0,
-      )
-      .forEach(([name, current]) => {
-        try {
-          Lg_runtime__Runtime_reference.replace_for_redefinition(
-            current,
-            nextModule[name].value,
-          )
-        } catch (error) {
-          console.error("[lui-hmr] Failed to replace " + name, error.cause ?? error)
-          throw error
-        }
-      })
-  })
-}
-`
-
-      return { code: `${code}${hotReloadBoundary}`, map: null }
-    },
     async handleHotUpdate({ file, modules, server }) {
       const normalizedFile = file.split(path.sep).join("/")
       if (normalizedFile.includes("/_build/default/")) {
         return []
       }
       if (
-        !file.startsWith(gallerySourceRoot) ||
-        !LG_SOURCE_EXTENSIONS.has(path.extname(file))
+        !file.startsWith(examplesRoot) ||
+        !OCAML_SOURCE_EXTENSIONS.has(path.extname(file))
       ) {
         return modules
       }
 
       sourceGeneration += 1
       const generation = sourceGeneration
-      const normalizedBundle = generatedBundle.split(path.sep).join("/")
-      const previous = generatedFiles.get(normalizedBundle)
-      let bootstrapTime = 0
-      try {
-        bootstrapTime = (await stat(generatedBootstrap)).mtimeMs
-      } catch {
-        // The initial build is guaranteed before Vite starts.
-      }
-      const current = await waitForMelangeOutput(
+      const { mtimeMs: since } = await stat(file)
+      const ready = await waitForMelangeOutput(
         generation,
-        previous,
-        bootstrapTime,
+        generatedModuleFor(file),
+        since,
       )
-      if (current === undefined) return []
-      generatedFiles.set(normalizedBundle, current)
-      const generatedModule = server.moduleGraph.getModuleById(
-        generatedBundle,
-      )
-      return generatedModule ? [generatedModule] : []
+      if (!ready) return []
+      server.moduleGraph.invalidateAll()
+      server.ws.send({ type: "full-reload" })
+      return []
     },
   }
 }

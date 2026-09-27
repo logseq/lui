@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url"
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..")
 const require = createRequire(path.join(projectRoot, "platform/web/package.json"))
 const { chromium } = require("playwright")
-const gallerySource = path.join(projectRoot, "examples/components/lg/components/gallery.cljc")
+const gallerySource = path.join(projectRoot, "examples/gallery/view.ml")
 const galleryCss = path.join(projectRoot, "examples/components/web/styles.css")
 const jsFixture = path.join(
   projectRoot,
@@ -70,7 +70,7 @@ function nextPageLoad(page) {
   return new Promise((resolve) => page.once("load", () => resolve("reload")))
 }
 
-test("LG, CSS, and JavaScript update through Vite without a manual refresh", async () => {
+test("OCaml, CSS, and JavaScript update through Vite without a manual refresh", async () => {
   const originals = new Map(
     await Promise.all(
       [gallerySource, galleryCss, jsFixture].map(async (file) => [file, await readFile(file, "utf8")]),
@@ -126,81 +126,71 @@ test("LG, CSS, and JavaScript update through Vite without a manual refresh", asy
       { sameDocument: true, sameSwitch: true, checked: true },
     )
 
-    const lgUpdated = originals
+    const ocamlUpdated = originals
       .get(gallerySource)
       .replace(
         "Switch shares the same model-owned Signal.",
-        "LG hot reload applied.",
-    )
-    const firstLgUpdate = Promise.race([
+        "OCaml hot reload applied.",
+      )
+    const firstOcamlUpdate = Promise.race([
       nextPageLoad(page),
-      page.getByText("LG hot reload applied.", { exact: true })
+      page.getByText("OCaml hot reload applied.", { exact: true })
         .waitFor()
         .then(() => "hmr"),
     ])
-    await writeFile(gallerySource, lgUpdated)
+    await writeFile(gallerySource, ocamlUpdated)
     assert.equal(
-      await firstLgUpdate,
-      "hmr",
-      "LG updates must not reload the document",
+      await firstOcamlUpdate,
+      "reload",
+      "OCaml updates must reload the document once Dune output settles",
     )
+    await page.waitForLoadState("networkidle")
     await openSwitch(page)
-    await page.getByText("LG hot reload applied.", { exact: true }).waitFor()
+    await page.getByText("OCaml hot reload applied.", { exact: true }).waitFor()
     assert.deepEqual(
       await page.evaluate(() => ({
         sameDocument: document === window.__luiHotDocument,
-        sameSwitch: document.querySelector(".lui-switch-control") === window.__luiHotSwitch,
-        checked: document.querySelector(".lui-switch-control").checked,
         galleryShells: document.querySelectorAll(".lui-gallery-shell").length,
         popupPortals: document.querySelectorAll(".lui-popup-portal").length,
       })),
       {
-        sameDocument: true,
-        sameSwitch: true,
-        checked: true,
+        sameDocument: false,
         galleryShells: 1,
         popupPortals: 1,
       },
     )
-    assert.doesNotMatch(output.join(""), /Browser error:|\[lui-hmr\] Failed/)
+    assert.doesNotMatch(output.join(""), /Browser error:/)
     assert.doesNotMatch(
       output.join(""),
-      /Failed to reload .*lui_components_web/,
-      "Dune output must settle before Vite imports the generated bundle",
+      /Failed to reload/,
+      "Dune output must settle before the page reloads",
     )
 
-    await writeFile(gallerySource, `${lgUpdated}\n(`)
+    await writeFile(gallerySource, `${ocamlUpdated}\n(*`)
     await page.waitForTimeout(500)
-    assert.equal(await page.getByText("LG hot reload applied.", { exact: true }).count(), 1)
-    const recoveredLgUpdate = Promise.race([
+    assert.equal(await page.getByText("OCaml hot reload applied.", { exact: true }).count(), 1)
+    const recoveredOcamlUpdate = Promise.race([
       nextPageLoad(page),
-      page.getByText("LG hot reload recovered.", { exact: true })
+      page.getByText("OCaml hot reload recovered.", { exact: true })
         .waitFor()
         .then(() => "hmr"),
     ])
     await writeFile(
       gallerySource,
-      lgUpdated.replace("LG hot reload applied.", "LG hot reload recovered."),
+      ocamlUpdated.replace("OCaml hot reload applied.", "OCaml hot reload recovered."),
     )
     assert.equal(
-      await recoveredLgUpdate,
-      "hmr",
-      "LG recovery must not reload the document",
+      await recoveredOcamlUpdate,
+      "reload",
+      "OCaml recovery must reload the document",
     )
+    await page.waitForLoadState("networkidle")
     await openSwitch(page)
-    await page.getByText("LG hot reload recovered.", { exact: true }).waitFor()
-    assert.deepEqual(
-      await page.evaluate(() => ({
-        sameDocument: document === window.__luiHotDocument,
-        sameSwitch: document.querySelector(".lui-switch-control") === window.__luiHotSwitch,
-        checked: document.querySelector(".lui-switch-control").checked,
-      })),
-      { sameDocument: true, sameSwitch: true, checked: true },
+    await page.getByText("OCaml hot reload recovered.", { exact: true }).waitFor()
+    assert.equal(
+      await page.evaluate(() => document === window.__luiHotDocument),
+      false,
     )
-
-    await page.reload({ waitUntil: "networkidle" })
-    await openSwitch(page)
-    assert.equal(await switchControl.isChecked(), false)
 
     await page.goto(
       `${origin}/platform/web/test/fixtures/hot-reload/index.html`,

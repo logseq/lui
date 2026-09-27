@@ -130,6 +130,7 @@ async function loadOpamEnvironment() {
     "opam",
     [
       "exec",
+      "--switch=default",
       "--",
       process.execPath,
       "-e",
