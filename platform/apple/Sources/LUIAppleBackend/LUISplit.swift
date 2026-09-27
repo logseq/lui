@@ -483,6 +483,9 @@ private struct LUISplitPaneNode: View {
         .contentShape(Rectangle())
         .focusable()
         .focused($hasKeyFocus)
+        .onChange(of: isFocused) { _, focused in
+            hasKeyFocus = focused
+        }
         .onTapGesture {
             hasKeyFocus = true
             context.tryEmit("pane-focused")
@@ -500,6 +503,7 @@ private struct LUISplitPaneNode: View {
             paneID: paneID,
             context: context,
             paneSize: paneSize,
+            tabCount: tabs.count,
             zone: $dropZone,
             tabDropIndex: $tabDropIndex
         )
@@ -729,6 +733,7 @@ private struct LUISplitPaneDropDelegate: DropDelegate {
     let paneID: String
     let context: LUIAppleExtensionViewContext
     let paneSize: CGSize
+    let tabCount: Int
     @Binding var zone: LUISplitDropZone?
     @Binding var tabDropIndex: Int?
 
@@ -776,7 +781,7 @@ private struct LUISplitPaneDropDelegate: DropDelegate {
                         "tab-moved",
                         values: [
                             "tab": .string(payload.tab),
-                            "index": .int(Int.max),  // append
+                            "index": .int(tabCount),  // append
                             "from-pane": .string(payload.pane),
                         ])
                 case .edge(let edge):
