@@ -286,7 +286,10 @@ let apply_remove_child renderer previous_nodes parent child =
      Lui_web_menu.remove_dropdown_after_exit renderer.web_document parent_node
        child_node
    else
-     ignore (W.Element.removeChild (W.Element.asNode child_node) parent_node));
+     (* Detach from wherever the node actually lives: a TextValue prop write
+        (textContent) already removes DOM children, so the resolved parent
+        may not contain child_node when this op runs *)
+     W.Element.remove child_node);
   Lui_web_focus.refresh_button_context renderer child;
   refresh_structured_children renderer parent;
   (match prev_node previous_nodes parent with
@@ -340,7 +343,9 @@ let apply_move_child renderer previous_nodes parent child index =
   let focused = focused_descendant renderer surface_node in
   if bottom_tab && bottom_tabs then move_bottom_tab renderer parent child index
   else begin
-    ignore (W.Element.removeChild (W.Element.asNode child_node) parent_node);
+    (* detach first so a stale resolved parent cannot throw; the insert
+       below re-attaches (insertBefore/appendChild also auto-move) *)
+    W.Element.remove child_node;
     if dropdown || modal || tooltip || toast || metadata then
       W.Element.appendChild (W.Element.asNode child_node) parent_node
     else
