@@ -131,7 +131,7 @@ let toggle_button_section model_source send : t =
 let button_group_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "ButtonGroup"
-    [ button_group ~accessibility_identifier:"Document actions"
+    [ button_group ~label:"Document actions"
         [ button ~icon:`save ~text:"Save" ~disabled:(reactive disabled)
             ~on_press:(press send Model.ToggleDisabled) []
         ; dyn
@@ -170,7 +170,7 @@ let glass_buttons_section : t =
 let toggle_group_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "ToggleGroup"
-    [ toggle_group ~accessibility_identifier:"View options"
+    [ toggle_group ~label:"View options"
         [ dyn
             ~equal:(fun (a : Model.t) (b : Model.t) ->
               a.Model.checked = b.Model.checked)
@@ -199,7 +199,7 @@ let toggle_group_section model_source send : t =
 
 let breadcrumb_section send : t =
   section "Breadcrumb"
-    [ breadcrumb ~accessibility_identifier:"Component path"
+    [ breadcrumb ~label:"Component path"
         [ text ~value:"Gallery" ~foreground:"muted-foreground"
             ~on_press:(press send (Model.SelectTab "overview")) []
         ; icon ~name:`chevron_right ~size:`sm
@@ -221,7 +221,7 @@ let pagination_section model_source send : t =
       model_source
   in
   section "Pagination"
-    [ pagination ~accessibility_identifier:"Gallery pages"
+    [ pagination ~label:"Gallery pages"
         [ button ~variant:`ghost ~icon:`chevron_left ~text:"Previous"
             ~disabled:(reactive disabled)
             ~on_press:(press send (Model.SelectTab "overview")) []
@@ -903,11 +903,10 @@ let toast_section model_source send : t =
 let toolbar_section model_source send : t =
   let value = model_source >|= Model.field_value in
   let checked = model_source >|= Model.checked in
-  let disabled = model_source >|= Model.disabled in
   section "Toolbar"
     [ toolbar ~orientation:`horizontal ~label:"Formatting" ~gap:4
         [ button ~variant:`ghost ~text:"Bold" ~on_press:noop []
-        ; button_group ~accessibility_identifier:"Text style"
+        ; button_group ~label:"Text style"
             [ button ~variant:`ghost ~text:"Italic" ~on_press:noop []
             ; button ~variant:`ghost ~text:"Underline" ~on_press:noop []
             ]
@@ -921,11 +920,11 @@ let toolbar_section model_source send : t =
         [ button ~variant:`ghost ~text:"Link" ~on_press:noop []
         ; button ~variant:`ghost ~text:"Image" ~on_press:noop []
         ; checkbox ~text:"Locked option" ~checked:(reactive checked)
-            ~disabled:(reactive disabled) []
+            ~disabled:true []
         ; select ~text:(reactive value) ~placeholder:"Locked picker"
-            ~disabled:(reactive disabled) []
+            ~disabled:true []
         ; input ~text:(reactive value) ~label:"Locked input"
-            ~disabled:(reactive disabled) []
+            ~disabled:true []
         ]
     ; paragraph
         ~value:"Toolbar composes ordinary controls and owns only orientation-aware roving focus."
