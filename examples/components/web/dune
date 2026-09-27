@@ -1,0 +1,11 @@
+(melange.emit
+ (target lui-components-web)
+ (alias web)
+ (module_systems es6)
+ (modules web_main web_bootstrap)
+ (preprocess (pps melange.ppx))
+ (libraries
+  gallery_app
+  lui.web.dom
+  melange-webapi
+  melange.dom))
