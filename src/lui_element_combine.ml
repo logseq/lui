@@ -89,19 +89,26 @@ let glass_action ?background ?corner_radius action =
 
 let buttons ~actions =
   match actions with
-  | [] -> invalid_arg "buttons requires at least one action"
-  | _ :: _ ->
-    (* The capsule chrome always lives on the group — even for one action —
-       so hosts render a uniform capsule. A lone button carrying its own
-       glass background ends up as a bare toolbar item, where the system's
-       bar chrome and the button's glass stack into a visibly different,
-       denser capsule than the fused ControlGroup siblings. *)
+  | [ Press _ as action ] ->
+    glass_action ~background:"glass" ~corner_radius:999 action
+  | [ Menu { label; icon; text; menu; on_dismiss } ] ->
+    (* Menu triggers size through a box cell, and box is not a legal toolbar
+       child — a single-member button group carries the capsule so the menu
+       remains mountable inside toolbars like the press capsules. *)
+    button_group
+      ~gap:0
+      ~height:44
+      ~background:"glass"
+      ~corner_radius:999
+      [ menu_action_cell ~label ~icon ~text ~menu ~on_dismiss ]
+  | _ :: _ :: _ ->
     button_group
       ~gap:0
       ~height:44
       ~background:"glass"
       ~corner_radius:999
       (List.map glass_action actions)
+  | [] -> invalid_arg "buttons requires at least one action"
 ;;
 
 let rec intersperse separator_ = function

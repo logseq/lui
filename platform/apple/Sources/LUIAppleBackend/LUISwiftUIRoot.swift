@@ -2692,6 +2692,7 @@ private struct LUIToolbarGroupAnchor: View {
                                 at: index,
                                 firstChild: childID == childIDs.first
                             )
+                            .environment(\.luiInHoistedToolbar, true)
                         }
                     }
                 }
@@ -2710,6 +2711,7 @@ private struct LUIToolbarGroupAnchor: View {
                             at: index,
                             firstChild: childID == childIDs.first
                         )
+                        .environment(\.luiInHoistedToolbar, true)
                     }
                 }
             }
@@ -2748,8 +2750,9 @@ private struct LUIToolbarGroupAnchor: View {
     /// Consecutive interactive children merge into one `ToolbarItem` carrying
     /// a `ControlGroup` (the fused toolbar capsule); spacers, text and
     /// non-interactive children stay bare so a principal title never gains
-    /// chrome. A lone interactive child stays bare too — inside a capsule only
-    /// the label glyph hit-tests, leaving the rest of the bar item dead.
+    /// chrome. A lone interactive child also takes the capsule path — with the
+    /// `luiInHoistedToolbar` environment applied, icon-only controls floor at
+    /// the 44pt bar-item hit target, so the whole cell hit-tests.
     private var segments: [Segment] {
         // scroll-leading keeps the last child pinned at the trailing edge;
         // the leading children scroll inside their own fused capsule so the
@@ -2768,11 +2771,12 @@ private struct LUIToolbarGroupAnchor: View {
         var run: [Int] = []
         func appendInteractive(_ childIDs: [Int]) {
             guard !childIDs.isEmpty else { return }
-            if childIDs.count == 1 {
-                result.append(.bare(childIDs[0]))
-            } else {
-                result.append(.capsule(childIDs))
-            }
+            // Even a lone interactive child takes the capsule path so it
+            // renders the same system-fused chrome as a multi-child group.
+            // Hit area stays full-cell: capsule children get the
+            // `luiInHoistedToolbar` environment below, which floors icon-only
+            // controls at the 44pt bar-item target.
+            result.append(.capsule(childIDs))
         }
         func flush() {
             appendInteractive(run); run = []
@@ -5695,11 +5699,24 @@ private struct LUIBackgroundStyleModifier: ViewModifier {
     let color: Color
     let shape: AnyShape
     let isPill: Bool
+    @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
+
+    /// Inside a hoisted iOS toolbar the system's fused capsule already draws
+    /// the chrome — applying the node's own glass on top stacks into a dense,
+    /// opaque-looking disk. macOS toolbars draw no capsule, so the node's own
+    /// glass stays.
+    private var suppressesOwnGlass: Bool {
+        #if os(iOS)
+        return inHoistedToolbar
+        #else
+        return false
+        #endif
+    }
 
     @ViewBuilder
     func body(content: Content) -> some View {
         let glassShape: AnyShape = isPill ? AnyShape(Capsule()) : shape
-        if name == "glass" {
+        if name == "glass", !suppressesOwnGlass {
             if #available(iOS 26.0, macOS 26.0, *) {
                 content.glassEffect(.regular.interactive(), in: glassShape)
             } else {
