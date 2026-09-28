@@ -174,8 +174,12 @@ let refresh_node_class_bang = refresh_node_class
 
 let set_text_control_value dom_node text =
   let control = Util.text_control_node dom_node in
-  if text <> W.HtmlInputElement.value control then
-    W.HtmlInputElement.setValue control text
+  if text <> W.HtmlInputElement.value control then (
+    W.HtmlInputElement.setValue control text;
+    (* keep textarea textContent matching its value so innerText and text
+       selectors observe the buffer *)
+    if W.Element.tagName dom_node = "TEXTAREA" then
+      W.Element.setTextContent dom_node text)
 
 let set_visible_text kind dom_node text =
   let target =
