@@ -13,6 +13,9 @@ namespace LUI
         Column,
         Grid,
         Stack,
+        EdgeInset,
+        Overlay,
+        ViewThatFits,
         Panel,
         Card,
         Alert,
@@ -157,6 +160,9 @@ namespace LUI
         ResizeOrigin,
         ThemeValue,
         ThemeMode,
+        EdgeValue,
+        Visible,
+        AlignmentValue,
     }
 
     public static class LUIWireSchema
@@ -169,6 +175,9 @@ namespace LUI
             { "column", LUINodeKind.Column },
             { "grid", LUINodeKind.Grid },
             { "stack", LUINodeKind.Stack },
+            { "edge-inset", LUINodeKind.EdgeInset },
+            { "overlay", LUINodeKind.Overlay },
+            { "view-that-fits", LUINodeKind.ViewThatFits },
             { "panel", LUINodeKind.Panel },
             { "card", LUINodeKind.Card },
             { "alert", LUINodeKind.Alert },
@@ -314,6 +323,9 @@ namespace LUI
             { "resize-origin", LUIProperty.ResizeOrigin },
             { "theme", LUIProperty.ThemeValue },
             { "theme-mode", LUIProperty.ThemeMode },
+            { "edge", LUIProperty.EdgeValue },
+            { "visible", LUIProperty.Visible },
+            { "alignment", LUIProperty.AlignmentValue },
         };
 
         public static string WireName(this LUINodeKind kind) => kind switch
@@ -323,6 +335,9 @@ namespace LUI
             LUINodeKind.Column => "column",
             LUINodeKind.Grid => "grid",
             LUINodeKind.Stack => "stack",
+            LUINodeKind.EdgeInset => "edge-inset",
+            LUINodeKind.Overlay => "overlay",
+            LUINodeKind.ViewThatFits => "view-that-fits",
             LUINodeKind.Panel => "panel",
             LUINodeKind.Card => "card",
             LUINodeKind.Alert => "alert",
@@ -406,6 +421,9 @@ namespace LUI
             LUINodeKind.Column or
             LUINodeKind.Grid or
             LUINodeKind.Stack or
+            LUINodeKind.EdgeInset or
+            LUINodeKind.Overlay or
+            LUINodeKind.ViewThatFits or
             LUINodeKind.Panel or
             LUINodeKind.Card or
             LUINodeKind.Alert or
@@ -520,6 +538,9 @@ namespace LUI
             LUIProperty.ResizeOrigin => "resize-origin",
             LUIProperty.ThemeValue => "theme",
             LUIProperty.ThemeMode => "theme-mode",
+            LUIProperty.EdgeValue => "edge",
+            LUIProperty.Visible => "visible",
+            LUIProperty.AlignmentValue => "alignment",
             _ => "unknown",
         };
 

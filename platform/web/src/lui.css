@@ -397,6 +397,25 @@ body {
     @apply relative;
   }
 
+  /* edge-inset/overlay/view-that-fits: the web backend approximates the
+     platform semantics — all children share one grid cell (stacked over the
+     first child); view-that-fits renders only its first child. */
+  .lui-edge-inset,
+  .lui-overlay,
+  .lui-view-that-fits {
+    @apply relative grid;
+  }
+
+  .lui-edge-inset > *,
+  .lui-overlay > *,
+  .lui-view-that-fits > * {
+    grid-area: 1 / 1;
+  }
+
+  .lui-view-that-fits > :not(:first-child) {
+    @apply hidden;
+  }
+
   .lui-tooltip {
     @apply w-fit rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground shadow-md;
   }

@@ -547,7 +547,8 @@ namespace LUI
                 case LUIProperty.OrientationValue:
                     return kind == LUINodeKind.Divider ||
                         kind == LUINodeKind.Tabs ||
-                        kind == LUINodeKind.Scroll;
+                        kind == LUINodeKind.Scroll ||
+                        kind == LUINodeKind.ViewThatFits;
                 case LUIProperty.PlacementValue:
                     return kind == LUINodeKind.Toolbar;
                 case LUIProperty.SizeValue:
@@ -659,6 +660,13 @@ namespace LUI
                 case LUIProperty.ThemeValue:
                 case LUIProperty.ThemeMode:
                     return CanContainChildren(kind);
+                case LUIProperty.EdgeValue:
+                case LUIProperty.Visible:
+                    return kind == LUINodeKind.EdgeInset;
+                // Per-child position hint for overlay content (and the
+                // overlay's own default); inert elsewhere.
+                case LUIProperty.AlignmentValue:
+                    return kind != LUINodeKind.Root;
                 case LUIProperty.TextValue:
                     switch (kind)
                     {
@@ -741,6 +749,7 @@ namespace LUI
                         kind == LUINodeKind.Panel ||
                         kind == LUINodeKind.Box ||
                         kind == LUINodeKind.Split ||
+                        kind == LUINodeKind.EdgeInset ||
                         HorizontalContainer(kind);
                 default:
                     return false;
@@ -1089,6 +1098,27 @@ namespace LUI
                         (text.Value == "system" || text.Value == "light" ||
                          text.Value == "dark");
                 }
+                case LUIProperty.EdgeValue:
+                {
+                    return value is LUIWireValue.String text &&
+                        (text.Value == "top" || text.Value == "bottom" ||
+                         text.Value == "leading" || text.Value == "trailing");
+                }
+                case LUIProperty.Visible:
+                {
+                    return value is LUIWireValue.Bool;
+                }
+                case LUIProperty.AlignmentValue:
+                {
+                    return value is LUIWireValue.String text &&
+                        (text.Value == "top-leading" || text.Value == "top" ||
+                         text.Value == "top-trailing" ||
+                         text.Value == "leading" || text.Value == "center" ||
+                         text.Value == "trailing" ||
+                         text.Value == "bottom-leading" ||
+                         text.Value == "bottom" ||
+                         text.Value == "bottom-trailing");
+                }
                 default:
                 {
                     return false;
@@ -1186,6 +1216,11 @@ namespace LUI
                 {
                     return false;
                 }
+            }
+            if (kind == LUINodeKind.EdgeInset &&
+                !properties.ContainsKey(LUIProperty.EdgeValue))
+            {
+                return false;
             }
             if (kind == LUINodeKind.Button || kind == LUINodeKind.ToggleButton ||
                 kind == LUINodeKind.Toggle || kind == LUINodeKind.Radio)
@@ -1381,6 +1416,9 @@ namespace LUI
                 case LUINodeKind.Column:
                 case LUINodeKind.Grid:
                 case LUINodeKind.Stack:
+                case LUINodeKind.EdgeInset:
+                case LUINodeKind.Overlay:
+                case LUINodeKind.ViewThatFits:
                 case LUINodeKind.Panel:
                 case LUINodeKind.Card:
                 case LUINodeKind.Box:

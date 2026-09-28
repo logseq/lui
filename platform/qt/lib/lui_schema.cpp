@@ -179,7 +179,8 @@ bool canContainChildren(NodeKind kind) {
   if (horizontalContainer(kind) || contextMenuLeafHostKind(kind)) return true;
   return oneOf(kind,
                {NodeKind::Root, NodeKind::Row, NodeKind::Column,
-                NodeKind::Grid, NodeKind::Stack, NodeKind::Panel,
+                NodeKind::Grid, NodeKind::Stack, NodeKind::EdgeInset,
+                NodeKind::Overlay, NodeKind::ViewThatFits, NodeKind::Panel,
                 NodeKind::Card, NodeKind::Box, NodeKind::Scroll,
                 NodeKind::ListContainer, NodeKind::VirtualList,
                 NodeKind::RadioGroup, NodeKind::DropdownMenu,
@@ -196,7 +197,8 @@ bool canContainChildren(NodeKind kind) {
 bool acceptsExtensionChildren(NodeKind kind) {
   return oneOf(kind,
                {NodeKind::Root, NodeKind::Row, NodeKind::Column,
-                NodeKind::Grid, NodeKind::Stack, NodeKind::Panel,
+                NodeKind::Grid, NodeKind::Stack, NodeKind::EdgeInset,
+                NodeKind::Overlay, NodeKind::ViewThatFits, NodeKind::Panel,
                 NodeKind::Card, NodeKind::Box, NodeKind::Scroll,
                 NodeKind::ListContainer, NodeKind::VirtualList,
                 NodeKind::ListItem, NodeKind::Dialog, NodeKind::Sheet,
@@ -467,7 +469,8 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                  {NodeKind::Progress, NodeKind::Slider, NodeKind::Split});
   case Property::OrientationValue:
     return oneOf(kind,
-                 {NodeKind::Divider, NodeKind::Tabs, NodeKind::Scroll});
+                 {NodeKind::Divider, NodeKind::Tabs, NodeKind::Scroll,
+                  NodeKind::ViewThatFits});
   case Property::SizeValue:
     return oneOf(kind, {NodeKind::Button, NodeKind::ToggleButton,
                         NodeKind::Spinner, NodeKind::Icon,
@@ -585,8 +588,16 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                         NodeKind::ListContainer, NodeKind::VirtualList,
                         NodeKind::DropdownMenu, NodeKind::TableRow,
                         NodeKind::Tree, NodeKind::Scroll, NodeKind::Card,
-                        NodeKind::Panel, NodeKind::Box, NodeKind::Split}) ||
+                        NodeKind::Panel, NodeKind::Box, NodeKind::Split,
+                        NodeKind::EdgeInset}) ||
            horizontalContainer(kind);
+  case Property::EdgeValue:
+  case Property::Visible:
+    return kind == NodeKind::EdgeInset;
+  // Per-child position hint for overlay content (and the overlay's own
+  // default); inert on other kinds, like container-relative-frame.
+  case Property::AlignmentValue:
+    return kind != NodeKind::Root;
   }
   return false;
 }
@@ -803,6 +814,17 @@ bool propertyValueSupported(Property property, const QVariant &value) {
   case Property::ThemeMode:
     return isString(value) &&
            inSet(value.toString(), {"system", "light", "dark"});
+  case Property::EdgeValue:
+    return isString(value) &&
+           inSet(value.toString(), {"top", "bottom", "leading", "trailing"});
+  case Property::Visible:
+    return isBool(value);
+  case Property::AlignmentValue:
+    return isString(value) &&
+           inSet(value.toString(),
+                 {"top-leading", "top", "top-trailing", "leading", "center",
+                  "trailing", "bottom-leading", "bottom",
+                  "bottom-trailing"});
   }
   return false;
 }
@@ -832,6 +854,10 @@ bool nodePropertiesSupported(NodeKind kind, const QVariantMap &properties) {
         !propertyValueSupported(Property::IconName, name)) {
       return false;
     }
+  }
+  if (kind == NodeKind::EdgeInset &&
+      !properties.contains(QStringLiteral("edge"))) {
+    return false;
   }
   if (buttonKind(kind) || kind == NodeKind::Toggle || kind == NodeKind::Radio) {
     const QString text = stringPropertyOr(properties, "text", QString());

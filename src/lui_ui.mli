@@ -47,6 +47,9 @@ val row : ui_context -> int
 val column : ui_context -> int
 val grid : ui_context -> int
 val stack : ui_context -> int
+val edge_inset : ui_context -> int
+val overlay : ui_context -> int
+val view_that_fits : ui_context -> int
 val panel : ui_context -> int
 val card : ui_context -> int
 val alert : ui_context -> int

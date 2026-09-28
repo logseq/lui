@@ -1949,6 +1949,70 @@ final class LUIFlutterBackend {
       );
     }
 
+    static Alignment? _overlayAlignment(String? name) => switch (name) {
+      'top-leading' => Alignment.topLeft,
+      'top' => Alignment.topCenter,
+      'top-trailing' => Alignment.topRight,
+      'leading' => Alignment.centerLeft,
+      'trailing' => Alignment.centerRight,
+      'bottom-leading' => Alignment.bottomLeft,
+      'bottom' => Alignment.bottomCenter,
+      'bottom-trailing' => Alignment.bottomRight,
+      _ => null,
+    };
+
+    /// Pins the children after the first to `edge` while the first child
+    /// fills the view beneath them.
+    Widget edgeInset() {
+      final visible = state.properties['visible'] as bool? ?? true;
+      final alignment = switch (state.properties['edge'] as String? ?? 'top') {
+        'bottom' => Alignment.bottomCenter,
+        'leading' => Alignment.centerLeft,
+        'trailing' => Alignment.centerRight,
+        _ => Alignment.topCenter,
+      };
+      return Stack(
+        children: [
+          if (children.isNotEmpty) children.first,
+          if (visible)
+            for (final pinned in children.skip(1))
+              Positioned.fill(
+                child: Align(alignment: alignment, child: pinned),
+              ),
+        ],
+      );
+    }
+
+    /// Renders the children after the first floating over the first child
+    /// without affecting its layout; each overlay child positions by its own
+    /// 'alignment' prop, falling back to the overlay's (default center).
+    Widget overlay() {
+      final fallback =
+          _overlayAlignment(state.properties['alignment'] as String?) ??
+          Alignment.center;
+      return Stack(
+        children: [
+          if (children.isNotEmpty) children.first,
+          for (var index = 1; index < children.length; index += 1)
+            Positioned.fill(
+              child: Align(
+                alignment:
+                    _overlayAlignment(
+                      _states[state.children[index]]?.properties['alignment']
+                          as String?,
+                    ) ??
+                    fallback,
+                child: children[index],
+              ),
+            ),
+        ],
+      );
+    }
+
+    /// No native ViewThatFits equivalent; render the first candidate.
+    Widget viewThatFits() =>
+        children.isEmpty ? const SizedBox.shrink() : children.first;
+
     Widget select() {
       final colors = Theme.of(context).colorScheme;
       final title = accessibilityLabel ?? placeholder ?? '';
@@ -2681,6 +2745,9 @@ final class LUIFlutterBackend {
       ),
       _NodeKind.grid => grid(),
       _NodeKind.stack => stack(),
+      _NodeKind.edgeInset => edgeInset(),
+      _NodeKind.overlay => overlay(),
+      _NodeKind.viewThatFits => viewThatFits(),
       _NodeKind.panel ||
       _NodeKind.card ||
       _NodeKind.resizable => Stack(children: children),
@@ -3674,7 +3741,8 @@ final class LUIFlutterBackend {
             (value == 'horizontal' || value == 'vertical') &&
             (kind == _NodeKind.divider ||
                 kind == _NodeKind.tabs ||
-                kind == _NodeKind.scroll),
+                kind == _NodeKind.scroll ||
+                kind == _NodeKind.viewThatFits),
       'size' =>
         value is String &&
             (_controlSizes.contains(value) ||
@@ -3765,6 +3833,26 @@ final class LUIFlutterBackend {
         value is num &&
             value.isFinite &&
             (kind == _NodeKind.dropdownMenu || kind == _NodeKind.tooltip),
+      'edge' =>
+        value is String &&
+            const {'top', 'bottom', 'leading', 'trailing'}.contains(value) &&
+            kind == _NodeKind.edgeInset,
+      'visible' => value is bool && kind == _NodeKind.edgeInset,
+      // Per-child position hint for overlay content (and the overlay's own
+      // default); inert on other kinds, like container-relative-frame.
+      'alignment' =>
+        value is String &&
+            const {
+              'top-leading',
+              'top',
+              'top-trailing',
+              'leading',
+              'center',
+              'trailing',
+              'bottom-leading',
+              'bottom',
+              'bottom-trailing',
+            }.contains(value),
       'tooltip-delay' =>
         value is int &&
             value >= 0 &&
@@ -3782,6 +3870,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.tableRow ||
                 kind == _NodeKind.tree ||
                 kind == _NodeKind.split ||
+                kind == _NodeKind.edgeInset ||
                 _isHorizontalGroupKind(kind)),
       'padding' =>
         value is int && kind != _NodeKind.avatar && kind != _NodeKind.tooltip,
@@ -3924,6 +4013,10 @@ final class LUIFlutterBackend {
       if (state.kind == _NodeKind.icon &&
           !state.properties.containsKey('name')) {
         throw const LUIBackendException('icon requires name');
+      }
+      if (state.kind == _NodeKind.edgeInset &&
+          !state.properties.containsKey('edge')) {
+        throw const LUIBackendException('edge-inset requires edge');
       }
       if (_isButtonKind(state.kind)) {
         final text = state.properties['text'] as String? ?? '';
@@ -4341,6 +4434,9 @@ final class LUIFlutterBackend {
       kind == _NodeKind.bottomTabs ||
       kind == _NodeKind.bottomTab ||
       _isContextMenuLeafHost(kind) ||
+      kind == _NodeKind.edgeInset ||
+      kind == _NodeKind.overlay ||
+      kind == _NodeKind.viewThatFits ||
       kind.isModalSurface;
 
   static bool _acceptsExtensionChildren(_NodeKind kind) =>
@@ -4349,6 +4445,9 @@ final class LUIFlutterBackend {
       kind == _NodeKind.column ||
       kind == _NodeKind.grid ||
       kind == _NodeKind.stack ||
+      kind == _NodeKind.edgeInset ||
+      kind == _NodeKind.overlay ||
+      kind == _NodeKind.viewThatFits ||
       kind == _NodeKind.panel ||
       kind == _NodeKind.card ||
       kind == _NodeKind.box ||

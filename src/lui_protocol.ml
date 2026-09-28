@@ -9,6 +9,9 @@ type node_kind =
   | Column
   | Grid
   | Stack
+  | EdgeInset
+  | Overlay
+  | ViewThatFits
   | Panel
   | Card
   | Alert
@@ -173,6 +176,9 @@ type property =
   | ResizeOrigin
   | ThemeValue
   | ThemeMode
+  | EdgeValue
+  | Visible
+  | AlignmentValue
 
 module Property_map =
   Map.Make
@@ -526,6 +532,12 @@ let horizontal_container kind =
   kind = Tabs || kind = ButtonGroup || kind = ToggleGroup || kind = Breadcrumb
   || kind = Pagination
 
+let alignment_supported value =
+  value = "top-leading" || value = "top" || value = "top-trailing"
+  || value = "leading" || value = "center" || value = "trailing"
+  || value = "bottom-leading" || value = "bottom"
+  || value = "bottom-trailing"
+
 let can_contain_children kind =
   if horizontal_container kind || context_menu_leaf_host_kind kind then true
   else
@@ -535,6 +547,9 @@ let can_contain_children kind =
     | Column
     | Grid
     | Stack
+    | EdgeInset
+    | Overlay
+    | ViewThatFits
     | Panel
     | Card
     | Box
@@ -644,7 +659,8 @@ let common_property_supported kind property =
   | Checked ->
     kind = Checkbox || kind = SwitchControl || kind = Toggle || kind = Radio
   | ProgressValue -> kind = Progress || kind = Slider || kind = Split
-  | OrientationValue -> kind = Divider || kind = Tabs || kind = Scroll
+  | OrientationValue ->
+    kind = Divider || kind = Tabs || kind = Scroll || kind = ViewThatFits
   | PlacementValue -> kind = Toolbar
   | SizeValue ->
     kind = Button || kind = ToggleButton || kind = Spinner || kind = Icon
@@ -783,7 +799,12 @@ let common_property_supported kind property =
     || kind = Panel
     || kind = Box
     || kind = Split
+    || kind = EdgeInset
     || horizontal_container kind
+  | EdgeValue | Visible -> kind = EdgeInset
+  (* Honored on [overlay] children (position hint) and on [overlay] itself
+     as the default; inert elsewhere, like [container-relative-frame]. *)
+  | AlignmentValue -> kind <> Root
 
 let property_supported kind property =
   if property = AccessibilityIdentifier then true
@@ -917,6 +938,12 @@ let property_value_supported property value =
   | ResizeOrigin, FloatValue value -> is_finite value
   | ThemeValue, StringValue _ -> true
   | ThemeMode, StringValue value -> theme_mode_supported value
+  | EdgeValue, StringValue value ->
+    value = "top" || value = "bottom" || value = "leading"
+    || value = "trailing"
+  | Visible, BoolValue _ -> true
+  | AlignmentValue, StringValue value ->
+    alignment_supported value
   | _ -> false
 
 let property_value_supported_for_kind kind property value =
@@ -1041,6 +1068,7 @@ let node_properties_supported kind properties =
       else true)
   && (if kind = MediaSurface then Property_map.mem SurfaceIdValue properties
       else true)
+  && (if kind = EdgeInset then Property_map.mem EdgeValue properties else true)
   && (if kind = Stepper then Property_map.mem ActiveIndex properties else true)
   && (if kind = Step || kind = TimelineItem || kind = BottomTabs then
         let property =
