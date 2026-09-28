@@ -67,12 +67,16 @@ struct LUIFilePickerView: View {
     }
 
     var body: some View {
-        // Group keeps a real view in the hierarchy when the node has no
-        // children — an empty ForEach anchors no modifiers, so presentations
-        // would never fire.
+        // An empty ForEach (or empty Group) installs no view, so the
+        // presentation modifiers below never attach when the node has no
+        // children — render a real 1pt placeholder in that case.
         Group {
-            ForEach(model.visibleChildren, id: \.self) { childID in
-                LUIAnyNodeView(nodeID: childID, backend: backend)
+            if model.visibleChildren.isEmpty {
+                Color.clear.frame(width: 1, height: 1)
+            } else {
+                ForEach(model.visibleChildren, id: \.self) { childID in
+                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                }
             }
         }
         .fileImporter(
