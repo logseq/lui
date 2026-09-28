@@ -4463,6 +4463,7 @@ private struct LUIHorizontalGroupView: View {
                             .accessibilityHidden(true)
                     }
                     groupChild(child)
+                        .environment(\.luiInFusedCapsule, groupCarriesGlass)
                         .frame(
                             maxWidth: child.property(.grow)?.doubleValue ?? 0 > 0
                                 ? .infinity : nil
@@ -4499,6 +4500,13 @@ private struct LUIHorizontalGroupView: View {
             focusedChild = children[target].id
             return .handled
         }
+    }
+
+    /// A `button_group` that draws its own glass capsule — children must not
+    /// draw their own glass on top or each cell gets an inner circle.
+    private var groupCarriesGlass: Bool {
+        model.kind == .buttonGroup
+            && model.property(.background)?.stringValue == "glass"
     }
 
     @ViewBuilder
@@ -5722,18 +5730,11 @@ private struct LUIBackgroundStyleModifier: ViewModifier {
     let isPill: Bool
     @Environment(\.luiInFusedCapsule) private var inFusedCapsule
 
-    /// Inside a hoisted toolbar's fused `ControlGroup` capsule the system
-    /// chrome already draws the glass — applying the node's own glass on top
-    /// stacks into a dense, opaque-looking disk. Bare items keep their glass
-    /// (their shared item background is hidden instead, where the node owns
-    /// the capsule — see `LUIToolbarGroupAnchor`).
-    private var suppressesOwnGlass: Bool {
-        #if os(iOS)
-        return inFusedCapsule
-        #else
-        return false
-        #endif
-    }
+    /// Inside a fused capsule — a hoisted `ControlGroup` (system-drawn glass)
+    /// or a `button_group` node carrying its own `glass` background — the
+    /// enclosing capsule is already the chrome, so a child's own glass would
+    /// stack into a dense inner circle.
+    private var suppressesOwnGlass: Bool { inFusedCapsule }
 
     @ViewBuilder
     func body(content: Content) -> some View {
