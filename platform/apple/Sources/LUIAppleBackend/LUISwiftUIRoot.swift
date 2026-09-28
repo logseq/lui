@@ -5697,6 +5697,19 @@ enum LUIClipRenderingPolicy {
         let hasVisibleBackground = background != nil && background != "transparent"
         return isSemanticSurface || hasVisibleBackground || cornerRadius > 0 || borderWidth > 0
     }
+
+    /// Interactive Liquid Glass scales the whole surface on press; a clip
+    /// applied outside `glassEffect` pins the capsule to its unpressed bounds,
+    /// so a glass surface clips its content inside the glass instead. The
+    /// same applies to `glass-container`, whose descendants each carry their
+    /// own interactive glass.
+    static func clipsInsideGlass(background: String?, inFusedCapsule: Bool) -> Bool {
+        let isInteractiveGlass = background == "glass-container" ||
+            (background == "glass" && !inFusedCapsule)
+        guard isInteractiveGlass else { return false }
+        if #available(iOS 26.0, macOS 26.0, *) { return true }
+        return false
+    }
 }
 
 private struct LUIOptionalClipModifier: ViewModifier {
@@ -5728,6 +5741,8 @@ private struct LUIBackgroundStyleModifier: ViewModifier {
     let color: Color
     let shape: AnyShape
     let isPill: Bool
+    let clipsContent: Bool
+    let clipRadius: CGFloat
     @Environment(\.luiInFusedCapsule) private var inFusedCapsule
 
     /// Inside a fused capsule — a hoisted `ControlGroup` (system-drawn glass)
@@ -5741,7 +5756,12 @@ private struct LUIBackgroundStyleModifier: ViewModifier {
         let glassShape: AnyShape = isPill ? AnyShape(Capsule()) : shape
         if name == "glass", !suppressesOwnGlass {
             if #available(iOS 26.0, macOS 26.0, *) {
-                content.glassEffect(.regular.interactive(), in: glassShape)
+                content
+                    .modifier(LUIOptionalClipModifier(
+                        cornerRadius: clipRadius,
+                        clipsContent: clipsContent
+                    ))
+                    .glassEffect(.regular.interactive(), in: glassShape)
             } else {
                 content.background(.regularMaterial, in: glassShape)
             }
@@ -5750,7 +5770,12 @@ private struct LUIBackgroundStyleModifier: ViewModifier {
             // descendant glass surfaces into one fused Liquid Glass region.
             if #available(iOS 26.0, macOS 26.0, *) {
                 GlassEffectContainer {
-                    content.background(color, in: shape)
+                    content
+                        .modifier(LUIOptionalClipModifier(
+                            cornerRadius: clipRadius,
+                            clipsContent: clipsContent
+                        ))
+                        .background(color, in: shape)
                 }
             } else {
                 content.background(color, in: shape)
@@ -5766,6 +5791,7 @@ private struct LUISurfaceModifier: ViewModifier {
     let backend: LUIAppleBackend
     @Environment(\.luiSemanticColors) private var semanticColors
     @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
+    @Environment(\.luiInFusedCapsule) private var inFusedCapsule
 
     /// The inner label of a hoisted icon-only button is floored to the 44pt
     /// bar-item target (see `LUIButtonView.hitTargetFloor`); this keeps the
@@ -5812,6 +5838,16 @@ private struct LUISurfaceModifier: ViewModifier {
             (isSurface ? Color.secondary.opacity(0.35) : .clear)
         let castsShadow = model.kind == .panel &&
             model.property(.background)?.stringValue != "transparent"
+        let clipsContent = LUIClipRenderingPolicy.clipsContent(
+            kind: model.kind,
+            background: backgroundName,
+            cornerRadius: radius,
+            borderWidth: borderWidth
+        )
+        let clipsInsideGlass = LUIClipRenderingPolicy.clipsInsideGlass(
+            background: backgroundName,
+            inFusedCapsule: inFusedCapsule
+        )
 
         content
             .padding(.horizontal, CGFloat(horizontal))
@@ -5869,7 +5905,9 @@ private struct LUISurfaceModifier: ViewModifier {
                 isPill: model.kind != .avatar && LUIGlassShapePolicy.isPill(
                     cornerRadius: radius,
                     height: floored(model.surfaceHeight).map(CGFloat.init)
-                )
+                ),
+                clipsContent: clipsContent && clipsInsideGlass,
+                clipRadius: radius
             ))
             .shadow(
                 color: castsShadow ? .black.opacity(0.12) : .clear,
@@ -5891,12 +5929,7 @@ private struct LUISurfaceModifier: ViewModifier {
             ))
             .modifier(LUIOptionalClipModifier(
                 cornerRadius: radius,
-                clipsContent: LUIClipRenderingPolicy.clipsContent(
-                    kind: model.kind,
-                    background: backgroundName,
-                    cornerRadius: radius,
-                    borderWidth: borderWidth
-                )
+                clipsContent: clipsContent && !clipsInsideGlass
             ))
     }
 
