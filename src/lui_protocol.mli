@@ -7,6 +7,9 @@ type node_kind =
   | Column
   | Grid
   | Stack
+  | EdgeInset
+  | Overlay
+  | ViewThatFits
   | Panel
   | Card
   | Alert
@@ -177,6 +180,9 @@ type property =
   | PathValue
   | UrlValue
   | MaxPixelSize
+  | EdgeValue
+  | Visible
+  | AlignmentValue
 
 module Property_map : Map.S with type key = property
 
