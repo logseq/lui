@@ -210,6 +210,14 @@ enum LUIWireValue: Decodable, Equatable {
         case .grow:
             guard let value = doubleValue else { return false }
             return value.isFinite && value >= 0
+        case .edge:
+            guard let value = stringValue else { return false }
+            return Self.edges.contains(value)
+        case .visible:
+            return boolValue != nil
+        case .alignment:
+            guard let value = stringValue else { return false }
+            return Self.overlayAlignments.contains(value)
         case .gap, .padding:
             return intValue != nil
         }
@@ -231,6 +239,16 @@ enum LUIWireValue: Decodable, Equatable {
     private static let textSizes: Set<String> = ["heading", "display"]
 
     private static let textAlignments: Set<String> = ["start", "center", "end"]
+
+    private static let edges: Set<String> = [
+        "top", "bottom", "leading", "trailing",
+    ]
+
+    private static let overlayAlignments: Set<String> = [
+        "top-leading", "top", "top-trailing",
+        "leading", "center", "trailing",
+        "bottom-leading", "bottom", "bottom-trailing",
+    ]
 
     private static let toolbarPlacements: Set<String> = [
         "automatic", "bottom", "navigation", "principal", "primary-action",
@@ -680,6 +698,10 @@ struct LUIRetainedTree {
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         if property == .accessibilityIdentifier { return true }
+        // Position hint honored on overlay children and the overlay itself;
+        // admitted before the restrictive matrix so e.g. an aligned
+        // menu-trigger child still carries it. Inert elsewhere.
+        if property == .alignment { return kind != .root }
         // Restrictive per-kind allow-lists and additive extras come from
         // schema/components.json via LUISchemaMatrix; kinds absent from the
         // restrictive table fall back to the shared structural rules below.
@@ -717,6 +739,8 @@ struct LUIRetainedTree {
             kind == .row || kind == .column || kind == .grid || kind == .box ||
                 kind == .panel || kind == .card || kind == .stack ||
                 kind == .scroll || kind == .avatar ||
+                kind == .edgeInset || kind == .overlay ||
+                kind == .viewThatFits ||
                 kind == .text || kind == .heading || kind == .paragraph ||
                 kind == .label || kind == .button || kind == .toggleButton ||
                 isTextEntry(kind) || kind == .checkbox || kind == .toggle ||
@@ -745,7 +769,7 @@ struct LUIRetainedTree {
                 kind == .virtualList || kind == .scroll || kind == .card ||
                 kind == .panel || kind == .box ||
                 kind == .dropdownMenu || isHorizontalGroup(kind) || kind == .split
-                || kind == .tableRow || kind == .tree
+                || kind == .tableRow || kind == .tree || kind == .edgeInset
         case .placeholder:
             isTextEntry(kind) || kind == .select
         case .accessibilityIdentifier:
@@ -768,7 +792,9 @@ struct LUIRetainedTree {
             kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
         case .progressValue: kind == .progress || kind == .slider || kind == .split
         case .resizeDuration, .resizeEasing, .resizeOrigin: kind == .split
-        case .orientation: kind == .divider || kind == .tabs || kind == .scroll
+        case .orientation:
+            kind == .divider || kind == .tabs || kind == .scroll ||
+                kind == .viewThatFits
         case .placement: kind == .toolbar
         case .size:
             kind == .button || kind == .toggleButton || kind == .spinner ||
@@ -817,6 +843,9 @@ struct LUIRetainedTree {
         case .role: isTreeRow(kind) || kind == .listItem
         case .treeLevel, .expanded: isTreeRow(kind)
         case .active, .title, .description, .meta, .indicator, .connector: false
+        case .edge, .visible: kind == .edgeInset
+        // `.alignment` is admitted ahead of the restrictive matrix above.
+        case .alignment: kind != .root
         }
     }
 
@@ -827,6 +856,7 @@ struct LUIRetainedTree {
 
     private static func canContainChildren(_ kind: LUINodeKind) -> Bool {
         kind == .root || kind == .row || kind == .column || kind == .grid || kind == .stack ||
+            kind == .edgeInset || kind == .overlay || kind == .viewThatFits ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
             kind == .list || kind == .virtualList || isHorizontalGroup(kind) || kind == .radioGroup
             || kind == .dropdownMenu || kind == .contextMenu || kind == .listItem || isModalSurface(kind)
@@ -841,6 +871,7 @@ struct LUIRetainedTree {
 
     private static func acceptsExtensionChildren(_ kind: LUINodeKind) -> Bool {
         kind == .root || kind == .row || kind == .column || kind == .grid || kind == .stack ||
+            kind == .edgeInset || kind == .overlay || kind == .viewThatFits ||
             kind == .panel || kind == .card || kind == .box || kind == .scroll ||
             kind == .list || kind == .virtualList || kind == .listItem || kind == .dialog ||
             kind == .sheet || kind == .accordion || kind == .resizable || kind == .split ||
@@ -899,6 +930,9 @@ struct LUIRetainedTree {
             )
             if node.kind == .icon, node.properties[.name] == nil {
                 throw invalid("icon requires name")
+            }
+            if node.kind == .edgeInset, node.properties[.edge] == nil {
+                throw invalid("edge-inset requires edge")
             }
             if node.kind == .button || node.kind == .toggleButton ||
                 node.kind == .toggle || node.kind == .radio {

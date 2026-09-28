@@ -962,6 +962,72 @@ let test_menu_trigger_rules () =
     (node_properties_supported MenuTrigger
        (props [ (TextValue, StringValue "More") ]))
 
+let test_edge_overlay_fit_rules () =
+  let open Lui_protocol in
+  Alcotest.(check bool) "edge-inset contains children" true
+    (can_contain_children EdgeInset);
+  Alcotest.(check bool) "overlay contains children" true
+    (can_contain_children Overlay);
+  Alcotest.(check bool) "view-that-fits contains children" true
+    (can_contain_children ViewThatFits);
+  Alcotest.(check bool) "overlay accepts a list child" true
+    (child_kind_supported Overlay ListContainer);
+  Alcotest.(check bool) "overlay accepts a row child" true
+    (child_kind_supported Overlay Row);
+  Alcotest.(check bool) "overlay rejects root child" false
+    (child_kind_supported Overlay Root);
+  Alcotest.(check bool) "edge-inset holds edge" true
+    (property_supported EdgeInset EdgeValue);
+  Alcotest.(check bool) "edge-inset holds visible" true
+    (property_supported EdgeInset Visible);
+  Alcotest.(check bool) "edge-inset holds gap" true
+    (property_supported EdgeInset Gap);
+  Alcotest.(check bool) "edge-inset styles background" true
+    (property_supported EdgeInset BackgroundValue);
+  Alcotest.(check bool) "row drops edge" false
+    (property_supported Row EdgeValue);
+  Alcotest.(check bool) "row drops visible" false
+    (property_supported Row Visible);
+  Alcotest.(check bool) "view-that-fits holds orientation" true
+    (property_supported ViewThatFits OrientationValue);
+  Alcotest.(check bool) "view-that-fits drops edge" false
+    (property_supported ViewThatFits EdgeValue);
+  Alcotest.(check bool) "alignment lands on overlay" true
+    (property_supported Overlay AlignmentValue);
+  Alcotest.(check bool) "alignment lands on overlay children" true
+    (property_supported Text AlignmentValue);
+  (* Restrictive kinds still carry the hint so e.g. an aligned
+     menu-trigger overlay child validates. *)
+  Alcotest.(check bool) "alignment lands on restrictive kinds" true
+    (property_supported MenuTrigger AlignmentValue);
+  Alcotest.(check bool) "root drops alignment" false
+    (property_supported Root AlignmentValue);
+  Alcotest.(check bool) "edge-inset takes foreground" true
+    (property_supported EdgeInset ForegroundValue);
+  Alcotest.(check bool) "overlay takes foreground" true
+    (property_supported Overlay ForegroundValue);
+  Alcotest.(check bool) "view-that-fits takes foreground" true
+    (property_supported ViewThatFits ForegroundValue);
+  Alcotest.(check bool) "edge accepts top" true
+    (property_value_supported EdgeValue (StringValue "top"));
+  Alcotest.(check bool) "edge accepts leading" true
+    (property_value_supported EdgeValue (StringValue "leading"));
+  Alcotest.(check bool) "edge rejects side anchors" false
+    (property_value_supported EdgeValue (StringValue "left"));
+  Alcotest.(check bool) "visible takes a bool" true
+    (property_value_supported Visible (BoolValue false));
+  Alcotest.(check bool) "alignment accepts corner" true
+    (property_value_supported AlignmentValue
+       (StringValue "bottom-trailing"));
+  Alcotest.(check bool) "alignment rejects anchor vocab" false
+    (property_value_supported AlignmentValue (StringValue "above"));
+  let props entries = List.to_seq entries |> Property_map.of_seq in
+  Alcotest.(check bool) "edge-inset needs edge" false
+    (node_properties_supported EdgeInset (props []));
+  Alcotest.(check bool) "edge-inset with edge ok" true
+    (node_properties_supported EdgeInset
+       (props [ (EdgeValue, StringValue "bottom") ]))
+
 let test_property_matrix_sync () =
   (* property_supported's restrictive arms and additive extras must mirror
      schema/components.json (kindProperties / kindExtraProperties) as emitted
@@ -974,6 +1040,8 @@ let test_property_matrix_sync () =
             | Some allowed ->
               let expected =
                 property = Lui_protocol.AccessibilityIdentifier
+                || (kind <> Lui_protocol.Root
+                    && property = Lui_protocol.AlignmentValue)
                 || List.mem property allowed
               in
               Alcotest.(check bool)
@@ -1483,6 +1551,8 @@ let () =
           Alcotest.test_case "helpers" `Quick test_protocol_helpers;
           Alcotest.test_case "menu-trigger rules" `Quick
             test_menu_trigger_rules;
+          Alcotest.test_case "edge/overlay/fit rules" `Quick
+            test_edge_overlay_fit_rules;
           Alcotest.test_case "property matrix sync" `Quick
             test_property_matrix_sync;
         ] );

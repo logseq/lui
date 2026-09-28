@@ -11,6 +11,9 @@ enum class NodeKind {
   Column,
   Grid,
   Stack,
+  EdgeInset,
+  Overlay,
+  ViewThatFits,
   Panel,
   Card,
   Alert,
@@ -154,6 +157,9 @@ enum class Property {
   ResizeOrigin,
   ThemeValue,
   ThemeMode,
+  EdgeValue,
+  Visible,
+  AlignmentValue,
 };
 
 inline const char *nodeKindWireName(NodeKind kind) {
@@ -163,6 +169,9 @@ inline const char *nodeKindWireName(NodeKind kind) {
     case NodeKind::Column: return "column";
     case NodeKind::Grid: return "grid";
     case NodeKind::Stack: return "stack";
+    case NodeKind::EdgeInset: return "edge-inset";
+    case NodeKind::Overlay: return "overlay";
+    case NodeKind::ViewThatFits: return "view-that-fits";
     case NodeKind::Panel: return "panel";
     case NodeKind::Card: return "card";
     case NodeKind::Alert: return "alert";
@@ -240,6 +249,9 @@ inline bool decodeNodeKind(const char *name, NodeKind *kind) {
   if (std::strcmp(name, "column") == 0) { *kind = NodeKind::Column; return true; }
   if (std::strcmp(name, "grid") == 0) { *kind = NodeKind::Grid; return true; }
   if (std::strcmp(name, "stack") == 0) { *kind = NodeKind::Stack; return true; }
+  if (std::strcmp(name, "edge-inset") == 0) { *kind = NodeKind::EdgeInset; return true; }
+  if (std::strcmp(name, "overlay") == 0) { *kind = NodeKind::Overlay; return true; }
+  if (std::strcmp(name, "view-that-fits") == 0) { *kind = NodeKind::ViewThatFits; return true; }
   if (std::strcmp(name, "panel") == 0) { *kind = NodeKind::Panel; return true; }
   if (std::strcmp(name, "card") == 0) { *kind = NodeKind::Card; return true; }
   if (std::strcmp(name, "alert") == 0) { *kind = NodeKind::Alert; return true; }
@@ -322,6 +334,9 @@ inline bool containerNodeKind(NodeKind kind) {
     case NodeKind::Column:
     case NodeKind::Grid:
     case NodeKind::Stack:
+    case NodeKind::EdgeInset:
+    case NodeKind::Overlay:
+    case NodeKind::ViewThatFits:
     case NodeKind::Panel:
     case NodeKind::Card:
     case NodeKind::Alert:
@@ -372,6 +387,9 @@ inline const char *nodeKindComponentName(NodeKind kind) {
     case NodeKind::Column: return "LuiColumn.qml";
     case NodeKind::Grid: return "LuiGrid.qml";
     case NodeKind::Stack: return "LuiStack.qml";
+    case NodeKind::EdgeInset: return "LuiEdgeInset.qml";
+    case NodeKind::Overlay: return "LuiOverlay.qml";
+    case NodeKind::ViewThatFits: return "LuiViewThatFits.qml";
     case NodeKind::Panel: return "LuiPanel.qml";
     case NodeKind::Card: return "LuiCard.qml";
     case NodeKind::Alert: return "LuiAlert.qml";
@@ -518,6 +536,9 @@ inline const char *propertyWireName(Property property) {
     case Property::ResizeOrigin: return "resize-origin";
     case Property::ThemeValue: return "theme";
     case Property::ThemeMode: return "theme-mode";
+    case Property::EdgeValue: return "edge";
+    case Property::Visible: return "visible";
+    case Property::AlignmentValue: return "alignment";
   }
   return "unknown";
 }
@@ -596,6 +617,9 @@ inline bool decodePropertyWireName(const char *name, Property *property) {
   if (std::strcmp(name, "resize-origin") == 0) { *property = Property::ResizeOrigin; return true; }
   if (std::strcmp(name, "theme") == 0) { *property = Property::ThemeValue; return true; }
   if (std::strcmp(name, "theme-mode") == 0) { *property = Property::ThemeMode; return true; }
+  if (std::strcmp(name, "edge") == 0) { *property = Property::EdgeValue; return true; }
+  if (std::strcmp(name, "visible") == 0) { *property = Property::Visible; return true; }
+  if (std::strcmp(name, "alignment") == 0) { *property = Property::AlignmentValue; return true; }
   return false;
 }
 

@@ -462,7 +462,9 @@ enum LUIDirectRevisionObservationPolicy {
 
 enum LUIUnmodifiedNodePolicy {
     static func bypassesSurface(kind: LUINodeKind) -> Bool {
-        kind == .spacer
+        // edge-inset bypasses the container surface: its surface props style
+        // the pinned region instead (LUIEdgeInsetView applies the modifier).
+        kind == .spacer || kind == .edgeInset
     }
 }
 
@@ -619,6 +621,12 @@ private struct LUINodeView: View {
             return AnyView(LUIGridView(model: model, backend: backend))
         case .stack, .panel, .card:
             return AnyView(LUIStackView(model: model, backend: backend))
+        case .edgeInset:
+            return AnyView(LUIEdgeInsetView(model: model, backend: backend))
+        case .overlay:
+            return AnyView(LUIOverlayView(model: model, backend: backend))
+        case .viewThatFits:
+            return AnyView(LUIViewThatFitsView(model: model, backend: backend))
         case .alert:
             return AnyView(LUIAlertView(model: model, backend: backend))
         case .bubble:
@@ -1681,6 +1689,156 @@ private struct LUIStackView: View {
     private func stackChildren(excluding excludedIDs: [Int]) -> some View {
         ZStack {
             ForEach(model.children.filter { !excludedIDs.contains($0) }, id: \.self) { childID in
+                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+            }
+        }
+    }
+}
+
+/// Pins every child after the first to a screen edge via `.safeAreaInset`
+/// while the first child fills the view and scrolls beneath. The node's
+/// surface props style the pinned region (the container bypasses the surface
+/// modifier), so e.g. background "bar" gives a material chrome bar.
+private struct LUIEdgeInsetView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    private var edgeName: String {
+        model.property(.edge)?.stringValue ?? "top"
+    }
+
+    private var isSideEdge: Bool {
+        edgeName == "leading" || edgeName == "trailing"
+    }
+
+    private var isVisible: Bool {
+        model.property(.visible)?.boolValue ?? true
+    }
+
+    private var spacing: CGFloat {
+        CGFloat(model.property(.gap)?.intValue ?? 0)
+    }
+
+    var body: some View {
+        Group {
+            if isSideEdge {
+                content
+                    .safeAreaInset(
+                        edge: edgeName == "trailing"
+                            ? HorizontalEdge.trailing : .leading,
+                        spacing: spacing
+                    ) {
+                        pinnedRegion
+                    }
+            } else {
+                content
+                    .safeAreaInset(
+                        edge: edgeName == "bottom" ? VerticalEdge.bottom : .top,
+                        spacing: spacing
+                    ) {
+                        pinnedRegion
+                    }
+            }
+        }
+        .animation(.default, value: isVisible)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let contentID = model.children.first {
+            LUIAnyNodeView(nodeID: contentID, backend: backend).equatable()
+        }
+    }
+
+    @ViewBuilder
+    private var pinnedRegion: some View {
+        // `visible` toggles the pinned region in place so the safe-area
+        // insertion animates instead of snapping.
+        if isVisible {
+            if isSideEdge {
+                HStack(spacing: 0) {
+                    pinnedViews(Array(model.children.dropFirst()))
+                }
+                .frame(maxHeight: .infinity)
+                .modifier(LUISurfaceModifier(model: model, backend: backend))
+            } else {
+                VStack(spacing: 0) {
+                    pinnedViews(Array(model.children.dropFirst()))
+                }
+                .frame(maxWidth: .infinity)
+                .modifier(LUISurfaceModifier(model: model, backend: backend))
+            }
+        }
+    }
+
+    private func pinnedViews(_ ids: [Int]) -> some View {
+        ForEach(ids, id: \.self) { childID in
+            LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+        }
+    }
+}
+
+/// Renders the children after the first floating over the first child
+/// (`base`) without affecting its layout. Each overlay child positions
+/// itself by its own `alignment` property, falling back to the overlay's
+/// `alignment` (default `.center`).
+private struct LUIOverlayView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    private func alignment(of childID: Int) -> Alignment {
+        Self.alignment(
+            backend.model(id: childID)?.property(.alignment)?.stringValue
+                ?? model.property(.alignment)?.stringValue
+        )
+    }
+
+    private static func alignment(_ name: String?) -> Alignment {
+        switch name {
+        case "top-leading": .topLeading
+        case "top": .top
+        case "top-trailing": .topTrailing
+        case "leading": .leading
+        case "trailing": .trailing
+        case "bottom-leading": .bottomLeading
+        case "bottom": .bottom
+        case "bottom-trailing": .bottomTrailing
+        default: .center
+        }
+    }
+
+    var body: some View {
+        let base: AnyView
+        if let baseID = model.children.first {
+            base = AnyView(LUIAnyNodeView(nodeID: baseID, backend: backend).equatable())
+        } else {
+            base = AnyView(EmptyView())
+        }
+        return model.children.dropFirst().reduce(base) { content, childID in
+            AnyView(
+                content.overlay(alignment: alignment(of: childID)) {
+                    LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                }
+            )
+        }
+    }
+}
+
+/// Renders the first child that fits along `orientation`
+/// (`ViewThatFits(in:)`; default horizontal).
+private struct LUIViewThatFitsView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    private var axis: Axis.Set {
+        model.property(.orientation)?.stringValue == "vertical"
+            ? .vertical
+            : .horizontal
+    }
+
+    var body: some View {
+        ViewThatFits(in: axis) {
+            ForEach(model.children, id: \.self) { childID in
                 LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
             }
         }
@@ -5754,7 +5912,11 @@ private struct LUIBackgroundStyleModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         let glassShape: AnyShape = isPill ? AnyShape(Capsule()) : shape
-        if name == "glass", !suppressesOwnGlass {
+        if name == "bar" {
+            // System chrome material (`.background(.bar)`), for edge-pinned
+            // bars that should pick up the platform bar treatment.
+            content.background(.bar, in: shape)
+        } else if name == "glass", !suppressesOwnGlass {
             if #available(iOS 26.0, macOS 26.0, *) {
                 content
                     .modifier(LUIOptionalClipModifier(

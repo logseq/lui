@@ -7,6 +7,9 @@ type node_kind =
   | Column
   | Grid
   | Stack
+  | EdgeInset
+  | Overlay
+  | ViewThatFits
   | Panel
   | Card
   | Alert
@@ -171,6 +174,9 @@ type property =
   | ResizeOrigin
   | ThemeValue
   | ThemeMode
+  | EdgeValue
+  | Visible
+  | AlignmentValue
 
 module Property_map : Map.S with type key = property
 
