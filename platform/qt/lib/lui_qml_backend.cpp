@@ -1180,6 +1180,8 @@ bool LuiQmlBackend::performPress(qint64 node) {
       (state->kind == NodeKind::Column &&
        isTrue(state->properties.value(QStringLiteral("press-enabled")))) ||
       (state->kind == NodeKind::Text &&
+       isTrue(state->properties.value(QStringLiteral("press-enabled")))) ||
+      (state->kind == NodeKind::FileImage &&
        isTrue(state->properties.value(QStringLiteral("press-enabled"))));
   if (!pressable || isFalse(state->properties.value(QStringLiteral("enabled")))) {
     return fail(QStringLiteral("node %1 is not an enabled pressable control")
@@ -1241,7 +1243,8 @@ bool LuiQmlBackend::performDismiss(qint64 node) {
   if (state == nullptr) return staleNode(node);
   if (state->kind != NodeKind::Select && state->kind != NodeKind::Combobox &&
       state->kind != NodeKind::DropdownMenu &&
-      state->kind != NodeKind::Toast && !modalSurface(state->kind)) {
+      state->kind != NodeKind::Toast &&
+      state->kind != NodeKind::FilePreview && !modalSurface(state->kind)) {
     return fail(QStringLiteral("node %1 is not dismissible").arg(node));
   }
   emitEvent(node, QStringLiteral("dismiss"));

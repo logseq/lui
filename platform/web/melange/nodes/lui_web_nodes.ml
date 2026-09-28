@@ -16,6 +16,9 @@ let base_class_name kind =
   | Column -> "lui-column"
   | Grid -> "lui-grid"
   | Stack -> "lui-stack"
+  | EdgeInset -> "lui-edge-inset"
+  | Overlay -> "lui-overlay"
+  | ViewThatFits -> "lui-view-that-fits"
   | Panel -> "lui-panel"
   | Card -> "lui-card"
   | Alert -> "lui-alert"
@@ -87,6 +90,9 @@ let base_class_name kind =
   | Split -> "lui-split"
   | Drawer -> "lui-drawer"
   | StatusBar -> "lui-status-bar"
+  | Link -> "lui-link"
+  | FileImage -> "lui-file-image"
+  | FilePreview -> "lui-file-preview"
 
 let create_split_node renderer =
   let document = renderer.web_document in
@@ -163,6 +169,14 @@ let create_select_node renderer =
       ("aria-haspopup", "listbox");
       ("aria-expanded", "false") ]
     [ Util.element document "span" "lui-select-value" [] [] ]
+
+let create_link_node renderer =
+  let document = renderer.web_document in
+  Util.element document "a" "lui-link"
+    [ ("data-icon-placement", "leading"); ("rel", "noopener noreferrer") ]
+    [ Util.element document "span" "lui-link-icon lui-icon"
+        [ ("aria-hidden", "true") ] [];
+      Util.element document "span" "lui-link-content" [] [] ]
 
 let create_menu_item_node renderer =
   let document = renderer.web_document in
@@ -314,6 +328,7 @@ let simple_node_attributes kind =
         ("data-state", "open") ]
   | Toolbar -> [ ("role", "toolbar"); ("aria-orientation", "horizontal") ]
   | StatusBar -> [ ("role", "status") ]
+  | FilePreview -> [ ("hidden", "") ]
   | _ -> []
 
 let create_simple_node renderer kind =
@@ -383,6 +398,7 @@ let platform_node renderer kind =
   | MenuItem | MenuTrigger -> create_menu_item_node renderer
   | Avatar -> create_avatar_node renderer
   | Image | MediaSurface -> create_media_node renderer kind
+  | Link -> create_link_node renderer
   | Step -> create_step_node renderer
   | TimelineItem -> create_timeline_item_node renderer
   | BottomTabs -> create_bottom_tabs_node renderer

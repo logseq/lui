@@ -7,6 +7,9 @@ type node_kind =
   | Column
   | Grid
   | Stack
+  | EdgeInset
+  | Overlay
+  | ViewThatFits
   | Panel
   | Card
   | Alert
@@ -75,6 +78,9 @@ type node_kind =
   | Toast
   | Toolbar
   | StatusBar
+  | Link
+  | FileImage
+  | FilePreview
 
 type operating_system =
   | GenericOS
@@ -177,6 +183,12 @@ type property =
   | StepValue
   | Detents
   | Sizing
+  | PathValue
+  | UrlValue
+  | MaxPixelSize
+  | EdgeValue
+  | Visible
+  | AlignmentValue
 
 module Property_map : Map.S with type key = property
 

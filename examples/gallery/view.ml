@@ -455,6 +455,69 @@ let card_section model_source : t =
         ]
     ]
 
+let inset_rows n =
+  List.init n (fun i ->
+      card ~padding:12
+        [ text ~value:(Printf.sprintf "Inset demo row %d" (i + 1)) [] ])
+
+let edge_inset_section model_source send : t =
+  let checked = model_source >|= Model.checked in
+  section "Edge Inset"
+    [ switch_ ~text:"Show pinned bar" ~checked:(reactive checked)
+        ~on_toggle:(on_toggle send (fun v -> Model.SetChecked v)) []
+    ; edge_inset ~edge:`top ~background:"bar" ~max_width:560 ~height:240
+        ~visible:(reactive checked)
+        [ scroll ~height:200 [ list ~gap:8 ~cross:`stretch (inset_rows 12) ]
+        ; row ~padding:8 ~gap:8 ~cross:`center
+            [ text ~value:"Pinned top bar" []
+            ; spacer []
+            ; text ~value:"edge-inset · top" ~foreground:"muted-foreground" []
+            ]
+        ]
+    ; edge_inset ~edge:`bottom ~background:"bar" ~max_width:560 ~height:180
+        [ scroll ~height:150 [ list ~gap:8 ~cross:`stretch (inset_rows 10) ]
+        ; row ~padding:8 ~gap:8 ~cross:`center
+            [ text ~value:"Pinned bottom bar" []
+            ; spacer []
+            ; text ~value:"edge-inset · bottom" ~foreground:"muted-foreground" []
+            ]
+        ]
+    ]
+
+let overlay_section : t =
+  section "Overlay"
+    [ overlay ~max_width:560
+        [ card ~width:560 ~height:160 ~padding:16
+            [ column ~gap:8
+                [ text ~value:"Base card — this content sizes the overlay" []
+                ; paragraph
+                    ~value:"Floating children do not shift this layout." []
+                ]
+            ]
+        ; align `top_trailing
+            (card ~padding:8 [ text ~value:"Float · top-trailing" [] ])
+        ; align `bottom_leading
+            (card ~padding:8 [ text ~value:"Float · bottom-leading" [] ])
+        ]
+    ]
+
+let view_that_fits_section : t =
+  section "View That Fits"
+    [ paragraph
+        ~value:"Widen the window for the expanded layout; shrink it below ~700pt wide for the compact fallback."
+        []
+    ; view_that_fits
+        [ card ~width:640 ~padding:16
+            [ row ~gap:8 ~cross:`center
+                [ text ~value:"EXPANDED — wide layout" []
+                ; spacer []
+                ; text ~value:"640pt" ~foreground:"muted-foreground" []
+                ]
+            ]
+        ; text ~value:"COMPACT — narrow fallback" ~foreground:"accent" []
+        ]
+    ]
+
 let alert_section : t =
   section "Alert"
     [ alert ~text:"Sync paused" ~variant:`secondary
@@ -1577,6 +1640,9 @@ let view context model_source send : t =
     ; row_section
     ; column_section
     ; grid_section
+    ; edge_inset_section model_source send
+    ; overlay_section
+    ; view_that_fits_section
     ; text_section
     ; spacer_section
     ; toggle_button_section model_source send

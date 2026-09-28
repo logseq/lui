@@ -182,7 +182,8 @@ bool canContainChildren(NodeKind kind) {
   if (horizontalContainer(kind) || contextMenuLeafHostKind(kind)) return true;
   return oneOf(kind,
                {NodeKind::Root, NodeKind::Row, NodeKind::Column,
-                NodeKind::Grid, NodeKind::Stack, NodeKind::Panel,
+                NodeKind::Grid, NodeKind::Stack, NodeKind::EdgeInset,
+                NodeKind::Overlay, NodeKind::ViewThatFits, NodeKind::Panel,
                 NodeKind::Card, NodeKind::Box, NodeKind::Scroll,
                 NodeKind::ListContainer, NodeKind::VirtualList,
                 NodeKind::RadioGroup, NodeKind::DropdownMenu,
@@ -193,13 +194,14 @@ bool canContainChildren(NodeKind kind) {
                 NodeKind::Stepper, NodeKind::Timeline, NodeKind::InputGroup,
                 NodeKind::InputGroupActions, NodeKind::Toast,
                 NodeKind::Toolbar, NodeKind::Alert, NodeKind::Bubble,
-                NodeKind::BottomTabs, NodeKind::BottomTab});
+                NodeKind::BottomTabs, NodeKind::BottomTab, NodeKind::Link});
 }
 
 bool acceptsExtensionChildren(NodeKind kind) {
   return oneOf(kind,
                {NodeKind::Root, NodeKind::Row, NodeKind::Column,
-                NodeKind::Grid, NodeKind::Stack, NodeKind::Panel,
+                NodeKind::Grid, NodeKind::Stack, NodeKind::EdgeInset,
+                NodeKind::Overlay, NodeKind::ViewThatFits, NodeKind::Panel,
                 NodeKind::Card, NodeKind::Box, NodeKind::Scroll,
                 NodeKind::ListContainer, NodeKind::VirtualList,
                 NodeKind::ListItem, NodeKind::Dialog, NodeKind::Sheet,
@@ -250,7 +252,7 @@ bool eventSupported(NodeKind kind, Event event) {
                         NodeKind::Select, NodeKind::Combobox, NodeKind::MenuItem,
                         NodeKind::ListItem, NodeKind::Text,
                         NodeKind::TableCell, NodeKind::TimelineItem,
-                        NodeKind::BottomTab});
+                        NodeKind::FileImage, NodeKind::BottomTab});
   case Event::LongPress:
     return oneOf(kind,
                  {NodeKind::Button, NodeKind::ToggleButton,
@@ -277,7 +279,8 @@ bool eventSupported(NodeKind kind, Event event) {
   case Event::Dismiss:
     return oneOf(kind, {NodeKind::Select, NodeKind::Combobox,
                         NodeKind::DropdownMenu, NodeKind::Toast,
-                        NodeKind::Dialog, NodeKind::Drawer, NodeKind::Sheet});
+                        NodeKind::Dialog, NodeKind::Drawer, NodeKind::Sheet,
+                        NodeKind::FilePreview});
   case Event::DoublePress:
     return kind == NodeKind::ListItem;
   case Event::Appear:
@@ -417,6 +420,8 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                  {NodeKind::Row, NodeKind::Column, NodeKind::Grid,
                   NodeKind::Box, NodeKind::Panel, NodeKind::Card,
                   NodeKind::Stack, NodeKind::Scroll, NodeKind::Avatar,
+                  NodeKind::EdgeInset, NodeKind::Overlay,
+                  NodeKind::ViewThatFits,
                   NodeKind::Text, NodeKind::Heading, NodeKind::Paragraph,
                   NodeKind::Label, NodeKind::Button, NodeKind::ToggleButton,
                   NodeKind::TextField, NodeKind::SecureField, NodeKind::Input,
@@ -428,7 +433,8 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                   NodeKind::DropdownMenu, NodeKind::MenuItem,
                   NodeKind::ListItem, NodeKind::TableCell,
                   NodeKind::Resizable, NodeKind::Split, NodeKind::Alert,
-                  NodeKind::Bubble, NodeKind::StatusBar});
+                  NodeKind::Bubble, NodeKind::StatusBar, NodeKind::Link,
+                  NodeKind::FileImage});
   case Property::WidthValue:
   case Property::HeightValue:
     return kind != NodeKind::Tooltip;
@@ -454,7 +460,8 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                         NodeKind::Image, NodeKind::MediaSurface,
                         NodeKind::Tree, NodeKind::Resizable, NodeKind::Split,
                         NodeKind::Drawer, NodeKind::Alert, NodeKind::Bubble,
-                        NodeKind::ListItem}) ||
+                        NodeKind::ListItem, NodeKind::Link,
+                        NodeKind::FileImage}) ||
            horizontalContainer(kind) || treeRowKind(kind);
   case Property::AccessibilityIdentifier:
     return true;
@@ -473,7 +480,8 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                         NodeKind::NumberStepper, NodeKind::Split});
   case Property::OrientationValue:
     return oneOf(kind,
-                 {NodeKind::Divider, NodeKind::Tabs, NodeKind::Scroll});
+                 {NodeKind::Divider, NodeKind::Tabs, NodeKind::Scroll,
+                  NodeKind::ViewThatFits});
   case Property::SizeValue:
     return oneOf(kind, {NodeKind::Button, NodeKind::ToggleButton,
                         NodeKind::Spinner, NodeKind::Icon,
@@ -487,11 +495,11 @@ bool commonPropertySupported(NodeKind kind, Property property) {
   case Property::InlineIconName:
     return oneOf(kind, {NodeKind::Button, NodeKind::ToggleButton,
                         NodeKind::MenuItem, NodeKind::ListItem,
-                        NodeKind::BottomTab});
+                        NodeKind::BottomTab, NodeKind::Link});
   case Property::IconPlacementValue:
     return oneOf(kind,
                  {NodeKind::Button, NodeKind::ToggleButton,
-                  NodeKind::ListItem});
+                  NodeKind::ListItem, NodeKind::Link});
   case Property::Selected:
     return oneOf(kind, {NodeKind::Button, NodeKind::ToggleButton,
                         NodeKind::MenuItem, NodeKind::ListItem,
@@ -517,7 +525,7 @@ bool commonPropertySupported(NodeKind kind, Property property) {
     return oneOf(kind, {NodeKind::Text, NodeKind::Column, NodeKind::Radio,
                         NodeKind::Select, NodeKind::Combobox, NodeKind::MenuItem,
                         NodeKind::ListItem, NodeKind::TableCell,
-                        NodeKind::BottomTab}) ||
+                        NodeKind::BottomTab, NodeKind::FileImage}) ||
            treeRowKind(kind);
   case Property::SubmitEnabled:
     return kind == NodeKind::Combobox || kind == NodeKind::ListItem;
@@ -533,6 +541,12 @@ bool commonPropertySupported(NodeKind kind, Property property) {
     return kind == NodeKind::Avatar || kind == NodeKind::Image;
   case Property::SurfaceIdValue:
     return kind == NodeKind::MediaSurface;
+  case Property::PathValue:
+    return kind == NodeKind::FileImage || kind == NodeKind::FilePreview;
+  case Property::UrlValue:
+    return kind == NodeKind::Link;
+  case Property::MaxPixelSize:
+    return kind == NodeKind::FileImage;
   case Property::AnchorValue:
   case Property::AnchorAlignmentValue:
   case Property::AnchorOffset:
@@ -569,7 +583,7 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                   NodeKind::Avatar, NodeKind::Dialog, NodeKind::Drawer,
                   NodeKind::Sheet, NodeKind::Tooltip, NodeKind::TableCell,
                   NodeKind::Alert, NodeKind::Bubble, NodeKind::StatusBar,
-                  NodeKind::NumberStepper});
+                  NodeKind::NumberStepper, NodeKind::Link});
   case Property::Enabled:
     return oneOf(kind,
                  {NodeKind::Button, NodeKind::ToggleButton,
@@ -579,7 +593,8 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                   NodeKind::Toggle, NodeKind::Radio, NodeKind::Slider,
                   NodeKind::NumberStepper, NodeKind::Select,
                   NodeKind::Combobox, NodeKind::MenuItem,
-                  NodeKind::ListItem, NodeKind::Drawer, NodeKind::BottomTab});
+                  NodeKind::ListItem, NodeKind::Drawer, NodeKind::BottomTab,
+                  NodeKind::Link});
   case Property::ActiveIndex:
   case Property::DescriptionValue:
   case Property::MetaValue:
@@ -600,8 +615,16 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                         NodeKind::ListContainer, NodeKind::VirtualList,
                         NodeKind::DropdownMenu, NodeKind::TableRow,
                         NodeKind::Tree, NodeKind::Scroll, NodeKind::Card,
-                        NodeKind::Panel, NodeKind::Box, NodeKind::Split}) ||
+                        NodeKind::Panel, NodeKind::Box, NodeKind::Split,
+                        NodeKind::EdgeInset}) ||
            horizontalContainer(kind);
+  case Property::EdgeValue:
+  case Property::Visible:
+    return kind == NodeKind::EdgeInset;
+  // `alignment` is admitted ahead of the restrictive arms in
+  // propertySupported below.
+  case Property::AlignmentValue:
+    return kind != NodeKind::Root;
   }
   return false;
 }
@@ -610,6 +633,10 @@ bool commonPropertySupported(NodeKind kind, Property property) {
 
 bool propertySupported(NodeKind kind, Property property) {
   if (property == Property::AccessibilityIdentifier) return true;
+  // Position hint honored on overlay children and the overlay itself;
+  // admitted before the restrictive arms so e.g. an aligned menu-trigger
+  // child still carries it. Inert elsewhere.
+  if (property == Property::AlignmentValue) return kind != NodeKind::Root;
   // The restrictive arms below mirror schema/components.json kindProperties.
   switch (kind) {
   case NodeKind::Root:
@@ -670,6 +697,8 @@ bool propertySupported(NodeKind kind, Property property) {
   case NodeKind::Dialog:
     return property == Property::DescriptionValue ||
            commonPropertySupported(kind, property);
+  case NodeKind::FilePreview:
+    return property == Property::PathValue;
   default:
     return commonPropertySupported(kind, property);
   }
@@ -765,10 +794,16 @@ bool propertyValueSupported(Property property, const QVariant &value) {
     int number = 0;
     return isIntValue(value, &number) && number >= 0;
   }
+  case Property::MaxPixelSize: {
+    int number = 0;
+    return isIntValue(value, &number) && number > 0;
+  }
   case Property::TitleValue:
   case Property::DescriptionValue:
   case Property::MetaValue:
   case Property::IndicatorValue:
+  case Property::PathValue:
+  case Property::UrlValue:
     return isString(value);
   case Property::Connector:
     return isBool(value);
@@ -828,6 +863,17 @@ bool propertyValueSupported(Property property, const QVariant &value) {
   case Property::Sizing:
     return isString(value) &&
            inSet(value.toString(), {"form", "fitted", "page"});
+  case Property::EdgeValue:
+    return isString(value) &&
+           inSet(value.toString(), {"top", "bottom", "leading", "trailing"});
+  case Property::Visible:
+    return isBool(value);
+  case Property::AlignmentValue:
+    return isString(value) &&
+           inSet(value.toString(),
+                 {"top-leading", "top", "top-trailing", "leading", "center",
+                  "trailing", "bottom-leading", "bottom",
+                  "bottom-trailing"});
   }
   return false;
 }
@@ -857,6 +903,10 @@ bool nodePropertiesSupported(NodeKind kind, const QVariantMap &properties) {
         !propertyValueSupported(Property::IconName, name)) {
       return false;
     }
+  }
+  if (kind == NodeKind::EdgeInset &&
+      !properties.contains(QStringLiteral("edge"))) {
+    return false;
   }
   if (buttonKind(kind) || kind == NodeKind::Toggle || kind == NodeKind::Radio) {
     const QString text = stringPropertyOr(properties, "text", QString());
@@ -925,6 +975,14 @@ bool nodePropertiesSupported(NodeKind kind, const QVariantMap &properties) {
   }
   if (kind == NodeKind::MediaSurface &&
       !properties.contains(QStringLiteral("surface"))) {
+    return false;
+  }
+  if ((kind == NodeKind::FileImage || kind == NodeKind::FilePreview) &&
+      !stringPropertyNonempty(properties, "path")) {
+    return false;
+  }
+  if (kind == NodeKind::Link &&
+      !stringPropertyNonempty(properties, "url")) {
     return false;
   }
   if (kind == NodeKind::Stepper &&

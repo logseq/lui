@@ -10,6 +10,7 @@ var palette = {
     "secondary": "#f4f4f5",
     "secondary-foreground": "#18181b",
     "glass": "#bfffffff",
+    "bar": "#d9ffffff",
     "success": "#dcfce7",
     "success-foreground": "#166534",
     "warning": "#fef9c3",

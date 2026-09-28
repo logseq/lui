@@ -1198,6 +1198,8 @@ final class LUIFlutterBackend {
         (state.kind == _NodeKind.column &&
             state.properties['press-enabled'] == true) ||
         (state.kind == _NodeKind.text &&
+            state.properties['press-enabled'] == true) ||
+        (state.kind == _NodeKind.fileImage &&
             state.properties['press-enabled'] == true);
     if (!pressable || state.properties['enabled'] == false) {
       throw LUIBackendException(
@@ -1489,6 +1491,7 @@ final class LUIFlutterBackend {
         state.kind != _NodeKind.combobox &&
         state.kind != _NodeKind.dropdownMenu &&
         state.kind != _NodeKind.toast &&
+        state.kind != _NodeKind.filePreview &&
         !state.kind.isModalSurface) {
       throw LUIBackendException('node $node is not dismissible');
     }
@@ -1992,6 +1995,79 @@ final class LUIFlutterBackend {
         trigger: trigger,
       );
     }
+
+    /// Pins the children after the first to `edge` while the first child
+    /// fills the view beneath them. Pinned children group into a row across
+    /// side edges and a column under top/bottom; `gap` insets the group
+    /// from the pinned edge.
+    Widget edgeInset() {
+      final visible = state.properties['visible'] as bool? ?? true;
+      final gap = (state.properties['gap'] as num?)?.toDouble() ?? 0;
+      final edge = state.properties['edge'] as String? ?? 'top';
+      final sideEdge = edge == 'leading' || edge == 'trailing';
+      final pinned = children.skip(1).toList(growable: false);
+      return Stack(
+        children: [
+          if (children.isNotEmpty) children.first,
+          if (visible && pinned.isNotEmpty)
+            Positioned.fill(
+              child: Padding(
+                padding: switch (edge) {
+                  'bottom' => EdgeInsetsDirectional.only(bottom: gap),
+                  'leading' => EdgeInsetsDirectional.only(start: gap),
+                  'trailing' => EdgeInsetsDirectional.only(end: gap),
+                  _ => EdgeInsetsDirectional.only(top: gap),
+                },
+                child: Align(
+                  alignment: switch (edge) {
+                    'bottom' => AlignmentDirectional.bottomCenter,
+                    'leading' => AlignmentDirectional.centerStart,
+                    'trailing' => AlignmentDirectional.centerEnd,
+                    _ => AlignmentDirectional.topCenter,
+                  },
+                  child: sideEdge
+                      ? Row(mainAxisSize: MainAxisSize.min, children: pinned)
+                      : Column(mainAxisSize: MainAxisSize.min, children: pinned),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    /// Renders the children after the first floating over the first child
+    /// without affecting its layout; each overlay child positions by its own
+    /// 'alignment' prop, falling back to the overlay's (default center).
+    Widget overlay() {
+      final fallback =
+          _overlayAlignment(state.properties['alignment'] as String?) ??
+          AlignmentDirectional.center;
+      // `children` skips the context-menu child, so index the visible ids.
+      final overlayIDs = state.children
+          .where((child) => child != contextMenuID)
+          .toList(growable: false);
+      return Stack(
+        children: [
+          if (children.isNotEmpty) children.first,
+          for (var index = 1; index < children.length; index += 1)
+            Positioned.fill(
+              child: Align(
+                alignment:
+                    _overlayAlignment(
+                      _states[overlayIDs[index]]?.properties['alignment']
+                          as String?,
+                    ) ??
+                    fallback,
+                child: children[index],
+              ),
+            ),
+        ],
+      );
+    }
+
+    /// No native ViewThatFits equivalent; render the first candidate.
+    Widget viewThatFits() =>
+        children.isEmpty ? const SizedBox.shrink() : children.first;
 
     Widget select() {
       final colors = Theme.of(context).colorScheme;
@@ -2725,6 +2801,9 @@ final class LUIFlutterBackend {
       ),
       _NodeKind.grid => grid(),
       _NodeKind.stack => stack(),
+      _NodeKind.edgeInset => edgeInset(),
+      _NodeKind.overlay => overlay(),
+      _NodeKind.viewThatFits => viewThatFits(),
       _NodeKind.panel ||
       _NodeKind.card ||
       _NodeKind.resizable => Stack(children: children),
@@ -2944,6 +3023,8 @@ final class LUIFlutterBackend {
         color: foreground,
       ),
       _NodeKind.statusBar => statusBar(),
+      _NodeKind.link => column(),
+      _NodeKind.fileImage || _NodeKind.filePreview => const SizedBox.shrink(),
     };
 
     if (state.kind == _NodeKind.root || state.kind.isModalSurface) {
@@ -3509,6 +3590,20 @@ final class LUIFlutterBackend {
     }
   }
 
+  /// Direction-aware nine-point anchor; 'leading'/'trailing' follow the
+  /// ambient Directionality (matching SwiftUI's semantic edges).
+  static AlignmentGeometry? _overlayAlignment(String? name) => switch (name) {
+    'top-leading' => AlignmentDirectional.topStart,
+    'top' => AlignmentDirectional.topCenter,
+    'top-trailing' => AlignmentDirectional.topEnd,
+    'leading' => AlignmentDirectional.centerStart,
+    'trailing' => AlignmentDirectional.centerEnd,
+    'bottom-leading' => AlignmentDirectional.bottomStart,
+    'bottom' => AlignmentDirectional.bottomCenter,
+    'bottom-trailing' => AlignmentDirectional.bottomEnd,
+    _ => null,
+  };
+
   static bool _supports(_NodeKind kind, String property, Object? value) {
     if (property == 'accessibility-identifier') return value is String;
     if (kind == _NodeKind.root) {
@@ -3518,6 +3613,16 @@ final class LUIFlutterBackend {
               _themeModes.contains(value));
     }
     if (kind == _NodeKind.contextMenu) return false;
+    if (kind == _NodeKind.filePreview) {
+      return property == 'path' && value is String;
+    }
+    // Position hint honored on overlay children and the overlay itself;
+    // admitted before the restrictive kinds below. Inert elsewhere.
+    if (property == 'alignment') {
+      return kind != _NodeKind.root &&
+          value is String &&
+          _overlayAlignment(value) != null;
+    }
     if (kind == _NodeKind.accordion) {
       return switch (property) {
         'text' => value is String,
@@ -3682,6 +3787,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.bubble ||
                 kind == _NodeKind.statusBar ||
                 kind == _NodeKind.drawer ||
+                kind == _NodeKind.link ||
                 kind.isModalSurface),
       'enabled' =>
         value is bool &&
@@ -3696,7 +3802,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.select ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
-                kind == _NodeKind.drawer),
+                kind == _NodeKind.drawer ||
+                kind == _NodeKind.link),
       'value' =>
         value is double &&
             value.isFinite &&
@@ -3734,7 +3841,8 @@ final class LUIFlutterBackend {
             (value == 'horizontal' || value == 'vertical') &&
             (kind == _NodeKind.divider ||
                 kind == _NodeKind.tabs ||
-                kind == _NodeKind.scroll),
+                kind == _NodeKind.scroll ||
+                kind == _NodeKind.viewThatFits),
       'size' =>
         value is String &&
             (_controlSizes.contains(value) ||
@@ -3763,11 +3871,12 @@ final class LUIFlutterBackend {
             (_isButtonKind(kind) ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.menuTrigger ||
-                kind == _NodeKind.listItem),
+                kind == _NodeKind.listItem ||
+                kind == _NodeKind.link),
       'icon-placement' =>
         value is String &&
-            (value == 'leading' || value == 'trailing') &&
-            _isButtonKind(kind),
+            (value == 'leading' || value == 'trailing' || value == 'top') &&
+            (_isButtonKind(kind) || kind == _NodeKind.link),
       'selected' =>
         value is bool &&
             (_isButtonKind(kind) ||
@@ -3798,6 +3907,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
                 kind == _NodeKind.tableCell ||
+                kind == _NodeKind.fileImage ||
                 _isTreeRowKind(kind)),
       'submit-enabled' =>
         value is bool &&
@@ -3813,6 +3923,10 @@ final class LUIFlutterBackend {
         value is num &&
             value.isFinite &&
             (kind == _NodeKind.avatar || kind == _NodeKind.image),
+      'path' => value is String && kind == _NodeKind.fileImage,
+      'url' => value is String && kind == _NodeKind.link,
+      'max-pixel-size' =>
+        value is int && value > 0 && kind == _NodeKind.fileImage,
       'anchor' =>
         value is String &&
             const {'above', 'below', 'left', 'right'}.contains(value) &&
@@ -3825,6 +3939,14 @@ final class LUIFlutterBackend {
         value is num &&
             value.isFinite &&
             (kind == _NodeKind.dropdownMenu || kind == _NodeKind.tooltip),
+      'edge' =>
+        value is String &&
+            const {'top', 'bottom', 'leading', 'trailing'}.contains(value) &&
+            kind == _NodeKind.edgeInset,
+      'visible' => value is bool && kind == _NodeKind.edgeInset,
+      // 'alignment' is admitted ahead of the restrictive kinds above.
+      'alignment' =>
+        value is String && _overlayAlignment(value) != null,
       'tooltip-delay' =>
         value is int &&
             value >= 0 &&
@@ -3842,6 +3964,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.tableRow ||
                 kind == _NodeKind.tree ||
                 kind == _NodeKind.split ||
+                kind == _NodeKind.edgeInset ||
                 _isHorizontalGroupKind(kind)),
       'padding' =>
         value is int && kind != _NodeKind.avatar && kind != _NodeKind.tooltip,
@@ -3859,7 +3982,10 @@ final class LUIFlutterBackend {
             !kind.isModalSurface,
       'foreground' =>
         value is String &&
-            (kind == _NodeKind.text ||
+            (kind == _NodeKind.edgeInset ||
+                kind == _NodeKind.overlay ||
+                kind == _NodeKind.viewThatFits ||
+                kind == _NodeKind.text ||
                 kind == _NodeKind.heading ||
                 kind == _NodeKind.paragraph ||
                 kind == _NodeKind.label ||
@@ -3882,7 +4008,9 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.split ||
                 kind == _NodeKind.alert ||
                 kind == _NodeKind.bubble ||
-                kind == _NodeKind.statusBar),
+                kind == _NodeKind.statusBar ||
+                kind == _NodeKind.link ||
+                kind == _NodeKind.fileImage),
       'border-color' =>
         value is String &&
             kind != _NodeKind.avatar &&
@@ -3953,6 +4081,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.bubble ||
                 kind == _NodeKind.select ||
                 kind == _NodeKind.menuTrigger ||
+                kind == _NodeKind.link ||
+                kind == _NodeKind.fileImage ||
                 _isTreeRowKind(kind)),
       'text-alignment' =>
         value is String &&
@@ -3986,6 +4116,10 @@ final class LUIFlutterBackend {
       if (state.kind == _NodeKind.icon &&
           !state.properties.containsKey('name')) {
         throw const LUIBackendException('icon requires name');
+      }
+      if (state.kind == _NodeKind.edgeInset &&
+          !state.properties.containsKey('edge')) {
+        throw const LUIBackendException('edge-inset requires edge');
       }
       if (_isButtonKind(state.kind)) {
         final text = state.properties['text'] as String? ?? '';
@@ -4280,6 +4414,17 @@ final class LUIFlutterBackend {
           !state.properties.containsKey('surface')) {
         throw const LUIBackendException('media-surface requires surface');
       }
+      if ((state.kind == _NodeKind.fileImage ||
+              state.kind == _NodeKind.filePreview) &&
+          (state.properties['path'] as String? ?? '').isEmpty) {
+        throw LUIBackendException(
+          '${state.kind == _NodeKind.fileImage ? 'file-image' : 'file-preview'} requires a non-empty path',
+        );
+      }
+      if (state.kind == _NodeKind.link &&
+          (state.properties['url'] as String? ?? '').isEmpty) {
+        throw const LUIBackendException('link requires a non-empty url');
+      }
       if (state.kind == _NodeKind.stepper &&
           !state.properties.containsKey('active')) {
         throw const LUIBackendException('stepper requires active');
@@ -4426,7 +4571,11 @@ final class LUIFlutterBackend {
       kind == _NodeKind.toolbar ||
       kind == _NodeKind.bottomTabs ||
       kind == _NodeKind.bottomTab ||
+      kind == _NodeKind.link ||
       _isContextMenuLeafHost(kind) ||
+      kind == _NodeKind.edgeInset ||
+      kind == _NodeKind.overlay ||
+      kind == _NodeKind.viewThatFits ||
       kind.isModalSurface;
 
   static bool _acceptsExtensionChildren(_NodeKind kind) =>
@@ -4435,6 +4584,9 @@ final class LUIFlutterBackend {
       kind == _NodeKind.column ||
       kind == _NodeKind.grid ||
       kind == _NodeKind.stack ||
+      kind == _NodeKind.edgeInset ||
+      kind == _NodeKind.overlay ||
+      kind == _NodeKind.viewThatFits ||
       kind == _NodeKind.panel ||
       kind == _NodeKind.card ||
       kind == _NodeKind.box ||
@@ -4785,6 +4937,8 @@ final class LUIFlutterBackend {
       'autocomplete-row-background' => colors.surfaceContainerHigh,
       'glass' => colors.surface.withValues(alpha: 0.75),
       'glass-fallback' => colors.surface.withValues(alpha: 0.9),
+      // Apple Material.bar approximation: mostly-opaque theme surface.
+      'bar' => colors.surface.withValues(alpha: 0.85),
       'primary' => colors.primary,
       'primary-foreground' => colors.onPrimary,
       'accent' => foreground ? colors.primary : colors.secondaryContainer,

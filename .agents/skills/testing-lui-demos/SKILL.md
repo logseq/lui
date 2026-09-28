@@ -128,3 +128,18 @@ Gotchas:
   edge drops, but chip/strip targets are more reliable with an explicit
   `left_mouse_down` → several `mouse_move` steps → pause (`wait` ~0.7s,
   pane highlight/ghost visible) → `left_mouse_up` sequence.
+
+### Exercising new/ordinary element kinds end-to-end
+
+The split demo is the fastest vehicle even for non-split elements: scratch-edit
+`examples/split/model.ml` + `view.ml` (uncommitted) so `view` returns a plain
+`column` of the elements under test, add model fields/actions for any state you
+need to observe (e.g. a press counter rendered via `dyn`/`text` so event
+delivery is proven by an OCaml-rendered value, not just pixels), then rerun
+`build-app.sh` — it rebuilds `liblui_split.dylib` and the bundle. Revert with
+`git checkout` afterwards. `if_ ~test:(model_source >|= ...)` is the way to
+mount/unmount presence-driven kinds (dialog/sheet/file-preview).
+
+QuickLook panels (`file-preview`, `.quickLookPreview`) on macOS: the panel's
+close affordance is small/hover-only; **Escape** reliably closes it and drives
+the Dismiss binding. Clicking the panel title bar does nothing.

@@ -696,6 +696,9 @@ namespace LUI
                 case LUINodeKind.Column:
                 case LUINodeKind.Grid:
                 case LUINodeKind.Stack:
+                case LUINodeKind.EdgeInset:
+                case LUINodeKind.Overlay:
+                case LUINodeKind.ViewThatFits:
                 case LUINodeKind.Panel:
                 case LUINodeKind.Card:
                 case LUINodeKind.Box:
@@ -750,6 +753,11 @@ namespace LUI
                     !state.Properties.ContainsKey(LUIProperty.IconName))
                 {
                     throw new LUIBackendException("icon requires name");
+                }
+                if (state.Kind == LUINodeKind.EdgeInset &&
+                    !state.Properties.ContainsKey(LUIProperty.EdgeValue))
+                {
+                    throw new LUIBackendException("edge-inset requires edge");
                 }
                 if (LUISchema.ButtonKind(state.Kind))
                 {
@@ -1366,6 +1374,9 @@ namespace LUI
                      state.Properties, LUIProperty.PressEnabled)) ||
                 (state.Kind == LUINodeKind.Text &&
                  LUISchema.TrueProperty(
+                     state.Properties, LUIProperty.PressEnabled)) ||
+                (state.Kind == LUINodeKind.FileImage &&
+                 LUISchema.TrueProperty(
                      state.Properties, LUIProperty.PressEnabled));
             if (!pressable || IsDisabled(state))
             {
@@ -1507,6 +1518,7 @@ namespace LUI
                 state.Kind != LUINodeKind.Combobox &&
                 state.Kind != LUINodeKind.DropdownMenu &&
                 state.Kind != LUINodeKind.Toast &&
+                state.Kind != LUINodeKind.FilePreview &&
                 !LUISchema.ModalSurface(state.Kind))
             {
                 throw new LUIBackendException($"node {node} is not dismissible");

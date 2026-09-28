@@ -213,6 +213,8 @@ let apply_text_value renderer node kind dom_node text =
       W.Element.setTextContent
         (Util.child_element dom_node 0)
         (select_display_text renderer node)
+  | Link ->
+      W.Element.setTextContent (Util.child_element dom_node 1) text
   | TextField | SecureField | Input | SearchField | Textarea | Combobox ->
       set_text_control_value dom_node text
   | _ -> set_visible_text kind dom_node text
@@ -674,6 +676,14 @@ and apply_secondary_property renderer node kind dom_node property value =
       W.Element.setAttribute "data-anchor-alignment" alignment dom_node
   | AnchorOffset, FloatValue offset ->
       apply_anchor_offset kind dom_node offset
+  | UrlValue, StringValue url ->
+      W.Element.setAttribute "href" url dom_node;
+      W.Element.setAttribute "target" "_blank" dom_node
+  | PathValue, StringValue path ->
+      W.Element.setAttribute "data-path" path dom_node
+  | MaxPixelSize, IntValue size ->
+      W.Element.setAttribute "data-max-pixel-size" (string_of_int size)
+        dom_node
   | TooltipDelay, IntValue delay ->
       W.Element.setAttribute "data-tooltip-delay"
         (string_of_int delay) dom_node
@@ -688,6 +698,12 @@ and apply_secondary_property renderer node kind dom_node property value =
       apply_frame_axes dom_node axes
   | ContainerRelativeFrameInset, IntValue inset ->
       apply_frame_inset dom_node inset
+  | EdgeValue, StringValue edge ->
+      W.Element.setAttribute "data-edge" edge dom_node
+  | Visible, BoolValue visible ->
+      Util.set_state_attribute dom_node "data-pinned-hidden" (not visible)
+  | AlignmentValue, StringValue alignment ->
+      W.Element.setAttribute "data-alignment" alignment dom_node
   | _ ->
       invalid_arg
         ("invalid DOM property value: " ^ Lui_wire_schema.property_name property)
@@ -736,6 +752,10 @@ let remove_property renderer node kind dom_node property =
            set_style dom_node "min-height" ""
        | ContainerRelativeFrameInset ->
            W.Element.removeAttribute "data-lui-frame-inset" dom_node
+       | EdgeValue -> W.Element.removeAttribute "data-edge" dom_node
+       | Visible -> W.Element.removeAttribute "data-pinned-hidden" dom_node
+       | AlignmentValue ->
+           W.Element.removeAttribute "data-alignment" dom_node
        | PlaceholderValue ->
            W.HtmlInputElement.setPlaceholder (Util.text_control_node dom_node)
              ""
@@ -759,6 +779,12 @@ let remove_property renderer node kind dom_node property =
              set_style dom_node "max-width" "";
              set_style dom_node "margin-inline" ""
            end
+       | UrlValue ->
+           W.Element.removeAttribute "href" dom_node;
+           W.Element.removeAttribute "target" dom_node
+       | PathValue -> W.Element.removeAttribute "data-path" dom_node
+       | MaxPixelSize ->
+           W.Element.removeAttribute "data-max-pixel-size" dom_node
        | AccessibilityIdentifier -> W.Element.removeAttribute "id" dom_node
        | OrientationValue ->
            if kind = Tabs then begin

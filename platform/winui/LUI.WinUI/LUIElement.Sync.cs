@@ -22,6 +22,11 @@ namespace LUI.WinUI
                     SyncPlainContainer(state, context);
                     break;
                 case LUINodeKind.Stack:
+                // edge-inset/overlay/view-that-fits approximate as stacked
+                // grid children (no WinUI pinned/fit primitive).
+                case LUINodeKind.EdgeInset:
+                case LUINodeKind.Overlay:
+                case LUINodeKind.ViewThatFits:
                     SyncStackLike(state, context);
                     break;
                 case LUINodeKind.Row:

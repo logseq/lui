@@ -962,6 +962,174 @@ let test_menu_trigger_rules () =
     (node_properties_supported MenuTrigger
        (props [ (TextValue, StringValue "More") ]))
 
+let test_media_file_rules () =
+  let open Lui_protocol in
+  Alcotest.(check bool) "link is container" true
+    (can_contain_children Link);
+  Alcotest.(check bool) "file-image is leaf" false
+    (can_contain_children FileImage);
+  Alcotest.(check bool) "file-preview is leaf" false
+    (can_contain_children FilePreview);
+  Alcotest.(check bool) "link allows url" true
+    (property_supported Link UrlValue);
+  Alcotest.(check bool) "link allows text" true
+    (property_supported Link TextValue);
+  Alcotest.(check bool) "link allows icon" true
+    (property_supported Link InlineIconName);
+  Alcotest.(check bool) "link drops path" false
+    (property_supported Link PathValue);
+  Alcotest.(check bool) "file-image allows path" true
+    (property_supported FileImage PathValue);
+  Alcotest.(check bool) "file-image allows max-pixel-size" true
+    (property_supported FileImage MaxPixelSize);
+  Alcotest.(check bool) "file-image allows press" true
+    (property_supported FileImage PressEnabled);
+  Alcotest.(check bool) "file-image drops url" false
+    (property_supported FileImage UrlValue);
+  Alcotest.(check bool) "file-preview allows path" true
+    (property_supported FilePreview PathValue);
+  Alcotest.(check bool) "file-preview drops width" false
+    (property_supported FilePreview WidthValue);
+  Alcotest.(check bool) "file-preview keeps accessibility-identifier" true
+    (property_supported FilePreview AccessibilityIdentifier);
+  Alcotest.(check bool) "max-pixel-size positive" true
+    (property_value_supported MaxPixelSize (IntValue 1024));
+  Alcotest.(check bool) "max-pixel-size rejects zero" false
+    (property_value_supported MaxPixelSize (IntValue 0));
+  Alcotest.(check bool) "path accepts string" true
+    (property_value_supported PathValue (StringValue "/x.png"));
+  Alcotest.(check bool) "url accepts string" true
+    (property_value_supported UrlValue (StringValue "https://e.com"));
+  Alcotest.(check bool) "file-image press event" true
+    (event_supported FileImage (Press 0));
+  Alcotest.(check bool) "file-preview dismiss event" true
+    (event_supported FilePreview (Dismiss 0));
+  Alcotest.(check bool) "link drops dismiss" false
+    (event_supported Link (Dismiss 0));
+  let props entries = List.to_seq entries |> Property_map.of_seq in
+  Alcotest.(check bool) "file-image needs path" false
+    (node_properties_supported FileImage (props []));
+  Alcotest.(check bool) "file-image ok" true
+    (node_properties_supported FileImage
+       (props [ (PathValue, StringValue "/x.png") ]));
+  Alcotest.(check bool) "file-preview needs path" false
+    (node_properties_supported FilePreview (props []));
+  Alcotest.(check bool) "link needs url" false
+    (node_properties_supported Link (props []));
+  Alcotest.(check bool) "link ok" true
+    (node_properties_supported Link
+       (props [ (UrlValue, StringValue "https://e.com") ]))
+
+let media_view _context _model _send =
+  Lui_elements.column
+    [
+      Lui_elements.link ~url:"https://example.com" ~text:"Example" [];
+      Lui_elements.file_image ~path:"/tmp/pic.png" ~max_pixel_size:512 [];
+      Lui_elements.file_preview ~path:"/tmp/doc.pdf" [];
+    ]
+
+let test_media_file_mount () =
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      media_view
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let open Lui_protocol in
+  let creates kind =
+    List.exists (function CreateNode (_, k) -> k = kind | _ -> false) ops
+  in
+  Alcotest.(check bool) "link mounted" true (creates Link);
+  Alcotest.(check bool) "file-image mounted" true (creates FileImage);
+  Alcotest.(check bool) "file-preview mounted" true (creates FilePreview);
+  Alcotest.(check bool) "url prop set" true
+    (List.exists
+       (function
+        | SetProp (_, UrlValue, StringValue "https://example.com") -> true
+        | _ -> false)
+       ops);
+  Alcotest.(check bool) "path prop set" true
+    (List.exists
+       (function
+        | SetProp (_, PathValue, StringValue "/tmp/pic.png") -> true
+        | _ -> false)
+       ops);
+  Alcotest.(check bool) "max-pixel-size prop set" true
+    (List.exists
+       (function
+        | SetProp (_, MaxPixelSize, IntValue 512) -> true
+        | _ -> false)
+       ops);
+  ignore (Lui_app.dispose app)
+
+let test_edge_overlay_fit_rules () =
+  let open Lui_protocol in
+  Alcotest.(check bool) "edge-inset contains children" true
+    (can_contain_children EdgeInset);
+  Alcotest.(check bool) "overlay contains children" true
+    (can_contain_children Overlay);
+  Alcotest.(check bool) "view-that-fits contains children" true
+    (can_contain_children ViewThatFits);
+  Alcotest.(check bool) "overlay accepts a list child" true
+    (child_kind_supported Overlay ListContainer);
+  Alcotest.(check bool) "overlay accepts a row child" true
+    (child_kind_supported Overlay Row);
+  Alcotest.(check bool) "overlay rejects root child" false
+    (child_kind_supported Overlay Root);
+  Alcotest.(check bool) "edge-inset holds edge" true
+    (property_supported EdgeInset EdgeValue);
+  Alcotest.(check bool) "edge-inset holds visible" true
+    (property_supported EdgeInset Visible);
+  Alcotest.(check bool) "edge-inset holds gap" true
+    (property_supported EdgeInset Gap);
+  Alcotest.(check bool) "edge-inset styles background" true
+    (property_supported EdgeInset BackgroundValue);
+  Alcotest.(check bool) "row drops edge" false
+    (property_supported Row EdgeValue);
+  Alcotest.(check bool) "row drops visible" false
+    (property_supported Row Visible);
+  Alcotest.(check bool) "view-that-fits holds orientation" true
+    (property_supported ViewThatFits OrientationValue);
+  Alcotest.(check bool) "view-that-fits drops edge" false
+    (property_supported ViewThatFits EdgeValue);
+  Alcotest.(check bool) "alignment lands on overlay" true
+    (property_supported Overlay AlignmentValue);
+  Alcotest.(check bool) "alignment lands on overlay children" true
+    (property_supported Text AlignmentValue);
+  (* Restrictive kinds still carry the hint so e.g. an aligned
+     menu-trigger overlay child validates. *)
+  Alcotest.(check bool) "alignment lands on restrictive kinds" true
+    (property_supported MenuTrigger AlignmentValue);
+  Alcotest.(check bool) "root drops alignment" false
+    (property_supported Root AlignmentValue);
+  Alcotest.(check bool) "edge-inset takes foreground" true
+    (property_supported EdgeInset ForegroundValue);
+  Alcotest.(check bool) "overlay takes foreground" true
+    (property_supported Overlay ForegroundValue);
+  Alcotest.(check bool) "view-that-fits takes foreground" true
+    (property_supported ViewThatFits ForegroundValue);
+  Alcotest.(check bool) "edge accepts top" true
+    (property_value_supported EdgeValue (StringValue "top"));
+  Alcotest.(check bool) "edge accepts leading" true
+    (property_value_supported EdgeValue (StringValue "leading"));
+  Alcotest.(check bool) "edge rejects side anchors" false
+    (property_value_supported EdgeValue (StringValue "left"));
+  Alcotest.(check bool) "visible takes a bool" true
+    (property_value_supported Visible (BoolValue false));
+  Alcotest.(check bool) "alignment accepts corner" true
+    (property_value_supported AlignmentValue
+       (StringValue "bottom-trailing"));
+  Alcotest.(check bool) "alignment rejects anchor vocab" false
+    (property_value_supported AlignmentValue (StringValue "above"));
+  let props entries = List.to_seq entries |> Property_map.of_seq in
+  Alcotest.(check bool) "edge-inset needs edge" false
+    (node_properties_supported EdgeInset (props []));
+  Alcotest.(check bool) "edge-inset with edge ok" true
+    (node_properties_supported EdgeInset
+       (props [ (EdgeValue, StringValue "bottom") ]))
+
 let test_property_matrix_sync () =
   (* property_supported's restrictive arms and additive extras must mirror
      schema/components.json (kindProperties / kindExtraProperties) as emitted
@@ -974,6 +1142,8 @@ let test_property_matrix_sync () =
             | Some allowed ->
               let expected =
                 property = Lui_protocol.AccessibilityIdentifier
+                || (kind <> Lui_protocol.Root
+                    && property = Lui_protocol.AlignmentValue)
                 || List.mem property allowed
               in
               Alcotest.(check bool)
@@ -1644,6 +1814,10 @@ let () =
           Alcotest.test_case "helpers" `Quick test_protocol_helpers;
           Alcotest.test_case "menu-trigger rules" `Quick
             test_menu_trigger_rules;
+          Alcotest.test_case "media file rules" `Quick test_media_file_rules;
+          Alcotest.test_case "media file mount" `Quick test_media_file_mount;
+          Alcotest.test_case "edge/overlay/fit rules" `Quick
+            test_edge_overlay_fit_rules;
           Alcotest.test_case "property matrix sync" `Quick
             test_property_matrix_sync;
         ] );

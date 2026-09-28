@@ -7,6 +7,9 @@ enum _NodeKind {
   column,
   grid,
   stack,
+  edgeInset,
+  overlay,
+  viewThatFits,
   panel,
   card,
   alert,
@@ -75,6 +78,9 @@ enum _NodeKind {
   toast,
   toolbar,
   statusBar,
+  link,
+  fileImage,
+  filePreview,
 }
 
 _NodeKind _decodeNodeKind(Object? value) {
@@ -87,6 +93,9 @@ _NodeKind _decodeNodeKind(Object? value) {
     'column' => _NodeKind.column,
     'grid' => _NodeKind.grid,
     'stack' => _NodeKind.stack,
+    'edge-inset' => _NodeKind.edgeInset,
+    'overlay' => _NodeKind.overlay,
+    'view-that-fits' => _NodeKind.viewThatFits,
     'panel' => _NodeKind.panel,
     'card' => _NodeKind.card,
     'alert' => _NodeKind.alert,
@@ -155,6 +164,9 @@ _NodeKind _decodeNodeKind(Object? value) {
     'toast' => _NodeKind.toast,
     'toolbar' => _NodeKind.toolbar,
     'status-bar' => _NodeKind.statusBar,
+    'link' => _NodeKind.link,
+    'file-image' => _NodeKind.fileImage,
+    'file-preview' => _NodeKind.filePreview,
     _ => throw const LUIBackendException('unknown node kind'),
   };
 }

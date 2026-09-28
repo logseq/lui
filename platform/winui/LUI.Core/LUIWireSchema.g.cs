@@ -13,6 +13,9 @@ namespace LUI
         Column,
         Grid,
         Stack,
+        EdgeInset,
+        Overlay,
+        ViewThatFits,
         Panel,
         Card,
         Alert,
@@ -81,6 +84,9 @@ namespace LUI
         Toast,
         Toolbar,
         StatusBar,
+        Link,
+        FileImage,
+        FilePreview,
     }
 
     public enum LUIProperty
@@ -163,6 +169,12 @@ namespace LUI
         StepValue,
         Detents,
         Sizing,
+        PathValue,
+        UrlValue,
+        MaxPixelSize,
+        EdgeValue,
+        Visible,
+        AlignmentValue,
     }
 
     public static class LUIWireSchema
@@ -175,6 +187,9 @@ namespace LUI
             { "column", LUINodeKind.Column },
             { "grid", LUINodeKind.Grid },
             { "stack", LUINodeKind.Stack },
+            { "edge-inset", LUINodeKind.EdgeInset },
+            { "overlay", LUINodeKind.Overlay },
+            { "view-that-fits", LUINodeKind.ViewThatFits },
             { "panel", LUINodeKind.Panel },
             { "card", LUINodeKind.Card },
             { "alert", LUINodeKind.Alert },
@@ -243,6 +258,9 @@ namespace LUI
             { "toast", LUINodeKind.Toast },
             { "toolbar", LUINodeKind.Toolbar },
             { "status-bar", LUINodeKind.StatusBar },
+            { "link", LUINodeKind.Link },
+            { "file-image", LUINodeKind.FileImage },
+            { "file-preview", LUINodeKind.FilePreview },
         };
 
         private static readonly Dictionary<string, LUIProperty> PropertiesByWireName =
@@ -326,6 +344,12 @@ namespace LUI
             { "step", LUIProperty.StepValue },
             { "detents", LUIProperty.Detents },
             { "sizing", LUIProperty.Sizing },
+            { "path", LUIProperty.PathValue },
+            { "url", LUIProperty.UrlValue },
+            { "max-pixel-size", LUIProperty.MaxPixelSize },
+            { "edge", LUIProperty.EdgeValue },
+            { "visible", LUIProperty.Visible },
+            { "alignment", LUIProperty.AlignmentValue },
         };
 
         public static string WireName(this LUINodeKind kind) => kind switch
@@ -335,6 +359,9 @@ namespace LUI
             LUINodeKind.Column => "column",
             LUINodeKind.Grid => "grid",
             LUINodeKind.Stack => "stack",
+            LUINodeKind.EdgeInset => "edge-inset",
+            LUINodeKind.Overlay => "overlay",
+            LUINodeKind.ViewThatFits => "view-that-fits",
             LUINodeKind.Panel => "panel",
             LUINodeKind.Card => "card",
             LUINodeKind.Alert => "alert",
@@ -403,6 +430,9 @@ namespace LUI
             LUINodeKind.Toast => "toast",
             LUINodeKind.Toolbar => "toolbar",
             LUINodeKind.StatusBar => "status-bar",
+            LUINodeKind.Link => "link",
+            LUINodeKind.FileImage => "file-image",
+            LUINodeKind.FilePreview => "file-preview",
             _ => "unknown",
         };
 
@@ -419,6 +449,9 @@ namespace LUI
             LUINodeKind.Column or
             LUINodeKind.Grid or
             LUINodeKind.Stack or
+            LUINodeKind.EdgeInset or
+            LUINodeKind.Overlay or
+            LUINodeKind.ViewThatFits or
             LUINodeKind.Panel or
             LUINodeKind.Card or
             LUINodeKind.Alert or
@@ -454,7 +487,8 @@ namespace LUI
             LUINodeKind.Drawer or
             LUINodeKind.Sheet or
             LUINodeKind.Toast or
-            LUINodeKind.Toolbar => true,
+            LUINodeKind.Toolbar or
+            LUINodeKind.Link => true,
             _ => false,
         };
 
@@ -538,6 +572,12 @@ namespace LUI
             LUIProperty.StepValue => "step",
             LUIProperty.Detents => "detents",
             LUIProperty.Sizing => "sizing",
+            LUIProperty.PathValue => "path",
+            LUIProperty.UrlValue => "url",
+            LUIProperty.MaxPixelSize => "max-pixel-size",
+            LUIProperty.EdgeValue => "edge",
+            LUIProperty.Visible => "visible",
+            LUIProperty.AlignmentValue => "alignment",
             _ => "unknown",
         };
 
@@ -562,6 +602,7 @@ namespace LUI
             { LUINodeKind.BottomTabs, Set(LUIProperty.AccessibilityLabel, LUIProperty.StyleClass, LUIProperty.GrowValue, LUIProperty.WidthValue, LUIProperty.HeightValue, LUIProperty.MinWidth, LUIProperty.MaxWidth, LUIProperty.MinHeight, LUIProperty.MaxHeight) },
             { LUINodeKind.BottomTab, Set(LUIProperty.TitleValue, LUIProperty.InlineIconName, LUIProperty.Selected, LUIProperty.Enabled, LUIProperty.PressEnabled) },
             { LUINodeKind.MenuTrigger, Set(LUIProperty.TextValue, LUIProperty.InlineIconName, LUIProperty.AccessibilityLabel, LUIProperty.Enabled, LUIProperty.ForegroundValue, LUIProperty.StyleClass) },
+            { LUINodeKind.FilePreview, Set(LUIProperty.PathValue) },
         };
 
         public static readonly IReadOnlyDictionary<LUINodeKind, IReadOnlySet<LUIProperty>> ExtraMatrix =
