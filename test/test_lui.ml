@@ -996,8 +996,18 @@ let test_edge_overlay_fit_rules () =
     (property_supported Overlay AlignmentValue);
   Alcotest.(check bool) "alignment lands on overlay children" true
     (property_supported Text AlignmentValue);
+  (* Restrictive kinds still carry the hint so e.g. an aligned
+     menu-trigger overlay child validates. *)
+  Alcotest.(check bool) "alignment lands on restrictive kinds" true
+    (property_supported MenuTrigger AlignmentValue);
   Alcotest.(check bool) "root drops alignment" false
     (property_supported Root AlignmentValue);
+  Alcotest.(check bool) "edge-inset takes foreground" true
+    (property_supported EdgeInset ForegroundValue);
+  Alcotest.(check bool) "overlay takes foreground" true
+    (property_supported Overlay ForegroundValue);
+  Alcotest.(check bool) "view-that-fits takes foreground" true
+    (property_supported ViewThatFits ForegroundValue);
   Alcotest.(check bool) "edge accepts top" true
     (property_value_supported EdgeValue (StringValue "top"));
   Alcotest.(check bool) "edge accepts leading" true
@@ -1030,6 +1040,8 @@ let test_property_matrix_sync () =
             | Some allowed ->
               let expected =
                 property = Lui_protocol.AccessibilityIdentifier
+                || (kind <> Lui_protocol.Root
+                    && property = Lui_protocol.AlignmentValue)
                 || List.mem property allowed
               in
               Alcotest.(check bool)

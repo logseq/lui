@@ -451,6 +451,9 @@ namespace LUI
                         case LUINodeKind.Stack:
                         case LUINodeKind.Scroll:
                         case LUINodeKind.Avatar:
+                        case LUINodeKind.EdgeInset:
+                        case LUINodeKind.Overlay:
+                        case LUINodeKind.ViewThatFits:
                         case LUINodeKind.Text:
                         case LUINodeKind.Heading:
                         case LUINodeKind.Paragraph:
@@ -663,8 +666,8 @@ namespace LUI
                 case LUIProperty.EdgeValue:
                 case LUIProperty.Visible:
                     return kind == LUINodeKind.EdgeInset;
-                // Per-child position hint for overlay content (and the
-                // overlay's own default); inert elsewhere.
+                // AlignmentValue is admitted ahead of the restrictive matrix
+                // in PropertySupported.
                 case LUIProperty.AlignmentValue:
                     return kind != LUINodeKind.Root;
                 case LUIProperty.TextValue:
@@ -760,6 +763,11 @@ namespace LUI
             LUINodeKind kind, LUIProperty property)
         {
             if (property == LUIProperty.AccessibilityIdentifier) return true;
+            // Position hint honored on overlay children and the overlay
+            // itself; admitted before the restrictive matrix so e.g. an
+            // aligned menu-trigger child still carries it. Inert elsewhere.
+            if (property == LUIProperty.AlignmentValue)
+                return kind != LUINodeKind.Root;
             // The restrictive arms mirror schema/components.json
             // kindProperties; test/property_matrix asserts the two stay in
             // sync. LUIWireSchema.RestrictiveMatrix is generated from it.

@@ -2,8 +2,7 @@ import QtQuick
 
 // Wire kind: edge-inset — children after the first are pinned to `edge`
 // while the first child fills the view beneath them. `visible` hides the
-// pinned children in place; `gap` is the spacing between content and the
-// pinned children (here: pinned children simply overlay at the edge).
+// pinned region in place; `gap` insets it from the pinned edge.
 Item {
     id: edgeInset
     required property var node
@@ -12,44 +11,53 @@ Item {
     readonly property string edge: props.edge || "top"
     readonly property bool pinnedVisible: props.visible !== false
     readonly property bool sideEdge: edge === "leading" || edge === "trailing"
+    readonly property real gap: props.gap || 0
+    readonly property var pinnedChildren: node ? node.children.slice(1) : []
 
-    implicitWidth: rep.itemAt(0) ? rep.itemAt(0).implicitWidth : 0
-    implicitHeight: rep.itemAt(0) ? rep.itemAt(0).implicitHeight : 0
+    implicitWidth: content.implicitWidth
+    implicitHeight: content.implicitHeight
 
-    Repeater {
-        id: rep
-        model: edgeInset.node ? edgeInset.node.children : []
-        delegate: LuiNodeView {
-            required property var modelData
-            required property int index
-            node: modelData
-            visible: index === 0 || edgeInset.pinnedVisible
-        }
-        onItemAdded: function(index, item) {
-            if (index === 0) {
-                item.anchors.fill = edgeInset
-                return
-            }
-            switch (edgeInset.edge) {
-            case "bottom":
-                item.anchors.bottom = edgeInset.bottom
-                item.anchors.left = edgeInset.left
-                item.anchors.right = edgeInset.right
-                break
-            case "leading":
-                item.anchors.left = edgeInset.left
-                item.anchors.top = edgeInset.top
-                item.anchors.bottom = edgeInset.bottom
-                break
-            case "trailing":
-                item.anchors.right = edgeInset.right
-                item.anchors.top = edgeInset.top
-                item.anchors.bottom = edgeInset.bottom
-                break
-            default:
-                item.anchors.top = edgeInset.top
-                item.anchors.left = edgeInset.left
-                item.anchors.right = edgeInset.right
+    LuiNodeView {
+        id: content
+        anchors.fill: parent
+        node: edgeInset.node && edgeInset.node.children.length > 0
+              ? edgeInset.node.children[0] : null
+    }
+
+    // Pinned children group into one region so they stack across the edge
+    // instead of overlapping (column under top/bottom, row along the sides,
+    // matching the Apple backend).
+    Item {
+        id: pinnedRegion
+        visible: edgeInset.pinnedVisible
+        implicitWidth: pinnedFlow.implicitWidth
+        implicitHeight: pinnedFlow.implicitHeight
+
+        // Bound (not imperative) anchors so an `edge` change re-anchors;
+        // `undefined` clears the anchor.
+        anchors.top: edgeInset.edge === "top" || edgeInset.sideEdge
+                     ? parent.top : undefined
+        anchors.bottom: edgeInset.edge === "bottom" || edgeInset.sideEdge
+                        ? parent.bottom : undefined
+        anchors.left: !edgeInset.sideEdge || edgeInset.edge === "leading"
+                      ? parent.left : undefined
+        anchors.right: !edgeInset.sideEdge || edgeInset.edge === "trailing"
+                       ? parent.right : undefined
+        anchors.topMargin: edgeInset.edge === "top" ? edgeInset.gap : 0
+        anchors.bottomMargin: edgeInset.edge === "bottom" ? edgeInset.gap : 0
+        anchors.leftMargin: edgeInset.edge === "leading" ? edgeInset.gap : 0
+        anchors.rightMargin: edgeInset.edge === "trailing" ? edgeInset.gap : 0
+
+        Grid {
+            id: pinnedFlow
+            flow: edgeInset.sideEdge ? Grid.LeftToRight : Grid.TopToBottom
+            columns: edgeInset.sideEdge ? edgeInset.pinnedChildren.length : 1
+            Repeater {
+                model: edgeInset.pinnedChildren
+                delegate: LuiNodeView {
+                    required property var modelData
+                    node: modelData
+                }
             }
         }
     }

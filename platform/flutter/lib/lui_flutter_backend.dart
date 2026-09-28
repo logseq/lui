@@ -1949,36 +1949,41 @@ final class LUIFlutterBackend {
       );
     }
 
-    static Alignment? _overlayAlignment(String? name) => switch (name) {
-      'top-leading' => Alignment.topLeft,
-      'top' => Alignment.topCenter,
-      'top-trailing' => Alignment.topRight,
-      'leading' => Alignment.centerLeft,
-      'trailing' => Alignment.centerRight,
-      'bottom-leading' => Alignment.bottomLeft,
-      'bottom' => Alignment.bottomCenter,
-      'bottom-trailing' => Alignment.bottomRight,
-      _ => null,
-    };
-
     /// Pins the children after the first to `edge` while the first child
-    /// fills the view beneath them.
+    /// fills the view beneath them. Pinned children group into a row across
+    /// side edges and a column under top/bottom; `gap` insets the group
+    /// from the pinned edge.
     Widget edgeInset() {
       final visible = state.properties['visible'] as bool? ?? true;
-      final alignment = switch (state.properties['edge'] as String? ?? 'top') {
-        'bottom' => Alignment.bottomCenter,
-        'leading' => Alignment.centerLeft,
-        'trailing' => Alignment.centerRight,
-        _ => Alignment.topCenter,
-      };
+      final gap = (state.properties['gap'] as num?)?.toDouble() ?? 0;
+      final edge = state.properties['edge'] as String? ?? 'top';
+      final sideEdge = edge == 'leading' || edge == 'trailing';
+      final pinned = children.skip(1).toList(growable: false);
       return Stack(
         children: [
           if (children.isNotEmpty) children.first,
-          if (visible)
-            for (final pinned in children.skip(1))
-              Positioned.fill(
-                child: Align(alignment: alignment, child: pinned),
+          if (visible && pinned.isNotEmpty)
+            Positioned.fill(
+              child: Padding(
+                padding: switch (edge) {
+                  'bottom' => EdgeInsetsDirectional.only(bottom: gap),
+                  'leading' => EdgeInsetsDirectional.only(start: gap),
+                  'trailing' => EdgeInsetsDirectional.only(end: gap),
+                  _ => EdgeInsetsDirectional.only(top: gap),
+                },
+                child: Align(
+                  alignment: switch (edge) {
+                    'bottom' => AlignmentDirectional.bottomCenter,
+                    'leading' => AlignmentDirectional.centerStart,
+                    'trailing' => AlignmentDirectional.centerEnd,
+                    _ => AlignmentDirectional.topCenter,
+                  },
+                  child: sideEdge
+                      ? Row(mainAxisSize: MainAxisSize.min, children: pinned)
+                      : Column(mainAxisSize: MainAxisSize.min, children: pinned),
+                ),
               ),
+            ),
         ],
       );
     }
@@ -1989,7 +1994,11 @@ final class LUIFlutterBackend {
     Widget overlay() {
       final fallback =
           _overlayAlignment(state.properties['alignment'] as String?) ??
-          Alignment.center;
+          AlignmentDirectional.center;
+      // `children` skips the context-menu child, so index the visible ids.
+      final overlayIDs = state.children
+          .where((child) => child != contextMenuID)
+          .toList(growable: false);
       return Stack(
         children: [
           if (children.isNotEmpty) children.first,
@@ -1998,7 +2007,7 @@ final class LUIFlutterBackend {
               child: Align(
                 alignment:
                     _overlayAlignment(
-                      _states[state.children[index]]?.properties['alignment']
+                      _states[overlayIDs[index]]?.properties['alignment']
                           as String?,
                     ) ??
                     fallback,
@@ -3531,6 +3540,20 @@ final class LUIFlutterBackend {
     }
   }
 
+  /// Direction-aware nine-point anchor; 'leading'/'trailing' follow the
+  /// ambient Directionality (matching SwiftUI's semantic edges).
+  static AlignmentGeometry? _overlayAlignment(String? name) => switch (name) {
+    'top-leading' => AlignmentDirectional.topStart,
+    'top' => AlignmentDirectional.topCenter,
+    'top-trailing' => AlignmentDirectional.topEnd,
+    'leading' => AlignmentDirectional.centerStart,
+    'trailing' => AlignmentDirectional.centerEnd,
+    'bottom-leading' => AlignmentDirectional.bottomStart,
+    'bottom' => AlignmentDirectional.bottomCenter,
+    'bottom-trailing' => AlignmentDirectional.bottomEnd,
+    _ => null,
+  };
+
   static bool _supports(_NodeKind kind, String property, Object? value) {
     if (property == 'accessibility-identifier') return value is String;
     if (kind == _NodeKind.root) {
@@ -3540,6 +3563,13 @@ final class LUIFlutterBackend {
               _themeModes.contains(value));
     }
     if (kind == _NodeKind.contextMenu) return false;
+    // Position hint honored on overlay children and the overlay itself;
+    // admitted before the restrictive kinds below. Inert elsewhere.
+    if (property == 'alignment') {
+      return kind != _NodeKind.root &&
+          value is String &&
+          _overlayAlignment(value) != null;
+    }
     if (kind == _NodeKind.accordion) {
       return switch (property) {
         'text' => value is String,
@@ -3838,21 +3868,9 @@ final class LUIFlutterBackend {
             const {'top', 'bottom', 'leading', 'trailing'}.contains(value) &&
             kind == _NodeKind.edgeInset,
       'visible' => value is bool && kind == _NodeKind.edgeInset,
-      // Per-child position hint for overlay content (and the overlay's own
-      // default); inert on other kinds, like container-relative-frame.
+      // 'alignment' is admitted ahead of the restrictive kinds above.
       'alignment' =>
-        value is String &&
-            const {
-              'top-leading',
-              'top',
-              'top-trailing',
-              'leading',
-              'center',
-              'trailing',
-              'bottom-leading',
-              'bottom',
-              'bottom-trailing',
-            }.contains(value),
+        value is String && _overlayAlignment(value) != null,
       'tooltip-delay' =>
         value is int &&
             value >= 0 &&
@@ -3888,7 +3906,10 @@ final class LUIFlutterBackend {
             !kind.isModalSurface,
       'foreground' =>
         value is String &&
-            (kind == _NodeKind.text ||
+            (kind == _NodeKind.edgeInset ||
+                kind == _NodeKind.overlay ||
+                kind == _NodeKind.viewThatFits ||
+                kind == _NodeKind.text ||
                 kind == _NodeKind.heading ||
                 kind == _NodeKind.paragraph ||
                 kind == _NodeKind.label ||
@@ -4796,6 +4817,8 @@ final class LUIFlutterBackend {
       'autocomplete-row-background' => colors.surfaceContainerHigh,
       'glass' => colors.surface.withValues(alpha: 0.75),
       'glass-fallback' => colors.surface.withValues(alpha: 0.9),
+      // Apple Material.bar approximation: mostly-opaque theme surface.
+      'bar' => colors.surface.withValues(alpha: 0.85),
       'primary' => colors.primary,
       'primary-foreground' => colors.onPrimary,
       'accent' => foreground ? colors.primary : colors.secondaryContainer,

@@ -698,6 +698,10 @@ struct LUIRetainedTree {
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         if property == .accessibilityIdentifier { return true }
+        // Position hint honored on overlay children and the overlay itself;
+        // admitted before the restrictive matrix so e.g. an aligned
+        // menu-trigger child still carries it. Inert elsewhere.
+        if property == .alignment { return kind != .root }
         // Restrictive per-kind allow-lists and additive extras come from
         // schema/components.json via LUISchemaMatrix; kinds absent from the
         // restrictive table fall back to the shared structural rules below.
@@ -735,6 +739,8 @@ struct LUIRetainedTree {
             kind == .row || kind == .column || kind == .grid || kind == .box ||
                 kind == .panel || kind == .card || kind == .stack ||
                 kind == .scroll || kind == .avatar ||
+                kind == .edgeInset || kind == .overlay ||
+                kind == .viewThatFits ||
                 kind == .text || kind == .heading || kind == .paragraph ||
                 kind == .label || kind == .button || kind == .toggleButton ||
                 isTextEntry(kind) || kind == .checkbox || kind == .toggle ||
@@ -838,9 +844,8 @@ struct LUIRetainedTree {
         case .treeLevel, .expanded: isTreeRow(kind)
         case .active, .title, .description, .meta, .indicator, .connector: false
         case .edge, .visible: kind == .edgeInset
-        // Per-child position hint for `overlay` content (and the overlay's
-        // own default); inert on other kinds, like container-relative-frame.
-        case .alignment: true
+        // `.alignment` is admitted ahead of the restrictive matrix above.
+        case .alignment: kind != .root
         }
     }
 

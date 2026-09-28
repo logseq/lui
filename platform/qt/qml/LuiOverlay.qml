@@ -11,51 +11,6 @@ Item {
     implicitWidth: rep.itemAt(0) ? rep.itemAt(0).implicitWidth : 0
     implicitHeight: rep.itemAt(0) ? rep.itemAt(0).implicitHeight : 0
 
-    function alignmentOf(item) {
-        var childProps = item && item.node ? item.node.properties : null
-        return (childProps && childProps.alignment) || props.alignment ||
-               "center"
-    }
-
-    function anchorOverlay(item) {
-        switch (alignmentOf(item)) {
-        case "top-leading":
-            item.anchors.top = overlay.top
-            item.anchors.left = overlay.left
-            break
-        case "top":
-            item.anchors.top = overlay.top
-            item.anchors.horizontalCenter = overlay.horizontalCenter
-            break
-        case "top-trailing":
-            item.anchors.top = overlay.top
-            item.anchors.right = overlay.right
-            break
-        case "leading":
-            item.anchors.left = overlay.left
-            item.anchors.verticalCenter = overlay.verticalCenter
-            break
-        case "trailing":
-            item.anchors.right = overlay.right
-            item.anchors.verticalCenter = overlay.verticalCenter
-            break
-        case "bottom-leading":
-            item.anchors.bottom = overlay.bottom
-            item.anchors.left = overlay.left
-            break
-        case "bottom":
-            item.anchors.bottom = overlay.bottom
-            item.anchors.horizontalCenter = overlay.horizontalCenter
-            break
-        case "bottom-trailing":
-            item.anchors.bottom = overlay.bottom
-            item.anchors.right = overlay.right
-            break
-        default:
-            item.anchors.centerIn = overlay
-        }
-    }
-
     Repeater {
         id: rep
         model: overlay.node ? overlay.node.children : []
@@ -63,13 +18,37 @@ Item {
             required property var modelData
             required property int index
             node: modelData
-        }
-        onItemAdded: function(index, item) {
-            if (index === 0) {
-                item.anchors.fill = overlay
-            } else {
-                overlay.anchorOverlay(item)
+
+            readonly property bool _isBase: index === 0
+            // Own `alignment` hint, falling back to the overlay's.
+            readonly property string _align: {
+                var p = node ? node.properties : null
+                return (p && p.alignment) || overlay.props.alignment ||
+                       "center"
             }
+            readonly property bool _top: !_isBase &&
+                (_align === "top-leading" || _align === "top" ||
+                 _align === "top-trailing")
+            readonly property bool _bottom: !_isBase &&
+                (_align === "bottom-leading" || _align === "bottom" ||
+                 _align === "bottom-trailing")
+            readonly property bool _leading: !_isBase &&
+                (_align === "top-leading" || _align === "leading" ||
+                 _align === "bottom-leading")
+            readonly property bool _trailing: !_isBase &&
+                (_align === "top-trailing" || _align === "trailing" ||
+                 _align === "bottom-trailing")
+
+            // Bound anchors re-evaluate when `alignment` changes;
+            // `undefined` clears the anchor. The base child fills.
+            anchors.top: _isBase || _top ? overlay.top : undefined
+            anchors.bottom: _isBase || _bottom ? overlay.bottom : undefined
+            anchors.left: _isBase || _leading ? overlay.left : undefined
+            anchors.right: _isBase || _trailing ? overlay.right : undefined
+            anchors.horizontalCenter: !_isBase && !_leading && !_trailing
+                                      ? overlay.horizontalCenter : undefined
+            anchors.verticalCenter: !_isBase && !_top && !_bottom
+                                    ? overlay.verticalCenter : undefined
         }
     }
 }

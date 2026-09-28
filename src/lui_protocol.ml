@@ -608,6 +608,7 @@ let common_property_supported kind property =
   | ForegroundValue ->
     (match kind with
     | Row | Column | Grid | Box | Panel | Card | Stack | Scroll | Avatar
+    | EdgeInset | Overlay | ViewThatFits
     | Text | Heading | Paragraph | Label | Button | ToggleButton | TextField
     | SecureField | Input | SearchField | Textarea | Checkbox | Toggle | Radio
     | Slider | Spinner | Icon | Select | Combobox | DropdownMenu | MenuItem
@@ -618,6 +619,10 @@ let common_property_supported kind property =
     (not (modal_surface kind)) && kind <> Tooltip
   | ContainerRelativeFrameValue | ContainerRelativeFrameInset ->
     kind <> Root && not (modal_surface kind)
+  (* Position hint honored on [overlay] children and on [overlay] itself;
+     inert elsewhere. [property_supported] also admits it ahead of the
+     restrictive arms so aligned children of restrictive kinds validate. *)
+  | AlignmentValue -> kind <> Root
   | StyleClass -> kind <> Tooltip
   | AccessibilityLabel ->
     kind = Button
@@ -802,12 +807,13 @@ let common_property_supported kind property =
     || kind = EdgeInset
     || horizontal_container kind
   | EdgeValue | Visible -> kind = EdgeInset
-  (* Honored on [overlay] children (position hint) and on [overlay] itself
-     as the default; inert elsewhere, like [container-relative-frame]. *)
-  | AlignmentValue -> kind <> Root
 
 let property_supported kind property =
   if property = AccessibilityIdentifier then true
+  (* Position hint honored on [overlay] children and on [overlay] itself;
+     admitted before the restrictive arms so e.g. an aligned [menu_trigger]
+     child still carries it. Inert elsewhere, like [container-relative-frame]. *)
+  else if property = AlignmentValue then kind <> Root
   else
     (* The restrictive arms below mirror schema/components.json
        kindProperties; test/property_matrix asserts the two stay in sync. *)

@@ -415,6 +415,8 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                  {NodeKind::Row, NodeKind::Column, NodeKind::Grid,
                   NodeKind::Box, NodeKind::Panel, NodeKind::Card,
                   NodeKind::Stack, NodeKind::Scroll, NodeKind::Avatar,
+                  NodeKind::EdgeInset, NodeKind::Overlay,
+                  NodeKind::ViewThatFits,
                   NodeKind::Text, NodeKind::Heading, NodeKind::Paragraph,
                   NodeKind::Label, NodeKind::Button, NodeKind::ToggleButton,
                   NodeKind::TextField, NodeKind::SecureField, NodeKind::Input,
@@ -594,8 +596,8 @@ bool commonPropertySupported(NodeKind kind, Property property) {
   case Property::EdgeValue:
   case Property::Visible:
     return kind == NodeKind::EdgeInset;
-  // Per-child position hint for overlay content (and the overlay's own
-  // default); inert on other kinds, like container-relative-frame.
+  // `alignment` is admitted ahead of the restrictive arms in
+  // propertySupported below.
   case Property::AlignmentValue:
     return kind != NodeKind::Root;
   }
@@ -606,6 +608,10 @@ bool commonPropertySupported(NodeKind kind, Property property) {
 
 bool propertySupported(NodeKind kind, Property property) {
   if (property == Property::AccessibilityIdentifier) return true;
+  // Position hint honored on overlay children and the overlay itself;
+  // admitted before the restrictive arms so e.g. an aligned menu-trigger
+  // child still carries it. Inert elsewhere.
+  if (property == Property::AlignmentValue) return kind != NodeKind::Root;
   // The restrictive arms below mirror schema/components.json kindProperties.
   switch (kind) {
   case NodeKind::Root:
