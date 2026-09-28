@@ -388,6 +388,7 @@ namespace LUI.WinUI
         void SyncNumberStepper(LUINodeState state, LUISyncContext context)
         {
             if (Control is not NumberBox box) return;
+            box.Header = LUIPropertyApplier.Text(state);
             box.Minimum = LUIPropertyApplier.Prop(
                 state, LUIProperty.MinValue)?.AsFloat ?? 0.0;
             box.Maximum = LUIPropertyApplier.Prop(

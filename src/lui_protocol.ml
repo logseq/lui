@@ -1091,13 +1091,11 @@ let node_properties_supported kind properties =
         | Some (FloatValue value) -> is_finite value
         | _ -> false)
         &&
-        match
-          ( Property_map.find_opt MinValue properties,
-            Property_map.find_opt MaxValue properties )
-        with
-        | Some (FloatValue minimum), Some (FloatValue maximum) ->
-          minimum <= maximum
-        | _ -> true
+        (* min defaults to 0.0 and max is unbounded; compare endpoints after
+           those defaults so a lone negative max still fails. *)
+        let minimum = float_property properties MinValue 0.0 in
+        let maximum = float_property properties MaxValue Float.max_float in
+        minimum <= maximum
       else true)
   && (if kind = Tree || kind = Toolbar then
         string_property_nonempty properties AccessibilityLabel

@@ -1380,15 +1380,17 @@ namespace LUI
                 {
                     return false;
                 }
-                if (properties.TryGetValue(
-                        LUIProperty.MinValue,
-                        out LUIWireValue? minimum) &&
-                    properties.TryGetValue(
-                        LUIProperty.MaxValue,
-                        out LUIWireValue? maximum) &&
-                    minimum is LUIWireValue.Float minFloat &&
-                    maximum is LUIWireValue.Float maxFloat &&
-                    minFloat.Value > maxFloat.Value)
+                // min defaults to 0.0 and max is unbounded; compare the
+                // effective endpoints so a lone negative max still fails.
+                double stepperMinimum = properties.TryGetValue(
+                        LUIProperty.MinValue, out LUIWireValue? minimum) &&
+                    minimum is LUIWireValue.Float minFloat
+                        ? minFloat.Value : 0.0;
+                double stepperMaximum = properties.TryGetValue(
+                        LUIProperty.MaxValue, out LUIWireValue? maximum) &&
+                    maximum is LUIWireValue.Float maxFloat
+                        ? maxFloat.Value : double.MaxValue;
+                if (stepperMinimum > stepperMaximum)
                 {
                     return false;
                 }

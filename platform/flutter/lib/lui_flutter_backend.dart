@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -1595,23 +1596,31 @@ final class LUIFlutterBackend {
           (stepperState.properties['step'] as num?)?.toDouble() ?? 1.0;
       final current =
           (stepperState.properties['value'] as num?)?.toDouble() ?? 0.0;
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Flexible(child: Text(stepperState.properties['text'] as String? ?? '')),
-          IconButton(
-            icon: const Icon(Icons.remove),
-            onPressed: stepperEnabled
-                ? () => performValueChange(id, current - step)
-                : null,
-          ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: stepperEnabled
-                ? () => performValueChange(id, current + step)
-                : null,
-          ),
-        ],
+      final text = stepperState.properties['text'] as String? ?? '';
+      final a11yLabel =
+          stepperState.properties['accessibility-label'] as String? ?? text;
+      return Semantics(
+        label: a11yLabel,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(child: Text(text)),
+            IconButton(
+              icon: const Icon(Icons.remove),
+              tooltip: 'Decrease',
+              onPressed: stepperEnabled
+                  ? () => performValueChange(id, current - step)
+                  : null,
+            ),
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: 'Increase',
+              onPressed: stepperEnabled
+                  ? () => performValueChange(id, current + step)
+                  : null,
+            ),
+          ],
+        ),
       );
     }
 
@@ -4020,9 +4029,12 @@ final class LUIFlutterBackend {
         if (text.isEmpty && label.isEmpty) {
           throw const LUIBackendException('number-stepper requires a label');
         }
-        final minimum = state.properties['min'];
-        final maximum = state.properties['max'];
-        if (minimum is num && maximum is num && minimum > maximum) {
+        // min defaults to 0 and max is unbounded; compare the effective
+        // endpoints so a lone negative max still fails.
+        final minimum = (state.properties['min'] as num?)?.toDouble() ?? 0.0;
+        final maximum =
+            (state.properties['max'] as num?)?.toDouble() ?? double.maxFinite;
+        if (minimum > maximum) {
           throw const LUIBackendException(
             'number-stepper min must not exceed max',
           );
@@ -4824,6 +4836,27 @@ final class LUIFlutterBackend {
     };
   }
 
+  // Parses the `detents` prop into viewport-height fractions
+  // (`medium` = 0.5, `large` = 1.0, or a literal fraction in (0, 1]).
+  // Unknown tokens are ignored; returns null when nothing parses.
+  static List<double>? _sheetDetentFractions(String? detents) {
+    if (detents == null) return null;
+    final fractions = detents
+        .split(',')
+        .map((token) {
+          final trimmed = token.trim();
+          if (trimmed == 'medium') return 0.5;
+          if (trimmed == 'large') return 1.0;
+          final fraction = double.tryParse(trimmed);
+          return fraction != null && fraction > 0 && fraction <= 1
+              ? fraction
+              : null;
+        })
+        .nonNulls
+        .toList(growable: false);
+    return fractions.isEmpty ? null : fractions;
+  }
+
   Widget _modalSurface(BuildContext context, int node) {
     final state = _requireState(_states, node);
     final width = (state.properties['width'] as int?)?.toDouble();
@@ -4837,12 +4870,44 @@ final class LUIFlutterBackend {
           child: _modalSurfaceBody(context, state),
         ),
       ),
-      _NodeKind.sheet => SizedBox(
-        key: ValueKey('lui-sheet-surface-$node'),
-        width: width ?? double.infinity,
-        height: height,
-        child: SafeArea(child: _modalSurfaceBody(context, state)),
-      ),
+      _NodeKind.sheet => () {
+        // Approximate iOS presentation options: detents cap/choose the
+        // sheet height fraction (medium 0.5, large 1.0, or a literal
+        // fraction); sizing constrains width (form/fitted ~560px, page
+        // full width). The bottom sheet always opens at the first detent.
+        final size = MediaQuery.of(context).size;
+        final fractions = _sheetDetentFractions(
+          state.properties['detents'] as String?,
+        );
+        final detentMaxHeight = fractions == null
+            ? null
+            : size.height * fractions.reduce(math.max);
+        final sizingMaxWidth = switch (state.properties['sizing']) {
+          'form' || 'fitted' => 560.0,
+          _ => null,
+        };
+        Widget surface = SizedBox(
+          key: ValueKey('lui-sheet-surface-$node'),
+          width: width ?? double.infinity,
+          height: height ??
+              (fractions == null ? null : size.height * fractions.first),
+          child: SafeArea(child: _modalSurfaceBody(context, state)),
+        );
+        if (detentMaxHeight != null || sizingMaxWidth != null) {
+          surface = Align(
+            alignment: Alignment.bottomCenter,
+            heightFactor: 1.0,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: detentMaxHeight ?? double.infinity,
+                maxWidth: sizingMaxWidth ?? double.infinity,
+              ),
+              child: surface,
+            ),
+          );
+        }
+        return surface;
+      }(),
       _ => throw const LUIBackendException('node is not a modal surface'),
     };
   }

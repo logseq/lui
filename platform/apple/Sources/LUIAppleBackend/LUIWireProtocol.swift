@@ -944,11 +944,13 @@ struct LUIRetainedTree {
                       value.isFinite else {
                     throw invalid("number-stepper requires a finite value")
                 }
-                if case let .double(minimum)? = node.properties[.minValue],
-                   case let .double(maximum)? = node.properties[.maxValue] {
-                    guard minimum <= maximum else {
-                        throw invalid("number-stepper min must not exceed max")
-                    }
+                // min defaults to 0 and max is unbounded; compare the
+                // effective endpoints so a lone negative max still fails.
+                let minimum = node.properties[.minValue]?.doubleValue ?? 0.0
+                let maximum = node.properties[.maxValue]?.doubleValue
+                    ?? .greatestFiniteMagnitude
+                guard minimum <= maximum else {
+                    throw invalid("number-stepper min must not exceed max")
                 }
             }
             if node.kind == .slider || node.kind == .progress {

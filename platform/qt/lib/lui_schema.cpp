@@ -5,6 +5,7 @@
 #include <QSet>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace LUI {
 
@@ -952,12 +953,15 @@ bool nodePropertiesSupported(NodeKind kind, const QVariantMap &properties) {
         !stringPropertyNonempty(properties, "accessibility-label")) {
       return false;
     }
+    // min defaults to 0 and max is unbounded; compare the effective
+    // endpoints so a lone negative max still fails.
     const QVariant minimum = properties.value(QStringLiteral("min"));
     const QVariant maximum = properties.value(QStringLiteral("max"));
-    if (isNumeric(minimum) && isNumeric(maximum) &&
-        minimum.toDouble() > maximum.toDouble()) {
-      return false;
-    }
+    const double minimumValue =
+        isNumeric(minimum) ? minimum.toDouble() : 0.0;
+    const double maximumValue = isNumeric(maximum)
+        ? maximum.toDouble() : std::numeric_limits<double>::max();
+    if (minimumValue > maximumValue) return false;
   }
   if (kind == NodeKind::Tree || kind == NodeKind::Toolbar) {
     if (!stringPropertyNonempty(properties, "accessibility-label")) {
