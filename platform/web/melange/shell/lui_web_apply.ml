@@ -362,8 +362,17 @@ let apply_move_child renderer previous_nodes parent child index =
     Lui_web_position.position_tooltip renderer child;
   Lui_web_focus.restore_focus renderer focused
 
-let apply_set_prop renderer node property value =
+(* DOM apply replays ops against the post-commit store, so a property
+   write for a node dropped in the same batch still resolves through the
+   pre-batch mirror: the element is still attached at that point in the
+   op stream. *)
+let node_record renderer previous_nodes node =
   match Store.node renderer.web_store node with
+  | Some current -> Some current
+  | None -> prev_node previous_nodes node
+
+let apply_set_prop renderer previous_nodes node property value =
+  match node_record renderer previous_nodes node with
   | Some current -> (
       match Store.standard_kind current with
       | Some kind ->
@@ -373,8 +382,8 @@ let apply_set_prop renderer node property value =
       | None -> invalid_arg "standard property targets extension node")
   | None -> invalid_arg "unknown DOM node"
 
-let apply_remove_prop renderer node property =
-  (match Store.node renderer.web_store node with
+let apply_remove_prop renderer previous_nodes node property =
+  (match node_record renderer previous_nodes node with
    | Some current -> (
        match Store.standard_kind current with
        | Some kind ->
@@ -394,12 +403,14 @@ let apply_dom_op renderer previous_nodes operation =
       Ext.cleanup_extension_node renderer previous_nodes node;
       cleanup_node renderer node
   | SetProp (node, property, value) ->
-      apply_set_prop renderer node property value
-  | RemoveProp (node, property) -> apply_remove_prop renderer node property
+      apply_set_prop renderer previous_nodes node property value
+  | RemoveProp (node, property) ->
+      apply_remove_prop renderer previous_nodes node property
   | SetExtensionProp (node, property, value) ->
-      Ext.apply_extension_property renderer node property value
+      Ext.apply_extension_property renderer previous_nodes node property
+        value
   | RemoveExtensionProp (node, property) ->
-      Ext.remove_extension_property renderer node property
+      Ext.remove_extension_property renderer previous_nodes node property
   | InsertChild (parent, child, index) ->
       apply_insert_child renderer parent child index
   | RemoveChild (parent, child) ->

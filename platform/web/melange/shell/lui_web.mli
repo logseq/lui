@@ -28,8 +28,14 @@ val set_event_handler : web_renderer -> (event -> bool) -> bool
 val extension_adapter : web_renderer -> string -> web_extension_adapter
 val extension_platform_node : web_renderer -> int -> string -> web_node
 val apply_extension_property :
-  web_renderer -> int -> string -> wire_value -> unit
-val remove_extension_property : web_renderer -> int -> string -> unit
+  web_renderer ->
+  (int, web_node retained_node) Hashtbl.t ->
+  int ->
+  string ->
+  wire_value ->
+  unit
+val remove_extension_property :
+  web_renderer -> (int, web_node retained_node) Hashtbl.t -> int -> string -> unit
 val cleanup_extension_node :
   web_renderer -> (int, web_node retained_node) Hashtbl.t -> int -> unit
 

@@ -19,8 +19,15 @@ let extension_platform_node renderer node identifier =
   in
   adapter.web_extension_create node renderer.web_document emit
 
-let apply_extension_property renderer node property value =
+(* See Lui_web_apply.node_record: property ops for a node dropped earlier
+   in the same batch resolve through the pre-batch mirror. *)
+let node_record renderer previous_nodes node =
   match Store.node renderer.web_store node with
+  | Some current -> Some current
+  | None -> Hashtbl.find_opt previous_nodes node
+
+let apply_extension_property renderer previous_nodes node property value =
+  match node_record renderer previous_nodes node with
   | Some current -> (
       match Store.extension_identity current with
       | Some (identifier, _) ->
@@ -29,8 +36,8 @@ let apply_extension_property renderer node property value =
       | None -> invalid_arg "extension property targets standard DOM node")
   | None -> invalid_arg "unknown DOM node"
 
-let remove_extension_property renderer node property =
-  match Store.node renderer.web_store node with
+let remove_extension_property renderer previous_nodes node property =
+  match node_record renderer previous_nodes node with
   | Some current -> (
       match Store.extension_identity current with
       | Some (identifier, _) ->
