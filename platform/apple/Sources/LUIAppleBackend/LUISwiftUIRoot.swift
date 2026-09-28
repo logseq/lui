@@ -151,9 +151,14 @@ public struct LUISwiftUIRoot: View {
 
     private var filePreviewBinding: Binding<URL?> {
         Binding(
-            get: { backend.filePreviewPresentation.item?.url },
+            get: {
+                guard let item = backend.filePreviewPresentation.item,
+                      item.rootID == rootID else { return nil }
+                return item.url
+            },
             set: { url in
                 guard url == nil,
+                      backend.filePreviewPresentation.item?.rootID == rootID,
                       let nodeID = backend.filePreviewPresentation
                         .dismissFromPresentation() else { return }
                 try? backend.performDismiss(node: nodeID)
@@ -191,9 +196,14 @@ public struct LUIModalHostModifier: ViewModifier {
 
     private var filePreviewBinding: Binding<URL?> {
         Binding(
-            get: { backend.filePreviewPresentation.item?.url },
+            get: {
+                guard let item = backend.filePreviewPresentation.item,
+                      item.rootID == rootID else { return nil }
+                return item.url
+            },
             set: { url in
                 guard url == nil,
+                      backend.filePreviewPresentation.item?.rootID == rootID,
                       let nodeID = backend.filePreviewPresentation
                         .dismissFromPresentation() else { return }
                 try? backend.performDismiss(node: nodeID)

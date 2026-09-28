@@ -159,6 +159,14 @@ let create_select_node renderer =
       ("aria-expanded", "false") ]
     [ Util.element document "span" "lui-select-value" [] [] ]
 
+let create_link_node renderer =
+  let document = renderer.web_document in
+  Util.element document "a" "lui-link"
+    [ ("data-icon-placement", "leading"); ("rel", "noopener noreferrer") ]
+    [ Util.element document "span" "lui-link-icon lui-icon"
+        [ ("aria-hidden", "true") ] [];
+      Util.element document "span" "lui-link-content" [] [] ]
+
 let create_menu_item_node renderer =
   let document = renderer.web_document in
   let hidden = [ ("aria-hidden", "true") ] in
@@ -262,7 +270,6 @@ let simple_node_tag kind =
   | Slider -> "input"
   | Divider -> "hr"
   | Tooltip -> "span"
-  | Link -> "a"
   | _ -> "div"
 
 let simple_node_attributes kind =
@@ -379,6 +386,7 @@ let platform_node renderer kind =
   | MenuItem | MenuTrigger -> create_menu_item_node renderer
   | Avatar -> create_avatar_node renderer
   | Image | MediaSurface -> create_media_node renderer kind
+  | Link -> create_link_node renderer
   | Step -> create_step_node renderer
   | TimelineItem -> create_timeline_item_node renderer
   | BottomTabs -> create_bottom_tabs_node renderer
