@@ -706,7 +706,8 @@ namespace LUI
                 case LUIProperty.TrackVisibleRange:
                     return kind == LUINodeKind.ListContainer;
                 case LUIProperty.EdgeValue:
-                    return kind == LUINodeKind.SwipeAction;
+                    return kind == LUINodeKind.SwipeAction ||
+                        kind == LUINodeKind.EdgeInset;
                 case LUIProperty.MinValue:
                 case LUIProperty.MaxValue:
                 case LUIProperty.StepValue:
@@ -717,7 +718,6 @@ namespace LUI
                 case LUIProperty.ThemeValue:
                 case LUIProperty.ThemeMode:
                     return CanContainChildren(kind);
-                case LUIProperty.EdgeValue:
                 case LUIProperty.Visible:
                     return kind == LUINodeKind.EdgeInset;
                 // AlignmentValue is admitted ahead of the restrictive matrix
@@ -1194,11 +1194,6 @@ namespace LUI
                 case LUIProperty.TrackVisibleRange:
                 {
                     return value is LUIWireValue.Bool;
-                }
-                case LUIProperty.EdgeValue:
-                {
-                    return value is LUIWireValue.String text &&
-                        (text.Value == "leading" || text.Value == "trailing");
                 }
                 case LUIProperty.PickerRequest:
                 case LUIProperty.PickerCompletion:
