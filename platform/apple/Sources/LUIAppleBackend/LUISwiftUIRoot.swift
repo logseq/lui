@@ -1203,6 +1203,10 @@ private struct LUIInHoistedToolbarKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct LUIInFusedCapsuleKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 private extension EnvironmentValues {
     var luiTreeContext: LUITreeContext? {
         get { self[LUITreeContextKey.self] }
@@ -1223,6 +1227,11 @@ private extension EnvironmentValues {
     var luiInHoistedToolbar: Bool {
         get { self[LUIInHoistedToolbarKey.self] }
         set { self[LUIInHoistedToolbarKey.self] = newValue }
+    }
+
+    var luiInFusedCapsule: Bool {
+        get { self[LUIInFusedCapsuleKey.self] }
+        set { self[LUIInFusedCapsuleKey.self] = newValue }
     }
 }
 
@@ -2675,10 +2684,15 @@ private struct LUIToolbarGroupAnchor: View {
         case .spacer:
             ToolbarSpacer(.flexible, placement: placement)
         case let .bare(childID):
+            // A lone item whose node carries its own glass capsule would
+            // double up with the bar's shared item background — hide the
+            // latter so the node's glass supplies the capsule and matches
+            // the fused ControlGroup material exactly.
             ToolbarItem(placement: placement) {
                 itemIdentity(LUIAnyNodeView(nodeID: childID, backend: backend).equatable(), at: index)
                     .environment(\.luiInHoistedToolbar, true)
             }
+            .sharedBackgroundVisibility(ownsCapsule(childID) ? .hidden : .automatic)
         case let .scrollCapsule(childIDs):
             // scroll-leading: the leading controls live in a horizontally
             // scrolling fused capsule so a pinned trailing sibling stays
@@ -2692,6 +2706,8 @@ private struct LUIToolbarGroupAnchor: View {
                                 at: index,
                                 firstChild: childID == childIDs.first
                             )
+                            .environment(\.luiInHoistedToolbar, true)
+                            .environment(\.luiInFusedCapsule, true)
                         }
                     }
                 }
@@ -2710,6 +2726,8 @@ private struct LUIToolbarGroupAnchor: View {
                             at: index,
                             firstChild: childID == childIDs.first
                         )
+                        .environment(\.luiInHoistedToolbar, true)
+                        .environment(\.luiInFusedCapsule, true)
                     }
                 }
             }
@@ -2731,6 +2749,12 @@ private struct LUIToolbarGroupAnchor: View {
         }
     }
 
+    /// Whether a bare item's node supplies its own glass capsule — in which
+    /// case the bar's shared item background would only double the chrome.
+    private func ownsCapsule(_ childID: Int) -> Bool {
+        backend.model(id: childID)?.property(.background)?.stringValue == "glass"
+    }
+
     private var identitySegmentIndex: Int? {
         segments.firstIndex { segment in
             if case .spacer = segment { return false }
@@ -2748,8 +2772,9 @@ private struct LUIToolbarGroupAnchor: View {
     /// Consecutive interactive children merge into one `ToolbarItem` carrying
     /// a `ControlGroup` (the fused toolbar capsule); spacers, text and
     /// non-interactive children stay bare so a principal title never gains
-    /// chrome. A lone interactive child stays bare too — inside a capsule only
-    /// the label glyph hit-tests, leaving the rest of the bar item dead.
+    /// chrome. A lone interactive child also takes the capsule path — with the
+    /// `luiInHoistedToolbar` environment applied, icon-only controls floor at
+    /// the 44pt bar-item hit target, so the whole cell hit-tests.
     private var segments: [Segment] {
         // scroll-leading keeps the last child pinned at the trailing edge;
         // the leading children scroll inside their own fused capsule so the
@@ -4438,6 +4463,7 @@ private struct LUIHorizontalGroupView: View {
                             .accessibilityHidden(true)
                     }
                     groupChild(child)
+                        .environment(\.luiInFusedCapsule, groupCarriesGlass)
                         .frame(
                             maxWidth: child.property(.grow)?.doubleValue ?? 0 > 0
                                 ? .infinity : nil
@@ -4474,6 +4500,13 @@ private struct LUIHorizontalGroupView: View {
             focusedChild = children[target].id
             return .handled
         }
+    }
+
+    /// A `button_group` that draws its own glass capsule — children must not
+    /// draw their own glass on top or each cell gets an inner circle.
+    private var groupCarriesGlass: Bool {
+        model.kind == .buttonGroup
+            && model.property(.background)?.stringValue == "glass"
     }
 
     @ViewBuilder
@@ -5695,11 +5728,18 @@ private struct LUIBackgroundStyleModifier: ViewModifier {
     let color: Color
     let shape: AnyShape
     let isPill: Bool
+    @Environment(\.luiInFusedCapsule) private var inFusedCapsule
+
+    /// Inside a fused capsule — a hoisted `ControlGroup` (system-drawn glass)
+    /// or a `button_group` node carrying its own `glass` background — the
+    /// enclosing capsule is already the chrome, so a child's own glass would
+    /// stack into a dense inner circle.
+    private var suppressesOwnGlass: Bool { inFusedCapsule }
 
     @ViewBuilder
     func body(content: Content) -> some View {
         let glassShape: AnyShape = isPill ? AnyShape(Capsule()) : shape
-        if name == "glass" {
+        if name == "glass", !suppressesOwnGlass {
             if #available(iOS 26.0, macOS 26.0, *) {
                 content.glassEffect(.regular.interactive(), in: glassShape)
             } else {
