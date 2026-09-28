@@ -446,8 +446,16 @@ let apply_dom_op renderer previous_nodes operation =
 
 let apply_dom_batch renderer previous_nodes batch =
   List.iter
-    (fun operation -> apply_dom_op renderer previous_nodes operation)
+    (fun operation ->
+       try apply_dom_op renderer previous_nodes operation
+       with Invalid_argument msg ->
+         invalid_arg
+           (Printf.sprintf "op %s: %s" (Lui_wire.encode_op operation) msg))
     batch.ops;
-  ignore (Lui_web_focus.update_all_horizontal_group_roving renderer);
-  ignore (Lui_web_focus.update_all_tree_roving renderer);
-  ignore (Lui_web_focus.update_all_toolbar_roving renderer)
+  let label_roving label f =
+    try ignore (f renderer)
+    with Invalid_argument msg -> invalid_arg (label ^ ": " ^ msg)
+  in
+  label_roving "hgroup-roving" Lui_web_focus.update_all_horizontal_group_roving;
+  label_roving "tree-roving" Lui_web_focus.update_all_tree_roving;
+  label_roving "toolbar-roving" Lui_web_focus.update_all_toolbar_roving
