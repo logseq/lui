@@ -645,6 +645,12 @@ and apply_secondary_property renderer node kind dom_node property value =
       apply_frame_axes dom_node axes
   | ContainerRelativeFrameInset, IntValue inset ->
       apply_frame_inset dom_node inset
+  | EdgeValue, StringValue edge ->
+      W.Element.setAttribute "data-edge" edge dom_node
+  | Visible, BoolValue visible ->
+      Util.set_state_attribute dom_node "data-pinned-hidden" (not visible)
+  | AlignmentValue, StringValue alignment ->
+      W.Element.setAttribute "data-alignment" alignment dom_node
   | _ ->
       invalid_arg
         ("invalid DOM property value: " ^ Lui_wire_schema.property_name property)
@@ -693,6 +699,10 @@ let remove_property renderer node kind dom_node property =
            set_style dom_node "min-height" ""
        | ContainerRelativeFrameInset ->
            W.Element.removeAttribute "data-lui-frame-inset" dom_node
+       | EdgeValue -> W.Element.removeAttribute "data-edge" dom_node
+       | Visible -> W.Element.removeAttribute "data-pinned-hidden" dom_node
+       | AlignmentValue ->
+           W.Element.removeAttribute "data-alignment" dom_node
        | PlaceholderValue ->
            W.HtmlInputElement.setPlaceholder (Util.text_control_node dom_node)
              ""
