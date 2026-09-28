@@ -354,7 +354,7 @@ namespace LUI
                     LUIWireValue value = WireValue(
                         operation.GetProperty("value"), "value");
                     if (value is LUIWireValue.Int intValue &&
-                        (property == LUIProperty.Grow ||
+                        (property == LUIProperty.GrowValue ||
                          property == LUIProperty.AnchorOffset ||
                          property == LUIProperty.SourceX ||
                          property == LUIProperty.SourceY ||
