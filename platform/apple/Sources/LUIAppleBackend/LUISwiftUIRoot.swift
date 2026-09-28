@@ -3949,6 +3949,11 @@ private struct LUIListItemView: View {
     private var swipeMenu: LUINodeModel? {
         #if os(iOS)
         guard isNativeListRow, let contextMenu else { return nil }
+        // An explicit swipe-actions child takes over the edges; the context
+        // menu is not consumed and stays reachable via the ellipsis button.
+        guard !model.children.contains(where: {
+            backend.model(id: $0)?.kind == .swipeActions
+        }) else { return nil }
         let items = contextMenu.children.compactMap { backend.model(id: $0) }
         guard !items.isEmpty, items.allSatisfy({
             $0.kind == .menuItem && $0.isEnabled &&
@@ -5205,18 +5210,20 @@ enum LUIListSectionPolicy {
     @MainActor
     static func explicitSections(
         childIDs: [Int],
-        model: (Int) -> LUINodeModel?
+        model: (Int) -> LUINodeModel?,
+        isHeading: (Int) -> Bool,
+        isFooter: (Int) -> Bool
     ) -> [LUIListSection] {
         var result: [LUIListSection] = []
         var pending: [Int] = []
 
         func flush() {
             guard !pending.isEmpty else { return }
-            result.append(LUIListSection(
-                nodeID: nil,
-                headerID: nil,
+            // Runs of plain children still get heading/footnote inference.
+            result.append(contentsOf: sections(
                 childIDs: pending,
-                footerID: nil
+                isHeading: isHeading,
+                isFooter: isFooter
             ))
             pending = []
         }
@@ -5316,6 +5323,11 @@ private struct LUIListView: View {
             }
         }
         .environment(\.luiListRowTracker, listRowTracker)
+        .onChange(of: flatRowOrder) { _, _ in
+            // Row insert/remove/reorder shifts flat positions without any
+            // appear/disappear — re-emit so the range stays accurate.
+            emitVisibleRange()
+        }
     }
 
     private var listRowTracker: LUIListRowTracker? {
@@ -5344,8 +5356,10 @@ private struct LUIListView: View {
             }
         }
         .onChange(of: model.scrollToken, initial: true) { _, _ in
-            // No scroll surface of its own to scroll on.
-            if let token = model.scrollToken {
+            // No scroll surface of its own to scroll on; only tokens not
+            // already handled report back.
+            if let token = model.scrollToken, handledScrollToken != token {
+                handledScrollToken = token
                 backend.performScrollCompleted(
                     node: model.id,
                     token: token,
@@ -5402,6 +5416,15 @@ private struct LUIListView: View {
                             rows(section.childIDs)
                         } footer: {
                             sectionSlot(footerID, isHeader: false)
+                        }
+                        .modifier(LUIListSectionSeparatorModifier(
+                            visibility: sectionModel?.separatorVisibility
+                        ))
+                    } else if section.nodeID != nil {
+                        // An explicit headerless section still needs a real
+                        // SwiftUI Section so adjacent groups stay separate.
+                        Section {
+                            rows(section.childIDs)
                         }
                         .modifier(LUIListSectionSeparatorModifier(
                             visibility: sectionModel?.separatorVisibility
@@ -5513,23 +5536,29 @@ private struct LUIListView: View {
         }) {
             return LUIListSectionPolicy.explicitSections(
                 childIDs: childIDs,
-                model: { backend.model(id: $0) }
+                model: { backend.model(id: $0) },
+                isHeading: isHeading,
+                isFooter: isFooter
             )
         }
         return LUIListSectionPolicy.sections(
             childIDs: childIDs,
-            isHeading: { childID in
-                backend.model(id: childID)?.kind == .heading
-            },
-            isFooter: { childID in
-                guard let child = backend.model(id: childID), child.kind == .text else {
-                    return false
-                }
-                return (child.property(.styleClass)?.stringValue ?? "")
-                    .split(separator: " ")
-                    .contains("footnote") == true
-            }
+            isHeading: isHeading,
+            isFooter: isFooter
         )
+    }
+
+    private func isHeading(_ childID: Int) -> Bool {
+        backend.model(id: childID)?.kind == .heading
+    }
+
+    private func isFooter(_ childID: Int) -> Bool {
+        guard let child = backend.model(id: childID), child.kind == .text else {
+            return false
+        }
+        return (child.property(.styleClass)?.stringValue ?? "")
+            .split(separator: " ")
+            .contains("footnote") == true
     }
 
     /// Row ids in flat payload order across sections; nested rows of
@@ -5567,7 +5596,18 @@ private struct LUIListView: View {
     }
 
     private func rowID(forKey key: String) -> Int? {
-        flatRowOrder.first { backend.model(id: $0)?.rowKey == key }
+        if let row = flatRowOrder.first(where: {
+            backend.model(id: $0)?.rowKey == key
+        }) {
+            return row
+        }
+        // A section key targets that section's first row.
+        for section in sections {
+            guard let nodeID = section.nodeID,
+                  backend.model(id: nodeID)?.rowKey == key else { continue }
+            return section.childIDs.first
+        }
+        return nil
     }
 
     private func handleScrollRequest(proxy: ScrollViewProxy) {

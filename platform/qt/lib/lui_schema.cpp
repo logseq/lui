@@ -1022,6 +1022,11 @@ bool nodePropertiesSupported(NodeKind kind, const QVariantMap &properties) {
       return false;
     }
   }
+  if (kind == NodeKind::SwipeAction &&
+      !stringPropertyNonempty(properties, "text") &&
+      !stringPropertyNonempty(properties, "icon")) {
+    return false;
+  }
   return true;
 }
 

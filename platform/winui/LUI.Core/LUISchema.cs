@@ -1432,6 +1432,12 @@ namespace LUI
                     return false;
                 }
             }
+            if (kind == LUINodeKind.SwipeAction &&
+                !StringPropertyNonempty(properties, LUIProperty.TextValue) &&
+                !StringPropertyNonempty(properties, LUIProperty.InlineIconName))
+            {
+                return false;
+            }
             return true;
         }
 

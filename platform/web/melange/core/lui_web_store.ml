@@ -319,22 +319,35 @@ let node_properties_error current =
   else if kind = Icon then "icon requires a valid name"
   else "node properties conflict"
 
-let context_menu_child nodes child_id =
+let metadata_child nodes child_id =
   match Hashtbl.find_opt nodes child_id with
-  | Some current -> standard_kind_is current ContextMenu
+  | Some current ->
+      standard_kind_is current ContextMenu
+      || standard_kind_is current SwipeActions
+  | None -> false
+
+let list_item_row_child nodes child_id =
+  match Hashtbl.find_opt nodes child_id with
+  | Some current -> standard_kind_is current ListItem
   | None -> false
 
 let validate_list_item_content nodes current =
   if standard_kind_is current ListItem then begin
-    let text = string_property_of current.retained_properties TextValue in
-    let visible_children =
+    let properties = current.retained_properties in
+    let text = string_property_of properties TextValue in
+    (* swipe-actions/context-menu children are metadata, not content; a
+       disclosure row's nested list-items don't count as content either. *)
+    let disclosure = Property_map.mem Expanded properties in
+    let content_children =
       List.filter
-        (fun child -> not (context_menu_child nodes child))
+        (fun child ->
+          not (metadata_child nodes child)
+          && not (disclosure && list_item_row_child nodes child))
         current.retained_children
     in
-    if text <> "" && visible_children <> [] then
+    if text <> "" && content_children <> [] then
       invalid_arg "list-item accepts text or children, not both";
-    if text = "" && visible_children = [] then
+    if text = "" && content_children = [] then
       invalid_arg "list-item requires text or children"
   end
 
@@ -382,7 +395,12 @@ let validate_context_menu_child nodes child =
 
 let validate_context_menu nodes current =
   let context_children =
-    List.filter (context_menu_child nodes) current.retained_children
+    List.filter
+      (fun child_id ->
+        match Hashtbl.find_opt nodes child_id with
+        | Some current -> standard_kind_is current ContextMenu
+        | None -> false)
+      current.retained_children
   in
   if List.length context_children > 1 then
     invalid_arg "host accepts at most one context-menu";

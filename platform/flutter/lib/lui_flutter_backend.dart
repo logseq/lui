@@ -1547,7 +1547,9 @@ final class LUIFlutterBackend {
       orElse: () => null,
     );
     final children = state.children
-        .where((child) => child != contextMenuID)
+        .where((child) =>
+            child != contextMenuID &&
+            _states[child]?.kind != _NodeKind.swipeActions)
         .map((child) {
           final childWidget = widget(node: child);
           final childState = _states[child];
