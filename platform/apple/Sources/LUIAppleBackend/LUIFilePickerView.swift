@@ -67,8 +67,13 @@ struct LUIFilePickerView: View {
     }
 
     var body: some View {
-        ForEach(model.visibleChildren, id: \.self) { childID in
-            LUIAnyNodeView(nodeID: childID, backend: backend)
+        // Group keeps a real view in the hierarchy when the node has no
+        // children — an empty ForEach anchors no modifiers, so presentations
+        // would never fire.
+        Group {
+            ForEach(model.visibleChildren, id: \.self) { childID in
+                LUIAnyNodeView(nodeID: childID, backend: backend)
+            }
         }
         .fileImporter(
             isPresented: filesPresented,
