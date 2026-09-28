@@ -36,6 +36,11 @@ type role = [ `treeitem | `navigation | `navigation_heading ]
     other platforms answer the request with a cancel event). *)
 type file_picker_source = [ `files | `photos | `camera ]
 
+(** [~request] / [~completion] of [file_picker]: an opaque token echoed back
+    in [picked] payloads. String tokens cover UUID-style identifiers; int
+    tokens cover counters. *)
+type file_picker_token = [ `String of string | `Int of int ]
+
 type icon =
   [ `alert | `archive | `arrow_down | `arrow_right | `arrow_up | `check | `check_circle | `chevron_down | `chevron_left | `chevron_right | `chevron_up | `circle_dot | `clock | `copy | `download | `edit | `ellipsis | `external_link | `eye | `file_text | `folder | `folder_open | `git_branch | `git_merge | `git_pull_request | `info | `menu | `mic | `moon | `music | `panel_left | `panel_right | `pause | `play | `plus | `refresh_cw | `repeat | `save | `search | `send | `settings | `shuffle | `skip_back | `skip_forward | `sun | `terminal | `trash | `volume | `wrench | `x | `x_circle
   | `app of string ]
@@ -139,6 +144,12 @@ let file_picker_source_value : file_picker_source -> string = function
   | `files -> "files"
   | `photos -> "photos"
   | `camera -> "camera"
+
+let file_picker_token_wire_value
+    : file_picker_token -> Lui_protocol.wire_value
+  = function
+  | `String value -> Lui_protocol.StringValue value
+  | `Int value -> Lui_protocol.IntValue value
 
 let icon_value : icon -> string = function
   | `app name -> "app:" ^ name
@@ -1266,16 +1277,36 @@ let file_picker ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizont
   let node = Lui_ui.file_picker context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
   Option.iter (Lui_ui.string_property context node PickerSource) (Option.map file_picker_source_value source);
-  Option.iter (Lui_ui.string_property context node PickerRequest) request;
-  Option.iter (Lui_ui.string_property_signal context node PickerRequest) request_signal;
+  Option.iter
+    (fun token ->
+      Lui_ui.value_property context node PickerRequest
+        (file_picker_token_wire_value token))
+    request;
+  Option.iter
+    (fun source ->
+      Lui_ui.value_property_signal context node PickerRequest
+        (Signal.map
+           (fun token -> file_picker_token_wire_value token)
+           source))
+    request_signal;
   Option.iter (Lui_ui.string_property context node PickerTypes) types;
   Option.iter (Lui_ui.string_property_signal context node PickerTypes) types_signal;
   Option.iter (Lui_ui.bool_property context node PickerMultiple) multiple;
   Option.iter (Lui_ui.bool_property_signal context node PickerMultiple) multiple_signal;
   Option.iter (Lui_ui.disabled context node) disabled;
   Option.iter (Lui_ui.disabled_signal context node) disabled_signal;
-  Option.iter (Lui_ui.string_property context node PickerCompletion) completion;
-  Option.iter (Lui_ui.string_property_signal context node PickerCompletion) completion_signal;
+  Option.iter
+    (fun token ->
+      Lui_ui.value_property context node PickerCompletion
+        (file_picker_token_wire_value token))
+    completion;
+  Option.iter
+    (fun source ->
+      Lui_ui.value_property_signal context node PickerCompletion
+        (Signal.map
+           (fun token -> file_picker_token_wire_value token)
+           source))
+    completion_signal;
   Option.iter (register_picked context node) on_picked;
   Option.iter (register_dismiss context node) on_dismiss;
   attach context parent node;

@@ -39,6 +39,11 @@ type role = [ `treeitem | `navigation | `navigation_heading ]
     other platforms answer the request with a dismiss event). *)
 type file_picker_source = [ `files | `photos | `camera ]
 
+(** [~request] / [~completion] of {!file_picker}: an opaque token echoed
+    back in [picked] payloads. String tokens cover UUID-style identifiers;
+    int tokens cover counters. *)
+type file_picker_token = [ `String of string | `Int of int ]
+
 (** [~icon]/[~name] values: the schema icon names, or [`app "name"] for an
     application-registered icon ([app:name] on the wire). *)
 type icon =
@@ -2262,16 +2267,16 @@ val file_picker :
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?source:file_picker_source ->
-  ?request:string ->
-  ?request_signal:string Signal.signal ->
+  ?request:file_picker_token ->
+  ?request_signal:file_picker_token Signal.signal ->
   ?types:string ->
   ?types_signal:string Signal.signal ->
   ?multiple:bool ->
   ?multiple_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?completion:string ->
-  ?completion_signal:string Signal.signal ->
+  ?completion:file_picker_token ->
+  ?completion_signal:file_picker_token Signal.signal ->
   ?on_picked:(Lui_protocol.event -> unit) ->
   ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
 val toolbar :

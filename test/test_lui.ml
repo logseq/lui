@@ -1000,6 +1000,7 @@ let test_file_picker () =
   let picked_payloads = ref [] in
   let dismissed = ref 0 in
   let picker_node = ref 0 in
+  let int_picker_node = ref 0 in
   let app =
     Lui_app.create (recording_backend ()) ()
       (fun model _action -> model)
@@ -1007,15 +1008,17 @@ let test_file_picker () =
          Lui_elements.column
            [ capture_node picker_node
                (Lui_elements.file_picker ~source:`photos
-                  ~request:"op-1" ~types:"public.image" ~multiple:true
-                  ~completion:""
+                  ~request:(`String "op-1") ~types:"public.image" ~multiple:true
+                  ~completion:(`String "")
                   ~on_picked:(fun event ->
                     match event with
                     | Picked (_, payload) ->
                       picked_payloads := payload :: !picked_payloads
                     | _ -> ())
                   ~on_dismiss:(fun _ -> incr dismissed)
-                  []) ])
+                  []);
+             capture_node int_picker_node
+               (Lui_elements.file_picker ~request:(`Int 7) []) ])
   in
   ignore (Lui_app.start app);
   flush_app app;
@@ -1039,6 +1042,8 @@ let test_file_picker () =
     (kind_of !picker_node = Some FilePicker);
   Alcotest.(check bool) "request wired" true
     (prop_value !picker_node PickerRequest = Some (StringValue "op-1"));
+  Alcotest.(check bool) "int request wired" true
+    (prop_value !int_picker_node PickerRequest = Some (IntValue 7));
   Alcotest.(check bool) "types wired" true
     (prop_value !picker_node PickerTypes = Some (StringValue "public.image"));
   Alcotest.(check bool) "multiple wired" true

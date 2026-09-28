@@ -688,8 +688,9 @@ final class LUIFlutterBackend {
         entry.key: _ExtensionNodeState.copy(entry.value),
     };
 
+    final filePickerRequests = <int>{};
     for (final operation in operations) {
-      _applyState(next, nextExtensions, operation);
+      _applyState(next, nextExtensions, operation, filePickerRequests);
     }
     _validateStates(next);
     _validateExtensionStates(next, nextExtensions);
@@ -778,6 +779,18 @@ final class LUIFlutterBackend {
       _handles[id]?.markDependencyChanged();
     }
     _scheduleLayoutSettle();
+    // This backend cannot present a picker: every file-picker request the
+    // batch left unanswered (request set, not matching `completion`) is
+    // answered with `dismiss`, per the element contract.
+    for (final id in filePickerRequests) {
+      final state = _states[id];
+      if (state == null || state.kind != _NodeKind.filePicker) continue;
+      final request = state.properties['request'];
+      if (request == null || request == state.properties['completion']) {
+        continue;
+      }
+      onEvent?.call(LUIEvent.dismiss(node: id));
+    }
   }
 
   // Render objects adopted or moved into a subtree that is already clean
@@ -3176,6 +3189,7 @@ final class LUIFlutterBackend {
     Map<int, _NodeState> states,
     Map<int, _ExtensionNodeState> extensions,
     Map<String, Object?> operation,
+    Set<int> filePickerRequests,
   ) {
     switch (_string(operation['op'], 'op')) {
       case 'create-node':
@@ -3218,7 +3232,8 @@ final class LUIFlutterBackend {
           throw LUIBackendException('unknown node $id');
         }
       case 'set-prop':
-        final node = _requireState(states, _integer(operation['id'], 'id'));
+        final id = _integer(operation['id'], 'id');
+        final node = _requireState(states, id);
         final property = _string(operation['property'], 'property');
         final value = operation['value'];
         if (!_supports(node.kind, property, value)) {
@@ -3227,6 +3242,9 @@ final class LUIFlutterBackend {
           );
         }
         node.properties[property] = value!;
+        if (node.kind == _NodeKind.filePicker && property == 'request') {
+          filePickerRequests.add(id);
+        }
       case 'remove-prop':
         final node = _requireState(states, _integer(operation['id'], 'id'));
         final property = _string(operation['property'], 'property');

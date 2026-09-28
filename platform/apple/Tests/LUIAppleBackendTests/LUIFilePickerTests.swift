@@ -109,4 +109,22 @@ struct LUIFilePickerTests {
             try backend.performPicked(node: 0, payload: "{}")
         }
     }
+
+    @Test("dropping the node releases its file-picker operation")
+    func droppingNodeReleasesOperation() throws {
+        let backend = try makeBackend()
+        backend.setFilePickerOperation(
+            node: 2,
+            LUIFilePickerOperation(token: .string("op-1"), phase: .presenting)
+        )
+        #expect(backend.filePickerOperation(node: 2) != nil)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"remove-child","parent":1,"child":2},
+          {"op":"drop-node","id":2}
+        ]}
+        """)
+        #expect(backend.filePickerOperation(node: 2) == nil)
+    }
 }

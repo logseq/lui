@@ -151,6 +151,13 @@ val int_property_signal :
   int -> Lui_protocol.Property_map.key -> int Signal.signal -> unit
 val int_property :
   ui_context -> int -> Lui_protocol.Property_map.key -> int -> unit
+val value_property :
+  ui_context ->
+  int -> Lui_protocol.Property_map.key -> Lui_protocol.wire_value -> unit
+val value_property_signal :
+  ui_context ->
+  int ->
+  Lui_protocol.Property_map.key -> Lui_protocol.wire_value Signal.signal -> unit
 val disabled : ui_context -> int -> bool -> unit
 val disabled_signal : ui_context -> int -> bool Signal.signal -> unit
 val checked_signal : ui_context -> int -> bool Signal.signal -> unit

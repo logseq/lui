@@ -1240,7 +1240,8 @@ bool LuiQmlBackend::performDismiss(qint64 node) {
   if (state == nullptr) return staleNode(node);
   if (state->kind != NodeKind::Select && state->kind != NodeKind::Combobox &&
       state->kind != NodeKind::DropdownMenu &&
-      state->kind != NodeKind::Toast && !modalSurface(state->kind)) {
+      state->kind != NodeKind::Toast && state->kind != NodeKind::FilePicker &&
+      !modalSurface(state->kind)) {
     return fail(QStringLiteral("node %1 is not dismissible").arg(node));
   }
   emitEvent(node, QStringLiteral("dismiss"));

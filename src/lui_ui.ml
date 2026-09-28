@@ -309,6 +309,14 @@ let int_property context node property value =
   Lui_runtime.set_prop context.ui_application node property
     (IntValue value)
 
+let value_property context node property value =
+  Lui_runtime.set_prop context.ui_application node property value
+
+let value_property_signal context node property source =
+  ignore
+    (Lui_runtime.bind_prop context.ui_scope context.ui_application node
+       property (Signal.own_signal context.ui_scope source))
+
 let disabled context node disabled =
   bool_property context node Enabled (not disabled)
 

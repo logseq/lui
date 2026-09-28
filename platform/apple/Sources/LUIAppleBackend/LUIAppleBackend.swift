@@ -397,6 +397,40 @@ public final class LUIAppleBackend {
     private var nodeFrames: [Int: CGRect] = [:]
     private var framesReportScheduled = false
 
+    // MARK: - file-picker operations
+
+    /// In-flight and completed file-picker requests keyed by node id. Held
+    /// here rather than in `LUIFilePickerView`'s @State so a view teardown
+    /// (tab switch, re-layout) does not release security-scoped files or
+    /// lose the pending completion handshake for a still-mounted node.
+    private var filePickerOperations: [Int: LUIFilePickerOperation] = [:]
+
+    func filePickerOperation(node: Int) -> LUIFilePickerOperation? {
+        filePickerOperations[node]
+    }
+
+    func setFilePickerOperation(node: Int, _ operation: LUIFilePickerOperation) {
+        filePickerOperations[node] = operation
+    }
+
+    /// Drops the operation and releases every file it retained.
+    func clearFilePickerOperation(node: Int) {
+        guard let operation = filePickerOperations.removeValue(forKey: node)
+        else { return }
+        releaseFilePickerFiles(operation.files)
+    }
+
+    func releaseFilePickerFiles(_ files: [LUIRetainedFile]) {
+        for file in files {
+            if file.securityScoped {
+                file.url.stopAccessingSecurityScopedResource()
+            }
+            if file.temporary {
+                try? FileManager.default.removeItem(at: file.url)
+            }
+        }
+    }
+
     func reportNodeFrame(_ nodeID: Int, _ rect: CGRect) {
         if nodeFrames[nodeID] == rect { return }
         nodeFrames[nodeID] = rect
@@ -906,6 +940,7 @@ public final class LUIAppleBackend {
         for id in dropped {
             models[id] = nil
             extensionModels[id] = nil
+            clearFilePickerOperation(node: id)
         }
         for id in touched where !dropped.contains(id) {
             if let state = tree.nodes[id] {
