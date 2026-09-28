@@ -1868,12 +1868,16 @@ private struct LUIEdgeInsetView: View {
                     pinnedViews(Array(model.children.dropFirst()))
                 }
                 .frame(maxHeight: .infinity)
+                // Hug along the edge: an expansive pinned child (e.g. overlay)
+                // would otherwise eat the entire safe-area inset region.
+                .fixedSize(horizontal: true, vertical: false)
                 .modifier(LUISurfaceModifier(model: model, backend: backend))
             } else {
                 VStack(spacing: 0) {
                     pinnedViews(Array(model.children.dropFirst()))
                 }
                 .frame(maxWidth: .infinity)
+                .fixedSize(horizontal: false, vertical: true)
                 .modifier(LUISurfaceModifier(model: model, backend: backend))
             }
         }
