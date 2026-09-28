@@ -97,6 +97,8 @@ private final class LUIAppleBridge {
                 guard let data = try? JSONSerialization.data(withJSONObject: payload),
                       let json = String(data: data, encoding: .utf8) else { return }
                 json.withCString { callback(12, Int32(node), $0) }
+            case let .picked(node, payload):
+                payload.withCString { callback(13, Int32(node), $0) }
             case let .extension(node, identifier, name, values):
                 let payload: [String: Any] = [
                     "identifier": identifier,

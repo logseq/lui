@@ -14,6 +14,7 @@
 #include <QVariantList>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 namespace LUI {
@@ -1179,6 +1180,8 @@ bool LuiQmlBackend::performPress(qint64 node) {
       (state->kind == NodeKind::Column &&
        isTrue(state->properties.value(QStringLiteral("press-enabled")))) ||
       (state->kind == NodeKind::Text &&
+       isTrue(state->properties.value(QStringLiteral("press-enabled")))) ||
+      (state->kind == NodeKind::FileImage &&
        isTrue(state->properties.value(QStringLiteral("press-enabled"))));
   if (!pressable || isFalse(state->properties.value(QStringLiteral("enabled")))) {
     return fail(QStringLiteral("node %1 is not an enabled pressable control")
@@ -1240,7 +1243,9 @@ bool LuiQmlBackend::performDismiss(qint64 node) {
   if (state == nullptr) return staleNode(node);
   if (state->kind != NodeKind::Select && state->kind != NodeKind::Combobox &&
       state->kind != NodeKind::DropdownMenu &&
-      state->kind != NodeKind::Toast && !modalSurface(state->kind)) {
+      state->kind != NodeKind::Toast &&
+      state->kind != NodeKind::FilePreview &&
+      state->kind != NodeKind::FilePicker && !modalSurface(state->kind)) {
     return fail(QStringLiteral("node %1 is not dismissible").arg(node));
   }
   emitEvent(node, QStringLiteral("dismiss"));
@@ -1298,14 +1303,25 @@ bool LuiQmlBackend::performChange(qint64 node) {
 bool LuiQmlBackend::performValueChanged(qint64 node, double value) {
   const NodeState *state = standardState(m_states, node);
   if (state == nullptr) return staleNode(node);
-  if ((state->kind != NodeKind::Slider && state->kind != NodeKind::Split) ||
+  if ((state->kind != NodeKind::Slider && state->kind != NodeKind::Split &&
+       state->kind != NodeKind::NumberStepper) ||
       isFalse(state->properties.value(QStringLiteral("enabled"))) ||
       !std::isfinite(value)) {
     return fail(QStringLiteral("node %1 is not an enabled value control")
                     .arg(node));
   }
+  double emitted = std::clamp(value, 0.0, 1.0);
+  if (state->kind == NodeKind::NumberStepper) {
+    const double minimum =
+        state->properties.value(QStringLiteral("min")).toDouble();
+    const double maximum =
+        state->properties.contains(QStringLiteral("max"))
+            ? state->properties.value(QStringLiteral("max")).toDouble()
+            : std::numeric_limits<double>::max();
+    emitted = std::clamp(value, minimum, std::max(minimum, maximum));
+  }
   emitEvent(node, QStringLiteral("value-changed"),
-            {{QStringLiteral("value"), std::clamp(value, 0.0, 1.0)}});
+            {{QStringLiteral("value"), emitted}});
   return true;
 }
 

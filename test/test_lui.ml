@@ -1069,6 +1069,272 @@ let test_list_suite_rules () =
   Alcotest.(check bool) "bare action rejected" false
     (node_properties_supported SwipeAction (props []))
 
+let test_file_picker () =
+  let open Lui_protocol in
+  Alcotest.(check bool) "file-picker hosts children" true
+    (can_contain_children FilePicker);
+  Alcotest.(check bool) "picked is a file-picker event" true
+    (event_supported_for_properties FilePicker Property_map.empty
+       (Picked (0, "{}")));
+  Alcotest.(check bool) "dismiss is a file-picker event" true
+    (event_supported_for_properties FilePicker Property_map.empty
+       (Dismiss 0));
+  Alcotest.(check bool) "picked is not a button event" false
+    (event_supported_for_properties Button Property_map.empty
+       (Picked (0, "{}")));
+  Alcotest.(check bool) "request prop allowed" true
+    (property_supported FilePicker PickerRequest);
+  Alcotest.(check bool) "types prop allowed" true
+    (property_supported FilePicker PickerTypes);
+  Alcotest.(check bool) "multiple prop allowed" true
+    (property_supported FilePicker PickerMultiple);
+  Alcotest.(check bool) "source prop allowed" true
+    (property_supported FilePicker PickerSource);
+  Alcotest.(check bool) "completion prop allowed" true
+    (property_supported FilePicker PickerCompletion);
+  Alcotest.(check bool) "text prop rejected" false
+    (property_supported FilePicker TextValue);
+  Alcotest.(check bool) "request accepts a string" true
+    (property_value_supported PickerRequest (StringValue "op-1"));
+  Alcotest.(check bool) "request accepts an int" true
+    (property_value_supported PickerRequest (IntValue 7));
+  Alcotest.(check bool) "multiple accepts bool" true
+    (property_value_supported PickerMultiple (BoolValue true));
+  Alcotest.(check bool) "source accepts camera" true
+    (property_value_supported PickerSource (StringValue "camera"));
+  Alcotest.(check bool) "source rejects junk" false
+    (property_value_supported PickerSource (StringValue "screen"));
+  let picked_payloads = ref [] in
+  let dismissed = ref 0 in
+  let picker_node = ref 0 in
+  let int_picker_node = ref 0 in
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      (fun _context _model_source _send ->
+         Lui_elements.column
+           [ capture_node picker_node
+               (Lui_elements.file_picker ~source:`photos
+                  ~request:(`String "op-1") ~types:"public.image" ~multiple:true
+                  ~completion:(`String "")
+                  ~on_picked:(fun event ->
+                    match event with
+                    | Picked (_, payload) ->
+                      picked_payloads := payload :: !picked_payloads
+                    | _ -> ())
+                  ~on_dismiss:(fun _ -> incr dismissed)
+                  []);
+             capture_node int_picker_node
+               (Lui_elements.file_picker ~request:(`Int 7) []) ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let kind_of node =
+    List.find_map
+      (function
+       | CreateNode (id, kind) when id = node -> Some kind
+       | _ -> None)
+      ops
+  in
+  let prop_value node property =
+    List.find_map
+      (function
+       | SetProp (id, key, value) when id = node && key = property ->
+         Some value
+       | _ -> None)
+      ops
+  in
+  Alcotest.(check bool) "node is a file-picker" true
+    (kind_of !picker_node = Some FilePicker);
+  Alcotest.(check bool) "request wired" true
+    (prop_value !picker_node PickerRequest = Some (StringValue "op-1"));
+  Alcotest.(check bool) "int request wired" true
+    (prop_value !int_picker_node PickerRequest = Some (IntValue 7));
+  Alcotest.(check bool) "types wired" true
+    (prop_value !picker_node PickerTypes = Some (StringValue "public.image"));
+  Alcotest.(check bool) "multiple wired" true
+    (prop_value !picker_node PickerMultiple = Some (BoolValue true));
+  Alcotest.(check bool) "source wired" true
+    (prop_value !picker_node PickerSource = Some (StringValue "photos"));
+  ignore
+    (Lui_app.dispatch_event app
+       (Picked (!picker_node, {|{"request":"op-1","files":[]}|})));
+  ignore (Lui_app.dispatch_event app (Dismiss !picker_node));
+  flush_app app;
+  Alcotest.(check (list string)) "picked delivered"
+    [ {|{"request":"op-1","files":[]}|} ] !picked_payloads;
+  Alcotest.(check int) "dismiss delivered" 1 !dismissed;
+  ignore (Lui_app.dispose app)
+
+let test_media_file_rules () =
+  let open Lui_protocol in
+  Alcotest.(check bool) "link is container" true
+    (can_contain_children Link);
+  Alcotest.(check bool) "file-image is leaf" false
+    (can_contain_children FileImage);
+  Alcotest.(check bool) "file-preview is leaf" false
+    (can_contain_children FilePreview);
+  Alcotest.(check bool) "link allows url" true
+    (property_supported Link UrlValue);
+  Alcotest.(check bool) "link allows text" true
+    (property_supported Link TextValue);
+  Alcotest.(check bool) "link allows icon" true
+    (property_supported Link InlineIconName);
+  Alcotest.(check bool) "link drops path" false
+    (property_supported Link PathValue);
+  Alcotest.(check bool) "file-image allows path" true
+    (property_supported FileImage PathValue);
+  Alcotest.(check bool) "file-image allows max-pixel-size" true
+    (property_supported FileImage MaxPixelSize);
+  Alcotest.(check bool) "file-image allows press" true
+    (property_supported FileImage PressEnabled);
+  Alcotest.(check bool) "file-image drops url" false
+    (property_supported FileImage UrlValue);
+  Alcotest.(check bool) "file-preview allows path" true
+    (property_supported FilePreview PathValue);
+  Alcotest.(check bool) "file-preview drops width" false
+    (property_supported FilePreview WidthValue);
+  Alcotest.(check bool) "file-preview keeps accessibility-identifier" true
+    (property_supported FilePreview AccessibilityIdentifier);
+  Alcotest.(check bool) "max-pixel-size positive" true
+    (property_value_supported MaxPixelSize (IntValue 1024));
+  Alcotest.(check bool) "max-pixel-size rejects zero" false
+    (property_value_supported MaxPixelSize (IntValue 0));
+  Alcotest.(check bool) "path accepts string" true
+    (property_value_supported PathValue (StringValue "/x.png"));
+  Alcotest.(check bool) "url accepts string" true
+    (property_value_supported UrlValue (StringValue "https://e.com"));
+  Alcotest.(check bool) "file-image press event" true
+    (event_supported FileImage (Press 0));
+  Alcotest.(check bool) "file-preview dismiss event" true
+    (event_supported FilePreview (Dismiss 0));
+  Alcotest.(check bool) "link drops dismiss" false
+    (event_supported Link (Dismiss 0));
+  let props entries = List.to_seq entries |> Property_map.of_seq in
+  Alcotest.(check bool) "file-image needs path" false
+    (node_properties_supported FileImage (props []));
+  Alcotest.(check bool) "file-image ok" true
+    (node_properties_supported FileImage
+       (props [ (PathValue, StringValue "/x.png") ]));
+  Alcotest.(check bool) "file-preview needs path" false
+    (node_properties_supported FilePreview (props []));
+  Alcotest.(check bool) "link needs url" false
+    (node_properties_supported Link (props []));
+  Alcotest.(check bool) "link ok" true
+    (node_properties_supported Link
+       (props [ (UrlValue, StringValue "https://e.com") ]))
+
+let media_view _context _model _send =
+  Lui_elements.column
+    [
+      Lui_elements.link ~url:"https://example.com" ~text:"Example" [];
+      Lui_elements.file_image ~path:"/tmp/pic.png" ~max_pixel_size:512 [];
+      Lui_elements.file_preview ~path:"/tmp/doc.pdf" [];
+    ]
+
+let test_media_file_mount () =
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      media_view
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let open Lui_protocol in
+  let creates kind =
+    List.exists (function CreateNode (_, k) -> k = kind | _ -> false) ops
+  in
+  Alcotest.(check bool) "link mounted" true (creates Link);
+  Alcotest.(check bool) "file-image mounted" true (creates FileImage);
+  Alcotest.(check bool) "file-preview mounted" true (creates FilePreview);
+  Alcotest.(check bool) "url prop set" true
+    (List.exists
+       (function
+        | SetProp (_, UrlValue, StringValue "https://example.com") -> true
+        | _ -> false)
+       ops);
+  Alcotest.(check bool) "path prop set" true
+    (List.exists
+       (function
+        | SetProp (_, PathValue, StringValue "/tmp/pic.png") -> true
+        | _ -> false)
+       ops);
+  Alcotest.(check bool) "max-pixel-size prop set" true
+    (List.exists
+       (function
+        | SetProp (_, MaxPixelSize, IntValue 512) -> true
+        | _ -> false)
+       ops);
+  ignore (Lui_app.dispose app)
+
+let test_edge_overlay_fit_rules () =
+  let open Lui_protocol in
+  Alcotest.(check bool) "edge-inset contains children" true
+    (can_contain_children EdgeInset);
+  Alcotest.(check bool) "overlay contains children" true
+    (can_contain_children Overlay);
+  Alcotest.(check bool) "view-that-fits contains children" true
+    (can_contain_children ViewThatFits);
+  Alcotest.(check bool) "overlay accepts a list child" true
+    (child_kind_supported Overlay ListContainer);
+  Alcotest.(check bool) "overlay accepts a row child" true
+    (child_kind_supported Overlay Row);
+  Alcotest.(check bool) "overlay rejects root child" false
+    (child_kind_supported Overlay Root);
+  Alcotest.(check bool) "edge-inset holds edge" true
+    (property_supported EdgeInset EdgeValue);
+  Alcotest.(check bool) "edge-inset holds visible" true
+    (property_supported EdgeInset Visible);
+  Alcotest.(check bool) "edge-inset holds gap" true
+    (property_supported EdgeInset Gap);
+  Alcotest.(check bool) "edge-inset styles background" true
+    (property_supported EdgeInset BackgroundValue);
+  Alcotest.(check bool) "row drops edge" false
+    (property_supported Row EdgeValue);
+  Alcotest.(check bool) "row drops visible" false
+    (property_supported Row Visible);
+  Alcotest.(check bool) "view-that-fits holds orientation" true
+    (property_supported ViewThatFits OrientationValue);
+  Alcotest.(check bool) "view-that-fits drops edge" false
+    (property_supported ViewThatFits EdgeValue);
+  Alcotest.(check bool) "alignment lands on overlay" true
+    (property_supported Overlay AlignmentValue);
+  Alcotest.(check bool) "alignment lands on overlay children" true
+    (property_supported Text AlignmentValue);
+  (* Restrictive kinds still carry the hint so e.g. an aligned
+     menu-trigger overlay child validates. *)
+  Alcotest.(check bool) "alignment lands on restrictive kinds" true
+    (property_supported MenuTrigger AlignmentValue);
+  Alcotest.(check bool) "root drops alignment" false
+    (property_supported Root AlignmentValue);
+  Alcotest.(check bool) "edge-inset takes foreground" true
+    (property_supported EdgeInset ForegroundValue);
+  Alcotest.(check bool) "overlay takes foreground" true
+    (property_supported Overlay ForegroundValue);
+  Alcotest.(check bool) "view-that-fits takes foreground" true
+    (property_supported ViewThatFits ForegroundValue);
+  Alcotest.(check bool) "edge accepts top" true
+    (property_value_supported EdgeValue (StringValue "top"));
+  Alcotest.(check bool) "edge accepts leading" true
+    (property_value_supported EdgeValue (StringValue "leading"));
+  Alcotest.(check bool) "edge rejects side anchors" false
+    (property_value_supported EdgeValue (StringValue "left"));
+  Alcotest.(check bool) "visible takes a bool" true
+    (property_value_supported Visible (BoolValue false));
+  Alcotest.(check bool) "alignment accepts corner" true
+    (property_value_supported AlignmentValue
+       (StringValue "bottom-trailing"));
+  Alcotest.(check bool) "alignment rejects anchor vocab" false
+    (property_value_supported AlignmentValue (StringValue "above"));
+  let props entries = List.to_seq entries |> Property_map.of_seq in
+  Alcotest.(check bool) "edge-inset needs edge" false
+    (node_properties_supported EdgeInset (props []));
+  Alcotest.(check bool) "edge-inset with edge ok" true
+    (node_properties_supported EdgeInset
+       (props [ (EdgeValue, StringValue "bottom") ]))
+
 let test_property_matrix_sync () =
   (* property_supported's restrictive arms and additive extras must mirror
      schema/components.json (kindProperties / kindExtraProperties) as emitted
@@ -1081,6 +1347,8 @@ let test_property_matrix_sync () =
             | Some allowed ->
               let expected =
                 property = Lui_protocol.AccessibilityIdentifier
+                || (kind <> Lui_protocol.Root
+                    && property = Lui_protocol.AlignmentValue)
                 || List.mem property allowed
               in
               Alcotest.(check bool)
@@ -1098,6 +1366,167 @@ let test_property_matrix_sync () =
                   true (Lui_protocol.property_supported kind property))
          Lui_wire_schema.all_properties)
     Lui_wire_schema.all_node_kinds
+
+let test_number_stepper_props () =
+  let changes = ref [] in
+  let stepper_node = ref 0 in
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      (fun _context _model_source _send ->
+         Lui_elements.column
+           [ capture_node stepper_node
+               (Lui_elements.number_stepper ~value:5.0 ~min:0.0 ~max:3660.0
+                  ~step:1.0 ~text:"Days"
+                  ~on_value_changed:(fun event ->
+                     match event with
+                     | Lui_protocol.ValueChanged (_, value) ->
+                         changes := value :: !changes
+                     | _ -> ())
+                  []) ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  Alcotest.(check bool) "number-stepper created" true
+    (List.exists
+       (function
+          | Lui_protocol.CreateNode (_, Lui_protocol.NumberStepper) -> true
+          | _ -> false)
+       ops);
+  let emitted property value =
+    List.exists
+      (function
+         | Lui_protocol.SetProp (_, property', value') ->
+           property' = property && value' = value
+         | _ -> false)
+      ops
+  in
+  Alcotest.(check bool) "value" true
+    (emitted Lui_protocol.ProgressValue (Lui_protocol.FloatValue 5.0));
+  Alcotest.(check bool) "min" true
+    (emitted Lui_protocol.MinValue (Lui_protocol.FloatValue 0.0));
+  Alcotest.(check bool) "max" true
+    (emitted Lui_protocol.MaxValue (Lui_protocol.FloatValue 3660.0));
+  Alcotest.(check bool) "step" true
+    (emitted Lui_protocol.StepValue (Lui_protocol.FloatValue 1.0));
+  Alcotest.(check bool) "text" true
+    (emitted Lui_protocol.TextValue (Lui_protocol.StringValue "Days"));
+  ignore
+    (Lui_app.dispatch_event app
+       (Lui_protocol.ValueChanged (!stepper_node, 5.0)));
+  ignore
+    (Lui_app.dispatch_event app
+       (Lui_protocol.ValueChanged (!stepper_node, 6.0)));
+  flush_app app;
+  Alcotest.(check (list (float 0.0))) "echo dropped, change delivered"
+    [ 6.0 ] !changes;
+  ignore (Lui_app.dispose app)
+
+let test_number_stepper_schema () =
+  let open Lui_protocol in
+  List.iter
+    (fun (property, kinds) ->
+       List.iter
+         (fun kind ->
+            Alcotest.(check bool)
+              (Printf.sprintf "%s x %s"
+                 (Lui_wire_schema.property_name property)
+                 (Lui_wire_schema.node_kind_name kind))
+              true (property_supported kind property))
+         kinds)
+    [ (MinValue, [ NumberStepper ]);
+      (MaxValue, [ NumberStepper ]);
+      (StepValue, [ NumberStepper ]);
+      (Detents, [ Sheet ]);
+      (Sizing, [ Sheet ]) ];
+  Alcotest.(check bool) "min off slider" false
+    (property_supported Slider MinValue);
+  Alcotest.(check bool) "detents off stepper" false
+    (property_supported NumberStepper Detents);
+  Alcotest.(check bool) "value on stepper" true
+    (property_supported NumberStepper ProgressValue);
+  Alcotest.(check bool) "enabled on stepper" true
+    (property_supported NumberStepper Enabled);
+  Alcotest.(check bool) "value-changed on stepper" true
+    (event_supported NumberStepper (ValueChanged (0, 1.0)));
+  Alcotest.(check bool) "value-changed off button" false
+    (event_supported Button (ValueChanged (0, 1.0)));
+  Alcotest.(check bool) "positive step" true
+    (property_value_supported StepValue (FloatValue 0.5));
+  Alcotest.(check bool) "zero step rejected" false
+    (property_value_supported StepValue (FloatValue 0.0));
+  Alcotest.(check bool) "finite min" true
+    (property_value_supported MinValue (FloatValue 1.0));
+  Alcotest.(check bool) "sizing token" true
+    (property_value_supported Sizing (StringValue "form"));
+  Alcotest.(check bool) "unknown sizing rejected" false
+    (property_value_supported Sizing (StringValue "huge"));
+  Alcotest.(check bool) "detents is freeform" true
+    (property_value_supported Detents (StringValue "medium,0.4,large"));
+  let props entries = List.to_seq entries |> Property_map.of_seq in
+  Alcotest.(check bool) "stepper node ok" true
+    (node_properties_supported NumberStepper
+       (props [ (TextValue, StringValue "Days");
+                (ProgressValue, FloatValue 1.0);
+                (MinValue, FloatValue 0.0);
+                (MaxValue, FloatValue 10.0) ]));
+  Alcotest.(check bool) "stepper needs value" false
+    (node_properties_supported NumberStepper
+       (props [ (TextValue, StringValue "Days") ]));
+  Alcotest.(check bool) "stepper needs label or text" false
+    (node_properties_supported NumberStepper
+       (props [ (ProgressValue, FloatValue 1.0) ]));
+  Alcotest.(check bool) "label suffices" true
+    (node_properties_supported NumberStepper
+       (props [ (AccessibilityLabel, StringValue "Days");
+                (ProgressValue, FloatValue 1.0) ]));
+  Alcotest.(check bool) "min over max rejected" false
+    (node_properties_supported NumberStepper
+       (props [ (TextValue, StringValue "Days");
+                (ProgressValue, FloatValue 1.0);
+                (MinValue, FloatValue 10.0);
+                (MaxValue, FloatValue 0.0) ]))
+
+let test_sheet_presentation_props () =
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      (fun _context _model_source _send ->
+         Lui_elements.column
+           [ Lui_elements.sheet ~text:"Settings"
+               ~detents:"medium,large" ~sizing:"form" [] ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  Alcotest.(check bool) "sheet created" true
+    (List.exists
+       (function
+          | Lui_protocol.CreateNode (_, Lui_protocol.Sheet) -> true
+          | _ -> false)
+       ops);
+  Alcotest.(check bool) "detents emitted" true
+    (List.exists
+       (function
+          | Lui_protocol.SetProp (_, Lui_protocol.Detents,
+                                  Lui_protocol.StringValue "medium,large") ->
+            true
+          | _ -> false)
+       ops);
+  Alcotest.(check bool) "sizing emitted" true
+    (List.exists
+       (function
+          | Lui_protocol.SetProp (_, Lui_protocol.Sizing,
+                                  Lui_protocol.StringValue "form") -> true
+          | _ -> false)
+       ops);
+  Alcotest.(check bool) "detents only on sheet" true
+    (Lui_protocol.property_supported Lui_protocol.Sheet Lui_protocol.Detents);
+  Alcotest.(check bool) "detents off dialog" false
+    (Lui_protocol.property_supported Lui_protocol.Dialog
+       Lui_protocol.Detents);
+  ignore (Lui_app.dispose app)
 
 let test_theme_tokens_json () =
   Alcotest.(check string) "fixed + adaptive values"
@@ -1592,6 +2021,11 @@ let () =
             test_menu_trigger_rules;
           Alcotest.test_case "list suite rules" `Quick
             test_list_suite_rules;
+          Alcotest.test_case "file-picker rules" `Quick test_file_picker;
+          Alcotest.test_case "media file rules" `Quick test_media_file_rules;
+          Alcotest.test_case "media file mount" `Quick test_media_file_mount;
+          Alcotest.test_case "edge/overlay/fit rules" `Quick
+            test_edge_overlay_fit_rules;
           Alcotest.test_case "property matrix sync" `Quick
             test_property_matrix_sync;
         ] );
@@ -1618,6 +2052,15 @@ let () =
             test_dispatch_drops_value_echoes;
           Alcotest.test_case "unset default echoes dropped" `Quick
             test_dispatch_drops_unset_default_echoes;
+        ] );
+      ( "number stepper + sheet sizing",
+        [
+          Alcotest.test_case "props + value-changed" `Quick
+            test_number_stepper_props;
+          Alcotest.test_case "schema surface" `Quick
+            test_number_stepper_schema;
+          Alcotest.test_case "sheet detents + sizing" `Quick
+            test_sheet_presentation_props;
         ] );
       ( "theming",
         [

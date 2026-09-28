@@ -23,6 +23,7 @@ enum class Event {
   Appear,
   ScrollCompleted,
   VisibleRange,
+  Picked,
 };
 
 bool modalSurface(NodeKind kind);

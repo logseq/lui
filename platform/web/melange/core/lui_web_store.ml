@@ -468,6 +468,9 @@ let validate_progress_structure current =
   | Some TimelineItem ->
       if not (Property_map.mem TitleValue current.retained_properties) then
         invalid_arg "timeline-item requires title"
+  | Some NumberStepper ->
+      if not (Property_map.mem ProgressValue current.retained_properties) then
+        invalid_arg "number-stepper requires value"
   | _ -> ()
 
 let child_kind_of nodes child_id =

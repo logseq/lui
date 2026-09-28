@@ -13,6 +13,9 @@ namespace LUI
         Column,
         Grid,
         Stack,
+        EdgeInset,
+        Overlay,
+        ViewThatFits,
         Panel,
         Card,
         Alert,
@@ -28,6 +31,7 @@ namespace LUI
         RadioGroup,
         Radio,
         Slider,
+        NumberStepper,
         TextField,
         SecureField,
         Input,
@@ -85,6 +89,10 @@ namespace LUI
         ListSectionFooter,
         SwipeActions,
         SwipeAction,
+        FilePicker,
+        Link,
+        FileImage,
+        FilePreview,
     }
 
     public enum LUIProperty
@@ -171,6 +179,21 @@ namespace LUI
         ScrollAnimated,
         TrackVisibleRange,
         EdgeValue,
+        PickerRequest,
+        PickerTypes,
+        PickerMultiple,
+        PickerSource,
+        PickerCompletion,
+        MinValue,
+        MaxValue,
+        StepValue,
+        Detents,
+        Sizing,
+        PathValue,
+        UrlValue,
+        MaxPixelSize,
+        Visible,
+        AlignmentValue,
     }
 
     public static class LUIWireSchema
@@ -183,6 +206,9 @@ namespace LUI
             { "column", LUINodeKind.Column },
             { "grid", LUINodeKind.Grid },
             { "stack", LUINodeKind.Stack },
+            { "edge-inset", LUINodeKind.EdgeInset },
+            { "overlay", LUINodeKind.Overlay },
+            { "view-that-fits", LUINodeKind.ViewThatFits },
             { "panel", LUINodeKind.Panel },
             { "card", LUINodeKind.Card },
             { "alert", LUINodeKind.Alert },
@@ -198,6 +224,7 @@ namespace LUI
             { "radio-group", LUINodeKind.RadioGroup },
             { "radio", LUINodeKind.Radio },
             { "slider", LUINodeKind.Slider },
+            { "number-stepper", LUINodeKind.NumberStepper },
             { "text-field", LUINodeKind.TextField },
             { "secure-field", LUINodeKind.SecureField },
             { "input", LUINodeKind.Input },
@@ -255,6 +282,10 @@ namespace LUI
             { "list-section-footer", LUINodeKind.ListSectionFooter },
             { "swipe-actions", LUINodeKind.SwipeActions },
             { "swipe-action", LUINodeKind.SwipeAction },
+            { "file-picker", LUINodeKind.FilePicker },
+            { "link", LUINodeKind.Link },
+            { "file-image", LUINodeKind.FileImage },
+            { "file-preview", LUINodeKind.FilePreview },
         };
 
         private static readonly Dictionary<string, LUIProperty> PropertiesByWireName =
@@ -342,6 +373,21 @@ namespace LUI
             { "scroll-animated", LUIProperty.ScrollAnimated },
             { "track-visible-range", LUIProperty.TrackVisibleRange },
             { "edge", LUIProperty.EdgeValue },
+            { "request", LUIProperty.PickerRequest },
+            { "types", LUIProperty.PickerTypes },
+            { "multiple", LUIProperty.PickerMultiple },
+            { "source", LUIProperty.PickerSource },
+            { "completion", LUIProperty.PickerCompletion },
+            { "min", LUIProperty.MinValue },
+            { "max", LUIProperty.MaxValue },
+            { "step", LUIProperty.StepValue },
+            { "detents", LUIProperty.Detents },
+            { "sizing", LUIProperty.Sizing },
+            { "path", LUIProperty.PathValue },
+            { "url", LUIProperty.UrlValue },
+            { "max-pixel-size", LUIProperty.MaxPixelSize },
+            { "visible", LUIProperty.Visible },
+            { "alignment", LUIProperty.AlignmentValue },
         };
 
         public static string WireName(this LUINodeKind kind) => kind switch
@@ -351,6 +397,9 @@ namespace LUI
             LUINodeKind.Column => "column",
             LUINodeKind.Grid => "grid",
             LUINodeKind.Stack => "stack",
+            LUINodeKind.EdgeInset => "edge-inset",
+            LUINodeKind.Overlay => "overlay",
+            LUINodeKind.ViewThatFits => "view-that-fits",
             LUINodeKind.Panel => "panel",
             LUINodeKind.Card => "card",
             LUINodeKind.Alert => "alert",
@@ -366,6 +415,7 @@ namespace LUI
             LUINodeKind.RadioGroup => "radio-group",
             LUINodeKind.Radio => "radio",
             LUINodeKind.Slider => "slider",
+            LUINodeKind.NumberStepper => "number-stepper",
             LUINodeKind.TextField => "text-field",
             LUINodeKind.SecureField => "secure-field",
             LUINodeKind.Input => "input",
@@ -423,6 +473,10 @@ namespace LUI
             LUINodeKind.ListSectionFooter => "list-section-footer",
             LUINodeKind.SwipeActions => "swipe-actions",
             LUINodeKind.SwipeAction => "swipe-action",
+            LUINodeKind.FilePicker => "file-picker",
+            LUINodeKind.Link => "link",
+            LUINodeKind.FileImage => "file-image",
+            LUINodeKind.FilePreview => "file-preview",
             _ => "unknown",
         };
 
@@ -439,6 +493,9 @@ namespace LUI
             LUINodeKind.Column or
             LUINodeKind.Grid or
             LUINodeKind.Stack or
+            LUINodeKind.EdgeInset or
+            LUINodeKind.Overlay or
+            LUINodeKind.ViewThatFits or
             LUINodeKind.Panel or
             LUINodeKind.Card or
             LUINodeKind.Alert or
@@ -478,7 +535,9 @@ namespace LUI
             LUINodeKind.ListSection or
             LUINodeKind.ListSectionHeader or
             LUINodeKind.ListSectionFooter or
-            LUINodeKind.SwipeActions => true,
+            LUINodeKind.SwipeActions or
+            LUINodeKind.FilePicker or
+            LUINodeKind.Link => true,
             _ => false,
         };
 
@@ -566,6 +625,21 @@ namespace LUI
             LUIProperty.ScrollAnimated => "scroll-animated",
             LUIProperty.TrackVisibleRange => "track-visible-range",
             LUIProperty.EdgeValue => "edge",
+            LUIProperty.PickerRequest => "request",
+            LUIProperty.PickerTypes => "types",
+            LUIProperty.PickerMultiple => "multiple",
+            LUIProperty.PickerSource => "source",
+            LUIProperty.PickerCompletion => "completion",
+            LUIProperty.MinValue => "min",
+            LUIProperty.MaxValue => "max",
+            LUIProperty.StepValue => "step",
+            LUIProperty.Detents => "detents",
+            LUIProperty.Sizing => "sizing",
+            LUIProperty.PathValue => "path",
+            LUIProperty.UrlValue => "url",
+            LUIProperty.MaxPixelSize => "max-pixel-size",
+            LUIProperty.Visible => "visible",
+            LUIProperty.AlignmentValue => "alignment",
             _ => "unknown",
         };
 
@@ -593,6 +667,8 @@ namespace LUI
             { LUINodeKind.ListSection, Set(LUIProperty.KeyValue, LUIProperty.SeparatorValue) },
             { LUINodeKind.SwipeActions, Set() },
             { LUINodeKind.SwipeAction, Set(LUIProperty.TextValue, LUIProperty.InlineIconName, LUIProperty.VariantValue, LUIProperty.EdgeValue, LUIProperty.Enabled, LUIProperty.BackgroundValue, LUIProperty.PressEnabled) },
+            { LUINodeKind.FilePicker, Set(LUIProperty.PickerRequest, LUIProperty.PickerTypes, LUIProperty.PickerMultiple, LUIProperty.PickerSource, LUIProperty.PickerCompletion, LUIProperty.Enabled, LUIProperty.AppearEnabled) },
+            { LUINodeKind.FilePreview, Set(LUIProperty.PathValue) },
         };
 
         public static readonly IReadOnlyDictionary<LUINodeKind, IReadOnlySet<LUIProperty>> ExtraMatrix =

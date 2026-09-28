@@ -85,6 +85,9 @@ namespace LUI.WinUI
                 case "glass":
                     return Resource("AcrylicBackgroundFillColorDefaultBrush",
                         Color.FromArgb(0xCC, 0xF9, 0xF9, 0xF9));
+                case "bar":
+                    return Resource("AcrylicBackgroundFillColorDefaultBrush",
+                        Color.FromArgb(0xD9, 0xF9, 0xF9, 0xF9));
                 case "secondary-foreground":
                     return Resource("TextFillColorSecondaryBrush",
                         Color.FromArgb(0x9E, 0x1B, 0x1B, 0x1B));

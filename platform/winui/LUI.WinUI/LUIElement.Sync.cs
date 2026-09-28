@@ -22,6 +22,11 @@ namespace LUI.WinUI
                     SyncPlainContainer(state, context);
                     break;
                 case LUINodeKind.Stack:
+                // edge-inset/overlay/view-that-fits approximate as stacked
+                // grid children (no WinUI pinned/fit primitive).
+                case LUINodeKind.EdgeInset:
+                case LUINodeKind.Overlay:
+                case LUINodeKind.ViewThatFits:
                     SyncStackLike(state, context);
                     break;
                 case LUINodeKind.Row:
@@ -85,6 +90,9 @@ namespace LUI.WinUI
                     break;
                 case LUINodeKind.Slider:
                     SyncSlider(state, context);
+                    break;
+                case LUINodeKind.NumberStepper:
+                    SyncNumberStepper(state, context);
                     break;
                 case LUINodeKind.TextField:
                 case LUINodeKind.Input:
@@ -167,6 +175,11 @@ namespace LUI.WinUI
                     // Metadata children — the parent attaches them.
                     break;
                 case LUINodeKind.MenuItem:
+                    break;
+                case LUINodeKind.FilePicker:
+                    // Non-visual node: the WinUI backend does not present a
+                    // picker; children sync inline.
+                    SyncStackLike(state, context);
                     break;
                 case LUINodeKind.BottomTabs:
                     SyncBottomTabs(state, context);
@@ -379,6 +392,37 @@ namespace LUI.WinUI
             if (context != null)
             {
                 Gate(() => context.Backend.PerformValueChange(Id, args.NewValue));
+            }
+        }
+
+        void SyncNumberStepper(LUINodeState state, LUISyncContext context)
+        {
+            if (Control is not NumberBox box) return;
+            box.Header = LUIPropertyApplier.Text(state);
+            box.Minimum = LUIPropertyApplier.Prop(
+                state, LUIProperty.MinValue)?.AsFloat ?? 0.0;
+            box.Maximum = LUIPropertyApplier.Prop(
+                state, LUIProperty.MaxValue)?.AsFloat ?? double.MaxValue;
+            box.SmallChange = LUIPropertyApplier.Prop(
+                state, LUIProperty.StepValue)?.AsFloat ?? 1.0;
+            box.ValueChanged -= OnNumberStepperChanged;
+            double? value = LUIPropertyApplier.Prop(
+                state, LUIProperty.ProgressValue)?.AsFloat;
+            if (value != null && box.Value != value.Value)
+            {
+                box.Value = value.Value;
+            }
+            box.ValueChanged += OnNumberStepperChanged;
+        }
+
+        void OnNumberStepperChanged(NumberBox sender,
+            NumberBoxValueChangedEventArgs args)
+        {
+            LUISyncContext? context = Context;
+            if (context != null && !double.IsNaN(args.NewValue))
+            {
+                Gate(() =>
+                    context.Backend.PerformValueChange(Id, args.NewValue));
             }
         }
 

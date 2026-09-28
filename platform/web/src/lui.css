@@ -397,6 +397,105 @@ body {
     @apply relative;
   }
 
+  /* edge-inset: first child is the scrollable content; pinned children
+     group at the named edge (flex order, no per-child overlap). */
+  .lui-edge-inset {
+    @apply flex flex-col;
+  }
+
+  .lui-edge-inset > :first-child {
+    @apply min-h-0 min-w-0 flex-1;
+  }
+
+  .lui-edge-inset > :not(:first-child) {
+    order: -1;
+  }
+
+  .lui-edge-inset[data-edge='bottom'] > :not(:first-child) {
+    order: 0;
+  }
+
+  .lui-edge-inset[data-edge='leading'],
+  .lui-edge-inset[data-edge='trailing'] {
+    @apply flex-row;
+  }
+
+  .lui-edge-inset[data-edge='trailing'] > :not(:first-child) {
+    order: 0;
+  }
+
+  .lui-edge-inset[data-pinned-hidden] > :not(:first-child) {
+    @apply hidden;
+  }
+
+  /* overlay: the first child sizes the view; overlay children are
+     absolutely positioned so they never contribute intrinsic size. */
+  .lui-overlay {
+    @apply relative inline-grid;
+  }
+
+  .lui-overlay > :not(:first-child) {
+    @apply absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2;
+  }
+
+  .lui-overlay > [data-alignment='top-leading'],
+  .lui-overlay[data-alignment='top-leading'] > :not(:first-child):not([data-alignment]) {
+    @apply left-0 top-0 translate-x-0 translate-y-0;
+  }
+
+  .lui-overlay > [data-alignment='top'],
+  .lui-overlay[data-alignment='top'] > :not(:first-child):not([data-alignment]) {
+    @apply left-1/2 top-0 -translate-x-1/2 translate-y-0;
+  }
+
+  .lui-overlay > [data-alignment='top-trailing'],
+  .lui-overlay[data-alignment='top-trailing'] > :not(:first-child):not([data-alignment]) {
+    @apply right-0 top-0 translate-x-0 translate-y-0;
+  }
+
+  .lui-overlay > [data-alignment='leading'],
+  .lui-overlay[data-alignment='leading'] > :not(:first-child):not([data-alignment]) {
+    @apply left-0 top-1/2 translate-x-0 -translate-y-1/2;
+  }
+
+  .lui-overlay > [data-alignment='center'],
+  .lui-overlay[data-alignment='center'] > :not(:first-child):not([data-alignment]) {
+    @apply left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2;
+  }
+
+  .lui-overlay > [data-alignment='trailing'],
+  .lui-overlay[data-alignment='trailing'] > :not(:first-child):not([data-alignment]) {
+    @apply right-0 top-1/2 translate-x-0 -translate-y-1/2;
+  }
+
+  .lui-overlay > [data-alignment='bottom-leading'],
+  .lui-overlay[data-alignment='bottom-leading'] > :not(:first-child):not([data-alignment]) {
+    @apply bottom-0 left-0 translate-x-0 translate-y-0;
+  }
+
+  .lui-overlay > [data-alignment='bottom'],
+  .lui-overlay[data-alignment='bottom'] > :not(:first-child):not([data-alignment]) {
+    @apply bottom-0 left-1/2 -translate-x-1/2 translate-y-0;
+  }
+
+  .lui-overlay > [data-alignment='bottom-trailing'],
+  .lui-overlay[data-alignment='bottom-trailing'] > :not(:first-child):not([data-alignment]) {
+    @apply bottom-0 right-0 translate-x-0 translate-y-0;
+  }
+
+  .lui-view-that-fits {
+    @apply grid;
+  }
+
+  .lui-view-that-fits > * {
+    grid-area: 1 / 1;
+  }
+
+  /* No CSS fit probing; keep only the first candidate. */
+  .lui-view-that-fits > :not(:first-child) {
+    @apply hidden;
+  }
+
   .lui-tooltip {
     @apply w-fit rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground shadow-md;
   }
@@ -1159,6 +1258,26 @@ body {
 
   .lui-button[data-icon-placement="trailing"] .lui-button-icon {
     @apply order-1;
+  }
+
+  .lui-link {
+    @apply inline-flex items-center gap-1 text-primary underline underline-offset-4;
+  }
+
+  .lui-link-icon {
+    @apply pointer-events-none size-4 shrink-0;
+  }
+
+  .lui-link-icon:not([data-name]) {
+    @apply hidden;
+  }
+
+  .lui-link[data-icon-placement="trailing"] .lui-link-icon {
+    @apply order-1;
+  }
+
+  .lui-link[data-icon-placement="top"] {
+    @apply flex-col;
   }
 
   .lui-button[data-variant="default"] {

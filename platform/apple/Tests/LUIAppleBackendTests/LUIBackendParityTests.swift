@@ -636,6 +636,103 @@ struct LUIBackendParityTests {
         #expect(events == [.textChanged(node: 1, text: "secret")])
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
     }
+
+    @Test("edge-inset requires a valid edge and toggles visibility")
+    func edgeInsetValidatesEdgeAndVisibility() throws {
+        let backend = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"edge-inset"}
+            ]}
+            """)
+        }
+
+        let badEdge = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try badEdge.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"edge-inset"},
+              {"op":"set-prop","id":1,"property":"edge","value":"left"}
+            ]}
+            """)
+        }
+
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"edge-inset"},
+          {"op":"set-prop","id":1,"property":"edge","value":"top"},
+          {"op":"set-prop","id":1,"property":"visible","value":false},
+          {"op":"set-prop","id":1,"property":"gap","value":4},
+          {"op":"set-prop","id":1,"property":"background","value":"bar"},
+          {"op":"create-node","id":2,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"text","value":"scrolling"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"create-node","id":3,"kind":"row"},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let model = try #require(backend.model(id: 1))
+        #expect(model.kind == .edgeInset)
+        #expect(model.property(.edge)?.stringValue == "top")
+        #expect(model.property(.visible)?.boolValue == false)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+    }
+
+    @Test("overlay sizes to its base child and floats aligned overlays")
+    func overlayFloatsAlignedChildren() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"overlay"},
+          {"op":"create-node","id":2,"kind":"list"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"create-node","id":3,"kind":"row"},
+          {"op":"set-prop","id":3,"property":"alignment","value":"top-trailing"},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        #expect(backend.model(id: 1)?.kind == .overlay)
+        #expect(
+            backend.model(id: 3)?.property(.alignment)?.stringValue
+                == "top-trailing"
+        )
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        let badAlignment = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try badAlignment.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"overlay"},
+              {"op":"set-prop","id":1,"property":"alignment","value":"above"}
+            ]}
+            """)
+        }
+    }
+
+    @Test("view-that-fits mounts its candidate children")
+    func viewThatFitsMountsChildren() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"view-that-fits"},
+          {"op":"set-prop","id":1,"property":"orientation","value":"vertical"},
+          {"op":"create-node","id":2,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"text","value":"expanded"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"set-prop","id":3,"property":"text","value":"compact"},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let model = try #require(backend.model(id: 1))
+        #expect(model.kind == .viewThatFits)
+        #expect(model.children == [2, 3])
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+    }
 }
 
 @MainActor

@@ -26,6 +26,18 @@
       "status": "supported"
     },
     {
+      "name": "edge-inset",
+      "status": "supported"
+    },
+    {
+      "name": "overlay",
+      "status": "supported"
+    },
+    {
+      "name": "view-that-fits",
+      "status": "supported"
+    },
+    {
       "name": "panel",
       "status": "supported"
     },
@@ -238,6 +250,10 @@
       "status": "supported"
     },
     {
+      "name": "number-stepper",
+      "status": "supported"
+    },
+    {
       "name": "progress",
       "status": "supported"
     },
@@ -304,6 +320,22 @@
     {
       "name": "input-group-actions",
       "status": "supported"
+    },
+    {
+      "name": "file-picker",
+      "status": "supported"
+    },
+    {
+      "name": "link",
+      "status": "supported"
+    },
+    {
+      "name": "file-image",
+      "status": "supported"
+    },
+    {
+      "name": "file-preview",
+      "status": "supported"
     }
   ],
   "nodeKinds": [
@@ -340,6 +372,27 @@
       "wire": "stack",
       "dart": "stack",
       "swift": "stack",
+      "container": true
+    },
+    {
+      "lg": "EdgeInset",
+      "wire": "edge-inset",
+      "dart": "edgeInset",
+      "swift": "edgeInset",
+      "container": true
+    },
+    {
+      "lg": "Overlay",
+      "wire": "overlay",
+      "dart": "overlay",
+      "swift": "overlay",
+      "container": true
+    },
+    {
+      "lg": "ViewThatFits",
+      "wire": "view-that-fits",
+      "dart": "viewThatFits",
+      "swift": "viewThatFits",
       "container": true
     },
     {
@@ -445,6 +498,13 @@
       "wire": "slider",
       "dart": "slider",
       "swift": "slider",
+      "container": false
+    },
+    {
+      "lg": "NumberStepper",
+      "wire": "number-stepper",
+      "dart": "numberStepper",
+      "swift": "numberStepper",
       "container": false
     },
     {
@@ -844,6 +904,34 @@
       "wire": "swipe-action",
       "dart": "swipeAction",
       "swift": "swipeAction",
+      "container": false
+    },
+    {
+      "lg": "FilePicker",
+      "wire": "file-picker",
+      "dart": "filePicker",
+      "swift": "filePicker",
+      "container": true
+    },
+    {
+      "lg": "Link",
+      "wire": "link",
+      "dart": "link",
+      "swift": "link",
+      "container": true
+    },
+    {
+      "lg": "FileImage",
+      "wire": "file-image",
+      "dart": "fileImage",
+      "swift": "fileImage",
+      "container": false
+    },
+    {
+      "lg": "FilePreview",
+      "wire": "file-preview",
+      "dart": "filePreview",
+      "swift": "filePreview",
       "container": false
     }
   ],
@@ -1257,6 +1345,81 @@
       "lg": "EdgeValue",
       "wire": "edge",
       "swift": "edge"
+    },
+    {
+      "lg": "PickerRequest",
+      "wire": "request",
+      "swift": "request"
+    },
+    {
+      "lg": "PickerTypes",
+      "wire": "types",
+      "swift": "types"
+    },
+    {
+      "lg": "PickerMultiple",
+      "wire": "multiple",
+      "swift": "multiple"
+    },
+    {
+      "lg": "PickerSource",
+      "wire": "source",
+      "swift": "source"
+    },
+    {
+      "lg": "PickerCompletion",
+      "wire": "completion",
+      "swift": "completion"
+    },
+    {
+      "lg": "MinValue",
+      "wire": "min",
+      "swift": "minValue"
+    },
+    {
+      "lg": "MaxValue",
+      "wire": "max",
+      "swift": "maxValue"
+    },
+    {
+      "lg": "StepValue",
+      "wire": "step",
+      "swift": "stepValue"
+    },
+    {
+      "lg": "Detents",
+      "wire": "detents",
+      "swift": "detents"
+    },
+    {
+      "lg": "Sizing",
+      "wire": "sizing",
+      "swift": "sizing"
+    },
+    {
+      "lg": "PathValue",
+      "wire": "path",
+      "swift": "path"
+    },
+    {
+      "lg": "UrlValue",
+      "wire": "url",
+      "swift": "url"
+    },
+    {
+      "lg": "MaxPixelSize",
+      "wire": "max-pixel-size",
+      "swift": "maxPixelSize"
+    },
+    {
+      "lg": "Visible",
+      "wire": "visible",
+      "swift": "visible"
+    },
+    {
+      "lg": "AlignmentValue",
+      "wire": "alignment",
+      "swift": "alignment"
     }
   ],
   "events": [
@@ -1337,6 +1500,13 @@
         ":int",
         ":int",
         ":int"
+      ]
+    },
+    {
+      "lg": "Picked",
+      "fields": [
+        ":int",
+        ":string"
       ]
     }
   ],
@@ -1431,6 +1601,18 @@
       "enabled",
       "background",
       "press-enabled"
+    ],
+    "file-picker": [
+      "request",
+      "types",
+      "multiple",
+      "source",
+      "completion",
+      "enabled",
+      "appear-enabled"
+    ],
+    "file-preview": [
+      "path"
     ]
   },
   "kindExtraProperties": {

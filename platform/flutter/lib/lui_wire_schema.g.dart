@@ -7,6 +7,9 @@ enum _NodeKind {
   column,
   grid,
   stack,
+  edgeInset,
+  overlay,
+  viewThatFits,
   panel,
   card,
   alert,
@@ -22,6 +25,7 @@ enum _NodeKind {
   radioGroup,
   radio,
   slider,
+  numberStepper,
   textField,
   secureField,
   input,
@@ -79,6 +83,10 @@ enum _NodeKind {
   listSectionFooter,
   swipeActions,
   swipeAction,
+  filePicker,
+  link,
+  fileImage,
+  filePreview,
 }
 
 _NodeKind _decodeNodeKind(Object? value) {
@@ -91,6 +99,9 @@ _NodeKind _decodeNodeKind(Object? value) {
     'column' => _NodeKind.column,
     'grid' => _NodeKind.grid,
     'stack' => _NodeKind.stack,
+    'edge-inset' => _NodeKind.edgeInset,
+    'overlay' => _NodeKind.overlay,
+    'view-that-fits' => _NodeKind.viewThatFits,
     'panel' => _NodeKind.panel,
     'card' => _NodeKind.card,
     'alert' => _NodeKind.alert,
@@ -106,6 +117,7 @@ _NodeKind _decodeNodeKind(Object? value) {
     'radio-group' => _NodeKind.radioGroup,
     'radio' => _NodeKind.radio,
     'slider' => _NodeKind.slider,
+    'number-stepper' => _NodeKind.numberStepper,
     'text-field' => _NodeKind.textField,
     'secure-field' => _NodeKind.secureField,
     'input' => _NodeKind.input,
@@ -163,6 +175,10 @@ _NodeKind _decodeNodeKind(Object? value) {
     'list-section-footer' => _NodeKind.listSectionFooter,
     'swipe-actions' => _NodeKind.swipeActions,
     'swipe-action' => _NodeKind.swipeAction,
+    'file-picker' => _NodeKind.filePicker,
+    'link' => _NodeKind.link,
+    'file-image' => _NodeKind.fileImage,
+    'file-preview' => _NodeKind.filePreview,
     _ => throw const LUIBackendException('unknown node kind'),
   };
 }

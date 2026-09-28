@@ -7,6 +7,9 @@ type node_kind =
   | Column
   | Grid
   | Stack
+  | EdgeInset
+  | Overlay
+  | ViewThatFits
   | Panel
   | Card
   | Alert
@@ -22,6 +25,7 @@ type node_kind =
   | RadioGroup
   | Radio
   | Slider
+  | NumberStepper
   | TextField
   | SecureField
   | Input
@@ -79,6 +83,10 @@ type node_kind =
   | ListSectionFooter
   | SwipeActions
   | SwipeAction
+  | FilePicker
+  | Link
+  | FileImage
+  | FilePreview
 
 type operating_system =
   | GenericOS
@@ -185,6 +193,21 @@ type property =
   | ScrollAnimated
   | TrackVisibleRange
   | EdgeValue
+  | PickerRequest
+  | PickerTypes
+  | PickerMultiple
+  | PickerSource
+  | PickerCompletion
+  | MinValue
+  | MaxValue
+  | StepValue
+  | Detents
+  | Sizing
+  | PathValue
+  | UrlValue
+  | MaxPixelSize
+  | Visible
+  | AlignmentValue
 
 module Property_map : Map.S with type key = property
 
@@ -210,6 +233,7 @@ type event =
   | Appear of int
   | ScrollCompleted of int * int * string
   | VisibleRange of int * int * int
+  | Picked of int * string
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =

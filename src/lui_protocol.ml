@@ -9,6 +9,9 @@ type node_kind =
   | Column
   | Grid
   | Stack
+  | EdgeInset
+  | Overlay
+  | ViewThatFits
   | Panel
   | Card
   | Alert
@@ -24,6 +27,7 @@ type node_kind =
   | RadioGroup
   | Radio
   | Slider
+  | NumberStepper
   | TextField
   | SecureField
   | Input
@@ -81,6 +85,10 @@ type node_kind =
   | ListSectionFooter
   | SwipeActions
   | SwipeAction
+  | FilePicker
+  | Link
+  | FileImage
+  | FilePreview
 
 type operating_system =
   | GenericOS
@@ -187,6 +195,21 @@ type property =
   | ScrollAnimated
   | TrackVisibleRange
   | EdgeValue
+  | PickerRequest
+  | PickerTypes
+  | PickerMultiple
+  | PickerSource
+  | PickerCompletion
+  | MinValue
+  | MaxValue
+  | StepValue
+  | Detents
+  | Sizing
+  | PathValue
+  | UrlValue
+  | MaxPixelSize
+  | Visible
+  | AlignmentValue
 
 module Property_map =
   Map.Make
@@ -215,6 +238,7 @@ type event =
   | Appear of int
   | ScrollCompleted of int * int * string
   | VisibleRange of int * int * int
+  | Picked of int * string
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -257,6 +281,7 @@ let event_node event =
   | Appear node
   | ScrollCompleted (node, _, _)
   | VisibleRange (node, _, _)
+  | Picked (node, _)
   | ExtensionEvent (node, _, _, _) -> node
 
 let modal_surface kind = kind = Dialog || kind = Drawer || kind = Sheet
@@ -275,6 +300,7 @@ let context_menu_host_kind kind =
   || kind = Toggle
   || kind = Radio
   || kind = Slider
+  || kind = NumberStepper
   || kind = TextField
   || kind = SecureField
   || kind = Input
@@ -296,6 +322,7 @@ let context_menu_leaf_host_kind kind =
   || kind = Toggle
   || kind = Radio
   || kind = Slider
+  || kind = NumberStepper
   || kind = TextField
   || kind = SecureField
   || kind = Input
@@ -323,6 +350,7 @@ let event_supported kind event =
     | Text
     | TableCell
     | TimelineItem
+    | FileImage
     | BottomTab
     | SwipeAction -> true
     | _ -> false)
@@ -366,6 +394,7 @@ let event_supported kind event =
   | ValueChanged _ ->
     (match kind with
     | Slider
+    | NumberStepper
     | Split -> true
     | _ -> false)
   | Dismiss _ ->
@@ -376,11 +405,14 @@ let event_supported kind event =
     | Toast
     | Dialog
     | Drawer
-    | Sheet -> true
+    | Sheet
+    | FilePreview
+    | FilePicker -> true
     | _ -> false)
   | DoublePress _ -> kind = ListItem
   | Appear _ -> kind <> Root
   | ScrollCompleted _ | VisibleRange _ -> kind = ListContainer
+  | Picked _ -> kind = FilePicker
   | ExtensionEvent _ -> false
 
 let true_property properties property =
@@ -537,6 +569,12 @@ let icon_name_supported value =
 let theme_mode_supported value =
   value = "system" || value = "light" || value = "dark"
 
+let picker_source_supported value =
+  value = "files" || value = "photos" || value = "camera"
+
+let sizing_supported value =
+  value = "form" || value = "fitted" || value = "page"
+
 let main_alignment_supported value =
   value = "start" || value = "center" || value = "end" || value = "space_between"
 
@@ -547,6 +585,12 @@ let horizontal_container kind =
   kind = Tabs || kind = ButtonGroup || kind = ToggleGroup || kind = Breadcrumb
   || kind = Pagination
 
+let alignment_supported value =
+  value = "top-leading" || value = "top" || value = "top-trailing"
+  || value = "leading" || value = "center" || value = "trailing"
+  || value = "bottom-leading" || value = "bottom"
+  || value = "bottom-trailing"
+
 let can_contain_children kind =
   if horizontal_container kind || context_menu_leaf_host_kind kind then true
   else
@@ -556,6 +600,9 @@ let can_contain_children kind =
     | Column
     | Grid
     | Stack
+    | EdgeInset
+    | Overlay
+    | ViewThatFits
     | Panel
     | Card
     | Box
@@ -586,6 +633,8 @@ let can_contain_children kind =
     | Bubble
     | BottomTabs
     | BottomTab
+    | Link
+    | FilePicker
     | ListSection
     | ListSectionHeader
     | ListSectionFooter
@@ -618,16 +667,22 @@ let common_property_supported kind property =
   | ForegroundValue ->
     (match kind with
     | Row | Column | Grid | Box | Panel | Card | Stack | Scroll | Avatar
+    | EdgeInset | Overlay | ViewThatFits
     | Text | Heading | Paragraph | Label | Button | ToggleButton | TextField
     | SecureField | Input | SearchField | Textarea | Checkbox | Toggle | Radio
-    | Slider | Spinner | Icon | Select | Combobox | DropdownMenu | MenuItem
-    | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar -> true
+    | Slider | NumberStepper | Spinner | Icon | Select | Combobox | DropdownMenu | MenuItem
+    | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar
+    | Link | FileImage -> true
     | _ -> false)
   | WidthValue | HeightValue -> kind <> Tooltip
   | MinWidth | MaxWidth | MinHeight | MaxHeight ->
     (not (modal_surface kind)) && kind <> Tooltip
   | ContainerRelativeFrameValue | ContainerRelativeFrameInset ->
     kind <> Root && not (modal_surface kind)
+  (* Position hint honored on [overlay] children and on [overlay] itself;
+     inert elsewhere. [property_supported] also admits it ahead of the
+     restrictive arms so aligned children of restrictive kinds validate. *)
+  | AlignmentValue -> kind <> Root
   | StyleClass -> kind <> Tooltip
   | AccessibilityLabel ->
     kind = Button
@@ -644,6 +699,7 @@ let common_property_supported kind property =
     || kind = RadioGroup
     || kind = Radio
     || kind = Slider
+    || kind = NumberStepper
     || horizontal_container kind
     || kind = Avatar
     || kind = Image
@@ -655,6 +711,8 @@ let common_property_supported kind property =
     || kind = Alert
     || kind = Bubble
     || kind = ListItem
+    || kind = Link
+    || kind = FileImage
     || tree_row_kind kind
   | AccessibilityIdentifier -> true
   | PlaceholderValue ->
@@ -668,8 +726,10 @@ let common_property_supported kind property =
   | HeadingLevel -> kind = Heading
   | Checked ->
     kind = Checkbox || kind = SwitchControl || kind = Toggle || kind = Radio
-  | ProgressValue -> kind = Progress || kind = Slider || kind = Split
-  | OrientationValue -> kind = Divider || kind = Tabs || kind = Scroll
+  | ProgressValue ->
+    kind = Progress || kind = Slider || kind = NumberStepper || kind = Split
+  | OrientationValue ->
+    kind = Divider || kind = Tabs || kind = Scroll || kind = ViewThatFits
   | PlacementValue -> kind = Toolbar
   | SizeValue ->
     kind = Button || kind = ToggleButton || kind = Spinner || kind = Icon
@@ -684,7 +744,9 @@ let common_property_supported kind property =
     || kind = MenuItem
     || kind = ListItem
     || kind = BottomTab
-  | IconPlacementValue -> kind = Button || kind = ToggleButton || kind = ListItem
+    || kind = Link
+  | IconPlacementValue ->
+    kind = Button || kind = ToggleButton || kind = ListItem || kind = Link
   | Selected ->
     kind = Button
     || kind = ToggleButton
@@ -717,6 +779,7 @@ let common_property_supported kind property =
     || kind = ListItem
     || kind = TableCell
     || kind = BottomTab
+    || kind = FileImage
     || tree_row_kind kind
   | SubmitEnabled -> kind = Combobox || kind = ListItem
   | DoublePressEnabled -> kind = ListItem
@@ -744,8 +807,10 @@ let common_property_supported kind property =
   | ScrollToken
   | ScrollAnimated
   | TrackVisibleRange -> kind = ListContainer
-  | EdgeValue -> kind = SwipeAction
+  | EdgeValue -> kind = SwipeAction || kind = EdgeInset
   | ResizeDuration | ResizeEasing | ResizeOrigin -> kind = Split
+  | MinValue | MaxValue | StepValue -> kind = NumberStepper
+  | Detents | Sizing -> kind = Sheet
   | ThemeValue | ThemeMode -> can_contain_children kind
   | TextValue ->
     (match kind with
@@ -776,7 +841,9 @@ let common_property_supported kind property =
     | TableCell
     | Alert
     | Bubble
-    | StatusBar -> true
+    | NumberStepper
+    | StatusBar
+    | Link -> true
     | _ -> false)
   | Enabled ->
     (match kind with
@@ -792,15 +859,21 @@ let common_property_supported kind property =
     | Toggle
     | Radio
     | Slider
+    | NumberStepper
     | Select
     | Combobox
     | MenuItem
     | ListItem
     | Drawer
-    | BottomTab -> true
+    | BottomTab
+    | Link -> true
     | _ -> false)
-  | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector ->
-    false
+  | PathValue -> kind = FileImage || kind = FilePreview
+  | UrlValue -> kind = Link
+  | MaxPixelSize -> kind = FileImage
+  | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector
+  | PickerRequest | PickerTypes | PickerMultiple | PickerSource
+  | PickerCompletion -> false
   | TitleValue -> kind = BottomTab
   | Gap ->
     kind = Row
@@ -816,10 +889,16 @@ let common_property_supported kind property =
     || kind = Panel
     || kind = Box
     || kind = Split
+    || kind = EdgeInset
     || horizontal_container kind
+  | Visible -> kind = EdgeInset
 
 let property_supported kind property =
   if property = AccessibilityIdentifier then true
+  (* Position hint honored on [overlay] children and on [overlay] itself;
+     admitted before the restrictive arms so e.g. an aligned [menu_trigger]
+     child still carries it. Inert elsewhere, like [container-relative-frame]. *)
+  else if property = AlignmentValue then kind <> Root
   else
     (* The restrictive arms below mirror schema/components.json
        kindProperties; test/property_matrix asserts the two stay in sync. *)
@@ -844,6 +923,11 @@ let property_supported kind property =
       property = TextValue || property = InlineIconName
       || property = AccessibilityLabel || property = Enabled
       || property = ForegroundValue || property = StyleClass
+    | FilePicker ->
+      property = PickerRequest || property = PickerTypes
+      || property = PickerMultiple || property = PickerSource
+      || property = PickerCompletion || property = Enabled
+      || property = AppearEnabled
     | Accordion ->
       property = TextValue || property = Selected
       || property = ToggleEnabled || property = HeightValue
@@ -875,6 +959,7 @@ let property_supported kind property =
         ]
     | Dialog ->
       property = DescriptionValue || common_property_supported kind property
+    | FilePreview -> property = PathValue
     | _ -> common_property_supported kind property
 
 let is_finite value =
@@ -975,7 +1060,23 @@ let property_value_supported property value =
   | ScrollAnimated, BoolValue _ -> true
   | TrackVisibleRange, BoolValue _ -> true
   | EdgeValue, StringValue value ->
-    value = "leading" || value = "trailing"
+    value = "top" || value = "bottom" || value = "leading"
+    || value = "trailing"
+  | PickerRequest, (StringValue _ | IntValue _)
+  | PickerCompletion, (StringValue _ | IntValue _) -> true
+  | PickerTypes, StringValue _ -> true
+  | PickerMultiple, BoolValue _ -> true
+  | PickerSource, StringValue value -> picker_source_supported value
+  | MinValue, FloatValue value | MaxValue, FloatValue value ->
+    is_finite value
+  | StepValue, FloatValue value -> is_finite value && value > 0.0
+  | Detents, StringValue _ -> true
+  | Sizing, StringValue value -> sizing_supported value
+  | PathValue, StringValue _ | UrlValue, StringValue _ -> true
+  | MaxPixelSize, IntValue value -> value > 0
+  | Visible, BoolValue _ -> true
+  | AlignmentValue, StringValue value ->
+    alignment_supported value
   | _ -> false
 
 let property_value_supported_for_kind kind property value =
@@ -1102,8 +1203,14 @@ let node_properties_supported kind properties =
            || (source_x >= 0.0 && source_y >= 0.0 && source_width > 0.0
               && source_height > 0.0))
       else true)
+  && (if kind = FileImage || kind = FilePreview then
+        string_property_nonempty properties PathValue
+      else true)
+  && (if kind = Link then string_property_nonempty properties UrlValue
+      else true)
   && (if kind = MediaSurface then Property_map.mem SurfaceIdValue properties
       else true)
+  && (if kind = EdgeInset then Property_map.mem EdgeValue properties else true)
   && (if kind = Stepper then Property_map.mem ActiveIndex properties else true)
   && (if kind = Step || kind = TimelineItem || kind = BottomTabs then
         let property =
@@ -1121,6 +1228,21 @@ let node_properties_supported kind properties =
         match Property_map.find_opt ProgressValue properties with
         | Some (FloatValue _) -> true
         | _ -> false
+      else true)
+  && (if kind = NumberStepper then
+        (let text = string_property_or properties TextValue "" in
+         let label = string_property_or properties AccessibilityLabel "" in
+         text <> "" || label <> "")
+        &&
+        (match Property_map.find_opt ProgressValue properties with
+        | Some (FloatValue value) -> is_finite value
+        | _ -> false)
+        &&
+        (* min defaults to 0.0 and max is unbounded; compare endpoints after
+           those defaults so a lone negative max still fails. *)
+        let minimum = float_property properties MinValue 0.0 in
+        let maximum = float_property properties MaxValue Float.max_float in
+        minimum <= maximum
       else true)
   && (if kind = Tree || kind = Toolbar then
         string_property_nonempty properties AccessibilityLabel

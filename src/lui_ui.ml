@@ -91,6 +91,9 @@ let row context = create context Row
 let column context = create context Column
 let grid context = create context Grid
 let stack context = create context Stack
+let edge_inset context = create context EdgeInset
+let overlay context = create context Overlay
+let view_that_fits context = create context ViewThatFits
 let panel context = create context Panel
 let card context = create context Card
 let alert context = create context Alert
@@ -141,12 +144,16 @@ let swipe_action context = create context SwipeAction
 let avatar context = create context Avatar
 let image context = create context Image
 let media_surface context = create context MediaSurface
+let link context = create context Link
+let file_image context = create context FileImage
+let file_preview context = create context FilePreview
 let stepper context = create context Stepper
 let step context = create context Step
 let timeline context = create context Timeline
 let timeline_item context = create context TimelineItem
 let input_group context = create context InputGroup
 let input_group_actions context = create context InputGroupActions
+let file_picker context = create context FilePicker
 let button context = create context Button
 let toggle_button context = create context ToggleButton
 let toggle context = create context Toggle
@@ -312,6 +319,14 @@ let int_property_signal context node property source =
 let int_property context node property value =
   Lui_runtime.set_prop context.ui_application node property
     (IntValue value)
+
+let value_property context node property value =
+  Lui_runtime.set_prop context.ui_application node property value
+
+let value_property_signal context node property source =
+  ignore
+    (Lui_runtime.bind_prop context.ui_scope context.ui_application node
+       property (Signal.own_signal context.ui_scope source))
 
 let disabled context node disabled =
   bool_property context node Enabled (not disabled)

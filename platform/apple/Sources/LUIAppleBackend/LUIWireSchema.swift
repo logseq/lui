@@ -7,6 +7,9 @@ enum LUINodeKind: String, Decodable, Equatable {
     case column = "column"
     case grid = "grid"
     case stack = "stack"
+    case edgeInset = "edge-inset"
+    case overlay = "overlay"
+    case viewThatFits = "view-that-fits"
     case panel = "panel"
     case card = "card"
     case alert = "alert"
@@ -22,6 +25,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case radioGroup = "radio-group"
     case radio = "radio"
     case slider = "slider"
+    case numberStepper = "number-stepper"
     case textField = "text-field"
     case secureField = "secure-field"
     case input = "input"
@@ -79,6 +83,10 @@ enum LUINodeKind: String, Decodable, Equatable {
     case listSectionFooter = "list-section-footer"
     case swipeActions = "swipe-actions"
     case swipeAction = "swipe-action"
+    case filePicker = "file-picker"
+    case link = "link"
+    case fileImage = "file-image"
+    case filePreview = "file-preview"
 }
 
 enum LUIProperty: String, Decodable, Hashable {
@@ -164,6 +172,21 @@ enum LUIProperty: String, Decodable, Hashable {
     case scrollAnimated = "scroll-animated"
     case trackVisibleRange = "track-visible-range"
     case edge = "edge"
+    case request = "request"
+    case types = "types"
+    case multiple = "multiple"
+    case source = "source"
+    case completion = "completion"
+    case minValue = "min"
+    case maxValue = "max"
+    case stepValue = "step"
+    case detents = "detents"
+    case sizing = "sizing"
+    case path = "path"
+    case url = "url"
+    case maxPixelSize = "max-pixel-size"
+    case visible = "visible"
+    case alignment = "alignment"
 }
 
 enum LUISchemaMatrix {
@@ -183,6 +206,8 @@ enum LUISchemaMatrix {
         .listSection: [.key, .separator],
         .swipeActions: [],
         .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled],
+        .filePicker: [.request, .types, .multiple, .source, .completion, .enabled, .appearEnabled],
+        .filePreview: [.path],
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [

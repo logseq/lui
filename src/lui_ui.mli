@@ -47,6 +47,9 @@ val row : ui_context -> int
 val column : ui_context -> int
 val grid : ui_context -> int
 val stack : ui_context -> int
+val edge_inset : ui_context -> int
+val overlay : ui_context -> int
+val view_that_fits : ui_context -> int
 val panel : ui_context -> int
 val card : ui_context -> int
 val alert : ui_context -> int
@@ -97,12 +100,16 @@ val swipe_action : ui_context -> int
 val avatar : ui_context -> int
 val image : ui_context -> int
 val media_surface : ui_context -> int
+val link : ui_context -> int
+val file_image : ui_context -> int
+val file_preview : ui_context -> int
 val stepper : ui_context -> int
 val step : ui_context -> int
 val timeline : ui_context -> int
 val timeline_item : ui_context -> int
 val input_group : ui_context -> int
 val input_group_actions : ui_context -> int
+val file_picker : ui_context -> int
 val button : ui_context -> int
 val toggle_button : ui_context -> int
 val toggle : ui_context -> int
@@ -155,6 +162,13 @@ val int_property_signal :
   int -> Lui_protocol.Property_map.key -> int Signal.signal -> unit
 val int_property :
   ui_context -> int -> Lui_protocol.Property_map.key -> int -> unit
+val value_property :
+  ui_context ->
+  int -> Lui_protocol.Property_map.key -> Lui_protocol.wire_value -> unit
+val value_property_signal :
+  ui_context ->
+  int ->
+  Lui_protocol.Property_map.key -> Lui_protocol.wire_value Signal.signal -> unit
 val disabled : ui_context -> int -> bool -> unit
 val disabled_signal : ui_context -> int -> bool Signal.signal -> unit
 val checked_signal : ui_context -> int -> bool Signal.signal -> unit

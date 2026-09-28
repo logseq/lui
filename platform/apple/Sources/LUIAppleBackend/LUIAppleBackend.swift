@@ -181,6 +181,16 @@ final class LUINodeModel: Identifiable {
         properties[.containerRelativeFrameInset]?.intValue ?? 0
     }
     var sliderValue: Double { properties[.progressValue]?.doubleValue ?? 0.0 }
+    var stepperValue: Double { properties[.progressValue]?.doubleValue ?? 0.0 }
+    var stepperRange: ClosedRange<Double> {
+        let lower = properties[.minValue]?.doubleValue ?? 0.0
+        let upper = properties[.maxValue]?.doubleValue ?? .greatestFiniteMagnitude
+        return lower...max(lower, upper)
+    }
+    var stepperStep: Double {
+        let step = properties[.stepValue]?.doubleValue ?? 1.0
+        return step > 0 ? step : 1.0
+    }
     var splitFraction: Double { properties[.progressValue]?.doubleValue ?? 0.0 }
     var splitGap: Int { properties[.gap]?.intValue ?? 9 }
     var splitResizeDuration: Int { properties[.resizeDuration]?.intValue ?? 0 }
@@ -407,6 +417,40 @@ public final class LUIAppleBackend {
     private var nodeFrames: [Int: CGRect] = [:]
     private var framesReportScheduled = false
 
+    // MARK: - file-picker operations
+
+    /// In-flight and completed file-picker requests keyed by node id. Held
+    /// here rather than in `LUIFilePickerView`'s @State so a view teardown
+    /// (tab switch, re-layout) does not release security-scoped files or
+    /// lose the pending completion handshake for a still-mounted node.
+    private var filePickerOperations: [Int: LUIFilePickerOperation] = [:]
+
+    func filePickerOperation(node: Int) -> LUIFilePickerOperation? {
+        filePickerOperations[node]
+    }
+
+    func setFilePickerOperation(node: Int, _ operation: LUIFilePickerOperation) {
+        filePickerOperations[node] = operation
+    }
+
+    /// Drops the operation and releases every file it retained.
+    func clearFilePickerOperation(node: Int) {
+        guard let operation = filePickerOperations.removeValue(forKey: node)
+        else { return }
+        releaseFilePickerFiles(operation.files)
+    }
+
+    func releaseFilePickerFiles(_ files: [LUIRetainedFile]) {
+        for file in files {
+            if file.securityScoped {
+                file.url.stopAccessingSecurityScopedResource()
+            }
+            if file.temporary {
+                try? FileManager.default.removeItem(at: file.url)
+            }
+        }
+    }
+
     func reportNodeFrame(_ nodeID: Int, _ rect: CGRect) {
         if nodeFrames[nodeID] == rect { return }
         nodeFrames[nodeID] = rect
@@ -450,6 +494,7 @@ public final class LUIAppleBackend {
     private let extensionRegistry: LUIAppleExtensionRegistry
     let tooltipSession = LUITooltipSession()
     let modalPresentation = LUIModalPresentationStore()
+    let filePreviewPresentation = LUIFilePreviewStore()
 
     public init(
         appIcons: [String: LUIAppleIconSource] = [:],
@@ -654,6 +699,7 @@ public final class LUIAppleBackend {
                 model.kind == .combobox || model.kind == .menuItem ||
                 model.kind == .listItem || model.kind == .swipeAction ||
                 (model.kind == .timelineItem && model.supportsPress) ||
+                (model.kind == .fileImage && model.supportsPress) ||
                 (model.isTreeItem && model.supportsPress),
               model.isEnabled else {
             throw invalid("node \(node) is not an enabled pressable control")
@@ -769,22 +815,39 @@ public final class LUIAppleBackend {
 
     func performValueChange(node: Int, value: Double) throws {
         guard let model = models[node],
-              model.kind == .slider || model.kind == .split,
+              model.kind == .slider || model.kind == .split ||
+                model.kind == .numberStepper,
               model.isEnabled,
               value.isFinite else {
             throw invalid("node \(node) is not an enabled value control")
         }
-        emit(.valueChanged(node: node, value: min(max(value, 0.0), 1.0)))
+        if model.kind == .numberStepper {
+            emit(.valueChanged(
+                node: node,
+                value: min(max(value, model.stepperRange.lowerBound), model.stepperRange.upperBound)
+            ))
+        } else {
+            emit(.valueChanged(node: node, value: min(max(value, 0.0), 1.0)))
+        }
     }
 
     func performDismiss(node: Int) throws {
         guard let model = models[node],
               model.kind == .select || model.kind == .combobox ||
                 model.kind == .dropdownMenu || model.kind == .dialog ||
-                model.kind == .sheet || model.kind == .toast else {
+                model.kind == .sheet || model.kind == .toast ||
+                model.kind == .filePreview ||
+                model.kind == .filePicker else {
             throw invalid("node \(node) is not dismissible")
         }
         emit(.dismiss(node: node))
+    }
+
+    func performPicked(node: Int, payload: String) throws {
+        guard let model = models[node], model.kind == .filePicker else {
+            throw invalid("node \(node) is not a file-picker")
+        }
+        emit(.picked(node: node, payload: payload))
     }
 
     func performAction(node: Int) throws {
@@ -795,7 +858,7 @@ public final class LUIAppleBackend {
         }
         switch model.kind {
         case .button, .select, .combobox, .menuItem, .listItem, .timelineItem,
-             .swipeAction:
+             .swipeAction, .fileImage:
             try performPress(node: node)
         case .toggleButton:
             try performToggle(node: node, checked: !model.isSelected)
@@ -919,6 +982,7 @@ public final class LUIAppleBackend {
         for id in dropped {
             models[id] = nil
             extensionModels[id] = nil
+            clearFilePickerOperation(node: id)
         }
         for id in touched where !dropped.contains(id) {
             if let state = tree.nodes[id] {
@@ -979,11 +1043,22 @@ public final class LUIAppleBackend {
     private func syncModalPresentation() {
         var presentation: LUIModalPresentation?
         var nestedSheets: [Int: LUIModalPresentation] = [:]
+        var filePreview: LUIFilePreviewPresentation?
         var visited = Set<Int>()
 
         func visit(_ nodeID: Int, rootID: Int, dialogAnchorID: Int?, parentSheetID: Int?) {
             guard visited.insert(nodeID).inserted else { return }
             if let model = models[nodeID] {
+                if model.kind == .filePreview,
+                   let url = LUIFilePath.url(
+                        model.property(.path)?.stringValue ?? ""
+                   ) {
+                    filePreview = LUIFilePreviewPresentation(
+                        nodeID: nodeID,
+                        rootID: rootID,
+                        url: url
+                    )
+                }
                 if model.kind == .dialog || model.kind == .sheet {
                     let item = LUIModalPresentation(
                         model: model,
@@ -1021,6 +1096,7 @@ public final class LUIAppleBackend {
         }
         modalPresentation.nestedSheets = nestedSheets
         modalPresentation.synchronize(with: presentation)
+        filePreviewPresentation.synchronize(with: filePreview)
     }
 
     private func invalidateAvatars(imageID: Int) {

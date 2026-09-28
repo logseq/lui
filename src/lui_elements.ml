@@ -23,6 +23,12 @@ type orientation = [ `horizontal | `vertical ]
 type icon_placement = [ `leading | `trailing | `top ]
 type anchor = [ `above | `below | `left | `right ]
 type anchor_alignment = [ `start | `end_ | `stretch ]
+type edge = [ `top | `bottom | `leading | `trailing ]
+
+type alignment =
+  [ `top_leading | `top | `top_trailing
+  | `leading | `center | `trailing
+  | `bottom_leading | `bottom | `bottom_trailing ]
 
 type frame_axes =
   [ `horizontal | `vertical | `both
@@ -34,6 +40,16 @@ type list_style = [ `plain | `inset | `inset_grouped ]
 type scroll_anchor = [ `top | `center | `bottom ]
 type separator_visibility = [ `visible | `hidden ]
 type swipe_edge = [ `leading | `trailing ]
+
+(** [~source] of [file_picker]: [`files] presents a document importer,
+    [`photos] the photo library, [`camera] live capture (iOS only —
+    other platforms answer the request with a cancel event). *)
+type file_picker_source = [ `files | `photos | `camera ]
+
+(** [~request] / [~completion] of [file_picker]: an opaque token echoed back
+    in [picked] payloads. String tokens cover UUID-style identifiers; int
+    tokens cover counters. *)
+type file_picker_token = [ `String of string | `Int of int ]
 
 type icon =
   [ `alert | `archive | `arrow_down | `arrow_right | `arrow_up | `check | `check_circle | `chevron_down | `chevron_left | `chevron_right | `chevron_up | `circle_dot | `clock | `copy | `download | `edit | `ellipsis | `external_link | `eye | `file_text | `folder | `folder_open | `git_branch | `git_merge | `git_pull_request | `info | `menu | `mic | `moon | `music | `panel_left | `panel_right | `pause | `play | `plus | `refresh_cw | `repeat | `save | `search | `send | `settings | `shuffle | `skip_back | `skip_forward | `sun | `terminal | `trash | `volume | `wrench | `x | `x_circle
@@ -116,6 +132,23 @@ let anchor_alignment_value : anchor_alignment -> string = function
   | `end_ -> "end"
   | `stretch -> "stretch"
 
+let edge_value : edge -> string = function
+  | `top -> "top"
+  | `bottom -> "bottom"
+  | `leading -> "leading"
+  | `trailing -> "trailing"
+
+let alignment_value : alignment -> string = function
+  | `top_leading -> "top-leading"
+  | `top -> "top"
+  | `top_trailing -> "top-trailing"
+  | `leading -> "leading"
+  | `center -> "center"
+  | `trailing -> "trailing"
+  | `bottom_leading -> "bottom-leading"
+  | `bottom -> "bottom"
+  | `bottom_trailing -> "bottom-trailing"
+
 let frame_axes_value : frame_axes -> string = function
   | `horizontal -> "horizontal"
   | `vertical -> "vertical"
@@ -152,6 +185,17 @@ let separator_value : separator_visibility -> string = function
 let swipe_edge_value : swipe_edge -> string = function
   | `leading -> "leading"
   | `trailing -> "trailing"
+
+let file_picker_source_value : file_picker_source -> string = function
+  | `files -> "files"
+  | `photos -> "photos"
+  | `camera -> "camera"
+
+let file_picker_token_wire_value
+    : file_picker_token -> Lui_protocol.wire_value
+  = function
+  | `String value -> Lui_protocol.StringValue value
+  | `Int value -> Lui_protocol.IntValue value
 
 let icon_value : icon -> string = function
   | `app name -> "app:" ^ name
@@ -302,6 +346,7 @@ let is_input = function TextChanged _ -> true | _ -> false
 let is_submit = function Submit _ -> true | _ -> false
 let is_toggle = function ToggleChanged _ -> true | _ -> false
 let is_dismiss = function Dismiss _ -> true | _ -> false
+let is_picked = function Picked _ -> true | _ -> false
 let is_appear = function Appear _ -> true | _ -> false
 let is_resize = function ValueChanged _ -> true | _ -> false
 let is_scroll_completed = function ScrollCompleted _ -> true | _ -> false
@@ -330,6 +375,9 @@ let register_toggle context node handler =
 
 let register_dismiss context node handler =
   ignore (on_event context node is_dismiss handler)
+
+let register_picked context node handler =
+  ignore (on_event context node is_picked handler)
 
 let appear_handler context node handler =
   enable context node AppearEnabled;
@@ -406,6 +454,43 @@ let stack ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pa
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
   attach context parent node;
   mount_children context node children;
+  node
+
+let edge_inset ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ~edge ?visible ?visible_signal (children : t list) : t =
+ fun context parent ->
+  let node = Lui_ui.edge_inset context in
+  apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Lui_ui.string_property context node EdgeValue (edge_value edge);
+  Option.iter (Lui_ui.bool_property context node Visible) visible;
+  Option.iter (Lui_ui.bool_property_signal context node Visible) visible_signal;
+  attach context parent node;
+  mount_children context node children;
+  node
+
+let overlay ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?alignment (children : t list) : t =
+ fun context parent ->
+  let node = Lui_ui.overlay context in
+  apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Option.iter (Lui_ui.string_property context node AlignmentValue) (Option.map alignment_value alignment);
+  attach context parent node;
+  mount_children context node children;
+  node
+
+let view_that_fits ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?orientation (children : t list) : t =
+ fun context parent ->
+  let node = Lui_ui.view_that_fits context in
+  apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Option.iter (Lui_ui.string_property context node OrientationValue) (Option.map orientation_value orientation);
+  attach context parent node;
+  mount_children context node children;
+  node
+
+(* Sets an [alignment] hint on [child]'s node; honored when [child] is an
+   [overlay] child (children past the first), inert elsewhere. *)
+let align alignment (child : t) : t =
+ fun context parent ->
+  let node = child context parent in
+  Lui_ui.string_property context node AlignmentValue (alignment_value alignment);
   node
 
 let panel ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear (children : t list) : t =
@@ -957,6 +1042,27 @@ let slider ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?p
   mount_children context node children;
   node
 
+let number_stepper ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?value ?value_signal ?min ?max ?step ?text ?text_signal ?label ?enabled ?enabled_signal ?on_value_changed (children : t list) : t =
+ fun context parent ->
+  let node = Lui_ui.create context NumberStepper in
+  apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Option.iter (Lui_ui.float_property context node ProgressValue) value;
+  Option.iter (Lui_ui.float_property_signal context node ProgressValue) value_signal;
+  Option.iter (Lui_ui.float_property context node MinValue) min;
+  Option.iter (Lui_ui.float_property context node MaxValue) max;
+  Option.iter (Lui_ui.float_property context node StepValue) step;
+  Option.iter (Lui_ui.string_property context node TextValue) text;
+  Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
+  Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
+  Option.iter (Lui_ui.bool_property context node Enabled) enabled;
+  Option.iter (Lui_ui.bool_property_signal context node Enabled) enabled_signal;
+  (match on_value_changed with
+   | Some handler -> register_resize context node handler
+   | None -> ());
+  attach context parent node;
+  mount_children context node children;
+  node
+
 let progress ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?value ?value_signal (_children : nothing list) : t =
  fun context parent ->
   let node = Lui_ui.create context Progress in
@@ -1250,12 +1356,16 @@ let dialog ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?p
   mount_children context node children;
   node
 
-let sheet ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?on_dismiss (children : t list) : t =
+let sheet ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?detents ?detents_signal ?sizing ?sizing_signal ?on_dismiss (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.sheet context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
   Option.iter (Lui_ui.string_property context node TextValue) text;
   Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
+  Option.iter (Lui_ui.string_property context node Detents) detents;
+  Option.iter (Lui_ui.string_property_signal context node Detents) detents_signal;
+  Option.iter (Lui_ui.string_property context node Sizing) sizing;
+  Option.iter (Lui_ui.string_property_signal context node Sizing) sizing_signal;
   (match on_dismiss with
    | Some handler -> register_dismiss context node handler
    | None -> ());
@@ -1287,6 +1397,47 @@ let toast ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pa
   (match on_dismiss with
    | Some handler -> register_dismiss context node handler
    | None -> ());
+  attach context parent node;
+  mount_children context node children;
+  node
+
+let file_picker ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?source ?request ?request_signal ?types ?types_signal ?multiple ?multiple_signal ?disabled ?disabled_signal ?completion ?completion_signal ?on_picked ?on_dismiss (children : t list) : t =
+ fun context parent ->
+  let node = Lui_ui.file_picker context in
+  apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Option.iter (Lui_ui.string_property context node PickerSource) (Option.map file_picker_source_value source);
+  Option.iter
+    (fun token ->
+      Lui_ui.value_property context node PickerRequest
+        (file_picker_token_wire_value token))
+    request;
+  Option.iter
+    (fun source ->
+      Lui_ui.value_property_signal context node PickerRequest
+        (Signal.map
+           (fun token -> file_picker_token_wire_value token)
+           source))
+    request_signal;
+  Option.iter (Lui_ui.string_property context node PickerTypes) types;
+  Option.iter (Lui_ui.string_property_signal context node PickerTypes) types_signal;
+  Option.iter (Lui_ui.bool_property context node PickerMultiple) multiple;
+  Option.iter (Lui_ui.bool_property_signal context node PickerMultiple) multiple_signal;
+  Option.iter (Lui_ui.disabled context node) disabled;
+  Option.iter (Lui_ui.disabled_signal context node) disabled_signal;
+  Option.iter
+    (fun token ->
+      Lui_ui.value_property context node PickerCompletion
+        (file_picker_token_wire_value token))
+    completion;
+  Option.iter
+    (fun source ->
+      Lui_ui.value_property_signal context node PickerCompletion
+        (Signal.map
+           (fun token -> file_picker_token_wire_value token)
+           source))
+    completion_signal;
+  Option.iter (register_picked context node) on_picked;
+  Option.iter (register_dismiss context node) on_dismiss;
   attach context parent node;
   mount_children context node children;
   node
@@ -1573,6 +1724,56 @@ let media_surface ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizo
   Option.iter (Lui_ui.int_property context node SurfaceIdValue) surface;
   Option.iter (Lui_ui.int_property_signal context node SurfaceIdValue) surface_signal;
   Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
+  attach context parent node;
+  
+  node
+
+let link ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?url ?url_signal ?text ?text_signal ?icon ?icon_signal ?icon_placement ?label ?disabled ?disabled_signal (children : t list) : t =
+ fun context parent ->
+  let node = Lui_ui.create context Link in
+  apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Option.iter (Lui_ui.string_property context node UrlValue) url;
+  Option.iter (Lui_ui.string_property_signal context node UrlValue) url_signal;
+  Option.iter (Lui_ui.string_property context node TextValue) text;
+  Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
+  Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
+  Option.iter (Lui_ui.string_property context node IconPlacementValue) (Option.map icon_placement_value icon_placement);
+  Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
+  Option.iter (Lui_ui.disabled context node) disabled;
+  Option.iter (Lui_ui.disabled_signal context node) disabled_signal;
+  attach context parent node;
+  mount_children context node children;
+  node
+
+let file_image ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?path ?path_signal ?max_pixel_size ?label ?on_press (_children : nothing list) : t =
+ fun context parent ->
+  let node = Lui_ui.create context FileImage in
+  apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Option.iter (Lui_ui.string_property context node PathValue) path;
+  Option.iter (Lui_ui.string_property_signal context node PathValue) path_signal;
+  Option.iter (Lui_ui.int_property context node MaxPixelSize) max_pixel_size;
+  Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
+  (match on_press with
+   | Some handler ->
+     enable context node PressEnabled;
+     register_press context node handler
+   | None -> ());
+  attach context parent node;
+  
+  node
+
+let file_preview ?key ?path ?path_signal ?accessibility_identifier ?accessibility_identifier_signal ?on_dismiss (_children : nothing list) : t =
+ fun context parent ->
+  let node = Lui_ui.create context FilePreview in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter (Lui_ui.string_property context node PathValue) path;
+  Option.iter (Lui_ui.string_property_signal context node PathValue) path_signal;
+  Option.iter (Lui_ui.string_property context node AccessibilityIdentifier) accessibility_identifier;
+  Option.iter (Lui_ui.string_property_signal context node AccessibilityIdentifier) accessibility_identifier_signal;
+  (match on_dismiss with
+   | Some handler -> register_dismiss context node handler
+   | None -> ());
   attach context parent node;
   
   node

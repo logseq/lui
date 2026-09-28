@@ -16,6 +16,9 @@ let base_class_name kind =
   | Column -> "lui-column"
   | Grid -> "lui-grid"
   | Stack -> "lui-stack"
+  | EdgeInset -> "lui-edge-inset"
+  | Overlay -> "lui-overlay"
+  | ViewThatFits -> "lui-view-that-fits"
   | Panel -> "lui-panel"
   | Card -> "lui-card"
   | Alert -> "lui-alert"
@@ -31,6 +34,7 @@ let base_class_name kind =
   | RadioGroup -> "lui-radio-group"
   | Radio -> "lui-radio"
   | Slider -> "lui-slider"
+  | NumberStepper -> "lui-number-stepper"
   | TextField -> "lui-text-field"
   | SecureField -> "lui-text-field"
   | Input -> "lui-input"
@@ -91,6 +95,10 @@ let base_class_name kind =
   | ListSectionFooter -> "lui-list-section-footer"
   | SwipeActions -> "lui-swipe-actions"
   | SwipeAction -> "lui-swipe-action"
+  | FilePicker -> "lui-file-picker"
+  | Link -> "lui-link"
+  | FileImage -> "lui-file-image"
+  | FilePreview -> "lui-file-preview"
 
 let create_split_node renderer =
   let document = renderer.web_document in
@@ -152,6 +160,13 @@ let create_combobox_node renderer =
         [ ("type", "button"); ("aria-label", "Open menu") ]
         [] ]
 
+let create_number_stepper_node renderer =
+  let document = renderer.web_document in
+  Util.element document "label" (base_class_name NumberStepper) []
+    [ Util.element document "input" "lui-number-stepper-control"
+        [ ("type", "number") ] [];
+      Util.element document "span" "lui-number-stepper-label" [] [] ]
+
 let create_select_node renderer =
   let document = renderer.web_document in
   Util.element document "button" "lui-select"
@@ -160,6 +175,14 @@ let create_select_node renderer =
       ("aria-haspopup", "listbox");
       ("aria-expanded", "false") ]
     [ Util.element document "span" "lui-select-value" [] [] ]
+
+let create_link_node renderer =
+  let document = renderer.web_document in
+  Util.element document "a" "lui-link"
+    [ ("data-icon-placement", "leading"); ("rel", "noopener noreferrer") ]
+    [ Util.element document "span" "lui-link-icon lui-icon"
+        [ ("aria-hidden", "true") ] [];
+      Util.element document "span" "lui-link-content" [] [] ]
 
 let create_menu_item_node renderer =
   let document = renderer.web_document in
@@ -311,6 +334,7 @@ let simple_node_attributes kind =
         ("data-state", "open") ]
   | Toolbar -> [ ("role", "toolbar"); ("aria-orientation", "horizontal") ]
   | StatusBar -> [ ("role", "status") ]
+  | FilePreview -> [ ("hidden", "") ]
   | _ -> []
 
 let create_simple_node renderer kind =
@@ -373,12 +397,14 @@ let platform_node renderer kind =
   match kind with
   | Button | ToggleButton | Toggle -> create_button_node renderer kind
   | Checkbox | SwitchControl | Radio -> create_direct_toggle_node renderer kind
+  | NumberStepper -> create_number_stepper_node renderer
   | Select -> create_select_node renderer
   | Combobox -> create_combobox_node renderer
   | DropdownMenu -> create_dropdown_node renderer
   | MenuItem | MenuTrigger -> create_menu_item_node renderer
   | Avatar -> create_avatar_node renderer
   | Image | MediaSurface -> create_media_node renderer kind
+  | Link -> create_link_node renderer
   | Step -> create_step_node renderer
   | TimelineItem -> create_timeline_item_node renderer
   | BottomTabs -> create_bottom_tabs_node renderer
