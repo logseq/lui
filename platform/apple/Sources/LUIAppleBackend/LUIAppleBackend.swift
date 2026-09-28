@@ -171,6 +171,16 @@ final class LUINodeModel: Identifiable {
         properties[.containerRelativeFrameInset]?.intValue ?? 0
     }
     var sliderValue: Double { properties[.progressValue]?.doubleValue ?? 0.0 }
+    var stepperValue: Double { properties[.progressValue]?.doubleValue ?? 0.0 }
+    var stepperRange: ClosedRange<Double> {
+        let lower = properties[.minValue]?.doubleValue ?? 0.0
+        let upper = properties[.maxValue]?.doubleValue ?? .greatestFiniteMagnitude
+        return lower...max(lower, upper)
+    }
+    var stepperStep: Double {
+        let step = properties[.stepValue]?.doubleValue ?? 1.0
+        return step > 0 ? step : 1.0
+    }
     var splitFraction: Double { properties[.progressValue]?.doubleValue ?? 0.0 }
     var splitGap: Int { properties[.gap]?.intValue ?? 9 }
     var splitResizeDuration: Int { properties[.resizeDuration]?.intValue ?? 0 }
@@ -749,12 +759,20 @@ public final class LUIAppleBackend {
 
     func performValueChange(node: Int, value: Double) throws {
         guard let model = models[node],
-              model.kind == .slider || model.kind == .split,
+              model.kind == .slider || model.kind == .split ||
+                model.kind == .numberStepper,
               model.isEnabled,
               value.isFinite else {
             throw invalid("node \(node) is not an enabled value control")
         }
-        emit(.valueChanged(node: node, value: min(max(value, 0.0), 1.0)))
+        if model.kind == .numberStepper {
+            emit(.valueChanged(
+                node: node,
+                value: min(max(value, model.stepperRange.lowerBound), model.stepperRange.upperBound)
+            ))
+        } else {
+            emit(.valueChanged(node: node, value: min(max(value, 0.0), 1.0)))
+        }
     }
 
     func performDismiss(node: Int) throws {

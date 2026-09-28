@@ -992,6 +992,167 @@ let test_property_matrix_sync () =
          Lui_wire_schema.all_properties)
     Lui_wire_schema.all_node_kinds
 
+let test_number_stepper_props () =
+  let changes = ref [] in
+  let stepper_node = ref 0 in
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      (fun _context _model_source _send ->
+         Lui_elements.column
+           [ capture_node stepper_node
+               (Lui_elements.number_stepper ~value:5.0 ~min:0.0 ~max:3660.0
+                  ~step:1.0 ~text:"Days"
+                  ~on_value_changed:(fun event ->
+                     match event with
+                     | Lui_protocol.ValueChanged (_, value) ->
+                         changes := value :: !changes
+                     | _ -> ())
+                  []) ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  Alcotest.(check bool) "number-stepper created" true
+    (List.exists
+       (function
+          | Lui_protocol.CreateNode (_, Lui_protocol.NumberStepper) -> true
+          | _ -> false)
+       ops);
+  let emitted property value =
+    List.exists
+      (function
+         | Lui_protocol.SetProp (_, property', value') ->
+           property' = property && value' = value
+         | _ -> false)
+      ops
+  in
+  Alcotest.(check bool) "value" true
+    (emitted Lui_protocol.ProgressValue (Lui_protocol.FloatValue 5.0));
+  Alcotest.(check bool) "min" true
+    (emitted Lui_protocol.MinValue (Lui_protocol.FloatValue 0.0));
+  Alcotest.(check bool) "max" true
+    (emitted Lui_protocol.MaxValue (Lui_protocol.FloatValue 3660.0));
+  Alcotest.(check bool) "step" true
+    (emitted Lui_protocol.StepValue (Lui_protocol.FloatValue 1.0));
+  Alcotest.(check bool) "text" true
+    (emitted Lui_protocol.TextValue (Lui_protocol.StringValue "Days"));
+  ignore
+    (Lui_app.dispatch_event app
+       (Lui_protocol.ValueChanged (!stepper_node, 5.0)));
+  ignore
+    (Lui_app.dispatch_event app
+       (Lui_protocol.ValueChanged (!stepper_node, 6.0)));
+  flush_app app;
+  Alcotest.(check (list (float 0.0))) "echo dropped, change delivered"
+    [ 6.0 ] !changes;
+  ignore (Lui_app.dispose app)
+
+let test_number_stepper_schema () =
+  let open Lui_protocol in
+  List.iter
+    (fun (property, kinds) ->
+       List.iter
+         (fun kind ->
+            Alcotest.(check bool)
+              (Printf.sprintf "%s x %s"
+                 (Lui_wire_schema.property_name property)
+                 (Lui_wire_schema.node_kind_name kind))
+              true (property_supported kind property))
+         kinds)
+    [ (MinValue, [ NumberStepper ]);
+      (MaxValue, [ NumberStepper ]);
+      (StepValue, [ NumberStepper ]);
+      (Detents, [ Sheet ]);
+      (Sizing, [ Sheet ]) ];
+  Alcotest.(check bool) "min off slider" false
+    (property_supported Slider MinValue);
+  Alcotest.(check bool) "detents off stepper" false
+    (property_supported NumberStepper Detents);
+  Alcotest.(check bool) "value on stepper" true
+    (property_supported NumberStepper ProgressValue);
+  Alcotest.(check bool) "enabled on stepper" true
+    (property_supported NumberStepper Enabled);
+  Alcotest.(check bool) "value-changed on stepper" true
+    (event_supported NumberStepper (ValueChanged (0, 1.0)));
+  Alcotest.(check bool) "value-changed off button" false
+    (event_supported Button (ValueChanged (0, 1.0)));
+  Alcotest.(check bool) "positive step" true
+    (property_value_supported StepValue (FloatValue 0.5));
+  Alcotest.(check bool) "zero step rejected" false
+    (property_value_supported StepValue (FloatValue 0.0));
+  Alcotest.(check bool) "finite min" true
+    (property_value_supported MinValue (FloatValue 1.0));
+  Alcotest.(check bool) "sizing token" true
+    (property_value_supported Sizing (StringValue "form"));
+  Alcotest.(check bool) "unknown sizing rejected" false
+    (property_value_supported Sizing (StringValue "huge"));
+  Alcotest.(check bool) "detents is freeform" true
+    (property_value_supported Detents (StringValue "medium,0.4,large"));
+  let props entries = List.to_seq entries |> Property_map.of_seq in
+  Alcotest.(check bool) "stepper node ok" true
+    (node_properties_supported NumberStepper
+       (props [ (TextValue, StringValue "Days");
+                (ProgressValue, FloatValue 1.0);
+                (MinValue, FloatValue 0.0);
+                (MaxValue, FloatValue 10.0) ]));
+  Alcotest.(check bool) "stepper needs value" false
+    (node_properties_supported NumberStepper
+       (props [ (TextValue, StringValue "Days") ]));
+  Alcotest.(check bool) "stepper needs label or text" false
+    (node_properties_supported NumberStepper
+       (props [ (ProgressValue, FloatValue 1.0) ]));
+  Alcotest.(check bool) "label suffices" true
+    (node_properties_supported NumberStepper
+       (props [ (AccessibilityLabel, StringValue "Days");
+                (ProgressValue, FloatValue 1.0) ]));
+  Alcotest.(check bool) "min over max rejected" false
+    (node_properties_supported NumberStepper
+       (props [ (TextValue, StringValue "Days");
+                (ProgressValue, FloatValue 1.0);
+                (MinValue, FloatValue 10.0);
+                (MaxValue, FloatValue 0.0) ]))
+
+let test_sheet_presentation_props () =
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      (fun _context _model_source _send ->
+         Lui_elements.column
+           [ Lui_elements.sheet ~text:"Settings"
+               ~detents:"medium,large" ~sizing:"form" [] ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  Alcotest.(check bool) "sheet created" true
+    (List.exists
+       (function
+          | Lui_protocol.CreateNode (_, Lui_protocol.Sheet) -> true
+          | _ -> false)
+       ops);
+  Alcotest.(check bool) "detents emitted" true
+    (List.exists
+       (function
+          | Lui_protocol.SetProp (_, Lui_protocol.Detents,
+                                  Lui_protocol.StringValue "medium,large") ->
+            true
+          | _ -> false)
+       ops);
+  Alcotest.(check bool) "sizing emitted" true
+    (List.exists
+       (function
+          | Lui_protocol.SetProp (_, Lui_protocol.Sizing,
+                                  Lui_protocol.StringValue "form") -> true
+          | _ -> false)
+       ops);
+  Alcotest.(check bool) "detents only on sheet" true
+    (Lui_protocol.property_supported Lui_protocol.Sheet Lui_protocol.Detents);
+  Alcotest.(check bool) "detents off dialog" false
+    (Lui_protocol.property_supported Lui_protocol.Dialog
+       Lui_protocol.Detents);
+  ignore (Lui_app.dispose app)
+
 let test_theme_tokens_json () =
   Alcotest.(check string) "fixed + adaptive values"
     {|{"background":{"light":"#fff","dark":"#000"},"primary":"#7c3aed"}|}
@@ -1509,6 +1670,15 @@ let () =
             test_dispatch_drops_value_echoes;
           Alcotest.test_case "unset default echoes dropped" `Quick
             test_dispatch_drops_unset_default_echoes;
+        ] );
+      ( "number stepper + sheet sizing",
+        [
+          Alcotest.test_case "props + value-changed" `Quick
+            test_number_stepper_props;
+          Alcotest.test_case "schema surface" `Quick
+            test_number_stepper_schema;
+          Alcotest.test_case "sheet detents + sizing" `Quick
+            test_sheet_presentation_props;
         ] );
       ( "theming",
         [

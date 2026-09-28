@@ -14,6 +14,7 @@
 #include <QVariantList>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 namespace LUI {
@@ -1298,14 +1299,25 @@ bool LuiQmlBackend::performChange(qint64 node) {
 bool LuiQmlBackend::performValueChanged(qint64 node, double value) {
   const NodeState *state = standardState(m_states, node);
   if (state == nullptr) return staleNode(node);
-  if ((state->kind != NodeKind::Slider && state->kind != NodeKind::Split) ||
+  if ((state->kind != NodeKind::Slider && state->kind != NodeKind::Split &&
+       state->kind != NodeKind::NumberStepper) ||
       isFalse(state->properties.value(QStringLiteral("enabled"))) ||
       !std::isfinite(value)) {
     return fail(QStringLiteral("node %1 is not an enabled value control")
                     .arg(node));
   }
+  double emitted = std::clamp(value, 0.0, 1.0);
+  if (state->kind == NodeKind::NumberStepper) {
+    const double minimum =
+        state->properties.value(QStringLiteral("min")).toDouble();
+    const double maximum =
+        state->properties.contains(QStringLiteral("max"))
+            ? state->properties.value(QStringLiteral("max")).toDouble()
+            : std::numeric_limits<double>::max();
+    emitted = std::clamp(value, minimum, std::max(minimum, maximum));
+  }
   emitEvent(node, QStringLiteral("value-changed"),
-            {{QStringLiteral("value"), std::clamp(value, 0.0, 1.0)}});
+            {{QStringLiteral("value"), emitted}});
   return true;
 }
 

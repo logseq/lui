@@ -2293,7 +2293,7 @@ struct LUISwiftUIBackendTests {
         #expect(throws: LUIBackendError.self) {
             try backend.apply(json: """
             {"generation":3,"ops":[
-              {"op":"set-prop","id":1,"property":"value","value":1}
+              {"op":"set-prop","id":1,"property":"value","value":"x"}
             ]}
             """)
         }
@@ -3412,6 +3412,120 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
+    }
+
+    @Test("maps a number-stepper to a clamped value control")
+    func mapsNumberStepper() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"number-stepper"},
+          {"op":"set-prop","id":2,"property":"text","value":"Days"},
+          {"op":"set-prop","id":2,"property":"value","value":5.0},
+          {"op":"set-prop","id":2,"property":"min","value":0.0},
+          {"op":"set-prop","id":2,"property":"max","value":10.0},
+          {"op":"set-prop","id":2,"property":"step","value":1.0},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+
+        let stepper = try #require(backend.model(id: 2))
+        #expect(stepper.kind == .numberStepper)
+        #expect(stepper.stepperRange == 0.0...10.0)
+        #expect(stepper.stepperStep == 1.0)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.performValueChange(node: 2, value: 99.0)
+        #expect(events == [.valueChanged(node: 2, value: 10.0)])
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"set-prop","id":2,"property":"step","value":0.0}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 1)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"create-node","id":3,"kind":"number-stepper"},
+              {"op":"set-prop","id":3,"property":"value","value":2.0}
+            ]}
+            """)
+        }
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"create-node","id":4,"kind":"number-stepper"},
+              {"op":"set-prop","id":4,"property":"text","value":"Days"},
+              {"op":"set-prop","id":4,"property":"value","value":2.0},
+              {"op":"set-prop","id":4,"property":"min","value":10.0},
+              {"op":"set-prop","id":4,"property":"max","value":0.0}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 1)
+    }
+
+    @Test("parses sheet detents and sizing props")
+    func sheetPresentationProps() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"sheet"},
+          {"op":"create-node","id":3,"kind":"input"},
+          {"op":"set-prop","id":2,"property":"text","value":"Settings"},
+          {"op":"set-prop","id":2,"property":"detents","value":"medium,0.4,large"},
+          {"op":"set-prop","id":2,"property":"sizing","value":"form"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0}
+        ]}
+        """)
+
+        let sheet = try #require(backend.model(id: 2))
+        #expect(LUIModalPresentationPolicy.detents(for: sheet) == [
+            .medium, .fraction(0.4), .large,
+        ])
+        #expect(LUIModalPresentationPolicy.sizing(for: sheet) == .form)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":2,"property":"detents","value":"bogus,0.25"}
+        ]}
+        """)
+        #expect(LUIModalPresentationPolicy.detents(for: sheet) == [
+            .fraction(0.25),
+        ])
+
+        try backend.apply(json: """
+        {"generation":3,"ops":[
+          {"op":"set-prop","id":2,"property":"detents","value":"bogus"}
+        ]}
+        """)
+        #expect(LUIModalPresentationPolicy.detents(for: sheet) == [.large])
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":4,"ops":[
+              {"op":"set-prop","id":2,"property":"sizing","value":"huge"}
+            ]}
+            """)
+        }
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":4,"ops":[
+              {"op":"set-prop","id":1,"property":"detents","value":"large"}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 3)
     }
 
     @Test("maps ContextMenu metadata to native SwiftUI actions")

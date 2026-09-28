@@ -226,6 +226,10 @@
       "status": "supported"
     },
     {
+      "name": "number-stepper",
+      "status": "supported"
+    },
+    {
       "name": "progress",
       "status": "supported"
     },
@@ -433,6 +437,13 @@
       "wire": "slider",
       "dart": "slider",
       "swift": "slider",
+      "container": false
+    },
+    {
+      "lg": "NumberStepper",
+      "wire": "number-stepper",
+      "dart": "numberStepper",
+      "swift": "numberStepper",
       "container": false
     },
     {
@@ -1165,6 +1176,31 @@
       "lg": "ThemeMode",
       "wire": "theme-mode",
       "swift": "themeMode"
+    },
+    {
+      "lg": "MinValue",
+      "wire": "min",
+      "swift": "minValue"
+    },
+    {
+      "lg": "MaxValue",
+      "wire": "max",
+      "swift": "maxValue"
+    },
+    {
+      "lg": "StepValue",
+      "wire": "step",
+      "swift": "stepValue"
+    },
+    {
+      "lg": "Detents",
+      "wire": "detents",
+      "swift": "detents"
+    },
+    {
+      "lg": "Sizing",
+      "wire": "sizing",
+      "swift": "sizing"
     }
   ],
   "events": [

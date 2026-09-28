@@ -148,6 +148,17 @@ enum LUIWireValue: Decodable, Equatable {
              .anchorOffset:
             guard let value = doubleValue else { return false }
             return value.isFinite
+        case .minValue, .maxValue:
+            guard let value = doubleValue else { return false }
+            return value.isFinite
+        case .stepValue:
+            guard let value = doubleValue else { return false }
+            return value.isFinite && value > 0
+        case .detents:
+            return stringValue != nil
+        case .sizing:
+            guard let value = stringValue else { return false }
+            return ["form", "fitted", "page"].contains(value)
         case .orientation:
             guard let value = stringValue else { return false }
             return value == "horizontal" || value == "vertical"
@@ -720,7 +731,8 @@ struct LUIRetainedTree {
                 kind == .text || kind == .heading || kind == .paragraph ||
                 kind == .label || kind == .button || kind == .toggleButton ||
                 isTextEntry(kind) || kind == .checkbox || kind == .toggle ||
-                kind == .radio || kind == .slider || kind == .spinner || kind == .icon
+                kind == .radio || kind == .slider || kind == .numberStepper ||
+                kind == .spinner || kind == .icon
                 || kind == .select || kind == .combobox || kind == .dropdownMenu
                 || kind == .menuItem || kind == .listItem
                 || kind == .tableCell || kind == .resizable || kind == .split ||
@@ -733,11 +745,12 @@ struct LUIRetainedTree {
                 kind == .tooltip ||
                 kind == .tableCell ||
                 kind == .alert || kind == .bubble || kind == .statusBar ||
-                isModalSurface(kind) || kind == .drawer
+                isModalSurface(kind) || kind == .drawer || kind == .numberStepper
         case .enabled:
             kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle ||
-                kind == .radio || kind == .slider || kind == .select ||
+                kind == .radio || kind == .slider || kind == .numberStepper ||
+                kind == .select ||
                 kind == .combobox || kind == .menuItem || kind == .listItem ||
                 kind == .drawer
         case .gap:
@@ -761,12 +774,14 @@ struct LUIRetainedTree {
                 kind == .mediaSurface || kind == .tree ||
                 kind == .resizable || kind == .split || kind == .drawer ||
                 kind == .alert || kind == .bubble ||
-                kind == .listItem ||
+                kind == .listItem || kind == .numberStepper ||
                 isTreeRow(kind)
         case .headingLevel: kind == .heading
         case .checked:
             kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
-        case .progressValue: kind == .progress || kind == .slider || kind == .split
+        case .progressValue:
+            kind == .progress || kind == .slider || kind == .numberStepper ||
+                kind == .split
         case .resizeDuration, .resizeEasing, .resizeOrigin: kind == .split
         case .orientation: kind == .divider || kind == .tabs || kind == .scroll
         case .placement: kind == .toolbar
@@ -816,6 +831,8 @@ struct LUIRetainedTree {
                 kind == .tableCell || kind == .bubble || kind == .statusBar
         case .role: isTreeRow(kind) || kind == .listItem
         case .treeLevel, .expanded: isTreeRow(kind)
+        case .minValue, .maxValue, .stepValue: kind == .numberStepper
+        case .detents, .sizing: kind == .sheet
         case .active, .title, .description, .meta, .indicator, .connector: false
         }
     }
@@ -915,6 +932,23 @@ struct LUIRetainedTree {
             if node.kind == .radioGroup || node.kind == .slider {
                 guard !(node.properties[.accessibilityLabel]?.stringValue ?? "").isEmpty else {
                     throw invalid("value control requires an accessibility label")
+                }
+            }
+            if node.kind == .numberStepper {
+                let text = node.properties[.text]?.stringValue ?? ""
+                let label = node.properties[.accessibilityLabel]?.stringValue ?? ""
+                guard !text.isEmpty || !label.isEmpty else {
+                    throw invalid("number-stepper requires a label")
+                }
+                guard case let .double(value)? = node.properties[.progressValue],
+                      value.isFinite else {
+                    throw invalid("number-stepper requires a finite value")
+                }
+                if case let .double(minimum)? = node.properties[.minValue],
+                   case let .double(maximum)? = node.properties[.maxValue] {
+                    guard minimum <= maximum else {
+                        throw invalid("number-stepper min must not exceed max")
+                    }
                 }
             }
             if node.kind == .slider || node.kind == .progress {
@@ -1218,7 +1252,9 @@ extension LUIWireValue {
     func normalized(for property: LUIProperty) -> LUIWireValue {
         if property == .grow || property == .anchorOffset ||
             property == .sourceX || property == .sourceY ||
-            property == .sourceWidth || property == .sourceHeight,
+            property == .sourceWidth || property == .sourceHeight ||
+            property == .progressValue || property == .minValue ||
+            property == .maxValue || property == .stepValue,
            case let .int(value) = self {
             return .double(Double(value))
         }

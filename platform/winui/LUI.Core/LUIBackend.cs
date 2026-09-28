@@ -353,6 +353,20 @@ namespace LUI
                     }
                     LUIWireValue value = WireValue(
                         operation.GetProperty("value"), "value");
+                    if (value is LUIWireValue.Int intValue &&
+                        (property == LUIProperty.Grow ||
+                         property == LUIProperty.AnchorOffset ||
+                         property == LUIProperty.SourceX ||
+                         property == LUIProperty.SourceY ||
+                         property == LUIProperty.SourceWidth ||
+                         property == LUIProperty.SourceHeight ||
+                         property == LUIProperty.ProgressValue ||
+                         property == LUIProperty.MinValue ||
+                         property == LUIProperty.MaxValue ||
+                         property == LUIProperty.StepValue))
+                    {
+                        value = new LUIWireValue.Float(intValue.Value);
+                    }
                     if (!LUISchema.PropertySupported(node.Kind, property) ||
                         !LUISchema.PropertyValueSupportedForKind(
                             node.Kind, property, value))
@@ -1462,16 +1476,28 @@ namespace LUI
         {
             LUINodeState state = RequireState(node);
             if ((state.Kind != LUINodeKind.Slider &&
-                 state.Kind != LUINodeKind.Split) ||
+                 state.Kind != LUINodeKind.Split &&
+                 state.Kind != LUINodeKind.NumberStepper) ||
                 IsDisabled(state) ||
                 double.IsNaN(value) || double.IsInfinity(value))
             {
                 throw new LUIBackendException(
                     $"node {node} is not an enabled value control");
             }
-            OnEvent?.Invoke(
-                new LUIEvent.ValueChanged(
-                    node, System.Math.Clamp(value, 0.0, 1.0)));
+            double emitted = System.Math.Clamp(value, 0.0, 1.0);
+            if (state.Kind == LUINodeKind.NumberStepper)
+            {
+                double minimum = FloatProperty(
+                    state, LUIProperty.MinValue, 0.0);
+                double maximum = state.Properties.TryGetValue(
+                        LUIProperty.MaxValue, out LUIWireValue? maxValue) &&
+                    maxValue is LUIWireValue.Float maxFloat
+                        ? maxFloat.Value
+                        : double.MaxValue;
+                emitted = System.Math.Clamp(
+                    value, minimum, System.Math.Max(minimum, maximum));
+            }
+            OnEvent?.Invoke(new LUIEvent.ValueChanged(node, emitted));
         }
 
         public void PerformDismiss(long node)

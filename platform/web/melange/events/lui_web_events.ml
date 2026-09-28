@@ -458,7 +458,7 @@ let attach_events renderer node kind dom_node =
   | Checkbox | SwitchControl ->
       attach_toggle_event renderer node kind dom_node
   | Radio -> attach_radio_event renderer node dom_node
-  | Slider -> attach_slider_event renderer node dom_node
+  | Slider | NumberStepper -> attach_slider_event renderer node dom_node
   | Split -> ignore (Lui_web_split.attach_split_events renderer node dom_node)
   | Tabs | ButtonGroup | ToggleGroup | Breadcrumb | Pagination ->
       ignore (Lui_web_focus.attach_horizontal_focus renderer node kind dom_node)

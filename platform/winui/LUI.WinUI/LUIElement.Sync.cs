@@ -86,6 +86,9 @@ namespace LUI.WinUI
                 case LUINodeKind.Slider:
                     SyncSlider(state, context);
                     break;
+                case LUINodeKind.NumberStepper:
+                    SyncNumberStepper(state, context);
+                    break;
                 case LUINodeKind.TextField:
                 case LUINodeKind.Input:
                 case LUINodeKind.Textarea:
@@ -379,6 +382,36 @@ namespace LUI.WinUI
             if (context != null)
             {
                 Gate(() => context.Backend.PerformValueChange(Id, args.NewValue));
+            }
+        }
+
+        void SyncNumberStepper(LUINodeState state, LUISyncContext context)
+        {
+            if (Control is not NumberBox box) return;
+            box.Minimum = LUIPropertyApplier.Prop(
+                state, LUIProperty.MinValue)?.AsFloat ?? 0.0;
+            box.Maximum = LUIPropertyApplier.Prop(
+                state, LUIProperty.MaxValue)?.AsFloat ?? double.MaxValue;
+            box.SmallChange = LUIPropertyApplier.Prop(
+                state, LUIProperty.StepValue)?.AsFloat ?? 1.0;
+            box.ValueChanged -= OnNumberStepperChanged;
+            double? value = LUIPropertyApplier.Prop(
+                state, LUIProperty.ProgressValue)?.AsFloat;
+            if (value != null && box.Value != value.Value)
+            {
+                box.Value = value.Value;
+            }
+            box.ValueChanged += OnNumberStepperChanged;
+        }
+
+        void OnNumberStepperChanged(NumberBox sender,
+            NumberBoxValueChangedEventArgs args)
+        {
+            LUISyncContext? context = Context;
+            if (context != null && !double.IsNaN(args.NewValue))
+            {
+                Gate(() =>
+                    context.Backend.PerformValueChange(Id, args.NewValue));
             }
         }
 

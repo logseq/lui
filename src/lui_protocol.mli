@@ -22,6 +22,7 @@ type node_kind =
   | RadioGroup
   | Radio
   | Slider
+  | NumberStepper
   | TextField
   | SecureField
   | Input
@@ -171,6 +172,11 @@ type property =
   | ResizeOrigin
   | ThemeValue
   | ThemeMode
+  | MinValue
+  | MaxValue
+  | StepValue
+  | Detents
+  | Sizing
 
 module Property_map : Map.S with type key = property
 

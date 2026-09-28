@@ -22,6 +22,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case radioGroup = "radio-group"
     case radio = "radio"
     case slider = "slider"
+    case numberStepper = "number-stepper"
     case textField = "text-field"
     case secureField = "secure-field"
     case input = "input"
@@ -150,6 +151,11 @@ enum LUIProperty: String, Decodable, Hashable {
     case resizeOrigin = "resize-origin"
     case theme = "theme"
     case themeMode = "theme-mode"
+    case minValue = "min"
+    case maxValue = "max"
+    case stepValue = "step"
+    case detents = "detents"
+    case sizing = "sizing"
 }
 
 enum LUISchemaMatrix {

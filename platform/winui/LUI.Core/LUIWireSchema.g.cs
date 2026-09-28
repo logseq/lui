@@ -28,6 +28,7 @@ namespace LUI
         RadioGroup,
         Radio,
         Slider,
+        NumberStepper,
         TextField,
         SecureField,
         Input,
@@ -157,6 +158,11 @@ namespace LUI
         ResizeOrigin,
         ThemeValue,
         ThemeMode,
+        MinValue,
+        MaxValue,
+        StepValue,
+        Detents,
+        Sizing,
     }
 
     public static class LUIWireSchema
@@ -184,6 +190,7 @@ namespace LUI
             { "radio-group", LUINodeKind.RadioGroup },
             { "radio", LUINodeKind.Radio },
             { "slider", LUINodeKind.Slider },
+            { "number-stepper", LUINodeKind.NumberStepper },
             { "text-field", LUINodeKind.TextField },
             { "secure-field", LUINodeKind.SecureField },
             { "input", LUINodeKind.Input },
@@ -314,6 +321,11 @@ namespace LUI
             { "resize-origin", LUIProperty.ResizeOrigin },
             { "theme", LUIProperty.ThemeValue },
             { "theme-mode", LUIProperty.ThemeMode },
+            { "min", LUIProperty.MinValue },
+            { "max", LUIProperty.MaxValue },
+            { "step", LUIProperty.StepValue },
+            { "detents", LUIProperty.Detents },
+            { "sizing", LUIProperty.Sizing },
         };
 
         public static string WireName(this LUINodeKind kind) => kind switch
@@ -338,6 +350,7 @@ namespace LUI
             LUINodeKind.RadioGroup => "radio-group",
             LUINodeKind.Radio => "radio",
             LUINodeKind.Slider => "slider",
+            LUINodeKind.NumberStepper => "number-stepper",
             LUINodeKind.TextField => "text-field",
             LUINodeKind.SecureField => "secure-field",
             LUINodeKind.Input => "input",
@@ -520,6 +533,11 @@ namespace LUI
             LUIProperty.ResizeOrigin => "resize-origin",
             LUIProperty.ThemeValue => "theme",
             LUIProperty.ThemeMode => "theme-mode",
+            LUIProperty.MinValue => "min",
+            LUIProperty.MaxValue => "max",
+            LUIProperty.StepValue => "step",
+            LUIProperty.Detents => "detents",
+            LUIProperty.Sizing => "sizing",
             _ => "unknown",
         };
 

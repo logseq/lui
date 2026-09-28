@@ -204,6 +204,8 @@ let apply_text_value renderer node kind dom_node text =
   | Dialog | Sheet ->
       W.Element.setTextContent
         (Util.child_element (Util.child_element dom_node 0) 0) text
+  | NumberStepper ->
+      W.Element.setTextContent (Util.toggle_label_node dom_node) text
   | Avatar ->
       W.Element.setTextContent (Util.child_element dom_node 1) text;
       Widgets.update_avatar renderer node dom_node
@@ -239,7 +241,8 @@ let apply_enabled renderer node kind dom_node enabled =
   end
   else begin
     let control_node =
-      if Store.direct_toggle kind then Util.child_element dom_node 0
+      if Store.direct_toggle kind || kind = NumberStepper then
+        Util.child_element dom_node 0
       else if kind = Combobox then Util.child_element dom_node 0
       else dom_node
     in
@@ -298,7 +301,8 @@ let apply_accessibility_label kind dom_node label =
       (Util.child_element dom_node 1)
   else
     W.Element.setAttribute "aria-label" label
-      (if Store.direct_toggle kind then Util.child_element dom_node 0
+      (if Store.direct_toggle kind || kind = NumberStepper then
+         Util.child_element dom_node 0
        else dom_node)
 
 let apply_checked kind dom_node checked =
@@ -539,6 +543,19 @@ and apply_secondary_property renderer node kind dom_node property value =
   | Checked, BoolValue checked -> apply_checked kind dom_node checked
   | ProgressValue, FloatValue value ->
       apply_progress_value renderer node kind dom_node value
+  | MinValue, FloatValue value ->
+      W.Element.setAttribute "min" (Js.Float.toString value)
+        (Util.child_element dom_node 0)
+  | MaxValue, FloatValue value ->
+      W.Element.setAttribute "max" (Js.Float.toString value)
+        (Util.child_element dom_node 0)
+  | StepValue, FloatValue value ->
+      W.Element.setAttribute "step" (Js.Float.toString value)
+        (Util.child_element dom_node 0)
+  | Detents, StringValue value ->
+      W.Element.setAttribute "data-detents" value dom_node
+  | Sizing, StringValue value ->
+      W.Element.setAttribute "data-sizing" value dom_node
   | ResizeDuration, IntValue _duration ->
       Lui_web_split.update_split renderer node
   | ResizeEasing, StringValue _easing ->
@@ -690,6 +707,14 @@ let remove_property renderer node kind dom_node property =
            W.Element.removeAttribute "aria-label"
              (if Store.direct_toggle kind then Util.child_element dom_node 0
               else dom_node)
+       | MinValue ->
+           W.Element.removeAttribute "min" (Util.child_element dom_node 0)
+       | MaxValue ->
+           W.Element.removeAttribute "max" (Util.child_element dom_node 0)
+       | StepValue ->
+           W.Element.removeAttribute "step" (Util.child_element dom_node 0)
+       | Detents -> W.Element.removeAttribute "data-detents" dom_node
+       | Sizing -> W.Element.removeAttribute "data-sizing" dom_node
        | AccessibilityIdentifier -> W.Element.removeAttribute "id" dom_node
        | OrientationValue ->
            if kind = Tabs then begin

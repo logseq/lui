@@ -31,6 +31,7 @@ let base_class_name kind =
   | RadioGroup -> "lui-radio-group"
   | Radio -> "lui-radio"
   | Slider -> "lui-slider"
+  | NumberStepper -> "lui-number-stepper"
   | TextField -> "lui-text-field"
   | SecureField -> "lui-text-field"
   | Input -> "lui-input"
@@ -146,6 +147,13 @@ let create_combobox_node renderer =
       Util.element document "button" "lui-combobox-trigger"
         [ ("type", "button"); ("aria-label", "Open menu") ]
         [] ]
+
+let create_number_stepper_node renderer =
+  let document = renderer.web_document in
+  Util.element document "label" (base_class_name NumberStepper) []
+    [ Util.element document "input" "lui-number-stepper-control"
+        [ ("type", "number") ] [];
+      Util.element document "span" "lui-number-stepper-label" [] [] ]
 
 let create_select_node renderer =
   let document = renderer.web_document in
@@ -368,6 +376,7 @@ let platform_node renderer kind =
   match kind with
   | Button | ToggleButton | Toggle -> create_button_node renderer kind
   | Checkbox | SwitchControl | Radio -> create_direct_toggle_node renderer kind
+  | NumberStepper -> create_number_stepper_node renderer
   | Select -> create_select_node renderer
   | Combobox -> create_combobox_node renderer
   | DropdownMenu -> create_dropdown_node renderer
