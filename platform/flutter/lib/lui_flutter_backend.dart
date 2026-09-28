@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -1227,6 +1228,8 @@ final class LUIFlutterBackend {
         (state.kind == _NodeKind.column &&
             state.properties['press-enabled'] == true) ||
         (state.kind == _NodeKind.text &&
+            state.properties['press-enabled'] == true) ||
+        (state.kind == _NodeKind.fileImage &&
             state.properties['press-enabled'] == true);
     if (!pressable || state.properties['enabled'] == false) {
       throw LUIBackendException(
@@ -1491,12 +1494,22 @@ final class LUIFlutterBackend {
 
   void performValueChange(int node, double value) {
     final state = _requireState(_states, node);
-    if ((state.kind != _NodeKind.slider && state.kind != _NodeKind.split) ||
+    if ((state.kind != _NodeKind.slider &&
+            state.kind != _NodeKind.split &&
+            state.kind != _NodeKind.numberStepper) ||
         state.properties['enabled'] == false ||
         !value.isFinite) {
       throw LUIBackendException('node $node is not an enabled value control');
     }
-    onEvent?.call(LUIEvent.valueChanged(node: node, value: value.clamp(0, 1)));
+    var emitted = value.clamp(0.0, 1.0);
+    if (state.kind == _NodeKind.numberStepper) {
+      final minimum =
+          (state.properties['min'] as num?)?.toDouble() ?? 0.0;
+      final maximum =
+          (state.properties['max'] as num?)?.toDouble() ?? double.maxFinite;
+      emitted = value.clamp(minimum, maximum < minimum ? minimum : maximum);
+    }
+    onEvent?.call(LUIEvent.valueChanged(node: node, value: emitted.toDouble()));
   }
 
   void performDismiss(int node) {
@@ -1509,6 +1522,7 @@ final class LUIFlutterBackend {
         state.kind != _NodeKind.dropdownMenu &&
         state.kind != _NodeKind.toast &&
         state.kind != _NodeKind.filePicker &&
+        state.kind != _NodeKind.filePreview &&
         !state.kind.isModalSurface) {
       throw LUIBackendException('node $node is not dismissible');
     }
@@ -1611,6 +1625,39 @@ final class LUIFlutterBackend {
         state.kind == _NodeKind.button &&
         state.parent != null &&
         _states[state.parent]?.kind == _NodeKind.tabs;
+    Widget numberStepperView(_NodeState stepperState, bool stepperEnabled, int id) {
+      final step =
+          (stepperState.properties['step'] as num?)?.toDouble() ?? 1.0;
+      final current =
+          (stepperState.properties['value'] as num?)?.toDouble() ?? 0.0;
+      final text = stepperState.properties['text'] as String? ?? '';
+      final a11yLabel =
+          stepperState.properties['accessibility-label'] as String? ?? text;
+      return Semantics(
+        label: a11yLabel,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(child: Text(text)),
+            IconButton(
+              icon: const Icon(Icons.remove),
+              tooltip: 'Decrease',
+              onPressed: stepperEnabled
+                  ? () => performValueChange(id, current - step)
+                  : null,
+            ),
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: 'Increase',
+              onPressed: stepperEnabled
+                  ? () => performValueChange(id, current + step)
+                  : null,
+            ),
+          ],
+        ),
+      );
+    }
+
     Widget textControl({required _NodeKind kind}) {
       final multiline = kind == _NodeKind.textarea;
       final combobox = kind == _NodeKind.combobox;
@@ -1979,6 +2026,79 @@ final class LUIFlutterBackend {
         trigger: trigger,
       );
     }
+
+    /// Pins the children after the first to `edge` while the first child
+    /// fills the view beneath them. Pinned children group into a row across
+    /// side edges and a column under top/bottom; `gap` insets the group
+    /// from the pinned edge.
+    Widget edgeInset() {
+      final visible = state.properties['visible'] as bool? ?? true;
+      final gap = (state.properties['gap'] as num?)?.toDouble() ?? 0;
+      final edge = state.properties['edge'] as String? ?? 'top';
+      final sideEdge = edge == 'leading' || edge == 'trailing';
+      final pinned = children.skip(1).toList(growable: false);
+      return Stack(
+        children: [
+          if (children.isNotEmpty) children.first,
+          if (visible && pinned.isNotEmpty)
+            Positioned.fill(
+              child: Padding(
+                padding: switch (edge) {
+                  'bottom' => EdgeInsetsDirectional.only(bottom: gap),
+                  'leading' => EdgeInsetsDirectional.only(start: gap),
+                  'trailing' => EdgeInsetsDirectional.only(end: gap),
+                  _ => EdgeInsetsDirectional.only(top: gap),
+                },
+                child: Align(
+                  alignment: switch (edge) {
+                    'bottom' => AlignmentDirectional.bottomCenter,
+                    'leading' => AlignmentDirectional.centerStart,
+                    'trailing' => AlignmentDirectional.centerEnd,
+                    _ => AlignmentDirectional.topCenter,
+                  },
+                  child: sideEdge
+                      ? Row(mainAxisSize: MainAxisSize.min, children: pinned)
+                      : Column(mainAxisSize: MainAxisSize.min, children: pinned),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    /// Renders the children after the first floating over the first child
+    /// without affecting its layout; each overlay child positions by its own
+    /// 'alignment' prop, falling back to the overlay's (default center).
+    Widget overlay() {
+      final fallback =
+          _overlayAlignment(state.properties['alignment'] as String?) ??
+          AlignmentDirectional.center;
+      // `children` skips the context-menu child, so index the visible ids.
+      final overlayIDs = state.children
+          .where((child) => child != contextMenuID)
+          .toList(growable: false);
+      return Stack(
+        children: [
+          if (children.isNotEmpty) children.first,
+          for (var index = 1; index < children.length; index += 1)
+            Positioned.fill(
+              child: Align(
+                alignment:
+                    _overlayAlignment(
+                      _states[overlayIDs[index]]?.properties['alignment']
+                          as String?,
+                    ) ??
+                    fallback,
+                child: children[index],
+              ),
+            ),
+        ],
+      );
+    }
+
+    /// No native ViewThatFits equivalent; render the first candidate.
+    Widget viewThatFits() =>
+        children.isEmpty ? const SizedBox.shrink() : children.first;
 
     Widget select() {
       final colors = Theme.of(context).colorScheme;
@@ -2712,6 +2832,9 @@ final class LUIFlutterBackend {
       ),
       _NodeKind.grid => grid(),
       _NodeKind.stack => stack(),
+      _NodeKind.edgeInset => edgeInset(),
+      _NodeKind.overlay => overlay(),
+      _NodeKind.viewThatFits => viewThatFits(),
       _NodeKind.panel ||
       _NodeKind.card ||
       _NodeKind.resizable => Stack(children: children),
@@ -2869,6 +2992,7 @@ final class LUIFlutterBackend {
         ),
         onChanged: enabled ? (value) => performValueChange(id, value) : null,
       ),
+      _NodeKind.numberStepper => numberStepperView(state, enabled, id),
       _NodeKind.textField ||
       _NodeKind.secureField ||
       _NodeKind.input ||
@@ -2934,6 +3058,8 @@ final class LUIFlutterBackend {
       // platforms that implement the file-picker backend; children render
       // inline.
       _NodeKind.filePicker => Stack(children: children),
+      _NodeKind.link => column(),
+      _NodeKind.fileImage || _NodeKind.filePreview => const SizedBox.shrink(),
     };
 
     if (state.kind == _NodeKind.root || state.kind.isModalSurface) {
@@ -3504,6 +3630,20 @@ final class LUIFlutterBackend {
     }
   }
 
+  /// Direction-aware nine-point anchor; 'leading'/'trailing' follow the
+  /// ambient Directionality (matching SwiftUI's semantic edges).
+  static AlignmentGeometry? _overlayAlignment(String? name) => switch (name) {
+    'top-leading' => AlignmentDirectional.topStart,
+    'top' => AlignmentDirectional.topCenter,
+    'top-trailing' => AlignmentDirectional.topEnd,
+    'leading' => AlignmentDirectional.centerStart,
+    'trailing' => AlignmentDirectional.centerEnd,
+    'bottom-leading' => AlignmentDirectional.bottomStart,
+    'bottom' => AlignmentDirectional.bottomCenter,
+    'bottom-trailing' => AlignmentDirectional.bottomEnd,
+    _ => null,
+  };
+
   static bool _supports(_NodeKind kind, String property, Object? value) {
     if (property == 'accessibility-identifier') return value is String;
     if (kind == _NodeKind.root) {
@@ -3513,6 +3653,16 @@ final class LUIFlutterBackend {
               _themeModes.contains(value));
     }
     if (kind == _NodeKind.contextMenu) return false;
+    if (kind == _NodeKind.filePreview) {
+      return property == 'path' && value is String;
+    }
+    // Position hint honored on overlay children and the overlay itself;
+    // admitted before the restrictive kinds below. Inert elsewhere.
+    if (property == 'alignment') {
+      return kind != _NodeKind.root &&
+          value is String &&
+          _overlayAlignment(value) != null;
+    }
     if (kind == _NodeKind.accordion) {
       return switch (property) {
         'text' => value is String,
@@ -3676,6 +3826,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.switchControl ||
                 kind == _NodeKind.toggle ||
                 kind == _NodeKind.radio ||
+                kind == _NodeKind.numberStepper ||
                 kind == _NodeKind.select ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.menuTrigger ||
@@ -3687,6 +3838,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.bubble ||
                 kind == _NodeKind.statusBar ||
                 kind == _NodeKind.drawer ||
+                kind == _NodeKind.link ||
                 kind.isModalSurface),
       'enabled' =>
         value is bool &&
@@ -3697,16 +3849,31 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.toggle ||
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider ||
+                kind == _NodeKind.numberStepper ||
                 kind == _NodeKind.select ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
-                kind == _NodeKind.drawer),
+                kind == _NodeKind.drawer ||
+                kind == _NodeKind.link),
       'value' =>
         value is double &&
             value.isFinite &&
             (kind == _NodeKind.progress ||
                 kind == _NodeKind.slider ||
+                kind == _NodeKind.numberStepper ||
                 kind == _NodeKind.split),
+      'min' || 'max' =>
+        value is num && value.isFinite && kind == _NodeKind.numberStepper,
+      'step' =>
+        value is num &&
+            value.isFinite &&
+            value > 0 &&
+            kind == _NodeKind.numberStepper,
+      'detents' => value is String && kind == _NodeKind.sheet,
+      'sizing' =>
+        value is String &&
+            const {'form', 'fitted', 'page'}.contains(value) &&
+            kind == _NodeKind.sheet,
       'resize-duration' =>
         value is int && value >= 0 && kind == _NodeKind.split,
       'resize-easing' =>
@@ -3725,7 +3892,8 @@ final class LUIFlutterBackend {
             (value == 'horizontal' || value == 'vertical') &&
             (kind == _NodeKind.divider ||
                 kind == _NodeKind.tabs ||
-                kind == _NodeKind.scroll),
+                kind == _NodeKind.scroll ||
+                kind == _NodeKind.viewThatFits),
       'size' =>
         value is String &&
             (_controlSizes.contains(value) ||
@@ -3754,11 +3922,12 @@ final class LUIFlutterBackend {
             (_isButtonKind(kind) ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.menuTrigger ||
-                kind == _NodeKind.listItem),
+                kind == _NodeKind.listItem ||
+                kind == _NodeKind.link),
       'icon-placement' =>
         value is String &&
-            (value == 'leading' || value == 'trailing') &&
-            _isButtonKind(kind),
+            (value == 'leading' || value == 'trailing' || value == 'top') &&
+            (_isButtonKind(kind) || kind == _NodeKind.link),
       'selected' =>
         value is bool &&
             (_isButtonKind(kind) ||
@@ -3789,6 +3958,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
                 kind == _NodeKind.tableCell ||
+                kind == _NodeKind.fileImage ||
                 _isTreeRowKind(kind)),
       'submit-enabled' =>
         value is bool &&
@@ -3804,6 +3974,10 @@ final class LUIFlutterBackend {
         value is num &&
             value.isFinite &&
             (kind == _NodeKind.avatar || kind == _NodeKind.image),
+      'path' => value is String && kind == _NodeKind.fileImage,
+      'url' => value is String && kind == _NodeKind.link,
+      'max-pixel-size' =>
+        value is int && value > 0 && kind == _NodeKind.fileImage,
       'anchor' =>
         value is String &&
             const {'above', 'below', 'left', 'right'}.contains(value) &&
@@ -3816,6 +3990,14 @@ final class LUIFlutterBackend {
         value is num &&
             value.isFinite &&
             (kind == _NodeKind.dropdownMenu || kind == _NodeKind.tooltip),
+      'edge' =>
+        value is String &&
+            const {'top', 'bottom', 'leading', 'trailing'}.contains(value) &&
+            kind == _NodeKind.edgeInset,
+      'visible' => value is bool && kind == _NodeKind.edgeInset,
+      // 'alignment' is admitted ahead of the restrictive kinds above.
+      'alignment' =>
+        value is String && _overlayAlignment(value) != null,
       'tooltip-delay' =>
         value is int &&
             value >= 0 &&
@@ -3833,6 +4015,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.tableRow ||
                 kind == _NodeKind.tree ||
                 kind == _NodeKind.split ||
+                kind == _NodeKind.edgeInset ||
                 _isHorizontalGroupKind(kind)),
       'padding' =>
         value is int && kind != _NodeKind.avatar && kind != _NodeKind.tooltip,
@@ -3850,7 +4033,10 @@ final class LUIFlutterBackend {
             !kind.isModalSurface,
       'foreground' =>
         value is String &&
-            (kind == _NodeKind.text ||
+            (kind == _NodeKind.edgeInset ||
+                kind == _NodeKind.overlay ||
+                kind == _NodeKind.viewThatFits ||
+                kind == _NodeKind.text ||
                 kind == _NodeKind.heading ||
                 kind == _NodeKind.paragraph ||
                 kind == _NodeKind.label ||
@@ -3860,6 +4046,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.toggle ||
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider ||
+                kind == _NodeKind.numberStepper ||
                 kind == _NodeKind.spinner ||
                 kind == _NodeKind.icon ||
                 kind == _NodeKind.select ||
@@ -3872,7 +4059,9 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.split ||
                 kind == _NodeKind.alert ||
                 kind == _NodeKind.bubble ||
-                kind == _NodeKind.statusBar),
+                kind == _NodeKind.statusBar ||
+                kind == _NodeKind.link ||
+                kind == _NodeKind.fileImage),
       'border-color' =>
         value is String &&
             kind != _NodeKind.avatar &&
@@ -3931,6 +4120,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.pagination ||
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider ||
+                kind == _NodeKind.numberStepper ||
                 kind == _NodeKind.avatar ||
                 kind == _NodeKind.image ||
                 kind == _NodeKind.mediaSurface ||
@@ -3942,6 +4132,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.bubble ||
                 kind == _NodeKind.select ||
                 kind == _NodeKind.menuTrigger ||
+                kind == _NodeKind.link ||
+                kind == _NodeKind.fileImage ||
                 _isTreeRowKind(kind)),
       'text-alignment' =>
         value is String &&
@@ -3976,6 +4168,10 @@ final class LUIFlutterBackend {
           !state.properties.containsKey('name')) {
         throw const LUIBackendException('icon requires name');
       }
+      if (state.kind == _NodeKind.edgeInset &&
+          !state.properties.containsKey('edge')) {
+        throw const LUIBackendException('edge-inset requires edge');
+      }
       if (_isButtonKind(state.kind)) {
         final text = state.properties['text'] as String? ?? '';
         final label = state.properties['accessibility-label'] as String? ?? '';
@@ -4002,6 +4198,30 @@ final class LUIFlutterBackend {
         if (label.isEmpty) {
           throw const LUIBackendException(
             'value control requires an accessibility label',
+          );
+        }
+      }
+      if (state.kind == _NodeKind.numberStepper) {
+        final value = state.properties['value'];
+        if (value is! double || !value.isFinite) {
+          throw const LUIBackendException(
+            'number-stepper requires a finite value',
+          );
+        }
+        final text = state.properties['text'] as String? ?? '';
+        final label =
+            state.properties['accessibility-label'] as String? ?? '';
+        if (text.isEmpty && label.isEmpty) {
+          throw const LUIBackendException('number-stepper requires a label');
+        }
+        // min defaults to 0 and max is unbounded; compare the effective
+        // endpoints so a lone negative max still fails.
+        final minimum = (state.properties['min'] as num?)?.toDouble() ?? 0.0;
+        final maximum =
+            (state.properties['max'] as num?)?.toDouble() ?? double.maxFinite;
+        if (minimum > maximum) {
+          throw const LUIBackendException(
+            'number-stepper min must not exceed max',
           );
         }
       }
@@ -4245,6 +4465,17 @@ final class LUIFlutterBackend {
           !state.properties.containsKey('surface')) {
         throw const LUIBackendException('media-surface requires surface');
       }
+      if ((state.kind == _NodeKind.fileImage ||
+              state.kind == _NodeKind.filePreview) &&
+          (state.properties['path'] as String? ?? '').isEmpty) {
+        throw LUIBackendException(
+          '${state.kind == _NodeKind.fileImage ? 'file-image' : 'file-preview'} requires a non-empty path',
+        );
+      }
+      if (state.kind == _NodeKind.link &&
+          (state.properties['url'] as String? ?? '').isEmpty) {
+        throw const LUIBackendException('link requires a non-empty url');
+      }
       if (state.kind == _NodeKind.stepper &&
           !state.properties.containsKey('active')) {
         throw const LUIBackendException('stepper requires active');
@@ -4392,7 +4623,11 @@ final class LUIFlutterBackend {
       kind == _NodeKind.bottomTabs ||
       kind == _NodeKind.bottomTab ||
       kind == _NodeKind.filePicker ||
+      kind == _NodeKind.link ||
       _isContextMenuLeafHost(kind) ||
+      kind == _NodeKind.edgeInset ||
+      kind == _NodeKind.overlay ||
+      kind == _NodeKind.viewThatFits ||
       kind.isModalSurface;
 
   static bool _acceptsExtensionChildren(_NodeKind kind) =>
@@ -4401,6 +4636,9 @@ final class LUIFlutterBackend {
       kind == _NodeKind.column ||
       kind == _NodeKind.grid ||
       kind == _NodeKind.stack ||
+      kind == _NodeKind.edgeInset ||
+      kind == _NodeKind.overlay ||
+      kind == _NodeKind.viewThatFits ||
       kind == _NodeKind.panel ||
       kind == _NodeKind.card ||
       kind == _NodeKind.box ||
@@ -4448,6 +4686,7 @@ final class LUIFlutterBackend {
       _NodeKind.toggle,
       _NodeKind.radio,
       _NodeKind.slider,
+      _NodeKind.numberStepper,
       _NodeKind.textField,
       _NodeKind.secureField,
       _NodeKind.input,
@@ -4471,6 +4710,7 @@ final class LUIFlutterBackend {
       _NodeKind.toggle,
       _NodeKind.radio,
       _NodeKind.slider,
+      _NodeKind.numberStepper,
       _NodeKind.textField,
       _NodeKind.secureField,
       _NodeKind.input,
@@ -4749,6 +4989,8 @@ final class LUIFlutterBackend {
       'autocomplete-row-background' => colors.surfaceContainerHigh,
       'glass' => colors.surface.withValues(alpha: 0.75),
       'glass-fallback' => colors.surface.withValues(alpha: 0.9),
+      // Apple Material.bar approximation: mostly-opaque theme surface.
+      'bar' => colors.surface.withValues(alpha: 0.85),
       'primary' => colors.primary,
       'primary-foreground' => colors.onPrimary,
       'accent' => foreground ? colors.primary : colors.secondaryContainer,
@@ -4800,6 +5042,27 @@ final class LUIFlutterBackend {
     };
   }
 
+  // Parses the `detents` prop into viewport-height fractions
+  // (`medium` = 0.5, `large` = 1.0, or a literal fraction in (0, 1]).
+  // Unknown tokens are ignored; returns null when nothing parses.
+  static List<double>? _sheetDetentFractions(String? detents) {
+    if (detents == null) return null;
+    final fractions = detents
+        .split(',')
+        .map((token) {
+          final trimmed = token.trim();
+          if (trimmed == 'medium') return 0.5;
+          if (trimmed == 'large') return 1.0;
+          final fraction = double.tryParse(trimmed);
+          return fraction != null && fraction > 0 && fraction <= 1
+              ? fraction
+              : null;
+        })
+        .nonNulls
+        .toList(growable: false);
+    return fractions.isEmpty ? null : fractions;
+  }
+
   Widget _modalSurface(BuildContext context, int node) {
     final state = _requireState(_states, node);
     final width = (state.properties['width'] as int?)?.toDouble();
@@ -4813,12 +5076,44 @@ final class LUIFlutterBackend {
           child: _modalSurfaceBody(context, state),
         ),
       ),
-      _NodeKind.sheet => SizedBox(
-        key: ValueKey('lui-sheet-surface-$node'),
-        width: width ?? double.infinity,
-        height: height,
-        child: SafeArea(child: _modalSurfaceBody(context, state)),
-      ),
+      _NodeKind.sheet => () {
+        // Approximate iOS presentation options: detents cap/choose the
+        // sheet height fraction (medium 0.5, large 1.0, or a literal
+        // fraction); sizing constrains width (form/fitted ~560px, page
+        // full width). The bottom sheet always opens at the first detent.
+        final size = MediaQuery.of(context).size;
+        final fractions = _sheetDetentFractions(
+          state.properties['detents'] as String?,
+        );
+        final detentMaxHeight = fractions == null
+            ? null
+            : size.height * fractions.reduce(math.max);
+        final sizingMaxWidth = switch (state.properties['sizing']) {
+          'form' || 'fitted' => 560.0,
+          _ => null,
+        };
+        Widget surface = SizedBox(
+          key: ValueKey('lui-sheet-surface-$node'),
+          width: width ?? double.infinity,
+          height: height ??
+              (fractions == null ? null : size.height * fractions.first),
+          child: SafeArea(child: _modalSurfaceBody(context, state)),
+        );
+        if (detentMaxHeight != null || sizingMaxWidth != null) {
+          surface = Align(
+            alignment: Alignment.bottomCenter,
+            heightFactor: 1.0,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: detentMaxHeight ?? double.infinity,
+                maxWidth: sizingMaxWidth ?? double.infinity,
+              ),
+              child: surface,
+            ),
+          );
+        }
+        return surface;
+      }(),
       _ => throw const LUIBackendException('node is not a modal surface'),
     };
   }

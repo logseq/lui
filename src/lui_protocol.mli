@@ -7,6 +7,9 @@ type node_kind =
   | Column
   | Grid
   | Stack
+  | EdgeInset
+  | Overlay
+  | ViewThatFits
   | Panel
   | Card
   | Alert
@@ -22,6 +25,7 @@ type node_kind =
   | RadioGroup
   | Radio
   | Slider
+  | NumberStepper
   | TextField
   | SecureField
   | Input
@@ -75,6 +79,9 @@ type node_kind =
   | Toolbar
   | StatusBar
   | FilePicker
+  | Link
+  | FileImage
+  | FilePreview
 
 type operating_system =
   | GenericOS
@@ -177,6 +184,17 @@ type property =
   | PickerMultiple
   | PickerSource
   | PickerCompletion
+  | MinValue
+  | MaxValue
+  | StepValue
+  | Detents
+  | Sizing
+  | PathValue
+  | UrlValue
+  | MaxPixelSize
+  | EdgeValue
+  | Visible
+  | AlignmentValue
 
 module Property_map : Map.S with type key = property
 

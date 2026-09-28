@@ -2293,7 +2293,7 @@ struct LUISwiftUIBackendTests {
         #expect(throws: LUIBackendError.self) {
             try backend.apply(json: """
             {"generation":3,"ops":[
-              {"op":"set-prop","id":1,"property":"value","value":1}
+              {"op":"set-prop","id":1,"property":"value","value":"x"}
             ]}
             """)
         }
@@ -3414,6 +3414,120 @@ struct LUISwiftUIBackendTests {
         }
     }
 
+    @Test("maps a number-stepper to a clamped value control")
+    func mapsNumberStepper() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"number-stepper"},
+          {"op":"set-prop","id":2,"property":"text","value":"Days"},
+          {"op":"set-prop","id":2,"property":"value","value":5.0},
+          {"op":"set-prop","id":2,"property":"min","value":0.0},
+          {"op":"set-prop","id":2,"property":"max","value":10.0},
+          {"op":"set-prop","id":2,"property":"step","value":1.0},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+
+        let stepper = try #require(backend.model(id: 2))
+        #expect(stepper.kind == .numberStepper)
+        #expect(stepper.stepperRange == 0.0...10.0)
+        #expect(stepper.stepperStep == 1.0)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.performValueChange(node: 2, value: 99.0)
+        #expect(events == [.valueChanged(node: 2, value: 10.0)])
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"set-prop","id":2,"property":"step","value":0.0}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 1)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"create-node","id":3,"kind":"number-stepper"},
+              {"op":"set-prop","id":3,"property":"value","value":2.0}
+            ]}
+            """)
+        }
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"create-node","id":4,"kind":"number-stepper"},
+              {"op":"set-prop","id":4,"property":"text","value":"Days"},
+              {"op":"set-prop","id":4,"property":"value","value":2.0},
+              {"op":"set-prop","id":4,"property":"min","value":10.0},
+              {"op":"set-prop","id":4,"property":"max","value":0.0}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 1)
+    }
+
+    @Test("parses sheet detents and sizing props")
+    func sheetPresentationProps() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"sheet"},
+          {"op":"create-node","id":3,"kind":"input"},
+          {"op":"set-prop","id":2,"property":"text","value":"Settings"},
+          {"op":"set-prop","id":2,"property":"detents","value":"medium,0.4,large"},
+          {"op":"set-prop","id":2,"property":"sizing","value":"form"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0}
+        ]}
+        """)
+
+        let sheet = try #require(backend.model(id: 2))
+        #expect(LUIModalPresentationPolicy.detents(for: sheet) == [
+            .medium, .fraction(0.4), .large,
+        ])
+        #expect(LUIModalPresentationPolicy.sizing(for: sheet) == .form)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":2,"property":"detents","value":"bogus,0.25"}
+        ]}
+        """)
+        #expect(LUIModalPresentationPolicy.detents(for: sheet) == [
+            .fraction(0.25),
+        ])
+
+        try backend.apply(json: """
+        {"generation":3,"ops":[
+          {"op":"set-prop","id":2,"property":"detents","value":"bogus"}
+        ]}
+        """)
+        #expect(LUIModalPresentationPolicy.detents(for: sheet) == [.large])
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":4,"ops":[
+              {"op":"set-prop","id":2,"property":"sizing","value":"huge"}
+            ]}
+            """)
+        }
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":4,"ops":[
+              {"op":"set-prop","id":1,"property":"detents","value":"large"}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 3)
+    }
+
     @Test("maps ContextMenu metadata to native SwiftUI actions")
     func mapsContextMenu() throws {
         let backend = LUIAppleBackend()
@@ -3790,6 +3904,151 @@ struct LUISwiftUIBackendTests {
         #expect(accepted == 1)
         #expect(luiApplePerformAction(1) == 1)
         #expect(capturedAppleEvent == CapturedAppleEvent(kind: 0, node: 1, text: ""))
+    }
+
+    @Test("maps Link to a retained node with url")
+    func mapsLink() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"link"},
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"url","value":"https://example.com/docs"},
+          {"op":"set-prop","id":2,"property":"text","value":"Docs"},
+          {"op":"set-prop","id":2,"property":"icon","value":"external-link"},
+          {"op":"set-prop","id":3,"property":"text","value":"child"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0}
+        ]}
+        """)
+
+        let link = try #require(backend.model(id: 2))
+        #expect(link.kind == .link)
+        #expect(link.property(.url) == .string("https://example.com/docs"))
+        #expect(link.children == [3])
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"create-node","id":4,"kind":"link"},
+              {"op":"insert-child","parent":1,"child":4,"index":1}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 1)
+    }
+
+    @Test("maps FileImage with thumbnail, sizing, and press support")
+    func mapsFileImage() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"file-image"},
+          {"op":"set-prop","id":2,"property":"path","value":"/tmp/pic.png"},
+          {"op":"set-prop","id":2,"property":"max-pixel-size","value":512},
+          {"op":"set-prop","id":2,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":2,"property":"width","value":120},
+          {"op":"set-prop","id":2,"property":"height","value":80},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+
+        let image = try #require(backend.model(id: 2))
+        #expect(image.kind == .fileImage)
+        #expect(image.property(.path) == .string("/tmp/pic.png"))
+        #expect(image.property(.maxPixelSize) == .int(512))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        try backend.performPress(node: 2)
+        #expect(events == [.press(node: 2)])
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"remove-prop","id":2,"property":"press-enabled"}
+        ]}
+        """)
+        #expect(throws: LUIBackendError.self) {
+            try backend.performPress(node: 2)
+        }
+
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":3,"ops":[
+              {"op":"create-node","id":5,"kind":"file-image"},
+              {"op":"insert-child","parent":1,"child":5,"index":1}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 2)
+    }
+
+    @Test("file-preview presents through the store and dismiss emits an event")
+    func mapsFilePreview() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"file-preview"},
+          {"op":"set-prop","id":2,"property":"path","value":"/tmp/doc.pdf"},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+
+        #expect(backend.filePreviewPresentation.item?.nodeID == 2)
+        #expect(
+            backend.filePreviewPresentation.item?.url
+                == URL(fileURLWithPath: "/tmp/doc.pdf")
+        )
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        // Interactive close suppresses re-assert until the wire drops the node.
+        #expect(backend.filePreviewPresentation.dismissFromPresentation() == 2)
+        try backend.performDismiss(node: 2)
+        #expect(events == [.dismiss(node: 2)])
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":2,"property":"path","value":"/tmp/other.pdf"}
+        ]}
+        """)
+        #expect(backend.filePreviewPresentation.item == nil)
+
+        try backend.apply(json: """
+        {"generation":3,"ops":[
+          {"op":"remove-child","parent":1,"child":2},
+          {"op":"drop-node","id":2}
+        ]}
+        """)
+        #expect(backend.filePreviewPresentation.item == nil)
+
+        try backend.apply(json: """
+        {"generation":4,"ops":[
+          {"op":"create-node","id":3,"kind":"file-preview"},
+          {"op":"set-prop","id":3,"property":"path","value":"file:///tmp/a.pdf"},
+          {"op":"insert-child","parent":1,"child":3,"index":0}
+        ]}
+        """)
+        #expect(
+            backend.filePreviewPresentation.item?.url
+                == URL(string: "file:///tmp/a.pdf")
+        )
+
+        // The kind is restrictive: only `path` is admitted.
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":5,"ops":[
+              {"op":"set-prop","id":3,"property":"text","value":"x"}
+            ]}
+            """)
+        }
+        #expect(backend.generation == 4)
     }
 
     private static let initialBatch = """

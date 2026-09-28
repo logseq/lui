@@ -17,6 +17,12 @@ namespace LUI.WinUI
             {
                 case LUINodeKind.Stack:
                     return new Grid();
+                case LUINodeKind.EdgeInset:
+                case LUINodeKind.Overlay:
+                case LUINodeKind.ViewThatFits:
+                    // No WinUI pinned/overlay/fit primitive; children stack
+                    // in a grid (overlay-like approximation).
+                    return new LUIGrid();
                 case LUINodeKind.Root:
                 case LUINodeKind.Resizable:
                 case LUINodeKind.Split:
@@ -65,6 +71,8 @@ namespace LUI.WinUI
                     return new RadioButton();
                 case LUINodeKind.Slider:
                     return new Slider { Minimum = 0, Maximum = 1 };
+                case LUINodeKind.NumberStepper:
+                    return new NumberBox { SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline };
                 case LUINodeKind.TextField:
                 case LUINodeKind.Input:
                     return new TextBox();

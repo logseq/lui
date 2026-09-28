@@ -5,6 +5,7 @@
 #include <QSet>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace LUI {
 
@@ -116,7 +117,8 @@ bool treeRowKind(NodeKind kind) {
 bool contextMenuHostKind(NodeKind kind) {
   return oneOf(kind,
                {NodeKind::Button, NodeKind::ToggleButton, NodeKind::Toggle,
-                NodeKind::Radio, NodeKind::Slider, NodeKind::TextField,
+                NodeKind::Radio, NodeKind::Slider, NodeKind::NumberStepper,
+                NodeKind::TextField,
                 NodeKind::SecureField, NodeKind::Input, NodeKind::SearchField,
                 NodeKind::Textarea, NodeKind::Checkbox, NodeKind::SwitchControl,
                 NodeKind::Select, NodeKind::Combobox, NodeKind::MenuItem,
@@ -127,7 +129,8 @@ bool contextMenuHostKind(NodeKind kind) {
 bool contextMenuLeafHostKind(NodeKind kind) {
   return oneOf(kind,
                {NodeKind::Button, NodeKind::ToggleButton, NodeKind::Toggle,
-                NodeKind::Radio, NodeKind::Slider, NodeKind::TextField,
+                NodeKind::Radio, NodeKind::Slider, NodeKind::NumberStepper,
+                NodeKind::TextField,
                 NodeKind::SecureField, NodeKind::Input, NodeKind::SearchField,
                 NodeKind::Textarea, NodeKind::Checkbox, NodeKind::SwitchControl,
                 NodeKind::Select, NodeKind::Combobox, NodeKind::MenuItem,
@@ -179,7 +182,8 @@ bool canContainChildren(NodeKind kind) {
   if (horizontalContainer(kind) || contextMenuLeafHostKind(kind)) return true;
   return oneOf(kind,
                {NodeKind::Root, NodeKind::Row, NodeKind::Column,
-                NodeKind::Grid, NodeKind::Stack, NodeKind::Panel,
+                NodeKind::Grid, NodeKind::Stack, NodeKind::EdgeInset,
+                NodeKind::Overlay, NodeKind::ViewThatFits, NodeKind::Panel,
                 NodeKind::Card, NodeKind::Box, NodeKind::Scroll,
                 NodeKind::ListContainer, NodeKind::VirtualList,
                 NodeKind::RadioGroup, NodeKind::DropdownMenu,
@@ -190,14 +194,15 @@ bool canContainChildren(NodeKind kind) {
                 NodeKind::Stepper, NodeKind::Timeline, NodeKind::InputGroup,
                 NodeKind::InputGroupActions, NodeKind::Toast,
                 NodeKind::Toolbar, NodeKind::Alert, NodeKind::Bubble,
-                NodeKind::BottomTabs, NodeKind::BottomTab,
+                NodeKind::BottomTabs, NodeKind::BottomTab, NodeKind::Link,
                 NodeKind::FilePicker});
 }
 
 bool acceptsExtensionChildren(NodeKind kind) {
   return oneOf(kind,
                {NodeKind::Root, NodeKind::Row, NodeKind::Column,
-                NodeKind::Grid, NodeKind::Stack, NodeKind::Panel,
+                NodeKind::Grid, NodeKind::Stack, NodeKind::EdgeInset,
+                NodeKind::Overlay, NodeKind::ViewThatFits, NodeKind::Panel,
                 NodeKind::Card, NodeKind::Box, NodeKind::Scroll,
                 NodeKind::ListContainer, NodeKind::VirtualList,
                 NodeKind::ListItem, NodeKind::Dialog, NodeKind::Sheet,
@@ -248,7 +253,7 @@ bool eventSupported(NodeKind kind, Event event) {
                         NodeKind::Select, NodeKind::Combobox, NodeKind::MenuItem,
                         NodeKind::ListItem, NodeKind::Text,
                         NodeKind::TableCell, NodeKind::TimelineItem,
-                        NodeKind::BottomTab});
+                        NodeKind::FileImage, NodeKind::BottomTab});
   case Event::LongPress:
     return oneOf(kind,
                  {NodeKind::Button, NodeKind::ToggleButton,
@@ -270,12 +275,13 @@ bool eventSupported(NodeKind kind, Event event) {
   case Event::Change:
     return kind == NodeKind::Radio;
   case Event::ValueChanged:
-    return kind == NodeKind::Slider || kind == NodeKind::Split;
+    return kind == NodeKind::Slider || kind == NodeKind::NumberStepper ||
+           kind == NodeKind::Split;
   case Event::Dismiss:
     return oneOf(kind, {NodeKind::Select, NodeKind::Combobox,
                         NodeKind::DropdownMenu, NodeKind::Toast,
                         NodeKind::Dialog, NodeKind::Drawer, NodeKind::Sheet,
-                        NodeKind::FilePicker});
+                        NodeKind::FilePreview, NodeKind::FilePicker});
   case Event::DoublePress:
     return kind == NodeKind::ListItem;
   case Event::Appear:
@@ -417,17 +423,21 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                  {NodeKind::Row, NodeKind::Column, NodeKind::Grid,
                   NodeKind::Box, NodeKind::Panel, NodeKind::Card,
                   NodeKind::Stack, NodeKind::Scroll, NodeKind::Avatar,
+                  NodeKind::EdgeInset, NodeKind::Overlay,
+                  NodeKind::ViewThatFits,
                   NodeKind::Text, NodeKind::Heading, NodeKind::Paragraph,
                   NodeKind::Label, NodeKind::Button, NodeKind::ToggleButton,
                   NodeKind::TextField, NodeKind::SecureField, NodeKind::Input,
                   NodeKind::SearchField, NodeKind::Textarea,
                   NodeKind::Checkbox, NodeKind::Toggle, NodeKind::Radio,
-                  NodeKind::Slider, NodeKind::Spinner, NodeKind::Icon,
+                  NodeKind::Slider, NodeKind::NumberStepper,
+                  NodeKind::Spinner, NodeKind::Icon,
                   NodeKind::Select, NodeKind::Combobox,
                   NodeKind::DropdownMenu, NodeKind::MenuItem,
                   NodeKind::ListItem, NodeKind::TableCell,
                   NodeKind::Resizable, NodeKind::Split, NodeKind::Alert,
-                  NodeKind::Bubble, NodeKind::StatusBar});
+                  NodeKind::Bubble, NodeKind::StatusBar, NodeKind::Link,
+                  NodeKind::FileImage});
   case Property::WidthValue:
   case Property::HeightValue:
     return kind != NodeKind::Tooltip;
@@ -448,11 +458,13 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                         NodeKind::SearchField, NodeKind::Textarea,
                         NodeKind::Checkbox, NodeKind::SwitchControl,
                         NodeKind::Toggle, NodeKind::RadioGroup,
-                        NodeKind::Radio, NodeKind::Slider, NodeKind::Avatar,
+                        NodeKind::Radio, NodeKind::Slider,
+                        NodeKind::NumberStepper, NodeKind::Avatar,
                         NodeKind::Image, NodeKind::MediaSurface,
                         NodeKind::Tree, NodeKind::Resizable, NodeKind::Split,
                         NodeKind::Drawer, NodeKind::Alert, NodeKind::Bubble,
-                        NodeKind::ListItem}) ||
+                        NodeKind::ListItem, NodeKind::Link,
+                        NodeKind::FileImage}) ||
            horizontalContainer(kind) || treeRowKind(kind);
   case Property::AccessibilityIdentifier:
     return true;
@@ -467,11 +479,12 @@ bool commonPropertySupported(NodeKind kind, Property property) {
     return oneOf(kind, {NodeKind::Checkbox, NodeKind::SwitchControl,
                         NodeKind::Toggle, NodeKind::Radio});
   case Property::ProgressValue:
-    return oneOf(kind,
-                 {NodeKind::Progress, NodeKind::Slider, NodeKind::Split});
+    return oneOf(kind, {NodeKind::Progress, NodeKind::Slider,
+                        NodeKind::NumberStepper, NodeKind::Split});
   case Property::OrientationValue:
     return oneOf(kind,
-                 {NodeKind::Divider, NodeKind::Tabs, NodeKind::Scroll});
+                 {NodeKind::Divider, NodeKind::Tabs, NodeKind::Scroll,
+                  NodeKind::ViewThatFits});
   case Property::SizeValue:
     return oneOf(kind, {NodeKind::Button, NodeKind::ToggleButton,
                         NodeKind::Spinner, NodeKind::Icon,
@@ -485,11 +498,11 @@ bool commonPropertySupported(NodeKind kind, Property property) {
   case Property::InlineIconName:
     return oneOf(kind, {NodeKind::Button, NodeKind::ToggleButton,
                         NodeKind::MenuItem, NodeKind::ListItem,
-                        NodeKind::BottomTab});
+                        NodeKind::BottomTab, NodeKind::Link});
   case Property::IconPlacementValue:
     return oneOf(kind,
                  {NodeKind::Button, NodeKind::ToggleButton,
-                  NodeKind::ListItem});
+                  NodeKind::ListItem, NodeKind::Link});
   case Property::Selected:
     return oneOf(kind, {NodeKind::Button, NodeKind::ToggleButton,
                         NodeKind::MenuItem, NodeKind::ListItem,
@@ -515,7 +528,7 @@ bool commonPropertySupported(NodeKind kind, Property property) {
     return oneOf(kind, {NodeKind::Text, NodeKind::Column, NodeKind::Radio,
                         NodeKind::Select, NodeKind::Combobox, NodeKind::MenuItem,
                         NodeKind::ListItem, NodeKind::TableCell,
-                        NodeKind::BottomTab}) ||
+                        NodeKind::BottomTab, NodeKind::FileImage}) ||
            treeRowKind(kind);
   case Property::SubmitEnabled:
     return kind == NodeKind::Combobox || kind == NodeKind::ListItem;
@@ -531,6 +544,12 @@ bool commonPropertySupported(NodeKind kind, Property property) {
     return kind == NodeKind::Avatar || kind == NodeKind::Image;
   case Property::SurfaceIdValue:
     return kind == NodeKind::MediaSurface;
+  case Property::PathValue:
+    return kind == NodeKind::FileImage || kind == NodeKind::FilePreview;
+  case Property::UrlValue:
+    return kind == NodeKind::Link;
+  case Property::MaxPixelSize:
+    return kind == NodeKind::FileImage;
   case Property::AnchorValue:
   case Property::AnchorAlignmentValue:
   case Property::AnchorOffset:
@@ -566,7 +585,8 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                   NodeKind::Combobox, NodeKind::MenuItem, NodeKind::ListItem,
                   NodeKind::Avatar, NodeKind::Dialog, NodeKind::Drawer,
                   NodeKind::Sheet, NodeKind::Tooltip, NodeKind::TableCell,
-                  NodeKind::Alert, NodeKind::Bubble, NodeKind::StatusBar});
+                  NodeKind::Alert, NodeKind::Bubble, NodeKind::StatusBar,
+                  NodeKind::NumberStepper, NodeKind::Link});
   case Property::Enabled:
     return oneOf(kind,
                  {NodeKind::Button, NodeKind::ToggleButton,
@@ -574,8 +594,10 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                   NodeKind::SearchField, NodeKind::Textarea,
                   NodeKind::Checkbox, NodeKind::SwitchControl,
                   NodeKind::Toggle, NodeKind::Radio, NodeKind::Slider,
-                  NodeKind::Select, NodeKind::Combobox, NodeKind::MenuItem,
-                  NodeKind::ListItem, NodeKind::Drawer, NodeKind::BottomTab});
+                  NodeKind::NumberStepper, NodeKind::Select,
+                  NodeKind::Combobox, NodeKind::MenuItem,
+                  NodeKind::ListItem, NodeKind::Drawer, NodeKind::BottomTab,
+                  NodeKind::Link});
   case Property::ActiveIndex:
   case Property::DescriptionValue:
   case Property::MetaValue:
@@ -584,13 +606,28 @@ bool commonPropertySupported(NodeKind kind, Property property) {
     return false;
   case Property::TitleValue:
     return kind == NodeKind::BottomTab;
+  case Property::MinValue:
+  case Property::MaxValue:
+  case Property::StepValue:
+    return kind == NodeKind::NumberStepper;
+  case Property::Detents:
+  case Property::Sizing:
+    return kind == NodeKind::Sheet;
   case Property::Gap:
     return oneOf(kind, {NodeKind::Row, NodeKind::Column, NodeKind::Grid,
                         NodeKind::ListContainer, NodeKind::VirtualList,
                         NodeKind::DropdownMenu, NodeKind::TableRow,
                         NodeKind::Tree, NodeKind::Scroll, NodeKind::Card,
-                        NodeKind::Panel, NodeKind::Box, NodeKind::Split}) ||
+                        NodeKind::Panel, NodeKind::Box, NodeKind::Split,
+                        NodeKind::EdgeInset}) ||
            horizontalContainer(kind);
+  case Property::EdgeValue:
+  case Property::Visible:
+    return kind == NodeKind::EdgeInset;
+  // `alignment` is admitted ahead of the restrictive arms in
+  // propertySupported below.
+  case Property::AlignmentValue:
+    return kind != NodeKind::Root;
   }
   return false;
 }
@@ -599,6 +636,10 @@ bool commonPropertySupported(NodeKind kind, Property property) {
 
 bool propertySupported(NodeKind kind, Property property) {
   if (property == Property::AccessibilityIdentifier) return true;
+  // Position hint honored on overlay children and the overlay itself;
+  // admitted before the restrictive arms so e.g. an aligned menu-trigger
+  // child still carries it. Inert elsewhere.
+  if (property == Property::AlignmentValue) return kind != NodeKind::Root;
   // The restrictive arms below mirror schema/components.json kindProperties.
   switch (kind) {
   case NodeKind::Root:
@@ -667,6 +708,8 @@ bool propertySupported(NodeKind kind, Property property) {
   case NodeKind::Dialog:
     return property == Property::DescriptionValue ||
            commonPropertySupported(kind, property);
+  case NodeKind::FilePreview:
+    return property == Property::PathValue;
   default:
     return commonPropertySupported(kind, property);
   }
@@ -762,10 +805,16 @@ bool propertyValueSupported(Property property, const QVariant &value) {
     int number = 0;
     return isIntValue(value, &number) && number >= 0;
   }
+  case Property::MaxPixelSize: {
+    int number = 0;
+    return isIntValue(value, &number) && number > 0;
+  }
   case Property::TitleValue:
   case Property::DescriptionValue:
   case Property::MetaValue:
   case Property::IndicatorValue:
+  case Property::PathValue:
+  case Property::UrlValue:
     return isString(value);
   case Property::Connector:
     return isBool(value);
@@ -825,6 +874,27 @@ bool propertyValueSupported(Property property, const QVariant &value) {
   case Property::PickerSource:
     return isString(value) &&
            inSet(value.toString(), {"files", "photos", "camera"});
+  case Property::MinValue:
+  case Property::MaxValue:
+    return isNumeric(value);
+  case Property::StepValue:
+    return isNumeric(value) && value.toDouble() > 0.0;
+  case Property::Detents:
+    return isString(value);
+  case Property::Sizing:
+    return isString(value) &&
+           inSet(value.toString(), {"form", "fitted", "page"});
+  case Property::EdgeValue:
+    return isString(value) &&
+           inSet(value.toString(), {"top", "bottom", "leading", "trailing"});
+  case Property::Visible:
+    return isBool(value);
+  case Property::AlignmentValue:
+    return isString(value) &&
+           inSet(value.toString(),
+                 {"top-leading", "top", "top-trailing", "leading", "center",
+                  "trailing", "bottom-leading", "bottom",
+                  "bottom-trailing"});
   }
   return false;
 }
@@ -854,6 +924,10 @@ bool nodePropertiesSupported(NodeKind kind, const QVariantMap &properties) {
         !propertyValueSupported(Property::IconName, name)) {
       return false;
     }
+  }
+  if (kind == NodeKind::EdgeInset &&
+      !properties.contains(QStringLiteral("edge"))) {
+    return false;
   }
   if (buttonKind(kind) || kind == NodeKind::Toggle || kind == NodeKind::Radio) {
     const QString text = stringPropertyOr(properties, "text", QString());
@@ -924,6 +998,14 @@ bool nodePropertiesSupported(NodeKind kind, const QVariantMap &properties) {
       !properties.contains(QStringLiteral("surface"))) {
     return false;
   }
+  if ((kind == NodeKind::FileImage || kind == NodeKind::FilePreview) &&
+      !stringPropertyNonempty(properties, "path")) {
+    return false;
+  }
+  if (kind == NodeKind::Link &&
+      !stringPropertyNonempty(properties, "url")) {
+    return false;
+  }
   if (kind == NodeKind::Stepper &&
       !properties.contains(QStringLiteral("active"))) {
     return false;
@@ -943,6 +1025,22 @@ bool nodePropertiesSupported(NodeKind kind, const QVariantMap &properties) {
   if (kind == NodeKind::Slider || kind == NodeKind::Progress) {
     const QVariant value = properties.value(QStringLiteral("value"));
     if (!isNumeric(value)) return false;
+  }
+  if (kind == NodeKind::NumberStepper) {
+    if (!isNumeric(properties.value(QStringLiteral("value")))) return false;
+    if (!stringPropertyNonempty(properties, "text") &&
+        !stringPropertyNonempty(properties, "accessibility-label")) {
+      return false;
+    }
+    // min defaults to 0 and max is unbounded; compare the effective
+    // endpoints so a lone negative max still fails.
+    const QVariant minimum = properties.value(QStringLiteral("min"));
+    const QVariant maximum = properties.value(QStringLiteral("max"));
+    const double minimumValue =
+        isNumeric(minimum) ? minimum.toDouble() : 0.0;
+    const double maximumValue = isNumeric(maximum)
+        ? maximum.toDouble() : std::numeric_limits<double>::max();
+    if (minimumValue > maximumValue) return false;
   }
   if (kind == NodeKind::Tree || kind == NodeKind::Toolbar) {
     if (!stringPropertyNonempty(properties, "accessibility-label")) {

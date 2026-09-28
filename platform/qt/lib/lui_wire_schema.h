@@ -11,6 +11,9 @@ enum class NodeKind {
   Column,
   Grid,
   Stack,
+  EdgeInset,
+  Overlay,
+  ViewThatFits,
   Panel,
   Card,
   Alert,
@@ -26,6 +29,7 @@ enum class NodeKind {
   RadioGroup,
   Radio,
   Slider,
+  NumberStepper,
   TextField,
   SecureField,
   Input,
@@ -79,6 +83,9 @@ enum class NodeKind {
   Toolbar,
   StatusBar,
   FilePicker,
+  Link,
+  FileImage,
+  FilePreview,
 };
 
 enum class Property {
@@ -160,6 +167,17 @@ enum class Property {
   PickerMultiple,
   PickerSource,
   PickerCompletion,
+  MinValue,
+  MaxValue,
+  StepValue,
+  Detents,
+  Sizing,
+  PathValue,
+  UrlValue,
+  MaxPixelSize,
+  EdgeValue,
+  Visible,
+  AlignmentValue,
 };
 
 inline const char *nodeKindWireName(NodeKind kind) {
@@ -169,6 +187,9 @@ inline const char *nodeKindWireName(NodeKind kind) {
     case NodeKind::Column: return "column";
     case NodeKind::Grid: return "grid";
     case NodeKind::Stack: return "stack";
+    case NodeKind::EdgeInset: return "edge-inset";
+    case NodeKind::Overlay: return "overlay";
+    case NodeKind::ViewThatFits: return "view-that-fits";
     case NodeKind::Panel: return "panel";
     case NodeKind::Card: return "card";
     case NodeKind::Alert: return "alert";
@@ -184,6 +205,7 @@ inline const char *nodeKindWireName(NodeKind kind) {
     case NodeKind::RadioGroup: return "radio-group";
     case NodeKind::Radio: return "radio";
     case NodeKind::Slider: return "slider";
+    case NodeKind::NumberStepper: return "number-stepper";
     case NodeKind::TextField: return "text-field";
     case NodeKind::SecureField: return "secure-field";
     case NodeKind::Input: return "input";
@@ -237,6 +259,9 @@ inline const char *nodeKindWireName(NodeKind kind) {
     case NodeKind::Toolbar: return "toolbar";
     case NodeKind::StatusBar: return "status-bar";
     case NodeKind::FilePicker: return "file-picker";
+    case NodeKind::Link: return "link";
+    case NodeKind::FileImage: return "file-image";
+    case NodeKind::FilePreview: return "file-preview";
   }
   return "unknown";
 }
@@ -247,6 +272,9 @@ inline bool decodeNodeKind(const char *name, NodeKind *kind) {
   if (std::strcmp(name, "column") == 0) { *kind = NodeKind::Column; return true; }
   if (std::strcmp(name, "grid") == 0) { *kind = NodeKind::Grid; return true; }
   if (std::strcmp(name, "stack") == 0) { *kind = NodeKind::Stack; return true; }
+  if (std::strcmp(name, "edge-inset") == 0) { *kind = NodeKind::EdgeInset; return true; }
+  if (std::strcmp(name, "overlay") == 0) { *kind = NodeKind::Overlay; return true; }
+  if (std::strcmp(name, "view-that-fits") == 0) { *kind = NodeKind::ViewThatFits; return true; }
   if (std::strcmp(name, "panel") == 0) { *kind = NodeKind::Panel; return true; }
   if (std::strcmp(name, "card") == 0) { *kind = NodeKind::Card; return true; }
   if (std::strcmp(name, "alert") == 0) { *kind = NodeKind::Alert; return true; }
@@ -262,6 +290,7 @@ inline bool decodeNodeKind(const char *name, NodeKind *kind) {
   if (std::strcmp(name, "radio-group") == 0) { *kind = NodeKind::RadioGroup; return true; }
   if (std::strcmp(name, "radio") == 0) { *kind = NodeKind::Radio; return true; }
   if (std::strcmp(name, "slider") == 0) { *kind = NodeKind::Slider; return true; }
+  if (std::strcmp(name, "number-stepper") == 0) { *kind = NodeKind::NumberStepper; return true; }
   if (std::strcmp(name, "text-field") == 0) { *kind = NodeKind::TextField; return true; }
   if (std::strcmp(name, "secure-field") == 0) { *kind = NodeKind::SecureField; return true; }
   if (std::strcmp(name, "input") == 0) { *kind = NodeKind::Input; return true; }
@@ -315,6 +344,9 @@ inline bool decodeNodeKind(const char *name, NodeKind *kind) {
   if (std::strcmp(name, "toolbar") == 0) { *kind = NodeKind::Toolbar; return true; }
   if (std::strcmp(name, "status-bar") == 0) { *kind = NodeKind::StatusBar; return true; }
   if (std::strcmp(name, "file-picker") == 0) { *kind = NodeKind::FilePicker; return true; }
+  if (std::strcmp(name, "link") == 0) { *kind = NodeKind::Link; return true; }
+  if (std::strcmp(name, "file-image") == 0) { *kind = NodeKind::FileImage; return true; }
+  if (std::strcmp(name, "file-preview") == 0) { *kind = NodeKind::FilePreview; return true; }
   return false;
 }
 
@@ -330,6 +362,9 @@ inline bool containerNodeKind(NodeKind kind) {
     case NodeKind::Column:
     case NodeKind::Grid:
     case NodeKind::Stack:
+    case NodeKind::EdgeInset:
+    case NodeKind::Overlay:
+    case NodeKind::ViewThatFits:
     case NodeKind::Panel:
     case NodeKind::Card:
     case NodeKind::Alert:
@@ -367,6 +402,7 @@ inline bool containerNodeKind(NodeKind kind) {
     case NodeKind::Toast:
     case NodeKind::Toolbar:
     case NodeKind::FilePicker:
+    case NodeKind::Link:
     return true;
     default:
     return false;
@@ -381,6 +417,9 @@ inline const char *nodeKindComponentName(NodeKind kind) {
     case NodeKind::Column: return "LuiColumn.qml";
     case NodeKind::Grid: return "LuiGrid.qml";
     case NodeKind::Stack: return "LuiStack.qml";
+    case NodeKind::EdgeInset: return "LuiEdgeInset.qml";
+    case NodeKind::Overlay: return "LuiOverlay.qml";
+    case NodeKind::ViewThatFits: return "LuiViewThatFits.qml";
     case NodeKind::Panel: return "LuiPanel.qml";
     case NodeKind::Card: return "LuiCard.qml";
     case NodeKind::Alert: return "LuiAlert.qml";
@@ -396,6 +435,7 @@ inline const char *nodeKindComponentName(NodeKind kind) {
     case NodeKind::RadioGroup: return "LuiRadioGroup.qml";
     case NodeKind::Radio: return "LuiRadio.qml";
     case NodeKind::Slider: return "LuiSlider.qml";
+    case NodeKind::NumberStepper: return "LuiNumberStepper.qml";
     case NodeKind::TextField: return "LuiTextField.qml";
     case NodeKind::SecureField: return "LuiSecureField.qml";
     case NodeKind::Input: return "LuiInput.qml";
@@ -449,6 +489,9 @@ inline const char *nodeKindComponentName(NodeKind kind) {
     case NodeKind::Toolbar: return "LuiToolbar.qml";
     case NodeKind::StatusBar: return "LuiStatusBar.qml";
     case NodeKind::FilePicker: return "LuiFilePicker.qml";
+    case NodeKind::Link: return "LuiLink.qml";
+    case NodeKind::FileImage: return "LuiFileImage.qml";
+    case NodeKind::FilePreview: return "LuiFilePreview.qml";
   }
   return "LuiBox.qml";
 }
@@ -533,6 +576,17 @@ inline const char *propertyWireName(Property property) {
     case Property::PickerMultiple: return "multiple";
     case Property::PickerSource: return "source";
     case Property::PickerCompletion: return "completion";
+    case Property::MinValue: return "min";
+    case Property::MaxValue: return "max";
+    case Property::StepValue: return "step";
+    case Property::Detents: return "detents";
+    case Property::Sizing: return "sizing";
+    case Property::PathValue: return "path";
+    case Property::UrlValue: return "url";
+    case Property::MaxPixelSize: return "max-pixel-size";
+    case Property::EdgeValue: return "edge";
+    case Property::Visible: return "visible";
+    case Property::AlignmentValue: return "alignment";
   }
   return "unknown";
 }
@@ -616,6 +670,17 @@ inline bool decodePropertyWireName(const char *name, Property *property) {
   if (std::strcmp(name, "multiple") == 0) { *property = Property::PickerMultiple; return true; }
   if (std::strcmp(name, "source") == 0) { *property = Property::PickerSource; return true; }
   if (std::strcmp(name, "completion") == 0) { *property = Property::PickerCompletion; return true; }
+  if (std::strcmp(name, "min") == 0) { *property = Property::MinValue; return true; }
+  if (std::strcmp(name, "max") == 0) { *property = Property::MaxValue; return true; }
+  if (std::strcmp(name, "step") == 0) { *property = Property::StepValue; return true; }
+  if (std::strcmp(name, "detents") == 0) { *property = Property::Detents; return true; }
+  if (std::strcmp(name, "sizing") == 0) { *property = Property::Sizing; return true; }
+  if (std::strcmp(name, "path") == 0) { *property = Property::PathValue; return true; }
+  if (std::strcmp(name, "url") == 0) { *property = Property::UrlValue; return true; }
+  if (std::strcmp(name, "max-pixel-size") == 0) { *property = Property::MaxPixelSize; return true; }
+  if (std::strcmp(name, "edge") == 0) { *property = Property::EdgeValue; return true; }
+  if (std::strcmp(name, "visible") == 0) { *property = Property::Visible; return true; }
+  if (std::strcmp(name, "alignment") == 0) { *property = Property::AlignmentValue; return true; }
   return false;
 }
 

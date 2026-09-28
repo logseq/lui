@@ -46,6 +46,7 @@ namespace LUI
                 case LUINodeKind.Toggle:
                 case LUINodeKind.Radio:
                 case LUINodeKind.Slider:
+                case LUINodeKind.NumberStepper:
                 case LUINodeKind.TextField:
                 case LUINodeKind.SecureField:
                 case LUINodeKind.Input:
@@ -75,6 +76,7 @@ namespace LUI
                 case LUINodeKind.Toggle:
                 case LUINodeKind.Radio:
                 case LUINodeKind.Slider:
+                case LUINodeKind.NumberStepper:
                 case LUINodeKind.TextField:
                 case LUINodeKind.SecureField:
                 case LUINodeKind.Input:
@@ -156,6 +158,7 @@ namespace LUI
                         case LUINodeKind.Text:
                         case LUINodeKind.TableCell:
                         case LUINodeKind.TimelineItem:
+                        case LUINodeKind.FileImage:
                         case LUINodeKind.BottomTab:
                             return true;
                         default:
@@ -204,7 +207,9 @@ namespace LUI
                 case LUIEventKind.Change:
                     return kind == LUINodeKind.Radio;
                 case LUIEventKind.ValueChanged:
-                    return kind == LUINodeKind.Slider || kind == LUINodeKind.Split;
+                    return kind == LUINodeKind.Slider ||
+                        kind == LUINodeKind.NumberStepper ||
+                        kind == LUINodeKind.Split;
                 case LUIEventKind.Dismiss:
                     switch (kind)
                     {
@@ -216,6 +221,7 @@ namespace LUI
                         case LUINodeKind.Drawer:
                         case LUINodeKind.Sheet:
                         case LUINodeKind.FilePicker:
+                        case LUINodeKind.FilePreview:
                             return true;
                         default:
                             return false;
@@ -455,6 +461,9 @@ namespace LUI
                         case LUINodeKind.Stack:
                         case LUINodeKind.Scroll:
                         case LUINodeKind.Avatar:
+                        case LUINodeKind.EdgeInset:
+                        case LUINodeKind.Overlay:
+                        case LUINodeKind.ViewThatFits:
                         case LUINodeKind.Text:
                         case LUINodeKind.Heading:
                         case LUINodeKind.Paragraph:
@@ -470,6 +479,7 @@ namespace LUI
                         case LUINodeKind.Toggle:
                         case LUINodeKind.Radio:
                         case LUINodeKind.Slider:
+                        case LUINodeKind.NumberStepper:
                         case LUINodeKind.Spinner:
                         case LUINodeKind.Icon:
                         case LUINodeKind.Select:
@@ -483,6 +493,8 @@ namespace LUI
                         case LUINodeKind.Alert:
                         case LUINodeKind.Bubble:
                         case LUINodeKind.StatusBar:
+                        case LUINodeKind.Link:
+                        case LUINodeKind.FileImage:
                             return true;
                         default:
                             return false;
@@ -515,6 +527,7 @@ namespace LUI
                         kind == LUINodeKind.RadioGroup ||
                         kind == LUINodeKind.Radio ||
                         kind == LUINodeKind.Slider ||
+                        kind == LUINodeKind.NumberStepper ||
                         HorizontalContainer(kind) ||
                         kind == LUINodeKind.Avatar ||
                         kind == LUINodeKind.Image ||
@@ -526,6 +539,8 @@ namespace LUI
                         kind == LUINodeKind.Alert ||
                         kind == LUINodeKind.Bubble ||
                         kind == LUINodeKind.ListItem ||
+                        kind == LUINodeKind.Link ||
+                        kind == LUINodeKind.FileImage ||
                         TreeRowKind(kind);
                 case LUIProperty.AccessibilityIdentifier:
                     return true;
@@ -547,11 +562,13 @@ namespace LUI
                 case LUIProperty.ProgressValue:
                     return kind == LUINodeKind.Progress ||
                         kind == LUINodeKind.Slider ||
+                        kind == LUINodeKind.NumberStepper ||
                         kind == LUINodeKind.Split;
                 case LUIProperty.OrientationValue:
                     return kind == LUINodeKind.Divider ||
                         kind == LUINodeKind.Tabs ||
-                        kind == LUINodeKind.Scroll;
+                        kind == LUINodeKind.Scroll ||
+                        kind == LUINodeKind.ViewThatFits;
                 case LUIProperty.PlacementValue:
                     return kind == LUINodeKind.Toolbar;
                 case LUIProperty.SizeValue:
@@ -574,11 +591,13 @@ namespace LUI
                         kind == LUINodeKind.ToggleButton ||
                         kind == LUINodeKind.MenuItem ||
                         kind == LUINodeKind.ListItem ||
-                        kind == LUINodeKind.BottomTab;
+                        kind == LUINodeKind.BottomTab ||
+                        kind == LUINodeKind.Link;
                 case LUIProperty.IconPlacementValue:
                     return kind == LUINodeKind.Button ||
                         kind == LUINodeKind.ToggleButton ||
-                        kind == LUINodeKind.ListItem;
+                        kind == LUINodeKind.ListItem ||
+                        kind == LUINodeKind.Link;
                 case LUIProperty.Selected:
                     return kind == LUINodeKind.Button ||
                         kind == LUINodeKind.ToggleButton ||
@@ -618,6 +637,7 @@ namespace LUI
                         kind == LUINodeKind.ListItem ||
                         kind == LUINodeKind.TableCell ||
                         kind == LUINodeKind.BottomTab ||
+                        kind == LUINodeKind.FileImage ||
                         TreeRowKind(kind);
                 case LUIProperty.SubmitEnabled:
                     return kind == LUINodeKind.Combobox ||
@@ -635,6 +655,13 @@ namespace LUI
                         kind == LUINodeKind.Image;
                 case LUIProperty.SurfaceIdValue:
                     return kind == LUINodeKind.MediaSurface;
+                case LUIProperty.PathValue:
+                    return kind == LUINodeKind.FileImage ||
+                        kind == LUINodeKind.FilePreview;
+                case LUIProperty.UrlValue:
+                    return kind == LUINodeKind.Link;
+                case LUIProperty.MaxPixelSize:
+                    return kind == LUINodeKind.FileImage;
                 case LUIProperty.AnchorValue:
                 case LUIProperty.AnchorAlignmentValue:
                 case LUIProperty.AnchorOffset:
@@ -660,9 +687,23 @@ namespace LUI
                 case LUIProperty.ResizeEasing:
                 case LUIProperty.ResizeOrigin:
                     return kind == LUINodeKind.Split;
+                case LUIProperty.MinValue:
+                case LUIProperty.MaxValue:
+                case LUIProperty.StepValue:
+                    return kind == LUINodeKind.NumberStepper;
+                case LUIProperty.Detents:
+                case LUIProperty.Sizing:
+                    return kind == LUINodeKind.Sheet;
                 case LUIProperty.ThemeValue:
                 case LUIProperty.ThemeMode:
                     return CanContainChildren(kind);
+                case LUIProperty.EdgeValue:
+                case LUIProperty.Visible:
+                    return kind == LUINodeKind.EdgeInset;
+                // AlignmentValue is admitted ahead of the restrictive matrix
+                // in PropertySupported.
+                case LUIProperty.AlignmentValue:
+                    return kind != LUINodeKind.Root;
                 case LUIProperty.TextValue:
                     switch (kind)
                     {
@@ -690,10 +731,12 @@ namespace LUI
                         case LUINodeKind.Drawer:
                         case LUINodeKind.Sheet:
                         case LUINodeKind.Tooltip:
+                        case LUINodeKind.NumberStepper:
                         case LUINodeKind.TableCell:
                         case LUINodeKind.Alert:
                         case LUINodeKind.Bubble:
                         case LUINodeKind.StatusBar:
+                        case LUINodeKind.Link:
                             return true;
                         default:
                             return false;
@@ -713,12 +756,14 @@ namespace LUI
                         case LUINodeKind.Toggle:
                         case LUINodeKind.Radio:
                         case LUINodeKind.Slider:
+                        case LUINodeKind.NumberStepper:
                         case LUINodeKind.Select:
                         case LUINodeKind.Combobox:
                         case LUINodeKind.MenuItem:
                         case LUINodeKind.ListItem:
                         case LUINodeKind.Drawer:
                         case LUINodeKind.BottomTab:
+                        case LUINodeKind.Link:
                             return true;
                         default:
                             return false;
@@ -745,6 +790,7 @@ namespace LUI
                         kind == LUINodeKind.Panel ||
                         kind == LUINodeKind.Box ||
                         kind == LUINodeKind.Split ||
+                        kind == LUINodeKind.EdgeInset ||
                         HorizontalContainer(kind);
                 default:
                     return false;
@@ -755,6 +801,11 @@ namespace LUI
             LUINodeKind kind, LUIProperty property)
         {
             if (property == LUIProperty.AccessibilityIdentifier) return true;
+            // Position hint honored on overlay children and the overlay
+            // itself; admitted before the restrictive matrix so e.g. an
+            // aligned menu-trigger child still carries it. Inert elsewhere.
+            if (property == LUIProperty.AlignmentValue)
+                return kind != LUINodeKind.Root;
             // The restrictive arms mirror schema/components.json
             // kindProperties; test/property_matrix asserts the two stay in
             // sync. LUIWireSchema.RestrictiveMatrix is generated from it.
@@ -1113,6 +1164,57 @@ namespace LUI
                         (text.Value == "files" || text.Value == "photos" ||
                          text.Value == "camera");
                 }
+                case LUIProperty.MinValue:
+                case LUIProperty.MaxValue:
+                {
+                    return value is LUIWireValue.Float number &&
+                        IsFinite(number.Value);
+                }
+                case LUIProperty.StepValue:
+                {
+                    return value is LUIWireValue.Float stepValue &&
+                        IsFinite(stepValue.Value) && stepValue.Value > 0.0;
+                }
+                case LUIProperty.Detents:
+                {
+                    return value is LUIWireValue.String;
+                }
+                case LUIProperty.Sizing:
+                {
+                    return value is LUIWireValue.String sizing &&
+                        (sizing.Value == "form" || sizing.Value == "fitted" ||
+                         sizing.Value == "page");
+                }
+                case LUIProperty.PathValue:
+                case LUIProperty.UrlValue:
+                {
+                    return value is LUIWireValue.String;
+                }
+                case LUIProperty.MaxPixelSize:
+                {
+                    return value is LUIWireValue.Int { Value: > 0 };
+                }
+                case LUIProperty.EdgeValue:
+                {
+                    return value is LUIWireValue.String text &&
+                        (text.Value == "top" || text.Value == "bottom" ||
+                         text.Value == "leading" || text.Value == "trailing");
+                }
+                case LUIProperty.Visible:
+                {
+                    return value is LUIWireValue.Bool;
+                }
+                case LUIProperty.AlignmentValue:
+                {
+                    return value is LUIWireValue.String text &&
+                        (text.Value == "top-leading" || text.Value == "top" ||
+                         text.Value == "top-trailing" ||
+                         text.Value == "leading" || text.Value == "center" ||
+                         text.Value == "trailing" ||
+                         text.Value == "bottom-leading" ||
+                         text.Value == "bottom" ||
+                         text.Value == "bottom-trailing");
+                }
                 default:
                 {
                     return false;
@@ -1210,6 +1312,11 @@ namespace LUI
                 {
                     return false;
                 }
+            }
+            if (kind == LUINodeKind.EdgeInset &&
+                !properties.ContainsKey(LUIProperty.EdgeValue))
+            {
+                return false;
             }
             if (kind == LUINodeKind.Button || kind == LUINodeKind.ToggleButton ||
                 kind == LUINodeKind.Toggle || kind == LUINodeKind.Radio)
@@ -1316,6 +1423,17 @@ namespace LUI
             {
                 return false;
             }
+            if ((kind == LUINodeKind.FileImage ||
+                 kind == LUINodeKind.FilePreview) &&
+                !StringPropertyNonempty(properties, LUIProperty.PathValue))
+            {
+                return false;
+            }
+            if (kind == LUINodeKind.Link &&
+                !StringPropertyNonempty(properties, LUIProperty.UrlValue))
+            {
+                return false;
+            }
             if (kind == LUINodeKind.Stepper &&
                 !properties.ContainsKey(LUIProperty.ActiveIndex))
             {
@@ -1347,6 +1465,37 @@ namespace LUI
                 if (!properties.TryGetValue(
                         LUIProperty.ProgressValue, out LUIWireValue? progress) ||
                     progress is not LUIWireValue.Float)
+                {
+                    return false;
+                }
+            }
+            if (kind == LUINodeKind.NumberStepper)
+            {
+                if (!properties.TryGetValue(
+                        LUIProperty.ProgressValue,
+                        out LUIWireValue? stepperValue) ||
+                    stepperValue is not LUIWireValue.Float)
+                {
+                    return false;
+                }
+                if (!StringPropertyNonempty(
+                        properties, LUIProperty.TextValue) &&
+                    !StringPropertyNonempty(
+                        properties, LUIProperty.AccessibilityLabel))
+                {
+                    return false;
+                }
+                // min defaults to 0.0 and max is unbounded; compare the
+                // effective endpoints so a lone negative max still fails.
+                double stepperMinimum = properties.TryGetValue(
+                        LUIProperty.MinValue, out LUIWireValue? minimum) &&
+                    minimum is LUIWireValue.Float minFloat
+                        ? minFloat.Value : 0.0;
+                double stepperMaximum = properties.TryGetValue(
+                        LUIProperty.MaxValue, out LUIWireValue? maximum) &&
+                    maximum is LUIWireValue.Float maxFloat
+                        ? maxFloat.Value : double.MaxValue;
+                if (stepperMinimum > stepperMaximum)
                 {
                     return false;
                 }
@@ -1405,6 +1554,9 @@ namespace LUI
                 case LUINodeKind.Column:
                 case LUINodeKind.Grid:
                 case LUINodeKind.Stack:
+                case LUINodeKind.EdgeInset:
+                case LUINodeKind.Overlay:
+                case LUINodeKind.ViewThatFits:
                 case LUINodeKind.Panel:
                 case LUINodeKind.Card:
                 case LUINodeKind.Box:
@@ -1435,6 +1587,7 @@ namespace LUI
                 case LUINodeKind.BottomTabs:
                 case LUINodeKind.BottomTab:
                 case LUINodeKind.FilePicker:
+                case LUINodeKind.Link:
                     return true;
                 default:
                     return false;

@@ -381,6 +381,20 @@ namespace LUI
                     }
                     LUIWireValue value = WireValue(
                         operation.GetProperty("value"), "value");
+                    if (value is LUIWireValue.Int intValue &&
+                        (property == LUIProperty.GrowValue ||
+                         property == LUIProperty.AnchorOffset ||
+                         property == LUIProperty.SourceX ||
+                         property == LUIProperty.SourceY ||
+                         property == LUIProperty.SourceWidth ||
+                         property == LUIProperty.SourceHeight ||
+                         property == LUIProperty.ProgressValue ||
+                         property == LUIProperty.MinValue ||
+                         property == LUIProperty.MaxValue ||
+                         property == LUIProperty.StepValue))
+                    {
+                        value = new LUIWireValue.Float(intValue.Value);
+                    }
                     if (!LUISchema.PropertySupported(node.Kind, property) ||
                         !LUISchema.PropertyValueSupportedForKind(
                             node.Kind, property, value))
@@ -715,6 +729,9 @@ namespace LUI
                 case LUINodeKind.Column:
                 case LUINodeKind.Grid:
                 case LUINodeKind.Stack:
+                case LUINodeKind.EdgeInset:
+                case LUINodeKind.Overlay:
+                case LUINodeKind.ViewThatFits:
                 case LUINodeKind.Panel:
                 case LUINodeKind.Card:
                 case LUINodeKind.Box:
@@ -769,6 +786,11 @@ namespace LUI
                     !state.Properties.ContainsKey(LUIProperty.IconName))
                 {
                     throw new LUIBackendException("icon requires name");
+                }
+                if (state.Kind == LUINodeKind.EdgeInset &&
+                    !state.Properties.ContainsKey(LUIProperty.EdgeValue))
+                {
+                    throw new LUIBackendException("edge-inset requires edge");
                 }
                 if (LUISchema.ButtonKind(state.Kind))
                 {
@@ -1385,6 +1407,9 @@ namespace LUI
                      state.Properties, LUIProperty.PressEnabled)) ||
                 (state.Kind == LUINodeKind.Text &&
                  LUISchema.TrueProperty(
+                     state.Properties, LUIProperty.PressEnabled)) ||
+                (state.Kind == LUINodeKind.FileImage &&
+                 LUISchema.TrueProperty(
                      state.Properties, LUIProperty.PressEnabled));
             if (!pressable || IsDisabled(state))
             {
@@ -1495,16 +1520,28 @@ namespace LUI
         {
             LUINodeState state = RequireState(node);
             if ((state.Kind != LUINodeKind.Slider &&
-                 state.Kind != LUINodeKind.Split) ||
+                 state.Kind != LUINodeKind.Split &&
+                 state.Kind != LUINodeKind.NumberStepper) ||
                 IsDisabled(state) ||
                 double.IsNaN(value) || double.IsInfinity(value))
             {
                 throw new LUIBackendException(
                     $"node {node} is not an enabled value control");
             }
-            OnEvent?.Invoke(
-                new LUIEvent.ValueChanged(
-                    node, System.Math.Clamp(value, 0.0, 1.0)));
+            double emitted = System.Math.Clamp(value, 0.0, 1.0);
+            if (state.Kind == LUINodeKind.NumberStepper)
+            {
+                double minimum = FloatProperty(
+                    state, LUIProperty.MinValue, 0.0);
+                double maximum = state.Properties.TryGetValue(
+                        LUIProperty.MaxValue, out LUIWireValue? maxValue) &&
+                    maxValue is LUIWireValue.Float maxFloat
+                        ? maxFloat.Value
+                        : double.MaxValue;
+                emitted = System.Math.Clamp(
+                    value, minimum, System.Math.Max(minimum, maximum));
+            }
+            OnEvent?.Invoke(new LUIEvent.ValueChanged(node, emitted));
         }
 
         public void PerformDismiss(long node)
@@ -1515,6 +1552,7 @@ namespace LUI
                 state.Kind != LUINodeKind.DropdownMenu &&
                 state.Kind != LUINodeKind.Toast &&
                 state.Kind != LUINodeKind.FilePicker &&
+                state.Kind != LUINodeKind.FilePreview &&
                 !LUISchema.ModalSurface(state.Kind))
             {
                 throw new LUIBackendException($"node {node} is not dismissible");

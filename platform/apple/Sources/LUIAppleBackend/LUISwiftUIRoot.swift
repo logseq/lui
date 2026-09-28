@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import QuickLook
 import SwiftUI
 #if os(macOS)
 import AppKit
@@ -68,6 +69,37 @@ final class LUIModalPresentationStore {
     }
 }
 
+struct LUIFilePreviewPresentation: Identifiable {
+    let nodeID: Int
+    let rootID: Int
+    let url: URL
+
+    var id: Int { nodeID }
+}
+
+/// Like `LUIModalPresentationStore`, an interactively closed preview stays
+/// mounted on the wire until the reducer consumes the Dismiss event, so a
+/// re-sync in that window must not reassert it.
+@Observable
+@MainActor
+final class LUIFilePreviewStore {
+    private(set) var item: LUIFilePreviewPresentation?
+    private var pendingDismissalID: Int?
+
+    func synchronize(with item: LUIFilePreviewPresentation?) {
+        if let pendingDismissalID, item?.id == pendingDismissalID { return }
+        pendingDismissalID = nil
+        self.item = item
+    }
+
+    func dismissFromPresentation() -> Int? {
+        guard let presentedID = item?.id else { return nil }
+        pendingDismissalID = presentedID
+        item = nil
+        return presentedID
+    }
+}
+
 public struct LUISwiftUIRoot: View {
     private let backend: LUIAppleBackend
     private let rootID: Int
@@ -94,6 +126,7 @@ public struct LUISwiftUIRoot: View {
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
                     .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
             }
+            .quickLookPreview(filePreviewBinding)
             .modifier(LUIDialogPresentationModifier(anchorID: rootID, backend: backend))
     }
 
@@ -114,6 +147,23 @@ public struct LUISwiftUIRoot: View {
             return
         }
         try? backend.performDismiss(node: nodeID)
+    }
+
+    private var filePreviewBinding: Binding<URL?> {
+        Binding(
+            get: {
+                guard let item = backend.filePreviewPresentation.item,
+                      item.rootID == rootID else { return nil }
+                return item.url
+            },
+            set: { url in
+                guard url == nil,
+                      backend.filePreviewPresentation.item?.rootID == rootID,
+                      let nodeID = backend.filePreviewPresentation
+                        .dismissFromPresentation() else { return }
+                try? backend.performDismiss(node: nodeID)
+            }
+        )
     }
 }
 
@@ -140,7 +190,25 @@ public struct LUIModalHostModifier: ViewModifier {
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
                     .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
             }
+            .quickLookPreview(filePreviewBinding)
             .modifier(LUIDialogPresentationModifier(anchorID: rootID, backend: backend))
+    }
+
+    private var filePreviewBinding: Binding<URL?> {
+        Binding(
+            get: {
+                guard let item = backend.filePreviewPresentation.item,
+                      item.rootID == rootID else { return nil }
+                return item.url
+            },
+            set: { url in
+                guard url == nil,
+                      backend.filePreviewPresentation.item?.rootID == rootID,
+                      let nodeID = backend.filePreviewPresentation
+                        .dismissFromPresentation() else { return }
+                try? backend.performDismiss(node: nodeID)
+            }
+        )
     }
 
     private var sheetBinding: Binding<LUIModalPresentation?> {
@@ -462,7 +530,9 @@ enum LUIDirectRevisionObservationPolicy {
 
 enum LUIUnmodifiedNodePolicy {
     static func bypassesSurface(kind: LUINodeKind) -> Bool {
-        kind == .spacer || kind == .filePicker
+        // edge-inset bypasses the container surface: its surface props style
+        // the pinned region instead (LUIEdgeInsetView applies the modifier).
+        kind == .spacer || kind == .edgeInset || kind == .filePicker
     }
 }
 
@@ -548,7 +618,7 @@ private struct LUINodeView: View {
                 content
                     .modifier(LUIAccessibilityModifier(model: model, backend: backend))
                     .modifier(LUIAppearModifier(model: model, backend: backend))
-            } else if model.kind.isModalSurface {
+            } else if model.kind.isModalSurface || model.kind == .filePreview {
                 content
             } else if model.kind == .resizable {
                 content
@@ -619,6 +689,12 @@ private struct LUINodeView: View {
             return AnyView(LUIGridView(model: model, backend: backend))
         case .stack, .panel, .card:
             return AnyView(LUIStackView(model: model, backend: backend))
+        case .edgeInset:
+            return AnyView(LUIEdgeInsetView(model: model, backend: backend))
+        case .overlay:
+            return AnyView(LUIOverlayView(model: model, backend: backend))
+        case .viewThatFits:
+            return AnyView(LUIViewThatFitsView(model: model, backend: backend))
         case .alert:
             return AnyView(LUIAlertView(model: model, backend: backend))
         case .bubble:
@@ -712,6 +788,12 @@ private struct LUINodeView: View {
             return AnyView(LUIImageView(model: model, backend: backend))
         case .mediaSurface:
             return AnyView(LUIMediaSurfaceView(model: model, backend: backend))
+        case .link:
+            return AnyView(LUILinkView(model: model, backend: backend))
+        case .fileImage:
+            return AnyView(LUIFileImageView(model: model, backend: backend))
+        case .filePreview:
+            return AnyView(EmptyView())
         case .stepper:
             return AnyView(LUIStepperView(model: model, backend: backend))
         case .step:
@@ -767,6 +849,8 @@ private struct LUINodeView: View {
             .disabled(!model.isEnabled)
             .frame(minHeight: minimumTouchHeight)
             )
+        case .numberStepper:
+            return AnyView(LUINumberStepperView(model: model, backend: backend))
         case .progress:
             return AnyView(
                 ProgressView(value: model.progressFraction)
@@ -1689,6 +1773,156 @@ private struct LUIStackView: View {
     }
 }
 
+/// Pins every child after the first to a screen edge via `.safeAreaInset`
+/// while the first child fills the view and scrolls beneath. The node's
+/// surface props style the pinned region (the container bypasses the surface
+/// modifier), so e.g. background "bar" gives a material chrome bar.
+private struct LUIEdgeInsetView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    private var edgeName: String {
+        model.property(.edge)?.stringValue ?? "top"
+    }
+
+    private var isSideEdge: Bool {
+        edgeName == "leading" || edgeName == "trailing"
+    }
+
+    private var isVisible: Bool {
+        model.property(.visible)?.boolValue ?? true
+    }
+
+    private var spacing: CGFloat {
+        CGFloat(model.property(.gap)?.intValue ?? 0)
+    }
+
+    var body: some View {
+        Group {
+            if isSideEdge {
+                content
+                    .safeAreaInset(
+                        edge: edgeName == "trailing"
+                            ? HorizontalEdge.trailing : .leading,
+                        spacing: spacing
+                    ) {
+                        pinnedRegion
+                    }
+            } else {
+                content
+                    .safeAreaInset(
+                        edge: edgeName == "bottom" ? VerticalEdge.bottom : .top,
+                        spacing: spacing
+                    ) {
+                        pinnedRegion
+                    }
+            }
+        }
+        .animation(.default, value: isVisible)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let contentID = model.children.first {
+            LUIAnyNodeView(nodeID: contentID, backend: backend).equatable()
+        }
+    }
+
+    @ViewBuilder
+    private var pinnedRegion: some View {
+        // `visible` toggles the pinned region in place so the safe-area
+        // insertion animates instead of snapping.
+        if isVisible {
+            if isSideEdge {
+                HStack(spacing: 0) {
+                    pinnedViews(Array(model.children.dropFirst()))
+                }
+                .frame(maxHeight: .infinity)
+                .modifier(LUISurfaceModifier(model: model, backend: backend))
+            } else {
+                VStack(spacing: 0) {
+                    pinnedViews(Array(model.children.dropFirst()))
+                }
+                .frame(maxWidth: .infinity)
+                .modifier(LUISurfaceModifier(model: model, backend: backend))
+            }
+        }
+    }
+
+    private func pinnedViews(_ ids: [Int]) -> some View {
+        ForEach(ids, id: \.self) { childID in
+            LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+        }
+    }
+}
+
+/// Renders the children after the first floating over the first child
+/// (`base`) without affecting its layout. Each overlay child positions
+/// itself by its own `alignment` property, falling back to the overlay's
+/// `alignment` (default `.center`).
+private struct LUIOverlayView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    private func alignment(of childID: Int) -> Alignment {
+        Self.alignment(
+            backend.model(id: childID)?.property(.alignment)?.stringValue
+                ?? model.property(.alignment)?.stringValue
+        )
+    }
+
+    private static func alignment(_ name: String?) -> Alignment {
+        switch name {
+        case "top-leading": .topLeading
+        case "top": .top
+        case "top-trailing": .topTrailing
+        case "leading": .leading
+        case "trailing": .trailing
+        case "bottom-leading": .bottomLeading
+        case "bottom": .bottom
+        case "bottom-trailing": .bottomTrailing
+        default: .center
+        }
+    }
+
+    var body: some View {
+        let base: AnyView
+        if let baseID = model.children.first {
+            base = AnyView(LUIAnyNodeView(nodeID: baseID, backend: backend).equatable())
+        } else {
+            base = AnyView(EmptyView())
+        }
+        return model.children.dropFirst().reduce(base) { content, childID in
+            AnyView(
+                content.overlay(alignment: alignment(of: childID)) {
+                    LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                }
+            )
+        }
+    }
+}
+
+/// Renders the first child that fits along `orientation`
+/// (`ViewThatFits(in:)`; default horizontal).
+private struct LUIViewThatFitsView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    private var axis: Axis.Set {
+        model.property(.orientation)?.stringValue == "vertical"
+            ? .vertical
+            : .horizontal
+    }
+
+    var body: some View {
+        ViewThatFits(in: axis) {
+            ForEach(model.children, id: \.self) { childID in
+                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+            }
+        }
+    }
+}
+
 private struct LUIAnchoredComboboxMenuHost<Content: View>: View {
     let model: LUINodeModel?
     let backend: LUIAppleBackend
@@ -2210,21 +2444,75 @@ private struct LUITooltipHost<Content: View>: View {
 }
 
 private struct LUIModalPresentationStyle: ViewModifier {
-    let kind: LUINodeKind
+    let model: LUINodeModel
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if LUIModalPresentationPolicy.showsDragIndicator(kind: kind) {
-            content.presentationDragIndicator(.visible)
+        let withDetents = content.presentationDetents(
+            LUIModalPresentationPolicy.detents(for: model)
+        )
+        if #available(iOS 18.0, macOS 15.0, *) {
+            // `sizing` is a best-effort prop: absent or unrecognized values
+            // keep the platform default.
+            switch LUIModalPresentationPolicy.sizing(for: model) {
+            case .form:
+                withDetents.presentationSizing(.form)
+            case .fitted:
+                withDetents.presentationSizing(.fitted)
+            case .page:
+                withDetents.presentationSizing(.page)
+            case nil:
+                withDetents
+            }
         } else {
-            content
+            withDetents
         }
     }
 }
 
+/// `sizing` prop values for `sheet`, mirroring `PresentationSizing` cases.
+enum LUISheetSizing: Equatable {
+    case form
+    case fitted
+    case page
+}
+
+@MainActor
 enum LUIModalPresentationPolicy {
     static func showsDragIndicator(kind: LUINodeKind) -> Bool {
         false
+    }
+
+    /// `detents` is a comma-separated list of `medium`, `large`, or a
+    /// fractional height in (0, 1]. Unknown tokens are ignored; an absent or
+    /// fully-unrecognized value falls back to the default `.large` detent.
+    static func detents(for model: LUINodeModel) -> Set<PresentationDetent> {
+        guard let raw = model.property(.detents)?.stringValue else {
+            return [.large]
+        }
+        let parsed = raw.split(separator: ",").compactMap(detent)
+        return parsed.isEmpty ? [.large] : Set(parsed)
+    }
+
+    private static func detent(_ token: Substring) -> PresentationDetent? {
+        let trimmed = token.trimmingCharacters(in: .whitespaces)
+        switch trimmed {
+        case "medium": return .medium
+        case "large": return .large
+        default:
+            guard let fraction = Double(trimmed),
+                  fraction > 0, fraction <= 1 else { return nil }
+            return .fraction(CGFloat(fraction))
+        }
+    }
+
+    static func sizing(for model: LUINodeModel) -> LUISheetSizing? {
+        switch model.property(.sizing)?.stringValue {
+        case "form": return .form
+        case "fitted": return .fitted
+        case "page": return .page
+        default: return nil
+        }
     }
 }
 
@@ -2235,7 +2523,9 @@ private struct LUIModalSurfaceContent: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        surfaceContent.sheet(item: Binding(
+        surfaceContent
+            .modifier(LUIModalPresentationStyle(model: model))
+            .sheet(item: Binding(
             get: { backend.modalPresentation.nestedSheets[model.id] },
             set: { value in
                 if value == nil,
@@ -2929,6 +3219,141 @@ private struct LUIImageView: View {
     }
 }
 
+private struct LUILinkView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    @Environment(\.luiSemanticColors) private var semanticColors
+
+    private var urlString: String {
+        model.property(.url)?.stringValue ?? ""
+    }
+
+    private var tint: Color? {
+        LUIThemeColorResolver.color(
+            model.property(.foreground)?.stringValue,
+            semanticColors: semanticColors
+        )
+    }
+
+    var body: some View {
+        if let url = URL(string: urlString) {
+            Link(destination: url) { label }
+                .tint(tint)
+                .disabled(!model.isEnabled)
+        } else {
+            label
+        }
+    }
+
+    @ViewBuilder
+    private var label: some View {
+        if model.visibleChildren.isEmpty {
+            labelContent
+        } else {
+            ForEach(model.visibleChildren, id: \.self) { childID in
+                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var labelContent: some View {
+        let iconName = model.buttonIconName
+        let text = model.text.isEmpty ? urlString : model.text
+        if iconName.isEmpty {
+            Text(verbatim: text)
+        } else if LUIButtonIconPlacementPolicy.usesVerticalLayout(
+            model.buttonIconPlacement
+        ) {
+            VStack(spacing: 2) {
+                linkIcon(iconName)
+                Text(verbatim: text)
+            }
+        } else if model.buttonIconPlacement == "trailing" {
+            HStack(spacing: 4) {
+                Text(verbatim: text)
+                linkIcon(iconName)
+            }
+        } else {
+            HStack(spacing: 4) {
+                linkIcon(iconName)
+                Text(verbatim: text)
+            }
+        }
+    }
+
+    private func linkIcon(_ name: String) -> some View {
+        LUIIconImage(source: backend.iconSource(for: name), bundle: backend.appIconBundle)
+            .scaledToFit()
+            .frame(width: 14, height: 14)
+    }
+}
+
+private struct LUIFileImageView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    @State private var image: CGImage?
+    @State private var failed = false
+
+    private var path: String {
+        model.property(.path)?.stringValue ?? ""
+    }
+
+    private var maxPixelSize: Int {
+        model.property(.maxPixelSize)?.intValue
+            ?? LUIFileImageLoader.defaultMaxPixelSize
+    }
+
+    @ViewBuilder
+    var body: some View {
+        content
+            .task(id: "\(maxPixelSize)|\(path)") {
+                if let decoded = await LUIFileImageLoader.thumbnail(
+                    path: path,
+                    maxPixelSize: maxPixelSize
+                ) {
+                    image = decoded
+                    failed = false
+                } else {
+                    image = nil
+                    failed = true
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if model.supportsPress {
+            Button {
+                try? backend.performPress(node: model.id)
+            } label: {
+                inner
+            }
+            .buttonStyle(.plain)
+        } else {
+            inner
+        }
+    }
+
+    @ViewBuilder
+    private var inner: some View {
+        if let image {
+            Image(decorative: image, scale: 1)
+                .resizable()
+        } else if failed {
+            LUIIconImage(
+                source: .systemName("photo"),
+                bundle: backend.appIconBundle
+            )
+            .frame(width: 24, height: 24)
+            .foregroundStyle(.secondary)
+        } else {
+            ProgressView()
+                .controlSize(.small)
+        }
+    }
+}
+
 private struct LUIMediaSurfaceView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
@@ -2948,6 +3373,29 @@ private struct LUIMediaSurfaceView: View {
                 blue: Double(components[2]) / 255
             )
         }
+    }
+}
+
+private struct LUINumberStepperView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        Stepper(
+            model.text,
+            value: Binding(
+                get: {
+                    min(
+                        max(model.stepperValue, model.stepperRange.lowerBound),
+                        model.stepperRange.upperBound
+                    )
+                },
+                set: { try? backend.performValueChange(node: model.id, value: $0) }
+            ),
+            in: model.stepperRange,
+            step: model.stepperStep
+        )
+        .disabled(!model.isEnabled)
     }
 }
 
@@ -5699,6 +6147,19 @@ enum LUIClipRenderingPolicy {
         let hasVisibleBackground = background != nil && background != "transparent"
         return isSemanticSurface || hasVisibleBackground || cornerRadius > 0 || borderWidth > 0
     }
+
+    /// Interactive Liquid Glass scales the whole surface on press; a clip
+    /// applied outside `glassEffect` pins the capsule to its unpressed bounds,
+    /// so a glass surface clips its content inside the glass instead. The
+    /// same applies to `glass-container`, whose descendants each carry their
+    /// own interactive glass.
+    static func clipsInsideGlass(background: String?, inFusedCapsule: Bool) -> Bool {
+        let isInteractiveGlass = background == "glass-container" ||
+            (background == "glass" && !inFusedCapsule)
+        guard isInteractiveGlass else { return false }
+        if #available(iOS 26.0, macOS 26.0, *) { return true }
+        return false
+    }
 }
 
 private struct LUIOptionalClipModifier: ViewModifier {
@@ -5730,6 +6191,8 @@ private struct LUIBackgroundStyleModifier: ViewModifier {
     let color: Color
     let shape: AnyShape
     let isPill: Bool
+    let clipsContent: Bool
+    let clipRadius: CGFloat
     @Environment(\.luiInFusedCapsule) private var inFusedCapsule
 
     /// Inside a fused capsule — a hoisted `ControlGroup` (system-drawn glass)
@@ -5741,9 +6204,18 @@ private struct LUIBackgroundStyleModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         let glassShape: AnyShape = isPill ? AnyShape(Capsule()) : shape
-        if name == "glass", !suppressesOwnGlass {
+        if name == "bar" {
+            // System chrome material (`.background(.bar)`), for edge-pinned
+            // bars that should pick up the platform bar treatment.
+            content.background(.bar, in: shape)
+        } else if name == "glass", !suppressesOwnGlass {
             if #available(iOS 26.0, macOS 26.0, *) {
-                content.glassEffect(.regular.interactive(), in: glassShape)
+                content
+                    .modifier(LUIOptionalClipModifier(
+                        cornerRadius: clipRadius,
+                        clipsContent: clipsContent
+                    ))
+                    .glassEffect(.regular.interactive(), in: glassShape)
             } else {
                 content.background(.regularMaterial, in: glassShape)
             }
@@ -5752,7 +6224,12 @@ private struct LUIBackgroundStyleModifier: ViewModifier {
             // descendant glass surfaces into one fused Liquid Glass region.
             if #available(iOS 26.0, macOS 26.0, *) {
                 GlassEffectContainer {
-                    content.background(color, in: shape)
+                    content
+                        .modifier(LUIOptionalClipModifier(
+                            cornerRadius: clipRadius,
+                            clipsContent: clipsContent
+                        ))
+                        .background(color, in: shape)
                 }
             } else {
                 content.background(color, in: shape)
@@ -5768,6 +6245,7 @@ private struct LUISurfaceModifier: ViewModifier {
     let backend: LUIAppleBackend
     @Environment(\.luiSemanticColors) private var semanticColors
     @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
+    @Environment(\.luiInFusedCapsule) private var inFusedCapsule
 
     /// The inner label of a hoisted icon-only button is floored to the 44pt
     /// bar-item target (see `LUIButtonView.hitTargetFloor`); this keeps the
@@ -5814,6 +6292,16 @@ private struct LUISurfaceModifier: ViewModifier {
             (isSurface ? Color.secondary.opacity(0.35) : .clear)
         let castsShadow = model.kind == .panel &&
             model.property(.background)?.stringValue != "transparent"
+        let clipsContent = LUIClipRenderingPolicy.clipsContent(
+            kind: model.kind,
+            background: backgroundName,
+            cornerRadius: radius,
+            borderWidth: borderWidth
+        )
+        let clipsInsideGlass = LUIClipRenderingPolicy.clipsInsideGlass(
+            background: backgroundName,
+            inFusedCapsule: inFusedCapsule
+        )
 
         content
             .padding(.horizontal, CGFloat(horizontal))
@@ -5871,7 +6359,9 @@ private struct LUISurfaceModifier: ViewModifier {
                 isPill: model.kind != .avatar && LUIGlassShapePolicy.isPill(
                     cornerRadius: radius,
                     height: floored(model.surfaceHeight).map(CGFloat.init)
-                )
+                ),
+                clipsContent: clipsContent && clipsInsideGlass,
+                clipRadius: radius
             ))
             .shadow(
                 color: castsShadow ? .black.opacity(0.12) : .clear,
@@ -5893,12 +6383,7 @@ private struct LUISurfaceModifier: ViewModifier {
             ))
             .modifier(LUIOptionalClipModifier(
                 cornerRadius: radius,
-                clipsContent: LUIClipRenderingPolicy.clipsContent(
-                    kind: model.kind,
-                    background: backgroundName,
-                    cornerRadius: radius,
-                    borderWidth: borderWidth
-                )
+                clipsContent: clipsContent && !clipsInsideGlass
             ))
     }
 

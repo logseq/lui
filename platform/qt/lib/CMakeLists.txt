@@ -59,6 +59,9 @@ qt_add_qml_module(lui_qml
         ../qml/LuiDrawer.qml
         ../qml/LuiDropdownMenu.qml
         ../qml/LuiFilePicker.qml
+        ../qml/LuiFileImage.qml
+        ../qml/LuiFilePreview.qml
+        ../qml/LuiEdgeInset.qml
         ../qml/LuiGrid.qml
         ../qml/LuiHeading.qml
         ../qml/LuiIcon.qml
@@ -67,11 +70,14 @@ qt_add_qml_module(lui_qml
         ../qml/LuiInputGroup.qml
         ../qml/LuiInputGroupActions.qml
         ../qml/LuiLabel.qml
+        ../qml/LuiLink.qml
         ../qml/LuiList.qml
         ../qml/LuiListItem.qml
         ../qml/LuiMediaSurface.qml
         ../qml/LuiMenuItem.qml
         ../qml/LuiNodeView.qml
+        ../qml/LuiNumberStepper.qml
+        ../qml/LuiOverlay.qml
         ../qml/LuiPagination.qml
         ../qml/LuiPanel.qml
         ../qml/LuiParagraph.qml
@@ -116,6 +122,7 @@ qt_add_qml_module(lui_qml
         ../qml/LuiToolbar.qml
         ../qml/LuiTooltip.qml
         ../qml/LuiTree.qml
+        ../qml/LuiViewThatFits.qml
         ../qml/LuiVirtualList.qml
     RESOURCES
         ../qml/LuiStyle.js

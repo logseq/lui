@@ -13,6 +13,9 @@ namespace LUI
         Column,
         Grid,
         Stack,
+        EdgeInset,
+        Overlay,
+        ViewThatFits,
         Panel,
         Card,
         Alert,
@@ -28,6 +31,7 @@ namespace LUI
         RadioGroup,
         Radio,
         Slider,
+        NumberStepper,
         TextField,
         SecureField,
         Input,
@@ -81,6 +85,9 @@ namespace LUI
         Toolbar,
         StatusBar,
         FilePicker,
+        Link,
+        FileImage,
+        FilePreview,
     }
 
     public enum LUIProperty
@@ -163,6 +170,17 @@ namespace LUI
         PickerMultiple,
         PickerSource,
         PickerCompletion,
+        MinValue,
+        MaxValue,
+        StepValue,
+        Detents,
+        Sizing,
+        PathValue,
+        UrlValue,
+        MaxPixelSize,
+        EdgeValue,
+        Visible,
+        AlignmentValue,
     }
 
     public static class LUIWireSchema
@@ -175,6 +193,9 @@ namespace LUI
             { "column", LUINodeKind.Column },
             { "grid", LUINodeKind.Grid },
             { "stack", LUINodeKind.Stack },
+            { "edge-inset", LUINodeKind.EdgeInset },
+            { "overlay", LUINodeKind.Overlay },
+            { "view-that-fits", LUINodeKind.ViewThatFits },
             { "panel", LUINodeKind.Panel },
             { "card", LUINodeKind.Card },
             { "alert", LUINodeKind.Alert },
@@ -190,6 +211,7 @@ namespace LUI
             { "radio-group", LUINodeKind.RadioGroup },
             { "radio", LUINodeKind.Radio },
             { "slider", LUINodeKind.Slider },
+            { "number-stepper", LUINodeKind.NumberStepper },
             { "text-field", LUINodeKind.TextField },
             { "secure-field", LUINodeKind.SecureField },
             { "input", LUINodeKind.Input },
@@ -243,6 +265,9 @@ namespace LUI
             { "toolbar", LUINodeKind.Toolbar },
             { "status-bar", LUINodeKind.StatusBar },
             { "file-picker", LUINodeKind.FilePicker },
+            { "link", LUINodeKind.Link },
+            { "file-image", LUINodeKind.FileImage },
+            { "file-preview", LUINodeKind.FilePreview },
         };
 
         private static readonly Dictionary<string, LUIProperty> PropertiesByWireName =
@@ -326,6 +351,17 @@ namespace LUI
             { "multiple", LUIProperty.PickerMultiple },
             { "source", LUIProperty.PickerSource },
             { "completion", LUIProperty.PickerCompletion },
+            { "min", LUIProperty.MinValue },
+            { "max", LUIProperty.MaxValue },
+            { "step", LUIProperty.StepValue },
+            { "detents", LUIProperty.Detents },
+            { "sizing", LUIProperty.Sizing },
+            { "path", LUIProperty.PathValue },
+            { "url", LUIProperty.UrlValue },
+            { "max-pixel-size", LUIProperty.MaxPixelSize },
+            { "edge", LUIProperty.EdgeValue },
+            { "visible", LUIProperty.Visible },
+            { "alignment", LUIProperty.AlignmentValue },
         };
 
         public static string WireName(this LUINodeKind kind) => kind switch
@@ -335,6 +371,9 @@ namespace LUI
             LUINodeKind.Column => "column",
             LUINodeKind.Grid => "grid",
             LUINodeKind.Stack => "stack",
+            LUINodeKind.EdgeInset => "edge-inset",
+            LUINodeKind.Overlay => "overlay",
+            LUINodeKind.ViewThatFits => "view-that-fits",
             LUINodeKind.Panel => "panel",
             LUINodeKind.Card => "card",
             LUINodeKind.Alert => "alert",
@@ -350,6 +389,7 @@ namespace LUI
             LUINodeKind.RadioGroup => "radio-group",
             LUINodeKind.Radio => "radio",
             LUINodeKind.Slider => "slider",
+            LUINodeKind.NumberStepper => "number-stepper",
             LUINodeKind.TextField => "text-field",
             LUINodeKind.SecureField => "secure-field",
             LUINodeKind.Input => "input",
@@ -403,6 +443,9 @@ namespace LUI
             LUINodeKind.Toolbar => "toolbar",
             LUINodeKind.StatusBar => "status-bar",
             LUINodeKind.FilePicker => "file-picker",
+            LUINodeKind.Link => "link",
+            LUINodeKind.FileImage => "file-image",
+            LUINodeKind.FilePreview => "file-preview",
             _ => "unknown",
         };
 
@@ -419,6 +462,9 @@ namespace LUI
             LUINodeKind.Column or
             LUINodeKind.Grid or
             LUINodeKind.Stack or
+            LUINodeKind.EdgeInset or
+            LUINodeKind.Overlay or
+            LUINodeKind.ViewThatFits or
             LUINodeKind.Panel or
             LUINodeKind.Card or
             LUINodeKind.Alert or
@@ -455,7 +501,8 @@ namespace LUI
             LUINodeKind.Sheet or
             LUINodeKind.Toast or
             LUINodeKind.Toolbar or
-            LUINodeKind.FilePicker => true,
+            LUINodeKind.FilePicker or
+            LUINodeKind.Link => true,
             _ => false,
         };
 
@@ -539,6 +586,17 @@ namespace LUI
             LUIProperty.PickerMultiple => "multiple",
             LUIProperty.PickerSource => "source",
             LUIProperty.PickerCompletion => "completion",
+            LUIProperty.MinValue => "min",
+            LUIProperty.MaxValue => "max",
+            LUIProperty.StepValue => "step",
+            LUIProperty.Detents => "detents",
+            LUIProperty.Sizing => "sizing",
+            LUIProperty.PathValue => "path",
+            LUIProperty.UrlValue => "url",
+            LUIProperty.MaxPixelSize => "max-pixel-size",
+            LUIProperty.EdgeValue => "edge",
+            LUIProperty.Visible => "visible",
+            LUIProperty.AlignmentValue => "alignment",
             _ => "unknown",
         };
 
@@ -564,6 +622,7 @@ namespace LUI
             { LUINodeKind.BottomTab, Set(LUIProperty.TitleValue, LUIProperty.InlineIconName, LUIProperty.Selected, LUIProperty.Enabled, LUIProperty.PressEnabled) },
             { LUINodeKind.MenuTrigger, Set(LUIProperty.TextValue, LUIProperty.InlineIconName, LUIProperty.AccessibilityLabel, LUIProperty.Enabled, LUIProperty.ForegroundValue, LUIProperty.StyleClass) },
             { LUINodeKind.FilePicker, Set(LUIProperty.PickerRequest, LUIProperty.PickerTypes, LUIProperty.PickerMultiple, LUIProperty.PickerSource, LUIProperty.PickerCompletion, LUIProperty.Enabled, LUIProperty.AppearEnabled) },
+            { LUINodeKind.FilePreview, Set(LUIProperty.PathValue) },
         };
 
         public static readonly IReadOnlyDictionary<LUINodeKind, IReadOnlySet<LUIProperty>> ExtraMatrix =

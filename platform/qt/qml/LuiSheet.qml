@@ -12,15 +12,44 @@ Item {
     implicitWidth: 0
     implicitHeight: 0
 
+    // detents prop: comma-separated medium|large|fraction — the sheet opens
+    // at the first detent and caps at the largest (fractions of the overlay
+    // height). sizing prop: form|fitted narrow the sheet to a centered
+    // column; page keeps full width.
+    readonly property var detentFractions: {
+        var raw = props["detents"];
+        if (raw === undefined || raw === null || raw === "") return null;
+        var parts = String(raw).split(",");
+        var out = [];
+        for (var i = 0; i < parts.length; i++) {
+            var token = parts[i].trim();
+            var fraction = token === "medium" ? 0.5
+                : token === "large" ? 1.0
+                : parseFloat(token);
+            if (fraction > 0 && fraction <= 1) out.push(fraction);
+        }
+        return out.length > 0 ? out : null;
+    }
+    readonly property real detentRest:
+        detentFractions ? detentFractions[0] : 0.9
+    readonly property bool sizingNarrow:
+        Style.str(props, "sizing", "") !== "" &&
+        Style.str(props, "sizing", "") !== "page"
+
     Drawer {
         id: sheet
         edge: Qt.BottomEdge
         modal: true
         interactive: true
-        width: Overlay.overlay ? Overlay.overlay.width : parent.width
-        height: Math.min(
-            contentColumn.implicitHeight + 32,
-            Overlay.overlay ? Overlay.overlay.height * 0.9 : 400)
+        width: host.sizingNarrow && Overlay.overlay
+            ? Math.min(560, Overlay.overlay.width)
+            : Overlay.overlay ? Overlay.overlay.width : parent.width
+        x: host.sizingNarrow && Overlay.overlay
+            ? Math.round((Overlay.overlay.width - width) / 2) : 0
+        height: host.detentFractions && Overlay.overlay
+            ? Overlay.overlay.height * host.detentRest
+            : Math.min(contentColumn.implicitHeight + 32,
+                Overlay.overlay ? Overlay.overlay.height * 0.9 : 400)
         onClosed: if (host.node) host.node.dismiss()
 
         ColumnLayout {

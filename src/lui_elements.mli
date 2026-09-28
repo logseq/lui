@@ -27,6 +27,15 @@ type icon_placement = [ `leading | `trailing | `top ]
 type anchor = [ `above | `below | `left | `right ]
 type anchor_alignment = [ `start | `end_ | `stretch ]
 
+type edge = [ `top | `bottom | `leading | `trailing ]
+
+(** Two-dimensional alignment for [overlay] content: a corner, an edge
+    center, or [center]. *)
+type alignment =
+  [ `top_leading | `top | `top_trailing
+  | `leading | `center | `trailing
+  | `bottom_leading | `bottom | `bottom_trailing ]
+
 type frame_axes =
   [ `horizontal | `vertical | `both
   | `min_horizontal | `min_vertical | `min_both ]
@@ -341,6 +350,119 @@ val stack :
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) -> t list -> t
+
+(** [edge_inset ~edge \[content; pinned; ...\]] pins every child after the
+    first to [edge] while [content] fills the view and scrolls beneath
+    (`.safeAreaInset`). [~visible:false] hides the pinned children in place
+    (animated) without unmounting them; [~visible_signal] toggles it
+    reactively. The element's own surface props style the pinned region, so
+    e.g. [~background:"bar"] gives a material chrome bar. [~gap] sets the
+    spacing between [content] and the pinned children (default 0). *)
+val edge_inset :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?columns:int ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  edge:edge ->
+  ?visible:bool ->
+  ?visible_signal:bool Signal.signal -> t list -> t
+
+(** [overlay \[base; overlay_child; ...\]] renders the children after the
+    first floating over [base] without affecting its layout. Each overlay
+    child positions itself by its own [alignment] hint (set with {!align}),
+    falling back to the [overlay]'s [~alignment] (default [`center]). *)
+val overlay :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?columns:int ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?alignment:alignment -> t list -> t
+
+(** [align a child] sets [child]'s [alignment] hint, honored when [child]
+    is mounted as an [overlay] child — e.g.
+    [overlay \[base; align `top_trailing controls\]]. Inert elsewhere. *)
+val align : alignment -> t -> t
+
+(** [view_that_fits \[first; fallback; ...\]] renders the first child that
+    fits along [~orientation] (default [`horizontal`]; [ViewThatFits]). *)
+val view_that_fits :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?columns:int ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?orientation:orientation -> t list -> t
 val panel :
   ?key:string ->
   ?gap:int ->
@@ -1573,6 +1695,46 @@ val slider :
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_change:(Lui_protocol.event -> unit) -> t list -> t
+val number_stepper :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?columns:int ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?value:float ->
+  ?value_signal:float Signal.signal ->
+  ?min:float ->
+  ?max:float ->
+  ?step:float ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?label:string ->
+  ?enabled:bool ->
+  ?enabled_signal:bool Signal.signal ->
+  ?on_value_changed:(Lui_protocol.event -> unit) -> t list -> t
 val progress :
   ?key:string ->
   ?gap:int ->
@@ -2159,6 +2321,10 @@ val sheet :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
+  ?detents:string ->
+  ?detents_signal:string Signal.signal ->
+  ?sizing:string ->
+  ?sizing_signal:string Signal.signal ->
   ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
 val tooltip :
   ?key:string ->
@@ -2542,6 +2708,85 @@ val media_surface :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?surface:int ->
   ?surface_signal:int Signal.signal -> ?label:string -> nothing list -> t
+val link :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?columns:int ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?url:string ->
+  ?url_signal:string Signal.signal ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?icon_placement:icon_placement ->
+  ?label:string ->
+  ?disabled:bool -> ?disabled_signal:bool Signal.signal -> t list -> t
+val file_image :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?columns:int ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?path:string ->
+  ?path_signal:string Signal.signal ->
+  ?max_pixel_size:int ->
+  ?label:string ->
+  ?on_press:(Lui_protocol.event -> unit) -> nothing list -> t
+val file_preview :
+  ?key:string ->
+  ?path:string ->
+  ?path_signal:string Signal.signal ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?on_dismiss:(Lui_protocol.event -> unit) -> nothing list -> t
 val stepper :
   ?key:string ->
   ?gap:int ->

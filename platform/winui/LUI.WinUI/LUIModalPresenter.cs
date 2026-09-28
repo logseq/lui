@@ -86,7 +86,7 @@ namespace LUI.WinUI
                 : Visibility.Visible;
         }
 
-        static void Position(FrameworkElement control, LUINodeState state)
+        void Position(FrameworkElement control, LUINodeState state)
         {
             switch (state.Kind)
             {
@@ -97,11 +97,67 @@ namespace LUI.WinUI
                     control.Margin = new Thickness(24);
                     break;
                 case LUINodeKind.Sheet:
-                    control.HorizontalAlignment =
-                        HorizontalAlignment.Stretch;
+                {
                     control.VerticalAlignment = VerticalAlignment.Bottom;
-                    control.MaxHeight = 480;
+                    // detents: comma-separated medium|large|fraction —
+                    // the sheet opens at the first detent and can grow to
+                    // the largest (medium = 0.5, large = 1.0 of the
+                    // overlay). sizing: form/fitted center the sheet at a
+                    // fixed width; page stretches edge to edge.
+                    double overlayHeight = _overlay.ActualHeight > 0
+                        ? _overlay.ActualHeight : 480;
+                    double restFraction = 0.0, maxFraction = 0.0;
+                    string? detents = LUIPropertyApplier.Prop(
+                        state, LUIProperty.Detents)?.AsString;
+                    if (detents != null)
+                    {
+                        bool first = true;
+                        foreach (string token in detents.Split(','))
+                        {
+                            string trimmed = token.Trim();
+                            double fraction =
+                                trimmed == "medium" ? 0.5 :
+                                trimmed == "large" ? 1.0 :
+                                (double.TryParse(
+                                    trimmed,
+                                    System.Globalization.NumberStyles.Float,
+                                    System.Globalization.CultureInfo
+                                        .InvariantCulture,
+                                    out double parsed) &&
+                                 parsed > 0.0 && parsed <= 1.0
+                                    ? parsed : -1.0);
+                            if (fraction > 0.0)
+                            {
+                                if (first)
+                                {
+                                    restFraction = fraction;
+                                    first = false;
+                                }
+                                if (fraction > maxFraction)
+                                {
+                                    maxFraction = fraction;
+                                }
+                            }
+                        }
+                    }
+                    string? sizing = LUIPropertyApplier.Prop(
+                        state, LUIProperty.Sizing)?.AsString;
+                    if (sizing == "form" || sizing == "fitted")
+                    {
+                        control.HorizontalAlignment =
+                            HorizontalAlignment.Center;
+                        control.MaxWidth = 640;
+                    }
+                    else
+                    {
+                        control.HorizontalAlignment =
+                            HorizontalAlignment.Stretch;
+                    }
+                    control.MinHeight = overlayHeight * restFraction;
+                    control.MaxHeight = maxFraction > 0.0
+                        ? overlayHeight * maxFraction : 480;
                     break;
+                }
                 case LUINodeKind.Drawer:
                     control.HorizontalAlignment = HorizontalAlignment.Right;
                     control.VerticalAlignment = VerticalAlignment.Stretch;
