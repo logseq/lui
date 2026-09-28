@@ -218,9 +218,6 @@ enum LUIWireValue: Decodable, Equatable {
         case .scrollAnchor:
             guard let value = stringValue else { return false }
             return ["top", "center", "bottom"].contains(value)
-        case .edge:
-            guard let value = stringValue else { return false }
-            return value == "leading" || value == "trailing"
         case .role:
             guard let value = stringValue else { return false }
             return value == "treeitem" || value == "navigation" ||
@@ -920,7 +917,7 @@ struct LUIRetainedTree {
         case .style, .scrollTarget, .scrollAnchor, .scrollToken,
              .scrollAnimated, .trackVisibleRange:
             kind == .list
-        case .edge: kind == .swipeAction
+        case .edge: kind == .swipeAction || kind == .edgeInset
         case .minValue, .maxValue, .stepValue: kind == .numberStepper
         case .detents, .sizing: kind == .sheet
         case .path: kind == .fileImage || kind == .filePreview
@@ -928,7 +925,7 @@ struct LUIRetainedTree {
         case .maxPixelSize: kind == .fileImage
         case .active, .title, .description, .meta, .indicator, .connector: false
         case .request, .types, .multiple, .source, .completion: false
-        case .edge, .visible: kind == .edgeInset
+        case .visible: kind == .edgeInset
         // `.alignment` is admitted ahead of the restrictive matrix above.
         case .alignment: kind != .root
         }
