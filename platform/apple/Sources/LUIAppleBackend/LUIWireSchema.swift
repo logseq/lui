@@ -74,6 +74,11 @@ enum LUINodeKind: String, Decodable, Equatable {
     case toast = "toast"
     case toolbar = "toolbar"
     case statusBar = "status-bar"
+    case listSection = "list-section"
+    case listSectionHeader = "list-section-header"
+    case listSectionFooter = "list-section-footer"
+    case swipeActions = "swipe-actions"
+    case swipeAction = "swipe-action"
 }
 
 enum LUIProperty: String, Decodable, Hashable {
@@ -150,6 +155,15 @@ enum LUIProperty: String, Decodable, Hashable {
     case resizeOrigin = "resize-origin"
     case theme = "theme"
     case themeMode = "theme-mode"
+    case key = "key"
+    case separator = "separator"
+    case style = "style"
+    case scrollTarget = "scroll-target"
+    case scrollAnchor = "scroll-anchor"
+    case scrollToken = "scroll-token"
+    case scrollAnimated = "scroll-animated"
+    case trackVisibleRange = "track-visible-range"
+    case edge = "edge"
 }
 
 enum LUISchemaMatrix {
@@ -166,6 +180,9 @@ enum LUISchemaMatrix {
         .bottomTabs: [.accessibilityLabel, .styleClass, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight],
         .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled],
         .menuTrigger: [.text, .icon, .accessibilityLabel, .enabled, .foreground, .styleClass],
+        .listSection: [.key, .separator],
+        .swipeActions: [],
+        .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled],
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [

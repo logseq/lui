@@ -86,6 +86,11 @@ let base_class_name kind =
   | Split -> "lui-split"
   | Drawer -> "lui-drawer"
   | StatusBar -> "lui-status-bar"
+  | ListSection -> "lui-list-section"
+  | ListSectionHeader -> "lui-list-section-header"
+  | ListSectionFooter -> "lui-list-section-footer"
+  | SwipeActions -> "lui-swipe-actions"
+  | SwipeAction -> "lui-swipe-action"
 
 let create_split_node renderer =
   let document = renderer.web_document in

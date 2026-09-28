@@ -19,6 +19,8 @@ namespace LUI
         DoublePress,
         Appear,
         Extension,
+        ScrollCompleted,
+        VisibleRange,
     }
 
     public static class LUISchema
@@ -156,6 +158,7 @@ namespace LUI
                         case LUINodeKind.TableCell:
                         case LUINodeKind.TimelineItem:
                         case LUINodeKind.BottomTab:
+                        case LUINodeKind.SwipeAction:
                             return true;
                         default:
                             return false;
@@ -196,6 +199,7 @@ namespace LUI
                         case LUINodeKind.Radio:
                         case LUINodeKind.Accordion:
                         case LUINodeKind.Drawer:
+                        case LUINodeKind.ListItem:
                             return true;
                         default:
                             return false;
@@ -222,6 +226,9 @@ namespace LUI
                     return kind == LUINodeKind.ListItem;
                 case LUIEventKind.Appear:
                     return kind != LUINodeKind.Root;
+                case LUIEventKind.ScrollCompleted:
+                case LUIEventKind.VisibleRange:
+                    return kind == LUINodeKind.ListContainer;
                 case LUIEventKind.Extension:
                     return false;
                 default:
@@ -656,6 +663,19 @@ namespace LUI
                 case LUIProperty.ResizeEasing:
                 case LUIProperty.ResizeOrigin:
                     return kind == LUINodeKind.Split;
+                case LUIProperty.KeyValue:
+                case LUIProperty.SeparatorValue:
+                    return kind == LUINodeKind.ListItem ||
+                        kind == LUINodeKind.ListSection;
+                case LUIProperty.StyleValue:
+                case LUIProperty.ScrollTarget:
+                case LUIProperty.ScrollAnchor:
+                case LUIProperty.ScrollToken:
+                case LUIProperty.ScrollAnimated:
+                case LUIProperty.TrackVisibleRange:
+                    return kind == LUINodeKind.ListContainer;
+                case LUIProperty.EdgeValue:
+                    return kind == LUINodeKind.SwipeAction;
                 case LUIProperty.ThemeValue:
                 case LUIProperty.ThemeMode:
                     return CanContainChildren(kind);
@@ -1089,6 +1109,42 @@ namespace LUI
                         (text.Value == "system" || text.Value == "light" ||
                          text.Value == "dark");
                 }
+                case LUIProperty.KeyValue:
+                case LUIProperty.ScrollTarget:
+                {
+                    return value is LUIWireValue.String;
+                }
+                case LUIProperty.SeparatorValue:
+                {
+                    return value is LUIWireValue.String text &&
+                        (text.Value == "visible" || text.Value == "hidden");
+                }
+                case LUIProperty.StyleValue:
+                {
+                    return value is LUIWireValue.String text &&
+                        (text.Value == "plain" || text.Value == "inset" ||
+                         text.Value == "inset-grouped");
+                }
+                case LUIProperty.ScrollAnchor:
+                {
+                    return value is LUIWireValue.String text &&
+                        (text.Value == "top" || text.Value == "center" ||
+                         text.Value == "bottom");
+                }
+                case LUIProperty.ScrollToken:
+                {
+                    return value is LUIWireValue.Int { Value: >= 0 };
+                }
+                case LUIProperty.ScrollAnimated:
+                case LUIProperty.TrackVisibleRange:
+                {
+                    return value is LUIWireValue.Bool;
+                }
+                case LUIProperty.EdgeValue:
+                {
+                    return value is LUIWireValue.String text &&
+                        (text.Value == "leading" || text.Value == "trailing");
+                }
                 default:
                 {
                     return false;
@@ -1358,7 +1414,18 @@ namespace LUI
                     properties.ContainsKey(LUIProperty.Expanded) ||
                     properties.ContainsKey(LUIProperty.ChangeEnabled) ||
                     properties.ContainsKey(LUIProperty.ToggleEnabled);
-                if (hasTreeMetadata && !treeitem) return false;
+                // A list-item may carry expansion state as a disclosure row
+                // without the treeitem role.
+                bool disclosureListItem =
+                    kind == LUINodeKind.ListItem && !treeitem &&
+                    !properties.ContainsKey(LUIProperty.TreeLevel) &&
+                    !properties.ContainsKey(LUIProperty.ChangeEnabled) &&
+                    (properties.ContainsKey(LUIProperty.Expanded) ||
+                     properties.ContainsKey(LUIProperty.ToggleEnabled));
+                if (hasTreeMetadata && !treeitem && !disclosureListItem)
+                {
+                    return false;
+                }
                 if (properties.ContainsKey(LUIProperty.Expanded) &&
                     !TrueProperty(properties, LUIProperty.ToggleEnabled))
                 {
@@ -1410,6 +1477,10 @@ namespace LUI
                 case LUINodeKind.Bubble:
                 case LUINodeKind.BottomTabs:
                 case LUINodeKind.BottomTab:
+                case LUINodeKind.ListSection:
+                case LUINodeKind.ListSectionHeader:
+                case LUINodeKind.ListSectionFooter:
+                case LUINodeKind.SwipeActions:
                     return true;
                 default:
                     return false;
@@ -1456,9 +1527,33 @@ namespace LUI
                 case LUINodeKind.ContextMenu:
                     return childKind == LUINodeKind.MenuItem ||
                         childKind == LUINodeKind.Divider;
+                case LUINodeKind.ListSection:
+                    return childKind == LUINodeKind.ListItem ||
+                        childKind == LUINodeKind.ListSectionHeader ||
+                        childKind == LUINodeKind.ListSectionFooter;
+                case LUINodeKind.SwipeActions:
+                    return childKind == LUINodeKind.SwipeAction;
                 default:
-                    return true;
+                    break;
             }
+            if (childKind == LUINodeKind.ListSection)
+            {
+                return parentKind == LUINodeKind.ListContainer;
+            }
+            if (childKind == LUINodeKind.ListSectionHeader ||
+                childKind == LUINodeKind.ListSectionFooter)
+            {
+                return parentKind == LUINodeKind.ListSection;
+            }
+            if (childKind == LUINodeKind.SwipeActions)
+            {
+                return parentKind == LUINodeKind.ListItem;
+            }
+            if (childKind == LUINodeKind.SwipeAction)
+            {
+                return parentKind == LUINodeKind.SwipeActions;
+            }
+            return true;
         }
     }
 }

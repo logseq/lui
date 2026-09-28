@@ -74,6 +74,11 @@ enum _NodeKind {
   toast,
   toolbar,
   statusBar,
+  listSection,
+  listSectionHeader,
+  listSectionFooter,
+  swipeActions,
+  swipeAction,
 }
 
 _NodeKind _decodeNodeKind(Object? value) {
@@ -153,6 +158,11 @@ _NodeKind _decodeNodeKind(Object? value) {
     'toast' => _NodeKind.toast,
     'toolbar' => _NodeKind.toolbar,
     'status-bar' => _NodeKind.statusBar,
+    'list-section' => _NodeKind.listSection,
+    'list-section-header' => _NodeKind.listSectionHeader,
+    'list-section-footer' => _NodeKind.listSectionFooter,
+    'swipe-actions' => _NodeKind.swipeActions,
+    'swipe-action' => _NodeKind.swipeAction,
     _ => throw const LUIBackendException('unknown node kind'),
   };
 }

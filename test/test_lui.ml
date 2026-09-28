@@ -962,6 +962,113 @@ let test_menu_trigger_rules () =
     (node_properties_supported MenuTrigger
        (props [ (TextValue, StringValue "More") ]))
 
+let test_list_suite_rules () =
+  let open Lui_protocol in
+  (* explicit sections *)
+  Alcotest.(check bool) "list hosts section" true
+    (child_kind_supported ListContainer ListSection);
+  Alcotest.(check bool) "section rejects list parent" false
+    (child_kind_supported ListSection ListSection);
+  Alcotest.(check bool) "section outside list rejected" false
+    (child_kind_supported Row ListSection);
+  Alcotest.(check bool) "section hosts row" true
+    (child_kind_supported ListSection ListItem);
+  Alcotest.(check bool) "section rejects text row" false
+    (child_kind_supported ListSection Text);
+  Alcotest.(check bool) "section hosts header" true
+    (child_kind_supported ListSection ListSectionHeader);
+  Alcotest.(check bool) "section hosts footer" true
+    (child_kind_supported ListSection ListSectionFooter);
+  Alcotest.(check bool) "header needs section parent" false
+    (child_kind_supported ListContainer ListSectionHeader);
+  (* swipe actions *)
+  Alcotest.(check bool) "row hosts swipe-actions" true
+    (child_kind_supported ListItem SwipeActions);
+  Alcotest.(check bool) "swipe-actions needs list-item" false
+    (child_kind_supported ListSection SwipeActions);
+  Alcotest.(check bool) "swipe-actions hosts action" true
+    (child_kind_supported SwipeActions SwipeAction);
+  Alcotest.(check bool) "action needs swipe-actions" false
+    (child_kind_supported ListItem SwipeAction);
+  Alcotest.(check bool) "swipe-actions rejects row" false
+    (child_kind_supported SwipeActions ListItem);
+  (* props *)
+  Alcotest.(check bool) "section key" true
+    (property_supported ListSection KeyValue);
+  Alcotest.(check bool) "section separator" true
+    (property_supported ListSection SeparatorValue);
+  Alcotest.(check bool) "section drops text" false
+    (property_supported ListSection TextValue);
+  Alcotest.(check bool) "row key" true
+    (property_supported ListItem KeyValue);
+  Alcotest.(check bool) "row separator" true
+    (property_supported ListItem SeparatorValue);
+  Alcotest.(check bool) "key rejected elsewhere" false
+    (property_supported Button KeyValue);
+  Alcotest.(check bool) "list style" true
+    (property_supported ListContainer StyleValue);
+  Alcotest.(check bool) "list scroll token" true
+    (property_supported ListContainer ScrollToken);
+  Alcotest.(check bool) "list tracks visible range" true
+    (property_supported ListContainer TrackVisibleRange);
+  Alcotest.(check bool) "scroll props list-only" false
+    (property_supported ListItem ScrollToken);
+  Alcotest.(check bool) "action edge" true
+    (property_supported SwipeAction EdgeValue);
+  Alcotest.(check bool) "action icon" true
+    (property_supported SwipeAction InlineIconName);
+  Alcotest.(check bool) "action drops width" false
+    (property_supported SwipeAction WidthValue);
+  Alcotest.(check bool) "swipe-actions container bare" false
+    (property_supported SwipeActions TextValue);
+  (* prop value vocab *)
+  Alcotest.(check bool) "style vocab" true
+    (property_value_supported StyleValue (StringValue "inset-grouped"));
+  Alcotest.(check bool) "style rejects junk" false
+    (property_value_supported StyleValue (StringValue "cards"));
+  Alcotest.(check bool) "anchor vocab" true
+    (property_value_supported ScrollAnchor (StringValue "center"));
+  Alcotest.(check bool) "separator vocab" true
+    (property_value_supported SeparatorValue (StringValue "hidden"));
+  Alcotest.(check bool) "edge vocab" true
+    (property_value_supported EdgeValue (StringValue "leading"));
+  Alcotest.(check bool) "token is int" true
+    (property_value_supported ScrollToken (IntValue 3));
+  Alcotest.(check bool) "token rejects string" false
+    (property_value_supported ScrollToken (StringValue "3"));
+  (* events *)
+  Alcotest.(check bool) "list scroll-completed" true
+    (event_supported ListContainer (ScrollCompleted (0, 0, "")));
+  Alcotest.(check bool) "list visible-range" true
+    (event_supported ListContainer (VisibleRange (0, 0, 0)));
+  Alcotest.(check bool) "scroll events list-only" false
+    (event_supported ListItem (ScrollCompleted (0, 0, "")));
+  Alcotest.(check bool) "action press" true
+    (event_supported SwipeAction (Press 0));
+  Alcotest.(check bool) "row toggle" true
+    (event_supported ListItem (ToggleChanged (0, true)));
+  (* disclosure rows *)
+  let props entries = List.to_seq entries |> Property_map.of_seq in
+  Alcotest.(check bool) "disclosure row ok" true
+    (node_properties_supported ListItem
+       (props [ (Expanded, BoolValue true); (ToggleEnabled, BoolValue true) ]));
+  Alcotest.(check bool) "expanded needs toggle-enabled" false
+    (node_properties_supported ListItem
+       (props [ (Expanded, BoolValue true) ]));
+  Alcotest.(check bool) "tree level still needs treeitem" false
+    (node_properties_supported ListItem
+       (props [ (TreeLevel, IntValue 1); (Expanded, BoolValue true);
+                (ToggleEnabled, BoolValue true) ]));
+  (* swipe-action needs a label or icon *)
+  Alcotest.(check bool) "action text ok" true
+    (node_properties_supported SwipeAction
+       (props [ (TextValue, StringValue "Archive") ]));
+  Alcotest.(check bool) "action icon ok" true
+    (node_properties_supported SwipeAction
+       (props [ (InlineIconName, StringValue "trash") ]));
+  Alcotest.(check bool) "bare action rejected" false
+    (node_properties_supported SwipeAction (props []))
+
 let test_property_matrix_sync () =
   (* property_supported's restrictive arms and additive extras must mirror
      schema/components.json (kindProperties / kindExtraProperties) as emitted
@@ -1483,6 +1590,8 @@ let () =
           Alcotest.test_case "helpers" `Quick test_protocol_helpers;
           Alcotest.test_case "menu-trigger rules" `Quick
             test_menu_trigger_rules;
+          Alcotest.test_case "list suite rules" `Quick
+            test_list_suite_rules;
           Alcotest.test_case "property matrix sync" `Quick
             test_property_matrix_sync;
         ] );

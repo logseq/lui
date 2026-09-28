@@ -126,6 +126,18 @@
       "status": "supported"
     },
     {
+      "name": "list-section",
+      "status": "supported"
+    },
+    {
+      "name": "swipe-actions",
+      "status": "supported"
+    },
+    {
+      "name": "swipe-action",
+      "status": "supported"
+    },
+    {
       "name": "alert",
       "status": "supported"
     },
@@ -798,6 +810,41 @@
       "dart": "statusBar",
       "swift": "statusBar",
       "container": false
+    },
+    {
+      "lg": "ListSection",
+      "wire": "list-section",
+      "dart": "listSection",
+      "swift": "listSection",
+      "container": true
+    },
+    {
+      "lg": "ListSectionHeader",
+      "wire": "list-section-header",
+      "dart": "listSectionHeader",
+      "swift": "listSectionHeader",
+      "container": true
+    },
+    {
+      "lg": "ListSectionFooter",
+      "wire": "list-section-footer",
+      "dart": "listSectionFooter",
+      "swift": "listSectionFooter",
+      "container": true
+    },
+    {
+      "lg": "SwipeActions",
+      "wire": "swipe-actions",
+      "dart": "swipeActions",
+      "swift": "swipeActions",
+      "container": true
+    },
+    {
+      "lg": "SwipeAction",
+      "wire": "swipe-action",
+      "dart": "swipeAction",
+      "swift": "swipeAction",
+      "container": false
     }
   ],
   "properties": [
@@ -1165,6 +1212,51 @@
       "lg": "ThemeMode",
       "wire": "theme-mode",
       "swift": "themeMode"
+    },
+    {
+      "lg": "KeyValue",
+      "wire": "key",
+      "swift": "key"
+    },
+    {
+      "lg": "SeparatorValue",
+      "wire": "separator",
+      "swift": "separator"
+    },
+    {
+      "lg": "StyleValue",
+      "wire": "style",
+      "swift": "style"
+    },
+    {
+      "lg": "ScrollTarget",
+      "wire": "scroll-target",
+      "swift": "scrollTarget"
+    },
+    {
+      "lg": "ScrollAnchor",
+      "wire": "scroll-anchor",
+      "swift": "scrollAnchor"
+    },
+    {
+      "lg": "ScrollToken",
+      "wire": "scroll-token",
+      "swift": "scrollToken"
+    },
+    {
+      "lg": "ScrollAnimated",
+      "wire": "scroll-animated",
+      "swift": "scrollAnimated"
+    },
+    {
+      "lg": "TrackVisibleRange",
+      "wire": "track-visible-range",
+      "swift": "trackVisibleRange"
+    },
+    {
+      "lg": "EdgeValue",
+      "wire": "edge",
+      "swift": "edge"
     }
   ],
   "events": [
@@ -1228,6 +1320,22 @@
     {
       "lg": "Appear",
       "fields": [
+        ":int"
+      ]
+    },
+    {
+      "lg": "ScrollCompleted",
+      "fields": [
+        ":int",
+        ":int",
+        ":string"
+      ]
+    },
+    {
+      "lg": "VisibleRange",
+      "fields": [
+        ":int",
+        ":int",
         ":int"
       ]
     }
@@ -1309,6 +1417,20 @@
       "enabled",
       "foreground",
       "style-class"
+    ],
+    "list-section": [
+      "key",
+      "separator"
+    ],
+    "swipe-actions": [],
+    "swipe-action": [
+      "text",
+      "icon",
+      "variant",
+      "edge",
+      "enabled",
+      "background",
+      "press-enabled"
     ]
   },
   "kindExtraProperties": {

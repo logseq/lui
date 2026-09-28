@@ -164,6 +164,16 @@ final class LUINodeModel: Identifiable {
         properties[.doublePressEnabled]?.boolValue ?? false
     }
     var supportsAppear: Bool { properties[.appearEnabled]?.boolValue ?? false }
+    var rowKey: String? { properties[.key]?.stringValue }
+    var separatorVisibility: String? { properties[.separator]?.stringValue }
+    var listStyle: String? { properties[.style]?.stringValue }
+    var scrollTarget: String? { properties[.scrollTarget]?.stringValue }
+    var scrollAnchor: String? { properties[.scrollAnchor]?.stringValue }
+    var scrollToken: Int? { properties[.scrollToken]?.intValue }
+    var scrollAnimated: Bool { properties[.scrollAnimated]?.boolValue ?? true }
+    var tracksVisibleRange: Bool {
+        properties[.trackVisibleRange]?.boolValue ?? false
+    }
     var containerRelativeFrame: String? {
         properties[.containerRelativeFrame]?.stringValue
     }
@@ -642,7 +652,7 @@ public final class LUIAppleBackend {
                 (model.kind == .tableCell && model.supportsPress) ||
                 model.kind == .select ||
                 model.kind == .combobox || model.kind == .menuItem ||
-                model.kind == .listItem ||
+                model.kind == .listItem || model.kind == .swipeAction ||
                 (model.kind == .timelineItem && model.supportsPress) ||
                 (model.isTreeItem && model.supportsPress),
               model.isEnabled else {
@@ -695,6 +705,14 @@ public final class LUIAppleBackend {
         emit(.appear(node: node))
     }
 
+    func performScrollCompleted(node: Int, token: Int, outcome: String) {
+        emit(.scrollCompleted(node: node, token: token, outcome: outcome))
+    }
+
+    func performVisibleRange(node: Int, first: Int, last: Int) {
+        emit(.visibleRange(node: node, first: first, last: last))
+    }
+
     public func performExtensionEvent(
         node: Int,
         name: String,
@@ -724,9 +742,11 @@ public final class LUIAppleBackend {
         guard let model = models[node],
               model.kind == .toggleButton || model.kind == .checkbox ||
                 model.kind == .switchControl || model.kind == .toggle ||
-                model.kind == .accordion || model.kind == .drawer || model.isTreeItem,
+                model.kind == .accordion || model.kind == .drawer ||
+                model.kind == .listItem || model.isTreeItem,
               model.isEnabled,
-              (model.kind != .accordion && model.kind != .drawer && !model.isTreeItem) ||
+              (model.kind != .accordion && model.kind != .drawer &&
+                model.kind != .listItem && !model.isTreeItem) ||
                 model.supportsToggle else {
             throw invalid("node \(node) is not an enabled toggle")
         }
@@ -774,7 +794,8 @@ public final class LUIAppleBackend {
             return
         }
         switch model.kind {
-        case .button, .select, .combobox, .menuItem, .listItem, .timelineItem:
+        case .button, .select, .combobox, .menuItem, .listItem, .timelineItem,
+             .swipeAction:
             try performPress(node: node)
         case .toggleButton:
             try performToggle(node: node, checked: !model.isSelected)
@@ -901,10 +922,16 @@ public final class LUIAppleBackend {
         }
         for id in touched where !dropped.contains(id) {
             if let state = tree.nodes[id] {
-                // Kinds are immutable, so context-menu membership in the
+                // Kinds are immutable, so auxiliary-slot membership in the
                 // child list is fixed until the list itself changes.
-                let visibleChildren = state.children.filter {
-                    tree.nodes[$0]?.kind != .contextMenu
+                let visibleChildren = state.children.filter { childID in
+                    switch tree.nodes[childID]?.kind {
+                    case .contextMenu, .swipeActions, .listSectionHeader,
+                         .listSectionFooter:
+                        false
+                    default:
+                        true
+                    }
                 }
                 if let model = models[id] {
                     model.apply(state: state, visibleChildren: visibleChildren)

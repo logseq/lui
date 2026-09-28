@@ -78,6 +78,11 @@ enum class NodeKind {
   Toast,
   Toolbar,
   StatusBar,
+  ListSection,
+  ListSectionHeader,
+  ListSectionFooter,
+  SwipeActions,
+  SwipeAction,
 };
 
 enum class Property {
@@ -154,6 +159,15 @@ enum class Property {
   ResizeOrigin,
   ThemeValue,
   ThemeMode,
+  KeyValue,
+  SeparatorValue,
+  StyleValue,
+  ScrollTarget,
+  ScrollAnchor,
+  ScrollToken,
+  ScrollAnimated,
+  TrackVisibleRange,
+  EdgeValue,
 };
 
 inline const char *nodeKindWireName(NodeKind kind) {
@@ -230,6 +244,11 @@ inline const char *nodeKindWireName(NodeKind kind) {
     case NodeKind::Toast: return "toast";
     case NodeKind::Toolbar: return "toolbar";
     case NodeKind::StatusBar: return "status-bar";
+    case NodeKind::ListSection: return "list-section";
+    case NodeKind::ListSectionHeader: return "list-section-header";
+    case NodeKind::ListSectionFooter: return "list-section-footer";
+    case NodeKind::SwipeActions: return "swipe-actions";
+    case NodeKind::SwipeAction: return "swipe-action";
   }
   return "unknown";
 }
@@ -307,6 +326,11 @@ inline bool decodeNodeKind(const char *name, NodeKind *kind) {
   if (std::strcmp(name, "toast") == 0) { *kind = NodeKind::Toast; return true; }
   if (std::strcmp(name, "toolbar") == 0) { *kind = NodeKind::Toolbar; return true; }
   if (std::strcmp(name, "status-bar") == 0) { *kind = NodeKind::StatusBar; return true; }
+  if (std::strcmp(name, "list-section") == 0) { *kind = NodeKind::ListSection; return true; }
+  if (std::strcmp(name, "list-section-header") == 0) { *kind = NodeKind::ListSectionHeader; return true; }
+  if (std::strcmp(name, "list-section-footer") == 0) { *kind = NodeKind::ListSectionFooter; return true; }
+  if (std::strcmp(name, "swipe-actions") == 0) { *kind = NodeKind::SwipeActions; return true; }
+  if (std::strcmp(name, "swipe-action") == 0) { *kind = NodeKind::SwipeAction; return true; }
   return false;
 }
 
@@ -358,6 +382,10 @@ inline bool containerNodeKind(NodeKind kind) {
     case NodeKind::Sheet:
     case NodeKind::Toast:
     case NodeKind::Toolbar:
+    case NodeKind::ListSection:
+    case NodeKind::ListSectionHeader:
+    case NodeKind::ListSectionFooter:
+    case NodeKind::SwipeActions:
     return true;
     default:
     return false;
@@ -439,6 +467,11 @@ inline const char *nodeKindComponentName(NodeKind kind) {
     case NodeKind::Toast: return "LuiToast.qml";
     case NodeKind::Toolbar: return "LuiToolbar.qml";
     case NodeKind::StatusBar: return "LuiStatusBar.qml";
+    case NodeKind::ListSection: return "LuiListSection.qml";
+    case NodeKind::ListSectionHeader: return "LuiListSectionHeader.qml";
+    case NodeKind::ListSectionFooter: return "LuiListSectionFooter.qml";
+    case NodeKind::SwipeActions: return "LuiSwipeActions.qml";
+    case NodeKind::SwipeAction: return "LuiSwipeAction.qml";
   }
   return "LuiBox.qml";
 }
@@ -518,6 +551,15 @@ inline const char *propertyWireName(Property property) {
     case Property::ResizeOrigin: return "resize-origin";
     case Property::ThemeValue: return "theme";
     case Property::ThemeMode: return "theme-mode";
+    case Property::KeyValue: return "key";
+    case Property::SeparatorValue: return "separator";
+    case Property::StyleValue: return "style";
+    case Property::ScrollTarget: return "scroll-target";
+    case Property::ScrollAnchor: return "scroll-anchor";
+    case Property::ScrollToken: return "scroll-token";
+    case Property::ScrollAnimated: return "scroll-animated";
+    case Property::TrackVisibleRange: return "track-visible-range";
+    case Property::EdgeValue: return "edge";
   }
   return "unknown";
 }
@@ -596,6 +638,15 @@ inline bool decodePropertyWireName(const char *name, Property *property) {
   if (std::strcmp(name, "resize-origin") == 0) { *property = Property::ResizeOrigin; return true; }
   if (std::strcmp(name, "theme") == 0) { *property = Property::ThemeValue; return true; }
   if (std::strcmp(name, "theme-mode") == 0) { *property = Property::ThemeMode; return true; }
+  if (std::strcmp(name, "key") == 0) { *property = Property::KeyValue; return true; }
+  if (std::strcmp(name, "separator") == 0) { *property = Property::SeparatorValue; return true; }
+  if (std::strcmp(name, "style") == 0) { *property = Property::StyleValue; return true; }
+  if (std::strcmp(name, "scroll-target") == 0) { *property = Property::ScrollTarget; return true; }
+  if (std::strcmp(name, "scroll-anchor") == 0) { *property = Property::ScrollAnchor; return true; }
+  if (std::strcmp(name, "scroll-token") == 0) { *property = Property::ScrollToken; return true; }
+  if (std::strcmp(name, "scroll-animated") == 0) { *property = Property::ScrollAnimated; return true; }
+  if (std::strcmp(name, "track-visible-range") == 0) { *property = Property::TrackVisibleRange; return true; }
+  if (std::strcmp(name, "edge") == 0) { *property = Property::EdgeValue; return true; }
   return false;
 }
 

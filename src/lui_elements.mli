@@ -33,6 +33,10 @@ type frame_axes =
 
 type resize_easing = [ `linear | `standard | `emphasized | `spring ]
 type role = [ `treeitem | `navigation | `navigation_heading ]
+type list_style = [ `plain | `inset | `inset_grouped ]
+type scroll_anchor = [ `top | `center | `bottom ]
+type separator_visibility = [ `visible | `hidden ]
+type swipe_edge = [ `leading | `trailing ]
 
 (** [~icon]/[~name] values: the schema icon names, or [`app "name"] for an
     application-registered icon ([app:name] on the wire). *)
@@ -54,6 +58,7 @@ type table_row_el
 type table_cell_el
 type radio_el
 type input_group_actions_el
+type swipe_action_el
 
 (** Empty type: [leaf] constructors take a [nothing list] children slot, so
     [] compiles and any real child is a type error. *)
@@ -135,6 +140,11 @@ val keyed_radio :
   key:('a -> 'b) ->
   cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> radio_el) -> radio_el
+val keyed_swipe_action :
+  source:'a list Signal.signal ->
+  key:('a -> 'b) ->
+  cmp:('b -> 'b -> int) ->
+  mount:('a Signal.signal -> swipe_action_el) -> swipe_action_el
 
 (** Event-handler builders: element [~on_*] parameters take an
     [event -> unit] callback and imply their enable flags automatically
@@ -540,7 +550,15 @@ val list :
   ?foreground_signal:string Signal.signal ->
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
-  ?on_appear:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?style:list_style ->
+  ?scroll_target:string ->
+  ?scroll_anchor:scroll_anchor ->
+  ?scroll_token:int ->
+  ?scroll_animated:bool ->
+  ?track_visible_range:bool ->
+  ?on_scroll_completed:(Lui_protocol.event -> unit) ->
+  ?on_visible_range:(Lui_protocol.event -> unit) -> t list -> t
 val virtual_list :
   ?key:string ->
   ?gap:int ->
@@ -2378,7 +2396,33 @@ val list_item :
   ?on_double_press:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
   ?on_input:(Lui_protocol.event -> unit) ->
-  ?on_toggle:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_toggle:(Lui_protocol.event -> unit) ->
+  ?separator:separator_visibility ->
+  ?swipe_actions:swipe_action_el list -> t list -> t
+
+(** A named group of rows inside a {!list}: [~header]/[~footer] take any
+    element and mount it in a dedicated slot node, [~key] sets both the
+    reload key and the wire [key] identity used by scroll targeting. *)
+val list_section :
+  ?key:string ->
+  ?accessibility_identifier:string ->
+  ?separator:separator_visibility ->
+  ?header:t -> ?footer:t -> t list -> t
+val swipe_actions :
+  ?key:string ->
+  ?accessibility_identifier:string -> swipe_action_el list -> t
+val swipe_action :
+  ?key:string ->
+  ?accessibility_identifier:string ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?variant:variant ->
+  ?edge:swipe_edge ->
+  ?background:string ->
+  ?disabled:bool ->
+  ?on_press:(Lui_protocol.event -> unit) -> nothing list -> swipe_action_el
 val avatar :
   ?key:string ->
   ?gap:int ->

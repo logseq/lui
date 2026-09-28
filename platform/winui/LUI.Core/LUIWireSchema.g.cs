@@ -80,6 +80,11 @@ namespace LUI
         Toast,
         Toolbar,
         StatusBar,
+        ListSection,
+        ListSectionHeader,
+        ListSectionFooter,
+        SwipeActions,
+        SwipeAction,
     }
 
     public enum LUIProperty
@@ -157,6 +162,15 @@ namespace LUI
         ResizeOrigin,
         ThemeValue,
         ThemeMode,
+        KeyValue,
+        SeparatorValue,
+        StyleValue,
+        ScrollTarget,
+        ScrollAnchor,
+        ScrollToken,
+        ScrollAnimated,
+        TrackVisibleRange,
+        EdgeValue,
     }
 
     public static class LUIWireSchema
@@ -236,6 +250,11 @@ namespace LUI
             { "toast", LUINodeKind.Toast },
             { "toolbar", LUINodeKind.Toolbar },
             { "status-bar", LUINodeKind.StatusBar },
+            { "list-section", LUINodeKind.ListSection },
+            { "list-section-header", LUINodeKind.ListSectionHeader },
+            { "list-section-footer", LUINodeKind.ListSectionFooter },
+            { "swipe-actions", LUINodeKind.SwipeActions },
+            { "swipe-action", LUINodeKind.SwipeAction },
         };
 
         private static readonly Dictionary<string, LUIProperty> PropertiesByWireName =
@@ -314,6 +333,15 @@ namespace LUI
             { "resize-origin", LUIProperty.ResizeOrigin },
             { "theme", LUIProperty.ThemeValue },
             { "theme-mode", LUIProperty.ThemeMode },
+            { "key", LUIProperty.KeyValue },
+            { "separator", LUIProperty.SeparatorValue },
+            { "style", LUIProperty.StyleValue },
+            { "scroll-target", LUIProperty.ScrollTarget },
+            { "scroll-anchor", LUIProperty.ScrollAnchor },
+            { "scroll-token", LUIProperty.ScrollToken },
+            { "scroll-animated", LUIProperty.ScrollAnimated },
+            { "track-visible-range", LUIProperty.TrackVisibleRange },
+            { "edge", LUIProperty.EdgeValue },
         };
 
         public static string WireName(this LUINodeKind kind) => kind switch
@@ -390,6 +418,11 @@ namespace LUI
             LUINodeKind.Toast => "toast",
             LUINodeKind.Toolbar => "toolbar",
             LUINodeKind.StatusBar => "status-bar",
+            LUINodeKind.ListSection => "list-section",
+            LUINodeKind.ListSectionHeader => "list-section-header",
+            LUINodeKind.ListSectionFooter => "list-section-footer",
+            LUINodeKind.SwipeActions => "swipe-actions",
+            LUINodeKind.SwipeAction => "swipe-action",
             _ => "unknown",
         };
 
@@ -441,7 +474,11 @@ namespace LUI
             LUINodeKind.Drawer or
             LUINodeKind.Sheet or
             LUINodeKind.Toast or
-            LUINodeKind.Toolbar => true,
+            LUINodeKind.Toolbar or
+            LUINodeKind.ListSection or
+            LUINodeKind.ListSectionHeader or
+            LUINodeKind.ListSectionFooter or
+            LUINodeKind.SwipeActions => true,
             _ => false,
         };
 
@@ -520,6 +557,15 @@ namespace LUI
             LUIProperty.ResizeOrigin => "resize-origin",
             LUIProperty.ThemeValue => "theme",
             LUIProperty.ThemeMode => "theme-mode",
+            LUIProperty.KeyValue => "key",
+            LUIProperty.SeparatorValue => "separator",
+            LUIProperty.StyleValue => "style",
+            LUIProperty.ScrollTarget => "scroll-target",
+            LUIProperty.ScrollAnchor => "scroll-anchor",
+            LUIProperty.ScrollToken => "scroll-token",
+            LUIProperty.ScrollAnimated => "scroll-animated",
+            LUIProperty.TrackVisibleRange => "track-visible-range",
+            LUIProperty.EdgeValue => "edge",
             _ => "unknown",
         };
 
@@ -544,6 +590,9 @@ namespace LUI
             { LUINodeKind.BottomTabs, Set(LUIProperty.AccessibilityLabel, LUIProperty.StyleClass, LUIProperty.GrowValue, LUIProperty.WidthValue, LUIProperty.HeightValue, LUIProperty.MinWidth, LUIProperty.MaxWidth, LUIProperty.MinHeight, LUIProperty.MaxHeight) },
             { LUINodeKind.BottomTab, Set(LUIProperty.TitleValue, LUIProperty.InlineIconName, LUIProperty.Selected, LUIProperty.Enabled, LUIProperty.PressEnabled) },
             { LUINodeKind.MenuTrigger, Set(LUIProperty.TextValue, LUIProperty.InlineIconName, LUIProperty.AccessibilityLabel, LUIProperty.Enabled, LUIProperty.ForegroundValue, LUIProperty.StyleClass) },
+            { LUINodeKind.ListSection, Set(LUIProperty.KeyValue, LUIProperty.SeparatorValue) },
+            { LUINodeKind.SwipeActions, Set() },
+            { LUINodeKind.SwipeAction, Set(LUIProperty.TextValue, LUIProperty.InlineIconName, LUIProperty.VariantValue, LUIProperty.EdgeValue, LUIProperty.Enabled, LUIProperty.BackgroundValue, LUIProperty.PressEnabled) },
         };
 
         public static readonly IReadOnlyDictionary<LUINodeKind, IReadOnlySet<LUIProperty>> ExtraMatrix =

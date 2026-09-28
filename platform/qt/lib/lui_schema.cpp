@@ -190,7 +190,9 @@ bool canContainChildren(NodeKind kind) {
                 NodeKind::Stepper, NodeKind::Timeline, NodeKind::InputGroup,
                 NodeKind::InputGroupActions, NodeKind::Toast,
                 NodeKind::Toolbar, NodeKind::Alert, NodeKind::Bubble,
-                NodeKind::BottomTabs, NodeKind::BottomTab});
+                NodeKind::BottomTabs, NodeKind::BottomTab,
+                NodeKind::ListSection, NodeKind::ListSectionHeader,
+                NodeKind::ListSectionFooter, NodeKind::SwipeActions});
 }
 
 bool acceptsExtensionChildren(NodeKind kind) {
@@ -202,7 +204,9 @@ bool acceptsExtensionChildren(NodeKind kind) {
                 NodeKind::ListItem, NodeKind::Dialog, NodeKind::Sheet,
                 NodeKind::Accordion, NodeKind::Resizable, NodeKind::Split,
                 NodeKind::Drawer, NodeKind::Alert, NodeKind::Bubble,
-                NodeKind::Toast, NodeKind::Toolbar, NodeKind::BottomTab});
+                NodeKind::Toast, NodeKind::Toolbar, NodeKind::BottomTab,
+                NodeKind::ListSection, NodeKind::ListSectionHeader,
+                NodeKind::ListSectionFooter});
 }
 
 bool childKindSupported(NodeKind parent, NodeKind child) {
@@ -235,9 +239,23 @@ bool childKindSupported(NodeKind parent, NodeKind child) {
   case NodeKind::DropdownMenu:
   case NodeKind::ContextMenu:
     return child == NodeKind::MenuItem || child == NodeKind::Divider;
+  case NodeKind::ListSection:
+    return child == NodeKind::ListItem ||
+           child == NodeKind::ListSectionHeader ||
+           child == NodeKind::ListSectionFooter;
+  case NodeKind::SwipeActions:
+    return child == NodeKind::SwipeAction;
   default:
-    return true;
+    break;
   }
+  if (child == NodeKind::ListSection) return parent == NodeKind::ListContainer;
+  if (child == NodeKind::ListSectionHeader ||
+      child == NodeKind::ListSectionFooter) {
+    return parent == NodeKind::ListSection;
+  }
+  if (child == NodeKind::SwipeActions) return parent == NodeKind::ListItem;
+  if (child == NodeKind::SwipeAction) return parent == NodeKind::SwipeActions;
+  return true;
 }
 
 bool eventSupported(NodeKind kind, Event event) {
@@ -247,7 +265,7 @@ bool eventSupported(NodeKind kind, Event event) {
                         NodeKind::Select, NodeKind::Combobox, NodeKind::MenuItem,
                         NodeKind::ListItem, NodeKind::Text,
                         NodeKind::TableCell, NodeKind::TimelineItem,
-                        NodeKind::BottomTab});
+                        NodeKind::BottomTab, NodeKind::SwipeAction});
   case Event::LongPress:
     return oneOf(kind,
                  {NodeKind::Button, NodeKind::ToggleButton,
@@ -265,7 +283,7 @@ bool eventSupported(NodeKind kind, Event event) {
     return oneOf(kind, {NodeKind::ToggleButton, NodeKind::Checkbox,
                         NodeKind::SwitchControl, NodeKind::Toggle,
                         NodeKind::Radio, NodeKind::Accordion,
-                        NodeKind::Drawer});
+                        NodeKind::Drawer, NodeKind::ListItem});
   case Event::Change:
     return kind == NodeKind::Radio;
   case Event::ValueChanged:
@@ -278,6 +296,9 @@ bool eventSupported(NodeKind kind, Event event) {
     return kind == NodeKind::ListItem;
   case Event::Appear:
     return kind != NodeKind::Root;
+  case Event::ScrollCompleted:
+  case Event::VisibleRange:
+    return kind == NodeKind::ListContainer;
   }
   return false;
 }
@@ -548,6 +569,18 @@ bool commonPropertySupported(NodeKind kind, Property property) {
   case Property::ResizeEasing:
   case Property::ResizeOrigin:
     return kind == NodeKind::Split;
+  case Property::KeyValue:
+  case Property::SeparatorValue:
+    return kind == NodeKind::ListItem || kind == NodeKind::ListSection;
+  case Property::StyleValue:
+  case Property::ScrollTarget:
+  case Property::ScrollAnchor:
+  case Property::ScrollToken:
+  case Property::ScrollAnimated:
+  case Property::TrackVisibleRange:
+    return kind == NodeKind::ListContainer;
+  case Property::EdgeValue:
+    return kind == NodeKind::SwipeAction;
   case Property::ThemeValue:
   case Property::ThemeMode:
     return canContainChildren(kind);
@@ -652,6 +685,16 @@ bool propertySupported(NodeKind kind, Property property) {
            property == Property::GrowValue;
   case NodeKind::InputGroupActions:
     return property == Property::Gap;
+  case NodeKind::ListSection:
+    return property == Property::KeyValue ||
+           property == Property::SeparatorValue;
+  case NodeKind::SwipeActions:
+    return false;
+  case NodeKind::SwipeAction:
+    return oneOf(property, {Property::TextValue, Property::InlineIconName,
+                            Property::VariantValue, Property::EdgeValue,
+                            Property::Enabled, Property::BackgroundValue,
+                            Property::PressEnabled});
   case NodeKind::Dialog:
     return property == Property::DescriptionValue ||
            commonPropertySupported(kind, property);
@@ -803,6 +846,28 @@ bool propertyValueSupported(Property property, const QVariant &value) {
   case Property::ThemeMode:
     return isString(value) &&
            inSet(value.toString(), {"system", "light", "dark"});
+  case Property::KeyValue:
+  case Property::ScrollTarget:
+    return isString(value);
+  case Property::SeparatorValue:
+    return isString(value) &&
+           inSet(value.toString(), {"visible", "hidden"});
+  case Property::StyleValue:
+    return isString(value) &&
+           inSet(value.toString(), {"plain", "inset", "inset-grouped"});
+  case Property::ScrollAnchor:
+    return isString(value) &&
+           inSet(value.toString(), {"top", "center", "bottom"});
+  case Property::ScrollToken: {
+    int number = 0;
+    return isIntValue(value, &number) && number >= 0;
+  }
+  case Property::ScrollAnimated:
+  case Property::TrackVisibleRange:
+    return isBool(value);
+  case Property::EdgeValue:
+    return isString(value) &&
+           inSet(value.toString(), {"leading", "trailing"});
   }
   return false;
 }
@@ -943,7 +1008,15 @@ bool nodePropertiesSupported(NodeKind kind, const QVariantMap &properties) {
         properties.contains(QStringLiteral("expanded")) ||
         properties.contains(QStringLiteral("change-enabled")) ||
         properties.contains(QStringLiteral("toggle-enabled"));
-    if (hasTreeMetadata && !treeitem) return false;
+    // A list-item may carry expansion state as a disclosure row without
+    // the treeitem role.
+    const bool disclosureListItem =
+        kind == NodeKind::ListItem && !treeitem &&
+        !properties.contains(QStringLiteral("tree-level")) &&
+        !properties.contains(QStringLiteral("change-enabled")) &&
+        (properties.contains(QStringLiteral("expanded")) ||
+         properties.contains(QStringLiteral("toggle-enabled")));
+    if (hasTreeMetadata && !treeitem && !disclosureListItem) return false;
     if (properties.contains(QStringLiteral("expanded")) &&
         !trueProperty(properties, "toggle-enabled")) {
       return false;

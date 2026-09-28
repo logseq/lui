@@ -74,6 +74,11 @@ type node_kind =
   | Toast
   | Toolbar
   | StatusBar
+  | ListSection
+  | ListSectionHeader
+  | ListSectionFooter
+  | SwipeActions
+  | SwipeAction
 
 type operating_system =
   | GenericOS
@@ -171,6 +176,15 @@ type property =
   | ResizeOrigin
   | ThemeValue
   | ThemeMode
+  | KeyValue
+  | SeparatorValue
+  | StyleValue
+  | ScrollTarget
+  | ScrollAnchor
+  | ScrollToken
+  | ScrollAnimated
+  | TrackVisibleRange
+  | EdgeValue
 
 module Property_map : Map.S with type key = property
 
@@ -194,6 +208,8 @@ type event =
   | Dismiss of int
   | DoublePress of int
   | Appear of int
+  | ScrollCompleted of int * int * string
+  | VisibleRange of int * int * int
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =

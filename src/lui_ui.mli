@@ -89,6 +89,11 @@ val accordion : ui_context -> int
 val menu_item : ui_context -> int
 val menu_trigger : ui_context -> int
 val list_item : ui_context -> int
+val list_section : ui_context -> int
+val list_section_header : ui_context -> int
+val list_section_footer : ui_context -> int
+val swipe_actions : ui_context -> int
+val swipe_action : ui_context -> int
 val avatar : ui_context -> int
 val image : ui_context -> int
 val media_surface : ui_context -> int

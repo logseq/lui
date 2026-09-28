@@ -77,6 +77,11 @@ let node_kind_name kind =
   | Toast -> "toast"
   | Toolbar -> "toolbar"
   | StatusBar -> "status-bar"
+  | ListSection -> "list-section"
+  | ListSectionHeader -> "list-section-header"
+  | ListSectionFooter -> "list-section-footer"
+  | SwipeActions -> "swipe-actions"
+  | SwipeAction -> "swipe-action"
 
 let standard_node_name name =
   match name with
@@ -152,6 +157,11 @@ let standard_node_name name =
   | "toast" -> true
   | "toolbar" -> true
   | "status-bar" -> true
+  | "list-section" -> true
+  | "list-section-header" -> true
+  | "list-section-footer" -> true
+  | "swipe-actions" -> true
+  | "swipe-action" -> true
   | _ -> false
 
 let property_name property =
@@ -229,6 +239,15 @@ let property_name property =
   | ResizeOrigin -> "resize-origin"
   | ThemeValue -> "theme"
   | ThemeMode -> "theme-mode"
+  | KeyValue -> "key"
+  | SeparatorValue -> "separator"
+  | StyleValue -> "style"
+  | ScrollTarget -> "scroll-target"
+  | ScrollAnchor -> "scroll-anchor"
+  | ScrollToken -> "scroll-token"
+  | ScrollAnimated -> "scroll-animated"
+  | TrackVisibleRange -> "track-visible-range"
+  | EdgeValue -> "edge"
 
 let kind_property_matrix kind =
   match kind with
@@ -244,6 +263,9 @@ let kind_property_matrix kind =
   | BottomTabs -> Some [ AccessibilityLabel; StyleClass; GrowValue; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight ]
   | BottomTab -> Some [ TitleValue; InlineIconName; Selected; Enabled; PressEnabled ]
   | MenuTrigger -> Some [ TextValue; InlineIconName; AccessibilityLabel; Enabled; ForegroundValue; StyleClass ]
+  | ListSection -> Some [ KeyValue; SeparatorValue ]
+  | SwipeActions -> Some [  ]
+  | SwipeAction -> Some [ TextValue; InlineIconName; VariantValue; EdgeValue; Enabled; BackgroundValue; PressEnabled ]
   | _ -> None
 
 let kind_extra_properties kind =
@@ -251,6 +273,6 @@ let kind_extra_properties kind =
   | Dialog -> [ DescriptionValue ]
   | _ -> []
 
-let all_node_kinds = [ Root; Row; Column; Grid; Stack; Panel; Card; Alert; Bubble; Box; Text; Heading; Paragraph; Label; Button; ToggleButton; Toggle; RadioGroup; Radio; Slider; TextField; SecureField; Input; SearchField; Textarea; Checkbox; SwitchControl; Progress; Divider; Scroll; ListContainer; VirtualList; Tabs; BottomTabs; BottomTab; ButtonGroup; ToggleGroup; Spacer; Spinner; Icon; Select; Combobox; DropdownMenu; ContextMenu; MenuItem; MenuTrigger; ListItem; Avatar; Image; MediaSurface; Stepper; Step; Timeline; TimelineItem; InputGroup; InputGroupActions; Breadcrumb; Pagination; Accordion; Table; TableRow; TableCell; Tree; Resizable; Split; Dialog; Drawer; Sheet; Tooltip; Toast; Toolbar; StatusBar ]
+let all_node_kinds = [ Root; Row; Column; Grid; Stack; Panel; Card; Alert; Bubble; Box; Text; Heading; Paragraph; Label; Button; ToggleButton; Toggle; RadioGroup; Radio; Slider; TextField; SecureField; Input; SearchField; Textarea; Checkbox; SwitchControl; Progress; Divider; Scroll; ListContainer; VirtualList; Tabs; BottomTabs; BottomTab; ButtonGroup; ToggleGroup; Spacer; Spinner; Icon; Select; Combobox; DropdownMenu; ContextMenu; MenuItem; MenuTrigger; ListItem; Avatar; Image; MediaSurface; Stepper; Step; Timeline; TimelineItem; InputGroup; InputGroupActions; Breadcrumb; Pagination; Accordion; Table; TableRow; TableCell; Tree; Resizable; Split; Dialog; Drawer; Sheet; Tooltip; Toast; Toolbar; StatusBar; ListSection; ListSectionHeader; ListSectionFooter; SwipeActions; SwipeAction ]
 
-let all_properties = [ TextValue; Enabled; Gap; MainAlignment; CrossAlignment; GrowValue; GridColumns; PaddingValue; PaddingHorizontal; PaddingVertical; BackgroundValue; ForegroundValue; BorderColorValue; BorderWidth; CornerRadius; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; ContainerRelativeFrameValue; ContainerRelativeFrameInset; PlaceholderValue; AccessibilityLabel; AccessibilityIdentifier; StyleClass; HeadingLevel; Checked; ProgressValue; OrientationValue; PlacementValue; SizeValue; IconName; VariantValue; InlineIconName; IconPlacementValue; Selected; Autofocus; SubmitOnEnter; LongPressEnabled; ChangeEnabled; ToggleEnabled; PressEnabled; SubmitEnabled; DoublePressEnabled; AppearEnabled; ImageIdValue; SurfaceIdValue; ActiveIndex; TitleValue; DescriptionValue; MetaValue; IndicatorValue; Connector; SourceX; SourceY; SourceWidth; SourceHeight; AnchorValue; AnchorAlignmentValue; AnchorOffset; TooltipDelay; DurationValue; TextAlignment; RoleValue; TreeLevel; Expanded; ResizeDuration; ResizeEasing; ResizeOrigin; ThemeValue; ThemeMode ]
+let all_properties = [ TextValue; Enabled; Gap; MainAlignment; CrossAlignment; GrowValue; GridColumns; PaddingValue; PaddingHorizontal; PaddingVertical; BackgroundValue; ForegroundValue; BorderColorValue; BorderWidth; CornerRadius; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; ContainerRelativeFrameValue; ContainerRelativeFrameInset; PlaceholderValue; AccessibilityLabel; AccessibilityIdentifier; StyleClass; HeadingLevel; Checked; ProgressValue; OrientationValue; PlacementValue; SizeValue; IconName; VariantValue; InlineIconName; IconPlacementValue; Selected; Autofocus; SubmitOnEnter; LongPressEnabled; ChangeEnabled; ToggleEnabled; PressEnabled; SubmitEnabled; DoublePressEnabled; AppearEnabled; ImageIdValue; SurfaceIdValue; ActiveIndex; TitleValue; DescriptionValue; MetaValue; IndicatorValue; Connector; SourceX; SourceY; SourceWidth; SourceHeight; AnchorValue; AnchorAlignmentValue; AnchorOffset; TooltipDelay; DurationValue; TextAlignment; RoleValue; TreeLevel; Expanded; ResizeDuration; ResizeEasing; ResizeOrigin; ThemeValue; ThemeMode; KeyValue; SeparatorValue; StyleValue; ScrollTarget; ScrollAnchor; ScrollToken; ScrollAnimated; TrackVisibleRange; EdgeValue ]

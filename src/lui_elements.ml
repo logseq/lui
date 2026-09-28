@@ -30,6 +30,10 @@ type frame_axes =
 
 type resize_easing = [ `linear | `standard | `emphasized | `spring ]
 type role = [ `treeitem | `navigation | `navigation_heading ]
+type list_style = [ `plain | `inset | `inset_grouped ]
+type scroll_anchor = [ `top | `center | `bottom ]
+type separator_visibility = [ `visible | `hidden ]
+type swipe_edge = [ `leading | `trailing ]
 
 type icon =
   [ `alert | `archive | `arrow_down | `arrow_right | `arrow_up | `check | `check_circle | `chevron_down | `chevron_left | `chevron_right | `chevron_up | `circle_dot | `clock | `copy | `download | `edit | `ellipsis | `external_link | `eye | `file_text | `folder | `folder_open | `git_branch | `git_merge | `git_pull_request | `info | `menu | `mic | `moon | `music | `panel_left | `panel_right | `pause | `play | `plus | `refresh_cw | `repeat | `save | `search | `send | `settings | `shuffle | `skip_back | `skip_forward | `sun | `terminal | `trash | `volume | `wrench | `x | `x_circle
@@ -47,6 +51,7 @@ type table_row_el = t
 type table_cell_el = t
 type radio_el = t
 type input_group_actions_el = t
+type swipe_action_el = t
 
 (* Children slot of leaf elements: the only inhabitant is [[]], so any real
    child fails [dune build] instead of being rejected by the schema at emit. *)
@@ -129,6 +134,24 @@ let role_value : role -> string = function
   | `treeitem -> "treeitem"
   | `navigation -> "navigation"
   | `navigation_heading -> "navigation-heading"
+
+let list_style_value : list_style -> string = function
+  | `plain -> "plain"
+  | `inset -> "inset"
+  | `inset_grouped -> "inset-grouped"
+
+let scroll_anchor_value : scroll_anchor -> string = function
+  | `top -> "top"
+  | `center -> "center"
+  | `bottom -> "bottom"
+
+let separator_value : separator_visibility -> string = function
+  | `visible -> "visible"
+  | `hidden -> "hidden"
+
+let swipe_edge_value : swipe_edge -> string = function
+  | `leading -> "leading"
+  | `trailing -> "trailing"
 
 let icon_value : icon -> string = function
   | `app name -> "app:" ^ name
@@ -258,6 +281,7 @@ let keyed_bottom_tab = keyed
 let keyed_table_row = keyed
 let keyed_table_cell = keyed
 let keyed_radio = keyed
+let keyed_swipe_action = keyed
 
 let press send action _event = ignore (send action)
 
@@ -280,6 +304,8 @@ let is_toggle = function ToggleChanged _ -> true | _ -> false
 let is_dismiss = function Dismiss _ -> true | _ -> false
 let is_appear = function Appear _ -> true | _ -> false
 let is_resize = function ValueChanged _ -> true | _ -> false
+let is_scroll_completed = function ScrollCompleted _ -> true | _ -> false
+let is_visible_range = function VisibleRange _ -> true | _ -> false
 
 let register_press context node handler =
   ignore (on_event context node is_press handler)
@@ -312,6 +338,12 @@ let appear_handler context node handler =
 let register_resize context node handler =
   enable context node ChangeEnabled;
   ignore (on_event context node is_resize handler)
+
+let register_scroll_completed context node handler =
+  ignore (on_event context node is_scroll_completed handler)
+
+let register_visible_range context node handler =
+  ignore (on_event context node is_visible_range handler)
 let apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear =
   Option.iter (Lui_ui.key context node) key;
   Option.iter (Lui_ui.int_property context node Gap) gap;
@@ -434,10 +466,22 @@ let scroll ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?p
   mount_children context node children;
   node
 
-let list ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear (children : t list) : t =
+let list ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?style ?scroll_target ?scroll_anchor ?scroll_token ?scroll_animated ?track_visible_range ?on_scroll_completed ?on_visible_range (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.list context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Option.iter (Lui_ui.string_property context node StyleValue)
+    (Option.map list_style_value style);
+  Option.iter (Lui_ui.string_property context node ScrollTarget) scroll_target;
+  Option.iter (Lui_ui.string_property context node ScrollAnchor)
+    (Option.map scroll_anchor_value scroll_anchor);
+  Option.iter (Lui_ui.int_property context node ScrollToken) scroll_token;
+  Option.iter (Lui_ui.bool_property context node ScrollAnimated)
+    scroll_animated;
+  Option.iter (Lui_ui.bool_property context node TrackVisibleRange)
+    track_visible_range;
+  Option.iter (register_scroll_completed context node) on_scroll_completed;
+  Option.iter (register_visible_range context node) on_visible_range;
   attach context parent node;
   mount_children context node children;
   node
@@ -1358,10 +1402,11 @@ let menu ?key ?accessibility_identifier ?foreground ?style_class ?text
 let submenu ?key ?text ?icon ?label ?disabled ?disabled_signal ?on_dismiss entries : t =
   menu ?key ?text ?icon ?label ?disabled ?disabled_signal ?on_dismiss entries
 
-let list_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?icon ?icon_signal ?icon_placement ?role ?tree_level ?expanded ?expanded_signal ?selected ?selected_signal ?disabled ?disabled_signal ?on_press ?on_long_press ?on_double_press ?on_submit ?on_input ?on_toggle (children : t list) : t =
+let list_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?icon ?icon_signal ?icon_placement ?role ?tree_level ?expanded ?expanded_signal ?selected ?selected_signal ?disabled ?disabled_signal ?on_press ?on_long_press ?on_double_press ?on_submit ?on_input ?on_toggle ?separator ?swipe_actions (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.list_item context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Option.iter (Lui_ui.string_property context node KeyValue) key;
   Option.iter (Lui_ui.string_property context node TextValue) text;
   Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
@@ -1375,6 +1420,8 @@ let list_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal
   Option.iter (Lui_ui.bool_property_signal context node Selected) selected_signal;
   Option.iter (Lui_ui.disabled context node) disabled;
   Option.iter (Lui_ui.disabled_signal context node) disabled_signal;
+  Option.iter (Lui_ui.string_property context node SeparatorValue)
+    (Option.map separator_value separator);
   (match on_press with
    | Some handler ->
      enable context node PressEnabled;
@@ -1407,6 +1454,84 @@ let list_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal
    | None -> ());
   attach context parent node;
   mount_children context node children;
+  Option.iter
+    (fun actions ->
+       let container = Lui_ui.swipe_actions context in
+       attach context (Some node) container;
+       mount_children context container actions)
+    swipe_actions;
+  node
+
+let list_section ?key ?accessibility_identifier ?separator ?header ?footer
+    (children : t list) : t =
+ fun context parent ->
+  let node = Lui_ui.list_section context in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter (Lui_ui.string_property context node KeyValue) key;
+  Option.iter
+    (Lui_ui.string_property context node AccessibilityIdentifier)
+    accessibility_identifier;
+  Option.iter (Lui_ui.string_property context node SeparatorValue)
+    (Option.map separator_value separator);
+  attach context parent node;
+  Option.iter
+    (fun content ->
+       let slot = Lui_ui.list_section_header context in
+       attach context (Some node) slot;
+       ignore (content context (Some slot)))
+    header;
+  mount_children context node children;
+  Option.iter
+    (fun content ->
+       let slot = Lui_ui.list_section_footer context in
+       attach context (Some node) slot;
+       ignore (content context (Some slot)))
+    footer;
+  node
+
+let swipe_actions ?key ?accessibility_identifier
+    (children : swipe_action_el list) : t =
+ fun context parent ->
+  let node = Lui_ui.swipe_actions context in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (Lui_ui.string_property context node AccessibilityIdentifier)
+    accessibility_identifier;
+  attach context parent node;
+  mount_children context node children;
+  node
+
+let swipe_action ?key ?accessibility_identifier ?text ?text_signal ?icon
+    ?icon_signal ?variant ?edge ?background ?disabled ?on_press
+    (_children : nothing list) : swipe_action_el =
+ fun context parent ->
+  let node = Lui_ui.swipe_action context in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (Lui_ui.string_property context node AccessibilityIdentifier)
+    accessibility_identifier;
+  Option.iter (Lui_ui.string_property context node TextValue) text;
+  Option.iter (Lui_ui.string_property_signal context node TextValue)
+    text_signal;
+  Option.iter (Lui_ui.string_property context node InlineIconName)
+    (Option.map icon_value icon);
+  Option.iter
+    (fun signal ->
+       Lui_ui.string_property_signal context node InlineIconName
+         (Signal.map icon_value signal))
+    icon_signal;
+  Option.iter (Lui_ui.string_property context node VariantValue)
+    (Option.map variant_value variant);
+  Option.iter (Lui_ui.string_property context node EdgeValue)
+    (Option.map swipe_edge_value edge);
+  Option.iter (Lui_ui.string_property context node BackgroundValue) background;
+  Option.iter (Lui_ui.disabled context node) disabled;
+  (match on_press with
+   | Some handler ->
+     enable context node PressEnabled;
+     register_press context node handler
+   | None -> ());
+  attach context parent node;
   node
 
 let avatar ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?image ?image_signal ?source_x ?source_y ?source_width ?source_height ?label (_children : nothing list) : t =
