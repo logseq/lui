@@ -74,6 +74,7 @@ enum _NodeKind {
   toast,
   toolbar,
   statusBar,
+  filePicker,
 }
 
 _NodeKind _decodeNodeKind(Object? value) {
@@ -153,6 +154,7 @@ _NodeKind _decodeNodeKind(Object? value) {
     'toast' => _NodeKind.toast,
     'toolbar' => _NodeKind.toolbar,
     'status-bar' => _NodeKind.statusBar,
+    'file-picker' => _NodeKind.filePicker,
     _ => throw const LUIBackendException('unknown node kind'),
   };
 }

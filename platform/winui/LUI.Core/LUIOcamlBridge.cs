@@ -55,6 +55,10 @@ namespace LUI
         static extern int lui_ocaml_dismiss(long node);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        static extern int lui_ocaml_picked(
+            long node, [MarshalAs(UnmanagedType.LPUTF8Str)] string payload);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         static extern int lui_ocaml_double_press(long node);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -131,6 +135,9 @@ namespace LUI
                     break;
                 case LUIEvent.Dismiss dismiss:
                     lui_ocaml_dismiss(dismiss.Node);
+                    break;
+                case LUIEvent.Picked picked:
+                    lui_ocaml_picked(picked.Node, picked.Payload);
                     break;
                 case LUIEvent.Change change:
                     lui_ocaml_radio_changed(change.Node);

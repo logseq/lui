@@ -190,7 +190,8 @@ bool canContainChildren(NodeKind kind) {
                 NodeKind::Stepper, NodeKind::Timeline, NodeKind::InputGroup,
                 NodeKind::InputGroupActions, NodeKind::Toast,
                 NodeKind::Toolbar, NodeKind::Alert, NodeKind::Bubble,
-                NodeKind::BottomTabs, NodeKind::BottomTab});
+                NodeKind::BottomTabs, NodeKind::BottomTab,
+                NodeKind::FilePicker});
 }
 
 bool acceptsExtensionChildren(NodeKind kind) {
@@ -273,11 +274,14 @@ bool eventSupported(NodeKind kind, Event event) {
   case Event::Dismiss:
     return oneOf(kind, {NodeKind::Select, NodeKind::Combobox,
                         NodeKind::DropdownMenu, NodeKind::Toast,
-                        NodeKind::Dialog, NodeKind::Drawer, NodeKind::Sheet});
+                        NodeKind::Dialog, NodeKind::Drawer, NodeKind::Sheet,
+                        NodeKind::FilePicker});
   case Event::DoublePress:
     return kind == NodeKind::ListItem;
   case Event::Appear:
     return kind != NodeKind::Root;
+  case Event::Picked:
+    return kind == NodeKind::FilePicker;
   }
   return false;
 }
@@ -652,6 +656,14 @@ bool propertySupported(NodeKind kind, Property property) {
            property == Property::GrowValue;
   case NodeKind::InputGroupActions:
     return property == Property::Gap;
+  case NodeKind::FilePicker:
+    return property == Property::PickerRequest ||
+           property == Property::PickerTypes ||
+           property == Property::PickerMultiple ||
+           property == Property::PickerSource ||
+           property == Property::PickerCompletion ||
+           property == Property::Enabled ||
+           property == Property::AppearEnabled;
   case NodeKind::Dialog:
     return property == Property::DescriptionValue ||
            commonPropertySupported(kind, property);
@@ -803,6 +815,16 @@ bool propertyValueSupported(Property property, const QVariant &value) {
   case Property::ThemeMode:
     return isString(value) &&
            inSet(value.toString(), {"system", "light", "dark"});
+  case Property::PickerRequest:
+  case Property::PickerCompletion:
+    return isString(value) || isIntValue(value);
+  case Property::PickerTypes:
+    return isString(value);
+  case Property::PickerMultiple:
+    return isBool(value);
+  case Property::PickerSource:
+    return isString(value) &&
+           inSet(value.toString(), {"files", "photos", "camera"});
   }
   return false;
 }

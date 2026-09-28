@@ -80,6 +80,8 @@ let submit node = dispatch (Submit node)
 
 let dismiss node = dispatch (Dismiss node)
 
+let picked node payload = dispatch (Picked (node, payload))
+
 let double_press node = dispatch (DoublePress node)
 
 let toggle_changed node checked = dispatch (ToggleChanged (node, checked))
@@ -104,6 +106,7 @@ let register prefix =
   register (prefix ^ "_text_changed") text_changed;
   register (prefix ^ "_submit") submit;
   register (prefix ^ "_dismiss") dismiss;
+  register (prefix ^ "_picked") picked;
   register (prefix ^ "_double_press") double_press;
   register (prefix ^ "_toggle_changed") toggle_changed;
   register (prefix ^ "_radio_changed") radio_changed;

@@ -28,6 +28,8 @@ private func luiOCamlTextChanged(_ node: Int64, _ text: UnsafePointer<CChar>?) -
 private func luiOCamlSubmit(_ node: Int64) -> Int32
 @_silgen_name("lui_ocaml_dismiss")
 private func luiOCamlDismiss(_ node: Int64) -> Int32
+@_silgen_name("lui_ocaml_picked")
+private func luiOCamlPicked(_ node: Int64, _ payload: UnsafePointer<CChar>) -> Int32
 @_silgen_name("lui_ocaml_double_press")
 private func luiOCamlDoublePress(_ node: Int64) -> Int32
 @_silgen_name("lui_ocaml_toggle_changed")
@@ -73,6 +75,8 @@ private final class GalleryHost {
                 text.withCString { _ = luiOCamlTextChanged(Int64(node), $0) }
             case let .submit(node): _ = luiOCamlSubmit(Int64(node))
             case let .dismiss(node): _ = luiOCamlDismiss(Int64(node))
+            case let .picked(node, payload):
+                payload.withCString { _ = luiOCamlPicked(Int64(node), $0) }
             case let .doublePress(node): _ = luiOCamlDoublePress(Int64(node))
             case let .toggleChanged(node, checked):
                 _ = luiOCamlToggleChanged(Int64(node), checked ? 1 : 0)

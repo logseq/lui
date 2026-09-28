@@ -292,6 +292,10 @@
     {
       "name": "input-group-actions",
       "status": "supported"
+    },
+    {
+      "name": "file-picker",
+      "status": "supported"
     }
   ],
   "nodeKinds": [
@@ -798,6 +802,13 @@
       "dart": "statusBar",
       "swift": "statusBar",
       "container": false
+    },
+    {
+      "lg": "FilePicker",
+      "wire": "file-picker",
+      "dart": "filePicker",
+      "swift": "filePicker",
+      "container": true
     }
   ],
   "properties": [
@@ -1165,6 +1176,31 @@
       "lg": "ThemeMode",
       "wire": "theme-mode",
       "swift": "themeMode"
+    },
+    {
+      "lg": "PickerRequest",
+      "wire": "request",
+      "swift": "request"
+    },
+    {
+      "lg": "PickerTypes",
+      "wire": "types",
+      "swift": "types"
+    },
+    {
+      "lg": "PickerMultiple",
+      "wire": "multiple",
+      "swift": "multiple"
+    },
+    {
+      "lg": "PickerSource",
+      "wire": "source",
+      "swift": "source"
+    },
+    {
+      "lg": "PickerCompletion",
+      "wire": "completion",
+      "swift": "completion"
     }
   ],
   "events": [
@@ -1229,6 +1265,13 @@
       "lg": "Appear",
       "fields": [
         ":int"
+      ]
+    },
+    {
+      "lg": "Picked",
+      "fields": [
+        ":int",
+        ":string"
       ]
     }
   ],
@@ -1309,6 +1352,15 @@
       "enabled",
       "foreground",
       "style-class"
+    ],
+    "file-picker": [
+      "request",
+      "types",
+      "multiple",
+      "source",
+      "completion",
+      "enabled",
+      "appear-enabled"
     ]
   },
   "kindExtraProperties": {

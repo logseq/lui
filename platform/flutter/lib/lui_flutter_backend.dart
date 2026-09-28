@@ -34,6 +34,10 @@ sealed class LUIEvent {
     required double value,
   }) = LUIValueChangedEvent;
   const factory LUIEvent.dismiss({required int node}) = LUIDismissEvent;
+  const factory LUIEvent.picked({
+    required int node,
+    required String payload,
+  }) = LUIPickedEvent;
   const factory LUIEvent.doublePress({required int node}) = LUIDoublePressEvent;
   const factory LUIEvent.extension({
     required int node,
@@ -92,6 +96,19 @@ final class LUIDismissEvent extends LUIEvent {
 
   @override
   int get hashCode => node.hashCode;
+}
+
+final class LUIPickedEvent extends LUIEvent {
+  const LUIPickedEvent({required this.node, required this.payload});
+  final int node;
+  final String payload;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIPickedEvent && other.node == node && other.payload == payload;
+
+  @override
+  int get hashCode => Object.hash(node, payload);
 }
 
 final class LUIChangeEvent extends LUIEvent {
@@ -1478,6 +1495,7 @@ final class LUIFlutterBackend {
         state.kind != _NodeKind.combobox &&
         state.kind != _NodeKind.dropdownMenu &&
         state.kind != _NodeKind.toast &&
+        state.kind != _NodeKind.filePicker &&
         !state.kind.isModalSurface) {
       throw LUIBackendException('node $node is not dismissible');
     }
@@ -2899,6 +2917,10 @@ final class LUIFlutterBackend {
         color: foreground,
       ),
       _NodeKind.statusBar => statusBar(),
+      // Non-visual node: presentation is driven by its properties on
+      // platforms that implement the file-picker backend; children render
+      // inline.
+      _NodeKind.filePicker => Stack(children: children),
     };
 
     if (state.kind == _NodeKind.root || state.kind.isModalSurface) {
@@ -3575,6 +3597,17 @@ final class LUIFlutterBackend {
               (_iconNames.contains(value) ||
                   _appIconNamePattern.hasMatch(value)),
         'selected' || 'enabled' || 'press-enabled' => value is bool,
+        _ => false,
+      };
+    }
+    if (kind == _NodeKind.filePicker) {
+      return switch (property) {
+        'request' || 'completion' => value is String || value is int,
+        'types' => value is String,
+        'multiple' || 'enabled' || 'appear-enabled' => value is bool,
+        'source' =>
+          value is String &&
+              const {'files', 'photos', 'camera'}.contains(value),
         _ => false,
       };
     }
@@ -4340,6 +4373,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.toolbar ||
       kind == _NodeKind.bottomTabs ||
       kind == _NodeKind.bottomTab ||
+      kind == _NodeKind.filePicker ||
       _isContextMenuLeafHost(kind) ||
       kind.isModalSurface;
 

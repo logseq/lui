@@ -962,6 +962,99 @@ let test_menu_trigger_rules () =
     (node_properties_supported MenuTrigger
        (props [ (TextValue, StringValue "More") ]))
 
+let test_file_picker () =
+  let open Lui_protocol in
+  Alcotest.(check bool) "file-picker hosts children" true
+    (can_contain_children FilePicker);
+  Alcotest.(check bool) "picked is a file-picker event" true
+    (event_supported_for_properties FilePicker Property_map.empty
+       (Picked (0, "{}")));
+  Alcotest.(check bool) "dismiss is a file-picker event" true
+    (event_supported_for_properties FilePicker Property_map.empty
+       (Dismiss 0));
+  Alcotest.(check bool) "picked is not a button event" false
+    (event_supported_for_properties Button Property_map.empty
+       (Picked (0, "{}")));
+  Alcotest.(check bool) "request prop allowed" true
+    (property_supported FilePicker PickerRequest);
+  Alcotest.(check bool) "types prop allowed" true
+    (property_supported FilePicker PickerTypes);
+  Alcotest.(check bool) "multiple prop allowed" true
+    (property_supported FilePicker PickerMultiple);
+  Alcotest.(check bool) "source prop allowed" true
+    (property_supported FilePicker PickerSource);
+  Alcotest.(check bool) "completion prop allowed" true
+    (property_supported FilePicker PickerCompletion);
+  Alcotest.(check bool) "text prop rejected" false
+    (property_supported FilePicker TextValue);
+  Alcotest.(check bool) "request accepts a string" true
+    (property_value_supported PickerRequest (StringValue "op-1"));
+  Alcotest.(check bool) "request accepts an int" true
+    (property_value_supported PickerRequest (IntValue 7));
+  Alcotest.(check bool) "multiple accepts bool" true
+    (property_value_supported PickerMultiple (BoolValue true));
+  Alcotest.(check bool) "source accepts camera" true
+    (property_value_supported PickerSource (StringValue "camera"));
+  Alcotest.(check bool) "source rejects junk" false
+    (property_value_supported PickerSource (StringValue "screen"));
+  let picked_payloads = ref [] in
+  let dismissed = ref 0 in
+  let picker_node = ref 0 in
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      (fun _context _model_source _send ->
+         Lui_elements.column
+           [ capture_node picker_node
+               (Lui_elements.file_picker ~source:`photos
+                  ~request:"op-1" ~types:"public.image" ~multiple:true
+                  ~completion:""
+                  ~on_picked:(fun event ->
+                    match event with
+                    | Picked (_, payload) ->
+                      picked_payloads := payload :: !picked_payloads
+                    | _ -> ())
+                  ~on_dismiss:(fun _ -> incr dismissed)
+                  []) ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let kind_of node =
+    List.find_map
+      (function
+       | CreateNode (id, kind) when id = node -> Some kind
+       | _ -> None)
+      ops
+  in
+  let prop_value node property =
+    List.find_map
+      (function
+       | SetProp (id, key, value) when id = node && key = property ->
+         Some value
+       | _ -> None)
+      ops
+  in
+  Alcotest.(check bool) "node is a file-picker" true
+    (kind_of !picker_node = Some FilePicker);
+  Alcotest.(check bool) "request wired" true
+    (prop_value !picker_node PickerRequest = Some (StringValue "op-1"));
+  Alcotest.(check bool) "types wired" true
+    (prop_value !picker_node PickerTypes = Some (StringValue "public.image"));
+  Alcotest.(check bool) "multiple wired" true
+    (prop_value !picker_node PickerMultiple = Some (BoolValue true));
+  Alcotest.(check bool) "source wired" true
+    (prop_value !picker_node PickerSource = Some (StringValue "photos"));
+  ignore
+    (Lui_app.dispatch_event app
+       (Picked (!picker_node, {|{"request":"op-1","files":[]}|})));
+  ignore (Lui_app.dispatch_event app (Dismiss !picker_node));
+  flush_app app;
+  Alcotest.(check (list string)) "picked delivered"
+    [ {|{"request":"op-1","files":[]}|} ] !picked_payloads;
+  Alcotest.(check int) "dismiss delivered" 1 !dismissed;
+  ignore (Lui_app.dispose app)
+
 let test_property_matrix_sync () =
   (* property_supported's restrictive arms and additive extras must mirror
      schema/components.json (kindProperties / kindExtraProperties) as emitted
@@ -1483,6 +1576,7 @@ let () =
           Alcotest.test_case "helpers" `Quick test_protocol_helpers;
           Alcotest.test_case "menu-trigger rules" `Quick
             test_menu_trigger_rules;
+          Alcotest.test_case "file-picker rules" `Quick test_file_picker;
           Alcotest.test_case "property matrix sync" `Quick
             test_property_matrix_sync;
         ] );

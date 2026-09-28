@@ -81,6 +81,8 @@ private final class LUIAppleBridge {
                 "".withCString { callback(8, Int32(node), $0) }
             case let .appear(node):
                 "".withCString { callback(10, Int32(node), $0) }
+            case let .picked(node, payload):
+                payload.withCString { callback(11, Int32(node), $0) }
             case let .extension(node, identifier, name, values):
                 let payload: [String: Any] = [
                     "identifier": identifier,

@@ -21,6 +21,7 @@ enum class Event {
   Dismiss,
   DoublePress,
   Appear,
+  Picked,
 };
 
 bool modalSurface(NodeKind kind);

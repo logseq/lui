@@ -98,6 +98,7 @@ val timeline : ui_context -> int
 val timeline_item : ui_context -> int
 val input_group : ui_context -> int
 val input_group_actions : ui_context -> int
+val file_picker : ui_context -> int
 val button : ui_context -> int
 val toggle_button : ui_context -> int
 val toggle : ui_context -> int

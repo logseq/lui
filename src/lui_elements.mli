@@ -34,6 +34,11 @@ type frame_axes =
 type resize_easing = [ `linear | `standard | `emphasized | `spring ]
 type role = [ `treeitem | `navigation | `navigation_heading ]
 
+(** [~source] of {!file_picker}: [`files] presents a document importer,
+    [`photos] the photo library, [`camera] live capture (iOS only —
+    other platforms answer the request with a dismiss event). *)
+type file_picker_source = [ `files | `photos | `camera ]
+
 (** [~icon]/[~name] values: the schema icon names, or [`app "name"] for an
     application-registered icon ([app:name] on the wire). *)
 type icon =
@@ -2216,6 +2221,58 @@ val toast :
   ?duration:int ->
   ?label:string ->
   ?toast_class:string ->
+  ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
+
+(** Non-visual element that presents the platform file/photo/camera picker
+    when [~request] changes to a new token. [~on_picked] receives a JSON
+    payload echoing the request token plus a [files] array of
+    [{path, name, content-type}]; [~on_dismiss] fires when the picker is
+    cancelled. The backend retains security-scoped file access for picked
+    URLs until [~completion] echoes the request token (or the node is
+    dropped). [~types] is a comma-separated list of UTIs; [~source]
+    selects files (default), photo library, or camera; [~multiple] allows
+    multi-selection; [~disabled] gates presentation. *)
+val file_picker :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?columns:int ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?source:file_picker_source ->
+  ?request:string ->
+  ?request_signal:string Signal.signal ->
+  ?types:string ->
+  ?types_signal:string Signal.signal ->
+  ?multiple:bool ->
+  ?multiple_signal:bool Signal.signal ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?completion:string ->
+  ?completion_signal:string Signal.signal ->
+  ?on_picked:(Lui_protocol.event -> unit) ->
   ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
 val toolbar :
   ?key:string ->

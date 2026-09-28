@@ -58,6 +58,7 @@ qt_add_qml_module(lui_qml
         ../qml/LuiDivider.qml
         ../qml/LuiDrawer.qml
         ../qml/LuiDropdownMenu.qml
+        ../qml/LuiFilePicker.qml
         ../qml/LuiGrid.qml
         ../qml/LuiHeading.qml
         ../qml/LuiIcon.qml

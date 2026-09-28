@@ -1481,11 +1481,23 @@ namespace LUI
                 state.Kind != LUINodeKind.Combobox &&
                 state.Kind != LUINodeKind.DropdownMenu &&
                 state.Kind != LUINodeKind.Toast &&
+                state.Kind != LUINodeKind.FilePicker &&
                 !LUISchema.ModalSurface(state.Kind))
             {
                 throw new LUIBackendException($"node {node} is not dismissible");
             }
             OnEvent?.Invoke(new LUIEvent.Dismiss(node));
+        }
+
+        public void PerformPicked(long node, string payload)
+        {
+            LUINodeState state = RequireState(node);
+            if (state.Kind != LUINodeKind.FilePicker)
+            {
+                throw new LUIBackendException(
+                    $"node {node} is not a file-picker");
+            }
+            OnEvent?.Invoke(new LUIEvent.Picked(node, payload));
         }
 
         public void PerformTextChanged(long node, string text)

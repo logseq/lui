@@ -142,6 +142,7 @@ let timeline context = create context Timeline
 let timeline_item context = create context TimelineItem
 let input_group context = create context InputGroup
 let input_group_actions context = create context InputGroupActions
+let file_picker context = create context FilePicker
 let button context = create context Button
 let toggle_button context = create context ToggleButton
 let toggle context = create context Toggle

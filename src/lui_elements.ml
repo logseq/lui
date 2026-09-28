@@ -31,6 +31,11 @@ type frame_axes =
 type resize_easing = [ `linear | `standard | `emphasized | `spring ]
 type role = [ `treeitem | `navigation | `navigation_heading ]
 
+(** [~source] of [file_picker]: [`files] presents a document importer,
+    [`photos] the photo library, [`camera] live capture (iOS only —
+    other platforms answer the request with a cancel event). *)
+type file_picker_source = [ `files | `photos | `camera ]
+
 type icon =
   [ `alert | `archive | `arrow_down | `arrow_right | `arrow_up | `check | `check_circle | `chevron_down | `chevron_left | `chevron_right | `chevron_up | `circle_dot | `clock | `copy | `download | `edit | `ellipsis | `external_link | `eye | `file_text | `folder | `folder_open | `git_branch | `git_merge | `git_pull_request | `info | `menu | `mic | `moon | `music | `panel_left | `panel_right | `pause | `play | `plus | `refresh_cw | `repeat | `save | `search | `send | `settings | `shuffle | `skip_back | `skip_forward | `sun | `terminal | `trash | `volume | `wrench | `x | `x_circle
   | `app of string ]
@@ -129,6 +134,11 @@ let role_value : role -> string = function
   | `treeitem -> "treeitem"
   | `navigation -> "navigation"
   | `navigation_heading -> "navigation-heading"
+
+let file_picker_source_value : file_picker_source -> string = function
+  | `files -> "files"
+  | `photos -> "photos"
+  | `camera -> "camera"
 
 let icon_value : icon -> string = function
   | `app name -> "app:" ^ name
@@ -278,6 +288,7 @@ let is_input = function TextChanged _ -> true | _ -> false
 let is_submit = function Submit _ -> true | _ -> false
 let is_toggle = function ToggleChanged _ -> true | _ -> false
 let is_dismiss = function Dismiss _ -> true | _ -> false
+let is_picked = function Picked _ -> true | _ -> false
 let is_appear = function Appear _ -> true | _ -> false
 let is_resize = function ValueChanged _ -> true | _ -> false
 
@@ -304,6 +315,9 @@ let register_toggle context node handler =
 
 let register_dismiss context node handler =
   ignore (on_event context node is_dismiss handler)
+
+let register_picked context node handler =
+  ignore (on_event context node is_picked handler)
 
 let appear_handler context node handler =
   enable context node AppearEnabled;
@@ -1243,6 +1257,27 @@ let toast ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pa
   (match on_dismiss with
    | Some handler -> register_dismiss context node handler
    | None -> ());
+  attach context parent node;
+  mount_children context node children;
+  node
+
+let file_picker ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?source ?request ?request_signal ?types ?types_signal ?multiple ?multiple_signal ?disabled ?disabled_signal ?completion ?completion_signal ?on_picked ?on_dismiss (children : t list) : t =
+ fun context parent ->
+  let node = Lui_ui.file_picker context in
+  apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Option.iter (Lui_ui.string_property context node PickerSource) (Option.map file_picker_source_value source);
+  Option.iter (Lui_ui.string_property context node PickerRequest) request;
+  Option.iter (Lui_ui.string_property_signal context node PickerRequest) request_signal;
+  Option.iter (Lui_ui.string_property context node PickerTypes) types;
+  Option.iter (Lui_ui.string_property_signal context node PickerTypes) types_signal;
+  Option.iter (Lui_ui.bool_property context node PickerMultiple) multiple;
+  Option.iter (Lui_ui.bool_property_signal context node PickerMultiple) multiple_signal;
+  Option.iter (Lui_ui.disabled context node) disabled;
+  Option.iter (Lui_ui.disabled_signal context node) disabled_signal;
+  Option.iter (Lui_ui.string_property context node PickerCompletion) completion;
+  Option.iter (Lui_ui.string_property_signal context node PickerCompletion) completion_signal;
+  Option.iter (register_picked context node) on_picked;
+  Option.iter (register_dismiss context node) on_dismiss;
   attach context parent node;
   mount_children context node children;
   node

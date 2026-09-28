@@ -86,6 +86,7 @@ let base_class_name kind =
   | Split -> "lui-split"
   | Drawer -> "lui-drawer"
   | StatusBar -> "lui-status-bar"
+  | FilePicker -> "lui-file-picker"
 
 let create_split_node renderer =
   let document = renderer.web_document in

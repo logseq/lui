@@ -15,6 +15,7 @@ public enum LUIEvent: Equatable, Sendable {
     case dismiss(node: Int)
     case doublePress(node: Int)
     case appear(node: Int)
+    case picked(node: Int, payload: String)
     case `extension`(
         node: Int,
         identifier: String,
@@ -201,6 +202,15 @@ enum LUIWireValue: Decodable, Equatable {
         case .themeMode:
             guard let value = stringValue else { return false }
             return ["system", "light", "dark"].contains(value)
+        case .request, .completion:
+            return stringValue != nil || intValue != nil
+        case .types:
+            return stringValue != nil
+        case .multiple:
+            return boolValue != nil
+        case .source:
+            guard let value = stringValue else { return false }
+            return ["files", "photos", "camera"].contains(value)
         case .main:
             guard let value = stringValue else { return false }
             return Self.mainAlignments.contains(value)
@@ -817,6 +827,7 @@ struct LUIRetainedTree {
         case .role: isTreeRow(kind) || kind == .listItem
         case .treeLevel, .expanded: isTreeRow(kind)
         case .active, .title, .description, .meta, .indicator, .connector: false
+        case .request, .types, .multiple, .source, .completion: false
         }
     }
 
@@ -836,7 +847,7 @@ struct LUIRetainedTree {
             kind == .stepper || kind == .timeline ||
             kind == .inputGroup || kind == .inputGroupActions ||
             kind == .toast || kind == .toolbar || kind == .bottomTabs || kind == .bottomTab ||
-            kind == .menuTrigger || isContextMenuLeafHost(kind)
+            kind == .menuTrigger || kind == .filePicker || isContextMenuLeafHost(kind)
     }
 
     private static func acceptsExtensionChildren(_ kind: LUINodeKind) -> Bool {

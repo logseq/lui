@@ -462,7 +462,7 @@ enum LUIDirectRevisionObservationPolicy {
 
 enum LUIUnmodifiedNodePolicy {
     static func bypassesSurface(kind: LUINodeKind) -> Bool {
-        kind == .spacer
+        kind == .spacer || kind == .filePicker
     }
 }
 
@@ -679,6 +679,8 @@ private struct LUINodeView: View {
             return AnyView(LUIAccordionView(model: model, backend: backend))
         case .dialog, .sheet:
             return AnyView(EmptyView())
+        case .filePicker:
+            return AnyView(LUIFilePickerView(model: model, backend: backend))
         case .menuItem:
             return AnyView(LUIMenuItemView(model: model, backend: backend))
         case .menuTrigger:

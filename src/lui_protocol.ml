@@ -76,6 +76,7 @@ type node_kind =
   | Toast
   | Toolbar
   | StatusBar
+  | FilePicker
 
 type operating_system =
   | GenericOS
@@ -173,6 +174,11 @@ type property =
   | ResizeOrigin
   | ThemeValue
   | ThemeMode
+  | PickerRequest
+  | PickerTypes
+  | PickerMultiple
+  | PickerSource
+  | PickerCompletion
 
 module Property_map =
   Map.Make
@@ -199,6 +205,7 @@ type event =
   | Dismiss of int
   | DoublePress of int
   | Appear of int
+  | Picked of int * string
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -239,6 +246,7 @@ let event_node event =
   | Dismiss node
   | DoublePress node
   | Appear node
+  | Picked (node, _)
   | ExtensionEvent (node, _, _, _) -> node
 
 let modal_surface kind = kind = Dialog || kind = Drawer || kind = Sheet
@@ -356,10 +364,12 @@ let event_supported kind event =
     | Toast
     | Dialog
     | Drawer
-    | Sheet -> true
+    | Sheet
+    | FilePicker -> true
     | _ -> false)
   | DoublePress _ -> kind = ListItem
   | Appear _ -> kind <> Root
+  | Picked _ -> kind = FilePicker
   | ExtensionEvent _ -> false
 
 let true_property properties property =
@@ -516,6 +526,9 @@ let icon_name_supported value =
 let theme_mode_supported value =
   value = "system" || value = "light" || value = "dark"
 
+let picker_source_supported value =
+  value = "files" || value = "photos" || value = "camera"
+
 let main_alignment_supported value =
   value = "start" || value = "center" || value = "end" || value = "space_between"
 
@@ -564,7 +577,8 @@ let can_contain_children kind =
     | Alert
     | Bubble
     | BottomTabs
-    | BottomTab -> true
+    | BottomTab
+    | FilePicker -> true
     | _ -> false
 
 let common_property_supported kind property =
@@ -766,8 +780,9 @@ let common_property_supported kind property =
     | Drawer
     | BottomTab -> true
     | _ -> false)
-  | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector ->
-    false
+  | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector
+  | PickerRequest | PickerTypes | PickerMultiple | PickerSource
+  | PickerCompletion -> false
   | TitleValue -> kind = BottomTab
   | Gap ->
     kind = Row
@@ -811,6 +826,11 @@ let property_supported kind property =
       property = TextValue || property = InlineIconName
       || property = AccessibilityLabel || property = Enabled
       || property = ForegroundValue || property = StyleClass
+    | FilePicker ->
+      property = PickerRequest || property = PickerTypes
+      || property = PickerMultiple || property = PickerSource
+      || property = PickerCompletion || property = Enabled
+      || property = AppearEnabled
     | Accordion ->
       property = TextValue || property = Selected
       || property = ToggleEnabled || property = HeightValue
@@ -917,6 +937,11 @@ let property_value_supported property value =
   | ResizeOrigin, FloatValue value -> is_finite value
   | ThemeValue, StringValue _ -> true
   | ThemeMode, StringValue value -> theme_mode_supported value
+  | PickerRequest, (StringValue _ | IntValue _)
+  | PickerCompletion, (StringValue _ | IntValue _) -> true
+  | PickerTypes, StringValue _ -> true
+  | PickerMultiple, BoolValue _ -> true
+  | PickerSource, StringValue value -> picker_source_supported value
   | _ -> false
 
 let property_value_supported_for_kind kind property value =

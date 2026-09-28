@@ -78,6 +78,7 @@ enum class NodeKind {
   Toast,
   Toolbar,
   StatusBar,
+  FilePicker,
 };
 
 enum class Property {
@@ -154,6 +155,11 @@ enum class Property {
   ResizeOrigin,
   ThemeValue,
   ThemeMode,
+  PickerRequest,
+  PickerTypes,
+  PickerMultiple,
+  PickerSource,
+  PickerCompletion,
 };
 
 inline const char *nodeKindWireName(NodeKind kind) {
@@ -230,6 +236,7 @@ inline const char *nodeKindWireName(NodeKind kind) {
     case NodeKind::Toast: return "toast";
     case NodeKind::Toolbar: return "toolbar";
     case NodeKind::StatusBar: return "status-bar";
+    case NodeKind::FilePicker: return "file-picker";
   }
   return "unknown";
 }
@@ -307,6 +314,7 @@ inline bool decodeNodeKind(const char *name, NodeKind *kind) {
   if (std::strcmp(name, "toast") == 0) { *kind = NodeKind::Toast; return true; }
   if (std::strcmp(name, "toolbar") == 0) { *kind = NodeKind::Toolbar; return true; }
   if (std::strcmp(name, "status-bar") == 0) { *kind = NodeKind::StatusBar; return true; }
+  if (std::strcmp(name, "file-picker") == 0) { *kind = NodeKind::FilePicker; return true; }
   return false;
 }
 
@@ -358,6 +366,7 @@ inline bool containerNodeKind(NodeKind kind) {
     case NodeKind::Sheet:
     case NodeKind::Toast:
     case NodeKind::Toolbar:
+    case NodeKind::FilePicker:
     return true;
     default:
     return false;
@@ -439,6 +448,7 @@ inline const char *nodeKindComponentName(NodeKind kind) {
     case NodeKind::Toast: return "LuiToast.qml";
     case NodeKind::Toolbar: return "LuiToolbar.qml";
     case NodeKind::StatusBar: return "LuiStatusBar.qml";
+    case NodeKind::FilePicker: return "LuiFilePicker.qml";
   }
   return "LuiBox.qml";
 }
@@ -518,6 +528,11 @@ inline const char *propertyWireName(Property property) {
     case Property::ResizeOrigin: return "resize-origin";
     case Property::ThemeValue: return "theme";
     case Property::ThemeMode: return "theme-mode";
+    case Property::PickerRequest: return "request";
+    case Property::PickerTypes: return "types";
+    case Property::PickerMultiple: return "multiple";
+    case Property::PickerSource: return "source";
+    case Property::PickerCompletion: return "completion";
   }
   return "unknown";
 }
@@ -596,6 +611,11 @@ inline bool decodePropertyWireName(const char *name, Property *property) {
   if (std::strcmp(name, "resize-origin") == 0) { *property = Property::ResizeOrigin; return true; }
   if (std::strcmp(name, "theme") == 0) { *property = Property::ThemeValue; return true; }
   if (std::strcmp(name, "theme-mode") == 0) { *property = Property::ThemeMode; return true; }
+  if (std::strcmp(name, "request") == 0) { *property = Property::PickerRequest; return true; }
+  if (std::strcmp(name, "types") == 0) { *property = Property::PickerTypes; return true; }
+  if (std::strcmp(name, "multiple") == 0) { *property = Property::PickerMultiple; return true; }
+  if (std::strcmp(name, "source") == 0) { *property = Property::PickerSource; return true; }
+  if (std::strcmp(name, "completion") == 0) { *property = Property::PickerCompletion; return true; }
   return false;
 }
 

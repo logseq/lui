@@ -74,6 +74,7 @@ type node_kind =
   | Toast
   | Toolbar
   | StatusBar
+  | FilePicker
 
 type operating_system =
   | GenericOS
@@ -171,6 +172,11 @@ type property =
   | ResizeOrigin
   | ThemeValue
   | ThemeMode
+  | PickerRequest
+  | PickerTypes
+  | PickerMultiple
+  | PickerSource
+  | PickerCompletion
 
 module Property_map : Map.S with type key = property
 
@@ -194,6 +200,7 @@ type event =
   | Dismiss of int
   | DoublePress of int
   | Appear of int
+  | Picked of int * string
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =

@@ -18,6 +18,7 @@ namespace LUI
         Dismiss,
         DoublePress,
         Appear,
+        Picked,
         Extension,
     }
 
@@ -214,12 +215,15 @@ namespace LUI
                         case LUINodeKind.Dialog:
                         case LUINodeKind.Drawer:
                         case LUINodeKind.Sheet:
+                        case LUINodeKind.FilePicker:
                             return true;
                         default:
                             return false;
                     }
                 case LUIEventKind.DoublePress:
                     return kind == LUINodeKind.ListItem;
+                case LUIEventKind.Picked:
+                    return kind == LUINodeKind.FilePicker;
                 case LUIEventKind.Appear:
                     return kind != LUINodeKind.Root;
                 case LUIEventKind.Extension:
@@ -1089,6 +1093,26 @@ namespace LUI
                         (text.Value == "system" || text.Value == "light" ||
                          text.Value == "dark");
                 }
+                case LUIProperty.PickerRequest:
+                case LUIProperty.PickerCompletion:
+                {
+                    return value is LUIWireValue.String ||
+                        value is LUIWireValue.Int;
+                }
+                case LUIProperty.PickerTypes:
+                {
+                    return value is LUIWireValue.String;
+                }
+                case LUIProperty.PickerMultiple:
+                {
+                    return value is LUIWireValue.Bool;
+                }
+                case LUIProperty.PickerSource:
+                {
+                    return value is LUIWireValue.String text &&
+                        (text.Value == "files" || text.Value == "photos" ||
+                         text.Value == "camera");
+                }
                 default:
                 {
                     return false;
@@ -1410,6 +1434,7 @@ namespace LUI
                 case LUINodeKind.Bubble:
                 case LUINodeKind.BottomTabs:
                 case LUINodeKind.BottomTab:
+                case LUINodeKind.FilePicker:
                     return true;
                 default:
                     return false;

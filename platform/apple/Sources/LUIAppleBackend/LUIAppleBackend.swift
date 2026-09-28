@@ -761,10 +761,18 @@ public final class LUIAppleBackend {
         guard let model = models[node],
               model.kind == .select || model.kind == .combobox ||
                 model.kind == .dropdownMenu || model.kind == .dialog ||
-                model.kind == .sheet || model.kind == .toast else {
+                model.kind == .sheet || model.kind == .toast ||
+                model.kind == .filePicker else {
             throw invalid("node \(node) is not dismissible")
         }
         emit(.dismiss(node: node))
+    }
+
+    func performPicked(node: Int, payload: String) throws {
+        guard let model = models[node], model.kind == .filePicker else {
+            throw invalid("node \(node) is not a file-picker")
+        }
+        emit(.picked(node: node, payload: payload))
     }
 
     func performAction(node: Int) throws {
