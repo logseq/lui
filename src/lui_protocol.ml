@@ -76,6 +76,9 @@ type node_kind =
   | Toast
   | Toolbar
   | StatusBar
+  | Link
+  | FileImage
+  | FilePreview
 
 type operating_system =
   | GenericOS
@@ -173,6 +176,9 @@ type property =
   | ResizeOrigin
   | ThemeValue
   | ThemeMode
+  | PathValue
+  | UrlValue
+  | MaxPixelSize
 
 module Property_map =
   Map.Make
@@ -305,6 +311,7 @@ let event_supported kind event =
     | Text
     | TableCell
     | TimelineItem
+    | FileImage
     | BottomTab -> true
     | _ -> false)
   | LongPress _ ->
@@ -356,7 +363,8 @@ let event_supported kind event =
     | Toast
     | Dialog
     | Drawer
-    | Sheet -> true
+    | Sheet
+    | FilePreview -> true
     | _ -> false)
   | DoublePress _ -> kind = ListItem
   | Appear _ -> kind <> Root
@@ -564,7 +572,8 @@ let can_contain_children kind =
     | Alert
     | Bubble
     | BottomTabs
-    | BottomTab -> true
+    | BottomTab
+    | Link -> true
     | _ -> false
 
 let common_property_supported kind property =
@@ -596,7 +605,8 @@ let common_property_supported kind property =
     | Text | Heading | Paragraph | Label | Button | ToggleButton | TextField
     | SecureField | Input | SearchField | Textarea | Checkbox | Toggle | Radio
     | Slider | Spinner | Icon | Select | Combobox | DropdownMenu | MenuItem
-    | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar -> true
+    | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar
+    | Link | FileImage -> true
     | _ -> false)
   | WidthValue | HeightValue -> kind <> Tooltip
   | MinWidth | MaxWidth | MinHeight | MaxHeight ->
@@ -630,6 +640,8 @@ let common_property_supported kind property =
     || kind = Alert
     || kind = Bubble
     || kind = ListItem
+    || kind = Link
+    || kind = FileImage
     || tree_row_kind kind
   | AccessibilityIdentifier -> true
   | PlaceholderValue ->
@@ -659,7 +671,9 @@ let common_property_supported kind property =
     || kind = MenuItem
     || kind = ListItem
     || kind = BottomTab
-  | IconPlacementValue -> kind = Button || kind = ToggleButton || kind = ListItem
+    || kind = Link
+  | IconPlacementValue ->
+    kind = Button || kind = ToggleButton || kind = ListItem || kind = Link
   | Selected ->
     kind = Button
     || kind = ToggleButton
@@ -692,6 +706,7 @@ let common_property_supported kind property =
     || kind = ListItem
     || kind = TableCell
     || kind = BottomTab
+    || kind = FileImage
     || tree_row_kind kind
   | SubmitEnabled -> kind = Combobox || kind = ListItem
   | DoublePressEnabled -> kind = ListItem
@@ -743,7 +758,8 @@ let common_property_supported kind property =
     | TableCell
     | Alert
     | Bubble
-    | StatusBar -> true
+    | StatusBar
+    | Link -> true
     | _ -> false)
   | Enabled ->
     (match kind with
@@ -764,8 +780,12 @@ let common_property_supported kind property =
     | MenuItem
     | ListItem
     | Drawer
-    | BottomTab -> true
+    | BottomTab
+    | Link -> true
     | _ -> false)
+  | PathValue -> kind = FileImage || kind = FilePreview
+  | UrlValue -> kind = Link
+  | MaxPixelSize -> kind = FileImage
   | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector ->
     false
   | TitleValue -> kind = BottomTab
@@ -829,6 +849,7 @@ let property_supported kind property =
     | InputGroupActions -> property = Gap
     | Dialog ->
       property = DescriptionValue || common_property_supported kind property
+    | FilePreview -> property = PathValue
     | _ -> common_property_supported kind property
 
 let is_finite value =
@@ -917,6 +938,8 @@ let property_value_supported property value =
   | ResizeOrigin, FloatValue value -> is_finite value
   | ThemeValue, StringValue _ -> true
   | ThemeMode, StringValue value -> theme_mode_supported value
+  | PathValue, StringValue _ | UrlValue, StringValue _ -> true
+  | MaxPixelSize, IntValue value -> value > 0
   | _ -> false
 
 let property_value_supported_for_kind kind property value =
@@ -1038,6 +1061,11 @@ let node_properties_supported kind properties =
         && (source_count = 0
            || (source_x >= 0.0 && source_y >= 0.0 && source_width > 0.0
               && source_height > 0.0))
+      else true)
+  && (if kind = FileImage || kind = FilePreview then
+        string_property_nonempty properties PathValue
+      else true)
+  && (if kind = Link then string_property_nonempty properties UrlValue
       else true)
   && (if kind = MediaSurface then Property_map.mem SurfaceIdValue properties
       else true)

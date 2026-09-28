@@ -74,6 +74,9 @@ enum _NodeKind {
   toast,
   toolbar,
   statusBar,
+  link,
+  fileImage,
+  filePreview,
 }
 
 _NodeKind _decodeNodeKind(Object? value) {
@@ -153,6 +156,9 @@ _NodeKind _decodeNodeKind(Object? value) {
     'toast' => _NodeKind.toast,
     'toolbar' => _NodeKind.toolbar,
     'status-bar' => _NodeKind.statusBar,
+    'link' => _NodeKind.link,
+    'file-image' => _NodeKind.fileImage,
+    'file-preview' => _NodeKind.filePreview,
     _ => throw const LUIBackendException('unknown node kind'),
   };
 }

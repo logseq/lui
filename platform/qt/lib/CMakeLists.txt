@@ -58,6 +58,8 @@ qt_add_qml_module(lui_qml
         ../qml/LuiDivider.qml
         ../qml/LuiDrawer.qml
         ../qml/LuiDropdownMenu.qml
+        ../qml/LuiFileImage.qml
+        ../qml/LuiFilePreview.qml
         ../qml/LuiGrid.qml
         ../qml/LuiHeading.qml
         ../qml/LuiIcon.qml
@@ -66,6 +68,7 @@ qt_add_qml_module(lui_qml
         ../qml/LuiInputGroup.qml
         ../qml/LuiInputGroupActions.qml
         ../qml/LuiLabel.qml
+        ../qml/LuiLink.qml
         ../qml/LuiList.qml
         ../qml/LuiListItem.qml
         ../qml/LuiMediaSurface.qml

@@ -440,6 +440,7 @@ public final class LUIAppleBackend {
     private let extensionRegistry: LUIAppleExtensionRegistry
     let tooltipSession = LUITooltipSession()
     let modalPresentation = LUIModalPresentationStore()
+    let filePreviewPresentation = LUIFilePreviewStore()
 
     public init(
         appIcons: [String: LUIAppleIconSource] = [:],
@@ -644,6 +645,7 @@ public final class LUIAppleBackend {
                 model.kind == .combobox || model.kind == .menuItem ||
                 model.kind == .listItem ||
                 (model.kind == .timelineItem && model.supportsPress) ||
+                (model.kind == .fileImage && model.supportsPress) ||
                 (model.isTreeItem && model.supportsPress),
               model.isEnabled else {
             throw invalid("node \(node) is not an enabled pressable control")
@@ -761,7 +763,8 @@ public final class LUIAppleBackend {
         guard let model = models[node],
               model.kind == .select || model.kind == .combobox ||
                 model.kind == .dropdownMenu || model.kind == .dialog ||
-                model.kind == .sheet || model.kind == .toast else {
+                model.kind == .sheet || model.kind == .toast ||
+                model.kind == .filePreview else {
             throw invalid("node \(node) is not dismissible")
         }
         emit(.dismiss(node: node))
@@ -774,7 +777,8 @@ public final class LUIAppleBackend {
             return
         }
         switch model.kind {
-        case .button, .select, .combobox, .menuItem, .listItem, .timelineItem:
+        case .button, .select, .combobox, .menuItem, .listItem, .timelineItem,
+             .fileImage:
             try performPress(node: node)
         case .toggleButton:
             try performToggle(node: node, checked: !model.isSelected)
@@ -952,11 +956,22 @@ public final class LUIAppleBackend {
     private func syncModalPresentation() {
         var presentation: LUIModalPresentation?
         var nestedSheets: [Int: LUIModalPresentation] = [:]
+        var filePreview: LUIFilePreviewPresentation?
         var visited = Set<Int>()
 
         func visit(_ nodeID: Int, rootID: Int, dialogAnchorID: Int?, parentSheetID: Int?) {
             guard visited.insert(nodeID).inserted else { return }
             if let model = models[nodeID] {
+                if model.kind == .filePreview,
+                   let url = LUIFilePath.url(
+                        model.property(.path)?.stringValue ?? ""
+                   ) {
+                    filePreview = LUIFilePreviewPresentation(
+                        nodeID: nodeID,
+                        rootID: rootID,
+                        url: url
+                    )
+                }
                 if model.kind == .dialog || model.kind == .sheet {
                     let item = LUIModalPresentation(
                         model: model,
@@ -994,6 +1009,7 @@ public final class LUIAppleBackend {
         }
         modalPresentation.nestedSheets = nestedSheets
         modalPresentation.synchronize(with: presentation)
+        filePreviewPresentation.synchronize(with: filePreview)
     }
 
     private func invalidateAvatars(imageID: Int) {

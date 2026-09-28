@@ -1452,6 +1452,56 @@ let media_surface ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizo
   
   node
 
+let link ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?url ?url_signal ?text ?text_signal ?icon ?icon_signal ?icon_placement ?label ?disabled ?disabled_signal (children : t list) : t =
+ fun context parent ->
+  let node = Lui_ui.create context Link in
+  apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Option.iter (Lui_ui.string_property context node UrlValue) url;
+  Option.iter (Lui_ui.string_property_signal context node UrlValue) url_signal;
+  Option.iter (Lui_ui.string_property context node TextValue) text;
+  Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
+  Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
+  Option.iter (Lui_ui.string_property context node IconPlacementValue) (Option.map icon_placement_value icon_placement);
+  Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
+  Option.iter (Lui_ui.disabled context node) disabled;
+  Option.iter (Lui_ui.disabled_signal context node) disabled_signal;
+  attach context parent node;
+  mount_children context node children;
+  node
+
+let file_image ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?path ?path_signal ?max_pixel_size ?label ?on_press (_children : nothing list) : t =
+ fun context parent ->
+  let node = Lui_ui.create context FileImage in
+  apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Option.iter (Lui_ui.string_property context node PathValue) path;
+  Option.iter (Lui_ui.string_property_signal context node PathValue) path_signal;
+  Option.iter (Lui_ui.int_property context node MaxPixelSize) max_pixel_size;
+  Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
+  (match on_press with
+   | Some handler ->
+     enable context node PressEnabled;
+     register_press context node handler
+   | None -> ());
+  attach context parent node;
+  
+  node
+
+let file_preview ?key ?path ?path_signal ?accessibility_identifier ?accessibility_identifier_signal ?on_dismiss (_children : nothing list) : t =
+ fun context parent ->
+  let node = Lui_ui.create context FilePreview in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter (Lui_ui.string_property context node PathValue) path;
+  Option.iter (Lui_ui.string_property_signal context node PathValue) path_signal;
+  Option.iter (Lui_ui.string_property context node AccessibilityIdentifier) accessibility_identifier;
+  Option.iter (Lui_ui.string_property_signal context node AccessibilityIdentifier) accessibility_identifier_signal;
+  (match on_dismiss with
+   | Some handler -> register_dismiss context node handler
+   | None -> ());
+  attach context parent node;
+  
+  node
+
 let stepper ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?active ?active_signal ?label (children : step_el list) : t =
  fun context parent ->
   let node = Lui_ui.create context Stepper in

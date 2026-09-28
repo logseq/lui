@@ -2480,6 +2480,85 @@ val media_surface :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?surface:int ->
   ?surface_signal:int Signal.signal -> ?label:string -> nothing list -> t
+val link :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?columns:int ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?url:string ->
+  ?url_signal:string Signal.signal ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?icon_placement:icon_placement ->
+  ?label:string ->
+  ?disabled:bool -> ?disabled_signal:bool Signal.signal -> t list -> t
+val file_image :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?columns:int ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?path:string ->
+  ?path_signal:string Signal.signal ->
+  ?max_pixel_size:int ->
+  ?label:string ->
+  ?on_press:(Lui_protocol.event -> unit) -> nothing list -> t
+val file_preview :
+  ?key:string ->
+  ?path:string ->
+  ?path_signal:string Signal.signal ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?on_dismiss:(Lui_protocol.event -> unit) -> nothing list -> t
 val stepper :
   ?key:string ->
   ?gap:int ->

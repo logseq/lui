@@ -155,6 +155,7 @@ namespace LUI
                         case LUINodeKind.Text:
                         case LUINodeKind.TableCell:
                         case LUINodeKind.TimelineItem:
+                        case LUINodeKind.FileImage:
                         case LUINodeKind.BottomTab:
                             return true;
                         default:
@@ -214,6 +215,7 @@ namespace LUI
                         case LUINodeKind.Dialog:
                         case LUINodeKind.Drawer:
                         case LUINodeKind.Sheet:
+                        case LUINodeKind.FilePreview:
                             return true;
                         default:
                             return false;
@@ -479,6 +481,8 @@ namespace LUI
                         case LUINodeKind.Alert:
                         case LUINodeKind.Bubble:
                         case LUINodeKind.StatusBar:
+                        case LUINodeKind.Link:
+                        case LUINodeKind.FileImage:
                             return true;
                         default:
                             return false;
@@ -522,6 +526,8 @@ namespace LUI
                         kind == LUINodeKind.Alert ||
                         kind == LUINodeKind.Bubble ||
                         kind == LUINodeKind.ListItem ||
+                        kind == LUINodeKind.Link ||
+                        kind == LUINodeKind.FileImage ||
                         TreeRowKind(kind);
                 case LUIProperty.AccessibilityIdentifier:
                     return true;
@@ -570,11 +576,13 @@ namespace LUI
                         kind == LUINodeKind.ToggleButton ||
                         kind == LUINodeKind.MenuItem ||
                         kind == LUINodeKind.ListItem ||
-                        kind == LUINodeKind.BottomTab;
+                        kind == LUINodeKind.BottomTab ||
+                        kind == LUINodeKind.Link;
                 case LUIProperty.IconPlacementValue:
                     return kind == LUINodeKind.Button ||
                         kind == LUINodeKind.ToggleButton ||
-                        kind == LUINodeKind.ListItem;
+                        kind == LUINodeKind.ListItem ||
+                        kind == LUINodeKind.Link;
                 case LUIProperty.Selected:
                     return kind == LUINodeKind.Button ||
                         kind == LUINodeKind.ToggleButton ||
@@ -614,6 +622,7 @@ namespace LUI
                         kind == LUINodeKind.ListItem ||
                         kind == LUINodeKind.TableCell ||
                         kind == LUINodeKind.BottomTab ||
+                        kind == LUINodeKind.FileImage ||
                         TreeRowKind(kind);
                 case LUIProperty.SubmitEnabled:
                     return kind == LUINodeKind.Combobox ||
@@ -631,6 +640,13 @@ namespace LUI
                         kind == LUINodeKind.Image;
                 case LUIProperty.SurfaceIdValue:
                     return kind == LUINodeKind.MediaSurface;
+                case LUIProperty.PathValue:
+                    return kind == LUINodeKind.FileImage ||
+                        kind == LUINodeKind.FilePreview;
+                case LUIProperty.UrlValue:
+                    return kind == LUINodeKind.Link;
+                case LUIProperty.MaxPixelSize:
+                    return kind == LUINodeKind.FileImage;
                 case LUIProperty.AnchorValue:
                 case LUIProperty.AnchorAlignmentValue:
                 case LUIProperty.AnchorOffset:
@@ -690,6 +706,7 @@ namespace LUI
                         case LUINodeKind.Alert:
                         case LUINodeKind.Bubble:
                         case LUINodeKind.StatusBar:
+                        case LUINodeKind.Link:
                             return true;
                         default:
                             return false;
@@ -715,6 +732,7 @@ namespace LUI
                         case LUINodeKind.ListItem:
                         case LUINodeKind.Drawer:
                         case LUINodeKind.BottomTab:
+                        case LUINodeKind.Link:
                             return true;
                         default:
                             return false;
@@ -1089,6 +1107,15 @@ namespace LUI
                         (text.Value == "system" || text.Value == "light" ||
                          text.Value == "dark");
                 }
+                case LUIProperty.PathValue:
+                case LUIProperty.UrlValue:
+                {
+                    return value is LUIWireValue.String;
+                }
+                case LUIProperty.MaxPixelSize:
+                {
+                    return value is LUIWireValue.Int { Value: > 0 };
+                }
                 default:
                 {
                     return false;
@@ -1292,6 +1319,17 @@ namespace LUI
             {
                 return false;
             }
+            if ((kind == LUINodeKind.FileImage ||
+                 kind == LUINodeKind.FilePreview) &&
+                !StringPropertyNonempty(properties, LUIProperty.PathValue))
+            {
+                return false;
+            }
+            if (kind == LUINodeKind.Link &&
+                !StringPropertyNonempty(properties, LUIProperty.UrlValue))
+            {
+                return false;
+            }
             if (kind == LUINodeKind.Stepper &&
                 !properties.ContainsKey(LUIProperty.ActiveIndex))
             {
@@ -1410,6 +1448,7 @@ namespace LUI
                 case LUINodeKind.Bubble:
                 case LUINodeKind.BottomTabs:
                 case LUINodeKind.BottomTab:
+                case LUINodeKind.Link:
                     return true;
                 default:
                     return false;

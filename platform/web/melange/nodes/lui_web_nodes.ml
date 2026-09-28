@@ -86,6 +86,9 @@ let base_class_name kind =
   | Split -> "lui-split"
   | Drawer -> "lui-drawer"
   | StatusBar -> "lui-status-bar"
+  | Link -> "lui-link"
+  | FileImage -> "lui-file-image"
+  | FilePreview -> "lui-file-preview"
 
 let create_split_node renderer =
   let document = renderer.web_document in
@@ -259,6 +262,7 @@ let simple_node_tag kind =
   | Slider -> "input"
   | Divider -> "hr"
   | Tooltip -> "span"
+  | Link -> "a"
   | _ -> "div"
 
 let simple_node_attributes kind =
@@ -306,6 +310,7 @@ let simple_node_attributes kind =
         ("data-state", "open") ]
   | Toolbar -> [ ("role", "toolbar"); ("aria-orientation", "horizontal") ]
   | StatusBar -> [ ("role", "status") ]
+  | FilePreview -> [ ("hidden", "") ]
   | _ -> []
 
 let create_simple_node renderer kind =

@@ -74,6 +74,9 @@ enum LUINodeKind: String, Decodable, Equatable {
     case toast = "toast"
     case toolbar = "toolbar"
     case statusBar = "status-bar"
+    case link = "link"
+    case fileImage = "file-image"
+    case filePreview = "file-preview"
 }
 
 enum LUIProperty: String, Decodable, Hashable {
@@ -150,6 +153,9 @@ enum LUIProperty: String, Decodable, Hashable {
     case resizeOrigin = "resize-origin"
     case theme = "theme"
     case themeMode = "theme-mode"
+    case path = "path"
+    case url = "url"
+    case maxPixelSize = "max-pixel-size"
 }
 
 enum LUISchemaMatrix {
@@ -166,6 +172,7 @@ enum LUISchemaMatrix {
         .bottomTabs: [.accessibilityLabel, .styleClass, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight],
         .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled],
         .menuTrigger: [.text, .icon, .accessibilityLabel, .enabled, .foreground, .styleClass],
+        .filePreview: [.path],
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [

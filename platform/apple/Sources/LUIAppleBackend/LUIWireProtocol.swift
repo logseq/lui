@@ -186,6 +186,11 @@ enum LUIWireValue: Decodable, Equatable {
         case .tooltipDelay, .duration:
             guard let value = intValue else { return false }
             return (0...Int(Int32.max)).contains(value)
+        case .path, .url:
+            return stringValue != nil
+        case .maxPixelSize:
+            guard let value = intValue else { return false }
+            return value > 0
         case .textAlignment:
             guard let value = stringValue else { return false }
             return Self.textAlignments.contains(value)
@@ -331,7 +336,8 @@ struct LUIRetainedTree {
                 // `dropNode` erases the state, so its kind must be read first.
                 if case let .dropNode(id) = operation,
                    let kind = nodes[id]?.kind,
-                   kind == .dialog || kind == .sheet || kind == .list {
+                   kind == .dialog || kind == .sheet || kind == .list ||
+                   kind == .filePreview {
                     effects.modalRelevant.insert(id)
                 }
                 try apply(operation, extensionRegistry: extensionRegistry)
@@ -362,7 +368,8 @@ struct LUIRetainedTree {
             }
             effects.modalRelevant.formUnion(effects.touched.filter {
                 let kind = nodes[$0]?.kind
-                return kind == .dialog || kind == .sheet || kind == .list
+                return kind == .dialog || kind == .sheet || kind == .list ||
+                    kind == .filePreview
             })
             // Revalidate every check whose inputs could have changed: the
             // touched node itself, its parent (a changed child list or parent
@@ -724,7 +731,8 @@ struct LUIRetainedTree {
                 || kind == .select || kind == .combobox || kind == .dropdownMenu
                 || kind == .menuItem || kind == .listItem
                 || kind == .tableCell || kind == .resizable || kind == .split ||
-                kind == .alert || kind == .bubble || kind == .statusBar
+                kind == .alert || kind == .bubble || kind == .statusBar ||
+                kind == .link || kind == .fileImage
         case .text:
             kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
                 kind == .button || kind == .toggleButton || isTextEntry(kind) ||
@@ -733,13 +741,13 @@ struct LUIRetainedTree {
                 kind == .tooltip ||
                 kind == .tableCell ||
                 kind == .alert || kind == .bubble || kind == .statusBar ||
-                isModalSurface(kind) || kind == .drawer
+                isModalSurface(kind) || kind == .drawer || kind == .link
         case .enabled:
             kind == .button || kind == .toggleButton || isTextEntry(kind) ||
                 kind == .checkbox || kind == .switchControl || kind == .toggle ||
                 kind == .radio || kind == .slider || kind == .select ||
                 kind == .combobox || kind == .menuItem || kind == .listItem ||
-                kind == .drawer
+                kind == .drawer || kind == .link
         case .gap:
             kind == .row || kind == .column || kind == .grid || kind == .list ||
                 kind == .virtualList || kind == .scroll || kind == .card ||
@@ -761,7 +769,7 @@ struct LUIRetainedTree {
                 kind == .mediaSurface || kind == .tree ||
                 kind == .resizable || kind == .split || kind == .drawer ||
                 kind == .alert || kind == .bubble ||
-                kind == .listItem ||
+                kind == .listItem || kind == .link || kind == .fileImage ||
                 isTreeRow(kind)
         case .headingLevel: kind == .heading
         case .checked:
@@ -779,12 +787,13 @@ struct LUIRetainedTree {
             kind == .button || kind == .toggleButton || kind == .menuItem ||
                 kind == .alert || kind == .bubble
         case .iconPlacement:
-            kind == .button || kind == .toggleButton || kind == .listItem
+            kind == .button || kind == .toggleButton || kind == .listItem ||
+                kind == .link
         case .longPressEnabled:
             kind == .button || kind == .toggleButton || kind == .listItem
         case .icon:
             kind == .button || kind == .toggleButton || kind == .menuItem ||
-                kind == .listItem
+                kind == .listItem || kind == .link
         case .selected:
             kind == .button || kind == .toggleButton || kind == .menuItem ||
                 kind == .listItem || kind == .tableRow || kind == .drawer ||
@@ -797,7 +806,7 @@ struct LUIRetainedTree {
         case .pressEnabled:
             kind == .text || kind == .column || kind == .radio || kind == .select ||
                 kind == .combobox || kind == .menuItem || kind == .listItem
-                || kind == .tableCell || isTreeRow(kind)
+                || kind == .tableCell || kind == .fileImage || isTreeRow(kind)
         case .submitEnabled: kind == .combobox || kind == .listItem
         case .doublePressEnabled: kind == .listItem
         case .appearEnabled: kind != .root
@@ -816,6 +825,9 @@ struct LUIRetainedTree {
                 kind == .tableCell || kind == .bubble || kind == .statusBar
         case .role: isTreeRow(kind) || kind == .listItem
         case .treeLevel, .expanded: isTreeRow(kind)
+        case .path: kind == .fileImage || kind == .filePreview
+        case .url: kind == .link
+        case .maxPixelSize: kind == .fileImage
         case .active, .title, .description, .meta, .indicator, .connector: false
         }
     }
@@ -836,7 +848,7 @@ struct LUIRetainedTree {
             kind == .stepper || kind == .timeline ||
             kind == .inputGroup || kind == .inputGroupActions ||
             kind == .toast || kind == .toolbar || kind == .bottomTabs || kind == .bottomTab ||
-            kind == .menuTrigger || isContextMenuLeafHost(kind)
+            kind == .menuTrigger || isContextMenuLeafHost(kind) || kind == .link
     }
 
     private static func acceptsExtensionChildren(_ kind: LUINodeKind) -> Bool {
@@ -1115,6 +1127,14 @@ struct LUIRetainedTree {
             }
             if node.kind == .mediaSurface, node.properties[.surface]?.intValue == nil {
                 throw invalid("media-surface requires surface")
+            }
+            if node.kind == .fileImage || node.kind == .filePreview,
+               (node.properties[.path]?.stringValue ?? "").isEmpty {
+                throw invalid("file node requires path")
+            }
+            if node.kind == .link,
+               (node.properties[.url]?.stringValue ?? "").isEmpty {
+                throw invalid("link requires url")
             }
             if node.kind == .stepper, node.properties[.active]?.intValue == nil {
                 throw invalid("stepper requires active")
