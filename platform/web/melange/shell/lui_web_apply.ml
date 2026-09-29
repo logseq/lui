@@ -66,16 +66,16 @@ let cleanup_node renderer node =
       Hashtbl.remove renderer.web_cleanups node
   | None -> ()
 
-let child_hidden_in_parent renderer child =
-  match Store.node renderer.web_store child with
-  | Some child_node -> (
-      match Store.standard_kind child_node with
-      | Some (ContextMenu | DropdownMenu | Toast) -> true
-      | Some kind -> modal_surface kind
-      | None -> Store.anchored_tooltip child_node)
-  | None -> true
+(* a retained child only advances the DOM insertion index when its
+   platform node is a DOM child of the container right now — portal
+   children (menus, modals, toasts), never-mounted segments and nodes
+   dropped inside the same batch all sit outside it and must be skipped *)
+let child_counted_in_container child container =
+  match child.platform_node |> W.Element.parentElement with
+  | Some actual -> actual == container
+  | None -> false
 
-let visible_child_index renderer parent index =
+let visible_child_index renderer ~container parent index =
   match Store.node renderer.web_store parent with
   | None -> index
   | Some current ->
@@ -85,9 +85,14 @@ let visible_child_index renderer parent index =
           match children with
           | [] -> result
           | child :: rest ->
+              let counted =
+                match Store.node renderer.web_store child with
+                | Some child_node ->
+                    child_counted_in_container child_node container
+                | None -> false
+              in
               loop rest (source_index + 1)
-                (if child_hidden_in_parent renderer child then result
-                 else result + 1)
+                (if counted then result + 1 else result)
       in
       loop current.retained_children 0 0
 
@@ -205,9 +210,11 @@ let insert_child_dom renderer previous_nodes parent child index =
                    child index);
               Lui_web_widgets.refresh_bottom_tabs renderer parent
           | _ ->
-              Util.insert_dom_child
-                (dom_child_container renderer parent parent_dom) child_dom
-                (visible_child_index renderer parent index))
+              let container =
+                dom_child_container renderer parent parent_dom
+              in
+              Util.insert_dom_child container child_dom
+                (visible_child_index renderer ~container parent index))
       | Some Toast ->
           W.Element.appendChild (W.Element.asNode child_dom)
             renderer.web_toast_viewport
@@ -225,9 +232,11 @@ let insert_child_dom renderer previous_nodes parent child index =
           W.Element.appendChild (W.Element.asNode child_dom)
             (Util.document_body renderer)
       | _ ->
-          Util.insert_dom_child
-            (dom_child_container renderer parent parent_dom) child_dom
-            (visible_child_index renderer parent index))
+          let container =
+            dom_child_container renderer parent parent_dom
+          in
+          Util.insert_dom_child container child_dom
+            (visible_child_index renderer ~container parent index))
 
 let apply_insert_child renderer previous_nodes parent child index =
   insert_child_dom renderer previous_nodes parent child index;
@@ -365,7 +374,7 @@ let apply_move_child renderer previous_nodes parent child index =
       W.Element.appendChild (W.Element.asNode child_node) parent_node
     else
       Util.insert_dom_child parent_node child_node
-        (visible_child_index renderer parent index)
+        (visible_child_index renderer ~container:parent_node parent index)
   end;
   Lui_web_split.update_split renderer parent;
   refresh_structured_children renderer parent;
