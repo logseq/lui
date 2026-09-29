@@ -619,9 +619,9 @@ let set_tooltip_open renderer node open_flag =
     ignore (Lui_web_position.position_tooltip renderer node);
     Webapi.requestAnimationFrame (fun _time ->
         match Store.node renderer.web_store node with
-        | Some _current ->
+        | Some current when current.retained_parent <> None ->
             ignore (Lui_web_position.position_tooltip renderer node)
-        | None -> ())
+        | _ -> ())
   end
   else begin
     ignore (begin_popup_close tooltip);
