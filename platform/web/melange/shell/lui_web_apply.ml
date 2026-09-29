@@ -440,8 +440,10 @@ let apply_dom_op renderer previous_nodes children_of operation =
             current.platform_node
       | None -> ())
   | DropNode node ->
-      Ext.cleanup_extension_node renderer previous_nodes node;
-      cleanup_node renderer node
+      if known_node renderer previous_nodes node then begin
+        Ext.cleanup_extension_node renderer previous_nodes node;
+        cleanup_node renderer node
+      end
   | SetProp (node, property, value) ->
       apply_set_prop renderer node property value
   | RemoveProp (node, property) -> apply_remove_prop renderer node property
@@ -468,7 +470,6 @@ let apply_dom_op renderer previous_nodes children_of operation =
       then
         apply_move_child renderer previous_nodes children_of parent
           child index
-
 (* DOM ops run after the whole store batch has landed, so
    `retained_children` already reflects every op in the batch; sibling ops
    earlier in the batch need the children list as of their own position,
