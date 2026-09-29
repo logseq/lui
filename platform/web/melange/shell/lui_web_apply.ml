@@ -75,26 +75,23 @@ let child_counted_in_container child container =
   | Some actual -> actual == container
   | None -> false
 
-let visible_child_index renderer ~container parent index =
-  match Store.node renderer.web_store parent with
-  | None -> index
-  | Some current ->
-      let rec loop children source_index result =
-        if source_index >= index then result
-        else
-          match children with
-          | [] -> result
-          | child :: rest ->
-              let counted =
-                match Store.node renderer.web_store child with
-                | Some child_node ->
-                    child_counted_in_container child_node container
-                | None -> false
-              in
-              loop rest (source_index + 1)
-                (if counted then result + 1 else result)
-      in
-      loop current.retained_children 0 0
+let visible_child_index renderer ~container ~children index =
+  let rec loop children source_index result =
+    if source_index >= index then result
+    else
+      match children with
+      | [] -> result
+      | child :: rest ->
+          let counted =
+            match Store.node renderer.web_store child with
+            | Some child_node ->
+                child_counted_in_container child_node container
+            | None -> false
+          in
+          loop rest (source_index + 1)
+            (if counted then result + 1 else result)
+  in
+  loop children 0 0
 
 let focused_descendant renderer dom_node =
   let document =
@@ -189,7 +186,8 @@ let mount_inserted_child renderer child current =
       Lui_web_overlay.mount_toast renderer child current.platform_node
   | _ -> ()
 
-let insert_child_dom renderer previous_nodes parent child index =
+let insert_child_dom renderer previous_nodes children_of parent child
+    index =
   let parent_dom = Nodes.dom_node_before renderer previous_nodes parent in
   let child_dom = Nodes.dom_node_before renderer previous_nodes child in
   match Store.node renderer.web_store child with
@@ -214,7 +212,8 @@ let insert_child_dom renderer previous_nodes parent child index =
                 dom_child_container renderer parent parent_dom
               in
               Util.insert_dom_child container child_dom
-                (visible_child_index renderer ~container parent index))
+                (visible_child_index renderer ~container
+                   ~children:(children_of parent) index))
       | Some Toast ->
           W.Element.appendChild (W.Element.asNode child_dom)
             renderer.web_toast_viewport
@@ -237,10 +236,12 @@ let insert_child_dom renderer previous_nodes parent child index =
             dom_child_container renderer parent parent_dom
           in
           Util.insert_dom_child container child_dom
-            (visible_child_index renderer ~container parent index))
+            (visible_child_index renderer ~container
+               ~children:(children_of parent) index))
 
-let apply_insert_child renderer previous_nodes parent child index =
-  insert_child_dom renderer previous_nodes parent child index;
+let apply_insert_child renderer previous_nodes children_of parent child
+    index =
+  insert_child_dom renderer previous_nodes children_of parent child index;
   Lui_web_split.update_split renderer parent;
   Lui_web_focus.refresh_button_context renderer child;
   Lui_web_split.update_split renderer parent;
@@ -339,7 +340,8 @@ let move_bottom_tab renderer parent child index =
       Util.insert_dom_child bar trigger index
   | None -> ()
 
-let apply_move_child renderer previous_nodes parent child index =
+let apply_move_child renderer previous_nodes children_of parent child
+    index =
   let dropdown = prev_kind_is previous_nodes child DropdownMenu in
   let modal = prev_modal previous_nodes child in
   let tooltip = prev_anchored_tooltip previous_nodes child in
@@ -380,7 +382,8 @@ let apply_move_child renderer previous_nodes parent child index =
       W.Element.appendChild (W.Element.asNode child_node) parent_node
     else
       Util.insert_dom_child parent_node child_node
-        (visible_child_index renderer ~container:parent_node parent index)
+        (visible_child_index renderer ~container:parent_node
+           ~children:(children_of parent) index)
   end;
   Lui_web_split.update_split renderer parent;
   refresh_structured_children renderer parent;
@@ -422,7 +425,7 @@ let known_node renderer previous_nodes node =
   | Some _ -> true
   | None -> prev_node previous_nodes node <> None
 
-let apply_dom_op renderer previous_nodes operation =
+let apply_dom_op renderer previous_nodes children_of operation =
   match operation with
   | CreateNode (node, kind) ->
       if Store.node renderer.web_store node <> None then
@@ -447,7 +450,9 @@ let apply_dom_op renderer previous_nodes operation =
       if
         known_node renderer previous_nodes parent
         && known_node renderer previous_nodes child
-      then apply_insert_child renderer previous_nodes parent child index
+      then
+        apply_insert_child renderer previous_nodes children_of parent
+          child index
   | RemoveChild (parent, child) ->
       if
         known_node renderer previous_nodes parent
@@ -457,12 +462,63 @@ let apply_dom_op renderer previous_nodes operation =
       if
         known_node renderer previous_nodes parent
         && known_node renderer previous_nodes child
-      then apply_move_child renderer previous_nodes parent child index
+      then
+        apply_move_child renderer previous_nodes children_of parent
+          child index
 
+(* DOM ops run after the whole store batch has landed, so
+   `retained_children` already reflects every op in the batch; sibling ops
+   earlier in the batch need the children list as of their own position,
+   so structural ops replay onto a shadow seeded from the pre-batch
+   snapshot *)
 let apply_dom_batch renderer previous_nodes batch =
+  let shadow = Hashtbl.create 16 in
+  let children_of parent =
+    match Hashtbl.find_opt shadow parent with
+    | Some children -> children
+    | None ->
+        let children =
+          match prev_node previous_nodes parent with
+          | Some node -> node.retained_children
+          | None -> []
+        in
+        Hashtbl.replace shadow parent children;
+        children
+  in
+  let shadow_insert children index child =
+    let rec loop position rest acc =
+      match rest with
+      | [] -> List.rev (child :: acc)
+      | _ when position = index -> List.rev_append acc (child :: rest)
+      | head :: tail -> loop (position + 1) tail (head :: acc)
+    in
+    loop 0 children []
+  in
+  let mirror operation =
+    match operation with
+    | InsertChild (parent, child, index) ->
+        Hashtbl.replace shadow parent
+          (shadow_insert (children_of parent) index child)
+    | RemoveChild (parent, child) ->
+        Hashtbl.replace shadow parent
+          (List.filter
+             (fun other -> other <> child)
+             (children_of parent))
+    | MoveChild (parent, child, index) ->
+        let without =
+          List.filter
+            (fun other -> other <> child)
+            (children_of parent)
+        in
+        Hashtbl.replace shadow parent
+          (shadow_insert without index child)
+    | _ -> ()
+  in
   List.iter
     (fun operation ->
-       try apply_dom_op renderer previous_nodes operation
+       mirror operation;
+       try
+         apply_dom_op renderer previous_nodes children_of operation
        with Invalid_argument msg ->
          invalid_arg
            (Printf.sprintf "op %s: %s" (Lui_wire.encode_op operation) msg))
