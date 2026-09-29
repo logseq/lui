@@ -25,6 +25,7 @@ type node_kind =
   | RadioGroup
   | Radio
   | Slider
+  | NumberStepper
   | TextField
   | SecureField
   | Input
@@ -177,6 +178,11 @@ type property =
   | ResizeOrigin
   | ThemeValue
   | ThemeMode
+  | MinValue
+  | MaxValue
+  | StepValue
+  | Detents
+  | Sizing
   | PathValue
   | UrlValue
   | MaxPixelSize

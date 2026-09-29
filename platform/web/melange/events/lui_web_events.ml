@@ -192,6 +192,26 @@ let attach_slider_event renderer node dom_node =
                (Util.text_control_node dom_node))))
     dom_node
 
+let attach_number_stepper_event renderer node dom_node =
+  let input = Util.child_element dom_node 0 in
+  W.Element.addEventListener "input"
+    (fun _event ->
+       let raw =
+         W.HtmlInputElement.valueAsNumber (Util.text_control_node dom_node)
+       in
+       (* Clearing the field reports NaN; only finite values in range emit. *)
+       if Float.is_finite raw then begin
+         let minimum = Store.float_property renderer node MinValue 0.0 in
+         let maximum =
+           Store.float_property renderer node MaxValue Float.max_float
+         in
+         emit renderer
+           (ValueChanged
+              (node,
+               Float.min (Float.max raw minimum) (Float.max minimum maximum)))
+       end)
+    input
+
 let attach_accordion_event renderer node dom_node =
   W.Element.addEventListener "click"
     (fun event ->
@@ -459,6 +479,7 @@ let attach_events renderer node kind dom_node =
       attach_toggle_event renderer node kind dom_node
   | Radio -> attach_radio_event renderer node dom_node
   | Slider -> attach_slider_event renderer node dom_node
+  | NumberStepper -> attach_number_stepper_event renderer node dom_node
   | Split -> ignore (Lui_web_split.attach_split_events renderer node dom_node)
   | Tabs | ButtonGroup | ToggleGroup | Breadcrumb | Pagination ->
       ignore (Lui_web_focus.attach_horizontal_focus renderer node kind dom_node)
@@ -470,6 +491,7 @@ let attach_text_events_bang = attach_text_events
 let attach_toggle_event_bang = attach_toggle_event
 let attach_radio_event_bang = attach_radio_event
 let attach_slider_event_bang = attach_slider_event
+let attach_number_stepper_event_bang = attach_number_stepper_event
 let attach_list_item_events_bang = attach_list_item_events
 let attach_pressable_text_events_bang = attach_pressable_text_events
 let attach_accordion_event_bang = attach_accordion_event

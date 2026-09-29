@@ -29,6 +29,7 @@ enum class NodeKind {
   RadioGroup,
   Radio,
   Slider,
+  NumberStepper,
   TextField,
   SecureField,
   Input,
@@ -160,6 +161,11 @@ enum class Property {
   ResizeOrigin,
   ThemeValue,
   ThemeMode,
+  MinValue,
+  MaxValue,
+  StepValue,
+  Detents,
+  Sizing,
   PathValue,
   UrlValue,
   MaxPixelSize,
@@ -193,6 +199,7 @@ inline const char *nodeKindWireName(NodeKind kind) {
     case NodeKind::RadioGroup: return "radio-group";
     case NodeKind::Radio: return "radio";
     case NodeKind::Slider: return "slider";
+    case NodeKind::NumberStepper: return "number-stepper";
     case NodeKind::TextField: return "text-field";
     case NodeKind::SecureField: return "secure-field";
     case NodeKind::Input: return "input";
@@ -276,6 +283,7 @@ inline bool decodeNodeKind(const char *name, NodeKind *kind) {
   if (std::strcmp(name, "radio-group") == 0) { *kind = NodeKind::RadioGroup; return true; }
   if (std::strcmp(name, "radio") == 0) { *kind = NodeKind::Radio; return true; }
   if (std::strcmp(name, "slider") == 0) { *kind = NodeKind::Slider; return true; }
+  if (std::strcmp(name, "number-stepper") == 0) { *kind = NodeKind::NumberStepper; return true; }
   if (std::strcmp(name, "text-field") == 0) { *kind = NodeKind::TextField; return true; }
   if (std::strcmp(name, "secure-field") == 0) { *kind = NodeKind::SecureField; return true; }
   if (std::strcmp(name, "input") == 0) { *kind = NodeKind::Input; return true; }
@@ -418,6 +426,7 @@ inline const char *nodeKindComponentName(NodeKind kind) {
     case NodeKind::RadioGroup: return "LuiRadioGroup.qml";
     case NodeKind::Radio: return "LuiRadio.qml";
     case NodeKind::Slider: return "LuiSlider.qml";
+    case NodeKind::NumberStepper: return "LuiNumberStepper.qml";
     case NodeKind::TextField: return "LuiTextField.qml";
     case NodeKind::SecureField: return "LuiSecureField.qml";
     case NodeKind::Input: return "LuiInput.qml";
@@ -552,6 +561,11 @@ inline const char *propertyWireName(Property property) {
     case Property::ResizeOrigin: return "resize-origin";
     case Property::ThemeValue: return "theme";
     case Property::ThemeMode: return "theme-mode";
+    case Property::MinValue: return "min";
+    case Property::MaxValue: return "max";
+    case Property::StepValue: return "step";
+    case Property::Detents: return "detents";
+    case Property::Sizing: return "sizing";
     case Property::PathValue: return "path";
     case Property::UrlValue: return "url";
     case Property::MaxPixelSize: return "max-pixel-size";
@@ -636,6 +650,11 @@ inline bool decodePropertyWireName(const char *name, Property *property) {
   if (std::strcmp(name, "resize-origin") == 0) { *property = Property::ResizeOrigin; return true; }
   if (std::strcmp(name, "theme") == 0) { *property = Property::ThemeValue; return true; }
   if (std::strcmp(name, "theme-mode") == 0) { *property = Property::ThemeMode; return true; }
+  if (std::strcmp(name, "min") == 0) { *property = Property::MinValue; return true; }
+  if (std::strcmp(name, "max") == 0) { *property = Property::MaxValue; return true; }
+  if (std::strcmp(name, "step") == 0) { *property = Property::StepValue; return true; }
+  if (std::strcmp(name, "detents") == 0) { *property = Property::Detents; return true; }
+  if (std::strcmp(name, "sizing") == 0) { *property = Property::Sizing; return true; }
   if (std::strcmp(name, "path") == 0) { *property = Property::PathValue; return true; }
   if (std::strcmp(name, "url") == 0) { *property = Property::UrlValue; return true; }
   if (std::strcmp(name, "max-pixel-size") == 0) { *property = Property::MaxPixelSize; return true; }

@@ -1685,6 +1685,46 @@ val slider :
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_change:(Lui_protocol.event -> unit) -> t list -> t
+val number_stepper :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?columns:int ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?value:float ->
+  ?value_signal:float Signal.signal ->
+  ?min:float ->
+  ?max:float ->
+  ?step:float ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?label:string ->
+  ?enabled:bool ->
+  ?enabled_signal:bool Signal.signal ->
+  ?on_value_changed:(Lui_protocol.event -> unit) -> t list -> t
 val progress :
   ?key:string ->
   ?gap:int ->
@@ -2271,6 +2311,10 @@ val sheet :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
+  ?detents:string ->
+  ?detents_signal:string Signal.signal ->
+  ?sizing:string ->
+  ?sizing_signal:string Signal.signal ->
   ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
 val tooltip :
   ?key:string ->

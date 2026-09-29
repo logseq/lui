@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -1463,12 +1464,22 @@ final class LUIFlutterBackend {
 
   void performValueChange(int node, double value) {
     final state = _requireState(_states, node);
-    if ((state.kind != _NodeKind.slider && state.kind != _NodeKind.split) ||
+    if ((state.kind != _NodeKind.slider &&
+            state.kind != _NodeKind.split &&
+            state.kind != _NodeKind.numberStepper) ||
         state.properties['enabled'] == false ||
         !value.isFinite) {
       throw LUIBackendException('node $node is not an enabled value control');
     }
-    onEvent?.call(LUIEvent.valueChanged(node: node, value: value.clamp(0, 1)));
+    var emitted = value.clamp(0.0, 1.0);
+    if (state.kind == _NodeKind.numberStepper) {
+      final minimum =
+          (state.properties['min'] as num?)?.toDouble() ?? 0.0;
+      final maximum =
+          (state.properties['max'] as num?)?.toDouble() ?? double.maxFinite;
+      emitted = value.clamp(minimum, maximum < minimum ? minimum : maximum);
+    }
+    onEvent?.call(LUIEvent.valueChanged(node: node, value: emitted.toDouble()));
   }
 
   void performDismiss(int node) {
@@ -1583,6 +1594,39 @@ final class LUIFlutterBackend {
         state.kind == _NodeKind.button &&
         state.parent != null &&
         _states[state.parent]?.kind == _NodeKind.tabs;
+    Widget numberStepperView(_NodeState stepperState, bool stepperEnabled, int id) {
+      final step =
+          (stepperState.properties['step'] as num?)?.toDouble() ?? 1.0;
+      final current =
+          (stepperState.properties['value'] as num?)?.toDouble() ?? 0.0;
+      final text = stepperState.properties['text'] as String? ?? '';
+      final a11yLabel =
+          stepperState.properties['accessibility-label'] as String? ?? text;
+      return Semantics(
+        label: a11yLabel,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(child: Text(text)),
+            IconButton(
+              icon: const Icon(Icons.remove),
+              tooltip: 'Decrease',
+              onPressed: stepperEnabled
+                  ? () => performValueChange(id, current - step)
+                  : null,
+            ),
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: 'Increase',
+              onPressed: stepperEnabled
+                  ? () => performValueChange(id, current + step)
+                  : null,
+            ),
+          ],
+        ),
+      );
+    }
+
     Widget textControl({required _NodeKind kind}) {
       final multiline = kind == _NodeKind.textarea;
       final combobox = kind == _NodeKind.combobox;
@@ -2917,6 +2961,7 @@ final class LUIFlutterBackend {
         ),
         onChanged: enabled ? (value) => performValueChange(id, value) : null,
       ),
+      _NodeKind.numberStepper => numberStepperView(state, enabled, id),
       _NodeKind.textField ||
       _NodeKind.secureField ||
       _NodeKind.input ||
@@ -3730,6 +3775,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.switchControl ||
                 kind == _NodeKind.toggle ||
                 kind == _NodeKind.radio ||
+                kind == _NodeKind.numberStepper ||
                 kind == _NodeKind.select ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.menuTrigger ||
@@ -3752,6 +3798,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.toggle ||
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider ||
+                kind == _NodeKind.numberStepper ||
                 kind == _NodeKind.select ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
@@ -3762,7 +3809,20 @@ final class LUIFlutterBackend {
             value.isFinite &&
             (kind == _NodeKind.progress ||
                 kind == _NodeKind.slider ||
+                kind == _NodeKind.numberStepper ||
                 kind == _NodeKind.split),
+      'min' || 'max' =>
+        value is num && value.isFinite && kind == _NodeKind.numberStepper,
+      'step' =>
+        value is num &&
+            value.isFinite &&
+            value > 0 &&
+            kind == _NodeKind.numberStepper,
+      'detents' => value is String && kind == _NodeKind.sheet,
+      'sizing' =>
+        value is String &&
+            const {'form', 'fitted', 'page'}.contains(value) &&
+            kind == _NodeKind.sheet,
       'resize-duration' =>
         value is int && value >= 0 && kind == _NodeKind.split,
       'resize-easing' =>
@@ -3935,6 +3995,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.toggle ||
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider ||
+                kind == _NodeKind.numberStepper ||
                 kind == _NodeKind.spinner ||
                 kind == _NodeKind.icon ||
                 kind == _NodeKind.select ||
@@ -4008,6 +4069,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.pagination ||
                 kind == _NodeKind.radio ||
                 kind == _NodeKind.slider ||
+                kind == _NodeKind.numberStepper ||
                 kind == _NodeKind.avatar ||
                 kind == _NodeKind.image ||
                 kind == _NodeKind.mediaSurface ||
@@ -4085,6 +4147,30 @@ final class LUIFlutterBackend {
         if (label.isEmpty) {
           throw const LUIBackendException(
             'value control requires an accessibility label',
+          );
+        }
+      }
+      if (state.kind == _NodeKind.numberStepper) {
+        final value = state.properties['value'];
+        if (value is! double || !value.isFinite) {
+          throw const LUIBackendException(
+            'number-stepper requires a finite value',
+          );
+        }
+        final text = state.properties['text'] as String? ?? '';
+        final label =
+            state.properties['accessibility-label'] as String? ?? '';
+        if (text.isEmpty && label.isEmpty) {
+          throw const LUIBackendException('number-stepper requires a label');
+        }
+        // min defaults to 0 and max is unbounded; compare the effective
+        // endpoints so a lone negative max still fails.
+        final minimum = (state.properties['min'] as num?)?.toDouble() ?? 0.0;
+        final maximum =
+            (state.properties['max'] as num?)?.toDouble() ?? double.maxFinite;
+        if (minimum > maximum) {
+          throw const LUIBackendException(
+            'number-stepper min must not exceed max',
           );
         }
       }
@@ -4548,6 +4634,7 @@ final class LUIFlutterBackend {
       _NodeKind.toggle,
       _NodeKind.radio,
       _NodeKind.slider,
+      _NodeKind.numberStepper,
       _NodeKind.textField,
       _NodeKind.secureField,
       _NodeKind.input,
@@ -4571,6 +4658,7 @@ final class LUIFlutterBackend {
       _NodeKind.toggle,
       _NodeKind.radio,
       _NodeKind.slider,
+      _NodeKind.numberStepper,
       _NodeKind.textField,
       _NodeKind.secureField,
       _NodeKind.input,
@@ -4902,6 +4990,27 @@ final class LUIFlutterBackend {
     };
   }
 
+  // Parses the `detents` prop into viewport-height fractions
+  // (`medium` = 0.5, `large` = 1.0, or a literal fraction in (0, 1]).
+  // Unknown tokens are ignored; returns null when nothing parses.
+  static List<double>? _sheetDetentFractions(String? detents) {
+    if (detents == null) return null;
+    final fractions = detents
+        .split(',')
+        .map((token) {
+          final trimmed = token.trim();
+          if (trimmed == 'medium') return 0.5;
+          if (trimmed == 'large') return 1.0;
+          final fraction = double.tryParse(trimmed);
+          return fraction != null && fraction > 0 && fraction <= 1
+              ? fraction
+              : null;
+        })
+        .nonNulls
+        .toList(growable: false);
+    return fractions.isEmpty ? null : fractions;
+  }
+
   Widget _modalSurface(BuildContext context, int node) {
     final state = _requireState(_states, node);
     final width = (state.properties['width'] as int?)?.toDouble();
@@ -4915,12 +5024,44 @@ final class LUIFlutterBackend {
           child: _modalSurfaceBody(context, state),
         ),
       ),
-      _NodeKind.sheet => SizedBox(
-        key: ValueKey('lui-sheet-surface-$node'),
-        width: width ?? double.infinity,
-        height: height,
-        child: SafeArea(child: _modalSurfaceBody(context, state)),
-      ),
+      _NodeKind.sheet => () {
+        // Approximate iOS presentation options: detents cap/choose the
+        // sheet height fraction (medium 0.5, large 1.0, or a literal
+        // fraction); sizing constrains width (form/fitted ~560px, page
+        // full width). The bottom sheet always opens at the first detent.
+        final size = MediaQuery.of(context).size;
+        final fractions = _sheetDetentFractions(
+          state.properties['detents'] as String?,
+        );
+        final detentMaxHeight = fractions == null
+            ? null
+            : size.height * fractions.reduce(math.max);
+        final sizingMaxWidth = switch (state.properties['sizing']) {
+          'form' || 'fitted' => 560.0,
+          _ => null,
+        };
+        Widget surface = SizedBox(
+          key: ValueKey('lui-sheet-surface-$node'),
+          width: width ?? double.infinity,
+          height: height ??
+              (fractions == null ? null : size.height * fractions.first),
+          child: SafeArea(child: _modalSurfaceBody(context, state)),
+        );
+        if (detentMaxHeight != null || sizingMaxWidth != null) {
+          surface = Align(
+            alignment: Alignment.bottomCenter,
+            heightFactor: 1.0,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: detentMaxHeight ?? double.infinity,
+                maxWidth: sizingMaxWidth ?? double.infinity,
+              ),
+              child: surface,
+            ),
+          );
+        }
+        return surface;
+      }(),
       _ => throw const LUIBackendException('node is not a modal surface'),
     };
   }

@@ -71,6 +71,8 @@ namespace LUI.WinUI
                     return new RadioButton();
                 case LUINodeKind.Slider:
                     return new Slider { Minimum = 0, Maximum = 1 };
+                case LUINodeKind.NumberStepper:
+                    return new NumberBox { SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline };
                 case LUINodeKind.TextField:
                 case LUINodeKind.Input:
                     return new TextBox();

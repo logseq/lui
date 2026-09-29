@@ -27,6 +27,7 @@ type node_kind =
   | RadioGroup
   | Radio
   | Slider
+  | NumberStepper
   | TextField
   | SecureField
   | Input
@@ -179,6 +180,11 @@ type property =
   | ResizeOrigin
   | ThemeValue
   | ThemeMode
+  | MinValue
+  | MaxValue
+  | StepValue
+  | Detents
+  | Sizing
   | PathValue
   | UrlValue
   | MaxPixelSize
@@ -269,6 +275,7 @@ let context_menu_host_kind kind =
   || kind = Toggle
   || kind = Radio
   || kind = Slider
+  || kind = NumberStepper
   || kind = TextField
   || kind = SecureField
   || kind = Input
@@ -290,6 +297,7 @@ let context_menu_leaf_host_kind kind =
   || kind = Toggle
   || kind = Radio
   || kind = Slider
+  || kind = NumberStepper
   || kind = TextField
   || kind = SecureField
   || kind = Input
@@ -359,6 +367,7 @@ let event_supported kind event =
   | ValueChanged _ ->
     (match kind with
     | Slider
+    | NumberStepper
     | Split -> true
     | _ -> false)
   | Dismiss _ ->
@@ -530,6 +539,9 @@ let icon_name_supported value =
 let theme_mode_supported value =
   value = "system" || value = "light" || value = "dark"
 
+let sizing_supported value =
+  value = "form" || value = "fitted" || value = "page"
+
 let main_alignment_supported value =
   value = "start" || value = "center" || value = "end" || value = "space_between"
 
@@ -620,7 +632,7 @@ let common_property_supported kind property =
     | EdgeInset | Overlay | ViewThatFits
     | Text | Heading | Paragraph | Label | Button | ToggleButton | TextField
     | SecureField | Input | SearchField | Textarea | Checkbox | Toggle | Radio
-    | Slider | Spinner | Icon | Select | Combobox | DropdownMenu | MenuItem
+    | Slider | NumberStepper | Spinner | Icon | Select | Combobox | DropdownMenu | MenuItem
     | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar
     | Link | FileImage -> true
     | _ -> false)
@@ -649,6 +661,7 @@ let common_property_supported kind property =
     || kind = RadioGroup
     || kind = Radio
     || kind = Slider
+    || kind = NumberStepper
     || horizontal_container kind
     || kind = Avatar
     || kind = Image
@@ -675,7 +688,8 @@ let common_property_supported kind property =
   | HeadingLevel -> kind = Heading
   | Checked ->
     kind = Checkbox || kind = SwitchControl || kind = Toggle || kind = Radio
-  | ProgressValue -> kind = Progress || kind = Slider || kind = Split
+  | ProgressValue ->
+    kind = Progress || kind = Slider || kind = NumberStepper || kind = Split
   | OrientationValue ->
     kind = Divider || kind = Tabs || kind = Scroll || kind = ViewThatFits
   | PlacementValue -> kind = Toolbar
@@ -749,6 +763,8 @@ let common_property_supported kind property =
   | RoleValue -> tree_row_kind kind || kind = ListItem
   | TreeLevel | Expanded -> tree_row_kind kind
   | ResizeDuration | ResizeEasing | ResizeOrigin -> kind = Split
+  | MinValue | MaxValue | StepValue -> kind = NumberStepper
+  | Detents | Sizing -> kind = Sheet
   | ThemeValue | ThemeMode -> can_contain_children kind
   | TextValue ->
     (match kind with
@@ -779,6 +795,7 @@ let common_property_supported kind property =
     | TableCell
     | Alert
     | Bubble
+    | NumberStepper
     | StatusBar
     | Link -> true
     | _ -> false)
@@ -796,6 +813,7 @@ let common_property_supported kind property =
     | Toggle
     | Radio
     | Slider
+    | NumberStepper
     | Select
     | Combobox
     | MenuItem
@@ -965,6 +983,11 @@ let property_value_supported property value =
   | ResizeOrigin, FloatValue value -> is_finite value
   | ThemeValue, StringValue _ -> true
   | ThemeMode, StringValue value -> theme_mode_supported value
+  | MinValue, FloatValue value | MaxValue, FloatValue value ->
+    is_finite value
+  | StepValue, FloatValue value -> is_finite value && value > 0.0
+  | Detents, StringValue _ -> true
+  | Sizing, StringValue value -> sizing_supported value
   | PathValue, StringValue _ | UrlValue, StringValue _ -> true
   | MaxPixelSize, IntValue value -> value > 0
   | EdgeValue, StringValue value ->
@@ -1120,6 +1143,21 @@ let node_properties_supported kind properties =
         match Property_map.find_opt ProgressValue properties with
         | Some (FloatValue _) -> true
         | _ -> false
+      else true)
+  && (if kind = NumberStepper then
+        (let text = string_property_or properties TextValue "" in
+         let label = string_property_or properties AccessibilityLabel "" in
+         text <> "" || label <> "")
+        &&
+        (match Property_map.find_opt ProgressValue properties with
+        | Some (FloatValue value) -> is_finite value
+        | _ -> false)
+        &&
+        (* min defaults to 0.0 and max is unbounded; compare endpoints after
+           those defaults so a lone negative max still fails. *)
+        let minimum = float_property properties MinValue 0.0 in
+        let maximum = float_property properties MaxValue Float.max_float in
+        minimum <= maximum
       else true)
   && (if kind = Tree || kind = Toolbar then
         string_property_nonempty properties AccessibilityLabel

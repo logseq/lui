@@ -204,6 +204,8 @@ let apply_text_value renderer node kind dom_node text =
   | Dialog | Sheet ->
       W.Element.setTextContent
         (Util.child_element (Util.child_element dom_node 0) 0) text
+  | NumberStepper ->
+      W.Element.setTextContent (Util.toggle_label_node dom_node) text
   | Avatar ->
       W.Element.setTextContent (Util.child_element dom_node 1) text;
       Widgets.update_avatar renderer node dom_node
@@ -241,7 +243,8 @@ let apply_enabled renderer node kind dom_node enabled =
   end
   else begin
     let control_node =
-      if Store.direct_toggle kind then Util.child_element dom_node 0
+      if Store.direct_toggle kind || kind = NumberStepper then
+        Util.child_element dom_node 0
       else if kind = Combobox then Util.child_element dom_node 0
       else dom_node
     in
@@ -300,7 +303,8 @@ let apply_accessibility_label kind dom_node label =
       (Util.child_element dom_node 1)
   else
     W.Element.setAttribute "aria-label" label
-      (if Store.direct_toggle kind then Util.child_element dom_node 0
+      (if Store.direct_toggle kind || kind = NumberStepper then
+         Util.child_element dom_node 0
        else dom_node)
 
 let apply_checked kind dom_node checked =
@@ -536,11 +540,60 @@ let rec apply_property renderer node kind dom_node property value =
       W.Element.setAttribute "aria-level" (string_of_int level) dom_node
   | _ -> apply_secondary_property renderer node kind dom_node property value
 
+(* Sheets honour `detents` (medium|large|fraction list — the largest caps
+   the surface height as a viewport fraction) and `sizing` (form|fitted
+   narrow the surface to a centered column; page stretches full width). *)
+and sheet_detent_max value =
+  String.split_on_char ',' value
+  |> List.fold_left
+       (fun cap token ->
+         match String.trim token with
+         | "medium" -> max cap 0.5
+         | "large" -> max cap 1.0
+         | trimmed ->
+             (match float_of_string_opt trimmed with
+              | Some fraction when fraction > 0.0 && fraction <= 1.0 ->
+                  max cap fraction
+              | _ -> cap))
+       0.0
+
+and apply_sheet_detents dom_node value =
+  let cap = sheet_detent_max value in
+  if cap > 0.0 then
+    set_style dom_node "max-height"
+      (Printf.sprintf "%gdvh" (cap *. 100.0))
+  else
+    set_style dom_node "max-height" ""
+
+and apply_sheet_sizing dom_node value =
+  match value with
+  | "form" | "fitted" ->
+      set_style dom_node "max-width" "560px";
+      set_style dom_node "margin-inline" "auto"
+  | _ ->
+      set_style dom_node "max-width" "";
+      set_style dom_node "margin-inline" ""
+
 and apply_secondary_property renderer node kind dom_node property value =
   match (property, value) with
   | Checked, BoolValue checked -> apply_checked kind dom_node checked
   | ProgressValue, FloatValue value ->
       apply_progress_value renderer node kind dom_node value
+  | MinValue, FloatValue value ->
+      W.Element.setAttribute "min" (Js.Float.toString value)
+        (Util.child_element dom_node 0)
+  | MaxValue, FloatValue value ->
+      W.Element.setAttribute "max" (Js.Float.toString value)
+        (Util.child_element dom_node 0)
+  | StepValue, FloatValue value ->
+      W.Element.setAttribute "step" (Js.Float.toString value)
+        (Util.child_element dom_node 0)
+  | Detents, StringValue value ->
+      W.Element.setAttribute "data-detents" value dom_node;
+      if kind = Sheet then apply_sheet_detents dom_node value
+  | Sizing, StringValue value ->
+      W.Element.setAttribute "data-sizing" value dom_node;
+      if kind = Sheet then apply_sheet_sizing dom_node value
   | ResizeDuration, IntValue _duration ->
       Lui_web_split.update_split renderer node
   | ResizeEasing, StringValue _easing ->
@@ -708,8 +761,24 @@ let remove_property renderer node kind dom_node property =
              ""
        | AccessibilityLabel ->
            W.Element.removeAttribute "aria-label"
-             (if Store.direct_toggle kind then Util.child_element dom_node 0
+             (if Store.direct_toggle kind || kind = NumberStepper then
+                Util.child_element dom_node 0
               else dom_node)
+       | MinValue ->
+           W.Element.removeAttribute "min" (Util.child_element dom_node 0)
+       | MaxValue ->
+           W.Element.removeAttribute "max" (Util.child_element dom_node 0)
+       | StepValue ->
+           W.Element.removeAttribute "step" (Util.child_element dom_node 0)
+       | Detents ->
+           W.Element.removeAttribute "data-detents" dom_node;
+           if kind = Sheet then set_style dom_node "max-height" ""
+       | Sizing ->
+           W.Element.removeAttribute "data-sizing" dom_node;
+           if kind = Sheet then begin
+             set_style dom_node "max-width" "";
+             set_style dom_node "margin-inline" ""
+           end
        | UrlValue ->
            W.Element.removeAttribute "href" dom_node;
            W.Element.removeAttribute "target" dom_node

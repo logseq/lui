@@ -847,6 +847,8 @@ private struct LUINodeView: View {
             .disabled(!model.isEnabled)
             .frame(minHeight: minimumTouchHeight)
             )
+        case .numberStepper:
+            return AnyView(LUINumberStepperView(model: model, backend: backend))
         case .progress:
             return AnyView(
                 ProgressView(value: model.progressFraction)
@@ -2444,21 +2446,75 @@ private struct LUITooltipHost<Content: View>: View {
 }
 
 private struct LUIModalPresentationStyle: ViewModifier {
-    let kind: LUINodeKind
+    let model: LUINodeModel
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if LUIModalPresentationPolicy.showsDragIndicator(kind: kind) {
-            content.presentationDragIndicator(.visible)
+        let withDetents = content.presentationDetents(
+            LUIModalPresentationPolicy.detents(for: model)
+        )
+        if #available(iOS 18.0, macOS 15.0, *) {
+            // `sizing` is a best-effort prop: absent or unrecognized values
+            // keep the platform default.
+            switch LUIModalPresentationPolicy.sizing(for: model) {
+            case .form:
+                withDetents.presentationSizing(.form)
+            case .fitted:
+                withDetents.presentationSizing(.fitted)
+            case .page:
+                withDetents.presentationSizing(.page)
+            case nil:
+                withDetents
+            }
         } else {
-            content
+            withDetents
         }
     }
 }
 
+/// `sizing` prop values for `sheet`, mirroring `PresentationSizing` cases.
+enum LUISheetSizing: Equatable {
+    case form
+    case fitted
+    case page
+}
+
+@MainActor
 enum LUIModalPresentationPolicy {
     static func showsDragIndicator(kind: LUINodeKind) -> Bool {
         false
+    }
+
+    /// `detents` is a comma-separated list of `medium`, `large`, or a
+    /// fractional height in (0, 1]. Unknown tokens are ignored; an absent or
+    /// fully-unrecognized value falls back to the default `.large` detent.
+    static func detents(for model: LUINodeModel) -> Set<PresentationDetent> {
+        guard let raw = model.property(.detents)?.stringValue else {
+            return [.large]
+        }
+        let parsed = raw.split(separator: ",").compactMap(detent)
+        return parsed.isEmpty ? [.large] : Set(parsed)
+    }
+
+    private static func detent(_ token: Substring) -> PresentationDetent? {
+        let trimmed = token.trimmingCharacters(in: .whitespaces)
+        switch trimmed {
+        case "medium": return .medium
+        case "large": return .large
+        default:
+            guard let fraction = Double(trimmed),
+                  fraction > 0, fraction <= 1 else { return nil }
+            return .fraction(CGFloat(fraction))
+        }
+    }
+
+    static func sizing(for model: LUINodeModel) -> LUISheetSizing? {
+        switch model.property(.sizing)?.stringValue {
+        case "form": return .form
+        case "fitted": return .fitted
+        case "page": return .page
+        default: return nil
+        }
     }
 }
 
@@ -2469,7 +2525,9 @@ private struct LUIModalSurfaceContent: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        surfaceContent.sheet(item: Binding(
+        surfaceContent
+            .modifier(LUIModalPresentationStyle(model: model))
+            .sheet(item: Binding(
             get: { backend.modalPresentation.nestedSheets[model.id] },
             set: { value in
                 if value == nil,
@@ -3317,6 +3375,29 @@ private struct LUIMediaSurfaceView: View {
                 blue: Double(components[2]) / 255
             )
         }
+    }
+}
+
+private struct LUINumberStepperView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        Stepper(
+            model.text,
+            value: Binding(
+                get: {
+                    min(
+                        max(model.stepperValue, model.stepperRange.lowerBound),
+                        model.stepperRange.upperBound
+                    )
+                },
+                set: { try? backend.performValueChange(node: model.id, value: $0) }
+            ),
+            in: model.stepperRange,
+            step: model.stepperStep
+        )
+        .disabled(!model.isEnabled)
     }
 }
 

@@ -5,6 +5,7 @@
 #include <QSet>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace LUI {
 
@@ -116,7 +117,8 @@ bool treeRowKind(NodeKind kind) {
 bool contextMenuHostKind(NodeKind kind) {
   return oneOf(kind,
                {NodeKind::Button, NodeKind::ToggleButton, NodeKind::Toggle,
-                NodeKind::Radio, NodeKind::Slider, NodeKind::TextField,
+                NodeKind::Radio, NodeKind::Slider, NodeKind::NumberStepper,
+                NodeKind::TextField,
                 NodeKind::SecureField, NodeKind::Input, NodeKind::SearchField,
                 NodeKind::Textarea, NodeKind::Checkbox, NodeKind::SwitchControl,
                 NodeKind::Select, NodeKind::Combobox, NodeKind::MenuItem,
@@ -127,7 +129,8 @@ bool contextMenuHostKind(NodeKind kind) {
 bool contextMenuLeafHostKind(NodeKind kind) {
   return oneOf(kind,
                {NodeKind::Button, NodeKind::ToggleButton, NodeKind::Toggle,
-                NodeKind::Radio, NodeKind::Slider, NodeKind::TextField,
+                NodeKind::Radio, NodeKind::Slider, NodeKind::NumberStepper,
+                NodeKind::TextField,
                 NodeKind::SecureField, NodeKind::Input, NodeKind::SearchField,
                 NodeKind::Textarea, NodeKind::Checkbox, NodeKind::SwitchControl,
                 NodeKind::Select, NodeKind::Combobox, NodeKind::MenuItem,
@@ -271,7 +274,8 @@ bool eventSupported(NodeKind kind, Event event) {
   case Event::Change:
     return kind == NodeKind::Radio;
   case Event::ValueChanged:
-    return kind == NodeKind::Slider || kind == NodeKind::Split;
+    return kind == NodeKind::Slider || kind == NodeKind::NumberStepper ||
+           kind == NodeKind::Split;
   case Event::Dismiss:
     return oneOf(kind, {NodeKind::Select, NodeKind::Combobox,
                         NodeKind::DropdownMenu, NodeKind::Toast,
@@ -423,7 +427,8 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                   NodeKind::TextField, NodeKind::SecureField, NodeKind::Input,
                   NodeKind::SearchField, NodeKind::Textarea,
                   NodeKind::Checkbox, NodeKind::Toggle, NodeKind::Radio,
-                  NodeKind::Slider, NodeKind::Spinner, NodeKind::Icon,
+                  NodeKind::Slider, NodeKind::NumberStepper,
+                  NodeKind::Spinner, NodeKind::Icon,
                   NodeKind::Select, NodeKind::Combobox,
                   NodeKind::DropdownMenu, NodeKind::MenuItem,
                   NodeKind::ListItem, NodeKind::TableCell,
@@ -450,7 +455,8 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                         NodeKind::SearchField, NodeKind::Textarea,
                         NodeKind::Checkbox, NodeKind::SwitchControl,
                         NodeKind::Toggle, NodeKind::RadioGroup,
-                        NodeKind::Radio, NodeKind::Slider, NodeKind::Avatar,
+                        NodeKind::Radio, NodeKind::Slider,
+                        NodeKind::NumberStepper, NodeKind::Avatar,
                         NodeKind::Image, NodeKind::MediaSurface,
                         NodeKind::Tree, NodeKind::Resizable, NodeKind::Split,
                         NodeKind::Drawer, NodeKind::Alert, NodeKind::Bubble,
@@ -470,8 +476,8 @@ bool commonPropertySupported(NodeKind kind, Property property) {
     return oneOf(kind, {NodeKind::Checkbox, NodeKind::SwitchControl,
                         NodeKind::Toggle, NodeKind::Radio});
   case Property::ProgressValue:
-    return oneOf(kind,
-                 {NodeKind::Progress, NodeKind::Slider, NodeKind::Split});
+    return oneOf(kind, {NodeKind::Progress, NodeKind::Slider,
+                        NodeKind::NumberStepper, NodeKind::Split});
   case Property::OrientationValue:
     return oneOf(kind,
                  {NodeKind::Divider, NodeKind::Tabs, NodeKind::Scroll,
@@ -577,7 +583,7 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                   NodeKind::Avatar, NodeKind::Dialog, NodeKind::Drawer,
                   NodeKind::Sheet, NodeKind::Tooltip, NodeKind::TableCell,
                   NodeKind::Alert, NodeKind::Bubble, NodeKind::StatusBar,
-                  NodeKind::Link});
+                  NodeKind::NumberStepper, NodeKind::Link});
   case Property::Enabled:
     return oneOf(kind,
                  {NodeKind::Button, NodeKind::ToggleButton,
@@ -585,7 +591,8 @@ bool commonPropertySupported(NodeKind kind, Property property) {
                   NodeKind::SearchField, NodeKind::Textarea,
                   NodeKind::Checkbox, NodeKind::SwitchControl,
                   NodeKind::Toggle, NodeKind::Radio, NodeKind::Slider,
-                  NodeKind::Select, NodeKind::Combobox, NodeKind::MenuItem,
+                  NodeKind::NumberStepper, NodeKind::Select,
+                  NodeKind::Combobox, NodeKind::MenuItem,
                   NodeKind::ListItem, NodeKind::Drawer, NodeKind::BottomTab,
                   NodeKind::Link});
   case Property::ActiveIndex:
@@ -596,6 +603,13 @@ bool commonPropertySupported(NodeKind kind, Property property) {
     return false;
   case Property::TitleValue:
     return kind == NodeKind::BottomTab;
+  case Property::MinValue:
+  case Property::MaxValue:
+  case Property::StepValue:
+    return kind == NodeKind::NumberStepper;
+  case Property::Detents:
+  case Property::Sizing:
+    return kind == NodeKind::Sheet;
   case Property::Gap:
     return oneOf(kind, {NodeKind::Row, NodeKind::Column, NodeKind::Grid,
                         NodeKind::ListContainer, NodeKind::VirtualList,
@@ -839,6 +853,16 @@ bool propertyValueSupported(Property property, const QVariant &value) {
   case Property::ThemeMode:
     return isString(value) &&
            inSet(value.toString(), {"system", "light", "dark"});
+  case Property::MinValue:
+  case Property::MaxValue:
+    return isNumeric(value);
+  case Property::StepValue:
+    return isNumeric(value) && value.toDouble() > 0.0;
+  case Property::Detents:
+    return isString(value);
+  case Property::Sizing:
+    return isString(value) &&
+           inSet(value.toString(), {"form", "fitted", "page"});
   case Property::EdgeValue:
     return isString(value) &&
            inSet(value.toString(), {"top", "bottom", "leading", "trailing"});
@@ -980,6 +1004,22 @@ bool nodePropertiesSupported(NodeKind kind, const QVariantMap &properties) {
   if (kind == NodeKind::Slider || kind == NodeKind::Progress) {
     const QVariant value = properties.value(QStringLiteral("value"));
     if (!isNumeric(value)) return false;
+  }
+  if (kind == NodeKind::NumberStepper) {
+    if (!isNumeric(properties.value(QStringLiteral("value")))) return false;
+    if (!stringPropertyNonempty(properties, "text") &&
+        !stringPropertyNonempty(properties, "accessibility-label")) {
+      return false;
+    }
+    // min defaults to 0 and max is unbounded; compare the effective
+    // endpoints so a lone negative max still fails.
+    const QVariant minimum = properties.value(QStringLiteral("min"));
+    const QVariant maximum = properties.value(QStringLiteral("max"));
+    const double minimumValue =
+        isNumeric(minimum) ? minimum.toDouble() : 0.0;
+    const double maximumValue = isNumeric(maximum)
+        ? maximum.toDouble() : std::numeric_limits<double>::max();
+    if (minimumValue > maximumValue) return false;
   }
   if (kind == NodeKind::Tree || kind == NodeKind::Toolbar) {
     if (!stringPropertyNonempty(properties, "accessibility-label")) {

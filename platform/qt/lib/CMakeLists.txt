@@ -75,6 +75,7 @@ qt_add_qml_module(lui_qml
         ../qml/LuiMediaSurface.qml
         ../qml/LuiMenuItem.qml
         ../qml/LuiNodeView.qml
+        ../qml/LuiNumberStepper.qml
         ../qml/LuiOverlay.qml
         ../qml/LuiPagination.qml
         ../qml/LuiPanel.qml

@@ -45,6 +45,7 @@ namespace LUI
                 case LUINodeKind.Toggle:
                 case LUINodeKind.Radio:
                 case LUINodeKind.Slider:
+                case LUINodeKind.NumberStepper:
                 case LUINodeKind.TextField:
                 case LUINodeKind.SecureField:
                 case LUINodeKind.Input:
@@ -74,6 +75,7 @@ namespace LUI
                 case LUINodeKind.Toggle:
                 case LUINodeKind.Radio:
                 case LUINodeKind.Slider:
+                case LUINodeKind.NumberStepper:
                 case LUINodeKind.TextField:
                 case LUINodeKind.SecureField:
                 case LUINodeKind.Input:
@@ -204,7 +206,9 @@ namespace LUI
                 case LUIEventKind.Change:
                     return kind == LUINodeKind.Radio;
                 case LUIEventKind.ValueChanged:
-                    return kind == LUINodeKind.Slider || kind == LUINodeKind.Split;
+                    return kind == LUINodeKind.Slider ||
+                        kind == LUINodeKind.NumberStepper ||
+                        kind == LUINodeKind.Split;
                 case LUIEventKind.Dismiss:
                     switch (kind)
                     {
@@ -471,6 +475,7 @@ namespace LUI
                         case LUINodeKind.Toggle:
                         case LUINodeKind.Radio:
                         case LUINodeKind.Slider:
+                        case LUINodeKind.NumberStepper:
                         case LUINodeKind.Spinner:
                         case LUINodeKind.Icon:
                         case LUINodeKind.Select:
@@ -518,6 +523,7 @@ namespace LUI
                         kind == LUINodeKind.RadioGroup ||
                         kind == LUINodeKind.Radio ||
                         kind == LUINodeKind.Slider ||
+                        kind == LUINodeKind.NumberStepper ||
                         HorizontalContainer(kind) ||
                         kind == LUINodeKind.Avatar ||
                         kind == LUINodeKind.Image ||
@@ -552,6 +558,7 @@ namespace LUI
                 case LUIProperty.ProgressValue:
                     return kind == LUINodeKind.Progress ||
                         kind == LUINodeKind.Slider ||
+                        kind == LUINodeKind.NumberStepper ||
                         kind == LUINodeKind.Split;
                 case LUIProperty.OrientationValue:
                     return kind == LUINodeKind.Divider ||
@@ -676,6 +683,13 @@ namespace LUI
                 case LUIProperty.ResizeEasing:
                 case LUIProperty.ResizeOrigin:
                     return kind == LUINodeKind.Split;
+                case LUIProperty.MinValue:
+                case LUIProperty.MaxValue:
+                case LUIProperty.StepValue:
+                    return kind == LUINodeKind.NumberStepper;
+                case LUIProperty.Detents:
+                case LUIProperty.Sizing:
+                    return kind == LUINodeKind.Sheet;
                 case LUIProperty.ThemeValue:
                 case LUIProperty.ThemeMode:
                     return CanContainChildren(kind);
@@ -713,6 +727,7 @@ namespace LUI
                         case LUINodeKind.Drawer:
                         case LUINodeKind.Sheet:
                         case LUINodeKind.Tooltip:
+                        case LUINodeKind.NumberStepper:
                         case LUINodeKind.TableCell:
                         case LUINodeKind.Alert:
                         case LUINodeKind.Bubble:
@@ -737,6 +752,7 @@ namespace LUI
                         case LUINodeKind.Toggle:
                         case LUINodeKind.Radio:
                         case LUINodeKind.Slider:
+                        case LUINodeKind.NumberStepper:
                         case LUINodeKind.Select:
                         case LUINodeKind.Combobox:
                         case LUINodeKind.MenuItem:
@@ -1124,6 +1140,27 @@ namespace LUI
                         (text.Value == "system" || text.Value == "light" ||
                          text.Value == "dark");
                 }
+                case LUIProperty.MinValue:
+                case LUIProperty.MaxValue:
+                {
+                    return value is LUIWireValue.Float number &&
+                        IsFinite(number.Value);
+                }
+                case LUIProperty.StepValue:
+                {
+                    return value is LUIWireValue.Float stepValue &&
+                        IsFinite(stepValue.Value) && stepValue.Value > 0.0;
+                }
+                case LUIProperty.Detents:
+                {
+                    return value is LUIWireValue.String;
+                }
+                case LUIProperty.Sizing:
+                {
+                    return value is LUIWireValue.String sizing &&
+                        (sizing.Value == "form" || sizing.Value == "fitted" ||
+                         sizing.Value == "page");
+                }
                 case LUIProperty.PathValue:
                 case LUIProperty.UrlValue:
                 {
@@ -1404,6 +1441,37 @@ namespace LUI
                 if (!properties.TryGetValue(
                         LUIProperty.ProgressValue, out LUIWireValue? progress) ||
                     progress is not LUIWireValue.Float)
+                {
+                    return false;
+                }
+            }
+            if (kind == LUINodeKind.NumberStepper)
+            {
+                if (!properties.TryGetValue(
+                        LUIProperty.ProgressValue,
+                        out LUIWireValue? stepperValue) ||
+                    stepperValue is not LUIWireValue.Float)
+                {
+                    return false;
+                }
+                if (!StringPropertyNonempty(
+                        properties, LUIProperty.TextValue) &&
+                    !StringPropertyNonempty(
+                        properties, LUIProperty.AccessibilityLabel))
+                {
+                    return false;
+                }
+                // min defaults to 0.0 and max is unbounded; compare the
+                // effective endpoints so a lone negative max still fails.
+                double stepperMinimum = properties.TryGetValue(
+                        LUIProperty.MinValue, out LUIWireValue? minimum) &&
+                    minimum is LUIWireValue.Float minFloat
+                        ? minFloat.Value : 0.0;
+                double stepperMaximum = properties.TryGetValue(
+                        LUIProperty.MaxValue, out LUIWireValue? maximum) &&
+                    maximum is LUIWireValue.Float maxFloat
+                        ? maxFloat.Value : double.MaxValue;
+                if (stepperMinimum > stepperMaximum)
                 {
                     return false;
                 }

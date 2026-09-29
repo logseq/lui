@@ -973,6 +973,27 @@ let slider ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?p
   mount_children context node children;
   node
 
+let number_stepper ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?value ?value_signal ?min ?max ?step ?text ?text_signal ?label ?enabled ?enabled_signal ?on_value_changed (children : t list) : t =
+ fun context parent ->
+  let node = Lui_ui.create context NumberStepper in
+  apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Option.iter (Lui_ui.float_property context node ProgressValue) value;
+  Option.iter (Lui_ui.float_property_signal context node ProgressValue) value_signal;
+  Option.iter (Lui_ui.float_property context node MinValue) min;
+  Option.iter (Lui_ui.float_property context node MaxValue) max;
+  Option.iter (Lui_ui.float_property context node StepValue) step;
+  Option.iter (Lui_ui.string_property context node TextValue) text;
+  Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
+  Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
+  Option.iter (Lui_ui.bool_property context node Enabled) enabled;
+  Option.iter (Lui_ui.bool_property_signal context node Enabled) enabled_signal;
+  (match on_value_changed with
+   | Some handler -> register_resize context node handler
+   | None -> ());
+  attach context parent node;
+  mount_children context node children;
+  node
+
 let progress ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?value ?value_signal (_children : nothing list) : t =
  fun context parent ->
   let node = Lui_ui.create context Progress in
@@ -1266,12 +1287,16 @@ let dialog ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?p
   mount_children context node children;
   node
 
-let sheet ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?on_dismiss (children : t list) : t =
+let sheet ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?detents ?detents_signal ?sizing ?sizing_signal ?on_dismiss (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.sheet context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
   Option.iter (Lui_ui.string_property context node TextValue) text;
   Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
+  Option.iter (Lui_ui.string_property context node Detents) detents;
+  Option.iter (Lui_ui.string_property_signal context node Detents) detents_signal;
+  Option.iter (Lui_ui.string_property context node Sizing) sizing;
+  Option.iter (Lui_ui.string_property_signal context node Sizing) sizing_signal;
   (match on_dismiss with
    | Some handler -> register_dismiss context node handler
    | None -> ());
