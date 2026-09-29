@@ -304,6 +304,18 @@
     {
       "name": "input-group-actions",
       "status": "supported"
+    },
+    {
+      "name": "link",
+      "status": "supported"
+    },
+    {
+      "name": "file-image",
+      "status": "supported"
+    },
+    {
+      "name": "file-preview",
+      "status": "supported"
     }
   ],
   "nodeKinds": [
@@ -831,6 +843,27 @@
       "dart": "statusBar",
       "swift": "statusBar",
       "container": false
+    },
+    {
+      "lg": "Link",
+      "wire": "link",
+      "dart": "link",
+      "swift": "link",
+      "container": true
+    },
+    {
+      "lg": "FileImage",
+      "wire": "file-image",
+      "dart": "fileImage",
+      "swift": "fileImage",
+      "container": false
+    },
+    {
+      "lg": "FilePreview",
+      "wire": "file-preview",
+      "dart": "filePreview",
+      "swift": "filePreview",
+      "container": false
     }
   ],
   "properties": [
@@ -1200,6 +1233,21 @@
       "swift": "themeMode"
     },
     {
+      "lg": "PathValue",
+      "wire": "path",
+      "swift": "path"
+    },
+    {
+      "lg": "UrlValue",
+      "wire": "url",
+      "swift": "url"
+    },
+    {
+      "lg": "MaxPixelSize",
+      "wire": "max-pixel-size",
+      "swift": "maxPixelSize"
+    },
+    {
       "lg": "EdgeValue",
       "wire": "edge",
       "swift": "edge"
@@ -1357,6 +1405,9 @@
       "enabled",
       "foreground",
       "style-class"
+    ],
+    "file-preview": [
+      "path"
     ]
   },
   "kindExtraProperties": {

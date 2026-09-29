@@ -211,6 +211,8 @@ let apply_text_value renderer node kind dom_node text =
       W.Element.setTextContent
         (Util.child_element dom_node 0)
         (select_display_text renderer node)
+  | Link ->
+      W.Element.setTextContent (Util.child_element dom_node 1) text
   | TextField | SecureField | Input | SearchField | Textarea | Combobox ->
       set_text_control_value dom_node text
   | _ -> set_visible_text kind dom_node text
@@ -621,6 +623,14 @@ and apply_secondary_property renderer node kind dom_node property value =
       W.Element.setAttribute "data-anchor-alignment" alignment dom_node
   | AnchorOffset, FloatValue offset ->
       apply_anchor_offset kind dom_node offset
+  | UrlValue, StringValue url ->
+      W.Element.setAttribute "href" url dom_node;
+      W.Element.setAttribute "target" "_blank" dom_node
+  | PathValue, StringValue path ->
+      W.Element.setAttribute "data-path" path dom_node
+  | MaxPixelSize, IntValue size ->
+      W.Element.setAttribute "data-max-pixel-size" (string_of_int size)
+        dom_node
   | TooltipDelay, IntValue delay ->
       W.Element.setAttribute "data-tooltip-delay"
         (string_of_int delay) dom_node
@@ -700,6 +710,12 @@ let remove_property renderer node kind dom_node property =
            W.Element.removeAttribute "aria-label"
              (if Store.direct_toggle kind then Util.child_element dom_node 0
               else dom_node)
+       | UrlValue ->
+           W.Element.removeAttribute "href" dom_node;
+           W.Element.removeAttribute "target" dom_node
+       | PathValue -> W.Element.removeAttribute "data-path" dom_node
+       | MaxPixelSize ->
+           W.Element.removeAttribute "data-max-pixel-size" dom_node
        | AccessibilityIdentifier -> W.Element.removeAttribute "id" dom_node
        | OrientationValue ->
            if kind = Tabs then begin

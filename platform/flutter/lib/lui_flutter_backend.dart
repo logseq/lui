@@ -1197,6 +1197,8 @@ final class LUIFlutterBackend {
         (state.kind == _NodeKind.column &&
             state.properties['press-enabled'] == true) ||
         (state.kind == _NodeKind.text &&
+            state.properties['press-enabled'] == true) ||
+        (state.kind == _NodeKind.fileImage &&
             state.properties['press-enabled'] == true);
     if (!pressable || state.properties['enabled'] == false) {
       throw LUIBackendException(
@@ -1478,6 +1480,7 @@ final class LUIFlutterBackend {
         state.kind != _NodeKind.combobox &&
         state.kind != _NodeKind.dropdownMenu &&
         state.kind != _NodeKind.toast &&
+        state.kind != _NodeKind.filePreview &&
         !state.kind.isModalSurface) {
       throw LUIBackendException('node $node is not dismissible');
     }
@@ -2975,6 +2978,8 @@ final class LUIFlutterBackend {
         color: foreground,
       ),
       _NodeKind.statusBar => statusBar(),
+      _NodeKind.link => column(),
+      _NodeKind.fileImage || _NodeKind.filePreview => const SizedBox.shrink(),
     };
 
     if (state.kind == _NodeKind.root || state.kind.isModalSurface) {
@@ -3570,6 +3575,9 @@ final class LUIFlutterBackend {
           value is String &&
           _overlayAlignment(value) != null;
     }
+    if (kind == _NodeKind.filePreview) {
+      return property == 'path' && value is String;
+    }
     if (kind == _NodeKind.accordion) {
       return switch (property) {
         'text' => value is String,
@@ -3733,6 +3741,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.bubble ||
                 kind == _NodeKind.statusBar ||
                 kind == _NodeKind.drawer ||
+                kind == _NodeKind.link ||
                 kind.isModalSurface),
       'enabled' =>
         value is bool &&
@@ -3746,7 +3755,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.select ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
-                kind == _NodeKind.drawer),
+                kind == _NodeKind.drawer ||
+                kind == _NodeKind.link),
       'value' =>
         value is double &&
             value.isFinite &&
@@ -3801,11 +3811,12 @@ final class LUIFlutterBackend {
             (_isButtonKind(kind) ||
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.menuTrigger ||
-                kind == _NodeKind.listItem),
+                kind == _NodeKind.listItem ||
+                kind == _NodeKind.link),
       'icon-placement' =>
         value is String &&
-            (value == 'leading' || value == 'trailing') &&
-            _isButtonKind(kind),
+            (value == 'leading' || value == 'trailing' || value == 'top') &&
+            (_isButtonKind(kind) || kind == _NodeKind.link),
       'selected' =>
         value is bool &&
             (_isButtonKind(kind) ||
@@ -3836,6 +3847,7 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.menuItem ||
                 kind == _NodeKind.listItem ||
                 kind == _NodeKind.tableCell ||
+                kind == _NodeKind.fileImage ||
                 _isTreeRowKind(kind)),
       'submit-enabled' =>
         value is bool &&
@@ -3851,6 +3863,10 @@ final class LUIFlutterBackend {
         value is num &&
             value.isFinite &&
             (kind == _NodeKind.avatar || kind == _NodeKind.image),
+      'path' => value is String && kind == _NodeKind.fileImage,
+      'url' => value is String && kind == _NodeKind.link,
+      'max-pixel-size' =>
+        value is int && value > 0 && kind == _NodeKind.fileImage,
       'anchor' =>
         value is String &&
             const {'above', 'below', 'left', 'right'}.contains(value) &&
@@ -3931,7 +3947,9 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.split ||
                 kind == _NodeKind.alert ||
                 kind == _NodeKind.bubble ||
-                kind == _NodeKind.statusBar),
+                kind == _NodeKind.statusBar ||
+                kind == _NodeKind.link ||
+                kind == _NodeKind.fileImage),
       'border-color' =>
         value is String &&
             kind != _NodeKind.avatar &&
@@ -4001,6 +4019,8 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.bubble ||
                 kind == _NodeKind.select ||
                 kind == _NodeKind.menuTrigger ||
+                kind == _NodeKind.link ||
+                kind == _NodeKind.fileImage ||
                 _isTreeRowKind(kind)),
       'text-alignment' =>
         value is String &&
@@ -4308,6 +4328,17 @@ final class LUIFlutterBackend {
           !state.properties.containsKey('surface')) {
         throw const LUIBackendException('media-surface requires surface');
       }
+      if ((state.kind == _NodeKind.fileImage ||
+              state.kind == _NodeKind.filePreview) &&
+          (state.properties['path'] as String? ?? '').isEmpty) {
+        throw LUIBackendException(
+          '${state.kind == _NodeKind.fileImage ? 'file-image' : 'file-preview'} requires a non-empty path',
+        );
+      }
+      if (state.kind == _NodeKind.link &&
+          (state.properties['url'] as String? ?? '').isEmpty) {
+        throw const LUIBackendException('link requires a non-empty url');
+      }
       if (state.kind == _NodeKind.stepper &&
           !state.properties.containsKey('active')) {
         throw const LUIBackendException('stepper requires active');
@@ -4454,6 +4485,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.toolbar ||
       kind == _NodeKind.bottomTabs ||
       kind == _NodeKind.bottomTab ||
+      kind == _NodeKind.link ||
       _isContextMenuLeafHost(kind) ||
       kind == _NodeKind.edgeInset ||
       kind == _NodeKind.overlay ||

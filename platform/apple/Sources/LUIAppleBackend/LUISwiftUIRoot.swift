@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import QuickLook
 import SwiftUI
 #if os(macOS)
 import AppKit
@@ -68,6 +69,37 @@ final class LUIModalPresentationStore {
     }
 }
 
+struct LUIFilePreviewPresentation: Identifiable {
+    let nodeID: Int
+    let rootID: Int
+    let url: URL
+
+    var id: Int { nodeID }
+}
+
+/// Like `LUIModalPresentationStore`, an interactively closed preview stays
+/// mounted on the wire until the reducer consumes the Dismiss event, so a
+/// re-sync in that window must not reassert it.
+@Observable
+@MainActor
+final class LUIFilePreviewStore {
+    private(set) var item: LUIFilePreviewPresentation?
+    private var pendingDismissalID: Int?
+
+    func synchronize(with item: LUIFilePreviewPresentation?) {
+        if let pendingDismissalID, item?.id == pendingDismissalID { return }
+        pendingDismissalID = nil
+        self.item = item
+    }
+
+    func dismissFromPresentation() -> Int? {
+        guard let presentedID = item?.id else { return nil }
+        pendingDismissalID = presentedID
+        item = nil
+        return presentedID
+    }
+}
+
 public struct LUISwiftUIRoot: View {
     private let backend: LUIAppleBackend
     private let rootID: Int
@@ -94,6 +126,7 @@ public struct LUISwiftUIRoot: View {
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
                     .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
             }
+            .quickLookPreview(filePreviewBinding)
             .modifier(LUIDialogPresentationModifier(anchorID: rootID, backend: backend))
     }
 
@@ -114,6 +147,23 @@ public struct LUISwiftUIRoot: View {
             return
         }
         try? backend.performDismiss(node: nodeID)
+    }
+
+    private var filePreviewBinding: Binding<URL?> {
+        Binding(
+            get: {
+                guard let item = backend.filePreviewPresentation.item,
+                      item.rootID == rootID else { return nil }
+                return item.url
+            },
+            set: { url in
+                guard url == nil,
+                      backend.filePreviewPresentation.item?.rootID == rootID,
+                      let nodeID = backend.filePreviewPresentation
+                        .dismissFromPresentation() else { return }
+                try? backend.performDismiss(node: nodeID)
+            }
+        )
     }
 }
 
@@ -140,7 +190,25 @@ public struct LUIModalHostModifier: ViewModifier {
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
                     .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
             }
+            .quickLookPreview(filePreviewBinding)
             .modifier(LUIDialogPresentationModifier(anchorID: rootID, backend: backend))
+    }
+
+    private var filePreviewBinding: Binding<URL?> {
+        Binding(
+            get: {
+                guard let item = backend.filePreviewPresentation.item,
+                      item.rootID == rootID else { return nil }
+                return item.url
+            },
+            set: { url in
+                guard url == nil,
+                      backend.filePreviewPresentation.item?.rootID == rootID,
+                      let nodeID = backend.filePreviewPresentation
+                        .dismissFromPresentation() else { return }
+                try? backend.performDismiss(node: nodeID)
+            }
+        )
     }
 
     private var sheetBinding: Binding<LUIModalPresentation?> {
@@ -550,7 +618,7 @@ private struct LUINodeView: View {
                 content
                     .modifier(LUIAccessibilityModifier(model: model, backend: backend))
                     .modifier(LUIAppearModifier(model: model, backend: backend))
-            } else if model.kind.isModalSurface {
+            } else if model.kind.isModalSurface || model.kind == .filePreview {
                 content
             } else if model.kind == .resizable {
                 content
@@ -718,6 +786,12 @@ private struct LUINodeView: View {
             return AnyView(LUIImageView(model: model, backend: backend))
         case .mediaSurface:
             return AnyView(LUIMediaSurfaceView(model: model, backend: backend))
+        case .link:
+            return AnyView(LUILinkView(model: model, backend: backend))
+        case .fileImage:
+            return AnyView(LUIFileImageView(model: model, backend: backend))
+        case .filePreview:
+            return AnyView(EmptyView())
         case .stepper:
             return AnyView(LUIStepperView(model: model, backend: backend))
         case .step:
@@ -3085,6 +3159,141 @@ private struct LUIImageView: View {
                 .resizable()
         } else {
             Color.clear
+        }
+    }
+}
+
+private struct LUILinkView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    @Environment(\.luiSemanticColors) private var semanticColors
+
+    private var urlString: String {
+        model.property(.url)?.stringValue ?? ""
+    }
+
+    private var tint: Color? {
+        LUIThemeColorResolver.color(
+            model.property(.foreground)?.stringValue,
+            semanticColors: semanticColors
+        )
+    }
+
+    var body: some View {
+        if let url = URL(string: urlString) {
+            Link(destination: url) { label }
+                .tint(tint)
+                .disabled(!model.isEnabled)
+        } else {
+            label
+        }
+    }
+
+    @ViewBuilder
+    private var label: some View {
+        if model.visibleChildren.isEmpty {
+            labelContent
+        } else {
+            ForEach(model.visibleChildren, id: \.self) { childID in
+                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var labelContent: some View {
+        let iconName = model.buttonIconName
+        let text = model.text.isEmpty ? urlString : model.text
+        if iconName.isEmpty {
+            Text(verbatim: text)
+        } else if LUIButtonIconPlacementPolicy.usesVerticalLayout(
+            model.buttonIconPlacement
+        ) {
+            VStack(spacing: 2) {
+                linkIcon(iconName)
+                Text(verbatim: text)
+            }
+        } else if model.buttonIconPlacement == "trailing" {
+            HStack(spacing: 4) {
+                Text(verbatim: text)
+                linkIcon(iconName)
+            }
+        } else {
+            HStack(spacing: 4) {
+                linkIcon(iconName)
+                Text(verbatim: text)
+            }
+        }
+    }
+
+    private func linkIcon(_ name: String) -> some View {
+        LUIIconImage(source: backend.iconSource(for: name), bundle: backend.appIconBundle)
+            .scaledToFit()
+            .frame(width: 14, height: 14)
+    }
+}
+
+private struct LUIFileImageView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    @State private var image: CGImage?
+    @State private var failed = false
+
+    private var path: String {
+        model.property(.path)?.stringValue ?? ""
+    }
+
+    private var maxPixelSize: Int {
+        model.property(.maxPixelSize)?.intValue
+            ?? LUIFileImageLoader.defaultMaxPixelSize
+    }
+
+    @ViewBuilder
+    var body: some View {
+        content
+            .task(id: "\(maxPixelSize)|\(path)") {
+                if let decoded = await LUIFileImageLoader.thumbnail(
+                    path: path,
+                    maxPixelSize: maxPixelSize
+                ) {
+                    image = decoded
+                    failed = false
+                } else {
+                    image = nil
+                    failed = true
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if model.supportsPress {
+            Button {
+                try? backend.performPress(node: model.id)
+            } label: {
+                inner
+            }
+            .buttonStyle(.plain)
+        } else {
+            inner
+        }
+    }
+
+    @ViewBuilder
+    private var inner: some View {
+        if let image {
+            Image(decorative: image, scale: 1)
+                .resizable()
+        } else if failed {
+            LUIIconImage(
+                source: .systemName("photo"),
+                bundle: backend.appIconBundle
+            )
+            .frame(width: 24, height: 24)
+            .foregroundStyle(.secondary)
+        } else {
+            ProgressView()
+                .controlSize(.small)
         }
     }
 }

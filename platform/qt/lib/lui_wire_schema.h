@@ -81,6 +81,9 @@ enum class NodeKind {
   Toast,
   Toolbar,
   StatusBar,
+  Link,
+  FileImage,
+  FilePreview,
 };
 
 enum class Property {
@@ -157,6 +160,9 @@ enum class Property {
   ResizeOrigin,
   ThemeValue,
   ThemeMode,
+  PathValue,
+  UrlValue,
+  MaxPixelSize,
   EdgeValue,
   Visible,
   AlignmentValue,
@@ -239,6 +245,9 @@ inline const char *nodeKindWireName(NodeKind kind) {
     case NodeKind::Toast: return "toast";
     case NodeKind::Toolbar: return "toolbar";
     case NodeKind::StatusBar: return "status-bar";
+    case NodeKind::Link: return "link";
+    case NodeKind::FileImage: return "file-image";
+    case NodeKind::FilePreview: return "file-preview";
   }
   return "unknown";
 }
@@ -319,6 +328,9 @@ inline bool decodeNodeKind(const char *name, NodeKind *kind) {
   if (std::strcmp(name, "toast") == 0) { *kind = NodeKind::Toast; return true; }
   if (std::strcmp(name, "toolbar") == 0) { *kind = NodeKind::Toolbar; return true; }
   if (std::strcmp(name, "status-bar") == 0) { *kind = NodeKind::StatusBar; return true; }
+  if (std::strcmp(name, "link") == 0) { *kind = NodeKind::Link; return true; }
+  if (std::strcmp(name, "file-image") == 0) { *kind = NodeKind::FileImage; return true; }
+  if (std::strcmp(name, "file-preview") == 0) { *kind = NodeKind::FilePreview; return true; }
   return false;
 }
 
@@ -373,6 +385,7 @@ inline bool containerNodeKind(NodeKind kind) {
     case NodeKind::Sheet:
     case NodeKind::Toast:
     case NodeKind::Toolbar:
+    case NodeKind::Link:
     return true;
     default:
     return false;
@@ -457,6 +470,9 @@ inline const char *nodeKindComponentName(NodeKind kind) {
     case NodeKind::Toast: return "LuiToast.qml";
     case NodeKind::Toolbar: return "LuiToolbar.qml";
     case NodeKind::StatusBar: return "LuiStatusBar.qml";
+    case NodeKind::Link: return "LuiLink.qml";
+    case NodeKind::FileImage: return "LuiFileImage.qml";
+    case NodeKind::FilePreview: return "LuiFilePreview.qml";
   }
   return "LuiBox.qml";
 }
@@ -536,6 +552,9 @@ inline const char *propertyWireName(Property property) {
     case Property::ResizeOrigin: return "resize-origin";
     case Property::ThemeValue: return "theme";
     case Property::ThemeMode: return "theme-mode";
+    case Property::PathValue: return "path";
+    case Property::UrlValue: return "url";
+    case Property::MaxPixelSize: return "max-pixel-size";
     case Property::EdgeValue: return "edge";
     case Property::Visible: return "visible";
     case Property::AlignmentValue: return "alignment";
@@ -617,6 +636,9 @@ inline bool decodePropertyWireName(const char *name, Property *property) {
   if (std::strcmp(name, "resize-origin") == 0) { *property = Property::ResizeOrigin; return true; }
   if (std::strcmp(name, "theme") == 0) { *property = Property::ThemeValue; return true; }
   if (std::strcmp(name, "theme-mode") == 0) { *property = Property::ThemeMode; return true; }
+  if (std::strcmp(name, "path") == 0) { *property = Property::PathValue; return true; }
+  if (std::strcmp(name, "url") == 0) { *property = Property::UrlValue; return true; }
+  if (std::strcmp(name, "max-pixel-size") == 0) { *property = Property::MaxPixelSize; return true; }
   if (std::strcmp(name, "edge") == 0) { *property = Property::EdgeValue; return true; }
   if (std::strcmp(name, "visible") == 0) { *property = Property::Visible; return true; }
   if (std::strcmp(name, "alignment") == 0) { *property = Property::AlignmentValue; return true; }

@@ -153,6 +153,7 @@ let web_color_value color =
 let content_container kind dom_node =
   match kind with
   | Lui_protocol.DropdownMenu | Lui_protocol.Split -> child_element dom_node 0
+  | Lui_protocol.Link -> child_element dom_node 1
   | Lui_protocol.Alert -> child_element dom_node 1
   | Lui_protocol.Bubble -> child_element dom_node 0
   | Lui_protocol.Accordion -> accordion_panel_node dom_node

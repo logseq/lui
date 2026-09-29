@@ -83,6 +83,9 @@ namespace LUI
         Toast,
         Toolbar,
         StatusBar,
+        Link,
+        FileImage,
+        FilePreview,
     }
 
     public enum LUIProperty
@@ -160,6 +163,9 @@ namespace LUI
         ResizeOrigin,
         ThemeValue,
         ThemeMode,
+        PathValue,
+        UrlValue,
+        MaxPixelSize,
         EdgeValue,
         Visible,
         AlignmentValue,
@@ -245,6 +251,9 @@ namespace LUI
             { "toast", LUINodeKind.Toast },
             { "toolbar", LUINodeKind.Toolbar },
             { "status-bar", LUINodeKind.StatusBar },
+            { "link", LUINodeKind.Link },
+            { "file-image", LUINodeKind.FileImage },
+            { "file-preview", LUINodeKind.FilePreview },
         };
 
         private static readonly Dictionary<string, LUIProperty> PropertiesByWireName =
@@ -323,6 +332,9 @@ namespace LUI
             { "resize-origin", LUIProperty.ResizeOrigin },
             { "theme", LUIProperty.ThemeValue },
             { "theme-mode", LUIProperty.ThemeMode },
+            { "path", LUIProperty.PathValue },
+            { "url", LUIProperty.UrlValue },
+            { "max-pixel-size", LUIProperty.MaxPixelSize },
             { "edge", LUIProperty.EdgeValue },
             { "visible", LUIProperty.Visible },
             { "alignment", LUIProperty.AlignmentValue },
@@ -405,6 +417,9 @@ namespace LUI
             LUINodeKind.Toast => "toast",
             LUINodeKind.Toolbar => "toolbar",
             LUINodeKind.StatusBar => "status-bar",
+            LUINodeKind.Link => "link",
+            LUINodeKind.FileImage => "file-image",
+            LUINodeKind.FilePreview => "file-preview",
             _ => "unknown",
         };
 
@@ -459,7 +474,8 @@ namespace LUI
             LUINodeKind.Drawer or
             LUINodeKind.Sheet or
             LUINodeKind.Toast or
-            LUINodeKind.Toolbar => true,
+            LUINodeKind.Toolbar or
+            LUINodeKind.Link => true,
             _ => false,
         };
 
@@ -538,6 +554,9 @@ namespace LUI
             LUIProperty.ResizeOrigin => "resize-origin",
             LUIProperty.ThemeValue => "theme",
             LUIProperty.ThemeMode => "theme-mode",
+            LUIProperty.PathValue => "path",
+            LUIProperty.UrlValue => "url",
+            LUIProperty.MaxPixelSize => "max-pixel-size",
             LUIProperty.EdgeValue => "edge",
             LUIProperty.Visible => "visible",
             LUIProperty.AlignmentValue => "alignment",
@@ -565,6 +584,7 @@ namespace LUI
             { LUINodeKind.BottomTabs, Set(LUIProperty.AccessibilityLabel, LUIProperty.StyleClass, LUIProperty.GrowValue, LUIProperty.WidthValue, LUIProperty.HeightValue, LUIProperty.MinWidth, LUIProperty.MaxWidth, LUIProperty.MinHeight, LUIProperty.MaxHeight) },
             { LUINodeKind.BottomTab, Set(LUIProperty.TitleValue, LUIProperty.InlineIconName, LUIProperty.Selected, LUIProperty.Enabled, LUIProperty.PressEnabled) },
             { LUINodeKind.MenuTrigger, Set(LUIProperty.TextValue, LUIProperty.InlineIconName, LUIProperty.AccessibilityLabel, LUIProperty.Enabled, LUIProperty.ForegroundValue, LUIProperty.StyleClass) },
+            { LUINodeKind.FilePreview, Set(LUIProperty.PathValue) },
         };
 
         public static readonly IReadOnlyDictionary<LUINodeKind, IReadOnlySet<LUIProperty>> ExtraMatrix =

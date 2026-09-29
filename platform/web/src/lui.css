@@ -1260,6 +1260,26 @@ body {
     @apply order-1;
   }
 
+  .lui-link {
+    @apply inline-flex items-center gap-1 text-primary underline underline-offset-4;
+  }
+
+  .lui-link-icon {
+    @apply pointer-events-none size-4 shrink-0;
+  }
+
+  .lui-link-icon:not([data-name]) {
+    @apply hidden;
+  }
+
+  .lui-link[data-icon-placement="trailing"] .lui-link-icon {
+    @apply order-1;
+  }
+
+  .lui-link[data-icon-placement="top"] {
+    @apply flex-col;
+  }
+
   .lui-button[data-variant="default"] {
     @apply bg-background text-foreground;
   }

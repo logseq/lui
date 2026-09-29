@@ -1360,6 +1360,9 @@ namespace LUI
                      state.Properties, LUIProperty.PressEnabled)) ||
                 (state.Kind == LUINodeKind.Text &&
                  LUISchema.TrueProperty(
+                     state.Properties, LUIProperty.PressEnabled)) ||
+                (state.Kind == LUINodeKind.FileImage &&
+                 LUISchema.TrueProperty(
                      state.Properties, LUIProperty.PressEnabled));
             if (!pressable || IsDisabled(state))
             {
@@ -1489,6 +1492,7 @@ namespace LUI
                 state.Kind != LUINodeKind.Combobox &&
                 state.Kind != LUINodeKind.DropdownMenu &&
                 state.Kind != LUINodeKind.Toast &&
+                state.Kind != LUINodeKind.FilePreview &&
                 !LUISchema.ModalSurface(state.Kind))
             {
                 throw new LUIBackendException($"node {node} is not dismissible");

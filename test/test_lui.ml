@@ -962,6 +962,108 @@ let test_menu_trigger_rules () =
     (node_properties_supported MenuTrigger
        (props [ (TextValue, StringValue "More") ]))
 
+let test_media_file_rules () =
+  let open Lui_protocol in
+  Alcotest.(check bool) "link is container" true
+    (can_contain_children Link);
+  Alcotest.(check bool) "file-image is leaf" false
+    (can_contain_children FileImage);
+  Alcotest.(check bool) "file-preview is leaf" false
+    (can_contain_children FilePreview);
+  Alcotest.(check bool) "link allows url" true
+    (property_supported Link UrlValue);
+  Alcotest.(check bool) "link allows text" true
+    (property_supported Link TextValue);
+  Alcotest.(check bool) "link allows icon" true
+    (property_supported Link InlineIconName);
+  Alcotest.(check bool) "link drops path" false
+    (property_supported Link PathValue);
+  Alcotest.(check bool) "file-image allows path" true
+    (property_supported FileImage PathValue);
+  Alcotest.(check bool) "file-image allows max-pixel-size" true
+    (property_supported FileImage MaxPixelSize);
+  Alcotest.(check bool) "file-image allows press" true
+    (property_supported FileImage PressEnabled);
+  Alcotest.(check bool) "file-image drops url" false
+    (property_supported FileImage UrlValue);
+  Alcotest.(check bool) "file-preview allows path" true
+    (property_supported FilePreview PathValue);
+  Alcotest.(check bool) "file-preview drops width" false
+    (property_supported FilePreview WidthValue);
+  Alcotest.(check bool) "file-preview keeps accessibility-identifier" true
+    (property_supported FilePreview AccessibilityIdentifier);
+  Alcotest.(check bool) "max-pixel-size positive" true
+    (property_value_supported MaxPixelSize (IntValue 1024));
+  Alcotest.(check bool) "max-pixel-size rejects zero" false
+    (property_value_supported MaxPixelSize (IntValue 0));
+  Alcotest.(check bool) "path accepts string" true
+    (property_value_supported PathValue (StringValue "/x.png"));
+  Alcotest.(check bool) "url accepts string" true
+    (property_value_supported UrlValue (StringValue "https://e.com"));
+  Alcotest.(check bool) "file-image press event" true
+    (event_supported FileImage (Press 0));
+  Alcotest.(check bool) "file-preview dismiss event" true
+    (event_supported FilePreview (Dismiss 0));
+  Alcotest.(check bool) "link drops dismiss" false
+    (event_supported Link (Dismiss 0));
+  let props entries = List.to_seq entries |> Property_map.of_seq in
+  Alcotest.(check bool) "file-image needs path" false
+    (node_properties_supported FileImage (props []));
+  Alcotest.(check bool) "file-image ok" true
+    (node_properties_supported FileImage
+       (props [ (PathValue, StringValue "/x.png") ]));
+  Alcotest.(check bool) "file-preview needs path" false
+    (node_properties_supported FilePreview (props []));
+  Alcotest.(check bool) "link needs url" false
+    (node_properties_supported Link (props []));
+  Alcotest.(check bool) "link ok" true
+    (node_properties_supported Link
+       (props [ (UrlValue, StringValue "https://e.com") ]))
+
+let media_view _context _model _send =
+  Lui_elements.column
+    [
+      Lui_elements.link ~url:"https://example.com" ~text:"Example" [];
+      Lui_elements.file_image ~path:"/tmp/pic.png" ~max_pixel_size:512 [];
+      Lui_elements.file_preview ~path:"/tmp/doc.pdf" [];
+    ]
+
+let test_media_file_mount () =
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      media_view
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let open Lui_protocol in
+  let creates kind =
+    List.exists (function CreateNode (_, k) -> k = kind | _ -> false) ops
+  in
+  Alcotest.(check bool) "link mounted" true (creates Link);
+  Alcotest.(check bool) "file-image mounted" true (creates FileImage);
+  Alcotest.(check bool) "file-preview mounted" true (creates FilePreview);
+  Alcotest.(check bool) "url prop set" true
+    (List.exists
+       (function
+        | SetProp (_, UrlValue, StringValue "https://example.com") -> true
+        | _ -> false)
+       ops);
+  Alcotest.(check bool) "path prop set" true
+    (List.exists
+       (function
+        | SetProp (_, PathValue, StringValue "/tmp/pic.png") -> true
+        | _ -> false)
+       ops);
+  Alcotest.(check bool) "max-pixel-size prop set" true
+    (List.exists
+       (function
+        | SetProp (_, MaxPixelSize, IntValue 512) -> true
+        | _ -> false)
+       ops);
+  ignore (Lui_app.dispose app)
+
 let test_edge_overlay_fit_rules () =
   let open Lui_protocol in
   Alcotest.(check bool) "edge-inset contains children" true
@@ -1551,6 +1653,8 @@ let () =
           Alcotest.test_case "helpers" `Quick test_protocol_helpers;
           Alcotest.test_case "menu-trigger rules" `Quick
             test_menu_trigger_rules;
+          Alcotest.test_case "media file rules" `Quick test_media_file_rules;
+          Alcotest.test_case "media file mount" `Quick test_media_file_mount;
           Alcotest.test_case "edge/overlay/fit rules" `Quick
             test_edge_overlay_fit_rules;
           Alcotest.test_case "property matrix sync" `Quick

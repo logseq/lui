@@ -77,6 +77,9 @@ type node_kind =
   | Toast
   | Toolbar
   | StatusBar
+  | Link
+  | FileImage
+  | FilePreview
 
 type operating_system =
   | GenericOS
@@ -174,6 +177,9 @@ type property =
   | ResizeOrigin
   | ThemeValue
   | ThemeMode
+  | PathValue
+  | UrlValue
+  | MaxPixelSize
   | EdgeValue
   | Visible
   | AlignmentValue
