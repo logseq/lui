@@ -71,6 +71,8 @@ let submit node = dispatch (Submit node)
 
 let dismiss node = dispatch (Dismiss node)
 
+let picked node payload = dispatch (Picked (node, payload))
+
 let double_press node = dispatch (DoublePress node)
 
 let toggle_changed node checked = dispatch (ToggleChanged (node, checked))
@@ -94,6 +96,7 @@ let () =
   Callback.register "lui_ocaml_text_changed" text_changed;
   Callback.register "lui_ocaml_submit" submit;
   Callback.register "lui_ocaml_dismiss" dismiss;
+  Callback.register "lui_ocaml_picked" picked;
   Callback.register "lui_ocaml_double_press" double_press;
   Callback.register "lui_ocaml_toggle_changed" toggle_changed;
   Callback.register "lui_ocaml_radio_changed" radio_changed;

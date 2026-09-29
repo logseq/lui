@@ -168,10 +168,12 @@ namespace LUI
 
             JsonElement operations =
                 ObjectList(batchRoot.GetProperty("ops"), "ops");
+            var filePickerRequests = new HashSet<long>();
             foreach (JsonElement operation in operations.EnumerateArray())
             {
                 ApplyState(
-                    next, nextExtensions, ObjectMap(operation, "operation"));
+                    next, nextExtensions, ObjectMap(operation, "operation"),
+                    filePickerRequests);
             }
             ValidateStates(next);
             ValidateExtensionStates(next, nextExtensions);
@@ -262,12 +264,38 @@ namespace LUI
                     Dependent = dependent,
                     Removed = removed,
                 });
+            // This backend cannot present a picker: every file-picker
+            // request the batch left unanswered (request set, not matching
+            // `completion`) is answered with `dismiss`, per the element
+            // contract.
+            foreach (long id in filePickerRequests)
+            {
+                if (!_states.TryGetValue(id, out LUINodeState? state) ||
+                    state.Kind != LUINodeKind.FilePicker)
+                {
+                    continue;
+                }
+                if (!state.Properties.TryGetValue(
+                        LUIProperty.PickerRequest, out LUIWireValue? request))
+                {
+                    continue;
+                }
+                if (state.Properties.TryGetValue(
+                        LUIProperty.PickerCompletion,
+                        out LUIWireValue? completion) &&
+                    completion.Equals(request))
+                {
+                    continue;
+                }
+                OnEvent?.Invoke(new LUIEvent.Dismiss(id));
+            }
         }
 
         void ApplyState(
             Dictionary<long, LUINodeState> states,
             Dictionary<long, LUIExtensionNodeState> extensions,
-            JsonElement operation)
+            JsonElement operation,
+            HashSet<long> filePickerRequests)
         {
             switch (StringProperty(operation, "op"))
             {
@@ -377,6 +405,11 @@ namespace LUI
                             $"{propertyName}");
                     }
                     node.Properties[property] = value;
+                    if (node.Kind == LUINodeKind.FilePicker &&
+                        property == LUIProperty.PickerRequest)
+                    {
+                        filePickerRequests.Add(id);
+                    }
                     break;
                 }
                 case "remove-prop":
@@ -1518,12 +1551,24 @@ namespace LUI
                 state.Kind != LUINodeKind.Combobox &&
                 state.Kind != LUINodeKind.DropdownMenu &&
                 state.Kind != LUINodeKind.Toast &&
+                state.Kind != LUINodeKind.FilePicker &&
                 state.Kind != LUINodeKind.FilePreview &&
                 !LUISchema.ModalSurface(state.Kind))
             {
                 throw new LUIBackendException($"node {node} is not dismissible");
             }
             OnEvent?.Invoke(new LUIEvent.Dismiss(node));
+        }
+
+        public void PerformPicked(long node, string payload)
+        {
+            LUINodeState state = RequireState(node);
+            if (state.Kind != LUINodeKind.FilePicker)
+            {
+                throw new LUIBackendException(
+                    $"node {node} is not a file-picker");
+            }
+            OnEvent?.Invoke(new LUIEvent.Picked(node, payload));
         }
 
         public void PerformTextChanged(long node, string text)

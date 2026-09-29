@@ -78,6 +78,12 @@ type node_kind =
   | Toast
   | Toolbar
   | StatusBar
+  | ListSection
+  | ListSectionHeader
+  | ListSectionFooter
+  | SwipeActions
+  | SwipeAction
+  | FilePicker
   | Link
   | FileImage
   | FilePreview
@@ -178,6 +184,20 @@ type property =
   | ResizeOrigin
   | ThemeValue
   | ThemeMode
+  | KeyValue
+  | SeparatorValue
+  | StyleValue
+  | ScrollTarget
+  | ScrollAnchor
+  | ScrollToken
+  | ScrollAnimated
+  | TrackVisibleRange
+  | EdgeValue
+  | PickerRequest
+  | PickerTypes
+  | PickerMultiple
+  | PickerSource
+  | PickerCompletion
   | MinValue
   | MaxValue
   | StepValue
@@ -186,7 +206,6 @@ type property =
   | PathValue
   | UrlValue
   | MaxPixelSize
-  | EdgeValue
   | Visible
   | AlignmentValue
 
@@ -212,6 +231,9 @@ type event =
   | Dismiss of int
   | DoublePress of int
   | Appear of int
+  | ScrollCompleted of int * int * string
+  | VisibleRange of int * int * int
+  | Picked of int * string
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =

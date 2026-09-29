@@ -92,6 +92,11 @@ val accordion : ui_context -> int
 val menu_item : ui_context -> int
 val menu_trigger : ui_context -> int
 val list_item : ui_context -> int
+val list_section : ui_context -> int
+val list_section_header : ui_context -> int
+val list_section_footer : ui_context -> int
+val swipe_actions : ui_context -> int
+val swipe_action : ui_context -> int
 val avatar : ui_context -> int
 val image : ui_context -> int
 val media_surface : ui_context -> int
@@ -104,6 +109,7 @@ val timeline : ui_context -> int
 val timeline_item : ui_context -> int
 val input_group : ui_context -> int
 val input_group_actions : ui_context -> int
+val file_picker : ui_context -> int
 val button : ui_context -> int
 val toggle_button : ui_context -> int
 val toggle : ui_context -> int
@@ -156,6 +162,13 @@ val int_property_signal :
   int -> Lui_protocol.Property_map.key -> int Signal.signal -> unit
 val int_property :
   ui_context -> int -> Lui_protocol.Property_map.key -> int -> unit
+val value_property :
+  ui_context ->
+  int -> Lui_protocol.Property_map.key -> Lui_protocol.wire_value -> unit
+val value_property_signal :
+  ui_context ->
+  int ->
+  Lui_protocol.Property_map.key -> Lui_protocol.wire_value Signal.signal -> unit
 val disabled : ui_context -> int -> bool -> unit
 val disabled_signal : ui_context -> int -> bool Signal.signal -> unit
 val checked_signal : ui_context -> int -> bool Signal.signal -> unit

@@ -532,7 +532,7 @@ enum LUIUnmodifiedNodePolicy {
     static func bypassesSurface(kind: LUINodeKind) -> Bool {
         // edge-inset bypasses the container surface: its surface props style
         // the pinned region instead (LUIEdgeInsetView applies the modifier).
-        kind == .spacer || kind == .edgeInset
+        kind == .spacer || kind == .edgeInset || kind == .filePicker
     }
 }
 
@@ -755,12 +755,29 @@ private struct LUINodeView: View {
             return AnyView(LUIAccordionView(model: model, backend: backend))
         case .dialog, .sheet:
             return AnyView(EmptyView())
+        case .filePicker:
+            return AnyView(LUIFilePickerView(model: model, backend: backend))
         case .menuItem:
             return AnyView(LUIMenuItemView(model: model, backend: backend))
         case .menuTrigger:
             return AnyView(LUIMenuTriggerView(model: model, backend: backend))
         case .listItem:
             return AnyView(LUIListItemView(model: model, backend: backend))
+        case .listSection, .listSectionHeader, .listSectionFooter:
+            return AnyView(
+                VStack(
+                    alignment: .leading,
+                    spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+                ) {
+                    ForEach(model.children, id: \.self) { childID in
+                        LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                    }
+                }
+            )
+        case .swipeActions:
+            return AnyView(EmptyView())
+        case .swipeAction:
+            return AnyView(LUISwipeActionView(model: model, backend: backend))
         case .table:
             return AnyView(LUITableView(model: model, backend: backend))
         case .tree:
@@ -1291,6 +1308,16 @@ private struct LUIInFusedCapsuleKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+/// Mutable row-visibility sink a tracked `list` hands to descendant rows via
+/// the environment; only accessed on the main actor.
+private final class LUIListRowTracker: @unchecked Sendable {
+    var onChange: ((Int, Bool) -> Void)?
+}
+
+private struct LUIListRowTrackerKey: EnvironmentKey {
+    static let defaultValue: LUIListRowTracker? = nil
+}
+
 private extension EnvironmentValues {
     var luiTreeContext: LUITreeContext? {
         get { self[LUITreeContextKey.self] }
@@ -1316,6 +1343,11 @@ private extension EnvironmentValues {
     var luiInFusedCapsule: Bool {
         get { self[LUIInFusedCapsuleKey.self] }
         set { self[LUIInFusedCapsuleKey.self] = newValue }
+    }
+
+    var luiListRowTracker: LUIListRowTracker? {
+        get { self[LUIListRowTrackerKey.self] }
+        set { self[LUIListRowTrackerKey.self] = newValue }
     }
 }
 
@@ -2769,6 +2801,7 @@ private struct LUINavigationFormRows: View {
         ).map { section in
             let headerText = section.headerID.flatMap { backend.model(id: $0)?.text }
             return LUIListSection(
+                nodeID: nil,
                 headerID: LUINavigationFormSectionPolicy.visibleHeaderID(
                     section.headerID,
                     text: headerText
@@ -4085,7 +4118,24 @@ private struct LUIListItemView: View {
 
     var body: some View {
         Group {
-            if suppressesPrimaryAction {
+            if !nestedRowIDs.isEmpty {
+                // Disclosure rows: nested list-item children render as
+                // collapsible rows under this row's label.
+                DisclosureGroup(isExpanded: expansion) {
+                    ForEach(nestedRowIDs, id: \.self) { rowID in
+                        if let row = backend.model(id: rowID) {
+                            LUIListItemView(
+                                model: row,
+                                backend: backend,
+                                isNativeListRow: isNativeListRow
+                            )
+                            .id(rowID)
+                        }
+                    }
+                } label: {
+                    rowContent
+                }
+            } else if suppressesPrimaryAction {
                 rowContent
             } else {
                 switch LUIListItemInteractionPolicy.style(
@@ -4104,6 +4154,7 @@ private struct LUIListItemView: View {
                 }
             }
         }
+        .modifier(LUIRowVisibilityModifier(rowID: model.id))
         .padding(.horizontal, usesSystemListInsets || hasExplicitPadding ? 0 : 12)
         .padding(.vertical, usesSystemListInsets || hasExplicitPadding ? 0 : verticalPadding)
         .frame(minHeight: LUIListItemLayoutPolicy.minimumHeight(
@@ -4131,7 +4182,11 @@ private struct LUIListItemView: View {
         }
         .accessibilityAddTraits(model.isSelected ? .isSelected : [])
         .disabled(!model.isEnabled)
-        .modifier(LUIListItemSwipeActionsModifier(menu: swipeMenu, backend: backend))
+        .modifier(LUIListItemSwipeActionsModifier(
+            model: model,
+            menu: swipeMenu,
+            backend: backend
+        ))
         .modifier(LUINativeListRowAccessibilityModifier(
             model: model,
             backend: backend,
@@ -4166,7 +4221,7 @@ private struct LUIListItemView: View {
                             : Color.secondary
                     )
             }
-            if visibleChildren.isEmpty {
+            if contentChildIDs.isEmpty {
                 Text(verbatim: model.text)
                     .font(isNavigationHeading ? .title3 : .body)
                     .fontWeight(
@@ -4176,7 +4231,7 @@ private struct LUIListItemView: View {
                     )
                     .lineLimit(1)
             } else {
-                ForEach(visibleChildren, id: \.self) { childID in
+                ForEach(contentChildIDs, id: \.self) { childID in
                     let child = backend.model(id: childID)
                     LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                         .environment(\.luiIsNativeListRow, isNativeListRow)
@@ -4280,6 +4335,26 @@ private struct LUIListItemView: View {
         model.visibleChildren
     }
 
+    /// Nested list-item children of a disclosure row.
+    private var nestedRowIDs: [Int] {
+        visibleChildren.filter { backend.model(id: $0)?.kind == .listItem }
+    }
+
+    /// Content children rendered inside the row itself.
+    private var contentChildIDs: [Int] {
+        visibleChildren.filter { backend.model(id: $0)?.kind != .listItem }
+    }
+
+    private var expansion: Binding<Bool> {
+        Binding(
+            get: { model.isExpanded ?? false },
+            set: { newValue in
+                guard model.supportsToggle else { return }
+                try? backend.performToggle(node: model.id, checked: newValue)
+            }
+        )
+    }
+
     private var hasInteractiveChildren: Bool {
         visibleChildren.contains(where: containsInteractiveControl)
     }
@@ -4328,6 +4403,11 @@ private struct LUIListItemView: View {
     private var swipeMenu: LUINodeModel? {
         #if os(iOS)
         guard isNativeListRow, let contextMenu else { return nil }
+        // An explicit swipe-actions child takes over the edges; the context
+        // menu is not consumed and stays reachable via the ellipsis button.
+        guard !model.children.contains(where: {
+            backend.model(id: $0)?.kind == .swipeActions
+        }) else { return nil }
         let items = contextMenu.children.compactMap { backend.model(id: $0) }
         guard !items.isEmpty, items.allSatisfy({
             $0.kind == .menuItem && $0.isEnabled &&
@@ -4399,12 +4479,29 @@ private struct LUIListItemSupplementaryGesturesModifier: ViewModifier {
 }
 
 private struct LUIListItemSwipeActionsModifier: ViewModifier {
+    let model: LUINodeModel
     let menu: LUINodeModel?
     let backend: LUIAppleBackend
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if let menu, menu.children.contains(where: {
+        if swipeActions != nil {
+            content
+                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                    ForEach(actionIDs(on: .leading), id: \.self) { actionID in
+                        if let action = backend.model(id: actionID) {
+                            LUISwipeActionView(model: action, backend: backend)
+                        }
+                    }
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    ForEach(actionIDs(on: .trailing), id: \.self) { actionID in
+                        if let action = backend.model(id: actionID) {
+                            LUISwipeActionView(model: action, backend: backend)
+                        }
+                    }
+                }
+        } else if let menu, menu.children.contains(where: {
             backend.model(id: $0)?.kind == .menuItem
         }) {
             content.swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -4413,6 +4510,85 @@ private struct LUIListItemSwipeActionsModifier: ViewModifier {
         } else {
             content
         }
+    }
+
+    private var swipeActions: LUINodeModel? {
+        model.children.compactMap { backend.model(id: $0) }
+            .first { $0.kind == .swipeActions }
+    }
+
+    private enum SwipeEdge {
+        case leading
+        case trailing
+    }
+
+    private func actionIDs(on edge: SwipeEdge) -> [Int] {
+        guard let swipeActions else { return [] }
+        return swipeActions.children.filter { actionID in
+            let action = backend.model(id: actionID)
+            let isLeading = action?.property(.edge)?.stringValue == "leading"
+            return edge == .leading ? isLeading : !isLeading
+        }
+    }
+}
+
+private struct LUISwipeActionLabel: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+
+    var body: some View {
+        if model.text.isEmpty {
+            LUIIconImage(
+                source: backend.iconSource(for: model.buttonIconName),
+                bundle: backend.appIconBundle
+            )
+        } else if model.buttonIconName.isEmpty {
+            Text(verbatim: model.text)
+        } else {
+            Label {
+                Text(verbatim: model.text)
+            } icon: {
+                LUIIconImage(
+                    source: backend.iconSource(for: model.buttonIconName),
+                    bundle: backend.appIconBundle
+                )
+            }
+        }
+    }
+}
+
+private struct LUISwipeActionView: View {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    @Environment(\.luiSemanticColors) private var semanticColors
+
+    var body: some View {
+        Button(
+            role: model.property(.variant)?.stringValue == "destructive"
+                ? .destructive : nil
+        ) {
+            if model.supportsPress {
+                try? backend.performPress(node: model.id)
+            }
+        } label: {
+            LUISwipeActionLabel(model: model, backend: backend)
+        }
+        .disabled(!model.isEnabled)
+        .tint(LUIThemeColorResolver.color(
+            model.property(.background)?.stringValue,
+            semanticColors: semanticColors
+        ))
+    }
+}
+
+private struct LUIRowVisibilityModifier: ViewModifier {
+    let rowID: Int
+    @Environment(\.luiListRowTracker) private var tracker
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { tracker?.onChange?(rowID, true) }
+            .onDisappear { tracker?.onChange?(rowID, false) }
     }
 }
 
@@ -5448,11 +5624,25 @@ private struct LUIColumnPressModifier: ViewModifier {
 }
 
 struct LUIListSection: Equatable, Identifiable {
+    /// The `list-section` node id when this section is explicit.
+    let nodeID: Int?
     let headerID: Int?
     let childIDs: [Int]
     let footerID: Int?
 
-    var id: Int { headerID ?? childIDs.first ?? footerID ?? Int.min }
+    init(
+        nodeID: Int? = nil,
+        headerID: Int?,
+        childIDs: [Int],
+        footerID: Int?
+    ) {
+        self.nodeID = nodeID
+        self.headerID = headerID
+        self.childIDs = childIDs
+        self.footerID = footerID
+    }
+
+    var id: Int { nodeID ?? headerID ?? childIDs.first ?? footerID ?? Int.min }
 }
 
 enum LUIListSurfacePolicy {
@@ -5468,6 +5658,53 @@ public struct LUIListSurfacePreferenceKey: PreferenceKey {
 }
 
 enum LUIListSectionPolicy {
+    /// Explicit `list-section` children each become a section, drawing
+    /// header/footer from their section-header/-footer children; runs of
+    /// other children group into anonymous sections.
+    @MainActor
+    static func explicitSections(
+        childIDs: [Int],
+        model: (Int) -> LUINodeModel?,
+        isHeading: (Int) -> Bool,
+        isFooter: (Int) -> Bool
+    ) -> [LUIListSection] {
+        var result: [LUIListSection] = []
+        var pending: [Int] = []
+
+        func flush() {
+            guard !pending.isEmpty else { return }
+            // Runs of plain children still get heading/footnote inference.
+            result.append(contentsOf: sections(
+                childIDs: pending,
+                isHeading: isHeading,
+                isFooter: isFooter
+            ))
+            pending = []
+        }
+
+        for childID in childIDs {
+            if let node = model(childID), node.kind == .listSection {
+                flush()
+                let headerID = node.children.first {
+                    model($0)?.kind == .listSectionHeader
+                }
+                let footerID = node.children.first {
+                    model($0)?.kind == .listSectionFooter
+                }
+                result.append(LUIListSection(
+                    nodeID: childID,
+                    headerID: headerID,
+                    childIDs: node.visibleChildren,
+                    footerID: footerID
+                ))
+            } else {
+                pending.append(childID)
+            }
+        }
+        flush()
+        return result
+    }
+
     static func sections(
         childIDs: [Int],
         isHeading: (Int) -> Bool,
@@ -5481,6 +5718,7 @@ enum LUIListSectionPolicy {
         func appendCurrentSection() {
             guard headerID != nil || !rows.isEmpty || footerID != nil else { return }
             result.append(LUIListSection(
+                nodeID: nil,
                 headerID: headerID,
                 childIDs: rows,
                 footerID: footerID
@@ -5514,67 +5752,146 @@ private struct LUIListView: View {
     @Environment(\.luiSemanticColors) private var semanticColors
     @Environment(\.luiInsideScroll) private var insideScroll
 
+    @State private var handledScrollToken: Int?
+    @State private var pendingScrollToken: Int?
+    @State private var scrollTask: Task<Void, Never>?
+    @State private var rowTracker = LUIListRowTracker()
+    @State private var visibleRowIDs = Set<Int>()
+    @State private var lastEmittedRange: (Int, Int)?
+    @State private var rangeDebounce: Task<Void, Never>?
+
     var body: some View {
-        if insideScroll {
-            // A nested scrolling List collapses inside an outer ScrollView;
-            // lay rows out statically instead.
-            LazyVStack(
-                alignment: .leading,
-                spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
-            ) {
-                ForEach(sections) { section in
-                    if let headerID = section.headerID,
-                       let header = backend.model(id: headerID) {
-                        Text(verbatim: header.text)
-                            .font(.headline)
-                    }
-                    rows(section.childIDs)
-                    if let footerID = section.footerID,
-                       let footer = backend.model(id: footerID) {
-                        Text(verbatim: footer.text)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+        Group {
+            if insideScroll {
+                // A nested scrolling List collapses inside an outer
+                // ScrollView; lay rows out statically instead.
+                fallbackList
+            } else {
+                ScrollViewReader { proxy in
+                    nativeList
+                        .onChange(of: model.scrollToken, initial: true) { _, _ in
+                            handleScrollRequest(proxy: proxy)
+                        }
+                        .onDisappear(perform: cancelPendingScroll)
                 }
             }
-        } else {
-            nativeList
+        }
+        .environment(\.luiListRowTracker, listRowTracker)
+        .onChange(of: flatRowOrder) { _, _ in
+            // Row insert/remove/reorder shifts flat positions without any
+            // appear/disappear — re-emit so the range stays accurate.
+            emitVisibleRange()
+        }
+    }
+
+    private var listRowTracker: LUIListRowTracker? {
+        guard model.tracksVisibleRange else { return nil }
+        if rowTracker.onChange == nil {
+            rowTracker.onChange = { [self] rowID, isVisible in
+                self.rowVisibilityChanged(rowID, isVisible: isVisible)
+            }
+        }
+        return rowTracker
+    }
+
+    private var fallbackList: some View {
+        LazyVStack(
+            alignment: .leading,
+            spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+        ) {
+            ForEach(sections) { section in
+                if let headerID = section.headerID {
+                    fallbackSectionSlot(headerID, isHeader: true)
+                }
+                rows(section.childIDs)
+                if let footerID = section.footerID {
+                    fallbackSectionSlot(footerID, isHeader: false)
+                }
+            }
+        }
+        .onChange(of: model.scrollToken, initial: true) { _, _ in
+            // No scroll surface of its own to scroll on; only tokens not
+            // already handled report back.
+            if let token = model.scrollToken, handledScrollToken != token {
+                handledScrollToken = token
+                backend.performScrollCompleted(
+                    node: model.id,
+                    token: token,
+                    outcome: "cancelled"
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func fallbackSectionSlot(_ id: Int, isHeader: Bool) -> some View {
+        if let node = backend.model(id: id) {
+            if node.kind == .listSectionHeader || node.kind == .listSectionFooter {
+                LUIAnyNodeView(nodeID: id, backend: backend).equatable()
+            } else if isHeader {
+                Text(verbatim: node.text)
+                    .font(.headline)
+            } else {
+                Text(verbatim: node.text)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
     private var nativeList: some View {
-        List {
-            ForEach(sections) { section in
-                if let headerID = section.headerID,
-                   let header = backend.model(id: headerID),
-                   let footerID = section.footerID,
-                   let footer = backend.model(id: footerID) {
-                    Section {
+        styledList(
+            List {
+                ForEach(sections) { section in
+                    let sectionModel = section.nodeID.flatMap { backend.model(id: $0) }
+                    if let headerID = section.headerID,
+                       let footerID = section.footerID {
+                        Section {
+                            rows(section.childIDs)
+                        } header: {
+                            sectionSlot(headerID, isHeader: true)
+                        } footer: {
+                            sectionSlot(footerID, isHeader: false)
+                        }
+                        .modifier(LUIListSectionSeparatorModifier(
+                            visibility: sectionModel?.separatorVisibility
+                        ))
+                    } else if let headerID = section.headerID {
+                        Section {
+                            rows(section.childIDs)
+                        } header: {
+                            sectionSlot(headerID, isHeader: true)
+                        }
+                        .modifier(LUIListSectionSeparatorModifier(
+                            visibility: sectionModel?.separatorVisibility
+                        ))
+                    } else if let footerID = section.footerID {
+                        Section {
+                            rows(section.childIDs)
+                        } footer: {
+                            sectionSlot(footerID, isHeader: false)
+                        }
+                        .modifier(LUIListSectionSeparatorModifier(
+                            visibility: sectionModel?.separatorVisibility
+                        ))
+                    } else if section.nodeID != nil {
+                        // An explicit headerless section still needs a real
+                        // SwiftUI Section so adjacent groups stay separate.
+                        Section {
+                            rows(section.childIDs)
+                        }
+                        .modifier(LUIListSectionSeparatorModifier(
+                            visibility: sectionModel?.separatorVisibility
+                        ))
+                    } else {
                         rows(section.childIDs)
-                    } header: {
-                        Text(verbatim: header.text)
-                    } footer: {
-                        Text(verbatim: footer.text)
+                            .modifier(LUIListSectionSeparatorModifier(
+                                visibility: sectionModel?.separatorVisibility
+                            ))
                     }
-                } else if let headerID = section.headerID,
-                          let header = backend.model(id: headerID) {
-                    Section {
-                        rows(section.childIDs)
-                    } header: {
-                        Text(verbatim: header.text)
-                    }
-                } else if let footerID = section.footerID,
-                          let footer = backend.model(id: footerID) {
-                    Section {
-                        rows(section.childIDs)
-                    } footer: {
-                        Text(verbatim: footer.text)
-                    }
-                } else {
-                    rows(section.childIDs)
                 }
             }
-        }
+        )
         .scrollContentBackground(
             listBackground == nil
                 ? LUIListSurfacePolicy.scrollContentBackground : .hidden
@@ -5586,9 +5903,44 @@ private struct LUIListView: View {
             value: semanticColors["background"] == nil
         )
         #if os(iOS)
-        .listStyle(.insetGrouped)
         .modifier(LUISearchableNodeModifier(model: searchableField, backend: backend))
         #endif
+    }
+
+    @ViewBuilder
+    private func styledList(_ content: some View) -> some View {
+        #if os(iOS)
+        switch model.listStyle {
+        case "plain":
+            content.listStyle(.plain)
+        case "inset":
+            content.listStyle(.inset)
+        default:
+            content.listStyle(.insetGrouped)
+        }
+        #else
+        switch model.listStyle {
+        case "plain":
+            content.listStyle(.plain)
+        default:
+            content.listStyle(.inset)
+        }
+        #endif
+    }
+
+    @ViewBuilder
+    private func sectionSlot(_ id: Int, isHeader: Bool) -> some View {
+        if let node = backend.model(id: id) {
+            if node.kind == .listSectionHeader || node.kind == .listSectionFooter {
+                LUIAnyNodeView(nodeID: id, backend: backend).equatable()
+            } else if isHeader {
+                Text(verbatim: node.text)
+            } else {
+                Text(verbatim: node.text)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var listBackground: Color? {
@@ -5620,27 +5972,216 @@ private struct LUIListView: View {
                     LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                 }
             }
+            .id(childID)
+            .modifier(LUIRowVisibilityModifier(rowID: childID))
+            .modifier(LUIListRowSeparatorModifier(
+                visibility: backend.model(id: childID)?.separatorVisibility
+            ))
             .listRowBackground(semanticColors["surface"])
         }
     }
 
     private var sections: [LUIListSection] {
-        LUIListSectionPolicy.sections(
-            childIDs: model.visibleChildren.filter { childID in
-                childID != searchableField?.id
-            },
-            isHeading: { childID in
-                backend.model(id: childID)?.kind == .heading
-            },
-            isFooter: { childID in
-                guard let child = backend.model(id: childID), child.kind == .text else {
-                    return false
-                }
-                return (child.property(.styleClass)?.stringValue ?? "")
-                    .split(separator: " ")
-                    .contains("footnote") == true
-            }
+        let childIDs = model.visibleChildren.filter { childID in
+            childID != searchableField?.id
+        }
+        if childIDs.contains(where: {
+            backend.model(id: $0)?.kind == .listSection
+        }) {
+            return LUIListSectionPolicy.explicitSections(
+                childIDs: childIDs,
+                model: { backend.model(id: $0) },
+                isHeading: isHeading,
+                isFooter: isFooter
+            )
+        }
+        return LUIListSectionPolicy.sections(
+            childIDs: childIDs,
+            isHeading: isHeading,
+            isFooter: isFooter
         )
+    }
+
+    private func isHeading(_ childID: Int) -> Bool {
+        backend.model(id: childID)?.kind == .heading
+    }
+
+    private func isFooter(_ childID: Int) -> Bool {
+        guard let child = backend.model(id: childID), child.kind == .text else {
+            return false
+        }
+        return (child.property(.styleClass)?.stringValue ?? "")
+            .split(separator: " ")
+            .contains("footnote") == true
+    }
+
+    /// Row ids in flat payload order across sections; nested rows of
+    /// expanded disclosure items count in place.
+    private var flatRowOrder: [Int] {
+        var order: [Int] = []
+        for section in sections {
+            collectRows(section.childIDs, into: &order)
+        }
+        return order
+    }
+
+    private func collectRows(_ ids: [Int], into order: inout [Int]) {
+        for id in ids {
+            guard let node = backend.model(id: id) else { continue }
+            order.append(id)
+            if node.kind == .listItem, node.isExpanded == true {
+                collectRows(
+                    node.visibleChildren.filter {
+                        backend.model(id: $0)?.kind == .listItem
+                    },
+                    into: &order
+                )
+            }
+        }
+    }
+
+    private var scrollAnchorPoint: UnitPoint? {
+        switch model.scrollAnchor {
+        case "top": .top
+        case "center": .center
+        case "bottom": .bottom
+        default: nil
+        }
+    }
+
+    private func rowID(forKey key: String) -> Int? {
+        if let row = flatRowOrder.first(where: {
+            backend.model(id: $0)?.rowKey == key
+        }) {
+            return row
+        }
+        // A section key targets that section's first row.
+        for section in sections {
+            guard let nodeID = section.nodeID,
+                  backend.model(id: nodeID)?.rowKey == key else { continue }
+            return section.childIDs.first
+        }
+        return nil
+    }
+
+    private func handleScrollRequest(proxy: ScrollViewProxy) {
+        guard let token = model.scrollToken, handledScrollToken != token else {
+            return
+        }
+        handledScrollToken = token
+        if let pending = pendingScrollToken {
+            backend.performScrollCompleted(
+                node: model.id,
+                token: pending,
+                outcome: "superseded"
+            )
+            pendingScrollToken = nil
+            scrollTask?.cancel()
+        }
+        guard let target = model.scrollTarget, !target.isEmpty,
+              let rowID = rowID(forKey: target) else {
+            backend.performScrollCompleted(
+                node: model.id,
+                token: token,
+                outcome: "missing-target"
+            )
+            return
+        }
+        let anchor = scrollAnchorPoint
+        pendingScrollToken = token
+        scrollTask = Task { @MainActor in
+            if model.scrollAnimated {
+                withAnimation { proxy.scrollTo(rowID, anchor: anchor) }
+            } else {
+                proxy.scrollTo(rowID, anchor: anchor)
+            }
+            // Let the scroll animation/layout pass settle before reporting.
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+            pendingScrollToken = nil
+            backend.performScrollCompleted(
+                node: model.id,
+                token: token,
+                outcome: "succeeded"
+            )
+        }
+    }
+
+    private func cancelPendingScroll() {
+        scrollTask?.cancel()
+        if let pending = pendingScrollToken {
+            pendingScrollToken = nil
+            backend.performScrollCompleted(
+                node: model.id,
+                token: pending,
+                outcome: "cancelled"
+            )
+        }
+    }
+
+    private func rowVisibilityChanged(_ rowID: Int, isVisible: Bool) {
+        if isVisible {
+            visibleRowIDs.insert(rowID)
+        } else {
+            visibleRowIDs.remove(rowID)
+        }
+        rangeDebounce?.cancel()
+        rangeDebounce = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            guard !Task.isCancelled else { return }
+            emitVisibleRange()
+        }
+    }
+
+    /// `last` is exclusive, matching the flat position convention.
+    private func emitVisibleRange() {
+        var positions: [Int] = []
+        for (index, rowID) in flatRowOrder.enumerated()
+        where visibleRowIDs.contains(rowID) {
+            positions.append(index)
+        }
+        let range = positions.isEmpty
+            ? (0, 0)
+            : (positions.min() ?? 0, (positions.max() ?? 0) + 1)
+        if let previous = lastEmittedRange, previous == range { return }
+        lastEmittedRange = range
+        backend.performVisibleRange(
+            node: model.id,
+            first: range.0,
+            last: range.1
+        )
+    }
+}
+
+private struct LUIListRowSeparatorModifier: ViewModifier {
+    let visibility: String?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        switch visibility {
+        case "hidden":
+            content.listRowSeparator(.hidden)
+        case "visible":
+            content.listRowSeparator(.visible)
+        default:
+            content
+        }
+    }
+}
+
+private struct LUIListSectionSeparatorModifier: ViewModifier {
+    let visibility: String?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        switch visibility {
+        case "hidden":
+            content.listSectionSeparator(.hidden)
+        case "visible":
+            content.listSectionSeparator(.visible)
+        default:
+            content
+        }
     }
 }
 

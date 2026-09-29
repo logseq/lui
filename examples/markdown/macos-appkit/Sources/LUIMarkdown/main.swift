@@ -11,6 +11,8 @@ private typealias StopFunction = @convention(c) () -> Int32
 private typealias NodeFunction = @convention(c) (Int64) -> Int32
 private typealias TextChangedFunction =
     @convention(c) (Int64, UnsafePointer<CChar>?) -> Int32
+private typealias PickedFunction =
+    @convention(c) (Int64, UnsafePointer<CChar>?) -> Int32
 private typealias ToggleChangedFunction = @convention(c) (Int64, Int32) -> Int32
 private typealias SliderChangedFunction = @convention(c) (Int64, Double) -> Int32
 private typealias ExtensionEventFunction =
@@ -38,6 +40,7 @@ private final class NativeMarkdownRuntime {
     private let textChangedFunction: TextChangedFunction
     private let submitFunction: NodeFunction
     private let dismissFunction: NodeFunction
+    private let pickedFunction: PickedFunction
     private let doublePressFunction: NodeFunction
     private let toggleChangedFunction: ToggleChangedFunction
     private let radioChangedFunction: NodeFunction
@@ -57,6 +60,7 @@ private final class NativeMarkdownRuntime {
         textChangedFunction = try Self.load("lui_ocaml_text_changed", from: handle)
         submitFunction = try Self.load("lui_ocaml_submit", from: handle)
         dismissFunction = try Self.load("lui_ocaml_dismiss", from: handle)
+        pickedFunction = try Self.load("lui_ocaml_picked", from: handle)
         doublePressFunction = try Self.load("lui_ocaml_double_press", from: handle)
         toggleChangedFunction = try Self.load("lui_ocaml_toggle_changed", from: handle)
         radioChangedFunction = try Self.load("lui_ocaml_radio_changed", from: handle)
@@ -86,6 +90,12 @@ private final class NativeMarkdownRuntime {
 
     func submit(node: Int) { _ = submitFunction(Int64(node)) }
     func dismiss(node: Int) { _ = dismissFunction(Int64(node)) }
+
+    func picked(node: Int, payload: String) {
+        payload.withCString { source in
+            _ = pickedFunction(Int64(node), source)
+        }
+    }
     func doublePress(node: Int) { _ = doublePressFunction(Int64(node)) }
 
     func toggleChanged(node: Int, checked: Bool) {
@@ -166,6 +176,8 @@ private final class MarkdownHost: NSObject, NSApplicationDelegate, NSWindowDeleg
                     self?.runtime?.sliderChanged(node: node, value: value)
                 case let .dismiss(node):
                     self?.runtime?.dismiss(node: node)
+                case let .picked(node, payload):
+                    self?.runtime?.picked(node: node, payload: payload)
                 case let .doublePress(node):
                     self?.runtime?.doublePress(node: node)
                 case let .appear(node):

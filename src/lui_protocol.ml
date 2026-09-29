@@ -80,6 +80,12 @@ type node_kind =
   | Toast
   | Toolbar
   | StatusBar
+  | ListSection
+  | ListSectionHeader
+  | ListSectionFooter
+  | SwipeActions
+  | SwipeAction
+  | FilePicker
   | Link
   | FileImage
   | FilePreview
@@ -180,6 +186,20 @@ type property =
   | ResizeOrigin
   | ThemeValue
   | ThemeMode
+  | KeyValue
+  | SeparatorValue
+  | StyleValue
+  | ScrollTarget
+  | ScrollAnchor
+  | ScrollToken
+  | ScrollAnimated
+  | TrackVisibleRange
+  | EdgeValue
+  | PickerRequest
+  | PickerTypes
+  | PickerMultiple
+  | PickerSource
+  | PickerCompletion
   | MinValue
   | MaxValue
   | StepValue
@@ -188,7 +208,6 @@ type property =
   | PathValue
   | UrlValue
   | MaxPixelSize
-  | EdgeValue
   | Visible
   | AlignmentValue
 
@@ -217,6 +236,9 @@ type event =
   | Dismiss of int
   | DoublePress of int
   | Appear of int
+  | ScrollCompleted of int * int * string
+  | VisibleRange of int * int * int
+  | Picked of int * string
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -257,6 +279,9 @@ let event_node event =
   | Dismiss node
   | DoublePress node
   | Appear node
+  | ScrollCompleted (node, _, _)
+  | VisibleRange (node, _, _)
+  | Picked (node, _)
   | ExtensionEvent (node, _, _, _) -> node
 
 let modal_surface kind = kind = Dialog || kind = Drawer || kind = Sheet
@@ -326,7 +351,8 @@ let event_supported kind event =
     | TableCell
     | TimelineItem
     | FileImage
-    | BottomTab -> true
+    | BottomTab
+    | SwipeAction -> true
     | _ -> false)
   | LongPress _ ->
     (match kind with
@@ -361,7 +387,8 @@ let event_supported kind event =
     | Toggle
     | Radio
     | Accordion
-    | Drawer -> true
+    | Drawer
+    | ListItem -> true
     | _ -> false)
   | Change _ -> kind = Radio
   | ValueChanged _ ->
@@ -379,10 +406,13 @@ let event_supported kind event =
     | Dialog
     | Drawer
     | Sheet
-    | FilePreview -> true
+    | FilePreview
+    | FilePicker -> true
     | _ -> false)
   | DoublePress _ -> kind = ListItem
   | Appear _ -> kind <> Root
+  | ScrollCompleted _ | VisibleRange _ -> kind = ListContainer
+  | Picked _ -> kind = FilePicker
   | ExtensionEvent _ -> false
 
 let true_property properties property =
@@ -539,6 +569,9 @@ let icon_name_supported value =
 let theme_mode_supported value =
   value = "system" || value = "light" || value = "dark"
 
+let picker_source_supported value =
+  value = "files" || value = "photos" || value = "camera"
+
 let sizing_supported value =
   value = "form" || value = "fitted" || value = "page"
 
@@ -600,7 +633,12 @@ let can_contain_children kind =
     | Bubble
     | BottomTabs
     | BottomTab
-    | Link -> true
+    | Link
+    | FilePicker
+    | ListSection
+    | ListSectionHeader
+    | ListSectionFooter
+    | SwipeActions -> true
     | _ -> false
 
 let common_property_supported kind property =
@@ -762,6 +800,14 @@ let common_property_supported kind property =
     || kind = StatusBar
   | RoleValue -> tree_row_kind kind || kind = ListItem
   | TreeLevel | Expanded -> tree_row_kind kind
+  | KeyValue | SeparatorValue -> kind = ListItem || kind = ListSection
+  | StyleValue
+  | ScrollTarget
+  | ScrollAnchor
+  | ScrollToken
+  | ScrollAnimated
+  | TrackVisibleRange -> kind = ListContainer
+  | EdgeValue -> kind = SwipeAction || kind = EdgeInset
   | ResizeDuration | ResizeEasing | ResizeOrigin -> kind = Split
   | MinValue | MaxValue | StepValue -> kind = NumberStepper
   | Detents | Sizing -> kind = Sheet
@@ -825,8 +871,9 @@ let common_property_supported kind property =
   | PathValue -> kind = FileImage || kind = FilePreview
   | UrlValue -> kind = Link
   | MaxPixelSize -> kind = FileImage
-  | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector ->
-    false
+  | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector
+  | PickerRequest | PickerTypes | PickerMultiple | PickerSource
+  | PickerCompletion -> false
   | TitleValue -> kind = BottomTab
   | Gap ->
     kind = Row
@@ -844,7 +891,7 @@ let common_property_supported kind property =
     || kind = Split
     || kind = EdgeInset
     || horizontal_container kind
-  | EdgeValue | Visible -> kind = EdgeInset
+  | Visible -> kind = EdgeInset
 
 let property_supported kind property =
   if property = AccessibilityIdentifier then true
@@ -876,6 +923,11 @@ let property_supported kind property =
       property = TextValue || property = InlineIconName
       || property = AccessibilityLabel || property = Enabled
       || property = ForegroundValue || property = StyleClass
+    | FilePicker ->
+      property = PickerRequest || property = PickerTypes
+      || property = PickerMultiple || property = PickerSource
+      || property = PickerCompletion || property = Enabled
+      || property = AppearEnabled
     | Accordion ->
       property = TextValue || property = Selected
       || property = ToggleEnabled || property = HeightValue
@@ -892,6 +944,19 @@ let property_supported kind property =
       property = AccessibilityLabel || property = WidthValue
       || property = HeightValue || property = MinWidth || property = GrowValue
     | InputGroupActions -> property = Gap
+    | ListSection -> property = KeyValue || property = SeparatorValue
+    | SwipeActions -> false
+    | SwipeAction ->
+      List.mem
+        property
+        [ TextValue
+        ; InlineIconName
+        ; VariantValue
+        ; EdgeValue
+        ; Enabled
+        ; BackgroundValue
+        ; PressEnabled
+        ]
     | Dialog ->
       property = DescriptionValue || common_property_supported kind property
     | FilePreview -> property = PathValue
@@ -983,6 +1048,25 @@ let property_value_supported property value =
   | ResizeOrigin, FloatValue value -> is_finite value
   | ThemeValue, StringValue _ -> true
   | ThemeMode, StringValue value -> theme_mode_supported value
+  | KeyValue, StringValue _ -> true
+  | SeparatorValue, StringValue value ->
+    value = "visible" || value = "hidden"
+  | StyleValue, StringValue value ->
+    value = "plain" || value = "inset" || value = "inset-grouped"
+  | ScrollTarget, StringValue _ -> true
+  | ScrollAnchor, StringValue value ->
+    value = "top" || value = "center" || value = "bottom"
+  | ScrollToken, IntValue value -> value >= 0
+  | ScrollAnimated, BoolValue _ -> true
+  | TrackVisibleRange, BoolValue _ -> true
+  | EdgeValue, StringValue value ->
+    value = "top" || value = "bottom" || value = "leading"
+    || value = "trailing"
+  | PickerRequest, (StringValue _ | IntValue _)
+  | PickerCompletion, (StringValue _ | IntValue _) -> true
+  | PickerTypes, StringValue _ -> true
+  | PickerMultiple, BoolValue _ -> true
+  | PickerSource, StringValue value -> picker_source_supported value
   | MinValue, FloatValue value | MaxValue, FloatValue value ->
     is_finite value
   | StepValue, FloatValue value -> is_finite value && value > 0.0
@@ -990,9 +1074,6 @@ let property_value_supported property value =
   | Sizing, StringValue value -> sizing_supported value
   | PathValue, StringValue _ | UrlValue, StringValue _ -> true
   | MaxPixelSize, IntValue value -> value > 0
-  | EdgeValue, StringValue value ->
-    value = "top" || value = "bottom" || value = "leading"
-    || value = "trailing"
   | Visible, BoolValue _ -> true
   | AlignmentValue, StringValue value ->
     alignment_supported value
@@ -1072,6 +1153,10 @@ let node_properties_supported kind properties =
       else true)
   && (if kind = MenuItem || kind = Accordion then
         string_property_nonempty properties TextValue
+      else true)
+  && (if kind = SwipeAction then
+        string_property_nonempty properties TextValue
+        || string_property_nonempty properties InlineIconName
       else true)
   && (if kind = MenuTrigger then
         let text = string_property_or properties TextValue "" in
@@ -1177,7 +1262,17 @@ let node_properties_supported kind properties =
       || Property_map.mem ChangeEnabled properties
       || Property_map.mem ToggleEnabled properties
     in
-    ((not has_tree_metadata) || treeitem)
+    (* A plain list item may carry expansion state for disclosure rows
+       without the treeitem role; tree level / change events stay tree-only. *)
+    let disclosure_list_item =
+      kind = ListItem
+      && (not treeitem)
+      && (not (Property_map.mem TreeLevel properties))
+      && (not (Property_map.mem ChangeEnabled properties))
+      && (Property_map.mem Expanded properties
+          || Property_map.mem ToggleEnabled properties)
+    in
+    ((not has_tree_metadata) || treeitem || disclosure_list_item)
     && (if Property_map.mem Expanded properties then
           true_property properties ToggleEnabled
         else true)
@@ -1189,8 +1284,15 @@ let child_kind_supported parent_kind child_kind =
   else if parent_kind = MenuItem then child_kind = ContextMenu
   else if parent_kind = MenuTrigger then child_kind = DropdownMenu
   else if context_menu_leaf_host_kind parent_kind then child_kind = ContextMenu
+  else if child_kind = ListSection then parent_kind = ListContainer
+  else if child_kind = ListSectionHeader || child_kind = ListSectionFooter
+  then parent_kind = ListSection
+  else if child_kind = SwipeActions then parent_kind = ListItem
+  else if child_kind = SwipeAction then parent_kind = SwipeActions
   else
     match parent_kind with
+    | ListSection -> child_kind = ListItem
+    | SwipeActions -> child_kind = SwipeAction
     | Table -> child_kind = TableRow
     | TableRow -> child_kind = TableCell
     | BottomTabs -> child_kind = BottomTab

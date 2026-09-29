@@ -109,6 +109,7 @@ namespace LUI
         public sealed record DoublePress(long Node) : LUIEvent;
         public sealed record Submit(long Node) : LUIEvent;
         public sealed record Dismiss(long Node) : LUIEvent;
+        public sealed record Picked(long Node, string Payload) : LUIEvent;
         public sealed record Change(long Node) : LUIEvent;
         public sealed record TextChanged(long Node, string Text) : LUIEvent;
         public sealed record ToggleChanged(long Node, bool Checked) : LUIEvent;

@@ -60,6 +60,7 @@ qt_add_qml_module(lui_qml
         ../qml/LuiDropdownMenu.qml
         ../qml/LuiEdgeInset.qml
         ../qml/LuiFileImage.qml
+        ../qml/LuiFilePicker.qml
         ../qml/LuiFilePreview.qml
         ../qml/LuiGrid.qml
         ../qml/LuiHeading.qml

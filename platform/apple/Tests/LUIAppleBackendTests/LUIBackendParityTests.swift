@@ -734,3 +734,166 @@ struct LUIBackendParityTests {
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
     }
 }
+
+@MainActor
+@Suite("LUI list suite", .serialized)
+struct LUIListSuiteTests {
+    @Test("grouped list with sections, disclosure rows, and swipe actions builds")
+    func groupedListBuilds() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"list"},
+          {"op":"set-prop","id":1,"property":"style","value":"inset-grouped"},
+          {"op":"set-prop","id":1,"property":"scroll-target","value":"row-2"},
+          {"op":"set-prop","id":1,"property":"scroll-anchor","value":"center"},
+          {"op":"set-prop","id":1,"property":"scroll-token","value":1},
+          {"op":"set-prop","id":1,"property":"scroll-animated","value":false},
+          {"op":"set-prop","id":1,"property":"track-visible-range","value":true},
+          {"op":"create-node","id":2,"kind":"list-section"},
+          {"op":"set-prop","id":2,"property":"key","value":"s-1"},
+          {"op":"set-prop","id":2,"property":"separator","value":"hidden"},
+          {"op":"create-node","id":3,"kind":"list-section-header"},
+          {"op":"create-node","id":4,"kind":"text"},
+          {"op":"set-prop","id":4,"property":"text","value":"Section one"},
+          {"op":"create-node","id":5,"kind":"list-item"},
+          {"op":"set-prop","id":5,"property":"key","value":"row-1"},
+          {"op":"set-prop","id":5,"property":"expanded","value":true},
+          {"op":"set-prop","id":5,"property":"toggle-enabled","value":true},
+          {"op":"create-node","id":6,"kind":"text"},
+          {"op":"set-prop","id":6,"property":"text","value":"Parent row"},
+          {"op":"create-node","id":7,"kind":"list-item"},
+          {"op":"set-prop","id":7,"property":"key","value":"row-2"},
+          {"op":"create-node","id":8,"kind":"text"},
+          {"op":"set-prop","id":8,"property":"text","value":"Nested row"},
+          {"op":"create-node","id":9,"kind":"swipe-actions"},
+          {"op":"create-node","id":10,"kind":"swipe-action"},
+          {"op":"set-prop","id":10,"property":"text","value":"Delete"},
+          {"op":"set-prop","id":10,"property":"icon","value":"trash"},
+          {"op":"set-prop","id":10,"property":"variant","value":"destructive"},
+          {"op":"set-prop","id":10,"property":"edge","value":"trailing"},
+          {"op":"create-node","id":11,"kind":"swipe-action"},
+          {"op":"set-prop","id":11,"property":"text","value":"Pin"},
+          {"op":"set-prop","id":11,"property":"edge","value":"leading"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":2,"child":5,"index":1},
+          {"op":"insert-child","parent":3,"child":4,"index":0},
+          {"op":"insert-child","parent":5,"child":6,"index":0},
+          {"op":"insert-child","parent":5,"child":7,"index":1},
+          {"op":"insert-child","parent":5,"child":9,"index":2},
+          {"op":"insert-child","parent":7,"child":8,"index":0},
+          {"op":"insert-child","parent":9,"child":10,"index":0},
+          {"op":"insert-child","parent":9,"child":11,"index":1}
+        ]}
+        """)
+
+        let list = try #require(backend.model(id: 1))
+        #expect(list.listStyle == "inset-grouped")
+        #expect(list.scrollTarget == "row-2")
+        #expect(list.scrollAnchor == "center")
+        #expect(list.scrollToken == 1)
+        #expect(list.scrollAnimated == false)
+        #expect(list.tracksVisibleRange)
+        #expect(backend.model(id: 2)?.rowKey == "s-1")
+        #expect(backend.model(id: 2)?.separatorVisibility == "hidden")
+        #expect(backend.model(id: 5)?.isExpanded == true)
+        #expect(backend.model(id: 5)?.supportsToggle == true)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+    }
+
+    @Test("list suite validation rejects malformed structures")
+    func listSuiteValidation() throws {
+        let backend = LUIAppleBackend()
+        // A swipe action needs text or an icon.
+        #expect(throws: (any Error).self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"list"},
+              {"op":"create-node","id":2,"kind":"list-item"},
+              {"op":"set-prop","id":2,"property":"text","value":"Row"},
+              {"op":"create-node","id":3,"kind":"swipe-actions"},
+              {"op":"create-node","id":4,"kind":"swipe-action"},
+              {"op":"insert-child","parent":1,"child":2,"index":0},
+              {"op":"insert-child","parent":2,"child":3,"index":0},
+              {"op":"insert-child","parent":3,"child":4,"index":0}
+            ]}
+            """)
+        }
+        // A list-section must sit directly under a list.
+        #expect(throws: (any Error).self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"row"},
+              {"op":"create-node","id":2,"kind":"list-section"},
+              {"op":"insert-child","parent":1,"child":2,"index":0}
+            ]}
+            """)
+        }
+        // swipe-actions belong to a list-item.
+        #expect(throws: (any Error).self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"list"},
+              {"op":"create-node","id":2,"kind":"swipe-actions"},
+              {"op":"insert-child","parent":1,"child":2,"index":0}
+            ]}
+            """)
+        }
+        // Disclosure rows still need toggle-enabled with expanded.
+        #expect(throws: (any Error).self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"list"},
+              {"op":"create-node","id":2,"kind":"list-item"},
+              {"op":"set-prop","id":2,"property":"text","value":"Row"},
+              {"op":"set-prop","id":2,"property":"expanded","value":true},
+              {"op":"insert-child","parent":1,"child":2,"index":0}
+            ]}
+            """)
+        }
+        // Unknown style vocab is rejected.
+        #expect(throws: (any Error).self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"list"},
+              {"op":"set-prop","id":1,"property":"style","value":"cards"}
+            ]}
+            """)
+        }
+    }
+
+    @Test("list suite events emit on the wire")
+    func listSuiteEvents() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"list"},
+          {"op":"create-node","id":2,"kind":"list-item"},
+          {"op":"set-prop","id":2,"property":"text","value":"Row"},
+          {"op":"set-prop","id":2,"property":"expanded","value":false},
+          {"op":"set-prop","id":2,"property":"toggle-enabled","value":true},
+          {"op":"create-node","id":3,"kind":"swipe-actions"},
+          {"op":"create-node","id":4,"kind":"swipe-action"},
+          {"op":"set-prop","id":4,"property":"text","value":"Delete"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":3,"child":4,"index":0}
+        ]}
+        """)
+
+        try backend.performPress(node: 4)
+        try backend.performToggle(node: 2, checked: true)
+        backend.performScrollCompleted(node: 1, token: 7, outcome: "succeeded")
+        backend.performVisibleRange(node: 1, first: 0, last: 5)
+        #expect(events == [
+            .press(node: 4),
+            .toggleChanged(node: 2, checked: true),
+            .scrollCompleted(node: 1, token: 7, outcome: "succeeded"),
+            .visibleRange(node: 1, first: 0, last: 5),
+        ])
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+    }
+}

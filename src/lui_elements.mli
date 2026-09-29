@@ -42,6 +42,20 @@ type frame_axes =
 
 type resize_easing = [ `linear | `standard | `emphasized | `spring ]
 type role = [ `treeitem | `navigation | `navigation_heading ]
+type list_style = [ `plain | `inset | `inset_grouped ]
+type scroll_anchor = [ `top | `center | `bottom ]
+type separator_visibility = [ `visible | `hidden ]
+type swipe_edge = [ `leading | `trailing ]
+
+(** [~source] of {!file_picker}: [`files] presents a document importer,
+    [`photos] the photo library, [`camera] live capture (iOS only —
+    other platforms answer the request with a dismiss event). *)
+type file_picker_source = [ `files | `photos | `camera ]
+
+(** [~request] / [~completion] of {!file_picker}: an opaque token echoed
+    back in [picked] payloads. String tokens cover UUID-style identifiers;
+    int tokens cover counters. *)
+type file_picker_token = [ `String of string | `Int of int ]
 
 (** [~icon]/[~name] values: the schema icon names, or [`app "name"] for an
     application-registered icon ([app:name] on the wire). *)
@@ -63,6 +77,7 @@ type table_row_el
 type table_cell_el
 type radio_el
 type input_group_actions_el
+type swipe_action_el
 
 (** Empty type: [leaf] constructors take a [nothing list] children slot, so
     [] compiles and any real child is a type error. *)
@@ -144,6 +159,11 @@ val keyed_radio :
   key:('a -> 'b) ->
   cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> radio_el) -> radio_el
+val keyed_swipe_action :
+  source:'a list Signal.signal ->
+  key:('a -> 'b) ->
+  cmp:('b -> 'b -> int) ->
+  mount:('a Signal.signal -> swipe_action_el) -> swipe_action_el
 
 (** Event-handler builders: element [~on_*] parameters take an
     [event -> unit] callback and imply their enable flags automatically
@@ -662,7 +682,15 @@ val list :
   ?foreground_signal:string Signal.signal ->
   ?background_signal:string Signal.signal ->
   ?style_class:string ->
-  ?on_appear:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?style:list_style ->
+  ?scroll_target:string ->
+  ?scroll_anchor:scroll_anchor ->
+  ?scroll_token:int ->
+  ?scroll_animated:bool ->
+  ?track_visible_range:bool ->
+  ?on_scroll_completed:(Lui_protocol.event -> unit) ->
+  ?on_visible_range:(Lui_protocol.event -> unit) -> t list -> t
 val virtual_list :
   ?key:string ->
   ?gap:int ->
@@ -2383,6 +2411,58 @@ val toast :
   ?label:string ->
   ?toast_class:string ->
   ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
+
+(** Non-visual element that presents the platform file/photo/camera picker
+    when [~request] changes to a new token. [~on_picked] receives a JSON
+    payload echoing the request token plus a [files] array of
+    [{path, name, content-type}]; [~on_dismiss] fires when the picker is
+    cancelled. The backend retains security-scoped file access for picked
+    URLs until [~completion] echoes the request token (or the node is
+    dropped). [~types] is a comma-separated list of UTIs; [~source]
+    selects files (default), photo library, or camera; [~multiple] allows
+    multi-selection; [~disabled] gates presentation. *)
+val file_picker :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?columns:int ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?source:file_picker_source ->
+  ?request:file_picker_token ->
+  ?request_signal:file_picker_token Signal.signal ->
+  ?types:string ->
+  ?types_signal:string Signal.signal ->
+  ?multiple:bool ->
+  ?multiple_signal:bool Signal.signal ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?completion:file_picker_token ->
+  ?completion_signal:file_picker_token Signal.signal ->
+  ?on_picked:(Lui_protocol.event -> unit) ->
+  ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
 val toolbar :
   ?key:string ->
   ?gap:int ->
@@ -2544,7 +2624,33 @@ val list_item :
   ?on_double_press:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
   ?on_input:(Lui_protocol.event -> unit) ->
-  ?on_toggle:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_toggle:(Lui_protocol.event -> unit) ->
+  ?separator:separator_visibility ->
+  ?swipe_actions:swipe_action_el list -> t list -> t
+
+(** A named group of rows inside a {!list}: [~header]/[~footer] take any
+    element and mount it in a dedicated slot node, [~key] sets both the
+    reload key and the wire [key] identity used by scroll targeting. *)
+val list_section :
+  ?key:string ->
+  ?accessibility_identifier:string ->
+  ?separator:separator_visibility ->
+  ?header:t -> ?footer:t -> t list -> t
+val swipe_actions :
+  ?key:string ->
+  ?accessibility_identifier:string -> swipe_action_el list -> t
+val swipe_action :
+  ?key:string ->
+  ?accessibility_identifier:string ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?variant:variant ->
+  ?edge:swipe_edge ->
+  ?background:string ->
+  ?disabled:bool ->
+  ?on_press:(Lui_protocol.event -> unit) -> nothing list -> swipe_action_el
 val avatar :
   ?key:string ->
   ?gap:int ->

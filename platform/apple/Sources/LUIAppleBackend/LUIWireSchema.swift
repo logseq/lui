@@ -78,6 +78,12 @@ enum LUINodeKind: String, Decodable, Equatable {
     case toast = "toast"
     case toolbar = "toolbar"
     case statusBar = "status-bar"
+    case listSection = "list-section"
+    case listSectionHeader = "list-section-header"
+    case listSectionFooter = "list-section-footer"
+    case swipeActions = "swipe-actions"
+    case swipeAction = "swipe-action"
+    case filePicker = "file-picker"
     case link = "link"
     case fileImage = "file-image"
     case filePreview = "file-preview"
@@ -157,6 +163,20 @@ enum LUIProperty: String, Decodable, Hashable {
     case resizeOrigin = "resize-origin"
     case theme = "theme"
     case themeMode = "theme-mode"
+    case key = "key"
+    case separator = "separator"
+    case style = "style"
+    case scrollTarget = "scroll-target"
+    case scrollAnchor = "scroll-anchor"
+    case scrollToken = "scroll-token"
+    case scrollAnimated = "scroll-animated"
+    case trackVisibleRange = "track-visible-range"
+    case edge = "edge"
+    case request = "request"
+    case types = "types"
+    case multiple = "multiple"
+    case source = "source"
+    case completion = "completion"
     case minValue = "min"
     case maxValue = "max"
     case stepValue = "step"
@@ -165,7 +185,6 @@ enum LUIProperty: String, Decodable, Hashable {
     case path = "path"
     case url = "url"
     case maxPixelSize = "max-pixel-size"
-    case edge = "edge"
     case visible = "visible"
     case alignment = "alignment"
 }
@@ -184,6 +203,10 @@ enum LUISchemaMatrix {
         .bottomTabs: [.accessibilityLabel, .styleClass, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight],
         .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled],
         .menuTrigger: [.text, .icon, .accessibilityLabel, .enabled, .foreground, .styleClass],
+        .listSection: [.key, .separator],
+        .swipeActions: [],
+        .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled],
+        .filePicker: [.request, .types, .multiple, .source, .completion, .enabled, .appearEnabled],
         .filePreview: [.path],
     ]
 

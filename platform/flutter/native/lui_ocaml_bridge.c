@@ -102,6 +102,19 @@ LUI_EXPORT int32_t lui_ocaml_dismiss(int64_t node) {
   return emit_patch(caml_callback_exn(*dispatch, Val_long(node)));
 }
 
+LUI_EXPORT int32_t lui_ocaml_picked(int64_t node, const char *payload) {
+  CAMLparam0();
+  CAMLlocal2(payload_value, result);
+  const value *dispatch = caml_named_value("lui_flutter_picked");
+  if (dispatch == NULL || payload == NULL) {
+    CAMLreturnT(int32_t, 0);
+  }
+  payload_value = caml_copy_string(payload);
+  result = caml_callback2_exn(*dispatch, Val_long(node), payload_value);
+  int32_t accepted = emit_patch(result);
+  CAMLreturnT(int32_t, accepted);
+}
+
 LUI_EXPORT int32_t lui_ocaml_double_press(int64_t node) {
   const value *dispatch = caml_named_value("lui_flutter_double_press");
   if (dispatch == NULL) {

@@ -176,6 +176,11 @@ namespace LUI.WinUI
                     break;
                 case LUINodeKind.MenuItem:
                     break;
+                case LUINodeKind.FilePicker:
+                    // Non-visual node: the WinUI backend does not present a
+                    // picker; children sync inline.
+                    SyncStackLike(state, context);
+                    break;
                 case LUINodeKind.BottomTabs:
                     SyncBottomTabs(state, context);
                     break;

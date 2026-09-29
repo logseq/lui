@@ -138,6 +138,18 @@
       "status": "supported"
     },
     {
+      "name": "list-section",
+      "status": "supported"
+    },
+    {
+      "name": "swipe-actions",
+      "status": "supported"
+    },
+    {
+      "name": "swipe-action",
+      "status": "supported"
+    },
+    {
       "name": "alert",
       "status": "supported"
     },
@@ -307,6 +319,10 @@
     },
     {
       "name": "input-group-actions",
+      "status": "supported"
+    },
+    {
+      "name": "file-picker",
       "status": "supported"
     },
     {
@@ -856,6 +872,48 @@
       "container": false
     },
     {
+      "lg": "ListSection",
+      "wire": "list-section",
+      "dart": "listSection",
+      "swift": "listSection",
+      "container": true
+    },
+    {
+      "lg": "ListSectionHeader",
+      "wire": "list-section-header",
+      "dart": "listSectionHeader",
+      "swift": "listSectionHeader",
+      "container": true
+    },
+    {
+      "lg": "ListSectionFooter",
+      "wire": "list-section-footer",
+      "dart": "listSectionFooter",
+      "swift": "listSectionFooter",
+      "container": true
+    },
+    {
+      "lg": "SwipeActions",
+      "wire": "swipe-actions",
+      "dart": "swipeActions",
+      "swift": "swipeActions",
+      "container": true
+    },
+    {
+      "lg": "SwipeAction",
+      "wire": "swipe-action",
+      "dart": "swipeAction",
+      "swift": "swipeAction",
+      "container": false
+    },
+    {
+      "lg": "FilePicker",
+      "wire": "file-picker",
+      "dart": "filePicker",
+      "swift": "filePicker",
+      "container": true
+    },
+    {
       "lg": "Link",
       "wire": "link",
       "dart": "link",
@@ -1244,6 +1302,76 @@
       "swift": "themeMode"
     },
     {
+      "lg": "KeyValue",
+      "wire": "key",
+      "swift": "key"
+    },
+    {
+      "lg": "SeparatorValue",
+      "wire": "separator",
+      "swift": "separator"
+    },
+    {
+      "lg": "StyleValue",
+      "wire": "style",
+      "swift": "style"
+    },
+    {
+      "lg": "ScrollTarget",
+      "wire": "scroll-target",
+      "swift": "scrollTarget"
+    },
+    {
+      "lg": "ScrollAnchor",
+      "wire": "scroll-anchor",
+      "swift": "scrollAnchor"
+    },
+    {
+      "lg": "ScrollToken",
+      "wire": "scroll-token",
+      "swift": "scrollToken"
+    },
+    {
+      "lg": "ScrollAnimated",
+      "wire": "scroll-animated",
+      "swift": "scrollAnimated"
+    },
+    {
+      "lg": "TrackVisibleRange",
+      "wire": "track-visible-range",
+      "swift": "trackVisibleRange"
+    },
+    {
+      "lg": "EdgeValue",
+      "wire": "edge",
+      "swift": "edge"
+    },
+    {
+      "lg": "PickerRequest",
+      "wire": "request",
+      "swift": "request"
+    },
+    {
+      "lg": "PickerTypes",
+      "wire": "types",
+      "swift": "types"
+    },
+    {
+      "lg": "PickerMultiple",
+      "wire": "multiple",
+      "swift": "multiple"
+    },
+    {
+      "lg": "PickerSource",
+      "wire": "source",
+      "swift": "source"
+    },
+    {
+      "lg": "PickerCompletion",
+      "wire": "completion",
+      "swift": "completion"
+    },
+    {
       "lg": "MinValue",
       "wire": "min",
       "swift": "minValue"
@@ -1282,11 +1410,6 @@
       "lg": "MaxPixelSize",
       "wire": "max-pixel-size",
       "swift": "maxPixelSize"
-    },
-    {
-      "lg": "EdgeValue",
-      "wire": "edge",
-      "swift": "edge"
     },
     {
       "lg": "Visible",
@@ -1361,6 +1484,29 @@
       "lg": "Appear",
       "fields": [
         ":int"
+      ]
+    },
+    {
+      "lg": "ScrollCompleted",
+      "fields": [
+        ":int",
+        ":int",
+        ":string"
+      ]
+    },
+    {
+      "lg": "VisibleRange",
+      "fields": [
+        ":int",
+        ":int",
+        ":int"
+      ]
+    },
+    {
+      "lg": "Picked",
+      "fields": [
+        ":int",
+        ":string"
       ]
     }
   ],
@@ -1441,6 +1587,29 @@
       "enabled",
       "foreground",
       "style-class"
+    ],
+    "list-section": [
+      "key",
+      "separator"
+    ],
+    "swipe-actions": [],
+    "swipe-action": [
+      "text",
+      "icon",
+      "variant",
+      "edge",
+      "enabled",
+      "background",
+      "press-enabled"
+    ],
+    "file-picker": [
+      "request",
+      "types",
+      "multiple",
+      "source",
+      "completion",
+      "enabled",
+      "appear-enabled"
     ],
     "file-preview": [
       "path"

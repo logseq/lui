@@ -15,6 +15,9 @@ public enum LUIEvent: Equatable, Sendable {
     case dismiss(node: Int)
     case doublePress(node: Int)
     case appear(node: Int)
+    case scrollCompleted(node: Int, token: Int, outcome: String)
+    case visibleRange(node: Int, first: Int, last: Int)
+    case picked(node: Int, payload: String)
     case `extension`(
         node: Int,
         identifier: String,
@@ -131,14 +134,15 @@ enum LUIWireValue: Decodable, Equatable {
             return (1...6).contains(value)
         case .checked, .selected, .autofocus, .submitOnEnter, .longPressEnabled,
              .changeEnabled, .toggleEnabled, .pressEnabled, .submitEnabled,
-             .doublePressEnabled, .appearEnabled, .connector, .expanded, .enabled:
+             .doublePressEnabled, .appearEnabled, .connector, .expanded, .enabled,
+             .scrollAnimated, .trackVisibleRange:
             return boolValue != nil
         case .progressValue:
             return doubleValue != nil
         case .resizeDuration, .image, .surface, .active, .columns,
              .paddingHorizontal, .paddingVertical, .borderWidth, .cornerRadius,
              .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight,
-             .containerRelativeFrameInset:
+             .containerRelativeFrameInset, .scrollToken:
             guard let value = intValue else { return false }
             return value >= 0
         case .resizeEasing:
@@ -180,7 +184,7 @@ enum LUIWireValue: Decodable, Equatable {
             return value == "leading" || value == "trailing" || value == "top"
         case .title, .description, .meta, .indicator, .foreground, .borderColor,
              .text, .background, .placeholder, .accessibilityLabel,
-             .accessibilityIdentifier, .styleClass:
+             .accessibilityIdentifier, .styleClass, .key, .scrollTarget:
             return stringValue != nil
         case .containerRelativeFrame:
             guard let value = stringValue else { return false }
@@ -205,6 +209,15 @@ enum LUIWireValue: Decodable, Equatable {
         case .textAlignment:
             guard let value = stringValue else { return false }
             return Self.textAlignments.contains(value)
+        case .separator:
+            guard let value = stringValue else { return false }
+            return value == "visible" || value == "hidden"
+        case .style:
+            guard let value = stringValue else { return false }
+            return ["plain", "inset", "inset-grouped"].contains(value)
+        case .scrollAnchor:
+            guard let value = stringValue else { return false }
+            return ["top", "center", "bottom"].contains(value)
         case .role:
             guard let value = stringValue else { return false }
             return value == "treeitem" || value == "navigation" ||
@@ -217,6 +230,15 @@ enum LUIWireValue: Decodable, Equatable {
         case .themeMode:
             guard let value = stringValue else { return false }
             return ["system", "light", "dark"].contains(value)
+        case .request, .completion:
+            return stringValue != nil || intValue != nil
+        case .types:
+            return stringValue != nil
+        case .multiple:
+            return boolValue != nil
+        case .source:
+            guard let value = stringValue else { return false }
+            return ["files", "photos", "camera"].contains(value)
         case .main:
             guard let value = stringValue else { return false }
             return Self.mainAlignments.contains(value)
@@ -668,6 +690,29 @@ struct LUIRetainedTree {
             if parentNode.kind == .menuItem, childNode.kind != .contextMenu {
                 throw invalid("menu-item accepts only context-menu metadata")
             }
+            if parentNode.kind == .listSection,
+               childNode.kind != .listItem,
+               childNode.kind != .listSectionHeader,
+               childNode.kind != .listSectionFooter {
+                throw invalid("list-section accepts only list rows and section header/footer")
+            }
+            if childNode.kind == .listSectionHeader ||
+               childNode.kind == .listSectionFooter,
+               parentNode.kind != .listSection {
+                throw invalid("list-section header/footer requires a list-section parent")
+            }
+            if childNode.kind == .listSection, parentNode.kind != .list {
+                throw invalid("list-section requires a direct list parent")
+            }
+            if childNode.kind == .swipeActions, parentNode.kind != .listItem {
+                throw invalid("swipe-actions requires a list-item parent")
+            }
+            if parentNode.kind == .swipeActions, childNode.kind != .swipeAction {
+                throw invalid("swipe-actions accepts only swipe-action children")
+            }
+            if childNode.kind == .swipeAction, parentNode.kind != .swipeActions {
+                throw invalid("swipe-action requires a swipe-actions parent")
+            }
             if parentNode.kind != .menuItem,
                Self.isContextMenuLeafHost(parentNode.kind),
                childNode.kind != .contextMenu {
@@ -868,13 +913,19 @@ struct LUIRetainedTree {
                 kind == .tableCell || kind == .bubble || kind == .statusBar
         case .role: isTreeRow(kind) || kind == .listItem
         case .treeLevel, .expanded: isTreeRow(kind)
+        case .key, .separator: kind == .listItem || kind == .listSection
+        case .style, .scrollTarget, .scrollAnchor, .scrollToken,
+             .scrollAnimated, .trackVisibleRange:
+            kind == .list
+        case .edge: kind == .swipeAction || kind == .edgeInset
         case .minValue, .maxValue, .stepValue: kind == .numberStepper
         case .detents, .sizing: kind == .sheet
         case .path: kind == .fileImage || kind == .filePreview
         case .url: kind == .link
         case .maxPixelSize: kind == .fileImage
         case .active, .title, .description, .meta, .indicator, .connector: false
-        case .edge, .visible: kind == .edgeInset
+        case .request, .types, .multiple, .source, .completion: false
+        case .visible: kind == .edgeInset
         // `.alignment` is admitted ahead of the restrictive matrix above.
         case .alignment: kind != .root
         }
@@ -897,7 +948,10 @@ struct LUIRetainedTree {
             kind == .stepper || kind == .timeline ||
             kind == .inputGroup || kind == .inputGroupActions ||
             kind == .toast || kind == .toolbar || kind == .bottomTabs || kind == .bottomTab ||
-            kind == .menuTrigger || isContextMenuLeafHost(kind) || kind == .link
+            kind == .menuTrigger || kind == .filePicker || isContextMenuLeafHost(kind)
+                || kind == .link || kind == .listSection
+                || kind == .listSectionHeader || kind == .listSectionFooter
+                || kind == .swipeActions
     }
 
     private static func acceptsExtensionChildren(_ kind: LUINodeKind) -> Bool {
@@ -908,7 +962,8 @@ struct LUIRetainedTree {
             kind == .sheet || kind == .accordion || kind == .resizable || kind == .split ||
             kind == .drawer ||
             kind == .alert || kind == .bubble || kind == .toast || kind == .toolbar ||
-            kind == .bottomTab
+            kind == .bottomTab || kind == .listSection ||
+            kind == .listSectionHeader || kind == .listSectionFooter
     }
 
     private static func isModalSurface(_ kind: LUINodeKind) -> Bool {
@@ -1137,9 +1192,18 @@ struct LUIRetainedTree {
             let hasTreeMetadata = node.properties[.role]?.stringValue == "treeitem" ||
                 node.properties[.treeLevel] != nil || node.properties[.expanded] != nil
             if hasTreeMetadata {
-                guard node.properties[.role]?.stringValue == "treeitem",
-                      hasAncestor(node.parent, kind: .tree) else {
-                    throw invalid("tree row metadata requires a treeitem inside tree")
+                // A list-item inside a list may carry expansion state as a
+                // disclosure row without the treeitem role.
+                let isDisclosureItem = node.kind == .listItem &&
+                    node.properties[.role] == nil &&
+                    node.properties[.treeLevel] == nil &&
+                    node.properties[.changeEnabled] == nil &&
+                    hasAncestor(node.parent, kind: .list)
+                if !isDisclosureItem {
+                    guard node.properties[.role]?.stringValue == "treeitem",
+                          hasAncestor(node.parent, kind: .tree) else {
+                        throw invalid("tree row metadata requires a treeitem inside tree")
+                    }
                 }
                 if node.properties[.expanded] != nil,
                    node.properties[.toggleEnabled]?.boolValue != true {
@@ -1155,13 +1219,32 @@ struct LUIRetainedTree {
                 }
             }
             if node.kind == .listItem {
+                let disclosure = node.properties[.expanded] != nil
                 let hasText = !(node.properties[.text]?.stringValue ?? "").isEmpty
-                let hasChildren = node.children.contains { nodes[$0]?.kind != .contextMenu }
+                let hasChildren = node.children.contains { childID in
+                    guard let child = nodes[childID] else { return false }
+                    if child.kind == .contextMenu || child.kind == .swipeActions {
+                        return false
+                    }
+                    // Nested list items on a disclosure row are rows, not content.
+                    return !(disclosure && child.kind == .listItem)
+                }
                 guard hasText || hasChildren else {
                     throw invalid("list-item requires text or children")
                 }
                 guard !(hasText && hasChildren) else {
                     throw invalid("list-item accepts text or children, not both")
+                }
+                if node.children.contains(where: { nodes[$0]?.kind == .listItem }),
+                   node.properties[.expanded] == nil {
+                    throw invalid("nested list-item children require expanded")
+                }
+            }
+            if node.kind == .swipeAction {
+                let text = node.properties[.text]?.stringValue ?? ""
+                let icon = node.properties[.icon]?.stringValue ?? ""
+                guard !text.isEmpty || !icon.isEmpty else {
+                    throw invalid("swipe-action requires text or icon")
                 }
             }
             if node.kind == .avatar || node.kind == .image {

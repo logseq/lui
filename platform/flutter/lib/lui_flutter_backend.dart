@@ -35,6 +35,10 @@ sealed class LUIEvent {
     required double value,
   }) = LUIValueChangedEvent;
   const factory LUIEvent.dismiss({required int node}) = LUIDismissEvent;
+  const factory LUIEvent.picked({
+    required int node,
+    required String payload,
+  }) = LUIPickedEvent;
   const factory LUIEvent.doublePress({required int node}) = LUIDoublePressEvent;
   const factory LUIEvent.extension({
     required int node,
@@ -42,6 +46,16 @@ sealed class LUIEvent {
     required String name,
     required Map<String, Object> values,
   }) = LUIExtensionComponentEvent;
+  const factory LUIEvent.scrollCompleted({
+    required int node,
+    required int token,
+    required String outcome,
+  }) = LUIScrollCompletedEvent;
+  const factory LUIEvent.visibleRange({
+    required int node,
+    required int first,
+    required int last,
+  }) = LUIVisibleRangeEvent;
 }
 
 @immutable
@@ -93,6 +107,19 @@ final class LUIDismissEvent extends LUIEvent {
 
   @override
   int get hashCode => node.hashCode;
+}
+
+final class LUIPickedEvent extends LUIEvent {
+  const LUIPickedEvent({required this.node, required this.payload});
+  final int node;
+  final String payload;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIPickedEvent && other.node == node && other.payload == payload;
+
+  @override
+  int get hashCode => Object.hash(node, payload);
 }
 
 final class LUIChangeEvent extends LUIEvent {
@@ -180,6 +207,48 @@ final class LUIToggleChangedEvent extends LUIEvent {
 
   @override
   int get hashCode => Object.hash(node, checked);
+}
+
+final class LUIScrollCompletedEvent extends LUIEvent {
+  const LUIScrollCompletedEvent({
+    required this.node,
+    required this.token,
+    required this.outcome,
+  });
+  final int node;
+  final int token;
+  final String outcome;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIScrollCompletedEvent &&
+      other.node == node &&
+      other.token == token &&
+      other.outcome == outcome;
+
+  @override
+  int get hashCode => Object.hash(node, token, outcome);
+}
+
+final class LUIVisibleRangeEvent extends LUIEvent {
+  const LUIVisibleRangeEvent({
+    required this.node,
+    required this.first,
+    required this.last,
+  });
+  final int node;
+  final int first;
+  final int last;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIVisibleRangeEvent &&
+      other.node == node &&
+      other.first == first &&
+      other.last == last;
+
+  @override
+  int get hashCode => Object.hash(node, first, last);
 }
 
 final class LUIBackendException implements Exception {
@@ -360,9 +429,8 @@ final class _LUIThemeScope extends InheritedWidget {
 
   final Map<String, Object> tokens;
 
-  static Map<String, Object>? maybeTokens(BuildContext context) => context
-      .dependOnInheritedWidgetOfExactType<_LUIThemeScope>()
-      ?.tokens;
+  static Map<String, Object>? maybeTokens(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_LUIThemeScope>()?.tokens;
 
   @override
   bool updateShouldNotify(_LUIThemeScope oldWidget) =>
@@ -672,8 +740,9 @@ final class LUIFlutterBackend {
         entry.key: _ExtensionNodeState.copy(entry.value),
     };
 
+    final filePickerRequests = <int>{};
     for (final operation in operations) {
-      _applyState(next, nextExtensions, operation);
+      _applyState(next, nextExtensions, operation, filePickerRequests);
     }
     _validateStates(next);
     _validateExtensionStates(next, nextExtensions);
@@ -762,6 +831,18 @@ final class LUIFlutterBackend {
       _handles[id]?.markDependencyChanged();
     }
     _scheduleLayoutSettle();
+    // This backend cannot present a picker: every file-picker request the
+    // batch left unanswered (request set, not matching `completion`) is
+    // answered with `dismiss`, per the element contract.
+    for (final id in filePickerRequests) {
+      final state = _states[id];
+      if (state == null || state.kind != _NodeKind.filePicker) continue;
+      final request = state.properties['request'];
+      if (request == null || request == state.properties['completion']) {
+        continue;
+      }
+      onEvent?.call(LUIEvent.dismiss(node: id));
+    }
   }
 
   // Render objects adopted or moved into a subtree that is already clean
@@ -878,7 +959,8 @@ final class LUIFlutterBackend {
     if (!_containsState(states, extensions, id)) {
       return;
     }
-    final properties = states[id]?.properties ??
+    final properties =
+        states[id]?.properties ??
         _requireExtensionStateFrom(extensions, id).properties;
     final identifier = properties['accessibility-identifier'];
     if (identifier is String) {
@@ -901,7 +983,8 @@ final class LUIFlutterBackend {
       if (!_containsState(_states, _extensionStates, id)) {
         return;
       }
-      final properties = _states[id]?.properties ??
+      final properties =
+          _states[id]?.properties ??
           _requireExtensionStateFrom(_extensionStates, id).properties;
       final identifier = properties['accessibility-identifier'];
       if (identifier is String &&
@@ -947,7 +1030,10 @@ final class LUIFlutterBackend {
       final present = <String>{};
       final roots = <SemanticsNode?>[
         RendererBinding
-            .instance.rootPipelineOwner.semanticsOwner?.rootSemanticsNode,
+            .instance
+            .rootPipelineOwner
+            .semanticsOwner
+            ?.rootSemanticsNode,
         for (final view in RendererBinding.instance.renderViews)
           view.owner?.semanticsOwner?.rootSemanticsNode,
       ];
@@ -984,8 +1070,7 @@ final class LUIFlutterBackend {
           walk(root);
         }
       }
-      final retainedSet =
-          _staleSemanticsIdentifiers.intersection(present);
+      final retainedSet = _staleSemanticsIdentifiers.intersection(present);
       final mountedIds = _mountedSemanticsIdentifiers();
       final missingSet = mountedIds.difference(present);
       final unresolved = retainedSet.length + missingSet.length;
@@ -1491,6 +1576,7 @@ final class LUIFlutterBackend {
         state.kind != _NodeKind.combobox &&
         state.kind != _NodeKind.dropdownMenu &&
         state.kind != _NodeKind.toast &&
+        state.kind != _NodeKind.filePicker &&
         state.kind != _NodeKind.filePreview &&
         !state.kind.isModalSurface) {
       throw LUIBackendException('node $node is not dismissible');
@@ -1506,7 +1592,9 @@ final class LUIFlutterBackend {
       orElse: () => null,
     );
     final children = state.children
-        .where((child) => child != contextMenuID)
+        .where((child) =>
+            child != contextMenuID &&
+            _states[child]?.kind != _NodeKind.swipeActions)
         .map((child) {
           final childWidget = widget(node: child);
           final childState = _states[child];
@@ -1855,7 +1943,8 @@ final class LUIFlutterBackend {
     // `scroll-leading` pins the last child at the trailing edge while the
     // rest scroll, matching the Apple backend's LUIToolbarLayoutPolicy.
     Widget horizontalToolbar(List<Widget> children, double gap) {
-      final pinTrailing = (state.properties['style-class'] as String? ?? '')
+      final pinTrailing =
+          (state.properties['style-class'] as String? ?? '')
               .split(' ')
               .contains('scroll-leading') &&
           children.length >= 2;
@@ -1886,6 +1975,7 @@ final class LUIFlutterBackend {
         ],
       );
     }
+
     Widget horizontalGroupFlex() => LUIFlex(
       direction: Axis.horizontal,
       expandsForAlignment: state.properties.containsKey('main'),
@@ -1921,13 +2011,11 @@ final class LUIFlutterBackend {
         children: children,
       );
       if (state.properties['press-enabled'] == true) {
-        return GestureDetector(
-          onTap: () => performAction(id),
-          child: body,
-        );
+        return GestureDetector(onTap: () => performAction(id), child: body);
       }
       return body;
     }
+
     Widget stack() {
       final menuID = state.children.cast<int?>().firstWhere(
         (childID) =>
@@ -2611,10 +2699,8 @@ final class LUIFlutterBackend {
       } else if (indicator.isNotEmpty) {
         marker = Text(
           indicator,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: variantColor,
-            fontWeight: FontWeight.w600,
-          ),
+          style: Theme.of(context).textTheme.labelSmall
+              ?.copyWith(color: variantColor, fontWeight: FontWeight.w600),
         );
       } else {
         marker = Container(
@@ -2904,6 +2990,11 @@ final class LUIFlutterBackend {
       _NodeKind.menuItem => menuItem(),
       _NodeKind.menuTrigger => menuTrigger(),
       _NodeKind.listItem => listItem(),
+      _NodeKind.listSection ||
+      _NodeKind.listSectionHeader ||
+      _NodeKind.listSectionFooter ||
+      _NodeKind.swipeActions => column(),
+      _NodeKind.swipeAction => Text(text),
       _NodeKind.table => table(),
       _NodeKind.tree => tree(),
       _NodeKind.tableRow => tableRow(),
@@ -3023,6 +3114,10 @@ final class LUIFlutterBackend {
         color: foreground,
       ),
       _NodeKind.statusBar => statusBar(),
+      // Non-visual node: presentation is driven by its properties on
+      // platforms that implement the file-picker backend; children render
+      // inline.
+      _NodeKind.filePicker => Stack(children: children),
       _NodeKind.link => column(),
       _NodeKind.fileImage || _NodeKind.filePreview => const SizedBox.shrink(),
     };
@@ -3280,6 +3375,7 @@ final class LUIFlutterBackend {
     Map<int, _NodeState> states,
     Map<int, _ExtensionNodeState> extensions,
     Map<String, Object?> operation,
+    Set<int> filePickerRequests,
   ) {
     switch (_string(operation['op'], 'op')) {
       case 'create-node':
@@ -3322,7 +3418,8 @@ final class LUIFlutterBackend {
           throw LUIBackendException('unknown node $id');
         }
       case 'set-prop':
-        final node = _requireState(states, _integer(operation['id'], 'id'));
+        final id = _integer(operation['id'], 'id');
+        final node = _requireState(states, id);
         final property = _string(operation['property'], 'property');
         final value = operation['value'];
         if (!_supports(node.kind, property, value)) {
@@ -3331,6 +3428,9 @@ final class LUIFlutterBackend {
           );
         }
         node.properties[property] = value!;
+        if (node.kind == _NodeKind.filePicker && property == 'request') {
+          filePickerRequests.add(id);
+        }
       case 'remove-prop':
         final node = _requireState(states, _integer(operation['id'], 'id'));
         final property = _string(operation['property'], 'property');
@@ -3588,6 +3688,44 @@ final class LUIFlutterBackend {
         'toolbar accepts only interactive controls and dividers',
       );
     }
+    if (parent.kind == _NodeKind.listSection &&
+        child.kind != _NodeKind.listItem &&
+        child.kind != _NodeKind.listSectionHeader &&
+        child.kind != _NodeKind.listSectionFooter) {
+      throw const LUIBackendException(
+        'list-section accepts only list rows and section header/footer',
+      );
+    }
+    if ((child.kind == _NodeKind.listSectionHeader ||
+            child.kind == _NodeKind.listSectionFooter) &&
+        parent.kind != _NodeKind.listSection) {
+      throw const LUIBackendException(
+        'list-section header/footer requires a list-section parent',
+      );
+    }
+    if (child.kind == _NodeKind.listSection && parent.kind != _NodeKind.list) {
+      throw const LUIBackendException(
+        'list-section requires a direct list parent',
+      );
+    }
+    if (child.kind == _NodeKind.swipeActions &&
+        parent.kind != _NodeKind.listItem) {
+      throw const LUIBackendException(
+        'swipe-actions requires a list-item parent',
+      );
+    }
+    if (parent.kind == _NodeKind.swipeActions &&
+        child.kind != _NodeKind.swipeAction) {
+      throw const LUIBackendException(
+        'swipe-actions accepts only swipe-action children',
+      );
+    }
+    if (child.kind == _NodeKind.swipeAction &&
+        parent.kind != _NodeKind.swipeActions) {
+      throw const LUIBackendException(
+        'swipe-action requires a swipe-actions parent',
+      );
+    }
   }
 
   /// Direction-aware nine-point anchor; 'leading'/'trailing' follow the
@@ -3725,6 +3863,38 @@ final class LUIFlutterBackend {
               (_iconNames.contains(value) ||
                   _appIconNamePattern.hasMatch(value)),
         'selected' || 'enabled' || 'press-enabled' => value is bool,
+        _ => false,
+      };
+    }
+    if (kind == _NodeKind.listSection) {
+      return switch (property) {
+        'key' => value is String,
+        'separator' => value == 'visible' || value == 'hidden',
+        _ => false,
+      };
+    }
+    if (kind == _NodeKind.swipeActions) return false;
+    if (kind == _NodeKind.swipeAction) {
+      return switch (property) {
+        'text' || 'background' => value is String,
+        'icon' =>
+          value is String &&
+              (_iconNames.contains(value) ||
+                  _appIconNamePattern.hasMatch(value)),
+        'variant' => value is String && _buttonVariants.contains(value),
+        'edge' => value == 'leading' || value == 'trailing',
+        'enabled' || 'press-enabled' => value is bool,
+        _ => false,
+      };
+    }
+    if (kind == _NodeKind.filePicker) {
+      return switch (property) {
+        'request' || 'completion' => value is String || value is int,
+        'types' => value is String,
+        'multiple' || 'enabled' || 'appear-enabled' => value is bool,
+        'source' =>
+          value is String &&
+              const {'files', 'photos', 'camera'}.contains(value),
         _ => false,
       };
     }
@@ -4095,6 +4265,25 @@ final class LUIFlutterBackend {
       'role' => value == 'treeitem' && value is String && _isTreeRowKind(kind),
       'tree-level' => value is int && value > 0 && _isTreeRowKind(kind),
       'expanded' => value is bool && _isTreeRowKind(kind),
+      'key' =>
+        value is String &&
+            (kind == _NodeKind.listItem || kind == _NodeKind.listSection),
+      'separator' =>
+        (value == 'visible' || value == 'hidden') &&
+            (kind == _NodeKind.listItem || kind == _NodeKind.listSection),
+      'style' =>
+        const {'plain', 'inset', 'inset-grouped'}.contains(value) &&
+            kind == _NodeKind.list,
+      'scroll-target' => value is String && kind == _NodeKind.list,
+      'scroll-anchor' =>
+        const {'top', 'center', 'bottom'}.contains(value) &&
+            kind == _NodeKind.list,
+      'scroll-token' => value is int && value >= 0 && kind == _NodeKind.list,
+      'scroll-animated' ||
+      'track-visible-range' => value is bool && kind == _NodeKind.list,
+      'edge' =>
+        (value == 'leading' || value == 'trailing') &&
+            kind == _NodeKind.swipeAction,
       _ => false,
     };
   }
@@ -4324,8 +4513,17 @@ final class LUIFlutterBackend {
           state.properties.containsKey('tree-level') ||
           state.properties.containsKey('expanded');
       if (hasTreeMetadata) {
-        if (state.properties['role'] != 'treeitem' ||
-            !_hasAncestor(states, state.parent, _NodeKind.tree)) {
+        // A list-item inside a list may carry expansion state as a
+        // disclosure row without the treeitem role.
+        final isDisclosureItem =
+            state.kind == _NodeKind.listItem &&
+            !state.properties.containsKey('role') &&
+            !state.properties.containsKey('tree-level') &&
+            !state.properties.containsKey('change-enabled') &&
+            _hasAncestor(states, state.parent, _NodeKind.list);
+        if (!isDisclosureItem &&
+            (state.properties['role'] != 'treeitem' ||
+                !_hasAncestor(states, state.parent, _NodeKind.tree))) {
           throw const LUIBackendException(
             'tree row metadata requires a treeitem inside tree',
           );
@@ -4349,10 +4547,18 @@ final class LUIFlutterBackend {
         }
       }
       if (state.kind == _NodeKind.listItem) {
+        final disclosure = state.properties.containsKey('expanded');
         final hasText = (state.properties['text'] as String? ?? '').isNotEmpty;
-        final hasChildren = state.children.any(
-          (child) => states[child]?.kind != _NodeKind.contextMenu,
-        );
+        final hasChildren = state.children.any((childID) {
+          final child = states[childID];
+          if (child == null ||
+              child.kind == _NodeKind.contextMenu ||
+              child.kind == _NodeKind.swipeActions) {
+            return false;
+          }
+          // Nested list items on a disclosure row are rows, not content.
+          return !(disclosure && child.kind == _NodeKind.listItem);
+        });
         if (!hasText && !hasChildren) {
           throw const LUIBackendException(
             'list-item requires text or children',
@@ -4362,6 +4568,21 @@ final class LUIFlutterBackend {
           throw const LUIBackendException(
             'list-item accepts text or children, not both',
           );
+        }
+        if (state.children.any(
+              (child) => states[child]?.kind == _NodeKind.listItem,
+            ) &&
+            !state.properties.containsKey('expanded')) {
+          throw const LUIBackendException(
+            'nested list-item children require expanded',
+          );
+        }
+      }
+      if (state.kind == _NodeKind.swipeAction) {
+        final text = state.properties['text'] as String? ?? '';
+        final icon = state.properties['icon'] as String? ?? '';
+        if (text.isEmpty && icon.isEmpty) {
+          throw const LUIBackendException('swipe-action requires text or icon');
         }
       }
       if (state.kind == _NodeKind.avatar || state.kind == _NodeKind.image) {
@@ -4571,8 +4792,13 @@ final class LUIFlutterBackend {
       kind == _NodeKind.toolbar ||
       kind == _NodeKind.bottomTabs ||
       kind == _NodeKind.bottomTab ||
+      kind == _NodeKind.filePicker ||
       kind == _NodeKind.link ||
       _isContextMenuLeafHost(kind) ||
+      kind == _NodeKind.listSection ||
+      kind == _NodeKind.listSectionHeader ||
+      kind == _NodeKind.listSectionFooter ||
+      kind == _NodeKind.swipeActions ||
       kind == _NodeKind.edgeInset ||
       kind == _NodeKind.overlay ||
       kind == _NodeKind.viewThatFits ||
@@ -4604,7 +4830,10 @@ final class LUIFlutterBackend {
       kind == _NodeKind.bubble ||
       kind == _NodeKind.toast ||
       kind == _NodeKind.toolbar ||
-      kind == _NodeKind.bottomTab;
+      kind == _NodeKind.bottomTab ||
+      kind == _NodeKind.listSection ||
+      kind == _NodeKind.listSectionHeader ||
+      kind == _NodeKind.listSectionFooter;
 
   static bool _isToolbarChild(_NodeKind kind) =>
       kind == _NodeKind.button ||
@@ -6386,12 +6615,11 @@ final class _LUIRetainedTooltipState extends State<_LUIRetainedTooltip>
   }
 }
 
-typedef _LUIToggleSelectionBuilder =
-    Widget Function(
-      BuildContext context,
-      bool selected,
-      ValueChanged<bool> setSelected,
-    );
+typedef _LUIToggleSelectionBuilder = Widget Function(
+  BuildContext context,
+  bool selected,
+  ValueChanged<bool> setSelected,
+);
 
 final class _LUIToggleSelection extends StatefulWidget {
   const _LUIToggleSelection({

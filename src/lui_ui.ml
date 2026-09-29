@@ -136,6 +136,11 @@ let accordion context = create context Accordion
 let menu_item context = create context MenuItem
 let menu_trigger context = create context MenuTrigger
 let list_item context = create context ListItem
+let list_section context = create context ListSection
+let list_section_header context = create context ListSectionHeader
+let list_section_footer context = create context ListSectionFooter
+let swipe_actions context = create context SwipeActions
+let swipe_action context = create context SwipeAction
 let avatar context = create context Avatar
 let image context = create context Image
 let media_surface context = create context MediaSurface
@@ -148,6 +153,7 @@ let timeline context = create context Timeline
 let timeline_item context = create context TimelineItem
 let input_group context = create context InputGroup
 let input_group_actions context = create context InputGroupActions
+let file_picker context = create context FilePicker
 let button context = create context Button
 let toggle_button context = create context ToggleButton
 let toggle context = create context Toggle
@@ -313,6 +319,14 @@ let int_property_signal context node property source =
 let int_property context node property value =
   Lui_runtime.set_prop context.ui_application node property
     (IntValue value)
+
+let value_property context node property value =
+  Lui_runtime.set_prop context.ui_application node property value
+
+let value_property_signal context node property source =
+  ignore
+    (Lui_runtime.bind_prop context.ui_scope context.ui_application node
+       property (Signal.own_signal context.ui_scope source))
 
 let disabled context node disabled =
   bool_property context node Enabled (not disabled)

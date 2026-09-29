@@ -231,6 +231,7 @@ let insert_child_dom renderer previous_nodes parent child index =
       | Some ContextMenu ->
           W.Element.appendChild (W.Element.asNode child_dom)
             (Util.document_body renderer)
+      | Some (SwipeActions | SwipeAction) -> ()
       | _ ->
           let container =
             dom_child_container renderer parent parent_dom
@@ -344,6 +345,10 @@ let apply_move_child renderer previous_nodes parent child index =
   let tooltip = prev_anchored_tooltip previous_nodes child in
   let toast = prev_kind_is previous_nodes child Toast in
   let metadata = prev_kind_is previous_nodes child ContextMenu in
+  let swipe_meta =
+    prev_kind_is previous_nodes child SwipeActions
+    || prev_kind_is previous_nodes child SwipeAction
+  in
   let bottom_tab =
     match Store.node renderer.web_store child with
     | Some current -> Store.standard_kind_is current BottomTab
@@ -370,7 +375,8 @@ let apply_move_child renderer previous_nodes parent child index =
            (W.Element.removeChild
               (W.Element.asNode child_node) actual_parent)
      | None -> ());
-    if dropdown || modal || tooltip || toast || metadata then
+    if swipe_meta then ()
+    else if dropdown || modal || tooltip || toast || metadata then
       W.Element.appendChild (W.Element.asNode child_node) parent_node
     else
       Util.insert_dom_child parent_node child_node

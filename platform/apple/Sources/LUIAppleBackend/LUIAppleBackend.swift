@@ -164,6 +164,16 @@ final class LUINodeModel: Identifiable {
         properties[.doublePressEnabled]?.boolValue ?? false
     }
     var supportsAppear: Bool { properties[.appearEnabled]?.boolValue ?? false }
+    var rowKey: String? { properties[.key]?.stringValue }
+    var separatorVisibility: String? { properties[.separator]?.stringValue }
+    var listStyle: String? { properties[.style]?.stringValue }
+    var scrollTarget: String? { properties[.scrollTarget]?.stringValue }
+    var scrollAnchor: String? { properties[.scrollAnchor]?.stringValue }
+    var scrollToken: Int? { properties[.scrollToken]?.intValue }
+    var scrollAnimated: Bool { properties[.scrollAnimated]?.boolValue ?? true }
+    var tracksVisibleRange: Bool {
+        properties[.trackVisibleRange]?.boolValue ?? false
+    }
     var containerRelativeFrame: String? {
         properties[.containerRelativeFrame]?.stringValue
     }
@@ -406,6 +416,40 @@ public final class LUIAppleBackend {
 
     private var nodeFrames: [Int: CGRect] = [:]
     private var framesReportScheduled = false
+
+    // MARK: - file-picker operations
+
+    /// In-flight and completed file-picker requests keyed by node id. Held
+    /// here rather than in `LUIFilePickerView`'s @State so a view teardown
+    /// (tab switch, re-layout) does not release security-scoped files or
+    /// lose the pending completion handshake for a still-mounted node.
+    private var filePickerOperations: [Int: LUIFilePickerOperation] = [:]
+
+    func filePickerOperation(node: Int) -> LUIFilePickerOperation? {
+        filePickerOperations[node]
+    }
+
+    func setFilePickerOperation(node: Int, _ operation: LUIFilePickerOperation) {
+        filePickerOperations[node] = operation
+    }
+
+    /// Drops the operation and releases every file it retained.
+    func clearFilePickerOperation(node: Int) {
+        guard let operation = filePickerOperations.removeValue(forKey: node)
+        else { return }
+        releaseFilePickerFiles(operation.files)
+    }
+
+    func releaseFilePickerFiles(_ files: [LUIRetainedFile]) {
+        for file in files {
+            if file.securityScoped {
+                file.url.stopAccessingSecurityScopedResource()
+            }
+            if file.temporary {
+                try? FileManager.default.removeItem(at: file.url)
+            }
+        }
+    }
 
     func reportNodeFrame(_ nodeID: Int, _ rect: CGRect) {
         if nodeFrames[nodeID] == rect { return }
@@ -653,7 +697,7 @@ public final class LUIAppleBackend {
                 (model.kind == .tableCell && model.supportsPress) ||
                 model.kind == .select ||
                 model.kind == .combobox || model.kind == .menuItem ||
-                model.kind == .listItem ||
+                model.kind == .listItem || model.kind == .swipeAction ||
                 (model.kind == .timelineItem && model.supportsPress) ||
                 (model.kind == .fileImage && model.supportsPress) ||
                 (model.isTreeItem && model.supportsPress),
@@ -707,6 +751,14 @@ public final class LUIAppleBackend {
         emit(.appear(node: node))
     }
 
+    func performScrollCompleted(node: Int, token: Int, outcome: String) {
+        emit(.scrollCompleted(node: node, token: token, outcome: outcome))
+    }
+
+    func performVisibleRange(node: Int, first: Int, last: Int) {
+        emit(.visibleRange(node: node, first: first, last: last))
+    }
+
     public func performExtensionEvent(
         node: Int,
         name: String,
@@ -736,9 +788,11 @@ public final class LUIAppleBackend {
         guard let model = models[node],
               model.kind == .toggleButton || model.kind == .checkbox ||
                 model.kind == .switchControl || model.kind == .toggle ||
-                model.kind == .accordion || model.kind == .drawer || model.isTreeItem,
+                model.kind == .accordion || model.kind == .drawer ||
+                model.kind == .listItem || model.isTreeItem,
               model.isEnabled,
-              (model.kind != .accordion && model.kind != .drawer && !model.isTreeItem) ||
+              (model.kind != .accordion && model.kind != .drawer &&
+                model.kind != .listItem && !model.isTreeItem) ||
                 model.supportsToggle else {
             throw invalid("node \(node) is not an enabled toggle")
         }
@@ -782,10 +836,18 @@ public final class LUIAppleBackend {
               model.kind == .select || model.kind == .combobox ||
                 model.kind == .dropdownMenu || model.kind == .dialog ||
                 model.kind == .sheet || model.kind == .toast ||
-                model.kind == .filePreview else {
+                model.kind == .filePreview ||
+                model.kind == .filePicker else {
             throw invalid("node \(node) is not dismissible")
         }
         emit(.dismiss(node: node))
+    }
+
+    func performPicked(node: Int, payload: String) throws {
+        guard let model = models[node], model.kind == .filePicker else {
+            throw invalid("node \(node) is not a file-picker")
+        }
+        emit(.picked(node: node, payload: payload))
     }
 
     func performAction(node: Int) throws {
@@ -796,7 +858,7 @@ public final class LUIAppleBackend {
         }
         switch model.kind {
         case .button, .select, .combobox, .menuItem, .listItem, .timelineItem,
-             .fileImage:
+             .swipeAction, .fileImage:
             try performPress(node: node)
         case .toggleButton:
             try performToggle(node: node, checked: !model.isSelected)
@@ -920,13 +982,20 @@ public final class LUIAppleBackend {
         for id in dropped {
             models[id] = nil
             extensionModels[id] = nil
+            clearFilePickerOperation(node: id)
         }
         for id in touched where !dropped.contains(id) {
             if let state = tree.nodes[id] {
-                // Kinds are immutable, so context-menu membership in the
+                // Kinds are immutable, so auxiliary-slot membership in the
                 // child list is fixed until the list itself changes.
-                let visibleChildren = state.children.filter {
-                    tree.nodes[$0]?.kind != .contextMenu
+                let visibleChildren = state.children.filter { childID in
+                    switch tree.nodes[childID]?.kind {
+                    case .contextMenu, .swipeActions, .listSectionHeader,
+                         .listSectionFooter:
+                        false
+                    default:
+                        true
+                    }
                 }
                 if let model = models[id] {
                     model.apply(state: state, visibleChildren: visibleChildren)
