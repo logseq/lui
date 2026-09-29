@@ -79,18 +79,19 @@ let initialize_accordion_semantics node dom_node =
   W.Element.setAttribute "aria-labelledby" trigger_id panel
 
 let insert_dom_child parent child index =
-  let children = W.Element.children parent in
-  let length = W.HtmlCollection.length children in
+  (* index into childNodes, not Element.children: text-node children (e.g.
+     raw-text placeholders) occupy DOM positions that element-only indexing
+     skips, while visible_child_index counts them *)
+  let children = W.Node.childNodes (W.Element.asNode parent) in
+  let length = W.NodeList.length children in
   if index = length then
     W.Element.appendChild (W.Element.asNode child) parent
   else
-    match W.HtmlCollection.item index children with
+    match W.NodeList.item index children with
     | Some reference ->
         ignore
           (W.Element.insertBefore
-             (W.Element.asNode child)
-             (W.Element.asNode reference)
-             parent)
+             (W.Element.asNode child) reference parent)
     | None -> invalid_arg "DOM child index is out of bounds"
 
 let document_body renderer =
