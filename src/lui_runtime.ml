@@ -240,8 +240,55 @@ let keyed_children children reload_keys =
        | None -> result)
     (Hashtbl.create 8) children
 
+let key_counts nodes reload_keys =
+  let counts = Hashtbl.create 16 in
+  List.iter
+    (fun node ->
+       match Hashtbl.find_opt reload_keys node with
+       | Some key ->
+           Hashtbl.replace counts key
+             (1 + Option.value (Hashtbl.find_opt counts key) ~default:0)
+       | None -> ())
+    nodes;
+  counts
+
+let key_unique counts key = Hashtbl.find_opt counts key = Some 1
+
+(* A keyed child that moved to a different parent is the same logical node:
+   adopt it so its subtree (focus, textarea contents, mounted state)
+   survives instead of being dropped and recreated. An old node can only be
+   claimed once, and adoption requires the key to be unique on both sides —
+   the same key can legitimately appear under two parents (e.g. a live
+   block row and a read-only references row), and adopting one claimant's
+   subtree would steal another's, with the winner flipping whenever
+   traversal order changed. *)
+let match_candidate_child old_children
+    old_keyed old_reload_keys candidate_reload_keys old_global
+    old_key_counts candidate_key_counts reparented claimed index
+    candidate_child =
+  match Hashtbl.find_opt candidate_reload_keys candidate_child with
+  | Some key -> (
+      match Hashtbl.find_opt old_keyed key with
+      | Some found when not (Hashtbl.mem claimed found) -> Some found
+      | _ -> (
+          match Hashtbl.find_opt old_global key with
+          | Some adopted
+            when (not (Hashtbl.mem claimed adopted))
+                 && key_unique old_key_counts key
+                 && key_unique candidate_key_counts key ->
+              Hashtbl.replace reparented adopted ();
+              Some adopted
+          | _ -> None))
+  | None ->
+      if index < List.length old_children then
+        let position_child = List.nth old_children index in
+        if Hashtbl.mem old_reload_keys position_child then None
+        else Some position_child
+      else None
+
 let rec collect_node_mapping application saved old_node candidate_node
-    old_global reparented claimed mapping =
+    old_global old_key_counts candidate_key_counts reparented claimed
+    saved_children_node_set mapping =
   if not (node_compatible application saved old_node candidate_node) then
     mapping
   else begin
@@ -263,40 +310,75 @@ let rec collect_node_mapping application saved old_node candidate_node
     ignore (keyed_children candidate_children candidate_reload_keys);
     List.iteri
       (fun index candidate_child ->
-         let old_child =
-           match Hashtbl.find_opt candidate_reload_keys candidate_child with
-           | Some key -> (
-               match Hashtbl.find_opt old_keyed key with
-               | Some found when not (Hashtbl.mem claimed found) ->
-                   Some found
-               | _ -> (
-                   (* a keyed child that moved to a different parent is the
-                      same logical node: adopt it so its subtree (focus,
-                      textarea contents, mounted state) survives instead of
-                      being dropped and recreated. An old node can only be
-                      claimed once — duplicate keys fall back to a fresh
-                      node. *)
-                   match Hashtbl.find_opt old_global key with
-                   | Some adopted when not (Hashtbl.mem claimed adopted) ->
-                       Hashtbl.replace reparented adopted ();
-                       Some adopted
-                   | _ -> None))
-           | None ->
-             if index < List.length old_children then
-               let position_child = List.nth old_children index in
-               if Hashtbl.mem old_reload_keys position_child then None
-               else Some position_child
-             else None
-         in
-         match old_child with
+         match
+           match_candidate_child old_children old_keyed old_reload_keys
+             candidate_reload_keys old_global old_key_counts
+             candidate_key_counts reparented claimed index candidate_child
+         with
          | Some matched ->
-           ignore
-             (collect_node_mapping application saved matched candidate_child
-                old_global reparented claimed mapping)
-         | None -> ())
+             if node_compatible application saved matched candidate_child
+             then
+               ignore
+                 (collect_node_mapping application saved matched
+                    candidate_child old_global old_key_counts
+                    candidate_key_counts reparented claimed
+                    saved_children_node_set mapping)
+             else
+               rescue_subtree application saved candidate_child old_global
+                 old_key_counts candidate_key_counts reparented claimed
+                 saved_children_node_set mapping
+         | None ->
+             rescue_subtree application saved candidate_child old_global
+               old_key_counts candidate_key_counts reparented claimed
+               saved_children_node_set mapping)
       candidate_children;
     mapping
   end
+
+(* A freshly-mounted container (e.g. a block's children list appearing when
+   it gains children) has no old counterpart, so no recursion reaches its
+   keyed descendants — yet each descendant can still be the same logical
+   node as a keyed node elsewhere in the old subtree (a row being nested
+   under that block). Walk the unmapped candidate subtree and let keyed
+   nodes adopt their live counterparts instead of dropping and recreating
+   them (which would lose focus and textarea contents). *)
+and rescue_subtree application saved candidate_node old_global
+    old_key_counts candidate_key_counts reparented claimed
+    saved_children_node_set mapping =
+  if Hashtbl.mem mapping candidate_node then ()
+  else
+    let descend () =
+      let children =
+        match
+          Hashtbl.find_opt application.runtime_children candidate_node
+        with
+        | Some children -> children
+        | None -> []
+      in
+      List.iter
+        (fun child ->
+          rescue_subtree application saved child old_global old_key_counts
+            candidate_key_counts reparented claimed
+            saved_children_node_set mapping)
+        children
+    in
+    match
+      Hashtbl.find_opt application.runtime_reload_keys candidate_node
+    with
+    | Some key -> (
+        match Hashtbl.find_opt old_global key with
+        | Some adopted
+          when (not (Hashtbl.mem claimed adopted))
+               && key_unique old_key_counts key
+               && key_unique candidate_key_counts key
+               && node_compatible application saved adopted candidate_node ->
+            Hashtbl.replace reparented adopted ();
+            ignore
+              (collect_node_mapping application saved adopted candidate_node
+                 old_global old_key_counts candidate_key_counts reparented
+                 claimed saved_children_node_set mapping)
+        | _ -> descend ())
+    | None -> descend ()
 
 let collect_subtree_nodes children_map root =
   let rec collect node acc =
@@ -558,9 +640,24 @@ let reconcile_subtree application saved parent old_root candidate_root =
     old_nodes;
   let reparented = Hashtbl.create 8 in
   let claimed = Hashtbl.create 16 in
+  let old_key_counts = key_counts old_nodes saved.checkpoint_reload_keys in
+  let candidate_key_counts =
+    key_counts candidate_nodes application.runtime_reload_keys
+  in
+  let saved_children_node_set = Hashtbl.create 16 in
+  List.iter
+    (fun node -> Hashtbl.replace saved_children_node_set node ())
+    old_nodes;
   ignore
     (collect_node_mapping application saved old_root candidate_root
-       old_global reparented claimed mapping);
+       old_global old_key_counts candidate_key_counts reparented claimed
+       saved_children_node_set mapping);
+  if not (Hashtbl.mem mapping candidate_root) then
+    (* the roots themselves could not pair up (a dynamic branch swapped to a
+       different shape); still salvage keyed descendants of the candidate *)
+    rescue_subtree application saved candidate_root old_global
+      old_key_counts candidate_key_counts reparented claimed
+      saved_children_node_set mapping;
   let desired_root = map_node mapping candidate_root in
   let desired_node_set = Hashtbl.create 16 in
   List.iter
