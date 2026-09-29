@@ -241,11 +241,12 @@ let keyed_children children reload_keys =
     (Hashtbl.create 8) children
 
 let rec collect_node_mapping application saved old_node candidate_node
-    mapping =
+    old_global reparented claimed mapping =
   if not (node_compatible application saved old_node candidate_node) then
     mapping
   else begin
     Hashtbl.replace mapping candidate_node old_node;
+    Hashtbl.replace claimed old_node ();
     let old_children =
       match Hashtbl.find_opt saved.checkpoint_children old_node with
       | Some children -> children
@@ -264,7 +265,22 @@ let rec collect_node_mapping application saved old_node candidate_node
       (fun index candidate_child ->
          let old_child =
            match Hashtbl.find_opt candidate_reload_keys candidate_child with
-           | Some key -> Hashtbl.find_opt old_keyed key
+           | Some key -> (
+               match Hashtbl.find_opt old_keyed key with
+               | Some found when not (Hashtbl.mem claimed found) ->
+                   Some found
+               | _ -> (
+                   (* a keyed child that moved to a different parent is the
+                      same logical node: adopt it so its subtree (focus,
+                      textarea contents, mounted state) survives instead of
+                      being dropped and recreated. An old node can only be
+                      claimed once — duplicate keys fall back to a fresh
+                      node. *)
+                   match Hashtbl.find_opt old_global key with
+                   | Some adopted when not (Hashtbl.mem claimed adopted) ->
+                       Hashtbl.replace reparented adopted ();
+                       Some adopted
+                   | _ -> None))
            | None ->
              if index < List.length old_children then
                let position_child = List.nth old_children index in
@@ -276,7 +292,7 @@ let rec collect_node_mapping application saved old_node candidate_node
          | Some matched ->
            ignore
              (collect_node_mapping application saved matched candidate_child
-                mapping)
+                old_global reparented claimed mapping)
          | None -> ())
       candidate_children;
     mapping
@@ -395,12 +411,18 @@ let move_at values from_index to_index =
   in
   loop [] without 0
 
-let emit_child_diff application parent old_children desired_children =
+let emit_child_diff application reparented parent old_children
+    desired_children =
   let desired_index = index_map desired_children in
   let surviving =
     List.filter
       (fun child ->
          if Hashtbl.mem desired_index child then true
+         else if Hashtbl.mem reparented child then
+           (* adopted under another parent: its RemoveChild was already
+              enqueued before the parent diffs, and the new parent emits the
+              InsertChild *)
+           false
          else begin
            enqueue application (remove_child_op parent child);
            false
@@ -527,8 +549,18 @@ let reconcile_subtree application saved parent old_root candidate_root =
   let old_nodes = collect_subtree_nodes saved.checkpoint_children old_root in
   let candidate_nodes = collect_subtree_nodes current_children candidate_root in
   let mapping = Hashtbl.create 16 in
+  let old_global = Hashtbl.create 16 in
+  List.iter
+    (fun node ->
+       match Hashtbl.find_opt saved.checkpoint_reload_keys node with
+       | Some key -> Hashtbl.replace old_global key node
+       | None -> ())
+    old_nodes;
+  let reparented = Hashtbl.create 8 in
+  let claimed = Hashtbl.create 16 in
   ignore
-    (collect_node_mapping application saved old_root candidate_root mapping);
+    (collect_node_mapping application saved old_root candidate_root
+       old_global reparented claimed mapping);
   let desired_root = map_node mapping candidate_root in
   let desired_node_set = Hashtbl.create 16 in
   List.iter
@@ -664,6 +696,15 @@ let reconcile_subtree application saved parent old_root candidate_root =
     List.map (fun candidate -> map_node mapping candidate) candidate_nodes
     @ [ parent ]
   in
+  (* reparented children detach from their old parent before any insert so
+     a stale actual-parent remove cannot undo the move *)
+  Hashtbl.iter
+    (fun node () ->
+       match Hashtbl.find_opt saved.checkpoint_parents node with
+       | Some old_parent ->
+           enqueue application (remove_child_op old_parent node)
+       | None -> ())
+    reparented;
   List.iter
     (fun node ->
        let old_children =
@@ -676,7 +717,7 @@ let reconcile_subtree application saved parent old_root candidate_root =
          | Some children -> children
          | None -> []
        in
-       emit_child_diff application node old_children new_children)
+       emit_child_diff application reparented node old_children new_children)
     all_parents;
   List.iter
     (fun node ->
