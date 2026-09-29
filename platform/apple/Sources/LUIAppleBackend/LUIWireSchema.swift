@@ -7,6 +7,9 @@ enum LUINodeKind: String, Decodable, Equatable {
     case column = "column"
     case grid = "grid"
     case stack = "stack"
+    case edgeInset = "edge-inset"
+    case overlay = "overlay"
+    case viewThatFits = "view-that-fits"
     case panel = "panel"
     case card = "card"
     case alert = "alert"
@@ -156,6 +159,9 @@ enum LUIProperty: String, Decodable, Hashable {
     case path = "path"
     case url = "url"
     case maxPixelSize = "max-pixel-size"
+    case edge = "edge"
+    case visible = "visible"
+    case alignment = "alignment"
 }
 
 enum LUISchemaMatrix {

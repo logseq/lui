@@ -26,6 +26,18 @@
       "status": "supported"
     },
     {
+      "name": "edge-inset",
+      "status": "supported"
+    },
+    {
+      "name": "overlay",
+      "status": "supported"
+    },
+    {
+      "name": "view-that-fits",
+      "status": "supported"
+    },
+    {
       "name": "panel",
       "status": "supported"
     },
@@ -340,6 +352,27 @@
       "wire": "stack",
       "dart": "stack",
       "swift": "stack",
+      "container": true
+    },
+    {
+      "lg": "EdgeInset",
+      "wire": "edge-inset",
+      "dart": "edgeInset",
+      "swift": "edgeInset",
+      "container": true
+    },
+    {
+      "lg": "Overlay",
+      "wire": "overlay",
+      "dart": "overlay",
+      "swift": "overlay",
+      "container": true
+    },
+    {
+      "lg": "ViewThatFits",
+      "wire": "view-that-fits",
+      "dart": "viewThatFits",
+      "swift": "viewThatFits",
       "container": true
     },
     {
@@ -1213,6 +1246,21 @@
       "lg": "MaxPixelSize",
       "wire": "max-pixel-size",
       "swift": "maxPixelSize"
+    },
+    {
+      "lg": "EdgeValue",
+      "wire": "edge",
+      "swift": "edge"
+    },
+    {
+      "lg": "Visible",
+      "wire": "visible",
+      "swift": "visible"
+    },
+    {
+      "lg": "AlignmentValue",
+      "wire": "alignment",
+      "swift": "alignment"
     }
   ],
   "events": [

@@ -140,6 +140,10 @@ let semantic_color_names =
 
 let web_color_value color =
   if color = "transparent" then "transparent"
+  (* Material names (Apple glass/bar surfaces) have no CSS equivalent;
+     approximate with a translucent theme surface. *)
+  else if color = "glass" || color = "glass-container" || color = "bar" then
+    "color-mix(in srgb, var(--color-background) 80%, transparent)"
   else if List.mem color semantic_color_names then "var(--color-" ^ color ^ ")"
   else color
 
