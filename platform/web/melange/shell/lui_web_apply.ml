@@ -184,11 +184,14 @@ let mount_inserted_child renderer child current =
       Lui_web_overlay.mount_toast renderer child current.platform_node
   | _ -> ()
 
-let insert_child_dom renderer parent child index =
-  let parent_dom = Nodes.dom_node renderer parent in
-  let child_dom = Nodes.dom_node renderer child in
+let insert_child_dom renderer previous_nodes parent child index =
+  let parent_dom = Nodes.dom_node_before renderer previous_nodes parent in
+  let child_dom = Nodes.dom_node_before renderer previous_nodes child in
   match Store.node renderer.web_store child with
-  | None -> invalid_arg "unknown DOM child"
+  | None ->
+      (* dropped again inside this batch — insert anyway so the later
+         remove op finds the element where the op stream put it *)
+      Util.insert_dom_child parent_dom child_dom index
   | Some current -> (
       match Store.standard_kind current with
       | Some BottomTab -> (
@@ -226,8 +229,8 @@ let insert_child_dom renderer parent child index =
             (dom_child_container renderer parent parent_dom) child_dom
             (visible_child_index renderer parent index))
 
-let apply_insert_child renderer parent child index =
-  insert_child_dom renderer parent child index;
+let apply_insert_child renderer previous_nodes parent child index =
+  insert_child_dom renderer previous_nodes parent child index;
   Lui_web_split.update_split renderer parent;
   Lui_web_focus.refresh_button_context renderer child;
   Lui_web_split.update_split renderer parent;
@@ -396,12 +399,25 @@ let apply_remove_prop renderer node property =
        | None -> invalid_arg "standard property targets extension node")
    | None -> ())
 
+(* A node created and dropped inside the same batch never reaches the DOM:
+   the store already reflects the batch's final state, so ops that mention it
+   have no element to act on and are skipped. *)
+let known_node renderer previous_nodes node =
+  match Store.node renderer.web_store node with
+  | Some _ -> true
+  | None -> prev_node previous_nodes node <> None
+
 let apply_dom_op renderer previous_nodes operation =
   match operation with
-  | CreateNode (node, kind) -> apply_create renderer node kind
-  | CreateExtension (node, _identifier, _fingerprint) ->
-      W.Element.setAttribute "id" (Util.node_dom_id node)
-        (Nodes.dom_node renderer node)
+  | CreateNode (node, kind) ->
+      if Store.node renderer.web_store node <> None then
+        apply_create renderer node kind
+  | CreateExtension (node, _identifier, _fingerprint) -> (
+      match Store.node renderer.web_store node with
+      | Some current ->
+          W.Element.setAttribute "id" (Util.node_dom_id node)
+            current.platform_node
+      | None -> ())
   | DropNode node ->
       Ext.cleanup_extension_node renderer previous_nodes node;
       cleanup_node renderer node
@@ -413,16 +429,33 @@ let apply_dom_op renderer previous_nodes operation =
   | RemoveExtensionProp (node, property) ->
       Ext.remove_extension_property renderer node property
   | InsertChild (parent, child, index) ->
-      apply_insert_child renderer parent child index
+      if
+        known_node renderer previous_nodes parent
+        && known_node renderer previous_nodes child
+      then apply_insert_child renderer previous_nodes parent child index
   | RemoveChild (parent, child) ->
-      apply_remove_child renderer previous_nodes parent child
+      if
+        known_node renderer previous_nodes parent
+        && known_node renderer previous_nodes child
+      then apply_remove_child renderer previous_nodes parent child
   | MoveChild (parent, child, index) ->
-      apply_move_child renderer previous_nodes parent child index
+      if
+        known_node renderer previous_nodes parent
+        && known_node renderer previous_nodes child
+      then apply_move_child renderer previous_nodes parent child index
 
 let apply_dom_batch renderer previous_nodes batch =
   List.iter
-    (fun operation -> apply_dom_op renderer previous_nodes operation)
+    (fun operation ->
+       try apply_dom_op renderer previous_nodes operation
+       with Invalid_argument msg ->
+         invalid_arg
+           (Printf.sprintf "op %s: %s" (Lui_wire.encode_op operation) msg))
     batch.ops;
-  ignore (Lui_web_focus.update_all_horizontal_group_roving renderer);
-  ignore (Lui_web_focus.update_all_tree_roving renderer);
-  ignore (Lui_web_focus.update_all_toolbar_roving renderer)
+  let label_roving label f =
+    try ignore (f renderer)
+    with Invalid_argument msg -> invalid_arg (label ^ ": " ^ msg)
+  in
+  label_roving "hgroup-roving" Lui_web_focus.update_all_horizontal_group_roving;
+  label_roving "tree-roving" Lui_web_focus.update_all_tree_roving;
+  label_roving "toolbar-roving" Lui_web_focus.update_all_toolbar_roving

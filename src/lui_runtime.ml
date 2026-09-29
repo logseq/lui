@@ -456,6 +456,55 @@ let emit_extension_property_diff application node old_values desired_values =
          enqueue application (set_extension_prop_op node property value))
     desired_values
 
+(* Ops are replayed post-commit: by then a node dropped in the same
+   batch no longer resolves through the store or the pre-batch mirror,
+   so any queued op mentioning it can never apply. A node created and
+   dropped within one batch therefore cancels out entirely — its whole
+   op group (including structural detach ops) is pruned and no drop op
+   is emitted. Nodes dropped across batches keep their ops: pre-existing
+   records resolve through the pre-batch mirror, and the store still
+   needs the remove-child op that precedes a drop. *)
+let operation_mentions_node node operation =
+  let subject =
+    match operation with
+    | CreateNode (subject, _)
+    | CreateExtension (subject, _, _)
+    | DropNode subject
+    | SetProp (subject, _, _)
+    | RemoveProp (subject, _)
+    | SetExtensionProp (subject, _, _)
+    | RemoveExtensionProp (subject, _)
+    | InsertChild (subject, _, _)
+    | RemoveChild (subject, _)
+    | MoveChild (subject, _, _) ->
+        Some subject
+  in
+  let child =
+    match operation with
+    | InsertChild (_, child, _)
+    | RemoveChild (_, child)
+    | MoveChild (_, child, _) ->
+        Some child
+    | _ -> None
+  in
+  subject = Some node || child = Some node
+
+let pending_create_exists application node =
+  List.exists
+    (function
+      | CreateNode (candidate, _) | CreateExtension (candidate, _, _) ->
+          candidate = node
+      | _ -> false)
+    !(application.pending_ops)
+
+let enqueue_drop application node =
+  if pending_create_exists application node then
+    application.pending_ops :=
+      List.filter
+        (fun operation -> not (operation_mentions_node node operation))
+        !(application.pending_ops)
+  else enqueue application (drop_node_op node)
+
 let rec emit_dropped_subtree application saved removed_set node =
   let children =
     match Hashtbl.find_opt saved.checkpoint_children node with
@@ -469,7 +518,7 @@ let rec emit_dropped_subtree application saved removed_set node =
          emit_dropped_subtree application saved removed_set child
        end)
     children;
-  enqueue application (drop_node_op node)
+  enqueue_drop application node
 
 let reconcile_subtree application saved parent old_root candidate_root =
   let parent = canonical_node application parent in
@@ -851,7 +900,7 @@ and drop_node application node =
   Hashtbl.remove application.runtime_parents node;
   Hashtbl.remove application.runtime_reload_keys node;
   application.runtime_extension_dirty := true;
-  enqueue application (drop_node_op node)
+  enqueue_drop application node
 
 and remove_child application parent child =
   let parent = canonical_node application parent in
@@ -1153,10 +1202,7 @@ let event_is_value_echo properties event =
 
 let dispatch application event =
   let node = canonical_node application (event_node event) in
-  if
-    (not (Hashtbl.mem application.mounted_nodes node))
-    && not (Hashtbl.mem application.runtime_extension_nodes node)
-  then
+  if not (node_live application node) then
     (* a DOM element can receive an in-flight event after being unmounted
        mid-dispatch (e.g. a capture-phase handler re-renders); ignore it *)
     false

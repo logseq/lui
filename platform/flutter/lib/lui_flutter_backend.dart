@@ -3613,15 +3613,15 @@ final class LUIFlutterBackend {
               _themeModes.contains(value));
     }
     if (kind == _NodeKind.contextMenu) return false;
-    if (kind == _NodeKind.filePreview) {
-      return property == 'path' && value is String;
-    }
     // Position hint honored on overlay children and the overlay itself;
     // admitted before the restrictive kinds below. Inert elsewhere.
     if (property == 'alignment') {
       return kind != _NodeKind.root &&
           value is String &&
           _overlayAlignment(value) != null;
+    }
+    if (kind == _NodeKind.filePreview) {
+      return property == 'path' && value is String;
     }
     if (kind == _NodeKind.accordion) {
       return switch (property) {
