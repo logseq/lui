@@ -320,8 +320,9 @@ let set_dropdown_open renderer node open_ =
     ignore (Lui_web_position.position_dropdown renderer node);
     Webapi.requestAnimationFrame (fun _time ->
         match Store.node renderer.web_store node with
-        | Some _current -> Lui_web_position.position_dropdown renderer node
-        | None -> ())
+        | Some current when current.retained_parent <> None ->
+            Lui_web_position.position_dropdown renderer node
+        | _ -> ())
   end
   else begin
     begin_popup_close popup;
@@ -642,8 +643,9 @@ let attach_dropdown_events renderer node _dropdown_node =
   let refresh_position _event =
     Webapi.requestAnimationFrame (fun _time ->
         match Store.node renderer.web_store node with
-        | Some _current -> Lui_web_position.position_dropdown renderer node
-        | None -> ())
+        | Some current when current.retained_parent <> None ->
+            Lui_web_position.position_dropdown renderer node
+        | _ -> ())
   in
   let pointer_handler event =
     let menu_node = Lui_web_nodes.dom_node renderer node in
