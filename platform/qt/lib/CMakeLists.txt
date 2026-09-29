@@ -58,10 +58,10 @@ qt_add_qml_module(lui_qml
         ../qml/LuiDivider.qml
         ../qml/LuiDrawer.qml
         ../qml/LuiDropdownMenu.qml
-        ../qml/LuiFilePicker.qml
-        ../qml/LuiFileImage.qml
-        ../qml/LuiFilePreview.qml
         ../qml/LuiEdgeInset.qml
+        ../qml/LuiFileImage.qml
+        ../qml/LuiFilePicker.qml
+        ../qml/LuiFilePreview.qml
         ../qml/LuiGrid.qml
         ../qml/LuiHeading.qml
         ../qml/LuiIcon.qml
