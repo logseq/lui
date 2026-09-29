@@ -118,19 +118,29 @@ let position_anchored document positioner popup anchor_bounds preferred
 
 let position_anchored_bang = position_anchored
 
+(* an anchored popup detached from its parent has no anchor to position
+   against — a detached-but-open menu or tooltip is skipped rather than
+   treated as an error *)
+let anchored renderer node =
+  match Store.node renderer.web_store node with
+  | Some current -> current.retained_parent <> None
+  | None -> false
+
 let position_tooltip renderer node =
-  let tooltip = Nodes.dom_node renderer node in
-  let anchor = Nodes.dropdown_anchor_node renderer node in
-  let anchor_bounds = W.Element.getBoundingClientRect anchor in
-  let offset = Nodes.dropdown_offset renderer node in
-  let side = Nodes.dropdown_side tooltip in
-  let alignment =
-    match W.Element.getAttribute "data-anchor-alignment" tooltip with
-    | Some value -> value
-    | None -> "start"
-  in
-  position_anchored renderer.web_document tooltip tooltip anchor_bounds side
-    alignment offset
+  if anchored renderer node then begin
+    let tooltip = Nodes.dom_node renderer node in
+    let anchor = Nodes.dropdown_anchor_node renderer node in
+    let anchor_bounds = W.Element.getBoundingClientRect anchor in
+    let offset = Nodes.dropdown_offset renderer node in
+    let side = Nodes.dropdown_side tooltip in
+    let alignment =
+      match W.Element.getAttribute "data-anchor-alignment" tooltip with
+      | Some value -> value
+      | None -> "start"
+    in
+    position_anchored renderer.web_document tooltip tooltip anchor_bounds
+      side alignment offset
+  end
 
 let position_tooltip_bang = position_tooltip
 
@@ -342,28 +352,30 @@ let align_select_item_with_trigger renderer dropdown positioner popup anchor
 let align_select_item_with_trigger_bang = align_select_item_with_trigger
 
 let position_dropdown renderer node =
-  let positioner = Nodes.dom_node renderer node in
-  let popup = Util.child_element positioner 0 in
-  let anchor = Nodes.dropdown_anchor_node renderer node in
-  let anchor_bounds = W.Element.getBoundingClientRect anchor in
-  let visible =
-    W.DomRect.width anchor_bounds > 0.0
-    || W.DomRect.height anchor_bounds > 0.0
-  in
-  Util.set_state_attribute positioner "hidden" (not visible);
-  if visible then begin
-    let offset = Nodes.dropdown_offset renderer node in
-    let side = Nodes.dropdown_side positioner in
-    let alignment =
-      match W.Element.getAttribute "data-anchor-alignment" positioner with
-      | Some value -> value
-      | None -> "start"
+  if anchored renderer node then begin
+    let positioner = Nodes.dom_node renderer node in
+    let popup = Util.child_element positioner 0 in
+    let anchor = Nodes.dropdown_anchor_node renderer node in
+    let anchor_bounds = W.Element.getBoundingClientRect anchor in
+    let visible =
+      W.DomRect.width anchor_bounds > 0.0
+      || W.DomRect.height anchor_bounds > 0.0
     in
-    position_anchored renderer.web_document positioner popup anchor_bounds
-      side alignment offset;
-    ignore
-      (align_select_item_with_trigger renderer node positioner popup anchor
-         anchor_bounds)
+    Util.set_state_attribute positioner "hidden" (not visible);
+    if visible then begin
+      let offset = Nodes.dropdown_offset renderer node in
+      let side = Nodes.dropdown_side positioner in
+      let alignment =
+        match W.Element.getAttribute "data-anchor-alignment" positioner with
+        | Some value -> value
+        | None -> "start"
+      in
+      position_anchored renderer.web_document positioner popup anchor_bounds
+        side alignment offset;
+      ignore
+        (align_select_item_with_trigger renderer node positioner popup
+           anchor anchor_bounds)
+    end
   end
 
 let position_dropdown_bang = position_dropdown

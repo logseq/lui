@@ -168,8 +168,11 @@ let insert_menu_item_role renderer _child current parent =
         end
     | None -> ()
 
-let mount_inserted_child renderer child current =
-  match Store.standard_kind current with
+(* a child removed or reparented by a later op in the same batch has no
+   mount to perform — its wiring belongs to the parent it ends under *)
+let mount_inserted_child renderer parent child current =
+  if current.retained_parent = Some parent then
+    match Store.standard_kind current with
   | Some Radio -> Lui_web_focus.update_radio_group renderer child
   | Some DropdownMenu ->
       (match current.retained_parent with
@@ -249,7 +252,7 @@ let apply_insert_child renderer previous_nodes children_of parent child
   (match Store.node renderer.web_store child with
    | Some current ->
        insert_menu_item_role renderer child current parent;
-       mount_inserted_child renderer child current
+       mount_inserted_child renderer parent child current
    | None -> ());
   refresh_dropdown_parent renderer parent
 
