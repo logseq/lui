@@ -58,6 +58,7 @@ qt_add_qml_module(lui_qml
         ../qml/LuiDivider.qml
         ../qml/LuiDrawer.qml
         ../qml/LuiDropdownMenu.qml
+        ../qml/LuiEdgeInset.qml
         ../qml/LuiGrid.qml
         ../qml/LuiHeading.qml
         ../qml/LuiIcon.qml
@@ -71,6 +72,7 @@ qt_add_qml_module(lui_qml
         ../qml/LuiMediaSurface.qml
         ../qml/LuiMenuItem.qml
         ../qml/LuiNodeView.qml
+        ../qml/LuiOverlay.qml
         ../qml/LuiPagination.qml
         ../qml/LuiPanel.qml
         ../qml/LuiParagraph.qml
@@ -115,6 +117,7 @@ qt_add_qml_module(lui_qml
         ../qml/LuiToolbar.qml
         ../qml/LuiTooltip.qml
         ../qml/LuiTree.qml
+        ../qml/LuiViewThatFits.qml
         ../qml/LuiVirtualList.qml
     RESOURCES
         ../qml/LuiStyle.js

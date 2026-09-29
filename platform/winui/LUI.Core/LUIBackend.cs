@@ -682,6 +682,9 @@ namespace LUI
                 case LUINodeKind.Column:
                 case LUINodeKind.Grid:
                 case LUINodeKind.Stack:
+                case LUINodeKind.EdgeInset:
+                case LUINodeKind.Overlay:
+                case LUINodeKind.ViewThatFits:
                 case LUINodeKind.Panel:
                 case LUINodeKind.Card:
                 case LUINodeKind.Box:
@@ -736,6 +739,11 @@ namespace LUI
                     !state.Properties.ContainsKey(LUIProperty.IconName))
                 {
                     throw new LUIBackendException("icon requires name");
+                }
+                if (state.Kind == LUINodeKind.EdgeInset &&
+                    !state.Properties.ContainsKey(LUIProperty.EdgeValue))
+                {
+                    throw new LUIBackendException("edge-inset requires edge");
                 }
                 if (LUISchema.ButtonKind(state.Kind))
                 {
