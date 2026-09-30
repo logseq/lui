@@ -222,8 +222,8 @@ let scroll_picker_item renderer dropdown element =
   in
   let bounds = W.Element.getBoundingClientRect popup in
   let item = W.Element.getBoundingClientRect element in
-  let top = W.DomRect.top bounds +. float_of_int (W.Element.clientTop popup) in
-  let bottom = top +. float_of_int (W.Element.clientHeight popup) in
+  let top = W.DomRect.top bounds in
+  let bottom = W.DomRect.bottom bounds in
   let delta =
     if W.DomRect.top item < top then W.DomRect.top item -. top
     else if W.DomRect.bottom item > bottom then W.DomRect.bottom item -. bottom
@@ -806,6 +806,10 @@ let dropdown_key_handler renderer node typeahead_buffer typeahead_timer
     match submenu_trigger with
     | Some trigger -> close_submenu_to_trigger renderer node trigger
     | None -> dismiss_picker renderer node true
+  end
+  else if key = "ArrowRight" && submenu_trigger <> None then begin
+    W.KeyboardEvent.preventDefault event;
+    focus_context_menu_item renderer node 0
   end
   else if current_index <> None then begin
     if key = "ArrowDown" || key = "ArrowUp" || key = "Home" || key = "End"

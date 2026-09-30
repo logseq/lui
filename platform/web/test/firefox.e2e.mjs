@@ -19,6 +19,13 @@ async function openGalleryPage(page, name) {
   if (await back.isVisible()) await back.click()
   await page.locator(".lui-gallery-nav-item")
     .filter({ hasText: new RegExp(`^${name}$`) }).click()
+  if (name === "View That Fits") {
+    await page.waitForFunction(() => {
+      const fit = document.querySelector(".lui-view-that-fits")
+      return fit?.firstElementChild?.hasAttribute("data-lui-fit-hidden")
+        && !fit.lastElementChild?.hasAttribute("data-lui-fit-hidden")
+    })
+  }
 }
 
 test(`${browserLabel} preserves the Gallery's retained interaction contract`, async () => {
@@ -63,7 +70,7 @@ test(`${browserLabel} preserves the Gallery's retained interaction contract`, as
       mountedPages: await page.locator(".lui-gallery-content > *").count(),
       failures,
     }
-    assert.equal(mobileAudit.count, 69)
+    assert.equal(mobileAudit.count, 72)
     assert.ok(mobileAudit.minNavigationHeight >= 44, JSON.stringify(mobileAudit))
     assert.equal(mobileAudit.mountedPages, 1)
     assert.deepEqual(mobileAudit.failures, [])

@@ -770,9 +770,11 @@ test("phone Sheet uses the simulated viewport on a wide browser and avoids its k
   assert.deepEqual(
     await state(`(() => {
       const host = document.querySelector('#app')
+      const toolbar = document.querySelector('.lui-simulator-toolbar')
       const layer = document.querySelector('.lui-modal-layer')
       const sheet = document.querySelector('.lui-sheet')
       const hostRect = host.getBoundingClientRect()
+      const toolbarRect = toolbar.getBoundingClientRect()
       const layerRect = layer.getBoundingClientRect()
       const sheetRect = sheet.getBoundingClientRect()
       return {
@@ -780,6 +782,7 @@ test("phone Sheet uses the simulated viewport on a wide browser and avoids its k
           left: Math.round(hostRect.left), top: Math.round(hostRect.top),
           width: Math.round(hostRect.width), height: Math.round(hostRect.height),
         },
+        hostFlowOffset: Math.round(hostRect.top - toolbarRect.bottom),
         layer: {
           left: Math.round(layerRect.left), top: Math.round(layerRect.top),
           width: Math.round(layerRect.width), height: Math.round(layerRect.height),
@@ -792,7 +795,8 @@ test("phone Sheet uses the simulated viewport on a wide browser and avoids its k
       }
     })()`),
     {
-      host: { left: 445, top: 28, width: 390, height: 844 },
+      host: { left: 445, top: 82, width: 390, height: 844 },
+      hostFlowOffset: 28,
       layer: { left: 445, top: 28, width: 390, height: 844 },
       sheetWidth: 390,
       sheetBottom: 872,

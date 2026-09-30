@@ -297,8 +297,8 @@ test("Combobox list navigation scrolls its popup and preserves highlighted optio
   assert.equal(scrollState.activeText, "Option 23")
   assert.ok(scrollState.popupScrollTop > 0)
   assert.equal(scrollState.pageScrollY, 0)
-  assert.ok(scrollState.activeTop >= scrollState.popupTop - 1)
-  assert.ok(scrollState.activeBottom <= scrollState.popupBottom + 1)
+  assert.ok(scrollState.activeTop >= scrollState.popupTop - 1, JSON.stringify(scrollState))
+  assert.ok(scrollState.activeBottom <= scrollState.popupBottom + 1, JSON.stringify(scrollState))
 
   await session.evaluate("window.audit.insertComboOption(0, 'Inserted option')")
   assert.equal(await state("document.querySelector('[aria-activedescendant]')?.getAttribute('aria-activedescendant')"), activeId)
