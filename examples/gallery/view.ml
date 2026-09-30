@@ -514,7 +514,7 @@ let view_that_fits_section : t =
                 ; text ~value:"640pt" ~foreground:"muted-foreground" []
                 ]
             ]
-        ; text ~value:{js|COMPACT — narrow fallback|js} ~foreground:"accent" []
+        ; text ~value:{js|COMPACT — narrow fallback|js} []
         ]
     ]
 

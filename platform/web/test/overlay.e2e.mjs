@@ -147,6 +147,12 @@ test("removing a modal closes owned portals without duplicate Dismiss events", a
   await browser("wait", "--fn", "document.querySelector('.lui-dropdown-menu[data-open]')")
   await session.page.locator(".lui-menu-item").filter({ hasText: "More" }).hover()
   await browser("wait", "--fn", "document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-open]')")
+  assert.equal(
+    await state(
+      "document.querySelectorAll('.lui-popup-positioner[data-submenu] .lui-dropdown-menu:not([data-open])').length",
+    ),
+    1,
+  )
   const eventsBeforeRemoval = await state("window.audit.events.length")
 
   await evaluate("window.audit.closeDialog()")
@@ -337,22 +343,11 @@ test("Dialog is a portaled modal with model-owned dismissal and focus restoratio
     }).observe(layer, { attributes: true })
   })()`)
   await browser("press", "Escape")
-  await browser(
-    "wait",
-    "--fn",
-    "document.querySelector('.lui-modal-layer[data-ending-style]')",
-  )
+  await browser("wait", "--fn", "window.__luiDialogExitObserved")
+  await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer')")
   const dialogExit = await state(`(() => {
-    const layer = document.querySelector('.lui-modal-layer[data-ending-style]')
-    const endingObserved = Boolean(layer)
-    layer?.querySelector('.lui-modal-backdrop')?.dispatchEvent(
-      new TransitionEvent('transitionend', {
-        bubbles: true,
-        propertyName: 'opacity',
-      }),
-    )
     return {
-      endingObserved,
+      endingObserved: window.__luiDialogExitObserved,
       remainingLayers: document.querySelectorAll('.lui-modal-layer').length,
     }
   })()`)

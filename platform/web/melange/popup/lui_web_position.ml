@@ -91,8 +91,8 @@ let position_anchored document positioner popup anchor_bounds preferred
   set_style popup
     (if vertical then "--lui-popup-available-height" else "--lui-popup-available-width")
     (css_px (min side_space (if vertical then available_height else available_width)));
-  let popup_width = float_of_int (W.HtmlElement.offsetWidth popup_element) in
-  let popup_height = float_of_int (W.HtmlElement.offsetHeight popup_element) in
+  let popup_width = 1.0 +. float_of_int (W.HtmlElement.offsetWidth popup_element) in
+  let popup_height = 1.0 +. float_of_int (W.HtmlElement.offsetHeight popup_element) in
   let aligned_left =
     match alignment with
     | "center" ->
