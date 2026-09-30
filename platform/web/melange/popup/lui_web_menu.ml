@@ -91,6 +91,31 @@ let reset_typeahead_later typeahead_buffer typeahead_timer =
            typeahead_buffer := "")
          500)
 
+let clear_picker_intent control intent_timer intent_generation =
+  cancel_typeahead intent_timer;
+  incr intent_generation;
+  W.Element.removeAttribute "data-lui-picker-intent" control;
+  W.Element.removeAttribute "data-lui-picker-intent-token" control
+
+let reset_picker_intent_later control intent_timer intent_generation =
+  cancel_typeahead intent_timer;
+  incr intent_generation;
+  let token = string_of_int !intent_generation in
+  W.Element.setAttribute "data-lui-picker-intent-token" token control;
+  intent_timer :=
+    Some
+      (Js.Global.setTimeout
+         ~f:(fun () ->
+           intent_timer := None;
+           if
+             W.Element.getAttribute "data-lui-picker-intent-token" control
+             = Some token
+           then begin
+             W.Element.removeAttribute "data-lui-picker-intent" control;
+             W.Element.removeAttribute "data-lui-picker-intent-token" control
+           end)
+         500)
+
 let starts_with ~prefix value =
   let prefix_length = String.length prefix in
   String.length value >= prefix_length
@@ -476,6 +501,13 @@ let attach_picker_press_event_bang = attach_picker_press_event
 let attach_picker_trigger_events renderer node dom_node =
   let current_pointer_type = ref "mouse" in
   let suppress_click = ref false in
+  let control = picker_control_element renderer node in
+  let intent_timer = ref None in
+  let intent_generation = ref 0 in
+  let previous_cleanup = Hashtbl.find_opt renderer.web_cleanups node in
+  let clear_intent () =
+    clear_picker_intent control intent_timer intent_generation
+  in
   let press () =
     if
       Store.enabled_node renderer node
@@ -504,7 +536,10 @@ let attach_picker_trigger_events renderer node dom_node =
       end)
     dom_node;
   W.Element.addEventListener "pointercancel"
-    (fun _event -> suppress_click := false) dom_node;
+    (fun _event ->
+      suppress_click := false;
+      clear_intent ())
+    dom_node;
   W.Element.addKeyDownEventListener
     (fun event ->
       suppress_click := false;
@@ -520,7 +555,6 @@ let attach_picker_trigger_events renderer node dom_node =
              || (String.length key = 1 && key <> " "))
       then begin
         W.KeyboardEvent.preventDefault event;
-        let control = picker_control_element renderer node in
         let pending = W.Element.getAttribute "data-lui-picker-intent" control in
         let intent =
           match pending with
@@ -530,6 +564,7 @@ let attach_picker_trigger_events renderer node dom_node =
           | _ -> key
         in
         W.Element.setAttribute "data-lui-picker-intent" intent control;
+        reset_picker_intent_later control intent_timer intent_generation;
         W.Element.setAttribute "data-lui-open-method" "keyboard" dom_node;
         if pending = None then press ()
       end)
@@ -548,7 +583,12 @@ let attach_picker_trigger_events renderer node dom_node =
         then Lui_web_util.focus_element control;
         press ()
       end)
-    dom_node
+    dom_node;
+  Hashtbl.replace renderer.web_cleanups node (fun () ->
+      clear_intent ();
+      match previous_cleanup with
+      | Some cleanup -> cleanup ()
+      | None -> ())
 
 let attach_picker_trigger_events_bang = attach_picker_trigger_events
 
@@ -1225,6 +1265,7 @@ let mount_picker_dropdown renderer node =
                                   && Store.node renderer.web_store picker <> None ->
                      let intent = W.Element.getAttribute "data-lui-picker-intent" control in
                      W.Element.removeAttribute "data-lui-picker-intent" control;
+                     W.Element.removeAttribute "data-lui-picker-intent-token" control;
                      let items = picker_menu_items renderer node in
                      let rec find predicate index = function
                        | [] -> None
