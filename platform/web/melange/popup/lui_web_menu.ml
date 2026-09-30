@@ -369,6 +369,7 @@ let direct_dropdown_menu renderer node =
 let hide_context_menu renderer =
   match !(renderer.web_open_context_menu) with
   | Some menu ->
+      Lui_web_popup_tracking.stop (Lui_web_nodes.dom_node renderer menu);
       let token =
         Lui_web_layers.close_layer renderer.web_layers renderer.web_document
           menu
@@ -411,10 +412,6 @@ let focus_context_menu_host renderer menu =
        | None -> ())
   | None -> ()
 
-let set_context_position dom_node property value =
-  W.CssStyleDeclaration.setProperty property value ""
-    (W.HtmlElement.style (W.Element.unsafeAsHtmlElement dom_node))
-
 let show_context_menu renderer menu x y =
   hide_context_menu renderer;
   let menu_node = Lui_web_nodes.dom_node renderer menu in
@@ -425,16 +422,32 @@ let show_context_menu renderer menu x y =
      | Some current -> current.retained_parent
      | None -> None);
   Lui_web_layers.open_layer renderer.web_layers renderer.web_document menu;
-  let width = W.Element.clientWidth menu_node in
-  let height = W.Element.clientHeight menu_node in
-  let document_root = W.Document.documentElement renderer.web_document in
-  let viewport_width = W.Element.clientWidth document_root in
-  let viewport_height = W.Element.clientHeight document_root in
-  let left = max 8 (min x (viewport_width - width - 8)) in
-  let top = max 8 (min y (viewport_height - height - 8)) in
-  set_context_position menu_node "left" (string_of_int left ^ "px");
-  set_context_position menu_node "top" (string_of_int top ^ "px");
   renderer.web_open_context_menu := Some menu;
+  let update () =
+    Lui_web_position.position_at_point renderer.web_document menu_node
+      (float_of_int x) (float_of_int y)
+  in
+  update ();
+  (match Store.node renderer.web_store menu with
+   | Some current ->
+       (match current.retained_parent with
+        | Some parent ->
+            (match Store.node renderer.web_store parent with
+             | Some host ->
+                 Lui_web_popup_tracking.start ~document:renderer.web_document
+                   ~positioner:menu_node ~popup:menu_node ~anchor:host.platform_node
+                   ~valid:(fun () ->
+                     !(renderer.web_open_context_menu) = Some menu
+                     && Store.node renderer.web_store parent <> None
+                     && match Store.node renderer.web_store menu with
+                        | Some retained -> retained.retained_parent = Some parent
+                        | None -> false)
+                   ~update ~on_invalid:(fun () ->
+                     if !(renderer.web_open_context_menu) = Some menu then
+                       hide_context_menu renderer)
+             | None -> hide_context_menu renderer)
+        | None -> hide_context_menu renderer)
+   | None -> ());
   let items = context_menu_focus_items renderer menu in
   if items = [] then
     W.HtmlElement.focus (W.Element.unsafeAsHtmlElement menu_node)
@@ -901,6 +914,7 @@ let attach_context_menu_events renderer node dom_node =
        ~key_handler ~present:false ~open_:false);
   W.Element.addEventListener "click" click_handler dom_node;
   Hashtbl.replace renderer.web_cleanups node (fun () ->
+      Lui_web_popup_tracking.stop dom_node;
       W.Element.removeEventListener "click" click_handler dom_node;
       if !(renderer.web_open_context_menu) = Some node then
         renderer.web_open_context_menu := None;

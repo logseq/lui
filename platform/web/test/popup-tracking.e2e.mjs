@@ -172,3 +172,89 @@ test("anchored tooltip tracks scroll and layout shifts then closes for a hidden 
   await session.page.evaluate(() => { document.querySelector(".tracking-anchor button").style.visibility = "hidden" })
   await session.page.waitForFunction(() => !document.querySelector(".lui-tooltip[data-open]"))
 })
+
+async function setupContext() {
+  await session.page.setViewportSize({ width: 1000, height: 800 })
+  await session.page.goto(`${origin}/platform/web/test/fixtures/layer-regression.html`)
+  await session.page.waitForFunction(() => window.audit)
+  await session.page.evaluate(() => {
+    window.audit.setupContextTracking()
+    document.querySelector("#host>.lui-column").style.position = "static"
+    Object.assign(document.querySelector(".tracking-context-host").style, {
+      position: "fixed", left: "600px", top: "500px", width: "320px", height: "200px",
+    })
+  })
+  await session.page.mouse.click(880, 690, { button: "right" })
+  await session.page.getByRole("menu").waitFor({ state: "visible" })
+}
+
+test("ContextMenu tracking clamps the invocation point after async growth and viewport changes", async () => {
+  await setupContext()
+  const initial = await session.page.getByRole("menu").boundingBox()
+  await session.page.evaluate(() => {
+    window.contextIdentity = document.querySelector(".lui-context-menu")
+    setTimeout(() => window.audit.context.grow(40), 0)
+  })
+  await session.page.waitForFunction(top => {
+    const r = document.querySelector(".lui-context-menu").getBoundingClientRect()
+    return r.top < top && r.bottom <= innerHeight - 7
+  }, initial.y)
+  await session.page.setViewportSize({ width: 360, height: 180 })
+  await session.page.waitForFunction(() => {
+    const menu = document.querySelector(".lui-context-menu"), r = menu.getBoundingClientRect()
+    return r.left >= 7 && r.right <= 353 && r.top >= 7 && r.bottom <= 173 && menu.scrollHeight > menu.clientHeight
+  })
+  assert.equal(await session.page.evaluate(() => window.contextIdentity === document.querySelector(".lui-context-menu")), true)
+  await session.page.getByRole("menuitem", { name: "Context action 0", exact: true }).click()
+  assert.deepEqual(await session.page.evaluate(() => window.audit.context.activations), [0])
+  await session.page.getByRole("menu").waitFor({ state: "hidden" })
+  assert.equal(await session.page.evaluate(() => window.activeResizeObservers.size), 0)
+})
+
+test("ContextMenu tracking keeps viewport coordinates, cleans up and reopens the same menu", async () => {
+  await setupContext()
+  const initial = await session.page.getByRole("menu").boundingBox()
+  await session.page.evaluate(() => {
+    document.querySelector(".tracking-context-host").style.top = "400px"
+    window.scrollTo(0, 50)
+  })
+  await session.page.waitForTimeout(150)
+  const moved = await session.page.getByRole("menu").boundingBox()
+  assert.equal(moved.x, initial.x)
+  assert.equal(moved.y, initial.y)
+  await session.page.keyboard.press("Escape")
+  assert.equal(await session.page.evaluate(() => window.activeResizeObservers.size), 0)
+  await session.page.evaluate(() => {
+    const host = document.querySelector(".tracking-context-host"), read = host.getBoundingClientRect.bind(host)
+    window.contextReads = 0
+    host.getBoundingClientRect = () => { window.contextReads++; return read() }
+    window.dispatchEvent(new Event("resize"))
+    window.visualViewport.dispatchEvent(new Event("scroll"))
+  })
+  await session.page.waitForTimeout(200)
+  assert.equal(await session.page.evaluate(() => window.contextReads), 0)
+  await session.page.keyboard.press("Shift+F10")
+  await session.page.getByRole("menu").waitFor({ state: "visible" })
+  await session.page.evaluate(() => {
+    window.contextIdentity = document.querySelector(".lui-context-menu")
+    const viewport = new EventTarget()
+    Object.assign(viewport, { offsetLeft: 40, offsetTop: 60, width: 220, height: 120 })
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport })
+    window.dispatchEvent(new Event("resize"))
+  })
+  await session.page.waitForFunction(() => {
+    const r = document.querySelector(".lui-context-menu").getBoundingClientRect()
+    return r.left >= 47 && r.right <= 253 && r.top >= 67 && r.bottom <= 173
+  })
+  await session.page.evaluate(() => { document.querySelector(".tracking-context-host").style.visibility = "hidden" })
+  await session.page.getByRole("menu").waitFor({ state: "hidden" })
+  assert.equal(await session.page.evaluate(() => window.activeResizeObservers.size), 0)
+  await session.page.evaluate(() => { document.querySelector(".tracking-context-host").style.visibility = "visible" })
+  await session.page.getByRole("button", { name: "Tracking context host" }).focus()
+  await session.page.keyboard.press("Shift+F10")
+  await session.page.getByRole("menu").waitFor({ state: "visible" })
+  assert.equal(await session.page.evaluate(() => window.contextIdentity === document.querySelector(".lui-context-menu")), true)
+  await session.page.evaluate(() => window.audit.context.remove())
+  await session.page.getByRole("menu").waitFor({ state: "hidden" })
+  assert.equal(await session.page.evaluate(() => window.activeResizeObservers.size), 0)
+})
