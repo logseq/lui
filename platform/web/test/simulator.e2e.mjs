@@ -145,7 +145,7 @@ test("phone Gallery starts with an accessible component list and an in-bounds si
         itemDirection: Math.round(secondRect.top - firstRect.top) > 0 ? 'vertical' : 'horizontal',
         itemWidth: Math.round(firstRect.width),
         toolbarInsideViewport: toolbarRect.left >= 8 && toolbarRect.right <= innerWidth - 8,
-        toolbarDock: getComputedStyle(toolbar).bottom,
+        toolbarBeforeContent: toolbarRect.bottom <= shell.getBoundingClientRect().top,
       }
     })()`),
     {
@@ -162,7 +162,7 @@ test("phone Gallery starts with an accessible component list and an in-bounds si
       itemDirection: "vertical",
       itemWidth: 358,
       toolbarInsideViewport: true,
-      toolbarDock: "8px",
+      toolbarBeforeContent: true,
     },
   )
 })

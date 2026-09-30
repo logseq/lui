@@ -15,11 +15,10 @@ if (!browserType) {
 }
 
 async function openGalleryPage(page, name) {
-  await page.evaluate((pageName) => {
-    const button = [...document.querySelectorAll("nav button")]
-      .find((node) => node.textContent === pageName)
-    button?.click()
-  }, name)
+  const back = page.locator(".lui-gallery-navigation-back")
+  if (await back.isVisible()) await back.click()
+  await page.locator(".lui-gallery-nav-item")
+    .filter({ hasText: new RegExp(`^${name}$`) }).click()
 }
 
 test(`${browserLabel} preserves the Gallery's retained interaction contract`, async () => {
@@ -39,33 +38,31 @@ test(`${browserLabel} preserves the Gallery's retained interaction contract`, as
     const origin = `http://127.0.0.1:${server.address().port}`
     await page.goto(`${origin}/examples/components/web/index.html`)
 
-    const mobileAudit = await page.evaluate(() => {
-      const content = document.querySelector(".lui-gallery-content")
-      const buttons = [...document.querySelectorAll(".lui-gallery-nav-item")]
-      document.querySelector(".lui-gallery-navigation-back:not([hidden])")?.click()
-      const navigationHeights = []
-      const failures = []
-      for (const button of buttons) {
-        navigationHeights.push(button.getBoundingClientRect().height)
-        button.click()
+    const labels = await page.locator(".lui-gallery-nav-item").allTextContents()
+    const navigationHeights = await page.locator(".lui-gallery-nav-item")
+      .evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().height))
+    const failures = []
+    for (const name of labels) {
+      await openGalleryPage(page, name)
+      const measurement = await page.evaluate(() => {
+        const content = document.querySelector(".lui-gallery-content")
         const headings = content.querySelectorAll('[role="heading"]')
-        if (headings.length !== 1 || content.scrollWidth > content.clientWidth + 1) {
-          failures.push({
-            page: button.textContent,
-            headings: headings.length,
-            clientWidth: content.clientWidth,
-            scrollWidth: content.scrollWidth,
-          })
+        return {
+          headings: headings.length,
+          clientWidth: content.clientWidth,
+          scrollWidth: content.scrollWidth,
         }
-        document.querySelector(".lui-gallery-navigation-back")?.click()
+      })
+      if (measurement.headings !== 1 || measurement.scrollWidth > measurement.clientWidth + 1) {
+        failures.push({ page: name, ...measurement })
       }
-      return {
-        count: buttons.length,
-        minNavigationHeight: Math.min(...navigationHeights),
-        mountedPages: document.querySelectorAll(".lui-gallery-content > *").length,
-        failures,
-      }
-    })
+    }
+    const mobileAudit = {
+      count: labels.length,
+      minNavigationHeight: Math.min(...navigationHeights),
+      mountedPages: await page.locator(".lui-gallery-content > *").count(),
+      failures,
+    }
     assert.equal(mobileAudit.count, 69)
     assert.ok(mobileAudit.minNavigationHeight >= 44, JSON.stringify(mobileAudit))
     assert.equal(mobileAudit.mountedPages, 1)
@@ -127,6 +124,7 @@ test(`${browserLabel} preserves the Gallery's retained interaction contract`, as
     )
 
     await openGalleryPage(page, "DropdownMenu")
+    await page.getByRole("button", { name: "Choose environment", exact: true }).click()
     const production = page.locator(".lui-menu-item:visible")
       .filter({ hasText: /^Production$/ })
       .last()

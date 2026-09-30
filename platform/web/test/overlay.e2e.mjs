@@ -799,6 +799,7 @@ test("Tree typeahead wraps visible items and supports rapid prefixes", async () 
 
 test("DropdownMenu typeahead moves focus to the matching enabled item", async () => {
   await openGalleryPage("DropdownMenu")
+  await clickButton("Choose environment")
   await evaluate(`[
     ...document.querySelectorAll('.lui-menu-item'),
   ].find((item) => item.textContent.trim() === 'Production'
@@ -811,6 +812,7 @@ test("DropdownMenu typeahead moves focus to the matching enabled item", async ()
 
 test("Nested menu keeps its right-side submenu open through the pointer corridor", async () => {
   await openGalleryPage("DropdownMenu")
+  await clickButton("Choose environment")
 
   assert.equal(
     await state(`(() => {
