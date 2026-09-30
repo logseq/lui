@@ -252,7 +252,8 @@ public final class LUIAppleExtensionRegistry {
             !$0.isEmpty && $0.utf8.allSatisfy { byte in
                 let value = Int(byte)
                 return (value >= 97 && value <= 122) ||
-                    (value >= 48 && value <= 57)
+                    (value >= 48 && value <= 57) ||
+                    value == 95
             }
         }
     }

@@ -1100,20 +1100,10 @@ namespace LUI
                         throw new LUIBackendException(
                             "list-item requires text or children");
                     }
-                    if (hasText && hasChildren)
-                    {
-                        throw new LUIBackendException(
-                            "list-item accepts text or children, not both");
-                    }
                 }
                 if (state.Kind == LUINodeKind.Avatar ||
                     state.Kind == LUINodeKind.Image)
                 {
-                    if (state.Kind == LUINodeKind.Avatar &&
-                        TextProperty(state, LUIProperty.TextValue).Length == 0)
-                    {
-                        throw new LUIBackendException("avatar requires initials");
-                    }
                     bool hasImage =
                         state.Properties.ContainsKey(LUIProperty.ImageIdValue);
                     if (state.Kind == LUINodeKind.Image && !hasImage)
