@@ -471,7 +471,10 @@ let mount_simulator_toolbar renderer refresh_layout =
   append toolbar device_label;
   append toolbar rotate;
   match W.HtmlDocument.body html_document with
-  | Some body -> append body toolbar
+  | Some body ->
+      ignore
+        (W.Element.insertBefore (W.Element.asNode toolbar)
+           (W.Element.asNode renderer.web_host) body)
   | None -> invalid_arg "document body is unavailable"
 
 (* Gallery shell *)

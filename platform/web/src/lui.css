@@ -484,16 +484,28 @@ body {
   }
 
   .lui-view-that-fits {
-    @apply grid;
+    @apply relative grid min-w-0 min-h-0;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .lui-view-that-fits > * {
     grid-area: 1 / 1;
   }
 
-  /* No CSS fit probing; keep only the first candidate. */
-  .lui-view-that-fits > :not(:first-child) {
+  .lui-view-that-fits > [data-lui-fit-hidden]:not([data-lui-fit-probe]) {
     @apply hidden;
+  }
+
+  .lui-view-that-fits > [data-lui-fit-probe] {
+    position: absolute;
+    width: max-content;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .lui-view-that-fits[data-orientation="vertical"] > [data-lui-fit-probe] {
+    width: 100%;
+    height: max-content;
   }
 
   .lui-tooltip {
