@@ -112,43 +112,66 @@ test("renderer Sheet retains draft selection and keeps its controls reachable", 
   await openFixture()
   const sheet = await openSheet()
   const input = sheet.locator('input[placeholder="Draft"]')
-  await input.focus()
+  const originalInput = await input.elementHandle()
+  assert.ok(originalInput, "Sheet input handle should exist before resize")
+  await input.click()
   await session.page.keyboard.type("retained draft")
-  await input.selectText()
+  await input.press("End")
+  await input.press("Shift+Home")
 
   await browser("set", "viewport", "390", "400")
   await browser("wait", "50")
+  assert.equal(
+    await originalInput.evaluate((element) =>
+      element.isConnected
+      && element === document.querySelector('.lui-sheet input[placeholder="Draft"]')
+      && element === window.audit.sheetInput),
+    true,
+  )
   assert.deepEqual(
     await state(`(() => {
       const surface = document.querySelector('.lui-sheet')
+      const layer = document.querySelector('.lui-modal-layer')
       const body = surface?.querySelector('.lui-sheet-body')
-      const handle = surface?.querySelector('.lui-sheet-handle')
       const draft = surface?.querySelector('input[placeholder="Draft"]')
+      const titleRect = surface?.querySelector('.lui-sheet-title')?.getBoundingClientRect()
+      const handleRect = surface?.querySelector('.lui-sheet-handle')?.getBoundingClientRect()
+      const layerRect = layer?.getBoundingClientRect()
+      const inside = (rect) => Boolean(
+        rect
+        && layerRect
+        && rect.width > 0
+        && rect.height > 0
+        && rect.left >= Math.max(0, layerRect.left)
+        && rect.right <= Math.min(innerWidth, layerRect.right)
+        && rect.top >= Math.max(0, layerRect.top)
+        && rect.bottom <= Math.min(innerHeight, layerRect.bottom),
+      )
       return {
-        sameInput: draft === window.audit.sheetInput,
         value: draft?.value,
         selected: draft?.selectionStart === 0 && draft?.selectionEnd === draft?.value.length,
         focused: document.activeElement === draft,
-        titleVisible: Boolean(surface?.querySelector('.lui-sheet-title')?.getBoundingClientRect().height),
-        handleVisible: getComputedStyle(handle).display !== 'none',
+        titleInBounds: inside(titleRect),
+        handleInBounds: inside(handleRect),
         bodyScrollable: (body?.scrollHeight ?? 0) > (body?.clientHeight ?? 0),
         cancelVisible: [...(surface?.querySelectorAll('button') ?? [])].some((button) => button.textContent.trim() === 'Cancel'),
       }
     })()`),
     {
-      sameInput: true,
       value: "retained draft",
       selected: true,
       focused: true,
-      titleVisible: true,
-      handleVisible: true,
+      titleInBounds: true,
+      handleInBounds: true,
       bodyScrollable: true,
       cancelVisible: true,
     },
   )
 
   const scroller = sheet.locator("#inner-scroll")
-  await scroller.evaluate((element) => { element.scrollTop = 160 })
+  await scroller.hover()
+  await session.page.mouse.wheel(0, 160)
+  await browser("wait", "--fn", "document.querySelector('#inner-scroll').scrollTop > 0")
   const before = await state("document.querySelector('#inner-scroll').scrollTop")
   await touchDrag(scroller, { from: 0.2, to: 0.8, duration: 100 })
   const after = await state("document.querySelector('#inner-scroll').scrollTop")
@@ -159,6 +182,13 @@ test("renderer Sheet retains draft selection and keeps its controls reachable", 
   assert.ok(await state("document.querySelector('.lui-sheet-body').scrollTop") > 0)
   const cancel = sheet.getByRole("button", { name: "Cancel", exact: true })
   await cancel.scrollIntoViewIfNeeded()
+  const body = sheet.locator(".lui-sheet-body")
+  await body.hover()
+  await session.page.mouse.wheel(0, 1000)
+  await browser("wait", "50")
+  const cancelBounds = await cancel.boundingBox()
+  assert.ok(cancelBounds, "Cancel should be visible after Sheet body scrolling")
+  assert.ok(cancelBounds.y >= 0 && cancelBounds.y + cancelBounds.height <= 400)
   assert.equal(
     await cancel.evaluate((button) => {
       const body = button.closest(".lui-sheet-body")
@@ -199,7 +229,18 @@ test("trusted Sheet gestures reject unsafe starts and arbitrate scrolling", asyn
   const input = sheet.locator('input[placeholder="Draft"]')
   await touchDrag(input, { from: 0.5, to: 0.05 })
   assert.equal(await state("document.querySelectorAll('.lui-modal-layer[data-open]').length"), 1)
-  await touchDrag(sheet.getByRole("button", { name: "Cancel", exact: true }), { from: 0.5, to: 0.5 })
+  const cancel = sheet.getByRole("button", { name: "Cancel", exact: true })
+  await cancel.scrollIntoViewIfNeeded()
+  await sheet.locator(".lui-sheet-body").hover()
+  await session.page.mouse.wheel(0, 1000)
+  await browser("wait", "50")
+  const cancelBounds = await cancel.boundingBox()
+  assert.ok(cancelBounds, "Cancel should be visible before trusted touch")
+  assert.ok(
+    cancelBounds.y >= 0 && cancelBounds.y + cancelBounds.height <= 620,
+    `Cancel bounds should be inside the viewport: ${JSON.stringify(cancelBounds)}`,
+  )
+  await touchDrag(cancel, { from: 0.5, to: 0.5 })
   await waitForClosed()
 
   sheet = await openSheet()
@@ -208,12 +249,7 @@ test("trusted Sheet gestures reject unsafe starts and arbitrate scrolling", asyn
   await touchEvent("touchEnd", [])
   assert.equal(await state("document.querySelectorAll('.lui-modal-layer[data-open]').length"), 1)
 
-  await sheet.getByText("Sheet content stays in the retained renderer.").evaluate((element) => {
-    const range = document.createRange()
-    range.selectNodeContents(element)
-    window.getSelection().removeAllRanges()
-    window.getSelection().addRange(range)
-  })
+  await sheet.getByText("Sheet content stays in the retained renderer.").click({ clickCount: 3 })
   assert.equal(await state("window.getSelection().isCollapsed"), false)
   await touchDrag(sheet.locator(".lui-sheet-handle"), { deltaY: 120 })
   assert.equal(await state("document.querySelectorAll('.lui-modal-layer[data-open]').length"), 1)
