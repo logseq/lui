@@ -65,5 +65,12 @@ function setupTracking(count=4,tooltip=false){
     resizeSpacer:height=>{set(spacer,"height",height);flush();},
     removeAnchor:()=>{drop(trigger);flush();}};
 }
-window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,openSheet,closeSheet,sheetInput:null};
+function setupContextTracking(){
+  const host=node("list-item",root,{text:"Tracking context host","style-class":"tracking-context-host"});
+  const menu=node("context-menu",host);let count=0;
+  function grow(amount){for(let j=0;j<amount;j++){const index=count++,item=node("menu-item",menu,{text:`Context action ${index}`,"press-enabled":true});handlers.set(item,()=>window.audit.context.activations.push(index));}flush();}
+  window.audit.context={host,menu,grow,activations:[],remove:()=>{drop(host);flush();}};
+  grow(2);
+}
+window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,setupContextTracking,openSheet,closeSheet,sheetInput:null};
 </script>

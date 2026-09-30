@@ -134,6 +134,16 @@ let position_anchored document positioner popup anchor_bounds preferred
 
 let position_anchored_bang = position_anchored
 
+let position_at_point document popup x y =
+  let left, top, width, height = Lui_web_popup_tracking.viewport_bounds document in
+  set_style popup "--lui-popup-available-width" (css_px (max 0.0 (width -. 16.0)));
+  set_style popup "--lui-popup-available-height" (css_px (max 0.0 (height -. 16.0)));
+  let element = W.Element.unsafeAsHtmlElement popup in
+  let popup_width = float_of_int (W.HtmlElement.offsetWidth element) in
+  let popup_height = float_of_int (W.HtmlElement.offsetHeight element) in
+  set_style popup "left" (css_px (clamp_popup_axis x popup_width left width));
+  set_style popup "top" (css_px (clamp_popup_axis y popup_height top height))
+
 (* an anchored popup detached from its parent has no anchor to position
    against — a detached-but-open menu or tooltip is skipped rather than
    treated as an error *)
