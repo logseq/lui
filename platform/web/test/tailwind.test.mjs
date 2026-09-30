@@ -155,7 +155,7 @@ test("Sheet reuses the shared portal layer and docks to the viewport right", asy
 
   assert.match(css, /\.lui-modal-layer\{[^}]*position:fixed/)
   assert.match(css, /\.lui-modal-backdrop\{[^}]*background-color:/)
-  assert.match(css, /\.lui-sheet\{[^}]*position:fixed/)
+  assert.match(css, /\.lui-sheet\{[^}]*position:absolute/)
   assert.match(css, /\.lui-sheet\{[^}]*right:(?:0|calc\(var\(--spacing\)\*0\))/)
   assert.match(css, /\.lui-sheet\{[^}]*left:auto/)
   assert.match(css, /\.lui-sheet\{[^}]*height:100%/)

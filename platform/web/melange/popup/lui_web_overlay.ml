@@ -14,6 +14,22 @@ module Focus = Lui_web_focus
 external media_query_matches : W.Window.mediaQueryList -> bool = "matches"
   [@@mel.get]
 
+type selection
+external document_selection : Dom.document -> selection option = "getSelection"
+  [@@mel.send] [@@mel.return nullable]
+external selection_collapsed : selection -> bool = "isCollapsed" [@@mel.get]
+external pointer_primary : Dom.event -> bool = "isPrimary" [@@mel.get]
+external event_type : Dom.event -> string = "type" [@@mel.get]
+external has_pointer_capture : Dom.element -> int -> bool = "hasPointerCapture"
+  [@@mel.send]
+external release_pointer_capture : Dom.element -> int -> unit = "releasePointerCapture"
+  [@@mel.send]
+
+let has_text_selection document =
+  match document_selection document with
+  | Some selection -> not (selection_collapsed selection)
+  | None -> false
+
 (* set-style! in the reference writes element.style.setProperty. *)
 let set_style_on element name value =
   Lui_web_util.set_style
@@ -176,6 +192,9 @@ let rec swipe_ignored_target target boundary =
     let class_name = W.Element.getAttribute "class" target in
     let ignored =
       W.Element.hasAttribute "data-lui-swipe-ignore" target
+      || W.Element.matches
+           "button,input,textarea,select,option,a,[contenteditable]:not([contenteditable=false]),[role=link],[role=slider],[role=checkbox],[role=switch]"
+           target
       || W.Element.hasAttribute "type" target
       || W.Element.hasAttribute "href" target
       || role = Some "button"
@@ -366,8 +385,13 @@ type modal_context = {
 
 let modal_reset_swipe ctx =
   let state = ctx.modal_swipe in
+  let pointer = !(state.swipe_pointer) in
   state.swipe_pointer := None;
   state.swipe_axis := None;
+  (match pointer with
+   | Some id when has_pointer_capture ctx.modal_dom_node id ->
+       release_pointer_capture ctx.modal_dom_node id
+   | _ -> ());
   W.Element.removeAttribute "data-swiping" ctx.modal_dom_node;
   W.Element.removeAttribute "data-swipe-direction" ctx.modal_dom_node;
   set_style_on ctx.modal_dom_node "--drawer-swipe-movement-y" "0px";
@@ -393,11 +417,14 @@ let modal_pointer_down ctx event =
     sheet_scroll_blocks_swipe target ctx.modal_dom_node
   in
   let mouse = Lui_web_util.pointer_mouse_event event in
-  if
+  if not (pointer_primary event) || !(ctx.modal_swipe.swipe_pointer) <> None
+  then ignore (modal_reset_swipe ctx)
+  else if
     ctx.modal_sheet && compact
     && Lui_web_util.pointer_type event = "touch"
     && W.MouseEvent.button mouse = 0
     && (not ignored) && not scroll_blocked
+    && not (has_text_selection ctx.modal_renderer.web_document)
   then begin
     let x = float_of_int (W.MouseEvent.clientX mouse) in
     let y = float_of_int (W.MouseEvent.clientY mouse) in
@@ -406,11 +433,7 @@ let modal_pointer_down ctx event =
     state.swipe_start_x := x;
     state.swipe_start_y := y;
     state.swipe_current_y := y;
-    state.swipe_start_time := W.Event.timeStamp event;
-    if W.Event.isTrusted event then
-      W.Element.setPointerCapture
-        (W.PointerEvent.pointerId (Lui_web_util.as_pointer_event event))
-        ctx.modal_dom_node
+    state.swipe_start_time := W.Event.timeStamp event
   end;
   ()
 
@@ -429,15 +452,25 @@ let modal_pointer_move ctx event =
         float_of_int (W.MouseEvent.clientY mouse)
         -. !(state.swipe_start_y)
       in
+      let target = W.EventTarget.unsafeAsElement (W.Event.target event) in
       if
         !(state.swipe_axis) = None
         && max delta_x (Float.abs delta_y) > 8.0
-      then
+      then begin
         state.swipe_axis :=
           Some
-            (if delta_x > Float.abs delta_y then "horizontal"
+            (if delta_x >= Float.abs delta_y || delta_y <= 0.0
+                || sheet_scroll_blocks_swipe target ctx.modal_dom_node
+                || has_text_selection ctx.modal_renderer.web_document
+             then "rejected"
              else "vertical");
-      if !(state.swipe_axis) = Some "vertical" && delta_y > 0.0 then begin
+        if !(state.swipe_axis) = Some "vertical" && W.Event.isTrusted event then
+          W.Element.setPointerCapture
+            (W.PointerEvent.pointerId (Lui_web_util.as_pointer_event event))
+            ctx.modal_dom_node
+      end;
+      if !(state.swipe_axis) = Some "vertical" then begin
+        let movement = max 0.0 delta_y in
         W.Event.preventDefault event;
         state.swipe_current_y :=
           float_of_int (W.MouseEvent.clientY mouse);
@@ -445,12 +478,12 @@ let modal_pointer_move ctx event =
         W.Element.setAttribute
           "data-swipe-direction" "down" ctx.modal_dom_node;
         set_style_on ctx.modal_dom_node "--drawer-swipe-movement-y"
-          (js_number_string delta_y ^ "px");
+          (js_number_string movement ^ "px");
         set_style_on ctx.modal_backdrop "--drawer-swipe-progress"
           (js_number_string
              (max 0.0
                 (1.0
-                 -. delta_y
+                 -. movement
                       /. float_of_int
                            (W.Element.clientHeight ctx.modal_dom_node))))
       end
@@ -482,7 +515,17 @@ let modal_pointer_cancel ctx event =
   match !(ctx.modal_swipe.swipe_pointer) with
   | Some active_pointer_id
     when active_pointer_id = Lui_web_util.pointer_id event ->
-      ignore (modal_reset_swipe ctx)
+      if event_type event <> "lostpointercapture" then
+        ignore (modal_reset_swipe ctx)
+      else begin
+        let target = W.EventTarget.unsafeAsElement (W.Event.target event) in
+        if
+          W.Node.isSameNode
+            (W.Element.asNode target)
+            (W.Element.asNode ctx.modal_dom_node)
+          || not (has_pointer_capture ctx.modal_dom_node active_pointer_id)
+        then ignore (modal_reset_swipe ctx)
+      end
   | _ -> ()
 
 let modal_focus_trap_wrap event items focused backwards =
@@ -579,7 +622,9 @@ let attach_modal_events renderer node dom_node =
     W.Element.addEventListener "pointermove" pointer_move_handler dom_node;
     W.Element.addEventListener "pointerup" pointer_end_handler dom_node;
     W.Element.addEventListener
-      "pointercancel" pointer_cancel_handler dom_node
+      "pointercancel" pointer_cancel_handler dom_node;
+    W.Element.addEventListener
+      "lostpointercapture" pointer_cancel_handler dom_node
   end;
   Hashtbl.replace renderer.web_cleanups node (fun () ->
       ignore
@@ -605,7 +650,9 @@ let attach_modal_events renderer node dom_node =
         W.Element.removeEventListener
           "pointerup" pointer_end_handler dom_node;
         W.Element.removeEventListener
-          "pointercancel" pointer_cancel_handler dom_node
+          "pointercancel" pointer_cancel_handler dom_node;
+        W.Element.removeEventListener
+          "lostpointercapture" pointer_cancel_handler dom_node
       end;
       restore_modal_focus renderer node ctx.modal_dom_node;
       if not (Lui_web_layers.is_present renderer.web_layers node) then

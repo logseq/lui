@@ -168,10 +168,9 @@ let set_simulator_platform renderer platform =
 let set_simulator_platform_bang = set_simulator_platform
 
 let simulator_text_entry element =
-  let class_name = W.Element.className element in
-  class_name = "lui-text-field" || class_name = "lui-input"
-  || class_name = "lui-search-field" || class_name = "lui-textarea"
-  || class_name = "lui-combobox-control"
+  W.Element.matches
+    "input:not([type=button]):not([type=checkbox]):not([type=radio]):not([type=range]),textarea,[contenteditable]:not([contenteditable=false])"
+    element
 
 let simulator_text_entry_ = simulator_text_entry
 
@@ -201,7 +200,20 @@ let attach_simulator_keyboard_events renderer =
               W.EventTarget.unsafeAsElement (W.Event.target event)
             in
             if simulator_text_entry target then
-              ignore (set_simulator_keyboard_visible renderer false))
+              ignore (Js.Global.setTimeout ~f:(fun () ->
+                let focused =
+                  W.HtmlDocument.activeElement
+                    (W.Document.unsafeAsHtmlDocument renderer.web_document)
+                in
+                let visible =
+                  match focused with
+                  | Some element ->
+                      simulator_text_entry element
+                      && (W.Element.contains (W.Element.asNode element) renderer.web_host
+                          || W.Element.contains (W.Element.asNode element) renderer.web_portal_root)
+                  | None -> false
+                in
+                ignore (set_simulator_keyboard_visible renderer visible)) 0))
          scope)
     [ renderer.web_host; renderer.web_portal_root ];
   true

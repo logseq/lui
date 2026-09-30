@@ -494,6 +494,13 @@ test("Compact Sheet arbitrates scroll, direction, distance, and velocity", async
   await browser("set", "viewport", "390", "844")
   await clickButton("Open sheet")
   await browser("wait", "100")
+  await session.page.locator(".lui-sheet").evaluate(async (sheet) => {
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()))
+    await Promise.all(sheet.getAnimations().map((animation) => animation.finished.catch(() => {})))
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()))
+  })
+  await session.page.locator(".lui-sheet .lui-input").evaluate((input) => input.blur())
+  await browser("wait", "--fn", "getComputedStyle(document.querySelector('.lui-sheet')).bottom === '0px'")
 
   const compactSheet = await state(`(() => {
       const sheet = document.querySelector('.lui-sheet')
