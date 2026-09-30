@@ -13,6 +13,8 @@ module Store = Lui_web_store
 external media_query_list_matches : W.Window.mediaQueryList -> bool = "matches"
   [@@mel.get]
 
+external click_detail : Dom.event -> int = "detail" [@@mel.get]
+
 let emit renderer event = ignore (!(renderer.web_event_handler) event)
 
 let transition_event_from target event =
@@ -72,11 +74,6 @@ let begin_popup_close popup =
   W.Element.removeAttribute "data-open" popup;
   W.Element.setAttribute "data-closed" "" popup;
   W.Element.setAttribute "data-ending-style" "" popup
-
-let finish_popup_close_after_transition document popup duration =
-  after_transition document popup duration true (fun () ->
-      if W.Element.getAttribute "data-ending-style" popup = Some "" then
-        W.Element.removeAttribute "data-ending-style" popup)
 
 let cancel_typeahead typeahead_timer =
   (match !typeahead_timer with
@@ -181,16 +178,34 @@ let picker_selected_index renderer dropdown =
 
 let combobox_active_index renderer picker items =
   match
-    W.Element.getAttribute "data-lui-active-index"
+    W.Element.getAttribute "aria-activedescendant"
       (picker_control_element renderer picker)
   with
-  | Some value ->
-      (match int_of_string_opt value with
-       | Some index ->
-           if index >= 0 && index < List.length items then Some index
-           else None
-       | None -> None)
+  | Some id ->
+      let rec find index = function
+        | [] -> None
+        | item :: rest ->
+            if Lui_web_util.node_dom_id item = id then Some index
+            else find (index + 1) rest
+      in
+      find 0 items
   | None -> None
+
+let scroll_picker_item renderer dropdown element =
+  let popup =
+    Lui_web_util.child_element (Lui_web_nodes.dom_node renderer dropdown) 0
+  in
+  let bounds = W.Element.getBoundingClientRect popup in
+  let item = W.Element.getBoundingClientRect element in
+  let top = W.DomRect.top bounds +. float_of_int (W.Element.clientTop popup) in
+  let bottom = top +. float_of_int (W.Element.clientHeight popup) in
+  let delta =
+    if W.DomRect.top item < top then W.DomRect.top item -. top
+    else if W.DomRect.bottom item > bottom then W.DomRect.bottom item -. bottom
+    else 0.
+  in
+  if delta <> 0. then
+    W.Element.setScrollTop popup (W.Element.scrollTop popup +. delta)
 
 let set_combobox_active renderer picker dropdown index =
   let items = picker_menu_items renderer dropdown in
@@ -199,7 +214,9 @@ let set_combobox_active renderer picker dropdown index =
     (fun item ->
       W.Element.removeAttribute "data-highlighted"
         (Lui_web_nodes.dom_node renderer item))
-    items;
+    (Store.children renderer.web_store dropdown);
+  W.Element.removeAttribute "data-lui-active-index" control;
+  W.Element.removeAttribute "aria-activedescendant" control;
   if items <> [] && index >= 0 && index < List.length items then begin
     let item = List.nth items index in
     let element = Lui_web_nodes.dom_node renderer item in
@@ -207,7 +224,8 @@ let set_combobox_active renderer picker dropdown index =
       control;
     W.Element.setAttribute "data-highlighted" "" element;
     W.Element.setAttribute "aria-activedescendant"
-      (Lui_web_util.node_dom_id item) control
+      (Lui_web_util.node_dom_id item) control;
+    scroll_picker_item renderer dropdown element
   end
 
 let set_combobox_active_bang = set_combobox_active
@@ -283,20 +301,14 @@ let refresh_combobox_list_state renderer dropdown =
               Lui_web_util.set_state_attribute popup "data-empty" empty;
               W.Element.setTextContent status
                 (if empty then "No results." else combobox_status_text item_count);
-              if empty then clear_combobox_active renderer picker
+              if empty then set_combobox_active renderer picker dropdown (-1)
               else begin
                 let index =
                   match combobox_active_index renderer picker items with
                   | Some current_index -> current_index
                   | None -> 0
                 in
-                let expected_id =
-                  Lui_web_util.node_dom_id (List.nth items index)
-                in
-                if
-                  W.Element.getAttribute "aria-activedescendant" control
-                  <> Some expected_id
-                then set_combobox_active renderer picker dropdown index
+                set_combobox_active renderer picker dropdown index
               end;
               if W.Element.hasAttribute "data-open" popup then
                 Lui_web_position.position_dropdown renderer dropdown
@@ -316,6 +328,7 @@ let set_dropdown_open renderer node open_ =
   let positioner = Lui_web_nodes.dom_node renderer node in
   let popup = Lui_web_util.child_element positioner 0 in
   if open_ then begin
+    W.Element.removeAttribute "inert" popup;
     Lui_web_layers.reconcile_owner renderer.web_layers renderer.web_document
       node
       (match Store.node renderer.web_store node with
@@ -331,11 +344,19 @@ let set_dropdown_open renderer node open_ =
         | _ -> ())
   end
   else begin
-    ignore
-      (Lui_web_layers.close_layer renderer.web_layers renderer.web_document
-         node);
+    let token =
+      Lui_web_layers.close_layer renderer.web_layers renderer.web_document node
+    in
     begin_popup_close popup;
-    finish_popup_close_after_transition renderer.web_document popup 130
+    W.Element.setAttribute "inert" "" popup;
+    after_transition renderer.web_document popup 130 true (fun () ->
+        if Lui_web_layers.transition renderer.web_layers node = token
+           && not (Lui_web_layers.is_open renderer.web_layers node)
+        then begin
+          W.Element.removeAttribute "data-ending-style" popup;
+          Lui_web_layers.finish_present renderer.web_layers
+            renderer.web_document node token
+        end)
   end
 
 let set_dropdown_open_bang = set_dropdown_open
@@ -465,26 +486,66 @@ let attach_picker_trigger_events renderer node dom_node =
     (fun event ->
       let method_ = Lui_web_util.pointer_type event in
       current_pointer_type := method_;
-      W.Element.setAttribute "data-lui-open-method" method_ dom_node)
-    dom_node;
-  W.Element.addEventListener "mousedown"
-    (fun event ->
+      suppress_click := false;
+      W.Element.setAttribute "data-lui-open-method" method_ dom_node;
       if W.MouseEvent.button (Lui_web_util.pointer_mouse_event event) = 0
       then begin
-        W.Element.setAttribute "data-lui-open-method" !current_pointer_type
-          dom_node;
-        if !current_pointer_type = "touch" then W.Event.preventDefault event;
-        suppress_click := true;
-        ignore
-          (Js.Global.setTimeout ~f:(fun () -> suppress_click := false) 0);
-        press ()
+        let control = picker_control_element renderer node in
+        if method_ = "mouse" then begin
+          W.Event.preventDefault event;
+          suppress_click := true;
+          if Store.enabled_node renderer node
+             && not (W.Element.isSameNode (W.Element.asNode control) dom_node)
+          then Lui_web_util.focus_element control;
+          press ()
+        end
+        else if not (W.Element.isSameNode (W.Element.asNode control) dom_node)
+        then W.Event.preventDefault event
+      end)
+    dom_node;
+  W.Element.addEventListener "pointercancel"
+    (fun _event -> suppress_click := false) dom_node;
+  W.Element.addKeyDownEventListener
+    (fun event ->
+      suppress_click := false;
+      let key = W.KeyboardEvent.key event in
+      if Store.enabled_node renderer node
+         && Store.event_capability renderer node PressEnabled
+         && not (W.KeyboardEvent.isComposing event)
+         && not (W.KeyboardEvent.ctrlKey event)
+         && not (W.KeyboardEvent.metaKey event)
+         && not (W.KeyboardEvent.altKey event)
+         && picker_dropdown renderer node = None
+         && (key = "ArrowUp" || key = "ArrowDown"
+             || (String.length key = 1 && key <> " "))
+      then begin
+        W.KeyboardEvent.preventDefault event;
+        let control = picker_control_element renderer node in
+        let pending = W.Element.getAttribute "data-lui-picker-intent" control in
+        let intent =
+          match pending with
+          | Some prefix when String.length key = 1
+                             && prefix <> "ArrowUp" && prefix <> "ArrowDown" ->
+              prefix ^ key
+          | _ -> key
+        in
+        W.Element.setAttribute "data-lui-picker-intent" intent control;
+        W.Element.setAttribute "data-lui-open-method" "keyboard" dom_node;
+        if pending = None then press ()
       end)
     dom_node;
   W.Element.addEventListener "click"
-    (fun _event ->
-      if !suppress_click then suppress_click := false
+    (fun event ->
+      let keyboard = click_detail event = 0 in
+      if !suppress_click && not keyboard then suppress_click := false
       else begin
-        W.Element.setAttribute "data-lui-open-method" "keyboard" dom_node;
+        suppress_click := false;
+        W.Element.setAttribute "data-lui-open-method"
+          (if keyboard then "keyboard" else !current_pointer_type) dom_node;
+        let control = picker_control_element renderer node in
+        if Store.enabled_node renderer node
+           && not (W.Element.isSameNode (W.Element.asNode control) dom_node)
+        then Lui_web_util.focus_element control;
         press ()
       end)
     dom_node
@@ -607,6 +668,59 @@ let dropdown_typeahead renderer node typeahead_buffer typeahead_timer items
   in
   loop 1
 
+let dismiss_picker renderer node restore =
+  (match picker_for_dropdown renderer node with
+   | Some picker ->
+       W.Element.setAttribute "data-lui-picker-restore"
+         (if restore then "true" else "false")
+         (picker_control_element renderer picker)
+   | None -> ());
+  emit renderer (Dismiss node)
+
+let picker_tab renderer node picker event =
+  let control = picker_control_element renderer picker in
+  dismiss_picker renderer node false;
+  let modal = Lui_web_layers.topmost_blocking renderer.web_layers in
+  let roots =
+    match modal with
+    | Some layer -> Lui_web_layers.focus_roots renderer.web_layers layer.id
+    | None -> [W.Document.documentElement renderer.web_document]
+  in
+  let candidates =
+    List.fold_left (fun result root ->
+        let nodes = W.Element.querySelectorAll
+            "button,input,textarea,select,a[href],[contenteditable],[tabindex]" root in
+        let rec collect index result =
+          if index = W.NodeList.length nodes then result
+          else
+            match W.NodeList.item index nodes with
+            | Some candidate ->
+                (match W.Element.ofNode candidate with
+                 | Some element when Lui_web_focus.sequential_focus_target_available element ->
+                     collect (index + 1) (element :: result)
+                 | _ -> collect (index + 1) result)
+            | None -> collect (index + 1) result
+        in
+        collect 0 result) [] roots |> List.rev
+  in
+  let rec find index = function
+    | [] -> None
+    | element :: rest ->
+        if W.Element.isSameNode (W.Element.asNode control) element then Some index
+        else find (index + 1) rest
+  in
+  match find 0 candidates with
+  | Some index ->
+      let next = index + (if W.KeyboardEvent.shiftKey event then -1 else 1) in
+      let count = List.length candidates in
+      let next = if modal <> None then (next + count) mod count else next in
+      if next >= 0 && next < count then begin
+        W.KeyboardEvent.preventDefault event;
+        Lui_web_util.focus_element (List.nth candidates next)
+      end
+      else Lui_web_util.focus_element control
+  | None -> ()
+
 let dropdown_key_handler renderer node typeahead_buffer typeahead_timer
     event =
   let key = W.KeyboardEvent.key event in
@@ -618,7 +732,30 @@ let dropdown_key_handler renderer node typeahead_buffer typeahead_timer
     Lui_web_focus.focused_child_index renderer items event_target 0
   in
   let submenu_trigger = dropdown_submenu_trigger renderer node in
-  if current_index <> None then begin
+  let rec picker_root menu =
+    match dropdown_submenu_trigger renderer menu with
+    | Some trigger ->
+        (match Store.node renderer.web_store trigger with
+         | Some current ->
+             (match current.retained_parent with
+              | Some parent -> picker_root parent
+              | None -> menu)
+         | None -> menu)
+    | None -> menu
+  in
+  let root = picker_root node in
+  if key = "Tab" && picker_for_dropdown renderer root <> None then begin
+    match picker_for_dropdown renderer root with
+    | Some picker -> picker_tab renderer root picker event
+    | None -> ()
+  end
+  else if key = "Escape" then begin
+    W.KeyboardEvent.preventDefault event;
+    match submenu_trigger with
+    | Some trigger -> close_submenu_to_trigger renderer node trigger
+    | None -> dismiss_picker renderer node true
+  end
+  else if current_index <> None then begin
     if key = "ArrowDown" || key = "ArrowUp" || key = "Home" || key = "End"
     then dropdown_navigate renderer node items current_index key event
     else if key = "ArrowRight" then begin
@@ -639,16 +776,18 @@ let dropdown_key_handler renderer node typeahead_buffer typeahead_timer
           close_submenu_to_trigger renderer node trigger
       | None -> ()
     end
-    else if key = "Escape" then begin
+    else if key = "Enter" then begin
       W.KeyboardEvent.preventDefault event;
-      match submenu_trigger with
-      | Some trigger -> close_submenu_to_trigger renderer node trigger
-      | None -> emit renderer (Dismiss node)
+      match current_index with
+      | Some index -> activate_menu_item renderer (List.nth items index)
+      | None -> ()
     end
     else if
       String.length key = 1
       && not (W.KeyboardEvent.metaKey event)
       && not (W.KeyboardEvent.ctrlKey event)
+      && not (W.KeyboardEvent.altKey event)
+      && not (W.KeyboardEvent.isComposing event)
     then
       dropdown_typeahead renderer node typeahead_buffer typeahead_timer
         items current_index key event
@@ -659,8 +798,18 @@ let attach_dropdown_events renderer node _dropdown_node =
   let window =
     W.HtmlDocument.defaultView (W.Document.unsafeAsHtmlDocument document)
   in
-  let typeahead_buffer = ref "" in
+  let typeahead_buffer = ref
+      (match picker_for_dropdown renderer node with
+       | Some picker ->
+           (match W.Element.getAttribute "data-lui-picker-intent"
+                    (picker_control_element renderer picker) with
+            | Some prefix when prefix <> "ArrowUp" && prefix <> "ArrowDown" ->
+                String.lowercase_ascii prefix
+            | _ -> "")
+       | None -> "") in
   let typeahead_timer = ref None in
+  if !typeahead_buffer <> "" then
+    reset_typeahead_later typeahead_buffer typeahead_timer;
   let refresh_position _event =
     Webapi.requestAnimationFrame (fun _time ->
         match Store.node renderer.web_store node with
@@ -700,7 +849,7 @@ let attach_dropdown_events renderer node _dropdown_node =
        ~document ~id:node ~owner ~trigger ~content:positioner
        ~style_targets:[positioner; popup]
        ~policy:Lui_web_layers.Nonblocking
-       ~dismiss:(fun () -> emit renderer (Dismiss node))
+       ~dismiss:(fun () -> dismiss_picker renderer node false)
        ~close:(fun () -> set_dropdown_open renderer node false)
        ~key_handler ~present:false ~open_:false);
   Hashtbl.replace renderer.web_cleanups node (fun () ->
@@ -1054,31 +1203,75 @@ let mount_picker_dropdown renderer node =
   | Some picker ->
       let control = picker_control_element renderer picker in
       let popup_id = Lui_web_util.node_dom_id node ^ "-popup" in
+      let positioner = Lui_web_nodes.dom_node renderer node in
       let previous_cleanup = Hashtbl.find_opt renderer.web_cleanups node in
+      W.Element.removeAttribute "data-lui-picker-restore" control;
       W.Element.setAttribute "aria-controls" popup_id control;
       (match Store.node renderer.web_store picker with
        | Some picker_node ->
            if Store.standard_kind_is picker_node Combobox then
              after_batch_apply (fun () ->
                  match Store.node renderer.web_store node with
-                 | Some _menu -> set_combobox_active renderer picker node 0
-                 | None -> ())
+                 | Some menu when menu.retained_parent <> None
+                                  && Lui_web_layers.is_open renderer.web_layers node
+                                  && Store.node renderer.web_store picker <> None ->
+                     refresh_combobox_list_state renderer node
+                 | _ -> ())
            else
              after_batch_apply (fun () ->
                  match Store.node renderer.web_store node with
-                 | Some _menu ->
-                     focus_context_menu_item renderer node
-                       (picker_selected_index renderer node)
-                 | None -> ())
+                 | Some menu when menu.retained_parent <> None
+                                  && Lui_web_layers.is_open renderer.web_layers node
+                                  && Store.node renderer.web_store picker <> None ->
+                     let intent = W.Element.getAttribute "data-lui-picker-intent" control in
+                     W.Element.removeAttribute "data-lui-picker-intent" control;
+                     let items = picker_menu_items renderer node in
+                     let rec find predicate index = function
+                       | [] -> None
+                       | item :: rest ->
+                           if predicate item then Some index
+                           else find predicate (index + 1) rest
+                     in
+                     let selected = find (fun item ->
+                         Store.property renderer.web_store item Selected
+                         = Some (BoolValue true)) 0 items in
+                     let index =
+                       match intent with
+                       | Some prefix when prefix <> "ArrowUp" && prefix <> "ArrowDown" ->
+                           (match find (fun item ->
+                                starts_with ~prefix:(String.lowercase_ascii prefix)
+                                  (String.lowercase_ascii (String.trim
+                                     (W.Element.textContent (Lui_web_nodes.dom_node renderer item)))))
+                                    0 items with
+                            | Some index -> index
+                            | None -> Option.value selected ~default:0)
+                       | _ -> Option.value selected
+                           ~default:(if intent = Some "ArrowUp" then List.length items - 1 else 0)
+                     in
+                     if items <> [] then focus_context_menu_item renderer node index
+                 | _ -> ())
        | None -> ());
       Hashtbl.replace renderer.web_cleanups node (fun () ->
+          let restore =
+            W.Element.getAttribute "data-lui-picker-restore" control <> Some "false"
+          in
           (match previous_cleanup with
            | Some cleanup -> cleanup ()
            | None -> ());
           W.Element.removeAttribute "aria-controls" control;
           W.Element.removeAttribute "data-lui-active-index" control;
           W.Element.removeAttribute "aria-activedescendant" control;
-          Lui_web_util.focus_element control)
+          W.Element.removeAttribute "data-lui-picker-intent" control;
+          W.Element.removeAttribute "data-lui-picker-restore" control;
+          if restore && Lui_web_focus.focus_target_available control then begin
+            let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
+            match W.HtmlDocument.activeElement document with
+            | Some active when
+                W.Element.contains (W.Element.asNode active) positioner
+                || Lui_web_focus.document_body_focused renderer ->
+                Lui_web_util.focus_element control
+            | _ -> ()
+          end)
   | None -> ()
 
 let mount_dropdown renderer node =

@@ -59,12 +59,6 @@ let combobox_keydown renderer node event =
           (if Store.submit_enabled renderer node then Submit node
            else Press node)
   end
-  else if key = "Escape" then
-    match dropdown with
-    | Some menu ->
-        W.KeyboardEvent.preventDefault event;
-        emit renderer (Dismiss menu)
-    | None -> ()
 
 let text_keydown renderer node kind composing event =
   if enabled_node renderer node then begin
@@ -88,7 +82,8 @@ let text_keydown renderer node kind composing event =
       W.KeyboardEvent.preventDefault event;
       emit renderer (Submit node)
     end;
-    if kind = Combobox && not composing_now then
+    if kind = Combobox && not composing_now && not primary
+       && not (W.KeyboardEvent.altKey event) then
       combobox_keydown renderer node event
   end
 
@@ -115,12 +110,14 @@ let attach_text_events renderer node kind dom_node =
   W.Element.addEventListener "compositionstart"
     (fun _event ->
        composing := true;
+       W.Element.setAttribute "data-lui-composing" "" dom_node;
        committed_composition := None)
     dom_node;
   W.Element.addEventListener "compositionend"
     (fun _event ->
        let value = current_value () in
        composing := false;
+       W.Element.removeAttribute "data-lui-composing" dom_node;
        committed_composition := Some value;
        emit_value value)
     dom_node;

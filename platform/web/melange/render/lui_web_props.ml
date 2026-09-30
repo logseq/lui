@@ -174,7 +174,8 @@ let refresh_node_class_bang = refresh_node_class
 
 let set_text_control_value dom_node text =
   let control = Util.text_control_node dom_node in
-  if text <> W.HtmlInputElement.value control then (
+  if not (W.Element.hasAttribute "data-lui-composing" dom_node)
+     && text <> W.HtmlInputElement.value control then (
     W.HtmlInputElement.setValue control text;
     (* keep textarea textContent matching its value so innerText and text
        selectors observe the buffer *)
