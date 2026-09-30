@@ -513,7 +513,10 @@ body {
   }
 
   .lui-tooltip[data-anchor] {
-    @apply pointer-events-none fixed m-0 max-w-xs border-0;
+    @apply pointer-events-none fixed m-0 border-0;
+    max-width: min(20rem, var(--lui-popup-available-width, calc(100vw - 1rem)));
+    max-height: var(--lui-popup-available-height, calc(100vh - 1rem));
+    overflow: auto;
     --lui-layer-base: 100;
     z-index: calc(var(--lui-layer-base) + var(--lui-layer-index, 0));
     inset: auto;
@@ -921,7 +924,6 @@ body {
     --lui-layer-base: 100;
     position: absolute;
     width: max-content;
-    max-width: calc(100vw - 1rem);
     pointer-events: none;
     z-index: calc(var(--lui-layer-base) + var(--lui-layer-index, 0));
   }
@@ -929,9 +931,9 @@ body {
   .lui-dropdown-menu {
     position: relative;
     display: flex;
-    max-height: min(18rem, calc(100vh - 1rem));
-    max-width: calc(100vw - 1rem);
-    min-width: 10rem;
+    max-height: min(18rem, var(--lui-popup-available-height, calc(100vh - 1rem)));
+    max-width: var(--lui-popup-available-width, calc(100vw - 1rem));
+    min-width: min(10rem, var(--lui-popup-available-width, calc(100vw - 1rem)));
     flex-direction: column;
     overflow: auto;
     border: 1px solid var(--foreground);
