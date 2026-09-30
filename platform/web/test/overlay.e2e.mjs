@@ -1,28 +1,20 @@
 import assert from "node:assert/strict"
-import { execFile } from "node:child_process"
 import { once } from "node:events"
-import { promisify } from "node:util"
 import test, { after, before } from "node:test"
 
 import { createStaticServer } from "../../../tooling/serve_web.mjs"
+import { createPlaywrightSession } from "./playwright-session.mjs"
 
-const execFileAsync = promisify(execFile)
-const projectRoot = new URL("../../../", import.meta.url)
-const session = `lui-overlay-${process.pid}`
 let origin
 let server
+let session
 
 async function browser(...args) {
-  const { stdout } = await execFileAsync(
-    "agent-browser",
-    ["--session", session, ...args],
-    { cwd: projectRoot, maxBuffer: 4 * 1024 * 1024 },
-  )
-  return stdout.trim()
+  return session.command(...args)
 }
 
 async function evaluate(source) {
-  return browser("eval", "-b", Buffer.from(source).toString("base64"))
+  return session.evaluate(source)
 }
 
 async function openGalleryPage(name) {
@@ -30,22 +22,17 @@ async function openGalleryPage(name) {
   await browser("set", "viewport", "1280", "900")
   await browser("open", `${origin}/examples/components/web/index.html`)
   await browser("wait", "--load", "networkidle")
-  await evaluate(`
-    [...document.querySelectorAll('nav button')]
-      .find((node) => node.textContent === ${JSON.stringify(name)})
-      ?.click()
-  `)
+  await browser("click-text", "nav button", name)
+}
+
+async function openLayerRegressionPage() {
+  await browser("set", "viewport", "1280", "900")
+  await browser("open", `${origin}/platform/web/test/fixtures/layer-regression.html`)
+  await browser("wait", "--fn", "window.audit !== undefined")
 }
 
 async function clickButton(name) {
-  await evaluate(`
-    (() => {
-      const button = [...document.querySelectorAll('button')]
-        .find((node) => node.textContent.trim() === ${JSON.stringify(name)} && node.getBoundingClientRect().width > 0)
-      button?.focus()
-      button?.click()
-    })()
-  `)
+  await browser("click-button", name)
 }
 
 async function state(expression) {
@@ -53,7 +40,202 @@ async function state(expression) {
   return JSON.parse(JSON.parse(output))
 }
 
+test("owned picker portals stay inside the modal and Escape closes the topmost submenu", async () => {
+  await openLayerRegressionPage()
+  await clickButton("Open dialog")
+  await session.page.locator(".lui-select").click()
+  await browser("wait", "--fn", "document.querySelector('.lui-dropdown-menu[data-open]')")
+  await session.page.locator(".lui-menu-item").filter({ hasText: "More" }).hover()
+  await browser("wait", "--fn", "document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-open]')")
+
+  const hitTest = await state(`(() => {
+    const positioner = document.querySelector('.lui-popup-positioner[data-submenu]')
+    const menu = positioner?.querySelector('.lui-dropdown-menu[data-open]')
+    const bounds = menu?.getBoundingClientRect()
+    const target = bounds
+      ? document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)
+      : null
+    return {
+      modalOpen: Boolean(document.querySelector('.lui-modal-layer[data-open]')),
+      menuOpen: Boolean(document.querySelector('.lui-popup-positioner:not([data-submenu]) .lui-dropdown-menu[data-open]')),
+      submenuOpen: Boolean(menu),
+      submenuHit: Boolean(target && menu?.contains(target)),
+      submenuOrder: Number(positioner?.getAttribute('data-lui-layer-order')),
+      modalOrder: Number(document.querySelector('.lui-modal-layer')
+        ?.getAttribute('data-lui-layer-order')),
+    }
+  })()`)
+  assert.equal(hitTest.modalOpen, true)
+  assert.equal(hitTest.menuOpen, true)
+  assert.equal(hitTest.submenuOpen, true)
+  assert.equal(hitTest.submenuHit, true)
+  assert.ok(hitTest.submenuOrder > hitTest.modalOrder)
+
+  await browser("press", "Escape")
+  await browser("wait", "--fn", "!document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-open]')")
+  assert.equal(
+    await state(`Boolean(document.querySelector('.lui-popup-positioner:not([data-submenu]) .lui-dropdown-menu[data-open]'))`),
+    true,
+  )
+  assert.equal(await state(`Boolean(document.querySelector('.lui-modal-layer[data-open]'))`), true)
+
+  await browser("press", "Escape")
+  await browser("wait", "--fn", "!document.querySelector('.lui-popup-positioner:not([data-submenu]) .lui-dropdown-menu[data-open]')")
+  assert.equal(await state(`Boolean(document.querySelector('.lui-modal-layer[data-open]'))`), true)
+  await browser("press", "Escape")
+  await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer')")
+})
+
+test("clicking an owned portal option does not dismiss its modal owner", async () => {
+  await openLayerRegressionPage()
+  await clickButton("Open dialog")
+  await session.page.locator(".lui-select").click()
+  await browser("wait", "--fn", "document.querySelector('.lui-dropdown-menu[data-open]')")
+  await session.page.getByText("Beta", { exact: true }).click()
+  await browser("wait", "--fn", "!document.querySelector('.lui-dropdown-menu[data-open]')")
+  assert.deepEqual(
+    await state(`({
+      modalOpen: Boolean(document.querySelector('.lui-modal-layer[data-open]')),
+      selected: document.querySelector('.lui-select')?.textContent.trim(),
+    })`),
+    { modalOpen: true, selected: "Beta" },
+  )
+})
+
+test("removing a modal closes owned portals without duplicate Dismiss events", async () => {
+  await openLayerRegressionPage()
+  await clickButton("Open dialog")
+  await session.page.locator(".lui-select").click()
+  await browser("wait", "--fn", "document.querySelector('.lui-dropdown-menu[data-open]')")
+  await session.page.locator(".lui-menu-item").filter({ hasText: "More" }).hover()
+  await browser("wait", "--fn", "document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-open]')")
+  const eventsBeforeRemoval = await state("window.audit.events.length")
+
+  await evaluate("window.audit.closeDialog()")
+  await browser("wait", "250")
+  assert.deepEqual(
+    await state(`({
+      modalLayers: document.querySelectorAll('.lui-modal-layer').length,
+      popupPositioners: document.querySelectorAll('.lui-popup-positioner').length,
+      openMenus: document.querySelectorAll('.lui-dropdown-menu[data-open]').length,
+      events: window.audit.events.length,
+    })`),
+    {
+      modalLayers: 0,
+      popupPositioners: 0,
+      openMenus: 0,
+      events: eventsBeforeRemoval,
+    },
+  )
+})
+
+test("nested modal locks remain until the last modal exits and contain wheel scrolling", async () => {
+  await openLayerRegressionPage()
+  await evaluate("window.scrollTo(0, 140)")
+  const originalScrollStyles = await state(`({
+    rootOverflow: document.documentElement.style.overflow,
+    bodyOverflow: document.body.style.overflow,
+    bodyPaddingRight: document.body.style.paddingRight,
+  })`)
+  await clickButton("Open dialog")
+  await browser("wait", "--fn", "document.querySelectorAll('.lui-modal-layer').length === 1")
+  assert.equal(
+    await state(`document.documentElement.style.overflow`),
+    "hidden",
+  )
+
+  await browser("wheel", ".lui-modal-backdrop", "500", "8", "8")
+  const pageAfterBackdropWheel = await state(`window.scrollY`)
+  await browser("wheel", "#inner-scroll", "500")
+  const internalScroll = await state(`({
+    page: window.scrollY,
+    inner: document.querySelector('#inner-scroll')?.scrollTop,
+  })`)
+  assert.equal(pageAfterBackdropWheel, 140)
+  assert.equal(internalScroll.page, 140)
+  assert.ok(internalScroll.inner > 0)
+
+  await clickButton("Open nested dialog")
+  await browser("wait", "--fn", "document.querySelectorAll('.lui-modal-layer').length === 2")
+  await browser("press", "Escape")
+  await browser("wait", "--fn", "document.querySelectorAll('.lui-modal-layer').length === 1")
+  assert.equal(await state(`document.documentElement.style.overflow`), "hidden")
+
+  await browser("press", "Escape")
+  await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer')")
+  assert.equal(await state(`document.documentElement.style.overflow`), "")
+  assert.deepEqual(
+    await state(`({
+      rootOverflow: document.documentElement.style.overflow,
+      bodyOverflow: document.body.style.overflow,
+      bodyPaddingRight: document.body.style.paddingRight,
+    })`),
+    originalScrollStyles,
+  )
+  assert.equal(await state(`window.scrollY`), 140)
+})
+
+test("modal focus includes links, skips hidden controls, handles an empty surface and ignores removed triggers", async () => {
+  await openLayerRegressionPage()
+  await clickButton("Open focus dialog")
+  await session.page.locator(".lui-link").focus()
+  await browser("press", "Tab")
+  assert.equal(
+    await state(`document.activeElement?.textContent.trim()`),
+    "Close dialog",
+  )
+  assert.notEqual(
+    await state(`document.activeElement?.id`),
+    "hidden-control",
+  )
+
+  await browser("press", "Escape")
+  await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer')")
+  await clickButton("Open empty dialog")
+  assert.equal(
+    await state(`document.activeElement?.getAttribute('role')`),
+    "dialog",
+  )
+  await browser("press", "Tab")
+  assert.equal(
+    await state(`document.activeElement?.getAttribute('role')`),
+    "dialog",
+  )
+  await browser("press", "Escape")
+  await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer')")
+
+  await clickButton("Open dialog")
+  await evaluate(`document.querySelector('button')?.remove()`)
+  await browser("press", "Escape")
+  await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer')")
+  await browser("wait", "--fn", "document.activeElement === document.body")
+  assert.equal(await state(`document.activeElement === document.body`), true)
+})
+
+test("rapidly reopened retained modal content survives stale exit cleanup", async () => {
+  await openLayerRegressionPage()
+  await clickButton("Open dialog")
+  const original = await state(`(() => {
+    window.__retainedDialog = document.querySelector('.lui-dialog')
+    window.__retainedInput = document.querySelector('.lui-dialog input')
+    return true
+  })()`)
+  assert.equal(original, true)
+  await clickButton("Reopen same dialog")
+  await browser("wait", "180")
+  assert.deepEqual(
+    await state(`({
+      sameSurface: document.querySelector('.lui-dialog') === window.__retainedDialog,
+      sameInput: document.querySelector('.lui-dialog input') === window.__retainedInput,
+      open: Boolean(document.querySelector('.lui-modal-layer[data-open]')),
+      ending: Boolean(document.querySelector('.lui-modal-layer[data-ending-style]')),
+    })`),
+    { sameSurface: true, sameInput: true, open: true, ending: false },
+  )
+})
+
 before(async () => {
+  session = await createPlaywrightSession()
   server = createStaticServer(new URL("../../../", import.meta.url).pathname)
   server.listen(0, "127.0.0.1")
   await once(server, "listening")
@@ -61,9 +243,12 @@ before(async () => {
 })
 
 after(async () => {
-  await browser("close").catch(() => {})
-  server.close()
-  await once(server, "close")
+  if (session) await session.close().catch(() => {})
+  if (server?.listening) {
+    const closed = once(server, "close")
+    server.close()
+    await closed
+  }
 })
 
 test("Dialog is a portaled modal with model-owned dismissal and focus restoration", async () => {
@@ -107,10 +292,8 @@ test("Dialog is a portaled modal with model-owned dismissal and focus restoratio
       if (layer?.hasAttribute('data-ending-style')) window.__luiDialogExitObserved = true
     }).observe(layer, { attributes: true })
   })()`)
+  await browser("press", "Escape")
   const dialogExit = await state(`(() => {
-    document.activeElement?.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
-    )
     const layer = document.querySelector('.lui-modal-layer[data-ending-style]')
     const endingObserved = Boolean(layer)
     layer?.querySelector('.lui-modal-backdrop')?.dispatchEvent(
@@ -137,7 +320,7 @@ test("Dialog is a portaled modal with model-owned dismissal and focus restoratio
   assert.equal(await state(`document.querySelectorAll('.lui-modal-layer').length`), 0)
 
   await clickButton("Open dialog")
-  await evaluate(`document.querySelector('.lui-modal-backdrop')?.click()`)
+  await browser("click", ".lui-modal-backdrop")
   await browser("wait", "180")
   assert.equal(
     await state(`document.querySelectorAll('.lui-modal-layer:not([hidden])').length`),
@@ -164,11 +347,9 @@ test("Sheet uses the same modal lifecycle with its own native surface", async ()
     { layers: 1, className: "lui-sheet", modal: "true", hostInert: true, open: true },
   )
 
+  await browser("press", "Escape")
   assert.deepEqual(
     await state(`(() => {
-      document.activeElement?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
-      )
       const layer = document.querySelector('.lui-modal-layer[data-ending-style]')
       const endingObserved = Boolean(layer)
       layer?.querySelector('.lui-sheet')?.dispatchEvent(
@@ -209,13 +390,9 @@ test("Reduced motion removes a closing Dialog without waiting for a fallback", a
   await browser("set", "media", "light", "reduced-motion")
   await clickButton("Open dialog")
 
+  await browser("press", "Escape")
   assert.equal(
-    await state(`(() => {
-      document.activeElement?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
-      )
-      return document.querySelectorAll('.lui-modal-layer').length
-    })()`),
+    await state(`document.querySelectorAll('.lui-modal-layer').length`),
     0,
   )
   await browser("set", "media", "light")
@@ -477,12 +654,10 @@ test("Button long press uses one movement-safe Pointer Events lifecycle", async 
       bubbles: true, pointerId: 104, pointerType: 'touch',
       clientX: 100, clientY: 200, button: 0, buttons: 1,
     }))
-    ;[...document.querySelectorAll('nav button')]
-      .find((node) => node.textContent === 'Row')?.click()
   })()`)
+  await browser("click-text", "nav button", "Row")
   await browser("wait", "380")
-  await evaluate(`[...document.querySelectorAll('nav button')]
-    .find((node) => node.textContent === 'Button')?.click()`)
+  await browser("click-text", "nav button", "Button")
   assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), false)
 })
 
@@ -500,7 +675,7 @@ test("Tree click toggles disclosure and keeps selection model-owned", async () =
     { expanded: "false", children: 1 },
   )
 
-  await evaluate(`document.querySelector('[role=treeitem]')?.click()`)
+  await browser("click", '[role="treeitem"]')
 
   assert.deepEqual(
     await state(`(() => {
@@ -583,14 +758,7 @@ test("Tree typeahead wraps visible items and supports rapid prefixes", async () 
   await browser("wait", "550")
   await browser("press", "z")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Documents")
-  await evaluate(`document.activeElement?.dispatchEvent(
-    new KeyboardEvent('keydown', {
-      key: 'k',
-      ctrlKey: true,
-      bubbles: true,
-      cancelable: true,
-    }),
-  )`)
+  await browser("press", "Control+k")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Documents")
 
   await browser("press", "ArrowLeft")
@@ -608,9 +776,7 @@ test("DropdownMenu typeahead moves focus to the matching enabled item", async ()
     && item.getBoundingClientRect().width > 0)?.focus()`)
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Production")
 
-  await evaluate(`document.activeElement?.dispatchEvent(
-    new KeyboardEvent('keydown', { key: 's', bubbles: true, cancelable: true }),
-  )`)
+  await browser("press", "s")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Staging")
 })
 
@@ -843,9 +1009,7 @@ test("Select keyboard navigation enters submenus and restores trigger focus", as
 
   await browser("press", "ArrowDown")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Staging")
-  await evaluate(`document.activeElement?.dispatchEvent(
-    new KeyboardEvent('keydown', { key: 'p', bubbles: true, cancelable: true }),
-  )`)
+  await browser("press", "p")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Production")
   await browser("press", "ArrowDown")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Staging")
@@ -863,15 +1027,11 @@ test("Select keyboard navigation enters submenus and restores trigger focus", as
     { focus: "Production region", submenuExpanded: "true" },
   )
 
-  await evaluate(`document.activeElement?.dispatchEvent(
-    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
-  )`)
+  await browser("press", "Escape")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "More environments")
+  await browser("press", "Escape")
   await evaluate(`(() => {
     const popup = document.getElementById(window.__selectPopupID)
-    document.activeElement?.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
-    )
     popup?.dispatchEvent(new TransitionEvent('transitionend', {
       bubbles: true,
       propertyName: 'opacity',
@@ -892,10 +1052,7 @@ test("Select reopens on the selected item and aligns it with the trigger", async
   await openGalleryPage("Select")
   await clickButton("Production")
   await browser("wait", "30")
-  await evaluate(`[
-    ...document.querySelectorAll('.lui-menu-item'),
-  ].find((item) => item.textContent.trim() === 'Staging'
-    && item.getBoundingClientRect().width > 0)?.click()`)
+  await browser("click-text", ".lui-menu-item", "Staging")
   await browser("wait", "180")
 
   await evaluate(`document.querySelector('.lui-select')?.focus()`)
@@ -972,10 +1129,7 @@ test("Select touch opening keeps ordinary anchored positioning", async () => {
   await openGalleryPage("Select")
   await clickButton("Production")
   await browser("wait", "30")
-  await evaluate(`[
-    ...document.querySelectorAll('.lui-menu-item'),
-  ].find((item) => item.textContent.trim() === 'Staging'
-    && item.getBoundingClientRect().width > 0)?.click()`)
+  await browser("click-text", ".lui-menu-item", "Staging")
   await browser("wait", "180")
 
   assert.deepEqual(
@@ -1178,12 +1332,10 @@ test("Combobox keeps DOM focus in the input while navigating its listbox", async
       ?.getAttribute('aria-activedescendant'))?.textContent.trim()`),
     "Staging",
   )
+  await browser("press", "Escape")
   await evaluate(`(() => {
     const control = document.querySelector(${JSON.stringify(input)})
     const popup = document.getElementById(control?.getAttribute('aria-controls'))
-    control?.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
-    )
     popup?.dispatchEvent(new TransitionEvent('transitionend', {
       bubbles: true,
       propertyName: 'opacity',
@@ -1206,14 +1358,16 @@ test("Combobox keeps DOM focus in the input while navigating its listbox", async
 
 test("Combobox leaves composition text and navigation keys owned by the IME", async () => {
   await openGalleryPage("Combobox")
+  await session.page.locator(".lui-combobox-control").focus()
+  await browser("press", "ArrowDown")
+  const initialActive = await state(
+    `document.querySelector('.lui-combobox-control')
+      ?.getAttribute('aria-activedescendant')`,
+  )
   const result = await state(`(() => {
     const control = document.querySelector('.lui-combobox-control')
-    control.focus()
-    control.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
-    )
     const originalControl = control
-    const initialActive = control.getAttribute('aria-activedescendant')
+    const initialActive = ${JSON.stringify(initialActive)}
 
     control.dispatchEvent(new CompositionEvent('compositionstart', {
       bubbles: true,
@@ -1321,12 +1475,8 @@ test("Combobox commits the final composition and resumes normal option selection
     "中文",
   )
 
-  await evaluate(`[
-    ...document.querySelectorAll('nav button'),
-  ].find((node) => node.textContent === 'Button')?.click()`)
-  await evaluate(`[
-    ...document.querySelectorAll('nav button'),
-  ].find((node) => node.textContent === 'Combobox')?.click()`)
+  await browser("click-text", "nav button", "Button")
+  await browser("click-text", "nav button", "Combobox")
   await browser("wait", "30")
   assert.equal(await state(`document.querySelector('.lui-combobox-control')?.value`), "中文")
 
@@ -1416,20 +1566,18 @@ test("Combobox touch trigger opens without moving input focus and stays onscreen
 
 test("Combobox exposes and recovers from an empty filtered result", async () => {
   await openGalleryPage("Combobox")
-  await evaluate(`(() => {
-    const control = document.querySelector('.lui-combobox-control')
-    control.focus()
-    control.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
-    )
-    control.value = 'zzz'
-    control.dispatchEvent(new InputEvent('input', {
-      bubbles: true,
-      data: 'zzz',
-      inputType: 'insertText',
-    }))
-  })()`)
+  await session.page.locator(".lui-combobox-control").focus()
+  await browser("press", "ArrowDown")
+  await session.page.locator(".lui-combobox-control").fill("zzz")
   await browser("wait", "30")
+  await evaluate(`(() => {
+    window.__comboboxKeyDefaults = []
+    document.addEventListener('keydown', (event) => {
+      window.__comboboxKeyDefaults.push(event.defaultPrevented)
+    })
+  })()`)
+  await browser("press", "ArrowDown")
+  await browser("press", "Enter")
 
   assert.deepEqual(
     await state(`(() => {
@@ -1438,13 +1586,6 @@ test("Combobox exposes and recovers from an empty filtered result", async () => 
       const trigger = root?.querySelector('.lui-combobox-trigger')
       const popup = document.getElementById(control?.getAttribute('aria-controls'))
       const status = popup?.querySelector('[role=status]')
-      const press = (key) => {
-        const event = new KeyboardEvent('keydown', {
-          key, bubbles: true, cancelable: true,
-        })
-        control.dispatchEvent(event)
-        return event.defaultPrevented
-      }
       return {
         sameControl: document.querySelector('.lui-combobox-control') === control,
         focused: document.activeElement === control,
@@ -1460,8 +1601,8 @@ test("Combobox exposes and recovers from an empty filtered result", async () => 
         status: status?.textContent,
         statusLive: status?.getAttribute('aria-live'),
         statusAtomic: status?.getAttribute('aria-atomic'),
-        arrowPrevented: press('ArrowDown'),
-        enterPrevented: press('Enter'),
+        arrowPrevented: window.__comboboxKeyDefaults[0],
+        enterPrevented: window.__comboboxKeyDefaults[1],
         activeAfterKeys: control?.getAttribute('aria-activedescendant'),
         expandedAfterKeys: control?.getAttribute('aria-expanded'),
       }
@@ -2376,17 +2517,15 @@ test("Accordion keeps a linked retained panel through controlled motion", async 
     { ending: false, hidden: true, samePanel: true },
   )
 
-  await evaluate(`document.querySelector('.lui-accordion-summary')?.click()`)
+  await browser("click", ".lui-accordion-summary")
   await browser("wait", "30")
+  await browser("click", ".lui-accordion-summary")
   assert.equal(
-    await state(`(() => {
-      document.querySelector('.lui-accordion-summary')?.click()
-      return document.querySelector('.lui-accordion-content')
-        ?.hasAttribute('data-ending-style')
-    })()`),
+    await state(`document.querySelector('.lui-accordion-content')
+      ?.hasAttribute('data-ending-style')`),
     true,
   )
-  await evaluate(`document.querySelector('.lui-accordion-summary')?.click()`)
+  await browser("click", ".lui-accordion-summary")
   await evaluate(`document.querySelector('.lui-accordion-content')?.dispatchEvent(
     new TransitionEvent('transitioncancel', {
       bubbles: true,
@@ -2461,7 +2600,7 @@ test("ToggleGroup keeps plain Buttons in its accessible roving control set", asy
   await browser("press", "ArrowLeft")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Action chip")
 
-  await evaluate(`document.activeElement?.click()`)
+  await browser("click", ".lui-toggle-group > button:focus")
   assert.deepEqual(
     await state(`[
       ...document.querySelectorAll('.lui-toggle-group > button'),
@@ -2474,42 +2613,43 @@ test("every Gallery page fits the compact one-page mobile shell", async () => {
   await openGalleryPage("Button")
   await browser("set", "viewport", "390", "844")
 
-  const audit = await state(`(() => {
-    const content = document.querySelector('.lui-gallery-content')
-    const buttons = [...document.querySelectorAll('.lui-gallery-nav-item')]
-    document.querySelector('.lui-gallery-navigation-back:not([hidden])')?.click()
-    const navigationHeights = []
-    const failures = []
-    for (const button of buttons) {
-      navigationHeights.push(button.getBoundingClientRect().height)
-      button.click()
+  await browser("click", ".lui-gallery-navigation-back")
+  const labels = await state(`[...document.querySelectorAll('.lui-gallery-nav-item')]
+    .map((button) => button.textContent.trim())`)
+  const navigationHeights = await state(`[...document.querySelectorAll('.lui-gallery-nav-item')]
+    .map((button) => button.getBoundingClientRect().height)`)
+  const failures = []
+  for (const page of labels) {
+    await browser("click-text", ".lui-gallery-nav-item", page)
+    const measurement = await state(`(() => {
+      const content = document.querySelector('.lui-gallery-content')
       const headings = content.querySelectorAll('[role="heading"]')
-      if (headings.length !== 1 || content.scrollWidth > content.clientWidth + 1) {
-        const contentRight = content.getBoundingClientRect().right
-        failures.push({
-          page: button.textContent,
-          headings: headings.length,
-          clientWidth: content.clientWidth,
-          scrollWidth: content.scrollWidth,
-          offenders: [...content.querySelectorAll('*')]
-            .filter((element) => element.getBoundingClientRect().right > contentRight + 1)
-            .map((element) => ({
-              className: element.className,
-              right: Math.round(element.getBoundingClientRect().right),
-              width: Math.round(element.getBoundingClientRect().width),
-            }))
-            .slice(0, 8),
-        })
+      const contentRight = content.getBoundingClientRect().right
+      return {
+        headings: headings.length,
+        clientWidth: content.clientWidth,
+        scrollWidth: content.scrollWidth,
+        offenders: [...content.querySelectorAll('*')]
+          .filter((element) => element.getBoundingClientRect().right > contentRight + 1)
+          .map((element) => ({
+            className: element.className,
+            right: Math.round(element.getBoundingClientRect().right),
+            width: Math.round(element.getBoundingClientRect().width),
+          }))
+          .slice(0, 8),
       }
-      document.querySelector('.lui-gallery-navigation-back')?.click()
+    })()`)
+    if (measurement.headings !== 1 || measurement.scrollWidth > measurement.clientWidth + 1) {
+      failures.push({ page, ...measurement })
     }
-    return {
-      count: buttons.length,
-      minNavigationHeight: Math.min(...navigationHeights),
-      mountedPages: document.querySelectorAll('.lui-gallery-content > *').length,
-      failures,
-    }
-  })()`)
+    await browser("click", ".lui-gallery-navigation-back")
+  }
+  const audit = {
+    count: labels.length,
+    minNavigationHeight: Math.min(...navigationHeights),
+    mountedPages: await state(`document.querySelectorAll('.lui-gallery-content > *').length`),
+    failures,
+  }
 
   assert.equal(audit.count, 69)
   assert.ok(audit.minNavigationHeight >= 44, JSON.stringify(audit))

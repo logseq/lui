@@ -316,6 +316,12 @@ let set_dropdown_open renderer node open_ =
   let positioner = Lui_web_nodes.dom_node renderer node in
   let popup = Lui_web_util.child_element positioner 0 in
   if open_ then begin
+    Lui_web_layers.reconcile_owner renderer.web_layers renderer.web_document
+      node
+      (match Store.node renderer.web_store node with
+       | Some current -> current.retained_parent
+       | None -> None);
+    Lui_web_layers.open_layer renderer.web_layers renderer.web_document node;
     begin_popup_open popup;
     ignore (Lui_web_position.position_dropdown renderer node);
     Webapi.requestAnimationFrame (fun _time ->
@@ -325,6 +331,9 @@ let set_dropdown_open renderer node open_ =
         | _ -> ())
   end
   else begin
+    ignore
+      (Lui_web_layers.close_layer renderer.web_layers renderer.web_document
+         node);
     begin_popup_close popup;
     finish_popup_close_after_transition renderer.web_document popup 130
   end
@@ -361,6 +370,9 @@ let direct_dropdown_menu renderer node =
 let hide_context_menu renderer =
   match !(renderer.web_open_context_menu) with
   | Some menu ->
+      ignore
+        (Lui_web_layers.close_layer renderer.web_layers renderer.web_document
+           menu);
       W.Element.removeAttribute "data-open"
         (Lui_web_nodes.dom_node renderer menu);
       renderer.web_open_context_menu := None
@@ -405,6 +417,12 @@ let show_context_menu renderer menu x y =
   hide_context_menu renderer;
   let menu_node = Lui_web_nodes.dom_node renderer menu in
   W.Element.setAttribute "data-open" "" menu_node;
+  Lui_web_layers.reconcile_owner renderer.web_layers renderer.web_document
+    menu
+    (match Store.node renderer.web_store menu with
+     | Some current -> current.retained_parent
+     | None -> None);
+  Lui_web_layers.open_layer renderer.web_layers renderer.web_document menu;
   let width = W.Element.clientWidth menu_node in
   let height = W.Element.clientHeight menu_node in
   let document_root = W.Document.documentElement renderer.web_document in
@@ -647,34 +665,51 @@ let attach_dropdown_events renderer node _dropdown_node =
             Lui_web_position.position_dropdown renderer node
         | _ -> ())
   in
-  let pointer_handler event =
-    let menu_node = Lui_web_nodes.dom_node renderer node in
-    if
-      W.Element.hasAttribute "data-open" menu_node
-      && not (dropdown_group_contains_event renderer node event)
-    then emit renderer (Dismiss node);
-    refresh_position event
-  in
   let key_handler event =
     dropdown_key_handler renderer node typeahead_buffer typeahead_timer event
   in
-  W.Document.addEventListener "pointerdown" pointer_handler document;
   W.Document.addEventListener "click" refresh_position document;
   (match window with
    | Some current_window ->
        W.Window.addEventListener "resize" refresh_position current_window
    | None -> ());
-  W.Document.addKeyDownEventListener key_handler document;
+  let positioner = Lui_web_nodes.dom_node renderer node in
+  let popup = Lui_web_util.child_element positioner 0 in
+  let owner =
+    match Store.node renderer.web_store node with
+    | Some current -> current.retained_parent
+    | None -> None
+  in
+  let trigger =
+    match picker_for_dropdown renderer node with
+    | Some picker -> Some (picker_control_element renderer picker)
+    | None ->
+        (match owner with
+         | Some parent ->
+             (match Store.node renderer.web_store parent with
+              | Some parent_node when Store.menu_item_row parent_node ->
+                  Some parent_node.platform_node
+              | _ -> None)
+         | None -> None)
+  in
+  ignore
+    (Lui_web_layers.register renderer.web_layers
+       ~document ~id:node ~owner ~trigger ~content:positioner
+       ~style_targets:[positioner; popup]
+       ~policy:Lui_web_layers.Nonblocking
+       ~dismiss:(fun () -> emit renderer (Dismiss node))
+       ~close:(fun () -> set_dropdown_open renderer node false)
+       ~key_handler ~present:false ~open_:false);
   Hashtbl.replace renderer.web_cleanups node (fun () ->
       cancel_typeahead typeahead_timer;
-      W.Document.removeEventListener "pointerdown" pointer_handler document;
       W.Document.removeEventListener "click" refresh_position document;
       (match window with
        | Some current_window ->
            W.Window.removeEventListener "resize" refresh_position
              current_window
        | None -> ());
-      W.Document.removeKeyDownEventListener key_handler document)
+      if not (Lui_web_layers.is_present renderer.web_layers node) then
+        Lui_web_layers.remove renderer.web_layers renderer.web_document node)
 
 let attach_dropdown_events_bang = attach_dropdown_events
 
@@ -858,37 +893,36 @@ let context_menu_key_handler renderer document node event =
 
 let attach_context_menu_events renderer node dom_node =
   let document = renderer.web_document in
-  let pointer_handler event =
-    let target =
-      Lui_web_util.event_target_to_element (W.Event.target event)
-    in
-    if not (W.Element.contains (W.Element.asNode target) dom_node) then
-      hide_context_menu renderer
-  in
   let key_handler event =
     context_menu_key_handler renderer document node event
   in
-  let focus_handler event =
-    let target =
-      Lui_web_util.event_target_to_element (W.Event.target event)
-    in
-    if
-      !(renderer.web_open_context_menu) = Some node
-      && not (W.Element.contains (W.Element.asNode target) dom_node)
-    then hide_context_menu renderer
-  in
   let click_handler _event = hide_context_menu renderer in
-  W.Document.addEventListener "pointerdown" pointer_handler document;
-  W.Document.addKeyDownEventListener key_handler document;
-  W.Document.addEventListener "focusin" focus_handler document;
+  let owner =
+    match Store.node renderer.web_store node with
+    | Some current -> current.retained_parent
+    | None -> None
+  in
+  let trigger =
+    match owner with
+    | Some parent ->
+        (match Store.node renderer.web_store parent with
+         | Some parent_node -> Some parent_node.platform_node
+         | None -> None)
+    | None -> None
+  in
+  ignore
+    (Lui_web_layers.register renderer.web_layers
+       ~document ~id:node ~owner ~trigger ~content:dom_node
+       ~style_targets:[dom_node] ~policy:Lui_web_layers.Nonblocking
+       ~dismiss:(fun () -> hide_context_menu renderer)
+       ~close:(fun () -> hide_context_menu renderer)
+       ~key_handler ~present:false ~open_:false);
   W.Element.addEventListener "click" click_handler dom_node;
   Hashtbl.replace renderer.web_cleanups node (fun () ->
-      W.Document.removeEventListener "pointerdown" pointer_handler document;
-      W.Document.removeKeyDownEventListener key_handler document;
-      W.Document.removeEventListener "focusin" focus_handler document;
       W.Element.removeEventListener "click" click_handler dom_node;
       if !(renderer.web_open_context_menu) = Some node then
-        renderer.web_open_context_menu := None)
+        renderer.web_open_context_menu := None;
+      Lui_web_layers.remove renderer.web_layers renderer.web_document node)
 
 let attach_context_menu_events_bang = attach_context_menu_events
 
@@ -1094,11 +1128,23 @@ let update_picker_expanded renderer parent expanded =
 
 let update_picker_expanded_bang = update_picker_expanded
 
-let remove_dropdown_after_exit document parent positioner =
+let remove_dropdown_after_exit renderer node parent positioner =
   let popup = Lui_web_util.child_element positioner 0 in
+  let token =
+    Lui_web_layers.close_layer renderer.web_layers renderer.web_document node
+  in
   begin_popup_close popup;
   W.Element.setAttribute "inert" "" popup;
-  after_transition document popup 130 true (fun () ->
-      if W.Element.contains (W.Element.asNode positioner) parent then
-        ignore
-          (W.Element.removeChild (W.Element.asNode positioner) parent))
+  after_transition renderer.web_document popup 130 true (fun () ->
+      if
+        Lui_web_layers.transition renderer.web_layers node = token
+        && not (Lui_web_layers.is_open renderer.web_layers node)
+      then begin
+        if W.Element.contains (W.Element.asNode parent) positioner then
+          ignore
+            (W.Element.removeChild (W.Element.asNode positioner) parent);
+        Lui_web_layers.finish_present renderer.web_layers
+          renderer.web_document node token;
+        if Store.node renderer.web_store node = None then
+          Lui_web_layers.remove renderer.web_layers renderer.web_document node
+      end)

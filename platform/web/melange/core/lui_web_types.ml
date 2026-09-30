@@ -99,6 +99,7 @@ type web_renderer = {
   web_images : (int, web_image_resource) Hashtbl.t;
   web_media_surfaces : (int, web_image_resource) Hashtbl.t;
   web_cleanups : (int, unit -> unit) Hashtbl.t;
+  web_layers : Lui_web_layers.t;
   web_modal_stack : int list ref;
   web_modal_return_focus : web_node option ref;
   web_open_tooltip : int option ref;
