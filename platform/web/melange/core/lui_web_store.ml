@@ -576,10 +576,36 @@ let validate_nodes nodes registry =
            validate_extension_node registry current identifier)
     nodes
 
+let describe_op op =
+  match op with
+  | CreateNode (node, _) ->
+      Printf.sprintf "CreateNode %d" node
+  | CreateExtension (node, identifier, _) ->
+      Printf.sprintf "CreateExtension %d %s" node identifier
+  | DropNode node -> Printf.sprintf "DropNode %d" node
+  | SetProp (node, _, _) -> Printf.sprintf "SetProp %d" node
+  | RemoveProp (node, _) -> Printf.sprintf "RemoveProp %d" node
+  | SetExtensionProp (node, property, _) ->
+      Printf.sprintf "SetExtensionProp %d %s" node property
+  | RemoveExtensionProp (node, property) ->
+      Printf.sprintf "RemoveExtensionProp %d %s" node property
+  | InsertChild (parent, child, index) ->
+      Printf.sprintf "InsertChild parent=%d child=%d index=%d" parent child
+        index
+  | RemoveChild (parent, child) ->
+      Printf.sprintf "RemoveChild parent=%d child=%d" parent child
+  | MoveChild (parent, child, index) ->
+      Printf.sprintf "MoveChild parent=%d child=%d index=%d" parent child index
+
 let apply_operations nodes platform_for extension_platform_for registry batch =
-  List.iter
-    (fun op ->
-       apply_op nodes platform_for extension_platform_for registry op)
+  List.iteri
+    (fun index op ->
+       try apply_op nodes platform_for extension_platform_for registry op
+       with
+       | Invalid_argument message ->
+           invalid_arg
+             (Printf.sprintf "patch op %d (%s): %s" index (describe_op op)
+                message))
     batch.ops;
   validate_nodes nodes registry
 
