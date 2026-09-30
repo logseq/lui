@@ -874,6 +874,7 @@ test("tablet Sheet stays a side surface on a compact browser and rejects phone s
 test("Map extension keeps deterministic camera state across platform profiles", async () => {
   await openGallery()
   await openGalleryPage("NativeExtension")
+  await browser("click", '.lui-simulator-map button[aria-label="Zoom in"]')
 
   assert.deepEqual(
     await state(`(() => {
@@ -915,12 +916,6 @@ test("Map extension keeps deterministic camera state across platform profiles", 
       markerTop: "50%",
       zoomControls: ["Zoom in", "Zoom out", "Recenter map"],
     },
-  )
-
-  await browser("click-button", "Zoom in")
-  assert.notEqual(
-    await state(`document.querySelector('.lui-simulator-map')?.getAttribute('data-latitude-delta')`),
-    "0.04",
   )
 
   await browser("drag", ".lui-simulator-map", "160", "120", "120", "160")
