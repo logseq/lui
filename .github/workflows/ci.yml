@@ -44,6 +44,38 @@ jobs:
       - name: OCaml tests
         run: opam exec -- dune build --action-stderr-on-success=must-be-empty @runtest
 
+  web-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: platform/web/package-lock.json
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.5"
+      - name: Install Web dependencies
+        run: |
+          opam install . --deps-only --with-test -y --locked
+          npm --prefix platform/web ci
+          node platform/web/node_modules/playwright/cli.js install --with-deps chromium firefox webkit
+      - name: Build production renderer and Gallery
+        run: opam exec -- dune build @web
+      - name: Web stylesheet and unit checks
+        run: npm --prefix platform/web run check
+      - name: Browser regressions
+        run: node --test --test-concurrency=1 platform/web/test/*.e2e.mjs
+      - name: Firefox and WebKit overlay ownership
+        run: |
+          for browser in firefox webkit; do
+            LUI_WEB_BROWSER="$browser" node --test --test-name-pattern='^(owned picker|clicking an owned|removing a modal|nested modal locks|modal focus|rapidly reopened)' platform/web/test/overlay.e2e.mjs
+          done
+      - name: WebKit retained Gallery regressions
+        run: LUI_WEB_BROWSER=webkit node --test platform/web/test/firefox.e2e.mjs
+
   apple-tests:
     # Package.swift requires swift-tools-version 6.2 (Xcode 26).
     runs-on: macos-26

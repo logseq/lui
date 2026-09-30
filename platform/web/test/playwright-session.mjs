@@ -1,10 +1,16 @@
-import { chromium } from "playwright"
+import { chromium, firefox, webkit } from "playwright"
 
 export async function createPlaywrightSession() {
   const cdpEndpoint = process.env.LUI_WEB_CDP_ENDPOINT
+  const browserName = process.env.LUI_WEB_BROWSER ?? "chromium"
+  const browserType = { chromium, firefox, webkit }[browserName]
+  if (!browserType) throw new Error(`Unsupported browser: ${browserName}`)
+  if (cdpEndpoint && browserName !== "chromium") {
+    throw new Error("LUI_WEB_CDP_ENDPOINT requires Chromium")
+  }
   const browser = cdpEndpoint
     ? await chromium.connectOverCDP(cdpEndpoint)
-    : await chromium.launch({ headless: true })
+    : await browserType.launch({ headless: true })
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   let closed = false
 
@@ -47,7 +53,12 @@ export async function createPlaywrightSession() {
       await page.locator(`${values[0]}:visible`).first().click()
     } else if (commandName === "click-text") {
       const [selector, text] = values
-      await page.locator(`${selector}:visible`).filter({ hasText: text }).first().click()
+      if (selector === "nav button" || selector === ".lui-gallery-nav-item") {
+        const back = page.locator(".lui-gallery-navigation-back")
+        if (await back.isVisible()) await back.click()
+      }
+      const exact = new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`)
+      await page.locator(`${selector}:visible`).filter({ hasText: exact }).first().click()
     } else if (commandName === "click-button") {
       await page.getByRole("button", { name: values[0], exact: true }).first().click()
     } else if (commandName === "select") {

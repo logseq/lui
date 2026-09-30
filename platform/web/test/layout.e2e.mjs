@@ -66,7 +66,7 @@ test("mobile gallery controls and layout examples remain reachable without overf
     if (name === "View That Fits") {
       await page
         .locator(".lui-view-that-fits")
-        .getByText("COMPACT", { exact: false })
+        .getByText("COMPACT — narrow fallback", { exact: true })
         .waitFor({ state: "visible" })
     }
     assert.equal(await page.evaluate(() => {

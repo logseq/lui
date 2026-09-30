@@ -401,7 +401,7 @@ let timeline_section send : t =
   section "Timeline"
     [ timeline ~gap:4 ~label:"Release activity"
         [ timeline_item ~title:"Validated"
-            ~description:"All platform checks passed" ~meta:"CI · 2m"
+            ~description:"All platform checks passed" ~meta:{js|CI · 2m|js}
             ~icon:`check ~variant:`primary
             ~on_press:(press send Model.AdvanceStep) []
         ; timeline_item ~title:"Published"
@@ -414,7 +414,7 @@ let timeline_item_section send : t =
   section "TimelineItem"
     [ timeline ~gap:4 ~label:"Activity item"
         [ timeline_item ~title:"Validated"
-            ~description:"One retained timeline row" ~meta:"CI · now"
+            ~description:"One retained timeline row" ~meta:{js|CI · now|js}
             ~icon:`check ~variant:`primary ~connector:false
             ~on_press:(press send Model.AdvanceStep) []
         ]
@@ -471,7 +471,7 @@ let edge_inset_section model_source send : t =
         ; row ~padding:8 ~gap:8 ~cross:`center
             [ text ~value:"Pinned top bar" []
             ; spacer []
-            ; text ~value:"edge-inset · top" ~foreground:"muted-foreground" []
+            ; text ~value:{js|edge-inset · top|js} ~foreground:"muted-foreground" []
             ]
         ]
     ; edge_inset ~edge:`bottom ~background:"bar" ~max_width:560 ~height:180
@@ -479,7 +479,7 @@ let edge_inset_section model_source send : t =
         ; row ~padding:8 ~gap:8 ~cross:`center
             [ text ~value:"Pinned bottom bar" []
             ; spacer []
-            ; text ~value:"edge-inset · bottom" ~foreground:"muted-foreground" []
+            ; text ~value:{js|edge-inset · bottom|js} ~foreground:"muted-foreground" []
             ]
         ]
     ]
@@ -489,15 +489,15 @@ let overlay_section : t =
     [ overlay ~max_width:560
         [ card ~max_width:560 ~height:160 ~padding:16
             [ column ~gap:8
-                [ text ~value:"Base card — this content sizes the overlay" []
+                [ text ~value:{js|Base card — this content sizes the overlay|js} []
                 ; paragraph
                     ~value:"Floating children do not shift this layout." []
                 ]
             ]
         ; align `top_trailing
-            (card ~padding:8 [ text ~value:"Float · top-trailing" [] ])
+            (card ~padding:8 [ text ~value:{js|Float · top-trailing|js} [] ])
         ; align `bottom_leading
-            (card ~padding:8 [ text ~value:"Float · bottom-leading" [] ])
+            (card ~padding:8 [ text ~value:{js|Float · bottom-leading|js} [] ])
         ]
     ]
 
@@ -509,12 +509,12 @@ let view_that_fits_section : t =
     ; view_that_fits
         [ card ~width:640 ~padding:16
             [ row ~gap:8 ~cross:`center
-                [ text ~value:"EXPANDED — wide layout" []
+                [ text ~value:{js|EXPANDED — wide layout|js} []
                 ; spacer []
                 ; text ~value:"640pt" ~foreground:"muted-foreground" []
                 ]
             ]
-        ; text ~value:"COMPACT — narrow fallback" ~foreground:"accent" []
+        ; text ~value:{js|COMPACT — narrow fallback|js} ~foreground:"accent" []
         ]
     ]
 
@@ -1262,7 +1262,7 @@ let spotify_home : t =
         ; spotify_recent_card "Top Hits 2026" "#3f8f5f"
         ]
     ; spotify_shelf "Your top mixes"
-        [ spotify_mix_card "Daily Mix 01" "Bonobo, Róisín Murphy" "#4f7ec9"
+        [ spotify_mix_card "Daily Mix 01" {js|Bonobo, Róisín Murphy|js} "#4f7ec9"
         ; spotify_mix_card "Daily Mix 02" "Khruangbin, Air" "#b45f9e"
         ; spotify_mix_card "Chill Mix" "Tycho, Boards of Canada" "#2e8b8b"
         ]
@@ -1365,11 +1365,11 @@ let youtube_home : t =
         ; youtube_chip "Podcasts" false
         ]
     ; youtube_video "OCaml multicore domains, explained"
-        "Logseq · 24K views · 3 days ago" "#8a4f3f"
+        {js|Logseq · 24K views · 3 days ago|js} "#8a4f3f"
     ; youtube_video "Building a music app in 10 minutes"
-        "Devin · 182K views · 1 week ago" "#3f5f8a"
+        {js|Devin · 182K views · 1 week ago|js} "#3f5f8a"
     ; youtube_video "Lo-fi beats to ship PRs to"
-        "chill.fm · 1.1M views · 2 months ago" "#4f8a5f"
+        {js|chill.fm · 1.1M views · 2 months ago|js} "#4f8a5f"
     ]
 
 let youtube_section : t =
