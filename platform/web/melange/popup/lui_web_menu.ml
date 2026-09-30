@@ -1365,22 +1365,30 @@ let update_picker_expanded renderer parent expanded =
 let update_picker_expanded_bang = update_picker_expanded
 
 let remove_dropdown_after_exit renderer node parent positioner =
-  let popup = Lui_web_util.child_element positioner 0 in
-  let token =
-    Lui_web_layers.close_layer renderer.web_layers renderer.web_document node
-  in
-  begin_popup_close popup;
-  W.Element.setAttribute "inert" "" popup;
-  after_transition renderer.web_document popup 130 true (fun () ->
-      if
-        Lui_web_layers.transition renderer.web_layers node = token
-        && not (Lui_web_layers.is_open renderer.web_layers node)
-      then begin
-        if W.Element.contains (W.Element.asNode positioner) parent then
-          ignore
-            (W.Element.removeChild (W.Element.asNode positioner) parent);
-        Lui_web_layers.finish_present renderer.web_layers
-          renderer.web_document node token;
-        if Store.node renderer.web_store node = None then
-          Lui_web_layers.remove renderer.web_layers renderer.web_document node
-      end)
+  if not (Lui_web_layers.is_present renderer.web_layers node) then begin
+    match W.Element.parentElement positioner with
+    | Some actual_parent ->
+        ignore
+          (W.Element.removeChild (W.Element.asNode positioner) actual_parent)
+    | None -> ()
+  end else begin
+    let popup = Lui_web_util.child_element positioner 0 in
+    let token =
+      Lui_web_layers.close_layer renderer.web_layers renderer.web_document node
+    in
+    begin_popup_close popup;
+    W.Element.setAttribute "inert" "" popup;
+    after_transition renderer.web_document popup 130 true (fun () ->
+        if
+          Lui_web_layers.transition renderer.web_layers node = token
+          && not (Lui_web_layers.is_open renderer.web_layers node)
+        then begin
+          if W.Element.contains (W.Element.asNode positioner) parent then
+            ignore
+              (W.Element.removeChild (W.Element.asNode positioner) parent);
+          Lui_web_layers.finish_present renderer.web_layers
+            renderer.web_document node token;
+          if Store.node renderer.web_store node = None then
+            Lui_web_layers.remove renderer.web_layers renderer.web_document node
+        end)
+  end
