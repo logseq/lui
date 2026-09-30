@@ -31,6 +31,24 @@ async function touchEvent(type, touchPoints) {
   })
 }
 
+async function withTouchEmulation(run) {
+  const connection = await session.page.context().newCDPSession(session.page)
+  cdp = connection
+  await connection.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 })
+  try {
+    return await run()
+  } finally {
+    await connection.send("Input.dispatchTouchEvent", {
+      type: "touchCancel",
+      touchPoints: [],
+      modifiers: 0,
+    }).catch(() => {})
+    await connection.send("Emulation.setTouchEmulationEnabled", { enabled: false }).catch(() => {})
+    await connection.detach().catch(() => {})
+    if (cdp === connection) cdp = undefined
+  }
+}
+
 async function openGallery() {
   await browser("set", "media", "light")
   await browser("set", "viewport", "390", "844")
@@ -66,8 +84,6 @@ async function openSheet() {
 
 before(async () => {
   session = await createPlaywrightSession()
-  cdp = await session.page.context().newCDPSession(session.page)
-  await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 })
   server = createStaticServer(new URL("../../../", import.meta.url).pathname)
   server.listen(0, "127.0.0.1")
   await once(server, "listening")
@@ -744,12 +760,12 @@ test("Switch keeps its label leading and native control trailing", async () => {
 })
 
 test("phone Sheet uses the simulated viewport on a wide browser and avoids its keyboard", async () => {
+  await withTouchEmulation(async () => {
   await openGallery()
   await browser("set", "viewport", "1280", "900")
   await openSheet()
   const sheet = session.page.locator(".lui-sheet")
-  const input = sheet.locator(".lui-input")
-  await input.evaluate((element) => element.blur())
+  await sheet.locator(".lui-sheet-title").click()
   await browser("wait", "--fn", "document.querySelector('#app')?.getAttribute('data-lui-keyboard') === 'hidden'")
   assert.deepEqual(
     await state(`(() => {
@@ -856,9 +872,118 @@ test("phone Sheet uses the simulated viewport on a wide browser and avoids its k
       bottomGap: 291,
     },
   )
+  })
+})
+
+test("phone Sheet retains a focused draft through a short viewport shrink", async () => {
+  await openGallery()
+  await browser("set", "viewport", "390", "620")
+  await openSheet()
+  const sheet = session.page.locator(".lui-sheet")
+  const input = sheet.locator(".lui-input")
+  const originalInput = await input.elementHandle()
+  assert.ok(originalInput, "simulator Sheet input handle should exist before resize")
+  await input.click()
+  await session.page.keyboard.type("retained draft")
+  await input.press("End")
+  await input.press("Shift+Home")
+  await browser("wait", "--fn", "document.querySelector('#app')?.getAttribute('data-lui-keyboard') === 'visible'")
+
+  await browser("set", "viewport", "390", "520")
+  await browser("wait", "50")
+  const shortViewport = await state(`(() => {
+    const host = document.querySelector('#app')
+    const layer = document.querySelector('.lui-modal-layer')
+    const sheet = document.querySelector('.lui-sheet')
+    const title = sheet?.querySelector('.lui-sheet-title')
+    const handle = sheet?.querySelector('.lui-sheet-handle')
+    const input = sheet?.querySelector('.lui-input')
+    const keyboardHeight = Number.parseFloat(
+      getComputedStyle(host).getPropertyValue('--lui-keyboard-height'),
+    )
+    const layerRect = layer?.getBoundingClientRect()
+    const sheetRect = sheet?.getBoundingClientRect()
+    const inside = (element) => {
+      const rect = element?.getBoundingClientRect()
+      return Boolean(
+        rect
+        && layerRect
+        && rect.width > 0
+        && rect.height > 0
+        && rect.left >= Math.max(0, layerRect.left)
+        && rect.right <= Math.min(innerWidth, layerRect.right)
+        && rect.top >= Math.max(0, layerRect.top)
+        && rect.bottom <= Math.min(innerHeight, layerRect.bottom),
+      )
+    }
+    return {
+      layerTop: layerRect?.top,
+      layerBottom: layerRect?.bottom,
+      sheetTop: sheetRect?.top,
+      sheetBottom: sheetRect?.bottom,
+      effectiveKeyboardHeight: keyboardHeight,
+      sheetWithinKeyboardGap: Boolean(
+        layerRect
+        && sheetRect
+        && sheetRect.bottom <= layerRect.bottom - keyboardHeight + 1,
+      ),
+      value: input?.value,
+      selected: input?.selectionStart === 0 && input?.selectionEnd === input?.value.length,
+      focused: document.activeElement === input,
+      titleInBounds: inside(title),
+      handleInBounds: inside(handle),
+      sheetBodyScrollable: (sheet?.querySelector('.lui-sheet-body')?.scrollHeight ?? 0)
+        > (sheet?.querySelector('.lui-sheet-body')?.clientHeight ?? 0),
+    }
+  })()`)
+  assert.deepEqual(
+    {
+      effectiveKeyboardHeight: shortViewport.effectiveKeyboardHeight,
+      sheetWithinKeyboardGap: shortViewport.sheetWithinKeyboardGap,
+      value: shortViewport.value,
+      selected: shortViewport.selected,
+      focused: shortViewport.focused,
+      titleInBounds: shortViewport.titleInBounds,
+      handleInBounds: shortViewport.handleInBounds,
+      sheetBodyScrollable: shortViewport.sheetBodyScrollable,
+    },
+    {
+      effectiveKeyboardHeight: 291,
+      sheetWithinKeyboardGap: true,
+      value: "retained draft",
+      selected: true,
+      focused: true,
+      titleInBounds: true,
+      handleInBounds: true,
+      sheetBodyScrollable: true,
+    },
+  )
+  assert.ok(shortViewport.sheetTop >= shortViewport.layerTop)
+  assert.ok(shortViewport.sheetBottom <= shortViewport.layerBottom - shortViewport.effectiveKeyboardHeight + 1)
+  assert.equal(
+    await originalInput.evaluate((element) =>
+      element.isConnected
+      && element === document.querySelector('.lui-sheet .lui-input')),
+    true,
+  )
+
+  const cancel = sheet.getByRole("button", { name: "Cancel", exact: true })
+  await cancel.scrollIntoViewIfNeeded()
+  await browser("wait", "50")
+  const cancelBounds = await cancel.boundingBox()
+  const bodyBounds = await sheet.locator(".lui-sheet-body").boundingBox()
+  assert.ok(cancelBounds, "simulator Cancel should be reachable after body scrolling")
+  assert.ok(bodyBounds)
+  assert.ok(
+    cancelBounds.y >= bodyBounds.y
+    && cancelBounds.y + cancelBounds.height <= bodyBounds.y + bodyBounds.height
+    && cancelBounds.y >= 0
+    && cancelBounds.y + cancelBounds.height <= 520,
+  )
 })
 
 test("tablet Sheet stays a side surface on a compact browser and rejects phone swipes", async () => {
+  await withTouchEmulation(async () => {
   await openGallery()
   await selectFormFactor("tablet")
   await openSheet()
@@ -908,6 +1033,7 @@ test("tablet Sheet stays a side surface on a compact browser and rejects phone s
       swipeDirection: null,
     },
   )
+  })
 })
 
 test("Map extension keeps deterministic camera state across platform profiles", async () => {

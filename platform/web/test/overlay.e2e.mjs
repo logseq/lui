@@ -490,150 +490,145 @@ test("Sheet preserves native Chinese composition through visual viewport changes
 })
 
 test("Compact Sheet arbitrates scroll, direction, distance, and velocity", async () => {
-  await openGalleryPage("Sheet")
+  await openLayerRegressionPage()
   await browser("set", "viewport", "390", "844")
-  await clickButton("Open sheet")
-  await browser("wait", "100")
-  await session.page.locator(".lui-sheet").evaluate(async (sheet) => {
-    await new Promise((resolve) => requestAnimationFrame(() => resolve()))
-    await Promise.all(sheet.getAnimations().map((animation) => animation.finished.catch(() => {})))
-    await new Promise((resolve) => requestAnimationFrame(() => resolve()))
-  })
-  await session.page.locator(".lui-sheet .lui-input").evaluate((input) => input.blur())
-  await browser("wait", "--fn", "getComputedStyle(document.querySelector('.lui-sheet')).bottom === '0px'")
+  const cdp = await session.page.context().newCDPSession(session.page)
+  await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 })
+  const touchEvent = async (type, touchPoints) => {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type,
+      touchPoints,
+      modifiers: 0,
+    })
+  }
+  const touchDrag = async (locator, {
+    from = 0.75,
+    to = 0.2,
+    horizontal = 0,
+    deltaY,
+    duration = 120,
+  } = {}) => {
+    const bounds = await locator.boundingBox()
+    assert.ok(bounds, "touch target should be visible")
+    const x = bounds.x + bounds.width / 2
+    const startY = bounds.y + bounds.height * from
+    const endY = deltaY === undefined ? bounds.y + bounds.height * to : startY + deltaY
+    await touchEvent("touchStart", [{ x, y: startY, id: 1 }])
+    await new Promise((resolve) => setTimeout(resolve, 16))
+    await touchEvent("touchMove", [{ x: x + horizontal, y: endY, id: 1 }])
+    if (duration > 16) await new Promise((resolve) => setTimeout(resolve, duration - 16))
+    await touchEvent("touchEnd", [])
+  }
 
-  const compactSheet = await state(`(() => {
-      const sheet = document.querySelector('.lui-sheet')
-      const handle = sheet?.querySelector('.lui-sheet-handle')
-      const bounds = sheet?.getBoundingClientRect()
-      return {
-        bottomAligned: Math.abs((bounds?.bottom ?? 0) - innerHeight) < 1,
-        fullWidth: Math.abs((bounds?.width ?? 0) - innerWidth) < 1,
-        height: Math.round(bounds?.height ?? 0),
-        viewportHeight: innerHeight,
-        handleVisible: Boolean(handle && getComputedStyle(handle).display !== 'none'),
-        handleHiddenFromAccessibility: handle?.getAttribute('aria-hidden'),
-      }
-    })()`)
-  assert.equal(compactSheet.bottomAligned, true)
-  assert.equal(compactSheet.fullWidth, true)
-  assert.ok(compactSheet.height > 0 && compactSheet.height < compactSheet.viewportHeight)
-  assert.equal(compactSheet.handleVisible, true)
-  assert.equal(compactSheet.handleHiddenFromAccessibility, "true")
+  try {
+    await clickButton("Open regression sheet")
+    await browser("wait", "100")
+    const sheet = session.page.locator(".lui-sheet")
+    await sheet.waitFor({ state: "visible" })
+    await sheet.evaluate(async (element) => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve()))
+      await Promise.all(element.getAnimations().map((animation) => animation.finished.catch(() => {})))
+      await new Promise((resolve) => requestAnimationFrame(() => resolve()))
+    })
+    await sheet.locator(".lui-sheet-title").click()
+    await browser("wait", "--fn", "getComputedStyle(document.querySelector('.lui-sheet')).bottom === '0px'")
 
-  await evaluate(`(() => {
-    const sheet = document.querySelector('.lui-sheet')
-    const dispatch = (type, y) => sheet.dispatchEvent(new PointerEvent(type, {
-      bubbles: true,
-      cancelable: true,
-      isPrimary: true,
-      pointerId: 41,
-      pointerType: 'touch',
-      clientX: 190,
-      clientY: y,
-      button: 0,
-      buttons: type === 'pointerup' ? 0 : 1,
-    }))
-    dispatch('pointerdown', 200)
-    dispatch('pointermove', 235)
-    dispatch('pointerup', 235)
-  })()`)
-  assert.equal(await state(`document.querySelector('.lui-sheet')?.hasAttribute('data-swiping')`), false)
-  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 1)
+    const compactSheet = await state(`(() => {
+        const sheet = document.querySelector('.lui-sheet')
+        const handle = sheet?.querySelector('.lui-sheet-handle')
+        const bounds = sheet?.getBoundingClientRect()
+        return {
+          bottomAligned: Math.abs((bounds?.bottom ?? 0) - innerHeight) < 1,
+          fullWidth: Math.abs((bounds?.width ?? 0) - innerWidth) < 1,
+          height: Math.round(bounds?.height ?? 0),
+          viewportHeight: innerHeight,
+          handleVisible: Boolean(handle && getComputedStyle(handle).display !== 'none'),
+          handleHiddenFromAccessibility: handle?.getAttribute('aria-hidden'),
+        }
+      })()`)
+    assert.equal(compactSheet.bottomAligned, true)
+    assert.equal(compactSheet.fullWidth, true)
+    assert.ok(compactSheet.height > 0 && compactSheet.height < compactSheet.viewportHeight)
+    assert.equal(compactSheet.handleVisible, true)
+    assert.equal(compactSheet.handleHiddenFromAccessibility, "true")
 
-  await evaluate(`(() => {
-    const sheet = document.querySelector('.lui-sheet')
-    const dispatch = (type, x, y) => sheet.dispatchEvent(new PointerEvent(type, {
-      bubbles: true,
-      cancelable: true,
-      isPrimary: true,
-      pointerId: 43,
-      pointerType: 'touch',
-      clientX: x,
-      clientY: y,
-      button: 0,
-      buttons: type === 'pointerup' ? 0 : 1,
-    }))
-    dispatch('pointerdown', 40, 180)
-    dispatch('pointermove', 180, 190)
-    dispatch('pointermove', 180, 540)
-    dispatch('pointerup', 180, 540)
-  })()`)
-  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 1)
+    const handle = sheet.locator(".lui-sheet-handle")
+    await touchDrag(handle, { deltaY: 35 })
+    assert.equal(await state(`document.querySelector('.lui-sheet')?.hasAttribute('data-swiping')`), false)
+    assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 1)
 
-  await evaluate(`(() => {
-    const sheet = document.querySelector('.lui-sheet')
-    const scroller = document.createElement('div')
-    const content = document.createElement('div')
-    scroller.style.cssText = 'height:40px;overflow-y:auto'
-    content.style.height = '200px'
-    scroller.append(content)
-    sheet.append(scroller)
-    scroller.scrollTop = 20
-    const dispatch = (type, y) => content.dispatchEvent(new PointerEvent(type, {
-      bubbles: true,
-      cancelable: true,
-      isPrimary: true,
-      pointerId: 44,
-      pointerType: 'touch',
-      clientX: 190,
-      clientY: y,
-      button: 0,
-      buttons: type === 'pointerup' ? 0 : 1,
-    }))
-    dispatch('pointerdown', 180)
-    dispatch('pointermove', 540)
-    dispatch('pointerup', 540)
-    scroller.remove()
-  })()`)
-  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 1)
+    await touchDrag(handle, { horizontal: 140, deltaY: 10 })
+    assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 1)
 
-  await evaluate(`(() => {
-    const sheet = document.querySelector('.lui-sheet')
-    const dispatch = (type, y) => sheet.dispatchEvent(new PointerEvent(type, {
-      bubbles: true,
-      cancelable: true,
-      isPrimary: true,
-      pointerId: 42,
-      pointerType: 'touch',
-      clientX: 190,
-      clientY: y,
-      button: 0,
-      buttons: type === 'pointerup' ? 0 : 1,
-    }))
-    dispatch('pointerdown', 180)
-    dispatch('pointermove', 520)
-    dispatch('pointercancel', 560)
-  })()`)
-  assert.equal(await state(`document.querySelector('.lui-sheet')?.hasAttribute('data-swiping')`), false)
-  assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 1)
+    const scroller = sheet.locator("#inner-scroll")
+    await scroller.hover()
+    await session.page.mouse.wheel(0, 500)
+    await browser("wait", "--fn", "document.querySelector('#inner-scroll').scrollTop > 0")
+    const before = await state("document.querySelector('#inner-scroll').scrollTop")
+    await touchDrag(scroller, { from: 0.2, to: 0.8 })
+    const after = await state("document.querySelector('#inner-scroll').scrollTop")
+    assert.ok(after < before)
+    assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 1)
 
-  const dismissedSheetState = await state(`(() => {
-    const sheet = document.querySelector('.lui-sheet')
-    const handle = sheet.querySelector('.lui-sheet-handle')
-    const dispatch = (type, y) => sheet.dispatchEvent(new PointerEvent(type, {
-      bubbles: true,
-      cancelable: true,
-      isPrimary: true,
-      pointerId: 45,
-      pointerType: 'touch',
-      clientX: 190,
-      clientY: y,
-      button: 0,
-      buttons: type === 'pointerup' ? 0 : 1,
-    }))
-    handle.dispatchEvent(new PointerEvent('pointerdown', {
-      bubbles: true, cancelable: true, isPrimary: true, pointerId: 45,
-      pointerType: 'touch', clientX: 190, clientY: 180, button: 0, buttons: 1,
-    }))
-    dispatch('pointermove', 240)
-    dispatch('pointerup', 240)
-    return {
-      open: document.querySelectorAll('.lui-modal-layer[data-open]').length,
-      ending: document.querySelectorAll('.lui-modal-layer[data-ending-style]').length,
-    }
-  })()`)
-  assert.deepEqual(dismissedSheetState, { open: 0, ending: 1 })
+    const handleBounds = await handle.boundingBox()
+    assert.ok(handleBounds)
+    await touchEvent("touchStart", [{
+      x: handleBounds.x + handleBounds.width / 2,
+      y: handleBounds.y + handleBounds.height / 2,
+      id: 1,
+    }])
+    await touchEvent("touchMove", [{
+      x: handleBounds.x + handleBounds.width / 2,
+      y: handleBounds.y + handleBounds.height / 2 + 340,
+      id: 1,
+    }])
+    await touchEvent("touchCancel", [])
+    assert.equal(await state(`document.querySelector('.lui-sheet')?.hasAttribute('data-swiping')`), false)
+    assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 1)
+
+    const cancel = sheet.getByRole("button", { name: "Cancel", exact: true })
+    await cancel.scrollIntoViewIfNeeded()
+    await sheet.locator(".lui-sheet-body").hover()
+    await session.page.mouse.wheel(0, 1000)
+    await browser("wait", "50")
+    const cancelBounds = await cancel.boundingBox()
+    assert.ok(cancelBounds)
+    assert.ok(
+      cancelBounds.y >= 0 && cancelBounds.y + cancelBounds.height <= 844,
+      `Cancel bounds should be inside the viewport: ${JSON.stringify(cancelBounds)}`,
+    )
+    await touchDrag(cancel, { from: 0.5, to: 0.5 })
+    await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer')")
+
+    await clickButton("Open regression sheet")
+    await browser("wait", "100")
+    const reopenedSheet = session.page.locator(".lui-sheet")
+    await reopenedSheet.waitFor({ state: "visible" })
+    await reopenedSheet.evaluate(async (element) => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve()))
+      await Promise.all(element.getAnimations().map((animation) => animation.finished.catch(() => {})))
+      await new Promise((resolve) => requestAnimationFrame(() => resolve()))
+    })
+    await reopenedSheet.locator(".lui-sheet-title").click()
+    await browser("wait", "--fn", "getComputedStyle(document.querySelector('.lui-sheet')).bottom === '0px'")
+    await touchDrag(reopenedSheet.locator(".lui-sheet-handle"), { deltaY: 60, duration: 40 })
+    await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer[data-open]')")
+    assert.deepEqual(
+      await state(`({
+        open: document.querySelectorAll('.lui-modal-layer[data-open]').length,
+        ending: document.querySelectorAll('.lui-modal-layer[data-ending-style]').length,
+      })`),
+      { open: 0, ending: 1 },
+    )
+  } finally {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchCancel",
+      touchPoints: [],
+      modifiers: 0,
+    }).catch(() => {})
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false }).catch(() => {})
+    await cdp.detach().catch(() => {})
+  }
 })
 
 test("Button long press uses one movement-safe Pointer Events lifecycle", async () => {
