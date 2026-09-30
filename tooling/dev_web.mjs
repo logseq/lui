@@ -1,7 +1,8 @@
 import { execFile, spawn } from "node:child_process"
 import path from "node:path"
-import { promisify } from "node:util"
+import { promisify, stripVTControlCharacters } from "node:util"
 import { fileURLToPath } from "node:url"
+import { hasDuneWatchReadyMessage } from "./dev_web_readiness.mjs"
 
 const projectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -65,7 +66,10 @@ function watchDune(duneEnvironment) {
     const consumeOutput = (chunk, destination) => {
       destination.write(chunk)
       output += chunk.toString()
-      if (!ready && output.includes("Success, waiting for filesystem changes")) {
+      if (
+        !ready &&
+        hasDuneWatchReadyMessage(stripVTControlCharacters(output))
+      ) {
         ready = true
         resolve()
       }
