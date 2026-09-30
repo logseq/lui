@@ -3213,6 +3213,10 @@ private struct LUIAvatarView: View {
                 Image(decorative: image, scale: 1)
                     .resizable()
                     .scaledToFill()
+            } else if model.text.isEmpty {
+                Image(systemName: "person.fill")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(avatarForeground)
             } else {
                 Text(verbatim: model.text)
                     .font(.callout.weight(.medium))
@@ -4221,7 +4225,7 @@ private struct LUIListItemView: View {
                             : Color.secondary
                     )
             }
-            if contentChildIDs.isEmpty {
+            if contentChildIDs.isEmpty || !model.text.isEmpty {
                 Text(verbatim: model.text)
                     .font(isNavigationHeading ? .title3 : .body)
                     .fontWeight(
@@ -4230,7 +4234,8 @@ private struct LUIListItemView: View {
                             : ((isNavigationRow && model.isSelected) ? .semibold : .regular)
                     )
                     .lineLimit(1)
-            } else {
+            }
+            if !contentChildIDs.isEmpty {
                 ForEach(contentChildIDs, id: \.self) { childID in
                     let child = backend.model(id: childID)
                     LUIAnyNodeView(nodeID: childID, backend: backend).equatable()

@@ -1046,8 +1046,6 @@ bool LuiQmlBackend::validateStates(const QHash<qint64, NodeState> &states,
       }
       if (!hasText && !hasChildren)
         return reject("list-item requires text or children");
-      if (hasText && hasChildren)
-        return reject("list-item accepts text or children, not both");
     }
     if (state.kind == NodeKind::Step &&
         (stringOr(props, "text").isEmpty() || state.parent < 0 ||

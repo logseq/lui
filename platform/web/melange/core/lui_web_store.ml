@@ -345,8 +345,6 @@ let validate_list_item_content nodes current =
           && not (disclosure && list_item_row_child nodes child))
         current.retained_children
     in
-    if text <> "" && content_children <> [] then
-      invalid_arg "list-item accepts text or children, not both";
     if text = "" && content_children = [] then
       invalid_arg "list-item requires text or children"
   end

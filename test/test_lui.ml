@@ -146,6 +146,60 @@ let test_dyn_equal_skips_remount () =
     (creates_text (all_ops ()));
   ignore (Lui_app.dispose app)
 
+type nested_dyn_model = { outer : bool; inner : string }
+
+let nested_dyn_view _context model_source _send =
+  Lui_elements.column
+    [
+      Lui_elements.dyn ~equal:(fun a b -> a.outer = b.outer)
+        (fun (_m : nested_dyn_model) ->
+          (* A branch that is itself a bare dyn mounts under a transparent
+             anchor instead of raising on parent = None. *)
+          Lui_elements.dyn ~equal:(fun a b -> a.inner = b.inner)
+            (fun (m : nested_dyn_model) ->
+               Lui_elements.text ~value:m.inner [])
+            model_source)
+        model_source;
+    ]
+
+let test_dyn_nested_bare () =
+  let app =
+    Lui_app.create (recording_backend ()) { outer = true; inner = "in" }
+      (fun model action ->
+         match action with
+         | `Inner inner -> { model with inner }
+         | `Outer outer -> { model with outer })
+      nested_dyn_view
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  Alcotest.(check bool) "nested dyn mounts text" true
+    (creates_text (all_ops ()));
+  batches := [];
+  ignore (Lui_app.send app (`Inner "updated"));
+  flush_app app;
+  Alcotest.(check bool) "inner republish updates" true
+    (updates_text (all_ops ()));
+  ignore (Lui_app.dispose app)
+
+let test_extension_names_allow_underscore () =
+  Alcotest.(check bool) "underscore identifier valid" true
+    (Lui_extension.valid_name "my_extension");
+  let registry = Lui_extension.registry () in
+  Lui_extension.register_component registry
+    (Lui_extension.component "with_underscore"
+       [ Lui_protocol.generic_profile () ]
+       false []
+       [
+         Lui_extension.property "some_prop" Lui_extension.StringScalar true
+           None;
+       ]
+       [
+         Lui_extension.event "some_event"
+           [ Lui_extension.event_field "some_field" Lui_extension.IntScalar true ];
+       ]);
+  Lui_extension.freeze registry
+
 let test_dyn_default_remounts () =
   let app =
     Lui_app.create (recording_backend ()) { label = "first"; ticks = 0 }
@@ -2035,6 +2089,10 @@ let () =
             test_dyn_equal_skips_remount;
           Alcotest.test_case "default remounts" `Quick
             test_dyn_default_remounts;
+          Alcotest.test_case "bare dyn as dyn branch" `Quick
+            test_dyn_nested_bare;
+          Alcotest.test_case "extension names allow underscore" `Quick
+            test_extension_names_allow_underscore;
           Alcotest.test_case "remount swaps incompatible kind" `Quick
             test_dyn_remount_swaps_incompatible_kind;
           Alcotest.test_case "remount with extension node" `Quick

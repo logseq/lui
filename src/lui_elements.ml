@@ -289,7 +289,12 @@ let dynamic mount : t =
   | Some node ->
     ignore (mount context node);
     node
-  | None -> invalid_arg "dynamic element requires a parent node"
+  | None ->
+    (* A dynamic rendered as the branch of another dynamic has no anchor of
+       its own: mount under a transparent stack so it still has a home. *)
+    let anchor = Lui_ui.stack context in
+    ignore (mount context anchor);
+    anchor
 
 let dyn ~equal f (source : 'a Signal.signal) : t =
  fun context parent ->

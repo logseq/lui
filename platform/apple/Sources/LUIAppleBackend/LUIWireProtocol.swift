@@ -1232,9 +1232,6 @@ struct LUIRetainedTree {
                 guard hasText || hasChildren else {
                     throw invalid("list-item requires text or children")
                 }
-                guard !(hasText && hasChildren) else {
-                    throw invalid("list-item accepts text or children, not both")
-                }
                 if node.children.contains(where: { nodes[$0]?.kind == .listItem }),
                    node.properties[.expanded] == nil {
                     throw invalid("nested list-item children require expanded")
@@ -1248,10 +1245,6 @@ struct LUIRetainedTree {
                 }
             }
             if node.kind == .avatar || node.kind == .image {
-                if node.kind == .avatar,
-                   (node.properties[.text]?.stringValue ?? "").isEmpty {
-                    throw invalid("avatar requires initials")
-                }
                 if node.kind == .image, node.properties[.image]?.intValue == nil {
                     throw invalid("image requires image")
                 }

@@ -2302,9 +2302,14 @@ final class LUIFlutterBackend {
           : Icon(_iconData(buttonIcon), size: 16),
       content: children.isEmpty
           ? Text(text)
-          : children.length == 1
-          ? children.single
-          : Row(children: children),
+          : text.isEmpty
+          ? (children.length == 1 ? children.single : Row(children: children))
+          : Row(
+              children: [
+                Flexible(child: Text(text, overflow: TextOverflow.ellipsis)),
+                ...children,
+              ],
+            ),
       onPress:
           state.properties['role'] == 'treeitem' &&
               (state.properties['press-enabled'] == true ||
@@ -2538,10 +2543,12 @@ final class LUIFlutterBackend {
                 ? ColoredBox(
                     color: Theme.of(context).colorScheme.secondaryContainer,
                     child: Center(
-                      child: Text(
-                        text,
-                        style: Theme.of(context).textTheme.labelLarge,
-                      ),
+                      child: text.isEmpty
+                          ? const Icon(Icons.person)
+                          : Text(
+                              text,
+                              style: Theme.of(context).textTheme.labelLarge,
+                            ),
                     ),
                   )
                 : CustomPaint(
@@ -4564,11 +4571,6 @@ final class LUIFlutterBackend {
             'list-item requires text or children',
           );
         }
-        if (hasText && hasChildren) {
-          throw const LUIBackendException(
-            'list-item accepts text or children, not both',
-          );
-        }
         if (state.children.any(
               (child) => states[child]?.kind == _NodeKind.listItem,
             ) &&
@@ -4586,10 +4588,6 @@ final class LUIFlutterBackend {
         }
       }
       if (state.kind == _NodeKind.avatar || state.kind == _NodeKind.image) {
-        final text = state.properties['text'] as String? ?? '';
-        if (state.kind == _NodeKind.avatar && text.isEmpty) {
-          throw const LUIBackendException('avatar requires initials');
-        }
         if (state.kind == _NodeKind.image &&
             !state.properties.containsKey('image')) {
           throw const LUIBackendException('image requires image');

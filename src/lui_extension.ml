@@ -42,7 +42,8 @@ type extension_registry = {
   extension_registry_frozen : bool ref;
 }
 
-let is_slug_char c = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+let is_slug_char c =
+  (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c = '_'
 
 let valid_name value =
   let n = String.length value in
