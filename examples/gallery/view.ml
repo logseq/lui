@@ -487,7 +487,7 @@ let edge_inset_section model_source send : t =
 let overlay_section : t =
   section "Overlay"
     [ overlay ~max_width:560
-        [ card ~width:560 ~height:160 ~padding:16
+        [ card ~max_width:560 ~height:160 ~padding:16
             [ column ~gap:8
                 [ text ~value:"Base card — this content sizes the overlay" []
                 ; paragraph
@@ -1109,8 +1109,16 @@ let combobox_section model_source send : t =
     ]
 
 let dropdown_menu_section model_source send : t =
+  let open_ = model_source >|= (fun model -> Model.open_picker model = "dropdown") in
   section "DropdownMenu"
-    [ environment_menu model_source send
+    [ stack
+        [ button ~text:"Choose environment"
+            ~on_press:(press send (Model.OpenPicker "dropdown")) []
+        ; if_ ~test:open_ (environment_menu model_source send)
+        ]
+    ; paragraph
+        ~value:(reactive (fun model -> "Environment: " ^ Model.environment model)
+                  model_source) []
     ; paragraph
         ~value:"DropdownMenu retains its MenuItem children while the host owns presentation."
         []
@@ -1575,46 +1583,48 @@ let combine_section model_source send : t =
 let combine_sidebar_section model_source send : t =
   let open Lui_element_combine in
   let menu_open_ = model_source >|= Model.combine_menu_open in
+  let selected label = model_source >|= (fun model -> Model.document model = label) in
+  let choose label event =
+    press send (Model.SelectDocument label) event;
+    press send Model.CloseCombineMenu event
+  in
+  let item ?icon label =
+    nav_item ~label ?icon ~selected_signal:(selected label)
+      ~on_press:(press send (Model.SelectDocument label)) ()
+  in
   section "Sidebar"
     [ sidebar
         ~header:
           (menu_button ~label:"Logseq Docs" ~icon:`folder_open
              ~open_:menu_open_
              ~menu:
-               [ check_menu_item ~label:"Personal" ~checked:true
-                   ~on_press:noop ()
-               ; check_menu_item ~label:"Work" ~on_press:noop ()
-               ; menu_item ~text:"Add workspace" ~on_press:noop []
+               [ check_menu_item ~label:"Personal"
+                   ~checked_signal:(selected "Personal") ~on_press:(choose "Personal") ()
+               ; check_menu_item ~label:"Work"
+                   ~checked_signal:(selected "Work") ~on_press:(choose "Work") ()
+               ; menu_item ~text:"Add workspace" ~on_press:(choose "New workspace") []
                ]
              ~on_dismiss:(press send Model.CloseCombineMenu)
              ~on_press:(press send Model.OpenCombineMenu) ())
         ~items:
-          [ nav_item ~label:"Home" ~icon:`menu ~selected:true ~on_press:noop ()
-          ; nav_item ~label:"Search" ~icon:`search ~on_press:noop ()
+          [ item ~icon:`menu "Home"
+          ; item ~icon:`search "Search"
           ]
         ~sections:
           [ sidebar_section ~title:"PAGES"
               ~items:
-                [ nav_item ~label:"Getting started" ~on_press:noop ()
-                ; nav_item ~label:"Changelog" ~on_press:noop ()
+                [ item "Getting started"
+                ; item "Changelog"
                 ]
               ()
           ; sidebar_section ~title:"FAVORITES"
               ~items:
-                [ nav_item ~label:"Quarterly report" ~icon:`file_text
-                    ~on_press:noop ()
-                ; nav_item ~label:"Launch checklist" ~icon:`check_circle
-                    ~on_press:noop ()
+                [ item ~icon:`file_text "Quarterly report"
+                ; item ~icon:`check_circle "Launch checklist"
                 ]
               ()
           ]
         ()
-    ; section_heading ~title:"WORKSPACE SWITCHER" ()
-    ; dropdown_menu ~min_width:200
-        [ check_menu_item ~label:"Personal" ~checked:true ~on_press:noop ()
-        ; check_menu_item ~label:"Work" ~on_press:noop ()
-        ; menu_item ~text:"Add workspace" ~on_press:noop []
-        ]
     ; paragraph ~value:(reactive (fun m -> "Current: " ^ Model.document m)
                           model_source) []
     ]

@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LUI View That Fits regressions</title>
+<link rel="stylesheet" href="/platform/web/dist/lui.css">
+<script type="importmap">{"imports":{
+  "lui.web.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui.web.dom/",
+  "lui/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui/",
+  "melange-webapi/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange-webapi/",
+  "melange.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.dom/",
+  "melange.js/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.js/",
+  "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
+  "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
+}}</script>
+<style>body { margin: 24px; font: 16px system-ui } #host { max-width: 720px }</style>
+<main id="host"></main>
+<script type="module">
+import * as Web from "lui.web.dom/shell/lui_web.js"
+import * as Schema from "lui/lui_wire_schema.js"
+
+const host = document.querySelector("#host")
+const renderer = Web.create(undefined, host)
+const backend = Web.backend(renderer)
+const list = items => items.reduceRight((tl, hd) => ({ hd, tl }), 0)
+const properties = new Map(Array.from({ length: 98 }, (_, i) => [Schema.property_name(i), i]))
+const kinds = new Map(Array.from({ length: 86 }, (_, i) => [Schema.node_kind_name(i), i]))
+const children = new Map()
+const handlers = new Map()
+let ops = [], generation = 0, id = 0
+
+function set(node, name, value) {
+  ops.push({ TAG: 3, _0: node, _1: properties.get(name),
+    _2: { TAG: typeof value === "string" ? 0 : 2, _0: value } })
+}
+function create(kind, parent, props = {}) {
+  const node = ++id
+  ops.push({ TAG: 0, _0: node, _1: kinds.get(kind) })
+  children.set(node, [])
+  for (const [key, value] of Object.entries(props)) set(node, key, value)
+  if (parent) {
+    const siblings = children.get(parent)
+    ops.push({ TAG: 7, _0: parent, _1: node, _2: siblings.length })
+    siblings.push(node)
+  }
+  return node
+}
+function flush() {
+  backend.apply_batch({ generation: ++generation, ops: list(ops) })
+  ops = []
+}
+
+const root = create("column", null, { gap: 16 })
+const external = create("button", root, { text: "External control" })
+const horizontal = create("view-that-fits", root, { "style-class": "horizontal-fit" })
+const expanded = create("column", horizontal, { width: 640, gap: 8 })
+create("text", expanded, { text: "Expanded candidate" })
+create("input", expanded, { placeholder: "Retained draft" })
+create("text", horizontal, { text: "Compact candidate" })
+const short = create("button", root, { text: "Short vertical" })
+const vertical = create("view-that-fits", root, {
+  orientation: "vertical", height: 220, "style-class": "vertical-fit",
+})
+create("text", vertical, { text: "Tall candidate", height: 180 })
+create("text", vertical, { text: "Short candidate", height: 60 })
+handlers.set(short, () => set(vertical, "height", 70))
+Web.set_event_handler(renderer, event => {
+  if (event.TAG === 0) {
+    handlers.get(event._0)?.()
+    if (ops.length) flush()
+  }
+  return true
+})
+flush()
+Web.mount(renderer, root, host)
+window.fit = { input: document.querySelector("input"), renderer, external }
+</script>

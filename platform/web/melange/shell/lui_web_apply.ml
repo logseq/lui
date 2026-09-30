@@ -152,6 +152,7 @@ let apply_create renderer node kind =
   let created = Nodes.dom_node renderer node in
   W.Element.setAttribute "id" (Util.node_dom_id node) created;
   if kind = Accordion then Util.initialize_accordion_semantics node created;
+  if kind = ViewThatFits then Lui_web_fit.attach renderer node created;
   Lui_web_events.attach_events renderer node kind created
 
 let insert_menu_item_role renderer _child current parent =

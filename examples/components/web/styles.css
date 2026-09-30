@@ -15,10 +15,8 @@ body {
 }
 
 .lui-simulator-toolbar {
-  position: fixed;
-  z-index: 60;
-  top: max(0.75rem, env(safe-area-inset-top));
-  right: max(0.75rem, env(safe-area-inset-right));
+  position: relative;
+  margin: 0.5rem;
   padding: 0.375rem;
   border: 1px solid var(--border);
   border-radius: 0.75rem;
@@ -28,6 +26,8 @@ body {
   display: flex;
   align-items: center;
   gap: 0.375rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .lui-simulator-platform-field {
@@ -207,10 +207,6 @@ body {
 
 @media (max-width: 44.999rem) {
   .lui-simulator-toolbar {
-    top: auto;
-    right: 0.5rem;
-    bottom: 0.5rem;
-    left: 0.5rem;
     justify-content: center;
   }
 
