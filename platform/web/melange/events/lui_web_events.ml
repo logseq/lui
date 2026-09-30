@@ -18,16 +18,7 @@ let enabled_node renderer node =
 let emit renderer event = ignore (!(renderer.web_event_handler) event)
 
 let record_modal_return_focus renderer element =
-  renderer.web_modal_return_focus := Some element;
-  ignore
-    (Js.Global.setTimeout
-       ~f:(fun () ->
-         match !(renderer.web_modal_return_focus) with
-         | Some current
-           when W.Element.isSameNode (W.Element.asNode current) element ->
-             renderer.web_modal_return_focus := None
-         | _ -> ())
-       0)
+  renderer.web_modal_return_focus := Some element
 
 let combobox_keydown renderer node event =
   let key = W.KeyboardEvent.key event in

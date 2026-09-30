@@ -62,6 +62,7 @@ export async function createPlaywrightSession() {
         bounds.y + (offsetY === undefined ? bounds.height / 2 : Number(offsetY)),
       )
       await page.mouse.wheel(0, Number(deltaY))
+      await page.waitForTimeout(50)
     } else if (commandName === "drag") {
       const [selector, startX, startY, endX, endY] = values
       const target = page.locator(`${selector}:visible`).first()

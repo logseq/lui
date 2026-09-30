@@ -362,7 +362,75 @@ let document_body_focused renderer =
        | None -> false)
   | None -> false
 
-let rec restore_focus renderer focused =
+let css_hidden element =
+  let document =
+    W.Node.ownerDocument (W.Element.asNode element)
+  in
+  let html_document = W.Document.unsafeAsHtmlDocument document in
+  match W.HtmlDocument.defaultView html_document with
+  | Some window ->
+      let style = W.Window.getComputedStyle element window in
+      W.CssStyleDeclaration.display style = "none"
+      || W.CssStyleDeclaration.visibility style = "hidden"
+      || W.CssStyleDeclaration.visibility style = "collapse"
+  | None -> false
+
+let attribute_int element name =
+  match W.Element.getAttribute name element with
+  | Some value ->
+      (try Some (int_of_string (String.trim value)) with _ -> None)
+  | None -> None
+
+let explicitly_focusable element =
+  let tag = String.lowercase_ascii (W.Element.tagName element) in
+  let contenteditable =
+    match W.Element.getAttribute "contenteditable" element with
+    | Some value -> String.lowercase_ascii value <> "false"
+    | None -> false
+  in
+  match attribute_int element "tabindex" with
+  | Some _ -> true
+  | None ->
+      (tag = "button" || tag = "input" || tag = "select"
+       || tag = "textarea")
+      || (tag = "a" && W.Element.hasAttribute "href" element)
+      || contenteditable
+
+let focus_target_available element =
+  let tag = String.lowercase_ascii (W.Element.tagName element) in
+  let input_hidden =
+    tag = "input"
+    &&
+    match W.Element.getAttribute "type" element with
+    | Some value -> String.lowercase_ascii value = "hidden"
+    | None -> false
+  in
+  let rec visible current =
+    let unavailable =
+      W.Element.hasAttribute "hidden" current
+      || W.Element.hasAttribute "inert" current
+      || W.Element.hasAttribute "disabled" current
+      || W.Element.getAttribute "aria-hidden" current = Some "true"
+      || W.Element.getAttribute "aria-disabled" current = Some "true"
+      || W.Element.matches ":disabled" current
+      || css_hidden current
+    in
+    if unavailable then false
+    else
+      match W.Element.parentElement current with
+      | Some parent -> visible parent
+      | None -> W.Element.tagName current = "HTML"
+  in
+  not input_hidden && explicitly_focusable element && visible element
+
+let sequential_focus_target_available element =
+  if not (focus_target_available element) then false
+  else
+    match attribute_int element "tabindex" with
+    | Some index -> index >= 0
+    | None -> true
+
+let restore_focus renderer focused =
   match focused with
   | Some element when focus_target_available element ->
       Util.focus_element element;
@@ -377,22 +445,6 @@ let rec restore_focus renderer focused =
   | None -> ()
   | Some _ -> ()
 
-and focus_target_available element =
-  let rec visible current =
-    if
-      W.Element.hasAttribute "hidden" current
-      || W.Element.hasAttribute "inert" current
-      || W.Element.hasAttribute "disabled" current
-      || W.Element.getAttribute "aria-hidden" current = Some "true"
-      || W.Element.getAttribute "aria-disabled" current = Some "true"
-    then false
-    else
-      match W.Element.parentElement current with
-      | Some parent -> visible parent
-      | None -> W.Element.tagName current = "HTML"
-  in
-  visible element
-
 let restore_focus_if_unmoved renderer ~closing focused =
   match focused with
   | Some element when focus_target_available element ->
@@ -403,7 +455,7 @@ let restore_focus_if_unmoved renderer ~closing focused =
       let moved_inside =
         match active with
         | Some current ->
-            W.Element.contains (W.Element.asNode closing) current
+            W.Element.contains (W.Element.asNode current) closing
         | None -> false
       in
       if document_body_focused renderer || moved_inside then

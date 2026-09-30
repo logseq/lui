@@ -43,6 +43,8 @@ type t = {
   mutable next_order : int;
   mutable key_listener : (Dom.keyboardEvent -> unit) option;
   mutable pointer_listener : (Dom.event -> unit) option;
+  mutable focus_listener : (Dom.event -> unit) option;
+  mutable listeners_installed : bool;
   mutable scroll_lock_held : bool;
   mutable is_descendant : (int -> int -> bool) option;
 }
@@ -175,19 +177,21 @@ let create () =
     next_order = 0;
     key_listener = None;
     pointer_listener = None;
+    focus_listener = None;
+    listeners_installed = false;
     scroll_lock_held = false;
     is_descendant = None }
 
 let layer_at registry id = Hashtbl.find_opt registry.layers id
 
 let layer_contains layer element =
-  W.Element.contains (W.Element.asNode layer.content) element
+  W.Element.contains (W.Element.asNode element) layer.content
   || List.exists
-       (fun target -> W.Element.contains (W.Element.asNode target) element)
+       (fun target -> W.Element.contains (W.Element.asNode element) target)
        layer.style_targets
   || match layer.trigger with
      | Some trigger ->
-         W.Element.contains (W.Element.asNode trigger) element
+         W.Element.contains (W.Element.asNode element) trigger
      | None -> false
 
 let owner_contains is_descendant parent child =
@@ -204,6 +208,12 @@ let owned_target registry is_descendant layer target =
             && owner_contains is_descendant layer other
             && layer_contains other target))
        registry.layers false
+
+let owns_target registry id target =
+  match layer_at registry id, registry.is_descendant with
+  | Some layer, Some is_descendant ->
+      owned_target registry is_descendant layer target
+  | _ -> false
 
 let sorted_open_layers registry =
   Hashtbl.fold
@@ -254,7 +264,43 @@ let update_scroll_lock registry document =
     registry.scroll_lock_held <- false
   end
 
+let sync_listeners registry document =
+  let wanted =
+    Hashtbl.fold
+      (fun _ layer present -> present || layer.open_ || layer.present)
+      registry.layers false
+  in
+  if wanted && not registry.listeners_installed then begin
+    (match registry.key_listener with
+     | Some listener -> W.Document.addKeyDownEventListener listener document
+     | None -> ());
+    (match registry.pointer_listener with
+     | Some listener ->
+         W.Document.addEventListener "pointerdown" listener document
+     | None -> ());
+    (match registry.focus_listener with
+     | Some listener -> W.Document.addEventListener "focusin" listener document
+     | None -> ());
+    registry.listeners_installed <- true
+  end
+  else if not wanted && registry.listeners_installed then begin
+    (match registry.key_listener with
+     | Some listener ->
+         W.Document.removeKeyDownEventListener listener document
+     | None -> ());
+    (match registry.pointer_listener with
+     | Some listener ->
+         W.Document.removeEventListener "pointerdown" listener document
+     | None -> ());
+    (match registry.focus_listener with
+     | Some listener ->
+         W.Document.removeEventListener "focusin" listener document
+     | None -> ());
+    registry.listeners_installed <- false
+  end
+
 let refresh registry document =
+  sync_listeners registry document;
   refresh_order registry;
   update_inert registry;
   update_scroll_lock registry document
@@ -291,18 +337,41 @@ let dispatch_pointer registry is_descendant event_target_to_element
       if not (owned_target registry is_descendant layer target) then
         layer.dismiss ()
 
-let install registry document is_descendant event_target_to_element =
+let focus_layer_content layer =
+  W.HtmlElement.focusPreventScroll
+    (W.Element.unsafeAsHtmlElement layer.content)
+
+let dispatch_focus registry is_descendant event_target_to_element
+    (event : Dom.event) =
+  let target = event_target_to_element (W.Event.target event) in
+  let dismiss_layers =
+    List.filter
+      (fun layer ->
+        layer.policy = Nonblocking
+        && not (owned_target registry is_descendant layer target))
+      (sorted_open_layers registry)
+  in
+  List.iter (fun layer -> layer.dismiss ()) dismiss_layers;
+  match topmost_blocking registry with
+  | Some layer
+    when not (owned_target registry is_descendant layer target) ->
+      focus_layer_content layer
+  | _ -> ()
+
+let install registry _document is_descendant event_target_to_element =
   registry.is_descendant <- Some is_descendant;
   let key_listener = fun event -> dispatch_key registry event in
   let pointer_listener =
     fun event ->
       dispatch_pointer registry is_descendant event_target_to_element event
   in
+  let focus_listener =
+    fun event ->
+      dispatch_focus registry is_descendant event_target_to_element event
+  in
   registry.key_listener <- Some key_listener;
   registry.pointer_listener <- Some pointer_listener;
-  W.Document.addKeyDownEventListener key_listener document;
-  W.Document.addEventListener "pointerdown" pointer_listener
-    document
+  registry.focus_listener <- Some focus_listener
 
 let register registry ~document ~id ~owner ~trigger ~content ~style_targets ~policy
     ~dismiss ~close ~key_handler ~present ~open_ =

@@ -112,6 +112,10 @@ let focus_element element =
   let html_element = W.Element.unsafeAsHtmlElement element in
   W.HtmlElement.focus html_element
 
+let focus_element_without_scroll element =
+  let html_element = W.Element.unsafeAsHtmlElement element in
+  W.HtmlElement.focusPreventScroll html_element
+
 let set_style scope name value =
   W.CssStyleDeclaration.setProperty name value "" scope
 
