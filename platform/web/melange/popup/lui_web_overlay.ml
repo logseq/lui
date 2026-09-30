@@ -7,6 +7,7 @@ open Lui_web_types
 
 module W = Webapi.Dom
 module Store = Lui_web_store
+module Focus = Lui_web_focus
 
 (* matchMedia exposes an abstract mediaQueryList; "matches" is a plain
    boolean property read — a typed accessor, not a cast. *)
@@ -110,10 +111,6 @@ let topmost_modal renderer node =
   | Some layer -> layer.id = node
   | None -> false
 
-let remove_modal_from_stack renderer node =
-  ignore renderer;
-  ignore node
-
 let refresh_modal_host_inert renderer =
   Lui_web_util.set_state_attribute
     renderer.web_host "inert"
@@ -125,33 +122,10 @@ let refresh_modal_host_inert_bang = refresh_modal_host_inert
 (* Modal focus trapping. *)
 
 let modal_focus_selector =
-  "button:not([disabled]):not([hidden]),"
-  ^ "input:not([disabled]):not([hidden]),"
-  ^ "textarea:not([disabled]):not([hidden]),"
-  ^ "select:not([disabled]):not([hidden]),"
-  ^ "a[href]:not([hidden]),"
-  ^ "[contenteditable]:not([contenteditable=\"false\"]):not([hidden]),"
-  ^ "[tabindex]:not([tabindex=\"-1\"]):not([disabled]):not([hidden])"
+  "button,input,textarea,select,a[href],[contenteditable],[tabindex],[autofocus]"
 
 let modal_focus_items renderer parent =
   let roots = Lui_web_layers.focus_roots renderer.web_layers parent in
-  let rec hidden_ancestor boundary current =
-    let hidden =
-      W.Element.hasAttribute "hidden" current
-      || W.Element.hasAttribute "inert" current
-      || W.Element.hasAttribute "disabled" current
-      || W.Element.getAttribute "aria-hidden" current = Some "true"
-      || W.Element.getAttribute "aria-disabled" current = Some "true"
-    in
-    if hidden then true
-    else if
-      W.Element.isSameNode (W.Element.asNode current) boundary
-    then false
-    else
-      match W.Element.parentElement current with
-      | Some parent_element -> hidden_ancestor boundary parent_element
-      | None -> true
-  in
   let focusables root =
     let nodes = W.Element.querySelectorAll modal_focus_selector root in
     let rec collect index result =
@@ -161,13 +135,22 @@ let modal_focus_items renderer parent =
         | Some candidate ->
             (match W.Element.ofNode candidate with
              | Some candidate_element ->
-                 if hidden_ancestor root candidate_element then
-                   collect (index + 1) result
-                 else collect (index + 1) (candidate_element :: result)
+                 if
+                   (W.Element.hasAttribute "autofocus" candidate_element
+                    && Focus.focus_target_available candidate_element)
+                   || Focus.sequential_focus_target_available candidate_element
+                 then collect (index + 1) (candidate_element :: result)
+                 else collect (index + 1) result
              | None -> collect (index + 1) result)
         | None -> collect (index + 1) result
     in
-    collect 0 []
+    let candidates = collect 0 [] in
+    let explicit, sequential =
+      List.partition
+        (fun candidate -> W.Element.hasAttribute "autofocus" candidate)
+        candidates
+    in
+    explicit @ sequential
   in
   List.fold_left
     (fun result root -> List.rev_append (focusables root) result)
@@ -299,18 +282,32 @@ let after_transition document target fallback_duration finish_on_cancel
 
 let after_transition_bang = after_transition
 
-let finish_popup_close_after_transition document popup duration =
+let finish_popup_close_after_transition ?(on_finish = fun () -> ()) document
+    popup duration =
   ignore
     (after_transition document popup duration true (fun () ->
          if W.Element.getAttribute "data-ending-style" popup = Some ""
          then W.Element.removeAttribute "data-ending-style" popup;
+         on_finish ();
          true));
   true
 
 let finish_popup_close_after_transition_bang =
   finish_popup_close_after_transition
 
-let close_modal_shell renderer node parent layer surface kind =
+let restore_modal_focus renderer node surface =
+  match Hashtbl.find_opt renderer.web_modal_focus_returns node with
+  | Some target ->
+      let available = Lui_web_focus.focus_target_available target in
+      if available then
+        Lui_web_focus.restore_focus_if_unmoved renderer ~closing:surface
+          (Some target);
+      if available || not (Lui_web_layers.is_present renderer.web_layers node)
+      then Hashtbl.remove renderer.web_modal_focus_returns node
+  | None -> ()
+
+let close_modal_shell ?(on_finish = fun () -> ()) renderer node parent layer
+    surface kind =
   let token =
     Lui_web_layers.close_layer renderer.web_layers renderer.web_document node
   in
@@ -334,14 +331,15 @@ let close_modal_shell renderer node parent layer surface kind =
         Lui_web_layers.transition renderer.web_layers node = token
         && not (Lui_web_layers.is_open renderer.web_layers node)
       then begin
-        if W.Element.contains (W.Element.asNode parent) layer then
+        if W.Element.contains (W.Element.asNode layer) parent then
           ignore (W.Element.removeChild (W.Element.asNode layer) parent);
         Lui_web_layers.finish_present renderer.web_layers
           renderer.web_document node token;
         if Store.node renderer.web_store node = None then
           Lui_web_layers.remove renderer.web_layers renderer.web_document node;
         ignore (refresh_modal_host_inert renderer);
-        W.Element.removeAttribute "data-ending-style" surface
+        W.Element.removeAttribute "data-ending-style" surface;
+        on_finish ()
       end;
       true)
 
@@ -526,14 +524,6 @@ let modal_key_handler ctx event =
   end
 
 let attach_modal_events renderer node dom_node =
-  let document = renderer.web_document in
-  let html_document = W.Document.unsafeAsHtmlDocument document in
-  let previous_focus =
-    if document_body_focused renderer then
-      !(renderer.web_modal_return_focus)
-    else W.HtmlDocument.activeElement html_document
-  in
-  renderer.web_modal_return_focus := None;
   let layer = modal_layer_node dom_node in
   let ctx = {
     modal_renderer = renderer;
@@ -578,8 +568,10 @@ let attach_modal_events renderer node dom_node =
        ~dismiss:(fun () -> ignore (modal_dismiss ctx))
        ~close:(fun () ->
          ignore
-           (close_modal_shell renderer node renderer.web_portal_root layer
-              dom_node kind))
+           (close_modal_shell
+              ~on_finish:(fun () ->
+                restore_modal_focus renderer node dom_node)
+              renderer node renderer.web_portal_root layer dom_node kind))
        ~key_handler ~present:false ~open_:false);
   W.Element.addEventListener "click" click_handler ctx.modal_backdrop;
   if ctx.modal_sheet then begin
@@ -615,29 +607,12 @@ let attach_modal_events renderer node dom_node =
         W.Element.removeEventListener
           "pointercancel" pointer_cancel_handler dom_node
       end;
-      Lui_web_focus.restore_focus_if_unmoved renderer
-        ~closing:ctx.modal_dom_node previous_focus;
+      restore_modal_focus renderer node ctx.modal_dom_node;
       if not (Lui_web_layers.is_present renderer.web_layers node) then
         Lui_web_layers.remove renderer.web_layers renderer.web_document node;
       ignore true)
 
 let attach_modal_events_bang = attach_modal_events
-
-(* Focus bookkeeping: the element focused before a modal opened is
-   remembered briefly so dismiss can restore it. *)
-let record_modal_return_focus renderer element =
-  renderer.web_modal_return_focus := Some element;
-  ignore
-    (Js.Global.setTimeout ~f:(fun () ->
-         (match !(renderer.web_modal_return_focus) with
-          | Some current ->
-              if W.Element.isSameNode (W.Element.asNode current) element
-              then renderer.web_modal_return_focus := None
-          | None -> ()))
-       0);
-  true
-
-let record_modal_return_focus_bang = record_modal_return_focus
 
 (* Modal lifecycle. *)
 
@@ -646,6 +621,18 @@ let open_modal renderer node dom_node =
   if
     W.Element.getAttribute "data-lui-modal-state" layer <> Some "open"
   then begin
+    let return_focus =
+      match !(renderer.web_modal_return_focus) with
+      | Some element -> Some element
+      | None ->
+          W.HtmlDocument.activeElement
+            (W.Document.unsafeAsHtmlDocument renderer.web_document)
+    in
+    renderer.web_modal_return_focus := None;
+    (match return_focus with
+     | Some element ->
+         Hashtbl.replace renderer.web_modal_focus_returns node element
+     | None -> Hashtbl.remove renderer.web_modal_focus_returns node);
     W.Element.removeAttribute "hidden" layer;
     W.Element.removeAttribute "inert" layer;
     W.Element.removeAttribute "data-closed" layer;
@@ -664,23 +651,36 @@ let open_modal renderer node dom_node =
        | None -> None);
     Lui_web_layers.open_layer renderer.web_layers renderer.web_document node;
     ignore (refresh_modal_host_inert renderer);
-    let focus_items = modal_focus_items renderer node in
-    (match focus_items with
-     | first :: _ -> Lui_web_util.focus_element first
-     | [] ->
-         if not (W.Element.hasAttribute "tabindex" dom_node) then
-           W.Element.setAttribute "tabindex" "-1" dom_node;
-         Lui_web_util.focus_element dom_node);
     Webapi.requestAnimationFrame (fun _time ->
         W.Element.removeAttribute "data-starting-style" layer;
-        W.Element.removeAttribute "data-starting-style" dom_node)
+        W.Element.removeAttribute "data-starting-style" dom_node;
+        if
+          W.Element.getAttribute "data-lui-modal-state" layer = Some "open"
+        then
+          let html_document =
+            W.Document.unsafeAsHtmlDocument renderer.web_document
+          in
+          match W.HtmlDocument.activeElement html_document with
+          | Some active
+            when Lui_web_layers.owns_target renderer.web_layers node active ->
+              ()
+          | _ ->
+              (match modal_focus_items renderer node with
+               | first :: _ ->
+                   Lui_web_util.focus_element_without_scroll first
+               | [] ->
+                   if not (W.Element.hasAttribute "tabindex" dom_node) then
+                     W.Element.setAttribute "tabindex" "-1" dom_node;
+                   Lui_web_util.focus_element_without_scroll dom_node))
   end;
   ()
 
 let open_modal_bang = open_modal
 
 let remove_modal_layer_after_exit renderer node parent layer surface kind =
-  close_modal_shell renderer node parent layer surface kind
+  close_modal_shell
+    ~on_finish:(fun () -> restore_modal_focus renderer node surface)
+    renderer node parent layer surface kind
 
 let remove_modal_layer_after_exit_bang = remove_modal_layer_after_exit
 
@@ -696,12 +696,19 @@ let set_tooltip_open renderer node open_flag =
          if previous <> node then
            (match Store.node renderer.web_store previous with
             | Some _current ->
-                let previous_tooltip =
+        let previous_tooltip =
                   Lui_web_nodes.dom_node renderer previous
+                in
+                let token =
+                  Lui_web_layers.close_layer renderer.web_layers
+                    renderer.web_document previous
                 in
                 ignore (begin_popup_close previous_tooltip);
                 ignore
                   (finish_popup_close_after_transition
+                     ~on_finish:(fun () ->
+                       Lui_web_layers.finish_present renderer.web_layers
+                         renderer.web_document previous token)
                      renderer.web_document previous_tooltip 120)
             | None -> ())
      | None -> ());
@@ -721,13 +728,16 @@ let set_tooltip_open renderer node open_flag =
         | _ -> ())
   end
   else begin
-    ignore
-      (Lui_web_layers.close_layer renderer.web_layers renderer.web_document
-         node);
+    let token =
+      Lui_web_layers.close_layer renderer.web_layers renderer.web_document node
+    in
     ignore (begin_popup_close tooltip);
     ignore
-      (finish_popup_close_after_transition renderer.web_document tooltip
-         120);
+      (finish_popup_close_after_transition
+         ~on_finish:(fun () ->
+           Lui_web_layers.finish_present renderer.web_layers
+             renderer.web_document node token)
+         renderer.web_document tooltip 120);
     if !(renderer.web_open_tooltip) = Some node then
       renderer.web_open_tooltip := None
   end;
@@ -911,7 +921,7 @@ let mount_tooltip renderer node tooltip =
        ~policy:Lui_web_layers.Nonblocking ~dismiss:(fun () ->
          tooltip_hide ctx false)
        ~close:(fun () -> set_tooltip_open renderer node false)
-       ~key_handler ~present:true ~open_:false);
+       ~key_handler ~present:false ~open_:false);
   W.Element.addEventListener "pointerenter" pointer_enter_handler trigger;
   W.Element.addEventListener "pointerleave" pointer_leave_handler trigger;
   W.Element.addEventListener "focusin" focus_in_handler trigger;

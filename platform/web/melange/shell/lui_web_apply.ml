@@ -54,7 +54,7 @@ let portal_parent renderer previous_nodes parent child =
     || prev_anchored_tooltip previous_nodes child
   then renderer.web_portal_root
   else if prev_kind_is previous_nodes child ContextMenu then
-    Util.document_body renderer
+    renderer.web_portal_root
   else
     dom_child_container_before renderer previous_nodes parent
       (Nodes.dom_node_before renderer previous_nodes parent)
@@ -232,7 +232,7 @@ let insert_child_dom renderer previous_nodes children_of parent child
             renderer.web_portal_root
       | Some ContextMenu ->
           W.Element.appendChild (W.Element.asNode child_dom)
-            (Util.document_body renderer)
+            renderer.web_portal_root
       | Some (SwipeActions | SwipeAction) -> ()
       | _ ->
           let container =

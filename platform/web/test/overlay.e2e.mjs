@@ -155,7 +155,7 @@ test("nested modal locks remain until the last modal exits and contain wheel scr
   assert.equal(internalScroll.page, 140)
   assert.ok(internalScroll.inner > 0)
 
-  await clickButton("Open nested dialog")
+  await clickButton("Open nested modal")
   await browser("wait", "--fn", "document.querySelectorAll('.lui-modal-layer').length === 2")
   await browser("press", "Escape")
   await browser("wait", "--fn", "document.querySelectorAll('.lui-modal-layer').length === 1")
@@ -192,6 +192,7 @@ test("modal focus includes links, skips hidden controls, handles an empty surfac
   await browser("press", "Escape")
   await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer')")
   await clickButton("Open empty dialog")
+  await browser("wait", "--fn", "document.activeElement?.getAttribute('role') === 'dialog'")
   assert.equal(
     await state(`document.activeElement?.getAttribute('role')`),
     "dialog",
@@ -254,6 +255,11 @@ after(async () => {
 test("Dialog is a portaled modal with model-owned dismissal and focus restoration", async () => {
   await openGalleryPage("Dialog")
   await clickButton("Open dialog")
+  await browser(
+    "wait",
+    "--fn",
+    "document.activeElement?.getAttribute('placeholder') === 'Note name'",
+  )
 
   assert.deepEqual(
     await state(`(() => {
@@ -293,6 +299,11 @@ test("Dialog is a portaled modal with model-owned dismissal and focus restoratio
     }).observe(layer, { attributes: true })
   })()`)
   await browser("press", "Escape")
+  await browser(
+    "wait",
+    "--fn",
+    "document.querySelector('.lui-modal-layer[data-ending-style]')",
+  )
   const dialogExit = await state(`(() => {
     const layer = document.querySelector('.lui-modal-layer[data-ending-style]')
     const endingObserved = Boolean(layer)
@@ -320,7 +331,9 @@ test("Dialog is a portaled modal with model-owned dismissal and focus restoratio
   assert.equal(await state(`document.querySelectorAll('.lui-modal-layer').length`), 0)
 
   await clickButton("Open dialog")
-  await browser("click", ".lui-modal-backdrop")
+  await session.page.locator(".lui-modal-backdrop").click({
+    position: { x: 4, y: 4 },
+  })
   await browser("wait", "180")
   assert.equal(
     await state(`document.querySelectorAll('.lui-modal-layer:not([hidden])').length`),
@@ -371,14 +384,30 @@ test("Dialog and Sheet action buttons drive model-owned dismissal", async () => 
   await openGalleryPage("Dialog")
   await clickButton("Open dialog")
   await clickButton("Cancel")
+  await browser(
+    "wait",
+    "--fn",
+    "document.querySelectorAll('.lui-modal-layer[data-open]').length === 0",
+  )
   assert.equal(
     await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`),
     0,
   )
 
+  await browser(
+    "wait",
+    "--fn",
+    "!document.querySelector('.lui-modal-layer')",
+  )
+  await clickButton("Back to Components")
   await openGalleryPage("Sheet")
   await clickButton("Open sheet")
   await clickButton("Cancel")
+  await browser(
+    "wait",
+    "--fn",
+    "document.querySelectorAll('.lui-modal-layer[data-open]').length === 0",
+  )
   assert.equal(
     await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`),
     0,

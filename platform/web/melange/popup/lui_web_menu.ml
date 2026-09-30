@@ -370,11 +370,14 @@ let direct_dropdown_menu renderer node =
 let hide_context_menu renderer =
   match !(renderer.web_open_context_menu) with
   | Some menu ->
-      ignore
-        (Lui_web_layers.close_layer renderer.web_layers renderer.web_document
-           menu);
+      let token =
+        Lui_web_layers.close_layer renderer.web_layers renderer.web_document
+          menu
+      in
       W.Element.removeAttribute "data-open"
         (Lui_web_nodes.dom_node renderer menu);
+      Lui_web_layers.finish_present renderer.web_layers renderer.web_document
+        menu token;
       renderer.web_open_context_menu := None
   | None -> ()
 
@@ -1140,7 +1143,7 @@ let remove_dropdown_after_exit renderer node parent positioner =
         Lui_web_layers.transition renderer.web_layers node = token
         && not (Lui_web_layers.is_open renderer.web_layers node)
       then begin
-        if W.Element.contains (W.Element.asNode parent) positioner then
+        if W.Element.contains (W.Element.asNode positioner) parent then
           ignore
             (W.Element.removeChild (W.Element.asNode positioner) parent);
         Lui_web_layers.finish_present renderer.web_layers
