@@ -530,16 +530,16 @@ let modal_pointer_cancel ctx event =
 
 let modal_focus_trap_wrap event items focused backwards =
   let index = focused_element_index items focused in
-  if
-    items <> []
-    && (index = -1
-        || (backwards && index = 0)
-        || ((not backwards) && index = List.length items - 1))
-  then begin
+  if items <> [] then begin
     W.KeyboardEvent.preventDefault event;
-    Lui_web_util.focus_element
-      (if backwards then List.nth items (List.length items - 1)
-       else List.nth items 0)
+    let length = List.length items in
+    let next =
+      if backwards then
+        if index <= 0 then length - 1 else index - 1
+      else if index < 0 || index = length - 1 then 0
+      else index + 1
+    in
+    Lui_web_util.focus_element (List.nth items next)
   end
 
 let modal_key_handler ctx event =

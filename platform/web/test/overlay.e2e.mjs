@@ -40,6 +40,44 @@ async function state(expression) {
   return JSON.parse(JSON.parse(output))
 }
 
+async function dispatchTouch(cdp, type, locator) {
+  const touchPoints = []
+  if (type !== "touchEnd" && type !== "touchCancel") {
+    const bounds = await locator.boundingBox()
+    assert.ok(bounds, "touch target should be visible")
+    touchPoints.push({
+      x: bounds.x + bounds.width / 2,
+      y: bounds.y + bounds.height / 2,
+      id: 1,
+    })
+  }
+  await cdp.send("Input.dispatchTouchEvent", {
+    type,
+    touchPoints,
+    modifiers: 0,
+  })
+}
+
+async function withTouchEmulation(run) {
+  const cdp = await session.page.context().newCDPSession(session.page)
+  await cdp.send("Emulation.setTouchEmulationEnabled", {
+    enabled: true,
+    maxTouchPoints: 2,
+  })
+  try {
+    return await run(cdp)
+  } finally {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchCancel",
+      touchPoints: [],
+      modifiers: 0,
+    }).catch(() => {})
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false })
+      .catch(() => {})
+    await cdp.detach().catch(() => {})
+  }
+}
+
 test("owned picker portals stay inside the modal and Escape closes the topmost submenu", async () => {
   await openLayerRegressionPage()
   await clickButton("Open dialog")
@@ -816,23 +854,13 @@ test("Nested menu keeps its right-side submenu open through the pointer corridor
   await openGalleryPage("DropdownMenu")
   await clickButton("Choose environment")
 
-  assert.equal(
-    await state(`(() => {
-      const trigger = [...document.querySelectorAll('.lui-menu-item')]
-        .find((item) => item.textContent.includes('More environments')
-          && item.getBoundingClientRect().width > 0)
-      trigger?.dispatchEvent(new MouseEvent('mouseenter', {
-        clientX: trigger.getBoundingClientRect().right,
-        clientY: trigger.getBoundingClientRect().top
-          + trigger.getBoundingClientRect().height / 2,
-      }))
-      return trigger?.getAttribute('aria-expanded')
-    })()`),
-    "true",
-  )
+  const trigger = session.page.locator(".lui-menu-item")
+    .filter({ hasText: "More environments" }).first()
+  await trigger.hover()
+  assert.equal(await trigger.getAttribute("aria-expanded"), "true")
   await browser("wait", "30")
 
-  const side = await state(`(() => {
+  const corridor = await state(`(() => {
     const trigger = [...document.querySelectorAll('.lui-menu-item')]
       .find((item) => item.textContent.includes('More environments')
         && item.getBoundingClientRect().width > 0)
@@ -842,66 +870,48 @@ test("Nested menu keeps its right-side submenu open through the pointer corridor
     const popup = submenu?.querySelector('.lui-dropdown-menu')
     const triggerBounds = trigger?.getBoundingClientRect()
     const popupBounds = popup?.getBoundingClientRect()
-    window.__submenuCorridor = {
+    return {
+      side: submenu?.getAttribute('data-side'),
       startX: triggerBounds?.right,
       startY: (triggerBounds?.top ?? 0) + (triggerBounds?.height ?? 0) / 2,
       endX: popupBounds?.left,
       endY: (popupBounds?.top ?? 0) + (popupBounds?.height ?? 0) / 2,
+      popupLeft: popupBounds?.left,
+      popupTop: popupBounds?.top,
+      popupWidth: popupBounds?.width,
+      popupHeight: popupBounds?.height,
     }
-    trigger?.dispatchEvent(new MouseEvent('mouseleave', {
-      clientX: window.__submenuCorridor.startX,
-      clientY: window.__submenuCorridor.startY,
-      relatedTarget: document.body,
-    }))
-    ;[0.35, 0.7].forEach((progress, index) => {
-      setTimeout(() => {
-        const point = window.__submenuCorridor
-        document.dispatchEvent(new MouseEvent('mousemove', {
-          bubbles: true,
-          clientX: point.startX + (point.endX - point.startX) * progress,
-          clientY: point.startY + (point.endY - point.startY) * progress,
-        }))
-      }, index * 70)
-    })
-    setTimeout(() => {
-      window.__submenuCorridorResult = {
-        expanded: trigger?.getAttribute('aria-expanded'),
-        open: popup?.hasAttribute('data-open'),
-      }
-    }, 180)
-    return submenu?.getAttribute('data-side')
   })()`)
-  assert.equal(side, "right")
-  await browser("wait", "230")
+  assert.equal(corridor.side, "right")
 
-  assert.deepEqual(
-    await state(`window.__submenuCorridorResult`),
-    { expanded: "true", open: true },
+  await session.page.mouse.move(corridor.startX + 1, corridor.startY)
+  await session.page.waitForTimeout(70)
+  await session.page.mouse.move(
+    corridor.startX + (corridor.endX - corridor.startX) * 0.35,
+    corridor.startY + (corridor.endY - corridor.startY) * 0.35,
   )
+  await session.page.waitForTimeout(70)
+  await session.page.mouse.move(
+    corridor.startX + (corridor.endX - corridor.startX) * 0.7,
+    corridor.startY + (corridor.endY - corridor.startY) * 0.7,
+  )
+  await session.page.waitForTimeout(70)
+  await session.page.mouse.move(
+    corridor.popupLeft + corridor.popupWidth / 2,
+    corridor.popupTop + corridor.popupHeight / 2,
+  )
+  await browser("wait", "30")
+  assert.deepEqual(await state(`({
+    expanded: document.querySelector('.lui-menu-item[aria-expanded="true"]')
+      ?.getAttribute('aria-expanded'),
+    open: [...document.querySelectorAll('.lui-popup-positioner[data-submenu]')]
+      .find((node) => !node.hasAttribute('hidden')
+        && node.textContent.includes('Production region'))
+      ?.querySelector('.lui-dropdown-menu')
+      ?.hasAttribute('data-open'),
+  })`), { expanded: "true", open: true })
 
-  await evaluate(`[...document.querySelectorAll('.lui-popup-positioner[data-submenu]')]
-    .find((node) => !node.hasAttribute('hidden')
-      && node.textContent.includes('Production region'))
-    ?.querySelector('.lui-dropdown-menu')
-    ?.dispatchEvent(new MouseEvent('mouseenter'))`)
-
-  await evaluate(`(() => {
-    const trigger = [...document.querySelectorAll('.lui-menu-item')]
-      .find((item) => item.textContent.includes('More environments')
-        && item.getBoundingClientRect().width > 0)
-    const bounds = trigger?.getBoundingClientRect()
-    trigger?.dispatchEvent(new MouseEvent('mouseenter'))
-    trigger?.dispatchEvent(new MouseEvent('mouseleave', {
-      clientX: bounds?.left,
-      clientY: (bounds?.top ?? 0) + (bounds?.height ?? 0) / 2,
-      relatedTarget: document.body,
-    }))
-    document.dispatchEvent(new MouseEvent('mousemove', {
-      bubbles: true,
-      clientX: (bounds?.left ?? 0) - 40,
-      clientY: (bounds?.top ?? 0) - 40,
-    }))
-  })()`)
+  await session.page.mouse.move(8, 8)
   await browser("wait", "150")
   assert.equal(
     await state(`[...document.querySelectorAll('.lui-popup-positioner[data-submenu]')]
@@ -1083,7 +1093,7 @@ test("Select keyboard navigation enters submenus and restores trigger focus", as
 
 test("Select reopens on the selected item and aligns it with the trigger", async () => {
   await openGalleryPage("Select")
-  await clickButton("Production")
+  await session.page.locator(".lui-select").click()
   await browser("wait", "30")
   await browser("click-text", ".lui-menu-item", "Staging")
   await browser("wait", "180")
@@ -1160,28 +1170,20 @@ test("Select falls back to anchored positioning near a viewport edge", async () 
 
 test("Select touch opening keeps ordinary anchored positioning", async () => {
   await openGalleryPage("Select")
-  await clickButton("Production")
+  await session.page.locator(".lui-select").click()
   await browser("wait", "30")
   await browser("click-text", ".lui-menu-item", "Staging")
   await browser("wait", "180")
 
+  await withTouchEmulation(async (cdp) => {
+    const trigger = session.page.locator(".lui-select")
+    await dispatchTouch(cdp, "touchStart", trigger)
+    await dispatchTouch(cdp, "touchEnd")
+  })
+  await browser("wait", "30")
   assert.deepEqual(
     await state(`(() => {
       const trigger = document.querySelector('.lui-select')
-      trigger.dispatchEvent(new PointerEvent('pointerdown', {
-        bubbles: true,
-        cancelable: true,
-        pointerType: 'touch',
-        pointerId: 82,
-        button: 0,
-        buttons: 1,
-      }))
-      trigger.dispatchEvent(new MouseEvent('mousedown', {
-        bubbles: true,
-        cancelable: true,
-        button: 0,
-        buttons: 1,
-      }))
       const popup = document.getElementById(trigger?.getAttribute('aria-controls'))
       const triggerBounds = trigger?.getBoundingClientRect()
       const popupBounds = popup?.getBoundingClientRect()
@@ -1199,7 +1201,7 @@ test("Select touch press opens safely and flips inside a compact viewport", asyn
   await openGalleryPage("Select")
   await browser("set", "viewport", "390", "844")
 
-  const opened = await state(`(() => {
+  await evaluate(`(() => {
     const trigger = document.querySelector('.lui-select')
     Object.assign(trigger.style, {
       position: 'fixed',
@@ -1208,24 +1210,12 @@ test("Select touch press opens safely and flips inside a compact viewport", asyn
       width: '180px',
       zIndex: '1',
     })
-    trigger.focus()
-    trigger.dispatchEvent(new PointerEvent('pointerdown', {
-      bubbles: true,
-      cancelable: true,
-      pointerType: 'touch',
-      pointerId: 81,
-      button: 0,
-      buttons: 1,
-    }))
-    trigger.dispatchEvent(new MouseEvent('mousedown', {
-      bubbles: true,
-      cancelable: true,
-      button: 0,
-      buttons: 1,
-    }))
-    return trigger.getAttribute('aria-expanded')
   })()`)
-  assert.equal(opened, "true")
+  await withTouchEmulation(async (cdp) => {
+    const trigger = session.page.locator(".lui-select")
+    await dispatchTouch(cdp, "touchStart", trigger)
+    await dispatchTouch(cdp, "touchEnd")
+  })
   await browser("wait", "30")
 
   assert.deepEqual(
@@ -1235,21 +1225,6 @@ test("Select touch press opens safely and flips inside a compact viewport", asyn
       const positioner = popup?.parentElement
       const options = [...(popup?.querySelectorAll('.lui-menu-item') ?? [])]
       const staging = options.find((option) => option.textContent.trim() === 'Staging')
-
-      staging?.dispatchEvent(new PointerEvent('pointerup', {
-        bubbles: true,
-        cancelable: true,
-        pointerType: 'touch',
-        pointerId: 81,
-        button: 0,
-        buttons: 0,
-      }))
-      staging?.dispatchEvent(new MouseEvent('mouseup', {
-        bubbles: true,
-        cancelable: true,
-        button: 0,
-        buttons: 0,
-      }))
 
       const bounds = popup?.getBoundingClientRect()
       return {
@@ -1281,7 +1256,7 @@ test("Select touch press opens safely and flips inside a compact viewport", asyn
 test("Open Select tracks anchor movement on viewport resize", async () => {
   await openGalleryPage("Select")
   await browser("set", "viewport", "480", "720")
-  await clickButton("Production")
+  await session.page.locator(".lui-select").click()
   await browser("wait", "30")
 
   await evaluate(`(() => {
@@ -1547,34 +1522,32 @@ test("Combobox touch trigger opens without moving input focus and stays onscreen
   await openGalleryPage("Combobox")
   await browser("set", "viewport", "390", "844")
 
+  await evaluate(`(() => {
+    const root = document.querySelector('.lui-combobox')
+    const input = root?.querySelector('.lui-combobox-control')
+    Object.assign(root.style, {
+      position: 'fixed',
+      right: '4px',
+      bottom: '4px',
+      width: '200px',
+      zIndex: '1',
+    })
+    input?.focus()
+  })()`)
+  await withTouchEmulation(async (cdp) => {
+    await dispatchTouch(
+      cdp,
+      "touchStart",
+      session.page.locator(".lui-combobox-trigger"),
+    )
+    await dispatchTouch(cdp, "touchEnd")
+  })
+  await browser("wait", "30")
+
   assert.deepEqual(
     await state(`(() => {
       const root = document.querySelector('.lui-combobox')
       const input = root?.querySelector('.lui-combobox-control')
-      const trigger = root?.querySelector('.lui-combobox-trigger')
-      Object.assign(root.style, {
-        position: 'fixed',
-        right: '4px',
-        bottom: '4px',
-        width: '200px',
-        zIndex: '1',
-      })
-      input?.focus()
-      trigger?.dispatchEvent(new PointerEvent('pointerdown', {
-        bubbles: true,
-        cancelable: true,
-        pointerType: 'touch',
-        pointerId: 82,
-        button: 0,
-        buttons: 1,
-      }))
-      trigger?.dispatchEvent(new MouseEvent('mousedown', {
-        bubbles: true,
-        cancelable: true,
-        button: 0,
-        buttons: 1,
-      }))
-
       const popup = document.getElementById(input?.getAttribute('aria-controls'))
       const bounds = popup?.getBoundingClientRect()
       return {
@@ -2654,6 +2627,13 @@ test("every Gallery page fits the compact one-page mobile shell", async () => {
   const failures = []
   for (const page of labels) {
     await browser("click-text", ".lui-gallery-nav-item", page)
+    if (page === "View That Fits") {
+      await browser("wait", "--fn", `(() => {
+        const fit = document.querySelector('.lui-view-that-fits')
+        return fit?.firstElementChild?.hasAttribute('data-lui-fit-hidden')
+          && !fit.lastElementChild?.hasAttribute('data-lui-fit-hidden')
+      })()`)
+    }
     const measurement = await state(`(() => {
       const content = document.querySelector('.lui-gallery-content')
       const headings = content.querySelectorAll('[role="heading"]')
@@ -2684,7 +2664,7 @@ test("every Gallery page fits the compact one-page mobile shell", async () => {
     failures,
   }
 
-  assert.equal(audit.count, 69)
+  assert.equal(audit.count, 72)
   assert.ok(audit.minNavigationHeight >= 44, JSON.stringify(audit))
   assert.equal(audit.mountedPages, 1)
   assert.deepEqual(audit.failures, [])
