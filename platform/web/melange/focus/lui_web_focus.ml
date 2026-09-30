@@ -362,17 +362,53 @@ let document_body_focused renderer =
        | None -> false)
   | None -> false
 
-let restore_focus renderer focused =
+let rec restore_focus renderer focused =
   match focused with
-  | Some element ->
+  | Some element when focus_target_available element ->
       Util.focus_element element;
       ignore
         (Js.Global.setTimeout
            ~f:(fun () ->
-             if document_body_focused renderer then
+             if document_body_focused renderer
+                && focus_target_available element
+             then
                Util.focus_element element)
            0)
   | None -> ()
+  | Some _ -> ()
+
+and focus_target_available element =
+  let rec visible current =
+    if
+      W.Element.hasAttribute "hidden" current
+      || W.Element.hasAttribute "inert" current
+      || W.Element.hasAttribute "disabled" current
+      || W.Element.getAttribute "aria-hidden" current = Some "true"
+      || W.Element.getAttribute "aria-disabled" current = Some "true"
+    then false
+    else
+      match W.Element.parentElement current with
+      | Some parent -> visible parent
+      | None -> W.Element.tagName current = "HTML"
+  in
+  visible element
+
+let restore_focus_if_unmoved renderer ~closing focused =
+  match focused with
+  | Some element when focus_target_available element ->
+      let document =
+        W.Document.unsafeAsHtmlDocument renderer.web_document
+      in
+      let active = W.HtmlDocument.activeElement document in
+      let moved_inside =
+        match active with
+        | Some current ->
+            W.Element.contains (W.Element.asNode closing) current
+        | None -> false
+      in
+      if document_body_focused renderer || moved_inside then
+        restore_focus renderer (Some element)
+  | _ -> ()
 
 let restore_focus_bang = restore_focus
 

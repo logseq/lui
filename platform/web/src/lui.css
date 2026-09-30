@@ -501,7 +501,9 @@ body {
   }
 
   .lui-tooltip[data-anchor] {
-    @apply pointer-events-none fixed z-50 m-0 max-w-xs border-0;
+    @apply pointer-events-none fixed m-0 max-w-xs border-0;
+    --lui-layer-base: 100;
+    z-index: calc(var(--lui-layer-base) + var(--lui-layer-index, 0));
     inset: auto;
     opacity: 1;
     transform: scale(1);
@@ -672,7 +674,8 @@ body {
 
   .lui-modal-layer {
     @apply fixed inset-0 isolate;
-    z-index: 1000;
+    --lui-layer-base: 100;
+    z-index: calc(var(--lui-layer-base) + var(--lui-layer-index, 0));
     pointer-events: auto;
   }
 
@@ -682,6 +685,7 @@ body {
 
   .lui-modal-backdrop {
     @apply absolute inset-0 bg-black/50;
+    z-index: 0;
     opacity: var(--drawer-swipe-progress, 1);
     transition: opacity 150ms ease-out;
   }
@@ -697,6 +701,10 @@ body {
 
   .lui-dialog {
     @apply fixed inset-0 m-auto grid rounded-xl border bg-card text-card-foreground shadow-lg;
+    z-index: 1;
+    max-height: calc(100dvh - 2rem);
+    overflow: auto;
+    overscroll-behavior: contain;
     opacity: 1;
     transform: scale(1);
     transition: transform 100ms ease-out, opacity 100ms ease-out;
@@ -722,6 +730,8 @@ body {
 
   .lui-sheet {
     @apply fixed bottom-0 left-auto right-0 top-0 m-0 grid h-full max-h-none rounded-l-xl border bg-card text-card-foreground shadow-lg;
+    z-index: 1;
+    overflow-y: auto;
     overscroll-behavior: contain;
     transform: translateX(var(--drawer-swipe-movement-x, 0px));
     transition: transform 450ms cubic-bezier(0.32, 0.72, 0, 1);
@@ -890,15 +900,18 @@ body {
     position: fixed;
     inset: 0;
     z-index: 50;
+    isolation: isolate;
     pointer-events: none;
   }
 
   .lui-popup-positioner {
     --lui-anchor-offset: 0px;
+    --lui-layer-base: 100;
     position: absolute;
     width: max-content;
     max-width: calc(100vw - 1rem);
     pointer-events: none;
+    z-index: calc(var(--lui-layer-base) + var(--lui-layer-index, 0));
   }
 
   .lui-dropdown-menu {
@@ -916,6 +929,7 @@ body {
     padding: 0.25rem;
     box-shadow: 0.25rem 0.25rem 0 var(--foreground);
     pointer-events: auto;
+    z-index: 1;
     transform-origin: top left;
     transition-property: opacity, transform;
     transition-duration: 120ms;
@@ -945,7 +959,9 @@ body {
   }
 
   .lui-context-menu {
-    @apply fixed z-50 hidden max-h-72 min-w-40 flex-col overflow-auto rounded-md border bg-card p-1 text-card-foreground shadow-md;
+    @apply fixed hidden max-h-72 min-w-40 flex-col overflow-auto rounded-md border bg-card p-1 text-card-foreground shadow-md;
+    --lui-layer-base: 100;
+    z-index: calc(var(--lui-layer-base) + var(--lui-layer-index, 0));
     max-width: calc(100vw - 1rem);
   }
 

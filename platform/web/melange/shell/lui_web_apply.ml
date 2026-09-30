@@ -252,7 +252,9 @@ let apply_insert_child renderer previous_nodes children_of parent child
   (match Store.node renderer.web_store child with
    | Some current ->
        insert_menu_item_role renderer child current parent;
-       mount_inserted_child renderer parent child current
+       mount_inserted_child renderer parent child current;
+       Lui_web_layers.reconcile_owner renderer.web_layers
+         renderer.web_document child current.retained_parent
    | None -> ());
   refresh_dropdown_parent renderer parent
 
@@ -294,13 +296,13 @@ let apply_remove_child renderer previous_nodes parent child =
    else if modal then
      match prev_node previous_nodes child with
      | Some previous ->
-         ignore
-           (Lui_web_overlay.remove_modal_layer_after_exit
-              renderer.web_document parent_node child_node surface
+           ignore
+             (Lui_web_overlay.remove_modal_layer_after_exit
+              renderer child parent_node child_node surface
               (Store.standard_kind previous))
      | None -> ()
    else if prev_kind_is previous_nodes child DropdownMenu then
-     Lui_web_menu.remove_dropdown_after_exit renderer.web_document parent_node
+     Lui_web_menu.remove_dropdown_after_exit renderer child parent_node
        child_node
    else (
      (* parent_node is re-resolved from the previous snapshot and can be
@@ -396,6 +398,11 @@ let apply_move_child renderer previous_nodes children_of parent child
   if dropdown then Lui_web_position.position_dropdown renderer child;
   if tooltip && W.Element.hasAttribute "data-open" surface_node then
     Lui_web_position.position_tooltip renderer child;
+  (match Store.node renderer.web_store child with
+   | Some current ->
+       Lui_web_layers.reconcile_owner renderer.web_layers
+         renderer.web_document child current.retained_parent
+   | None -> ());
   Lui_web_focus.restore_focus renderer focused
 
 let apply_set_prop renderer node property value =

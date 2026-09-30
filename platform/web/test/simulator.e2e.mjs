@@ -1,28 +1,20 @@
 import assert from "node:assert/strict"
-import { execFile } from "node:child_process"
 import { once } from "node:events"
-import { promisify } from "node:util"
 import test, { after, before } from "node:test"
 
 import { createStaticServer } from "../../../tooling/serve_web.mjs"
+import { createPlaywrightSession } from "./playwright-session.mjs"
 
-const execFileAsync = promisify(execFile)
-const projectRoot = new URL("../../../", import.meta.url)
-const session = `lui-simulator-${process.pid}`
 let origin
 let server
+let session
 
 async function browser(...args) {
-  const { stdout } = await execFileAsync(
-    "agent-browser",
-    ["--session", session, ...args],
-    { cwd: projectRoot, maxBuffer: 4 * 1024 * 1024 },
-  )
-  return stdout.trim()
+  return session.command(...args)
 }
 
 async function evaluate(source) {
-  return browser("eval", "-b", Buffer.from(source).toString("base64"))
+  return session.evaluate(source)
 }
 
 async function state(expression) {
@@ -38,43 +30,28 @@ async function openGallery() {
 }
 
 async function selectPlatform(platform) {
-  await evaluate(`(() => {
-    const select = document.querySelector('select[aria-label="Simulator platform"]')
-    select.value = ${JSON.stringify(platform)}
-    select.dispatchEvent(new Event('change', { bubbles: true }))
-  })()`)
+  await browser("select", 'select[aria-label="Simulator platform"]', platform)
 }
 
 async function selectFormFactor(formFactor) {
-  await evaluate(`(() => {
-    const select = document.querySelector('select[aria-label="Simulator form factor"]')
-    select.value = ${JSON.stringify(formFactor)}
-    select.dispatchEvent(new Event('change', { bubbles: true }))
-  })()`)
+  await browser("select", 'select[aria-label="Simulator form factor"]', formFactor)
 }
 
 async function rotateSimulator() {
-  await evaluate(`document.querySelector('button[aria-label="Rotate simulator"]')?.click()`)
+  await browser("click", 'button[aria-label="Rotate simulator"]')
 }
 
 async function openGalleryPage(name) {
-  await evaluate(`
-    [...document.querySelectorAll('nav button')]
-      .find((node) => node.textContent === ${JSON.stringify(name)})
-      ?.click()
-  `)
+  await browser("click-text", "nav button", name)
 }
 
 async function openSheet() {
   await openGalleryPage("Sheet")
-  await evaluate(`
-    [...document.querySelectorAll('button')]
-      .find((node) => node.textContent.trim() === 'Open sheet' && node.getBoundingClientRect().width > 0)
-      ?.click()
-  `)
+  await browser("click-button", "Open sheet")
 }
 
 before(async () => {
+  session = await createPlaywrightSession()
   server = createStaticServer(new URL("../../../", import.meta.url).pathname)
   server.listen(0, "127.0.0.1")
   await once(server, "listening")
@@ -82,9 +59,12 @@ before(async () => {
 })
 
 after(async () => {
-  await browser("close").catch(() => {})
-  server.close()
-  await once(server, "close")
+  if (session) await session.close().catch(() => {})
+  if (server?.listening) {
+    const closed = once(server, "close")
+    server.close()
+    await closed
+  }
 })
 
 test("the Web Gallery starts as a semantic iOS simulator", async () => {
@@ -218,7 +198,7 @@ test("phone Gallery push and back preserve the retained page and restore focus",
     },
   )
 
-  await evaluate(`document.querySelector('.lui-gallery-navigation-back')?.click()`)
+  await browser("click", ".lui-gallery-navigation-back")
 
   assert.deepEqual(
     await state(`(() => {
@@ -249,7 +229,7 @@ test("phone Gallery push and back preserve the retained page and restore focus",
     },
   )
 
-  await evaluate(`document.querySelector('.lui-gallery-nav-item[data-selected="true"]')?.click()`)
+  await browser("click", ".lui-gallery-nav-item[data-selected='true']")
   await selectPlatform("android")
 
   assert.deepEqual(
@@ -426,8 +406,8 @@ test("Bottom Tabs retain native page state across iOS Liquid Glass and Android M
     const homeInput = root.querySelector('input[placeholder="Retained home draft"]')
     homeInput.value = 'kept draft'
     window.__luiBottomTabHomeInput = homeInput
-    root.querySelectorAll('.lui-bottom-tabs-tab')[1].click()
   })()`)
+  await browser("click", ".lui-bottom-tabs-tab:nth-child(2)")
 
   assert.deepEqual(
     await state(`(() => {
@@ -505,10 +485,10 @@ test("platform switching preserves focused retained input identity and rejects u
   await openGallery()
   await openGalleryPage("TextField")
 
+  await session.page.locator(".lui-text-field").focus()
+  await session.page.locator(".lui-text-field").fill("draft text")
   await evaluate(`(() => {
     const input = document.querySelector('.lui-text-field')
-    input.focus()
-    input.value = 'draft text'
     input.setSelectionRange(3, 7)
     window.__luiSimulatorInput = input
   })()`)
@@ -649,11 +629,7 @@ test("an open portaled surface follows profile changes without replacement", asy
   await openGallery()
   await selectPlatform("android")
   await openGalleryPage("Dialog")
-  await evaluate(`
-    [...document.querySelectorAll('button')]
-      .find((node) => node.textContent.trim() === 'Open dialog' && node.getBoundingClientRect().width > 0)
-      ?.click()
-  `)
+  await browser("click-button", "Open dialog")
 
   assert.deepEqual(
     await state(`(() => {
@@ -903,10 +879,8 @@ test("Map extension keeps deterministic camera state across platform profiles", 
     await state(`(() => {
       const map = document.querySelector('.lui-simulator-map')
       const marker = map?.querySelector('.lui-simulator-map-marker')
-      const zoomIn = map?.querySelector('button[aria-label="Zoom in"]')
       window.__luiSimulatorMap = map
       window.__luiSimulatorMapMarker = marker
-      zoomIn?.click()
       return {
         role: map?.getAttribute('role'),
         label: map?.getAttribute('aria-label'),
@@ -943,22 +917,13 @@ test("Map extension keeps deterministic camera state across platform profiles", 
     },
   )
 
-  await evaluate(`(() => {
-    const map = document.querySelector('.lui-simulator-map')
-    const rect = map.getBoundingClientRect()
-    map.dispatchEvent(new PointerEvent('pointerdown', {
-      bubbles: true, pointerId: 81, pointerType: 'touch', button: 0,
-      clientX: rect.left + 160, clientY: rect.top + 120,
-    }))
-    map.dispatchEvent(new PointerEvent('pointermove', {
-      bubbles: true, pointerId: 81, pointerType: 'touch', button: 0,
-      clientX: rect.left + 120, clientY: rect.top + 160,
-    }))
-    map.dispatchEvent(new PointerEvent('pointerup', {
-      bubbles: true, pointerId: 81, pointerType: 'touch', button: 0,
-      clientX: rect.left + 120, clientY: rect.top + 160,
-    }))
-  })()`)
+  await browser("click-button", "Zoom in")
+  assert.notEqual(
+    await state(`document.querySelector('.lui-simulator-map')?.getAttribute('data-latitude-delta')`),
+    "0.04",
+  )
+
+  await browser("drag", ".lui-simulator-map", "160", "120", "120", "160")
 
   const movedCamera = await state(`(() => {
     const map = document.querySelector('.lui-simulator-map')
@@ -1056,8 +1021,8 @@ test("Camera extension requests permission only on demand and can return to its 
         },
       },
     })
-    document.querySelector('.lui-simulator-camera button')?.click()
   })()`)
+  await browser("click", ".lui-simulator-camera button")
   await browser("wait", "--fn", "document.querySelector('.lui-simulator-camera')?.dataset.cameraState === 'live'")
 
   await selectPlatform("android")
@@ -1093,7 +1058,7 @@ test("Camera extension requests permission only on demand and can return to its 
     },
   )
 
-  await evaluate(`document.querySelector('.lui-simulator-camera button')?.click()`)
+  await browser("click", ".lui-simulator-camera button")
 
   assert.deepEqual(
     await state(`(() => {
@@ -1136,8 +1101,8 @@ test("Camera extension exposes denied permission without losing its deterministi
         },
       },
     })
-    document.querySelector('.lui-simulator-camera button')?.click()
   })()`)
+  await browser("click", ".lui-simulator-camera button")
   await browser("wait", "--fn", "document.querySelector('.lui-simulator-camera')?.dataset.cameraState === 'denied'")
 
   assert.deepEqual(

@@ -29,7 +29,8 @@ let create_with_extensions host app_icons registry adapters =
   String_map.iter
     (fun name adapter -> Hashtbl.replace web_extension_adapters name adapter)
     adapters;
-  { web_store = Store.create_store ();
+  let renderer =
+    { web_store = Store.create_store ();
     web_document = document;
     web_host = host;
     web_portal_root = portal_root;
@@ -42,6 +43,7 @@ let create_with_extensions host app_icons registry adapters =
     web_images = Hashtbl.create 8;
     web_media_surfaces = Hashtbl.create 4;
     web_cleanups = Hashtbl.create 8;
+    web_layers = Lui_web_layers.create ();
     web_modal_stack = ref [];
     web_modal_return_focus = ref None;
     web_open_tooltip = ref None;
@@ -50,6 +52,12 @@ let create_with_extensions host app_icons registry adapters =
     web_splits = Hashtbl.create 4;
     web_extension_registry = registry;
     web_extension_adapters }
+  in
+  Lui_web_layers.install renderer.web_layers renderer.web_document
+    (fun root target ->
+      Lui_web_store.descendant renderer.web_store.retained_nodes root target)
+    Lui_web_util.event_target_to_element;
+  renderer
 
 let create_simulator_with_extensions host platform app_icons registry adapters =
   let renderer = create_with_extensions host app_icons registry adapters in
