@@ -850,6 +850,28 @@ test("DropdownMenu typeahead moves focus to the matching enabled item", async ()
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Staging")
 })
 
+test("DropdownMenu ArrowRight enters a third-level submenu", async () => {
+  await openLayerRegressionPage()
+  await clickButton("Open dialog")
+  await session.page.locator(".lui-select").click()
+  await browser("wait", "--fn", "document.querySelector('.lui-dropdown-menu[data-open]')")
+
+  await session.page.locator(".lui-menu-item").filter({ hasText: "More" }).focus()
+  await browser("press", "ArrowRight")
+  await browser("wait", "--fn", "document.activeElement?.textContent.trim() === 'Nested option'")
+  assert.equal(await state(`document.activeElement?.textContent.trim()`), "Nested option")
+
+  await browser("press", "ArrowRight")
+  await browser("wait", "--fn", "document.activeElement?.textContent.trim() === 'Deepest option'")
+  assert.deepEqual(
+    await state(`({
+      focus: document.activeElement?.textContent.trim(),
+      openMenus: document.querySelectorAll('.lui-dropdown-menu[data-open]').length,
+    })`),
+    { focus: "Deepest option", openMenus: 3 },
+  )
+})
+
 test("Nested menu keeps its right-side submenu open through the pointer corridor", async () => {
   await openGalleryPage("DropdownMenu")
   await clickButton("Choose environment")

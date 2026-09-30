@@ -807,7 +807,9 @@ let dropdown_key_handler renderer node typeahead_buffer typeahead_timer
     | Some trigger -> close_submenu_to_trigger renderer node trigger
     | None -> dismiss_picker renderer node true
   end
-  else if key = "ArrowRight" && submenu_trigger <> None then begin
+  else if
+    key = "ArrowRight" && current_index = None && submenu_trigger <> None
+  then begin
     W.KeyboardEvent.preventDefault event;
     focus_context_menu_item renderer node 0
   end
