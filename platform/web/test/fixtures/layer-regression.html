@@ -42,5 +42,25 @@ button(root,"Open focus dialog",()=>openDialog("focus"));
 button(root,"Open empty dialog",()=>openDialog("empty"));
 Web.set_event_handler(renderer,e=>{events.push(e);if(e.TAG===0||e.TAG===7){handlers.get(e._0)?.();flush();}return true;});
 flush();Web.mount(renderer,root,host);
-window.audit={renderer,nodes,events,openDialog,closeDialog};
+function setupTracking(count=4,tooltip=false){
+  const scroller=node("column",root,{width:440,height:300,"style-class":"tracking-scroll"});
+  const content=node("column",scroller,{"style-class":"tracking-content"});
+  const spacer=node("box",content,{height:80});
+  const stack=node("stack",content,{"style-class":"tracking-anchor"});
+  const trigger=tooltip?button(stack,"Tracking tooltip",()=>{}):node("select",stack,{text:"Tracking select","press-enabled":true});
+  let popup=null;
+  function open(){if(popup)return;popup=node(tooltip?"tooltip":"dropdown-menu",stack,tooltip?{text:"Tracking tip",anchor:"below"}:{anchor:"below"});
+    if(!tooltip)for(let i=0;i<count;i++){const item=node("menu-item",popup,{text:`Tracking option ${i}`,"press-enabled":true});handlers.set(item,close);}
+    handlers.set(popup,close);flush();return popup;
+  }
+  function close(){if(popup){drop(popup);popup=null;flush();}}
+  function retainReopen(){const n=popup,index=nodes.get(stack).children.indexOf(n);backend.apply_batch({generation:++generation,ops:list([{TAG:8,_0:stack,_1:n},{TAG:7,_0:stack,_1:n,_2:index}])});}
+  handlers.set(trigger,open);
+  node("box",content,{height:900});flush();
+  if(tooltip)open();
+  window.audit.tracking={scroller,content,spacer,stack,trigger,open,close,retainReopen,
+    resizeSpacer:height=>{set(spacer,"height",height);flush();},
+    removeAnchor:()=>{drop(trigger);flush();}};
+}
+window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking};
 </script>
