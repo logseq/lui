@@ -22,7 +22,7 @@ const host=document.querySelector("#host"), renderer=Web.create(undefined,host),
 const list=a=>a.reduceRight((tl,hd)=>({hd,tl}),0);
 const props=new Map(Array.from({length:98},(_,i)=>[Schema.property_name(i),i]));
 const kinds=new Map(Array.from({length:86},(_,i)=>[Schema.node_kind_name(i),i]));
-const nodes=new Map(),handlers=new Map(),events=[];let ops=[],generation=0,id=0,dialog=null,nestedDialog=null,menu=null,submenu=null,select=null;
+const nodes=new Map(),handlers=new Map(),events=[];let ops=[],generation=0,id=0,dialog=null,nestedDialog=null,menu=null,submenu=null,select=null,sheet=null,sheetInput=null;
 const set=(n,name,value)=>ops.push({TAG:3,_0:n,_1:props.get(name),_2:{TAG:typeof value==="string"?0:typeof value==="boolean"?1:2,_0:value}});
 function node(kind,parent,p={}){const n=++id;ops.push({TAG:0,_0:n,_1:kinds.get(kind)});nodes.set(n,{parent,children:[]});for(const [k,v]of Object.entries(p))set(n,k,v);if(parent){const siblings=nodes.get(parent).children;ops.push({TAG:7,_0:parent,_1:n,_2:siblings.length});siblings.push(n);}return n;}
 function flush(){if(ops.length){backend.apply_batch({generation:++generation,ops:list(ops)});ops=[];}}
@@ -34,13 +34,16 @@ function openMenu(parent,picker){if(menu)return;select=picker;menu=node("dropdow
 function picker(parent){const stack=node("stack",parent),s=node("select",stack,{text:"Alpha","press-enabled":true});handlers.set(s,()=>openMenu(stack,s));return s;}
 function closeDialog(which="main"){const target=which==="nested"?nestedDialog:dialog;if(target){drop(target);if(which==="nested")nestedDialog=null;else{dialog=null;nestedDialog=null;menu=null;submenu=null;select=null;}flush();}}
 function addScrollContent(parent){const scroller=node("scroll",parent,{height:120,width:300,"accessibility-identifier":"inner-scroll"});const content=node("column",scroller,{gap:8});node("text",content,{text:"Inner scroll start"});node("box",content,{height:480});node("text",content,{text:"Inner scroll end"});}
+function closeSheet(){if(sheet){drop(sheet);sheet=null;sheetInput=null;flush();}}
+function openSheet(){if(sheet)return;sheet=node("sheet",root,{text:"Regression sheet",height:320,padding:16});handlers.set(sheet,closeSheet);const body=node("column",sheet,{gap:12});node("paragraph",body,{text:"Sheet content stays in the retained renderer."});sheetInput=node("input",body,{placeholder:"Draft","accessibility-identifier":"sheet-input"});addScrollContent(body);node("box",body,{height:420});button(body,"Cancel",closeSheet);flush();}
 function fastReopenDialog(){if(!dialog)return;const retained=dialog,index=nodes.get(root).children.indexOf(dialog);backend.apply_batch({generation:++generation,ops:list([{TAG:8,_0:root,_1:retained}])});nodes.get(root).children.splice(index,1);backend.apply_batch({generation:++generation,ops:list([{TAG:7,_0:root,_1:retained,_2:index}])});nodes.get(root).children.splice(index,0,retained);}
 function openDialog(mode="normal",parent=root,which="main"){const current=which==="nested"?nestedDialog:dialog;if(current)return;const d=node("dialog",parent,{text:which==="nested"?"Nested modal":"Layer regression dialog",width:440,height:420,padding:24});if(which==="nested")nestedDialog=d;else dialog=d;handlers.set(d,()=>closeDialog(which));if(mode!=="empty"){const c=node("column",d,{gap:16});if(mode==="focus"){node("link",c,{text:"Focus link",url:"https://example.com"});const hiddenGroup=node("column",c,{"style-class":"fixture-hidden"});const hidden=button(hiddenGroup,"Hidden candidate",()=>{});set(hidden,"accessibility-identifier","hidden-control");button(c,"Close dialog",()=>closeDialog(which));}else{node("input",c,{placeholder:"Dialog input"});picker(c);addScrollContent(c);if(which==="main"){button(c,"Open nested modal",()=>openDialog("empty",d,"nested"));button(c,"Reopen same dialog",fastReopenDialog);}button(c,"Close dialog",()=>closeDialog(which));}}flush();}
 const root=node("column",null,{gap:18});
 button(root,"Open dialog",()=>openDialog());
 button(root,"Open focus dialog",()=>openDialog("focus"));
 button(root,"Open empty dialog",()=>openDialog("empty"));
-Web.set_event_handler(renderer,e=>{events.push(e);if(e.TAG===0||e.TAG===7){handlers.get(e._0)?.();flush();}return true;});
+button(root,"Open regression sheet",openSheet);
+Web.set_event_handler(renderer,e=>{events.push(e);if(e.TAG===0||e.TAG===7){handlers.get(e._0)?.();flush();}else if(e.TAG===2&&e._0===sheetInput){set(sheetInput,"text",e._1);flush();}return true;});
 flush();Web.mount(renderer,root,host);
 function setupTracking(count=4,tooltip=false){
   const scroller=node("column",root,{width:440,height:300,"style-class":"tracking-scroll"});
@@ -62,5 +65,5 @@ function setupTracking(count=4,tooltip=false){
     resizeSpacer:height=>{set(spacer,"height",height);flush();},
     removeAnchor:()=>{drop(trigger);flush();}};
 }
-window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking};
+window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,openSheet,closeSheet,get sheetInput(){return document.querySelector("#sheet-input")}};
 </script>

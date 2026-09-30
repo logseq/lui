@@ -5,6 +5,29 @@ external parse_float : string -> float = "parseFloat" [@@mel]
 external element_style : Dom.element -> W.CssStyleDeclaration.t = "style"
   [@@mel.get]
 
+type visual_viewport
+type navigator
+external visual_viewport : W.Window.t -> visual_viewport option = "visualViewport"
+  [@@mel.get] [@@mel.return nullable]
+external viewport_height : visual_viewport -> float = "height" [@@mel.get]
+external viewport_top : visual_viewport -> float = "offsetTop" [@@mel.get]
+external viewport_left : visual_viewport -> float = "offsetLeft" [@@mel.get]
+external viewport_scale : visual_viewport -> float = "scale" [@@mel.get]
+external viewport_listen : visual_viewport -> string -> (Dom.event -> unit) -> unit
+  = "addEventListener" [@@mel.send]
+external viewport_unlisten : visual_viewport -> string -> (Dom.event -> unit) -> unit
+  = "removeEventListener" [@@mel.send]
+external window_inner_height : W.Window.t -> float = "innerHeight" [@@mel.get]
+external window_navigator : W.Window.t -> navigator = "navigator" [@@mel.get]
+external navigator_platform : navigator -> string = "platform" [@@mel.get]
+external navigator_touch_points : navigator -> int = "maxTouchPoints" [@@mel.get]
+
+let touch_ios window =
+  let navigator = window_navigator window in
+  navigator_touch_points navigator > 0
+  && List.mem (navigator_platform navigator)
+       [ "iPhone"; "iPad"; "iPod"; "MacIntel" ]
+
 type modal_policy =
   | Nonblocking
   | Blocking
@@ -35,6 +58,7 @@ type document_lock = {
   body_styles : (string * string * string) list;
   scroll_x : float;
   scroll_y : float;
+  mutable stop_viewport : unit -> unit;
   mutable owners : int;
 }
 
@@ -51,7 +75,9 @@ type t = {
 
 let style_properties =
   [ "overflow"; "overflow-x"; "overflow-y"; "padding-right"; "position";
-    "top"; "left"; "right"; "width" ]
+    "top"; "left"; "right"; "width"; "scroll-behavior";
+    "--lui-visual-height"; "--lui-visual-top";
+    "--lui-keyboard-inset-limit" ]
 
 let inline_style element =
   element_style element
@@ -130,6 +156,7 @@ let acquire_scroll_lock document =
               body_styles = style_snapshot body;
               scroll_x = W.Window.scrollX window;
               scroll_y = W.Window.scrollY window;
+              stop_viewport = (fun () -> ());
               owners = 1 }
           in
           let scrollbar_width =
@@ -151,6 +178,46 @@ let acquire_scroll_lock document =
             (inline_style root);
           W.CssStyleDeclaration.setProperty "overflow" "hidden" ""
             (inline_style body);
+          let ios = touch_ios window in
+          let update_viewport () =
+            let viewport = visual_viewport window in
+            let height, top, left =
+              match viewport with
+              | Some viewport when viewport_scale viewport = 1. ->
+                  viewport_height viewport, viewport_top viewport,
+                  viewport_left viewport
+              | _ -> window_inner_height window, 0., 0.
+            in
+            let root_style = inline_style root in
+            W.CssStyleDeclaration.setProperty "--lui-visual-height"
+              (Js.Float.toString height ^ "px") "" root_style;
+            W.CssStyleDeclaration.setProperty "--lui-visual-top"
+              (Js.Float.toString top ^ "px") "" root_style;
+            W.CssStyleDeclaration.setProperty "--lui-keyboard-inset-limit"
+              (if window_inner_height window -. height > 80. then "0px"
+               else "100dvh") "" root_style;
+            if ios then begin
+              let body_style = inline_style body in
+              W.CssStyleDeclaration.setProperty "position" "fixed" "important" body_style;
+              W.CssStyleDeclaration.setProperty "top"
+                (Js.Float.toString (-.lock.scroll_y +. floor top) ^ "px")
+                "important" body_style;
+              W.CssStyleDeclaration.setProperty "left"
+                (Js.Float.toString (-.lock.scroll_x +. floor left) ^ "px")
+                "important" body_style;
+              W.CssStyleDeclaration.setProperty "right" "0" "important" body_style
+            end
+          in
+          update_viewport ();
+          (match visual_viewport window with
+           | Some viewport ->
+               let listener _event = update_viewport () in
+               viewport_listen viewport "resize" listener;
+               viewport_listen viewport "scroll" listener;
+               lock.stop_viewport <- (fun () ->
+                 viewport_unlisten viewport "resize" listener;
+                 viewport_unlisten viewport "scroll" listener)
+           | None -> ());
           locks := lock :: !locks
       | _ -> ())
 
@@ -160,9 +227,13 @@ let release_scroll_lock document =
   | Some lock ->
       lock.owners <- lock.owners - 1;
       if lock.owners <= 0 then begin
+        lock.stop_viewport ();
         restore_style lock.root lock.root_styles;
         restore_style lock.body lock.body_styles;
+        W.CssStyleDeclaration.setProperty "scroll-behavior" "auto" "important"
+          (inline_style lock.root);
         W.Window.scrollTo lock.scroll_x lock.scroll_y lock.window;
+        restore_style lock.root lock.root_styles;
         locks :=
           List.filter
             (fun other ->

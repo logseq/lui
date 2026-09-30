@@ -8,6 +8,7 @@ import { createPlaywrightSession } from "./playwright-session.mjs"
 let origin
 let server
 let session
+let cdp
 
 async function browser(...args) {
   return session.command(...args)
@@ -20,6 +21,14 @@ async function evaluate(source) {
 async function state(expression) {
   const output = await evaluate(`JSON.stringify(${expression})`)
   return JSON.parse(JSON.parse(output))
+}
+
+async function touchEvent(type, touchPoints) {
+  await cdp.send("Input.dispatchTouchEvent", {
+    type,
+    touchPoints,
+    modifiers: 0,
+  })
 }
 
 async function openGallery() {
@@ -48,10 +57,17 @@ async function openGalleryPage(name) {
 async function openSheet() {
   await openGalleryPage("Sheet")
   await browser("click-button", "Open sheet")
+  await session.page.locator(".lui-sheet").evaluate(async (sheet) => {
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()))
+    await Promise.all(sheet.getAnimations().map((animation) => animation.finished.catch(() => {})))
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()))
+  })
 }
 
 before(async () => {
   session = await createPlaywrightSession()
+  cdp = await session.page.context().newCDPSession(session.page)
+  await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 })
   server = createStaticServer(new URL("../../../", import.meta.url).pathname)
   server.listen(0, "127.0.0.1")
   await once(server, "listening")
@@ -59,6 +75,7 @@ before(async () => {
 })
 
 after(async () => {
+  await cdp?.detach().catch(() => {})
   if (session) await session.close().catch(() => {})
   if (server?.listening) {
     const closed = once(server, "close")
@@ -730,7 +747,10 @@ test("phone Sheet uses the simulated viewport on a wide browser and avoids its k
   await openGallery()
   await browser("set", "viewport", "1280", "900")
   await openSheet()
-
+  const sheet = session.page.locator(".lui-sheet")
+  const input = sheet.locator(".lui-input")
+  await input.evaluate((element) => element.blur())
+  await browser("wait", "--fn", "document.querySelector('#app')?.getAttribute('data-lui-keyboard') === 'hidden'")
   assert.deepEqual(
     await state(`(() => {
       const host = document.querySelector('#app')
@@ -739,14 +759,6 @@ test("phone Sheet uses the simulated viewport on a wide browser and avoids its k
       const hostRect = host.getBoundingClientRect()
       const layerRect = layer.getBoundingClientRect()
       const sheetRect = sheet.getBoundingClientRect()
-      sheet.dispatchEvent(new PointerEvent('pointerdown', {
-        bubbles: true, pointerId: 91, pointerType: 'touch', button: 0,
-        clientX: sheetRect.left + 40, clientY: sheetRect.top + 40,
-      }))
-      sheet.dispatchEvent(new PointerEvent('pointermove', {
-        bubbles: true, pointerId: 91, pointerType: 'touch', button: 0,
-        clientX: sheetRect.left + 40, clientY: sheetRect.top + 120,
-      }))
       return {
         host: {
           left: Math.round(hostRect.left), top: Math.round(hostRect.top),
@@ -761,9 +773,6 @@ test("phone Sheet uses the simulated viewport on a wide browser and avoids its k
         layerBottom: Math.round(layerRect.bottom),
         safePaddingBottom: getComputedStyle(sheet).paddingBottom,
         handleVisible: getComputedStyle(sheet.querySelector('.lui-sheet-handle')).display !== 'none',
-        swiping: sheet.hasAttribute('data-swiping'),
-        swipeDirection: sheet.getAttribute('data-swipe-direction'),
-        swipeMovement: sheet.style.getPropertyValue('--drawer-swipe-movement-y'),
       }
     })()`),
     {
@@ -774,10 +783,35 @@ test("phone Sheet uses the simulated viewport on a wide browser and avoids its k
       layerBottom: 872,
       safePaddingBottom: "34px",
       handleVisible: true,
-      swiping: true,
-      swipeDirection: "down",
-      swipeMovement: "80px",
     },
+  )
+  const bounds = await sheet.boundingBox()
+  assert.ok(bounds)
+  await evaluate(`window.__luiSimulatorPointerId = null;
+    document.querySelector('.lui-sheet').addEventListener('pointerdown', event => {
+      if (event.pointerType === 'touch') window.__luiSimulatorPointerId = event.pointerId
+    }, { once: true })`)
+  await touchEvent("touchStart", [{
+    x: bounds.x + 40,
+    y: bounds.y + 40,
+    id: 91,
+  }])
+  await touchEvent("touchMove", [{
+    x: bounds.x + 40,
+    y: bounds.y + 120,
+    id: 91,
+  }])
+
+  assert.deepEqual(
+    await state(`(() => {
+      const sheet = document.querySelector('.lui-sheet')
+      return {
+        swiping: sheet.hasAttribute('data-swiping'),
+        swipeDirection: sheet.getAttribute('data-swipe-direction'),
+        swipeMovement: sheet.style.getPropertyValue('--drawer-swipe-movement-y'),
+      }
+    })()`),
+    { swiping: true, swipeDirection: "down", swipeMovement: "80px" },
   )
 
   await evaluate(`new Promise((resolve) => {
@@ -790,7 +824,7 @@ test("phone Sheet uses the simulated viewport on a wide browser and avoids its k
       resolve(true)
     }, { once: true })
     sheet.dispatchEvent(new PointerEvent('pointercancel', {
-      bubbles: true, pointerId: 91, pointerType: 'touch', button: 0,
+      bubbles: true, pointerId: window.__luiSimulatorPointerId, pointerType: 'touch', button: 0,
     }))
   })`)
 
@@ -828,6 +862,19 @@ test("tablet Sheet stays a side surface on a compact browser and rejects phone s
   await openGallery()
   await selectFormFactor("tablet")
   await openSheet()
+  const sheet = session.page.locator(".lui-sheet")
+  const bounds = await sheet.boundingBox()
+  assert.ok(bounds)
+  await touchEvent("touchStart", [{
+    x: bounds.x + 40,
+    y: bounds.y + 40,
+    id: 92,
+  }])
+  await touchEvent("touchMove", [{
+    x: bounds.x + 40,
+    y: bounds.y + 120,
+    id: 92,
+  }])
 
   assert.deepEqual(
     await state(`(() => {
@@ -835,14 +882,6 @@ test("tablet Sheet stays a side surface on a compact browser and rejects phone s
       const layerRect = document.querySelector('.lui-modal-layer').getBoundingClientRect()
       const sheet = document.querySelector('.lui-sheet')
       const sheetRect = sheet.getBoundingClientRect()
-      sheet.dispatchEvent(new PointerEvent('pointerdown', {
-        bubbles: true, pointerId: 92, pointerType: 'touch', button: 0,
-        clientX: sheetRect.left + 40, clientY: sheetRect.top + 40,
-      }))
-      sheet.dispatchEvent(new PointerEvent('pointermove', {
-        bubbles: true, pointerId: 92, pointerType: 'touch', button: 0,
-        clientX: sheetRect.left + 40, clientY: sheetRect.top + 120,
-      }))
       return {
         hostWidth: Math.round(hostRect.width),
         hostHeight: Math.round(hostRect.height),
