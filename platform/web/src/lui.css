@@ -980,10 +980,13 @@ body {
   }
 
   .lui-context-menu {
-    @apply fixed hidden max-h-72 min-w-40 flex-col overflow-auto rounded-md border bg-card p-1 text-card-foreground shadow-md;
+    @apply fixed hidden flex-col overflow-auto rounded-md border bg-card p-1 text-card-foreground shadow-md;
+    pointer-events: auto;
     --lui-layer-base: 100;
     z-index: calc(var(--lui-layer-base) + var(--lui-layer-index, 0));
-    max-width: calc(100vw - 1rem);
+    max-height: min(18rem, var(--lui-popup-available-height, calc(100vh - 1rem)));
+    max-width: var(--lui-popup-available-width, calc(100vw - 1rem));
+    min-width: min(10rem, var(--lui-popup-available-width, calc(100vw - 1rem)));
   }
 
   .lui-context-menu[data-open] {
