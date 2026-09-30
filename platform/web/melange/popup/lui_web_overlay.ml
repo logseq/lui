@@ -688,7 +688,7 @@ let remove_modal_layer_after_exit_bang = remove_modal_layer_after_exit
 
 let tooltip_delay renderer node = Store.tooltip_delay renderer node
 
-let set_tooltip_open renderer node open_flag =
+let rec set_tooltip_open renderer node open_flag =
   let tooltip = Lui_web_nodes.dom_node renderer node in
   if open_flag then begin
     (match !(renderer.web_open_tooltip) with
@@ -696,9 +696,10 @@ let set_tooltip_open renderer node open_flag =
          if previous <> node then
            (match Store.node renderer.web_store previous with
             | Some _current ->
-        let previous_tooltip =
+                let previous_tooltip =
                   Lui_web_nodes.dom_node renderer previous
                 in
+                Lui_web_popup_tracking.stop previous_tooltip;
                 let token =
                   Lui_web_layers.close_layer renderer.web_layers
                     renderer.web_document previous
@@ -721,13 +722,12 @@ let set_tooltip_open renderer node open_flag =
     Lui_web_layers.open_layer renderer.web_layers renderer.web_document node;
     ignore (begin_popup_open tooltip);
     ignore (Lui_web_position.position_tooltip renderer node);
-    Webapi.requestAnimationFrame (fun _time ->
-        match Store.node renderer.web_store node with
-        | Some current when current.retained_parent <> None ->
-            ignore (Lui_web_position.position_tooltip renderer node)
-        | _ -> ())
+    Lui_web_position.track renderer node tooltip
+      ~update:(fun () -> Lui_web_position.position_tooltip renderer node)
+      ~on_invalid:(fun () -> set_tooltip_open renderer node false)
   end
   else begin
+    Lui_web_popup_tracking.stop tooltip;
     let token =
       Lui_web_layers.close_layer renderer.web_layers renderer.web_document node
     in
@@ -876,18 +876,7 @@ let tooltip_key ctx event =
     tooltip_hide ctx false
   end
 
-let tooltip_refresh_position ctx _event =
-  if !(ctx.tooltip_renderer.web_open_tooltip) = Some ctx.tooltip_node_id
-  then
-    ignore
-      (Lui_web_position.position_tooltip ctx.tooltip_renderer
-         ctx.tooltip_node_id)
-
 let mount_tooltip renderer node tooltip =
-  let document = renderer.web_document in
-  let window =
-    W.HtmlDocument.defaultView (W.Document.unsafeAsHtmlDocument document)
-  in
   let trigger = Lui_web_nodes.dropdown_anchor_node renderer node in
   let tooltip_id = Lui_web_util.node_dom_id node in
   let ctx = {
@@ -907,7 +896,6 @@ let mount_tooltip renderer node tooltip =
   let focus_out_handler event = tooltip_focus_out ctx event in
   let press_handler event = tooltip_press ctx event in
   let key_handler event = tooltip_key ctx event in
-  let resize_handler event = tooltip_refresh_position ctx event in
   ignore (add_tooltip_description trigger tooltip_id);
   let owner =
     match Store.node renderer.web_store node with
@@ -927,11 +915,8 @@ let mount_tooltip renderer node tooltip =
   W.Element.addEventListener "focusin" focus_in_handler trigger;
   W.Element.addEventListener "focusout" focus_out_handler trigger;
   W.Element.addEventListener "pointerdown" press_handler trigger;
-  (match window with
-   | Some current_window ->
-       W.Window.addEventListener "resize" resize_handler current_window
-   | None -> ());
   Hashtbl.replace renderer.web_cleanups node (fun () ->
+      Lui_web_popup_tracking.stop tooltip;
       tooltip_cancel_all ctx;
       tooltip_cancel_warm ctx;
       W.Element.removeAttribute "data-open" tooltip;
@@ -945,11 +930,6 @@ let mount_tooltip renderer node tooltip =
       W.Element.removeEventListener "focusin" focus_in_handler trigger;
       W.Element.removeEventListener "focusout" focus_out_handler trigger;
       W.Element.removeEventListener "pointerdown" press_handler trigger;
-      (match window with
-       | Some current_window ->
-           W.Window.removeEventListener
-             "resize" resize_handler current_window
-       | None -> ());
       Lui_web_layers.remove renderer.web_layers renderer.web_document node;
       ignore true)
 

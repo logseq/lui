@@ -312,7 +312,7 @@ let activate_menu_item_bang = activate_menu_item
 
 (* --- dropdown open/close --- *)
 
-let set_dropdown_open renderer node open_ =
+let rec set_dropdown_open renderer node open_ =
   let positioner = Lui_web_nodes.dom_node renderer node in
   let popup = Lui_web_util.child_element positioner 0 in
   if open_ then begin
@@ -324,13 +324,12 @@ let set_dropdown_open renderer node open_ =
     Lui_web_layers.open_layer renderer.web_layers renderer.web_document node;
     begin_popup_open popup;
     ignore (Lui_web_position.position_dropdown renderer node);
-    Webapi.requestAnimationFrame (fun _time ->
-        match Store.node renderer.web_store node with
-        | Some current when current.retained_parent <> None ->
-            Lui_web_position.position_dropdown renderer node
-        | _ -> ())
+    Lui_web_position.track renderer node popup
+      ~update:(fun () -> Lui_web_position.position_dropdown renderer node)
+      ~on_invalid:(fun () -> set_dropdown_open renderer node false)
   end
   else begin
+    Lui_web_popup_tracking.stop positioner;
     ignore
       (Lui_web_layers.close_layer renderer.web_layers renderer.web_document
          node);
@@ -656,26 +655,11 @@ let dropdown_key_handler renderer node typeahead_buffer typeahead_timer
 
 let attach_dropdown_events renderer node _dropdown_node =
   let document = renderer.web_document in
-  let window =
-    W.HtmlDocument.defaultView (W.Document.unsafeAsHtmlDocument document)
-  in
   let typeahead_buffer = ref "" in
   let typeahead_timer = ref None in
-  let refresh_position _event =
-    Webapi.requestAnimationFrame (fun _time ->
-        match Store.node renderer.web_store node with
-        | Some current when current.retained_parent <> None ->
-            Lui_web_position.position_dropdown renderer node
-        | _ -> ())
-  in
   let key_handler event =
     dropdown_key_handler renderer node typeahead_buffer typeahead_timer event
   in
-  W.Document.addEventListener "click" refresh_position document;
-  (match window with
-   | Some current_window ->
-       W.Window.addEventListener "resize" refresh_position current_window
-   | None -> ());
   let positioner = Lui_web_nodes.dom_node renderer node in
   let popup = Lui_web_util.child_element positioner 0 in
   let owner =
@@ -705,12 +689,7 @@ let attach_dropdown_events renderer node _dropdown_node =
        ~key_handler ~present:false ~open_:false);
   Hashtbl.replace renderer.web_cleanups node (fun () ->
       cancel_typeahead typeahead_timer;
-      W.Document.removeEventListener "click" refresh_position document;
-      (match window with
-       | Some current_window ->
-           W.Window.removeEventListener "resize" refresh_position
-             current_window
-       | None -> ());
+      Lui_web_popup_tracking.stop positioner;
       if not (Lui_web_layers.is_present renderer.web_layers node) then
         Lui_web_layers.remove renderer.web_layers renderer.web_document node)
 
