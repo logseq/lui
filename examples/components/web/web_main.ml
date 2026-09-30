@@ -194,8 +194,8 @@ let simulator_map_create _node document emit =
   append controls
     (map_control document "Recenter map" {js|◎|js} (fun () ->
          recenter_map map emit));
-  append texture controls;
   append map texture;
+  append map controls;
   W.Element.addEventListener "pointerdown"
     (map_pointer_down map drag dragging)
     map;
