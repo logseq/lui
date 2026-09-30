@@ -1382,20 +1382,45 @@ let dynamic_segment_insert_index segment local_index =
     invalid_arg "dynamic segment insert index is out of bounds";
   !(segment.dynamic_segment_base) + local_index
 
-let resize_dynamic_segment application segment delta =
-  if not !(segment.dynamic_segment_active) then
-    invalid_arg "dynamic segment is inactive";
+(* A reconcile can rekey a segment's registration onto the node its parent
+   was remapped to while the owning scope still disposes lazily, and the
+   candidate alias may already be pruned. When the recorded parent no longer
+   finds the entry, fall back to a table scan so the bookkeeping still
+   unwinds. *)
+let scan_segment_registration application segment =
+  let found = ref None in
+  Hashtbl.iter
+    (fun _key segments ->
+       match !found with
+       | Some _ -> ()
+       | None ->
+         (match
+            find_dynamic_segment_index segments segment.dynamic_segment_id
+          with
+          | Some index -> found := Some (segments, index)
+          | None -> ()))
+    application.dynamic_segments;
+  !found
+
+let segment_registration application segment =
   let parent =
     canonical_node application segment.dynamic_segment_parent
   in
-  let segments =
-    match Hashtbl.find_opt application.dynamic_segments parent with
-    | Some registered -> registered
-    | None -> invalid_arg "dynamic segment is not registered"
-  in
-  let segment_index =
-    match find_dynamic_segment_index segments segment.dynamic_segment_id with
-    | Some index -> index
+  match Hashtbl.find_opt application.dynamic_segments parent with
+  | Some segments ->
+    (match
+       find_dynamic_segment_index segments segment.dynamic_segment_id
+     with
+     | Some index -> Some (segments, index)
+     | None -> scan_segment_registration application segment)
+  | None -> scan_segment_registration application segment
+
+let resize_dynamic_segment application segment delta =
+  if not !(segment.dynamic_segment_active) then
+    invalid_arg "dynamic segment is inactive";
+  let segments, segment_index =
+    match segment_registration application segment with
+    | Some (segments, index) -> segments, index
     | None -> invalid_arg "dynamic segment is not registered"
   in
   let next_size = !(segment.dynamic_segment_size) + delta in
@@ -1408,6 +1433,19 @@ let resize_dynamic_segment application segment delta =
          current.dynamic_segment_base :=
            !(current.dynamic_segment_base) + delta)
     segments
+
+(* Teardown counterpart of [resize_dynamic_segment]: the registration can
+   already be gone entirely (an outer reconcile dropped or rekeyed the
+   parent entry, or a restore rolled the table back). Sibling bases are
+   moot then, but the segment's own size still unwinds so
+   [unregister_dynamic_segment] sees an empty segment. *)
+let release_dynamic_segment application segment =
+  if !(segment.dynamic_segment_active) then
+    match segment_registration application segment with
+    | Some _ -> resize_dynamic_segment application segment (-1)
+    | None ->
+      segment.dynamic_segment_size :=
+        max 0 (!(segment.dynamic_segment_size) - 1)
 
 let unregister_dynamic_segment application segment =
   if !(segment.dynamic_segment_active) then begin
@@ -1429,6 +1467,37 @@ let unregister_dynamic_segment application segment =
       else Hashtbl.replace application.dynamic_segments parent remaining;
       if List.length remaining < List.length segments then
         decr application.runtime_dynamic_segment_count
-    | None -> ());
+    | None ->
+      (* The parent key may no longer find the entry (rekeyed by a
+         reconcile); remove by segment id wherever it lives. *)
+      let found_key = ref None in
+      Hashtbl.iter
+        (fun key segments ->
+           if
+             List.exists
+               (fun current ->
+                  current.dynamic_segment_id
+                  = segment.dynamic_segment_id)
+               segments
+           then found_key := Some key)
+        application.dynamic_segments;
+      (match !found_key with
+       | Some key ->
+         (match Hashtbl.find_opt application.dynamic_segments key with
+          | Some segments ->
+            let remaining =
+              List.filter
+                (fun current ->
+                   current.dynamic_segment_id
+                   <> segment.dynamic_segment_id)
+                segments
+            in
+            if remaining = [] then
+              Hashtbl.remove application.dynamic_segments key
+            else
+              Hashtbl.replace application.dynamic_segments key remaining;
+            decr application.runtime_dynamic_segment_count
+          | None -> ())
+       | None -> ()));
     segment.dynamic_segment_active := false
   end

@@ -31,7 +31,7 @@ let teardown_branch application segment parent node =
     Lui_runtime.node_live application parent
     && Lui_runtime.node_live application node
   then Lui_runtime.remove_child application parent node;
-  Lui_runtime.resize_dynamic_segment application segment (-1);
+  Lui_runtime.release_dynamic_segment application segment;
   if Lui_runtime.node_live application node then
     Lui_runtime.drop_subtree application node
 
