@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LUI picker lifecycle regression fixture</title>
+<link rel="stylesheet" href="/platform/web/dist/lui.css">
+<script type="importmap">{"imports":{
+"lui.web.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui.web.dom/",
+"lui/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui/",
+"melange-webapi/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange-webapi/",
+"melange.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.dom/",
+"melange.js/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.js/",
+"melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
+"ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
+}}</script>
+<style>
+body{margin:24px;font:16px system-ui}
+#host{min-height:1600px}
+#host>.lui-column{position:sticky;top:0;z-index:1}
+button{margin:4px}
+.picker-long-menu{max-height:136px;overflow-y:auto}
+</style>
+<h1>Picker lifecycle regressions</h1>
+<main id="host"></main>
+<script type="module">
+import * as Web from "lui.web.dom/shell/lui_web.js";
+import * as Schema from "lui/lui_wire_schema.js";
+
+const host=document.querySelector("#host"),renderer=Web.create(undefined,host),backend=Web.backend(renderer);
+const list=a=>a.reduceRight((tl,hd)=>({hd,tl}),0);
+const props=new Map(Array.from({length:98},(_,i)=>[Schema.property_name(i),i]));
+const kinds=new Map(Array.from({length:86},(_,i)=>[Schema.node_kind_name(i),i]));
+const nodes=new Map(),handlers=new Map(),events=[],pickerKinds=new Map(),pickerValues=new Map();
+let ops=[],generation=0,id=0,menu=null,submenu=null,currentItems=[],activePicker=null,selectValue="Beta",delayMount=false,pendingMount=false,withSubmenu=false;
+const set=(n,name,value)=>ops.push({TAG:3,_0:n,_1:props.get(name),_2:{TAG:typeof value==="string"?0:typeof value==="boolean"?1:2,_0:value}});
+function node(kind,parent,p={}){const n=++id;ops.push({TAG:0,_0:n,_1:kinds.get(kind)});nodes.set(n,{parent,children:[]});for(const[k,v]of Object.entries(p))set(n,k,v);if(parent){const siblings=nodes.get(parent).children;ops.push({TAG:7,_0:parent,_1:n,_2:siblings.length});siblings.push(n);}return n;}
+function flush(){if(ops.length){backend.apply_batch({generation:++generation,ops:list(ops)});ops=[];}}
+function drop(n){if(!n||!nodes.has(n))return;for(const c of [...nodes.get(n).children])drop(c);const p=nodes.get(n).parent;if(p){ops.push({TAG:8,_0:p,_1:n});nodes.get(p).children=nodes.get(p).children.filter(x=>x!==n);}ops.push({TAG:2,_0:n});nodes.delete(n);handlers.delete(n);}
+function button(parent,text,identifier,fn=()=>{}){const n=node("button",parent,{text,"accessibility-identifier":identifier});handlers.set(n,fn);return n;}
+function closeMenu(){if(!menu)return;drop(menu);menu=null;submenu=null;activePicker=null;currentItems=[];flush();}
+function addItem(parent,text,options={}){const n=node("menu-item",parent,{text,enabled:options.enabled!==false,"press-enabled":true,selected:options.selected===true});const item={id:n,text,enabled:options.enabled!==false};currentItems.push(item);handlers.set(n,()=>{if(!item.enabled)return;if(pickerKinds.get(activePicker)==="select"){selectValue=text;pickerValues.set(activePicker,text);set(activePicker,"text",text);for(const option of currentItems)set(option.id,"selected",option.id===n);}else{pickerValues.set(activePicker,text);set(activePicker,"text",text);}closeMenu();});return n;}
+function openMenu(picker){if(menu||pendingMount)return;const open=()=>{pendingMount=false;if(menu)return;activePicker=picker;const pickerKind=pickerKinds.get(picker);const parent=nodes.get(picker).parent;menu=node("dropdown-menu",parent,pickerKind==="combobox"?{"style-class":"picker-long-menu"}:{});currentItems=[];if(pickerKind==="select"){for(const text of ["Alpha","Beta","Charlie","Delta","Disabled"]){addItem(menu,text,{enabled:text!=="Disabled",selected:text===pickerValues.get(picker)});}if(withSubmenu){const more=node("menu-trigger",menu,{text:"More"});submenu=node("dropdown-menu",more,{"min-width":180});node("menu-item",submenu,{text:"Nested option","press-enabled":true});handlers.set(more,()=>{});}}else{for(let i=0;i<36;i++)addItem(menu,`Option ${String(i).padStart(2,"0")}`,{selected:i===0});}handlers.set(menu,closeMenu);flush();};if(delayMount){pendingMount=true;setTimeout(open,35);}else open();}
+function picker(parent,kind,identifier,props={}){const stack=node("stack",parent);const n=node(kind,stack,{"accessibility-identifier":identifier,"press-enabled":true,...props});pickerKinds.set(n,kind);pickerValues.set(n,props.text??"");handlers.set(n,()=>openMenu(n));return n;}
+function setProperty(n,name,value){set(n,name,value);flush();}
+const root=node("column",null,{gap:16});
+button(root,"Before picker","picker-before");
+const selectId=picker(root,"select","picker-select",{text:selectValue});
+button(root,"After picker","picker-after");
+button(root,"Outside target","picker-outside");
+const comboId=picker(root,"combobox","picker-combo",{text:"",placeholder:"Search options"});
+button(root,"Open dialog","picker-open-dialog",()=>openDialog());
+let dialogId=null;
+function openDialog(){if(dialogId)return;dialogId=node("dialog",root,{text:"Picker owner dialog",width:440,height:360,padding:24});const column=node("column",dialogId,{gap:16});picker(column,"select","dialog-select",{text:"Beta"});button(column,"Close dialog","dialog-close",()=>closeDialog());flush();}
+function closeDialog(){if(!dialogId)return;drop(dialogId);dialogId=null;flush();}
+Web.set_event_handler(renderer,e=>{events.push(e);if(e.TAG===0||e.TAG===7){handlers.get(e._0)?.();flush();}return true;});
+flush();Web.mount(renderer,root,host);
+window.audit={events,nodes,selectId,comboId,get menuItems(){return currentItems.map(({id,text,enabled})=>({id,text,enabled}));},clearEvents(){events.length=0;},openDialog,closeDialog,setSelectText(value){selectValue=value;setProperty(selectId,"text",value);},setEnabled(n,value){setProperty(n,"enabled",value);},setText(n,value){setProperty(n,"text",value);},setAccessibilityLabel(n,value){setProperty(n,"accessibility-label",value);},delayNextMount(){delayMount=true;},enableSubmenu(){withSubmenu=true;},insertComboOption(index,text){const before=currentItems[index]?.id;const parent=menu;if(!parent)return;const n=node("menu-item",parent,{text,enabled:true,"press-enabled":true});const siblings=nodes.get(parent).children;siblings.pop();const insertAt=before?siblings.indexOf(before):siblings.length;ops.push({TAG:8,_0:parent,_1:n});siblings.splice(insertAt,0,n);ops.push({TAG:7,_0:parent,_1:n,_2:insertAt});for(let i=insertAt+1;i<siblings.length;i++)ops.push({TAG:7,_0:parent,_1:siblings[i],_2:i});currentItems.splice(index,0,{id:n,text,enabled:true});handlers.set(n,()=>{if(selectValue!==null){selectValue=text;set(selectId,"text",text);}else set(comboId,"text",text);closeMenu();});flush();},removeComboOption(index){const item=currentItems[index];if(!item)return;drop(item.id);currentItems.splice(index,1);flush();},disableComboOption(text){const item=currentItems.find(x=>x.text===text);if(item){item.enabled=false;set(item.id,"enabled",false);flush();}},disableAllComboOptions(){for(const item of currentItems){item.enabled=false;set(item.id,"enabled",false);}flush();},isMenuMounted(){return menu!==null;},hasDialog(){return dialogId!==null;}};
+Object.assign(window.audit,{selectId,comboId,get menuItems(){return currentItems.map(({id,text,enabled})=>({id,text,enabled}));},clearEvents(){events.length=0;},setSelectText(value){selectValue=value;pickerValues.set(selectId,value);setProperty(selectId,"text",value);},setEnabled(n,value){setProperty(n,"enabled",value);},setText(n,value){setProperty(n,"text",value);},setAccessibilityLabel(n,value){setProperty(n,"accessibility-label",value);},delayNextMount(){delayMount=true;},enableSubmenu(){withSubmenu=true;},insertComboOption(index,text){const parent=menu;if(!parent)return;const n=node("menu-item",null,{text,enabled:true,"press-enabled":true});nodes.get(n).parent=parent;nodes.get(parent).children.splice(index,0,n);ops.push({TAG:7,_0:parent,_1:n,_2:index});currentItems.splice(index,0,{id:n,text,enabled:true});handlers.set(n,()=>{pickerValues.set(activePicker,text);set(activePicker,"text",text);closeMenu();});flush();},removeComboOption(index){const item=currentItems[index];if(!item)return;drop(item.id);currentItems.splice(index,1);flush();},disableComboOption(text){const item=currentItems.find(x=>x.text===text);if(item){item.enabled=false;set(item.id,"enabled",false);flush();}},disableAllComboOptions(){for(const item of currentItems){item.enabled=false;set(item.id,"enabled",false);}flush();},isMenuMounted(){return menu!==null;},hasDialog(){return dialogId!==null;}});
+Object.defineProperty(window.audit,"menuItems",{configurable:true,get(){return currentItems.map(({id,text,enabled})=>({id,text,enabled}));}});
+</script>
