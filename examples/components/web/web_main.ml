@@ -189,10 +189,10 @@ let simulator_map_create _node document emit =
   append controls (map_control document "Zoom in" "+" (fun () ->
        update_zoom map emit 0.5));
   append controls
-    (map_control document "Zoom out" "−" (fun () ->
+    (map_control document "Zoom out" {js|−|js} (fun () ->
          update_zoom map emit 2.0));
   append controls
-    (map_control document "Recenter map" "◎" (fun () ->
+    (map_control document "Recenter map" {js|◎|js} (fun () ->
          recenter_map map emit));
   append texture controls;
   append map texture;
