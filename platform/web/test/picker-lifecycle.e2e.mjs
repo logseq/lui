@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { once } from "node:events"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import test, { after, before } from "node:test"
+import test, { after, afterEach, before } from "node:test"
 
 import { createStaticServer } from "../../../tooling/serve_web.mjs"
 import { createPlaywrightSession } from "./playwright-session.mjs"
@@ -11,11 +11,33 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 let origin
 let server
 let session
+let touchContext
+let touchPage
+const pageErrors = []
+
+function trackPageErrors(page) {
+  page.on("pageerror", error => pageErrors.push(error.message))
+}
 
 async function openPickerPage() {
   await session.command("set", "viewport", "1280", "900")
   await session.command("open", `${origin}/platform/web/test/fixtures/picker-regression.html`)
   await session.command("wait", "--fn", "window.audit !== undefined")
+}
+
+async function openTouchPage() {
+  const browser = session.page.context().browser()
+  touchContext = await browser.newContext({
+    hasTouch: true,
+    viewport: { width: 1280, height: 900 },
+  })
+  touchPage = await touchContext.newPage()
+  trackPageErrors(touchPage)
+  await touchPage.goto(`${origin}/platform/web/test/fixtures/picker-regression.html`, {
+    waitUntil: "networkidle",
+  })
+  await touchPage.waitForFunction("window.audit !== undefined")
+  return touchPage
 }
 
 async function state(expression) {
@@ -38,6 +60,15 @@ before(async () => {
   await once(server, "listening")
   origin = `http://127.0.0.1:${server.address().port}`
   session = await createPlaywrightSession()
+  trackPageErrors(session.page)
+})
+
+afterEach(async () => {
+  await touchContext?.close()
+  touchContext = null
+  touchPage = null
+  const errors = pageErrors.splice(0)
+  assert.deepEqual(errors, [], `fixture page errors:\n${errors.join("\n")}`)
 })
 
 after(async () => {
@@ -53,6 +84,10 @@ test("Select keyboard navigation uses selected and enabled rows, typeahead and E
   await openSelectWithKey()
   assert.equal(await state("document.activeElement.textContent.trim()"), "Beta")
 
+  await session.command("press", "Escape")
+  await waitFor("!document.querySelector('.lui-dropdown-menu[data-open]')")
+  await openSelectWithKey("ArrowUp")
+  assert.equal(await state("document.activeElement.textContent.trim()"), "Beta")
   await session.command("press", "Escape")
   await waitFor("!document.querySelector('.lui-dropdown-menu[data-open]')")
   await session.evaluate("window.audit.setSelectText('')")
@@ -80,12 +115,31 @@ test("Select keyboard navigation uses selected and enabled rows, typeahead and E
 
 test("Select queues one open press until delayed model mounting finishes", async () => {
   await openPickerPage()
+  await session.evaluate("window.audit.setSelectText('')")
   await session.evaluate("window.audit.delayNextMount()")
   await session.page.locator("#picker-select").focus()
   await session.command("press", "ArrowDown")
+  await session.command("press", "ArrowUp")
+  assert.equal(await state("document.querySelector('.lui-dropdown-menu[data-open]')"), null)
+  await session.evaluate("window.audit.finishPendingMount()")
   await waitFor("document.querySelector('.lui-dropdown-menu[data-open]')")
   assert.equal(await state("window.audit.isMenuMounted()"), true)
+  assert.equal(await state("document.activeElement.textContent.trim()"), "Delta")
   assert.equal(await state(`window.audit.events.filter(event => event.TAG === 0 && event._0 === window.audit.selectId).length`), 1)
+})
+
+test("Select clears an ignored opening intent before the next keyboard request", async () => {
+  await openPickerPage()
+  await session.evaluate("window.audit.ignoreNextOpen()")
+  await session.page.locator("#picker-select").focus()
+  await session.command("press", "ArrowDown")
+  assert.equal(await state("document.querySelector('.lui-dropdown-menu[data-open]')"), null)
+  assert.equal(await state(`window.audit.events.filter(event => event.TAG === 0 && event._0 === window.audit.selectId).length`), 1)
+
+  await session.page.waitForTimeout(550)
+  await session.command("press", "ArrowDown")
+  await waitFor("document.querySelector('.lui-dropdown-menu[data-open]')")
+  assert.equal(await state(`window.audit.events.filter(event => event.TAG === 0 && event._0 === window.audit.selectId).length`), 2)
 })
 
 test("Select ignores modified, composing and disabled activation", async () => {
@@ -150,6 +204,26 @@ test("Select touch opens on completed click while Combobox retains input focus",
   assert.equal(await state(`window.audit.events.filter(event => event.TAG === 0 && event._0 === window.audit.comboId).length`), 1)
 })
 
+test("Select and Combobox real touch taps activate once and preserve Combobox input focus", async () => {
+  const page = await openTouchPage()
+  await page.locator("#picker-select").tap()
+  await page.waitForFunction("document.querySelector('.lui-dropdown-menu[data-open]')")
+  assert.equal(
+    await page.evaluate("window.audit.events.filter(event => event.TAG === 0 && event._0 === window.audit.selectId).length"),
+    1,
+  )
+
+  await page.keyboard.press("Escape")
+  await page.waitForFunction("!document.querySelector('.lui-dropdown-menu[data-open]')")
+  await page.locator("#picker-combo .lui-combobox-trigger").tap()
+  await page.waitForFunction("document.querySelector('.lui-dropdown-menu[data-open]')")
+  assert.equal(await page.evaluate("document.activeElement.matches('#picker-combo input')"), true)
+  assert.equal(
+    await page.evaluate("window.audit.events.filter(event => event.TAG === 0 && event._0 === window.audit.comboId).length"),
+    1,
+  )
+})
+
 test("Select Tab navigation closes options, outside clicks keep focus, Escape preserves the dialog", async () => {
   await openPickerPage()
   await openSelectWithKey()
@@ -172,6 +246,22 @@ test("Select Tab navigation closes options, outside clicks keep focus, Escape pr
   await session.page.locator("#dialog-select").focus()
   await session.command("press", "ArrowDown")
   await waitFor("document.querySelector('.lui-dropdown-menu[data-open]')")
+
+  await session.command("press", "Tab")
+  await waitFor("!document.querySelector('.lui-dropdown-menu[data-open]')")
+  assert.equal(await state("document.activeElement.id"), "dialog-after")
+
+  await session.page.locator("#dialog-select").focus()
+  await session.command("press", "ArrowDown")
+  await waitFor("document.querySelector('.lui-dropdown-menu[data-open]')")
+  await session.command("press", "Shift+Tab")
+  await waitFor("!document.querySelector('.lui-dropdown-menu[data-open]')")
+  assert.equal(await state("document.activeElement.id"), "dialog-before")
+
+  await session.page.locator("#dialog-select").focus()
+  await session.command("press", "ArrowDown")
+  await waitFor("document.querySelector('.lui-dropdown-menu[data-open]')")
+  await session.page.locator("#dialog-select").focus()
   await session.evaluate("window.audit.clearEvents()")
   await session.command("press", "Escape")
   await waitFor("!document.querySelector('.lui-dropdown-menu[data-open]')")
@@ -187,14 +277,28 @@ test("Combobox list navigation scrolls its popup and preserves highlighted optio
   await waitFor("document.querySelector('.lui-dropdown-menu[data-open]')")
   for (let index = 0; index < 23; index++) await session.command("press", "ArrowDown")
   const activeId = await state("document.querySelector('[aria-activedescendant]')?.getAttribute('aria-activedescendant')")
-  const scrollState = await state(`({
-    activeText: document.getElementById(document.querySelector('[aria-activedescendant]')?.getAttribute('aria-activedescendant'))?.textContent.trim(),
-    popupScrollTop: document.querySelector('.lui-dropdown-menu[data-open]')?.scrollTop,
-    pageScrollY: window.scrollY,
-  })`)
+  const scrollState = await state(`(() => {
+    const active = document.getElementById(
+      document.querySelector('[aria-activedescendant]')?.getAttribute('aria-activedescendant'),
+    )
+    const popup = document.querySelector('.lui-dropdown-menu[data-open]')
+    const activeRect = active.getBoundingClientRect()
+    const popupRect = popup.getBoundingClientRect()
+    return {
+      activeText: active.textContent.trim(),
+      activeTop: activeRect.top,
+      activeBottom: activeRect.bottom,
+      popupTop: popupRect.top,
+      popupBottom: popupRect.bottom,
+      popupScrollTop: popup.scrollTop,
+      pageScrollY: window.scrollY,
+    }
+  })()`)
   assert.equal(scrollState.activeText, "Option 23")
   assert.ok(scrollState.popupScrollTop > 0)
   assert.equal(scrollState.pageScrollY, 0)
+  assert.ok(scrollState.activeTop >= scrollState.popupTop - 1)
+  assert.ok(scrollState.activeBottom <= scrollState.popupBottom + 1)
 
   await session.evaluate("window.audit.insertComboOption(0, 'Inserted option')")
   assert.equal(await state("document.querySelector('[aria-activedescendant]')?.getAttribute('aria-activedescendant')"), activeId)
@@ -245,7 +349,7 @@ test("Combobox composition patches retain the native input, draft and selection"
   await session.page.locator("#picker-combo input").evaluate(element => {
     element.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "draft文本" }))
   })
-  await session.evaluate("window.audit.setAccessibilityLabel(window.audit.comboId, 'Search catalog')")
+  await session.evaluate("window.audit.setPlaceholder(window.audit.comboId, 'Search catalog')")
   const afterComposition = await session.page.locator("#picker-combo input").evaluate(element => ({
     sameInput: element === window.audit.compositionInput,
     focused: document.activeElement === element,
@@ -268,6 +372,7 @@ test("DropdownMenu submenu presence finishes on close and stale close cannot rem
   const more = session.page.locator(".lui-menu-item").filter({ hasText: "More" })
   await more.hover()
   await waitFor("document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-open]')")
+  assert.equal(await state("window.audit.submenuPresent()"), true)
 
   await session.page.mouse.move(4, 4)
   await session.page.waitForTimeout(155)
@@ -275,10 +380,12 @@ test("DropdownMenu submenu presence finishes on close and stale close cannot rem
   await more.hover()
   await session.page.waitForTimeout(170)
   assert.equal(await state("document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-open]') !== null"), true)
+  assert.equal(await state("window.audit.submenuPresent()"), true)
   assert.equal(await state("document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-ending-style]')"), null)
 
   await session.page.mouse.move(4, 4)
   await session.page.waitForTimeout(300)
   assert.equal(await state("document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-open]')"), null)
   assert.equal(await state("document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-ending-style]')"), null)
+  assert.equal(await state("window.audit.submenuPresent()"), false)
 })
