@@ -814,10 +814,10 @@ namespace LUI.WinUI
                     var thumb = new Border
                     {
                         Name = SplitThumbName,
-                        Background = LUIThemeColors.Brush(
-                            context, state, "border"),
                         Opacity = 0.4,
                     };
+                    thumb.Background = LUIThemeColors.Brush(
+                        context, state, thumb, "border");
                     thumb.ManipulationMode =
                         ManipulationModes.TranslateX;
                     thumb.ManipulationDelta += (_, args) =>

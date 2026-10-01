@@ -345,14 +345,14 @@ namespace LUI.WinUI
             if (_horizontal)
             {
                 ColumnDefinitions.Add(
-                    new ColumnDefinition(
-                        new GridLength(_ratio, GridUnitType.Star)));
+                    new ColumnDefinition
+                        { Width = new GridLength(_ratio, GridUnitType.Star) });
                 ColumnDefinitions.Add(
-                    new ColumnDefinition(
-                        new GridLength(gap, GridUnitType.Pixel)));
+                    new ColumnDefinition
+                        { Width = new GridLength(gap, GridUnitType.Pixel) });
                 ColumnDefinitions.Add(
-                    new ColumnDefinition(
-                        new GridLength(1 - _ratio, GridUnitType.Star)));
+                    new ColumnDefinition
+                        { Width = new GridLength(1 - _ratio, GridUnitType.Star) });
                 Place(0, 0, 0);
                 Place(1, 0, 2);
                 SetColumn(_divider, 1);
@@ -365,14 +365,14 @@ namespace LUI.WinUI
             else
             {
                 RowDefinitions.Add(
-                    new RowDefinition(
-                        new GridLength(_ratio, GridUnitType.Star)));
+                    new RowDefinition
+                        { Height = new GridLength(_ratio, GridUnitType.Star) });
                 RowDefinitions.Add(
-                    new RowDefinition(
-                        new GridLength(gap, GridUnitType.Pixel)));
+                    new RowDefinition
+                        { Height = new GridLength(gap, GridUnitType.Pixel) });
                 RowDefinitions.Add(
-                    new RowDefinition(
-                        new GridLength(1 - _ratio, GridUnitType.Star)));
+                    new RowDefinition
+                        { Height = new GridLength(1 - _ratio, GridUnitType.Star) });
                 Place(0, 0, 0);
                 Place(1, 2, 0);
                 SetRow(_divider, 1);
@@ -512,10 +512,10 @@ namespace LUI.WinUI
 
         public SplitPaneControl()
         {
-            RowDefinitions.Add(new RowDefinition(
-                new GridLength(32, GridUnitType.Pixel)));
-            RowDefinitions.Add(new RowDefinition(
-                new GridLength(1, GridUnitType.Star)));
+            RowDefinitions.Add(new RowDefinition
+                        { Height = new GridLength(32, GridUnitType.Pixel) });
+            RowDefinitions.Add(new RowDefinition
+                        { Height = new GridLength(1, GridUnitType.Star) });
 
             var stripScroller = new ScrollViewer
             {
