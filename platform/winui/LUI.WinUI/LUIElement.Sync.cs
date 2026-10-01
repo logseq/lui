@@ -682,11 +682,15 @@ namespace LUI.WinUI
             indicator.Visibility =
                 selected ? Visibility.Visible : Visibility.Collapsed;
             Grid.SetRowSpan(indicator, Math.Max(1, children.Count));
+            // Transparent keeps the whole row hit-testable when
+            // unselected; a null background lets taps fall through the
+            // empty areas between row children.
             grid.Background = selected
                 ? LUIThemeColors.Resource(
                     "SubtleFillColorSecondaryBrush",
                     Color.FromArgb(0x09, 0x00, 0x00, 0x00))
-                : null;
+                : new SolidColorBrush(
+                    Windows.UI.Color.FromArgb(0, 0, 0, 0));
             grid.ColumnDefinitions.Clear();
             grid.ColumnDefinitions.Add(
                 new ColumnDefinition { Width = GridLength.Auto });
