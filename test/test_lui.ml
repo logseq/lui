@@ -72,6 +72,73 @@ let test_backend_receives_patches () =
        !batches);
   ignore (Lui_app.dispose app)
 
+(* A node mounted and dropped inside one pending batch has its ops
+   elided; surviving insert/move indices it offset must be renumbered so
+   the stream stays incrementally valid for the backend. *)
+let test_same_batch_create_drop_renumbers () =
+  let list_view _context model_source _send =
+    (* The dropped node must sit mid-list and differ in kind from the
+       sibling at its position — unkeyed children pair positionally, so
+       same-kind siblings reuse the slot and only the tail ever drops. *)
+    Lui_elements.column
+      [
+        Lui_elements.dyn ~equal:(fun a b -> (a : bool) = b)
+          (fun (show : bool) ->
+             Lui_elements.row
+               ([ Lui_elements.text ~value:"a" [] ]
+                @ (if show then [ Lui_elements.button ~text:"x" [] ]
+                   else [])
+                @ [ Lui_elements.text ~value:"b" [];
+                    Lui_elements.text ~value:"c" [] ]))
+          model_source;
+      ]
+  in
+  let app =
+    Lui_app.create (recording_backend ()) true
+      (fun _model action -> match action with `Hide -> false)
+      list_view
+  in
+  ignore (Lui_app.start app);
+  ignore (Lui_app.send app `Hide);
+  flush_app app;
+  let children = Hashtbl.create 8 in
+  let children_of parent =
+    match Hashtbl.find_opt children parent with
+    | Some list -> list
+    | None -> []
+  in
+  let rec insert_at list index value =
+    match (list, index) with
+    | _, 0 -> value :: list
+    | x :: rest, n -> x :: insert_at rest (n - 1) value
+    | [], _ -> [ value ]
+  in
+  List.iter
+    (fun (operation : Lui_protocol.patch_op) ->
+       match operation with
+       | InsertChild (parent, child, index) ->
+         let current = children_of parent in
+         Alcotest.(check bool)
+           (Printf.sprintf "insert-child %d at %d of %d" child index
+              (List.length current))
+           true (index >= 0 && index <= List.length current);
+         Hashtbl.replace children parent (insert_at current index child)
+       | RemoveChild (parent, child) ->
+         Hashtbl.replace children parent
+           (List.filter (fun x -> x <> child) (children_of parent))
+       | MoveChild (parent, child, index) ->
+         let without =
+           List.filter (fun x -> x <> child) (children_of parent)
+         in
+         Alcotest.(check bool)
+           (Printf.sprintf "move-child %d to %d of %d" child index
+              (List.length without))
+           true (index >= 0 && index <= List.length without);
+         Hashtbl.replace children parent (insert_at without index child)
+       | _ -> ())
+    (all_ops ());
+  ignore (Lui_app.dispose app)
+
 let test_protocol_helpers () =
   Alcotest.(check bool) "modal dialog" true
     (Lui_protocol.modal_surface Lui_protocol.Dialog);
@@ -2067,6 +2134,8 @@ let () =
           Alcotest.test_case "lifecycle" `Quick test_app_lifecycle;
           Alcotest.test_case "backend patches" `Quick
             test_backend_receives_patches;
+          Alcotest.test_case "same-batch create+drop renumbers" `Quick
+            test_same_batch_create_drop_renumbers;
         ] );
       ( "protocol",
         [

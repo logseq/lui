@@ -601,12 +601,55 @@ let pending_create_exists application node =
       | _ -> false)
     !(application.pending_ops)
 
+(* A node created and dropped within one batch cancels out: its whole op
+   group is pruned. Structural ops emitted while it was attached counted
+   its slot in their indices, so survivors on the same parent must be
+   renumbered. pending_ops is stored newest-first; replay it oldest-first
+   and track the dropped child's phantom index per parent. Index math is
+   exact for inserts (and move targets); removal origins of other
+   children are not observable from the op alone and are left as-is. *)
 let enqueue_drop application node =
-  if pending_create_exists application node then
+  if pending_create_exists application node then begin
+    let phantom = Hashtbl.create 4 in
+    let renumber operation =
+      match operation with
+      | InsertChild (parent, _, index)
+      | MoveChild (parent, _, index)
+        when operation_mentions_node node operation ->
+        Hashtbl.replace phantom parent index;
+        None
+      | RemoveChild (parent, _)
+        when operation_mentions_node node operation ->
+        Hashtbl.remove phantom parent;
+        None
+      | _ when operation_mentions_node node operation -> None
+      | InsertChild (parent, child, index) ->
+        (match Hashtbl.find_opt phantom parent with
+         | Some slot when index > slot ->
+           Some (InsertChild (parent, child, index - 1))
+         | Some slot ->
+           Hashtbl.replace phantom parent (slot + 1);
+           Some operation
+         | None -> Some operation)
+      | MoveChild (parent, child, index) ->
+        (match Hashtbl.find_opt phantom parent with
+         | Some slot when index > slot ->
+           Some (MoveChild (parent, child, index - 1))
+         | Some slot ->
+           Hashtbl.replace phantom parent (slot + 1);
+           Some operation
+         | None -> Some operation)
+      | _ -> Some operation
+    in
     application.pending_ops :=
-      List.filter
-        (fun operation -> not (operation_mentions_node node operation))
-        !(application.pending_ops)
+      List.fold_left
+        (fun acc operation ->
+           match renumber operation with
+           | Some operation -> operation :: acc
+           | None -> acc)
+        []
+        (List.rev !(application.pending_ops))
+  end
   else enqueue application (drop_node_op node)
 
 let rec emit_dropped_subtree application saved removed_set node =
