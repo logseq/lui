@@ -5,6 +5,7 @@
 // -> a SizeChanged-driven sizer.
 
 using System;
+using System.Collections.Generic;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -79,6 +80,9 @@ namespace LUI.WinUI
                 case Border border:
                     border.Padding = padding;
                     break;
+                case LUIGrid grid:
+                    grid.Padding = padding;
+                    break;
                 case TextBlock block:
                     block.Padding = padding;
                     break;
@@ -130,6 +134,9 @@ namespace LUI.WinUI
                         ctl.BorderThickness = new Thickness(borderWidth);
                     }
                     ctl.CornerRadius = new CornerRadius(radius);
+                    break;
+                case Panel panel:
+                    if (background != null) panel.Background = background;
                     break;
                 case TextBlock block:
                     if (foreground != null) block.Foreground = foreground;
@@ -319,6 +326,7 @@ namespace LUI.WinUI
         {
             var children = context.InlineChildrenOf(state);
             double gap = Prop(state, LUIProperty.Gap)?.AsFloat ?? 0;
+            bool anyGrow = false;
             if (horizontal)
             {
                 grid.RowDefinitions.Clear();
@@ -327,6 +335,7 @@ namespace LUI.WinUI
                 foreach (long childId in children)
                 {
                     double grow = ChildGrow(context, childId);
+                    if (grow > 0) anyGrow = true;
                     grid.ColumnDefinitions.Add(new ColumnDefinition
                     {
                         Width = grow > 0
@@ -343,12 +352,83 @@ namespace LUI.WinUI
                 foreach (long childId in children)
                 {
                     double grow = ChildGrow(context, childId);
+                    if (grow > 0) anyGrow = true;
                     grid.RowDefinitions.Add(new RowDefinition
                     {
                         Height = grow > 0
                             ? new GridLength(grow, GridUnitType.Star)
                             : GridLength.Auto,
                     });
+                }
+            }
+            ApplyFlexAlignment(grid, horizontal, state, context, children, anyGrow);
+        }
+
+        // `main` distributes free space along the flex axis; `cross` aligns
+        // each child across the other axis. `main` only applies when no
+        // child grows (star children already consume the free space): the
+        // container then wraps to content and docks center/end inside the
+        // parent track. `space_between` has no per-track equivalent and
+        // falls back to stretch.
+        static void ApplyFlexAlignment(
+            LUIGrid grid, bool horizontal, LUINodeState state,
+            LUISyncContext context, IReadOnlyList<long> children, bool anyGrow)
+        {
+            string? main = Prop(state, LUIProperty.MainAlignment)?.AsString;
+            string? cross = Prop(state, LUIProperty.CrossAlignment)?.AsString;
+
+            if (horizontal)
+            {
+                grid.HorizontalAlignment = !anyGrow && main != null
+                    ? main switch
+                    {
+                        "center" => HorizontalAlignment.Center,
+                        "end" => HorizontalAlignment.Right,
+                        _ => HorizontalAlignment.Stretch,
+                    }
+                    : HorizontalAlignment.Stretch;
+            }
+            else
+            {
+                grid.VerticalAlignment = !anyGrow && main != null
+                    ? main switch
+                    {
+                        "center" => VerticalAlignment.Center,
+                        "end" => VerticalAlignment.Bottom,
+                        _ => VerticalAlignment.Stretch,
+                    }
+                    : VerticalAlignment.Stretch;
+            }
+
+            if (string.IsNullOrEmpty(cross)) return;
+            HorizontalAlignment? childH = cross switch
+            {
+                "center" => HorizontalAlignment.Center,
+                "end" => HorizontalAlignment.Right,
+                "start" => HorizontalAlignment.Left,
+                _ => null,
+            };
+            VerticalAlignment? childV = cross switch
+            {
+                "center" => VerticalAlignment.Center,
+                "end" => VerticalAlignment.Bottom,
+                "start" => VerticalAlignment.Top,
+                _ => null,
+            };
+            foreach (long childId in children)
+            {
+                if (context.ElementFor(childId).Control is not FrameworkElement
+                        control)
+                {
+                    continue;
+                }
+                if (horizontal)
+                {
+                    if (childV.HasValue) control.VerticalAlignment = childV.Value;
+                }
+                else
+                {
+                    if (childH.HasValue) control.HorizontalAlignment = childH.Value;
                 }
             }
         }

@@ -1124,15 +1124,32 @@ let children application node =
 
 let rec drop_subtree application node =
   let node = canonical_node application node in
-  match Hashtbl.find_opt application.runtime_children node with
-  | Some children ->
-    List.iter
-      (fun child ->
-         remove_child application node child;
-         drop_subtree application child)
-      children;
+  if
+    Hashtbl.mem application.mounted_nodes node
+    || Hashtbl.mem application.runtime_extension_nodes node
+  then begin
+    (* A branch teardown can reach a node the runtime already detached
+       elsewhere (segment children get re-linked during reconciles and
+       outer drops); detach it from whatever parent still records it
+       instead of aborting the drop. *)
+    (match Hashtbl.find_opt application.runtime_parents node with
+     | Some parent ->
+         (try remove_child application parent node
+          with Invalid_argument _ ->
+            Hashtbl.remove application.runtime_parents node)
+     | None -> ());
+    (match Hashtbl.find_opt application.runtime_children node with
+     | Some children ->
+         List.iter
+           (fun child ->
+              (try remove_child application node child
+               with Invalid_argument _ ->
+                 Hashtbl.remove application.runtime_parents child);
+              drop_subtree application child)
+           children;
+     | None -> ());
     drop_node application node
-  | None -> drop_node application node
+  end
 
 and drop_node application node =
   let node = canonical_node application node in
