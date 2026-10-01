@@ -1370,7 +1370,15 @@ namespace LUI
         // ------------------------------------------------------------------
         // Event gates
 
-        public void PerformAction(long node)
+        // Press modifier bitmask shared by hosts reporting tap modifiers.
+        public const int ModifierCtrl = 1;
+        public const int ModifierShift = 2;
+        public const int ModifierCommand = 4;
+        public const int ModifierSecondary = 8;
+
+        public void PerformAction(long node) => PerformAction(node, 0);
+
+        public void PerformAction(long node, int modifiers)
         {
             LUINodeState state = RequireState(node);
             bool treeItem = LUISchema.TreeitemProperties(state.Properties);
@@ -1406,7 +1414,10 @@ namespace LUI
                 throw new LUIBackendException(
                     $"node {node} is not an enabled pressable control");
             }
-            OnEvent?.Invoke(new LUIEvent.Press(node));
+            OnEvent?.Invoke(
+                modifiers == 0
+                    ? new LUIEvent.Press(node)
+                    : new LUIEvent.PressModifiers(node, modifiers));
         }
 
         public void PerformDoublePress(long node)

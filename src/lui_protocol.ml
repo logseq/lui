@@ -227,6 +227,7 @@ type wire_value =
 
 type event =
   | Press of int
+  | PressModifiers of int * int
   | LongPress of int
   | TextChanged of int * string
   | Submit of int
@@ -270,6 +271,7 @@ let generic_profile () = profile GenericOS GenericHost
 let event_node event =
   match event with
   | Press node
+  | PressModifiers (node, _)
   | LongPress node
   | TextChanged (node, _)
   | Submit node
@@ -338,7 +340,7 @@ let context_menu_leaf_host_kind kind =
 
 let event_supported kind event =
   match event with
-  | Press _ ->
+  | Press _ | PressModifiers _ ->
     (match kind with
     | Button
     | Column
@@ -433,7 +435,8 @@ let event_supported_for_properties kind properties event =
   then true
   else if treeitem_properties properties then
     match event with
-    | Press _ -> true_property properties PressEnabled
+    | Press _ | PressModifiers _ ->
+      true_property properties PressEnabled
     | Change _ -> true_property properties ChangeEnabled
     | ToggleChanged _ -> true_property properties ToggleEnabled
     | _ -> event_supported kind event

@@ -75,6 +75,17 @@ LUI_EXPORT int32_t lui_ocaml_press(int64_t node) {
   return emit_patch(caml_callback_exn(*dispatch, Val_long(node)));
 }
 
+/* Press carrying the host's modifier state at tap time. `modifiers` is a
+   bitmask: 1=ctrl, 2=shift, 4=command/meta, 8=secondary (right click). */
+LUI_EXPORT int32_t lui_ocaml_press_ex(int64_t node, int32_t modifiers) {
+  const value *dispatch = caml_named_value("lui_ocaml_press_ex");
+  if (dispatch == NULL) {
+    return lui_ocaml_press(node);
+  }
+  return emit_patch(caml_callback2_exn(
+      *dispatch, Val_long(node), Val_long(modifiers)));
+}
+
 LUI_EXPORT int32_t lui_ocaml_long_press(int64_t node) {
   const value *dispatch = caml_named_value("lui_ocaml_long_press");
   if (dispatch == NULL) {
