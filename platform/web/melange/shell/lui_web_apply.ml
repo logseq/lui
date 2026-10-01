@@ -8,6 +8,9 @@ module Nodes = Lui_web_nodes
 module Util = Lui_web_util
 module Ext = Lui_web_extensions
 
+external element_is_connected : W.Element.t -> bool = "isConnected"
+  [@@mel.get]
+
 let prev_node previous_nodes node_id = Hashtbl.find_opt previous_nodes node_id
 
 let prev_kind_is previous_nodes node_id expected =
@@ -311,9 +314,13 @@ let apply_remove_child renderer previous_nodes parent child =
         parent instead *)
      match W.Element.parentElement child_node with
      | Some actual_parent ->
-         ignore
-           (W.Element.removeChild
-              (W.Element.asNode child_node) actual_parent)
+         (* a child inside an already-detached subtree leaves the
+            document with its ancestor — skipping that detach keeps
+            outside element references (captured nodes) intact *)
+         if element_is_connected actual_parent then
+           ignore
+             (W.Element.removeChild
+                (W.Element.asNode child_node) actual_parent)
      | None -> ()));
   Lui_web_focus.refresh_button_context renderer child;
   refresh_structured_children renderer parent;
