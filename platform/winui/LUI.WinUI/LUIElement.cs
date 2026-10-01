@@ -57,12 +57,37 @@ namespace LUI.WinUI
             _ => null,
         };
 
+        bool _autofocused;
+
+        // `autofocus` fires once per element, the first time it syncs
+        // while loaded. Key-driven remounts create a fresh element, so a
+        // bumped focus sequence focuses again.
+        void TryAutofocus()
+        {
+            if (_autofocused || !Control.IsLoaded)
+            {
+                return;
+            }
+            LUISyncContext? context = Context;
+            if (context == null ||
+                !context.Backend.States.TryGetValue(
+                    Id, out LUINodeState? state) ||
+                LUIPropertyApplier.Prop(
+                    state, LUIProperty.Autofocus)?.AsBool != true)
+            {
+                return;
+            }
+            _autofocused = true;
+            (Control as Control)?.Focus(FocusState.Programmatic);
+        }
+
         internal void Sync(LUINodeState state, LUISyncContext context)
         {
             Context = context;
             LUIPropertyApplier.Apply(Control, state, context);
             SyncKind(state, context);
             SyncOverlays(state, context);
+            TryAutofocus();
         }
 
         internal void Sync(
@@ -98,13 +123,17 @@ namespace LUI.WinUI
                 if (context != null)
                 {
                     Gate(() => context.Backend.PerformAppear(Id));
+                    TryAutofocus();
                 }
             };
-            Control.Tapped += (_, _) =>
+            Control.Tapped += (_, args) =>
             {
                 LUISyncContext? context = Context;
-                if (context != null)
+                if (context != null &&
+                    Control is not Microsoft.UI.Xaml.Controls.Primitives
+                        .ButtonBase)
                 {
+                    args.Handled = true;
                     Gate(() => context.Backend.PerformAction(Id));
                 }
             };

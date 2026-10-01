@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using System.Linq;
 
 namespace LUI.WinUI
 {
@@ -23,6 +24,8 @@ namespace LUI.WinUI
         // Open dropdown flyouts keyed by their anchor element id.
         readonly Dictionary<long, MenuFlyout> _openDropdowns =
             new Dictionary<long, MenuFlyout>();
+        readonly Dictionary<long, long[]> _dropdownChildIds =
+            new Dictionary<long, long[]>();
         readonly Dictionary<long, long> _dropdownMenuIds =
             new Dictionary<long, long>();
         readonly LUISyncContext _context;
@@ -125,12 +128,44 @@ namespace LUI.WinUI
                 element.Dispose();
                 _byControl.Remove(element.Control);
                 _elements.Remove(id);
+                // Children of a dropped container may belong to elements
+                // that are still alive (the runtime re-keys the container
+                // but keeps the rows) — detach them so their next insert
+                // does not trip "already a child of another element".
+                DetachElements(element.Control);
+                // Detach the control from the visual tree too: dropped
+                // elements are removed here before their parent's next
+                // SyncPanelChildren run, and at that point _byControl no
+                // longer maps the orphan — without an explicit detach it
+                // would stay rendered forever as a dead control.
+                if (element.Control is FrameworkElement framework)
+                {
+                    switch (framework.Parent)
+                    {
+                        case Panel parentPanel:
+                            parentPanel.Children.Remove(framework);
+                            break;
+                        case ContentControl parentContent:
+                            if (ReferenceEquals(parentContent.Content, framework))
+                            {
+                                parentContent.Content = null;
+                            }
+                            break;
+                        case Border parentBorder:
+                            if (ReferenceEquals(parentBorder.Child, framework))
+                            {
+                                parentBorder.Child = null;
+                            }
+                            break;
+                    }
+                }
             }
             if (_openDropdowns.TryGetValue(id, out MenuFlyout? flyout))
             {
                 flyout.Hide();
                 _openDropdowns.Remove(id);
                 _dropdownMenuIds.Remove(id);
+                _dropdownChildIds.Remove(id);
             }
         }
 
@@ -191,14 +226,25 @@ namespace LUI.WinUI
 
         long? FindRoot()
         {
+            // Apps built with Lui_app.create have no explicit "root" kind
+            // node: the view's top node is parentless, matching how the
+            // Swift backend derives rootIDs.
+            long? rootId = null;
+            long? fallbackId = null;
             foreach (KeyValuePair<long, LUINodeState> entry in Backend.States)
             {
                 if (entry.Value.Kind == LUINodeKind.Root)
                 {
-                    return entry.Key;
+                    rootId = entry.Key;
+                    break;
+                }
+                if (entry.Value.Parent == null &&
+                    (fallbackId == null || entry.Key < fallbackId.Value))
+                {
+                    fallbackId = entry.Key;
                 }
             }
-            return null;
+            return rootId ?? fallbackId;
         }
 
         List<long> SurfaceIds()
@@ -229,6 +275,7 @@ namespace LUI.WinUI
                     anchor.Flyout = null;
                     _openDropdowns.Remove(anchor.Id);
                     _dropdownMenuIds.Remove(anchor.Id);
+                    _dropdownChildIds.Remove(anchor.Id);
                 }
                 return;
             }
@@ -236,7 +283,16 @@ namespace LUI.WinUI
                 _dropdownMenuIds.TryGetValue(anchor.Id, out long openMenu) &&
                 openMenu == menuId)
             {
-                LUIMenuBuilder.Fill(_context, open.Items, menu);
+                // An Items.Clear() on an open MenuFlyout closes it, so only
+                // repopulate when the menu's children actually changed.
+                long[] children = menu.Children.ToArray();
+                if (!_dropdownChildIds.TryGetValue(
+                        anchor.Id, out long[]? prev) ||
+                    !children.SequenceEqual(prev))
+                {
+                    _dropdownChildIds[anchor.Id] = children;
+                    LUIMenuBuilder.Fill(_context, open.Items, menu);
+                }
                 return;
             }
             anchor.Flyout?.Hide();
@@ -245,6 +301,7 @@ namespace LUI.WinUI
             anchor.Flyout = flyout;
             _openDropdowns[anchor.Id] = flyout;
             _dropdownMenuIds[anchor.Id] = menuId;
+            _dropdownChildIds[anchor.Id] = menu.Children.ToArray();
             string anchorEdge = LUIPropertyApplier.Prop(
                 menu, LUIProperty.AnchorValue)?.AsString ?? "below";
             flyout.Placement = anchorEdge switch
@@ -254,7 +311,28 @@ namespace LUI.WinUI
                 "right" => FlyoutPlacementMode.Right,
                 _ => FlyoutPlacementMode.Bottom,
             };
-            flyout.ShowAt(anchor.Control);
+            // Defer past the triggering gesture: a flyout shown inside the
+            // tap that opened it is treated as light-dismissed by the
+            // in-flight pointer events.
+            if (anchor.Control.DispatcherQueue != null)
+            {
+                anchor.Control.DispatcherQueue.TryEnqueue(
+                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                    () =>
+                    {
+                        if (anchor.Flyout == flyout)
+                        {
+                            Microsoft.UI.Xaml.Controls.Primitives.FlyoutBase
+                                .SetAttachedFlyout(anchor.Control, flyout);
+                            Microsoft.UI.Xaml.Controls.Primitives.FlyoutBase
+                                .ShowAttachedFlyout(anchor.Control);
+                        }
+                    });
+            }
+            else
+            {
+                flyout.ShowAt(anchor.Control);
+            }
         }
 
         // Diffs a panel's element children against `want`: removes controls
@@ -279,7 +357,6 @@ namespace LUI.WinUI
                 if (_byControl.TryGetValue(child, out LUIElement? element) &&
                     !desiredSet.Contains(child))
                 {
-                    DetachChildren(child);
                     panel.Children.RemoveAt(i);
                     RemoveElement(element.Id);
                 }
@@ -332,7 +409,7 @@ namespace LUI.WinUI
         {
             foreach (UIElement child in panel.Children)
             {
-                DetachChildren(child);
+                DetachElements(child);
             }
             panel.Children.Clear();
             foreach (UIElement item in items)
@@ -341,15 +418,50 @@ namespace LUI.WinUI
             }
         }
 
-        static void DetachChildren(UIElement element)
+        // Detaches element-mapped controls nested inside a subtree that is
+        // leaving the visual tree, without touching the insides of those
+        // elements: a dropped container can still hold live elements (the
+        // runtime re-keys parents but keeps descendants), and clearing a
+        // live element's own child panel would leave it rendering empty.
+        void DetachElements(UIElement root)
         {
-            if (element is Panel panel)
+            if (root is Panel panel)
             {
-                foreach (UIElement child in panel.Children)
+                for (int i = panel.Children.Count - 1; i >= 0; i--)
                 {
-                    DetachChildren(child);
+                    UIElement child = panel.Children[i];
+                    if (_byControl.TryGetValue(child, out LUIElement? _))
+                    {
+                        panel.Children.RemoveAt(i);
+                    }
+                    else
+                    {
+                        DetachElements(child);
+                    }
                 }
-                panel.Children.Clear();
+            }
+            else if (root is ContentControl content &&
+                     content.Content is UIElement hosted)
+            {
+                if (_byControl.ContainsKey(hosted))
+                {
+                    content.Content = null;
+                }
+                else
+                {
+                    DetachElements(hosted);
+                }
+            }
+            else if (root is Border border && border.Child != null)
+            {
+                if (_byControl.ContainsKey(border.Child))
+                {
+                    border.Child = null;
+                }
+                else
+                {
+                    DetachElements(border.Child);
+                }
             }
         }
 
