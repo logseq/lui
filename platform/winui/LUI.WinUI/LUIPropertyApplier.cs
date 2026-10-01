@@ -197,11 +197,38 @@ namespace LUI.WinUI
 
             string[]? styleClasses = Prop(
                 state, LUIProperty.StyleClass)?.AsString?.Split(' ');
-            if (styleClasses != null &&
-                Array.IndexOf(styleClasses, "mono") >= 0)
+            if (styleClasses != null)
             {
-                block.FontFamily = new FontFamily(
-                    "Cascadia Mono, Consolas, Courier New");
+                foreach (string cls in styleClasses)
+                {
+                    switch (cls)
+                    {
+                        case "mono":
+                            block.FontFamily = new FontFamily(
+                                "Cascadia Mono, Consolas, Courier New");
+                            break;
+                        case "semibold":
+                        case "strong":
+                            block.FontWeight =
+                                Microsoft.UI.Text.FontWeights.SemiBold;
+                            break;
+                        case "caption":
+                            block.FontSize = 12;
+                            break;
+                        case "subheadline":
+                            block.FontSize = 14;
+                            break;
+                        case "title3":
+                            block.FontSize = 16;
+                            break;
+                        case "title2":
+                            block.FontSize = 20;
+                            break;
+                        case "title":
+                            block.FontSize = 24;
+                            break;
+                    }
+                }
             }
 
             string? alignment = Prop(
