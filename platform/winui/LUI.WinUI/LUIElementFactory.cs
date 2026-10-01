@@ -2,6 +2,7 @@
 // containers use Grid (star tracks express `grow`, Column/RowSpacing express
 // `gap`); leaf controls map to their WinUI counterparts.
 
+using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -177,7 +178,57 @@ namespace LUI.WinUI
 
     // A Grid subclass that tags itself as the LUI children host so the sync
     // engine can find the panel inside wrapper controls (Border.Child etc.).
-    internal class LUIGrid : Grid { }
+    // Grid has no Padding in WinUI 3, so LUIGrid grows one: the dependency
+    // property deflates measure and arrange so children land inside it.
+    internal class LUIGrid : Grid
+    {
+        public static readonly DependencyProperty PaddingProperty =
+            DependencyProperty.Register(
+                nameof(Padding), typeof(Thickness), typeof(LUIGrid),
+                new PropertyMetadata(new Thickness(0),
+                    (d, e) => ((LUIGrid)d).InvalidateMeasure()));
+
+        public Thickness Padding
+        {
+            get => (Thickness)GetValue(PaddingProperty);
+            set => SetValue(PaddingProperty, value);
+        }
+
+        protected override Windows.Foundation.Size MeasureOverride(
+            Windows.Foundation.Size availableSize)
+        {
+            var pad = Padding;
+            var inner = new Windows.Foundation.Size(
+                Math.Max(0, availableSize.Width - pad.Left - pad.Right),
+                Math.Max(0, availableSize.Height - pad.Top - pad.Bottom));
+            var measured = base.MeasureOverride(inner);
+            return new Windows.Foundation.Size(
+                measured.Width + pad.Left + pad.Right,
+                measured.Height + pad.Top + pad.Bottom);
+        }
+
+        protected override Windows.Foundation.Size ArrangeOverride(
+            Windows.Foundation.Size finalSize)
+        {
+            var pad = Padding;
+            var inner = new Windows.Foundation.Size(
+                Math.Max(0, finalSize.Width - pad.Left - pad.Right),
+                Math.Max(0, finalSize.Height - pad.Top - pad.Bottom));
+            var arranged = base.ArrangeOverride(inner);
+            if (pad.Left != 0 || pad.Top != 0)
+            {
+                // Children were arranged inside the deflated box at (0,0);
+                // translate them into the padded position.
+                var shift = new TranslateTransform
+                    { X = pad.Left, Y = pad.Top };
+                foreach (UIElement child in Children)
+                    child.RenderTransform = shift;
+            }
+            return new Windows.Foundation.Size(
+                arranged.Width + pad.Left + pad.Right,
+                arranged.Height + pad.Top + pad.Bottom);
+        }
+    }
 
     // ListItem: a host panel so the element map finds its children surface.
     internal class LUIListItem : LUIGrid { }
