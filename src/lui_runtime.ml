@@ -605,50 +605,137 @@ let pending_create_exists application node =
    group is pruned. Structural ops emitted while it was attached counted
    its slot in their indices, so survivors on the same parent must be
    renumbered. pending_ops is stored newest-first; replay it oldest-first
-   and track the dropped child's phantom index per parent. Index math is
-   exact for inserts (and move targets); removal origins of other
-   children are not observable from the op alone and are left as-is. *)
+   and track per-parent child positions (the dropped child included) as
+   the ops describe them. The backend applies move-child as remove-then-
+   insert, so both sides of a foreign move adjust positions; a foreign
+   remove does the same through its tracked origin. A foreign remove or
+   move whose origin the stream does not reveal — a child attached before
+   this batch — makes the remaining indices unrecoverable, so elision
+   bails out and the node is dropped for real instead. *)
+exception Abort_elision
+
 let enqueue_drop application node =
   if pending_create_exists application node then begin
-    let phantom = Hashtbl.create 4 in
+    (* parent -> (child -> index): ghost-space positions for children the
+       batch itself attached or moved. *)
+    let positions = Hashtbl.create 4 in
+    (* parents whose recorded positions stopped being trustworthy after
+       an untracked child's removal or move. *)
+    let poisoned = Hashtbl.create 4 in
+    let positions_for parent =
+      match Hashtbl.find_opt positions parent with
+      | Some table -> table
+      | None ->
+        let table = Hashtbl.create 8 in
+        Hashtbl.replace positions parent table;
+        table
+    in
+    let child_index parent child =
+      match Hashtbl.find_opt positions parent with
+      | Some table -> Hashtbl.find_opt table child
+      | None -> None
+    in
+    (* The dropped node's own slot is always exact: its index comes from
+       the op that attached it, never inferred from another child. *)
+    let ghost_slot parent = child_index parent node in
+    let foreign_index parent child =
+      if Hashtbl.mem poisoned parent then None
+      else child_index parent child
+    in
+    let shift_positions parent ~from_index ~strict ~delta =
+      match Hashtbl.find_opt positions parent with
+      | Some table ->
+        Hashtbl.iter
+          (fun child index ->
+             if (strict && index > from_index)
+                || ((not strict) && index >= from_index)
+             then Hashtbl.replace table child (index + delta))
+          table
+      | None -> ()
+    in
+    let track_insert parent child index =
+      shift_positions parent ~from_index:index ~strict:false ~delta:1;
+      Hashtbl.replace (positions_for parent) child index
+    in
+    let track_remove parent index =
+      shift_positions parent ~from_index:index ~strict:true ~delta:(-1)
+    in
+    let untracked_foreign parent operation =
+      match ghost_slot parent with
+      | Some _ -> raise Abort_elision
+      | None ->
+        Hashtbl.replace poisoned parent ();
+        Some operation
+    in
     let renumber operation =
       match operation with
-      | InsertChild (parent, _, index)
-      | MoveChild (parent, _, index)
-        when operation_mentions_node node operation ->
-        Hashtbl.replace phantom parent index;
-        None
-      | RemoveChild (parent, _)
-        when operation_mentions_node node operation ->
-        Hashtbl.remove phantom parent;
-        None
-      | _ when operation_mentions_node node operation -> None
       | InsertChild (parent, child, index) ->
-        (match Hashtbl.find_opt phantom parent with
-         | Some slot when index > slot ->
-           Some (InsertChild (parent, child, index - 1))
-         | Some slot ->
-           Hashtbl.replace phantom parent (slot + 1);
-           Some operation
-         | None -> Some operation)
+        if child = node then begin
+          track_insert parent node index;
+          None
+        end
+        else if parent = node then None
+        else begin
+          track_insert parent child index;
+          match ghost_slot parent with
+          | Some slot when index > slot ->
+            Some (InsertChild (parent, child, index - 1))
+          | _ -> Some operation
+        end
+      | RemoveChild (parent, child) ->
+        if child = node then begin
+          (match child_index parent node with
+           | Some index ->
+             track_remove parent index;
+             Hashtbl.remove (positions_for parent) node
+           | None -> ());
+          None
+        end
+        else if parent = node then None
+        else
+          (match foreign_index parent child with
+           | Some index ->
+             track_remove parent index;
+             Hashtbl.remove (positions_for parent) child;
+             Some operation
+           | None -> untracked_foreign parent operation)
       | MoveChild (parent, child, index) ->
-        (match Hashtbl.find_opt phantom parent with
-         | Some slot when index > slot ->
-           Some (MoveChild (parent, child, index - 1))
-         | Some slot ->
-           Hashtbl.replace phantom parent (slot + 1);
-           Some operation
-         | None -> Some operation)
+        if child = node then begin
+          (match child_index parent node with
+           | Some origin -> track_remove parent origin
+           | None -> ());
+          track_insert parent node index;
+          None
+        end
+        else if parent = node then None
+        else
+          (match foreign_index parent child with
+           | Some origin ->
+             track_remove parent origin;
+             let emitted =
+               match ghost_slot parent with
+               | Some slot when index > slot -> index - 1
+               | _ -> index
+             in
+             track_insert parent child index;
+             Some (MoveChild (parent, child, emitted))
+           | None -> untracked_foreign parent operation)
+      | _ when operation_mentions_node node operation -> None
       | _ -> Some operation
     in
-    application.pending_ops :=
-      List.fold_left
-        (fun acc operation ->
-           match renumber operation with
-           | Some operation -> operation :: acc
-           | None -> acc)
-        []
-        (List.rev !(application.pending_ops))
+    let original = !(application.pending_ops) in
+    (try
+       application.pending_ops :=
+         List.fold_left
+           (fun acc operation ->
+              match renumber operation with
+              | Some operation -> operation :: acc
+              | None -> acc)
+           []
+           (List.rev original)
+     with Abort_elision ->
+       application.pending_ops := original;
+       enqueue application (drop_node_op node))
   end
   else enqueue application (drop_node_op node)
 
