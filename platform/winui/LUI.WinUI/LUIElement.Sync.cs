@@ -227,6 +227,11 @@ namespace LUI.WinUI
         {
             Panel? panel = ChildrenPanel;
             if (panel == null) return;
+            if (panel is LUIGrid grid)
+            {
+                LUIPropertyApplier.ConfigureFlexTracks(
+                    grid, false, state, context);
+            }
             context.Host.SyncPanelChildren(
                 panel, context.InlineChildrenOf(state), i => (0, i));
         }
@@ -605,6 +610,11 @@ namespace LUI.WinUI
             Panel? panel = ChildrenPanel;
             if (panel != null)
             {
+                if (panel is LUIGrid grid)
+                {
+                    LUIPropertyApplier.ConfigureFlexTracks(
+                        grid, false, state, context);
+                }
                 context.Host.SyncPanelChildren(
                     panel, context.InlineChildrenOf(state), i => (0, i));
             }

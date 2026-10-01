@@ -108,7 +108,9 @@ namespace LUI.WinUI
                 case LUINodeKind.Spacer:
                     return new Border();
                 case LUINodeKind.Spinner:
-                    return new ProgressRing { IsActive = true };
+                    // ProgressRing's template load faults under WASDK 1.6
+                    // unpackaged (COMException in MeasureOverride, fatal).
+                    return new TextBlock { Text = "…" };
                 case LUINodeKind.Icon:
                     return new FontIcon();
                 case LUINodeKind.Select:
