@@ -5371,17 +5371,19 @@ private struct LUITextView: View {
 
     private var font: Font {
         let classes = model.property(.styleClass)?.stringValue?.split(separator: " ") ?? []
-        if classes.contains("title2") {
-            return classes.contains("semibold") ? .title2.weight(.semibold) : .title2
-        }
-        if classes.contains("headline") { return .headline }
-        if classes.contains("subheadline") { return .subheadline.weight(.semibold) }
-        if classes.contains("caption") {
-            return classes.contains("semibold") ? .caption.weight(.semibold) : .caption
-        }
-        if classes.contains("semibold") { return .body.weight(.semibold) }
-        if isFootnote { return .footnote }
-        return .body
+        var style: Font.TextStyle = .body
+        if classes.contains("title2") { style = .title2 }
+        else if classes.contains("headline") { style = .headline }
+        else if classes.contains("subheadline") { style = .subheadline }
+        else if classes.contains("caption") { style = .caption }
+        else if isFootnote { style = .footnote }
+        let semibold = classes.contains("semibold") ||
+            style == .subheadline ||
+            style == .headline
+        let mono = classes.contains("mono")
+        var result = Font.system(style, design: mono ? .monospaced : .default)
+        if semibold { result = result.weight(.semibold) }
+        return result
     }
 
     private var alignedMaxWidth: CGFloat? {

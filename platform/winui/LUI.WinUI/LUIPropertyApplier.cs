@@ -195,6 +195,15 @@ namespace LUI.WinUI
             }
             block.FontSize = fontSize;
 
+            string[]? styleClasses = Prop(
+                state, LUIProperty.StyleClass)?.AsString?.Split(' ');
+            if (styleClasses != null &&
+                Array.IndexOf(styleClasses, "mono") >= 0)
+            {
+                block.FontFamily = new FontFamily(
+                    "Cascadia Mono, Consolas, Courier New");
+            }
+
             string? alignment = Prop(
                 state, LUIProperty.TextAlignment)?.AsString;
             block.TextAlignment = alignment switch
