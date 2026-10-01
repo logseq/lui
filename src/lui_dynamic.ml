@@ -27,12 +27,22 @@ type 'key ui_keyed = {
    remove_child/drop_subtree may only touch ids that are still live. The
    segment bookkeeping always unwinds so unregister sees an empty segment. *)
 let teardown_branch application segment parent node =
+  (* A reconcile may have re-homed [node] under a different live parent
+     while this branch's scope still disposes lazily; the node then
+     belongs to the new tree, so only a node still recorded under
+     [parent] (or left parent-less) is this branch's to detach/drop. *)
+  let owned () =
+    match Lui_runtime.recorded_parent application node with
+    | Some recorded -> recorded = Lui_runtime.canonical_node application parent
+    | None -> true
+  in
   if
     Lui_runtime.node_live application parent
     && Lui_runtime.node_live application node
+    && owned ()
   then Lui_runtime.remove_child application parent node;
   Lui_runtime.release_dynamic_segment application segment;
-  if Lui_runtime.node_live application node then
+  if Lui_runtime.node_live application node && owned () then
     Lui_runtime.drop_subtree application node
 
 let segment_disposer application segment dispose_reactive () =

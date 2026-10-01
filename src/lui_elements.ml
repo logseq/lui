@@ -558,7 +558,7 @@ let scroll ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?p
   mount_children context node children;
   node
 
-let list ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?style ?scroll_target ?scroll_anchor ?scroll_token ?scroll_animated ?track_visible_range ?on_scroll_completed ?on_visible_range (children : t list) : t =
+let list ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?style ?scroll_target ?scroll_anchor ?scroll_token ?scroll_target_signal ?scroll_token_signal ?scroll_animated ?track_visible_range ?on_scroll_completed ?on_visible_range (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.list context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
@@ -568,6 +568,12 @@ let list ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pad
   Option.iter (Lui_ui.string_property context node ScrollAnchor)
     (Option.map scroll_anchor_value scroll_anchor);
   Option.iter (Lui_ui.int_property context node ScrollToken) scroll_token;
+  Option.iter
+    (Lui_ui.string_property_signal context node ScrollTarget)
+    scroll_target_signal;
+  Option.iter
+    (Lui_ui.int_property_signal context node ScrollToken)
+    scroll_token_signal;
   Option.iter (Lui_ui.bool_property context node ScrollAnimated)
     scroll_animated;
   Option.iter (Lui_ui.bool_property context node TrackVisibleRange)

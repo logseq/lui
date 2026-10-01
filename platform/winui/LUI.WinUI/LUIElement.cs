@@ -117,10 +117,14 @@ namespace LUI.WinUI
             }
         }
 
+        // GetKeyStateForCurrentThread only reflects keys routed to this
+        // thread's queue — a ctrl+click landing on an unfocused window sees
+        // no modifiers. GetAsyncKeyState reads the global state instead.
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern short GetAsyncKeyState(int vKey);
+
         static bool IsKeyDown(Windows.System.VirtualKey key) =>
-            Microsoft.UI.Input.InputKeyboardSource
-                .GetKeyStateForCurrentThread(key)
-                .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+            (GetAsyncKeyState((int)key) & 0x8000) != 0;
 
         void WireGestures()
         {
@@ -138,8 +142,12 @@ namespace LUI.WinUI
                 LUISyncContext? context = Context;
                 if (context != null &&
                     Control is not Microsoft.UI.Xaml.Controls.Primitives
-                        .ButtonBase)
+                        .ButtonBase &&
+                    IsPressable(context))
                 {
+                    // Only a pressable node may consume the tap — children
+                    // like TextBlocks must leave it unhandled so it bubbles
+                    // to the row's list_item.
                     args.Handled = true;
                     int modifiers = 0;
                     if (IsKeyDown(Windows.System.VirtualKey.Control))
@@ -158,25 +166,35 @@ namespace LUI.WinUI
                     Gate(() => context.Backend.PerformAction(Id, modifiers));
                 }
             };
-            Control.DoubleTapped += (_, _) =>
+            Control.DoubleTapped += (_, args) =>
             {
                 LUISyncContext? context = Context;
-                if (context != null)
+                if (context != null && IsDoublePressable(context))
                 {
+                    args.Handled = true;
                     Gate(() => context.Backend.PerformDoublePress(Id));
                 }
             };
             Control.RightTapped += (_, args) =>
             {
                 LUISyncContext? context = Context;
-                if (context == null) return;
+                if (context == null ||
+                    (!IsPressable(context) && !HasContextMenu(context)))
+                {
+                    // Let the right click bubble to an ancestor that owns
+                    // the press or the context menu (e.g. the row).
+                    return;
+                }
+                args.Handled = true;
                 // A right click still reports a secondary press so apps can
                 // select the row before the context menu opens.
-                Gate(() => context.Backend.PerformAction(
-                    Id, LUIBackend.ModifierSecondary));
+                if (IsPressable(context))
+                {
+                    Gate(() => context.Backend.PerformAction(
+                        Id, LUIBackend.ModifierSecondary));
+                }
                 if (HasContextMenu(context))
                 {
-                    args.Handled = true;
                     Control.ContextFlyout?.ShowAt(
                         Control,
                         new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions
@@ -202,6 +220,54 @@ namespace LUI.WinUI
                     Gate(() => context.Backend.PerformLongPress(Id));
                 }
             };
+        }
+
+        // Mirrors the pressable/disabled gates in LUIBackend.PerformAction:
+        // gesture handlers use it to decide whether this node may consume
+        // an event or must leave it unhandled for an ancestor.
+        bool IsPressable(LUISyncContext context)
+        {
+            if (!context.Backend.States.TryGetValue(
+                    Id, out LUINodeState? state) ||
+                (state.Properties.TryGetValue(
+                     LUIProperty.Enabled, out LUIWireValue? enabled) &&
+                 enabled is LUIWireValue.Bool { Value: false }))
+            {
+                return false;
+            }
+            switch (state.Kind)
+            {
+                case LUINodeKind.Button:
+                case LUINodeKind.Select:
+                case LUINodeKind.Combobox:
+                case LUINodeKind.MenuItem:
+                case LUINodeKind.ListItem:
+                    return true;
+                case LUINodeKind.BottomTab:
+                case LUINodeKind.TimelineItem:
+                case LUINodeKind.TableCell:
+                case LUINodeKind.Column:
+                case LUINodeKind.Text:
+                case LUINodeKind.FileImage:
+                    return LUISchema.TrueProperty(
+                        state.Properties, LUIProperty.PressEnabled);
+                default:
+                    return LUISchema.TreeitemProperties(state.Properties) &&
+                           LUISchema.TrueProperty(
+                               state.Properties, LUIProperty.PressEnabled);
+            }
+        }
+
+        bool IsDoublePressable(LUISyncContext context)
+        {
+            return context.Backend.States.TryGetValue(
+                       Id, out LUINodeState? state) &&
+                   state.Kind == LUINodeKind.ListItem &&
+                   LUISchema.TrueProperty(
+                       state.Properties, LUIProperty.DoublePressEnabled) &&
+                   !(state.Properties.TryGetValue(
+                         LUIProperty.Enabled, out LUIWireValue? enabled) &&
+                     enabled is LUIWireValue.Bool { Value: false });
         }
 
         bool HasContextMenu(LUISyncContext context)

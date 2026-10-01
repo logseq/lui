@@ -687,6 +687,8 @@ val list :
   ?scroll_target:string ->
   ?scroll_anchor:scroll_anchor ->
   ?scroll_token:int ->
+  ?scroll_target_signal:string Signal.signal ->
+  ?scroll_token_signal:int Signal.signal ->
   ?scroll_animated:bool ->
   ?track_visible_range:bool ->
   ?on_scroll_completed:(Lui_protocol.event -> unit) ->

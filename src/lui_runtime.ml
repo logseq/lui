@@ -1333,6 +1333,16 @@ let node_live application node =
   Hashtbl.mem application.mounted_nodes node
   || Hashtbl.mem application.runtime_extension_nodes node
 
+(* [node]'s currently recorded parent, canonicalized on both sides. A
+   reconcile can re-home a live node under a different parent while the
+   scope that mounted it still owns teardown: the recorded parent is how
+   the runtime tells that node belongs to another branch now. *)
+let recorded_parent application node =
+  let node = canonical_node application node in
+  match Hashtbl.find_opt application.runtime_parents node with
+  | Some parent -> Some (canonical_node application parent)
+  | None -> None
+
 let insert_child application parent child index =
   let parent = canonical_node application parent in
   let child = canonical_node application child in
