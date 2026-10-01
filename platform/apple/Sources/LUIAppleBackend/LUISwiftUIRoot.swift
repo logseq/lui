@@ -1202,14 +1202,134 @@ private struct LUIContextMenuModifier: ViewModifier {
         if let menu = model.children.compactMap({ backend.model(id: $0) })
             .first(where: { $0.kind == .contextMenu }),
            menu.children.contains(where: { backend.model(id: $0)?.kind == .menuItem }) {
+            #if os(macOS)
+            // `.contextMenu` never sees right-clicks that land on Button/Menu
+            // descendants — AppKit hit-tests an interactive control first. An
+            // overlay NSView that claims secondary clicks and answers
+            // `menu(for:)` reaches every spot in the row.
+            content.overlay {
+                LUIContextMenuCapture(menu: menu, backend: backend)
+            }
+            #else
             content.contextMenu {
                 LUINativeMenuActions(model: menu, backend: backend)
             }
+            #endif
         } else {
             content
         }
     }
 }
+
+#if os(macOS)
+private struct LUIContextMenuCapture: NSViewRepresentable {
+    let menu: LUINodeModel
+    let backend: LUIAppleBackend
+
+    func makeNSView(context: Context) -> LUIContextMenuNSView {
+        let view = LUIContextMenuNSView()
+        view.menuModel = menu
+        view.backend = backend
+        return view
+    }
+
+    func updateNSView(_ view: LUIContextMenuNSView, context: Context) {
+        view.menuModel = menu
+        view.backend = backend
+    }
+}
+
+final class LUIContextMenuNSView: NSView {
+    var menuModel: LUINodeModel?
+    weak var backend: LUIAppleBackend?
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard bounds.contains(point), let event = window?.currentEvent else {
+            return nil
+        }
+        if event.type == .rightMouseDown
+            || (event.type == .leftMouseDown && event.modifierFlags.contains(.control)) {
+            return self
+        }
+        return nil
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        buildMenu()
+    }
+
+    // ctrl+click arrives as leftMouseDown on AppKit — show the same menu
+    // programmatically at the pointer.
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control), let menu = buildMenu() {
+            NSMenu.popUpContextMenu(menu, with: event, for: self)
+        } else {
+            super.mouseDown(with: event)
+        }
+    }
+
+    private func buildMenu() -> NSMenu? {
+        guard let model = menuModel, let backend else { return nil }
+        let nsMenu = NSMenu()
+        nsMenu.autoenablesItems = false
+        populate(nsMenu, children: model.children, backend: backend)
+        return nsMenu.numberOfItems > 0 ? nsMenu : nil
+    }
+
+    private func populate(_ nsMenu: NSMenu, children: [Int], backend: LUIAppleBackend) {
+        for childID in children {
+            guard let child = backend.model(id: childID) else { continue }
+            switch child.kind {
+            case .divider:
+                nsMenu.addItem(.separator())
+            case .menuItem:
+                let item = NSMenuItem(
+                    title: child.text.isEmpty
+                        ? (child.property(.accessibilityLabel)?.stringValue ?? "")
+                        : child.text,
+                    action: #selector(LUIContextMenuAction.fire(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = actionProxy
+                item.representedObject = child.id
+                item.isEnabled = child.isEnabled
+                nsMenu.addItem(item)
+            case .menuTrigger:
+                guard let submenu = child.children
+                    .compactMap({ backend.model(id: $0) })
+                    .first(where: { $0.kind == .dropdownMenu }) else { continue }
+                let nested = NSMenu(title: child.text)
+                nested.autoenablesItems = false
+                populate(nested, children: submenu.children, backend: backend)
+                guard nested.numberOfItems > 0 else { continue }
+                let item = NSMenuItem(title: child.text, action: nil, keyEquivalent: "")
+                item.submenu = nested
+                item.isEnabled = child.isEnabled
+                nsMenu.addItem(item)
+            default:
+                continue
+            }
+        }
+    }
+
+    private lazy var actionProxy = LUIContextMenuAction(backend: backend)
+}
+
+/// NSObject hop that forwards NSMenuItem activations to `performPress` —
+/// NSMenu targets need an ObjC-visible selector.
+private final class LUIContextMenuAction: NSObject {
+    weak var backend: LUIAppleBackend?
+
+    init(backend: LUIAppleBackend?) {
+        self.backend = backend
+    }
+
+    @MainActor @objc func fire(_ item: NSMenuItem) {
+        guard let node = item.representedObject as? Int else { return }
+        try? backend?.performPress(node: node)
+    }
+}
+#endif
 
 private struct LUINativeMenuActions: View {
     let model: LUINodeModel
@@ -4191,6 +4311,10 @@ private struct LUIListItemView: View {
             menu: swipeMenu,
             backend: backend
         ))
+        // Native-list rows are instantiated directly (not via LUIAnyNodeView),
+        // so they never see LUIContextMenuModifier from the node path — attach
+        // it here too so `context-menu` children work on every render path.
+        .modifier(LUIContextMenuModifier(model: model, backend: backend))
         .modifier(LUINativeListRowAccessibilityModifier(
             model: model,
             backend: backend,
