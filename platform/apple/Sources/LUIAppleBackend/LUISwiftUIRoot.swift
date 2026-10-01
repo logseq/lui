@@ -3857,7 +3857,10 @@ private struct LUIComboboxView: View {
             draftState.reconcile(source: next, focused: focused)
         }
         .onChange(of: focused) { _, next in
-            if !next {
+            // Only reconcile on blur when the app actually binds `text`:
+            // an unbound field's wire value stays empty forever, so
+            // resetting to it would erase the user's draft on every blur.
+            if !next, model.property(.text) != nil {
                 draftState.reconcile(source: model.text, focused: false)
             }
         }
@@ -6397,7 +6400,9 @@ private struct LUITextControlView: View {
                 draftState.reconcile(source: next, focused: focused)
             }
             .onChange(of: focused) { _, next in
-                if !next {
+                // Same unbound-field guard as the non-grouped field: don't
+                // reset a draft to a wire `text` the app never emitted.
+                if !next, model.property(.text) != nil {
                     draftState.reconcile(source: model.text, focused: false)
                 }
             }
