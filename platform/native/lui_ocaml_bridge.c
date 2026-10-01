@@ -40,7 +40,11 @@ LUI_EXPORT int32_t lui_ocaml_start(
     int32_t host_code) {
   patch_callback = callback;
   if (!runtime_started) {
+#if defined(_WIN32)
+    char_os *arguments[] = {(char_os *)L"lui_ocaml", NULL};
+#else
     char *arguments[] = {"lui_ocaml", NULL};
+#endif
     caml_startup(arguments);
     runtime_started = 1;
   }
