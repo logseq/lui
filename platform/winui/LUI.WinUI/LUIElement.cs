@@ -58,6 +58,8 @@ namespace LUI.WinUI
         };
 
         bool _autofocused;
+        // Last scroll_token this element honored; -1 = never scrolled to.
+        long _lastScrollToken = -1;
 
         // `autofocus` fires once per element, the first time it syncs
         // while loaded. Key-driven remounts create a fresh element, so a
@@ -115,6 +117,11 @@ namespace LUI.WinUI
             }
         }
 
+        static bool IsKeyDown(Windows.System.VirtualKey key) =>
+            Microsoft.UI.Input.InputKeyboardSource
+                .GetKeyStateForCurrentThread(key)
+                .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+
         void WireGestures()
         {
             Control.Loaded += (_, _) =>
@@ -134,7 +141,21 @@ namespace LUI.WinUI
                         .ButtonBase)
                 {
                     args.Handled = true;
-                    Gate(() => context.Backend.PerformAction(Id));
+                    int modifiers = 0;
+                    if (IsKeyDown(Windows.System.VirtualKey.Control))
+                    {
+                        modifiers |= LUIBackend.ModifierCtrl;
+                    }
+                    if (IsKeyDown(Windows.System.VirtualKey.Shift))
+                    {
+                        modifiers |= LUIBackend.ModifierShift;
+                    }
+                    if (IsKeyDown(Windows.System.VirtualKey.LeftWindows) ||
+                        IsKeyDown(Windows.System.VirtualKey.RightWindows))
+                    {
+                        modifiers |= LUIBackend.ModifierCommand;
+                    }
+                    Gate(() => context.Backend.PerformAction(Id, modifiers));
                 }
             };
             Control.DoubleTapped += (_, _) =>
@@ -148,7 +169,12 @@ namespace LUI.WinUI
             Control.RightTapped += (_, args) =>
             {
                 LUISyncContext? context = Context;
-                if (context != null && HasContextMenu(context))
+                if (context == null) return;
+                // A right click still reports a secondary press so apps can
+                // select the row before the context menu opens.
+                Gate(() => context.Backend.PerformAction(
+                    Id, LUIBackend.ModifierSecondary));
+                if (HasContextMenu(context))
                 {
                     args.Handled = true;
                     Control.ContextFlyout?.ShowAt(

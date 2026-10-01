@@ -30,11 +30,22 @@ namespace LUI.WinUI
                     // ChildrenPanel, which only resolves LUIGrid — a plain
                     // Grid makes them render empty.
                     return new LUIGrid();
+                case LUINodeKind.ListContainer:
+                case LUINodeKind.VirtualList:
+                    // Lists scroll: the LUIGrid child stacks items vertically
+                    // (SyncPlainContainer rows them out) while the viewer
+                    // provides the scroll chrome.
+                    return new ScrollViewer
+                    {
+                        Content = new LUIGrid(),
+                        HorizontalScrollBarVisibility =
+                            ScrollBarVisibility.Disabled,
+                        VerticalScrollBarVisibility =
+                            ScrollBarVisibility.Auto,
+                    };
                 case LUINodeKind.Row:
                 case LUINodeKind.Column:
                 case LUINodeKind.Grid:
-                case LUINodeKind.ListContainer:
-                case LUINodeKind.VirtualList:
                 case LUINodeKind.ButtonGroup:
                 case LUINodeKind.ToggleGroup:
                 case LUINodeKind.Tabs:

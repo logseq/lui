@@ -127,7 +127,7 @@ namespace LUI.WinUI
             }
         }
 
-        static SolidColorBrush Resource(string key, Color fallback)
+        internal static SolidColorBrush Resource(string key, Color fallback)
         {
             if (Application.Current?.Resources.TryGetValue(
                     key, out object? value) == true &&

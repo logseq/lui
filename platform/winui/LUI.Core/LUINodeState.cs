@@ -105,6 +105,10 @@ namespace LUI
 
         public sealed record Appear(long Node) : LUIEvent;
         public sealed record Press(long Node) : LUIEvent;
+        // Press carrying keyboard/pointer modifiers at tap time:
+        // 1=ctrl, 2=shift, 4=command/meta, 8=secondary (right click).
+        public sealed record PressModifiers(long Node, int Modifiers)
+            : LUIEvent;
         public sealed record LongPress(long Node) : LUIEvent;
         public sealed record DoublePress(long Node) : LUIEvent;
         public sealed record Submit(long Node) : LUIEvent;

@@ -42,6 +42,9 @@ namespace LUI
         static extern int lui_ocaml_press(long node);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        static extern int lui_ocaml_press_ex(long node, int modifiers);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         static extern int lui_ocaml_long_press(long node);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -123,6 +126,10 @@ namespace LUI
                     break;
                 case LUIEvent.Press press:
                     lui_ocaml_press(press.Node);
+                    break;
+                case LUIEvent.PressModifiers pressModifiers:
+                    lui_ocaml_press_ex(
+                        pressModifiers.Node, pressModifiers.Modifiers);
                     break;
                 case LUIEvent.LongPress longPress:
                     lui_ocaml_long_press(longPress.Node);

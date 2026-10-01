@@ -222,6 +222,7 @@ type wire_value =
 
 type event =
   | Press of int
+  | PressModifiers of int * int
   | LongPress of int
   | TextChanged of int * string
   | Submit of int

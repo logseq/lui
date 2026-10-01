@@ -343,7 +343,9 @@ let on_event context node predicate handler =
   Lui_ui.on_event context node (fun event ->
       if predicate event then handler event)
 
-let is_press = function Press _ -> true | _ -> false
+let is_press = function
+  | Press _ | PressModifiers _ -> true
+  | _ -> false
 let is_long_press = function LongPress _ -> true | _ -> false
 let is_double_press = function DoublePress _ -> true | _ -> false
 let is_change = function Change _ -> true | _ -> false

@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.UI;
 
 namespace LUI.WinUI
 {
@@ -43,8 +44,6 @@ namespace LUI.WinUI
                 case LUINodeKind.Scroll:
                 case LUINodeKind.InputGroup:
                 case LUINodeKind.InputGroupActions:
-                case LUINodeKind.ListContainer:
-                case LUINodeKind.VirtualList:
                 case LUINodeKind.Stepper:
                 case LUINodeKind.Timeline:
                 case LUINodeKind.RadioGroup:
@@ -55,6 +54,11 @@ namespace LUI.WinUI
                 case LUINodeKind.Drawer:
                 case LUINodeKind.Sheet:
                     SyncPlainContainer(state, context);
+                    break;
+                case LUINodeKind.ListContainer:
+                case LUINodeKind.VirtualList:
+                    SyncPlainContainer(state, context);
+                    SyncScrollTarget(state, context);
                     break;
                 case LUINodeKind.Tabs:
                 case LUINodeKind.ButtonGroup:
@@ -234,6 +238,34 @@ namespace LUI.WinUI
             }
             context.Host.SyncPanelChildren(
                 panel, context.InlineChildrenOf(state), i => (0, i));
+        }
+
+        // Honors scroll_target/scroll_token: when the token changes, brings
+        // the direct child whose `key` prop matches the target into view.
+        void SyncScrollTarget(LUINodeState state, LUISyncContext context)
+        {
+            string? target = LUIPropertyApplier.Prop(
+                state, LUIProperty.ScrollTarget)?.AsString;
+            long token = LUIPropertyApplier.Prop(
+                state, LUIProperty.ScrollToken)?.AsInt ?? -1;
+            if (target == null || token < 0 || token == _lastScrollToken)
+            {
+                return;
+            }
+            _lastScrollToken = token;
+            foreach (long childId in context.InlineChildrenOf(state))
+            {
+                string? key = context.Backend.States.TryGetValue(
+                        childId, out LUINodeState? child)
+                    ? LUIPropertyApplier.Prop(
+                        child, LUIProperty.KeyValue)?.AsString
+                    : null;
+                if (key == target)
+                {
+                    context.ElementFor(childId).Control.StartBringIntoView();
+                    return;
+                }
+            }
         }
 
         void SyncHorizontalGroup(LUINodeState state, LUISyncContext context)
@@ -607,18 +639,67 @@ namespace LUI.WinUI
 
         void SyncListItem(LUINodeState state, LUISyncContext context)
         {
-            Panel? panel = ChildrenPanel;
-            if (panel != null)
+            if (ChildrenPanel is not LUIGrid grid) return;
+            LUIPropertyApplier.ConfigureFlexTracks(
+                grid, false, state, context);
+            IReadOnlyList<long> children = context.InlineChildrenOf(state);
+            // Fluent ListView selection: a small accent pill on the left
+            // edge plus a subtle tint across the row. The pill is a
+            // non-element child in column 0 (SyncPanelChildren leaves
+            // non-element children alone); content lives in column 1.
+            bool selected = LUIPropertyApplier.Prop(
+                state, LUIProperty.Selected)?.AsBool == true;
+            Border? indicator = null;
+            foreach (UIElement existing in grid.Children)
             {
-                if (panel is LUIGrid grid)
+                if (existing is Border pill &&
+                    pill.Tag == SelectionIndicatorTag)
                 {
-                    LUIPropertyApplier.ConfigureFlexTracks(
-                        grid, false, state, context);
+                    indicator = pill;
+                    break;
                 }
-                context.Host.SyncPanelChildren(
-                    panel, context.InlineChildrenOf(state), i => (0, i));
             }
+            if (indicator == null)
+            {
+                indicator = new Border
+                {
+                    Width = 3,
+                    Height = 16,
+                    CornerRadius = new CornerRadius(1.5),
+                    Margin = new Thickness(4, 0, 0, 0),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    IsHitTestVisible = false,
+                    Tag = SelectionIndicatorTag,
+                    Background = LUIThemeColors.Resource(
+                        "AccentFillColorDefaultBrush",
+                        Color.FromArgb(0xFF, 0x00, 0x62, 0xB0)),
+                };
+                Grid.SetRow(indicator, 0);
+                Grid.SetColumn(indicator, 0);
+                grid.Children.Insert(0, indicator);
+            }
+            indicator.Visibility =
+                selected ? Visibility.Visible : Visibility.Collapsed;
+            Grid.SetRowSpan(indicator, Math.Max(1, children.Count));
+            grid.Background = selected
+                ? LUIThemeColors.Resource(
+                    "SubtleFillColorSecondaryBrush",
+                    Color.FromArgb(0x09, 0x00, 0x00, 0x00))
+                : null;
+            grid.ColumnDefinitions.Clear();
+            grid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width = new GridLength(1, GridUnitType.Star),
+                });
+            context.Host.SyncPanelChildren(
+                grid, children, i => (1, i));
         }
+
+        static readonly object SelectionIndicatorTag = new object();
 
         void SyncAvatar(LUINodeState state, LUISyncContext context)
         {
