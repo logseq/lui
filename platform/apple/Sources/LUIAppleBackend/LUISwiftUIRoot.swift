@@ -6791,6 +6791,11 @@ enum LUIIntrinsicSurfacePolicy {
 }
 
 enum LUISurfaceFramePolicy {
+    static func usesIntrinsicHeight(kind: LUINodeKind, styleClass: String?) -> Bool {
+        let classes = styleClass?.split(separator: " ") ?? []
+        return (kind == .textarea && classes.contains("composer-input")) ||
+            (kind == .column && classes.contains("composer-surface"))
+    }
     static func usesTopLeadingAlignment(kind: LUINodeKind) -> Bool {
         kind == .textarea
     }
@@ -7012,6 +7017,16 @@ private struct LUISurfaceModifier: ViewModifier {
                 alignment: LUISurfaceFramePolicy.usesTopLeadingAlignment(kind: model.kind)
                     ? .topLeading
                     : .center
+            )
+            // A bounded composer grows with its text. Asking the flexible
+            // frame for its ideal height prevents maxHeight from filling
+            // the overlay's remaining space for a one-line draft.
+            .fixedSize(
+                horizontal: false,
+                vertical: LUISurfaceFramePolicy.usesIntrinsicHeight(
+                    kind: model.kind,
+                    styleClass: model.property(.styleClass)?.stringValue
+                )
             )
             .modifier(
                 LUIContainerRelativeFrameModifier(
