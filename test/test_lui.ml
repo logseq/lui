@@ -139,6 +139,140 @@ let test_same_batch_create_drop_renumbers () =
     (all_ops ());
   ignore (Lui_app.dispose app)
 
+(* Runs enqueue_drop over a hand-built pending_ops stream (stored
+   newest-first inside the runtime) and returns the surviving ops in
+   oldest-first order. *)
+let elided_ops ops ghost =
+  let runtime =
+    Lui_runtime.create (Signal.scheduler ()) (recording_backend ())
+  in
+  runtime.Lui_runtime.pending_ops := List.rev ops;
+  Lui_runtime.enqueue_drop runtime ghost;
+  List.rev !(runtime.Lui_runtime.pending_ops)
+
+let describe_op (operation : Lui_protocol.patch_op) =
+  let open Lui_protocol in
+  match operation with
+  | CreateNode (id, kind) ->
+    Printf.sprintf "create:%d:%s" id (Lui_wire_schema.node_kind_name kind)
+  | CreateExtension (id, _, _) -> Printf.sprintf "create-ext:%d" id
+  | DropNode id -> Printf.sprintf "drop:%d" id
+  | SetProp (id, _, _) -> Printf.sprintf "set-prop:%d" id
+  | RemoveProp (id, _) -> Printf.sprintf "remove-prop:%d" id
+  | SetExtensionProp (id, _, _) -> Printf.sprintf "set-ext-prop:%d" id
+  | RemoveExtensionProp (id, _) -> Printf.sprintf "remove-ext-prop:%d" id
+  | InsertChild (parent, child, index) ->
+    Printf.sprintf "insert:%d->%d@%d" child parent index
+  | RemoveChild (parent, child) ->
+    Printf.sprintf "remove:%d->%d" child parent
+  | MoveChild (parent, child, index) ->
+    Printf.sprintf "move:%d->%d@%d" child parent index
+
+let check_ops label expected actual =
+  Alcotest.(check string) label
+    (String.concat " " (List.map describe_op expected))
+    (String.concat " " (List.map describe_op actual))
+
+(* move-child is remove-then-insert: moving a sibling from before the
+   dropped node onto its slot leaves the phantom at index 0, so the
+   survivor must be emitted at index 0 — keeping the ghost-space target
+   would reorder the surviving siblings. *)
+let test_same_batch_drop_adjusts_foreign_move () =
+  let open Lui_protocol in
+  let ops =
+    elided_ops
+      [
+        CreateNode (1, Column);
+        CreateNode (2, Text);
+        InsertChild (1, 2, 0);
+        CreateNode (3, Button);
+        InsertChild (1, 3, 1);
+        CreateNode (4, Text);
+        InsertChild (1, 4, 2);
+        MoveChild (1, 2, 1);
+      ]
+      3
+  in
+  check_ops "foreign move renumbered"
+    [
+      CreateNode (1, Column);
+      CreateNode (2, Text);
+      InsertChild (1, 2, 0);
+      CreateNode (4, Text);
+      InsertChild (1, 4, 1);
+      MoveChild (1, 2, 0);
+    ]
+    ops
+
+(* A sibling attached earlier in the same batch is removed before the
+   dropped node: the phantom slot tracks it down to 0, and the next
+   insert lands at index 0 in ghost-free space instead of index 1. *)
+let test_same_batch_drop_tracks_foreign_remove () =
+  let open Lui_protocol in
+  let ops =
+    elided_ops
+      [
+        CreateNode (1, Column);
+        CreateNode (2, Text);
+        InsertChild (1, 2, 0);
+        CreateNode (3, Button);
+        InsertChild (1, 3, 1);
+        CreateNode (4, Text);
+        InsertChild (1, 4, 2);
+        RemoveChild (1, 2);
+        CreateNode (5, Text);
+        InsertChild (1, 5, 1);
+      ]
+      3
+  in
+  check_ops "insert after foreign remove renumbered"
+    [
+      CreateNode (1, Column);
+      CreateNode (2, Text);
+      InsertChild (1, 2, 0);
+      CreateNode (4, Text);
+      InsertChild (1, 4, 1);
+      RemoveChild (1, 2);
+      CreateNode (5, Text);
+      InsertChild (1, 5, 0);
+    ]
+    ops
+
+(* A remove or move of a child attached before this batch hides its
+   origin index from the stream; while the dropped node's slot is live,
+   renumbering cannot recover — elision gives up and the node is dropped
+   with a real drop-node op, leaving a stream the backend can apply. *)
+let test_same_batch_drop_untracked_aborts () =
+  let open Lui_protocol in
+  let source =
+    [
+      CreateNode (1, Column);
+      CreateNode (3, Button);
+      InsertChild (1, 3, 1);
+      RemoveChild (1, 9);
+      CreateNode (5, Text);
+      InsertChild (1, 5, 1);
+    ]
+  in
+  check_ops "untracked remove aborts elision"
+    (source @ [ DropNode 3 ])
+    (elided_ops source 3)
+
+let test_same_batch_drop_poisoned_parent_aborts () =
+  let open Lui_protocol in
+  let source =
+    [
+      CreateNode (1, Column);
+      RemoveChild (1, 9);
+      CreateNode (3, Button);
+      InsertChild (1, 3, 0);
+      RemoveChild (1, 8);
+    ]
+  in
+  check_ops "poisoned parent aborts later elision"
+    (source @ [ DropNode 3 ])
+    (elided_ops source 3)
+
 let test_protocol_helpers () =
   Alcotest.(check bool) "modal dialog" true
     (Lui_protocol.modal_surface Lui_protocol.Dialog);
@@ -2136,6 +2270,14 @@ let () =
             test_backend_receives_patches;
           Alcotest.test_case "same-batch create+drop renumbers" `Quick
             test_same_batch_create_drop_renumbers;
+          Alcotest.test_case "same-batch drop adjusts foreign move" `Quick
+            test_same_batch_drop_adjusts_foreign_move;
+          Alcotest.test_case "same-batch drop tracks foreign remove" `Quick
+            test_same_batch_drop_tracks_foreign_remove;
+          Alcotest.test_case "same-batch drop untracked aborts" `Quick
+            test_same_batch_drop_untracked_aborts;
+          Alcotest.test_case "same-batch drop poisoned parent aborts" `Quick
+            test_same_batch_drop_poisoned_parent_aborts;
         ] );
       ( "protocol",
         [
