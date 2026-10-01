@@ -1,0 +1,1934 @@
+{
+ "alert": {
+  "aliases": [
+   "alert-triangle",
+   "warning"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "warning",
+   "triangle",
+   "caution",
+   "alert-triangle"
+  ]
+ },
+ "apps": {
+  "aliases": [
+   "all-graphs",
+   "grid"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "grid",
+   "apps",
+   "all",
+   "gallery"
+  ]
+ },
+ "archive": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "box",
+   "storage",
+   "save"
+  ]
+ },
+ "arrow-down": {
+  "aliases": [
+   "toolbar-move-down"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "down",
+   "direction",
+   "move"
+  ]
+ },
+ "arrow-left": {
+  "aliases": [
+   "navigation-back"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "left",
+   "back",
+   "direction",
+   "previous"
+  ]
+ },
+ "arrow-right": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "right",
+   "forward",
+   "direction",
+   "next"
+  ]
+ },
+ "arrow-up": {
+  "aliases": [
+   "toolbar-move-up"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "up",
+   "direction",
+   "caret",
+   "move"
+  ]
+ },
+ "arrow-up-right": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "diagonal",
+   "external",
+   "northeast"
+  ]
+ },
+ "book": {
+  "aliases": [
+   "book.closed",
+   "journal"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "read",
+   "pages",
+   "library",
+   "journal"
+  ]
+ },
+ "bug": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "insect",
+   "debug",
+   "issue"
+  ]
+ },
+ "bulb": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "idea",
+   "light",
+   "tip",
+   "hint"
+  ]
+ },
+ "bullet": {
+  "aliases": [
+   "outliner-bullet",
+   "point",
+   "point-filled",
+   "status-dot"
+  ],
+  "sizes": [],
+  "styles": [
+   "filled"
+  ],
+  "tags": [
+   "dot",
+   "outliner",
+   "block",
+   "node"
+  ]
+ },
+ "calendar": {
+  "aliases": [
+   "journal-date"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "date",
+   "journal",
+   "day",
+   "schedule"
+  ]
+ },
+ "camera": {
+  "aliases": [
+   "toolbar-camera"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "photo",
+   "picture",
+   "shoot"
+  ]
+ },
+ "cards": {
+  "aliases": [
+   "flashcards"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "flashcards",
+   "stack",
+   "srs",
+   "review"
+  ]
+ },
+ "check": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "done",
+   "tick",
+   "confirm",
+   "ok"
+  ]
+ },
+ "check-circle": {
+  "aliases": [
+   "selected",
+   "task-done"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline",
+   "filled"
+  ],
+  "tags": [
+   "success",
+   "done",
+   "ok",
+   "circle-check"
+  ]
+ },
+ "chevron-down": {
+  "aliases": [
+   "disclosure-down"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "down",
+   "expand",
+   "caret",
+   "disclosure"
+  ]
+ },
+ "chevron-left": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "left",
+   "back",
+   "previous",
+   "disclosure"
+  ]
+ },
+ "chevron-right": {
+  "aliases": [
+   "disclosure-right"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "right",
+   "forward",
+   "next",
+   "disclosure"
+  ]
+ },
+ "chevron-up": {
+  "aliases": [
+   "disclosure-up"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "up",
+   "collapse",
+   "caret",
+   "disclosure"
+  ]
+ },
+ "circle-dot": {
+  "aliases": [
+   "toolbar-unselect"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline",
+   "filled"
+  ],
+  "tags": [
+   "radio",
+   "selected",
+   "dot",
+   "record"
+  ]
+ },
+ "clock": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "time",
+   "watch",
+   "schedule"
+  ]
+ },
+ "cloud": {
+  "aliases": [
+   "graph-remote"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "remote",
+   "sync",
+   "graph-remote",
+   "rtc"
+  ]
+ },
+ "code": {
+  "aliases": [
+   "braces",
+   "source-code",
+   "toolbar-copy-reference"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "source",
+   "brackets",
+   "dev",
+   "source-code"
+  ]
+ },
+ "command": {
+  "aliases": [
+   "cmd",
+   "mod"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "cmd",
+   "mac",
+   "shortcut",
+   "meta"
+  ]
+ },
+ "copy": {
+  "aliases": [
+   "toolbar-copy"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "duplicate",
+   "clipboard"
+  ]
+ },
+ "database": {
+  "aliases": [
+   "graph-local"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "storage",
+   "local",
+   "graph-local",
+   "data"
+  ]
+ },
+ "download": {
+  "aliases": [
+   "import"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "save",
+   "import",
+   "arrow-down"
+  ]
+ },
+ "edit": {
+  "aliases": [
+   "pencil",
+   "square.and.pencil",
+   "toolbar-edit",
+   "writing"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "pencil",
+   "write",
+   "rename"
+  ]
+ },
+ "ellipsis": {
+  "aliases": [
+   "more-horiz"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "more",
+   "dots",
+   "menu",
+   "horizontal"
+  ]
+ },
+ "ellipsis-vertical": {
+  "aliases": [
+   "dots-vertical"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "more",
+   "dots",
+   "menu",
+   "vertical"
+  ]
+ },
+ "external-link": {
+  "aliases": [
+   "open-external"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "open",
+   "external",
+   "share"
+  ]
+ },
+ "eye": {
+  "aliases": [
+   "preview",
+   "view"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "view",
+   "visible",
+   "show",
+   "watch"
+  ]
+ },
+ "file": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "document",
+   "page",
+   "new"
+  ]
+ },
+ "file-text": {
+  "aliases": [
+   "doc",
+   "document",
+   "new-page"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "document",
+   "page",
+   "text",
+   "note"
+  ]
+ },
+ "filter": {
+  "aliases": [
+   "funnel"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "funnel",
+   "sort",
+   "narrow"
+  ]
+ },
+ "folder": {
+  "aliases": [
+   "directory"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "directory",
+   "collection",
+   "closed"
+  ]
+ },
+ "folder-open": {
+  "aliases": [
+   "directory-open"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "directory",
+   "collection",
+   "open"
+  ]
+ },
+ "git-branch": {
+  "aliases": [
+   "branch"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "branch",
+   "git",
+   "vcs"
+  ]
+ },
+ "git-merge": {
+  "aliases": [
+   "merge"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "merge",
+   "git",
+   "vcs"
+  ]
+ },
+ "git-pull-request": {
+  "aliases": [
+   "pr",
+   "pull-request"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "pr",
+   "review",
+   "git",
+   "vcs"
+  ]
+ },
+ "graph": {
+  "aliases": [
+   "graphs",
+   "knowledge-graph",
+   "network"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "network",
+   "nodes",
+   "links",
+   "knowledge",
+   "graph"
+  ]
+ },
+ "grip-vertical": {
+  "aliases": [
+   "drag-handle",
+   "reorder"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "drag",
+   "handle",
+   "reorder"
+  ]
+ },
+ "hash": {
+  "aliases": [
+   "tag-page",
+   "toolbar-tag"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "tag",
+   "number",
+   "page-tag",
+   "pound"
+  ]
+ },
+ "help-circle": {
+  "aliases": [
+   "help",
+   "question"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "question",
+   "help",
+   "support"
+  ]
+ },
+ "history": {
+  "aliases": [
+   "time-past",
+   "versions"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "time",
+   "clock",
+   "past",
+   "undo",
+   "versions"
+  ]
+ },
+ "home": {
+  "aliases": [
+   "house"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "house",
+   "start",
+   "main"
+  ]
+ },
+ "image": {
+  "aliases": [
+   "composer-photo",
+   "photo"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "photo",
+   "picture",
+   "media",
+   "gallery"
+  ]
+ },
+ "inbox": {
+  "aliases": [
+   "capture",
+   "quick-capture"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "capture",
+   "inbox",
+   "mailbox",
+   "quick-capture"
+  ]
+ },
+ "indent": {
+  "aliases": [
+   "toolbar-indent"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "indent",
+   "right",
+   "nest"
+  ]
+ },
+ "info": {
+  "aliases": [
+   "info-circle"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "info-circle",
+   "about",
+   "help"
+  ]
+ },
+ "keyboard": {
+  "aliases": [
+   "shortcuts"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "keys",
+   "input",
+   "type"
+  ]
+ },
+ "keyboard-hide": {
+  "aliases": [
+   "toolbar-hide-keyboard"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "dismiss",
+   "keyboard",
+   "hide"
+  ]
+ },
+ "layout-split": {
+  "aliases": [
+   "columns",
+   "split-view"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "columns",
+   "layout",
+   "split"
+  ]
+ },
+ "link": {
+  "aliases": [
+   "toolbar-copy-url",
+   "url"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "url",
+   "chain",
+   "href"
+  ]
+ },
+ "list": {
+  "aliases": [
+   "lines",
+   "list-details"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "lines",
+   "items",
+   "bullets",
+   "todo-list"
+  ]
+ },
+ "loader": {
+  "aliases": [
+   "loader2",
+   "loading",
+   "spinner"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "spinner",
+   "loading",
+   "wait",
+   "progress"
+  ]
+ },
+ "lock": {
+  "aliases": [
+   "e2ee",
+   "graph-locked",
+   "locked"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "locked",
+   "private",
+   "e2ee",
+   "secure"
+  ]
+ },
+ "logo": {
+  "aliases": [
+   "logseq-logo"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "logseq",
+   "brand",
+   "mark",
+   "paw"
+  ]
+ },
+ "logout": {
+  "aliases": [
+   "sign-out"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "sign-out",
+   "exit",
+   "leave"
+  ]
+ },
+ "maximize": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "expand",
+   "fullscreen",
+   "grow"
+  ]
+ },
+ "menu": {
+  "aliases": [
+   "hamburger"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "hamburger",
+   "nav",
+   "list"
+  ]
+ },
+ "message-circle": {
+  "aliases": [
+   "chat",
+   "comment",
+   "message",
+   "messages"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "chat",
+   "comment",
+   "bubble",
+   "message"
+  ]
+ },
+ "mic": {
+  "aliases": [
+   "audio",
+   "toolbar-audio"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "microphone",
+   "audio",
+   "record",
+   "voice"
+  ]
+ },
+ "minus": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "remove",
+   "subtract"
+  ]
+ },
+ "mood-smile": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "emoji",
+   "smiley",
+   "face",
+   "happy"
+  ]
+ },
+ "moon": {
+  "aliases": [
+   "dark-theme"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "night",
+   "dark",
+   "theme"
+  ]
+ },
+ "music": {
+  "aliases": [
+   "audio-note"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "note",
+   "audio",
+   "song"
+  ]
+ },
+ "outdent": {
+  "aliases": [
+   "toolbar-outdent"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "outdent",
+   "left",
+   "unnest"
+  ]
+ },
+ "panel-left": {
+  "aliases": [
+   "layout-sidebar",
+   "sidebar-toggle-alt"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "sidebar",
+   "layout",
+   "left"
+  ]
+ },
+ "panel-right": {
+  "aliases": [
+   "layout-sidebar-right"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "sidebar",
+   "layout",
+   "right"
+  ]
+ },
+ "paperclip": {
+  "aliases": [
+   "attachment",
+   "toolbar-attachment"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "attach",
+   "attachment",
+   "clip"
+  ]
+ },
+ "pause": {
+  "aliases": [
+   "player-pause",
+   "player-stop",
+   "stop.fill"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline",
+   "filled"
+  ],
+  "tags": [
+   "stop",
+   "media",
+   "player-pause"
+  ]
+ },
+ "pin": {
+  "aliases": [
+   "favorite-page",
+   "pinned"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "pin",
+   "favorite",
+   "keep",
+   "pushpin"
+  ]
+ },
+ "play": {
+  "aliases": [
+   "player-play"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline",
+   "filled"
+  ],
+  "tags": [
+   "start",
+   "media",
+   "player-play"
+  ]
+ },
+ "plug": {
+  "aliases": [
+   "extension",
+   "plugin"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "plugin",
+   "extension",
+   "connect",
+   "power"
+  ]
+ },
+ "plus": {
+  "aliases": [
+   "add",
+   "composer-add"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "add",
+   "new",
+   "create"
+  ]
+ },
+ "quote": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "blockquote",
+   "citation",
+   "text"
+  ]
+ },
+ "refresh-cw": {
+  "aliases": [
+   "arrow.clockwise",
+   "refresh",
+   "sync-status"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "sync",
+   "reload",
+   "refresh",
+   "update"
+  ]
+ },
+ "repeat": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "loop",
+   "again",
+   "cycle"
+  ]
+ },
+ "rotate-cw": {
+  "aliases": [
+   "rotate-clockwise"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "rotate",
+   "redo",
+   "clockwise"
+  ]
+ },
+ "save": {
+  "aliases": [
+   "floppy"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "disk",
+   "floppy",
+   "write"
+  ]
+ },
+ "search": {
+  "aliases": [
+   "magnifying-glass"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "find",
+   "magnifier",
+   "look"
+  ]
+ },
+ "send": {
+  "aliases": [
+   "paperplane"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "message",
+   "submit",
+   "paper-plane"
+  ]
+ },
+ "settings": {
+  "aliases": [
+   "cog",
+   "gear",
+   "preferences"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "gear",
+   "cog",
+   "preferences",
+   "sliders"
+  ]
+ },
+ "shuffle": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "random",
+   "mix"
+  ]
+ },
+ "sidebar-toggle": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "menu",
+   "sidebar",
+   "hamburger",
+   "collapse"
+  ]
+ },
+ "star": {
+  "aliases": [
+   "favorite",
+   "star-off"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline",
+   "filled"
+  ],
+  "tags": [
+   "favorite",
+   "bookmark",
+   "rating"
+  ]
+ },
+ "status-dot": {
+  "aliases": [
+   "point-filled"
+  ],
+  "sizes": [],
+  "styles": [
+   "filled"
+  ],
+  "tags": [
+   "dot",
+   "presence",
+   "indicator"
+  ]
+ },
+ "sun": {
+  "aliases": [
+   "light-theme"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "light",
+   "day",
+   "brightness",
+   "theme"
+  ]
+ },
+ "tag": {
+  "aliases": [
+   "label.icon"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "label",
+   "price",
+   "tag"
+  ]
+ },
+ "task-backlog": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "backlog",
+   "later",
+   "dashed",
+   "someday"
+  ]
+ },
+ "task-canceled": {
+  "aliases": [
+   "task-cancelled"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline",
+   "filled"
+  ],
+  "tags": [
+   "canceled",
+   "cancelled",
+   "x",
+   "wontdo"
+  ]
+ },
+ "task-doing": {
+  "aliases": [
+   "doing",
+   "in-progress",
+   "inprogress50"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline",
+   "filled"
+  ],
+  "tags": [
+   "doing",
+   "in-progress",
+   "half",
+   "spinner"
+  ]
+ },
+ "task-done": {
+  "aliases": [
+   "check-circle",
+   "selected"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline",
+   "filled"
+  ],
+  "tags": [
+   "done",
+   "check",
+   "complete",
+   "selected"
+  ]
+ },
+ "task-review": {
+  "aliases": [
+   "in-review"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "review",
+   "in-review",
+   "clock",
+   "pending"
+  ]
+ },
+ "task-todo": {
+  "aliases": [
+   "task",
+   "toolbar-task",
+   "unselected"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "todo",
+   "circle",
+   "empty",
+   "unselected"
+  ]
+ },
+ "terminal": {
+  "aliases": [
+   "cli",
+   "console"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "cli",
+   "console",
+   "command",
+   "prompt"
+  ]
+ },
+ "trash": {
+  "aliases": [
+   "toolbar-delete"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "delete",
+   "remove",
+   "bin"
+  ]
+ },
+ "upload": {
+  "aliases": [
+   "export",
+   "share"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "export",
+   "share",
+   "arrow-up"
+  ]
+ },
+ "user": {
+  "aliases": [
+   "account",
+   "person"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "person",
+   "account",
+   "profile"
+  ]
+ },
+ "users": {
+  "aliases": [
+   "collaborators",
+   "team"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "people",
+   "team",
+   "group",
+   "collaborators"
+  ]
+ },
+ "volume": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "sound",
+   "speaker",
+   "audio"
+  ]
+ },
+ "waveform": {
+  "aliases": [
+   "recording",
+   "voice"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "audio",
+   "voice",
+   "sound",
+   "recording"
+  ]
+ },
+ "world": {
+  "aliases": [
+   "globe"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "globe",
+   "web",
+   "internet",
+   "publish"
+  ]
+ },
+ "wrench": {
+  "aliases": [],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "tool",
+   "fix",
+   "settings",
+   "repair"
+  ]
+ },
+ "x": {
+  "aliases": [
+   "close",
+   "xmark"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "close",
+   "cancel",
+   "delete",
+   "remove"
+  ]
+ },
+ "x-circle": {
+  "aliases": [
+   "xmark.circle"
+  ],
+  "sizes": [
+   16,
+   24
+  ],
+  "styles": [
+   "outline"
+  ],
+  "tags": [
+   "error",
+   "close",
+   "cancel",
+   "circle-x"
+  ]
+ }
+}
