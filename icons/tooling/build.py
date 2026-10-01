@@ -3,11 +3,46 @@
 
 Reads icons/{16,24}/*.svg and icons/{16,24}/filled/*.svg, merges
 icons/metadata.json (tags + product aliases), writes icons/site/index.html.
+
+With --emit, first recompiles every scene in icons/scenes/{16,24} to SVG
+via the tu CLI (tu binary from $TU or PATH). Emitted SVGs get their
+root width/height attributes stripped (consumers size icons themselves).
 """
-import json, os, re, sys, html
+import json, os, re, shutil, subprocess, sys, html
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 META = json.load(open(os.path.join(ROOT, "metadata.json")))
+
+STROKE = {16: "1.5", 24: "2"}
+
+def emit_scenes():
+    tu = os.environ.get("TU") or shutil.which("tu")
+    if not tu:
+        print("WARN: tu not found ($TU or PATH) — skipping scene emit",
+              file=sys.stderr)
+        return
+    sdir = os.path.join(ROOT, "scenes")
+    n = 0
+    for size in (16, 24):
+        for sub in ("", "filled"):
+            d = os.path.join(sdir, str(size), sub)
+            if not os.path.isdir(d):
+                continue
+            for f in sorted(os.listdir(d)):
+                if not f.endswith(".tu"):
+                    continue
+                out = os.path.join(ROOT, str(size), sub,
+                                   f.replace(".tu", ".svg"))
+                subprocess.run([tu, "emit", os.path.join(d, f),
+                                "-o", out], check=True)
+                s = open(out).read()
+                s = re.sub(r'<svg xmlns="http://www\.w3\.org/2000/svg" '
+                           r'width="\d+" height="\d+" ',
+                           '<svg xmlns="http://www.w3.org/2000/svg" ',
+                           s, count=1)
+                open(out, "w").write(s)
+                n += 1
+    print(f"emitted {n} SVGs from scenes")
 
 def read_svg(path):
     return open(path).read().strip()
@@ -39,7 +74,12 @@ def validate(icons):
             if "stroke-width=\"0\"" in svg or "opacity=\"0\"" in svg:
                 errs.append(f"{name}/{key}: leftover hidden geometry")
             if key.startswith("o"):
-                w = "1.25" if key == "o16" else "1.5"
+                if "stroke=" not in svg:
+                    # fill-only glyph (bullet, status-dot): not a stroked icon
+                    if 'fill="currentColor"' not in svg:
+                        errs.append(f"{name}/{key}: fill-only glyph should fill=currentColor")
+                    continue
+                w = STROKE[int(key[1:])]
                 if f'stroke-width="{w}"' not in svg:
                     errs.append(f"{name}/{key}: wrong stroke-width")
                 if 'fill="none"' not in svg:
@@ -181,6 +221,8 @@ render();
 """
 
 def main():
+    if "--emit" in sys.argv:
+        emit_scenes()
     icons = collect()
     errs = validate(icons)
     for e in errs:

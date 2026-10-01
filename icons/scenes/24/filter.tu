@@ -1,0 +1,20 @@
+{
+ "canvas": {
+  "width": 24,
+  "height": 24
+ },
+ "root": {
+  "kind": "stack",
+  "children": [
+   {
+    "d": "M 10 20 A 1 1 0 0 0 10.55 20.89 L 12.55 21.89 A 1 1 0 0 0 14 21 V 14 A 2 2 0 0 1 14.52 12.66 L 21.74 4.67 A 1 1 0 0 0 21 3 H 3 A 1 1 0 0 0 2.26 4.67 L 9.48 12.66 A 2 2 0 0 1 10 14 Z",
+    "kind": "tu-path",
+    "stroke": "currentColor",
+    "fill": "none",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "stroke-width": "2"
+   }
+  ]
+ }
+}
