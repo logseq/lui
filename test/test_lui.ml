@@ -2260,11 +2260,85 @@ let test_split_model () =
   let state = update state (Close_pane "pane-0") in
   Alcotest.(check int) "last pane survives" 1 (List.length (pane_ids (root state)))
 
+let test_composer_content_sizing () =
+  let root = ref 0 in
+  let backend = recording_backend () in
+  let app = Lui_app.create backend () (fun model _ -> model)
+    (fun _context _model _send -> capture_node root
+       (Lui_element_combine.composer ~placeholder:"Synthetic draft"
+          ~text:"One line" ~attachments:(Lui_elements.text ~value:"Synthetic attachment" []) ())) in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let grows = List.exists (function
+    | Lui_protocol.SetProp (node, Lui_protocol.GrowValue, Lui_protocol.FloatValue value)
+        when node = !root -> value > 0.
+    | _ -> false) ops in
+  Alcotest.(check bool) "composer does not fill available overlay height" false grows;
+  let textarea = List.find_map (function
+    | Lui_protocol.CreateNode (node, Lui_protocol.Textarea) -> Some node | _ -> None) ops |> Option.get in
+  Alcotest.(check bool) "textarea has a bounded content height" true
+    (List.exists (function
+      | Lui_protocol.SetProp (node, Lui_protocol.MaxHeight, Lui_protocol.IntValue value)
+          when node = textarea -> value > 36 && value <= 200
+      | _ -> false) ops);
+  ignore (Lui_app.dispose app)
+
+let test_composer_attachment_preview_and_remove () =
+  List.iter (fun disabled ->
+    let removals = ref 0 in
+    let app = Lui_app.create (recording_backend ()) () (fun model _ -> model)
+      (fun _context _model _send ->
+         Lui_element_combine.composer_attachment ~disabled ~key:"synthetic-pdf"
+           ~path:"/tmp/synthetic.pdf" ~title:"Synthetic PDF" ~file_type:"pdf"
+           ~on_remove:(fun _ -> incr removals) ()) in
+    ignore (Lui_app.start app); flush_app app;
+    let labelled name = List.find_map (function
+      | Lui_protocol.SetProp (node, Lui_protocol.AccessibilityLabel,
+          Lui_protocol.StringValue value) when value = name -> Some node
+      | _ -> None) (all_ops ()) |> Option.get in
+    let preview = labelled "Preview Synthetic PDF" in
+    let remove = labelled "Remove Synthetic PDF" in
+    ignore (Lui_app.dispatch_event app (Lui_protocol.Press preview)); flush_app app;
+    let native_preview = List.find_map (function
+      | Lui_protocol.CreateNode (node, Lui_protocol.FilePreview) -> Some node
+      | _ -> None) (all_ops ()) |> Option.get in
+    ignore (Lui_app.dispatch_event app (Lui_protocol.Dismiss native_preview)); flush_app app;
+    ignore (Lui_app.dispatch_event app (Lui_protocol.Press remove)); flush_app app;
+    Alcotest.(check int) "disabled removal cannot mutate a saving draft"
+      (if disabled then 0 else 1) !removals;
+    ignore (Lui_app.dispose app)) [false; true]
+
+let test_composer_feedback_above_actions () =
+  let app = Lui_app.create (recording_backend ()) () (fun model _ -> model)
+    (fun _context _model _send ->
+       Lui_element_combine.composer ~placeholder:"Synthetic draft"
+         ~feedback:(Lui_elements.text ~value:"Synthetic camera unavailable" []) ()) in
+  ignore (Lui_app.start app); flush_app app;
+  let ops = all_ops () in
+  let node_for property value = List.find_map (function
+    | Lui_protocol.SetProp (node, key, Lui_protocol.StringValue actual)
+        when key = property && actual = value -> Some node | _ -> None) ops |> Option.get in
+  let feedback = node_for Lui_protocol.TextValue "Synthetic camera unavailable" in
+  let actions = node_for Lui_protocol.AccessibilityIdentifier "row.composer.controls" in
+  let placement node = List.find_map (function
+    | Lui_protocol.InsertChild (parent, child, index) when child = node -> Some (parent,index)
+    | _ -> None) ops |> Option.get in
+  let feedback_parent, feedback_index = placement feedback in
+  let action_parent, action_index = placement actions in
+  Alcotest.(check bool) "feedback shares surface and reserves space above controls"
+    true (feedback_parent = action_parent && feedback_index < action_index);
+  ignore (Lui_app.dispose app)
+
+
 let () =
   Alcotest.run "lui"
     [
       ( "app",
         [
+          Alcotest.test_case "composer content sizing" `Quick test_composer_content_sizing;
+          Alcotest.test_case "composer attachment preview and removal" `Quick test_composer_attachment_preview_and_remove;
+          Alcotest.test_case "composer feedback above actions" `Quick test_composer_feedback_above_actions;
           Alcotest.test_case "lifecycle" `Quick test_app_lifecycle;
           Alcotest.test_case "backend patches" `Quick
             test_backend_receives_patches;

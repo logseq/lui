@@ -40,15 +40,19 @@ val buttons : actions:action list -> t
 
 (** Message/capture input capsule: optional horizontal attachment strip
     ([attachments_visible_signal] mounts the strip only while its signal holds),
-    a growing [composer-input] textarea, and a controls row of caller
+    a content-sized [composer-input] textarea capped at 168pt, and a controls row of caller
     [actions] followed by an optional send button. [on_press] fires when
     the capsule itself is pressed (e.g. to focus the field);
-    [autofocus_signal] drives the textarea's autofocus reactively. *)
+    [autofocus_signal] drives the textarea's autofocus reactively.
+    [attachments_height] bounds the strip (default 140pt); [feedback] is
+    laid out inside the surface above controls, reserving its own space. *)
 val composer :
   ?key:string ->
   ?accessibility_identifier:string ->
   ?attachments:t ->
   ?attachments_visible_signal:bool Signal.signal ->
+  ?attachments_height:int ->
+  ?feedback:t ->
   ?actions:t list ->
   placeholder:string ->
   ?label:string ->
@@ -64,6 +68,13 @@ val composer :
   ?on_send:(Lui_protocol.event -> unit) ->
   ?on_press:(Lui_protocol.event -> unit) ->
   unit -> t
+
+(** Pending attachment card for the shared composer slot. The preview uses
+    the host's native file preview; removal is an explicit named 44pt action.
+    [key] must identify the staged item across edits and reorderings. *)
+val composer_attachment :
+  ?disabled:bool -> key:string -> path:string -> title:string -> file_type:string ->
+  on_remove:(Lui_protocol.event -> unit) -> unit -> t
 
 (** Collapsed form of the composer: a capsule button the host expands back
     into the full {!composer}. *)

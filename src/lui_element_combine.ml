@@ -165,6 +165,8 @@ let composer
       ?accessibility_identifier
       ?attachments
       ?attachments_visible_signal
+      ?(attachments_height = 140)
+      ?feedback
       ?(actions = [])
       ~placeholder
       ?label
@@ -189,7 +191,8 @@ let composer
      | None -> []
      | Some content ->
        let strip =
-         scroll ~orientation:`horizontal ~height:140 [ row ~gap:8 [ content ] ]
+         scroll ~orientation:`horizontal ~height:attachments_height
+           [ row ~gap:8 [ content ] ]
        in
        [ (match attachments_visible_signal with
           | None -> strip
@@ -198,7 +201,7 @@ let composer
    in
    let field =
      textarea
-       ~min_height:36 ~style_class:"composer-input" ~placeholder
+       ~min_height:36 ~max_height:168 ~style_class:"composer-input" ~placeholder
        ~label:(match label with Some value -> value | None -> placeholder)
        ?text ?text_signal ~autofocus ?submit_on_enter
        ~accessibility_identifier:"field.composer" ?on_input ?on_submit []
@@ -218,7 +221,8 @@ let composer
    let capsule =
      column
        ?key ?accessibility_identifier
-       ~grow:1.0 ~min_height:58 ~main:`end_ ~gap:0
+       ~style_class:"composer-surface"
+       ~min_height:58 ~gap:0
        ~padding_horizontal:(if flutter then 12 else 16)
        ~padding_vertical:(if flutter then 12 else 8)
        ~background:(if flutter then "surface-container-high" else "glass")
@@ -228,7 +232,9 @@ let composer
         @ [ field
           ; box ~height:8
               ~accessibility_identifier:"spacer.composer.field-controls" []
-          ; row
+          ]
+        @ Option.to_list feedback
+        @ [ row
               ~gap:8 ~height:44 ~cross:`center
               ~accessibility_identifier:"row.composer.controls"
               (actions
@@ -244,6 +250,41 @@ let composer
     | Some handler -> with_press handler capsule)
      context parent
 ;;
+
+let composer_attachment_preview_slot = Signal.state_slot "composer-attachment-preview"
+
+let composer_attachment ?(disabled = false) ~key ~path ~title ~file_type ~on_remove () : t =
+ fun context parent ->
+   let context = Lui_ui.child_context context ("composer-attachment:" ^ key) in
+   let preview = Signal.state_at context.ui_scheduler context.ui_state_scope
+       composer_attachment_preview_slot false in
+   let show _ = Signal.set preview true in
+   let name = if String.trim title = "" then "Attachment" else title in
+   let image = List.mem (String.lowercase_ascii file_type)
+       [ "png"; "jpg"; "jpeg"; "gif"; "webp"; "heic" ] in
+   column ~key ~width:184 ~gap:4 ~padding:4 ~corner_radius:10
+     ~background:"#839B7F0B"
+     [ row ~gap:4 ~cross:`center
+         [ (if image then file_image ~path ~max_pixel_size:128
+                ~width:48 ~height:48 ~corner_radius:8
+                ~label:("Preview " ^ name) ~on_press:show []
+            else button ~icon:(`app "doc") ~width:48 ~height:48
+                ~variant:`ghost ~label:("Preview " ^ name) ~on_press:show [])
+         ; button ~text:name ~width:120 ~min_height:48 ~variant:`ghost
+             ~label:("Preview " ^ name) ~on_press:show []
+         ]
+     ; button ~text:"Remove" ~height:44 ~variant:`ghost
+         ~disabled
+         ~label:("Remove " ^ name)
+         ~accessibility_identifier:("composer-attachment-remove:" ^ key)
+         ~on_press:(fun event -> if not disabled then on_remove event) []
+     ; dyn ~equal:Bool.equal
+         (fun visible -> if visible then file_preview ~path
+              ~on_dismiss:(fun _ -> Signal.set preview false) [] else column [])
+         (Signal.value preview)
+     ] context parent
+;;
+
 
 let composer_collapsed
       ?key

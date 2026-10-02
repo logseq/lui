@@ -144,6 +144,15 @@ struct LUISwiftUIBackendTests {
         #expect(!LUISurfaceFramePolicy.usesTopLeadingAlignment(kind: .box))
     }
 
+    @Test("composer input measures content instead of filling its height ceiling")
+    func composerInputUsesIntrinsicHeight() {
+        #expect(LUISurfaceFramePolicy.usesIntrinsicHeight(kind: .textarea, styleClass: "composer-input"))
+        #expect(!LUISurfaceFramePolicy.usesIntrinsicHeight(kind: .textarea, styleClass: nil))
+        #expect(!LUISurfaceFramePolicy.usesIntrinsicHeight(kind: .textField, styleClass: "composer-input"))
+        #expect(LUISurfaceFramePolicy.usesIntrinsicHeight(kind: .column, styleClass: "composer-surface"))
+        #expect(!LUISurfaceFramePolicy.usesIntrinsicHeight(kind: .column, styleClass: nil))
+    }
+
     @Test("disabled custom button surfaces follow native disabled emphasis")
     func disabledCustomButtonSurfacesAreDimmed() {
         #expect(LUISurfaceEmphasisPolicy.opacity(
