@@ -4,6 +4,7 @@
 
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace LUI.WinUI
 {
@@ -11,6 +12,10 @@ namespace LUI.WinUI
     {
         internal LUIWinUIRoot()
         {
+            // Fluent "layer" backdrop under everything the wire renders —
+            // cards and dialogs sit on this fill like a WinUI window.
+            Background = new SolidColorBrush(
+                Windows.UI.Color.FromArgb(0xFF, 0xF9, 0xF9, 0xF9));
             var content = new LUIGrid();
             var overlay = new Grid { Visibility = Visibility.Collapsed };
             overlay.IsHitTestVisible = true;

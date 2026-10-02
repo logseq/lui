@@ -82,6 +82,9 @@ namespace LUI.WinUI
                 case "secondary":
                     return Resource("CardBackgroundFillColorSecondaryBrush",
                         Color.FromArgb(0x80, 0xF6, 0xF6, 0xF6));
+                case "card":
+                    return Resource("CardBackgroundFillColorDefaultBrush",
+                        Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF));
                 case "glass":
                     return Resource("AcrylicBackgroundFillColorDefaultBrush",
                         Color.FromArgb(0xCC, 0xF9, 0xF9, 0xF9));
