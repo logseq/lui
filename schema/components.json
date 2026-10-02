@@ -1430,6 +1430,13 @@
       ]
     },
     {
+      "lg": "PressModifiers",
+      "fields": [
+        ":int",
+        ":int"
+      ]
+    },
+    {
       "lg": "LongPress",
       "fields": [
         ":int"

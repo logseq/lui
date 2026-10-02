@@ -95,6 +95,11 @@ namespace LUI.WinUI
                     control.VerticalAlignment = VerticalAlignment.Center;
                     control.MaxWidth = 520;
                     control.Margin = new Thickness(24);
+                    var dialogShadow = new ThemeShadow();
+                    dialogShadow.Receivers.Add(_overlay);
+                    control.Shadow = dialogShadow;
+                    control.Translation =
+                        new System.Numerics.Vector3(0, 0, 32);
                     break;
                 case LUINodeKind.Sheet:
                 {
@@ -156,6 +161,11 @@ namespace LUI.WinUI
                     control.MinHeight = overlayHeight * restFraction;
                     control.MaxHeight = maxFraction > 0.0
                         ? overlayHeight * maxFraction : 480;
+                    var sheetShadow = new ThemeShadow();
+                    sheetShadow.Receivers.Add(_overlay);
+                    control.Shadow = sheetShadow;
+                    control.Translation =
+                        new System.Numerics.Vector3(0, 0, 32);
                     break;
                 }
                 case LUINodeKind.Drawer:

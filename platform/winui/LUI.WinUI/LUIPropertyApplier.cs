@@ -314,6 +314,14 @@ namespace LUI.WinUI
             {
                 button.Style = accent;
             }
+            else if (variant == "ghost" && button is Button b)
+            {
+                // Fluent "text button": chromeless, hover still raises the
+                // template's subtle fill.
+                b.Background = new SolidColorBrush(
+                    Windows.UI.Color.FromArgb(0, 0, 0, 0));
+                b.BorderThickness = new Thickness(0);
+            }
         }
 
         // ---- track configuration --------------------------------------------

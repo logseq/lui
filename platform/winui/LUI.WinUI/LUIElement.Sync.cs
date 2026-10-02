@@ -50,10 +50,12 @@ namespace LUI.WinUI
                 case LUINodeKind.BottomTab:
                 case LUINodeKind.Step:
                 case LUINodeKind.TimelineItem:
+                    SyncPlainContainer(state, context);
+                    break;
                 case LUINodeKind.Dialog:
                 case LUINodeKind.Drawer:
                 case LUINodeKind.Sheet:
-                    SyncPlainContainer(state, context);
+                    SyncModalSurface(state, context);
                     break;
                 case LUINodeKind.ListContainer:
                 case LUINodeKind.VirtualList:
@@ -238,6 +240,91 @@ namespace LUI.WinUI
             }
             context.Host.SyncPanelChildren(
                 panel, context.InlineChildrenOf(state), i => (0, i));
+        }
+
+        // Fluent modal chrome: rounded corners, card fill/stroke and a
+        // native title row rendered from the `text` prop. Only fills in
+        // properties the wire left unset so an explicit ~background /
+        // ~border_color / ~corner_radius still wins.
+        void SyncModalSurface(LUINodeState state, LUISyncContext context)
+        {
+            SyncPlainContainer(state, context);
+            if (Control is not Border card) return;
+            if (LUIPropertyApplier.Prop(state, LUIProperty.CornerRadius) ==
+                null)
+            {
+                card.CornerRadius = state.Kind switch
+                {
+                    LUINodeKind.Dialog => new CornerRadius(8),
+                    LUINodeKind.Sheet => new CornerRadius(8, 8, 0, 0),
+                    _ => card.CornerRadius,
+                };
+            }
+            if (card.Background == null)
+            {
+                card.Background = LUIThemeColors.Resource(
+                    "SolidColorFillColorBaseBrush",
+                    Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF));
+            }
+            if (card.BorderBrush == null)
+            {
+                card.BorderBrush = LUIThemeColors.Resource(
+                    "CardStrokeColorDefaultBrush",
+                    Color.FromArgb(0x0F, 0x00, 0x00, 0x00));
+                card.BorderThickness = new Thickness(1);
+            }
+            if (state.Kind == LUINodeKind.Dialog)
+            {
+                SyncDialogTitle(state, context);
+            }
+        }
+
+        static readonly object DialogTitleTag = new object();
+
+        // The dialog's `text` prop is its title: kept as a non-element
+        // TextBlock in a leading Auto row so it survives SyncPanelChildren
+        // (element children are shifted down one row beneath it).
+        void SyncDialogTitle(LUINodeState state, LUISyncContext context)
+        {
+            if (ChildrenPanel is not LUIGrid grid) return;
+            string title = LUIPropertyApplier.Text(state);
+            TextBlock? titleBlock = null;
+            foreach (UIElement child in grid.Children)
+            {
+                if (child is TextBlock block && block.Tag == DialogTitleTag)
+                {
+                    titleBlock = block;
+                    break;
+                }
+            }
+            if (title.Length == 0)
+            {
+                if (titleBlock != null) grid.Children.Remove(titleBlock);
+                return;
+            }
+            if (titleBlock == null)
+            {
+                titleBlock = new TextBlock
+                {
+                    FontSize = 20,
+                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                    Margin = new Thickness(0, 0, 0, 12),
+                    Tag = DialogTitleTag,
+                    Foreground = LUIThemeColors.Resource(
+                        "TextFillColorPrimaryBrush",
+                        Color.FromArgb(0xE4, 0x1B, 0x1B, 0x1B)),
+                };
+                grid.Children.Insert(0, titleBlock);
+            }
+            titleBlock.Text = title;
+            Grid.SetRow(titleBlock, 0);
+            grid.RowDefinitions.Insert(
+                0, new RowDefinition { Height = GridLength.Auto });
+            IReadOnlyList<long> children = context.InlineChildrenOf(state);
+            for (int i = 0; i < children.Count; i++)
+            {
+                Grid.SetRow(context.ElementFor(children[i]).Control, i + 1);
+            }
         }
 
         // Honors scroll_target/scroll_token: when the token changes, brings
@@ -643,22 +730,53 @@ namespace LUI.WinUI
             LUIPropertyApplier.ConfigureFlexTracks(
                 grid, false, state, context);
             IReadOnlyList<long> children = context.InlineChildrenOf(state);
-            // Fluent ListView selection: a small accent pill on the left
-            // edge plus a subtle tint across the row. The pill is a
-            // non-element child in column 0 (SyncPanelChildren leaves
-            // non-element children alone); content lives in column 1.
-            bool selected = LUIPropertyApplier.Prop(
+            // Fluent ListView visuals: a rounded tint plate across the row
+            // (selected: SubtleFill secondary, hover: tertiary) plus a small
+            // accent pill on the left edge when selected. Both are
+            // non-element children — the plate sits behind the content in
+            // column 1, the pill in the narrow column 0; SyncPanelChildren
+            // leaves non-element children alone.
+            _itemSelected = LUIPropertyApplier.Prop(
                 state, LUIProperty.Selected)?.AsBool == true;
+            Border? plate = null;
             Border? indicator = null;
             foreach (UIElement existing in grid.Children)
             {
-                if (existing is Border pill &&
+                if (existing is Border candidate &&
+                    candidate.Tag == SelectionPlateTag)
+                {
+                    plate = candidate;
+                }
+                else if (existing is Border pill &&
                     pill.Tag == SelectionIndicatorTag)
                 {
                     indicator = pill;
-                    break;
                 }
             }
+            if (plate == null)
+            {
+                plate = new Border
+                {
+                    CornerRadius = new CornerRadius(4),
+                    Margin = new Thickness(0, 2, 4, 2),
+                    IsHitTestVisible = false,
+                    Tag = SelectionPlateTag,
+                };
+                Grid.SetColumn(plate, 1);
+                grid.Children.Insert(0, plate);
+                grid.PointerEntered += (_, _) =>
+                {
+                    _itemHovered = true;
+                    UpdateItemPlate();
+                };
+                grid.PointerExited += (_, _) =>
+                {
+                    _itemHovered = false;
+                    UpdateItemPlate();
+                };
+            }
+            _itemPlate = plate;
+            Grid.SetRowSpan(plate, Math.Max(1, children.Count));
             if (indicator == null)
             {
                 indicator = new Border
@@ -680,17 +798,13 @@ namespace LUI.WinUI
                 grid.Children.Insert(0, indicator);
             }
             indicator.Visibility =
-                selected ? Visibility.Visible : Visibility.Collapsed;
+                _itemSelected ? Visibility.Visible : Visibility.Collapsed;
             Grid.SetRowSpan(indicator, Math.Max(1, children.Count));
-            // Transparent keeps the whole row hit-testable when
-            // unselected; a null background lets taps fall through the
-            // empty areas between row children.
-            grid.Background = selected
-                ? LUIThemeColors.Resource(
-                    "SubtleFillColorSecondaryBrush",
-                    Color.FromArgb(0x09, 0x00, 0x00, 0x00))
-                : new SolidColorBrush(
-                    Windows.UI.Color.FromArgb(0, 0, 0, 0));
+            UpdateItemPlate();
+            // Transparent keeps the whole row hit-testable; a null
+            // background lets taps fall through the empty areas.
+            grid.Background = new SolidColorBrush(
+                Color.FromArgb(0, 0, 0, 0));
             grid.ColumnDefinitions.Clear();
             grid.ColumnDefinitions.Add(
                 new ColumnDefinition { Width = GridLength.Auto });
@@ -704,6 +818,23 @@ namespace LUI.WinUI
         }
 
         static readonly object SelectionIndicatorTag = new object();
+        static readonly object SelectionPlateTag = new object();
+        bool _itemSelected;
+        bool _itemHovered;
+        Border? _itemPlate;
+
+        void UpdateItemPlate()
+        {
+            if (_itemPlate == null) return;
+            // WinUI ListView tints rows the same for hover and selection;
+            // the accent pill is what marks a row as selected.
+            _itemPlate.Background =
+                (_itemSelected || _itemHovered)
+                    ? LUIThemeColors.Resource(
+                        "SubtleFillColorSecondaryBrush",
+                        Color.FromArgb(0x09, 0x00, 0x00, 0x00))
+                    : new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
+        }
 
         void SyncAvatar(LUINodeState state, LUISyncContext context)
         {
