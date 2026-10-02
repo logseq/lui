@@ -302,6 +302,19 @@ public struct LUIAppleExtensionViewContext {
         backend.extensionModel(id: childID)?.property(name)
     }
 
+    /// Parent node id of any node in the tree — lets extension views walk
+    /// ancestors (e.g. to build DOM-style event target snapshots).
+    public func parentID(of nodeID: Int) -> Int? {
+        backend.extensionModel(id: nodeID)?.parent
+            ?? backend.model(id: nodeID)?.parent
+    }
+
+    /// The extension identifier ("logseq-div") of any extension node, or nil
+    /// for standard (non-extension) nodes.
+    public func extensionIdentifier(of nodeID: Int) -> String? {
+        backend.extensionModel(id: nodeID)?.identifier
+    }
+
     public func emit(name: String, values: [String: LUIExtensionValue] = [:]) throws {
         try backend.performExtensionEvent(node: nodeID, name: name, values: values)
     }
