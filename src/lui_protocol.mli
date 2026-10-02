@@ -222,7 +222,6 @@ type wire_value =
 
 type event =
   | Press of int
-  | PressModifiers of int * int
   | LongPress of int
   | TextChanged of int * string
   | Submit of int
@@ -235,6 +234,7 @@ type event =
   | ScrollCompleted of int * int * string
   | VisibleRange of int * int * int
   | Picked of int * string
+  | PressModifiers of int * int
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
