@@ -185,6 +185,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case path = "path"
     case url = "url"
     case maxPixelSize = "max-pixel-size"
+    case imageFit = "image-fit"
     case visible = "visible"
     case alignment = "alignment"
 }

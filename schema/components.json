@@ -1412,6 +1412,11 @@
       "swift": "maxPixelSize"
     },
     {
+      "lg": "ImageFitValue",
+      "wire": "image-fit",
+      "swift": "imageFit"
+    },
+    {
       "lg": "Visible",
       "wire": "visible",
       "swift": "visible"

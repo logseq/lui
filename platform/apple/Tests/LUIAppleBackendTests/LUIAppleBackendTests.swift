@@ -3949,6 +3949,31 @@ struct LUISwiftUIBackendTests {
         #expect(backend.generation == 1)
     }
 
+    @Test("file-image accepts proportional fit/fill and rejects stretch")
+    func fileImageAspectModes() throws {
+        for mode in ["fit", "fill"] {
+            let backend = LUIAppleBackend()
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"file-image"},
+              {"op":"set-prop","id":1,"property":"path","value":"/tmp/example.png"},
+              {"op":"set-prop","id":1,"property":"image-fit","value":"\(mode)"}
+            ]}
+            """)
+            #expect(backend.model(id: 1) != nil)
+        }
+        let backend = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"file-image"},
+              {"op":"set-prop","id":1,"property":"path","value":"/tmp/example.png"},
+              {"op":"set-prop","id":1,"property":"image-fit","value":"stretch"}
+            ]}
+            """)
+        }
+    }
+
     @Test("maps FileImage with thumbnail, sizing, and press support")
     func mapsFileImage() throws {
         let backend = LUIAppleBackend()

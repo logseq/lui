@@ -189,6 +189,7 @@ enum class Property {
   PathValue,
   UrlValue,
   MaxPixelSize,
+  ImageFitValue,
   Visible,
   AlignmentValue,
 };
@@ -625,6 +626,7 @@ inline const char *propertyWireName(Property property) {
     case Property::PathValue: return "path";
     case Property::UrlValue: return "url";
     case Property::MaxPixelSize: return "max-pixel-size";
+    case Property::ImageFitValue: return "image-fit";
     case Property::Visible: return "visible";
     case Property::AlignmentValue: return "alignment";
   }
@@ -727,6 +729,7 @@ inline bool decodePropertyWireName(const char *name, Property *property) {
   if (std::strcmp(name, "path") == 0) { *property = Property::PathValue; return true; }
   if (std::strcmp(name, "url") == 0) { *property = Property::UrlValue; return true; }
   if (std::strcmp(name, "max-pixel-size") == 0) { *property = Property::MaxPixelSize; return true; }
+  if (std::strcmp(name, "image-fit") == 0) { *property = Property::ImageFitValue; return true; }
   if (std::strcmp(name, "visible") == 0) { *property = Property::Visible; return true; }
   if (std::strcmp(name, "alignment") == 0) { *property = Property::AlignmentValue; return true; }
   return false;

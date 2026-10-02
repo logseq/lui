@@ -203,6 +203,9 @@ enum LUIWireValue: Decodable, Equatable {
             return (0...Int(Int32.max)).contains(value)
         case .path, .url:
             return stringValue != nil
+        case .imageFit:
+            guard let value = stringValue else { return false }
+            return value == "fit" || value == "fill"
         case .maxPixelSize:
             guard let value = intValue else { return false }
             return value > 0
@@ -922,7 +925,7 @@ struct LUIRetainedTree {
         case .detents, .sizing: kind == .sheet
         case .path: kind == .fileImage || kind == .filePreview
         case .url: kind == .link
-        case .maxPixelSize: kind == .fileImage
+        case .maxPixelSize, .imageFit: kind == .fileImage
         case .active, .title, .description, .meta, .indicator, .connector: false
         case .request, .types, .multiple, .source, .completion: false
         case .visible: kind == .edgeInset
