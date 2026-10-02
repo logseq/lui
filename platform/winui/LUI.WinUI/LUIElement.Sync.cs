@@ -109,6 +109,8 @@ namespace LUI.WinUI
                     SyncSecureField(state, context);
                     break;
                 case LUINodeKind.SearchField:
+                    SyncTextBox(state, context);
+                    break;
                 case LUINodeKind.Combobox:
                     SyncAutoSuggest(state, context);
                     break;
@@ -826,14 +828,27 @@ namespace LUI.WinUI
         void UpdateItemPlate()
         {
             if (_itemPlate == null) return;
-            // WinUI ListView tints rows the same for hover and selection;
-            // the accent pill is what marks a row as selected.
-            _itemPlate.Background =
-                (_itemSelected || _itemHovered)
-                    ? LUIThemeColors.Resource(
-                        "SubtleFillColorSecondaryBrush",
-                        Color.FromArgb(0x09, 0x00, 0x00, 0x00))
-                    : new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
+            // Fluent selection: accent-tinted fill + the accent pill; hover
+            // stays a neutral subtle fill (WinUI 3 ListView look).
+            if (_itemSelected)
+            {
+                Color accent = new Windows.UI.ViewManagement.UISettings()
+                    .GetColorValue(
+                        Windows.UI.ViewManagement.UIColorType.Accent);
+                _itemPlate.Background = new SolidColorBrush(
+                    Color.FromArgb(0x16, accent.R, accent.G, accent.B));
+            }
+            else if (_itemHovered)
+            {
+                _itemPlate.Background = LUIThemeColors.Resource(
+                    "SubtleFillColorSecondaryBrush",
+                    Color.FromArgb(0x09, 0x00, 0x00, 0x00));
+            }
+            else
+            {
+                _itemPlate.Background = new SolidColorBrush(
+                    Color.FromArgb(0, 0, 0, 0));
+            }
         }
 
         void SyncAvatar(LUINodeState state, LUISyncContext context)

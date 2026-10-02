@@ -114,8 +114,8 @@ namespace LUI.WinUI
             double borderWidth = Prop(
                 state, LUIProperty.BorderWidth)?.AsFloat ??
                 (border == null ? 0 : 1);
-            double radius = Prop(
-                state, LUIProperty.CornerRadius)?.AsFloat ?? 0;
+            double? radius = Prop(
+                state, LUIProperty.CornerRadius)?.AsFloat;
 
             switch (control)
             {
@@ -123,17 +123,24 @@ namespace LUI.WinUI
                     if (background != null) b.Background = background;
                     b.BorderBrush = border;
                     b.BorderThickness = new Thickness(borderWidth);
-                    b.CornerRadius = new CornerRadius(radius);
+                    b.CornerRadius = new CornerRadius(radius ?? 0);
                     break;
                 case Control ctl:
                     if (background != null) ctl.Background = background;
                     if (foreground != null) ctl.Foreground = foreground;
-                    if (ctl is not Button)
+                    // Only override the template's chrome when the view
+                    // actually asked for it — zeroing border/radius here
+                    // would strip every TextBox/CheckBox/DatePicker of its
+                    // Fluent visuals.
+                    if (ctl is not Button && border != null)
                     {
                         ctl.BorderBrush = border;
                         ctl.BorderThickness = new Thickness(borderWidth);
                     }
-                    ctl.CornerRadius = new CornerRadius(radius);
+                    if (radius != null)
+                    {
+                        ctl.CornerRadius = new CornerRadius(radius.Value);
+                    }
                     break;
                 case Panel panel:
                     if (background != null) panel.Background = background;
