@@ -91,7 +91,10 @@ namespace LUI.WinUI
                 case LUINodeKind.SecureField:
                     return new PasswordBox();
                 case LUINodeKind.SearchField:
-                    return new AutoSuggestBox();
+                    // AutoSuggestBox's inner chrome does not resolve in an
+                    // unpackaged host (renders borderless); a plain TextBox
+                    // shows the Fluent border/bg/focus-accent visuals.
+                    return new TextBox();
                 case LUINodeKind.Textarea:
                     return new TextBox
                     {
