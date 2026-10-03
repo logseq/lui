@@ -3016,7 +3016,9 @@ private struct LUIToolbarView: View {
             // Hoist children into the platform chrome at the resolved
             // placement (navigation bar on iOS, window toolbar on macOS).
             if #available(iOS 26.0, macOS 26.0, *) {
-                LUIToolbarGroupAnchor(model: model, backend: backend, placement: resolved)
+                LUIToolbarGroupAnchor(
+                    model: model, backend: backend, placement: resolved,
+                    singleItem: placement == "navigation")
             } else {
                 inlineContent
             }
@@ -3104,6 +3106,10 @@ private struct LUIToolbarGroupAnchor: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     let placement: ToolbarItemPlacement
+    /// `.navigation` accepts a single item — the whole group rides one
+    /// `ToolbarItem` (ToolbarItemPlacement isn't Equatable, so callers pass
+    /// this from the placement string).
+    var singleItem = false
 
     var body: some View {
         Color.clear
@@ -3113,16 +3119,30 @@ private struct LUIToolbarGroupAnchor: View {
 
     @ToolbarContentBuilder
     private var content: some ToolbarContent {
-        if segments.count > 0 { segment(at: 0) }
-        if segments.count > 1 { segment(at: 1) }
-        if segments.count > 2 { segment(at: 2) }
-        if segments.count > 3 { segment(at: 3) }
-        if segments.count > 4 { segment(at: 4) }
-        if segments.count > 5 { segment(at: 5) }
-        if segments.count > 6 { segment(at: 6) }
-        if segments.count > 7 { segment(at: 7) }
-        if segments.count > 8 { segment(at: 8) }
-        if segments.count > 9 { segment(at: 9) }
+        if singleItem {
+            // The leading navigation slot takes a single item — extra
+            // .navigation items are demoted to the trailing cluster. Keep
+            // the whole group in one ToolbarItem so controls + breadcrumb
+            // stay together at the leading edge (like a ToolbarItemGroup).
+            ToolbarItem(placement: placement) {
+                HStack(spacing: 4) {
+                    ForEach(Array(segments.indices), id: \.self) { index in
+                        segmentView(at: index)
+                    }
+                }
+            }
+        } else {
+            if segments.count > 0 { segment(at: 0) }
+            if segments.count > 1 { segment(at: 1) }
+            if segments.count > 2 { segment(at: 2) }
+            if segments.count > 3 { segment(at: 3) }
+            if segments.count > 4 { segment(at: 4) }
+            if segments.count > 5 { segment(at: 5) }
+            if segments.count > 6 { segment(at: 6) }
+            if segments.count > 7 { segment(at: 7) }
+            if segments.count > 8 { segment(at: 8) }
+            if segments.count > 9 { segment(at: 9) }
+        }
     }
 
     @ToolbarContentBuilder
@@ -3130,44 +3150,31 @@ private struct LUIToolbarGroupAnchor: View {
         switch segments[index] {
         case .spacer:
             ToolbarSpacer(.flexible, placement: placement)
-        case let .bare(childID):
-            // A lone item whose node carries its own glass capsule would
-            // double up with the bar's shared item background — hide the
-            // latter so the node's glass supplies the capsule and matches
-            // the fused ControlGroup material exactly.
+        case .bare, .scrollCapsule, .capsule:
             ToolbarItem(placement: placement) {
-                itemIdentity(LUIAnyNodeView(nodeID: childID, backend: backend).equatable(), at: index)
-                    .environment(\.luiInHoistedToolbar, true)
+                segmentView(at: index)
             }
-            .sharedBackgroundVisibility(ownsCapsule(childID) ? .hidden : .automatic)
+            .sharedBackgroundVisibility(segmentOwnsCapsule(at: index) ? .hidden : .automatic)
+        }
+    }
+
+    /// The views a segment contributes inside its `ToolbarItem` — shared
+    /// between the per-segment emission and the merged `.navigation` item.
+    @ViewBuilder
+    private func segmentView(at index: Int) -> some View {
+        switch segments[index] {
+        case .spacer:
+            Spacer()
+        case let .bare(childID):
+            itemIdentity(LUIAnyNodeView(nodeID: childID, backend: backend).equatable(), at: index)
+                .environment(\.luiInHoistedToolbar, true)
         case let .scrollCapsule(childIDs):
             // scroll-leading: the leading controls live in a horizontally
             // scrolling fused capsule so a pinned trailing sibling stays
             // reachable when the content overflows the bar.
-            ToolbarItem(placement: placement) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    ControlGroup {
-                        ForEach(childIDs, id: \.self) { childID in
-                            itemIdentity(
-                                LUIAnyNodeView(nodeID: childID, backend: backend).equatable(),
-                                at: index,
-                                firstChild: childID == childIDs.first
-                            )
-                            .environment(\.luiInHoistedToolbar, true)
-                            .environment(\.luiInFusedCapsule, true)
-                        }
-                    }
-                }
-            }
-        case let .capsule(childIDs):
-            // Consecutive interactive children fuse into one toolbar item so
-            // the platform draws its shared capsule.
-            ToolbarItem(placement: placement) {
+            ScrollView(.horizontal, showsIndicators: false) {
                 ControlGroup {
                     ForEach(childIDs, id: \.self) { childID in
-                        // A capsule renders one bar item per child, so the
-                        // identifier rides only the first — applying it to the
-                        // group would stamp the id onto every child.
                         itemIdentity(
                             LUIAnyNodeView(nodeID: childID, backend: backend).equatable(),
                             at: index,
@@ -3178,7 +3185,31 @@ private struct LUIToolbarGroupAnchor: View {
                     }
                 }
             }
+        case let .capsule(childIDs):
+            // Consecutive interactive children fuse into one toolbar item so
+            // the platform draws its shared capsule.
+            ControlGroup {
+                ForEach(childIDs, id: \.self) { childID in
+                    // A capsule renders one bar item per child, so the
+                    // identifier rides only the first — applying it to the
+                    // group would stamp the id onto every child.
+                    itemIdentity(
+                        LUIAnyNodeView(nodeID: childID, backend: backend).equatable(),
+                        at: index,
+                        firstChild: childID == childIDs.first
+                    )
+                    .environment(\.luiInHoistedToolbar, true)
+                    .environment(\.luiInFusedCapsule, true)
+                }
+            }
         }
+    }
+
+    private func segmentOwnsCapsule(at index: Int) -> Bool {
+        if case let .bare(childID) = segments[index] {
+            return ownsCapsule(childID)
+        }
+        return false
     }
 
     /// The zero-size anchor is invisible to accessibility, so a hoisted
