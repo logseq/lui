@@ -352,7 +352,9 @@ final class LUIExtensionNodeModel: Identifiable {
     let fingerprint: String
     private(set) var parent: Int?
     private(set) var children: [Int]
-    private(set) var properties: [String: LUIExtensionValue]
+    /// Kept in wire form so `apply` can compare and store the incoming state
+    /// without rebuilding the dictionary; values convert on read.
+    private(set) var properties: [String: LUIWireValue]
     private(set) var revision = 0
 
     init(id: Int, state: LUIExtensionNodeState) {
@@ -361,21 +363,33 @@ final class LUIExtensionNodeModel: Identifiable {
         fingerprint = state.fingerprint
         parent = state.parent
         children = state.children
-        properties = state.properties.mapValues({ $0.extensionValue })
+        properties = state.properties
     }
 
     func property(_ name: String) -> LUIExtensionValue? {
-        properties[name]
+        properties[name]?.extensionValue
     }
 
     func apply(state: LUIExtensionNodeState) {
-        let nextProperties = state.properties.mapValues({ $0.extensionValue })
-        guard parent != state.parent || children != state.children ||
-            properties != nextProperties else { return }
-        parent = state.parent
-        children = state.children
-        properties = nextProperties
-        revision += 1
+        // Write only what changed: each write notifies `properties`/
+        // `children`/`parent` observers in addition to `revision`, so
+        // unconditional writes invalidate extension views on unrelated edits.
+        var changed = false
+        if parent != state.parent {
+            parent = state.parent
+            changed = true
+        }
+        if children != state.children {
+            children = state.children
+            changed = true
+        }
+        if properties != state.properties {
+            properties = state.properties
+            changed = true
+        }
+        if changed {
+            revision += 1
+        }
     }
 }
 
