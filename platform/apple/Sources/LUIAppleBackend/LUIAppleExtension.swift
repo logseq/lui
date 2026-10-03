@@ -318,6 +318,13 @@ public struct LUIAppleExtensionViewContext {
     public func emit(name: String, values: [String: LUIExtensionValue] = [:]) throws {
         try backend.performExtensionEvent(node: nodeID, name: name, values: values)
     }
+
+    /// Emit an event as if it came from another node in the tree — lets a
+    /// composite native component (e.g. a native sidebar replacing hidden
+    /// DOM rows) fire a descendant's handlers.
+    public func emit(on nodeID: Int, name: String, values: [String: LUIExtensionValue] = [:]) throws {
+        try backend.performExtensionEvent(node: nodeID, name: name, values: values)
+    }
 }
 
 struct LUIExtensionNodeState {
