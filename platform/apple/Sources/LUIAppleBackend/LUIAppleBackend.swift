@@ -538,6 +538,12 @@ public final class LUIAppleBackend {
         tree.rootIDs.sorted()
     }
 
+    /// Debug snapshot of the retained store — whether patch commits actually
+    /// materialized view models. Used by LOGSEQ_PERF diagnostics.
+    public var debugModelCounts: String {
+        "n=\(models.count) e=\(extensionModels.count) roots=\(tree.rootIDs.sorted())"
+    }
+
     public func rootSections(rootID: Int) -> [LUIRootSection] {
         guard let root = models[rootID] else { return [] }
         return root.children.map { pageID in
@@ -578,13 +584,31 @@ public final class LUIAppleBackend {
     }
 
     func extensionView(nodeID: Int) -> AnyView {
+        if ProcessInfo.processInfo.environment["LOGSEQ_PERF"] != nil,
+           nodeID < 700 {
+            let m = extensionModels[nodeID]
+            let ok = m != nil
+                && extensionRegistry.registration(m!.identifier) != nil
+            FileHandle.standardError.write(
+                "PERF extview id=\(nodeID) model=\(m != nil) ok=\(ok) ident=\(m?.identifier ?? "-")\n"
+                    .data(using: .utf8)!)
+        }
         guard let model = extensionModels[nodeID],
               let registration = extensionRegistry.registration(model.identifier) else {
             return AnyView(EmptyView())
         }
-        return registration.viewFactory(
+        let v = registration.viewFactory(
             LUIAppleExtensionViewContext(nodeID: nodeID, backend: self)
         )
+        if ProcessInfo.processInfo.environment["LOGSEQ_PERF"] != nil,
+           nodeID < 700 {
+            return AnyView(v.onAppear {
+                FileHandle.standardError.write(
+                    "PERF extview-appear id=\(nodeID) t=\(CFAbsoluteTimeGetCurrent())\n"
+                        .data(using: .utf8)!)
+            })
+        }
+        return v
     }
 
     func anyNodeView(nodeID: Int) -> AnyView {
