@@ -2,6 +2,7 @@
     [(wrapped false)], so every module is top-level — [open Lui] just gives
     short aliases ([Elements], [App], [Ui], ...) for the same units. *)
 
+module Navigation = Lui_navigation
 module Elements = Lui_elements
 module Ui = Lui_ui
 module App = Lui_app
