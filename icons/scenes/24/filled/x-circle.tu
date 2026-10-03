@@ -1,0 +1,17 @@
+{
+ "canvas": {
+  "width": 24,
+  "height": 24
+ },
+ "root": {
+  "kind": "stack",
+  "children": [
+   {
+    "kind": "tu-path",
+    "d": "M 12 20.5 A 8.5 8.5 0 1 1 12 3.5 A 8.5 8.5 0 1 1 12 20.5 Z M 9.4 8 L 12 10.6 L 14.6 8 L 16 9.4 L 13.4 12 L 16 14.6 L 14.6 16 L 12 13.4 L 9.4 16 L 8 14.6 L 10.6 12 L 8 9.4 Z",
+    "fill": "currentColor",
+    "fill-rule": "evenodd"
+   }
+  ]
+ }
+}

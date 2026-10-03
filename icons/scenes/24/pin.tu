@@ -1,0 +1,29 @@
+{
+ "canvas": {
+  "width": 24,
+  "height": 24
+ },
+ "root": {
+  "kind": "stack",
+  "children": [
+   {
+    "d": "M 12 17 V 22",
+    "kind": "tu-path",
+    "stroke": "currentColor",
+    "fill": "none",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "stroke-width": "2"
+   },
+   {
+    "d": "M 9 10.76 A 2 2 0 0 1 7.89 12.55 L 6.11 13.45 A 2 2 0 0 0 5 15.24 V 16 A 1 1 0 0 0 6 17 H 18 A 1 1 0 0 0 19 16 V 15.24 A 2 2 0 0 0 17.89 13.45 L 16.11 12.55 A 2 2 0 0 1 15 10.76 V 7 A 1 1 0 0 1 16 6 A 2 2 0 0 0 16 2 H 8 A 2 2 0 0 0 8 6 A 1 1 0 0 1 9 7 Z",
+    "kind": "tu-path",
+    "stroke": "currentColor",
+    "fill": "none",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "stroke-width": "2"
+   }
+  ]
+ }
+}

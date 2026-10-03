@@ -1,0 +1,16 @@
+{
+ "canvas": {
+  "width": 24,
+  "height": 24
+ },
+ "root": {
+  "kind": "stack",
+  "children": [
+   {
+    "kind": "tu-path",
+    "d": "M 7 4.8 V 19.2 A 0.8 0.8 0 0 0 8.2 19.8 L 19.4 12.6 A 0.8 0.8 0 0 0 19.4 11.4 L 8.2 4.2 A 0.8 0.8 0 0 0 7 4.8 Z",
+    "fill": "currentColor"
+   }
+  ]
+ }
+}
