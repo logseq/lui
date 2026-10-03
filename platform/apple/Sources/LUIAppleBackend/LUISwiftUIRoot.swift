@@ -3120,17 +3120,14 @@ private struct LUIToolbarGroupAnchor: View {
     @ToolbarContentBuilder
     private var content: some ToolbarContent {
         if singleItem {
-            // The leading navigation slot takes a single item — extra
-            // .navigation items are demoted to the trailing cluster. Keep
-            // the whole group in one ToolbarItem so controls + breadcrumb
-            // stay together at the leading edge (like a ToolbarItemGroup).
-            // Children render unfused inside the item's HStack — Out-style
-            // separate icon buttons rather than one shared capsule.
-            ToolbarItem(placement: placement) {
-                HStack(spacing: 4) {
-                    ForEach(Array(navItems.indices), id: \.self) { index in
-                        navItemView(at: index)
-                    }
+            // The leading navigation slot takes a single group — extra
+            // .navigation items are demoted to the trailing cluster. A
+            // ToolbarItemGroup keeps controls + breadcrumb at the leading
+            // edge while giving each child its own bar item (Out-style
+            // separate icons, not one shared capsule).
+            ToolbarItemGroup(placement: placement) {
+                ForEach(Array(navItems.indices), id: \.self) { index in
+                    navItemView(at: index)
                 }
             }
         } else {
