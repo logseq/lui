@@ -319,6 +319,15 @@ public struct LUIAppleExtensionViewContext {
         try backend.performExtensionEvent(node: nodeID, name: name, values: values)
     }
 
+    /// Children of any node in the tree — lets composite native views walk
+    /// a subtree that is not their direct child list (e.g. a sidebar model
+    /// extracted from a hidden DOM section).
+    public func childIDs(of nodeID: Int) -> [Int] {
+        backend.extensionModel(id: nodeID)?.children
+            ?? backend.model(id: nodeID)?.children
+            ?? []
+    }
+
     /// Emit an event as if it came from another node in the tree — lets a
     /// composite native component (e.g. a native sidebar replacing hidden
     /// DOM rows) fire a descendant's handlers.
