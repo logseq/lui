@@ -556,8 +556,20 @@ struct LUIAnyNodeView: View, Equatable {
         lhs.backend === rhs.backend && lhs.retainedSnapshot == rhs.retainedSnapshot
     }
 
+    private func perfProbe() -> Int {
+        guard ProcessInfo.processInfo.environment["LOGSEQ_PERF"] != nil else { return 0 }
+        let kind =
+            backend.model(id: nodeID) != nil
+            ? "n" : (backend.extensionModel(id: nodeID) != nil ? "e" : "nil")
+        FileHandle.standardError.write(
+            "PERF any id=\(nodeID) kind=\(kind) t=\(CFAbsoluteTimeGetCurrent())\n"
+                .data(using: .utf8)!)
+        return 1
+    }
+
     @ViewBuilder
     var body: some View {
+        let _ = perfProbe()
         Group {
             if let model = backend.model(id: nodeID) {
                 LUINodeView(model: model, backend: backend)
@@ -593,7 +605,17 @@ private struct LUIExtensionNodeView: View {
     let model: LUIExtensionNodeModel
     let backend: LUIAppleBackend
 
+    private func perfProbe() -> Int {
+        guard ProcessInfo.processInfo.environment["LOGSEQ_PERF"] != nil else { return 0 }
+        let kids = model.children.prefix(6).map(String.init).joined(separator: ",")
+        FileHandle.standardError.write(
+            "PERF ext id=\(model.id) rev=\(model.revision) kids=[\(kids)] t=\(CFAbsoluteTimeGetCurrent())\n"
+                .data(using: .utf8)!)
+        return 1
+    }
+
     var body: some View {
+        let _ = perfProbe()
         let _ = model.revision
         backend.extensionView(nodeID: model.id)
     }

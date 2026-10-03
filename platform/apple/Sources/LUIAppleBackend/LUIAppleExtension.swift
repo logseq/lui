@@ -282,6 +282,17 @@ public struct LUIAppleExtensionViewContext {
         backend.extensionModel(id: nodeID)?.children ?? []
     }
 
+    /// Tracked model revision — a view that reads this in its body
+    /// subscribes to the node's mutations directly. Extension views read
+    /// `childIDs`/`property(...)` which are plain backend lookups SwiftUI
+    /// can't observe, so they must opt in to tracking via this read or
+    /// they go stale whenever the delivering re-render is skipped.
+    public var revision: Int {
+        backend.extensionModel(id: nodeID)?.revision
+            ?? backend.model(id: nodeID)?.revision
+            ?? -1
+    }
+
     public var content: AnyView {
         guard childIDs.count == 1 else { return AnyView(EmptyView()) }
         return content(for: childIDs[0])
