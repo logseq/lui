@@ -3124,10 +3124,12 @@ private struct LUIToolbarGroupAnchor: View {
             // .navigation items are demoted to the trailing cluster. Keep
             // the whole group in one ToolbarItem so controls + breadcrumb
             // stay together at the leading edge (like a ToolbarItemGroup).
+            // Children render unfused inside the item's HStack — Out-style
+            // separate icon buttons rather than one shared capsule.
             ToolbarItem(placement: placement) {
                 HStack(spacing: 4) {
-                    ForEach(Array(segments.indices), id: \.self) { index in
-                        segmentView(at: index)
+                    ForEach(Array(navItems.indices), id: \.self) { index in
+                        navItemView(at: index)
                     }
                 }
             }
@@ -3210,6 +3212,52 @@ private struct LUIToolbarGroupAnchor: View {
             return ownsCapsule(childID)
         }
         return false
+    }
+
+    /// Flat child/spacer list for the merged `.navigation` item — capsule
+    /// segments expand so controls render as separate buttons, not one
+    /// fused cluster.
+    private enum NavItem {
+        case spacer
+        case child(Int)
+    }
+
+    private var navItems: [NavItem] {
+        segments.flatMap { (segment) -> [NavItem] in
+            switch segment {
+            case .spacer: return [.spacer]
+            case let .bare(childID): return [.child(childID)]
+            case let .scrollCapsule(childIDs), let .capsule(childIDs):
+                return childIDs.map(NavItem.child)
+            }
+        }
+    }
+
+    private var navIdentityIndex: Int? {
+        navItems.firstIndex {
+            if case .child = $0 { return true }
+            return false
+        }
+    }
+
+    @ViewBuilder
+    private func navItemView(at index: Int) -> some View {
+        switch navItems[index] {
+        case .spacer:
+            Spacer()
+        case let .child(childID):
+            let view = LUIAnyNodeView(nodeID: childID, backend: backend)
+                .equatable()
+                .environment(\.luiInHoistedToolbar, true)
+            if index == navIdentityIndex,
+               let identifier = model.accessibilityIdentifier(in: backend) {
+                view
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier(identifier)
+            } else {
+                view
+            }
+        }
     }
 
     /// The zero-size anchor is invisible to accessibility, so a hoisted
