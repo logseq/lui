@@ -2295,9 +2295,12 @@ final class LUIFlutterBackend {
         orElse: () => null,
       );
       final menuState = menuID == null ? null : _requireState(_states, menuID);
+      // Icon-only triggers act like icon buttons and keep the platform's
+      // standard 24dp glyph; labeled triggers use the compact 16dp glyph.
+      final iconExtent = text.isEmpty ? 24.0 : 16.0;
       final icon = buttonIcon == null
           ? null
-          : Icon(_iconData(buttonIcon), size: 16, color: foreground);
+          : Icon(_iconData(buttonIcon), size: iconExtent, color: foreground);
       final label = icon == null
           ? Text(text, style: TextStyle(color: foreground))
           : text.isEmpty
@@ -2310,16 +2313,20 @@ final class LUIFlutterBackend {
                 Text(text, style: TextStyle(color: foreground)),
               ],
             );
+      final accessibilityText = accessibilityLabel ?? text;
+      final triggerLabel = text.isEmpty && accessibilityText.isNotEmpty
+          ? Tooltip(message: accessibilityText, child: label)
+          : label;
       return MenuAnchor(
         builder: (context, controller, child) => Semantics(
-          label: accessibilityLabel ?? text,
+          label: accessibilityText,
           button: true,
           child: TextButton(
             onPressed: enabled
                 ? () =>
                       controller.isOpen ? controller.close() : controller.open()
                 : null,
-            child: label,
+            child: triggerLabel,
           ),
         ),
         menuChildren:
