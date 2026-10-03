@@ -121,16 +121,26 @@ final class LUINodeModel: Identifiable {
     }
 
     func apply(state: LUINodeState, visibleChildren: [Int]) {
-        guard properties != state.properties || children != state.children ||
-            self.visibleChildren != visibleChildren ||
-            parent != state.parent else {
-            return
+        var changed = false
+        if properties != state.properties {
+            properties = state.properties
+            changed = true
         }
-        properties = state.properties
-        children = state.children
-        self.visibleChildren = visibleChildren
-        parent = state.parent
-        revision += 1
+        if children != state.children {
+            children = state.children
+            changed = true
+        }
+        if self.visibleChildren != visibleChildren {
+            self.visibleChildren = visibleChildren
+            changed = true
+        }
+        if parent != state.parent {
+            parent = state.parent
+            changed = true
+        }
+        if changed {
+            revision += 1
+        }
     }
 
     func invalidateResource() {
