@@ -27,7 +27,7 @@ depends: [
 pin-depends: [
   [
     "ocaml-signal.0.1.0"
-    "git+https://github.com/logseq/ocaml-signal.git#976b40f"
+    "git+https://github.com/logseq/ocaml-signal.git#main"
   ]
 ]
 build: [
