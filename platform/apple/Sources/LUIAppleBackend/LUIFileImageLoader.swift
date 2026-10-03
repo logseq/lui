@@ -3,15 +3,39 @@ import Foundation
 import ImageIO
 
 /// Resolves the `path` prop shared by `file-image` and `file-preview` nodes:
-/// either an absolute filesystem path or a `file://` URL string. Non-file
-/// schemes return nil — remote URLs belong to `link` nodes.
+/// either an absolute filesystem path, a `file://` URL string, or a relative
+/// path inside the app's Documents directory — the sandbox root platforms
+/// persist user files into. Absolute paths whose container moved (backup
+/// restore, reinstall) fall back to `Assets/<basename>` under Documents.
+/// Non-file schemes return nil — remote URLs belong to `link` nodes.
 enum LUIFilePath {
     static func url(_ path: String) -> URL? {
         guard !path.isEmpty else { return nil }
         if let url = URL(string: path), url.scheme != nil {
             return url.isFileURL ? url : nil
         }
-        return URL(fileURLWithPath: path)
+        return resolve(path)
+    }
+
+    private static func resolve(
+        _ path: String,
+        fileManager: FileManager = .default
+    ) -> URL? {
+        let documentsDirectory = fileManager.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        )[0]
+        guard path.hasPrefix("/") else {
+            return documentsDirectory.appendingPathComponent(path)
+        }
+        let url = URL(fileURLWithPath: path)
+        if fileManager.fileExists(atPath: url.path) { return url }
+        let relocatedURL = documentsDirectory
+            .appendingPathComponent("Assets", isDirectory: true)
+            .appendingPathComponent(url.lastPathComponent)
+        return fileManager.fileExists(atPath: relocatedURL.path)
+            ? relocatedURL
+            : nil
     }
 }
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -516,6 +517,7 @@ final class LUIFlutterBackend {
     this.onEvent,
     Map<String, IconData> appIcons = const {},
     LUIFlutterExtensionRegistry? extensionRegistry,
+    this.filePathResolver,
   }) : appIcons = Map.unmodifiable(appIcons),
        _extensionRegistry = extensionRegistry ?? LUIFlutterExtensionRegistry() {
     _extensionRegistry._freeze();
@@ -523,6 +525,12 @@ final class LUIFlutterBackend {
 
   final void Function(LUIEvent event)? onEvent;
   final Map<String, IconData> appIcons;
+
+  /// Resolves the `path` prop of `file-image`/`file-preview` nodes into an
+  /// on-disk path. Apps that persist assets under a private files directory
+  /// install a resolver so model-owned relative paths (e.g. "Assets/x.png")
+  /// reach the right location; nil keeps paths untouched.
+  final String Function(String path)? filePathResolver;
 
   /// Called once per frame while [frameReportingEnabled] is on, with the
   /// full node-id → rect map in global coordinates — feeds drive's
@@ -2251,6 +2259,35 @@ final class LUIFlutterBackend {
       );
     }
 
+    Widget fileImage() {
+      final path = state.properties['path'] as String? ?? '';
+      final resolved = filePathResolver?.call(path) ?? path;
+      final fit = state.properties['image-fit'] == 'fill'
+          ? BoxFit.cover
+          : BoxFit.contain;
+      const fallback = Center(
+        child: Icon(Icons.photo_outlined, size: 24),
+      );
+      Widget image = resolved.isEmpty
+          ? fallback
+          : Image.file(
+              File(resolved),
+              fit: fit,
+              width: double.infinity,
+              height: double.infinity,
+              semanticLabel: accessibilityLabel,
+              errorBuilder: (_, _, _) => fallback,
+            );
+      final radius = (cornerRadius ?? 0).toDouble();
+      if (radius > 0) {
+        image = ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: image,
+        );
+      }
+      return image;
+    }
+
     Widget menuTrigger() {
       final menuID = state.children.cast<int?>().firstWhere(
         (childID) =>
@@ -3126,7 +3163,10 @@ final class LUIFlutterBackend {
       // inline.
       _NodeKind.filePicker => Stack(children: children),
       _NodeKind.link => column(),
-      _NodeKind.fileImage || _NodeKind.filePreview => const SizedBox.shrink(),
+      _NodeKind.fileImage => fileImage(),
+      // Non-visual node: file preview is presented by platform code
+      // (QuickLook on Apple); Flutter keeps platform-effect previews.
+      _NodeKind.filePreview => const SizedBox.shrink(),
     };
 
     if (state.kind == _NodeKind.root || state.kind.isModalSurface) {
