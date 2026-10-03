@@ -6,8 +6,10 @@ import ImageIO
 /// either an absolute filesystem path, a `file://` URL string, or a relative
 /// path inside the app's Documents directory — the sandbox root platforms
 /// persist user files into. Absolute paths whose container moved (backup
-/// restore, reinstall) fall back to `Assets/<basename>` under Documents.
-/// Non-file schemes return nil — remote URLs belong to `link` nodes.
+/// restore, reinstall) fall back to `Assets/<basename>` under Documents, and
+/// missing files still resolve to their original URL so callers decide how to
+/// surface a failed load. Non-file schemes return nil — remote URLs belong to
+/// `link` nodes.
 enum LUIFilePath {
     static func url(_ path: String) -> URL? {
         guard !path.isEmpty else { return nil }
@@ -33,9 +35,10 @@ enum LUIFilePath {
         let relocatedURL = documentsDirectory
             .appendingPathComponent("Assets", isDirectory: true)
             .appendingPathComponent(url.lastPathComponent)
-        return fileManager.fileExists(atPath: relocatedURL.path)
-            ? relocatedURL
-            : nil
+        if fileManager.fileExists(atPath: relocatedURL.path) {
+            return relocatedURL
+        }
+        return url
     }
 }
 
