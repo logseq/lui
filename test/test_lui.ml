@@ -2337,9 +2337,241 @@ let test_composer_feedback_above_actions () =
   ignore (Lui_app.dispose app)
 
 
+
+(* Navigation exercises the public component through a real retained runtime,
+   including synchronous callback writes and covered signal subscriptions. *)
+let test_navigation_path () =
+  let module P = Lui_navigation.Path in
+  let a = P.push "detail" P.empty in
+  let b = P.push "detail" a in
+  Alcotest.(check int) "duplicate routes have two entries" 2
+    (List.length (P.entries b));
+  let ids = List.map (fun (e : string Lui_navigation.entry) -> e.id) (P.entries b) in
+  Alcotest.(check bool) "distinct identities" true
+    (List.length (List.sort_uniq String.compare ids) = 2);
+  Alcotest.(check bool) "pop preserves original path" true (P.entries (P.pop b) = P.entries a);
+  Alcotest.(check int) "empty pop" 0 (List.length (P.entries (P.pop P.empty)));
+  Alcotest.(check int) "root" 0 (List.length (P.entries (P.pop_to_root b)));
+  let fork = P.push "detail" a in
+  Alcotest.(check bool) "branch pushes allocate fresh identity" true
+    (P.entries fork <> P.entries b);
+  (* These two uses also exercise the covariant, polymorphic empty value. *)
+  ignore (P.push 1 P.empty);
+  ignore (P.push (fun () -> ()) P.empty)
+
+let navigation_fixture ?host_profile ?(apple=true) ?(accept=true) ?(reenter=false) () =
+  let root_mounts = ref 0 and destination_mounts = ref 0 in
+  let root_disposes = ref 0 and destination_disposes = ref 0 in
+  let callback_count = ref 0 and edit = ref None in
+  let backend = recording_backend () in
+  let backend = if apple then {backend with Lui_protocol.backend_profile =
+    Lui_protocol.profile Lui_protocol.IOS Lui_protocol.SwiftUIHost} else backend in
+  let label_slot = Signal.state_slot "navigation-root-label" in
+  let backend = match host_profile with None -> backend
+    | Some backend_profile -> {backend with Lui_protocol.backend_profile} in
+  let view _context source send =
+    let root context parent =
+      let label = Signal.state_at context.Lui_ui.ui_scheduler
+          context.Lui_ui.ui_state_scope label_slot "before" in
+      edit := Some (fun value -> Signal.set label value);
+      incr root_mounts;
+      Signal.on_dispose context.Lui_ui.ui_scope (fun () -> incr root_disposes);
+      Lui_elements.list [Lui_elements.list_item
+        [Lui_elements.text ~value_signal:(Signal.value label) []]] context parent
+    in
+    Lui_navigation.navigation_stack ~path_signal:source
+      ~on_path_change:(fun path ->
+        incr callback_count;
+        if accept then ignore (send (if reenter then Lui_navigation.Path.push "replacement" path else path)))
+      ~destination:(fun entry context parent ->
+        incr destination_mounts;
+        Signal.on_dispose context.Lui_ui.ui_scope (fun () -> incr destination_disposes);
+        Lui_elements.text ~value:entry.Lui_navigation.route [] context parent)
+      ~root ()
+  in
+  let app = Lui_app.create_with_extensions backend (Lui_navigation.registry ())
+      Lui_navigation.Path.empty (fun _ path -> path) view in
+  ignore (Lui_app.start app); flush_app app;
+  (app, root_mounts, destination_mounts, root_disposes, destination_disposes, callback_count, edit)
+
+let navigation_prop app name =
+  let root = Lui_app.root_node app in
+  List.fold_left (fun value -> function
+    | Lui_protocol.SetExtensionProp (node, property, v) when node = root && property = name -> Some v
+    | _ -> value) None (all_ops ())
+
+let navigation_revision app = match navigation_prop app "revision" with
+  | Some (Lui_protocol.IntValue r) -> r
+  | _ -> Alcotest.fail "navigation revision is absent"
+
+let navigation_event app revision name length =
+  let open Lui_protocol in
+  let fields = String_map.(empty |> add "revision" (IntValue revision)
+    |> add "length" (IntValue length)) in
+  ignore (Lui_app.dispatch_event app (ExtensionEvent (Lui_app.root_node app, "navigation-stack", name, fields)));
+  flush_app app
+
+let test_navigation_retains () =
+  let app, roots, destinations, root_disposes, destination_disposes, callbacks, edit = navigation_fixture () in
+  let push () = ignore (Lui_app.send app (Lui_navigation.Path.push "detail" (Lui_app.model app))); flush_app app in
+  push (); push ();
+  Alcotest.(check int) "root mounted once" 1 !roots;
+  Alcotest.(check int) "each duplicate destination mounted once" 2 !destinations;
+  Alcotest.(check int) "covered scope alive" 0 !root_disposes;
+  Alcotest.(check int) "covered destination scope alive" 0 !destination_disposes;
+  Option.iter (fun edit -> edit "after") !edit; flush_app app;
+  Alcotest.(check bool) "covered root still observes local edits" true
+    (List.exists (function Lui_protocol.SetProp (_, Lui_protocol.TextValue, Lui_protocol.StringValue "after") -> true | _ -> false) (all_ops ()));
+  ignore (Lui_app.send app (Lui_navigation.Path.pop_to_root (Lui_app.model app))); flush_app app;
+  Alcotest.(check int) "programmatic changes do not echo" 0 !callbacks;
+  Alcotest.(check int) "outgoing retained before settlement" 0 !destination_disposes;
+  navigation_event app (navigation_revision app) "settled" 0;
+  Alcotest.(check int) "outgoing released after settlement" 2 !destination_disposes;
+  Alcotest.(check int) "root survives return" 1 !roots;
+  ignore (Lui_app.dispose app);
+  Alcotest.(check int) "root disposed once on owner teardown" 1 !root_disposes
+
+let test_navigation_back () =
+  List.iter (fun reenter ->
+    let app, _, mounts, _, disposes, callbacks, _ = navigation_fixture ~reenter () in
+    let path = Lui_navigation.Path.(push "b" (push "a" empty)) in
+    ignore (Lui_app.send app path); flush_app app;
+    let old = navigation_revision app in
+    navigation_event app old "path-changed" 1;
+    Alcotest.(check int) "one committed callback" 1 !callbacks;
+    Alcotest.(check int) "callback path or reentrant replacement wins" (if reenter then 2 else 1)
+      (List.length (Lui_navigation.Path.entries (Lui_app.model app)));
+    navigation_event app old "path-changed" 0;
+    navigation_event app old "settled" 1;
+    Alcotest.(check int) "old revision ignored" 1 !callbacks;
+    Alcotest.(check int) "old settlement cannot drop outgoing" 0 !disposes;
+    navigation_event app (navigation_revision app) "settled" (if reenter then 2 else 1);
+    Alcotest.(check int) "removed entry released exactly once" 1 !disposes;
+    Alcotest.(check int) "retained entry not rebuilt" (if reenter then 3 else 2) !mounts;
+    ignore (Lui_app.dispose app)) [false; true]
+
+let test_navigation_rejects_invalid () =
+  let app, _, _, _, _, callbacks, _ = navigation_fixture ~accept:false () in
+  let path = Lui_navigation.Path.push "detail" Lui_navigation.Path.empty in
+  ignore (Lui_app.send app path); flush_app app;
+  let revision = navigation_revision app in
+  List.iter (fun length -> navigation_event app revision "path-changed" length) [-1; 1; 2];
+  Alcotest.(check int) "invalid and echo paths ignored" 0 !callbacks;
+  navigation_event app revision "path-changed" 0;
+  Alcotest.(check int) "proposal delivered" 1 !callbacks;
+  Alcotest.(check int) "owner may reject proposal" 1 (List.length (Lui_navigation.Path.entries (Lui_app.model app)));
+  Alcotest.(check bool) "rejection publishes a fresh revision" true (revision <> navigation_revision app);
+  navigation_event app revision "path-changed" 0;
+  Alcotest.(check int) "rejected proposal cannot repeat" 1 !callbacks;
+  ignore (Lui_app.dispose app)
+
+let test_navigation_rapid_and_switch () =
+  let app, _, mounts, _, disposes, _, _ = navigation_fixture () in
+  let first = Lui_navigation.Path.push "first" Lui_navigation.Path.empty in
+  ignore (Lui_app.send app first); flush_app app;
+  let old = navigation_revision app in
+  ignore (Lui_app.send app Lui_navigation.Path.empty); flush_app app;
+  ignore (Lui_app.send app first); flush_app app;
+  Alcotest.(check int) "repush outgoing identity reuses subtree" 1 !mounts;
+  navigation_event app old "settled" 1;
+  Alcotest.(check int) "stale completion leaves live entry" 0 !disposes;
+  let replacement = Lui_navigation.Path.push "new graph" Lui_navigation.Path.empty in
+  ignore (Lui_app.send app replacement); flush_app app;
+  navigation_event app old "path-changed" 0;
+  Alcotest.(check bool) "old graph callback cannot overwrite new graph" true (Lui_app.model app = replacement);
+  navigation_event app (navigation_revision app) "settled" 1;
+  Alcotest.(check int) "old graph entry cleaned" 1 !disposes;
+  ignore (Lui_app.dispose app);
+  Alcotest.(check int) "all destination scopes cleaned" 2 !disposes
+
+let test_navigation_fallback () =
+  let open Lui_protocol in
+  List.iter (fun host_profile ->
+  let app, roots, mounts, root_disposes, disposes, callbacks, _ = navigation_fixture ~host_profile ~apple:false () in
+  ignore (Lui_app.send app Lui_navigation.Path.(push "b" (push "a" empty))); flush_app app;
+  Alcotest.(check int) "fallback retains root" 1 !roots;
+  Alcotest.(check int) "fallback mounts both entries" 2 !mounts;
+  Alcotest.(check int) "covered fallback scope alive" 0 !root_disposes;
+  let back = List.find_map (function
+    | Lui_protocol.CreateNode (node, Lui_protocol.Button) -> Some node | _ -> None) (all_ops ()) |> Option.get in
+  ignore (Lui_app.dispatch_event app (Lui_protocol.Press back)); flush_app app;
+  Alcotest.(check int) "fallback Back commits one proposal" 1 !callbacks;
+  Alcotest.(check int) "fallback Back returns to covered entry" 1
+    (List.length (Lui_navigation.Path.entries (Lui_app.model app)));
+  Alcotest.(check int) "fallback Back preserves entry mount" 2 !mounts;
+  ignore (Lui_app.send app Lui_navigation.Path.empty); flush_app app;
+  Alcotest.(check int) "no-animation fallback cleans immediately" 2 !disposes;
+  Alcotest.(check int) "fallback programmatic path does not echo" 1 !callbacks;
+  ignore (Lui_app.dispose app))
+    [generic_profile (); profile WebOS WebHost; profile AndroidOS FlutterHost;
+     profile IOS FlutterHost; profile LinuxOS QMLHost; profile WindowsOS WinUIHost]
+
+let test_navigation_queued_stale () =
+  let app, _, _, _, _, callbacks, _ = navigation_fixture () in
+  ignore (Lui_app.send app Lui_navigation.Path.(push "old" empty)); flush_app app;
+  let revision = navigation_revision app in
+  let replacement = Lui_navigation.Path.(push ("new" ^ " graph") empty) in
+  (* The owner write is staged, but not flushed before the old host event. *)
+  ignore (Lui_app.send app replacement);
+  navigation_event app revision "path-changed" 0;
+  Alcotest.(check int) "queued owner write invalidates old callback" 0 !callbacks;
+  Alcotest.(check bool) "queued replacement wins" true (Lui_app.model app = replacement);
+  ignore (Lui_app.dispose app)
+
+let test_navigation_host_fingerprint () =
+  let source = read_file (Filename.concat (source_root ())
+      "platform/apple/Sources/LUIAppleBackend/LUINavigation.swift") in
+  let mismatches = Lui_extension_check.check_registry (Lui_navigation.registry ()) source in
+  if mismatches <> [] then Alcotest.fail (Lui_extension_check.describe_mismatches mismatches)
+
+let test_navigation_entry_state () =
+  let open Lui_navigation in
+  let slot = Signal.state_slot "detail-local" in
+  let states = Hashtbl.create 4 in
+  let backend = { (recording_backend ()) with Lui_protocol.backend_profile =
+      Lui_protocol.profile Lui_protocol.IOS Lui_protocol.SwiftUIHost } in
+  let app = Lui_app.create_with_extensions backend (registry ()) Path.empty
+      (fun _ path -> path) (fun _ source send ->
+    navigation_stack ~path_signal:source ~on_path_change:(fun path -> ignore (send path))
+      ~root:(Lui_elements.box [])
+      ~destination:(fun entry context parent ->
+        let local = Signal.state_at context.Lui_ui.ui_scheduler context.Lui_ui.ui_state_scope slot 0 in
+        Hashtbl.add states entry.id (local, context.Lui_ui.ui_state_scope);
+        Lui_elements.text ~value_signal:(Signal.map string_of_int (Signal.value local)) [] context parent) ()) in
+  ignore (Lui_app.start app); flush_app app;
+  let a = Path.push (fun () -> "same") Path.empty in
+  let b = Path.push (fun () -> "same") a in
+  ignore (Lui_app.send app b); flush_app app;
+  let entries = Path.entries b in
+  let first = (List.hd entries).id and second = (List.hd (List.tl entries)).id in
+  let first_state, first_scope = Hashtbl.find states first in
+  let second_state, second_scope = Hashtbl.find states second in
+  Signal.set first_state 7; Signal.set second_state 9; flush_app app;
+  ignore (Lui_app.send app (Path.pop b)); flush_app app;
+  Alcotest.(check int) "covered local state preserved" 7 (Signal.get_state first_state);
+  Alcotest.(check bool) "covered entry state scope active" true (not !(first_scope.Signal.disposed_scope));
+  Alcotest.(check bool) "outgoing state lives during transition" true (not !(second_scope.Signal.disposed_scope));
+  navigation_event app (navigation_revision app) "settled" 1;
+  Alcotest.(check bool) "only removed entry state disposed" false (not !(second_scope.Signal.disposed_scope));
+  Alcotest.(check bool) "remaining entry state still active" true (not !(first_scope.Signal.disposed_scope));
+  ignore (Lui_app.dispose app);
+  Alcotest.(check bool) "owner teardown disposes surviving state" false (not !(first_scope.Signal.disposed_scope))
+
+
 let () =
   Alcotest.run "lui"
     [
+      ("navigation", [
+        Alcotest.test_case "entry local states and function routes" `Quick test_navigation_entry_state;
+        Alcotest.test_case "queued owner write versus stale host event" `Quick test_navigation_queued_stale;
+        Alcotest.test_case "Apple extension fingerprints" `Quick test_navigation_host_fingerprint;
+        Alcotest.test_case "typed paths and duplicate identity" `Quick test_navigation_path;
+        Alcotest.test_case "root, covered scopes and transition lifetime" `Quick test_navigation_retains;
+        Alcotest.test_case "native back and synchronous reentry" `Quick test_navigation_back;
+        Alcotest.test_case "invalid, echo and rejected proposals" `Quick test_navigation_rejects_invalid;
+        Alcotest.test_case "rapid push/pop and graph replacement" `Quick test_navigation_rapid_and_switch;
+        Alcotest.test_case "fallback retention and cleanup" `Quick test_navigation_fallback;
+      ]);
       ( "app",
         [
           Alcotest.test_case "composer content sizing" `Quick test_composer_content_sizing;
