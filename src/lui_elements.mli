@@ -21,6 +21,8 @@ type cell_size = [ control_size | text_size ]
 
 type main_alignment = [ `start | `center | `end_ | `space_between ]
 type cross_alignment = [ `stretch | `start | `center | `end_ ]
+type image_fit = [ `fit | `fill ]
+
 type text_alignment = [ `start | `center | `end_ ]
 type orientation = [ `horizontal | `vertical ]
 type icon_placement = [ `leading | `trailing | `top ]
@@ -2792,6 +2794,9 @@ val link :
   ?icon_placement:icon_placement ->
   ?label:string ->
   ?disabled:bool -> ?disabled_signal:bool Signal.signal -> t list -> t
+
+(** Local file image. Fit preserves the whole image by default; fill crops to
+    its frame while preserving the original aspect ratio. *)
 val file_image :
   ?key:string ->
   ?gap:int ->
@@ -2824,6 +2829,7 @@ val file_image :
   ?path:string ->
   ?path_signal:string Signal.signal ->
   ?max_pixel_size:int ->
+  ?fit:image_fit ->
   ?label:string ->
   ?on_press:(Lui_protocol.event -> unit) -> nothing list -> t
 val file_preview :

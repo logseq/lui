@@ -21,7 +21,9 @@ Item {
                 ? wrapper.path : "file://" + wrapper.path
         sourceSize.width: wrapper.maxPixelSize
         sourceSize.height: wrapper.maxPixelSize
-        fillMode: Image.PreserveAspectFit
+        fillMode: Style.str(wrapper.props, "image-fit", "fit") === "fill"
+                  ? Image.PreserveAspectCrop : Image.PreserveAspectFit
+        clip: true
         asynchronous: true
     }
 

@@ -206,6 +206,7 @@ type property =
   | PathValue
   | UrlValue
   | MaxPixelSize
+  | ImageFitValue
   | Visible
   | AlignmentValue
 

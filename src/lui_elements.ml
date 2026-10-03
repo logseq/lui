@@ -18,6 +18,7 @@ type text_size = [ `heading | `display ]
 type cell_size = [ control_size | text_size ]
 type main_alignment = [ `start | `center | `end_ | `space_between ]
 type cross_alignment = [ `stretch | `start | `center | `end_ ]
+type image_fit = [ `fit | `fill ]
 type text_alignment = [ `start | `center | `end_ ]
 type orientation = [ `horizontal | `vertical ]
 type icon_placement = [ `leading | `trailing | `top ]
@@ -1759,13 +1760,15 @@ let link ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pad
   mount_children context node children;
   node
 
-let file_image ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?path ?path_signal ?max_pixel_size ?label ?on_press (_children : nothing list) : t =
+let file_image ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?path ?path_signal ?max_pixel_size ?fit ?label ?on_press (_children : nothing list) : t =
  fun context parent ->
   let node = Lui_ui.create context FileImage in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
   Option.iter (Lui_ui.string_property context node PathValue) path;
   Option.iter (Lui_ui.string_property_signal context node PathValue) path_signal;
   Option.iter (Lui_ui.int_property context node MaxPixelSize) max_pixel_size;
+  Option.iter (Lui_ui.string_property context node ImageFitValue)
+    (Option.map (function `fit -> "fit" | `fill -> "fill") fit);
   Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
   (match on_press with
    | Some handler ->

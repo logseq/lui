@@ -668,6 +668,7 @@ namespace LUI
                 case LUIProperty.UrlValue:
                     return kind == LUINodeKind.Link;
                 case LUIProperty.MaxPixelSize:
+                case LUIProperty.ImageFitValue:
                     return kind == LUINodeKind.FileImage;
                 case LUIProperty.AnchorValue:
                 case LUIProperty.AnchorAlignmentValue:
@@ -1240,6 +1241,10 @@ namespace LUI
                 case LUIProperty.UrlValue:
                 {
                     return value is LUIWireValue.String;
+                }
+                case LUIProperty.ImageFitValue:
+                {
+                    return value is LUIWireValue.String fit && (fit.Value == "fit" || fit.Value == "fill");
                 }
                 case LUIProperty.MaxPixelSize:
                 {

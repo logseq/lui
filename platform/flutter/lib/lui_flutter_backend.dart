@@ -4102,6 +4102,7 @@ final class LUIFlutterBackend {
             (kind == _NodeKind.avatar || kind == _NodeKind.image),
       'path' => value is String && kind == _NodeKind.fileImage,
       'url' => value is String && kind == _NodeKind.link,
+      'image-fit' => value is String && const {'fit', 'fill'}.contains(value) && kind == _NodeKind.fileImage,
       'max-pixel-size' =>
         value is int && value > 0 && kind == _NodeKind.fileImage,
       'anchor' =>

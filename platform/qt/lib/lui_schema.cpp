@@ -571,6 +571,7 @@ bool commonPropertySupported(NodeKind kind, Property property) {
   case Property::UrlValue:
     return kind == NodeKind::Link;
   case Property::MaxPixelSize:
+  case Property::ImageFitValue:
     return kind == NodeKind::FileImage;
   case Property::AnchorValue:
   case Property::AnchorAlignmentValue:
@@ -849,6 +850,8 @@ bool propertyValueSupported(Property property, const QVariant &value) {
     int number = 0;
     return isIntValue(value, &number) && number >= 0;
   }
+  case Property::ImageFitValue:
+    return isString(value) && inSet(value.toString(), {"fit", "fill"});
   case Property::MaxPixelSize: {
     int number = 0;
     return isIntValue(value, &number) && number > 0;

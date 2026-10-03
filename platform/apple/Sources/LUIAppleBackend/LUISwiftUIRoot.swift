@@ -3499,6 +3499,10 @@ private struct LUIFileImageView: View {
         if let image {
             Image(decorative: image, scale: 1)
                 .resizable()
+                .aspectRatio(contentMode: model.property(.imageFit)?.stringValue == "fill" ? .fill : .fit)
+                .frame(width: model.surfaceWidth.map(CGFloat.init),
+                       height: model.surfaceHeight.map(CGFloat.init))
+                .clipped()
         } else if failed {
             LUIIconImage(
                 source: .systemName("photo"),

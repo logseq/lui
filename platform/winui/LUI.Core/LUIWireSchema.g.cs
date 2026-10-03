@@ -192,6 +192,7 @@ namespace LUI
         PathValue,
         UrlValue,
         MaxPixelSize,
+        ImageFitValue,
         Visible,
         AlignmentValue,
     }
@@ -386,6 +387,7 @@ namespace LUI
             { "path", LUIProperty.PathValue },
             { "url", LUIProperty.UrlValue },
             { "max-pixel-size", LUIProperty.MaxPixelSize },
+            { "image-fit", LUIProperty.ImageFitValue },
             { "visible", LUIProperty.Visible },
             { "alignment", LUIProperty.AlignmentValue },
         };
@@ -638,6 +640,7 @@ namespace LUI
             LUIProperty.PathValue => "path",
             LUIProperty.UrlValue => "url",
             LUIProperty.MaxPixelSize => "max-pixel-size",
+            LUIProperty.ImageFitValue => "image-fit",
             LUIProperty.Visible => "visible",
             LUIProperty.AlignmentValue => "alignment",
             _ => "unknown",

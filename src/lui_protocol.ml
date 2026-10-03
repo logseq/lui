@@ -208,6 +208,7 @@ type property =
   | PathValue
   | UrlValue
   | MaxPixelSize
+  | ImageFitValue
   | Visible
   | AlignmentValue
 
@@ -877,7 +878,7 @@ let common_property_supported kind property =
     | _ -> false)
   | PathValue -> kind = FileImage || kind = FilePreview
   | UrlValue -> kind = Link
-  | MaxPixelSize -> kind = FileImage
+  | MaxPixelSize | ImageFitValue -> kind = FileImage
   | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector
   | PickerRequest | PickerTypes | PickerMultiple | PickerSource
   | PickerCompletion -> false
@@ -1080,6 +1081,7 @@ let property_value_supported property value =
   | Detents, StringValue _ -> true
   | Sizing, StringValue value -> sizing_supported value
   | PathValue, StringValue _ | UrlValue, StringValue _ -> true
+  | ImageFitValue, StringValue value -> value = "fit" || value = "fill"
   | MaxPixelSize, IntValue value -> value > 0
   | Visible, BoolValue _ -> true
   | AlignmentValue, StringValue value ->

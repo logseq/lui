@@ -1440,6 +1440,10 @@ let test_media_file_rules () =
     (property_supported Link PathValue);
   Alcotest.(check bool) "file-image allows path" true
     (property_supported FileImage PathValue);
+  Alcotest.(check bool) "file-image allows image-fit" true
+    (property_supported FileImage ImageFitValue);
+  Alcotest.(check bool) "image-fit rejects stretching" false
+    (property_value_supported ImageFitValue (StringValue "stretch"));
   Alcotest.(check bool) "file-image allows max-pixel-size" true
     (property_supported FileImage MaxPixelSize);
   Alcotest.(check bool) "file-image allows press" true
@@ -1484,7 +1488,7 @@ let media_view _context _model _send =
   Lui_elements.column
     [
       Lui_elements.link ~url:"https://example.com" ~text:"Example" [];
-      Lui_elements.file_image ~path:"/tmp/pic.png" ~max_pixel_size:512 [];
+      Lui_elements.file_image ~path:"/tmp/pic.png" ~max_pixel_size:512 ~fit:`fill [];
       Lui_elements.file_preview ~path:"/tmp/doc.pdf" [];
     ]
 
@@ -1516,6 +1520,8 @@ let test_media_file_mount () =
         | SetProp (_, PathValue, StringValue "/tmp/pic.png") -> true
         | _ -> false)
        ops);
+  Alcotest.(check bool) "proportional fill prop set" true
+    (List.exists (function SetProp (_, ImageFitValue, StringValue "fill") -> true | _ -> false) ops);
   Alcotest.(check bool) "max-pixel-size prop set" true
     (List.exists
        (function
