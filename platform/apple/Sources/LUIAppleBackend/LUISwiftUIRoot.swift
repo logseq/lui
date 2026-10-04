@@ -4414,6 +4414,7 @@ private struct LUIListItemView: View {
         .modifier(LUIListItemSwipeActionsModifier(
             model: model,
             menu: swipeMenu,
+            anchor: swipeActionsAnchor,
             backend: backend
         ))
         // Native-list rows are instantiated directly (not via LUIAnyNodeView),
@@ -4636,16 +4637,34 @@ private struct LUIListItemView: View {
     /// submenus, disabled rows, or other children keep the ellipsis button.
     private var swipeMenu: LUINodeModel? {
         #if os(iOS)
+        guard let menu = swipeActionsAnchor else { return nil }
+        let items = menu.children.compactMap { backend.model(id: $0) }
+        guard !items.isEmpty, items.allSatisfy({
+            $0.kind == .menuItem && $0.isEnabled &&
+                !$0.children.contains { backend.model(id: $0)?.kind == .dropdownMenu }
+        }) else { return nil }
+        return menu
+        #else
+        return nil
+        #endif
+    }
+
+    /// Whether the row should keep a `.swipeActions` slot at all, decided only
+    /// by node kinds (immutable), so an item's enabled/disabled flips never
+    /// attach or detach the modifier. Toggling `.swipeActions` on a live
+    /// collection cell makes SwiftUI re-create the cell; when that races a
+    /// row-delete coalesced into the same batch update, the collection sees a
+    /// stale item count and throws NSInternalInconsistencyException.
+    private var swipeActionsAnchor: LUINodeModel? {
+        #if os(iOS)
         guard isNativeListRow, let contextMenu else { return nil }
         // An explicit swipe-actions child takes over the edges; the context
         // menu is not consumed and stays reachable via the ellipsis button.
         guard !model.children.contains(where: {
             backend.model(id: $0)?.kind == .swipeActions
         }) else { return nil }
-        let items = contextMenu.children.compactMap { backend.model(id: $0) }
-        guard !items.isEmpty, items.allSatisfy({
-            $0.kind == .menuItem && $0.isEnabled &&
-                !$0.children.contains { backend.model(id: $0)?.kind == .dropdownMenu }
+        guard contextMenu.children.contains(where: {
+            backend.model(id: $0)?.kind == .menuItem
         }) else { return nil }
         return contextMenu
         #else
@@ -4715,6 +4734,9 @@ private struct LUIListItemSupplementaryGesturesModifier: ViewModifier {
 private struct LUIListItemSwipeActionsModifier: ViewModifier {
     let model: LUINodeModel
     let menu: LUINodeModel?
+    /// Presence of any menuItem in the row's context menu — the stable
+    /// attachment decision for `.swipeActions` (see `swipeActionsAnchor`).
+    let anchor: LUINodeModel?
     let backend: LUIAppleBackend
 
     @ViewBuilder
@@ -4735,11 +4757,14 @@ private struct LUIListItemSwipeActionsModifier: ViewModifier {
                         }
                     }
                 }
-        } else if let menu, menu.children.contains(where: {
-            backend.model(id: $0)?.kind == .menuItem
-        }) {
+        } else if anchor != nil {
+            // Keep the slot attached even while `menu` is nil (ineligible
+            // items): detaching `.swipeActions` here would re-create the
+            // collection cell and can crash coalesced batch updates.
             content.swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                LUINativeMenuActions(model: menu, backend: backend)
+                if let menu {
+                    LUINativeMenuActions(model: menu, backend: backend)
+                }
             }
         } else {
             content
@@ -6127,6 +6152,16 @@ private struct LUIListView: View {
                     }
                 }
             }
+            // iOS 26's UpdateCoalescingCollectionView coalesces List updates
+            // across transactions and can silently drop an insert, leaving the
+            // collection's tracked counts diverged from the data source; the
+            // next update — even an unrelated zero-diff one — then asserts in
+            // UICollectionView's validation. Rebuilding the List on every
+            // commit turns each update into a fresh mount, which never goes
+            // through the coalesced batch-update path. These LUI lists are
+            // small (graphs, settings, pickers, search results), so the extra
+            // re-render is negligible.
+            .id(backend.commitSequence)
         )
         .scrollContentBackground(
             listBackground == nil
