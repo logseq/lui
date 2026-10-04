@@ -69,9 +69,16 @@ final class LUIModalPresentationStore {
     }
 
     func updateFromPresentation(_ item: LUIModalPresentation?) {
-        if item == nil, let presentedID = self.item?.id {
-            interactiveDismissalID = presentedID
-            pendingDismissalID = presentedID
+        // This setter serves the .sheet binding only. A sheet->dialog swap
+        // leaves the old sheet's teardown racing a freshly asserted dialog:
+        // when the sheet's dismissal lands it must neither wipe the new
+        // presentation nor mark the dialog as interactively dismissed.
+        if item == nil {
+            guard self.item?.model.kind == .sheet else { return }
+            if let presentedID = self.item?.id {
+                interactiveDismissalID = presentedID
+                pendingDismissalID = presentedID
+            }
         }
         self.item = item
     }
