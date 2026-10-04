@@ -996,7 +996,35 @@ struct LUIRetainedTree {
         extensionRegistry: LUIAppleExtensionRegistry,
         scope: Set<Int>? = nil
     ) throws {
-        for (id, node) in nodes where scope?.contains(id) ?? true {
+        // Iterate the scope directly: filtering `nodes`/`extensionNodes`
+        // walks every node in the tree per batch even when the scope names
+        // a handful of ids.
+        if let scope {
+            for id in scope {
+                if let node = nodes[id] {
+                    try validateNode(node)
+                }
+                if let node = extensionNodes[id] {
+                    try validateExtensionNode(
+                        node,
+                        extensionRegistry: extensionRegistry
+                    )
+                }
+            }
+            return
+        }
+        for (_, node) in nodes {
+            try validateNode(node)
+        }
+        for (_, node) in extensionNodes {
+            try validateExtensionNode(
+                node,
+                extensionRegistry: extensionRegistry
+            )
+        }
+    }
+
+    private func validateNode(_ node: LUINodeState) throws {
             if node.kind == .root {
                 guard node.parent == nil else {
                     throw invalid("runtime root cannot have a parent")
@@ -1319,8 +1347,12 @@ struct LUIRetainedTree {
                     throw invalid("input-group-actions requires a direct input-group parent")
                 }
             }
-        }
-        for (id, node) in extensionNodes where scope?.contains(id) ?? true {
+    }
+
+    private func validateExtensionNode(
+        _ node: LUIExtensionNodeState,
+        extensionRegistry: LUIAppleExtensionRegistry
+    ) throws {
             guard let registration = extensionRegistry.registration(node.identifier) else {
                 throw invalid("unknown extension identifier")
             }
@@ -1332,7 +1364,6 @@ struct LUIRetainedTree {
                     throw invalid("extension properties are incomplete")
                 }
             }
-        }
     }
 
     private static func isContextMenuHost(

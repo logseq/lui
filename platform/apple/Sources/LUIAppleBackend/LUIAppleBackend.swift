@@ -483,17 +483,26 @@ public final class LUIAppleBackend {
     private func scheduleFramesReport() {
         guard !framesReportScheduled else { return }
         framesReportScheduled = true
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.framesReportScheduled = false
-            guard self.frameReportingEnabled else { return }
-            self.onFramesReport?(self.nodeFrames)
+        // CFRunLoop delivery, not DispatchQueue.main.async — GCD main-queue
+        // wakeups go unserviced while the runloop waits for events.
+        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.framesReportScheduled = false
+                guard self.frameReportingEnabled else { return }
+                self.onFramesReport?(self.nodeFrames)
+            }
         }
+        CFRunLoopWakeUp(CFRunLoopGetMain())
     }
 
     private var tree = LUIRetainedTree()
     private var models: [Int: LUINodeModel] = [:]
     private var extensionModels: [Int: LUIExtensionNodeModel] = [:]
+    // Count of mounted dialog/sheet/filePreview nodes; maintained in
+    // `commit` so `syncModalPresentation` can skip its full-tree DFS on
+    // batches that cannot change any presentation.
+    private var modalNodeCount = 0
     private var eventDeferralDepth = 0
     private var deferredEvents: [LUIEvent] = []
     private var interactionLockedDrawers: Set<Int> = []
@@ -612,7 +621,7 @@ public final class LUIAppleBackend {
     }
 
     func anyNodeView(nodeID: Int) -> AnyView {
-        AnyView(LUIAnyNodeView(nodeID: nodeID, backend: self))
+        AnyView(LUIAnyNodeView(nodeID: nodeID, backend: self).equatable())
     }
 
     private func firstSectionTitle(nodeID: Int) -> String? {
@@ -671,6 +680,9 @@ public final class LUIAppleBackend {
     /// hand the result to `apply(decoded:)` on the main actor.
     public struct DecodedPatchBatch: Sendable {
         let batch: LUIPatchBatch
+
+        /// Patch generation, exposed for host-side perf diagnostics.
+        public var generation: Int { batch.generation }
     }
 
     /// Decodes a patch batch. Pure and `nonisolated` — safe to call off the
@@ -703,19 +715,37 @@ public final class LUIAppleBackend {
             )
         }
 
+        let tA = CFAbsoluteTimeGetCurrent()
         let effects = try tree.applying(
             batch.ops,
             extensionRegistry: extensionRegistry
         )
+        let tB = CFAbsoluteTimeGetCurrent()
         withDeferredEventDelivery {
             withTransaction(Transaction(animation: nil)) {
                 commit(tree, touched: effects.touched, dropped: effects.dropped)
             }
+            let tC = CFAbsoluteTimeGetCurrent()
             // A dialog/sheet's membership, anchor, or nesting only changes when
             // the structure moves or a presentation-relevant node mutates —
             // property-only patches elsewhere never do, so skip the tree walk.
             if effects.structural || !effects.modalRelevant.isEmpty {
-                syncModalPresentation()
+                if modalNodeCount > 0 {
+                    syncModalPresentation()
+                } else {
+                    // No dialog/sheet/filePreview is mounted, so the DFS
+                    // could only produce empty presentations — clear any
+                    // stale state directly instead of walking the tree.
+                    modalPresentation.nestedSheets = [:]
+                    modalPresentation.synchronize(with: nil)
+                    filePreviewPresentation.synchronize(with: nil)
+                }
+            }
+            let tD = CFAbsoluteTimeGetCurrent()
+            if ProcessInfo.processInfo.environment["LOGSEQ_PERF"] != nil {
+                FileHandle.standardError.write(
+                    "PERF apply-split gen=\(batch.generation) applying=\(Int((tB-tA)*1000))ms commit=\(Int((tC-tB)*1000))ms modal=\(Int((tD-tC)*1000))ms touched=\(effects.touched.count) dropped=\(effects.dropped.count)\n"
+                        .data(using: .utf8)!)
             }
             generation = batch.generation
         }
@@ -1013,15 +1043,26 @@ public final class LUIAppleBackend {
     ) {
         // Untouched nodes are identical by construction (ops only mutate the
         // nodes they name), so reconciliation only walks the patched set.
+        let perf = ProcessInfo.processInfo.environment["LOGSEQ_PERF"] != nil
+        var tDrop: Double = 0
+        var tFilter: Double = 0
+        var tNodeApply: Double = 0
+        var tExtApply: Double = 0
+        let t0 = CFAbsoluteTimeGetCurrent()
         for id in dropped {
+            if let model = models[id], Self.isModalKind(model.kind) {
+                modalNodeCount -= 1
+            }
             models[id] = nil
             extensionModels[id] = nil
             clearFilePickerOperation(node: id)
         }
+        if perf { tDrop = CFAbsoluteTimeGetCurrent() - t0 }
         for id in touched where !dropped.contains(id) {
             if let state = tree.nodes[id] {
                 // Kinds are immutable, so auxiliary-slot membership in the
                 // child list is fixed until the list itself changes.
+                let t1 = CFAbsoluteTimeGetCurrent()
                 let visibleChildren = state.children.filter { childID in
                     switch tree.nodes[childID]?.kind {
                     case .contextMenu, .swipeActions, .listSectionHeader,
@@ -1031,17 +1072,24 @@ public final class LUIAppleBackend {
                         true
                     }
                 }
+                let t2 = CFAbsoluteTimeGetCurrent()
+                if perf { tFilter += t2 - t1 }
                 if let model = models[id] {
                     model.apply(state: state, visibleChildren: visibleChildren)
                 } else {
+                    if Self.isModalKind(state.kind) {
+                        modalNodeCount += 1
+                    }
                     models[id] = LUINodeModel(
                         id: id,
                         state: state,
                         visibleChildren: visibleChildren
                     )
                 }
+                if perf { tNodeApply += CFAbsoluteTimeGetCurrent() - t2 }
             }
             if let state = tree.extensionNodes[id] {
+                let t3 = CFAbsoluteTimeGetCurrent()
                 if let model = extensionModels[id] {
                     model.apply(state: state)
                 } else {
@@ -1050,8 +1098,18 @@ public final class LUIAppleBackend {
                         state: state
                     )
                 }
+                if perf { tExtApply += CFAbsoluteTimeGetCurrent() - t3 }
             }
         }
+        if perf {
+            FileHandle.standardError.write(
+                "PERF commit-split drop=\(Int(tDrop*1000))ms filter=\(Int(tFilter*1000))ms nodeApply=\(Int(tNodeApply*1000))ms extApply=\(Int(tExtApply*1000))ms\n"
+                    .data(using: .utf8)!)
+        }
+    }
+
+    private static func isModalKind(_ kind: LUINodeKind) -> Bool {
+        kind == .dialog || kind == .sheet || kind == .filePreview
     }
 
     func withDeferredEventDelivery(_ operation: () -> Void) {
