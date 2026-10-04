@@ -2888,19 +2888,20 @@ private struct LUIModalSurfaceContent: View {
                     excludedChildIDs: formSearchableField.map { [$0.id] } ?? []
                 )
             }
-            // Same surface rule as LUI lists: when the app supplies a theme
-            // `background` token, the grouped form sits on it instead of the
-            // system grouped background so modal surfaces match the app's
-            // palette in both schemes. Rows take the `surface` token when
-            // present to keep the card/grouping contrast.
+            // Same surface rule as the modal background: the sheet is an
+            // elevated `surface`, and grouped rows sit on `background` as
+            // content cards so the section grouping keeps its contrast
+            // (light: near-white cards on a light-gray sheet; dark: deep
+            // cards on a lighter surface sheet).
             .modifier(LUINavigationFormRowSurfaceModifier(
                 semanticColors: effectiveSemanticColors
             ))
             .scrollContentBackground(
-                effectiveSemanticColors["background"] == nil
+                effectiveSemanticColors["surface"] == nil
+                    && effectiveSemanticColors["background"] == nil
                     ? LUIListSurfacePolicy.scrollContentBackground : .hidden
             )
-            .background(effectiveSemanticColors["background"])
+            .background(modalBackground)
             .accessibilityIdentifier(navigationFormAccessibilityIdentifier)
             #if os(iOS)
             .modifier(LUISearchableNodeModifier(
@@ -6697,7 +6698,7 @@ private struct LUINavigationFormRowSurfaceModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if let rowBackground = semanticColors["surface"] {
+        if let rowBackground = semanticColors["background"] {
             content.listRowBackground(rowBackground)
         } else {
             content
