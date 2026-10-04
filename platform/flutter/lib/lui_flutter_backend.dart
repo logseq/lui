@@ -2268,6 +2268,10 @@ final class LUIFlutterBackend {
       const fallback = Center(
         child: Icon(Icons.photo_outlined, size: 24),
       );
+      // Matches LUIFileImageLoader on Apple: decode at no more than
+      // max-pixel-size on the longest side (default 1024) so displaying a
+      // small image never rasterizes the file at native resolution.
+      final maxPixelSize = state.properties['max-pixel-size'] as int? ?? 1024;
       Widget image = resolved.isEmpty
           ? fallback
           : Image.file(
@@ -2276,6 +2280,8 @@ final class LUIFlutterBackend {
               width: double.infinity,
               height: double.infinity,
               semanticLabel: accessibilityLabel,
+              cacheWidth: maxPixelSize,
+              cacheHeight: maxPixelSize,
               errorBuilder: (_, _, _) => fallback,
             );
       final radius = (cornerRadius ?? 0).toDouble();

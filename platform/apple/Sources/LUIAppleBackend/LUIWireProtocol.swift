@@ -441,10 +441,16 @@ struct LUIRetainedTree {
                     if let parent = node.parent { scope.insert(parent) }
                 }
             }
+            // Traverse the whole moved subtree: [visited] is a dedicated
+            // traversal set so descendants already in scope via a touched
+            // neighbour don't prune the walk — ancestor-dependent checks
+            // must still revalidate them.
+            var visited = Set<Int>()
             for child in structuralChildren {
                 var pending = [child]
                 while let id = pending.popLast() {
-                    guard scope.insert(id).inserted else { continue }
+                    guard visited.insert(id).inserted else { continue }
+                    scope.insert(id)
                     if let node = nodes[id] {
                         pending.append(contentsOf: node.children)
                     } else if let node = extensionNodes[id] {

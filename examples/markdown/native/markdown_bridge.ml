@@ -114,5 +114,6 @@ let () =
   Callback.register "lui_ocaml_radio_changed" radio_changed;
   Callback.register "lui_ocaml_slider_changed" slider_changed;
   Callback.register "lui_ocaml_extension_event" extension_event;
+  Callback.register "lui_flutter_extension_event" extension_event;
   Callback.register "lui_ocaml_dispose" dispose;
   Callback.register "lui_ocaml_root_node" root_node

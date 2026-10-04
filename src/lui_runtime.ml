@@ -442,19 +442,6 @@ let index_map children =
   List.iteri (fun index child -> Hashtbl.replace result child index) children;
   result
 
-(* Places [value] at [start], shifting values[start .. end-1] right to
-   start+1 .. end. Returns the new list and position table. *)
-let shift_right values positions start end_ value =
-  let arr = Array.of_list values in
-  for j = end_ downto start + 1 do
-    let moved = arr.(j - 1) in
-    arr.(j) <- moved;
-    Hashtbl.replace positions moved j
-  done;
-  arr.(start) <- value;
-  Hashtbl.replace positions value start;
-  Array.to_list arr
-
 let enqueue application operation =
   application.pending_ops := operation :: !(application.pending_ops)
 
@@ -511,30 +498,43 @@ let emit_child_diff application reparented parent old_children
          end)
       old_children
   in
-  let rec loop index current positions =
-    if index = List.length desired_children then ()
-    else
-      let child = List.nth desired_children index in
-      match Hashtbl.find_opt positions child with
-      | Some from_index ->
-        if from_index = index then loop (index + 1) current positions
-        else begin
-          enqueue application (move_child_op parent child index);
-          let next_current =
-            shift_right current positions index from_index child
-          in
-          loop (index + 1) next_current positions
-        end
-      | None ->
-        enqueue application (insert_child_op parent child index);
-        let next_current =
-          shift_right
-            (current @ [ child ])
-            positions index (List.length current) child
-        in
-        loop (index + 1) next_current positions
+  (* Simulate the reorder on flat arrays: [desired] is indexed directly and
+     [current] grows in place, so an unchanged list costs O(n) instead of
+     rescanning it via List.length/List.nth on every step. *)
+  let desired = Array.of_list desired_children in
+  let count = Array.length desired in
+  let current = Array.make count 0 in
+  let positions = index_map surviving in
+  let length = ref (List.length surviving) in
+  List.iteri (fun index child -> current.(index) <- child) surviving;
+  let shift_into index value =
+    for j = !length downto index + 1 do
+      let moved = current.(j - 1) in
+      current.(j) <- moved;
+      Hashtbl.replace positions moved j
+    done;
+    current.(index) <- value;
+    Hashtbl.replace positions value index
   in
-  loop 0 surviving (index_map surviving)
+  for index = 0 to count - 1 do
+    let child = desired.(index) in
+    match Hashtbl.find_opt positions child with
+    | Some from_index ->
+      if from_index <> index then begin
+        enqueue application (move_child_op parent child index);
+        for j = from_index downto index + 1 do
+          let moved = current.(j - 1) in
+          current.(j) <- moved;
+          Hashtbl.replace positions moved j
+        done;
+        current.(index) <- child;
+        Hashtbl.replace positions child index
+      end
+    | None ->
+      enqueue application (insert_child_op parent child index);
+      shift_into index child;
+      incr length
+  done
 
 let emit_property_diff application node old_values desired_values =
   Property_map.iter
@@ -1592,20 +1592,32 @@ let record_diagnostics application status operation_count
     };
   true
 
-(* A batch is consumed once attempted: ops already committed store-side must
-   not re-run, and leaving them queued would make the next flush re-apply the
-   same operations under a stale generation (which also breaks the retained
-   store's sequential-generation check and wedges every later flush). *)
+(* Commit outcomes are not all equal. A backend that returns [false] has
+   atomically rejected the batch: nothing was applied host-side, so the ops
+   stay queued and the generation stays unconsumed — the next flush re-sends
+   them (plus anything newer) under the same generation the host still
+   expects. An exception means the commit state is unknown: ops may be
+   partially applied store-side, so the batch is consumed rather than
+   re-applied under a stale generation (which would also break the retained
+   store's sequential-generation check and wedge every later flush). *)
 let apply_pending_batch application batch operation_count next_generation =
-  application.pending_ops := [];
-  application.runtime_generation := next_generation;
-  try
-    if not (application.runtime_backend.apply_batch batch) then
-      invalid_arg "backend rejected patch batch";
+  let committed =
+    try application.runtime_backend.apply_batch batch
+    with Invalid_argument message ->
+      application.pending_ops := [];
+      application.runtime_generation := next_generation;
+      ignore (record_diagnostics application Rejected operation_count 0);
+      invalid_arg message
+  in
+  if committed then begin
+    application.pending_ops := [];
+    application.runtime_generation := next_generation;
     record_diagnostics application Applied operation_count 0
-  with Invalid_argument message ->
+  end
+  else begin
     ignore (record_diagnostics application Rejected operation_count 0);
-    invalid_arg message
+    invalid_arg "backend rejected patch batch"
+  end
 
 let flush application =
   Signal.stabilize application.runtime_scheduler;
