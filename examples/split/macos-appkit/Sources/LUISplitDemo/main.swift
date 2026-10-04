@@ -12,11 +12,11 @@ private typealias AppearFunction = @convention(c) (Int64) -> Int32
 private typealias PressFunction = @convention(c) (Int64) -> Int32
 private typealias LongPressFunction = @convention(c) (Int64) -> Int32
 private typealias TextChangedFunction =
-    @convention(c) (Int64, UnsafePointer<CChar>?) -> Int32
+    @convention(c) (Int64, UnsafePointer<CChar>?, Int32) -> Int32
 private typealias SubmitFunction = @convention(c) (Int64) -> Int32
 private typealias DismissFunction = @convention(c) (Int64) -> Int32
 private typealias PickedFunction =
-    @convention(c) (Int64, UnsafePointer<CChar>?) -> Int32
+    @convention(c) (Int64, UnsafePointer<CChar>?, Int32) -> Int32
 private typealias DoublePressFunction = @convention(c) (Int64) -> Int32
 private typealias ToggleChangedFunction = @convention(c) (Int64, Int32) -> Int32
 private typealias RadioChangedFunction = @convention(c) (Int64) -> Int32
@@ -102,10 +102,10 @@ private final class NativeSplitRuntime {
         appearFunction = try Self.load("lui_ocaml_appear", from: handle)
         pressFunction = try Self.load("lui_ocaml_press", from: handle)
         longPressFunction = try Self.load("lui_ocaml_long_press", from: handle)
-        textChangedFunction = try Self.load("lui_ocaml_text_changed", from: handle)
+        textChangedFunction = try Self.load("lui_ocaml_text_changed_utf8", from: handle)
         submitFunction = try Self.load("lui_ocaml_submit", from: handle)
         dismissFunction = try Self.load("lui_ocaml_dismiss", from: handle)
-        pickedFunction = try Self.load("lui_ocaml_picked", from: handle)
+        pickedFunction = try Self.load("lui_ocaml_picked_utf8", from: handle)
         doublePressFunction = try Self.load("lui_ocaml_double_press", from: handle)
         toggleChangedFunction = try Self.load("lui_ocaml_toggle_changed", from: handle)
         radioChangedFunction = try Self.load("lui_ocaml_radio_changed", from: handle)
@@ -131,7 +131,7 @@ private final class NativeSplitRuntime {
 
     func textChanged(node: Int, text: String) {
         text.withCString { source in
-            _ = textChangedFunction(Int64(node), source)
+            _ = textChangedFunction(Int64(node), source, Int32(text.utf8.count))
         }
     }
 
@@ -141,7 +141,7 @@ private final class NativeSplitRuntime {
 
     func picked(node: Int, payload: String) {
         payload.withCString { source in
-            _ = pickedFunction(Int64(node), source)
+            _ = pickedFunction(Int64(node), source, Int32(payload.utf8.count))
         }
     }
 
@@ -255,6 +255,9 @@ private final class SplitDemoHost: NSObject, NSApplicationDelegate, NSWindowDele
                     self?.runtime?.extensionEvent(
                         node: node, identifier: identifier, name: name,
                         values: values)
+                case .scrollCompleted, .visibleRange:
+                    // The C bridge exports no scroll/visible-range entry points.
+                    break
                 }
             }
             makeWindow()

@@ -143,3 +143,45 @@ mount/unmount presence-driven kinds (dialog/sheet/file-preview).
 QuickLook panels (`file-preview`, `.quickLookPreview`) on macOS: the panel's
 close affordance is small/hover-only; **Escape** reliably closes it and drives
 the Dismiss binding. Clicking the panel title bar does nothing.
+
+### Build gotchas (macos-appkit demos)
+
+- `examples/<demo>/macos-appkit/build-app.sh` runs `opam exec -- dune build` on
+  the AMBIENT opam switch. If the ambient switch lacks LUI's deps (ocaml-signal
+  etc.), prefix the whole script with the right switch:
+      OPAMSWITCH=5.5.0 sh examples/todos/macos-appkit/build-app.sh
+  (`opam exec` honors the OPAMSWITCH env var, so it propagates into the script.)
+- PRE-EXISTING build failure: the demos' `main.swift` `switch event` over
+  `backend.onEvent` is not exhaustive — newer `LUIEvent` cases
+  (`.appear`, `.scrollCompleted`, `.visibleRange`, `.extension`,
+  `.doublePress`) were added after the demos were written, so `swift build`
+  fails with "switch must be exhaustive" on todos/markdown/split even on main.
+  Temporary fix for testing: add `default: break` after the last case in the
+  switch (scroll/visibleRange have no C exports anyway; todos lacks the
+  `lui_ocaml_extension_event` registration). Revert with `git checkout` after.
+
+### Driving text input / multi-byte characters
+
+- The `type` action drops 3/4-byte UTF-8 (CJK, emoji) into macOS text fields —
+  ASCII and 2-byte chars (é) get through. For full-UTF8 coverage use the
+  accessibility `set_text` operation on the `textField` element: it writes the
+  full string through the control's normal value path, which DOES fire the
+  LUI `text-changed` event (verified: the OCaml model updated and rendered the
+  exact string back).
+- `Cmd+V` does NOT work in demos that don't build an Edit menu (e.g. LUITodos
+  has no `makeMenu`) — key-equivalent paste routes through the main menu.
+  Right-clicking the field DOES open a context menu with Paste (slow to
+  appear; screenshot may miss it on first try). `Cmd+A` select-all works.
+- macOS Automatic Termination can silently quit these demo apps when the
+  window isn't frontmost/key (system log shows `AutomaticTermination`
+  entries, no crash report). If a demo vanishes mid-test, relaunch the binary
+  directly from a shell with stderr redirected to a file and re-drive.
+
+### Tool quirks
+
+- `left_mouse_down`/`left_mouse_up` take no coordinate — `mouse_move` to the
+  start point first, then `left_mouse_down`, step the drag, `left_mouse_up`.
+- The todos row buttons (Done/Up/Delete) and split tab controls are custom
+  drawn — they do NOT appear as `button` in the macos AX query (only window
+  chrome does). Aim by coordinates; zoom into the row to compute button x
+  (~14px-tall text buttons, "Delete" is easy to hit by accident).

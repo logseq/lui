@@ -151,11 +151,13 @@ let () =
   Callback.register "lui_ocaml_init" initialize;
   Callback.register "lui_ocaml_press" (fun node -> dispatch (Press node));
   Callback.register "lui_ocaml_appear" (fun node -> dispatch (Appear node));
-  Callback.register "lui_ocaml_extension_event"
-    (fun node identifier name json ->
-      Printf.eprintf "NAV host event %s %s\n%!" name json;
-      dispatch
-        (ExtensionEvent (node, identifier, name, Lui_json.parse_values json)));
+  let extension_event node identifier name json =
+    Printf.eprintf "NAV host event %s %s\n%!" name json;
+    dispatch
+      (ExtensionEvent (node, identifier, name, Lui_json.parse_values json))
+  in
+  Callback.register "lui_ocaml_extension_event" extension_event;
+  Callback.register "lui_flutter_extension_event" extension_event;
   Callback.register "lui_ocaml_dispose" (fun () ->
       latest_patch := "";
       ignore (Lui_app.dispose (app ()));

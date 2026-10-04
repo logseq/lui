@@ -12,6 +12,11 @@ let escape_json value =
        | '\n' -> Buffer.add_string buffer "\\n"
        | '\r' -> Buffer.add_string buffer "\\r"
        | '\t' -> Buffer.add_string buffer "\\t"
+       | c when Char.code c < 0x20 ->
+         (* JSON requires every remaining control character (NUL, form
+            feed, ...) to be escaped; emitting it raw makes the whole
+            batch undecodable on the host. *)
+         Buffer.add_string buffer (Printf.sprintf "\\u%04x" (Char.code c))
        | c -> Buffer.add_char buffer c)
     value;
   Buffer.contents buffer

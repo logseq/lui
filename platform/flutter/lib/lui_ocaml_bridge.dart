@@ -22,14 +22,30 @@ typedef _NativePress = Int32 Function(Int64 node);
 typedef _DartPress = int Function(int node);
 typedef _NativeLongPress = Int32 Function(Int64 node);
 typedef _DartLongPress = int Function(int node);
-typedef _NativeTextChanged = Int32 Function(Int64 node, Pointer<Utf8> text);
-typedef _DartTextChanged = int Function(int node, Pointer<Utf8> text);
+typedef _NativeTextChanged = Int32 Function(
+  Int64 node,
+  Pointer<Utf8> text,
+  Int32 byteLength,
+);
+typedef _DartTextChanged = int Function(
+  int node,
+  Pointer<Utf8> text,
+  int byteLength,
+);
 typedef _NativeSubmit = Int32 Function(Int64 node);
 typedef _DartSubmit = int Function(int node);
 typedef _NativeDismiss = Int32 Function(Int64 node);
 typedef _DartDismiss = int Function(int node);
-typedef _NativePicked = Int32 Function(Int64 node, Pointer<Utf8> payload);
-typedef _DartPicked = int Function(int node, Pointer<Utf8> payload);
+typedef _NativePicked = Int32 Function(
+  Int64 node,
+  Pointer<Utf8> payload,
+  Int32 byteLength,
+);
+typedef _DartPicked = int Function(
+  int node,
+  Pointer<Utf8> payload,
+  int byteLength,
+);
 typedef _NativeDoublePress = Int32 Function(Int64 node);
 typedef _DartDoublePress = int Function(int node);
 typedef _NativeToggleChanged = Int32 Function(Int64 node, Int32 checked);
@@ -42,6 +58,18 @@ typedef _NativeStop = Int32 Function();
 typedef _DartStop = int Function();
 typedef _NativeNode = Int64 Function();
 typedef _DartNode = int Function();
+typedef _NativeExtensionEvent = Int32 Function(
+  Int64 node,
+  Pointer<Utf8> identifier,
+  Pointer<Utf8> name,
+  Pointer<Utf8> jsonValues,
+);
+typedef _DartExtensionEvent = int Function(
+  int node,
+  Pointer<Utf8> identifier,
+  Pointer<Utf8> name,
+  Pointer<Utf8> jsonValues,
+);
 
 final class LUIOcamlBridge {
   LUIOcamlBridge._(this.library, this.onPatch)
@@ -59,7 +87,7 @@ final class LUIOcamlBridge {
       ),
       _textChanged = library
           .lookupFunction<_NativeTextChanged, _DartTextChanged>(
-            'lui_ocaml_text_changed',
+            'lui_ocaml_text_changed_utf8',
           ),
       _submit = library.lookupFunction<_NativeSubmit, _DartSubmit>(
         'lui_ocaml_submit',
@@ -68,7 +96,7 @@ final class LUIOcamlBridge {
         'lui_ocaml_dismiss',
       ),
       _picked = library.lookupFunction<_NativePicked, _DartPicked>(
-        'lui_ocaml_picked',
+        'lui_ocaml_picked_utf8',
       ),
       _doublePress = library
           .lookupFunction<_NativeDoublePress, _DartDoublePress>(
@@ -89,7 +117,11 @@ final class LUIOcamlBridge {
       _stop = library.lookupFunction<_NativeStop, _DartStop>('lui_ocaml_stop'),
       _rootNode = library.lookupFunction<_NativeNode, _DartNode>(
         'lui_ocaml_root_node',
-      );
+      ),
+      _extensionEvent = library
+          .lookupFunction<_NativeExtensionEvent, _DartExtensionEvent>(
+            'lui_ocaml_extension_event',
+          );
 
   factory LUIOcamlBridge.open(
     String libraryPath, {
@@ -116,6 +148,7 @@ final class LUIOcamlBridge {
   final _DartSliderChanged _sliderChanged;
   final _DartStop _stop;
   final _DartNode _rootNode;
+  final _DartExtensionEvent _extensionEvent;
   NativeCallable<_NativePatchCallback>? _patchCallback;
 
   void start() {
@@ -170,7 +203,7 @@ final class LUIOcamlBridge {
   void textChanged(int node, String text) {
     final nativeText = text.toNativeUtf8();
     try {
-      if (_textChanged(node, nativeText) != 1) {
+      if (_textChanged(node, nativeText, nativeText.length) != 1) {
         throw StateError('OCaml text dispatch failed');
       }
     } finally {
@@ -189,7 +222,7 @@ final class LUIOcamlBridge {
   void picked(int node, String payload) {
     final nativePayload = payload.toNativeUtf8();
     try {
-      if (_picked(node, nativePayload) != 1) {
+      if (_picked(node, nativePayload, nativePayload.length) != 1) {
         throw StateError('OCaml picked dispatch failed');
       }
     } finally {
@@ -212,6 +245,32 @@ final class LUIOcamlBridge {
   void sliderChanged(int node, double value) {
     if (_sliderChanged(node, value) != 1) {
       throw StateError('OCaml slider dispatch failed');
+    }
+  }
+
+  void extensionEvent(
+    int node,
+    String identifier,
+    String name,
+    String jsonValues,
+  ) {
+    final nativeIdentifier = identifier.toNativeUtf8();
+    final nativeName = name.toNativeUtf8();
+    final nativeValues = jsonValues.toNativeUtf8();
+    try {
+      if (_extensionEvent(
+            node,
+            nativeIdentifier,
+            nativeName,
+            nativeValues,
+          ) !=
+          1) {
+        throw StateError('OCaml extension event dispatch failed');
+      }
+    } finally {
+      malloc.free(nativeIdentifier);
+      malloc.free(nativeName);
+      malloc.free(nativeValues);
     }
   }
 

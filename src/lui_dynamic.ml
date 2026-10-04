@@ -95,12 +95,12 @@ let switch context parent source equal mount =
           | Some old_node ->
             let old_scope = !current_scope in
             let saved = Lui_runtime.checkpoint application in
-            let new_scope = ref None in
+            let candidate = ref None in
             (try
                let branch_context, new_node, new_retired =
                  mount_branch next_key
                in
-               new_scope := Some branch_context.Lui_ui.ui_scope;
+               candidate := Some (branch_context, new_retired);
                (* Link the candidate into the live graph so reconcile can map
                   it; the mount-time ops this emits are discarded by
                   [reconcile_subtree]'s pending-ops reset. *)
@@ -110,21 +110,30 @@ let switch context parent source equal mount =
                  Lui_runtime.reconcile_subtree application saved parent
                    old_node new_node
                in
+               (* Mount the candidate while the old branch is still live: a
+                  throwing mount hook rolls back to an old scope whose
+                  subscriptions were never disposed. *)
+               Signal.mount branch_context.Lui_ui.ui_scope;
                !current_retired := true;
                Lui_runtime.retire_checkpoint_dynamic_segments saved old_node;
                Signal.dispose_scope old_scope;
                current_key := next_key;
                node_ref := Some desired_root;
                current_scope := branch_context.Lui_ui.ui_scope;
-               current_retired := new_retired;
-               Signal.mount branch_context.Lui_ui.ui_scope
+               current_retired := new_retired
              with failure ->
                (* A mount or reconcile failure can leave tables half rebuilt;
                   restore the checkpoint and discard the candidate branch so
                   the old branch stays mounted. *)
                Lui_runtime.restore application saved;
-               (match !new_scope with
-               | Some scope -> Signal.dispose_scope scope
+               (match !candidate with
+               | Some (branch_context, retired) ->
+                 (* The candidate never took ownership of the segment or the
+                    node slot, so mark it retired before disposal: its unmount
+                    hook must not run [teardown_branch] against the live
+                    branch's registrations. *)
+                 retired := true;
+                 Signal.dispose_scope branch_context.Lui_ui.ui_scope
                | None -> ());
                raise failure))
   in

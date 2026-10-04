@@ -107,10 +107,7 @@ let parse_number source index =
     else index
   in
   let finish = scan index in
-  let text = String.sub source start (finish - start) in
-  (match float_of_string_opt text with
-   | Some number -> (number, finish)
-   | None -> fail "invalid number")
+  (String.sub source start (finish - start), finish)
 
 let skip_space source index =
   let rec loop index =
@@ -141,11 +138,29 @@ let parse_value source index =
   | 'f' -> (Bool false, expect source index "false")
   | 'n' -> (Float 0.0, expect source index "null")
   | '-' | '0' .. '9' ->
-    let number, next = parse_number source index in
-    let truncated = Float.trunc number in
-    if number = truncated && Float.abs number < 4611686018427387904.0 then
-      (Int (int_of_float truncated), next)
-    else (Float number, next)
+    let text, next = parse_number source index in
+    (* Integer literals keep full 63-bit precision: routing them through
+       float_of_string would silently round ids past 2^53. *)
+    let float_syntax =
+      String.exists
+        (fun c -> c = '.' || c = 'e' || c = 'E' || c = '+')
+        text
+    in
+    if not float_syntax then
+      match int_of_string_opt text with
+      | Some value -> (Int value, next)
+      | None ->
+        if String.exists (fun c -> c >= '0' && c <= '9') text then
+          fail "integer literal out of range"
+        else fail "invalid number"
+    else
+      (match float_of_string_opt text with
+       | Some number ->
+         let truncated = Float.trunc number in
+         if number = truncated && Float.abs number < 4611686018427387904.0
+         then (Int (int_of_float truncated), next)
+         else (Float number, next)
+       | None -> fail "invalid number")
   | _ -> fail "unsupported value kind"
 
 (* Parse a single-level object of scalar values. Objects and arrays are
