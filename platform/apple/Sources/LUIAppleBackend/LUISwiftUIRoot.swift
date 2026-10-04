@@ -2892,17 +2892,10 @@ private struct LUIModalSurfaceContent: View {
                 LUINavigationFormRows(
                     contentID: navigationFormContentID,
                     backend: backend,
-                    excludedChildIDs: formSearchableField.map { [$0.id] } ?? []
+                    excludedChildIDs: formSearchableField.map { [$0.id] } ?? [],
+                    semanticColors: effectiveSemanticColors
                 )
             }
-            // Same surface rule as the modal background: the sheet is an
-            // elevated `surface`, and grouped rows sit on `background` as
-            // content cards so the section grouping keeps its contrast
-            // (light: near-white cards on a light-gray sheet; dark: deep
-            // cards on a lighter surface sheet).
-            .modifier(LUINavigationFormRowSurfaceModifier(
-                semanticColors: effectiveSemanticColors
-            ))
             .scrollContentBackground(
                 effectiveSemanticColors["surface"] == nil
                     && effectiveSemanticColors["background"] == nil
@@ -2958,6 +2951,12 @@ private struct LUINavigationFormRows: View {
     let contentID: Int?
     let backend: LUIAppleBackend
     var excludedChildIDs: [Int] = []
+    /// Modal content renders outside the node tree, so the ambient
+    /// `luiSemanticColors` environment is empty here — the sheet passes the
+    /// ancestor-resolved palette down explicitly (same dict that drives
+    /// `modalBackground`). Applied per row because `listRowBackground` on the
+    /// `Form` container does not reach `Section` children on iOS 26 sheets.
+    var semanticColors: [String: Color] = [:]
 
     @ViewBuilder
     var body: some View {
@@ -3009,9 +3008,15 @@ private struct LUINavigationFormRows: View {
             if let child = backend.model(id: childID), child.kind == .listItem {
                 LUIListItemView(model: child, backend: backend, isNativeListRow: true)
                     .environment(\.luiIsNativeFormRow, true)
+                    .modifier(LUINavigationFormRowSurfaceModifier(
+                        semanticColors: semanticColors
+                    ))
             } else {
                 LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                     .environment(\.luiIsNativeFormRow, true)
+                    .modifier(LUINavigationFormRowSurfaceModifier(
+                        semanticColors: semanticColors
+                    ))
             }
         }
     }
@@ -6736,7 +6741,7 @@ private struct LUINavigationFormRowSurfaceModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if let rowBackground = semanticColors["background"] {
+        if let rowBackground = semanticColors["card"] ?? semanticColors["background"] {
             content.listRowBackground(rowBackground)
         } else {
             content
@@ -6777,6 +6782,7 @@ private struct LUITextControlView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     let grouped: Bool
+    @Environment(\.luiIsNativeFormRow) private var isNativeFormRow
     @State private var draftState: LUITextDraftState
     @FocusState private var focused: Bool
 
@@ -6789,7 +6795,7 @@ private struct LUITextControlView: View {
 
     var body: some View {
         Group {
-            if grouped {
+            if grouped || isNativeFormRow {
                 field.textFieldStyle(.plain)
             } else if model.kind == .searchField || model.kind == .textarea {
                 field
