@@ -4337,6 +4337,7 @@ private struct LUIMenuItemForegroundModifier: ViewModifier {
 
 private struct LUIListItemView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.luiSemanticColors) private var semanticColors
     let model: LUINodeModel
     let backend: LUIAppleBackend
     var isNativeListRow = false
@@ -4450,9 +4451,10 @@ private struct LUIListItemView: View {
                     .frame(width: iconSize, height: iconSize)
                     .frame(width: isNativeListRow ? 24 : (isNavigationRow ? 22 : iconSize))
                     .foregroundStyle(
-                        isNativeListRow
-                            ? Color.primary
-                            : Color.secondary
+                        LUIThemeColorResolver.color(
+                            model.property(.foreground)?.stringValue,
+                            semanticColors: semanticColors
+                        ) ?? (isNativeListRow ? Color.primary : Color.secondary)
                     )
             }
             if contentChildIDs.isEmpty || !model.text.isEmpty {
@@ -4462,6 +4464,12 @@ private struct LUIListItemView: View {
                         isNavigationHeading
                             ? .bold
                             : ((isNavigationRow && model.isSelected) ? .semibold : .regular)
+                    )
+                    .foregroundStyle(
+                        LUIThemeColorResolver.color(
+                            model.property(.foreground)?.stringValue,
+                            semanticColors: semanticColors
+                        ) ?? .primary
                     )
                     .lineLimit(1)
             }
