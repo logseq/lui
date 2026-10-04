@@ -2746,8 +2746,35 @@ private struct LUIModalSurfaceContent: View {
             }
         )) { presentation in
             LUIModalSurfaceContent(model: presentation.model, backend: backend)
-                .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
+                .luiSheetScope(
+                    semanticColors: effectiveSemanticColors,
+                    colorScheme: colorScheme
+                )
         }
+    }
+
+    /// Modal content renders outside the node tree, so `theme` props on its
+    /// ancestors never reach it through the environment — walk the chain and
+    /// decode tokens the same way `LUIThemeScopeModifier` does
+    /// (outermost-first, inner wins).
+    private var effectiveSemanticColors: [String: Color] {
+        var ancestors: [LUINodeModel] = []
+        var cursor = model.parent
+        while let parentID = cursor,
+              let parent = backend.model(id: parentID) {
+            ancestors.append(parent)
+            cursor = parent.parent
+        }
+        var colors = semanticColors
+        for ancestor in ancestors.reversed() {
+            colors.merge(
+                LUIThemeTokenDecoder.colors(
+                    ancestor.property(.theme)?.stringValue,
+                    dark: colorScheme == .dark
+                )
+            ) { _, new in new }
+        }
+        return colors
     }
 
     @ViewBuilder
@@ -2801,7 +2828,7 @@ private struct LUIModalSurfaceContent: View {
             return modalGroupedSystemBackground
         }
         return LUIModalBackgroundPolicy.color(
-            semanticColors: semanticColors,
+            semanticColors: effectiveSemanticColors,
             systemBackground: modalSystemBackground
         )
     }
@@ -2867,13 +2894,13 @@ private struct LUIModalSurfaceContent: View {
             // palette in both schemes. Rows take the `surface` token when
             // present to keep the card/grouping contrast.
             .modifier(LUINavigationFormRowSurfaceModifier(
-                semanticColors: semanticColors
+                semanticColors: effectiveSemanticColors
             ))
             .scrollContentBackground(
-                semanticColors["background"] == nil
+                effectiveSemanticColors["background"] == nil
                     ? LUIListSurfacePolicy.scrollContentBackground : .hidden
             )
-            .background(semanticColors["background"])
+            .background(effectiveSemanticColors["background"])
             .accessibilityIdentifier(navigationFormAccessibilityIdentifier)
             #if os(iOS)
             .modifier(LUISearchableNodeModifier(
