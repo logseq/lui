@@ -622,13 +622,20 @@ struct LUIAnyNodeView: View, Equatable {
 private struct LUIFrameReportModifier: ViewModifier {
     let nodeID: Int
     let backend: LUIAppleBackend
+    /// Hoisted toolbar children report `.global` frames in the toolbar's
+    /// own coordinate space — wrong for window-space consumers
+    /// (hit-testing, imperative rects), so they report nothing; their own
+    /// SwiftUI gestures already deliver the correct action.
+    @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
 
     func body(content: Content) -> some View {
         content
             .onGeometryChange(for: CGRect.self) { proxy in
                 proxy.frame(in: .global)
             } action: { rect in
-                backend.reportNodeFrame(nodeID, rect)
+                if !inHoistedToolbar {
+                    backend.reportNodeFrame(nodeID, rect)
+                }
             }
             .onDisappear {
                 backend.removeNodeFrame(nodeID)
@@ -3158,6 +3165,26 @@ private struct LUIToolbarView: View {
 /// per-item capsule fusion. `ToolbarContentBuilder` cannot emit a dynamic
 /// list, so the builder enumerates a bounded arity; segments beyond the cap
 /// are dropped rather than hoisted.
+///
+/// Applies `.help` from the node's accessibility label when the label is
+/// non-empty — a modifier so the no-label case isn't a conditional view
+/// type inside toolbar builders.
+private struct LUIToolbarTooltip: ViewModifier {
+    let childID: Int
+    let backend: LUIAppleBackend
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let label = backend.model(id: childID)?
+            .accessibilityLabel(in: backend),
+            !label.isEmpty {
+            content.help(label)
+        } else {
+            content
+        }
+    }
+}
+
 @available(iOS 26.0, macOS 26.0, *)
 private struct LUIToolbarGroupAnchor: View {
     let model: LUINodeModel
@@ -3222,8 +3249,10 @@ private struct LUIToolbarGroupAnchor: View {
         case .spacer:
             Spacer()
         case let .bare(childID):
-            itemIdentity(LUIAnyNodeView(nodeID: childID, backend: backend).equatable(), at: index)
-                .environment(\.luiInHoistedToolbar, true)
+            withTooltip(
+                itemIdentity(LUIAnyNodeView(nodeID: childID, backend: backend).equatable(), at: index)
+                    .environment(\.luiInHoistedToolbar, true),
+                childID)
         case let .scrollCapsule(childIDs):
             // scroll-leading: the leading controls live in a horizontally
             // scrolling fused capsule so a pinned trailing sibling stays
@@ -3238,6 +3267,7 @@ private struct LUIToolbarGroupAnchor: View {
                         )
                         .environment(\.luiInHoistedToolbar, true)
                         .environment(\.luiInFusedCapsule, true)
+                        .modifier(LUIToolbarTooltip(childID: childID, backend: backend))
                     }
                 }
             }
@@ -3256,6 +3286,7 @@ private struct LUIToolbarGroupAnchor: View {
                     )
                     .environment(\.luiInHoistedToolbar, true)
                     .environment(\.luiInFusedCapsule, true)
+                    .modifier(LUIToolbarTooltip(childID: childID, backend: backend))
                 }
             }
         }
@@ -3303,6 +3334,7 @@ private struct LUIToolbarGroupAnchor: View {
             let view = LUIAnyNodeView(nodeID: childID, backend: backend)
                 .equatable()
                 .environment(\.luiInHoistedToolbar, true)
+                .modifier(LUIToolbarTooltip(childID: childID, backend: backend))
             if index == navIdentityIndex,
                let identifier = model.accessibilityIdentifier(in: backend) {
                 view
@@ -3312,6 +3344,12 @@ private struct LUIToolbarGroupAnchor: View {
                 view
             }
         }
+    }
+
+    /// Hoisted items surface the node's accessibility label as the macOS
+    /// tooltip (`.help`), like Out's toolbar controls.
+    private func withTooltip(_ content: some View, _ childID: Int) -> some View {
+        content.modifier(LUIToolbarTooltip(childID: childID, backend: backend))
     }
 
     /// The zero-size anchor is invisible to accessibility, so a hoisted
