@@ -2861,6 +2861,19 @@ private struct LUIModalSurfaceContent: View {
                     excludedChildIDs: formSearchableField.map { [$0.id] } ?? []
                 )
             }
+            // Same surface rule as LUI lists: when the app supplies a theme
+            // `background` token, the grouped form sits on it instead of the
+            // system grouped background so modal surfaces match the app's
+            // palette in both schemes. Rows take the `surface` token when
+            // present to keep the card/grouping contrast.
+            .modifier(LUINavigationFormRowSurfaceModifier(
+                semanticColors: semanticColors
+            ))
+            .scrollContentBackground(
+                semanticColors["background"] == nil
+                    ? LUIListSurfacePolicy.scrollContentBackground : .hidden
+            )
+            .background(semanticColors["background"])
             .accessibilityIdentifier(navigationFormAccessibilityIdentifier)
             #if os(iOS)
             .modifier(LUISearchableNodeModifier(
@@ -6650,8 +6663,24 @@ private struct LUISeparatorView: View {
     }
 }
 
+/// `listRowBackground` has no "keep the default" branch, so the themed row
+/// color is applied through a conditional modifier instead of `nil`.
+private struct LUINavigationFormRowSurfaceModifier: ViewModifier {
+    let semanticColors: [String: Color]
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let rowBackground = semanticColors["surface"] {
+            content.listRowBackground(rowBackground)
+        } else {
+            content
+        }
+    }
+}
+
 struct LUITextDraftState: Equatable {
     private(set) var text: String
+    private var userEdited = false
 
     init(source: String) {
         text = source
@@ -6659,11 +6688,21 @@ struct LUITextDraftState: Equatable {
 
     mutating func edit(_ next: String) {
         text = next
+        userEdited = true
     }
 
     mutating func reconcile(source: String, focused: Bool) {
-        if (!focused || source.isEmpty), text != source {
+        if text == source {
+            userEdited = false
+            return
+        }
+        // Only a draft the user actually typed is protected while focused:
+        // when another field generation owned the real first responder, this
+        // copy's text stays model-driven instead of freezing on the
+        // placeholder while the model already holds the typed value.
+        if !focused || source.isEmpty || !userEdited {
             text = source
+            userEdited = false
         }
     }
 }

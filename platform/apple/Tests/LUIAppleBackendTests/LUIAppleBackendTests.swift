@@ -1028,6 +1028,22 @@ struct LUISwiftUIBackendTests {
         #expect(draft.text == "服务器更新")
     }
 
+    @Test("focused drafts the user never edited keep tracking the model")
+    func uneditedFocusedDraftTracksModel() {
+        var draft = LUITextDraftState(source: "")
+
+        // Focus believed true without a local edit: model text must still
+        // land, or a stale field generation can keep typing invisibly.
+        draft.reconcile(source: "hello", focused: true)
+        #expect(draft.text == "hello")
+        draft.reconcile(source: "hello world", focused: true)
+        #expect(draft.text == "hello world")
+
+        draft.edit("hello world!")
+        draft.reconcile(source: "hello world", focused: true)
+        #expect(draft.text == "hello world!")
+    }
+
     @Test("focused native drafts accept an authoritative clear")
     func focusedNativeDraftAcceptsClear() {
         var draft = LUITextDraftState(source: "Draft")
