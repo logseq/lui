@@ -313,11 +313,14 @@ private struct LUISplitBranchNode: View {
                 // second child (split requests) — then spring it open.
                 fractionState.applyUserFraction(target < 0.5 ? 0 : 1)
                 let spring = Animation.spring(duration: 0.25, bounce: 0.1)
-                DispatchQueue.main.async {
-                    withAnimation(spring) {
-                        fractionState.applyUserFraction(target)
+                CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) {
+                    MainActor.assumeIsolated {
+                        withAnimation(spring) {
+                            fractionState.applyUserFraction(target)
+                        }
                     }
                 }
+                CFRunLoopWakeUp(CFRunLoopGetMain())
             } else {
                 reconcile(sourceRatio: target)
             }
