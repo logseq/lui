@@ -29,13 +29,41 @@ final class LUIModalPresentationStore {
     // would re-present it on another path. Suppress that id until the wire
     // stops reporting it.
     private var pendingDismissalID: Int?
+    // The slot can only hold one modal, so a sheet->dialog (or dialog->sheet)
+    // swap arrives as a single mutation. Asserting both transitions at once
+    // makes UIKit race a sheet teardown against an alert presentation on the
+    // same context — on iOS 26 the second presentation is rejected and takes
+    // the first down with it. Swaps clear the slot first and re-assert the
+    // next presentation on a later runloop turn, which is the supported
+    // present-after-dismiss idiom.
+    private var deferredPresentation: LUIModalPresentation?
+    private var deferScheduled = false
 
     func synchronize(with item: LUIModalPresentation?) {
         if let pendingDismissalID, item?.id == pendingDismissalID { return }
         pendingDismissalID = nil
+        if deferScheduled {
+            // A teardown-turn swap is already queued; fold the latest wire
+            // state into the pending presentation.
+            deferredPresentation = item
+            return
+        }
         guard self.item?.id != item?.id else { return }
         if item == nil {
             dialogActionID = nil
+        }
+        if self.item != nil {
+            deferredPresentation = item
+            deferScheduled = true
+            self.item = nil
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                deferScheduled = false
+                let next = deferredPresentation
+                deferredPresentation = nil
+                self.item = next
+            }
+            return
         }
         self.item = item
     }
