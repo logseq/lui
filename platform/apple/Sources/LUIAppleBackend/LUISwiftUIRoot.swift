@@ -6782,6 +6782,7 @@ private struct LUITextControlView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     let grouped: Bool
+    @Environment(\.luiIsNativeFormRow) private var isNativeFormRow
     @State private var draftState: LUITextDraftState
     @FocusState private var focused: Bool
 
@@ -6794,7 +6795,7 @@ private struct LUITextControlView: View {
 
     var body: some View {
         Group {
-            if grouped {
+            if grouped || isNativeFormRow {
                 field.textFieldStyle(.plain)
             } else if model.kind == .searchField || model.kind == .textarea {
                 field
