@@ -8,18 +8,16 @@ import SwiftUI
 private typealias PatchCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
 private typealias StartFunction = @convention(c) (PatchCallback?, Int32, Int32) -> Int32
 private typealias StopFunction = @convention(c) () -> Int32
-private typealias PressFunction = @convention(c) (Int64) -> Int32
-private typealias LongPressFunction = @convention(c) (Int64) -> Int32
+private typealias NodeFunction = @convention(c) (Int64) -> Int32
 private typealias TextChangedFunction =
-    @convention(c) (Int64, UnsafePointer<CChar>?) -> Int32
-private typealias SubmitFunction = @convention(c) (Int64) -> Int32
-private typealias DismissFunction = @convention(c) (Int64) -> Int32
+    @convention(c) (Int64, UnsafePointer<CChar>?, Int32) -> Int32
 private typealias PickedFunction =
-    @convention(c) (Int64, UnsafePointer<CChar>?) -> Int32
-private typealias DoublePressFunction = @convention(c) (Int64) -> Int32
+    @convention(c) (Int64, UnsafePointer<CChar>?, Int32) -> Int32
 private typealias ToggleChangedFunction = @convention(c) (Int64, Int32) -> Int32
-private typealias RadioChangedFunction = @convention(c) (Int64) -> Int32
 private typealias SliderChangedFunction = @convention(c) (Int64, Double) -> Int32
+private typealias ExtensionEventFunction =
+    @convention(c) (Int64, UnsafePointer<CChar>?, UnsafePointer<CChar>?,
+                    UnsafePointer<CChar>?) -> Int32
 
 nonisolated(unsafe) private var activeHost: TodosHost?
 
@@ -36,16 +34,18 @@ private final class NativeTodosRuntime {
     private let handle: UnsafeMutableRawPointer
     private let startFunction: StartFunction
     private let stopFunction: StopFunction
-    private let pressFunction: PressFunction
-    private let longPressFunction: LongPressFunction
+    private let appearFunction: NodeFunction
+    private let pressFunction: NodeFunction
+    private let longPressFunction: NodeFunction
     private let textChangedFunction: TextChangedFunction
-    private let submitFunction: SubmitFunction
-    private let dismissFunction: DismissFunction
+    private let submitFunction: NodeFunction
+    private let dismissFunction: NodeFunction
     private let pickedFunction: PickedFunction
-    private let doublePressFunction: DoublePressFunction
+    private let doublePressFunction: NodeFunction
     private let toggleChangedFunction: ToggleChangedFunction
-    private let radioChangedFunction: RadioChangedFunction
+    private let radioChangedFunction: NodeFunction
     private let sliderChangedFunction: SliderChangedFunction
+    private let extensionEventFunction: ExtensionEventFunction
 
     init(path: String) throws {
         guard let handle = dlopen(path, RTLD_NOW | RTLD_LOCAL) else {
@@ -54,16 +54,18 @@ private final class NativeTodosRuntime {
         self.handle = handle
         startFunction = try Self.load("lui_ocaml_start", from: handle)
         stopFunction = try Self.load("lui_ocaml_stop", from: handle)
+        appearFunction = try Self.load("lui_ocaml_appear", from: handle)
         pressFunction = try Self.load("lui_ocaml_press", from: handle)
         longPressFunction = try Self.load("lui_ocaml_long_press", from: handle)
-        textChangedFunction = try Self.load("lui_ocaml_text_changed", from: handle)
+        textChangedFunction = try Self.load("lui_ocaml_text_changed_utf8", from: handle)
         submitFunction = try Self.load("lui_ocaml_submit", from: handle)
         dismissFunction = try Self.load("lui_ocaml_dismiss", from: handle)
-        pickedFunction = try Self.load("lui_ocaml_picked", from: handle)
+        pickedFunction = try Self.load("lui_ocaml_picked_utf8", from: handle)
         doublePressFunction = try Self.load("lui_ocaml_double_press", from: handle)
         toggleChangedFunction = try Self.load("lui_ocaml_toggle_changed", from: handle)
         radioChangedFunction = try Self.load("lui_ocaml_radio_changed", from: handle)
         sliderChangedFunction = try Self.load("lui_ocaml_slider_changed", from: handle)
+        extensionEventFunction = try Self.load("lui_ocaml_extension_event", from: handle)
     }
 
     func start() throws {
@@ -76,6 +78,8 @@ private final class NativeTodosRuntime {
         _ = stopFunction()
     }
 
+    func appear(node: Int) { _ = appearFunction(Int64(node)) }
+
     func press(node: Int) {
         _ = pressFunction(Int64(node))
     }
@@ -86,7 +90,7 @@ private final class NativeTodosRuntime {
 
     func textChanged(node: Int, text: String) {
         text.withCString { source in
-            _ = textChangedFunction(Int64(node), source)
+            _ = textChangedFunction(Int64(node), source, Int32(text.utf8.count))
         }
     }
 
@@ -100,7 +104,7 @@ private final class NativeTodosRuntime {
 
     func picked(node: Int, payload: String) {
         payload.withCString { source in
-            _ = pickedFunction(Int64(node), source)
+            _ = pickedFunction(Int64(node), source, Int32(payload.utf8.count))
         }
     }
 
@@ -120,6 +124,21 @@ private final class NativeTodosRuntime {
         _ = sliderChangedFunction(Int64(node), value)
     }
 
+    func extensionEvent(
+        node: Int, identifier: String, name: String,
+        values: [String: LUIExtensionValue]
+    ) {
+        let json = luiExtensionValuesJSON(values)
+        identifier.withCString { identifierSource in
+            name.withCString { nameSource in
+                json.withCString { jsonSource in
+                    _ = extensionEventFunction(
+                        Int64(node), identifierSource, nameSource, jsonSource)
+                }
+            }
+        }
+    }
+
     private static func load<Function>(
         _ name: String,
         from handle: UnsafeMutableRawPointer
@@ -129,6 +148,20 @@ private final class NativeTodosRuntime {
         }
         return unsafeBitCast(symbol, to: Function.self)
     }
+}
+
+private func luiExtensionValuesJSON(_ values: [String: LUIExtensionValue]) -> String {
+    let payload = values.mapValues { value -> Any in
+        switch value {
+        case let .string(text): text
+        case let .bool(flag): flag
+        case let .int(number): number
+        case let .double(number): number
+        }
+    }
+    guard let data = try? JSONSerialization.data(withJSONObject: payload),
+          let json = String(data: data, encoding: .utf8) else { return "{}" }
+    return json
 }
 
 private struct RuntimeError: Error, CustomStringConvertible {
@@ -155,6 +188,8 @@ private final class TodosHost: NSObject, NSApplicationDelegate, NSWindowDelegate
             activeHost = self
             backend.onEvent = { [weak self] event in
                 switch event {
+                case let .appear(node):
+                    self?.runtime?.appear(node: node)
                 case let .press(node):
                     self?.runtime?.press(node: node)
                 case let .longPress(node):
@@ -175,6 +210,13 @@ private final class TodosHost: NSObject, NSApplicationDelegate, NSWindowDelegate
                     self?.runtime?.picked(node: node, payload: payload)
                 case let .doublePress(node):
                     self?.runtime?.doublePress(node: node)
+                case let .`extension`(node, identifier, name, values):
+                    self?.runtime?.extensionEvent(
+                        node: node, identifier: identifier,
+                        name: name, values: values)
+                case .scrollCompleted, .visibleRange:
+                    // The C bridge exports no scroll/visible-range entry points.
+                    break
                 }
             }
             makeWindow()
