@@ -29,21 +29,56 @@ final class LUIModalPresentationStore {
     // would re-present it on another path. Suppress that id until the wire
     // stops reporting it.
     private var pendingDismissalID: Int?
+    // The slot can only hold one modal, so a sheet->dialog (or dialog->sheet)
+    // swap arrives as a single mutation. Asserting both transitions at once
+    // makes UIKit race a sheet teardown against an alert presentation on the
+    // same context — on iOS 26 the second presentation is rejected and takes
+    // the first down with it. Swaps clear the slot first and re-assert the
+    // next presentation on a later runloop turn, which is the supported
+    // present-after-dismiss idiom.
+    private var deferredPresentation: LUIModalPresentation?
+    private var deferScheduled = false
 
     func synchronize(with item: LUIModalPresentation?) {
         if let pendingDismissalID, item?.id == pendingDismissalID { return }
         pendingDismissalID = nil
+        if deferScheduled {
+            // A teardown-turn swap is already queued; fold the latest wire
+            // state into the pending presentation.
+            deferredPresentation = item
+            return
+        }
         guard self.item?.id != item?.id else { return }
         if item == nil {
             dialogActionID = nil
+        }
+        if self.item != nil {
+            deferredPresentation = item
+            deferScheduled = true
+            self.item = nil
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                deferScheduled = false
+                let next = deferredPresentation
+                deferredPresentation = nil
+                self.item = next
+            }
+            return
         }
         self.item = item
     }
 
     func updateFromPresentation(_ item: LUIModalPresentation?) {
-        if item == nil, let presentedID = self.item?.id {
-            interactiveDismissalID = presentedID
-            pendingDismissalID = presentedID
+        // This setter serves the .sheet binding only. A sheet->dialog swap
+        // leaves the old sheet's teardown racing a freshly asserted dialog:
+        // when the sheet's dismissal lands it must neither wipe the new
+        // presentation nor mark the dialog as interactively dismissed.
+        if item == nil {
+            guard self.item?.model.kind == .sheet else { return }
+            if let presentedID = self.item?.id {
+                interactiveDismissalID = presentedID
+                pendingDismissalID = presentedID
+            }
         }
         self.item = item
     }
@@ -4337,6 +4372,7 @@ private struct LUIMenuItemForegroundModifier: ViewModifier {
 
 private struct LUIListItemView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.luiSemanticColors) private var semanticColors
     let model: LUINodeModel
     let backend: LUIAppleBackend
     var isNativeListRow = false
@@ -4414,6 +4450,7 @@ private struct LUIListItemView: View {
         .modifier(LUIListItemSwipeActionsModifier(
             model: model,
             menu: swipeMenu,
+            anchor: swipeActionsAnchor,
             backend: backend
         ))
         // Native-list rows are instantiated directly (not via LUIAnyNodeView),
@@ -4449,9 +4486,10 @@ private struct LUIListItemView: View {
                     .frame(width: iconSize, height: iconSize)
                     .frame(width: isNativeListRow ? 24 : (isNavigationRow ? 22 : iconSize))
                     .foregroundStyle(
-                        isNativeListRow
-                            ? Color.primary
-                            : Color.secondary
+                        LUIThemeColorResolver.color(
+                            model.property(.foreground)?.stringValue,
+                            semanticColors: semanticColors
+                        ) ?? (isNativeListRow ? Color.primary : Color.secondary)
                     )
             }
             if contentChildIDs.isEmpty || !model.text.isEmpty {
@@ -4461,6 +4499,12 @@ private struct LUIListItemView: View {
                         isNavigationHeading
                             ? .bold
                             : ((isNavigationRow && model.isSelected) ? .semibold : .regular)
+                    )
+                    .foregroundStyle(
+                        LUIThemeColorResolver.color(
+                            model.property(.foreground)?.stringValue,
+                            semanticColors: semanticColors
+                        ) ?? .primary
                     )
                     .lineLimit(1)
             }
@@ -4636,16 +4680,34 @@ private struct LUIListItemView: View {
     /// submenus, disabled rows, or other children keep the ellipsis button.
     private var swipeMenu: LUINodeModel? {
         #if os(iOS)
+        guard let menu = swipeActionsAnchor else { return nil }
+        let items = menu.children.compactMap { backend.model(id: $0) }
+        guard !items.isEmpty, items.allSatisfy({
+            $0.kind == .menuItem && $0.isEnabled &&
+                !$0.children.contains { backend.model(id: $0)?.kind == .dropdownMenu }
+        }) else { return nil }
+        return menu
+        #else
+        return nil
+        #endif
+    }
+
+    /// Whether the row should keep a `.swipeActions` slot at all, decided only
+    /// by node kinds (immutable), so an item's enabled/disabled flips never
+    /// attach or detach the modifier. Toggling `.swipeActions` on a live
+    /// collection cell makes SwiftUI re-create the cell; when that races a
+    /// row-delete coalesced into the same batch update, the collection sees a
+    /// stale item count and throws NSInternalInconsistencyException.
+    private var swipeActionsAnchor: LUINodeModel? {
+        #if os(iOS)
         guard isNativeListRow, let contextMenu else { return nil }
         // An explicit swipe-actions child takes over the edges; the context
         // menu is not consumed and stays reachable via the ellipsis button.
         guard !model.children.contains(where: {
             backend.model(id: $0)?.kind == .swipeActions
         }) else { return nil }
-        let items = contextMenu.children.compactMap { backend.model(id: $0) }
-        guard !items.isEmpty, items.allSatisfy({
-            $0.kind == .menuItem && $0.isEnabled &&
-                !$0.children.contains { backend.model(id: $0)?.kind == .dropdownMenu }
+        guard contextMenu.children.contains(where: {
+            backend.model(id: $0)?.kind == .menuItem
         }) else { return nil }
         return contextMenu
         #else
@@ -4715,6 +4777,9 @@ private struct LUIListItemSupplementaryGesturesModifier: ViewModifier {
 private struct LUIListItemSwipeActionsModifier: ViewModifier {
     let model: LUINodeModel
     let menu: LUINodeModel?
+    /// Presence of any menuItem in the row's context menu — the stable
+    /// attachment decision for `.swipeActions` (see `swipeActionsAnchor`).
+    let anchor: LUINodeModel?
     let backend: LUIAppleBackend
 
     @ViewBuilder
@@ -4735,11 +4800,14 @@ private struct LUIListItemSwipeActionsModifier: ViewModifier {
                         }
                     }
                 }
-        } else if let menu, menu.children.contains(where: {
-            backend.model(id: $0)?.kind == .menuItem
-        }) {
+        } else if anchor != nil {
+            // Keep the slot attached even while `menu` is nil (ineligible
+            // items): detaching `.swipeActions` here would re-create the
+            // collection cell and can crash coalesced batch updates.
             content.swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                LUINativeMenuActions(model: menu, backend: backend)
+                if let menu {
+                    LUINativeMenuActions(model: menu, backend: backend)
+                }
             }
         } else {
             content
@@ -6127,6 +6195,16 @@ private struct LUIListView: View {
                     }
                 }
             }
+            // iOS 26's UpdateCoalescingCollectionView coalesces List updates
+            // across transactions and can silently drop an insert, leaving the
+            // collection's tracked counts diverged from the data source; the
+            // next update — even an unrelated zero-diff one — then asserts in
+            // UICollectionView's validation. Rebuilding the List on every
+            // commit turns each update into a fresh mount, which never goes
+            // through the coalesced batch-update path. These LUI lists are
+            // small (graphs, settings, pickers, search results), so the extra
+            // re-render is negligible.
+            .id(backend.commitSequence)
         )
         .scrollContentBackground(
             listBackground == nil

@@ -403,6 +403,11 @@ final class LUINodeModel: Identifiable {
 @MainActor
 public final class LUIAppleBackend {
     public private(set) var generation = 0
+    /// Bumped once per `commit`. Views that must bypass incremental collection
+    /// updates (e.g. `List` on iOS 26, whose update-coalescing collection view
+    /// can lose inserts and then assert on the next update's count check)
+    /// key their identity on this so every commit is a full rebuild.
+    public private(set) var commitSequence = 0
     public var onEvent: ((LUIEvent) -> Void)?
 
     // MARK: - Node frame reporting
@@ -722,26 +727,25 @@ public final class LUIAppleBackend {
         )
         let tB = CFAbsoluteTimeGetCurrent()
         withDeferredEventDelivery {
-            withTransaction(Transaction(animation: nil)) {
-                commit(tree, touched: effects.touched, dropped: effects.dropped)
+            pendingCommitTouched.formUnion(effects.touched)
+            pendingCommitDropped.formUnion(effects.dropped)
+            pendingCommitStructural = pendingCommitStructural || effects.structural
+            pendingCommitModalRelevant.formUnion(effects.modalRelevant)
+
+            var tC = tB
+            var tD = tB
+            if coalescesCommits, CFAbsoluteTimeGetCurrent() < coalesceWindowUntil {
+                // Inside a burst window: this patch's mutations merge into the
+                // pending commit and land as one view update once the stream
+                // quiets down. iOS's update-coalescing collection view replays
+                // rapid successive commits as a single batch against stale
+                // section state and asserts; collapsing them avoids that.
+                scheduleCommitFlush()
+            } else {
+                tC = CFAbsoluteTimeGetCurrent()
+                flushPendingCommit()
+                tD = CFAbsoluteTimeGetCurrent()
             }
-            let tC = CFAbsoluteTimeGetCurrent()
-            // A dialog/sheet's membership, anchor, or nesting only changes when
-            // the structure moves or a presentation-relevant node mutates —
-            // property-only patches elsewhere never do, so skip the tree walk.
-            if effects.structural || !effects.modalRelevant.isEmpty {
-                if modalNodeCount > 0 {
-                    syncModalPresentation()
-                } else {
-                    // No dialog/sheet/filePreview is mounted, so the DFS
-                    // could only produce empty presentations — clear any
-                    // stale state directly instead of walking the tree.
-                    modalPresentation.nestedSheets = [:]
-                    modalPresentation.synchronize(with: nil)
-                    filePreviewPresentation.synchronize(with: nil)
-                }
-            }
-            let tD = CFAbsoluteTimeGetCurrent()
             if ProcessInfo.processInfo.environment["LOGSEQ_PERF"] != nil {
                 FileHandle.standardError.write(
                     "PERF apply-split gen=\(batch.generation) applying=\(Int((tB-tA)*1000))ms commit=\(Int((tC-tB)*1000))ms modal=\(Int((tD-tC)*1000))ms touched=\(effects.touched.count) dropped=\(effects.dropped.count)\n"
@@ -749,6 +753,85 @@ public final class LUIAppleBackend {
             }
             generation = batch.generation
         }
+    }
+
+    /// When true, commits that follow another commit within
+    /// `commitCoalesceWindow` are merged and materialized as a single view
+    /// update after a short quiet delay (`commitQuietDelay`). The retained
+    /// tree still advances on every `apply`, so queries and event dispatch
+    /// always see the latest state; only the observable view models lag by at
+    /// most the window. Off by default; consumers that emit back-to-back
+    /// patches across runloop turns (multi-RPC effects) should opt in.
+    public var coalescesCommits = false
+    private let commitCoalesceWindow: CFAbsoluteTime = 0.15
+    private let commitQuietDelay: CFAbsoluteTime = 0.05
+    private var coalesceWindowUntil: CFAbsoluteTime = 0
+    private var commitFlushTimer: CFRunLoopTimer?
+    private var pendingCommitTouched = Set<Int>()
+    private var pendingCommitDropped = Set<Int>()
+    private var pendingCommitStructural = false
+    private var pendingCommitModalRelevant = Set<Int>()
+
+    private func scheduleCommitFlush() {
+        if let timer = commitFlushTimer {
+            CFRunLoopTimerInvalidate(timer)
+            commitFlushTimer = nil
+        }
+        let timer = CFRunLoopTimerCreateWithHandler(
+            nil,
+            CFAbsoluteTimeGetCurrent() + commitQuietDelay,
+            .infinity,
+            0,
+            0
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.commitFlushTimer = nil
+                self.withDeferredEventDelivery {
+                    self.flushPendingCommit()
+                }
+            }
+        }
+        commitFlushTimer = timer
+        CFRunLoopAddTimer(CFRunLoopGetMain(), timer, .commonModes)
+    }
+
+    private func flushPendingCommit() {
+        if let timer = commitFlushTimer {
+            CFRunLoopTimerInvalidate(timer)
+            commitFlushTimer = nil
+        }
+        guard !(pendingCommitTouched.isEmpty && pendingCommitDropped.isEmpty
+            && pendingCommitModalRelevant.isEmpty && !pendingCommitStructural)
+        else { return }
+        let touched = pendingCommitTouched
+        let dropped = pendingCommitDropped
+        let structural = pendingCommitStructural
+        let modalRelevant = pendingCommitModalRelevant
+        pendingCommitTouched.removeAll(keepingCapacity: true)
+        pendingCommitDropped.removeAll(keepingCapacity: true)
+        pendingCommitStructural = false
+        pendingCommitModalRelevant.removeAll(keepingCapacity: true)
+
+        withTransaction(Transaction(animation: nil)) {
+            commit(tree, touched: touched, dropped: dropped)
+        }
+        // A dialog/sheet's membership, anchor, or nesting only changes when
+        // the structure moves or a presentation-relevant node mutates —
+        // property-only patches elsewhere never do, so skip the tree walk.
+        if structural || !modalRelevant.isEmpty {
+            if modalNodeCount > 0 {
+                syncModalPresentation()
+            } else {
+                // No dialog/sheet/filePreview is mounted, so the DFS
+                // could only produce empty presentations — clear any
+                // stale state directly instead of walking the tree.
+                modalPresentation.nestedSheets = [:]
+                modalPresentation.synchronize(with: nil)
+                filePreviewPresentation.synchronize(with: nil)
+            }
+        }
+        coalesceWindowUntil = CFAbsoluteTimeGetCurrent() + commitCoalesceWindow
     }
 
     func performPress(node: Int) throws {
@@ -1041,6 +1124,7 @@ public final class LUIAppleBackend {
         touched: Set<Int>,
         dropped: Set<Int>
     ) {
+        commitSequence += 1
         // Untouched nodes are identical by construction (ops only mutate the
         // nodes they name), so reconciliation only walks the patched set.
         let perf = ProcessInfo.processInfo.environment["LOGSEQ_PERF"] != nil

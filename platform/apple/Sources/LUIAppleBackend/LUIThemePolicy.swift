@@ -121,6 +121,8 @@ enum LUIThemeColorResolver {
         case "warning-foreground": .orange
         case "error": .red.opacity(0.15)
         case "error-foreground": .red
+        case "destructive": .red
+        case "destructive-foreground": .white
         case "border": .secondary.opacity(0.35)
         case "black": .black
         case "white": .white
