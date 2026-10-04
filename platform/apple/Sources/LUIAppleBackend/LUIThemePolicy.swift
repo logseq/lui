@@ -156,7 +156,9 @@ enum LUIModalBackgroundPolicy {
         semanticColors: [String: Color],
         systemBackground: Color
     ) -> Color {
-        semanticColors["background"] ?? systemBackground
+        // Sheets and dialogs are elevated: they sit on the `surface` token,
+        // matching the Flutter backend's `colorScheme.surface` modal default.
+        semanticColors["surface"] ?? semanticColors["background"] ?? systemBackground
     }
 
     static func usesGroupedSystemBackground(styleClass: String?) -> Bool {

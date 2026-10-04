@@ -2746,8 +2746,35 @@ private struct LUIModalSurfaceContent: View {
             }
         )) { presentation in
             LUIModalSurfaceContent(model: presentation.model, backend: backend)
-                .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
+                .luiSheetScope(
+                    semanticColors: effectiveSemanticColors,
+                    colorScheme: colorScheme
+                )
         }
+    }
+
+    /// Modal content renders outside the node tree, so `theme` props on its
+    /// ancestors never reach it through the environment — walk the chain and
+    /// decode tokens the same way `LUIThemeScopeModifier` does
+    /// (outermost-first, inner wins).
+    private var effectiveSemanticColors: [String: Color] {
+        var ancestors: [LUINodeModel] = []
+        var cursor = model.parent
+        while let parentID = cursor,
+              let parent = backend.model(id: parentID) {
+            ancestors.append(parent)
+            cursor = parent.parent
+        }
+        var colors = semanticColors
+        for ancestor in ancestors.reversed() {
+            colors.merge(
+                LUIThemeTokenDecoder.colors(
+                    ancestor.property(.theme)?.stringValue,
+                    dark: colorScheme == .dark
+                )
+            ) { _, new in new }
+        }
+        return colors
     }
 
     @ViewBuilder
@@ -2801,7 +2828,7 @@ private struct LUIModalSurfaceContent: View {
             return modalGroupedSystemBackground
         }
         return LUIModalBackgroundPolicy.color(
-            semanticColors: semanticColors,
+            semanticColors: effectiveSemanticColors,
             systemBackground: modalSystemBackground
         )
     }
@@ -2861,6 +2888,20 @@ private struct LUIModalSurfaceContent: View {
                     excludedChildIDs: formSearchableField.map { [$0.id] } ?? []
                 )
             }
+            // Same surface rule as the modal background: the sheet is an
+            // elevated `surface`, and grouped rows sit on `background` as
+            // content cards so the section grouping keeps its contrast
+            // (light: near-white cards on a light-gray sheet; dark: deep
+            // cards on a lighter surface sheet).
+            .modifier(LUINavigationFormRowSurfaceModifier(
+                semanticColors: effectiveSemanticColors
+            ))
+            .scrollContentBackground(
+                effectiveSemanticColors["surface"] == nil
+                    && effectiveSemanticColors["background"] == nil
+                    ? LUIListSurfacePolicy.scrollContentBackground : .hidden
+            )
+            .background(modalBackground)
             .accessibilityIdentifier(navigationFormAccessibilityIdentifier)
             #if os(iOS)
             .modifier(LUISearchableNodeModifier(
@@ -6650,8 +6691,24 @@ private struct LUISeparatorView: View {
     }
 }
 
+/// `listRowBackground` has no "keep the default" branch, so the themed row
+/// color is applied through a conditional modifier instead of `nil`.
+private struct LUINavigationFormRowSurfaceModifier: ViewModifier {
+    let semanticColors: [String: Color]
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let rowBackground = semanticColors["background"] {
+            content.listRowBackground(rowBackground)
+        } else {
+            content
+        }
+    }
+}
+
 struct LUITextDraftState: Equatable {
     private(set) var text: String
+    private var userEdited = false
 
     init(source: String) {
         text = source
@@ -6659,11 +6716,21 @@ struct LUITextDraftState: Equatable {
 
     mutating func edit(_ next: String) {
         text = next
+        userEdited = true
     }
 
     mutating func reconcile(source: String, focused: Bool) {
-        if (!focused || source.isEmpty), text != source {
+        if text == source {
+            userEdited = false
+            return
+        }
+        // Only a draft the user actually typed is protected while focused:
+        // when another field generation owned the real first responder, this
+        // copy's text stays model-driven instead of freezing on the
+        // placeholder while the model already holds the typed value.
+        if !focused || source.isEmpty || !userEdited {
             text = source
+            userEdited = false
         }
     }
 }
