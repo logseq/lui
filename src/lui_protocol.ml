@@ -622,6 +622,7 @@ let can_contain_children kind =
     | DropdownMenu
     | ContextMenu
     | MenuTrigger
+    | MenuItem
     | ListItem
     | Dialog
     | Drawer
@@ -1297,7 +1298,6 @@ let node_properties_supported kind properties =
 let child_kind_supported parent_kind child_kind =
   if child_kind = Root then false
   else if parent_kind = Root then true
-  else if parent_kind = MenuItem then child_kind = ContextMenu
   else if parent_kind = MenuTrigger then child_kind = DropdownMenu
   else if context_menu_leaf_host_kind parent_kind
   then

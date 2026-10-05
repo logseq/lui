@@ -1330,7 +1330,7 @@ let test_menu_trigger_rules () =
     (child_kind_supported DropdownMenu MenuTrigger);
   Alcotest.(check bool) "menu-item keeps context-menu" true
     (child_kind_supported MenuItem ContextMenu);
-  Alcotest.(check bool) "menu-item drops dropdown-menu" false
+  Alcotest.(check bool) "menu-item keeps dropdown-menu" true
     (child_kind_supported MenuItem DropdownMenu);
   Alcotest.(check bool) "context-menu rejects trigger" false
     (child_kind_supported ContextMenu MenuTrigger);
