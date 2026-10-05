@@ -11,6 +11,7 @@ use gpui_kit::gpui::{div, AnyElement, Context, IntoElement, ParentElement, Style
 use lui_core::store::NodeIdentity;
 use lui_core::Property;
 
+use crate::dom;
 use crate::node_view::{LuiNodeView, NodeSnapshot};
 use crate::style;
 
@@ -34,6 +35,13 @@ pub fn render(
         return div().into_any_element();
     };
     let identifier = identifier.clone();
+
+    // `logseq-*` is the app's DOM-ish tag family — routed to the dedicated
+    // dom.rs renderer (transparent containers + style-class + dom-event),
+    // never the generic warning host.
+    if identifier.starts_with("logseq-") {
+        return dom::render(view, node, window, cx);
+    }
 
     // A registered specialized renderer wins (this is how `gpui-*`
     // components plug in).

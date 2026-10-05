@@ -167,8 +167,12 @@ pub fn style_class<E: Styled>(mut element: E, classes: &str) -> E {
 /// Tailwind spacing utilities: `<prefix>-<n>` on the 4px scale.
 /// Longest prefixes first so `px-4` isn't eaten by `p-`.
 fn numeric_utility(token: &str) -> Option<(&'static str, f32)> {
+    // Longest prefixes first so `px-4` isn't eaten by `p-` and `min-w-0`
+    // isn't eaten by `w`.
     const PREFIXES: &[&str] = &[
-        "gap-", "px-", "py-", "pt-", "pb-", "pl-", "pr-", "mx-", "my-", "p-", "m-",
+        "leading-", "min-w-", "min-h-", "max-w-", "max-h-", "gap-x-", "gap-y-", "size-", "gap-",
+        "px-", "py-", "pt-", "pb-", "pl-", "pr-", "mx-", "my-", "mt-", "mb-", "ml-", "mr-", "top-",
+        "bottom-", "left-", "right-", "w-", "h-", "p-", "m-",
     ];
     for prefix in PREFIXES {
         if let Some(rest) = token.strip_prefix(prefix) {
@@ -192,41 +196,98 @@ fn apply_utility<E: Styled>(mut element: E, token: &str) -> E {
             "px" => element.px(px(px_value)),
             "py" => element.py(px(px_value)),
             "m" => element.m(px(px_value)),
+            "mt" => element.mt(px(px_value)),
+            "mb" => element.mb(px(px_value)),
+            "ml" => element.ml(px(px_value)),
+            "mr" => element.mr(px(px_value)),
             "mx" => element.mx(px(px_value)),
             "my" => element.my(px(px_value)),
             "gap" => element.gap(px(px_value)),
+            "gap-x" => element.gap_x(px(px_value)),
+            "gap-y" => element.gap_y(px(px_value)),
+            "w" => element.w(px(px_value)),
+            "h" => element.h(px(px_value)),
+            "size" => element.size(px(px_value)),
+            "min-w" => element.min_w(px(px_value)),
+            "min-h" => element.min_h(px(px_value)),
+            "max-w" => element.max_w(px(px_value)),
+            "max-h" => element.max_h(px(px_value)),
+            "top" => element.top(px(px_value)),
+            "bottom" => element.bottom(px(px_value)),
+            "left" => element.left(px(px_value)),
+            "right" => element.right(px(px_value)),
+            "leading" => element.line_height(px(px_value)),
             _ => element,
         };
     }
     match token {
-        "flex" => element.flex(),
+        "flex" | "flexbox" => element.flex(),
         "flex-row" => element.flex_row(),
         "flex-col" => element.flex_col(),
-        "flex-1" | "grow" => element.flex_1(),
+        "flex-wrap" | "wrap" => element.flex_wrap(),
+        "flex-nowrap" | "nowrap" => element.flex_nowrap(),
+        "flex-1" | "grow" | "grow-1" => element.flex_1(),
+        "grow-0" => element.flex_grow(0.),
         "shrink" => element.flex_shrink(1.),
-        "shrink-0" => element,
+        "shrink-0" => element.flex_shrink(0.),
+        "min-w-0" => element.min_w(px(0.)),
+        "min-h-0" => element.min_h(px(0.)),
+        "min-w-full" => element.min_w_full(),
+        "min-h-full" => element.min_h_full(),
         "items-start" => element.items_start(),
         "items-center" => element.items_center(),
         "items-end" => element.items_end(),
         "items-baseline" => element.items_baseline(),
+        "items-stretch" => element.items_stretch(),
+        "self-start" => element.self_start(),
+        "self-center" => element.self_center(),
+        "self-end" => element.self_end(),
+        "self-stretch" => element.self_stretch(),
         "justify-start" => element.justify_start(),
         "justify-center" => element.justify_center(),
         "justify-end" => element.justify_end(),
         "justify-between" => element.justify_between(),
         "justify-around" => element.justify_around(),
+        "justify-evenly" => element.justify_evenly(),
         "w-full" => element.w_full(),
         "h-full" => element.h_full(),
         "size-full" => element.size_full(),
+        "w-screen" => element.w_full(),
+        "h-screen" => element.h_full(),
         "hidden" => element.invisible(),
         "visible" => element.visible(),
+        "relative" => element.relative(),
+        "absolute" => element.absolute(),
+        "inset-0" => element
+            .top(px(0.))
+            .bottom(px(0.))
+            .left(px(0.))
+            .right(px(0.)),
+        // Scroll affordances live on stateful elements (track id) — dom.rs
+        // applies them; Styled only has the clipping variants.
+        "overflow-hidden" => element.overflow_hidden(),
+        "overflow-x-hidden" => element.overflow_x_hidden(),
+        "overflow-y-hidden" => element.overflow_y_hidden(),
         "text-center" => element.text_align(gpui_kit::gpui::TextAlign::Center),
         "text-right" => element.text_align(gpui_kit::gpui::TextAlign::Right),
         "font-bold" => element.font_weight(gpui_kit::gpui::FontWeight::BOLD),
         "font-semibold" => element.font_weight(gpui_kit::gpui::FontWeight::SEMIBOLD),
         "font-medium" => element.font_weight(gpui_kit::gpui::FontWeight::MEDIUM),
+        "font-mono" => element.font_family("monospace"),
         "italic" => element.italic(),
+        "underline" => element.underline(),
+        "line-through" => element.line_through(),
+        "whitespace-nowrap" => element.whitespace_nowrap(),
         "truncate" => element.text_ellipsis(),
         "cursor-pointer" => element.cursor_pointer(),
+        "cursor-default" => element.cursor_default(),
+        "border" => element.border_1(),
+        "border-0" => element.border_0(),
+        "border-t" => element.border_t_1(),
+        "border-b" => element.border_b_1(),
+        "border-l" => element.border_l_1(),
+        "border-r" => element.border_r_1(),
+        "rounded" => element.rounded_md(),
         _ => {
             if let Some(rest) = token.strip_prefix("bg-") {
                 if let Some(color) = color(rest) {
@@ -277,12 +338,16 @@ fn apply_radius<E: Styled>(element: E, rest: &str) -> E {
 }
 
 /// Convenience composition used by most kinds: frame + layout + surface +
-/// style-class, in wire order semantics.
+/// style-class, in wire order semantics. `style-class` lives in standard
+/// props for component kinds and in extension props for extension nodes.
 pub fn all<E: Styled>(element: E, node: &NodeSnapshot) -> E {
     let element = frame(element, node);
     let element = layout(element, node);
     let element = surface(element, node);
-    match node.string_prop(Property::StyleClass) {
+    match node
+        .string_prop(Property::StyleClass)
+        .or_else(|| node.extension_string_prop("style-class"))
+    {
         Some(classes) => style_class(element, classes),
         None => element,
     }

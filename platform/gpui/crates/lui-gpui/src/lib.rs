@@ -10,6 +10,8 @@
 
 pub mod backend;
 pub mod dock;
+pub mod dom;
+pub mod domops;
 pub mod extension;
 pub mod kinds;
 pub mod node_view;

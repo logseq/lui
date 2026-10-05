@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gpui_kit::gpui::{App, AppContext, Entity};
+use gpui_kit::gpui::{App, AppContext, Bounds, Entity, Pixels};
 use lui_core::bridge;
 use lui_core::extension::{ExtensionRegistry, ExtensionSpec};
 use lui_core::store::{Applied, BackendError, Store};
@@ -27,6 +27,10 @@ pub struct LuiShared {
     pub views: HashMap<i64, Entity<LuiNodeView>>,
     /// Errors from the most recent batch applications (surfaced to the host).
     pub last_errors: Vec<String>,
+    /// Most recently prepainted window-space bounds per node id, fed by
+    /// `LuiNodeView::bounds_recorder`. The `measure-node` dom-op reads
+    /// this; entries are removed when a node drops.
+    pub node_bounds: HashMap<i64, Bounds<Pixels>>,
 }
 
 pub type Shared = Rc<RefCell<LuiShared>>;
@@ -39,6 +43,7 @@ impl LuiShared {
             extension_renderers: HashMap::new(),
             views: HashMap::new(),
             last_errors: Vec::new(),
+            node_bounds: HashMap::new(),
         }));
         crate::extension::register_builtin_renderers(&shared);
         shared
@@ -102,7 +107,9 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
     // Release entities for dropped subtrees first: a fresh node id reuse is
     // impossible (ids are monotonic), so removal order is safe.
     for id in &applied.dropped {
-        shared.borrow_mut().views.remove(id);
+        let mut shared_ref = shared.borrow_mut();
+        shared_ref.views.remove(id);
+        shared_ref.node_bounds.remove(id);
     }
 
     let mut dirty_views = Vec::with_capacity(applied.dirty.len());
@@ -120,16 +127,43 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
     Ok(applied)
 }
 
+/// Apply a patch payload that may be either one batch object `{ops:[…]}`
+/// or the stream form `[batch, batch, …]` (what `take_patches` returns in
+/// hosts that fold event results into the sink).
+pub fn apply_stream_json(shared: &Shared, json: &str, cx: &mut App) {
+    let parsed = serde_json::from_str::<serde_json::Value>(json);
+    match parsed {
+        Ok(serde_json::Value::Array(batches)) => {
+            for batch in batches {
+                let batch = batch.to_string();
+                if let Err(error) = apply_batch_json(shared, &batch, cx) {
+                    let message = error.to_string();
+                    eprintln!("lui-gpui: rejected batch: {message}");
+                    shared.borrow_mut().last_errors.push(message);
+                }
+            }
+        }
+        Ok(_) => {
+            if let Err(error) = apply_batch_json(shared, json, cx) {
+                let message = error.to_string();
+                eprintln!("lui-gpui: rejected batch: {message}");
+                shared.borrow_mut().last_errors.push(message);
+            }
+        }
+        Err(error) => {
+            let message = format!("decode: {error}");
+            eprintln!("lui-gpui: rejected batch: {message}");
+            shared.borrow_mut().last_errors.push(message);
+        }
+    }
+}
+
 /// Drain every queued batch from the OCaml bridge and apply it. Call after
 /// `lui_ocaml_start` and after each `lui_ocaml_*` event returns — each call
 /// synchronously pushed the next batch into the queue.
 pub fn drain_pending(shared: &Shared, cx: &mut App) {
     for json in bridge::take_patches() {
-        if let Err(error) = apply_batch_json(shared, &json, cx) {
-            let message = error.to_string();
-            eprintln!("lui-gpui: rejected batch: {message}");
-            shared.borrow_mut().last_errors.push(message);
-        }
+        apply_stream_json(shared, &json, cx);
     }
 }
 
