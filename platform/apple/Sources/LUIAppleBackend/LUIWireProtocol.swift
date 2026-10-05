@@ -948,6 +948,8 @@ struct LUIRetainedTree {
         case .target: kind == .link
         case .opacity: canContainChildren(kind)
         case .display: kind == .box || kind == .column || kind == .row
+        case .tooltip, .tooltipKeys:
+            kind == .button || kind == .icon || kind == .menuItem
         case .alt, .loading, .referrerPolicy: kind == .image
         case .maxPixelSize, .imageFit: kind == .fileImage
         case .active, .title, .description, .meta, .indicator, .connector: false

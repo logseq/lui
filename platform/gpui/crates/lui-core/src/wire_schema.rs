@@ -448,6 +448,8 @@ pub enum Property {
     TargetValue,
     Opacity,
     DisplayValue,
+    TooltipText,
+    TooltipKeys,
 }
 
 impl Property {
@@ -560,6 +562,8 @@ impl Property {
             "target" => Some(Property::TargetValue),
             "opacity" => Some(Property::Opacity),
             "display" => Some(Property::DisplayValue),
+            "tooltip" => Some(Property::TooltipText),
+            "tooltip-keys" => Some(Property::TooltipKeys),
             _ => None,
         }
     }
@@ -673,6 +677,8 @@ impl Property {
             Property::TargetValue => "target",
             Property::Opacity => "opacity",
             Property::DisplayValue => "display",
+            Property::TooltipText => "tooltip",
+            Property::TooltipKeys => "tooltip-keys",
         }
     }
 }

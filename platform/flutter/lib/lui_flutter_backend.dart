@@ -3497,6 +3497,10 @@ final class LUIFlutterBackend {
     if (opacity != null && opacity != 1.0) {
       surface = Opacity(opacity: opacity, child: surface);
     }
+    final tooltip = state.properties['tooltip'] as String?;
+    if (tooltip != null && tooltip.isNotEmpty) {
+      surface = Tooltip(message: tooltip, child: surface);
+    }
     if (state.properties['role'] == 'treeitem') {
       final tree = _treeAncestor(id)!;
       final shortcuts = <ShortcutActivator, VoidCallback>{
@@ -4353,6 +4357,11 @@ final class LUIFlutterBackend {
             (kind == _NodeKind.box ||
                 kind == _NodeKind.column ||
                 kind == _NodeKind.row),
+      'tooltip' || 'tooltip-keys' =>
+        value is String &&
+            (kind == _NodeKind.button ||
+                kind == _NodeKind.icon ||
+                kind == _NodeKind.menuItem),
       'alt' => value is String && kind == _NodeKind.image,
       'loading' =>
         value is String &&

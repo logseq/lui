@@ -1492,6 +1492,16 @@
       "lg": "DisplayValue",
       "wire": "display",
       "swift": "display"
+    },
+    {
+      "lg": "TooltipText",
+      "wire": "tooltip",
+      "swift": "tooltip"
+    },
+    {
+      "lg": "TooltipKeys",
+      "wire": "tooltip-keys",
+      "swift": "tooltipKeys"
     }
   ],
   "events": [

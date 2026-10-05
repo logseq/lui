@@ -7308,6 +7308,8 @@ private struct LUISurfaceModifier: ViewModifier {
             .padding(.horizontal, CGFloat(horizontal))
             .padding(.vertical, CGFloat(vertical))
             .opacity(model.property(.opacity)?.doubleValue ?? 1)
+            .modifier(LUITooltipModifier(
+                text: model.property(.tooltip)?.stringValue))
             .frame(
                 maxWidth: LUIIntrinsicSurfacePolicy.fillsWidth(
                     kind: model.kind,

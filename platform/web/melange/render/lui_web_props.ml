@@ -732,6 +732,10 @@ and apply_secondary_property renderer node kind dom_node property value =
   | Opacity, FloatValue value ->
       set_style dom_node "opacity" (Js.Float.toString value)
   | DisplayValue, StringValue value -> set_style dom_node "display" value
+  | TooltipText, StringValue value ->
+      W.Element.setAttribute "data-tooltip" value dom_node
+  | TooltipKeys, StringValue value ->
+      W.Element.setAttribute "data-tooltip-keys" value dom_node
   | TargetValue, StringValue target ->
       if kind = Link then begin
         W.Element.setAttribute "target" target dom_node;
@@ -861,6 +865,8 @@ let remove_property renderer node kind dom_node property =
            end
        | Opacity -> set_style dom_node "opacity" ""
        | DisplayValue -> set_style dom_node "display" ""
+       | TooltipText -> W.Element.removeAttribute "data-tooltip" dom_node
+       | TooltipKeys -> W.Element.removeAttribute "data-tooltip-keys" dom_node
        | TargetValue ->
            if kind = Link then begin
              W.Element.removeAttribute "target" dom_node;

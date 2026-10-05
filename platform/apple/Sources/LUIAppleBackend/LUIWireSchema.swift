@@ -199,6 +199,8 @@ enum LUIProperty: String, Decodable, Hashable {
     case target = "target"
     case opacity = "opacity"
     case display = "display"
+    case tooltip = "tooltip"
+    case tooltipKeys = "tooltip-keys"
 }
 
 enum LUISchemaMatrix {
