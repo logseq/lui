@@ -3493,6 +3493,10 @@ final class LUIFlutterBackend {
         child: surface,
       );
     }
+    final opacity = (state.properties['opacity'] as num?)?.toDouble();
+    if (opacity != null && opacity != 1.0) {
+      surface = Opacity(opacity: opacity, child: surface);
+    }
     if (state.properties['role'] == 'treeitem') {
       final tree = _treeAncestor(id)!;
       final shortcuts = <ShortcutActivator, VoidCallback>{
@@ -4343,6 +4347,7 @@ final class LUIFlutterBackend {
         value is String &&
             const {'_self', '_blank'}.contains(value) &&
             kind == _NodeKind.link,
+      'opacity' => value is num && value >= 0 && value <= 1 && _canContainChildren(kind),
       'alt' => value is String && kind == _NodeKind.image,
       'loading' =>
         value is String &&

@@ -344,6 +344,10 @@ pub fn all<E: Styled>(element: E, node: &NodeSnapshot) -> E {
     let element = frame(element, node);
     let element = layout(element, node);
     let element = surface(element, node);
+    let element = match node.float_prop(Property::Opacity) {
+        Some(value) => element.opacity(value as f32),
+        None => element,
+    };
     match node
         .string_prop(Property::StyleClass)
         .or_else(|| node.extension_string_prop("style-class"))

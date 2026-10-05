@@ -217,6 +217,7 @@ type property =
   | LoadingValue
   | ReferrerPolicy
   | TargetValue
+  | Opacity
 
 module Property_map : Map.S with type key = property
 
