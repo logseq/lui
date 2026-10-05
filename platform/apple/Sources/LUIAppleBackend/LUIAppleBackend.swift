@@ -429,6 +429,11 @@ public final class LUIAppleBackend {
     /// start receiving reports.
     public var onFramesReport: (([Int: CGRect]) -> Void)?
 
+    /// When true, per-node frame collection is skipped entirely — hosts
+    /// running the LOGSEQ_NO_FRAME_PROBE mount-cost experiment set this so
+    /// `onGeometryChange` recorders never feed `nodeFrames`.
+    public var frameCollectionSuspended = false
+
     private var nodeFrames: [Int: CGRect] = [:]
     private var framesReportScheduled = false
 
@@ -467,6 +472,7 @@ public final class LUIAppleBackend {
     }
 
     func reportNodeFrame(_ nodeID: Int, _ rect: CGRect) {
+        if frameCollectionSuspended { return }
         if nodeFrames[nodeID] == rect { return }
         nodeFrames[nodeID] = rect
         scheduleFramesReport()
