@@ -1411,6 +1411,36 @@ val label :
   ?style_class:string ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?value:string -> ?value_signal:string Signal.signal -> nothing list -> t
+val kbd :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?columns:int ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?value:string -> ?value_signal:string Signal.signal -> nothing list -> t
 val button :
   ?key:string ->
   ?gap:int ->

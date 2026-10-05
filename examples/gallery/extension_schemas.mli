@@ -62,6 +62,16 @@ type split_pane_pane_closed = {
 
 }
 
+type gpui_rating_change = {
+  event_node : int;
+  value : int;
+}
+
+type gpui_color_picker_change = {
+  event_node : int;
+  color : string;
+}
+
 val apple_map : ?key:string -> latitude:float -> longitude:float -> latitude_delta:float -> longitude_delta:float -> ?latitude_signal:float Signal.signal -> ?longitude_signal:float Signal.signal -> ?latitude_delta_signal:float Signal.signal -> ?longitude_delta_signal:float Signal.signal -> Lui_elements.t list -> Lui_elements.t
 val apple_map_marker : ?key:string -> title:string -> latitude:float -> longitude:float -> ?title_signal:string Signal.signal -> ?latitude_signal:float Signal.signal -> ?longitude_signal:float Signal.signal -> unit -> Lui_elements.t
 val simulator_map : ?key:string -> label:string -> latitude:float -> longitude:float -> latitude_delta:float -> longitude_delta:float -> ?label_signal:string Signal.signal -> ?latitude_signal:float Signal.signal -> ?longitude_signal:float Signal.signal -> ?latitude_delta_signal:float Signal.signal -> ?longitude_delta_signal:float Signal.signal -> ?on_region_change:(simulator_map_region_change -> unit) -> Lui_elements.t list -> Lui_elements.t
@@ -72,5 +82,11 @@ val split_view : ?key:string -> ?divider_thickness:float -> ?animation:bool -> ?
 val split_branch : ?key:string -> orientation:string -> ratio:float -> ?orientation_signal:string Signal.signal -> ?ratio_signal:float Signal.signal -> ?on_ratio_changed:(split_branch_ratio_changed -> unit) -> Lui_elements.t list -> Lui_elements.t
 val split_pane : ?key:string -> pane_id:string -> ?selected:string -> ?focused:bool -> ?accessibility_identifier:string -> ?pane_id_signal:string Signal.signal -> ?selected_signal:string Signal.signal -> ?focused_signal:bool Signal.signal -> ?accessibility_identifier_signal:string Signal.signal -> ?on_tab_selected:(split_pane_tab_selected -> unit) -> ?on_tab_closed:(split_pane_tab_closed -> unit) -> ?on_tab_moved:(split_pane_tab_moved -> unit) -> ?on_pane_focused:(split_pane_pane_focused -> unit) -> ?on_navigate:(split_pane_navigate -> unit) -> ?on_split_requested:(split_pane_split_requested -> unit) -> ?on_split_drop:(split_pane_split_drop -> unit) -> ?on_pane_closed:(split_pane_pane_closed -> unit) -> Lui_elements.t list -> Lui_elements.t
 val split_tab : ?key:string -> tab_id:string -> title:string -> ?icon:string -> ?dirty:bool -> ?closable:bool -> ?accessibility_identifier:string -> ?tab_id_signal:string Signal.signal -> ?title_signal:string Signal.signal -> ?icon_signal:string Signal.signal -> ?dirty_signal:bool Signal.signal -> ?closable_signal:bool Signal.signal -> ?accessibility_identifier_signal:string Signal.signal -> Lui_elements.t list -> Lui_elements.t
+val gpui_rating : ?key:string -> value:int -> ?max:int -> ?accessibility_identifier:string -> ?value_signal:int Signal.signal -> ?max_signal:int Signal.signal -> ?accessibility_identifier_signal:string Signal.signal -> ?on_change:(gpui_rating_change -> unit) -> unit -> Lui_elements.t
+val gpui_color_picker : ?key:string -> ?value:string -> ?accessibility_identifier:string -> ?value_signal:string Signal.signal -> ?accessibility_identifier_signal:string Signal.signal -> ?on_change:(gpui_color_picker_change -> unit) -> unit -> Lui_elements.t
+val gpui_empty : ?key:string -> title:string -> ?description:string -> ?accessibility_identifier:string -> ?title_signal:string Signal.signal -> ?description_signal:string Signal.signal -> ?accessibility_identifier_signal:string Signal.signal -> Lui_elements.t list -> Lui_elements.t
+val gpui_tag : ?key:string -> text:string -> ?variant:string -> ?accessibility_identifier:string -> ?text_signal:string Signal.signal -> ?variant_signal:string Signal.signal -> ?accessibility_identifier_signal:string Signal.signal -> unit -> Lui_elements.t
+val gpui_chart_bar : ?key:string -> name:string -> data:string -> ?accessibility_identifier:string -> ?name_signal:string Signal.signal -> ?data_signal:string Signal.signal -> ?accessibility_identifier_signal:string Signal.signal -> unit -> Lui_elements.t
+val gpui_table : ?key:string -> columns:string -> rows:string -> ?bordered:bool -> ?stripe:bool -> ?accessibility_identifier:string -> ?columns_signal:string Signal.signal -> ?rows_signal:string Signal.signal -> ?bordered_signal:bool Signal.signal -> ?stripe_signal:bool Signal.signal -> ?accessibility_identifier_signal:string Signal.signal -> unit -> Lui_elements.t
 
 val registry : unit -> Lui_extension.extension_registry

@@ -96,6 +96,7 @@ let base_class_name kind =
   | SwipeActions -> "lui-swipe-actions"
   | SwipeAction -> "lui-swipe-action"
   | FilePicker -> "lui-file-picker"
+  | Kbd -> "lui-kbd"
   | Link -> "lui-link"
   | FileImage -> "lui-file-image"
   | FilePreview -> "lui-file-preview"

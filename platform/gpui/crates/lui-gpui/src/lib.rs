@@ -9,6 +9,7 @@
 //! the dirty node set, and we notify exactly those entities.
 
 pub mod backend;
+pub mod dock;
 pub mod extension;
 pub mod kinds;
 pub mod node_view;

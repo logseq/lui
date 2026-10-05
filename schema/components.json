@@ -326,6 +326,10 @@
       "status": "supported"
     },
     {
+      "name": "kbd",
+      "status": "supported"
+    },
+    {
       "name": "link",
       "status": "supported"
     },
@@ -912,6 +916,13 @@
       "dart": "filePicker",
       "swift": "filePicker",
       "container": true
+    },
+    {
+      "lg": "Kbd",
+      "wire": "kbd",
+      "dart": "kbd",
+      "swift": "kbd",
+      "container": false
     },
     {
       "lg": "Link",
@@ -1625,6 +1636,9 @@
     ],
     "file-preview": [
       "path"
+    ],
+    "kbd": [
+      "text"
     ]
   },
   "kindExtraProperties": {

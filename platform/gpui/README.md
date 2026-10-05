@@ -43,11 +43,30 @@ cargo run -p lui-demo
 ## `gpui-*` extension namespace
 
 `lui-gpui` has an `ExtensionRenderer` registry keyed by extension
-identifier; `gpui-<name>` is reserved for gpui-kit-specific components
-(DockArea, Table, charts…). No `gpui-*` components are registered yet —
-that is the next PR. Registration is additive and needs no OCaml changes:
-`create-extension` nodes carry an identifier + props, and events flow back
-through `lui_ocaml_extension_event`.
+identifier; `gpui-<name>` is reserved for gpui-kit-specific components.
+`LuiShared::new` registers the builtin set (extension.rs
+`register_builtin_renderers`); apps can register more on top.
+
+| identifier          | gpui-kit component | props | events |
+| ------------------- | ------------------ | ----- | ------ |
+| `gpui-rating`       | `Rating`           | `value` int, `max` int (default 5) | `change` `{value:int}` |
+| `gpui-color-picker` | `ColorPicker` + `ColorPickerState` (per-node entity) | `value` `#rrggbb[aa]` | `change` `{color:string}` |
+| `gpui-empty`        | `Empty`            | `title`, `description`; standard children render as the action slot | — |
+| `gpui-tag`          | `Tag`              | `text`, `variant` (primary\|secondary\|danger\|success\|warning\|info) | — |
+| `gpui-chart-bar`    | `BarChart`         | `name`, `data` (`"Label:Value,…"`) | — |
+| `gpui-table`        | `DataTable` + `TableState` (per-node entity) | `columns` csv, `rows` `;`-separated csv rows, `bordered`, `stripe` | — |
+
+The gallery mounts all six under a "GPUI" section that only appears on
+`GPUIHost`. Props update via `set-extension-prop` like any signal; stateful
+components keep their entities in `ComponentStates` per node id.
+
+The `split-*` family (`split-view`/`split-branch`/`split-pane`/`split-tab`)
+is backed by gpui-base `DockArea` (`crates/lui-gpui/src/dock.rs`): the model
+remains source of truth — the renderer rebuilds the center `DockLayout` on
+structure/prop signature changes, and `DockEvent::LayoutChanged` diffs the
+dock's `dump()` against the last sync to emit the granular `split-pane` /
+`split-branch` events (`tab-selected`, `tab-moved`, `split-drop`,
+`pane-closed`, `ratio-changed`) back to the model.
 
 ## Kind coverage
 
@@ -55,10 +74,12 @@ All 85 wire `NodeKind`s render. Notable mappings:
 
 - gpui-component widgets: Button, Checkbox, Switch, RadioGroup,
   Input/Textarea (`InputState` per node id), Slider, Progress, Spinner,
-  Alert, MenuItem.
+  Alert, MenuItem, Select/Combobox (`SelectState`/`ComboboxState` +
+  `SearchableListDelegate` over `menu_item` children), Kbd.
 - gpui-base `ResizablePanelGroup` backs both `resizable`
   (`width`/`min-width`/`max-width` → `size`/`size_range`) and `split`
-  (`value` fraction seeds pane one).
+  (`value` fraction seeds pane one; `on_resize` reports the new
+  first-pane fraction via `slider_changed`).
 - `deferred` + `anchored` overlays back `dialog`/`sheet`/`drawer`/`toast`
   (full-window modal), `dropdown_menu` (anchored under its stack
   trigger), `context_menu` (at the pointer), `tooltip` (hover), and
@@ -74,15 +95,12 @@ All 85 wire `NodeKind`s render. Notable mappings:
 
 ## Known gaps
 
-- `split`: `on_resize` can't reach the model — the C ABI has no
-  `lui_ocaml_resize`; drags resize locally only. Add the symbol (or reuse
-  `slider_changed`) when needed.
-- `select`/`combobox`: render as trigger/field; opening mounts the
-  gallery's conditional `dropdown_menu`, but there is no
-  `SearchableListDelegate`-backed filtering yet.
-- `menu_trigger` submenu: opens on hover, closes on outside press or a
-  second click — there is no sibling coordination, so a submenu can stay
-  open if you move straight to another menu row.
+- `select`/`combobox` use `SearchableListDelegate`-backed native pickers
+  only when the node carries `menu_item` children (the children are the
+  option source); Confirm fires `Press` on the picked item's node so the
+  model's own `on_press` runs. Without `menu_item` children they keep the
+  trigger/field rendering (the model mounts a `dropdown_menu` itself), so
+  keyboard focus/filtering there is still model-managed.
 - `tabs`/`bottom_tabs`/`pagination`/`segmented` render as styled
   containers; the model owns selection (LUI sends `press` for each entry),
   matching other backends.

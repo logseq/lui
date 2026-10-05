@@ -84,6 +84,7 @@ type node_kind =
   | SwipeActions
   | SwipeAction
   | FilePicker
+  | Kbd
   | Link
   | FileImage
   | FilePreview

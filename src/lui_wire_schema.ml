@@ -87,6 +87,7 @@ let node_kind_name kind =
   | SwipeActions -> "swipe-actions"
   | SwipeAction -> "swipe-action"
   | FilePicker -> "file-picker"
+  | Kbd -> "kbd"
   | Link -> "link"
   | FileImage -> "file-image"
   | FilePreview -> "file-preview"
@@ -175,6 +176,7 @@ let standard_node_name name =
   | "swipe-actions" -> true
   | "swipe-action" -> true
   | "file-picker" -> true
+  | "kbd" -> true
   | "link" -> true
   | "file-image" -> true
   | "file-preview" -> true
@@ -300,6 +302,7 @@ let kind_property_matrix kind =
   | SwipeAction -> Some [ TextValue; InlineIconName; VariantValue; EdgeValue; Enabled; BackgroundValue; PressEnabled ]
   | FilePicker -> Some [ PickerRequest; PickerTypes; PickerMultiple; PickerSource; PickerCompletion; Enabled; AppearEnabled ]
   | FilePreview -> Some [ PathValue ]
+  | Kbd -> Some [ TextValue ]
   | _ -> None
 
 let kind_extra_properties kind =
@@ -307,6 +310,6 @@ let kind_extra_properties kind =
   | Dialog -> [ DescriptionValue ]
   | _ -> []
 
-let all_node_kinds = [ Root; Row; Column; Grid; Stack; EdgeInset; Overlay; ViewThatFits; Panel; Card; Alert; Bubble; Box; Text; Heading; Paragraph; Label; Button; ToggleButton; Toggle; RadioGroup; Radio; Slider; NumberStepper; TextField; SecureField; Input; SearchField; Textarea; Checkbox; SwitchControl; Progress; Divider; Scroll; ListContainer; VirtualList; Tabs; BottomTabs; BottomTab; ButtonGroup; ToggleGroup; Spacer; Spinner; Icon; Select; Combobox; DropdownMenu; ContextMenu; MenuItem; MenuTrigger; ListItem; Avatar; Image; MediaSurface; Stepper; Step; Timeline; TimelineItem; InputGroup; InputGroupActions; Breadcrumb; Pagination; Accordion; Table; TableRow; TableCell; Tree; Resizable; Split; Dialog; Drawer; Sheet; Tooltip; Toast; Toolbar; StatusBar; ListSection; ListSectionHeader; ListSectionFooter; SwipeActions; SwipeAction; FilePicker; Link; FileImage; FilePreview ]
+let all_node_kinds = [ Root; Row; Column; Grid; Stack; EdgeInset; Overlay; ViewThatFits; Panel; Card; Alert; Bubble; Box; Text; Heading; Paragraph; Label; Button; ToggleButton; Toggle; RadioGroup; Radio; Slider; NumberStepper; TextField; SecureField; Input; SearchField; Textarea; Checkbox; SwitchControl; Progress; Divider; Scroll; ListContainer; VirtualList; Tabs; BottomTabs; BottomTab; ButtonGroup; ToggleGroup; Spacer; Spinner; Icon; Select; Combobox; DropdownMenu; ContextMenu; MenuItem; MenuTrigger; ListItem; Avatar; Image; MediaSurface; Stepper; Step; Timeline; TimelineItem; InputGroup; InputGroupActions; Breadcrumb; Pagination; Accordion; Table; TableRow; TableCell; Tree; Resizable; Split; Dialog; Drawer; Sheet; Tooltip; Toast; Toolbar; StatusBar; ListSection; ListSectionHeader; ListSectionFooter; SwipeActions; SwipeAction; FilePicker; Kbd; Link; FileImage; FilePreview ]
 
 let all_properties = [ TextValue; Enabled; Gap; MainAlignment; CrossAlignment; GrowValue; GridColumns; PaddingValue; PaddingHorizontal; PaddingVertical; BackgroundValue; ForegroundValue; BorderColorValue; BorderWidth; CornerRadius; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; ContainerRelativeFrameValue; ContainerRelativeFrameInset; PlaceholderValue; AccessibilityLabel; AccessibilityIdentifier; StyleClass; HeadingLevel; Checked; ProgressValue; OrientationValue; PlacementValue; SizeValue; IconName; VariantValue; InlineIconName; IconPlacementValue; Selected; Autofocus; SubmitOnEnter; LongPressEnabled; ChangeEnabled; ToggleEnabled; PressEnabled; SubmitEnabled; DoublePressEnabled; AppearEnabled; ImageIdValue; SurfaceIdValue; ActiveIndex; TitleValue; DescriptionValue; MetaValue; IndicatorValue; Connector; SourceX; SourceY; SourceWidth; SourceHeight; AnchorValue; AnchorAlignmentValue; AnchorOffset; TooltipDelay; DurationValue; TextAlignment; RoleValue; TreeLevel; Expanded; ResizeDuration; ResizeEasing; ResizeOrigin; ThemeValue; ThemeMode; KeyValue; SeparatorValue; StyleValue; ScrollTarget; ScrollAnchor; ScrollToken; ScrollAnimated; TrackVisibleRange; EdgeValue; PickerRequest; PickerTypes; PickerMultiple; PickerSource; PickerCompletion; MinValue; MaxValue; StepValue; Detents; Sizing; PathValue; UrlValue; MaxPixelSize; ImageFitValue; Visible; AlignmentValue ]

@@ -982,6 +982,22 @@ private struct LUINodeView: View {
                     .multilineTextAlignment(messageTextAlignment)
                     .frame(maxWidth: .infinity, alignment: messageFrameAlignment)
             )
+        case .kbd:
+            return AnyView(
+                Text(verbatim: model.text)
+                    .font(.system(.caption2, design: .monospaced))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .foregroundStyle(.secondary)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Color.secondary.opacity(0.12))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .stroke(Color.secondary.opacity(0.3), lineWidth: 0.5)
+                    )
+            )
         }
     }
 

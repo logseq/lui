@@ -84,6 +84,7 @@ pub enum NodeKind {
     SwipeActions,
     SwipeAction,
     FilePicker,
+    Kbd,
     Link,
     FileImage,
     FilePreview,
@@ -174,6 +175,7 @@ impl NodeKind {
             "swipe-actions" => Some(NodeKind::SwipeActions),
             "swipe-action" => Some(NodeKind::SwipeAction),
             "file-picker" => Some(NodeKind::FilePicker),
+            "kbd" => Some(NodeKind::Kbd),
             "link" => Some(NodeKind::Link),
             "file-image" => Some(NodeKind::FileImage),
             "file-preview" => Some(NodeKind::FilePreview),
@@ -265,6 +267,7 @@ impl NodeKind {
             NodeKind::SwipeActions => "swipe-actions",
             NodeKind::SwipeAction => "swipe-action",
             NodeKind::FilePicker => "file-picker",
+            NodeKind::Kbd => "kbd",
             NodeKind::Link => "link",
             NodeKind::FileImage => "file-image",
             NodeKind::FilePreview => "file-preview",
@@ -736,6 +739,7 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::AppearEnabled,
         ]),
         NodeKind::FilePreview => Some(&[Property::PathValue]),
+        NodeKind::Kbd => Some(&[Property::TextValue]),
         _ => None,
     }
 }

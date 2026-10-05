@@ -1,14 +1,16 @@
 //! `NodeKind` -> gpui-kit element dispatch. Every container embeds children
 //! as `Entity<LuiNodeView>` handles so per-node redraw isolation holds.
 
-use gpui_kit::base::StyledExt;
+use gpui_kit::base::{Align, ElementExt, Placement, Positioner, StyledExt};
 use gpui_kit::component::alert::{Alert, AlertVariant};
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::checkbox::Checkbox;
+use gpui_kit::component::combobox::{Combobox, ComboboxEvent, ComboboxState};
 use gpui_kit::component::input::{Input, InputEvent, InputState, Textarea, TextareaState};
 use gpui_kit::component::link::Link;
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::radio::Radio;
+use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::separator::Separator;
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState, SliderValue};
 use gpui_kit::component::spinner::Spinner;
@@ -25,9 +27,9 @@ use lui_core::bridge;
 use lui_core::store::NodeIdentity;
 use lui_core::{EventKind, NodeKind, Property};
 
-use crate::backend::fire;
+use crate::backend::{fire, LuiShared, Shared};
 use crate::extension;
-use crate::node_view::{LuiNodeView, NodeSnapshot};
+use crate::node_view::{LuiNodeView, LuiOption, NodeSnapshot};
 use crate::style;
 
 fn element_id(node_id: i64) -> ElementId {
@@ -442,6 +444,188 @@ fn slider(
     style::all(slider, node).into_any_element()
 }
 
+/// `menu-item` children of `node` as selectable options. Children are the
+/// option source for the native searchable list; an empty list means the
+/// model uses its own mounted menu instead.
+fn option_items(view: &LuiNodeView, node: &NodeSnapshot) -> Vec<LuiOption> {
+    let shared = view.shared.borrow();
+    node.children
+        .iter()
+        .filter_map(|child_id| {
+            shared
+                .store
+                .node(*child_id)
+                .filter(|child| child.identity.kind() == Some(NodeKind::MenuItem))
+                .map(|child| LuiOption {
+                    node_id: *child_id,
+                    title: child
+                        .string_prop(Property::TextValue)
+                        .or_else(|| child.string_prop(Property::TitleValue))
+                        .unwrap_or("")
+                        .into(),
+                    disabled: !child.enabled(),
+                })
+        })
+        .collect()
+}
+
+/// Push the option list into the state's delegate only when the source
+/// node ids changed — re-setting items mid-render resets the search
+/// query otherwise.
+fn sync_options(view: &LuiNodeView, items: Vec<LuiOption>, set: impl FnOnce(Vec<LuiOption>)) {
+    let ids: Vec<i64> = items.iter().map(|item| item.node_id).collect();
+    if *view.states.options_cache.borrow() != ids {
+        *view.states.options_cache.borrow_mut() = ids;
+        set(items);
+    }
+}
+
+/// `select`: native gpui-kit Select with a searchable list when the model
+/// mounts `menu-item` children as the option source; confirming fires
+/// `Press` on the source item so the model's own handler runs. Without
+/// option children it stays a trigger whose `press` opens the model-owned
+/// menu (e.g. a `dropdown-menu` sibling).
+fn select_picker(
+    view: &mut LuiNodeView,
+    node: &NodeSnapshot,
+    window: &mut Window,
+    cx: &mut Context<LuiNodeView>,
+) -> AnyElement {
+    let node_id = node.id;
+    let items = option_items(view, node);
+    if items.is_empty() {
+        // Trigger-shaped outline button; `press` opens the model-owned
+        // menu (usually mounted as a `dropdown-menu` sibling).
+        let mut element = Button::new(element_id(node_id))
+            .label(if text_of(node).is_empty() {
+                "Select…".to_string()
+            } else {
+                text_of(node)
+            })
+            .outline()
+            .icon(gpui_kit::assets::IconName::ChevronDown);
+        element = element.disabled(!node.enabled());
+        element = element.on_click(press_handler(view, node_id));
+        element = style::all(element, node);
+        return element.into_any_element();
+    }
+    if view.states.select.is_none() {
+        let state = cx
+            .new(|cx| SelectState::new(Vec::<LuiOption>::new(), None, window, cx).searchable(true));
+        let shared = view.shared.clone();
+        let subscription = cx.subscribe(
+            &state,
+            move |_this, _state, event: &SelectEvent<Vec<LuiOption>>, cx| {
+                if let SelectEvent::Confirm(Some(item_id)) = event {
+                    let item_id = *item_id;
+                    fire(&shared, item_id, EventKind::Press, cx, || unsafe {
+                        bridge::lui_ocaml_press(item_id)
+                    });
+                }
+            },
+        );
+        view.states.subscriptions.push(subscription);
+        view.states.select = Some(state);
+    }
+    let state = view.states.select.clone().expect("initialized");
+    sync_options(view, items, |items| {
+        state.update(cx, |state, cx| state.set_items(items, window, cx));
+    });
+    let mut element = Select::new(&state);
+    element = element.placeholder(if text_of(node).is_empty() {
+        "Select…".to_string()
+    } else {
+        text_of(node)
+    });
+    element = element.disabled(!node.enabled());
+    style::all(element, node).into_any_element()
+}
+
+/// `combobox`: native gpui-kit Combobox (editable + searchable) when
+/// `menu-item` children are mounted; confirming reports `text_changed`
+/// with the item title then `Press` on the item node. Without options it
+/// stays an input whose `press` opens the model-owned menu.
+fn combobox_picker(
+    view: &mut LuiNodeView,
+    node: &NodeSnapshot,
+    kind: NodeKind,
+    window: &mut Window,
+    cx: &mut Context<LuiNodeView>,
+) -> AnyElement {
+    let node_id = node.id;
+    let items = option_items(view, node);
+    if items.is_empty() {
+        // Editable field: input events feed `text_changed`/`submit`,
+        // clicks also fire `press` so the model can open its menu.
+        let field = input(view, node, kind, window, cx);
+        return if press_gate(view, node_id) {
+            div()
+                .id(ElementId::Name(format!("lui-{}-combo", node_id).into()))
+                .on_click(press_handler(view, node_id))
+                .child(field)
+                .into_any_element()
+        } else {
+            field
+        };
+    }
+    if view.states.combobox.is_none() {
+        let state = cx.new(|cx| {
+            ComboboxState::new(Vec::<LuiOption>::new(), Vec::new(), window, cx).searchable(true)
+        });
+        let shared = view.shared.clone();
+        let subscription = cx.subscribe(
+            &state,
+            move |_this, _state, event: &ComboboxEvent<Vec<LuiOption>>, cx| {
+                let item_id = match event {
+                    ComboboxEvent::Confirm(values) | ComboboxEvent::Change(values) => {
+                        values.first().copied()
+                    }
+                };
+                if let Some(item_id) = item_id {
+                    let title = shared
+                        .borrow()
+                        .store
+                        .node(item_id)
+                        .map(|item| {
+                            item.string_prop(Property::TextValue)
+                                .or_else(|| item.string_prop(Property::TitleValue))
+                                .unwrap_or("")
+                                .to_string()
+                        })
+                        .unwrap_or_default();
+                    if event_gate_id(&shared, node_id, EventKind::TextChanged) {
+                        let sending = std::ffi::CString::new(title).unwrap_or_default();
+                        fire(&shared, node_id, EventKind::TextChanged, cx, || unsafe {
+                            bridge::lui_ocaml_text_changed(node_id, sending.as_ptr())
+                        });
+                    }
+                    fire(&shared, item_id, EventKind::Press, cx, || unsafe {
+                        bridge::lui_ocaml_press(item_id)
+                    });
+                }
+            },
+        );
+        view.states.subscriptions.push(subscription);
+        view.states.combobox = Some(state);
+    }
+    let state = view.states.combobox.clone().expect("initialized");
+    sync_options(view, items, |items| {
+        state.update(cx, |state, cx| state.set_items(items, window, cx));
+    });
+    let mut element = Combobox::new(&state);
+    let label = text_of(node);
+    let placeholder = node
+        .string_prop(Property::PlaceholderValue)
+        .unwrap_or(if label.is_empty() {
+            "Select…"
+        } else {
+            &label
+        });
+    element = element.placeholder(placeholder);
+    element = element.disabled(!node.enabled());
+    style::all(element, node).into_any_element()
+}
+
 /// `overlay`/`stack`: first child lays out in-flow (sizing the stack to the
 /// trigger), the rest overlay absolutely on top of it.
 fn stacked(
@@ -603,9 +787,12 @@ fn menu_box(
     element.children(view.child_elements(node, cx))
 }
 
-/// `dropdown-menu`: mounted inside a `stack` while open — anchors below the
-/// node's bounds via a zero-size marker at its bottom edge. A press outside
-/// the menu box fires `Dismiss` (the model then drops the node).
+/// `dropdown-menu`: mounted inside a `stack` while open — the overlay tracks
+/// the stack bounds on prepaint and the deferred popup resolves against them
+/// via `Positioner::side` (side/alignment/offset from `anchor` props, flip +
+/// viewport clamp built in). `anchor-alignment:stretch` widens the menu to
+/// the trigger's width. A press outside the menu box fires `Dismiss` (the
+/// model then drops the node).
 fn dropdown_menu(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
@@ -613,6 +800,18 @@ fn dropdown_menu(
     cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
     let offset = node.float_prop(Property::AnchorOffset).unwrap_or(0.) as f32;
+    let placement = match node.string_prop(Property::AnchorValue) {
+        Some("above") => Placement::Top,
+        Some("left") => Placement::Left,
+        Some("right") => Placement::Right,
+        _ => Placement::Bottom,
+    };
+    let (align, stretch) = match node.string_prop(Property::AnchorAlignmentValue) {
+        Some("end") => (Align::End, false),
+        Some("center") => (Align::Center, false),
+        Some("stretch") => (Align::Start, true),
+        _ => (Align::Start, false),
+    };
     let mut menu = menu_box(view, node, cx);
     if event_gate(view, node.id, EventKind::Dismiss) {
         let shared = view.shared.clone();
@@ -623,22 +822,33 @@ fn dropdown_menu(
             });
         });
     }
+    let trigger_bounds = view.states.menu_bounds.get();
+    let mut popup = Positioner::side(trigger_bounds.unwrap_or_default())
+        .placement(placement)
+        .align(align)
+        .offset(px(offset))
+        .occlude();
+    if stretch {
+        if let Some(bounds) = trigger_bounds {
+            menu = menu.w(bounds.size.width);
+        }
+    }
+    popup = popup.child(menu.into_any_element());
     div()
         .id(element_id(node.id))
         .absolute()
         .size_full()
-        .child(
-            div().absolute().left_0().bottom_0().size_0().child(
-                deferred(
-                    anchored()
-                        .anchor(Anchor::TopLeft)
-                        .offset(point(px(0.), px(offset)))
-                        .snap_to_window()
-                        .child(menu),
-                )
-                .with_priority(2),
-            ),
-        )
+        .on_prepaint({
+            let entity_id = cx.entity().entity_id();
+            let menu_bounds = view.states.menu_bounds.clone();
+            move |bounds, _, cx| {
+                if menu_bounds.get() != Some(bounds) {
+                    menu_bounds.set(Some(bounds));
+                    cx.notify(entity_id);
+                }
+            }
+        })
+        .child(deferred(popup).with_priority(2))
         .into_any_element()
 }
 
@@ -807,6 +1017,43 @@ fn event_gate_id(shared: &crate::backend::Shared, node_id: i64, event: EventKind
 /// unconditionally, so the host decides visibility: hover opens the nested
 /// menu as a deferred popup at the row's right edge, an outside press fires
 /// the menu node's `Dismiss`.
+/// The `(owner id, open-slot)` of the nearest ancestor dropdown/context
+/// menu — submenu sibling coordination: only one trigger may hold it.
+fn menu_owner(
+    view: &LuiNodeView,
+    node: &NodeSnapshot,
+    cx: &mut App,
+) -> Option<(i64, std::rc::Rc<std::cell::Cell<Option<i64>>>)> {
+    let parent_id = node.parent?;
+    let is_menu = view
+        .shared
+        .borrow()
+        .store
+        .node(parent_id)
+        .map(|n| {
+            matches!(
+                n.identity.kind(),
+                Some(NodeKind::DropdownMenu) | Some(NodeKind::ContextMenu)
+            )
+        })
+        .unwrap_or(false);
+    if !is_menu {
+        return None;
+    }
+    let owner = LuiShared::view_for(&view.shared, parent_id, cx);
+    Some((parent_id, owner.read(cx).states.open_submenu.clone()))
+}
+
+/// Close another trigger's submenu popup (the one holding the slot).
+fn close_submenu(shared: &Shared, trigger_id: i64, cx: &mut App) {
+    let entity = shared.borrow().views.get(&trigger_id).cloned();
+    if let Some(entity) = entity {
+        let eid = entity.entity_id();
+        entity.update(cx, |v, _cx| v.states.menu_open.set(false));
+        cx.notify(eid);
+    }
+}
+
 fn menu_trigger(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
@@ -875,19 +1122,39 @@ fn menu_trigger(
     }
 
     if let Some(menu_id) = menu_node_id {
+        let owner = menu_owner(view, node, cx);
         let open = view.states.menu_open.clone();
         let entity = cx.entity().entity_id();
-        row = row.on_hover(move |hovered, _, cx| {
-            if *hovered && !open.get() {
-                open.set(true);
-                cx.notify(entity);
+        let shared = view.shared.clone();
+        let node_id = node.id;
+        row = row.on_hover({
+            let owner = owner.clone();
+            move |hovered, _, cx| {
+                if *hovered && !open.get() {
+                    // Sibling coordination: evict whichever submenu trigger
+                    // currently holds the owning menu's open slot, then
+                    // claim it.
+                    if let Some((_, slot)) = &owner {
+                        if let Some(other) = slot.get().filter(|id| *id != node_id) {
+                            close_submenu(&shared, other, cx);
+                        }
+                        slot.set(Some(node_id));
+                    }
+                    open.set(true);
+                    cx.notify(entity);
+                }
             }
         });
         row = row.cursor_pointer().on_click({
             let open = view.states.menu_open.clone();
             let entity = cx.entity().entity_id();
+            let owner = owner.clone();
             move |_, _, cx| {
-                open.set(!open.get());
+                let next = !open.get();
+                if let Some((_, slot)) = &owner {
+                    slot.set(next.then_some(node_id));
+                }
+                open.set(next);
                 cx.notify(entity);
             }
         });
@@ -918,13 +1185,22 @@ fn menu_trigger(
                     .rounded_md()
                     .shadow_lg()
                     .children(items);
-                popup = popup.on_mouse_down_out(move |_, _, cx| {
-                    open.set(false);
-                    cx.notify(entity);
-                    if event_gate_id(&shared, menu_id, EventKind::Dismiss) {
-                        fire(&shared, menu_id, EventKind::Dismiss, cx, || unsafe {
-                            bridge::lui_ocaml_dismiss(menu_id)
-                        });
+                popup = popup.on_mouse_down_out({
+                    let owner = owner.clone();
+                    let node_id = node.id;
+                    move |_, _, cx| {
+                        if let Some((_, slot)) = &owner {
+                            if slot.get() == Some(node_id) {
+                                slot.set(None);
+                            }
+                        }
+                        open.set(false);
+                        cx.notify(entity);
+                        if event_gate_id(&shared, menu_id, EventKind::Dismiss) {
+                            fire(&shared, menu_id, EventKind::Dismiss, cx, || unsafe {
+                                bridge::lui_ocaml_dismiss(menu_id)
+                            });
+                        }
                     }
                 });
                 row = row.child(
@@ -977,21 +1253,38 @@ fn edge_inset(
 }
 
 /// `split`: two retained panes over a model-owned `value` fraction
-/// (first pane seeded at fraction × viewport, second fills). The ABI
-/// has no resize event yet, so drag feedback stays backend-owned.
+/// (first pane seeded at fraction × viewport, second fills). Drags
+/// report back as `ValueChanged` — the `on_resize` channel.
 fn split(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
     window: &mut Window,
     cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
+    let node_id = node.id;
     let fraction = node.float_prop(Property::ProgressValue).unwrap_or(0.5) as f32;
     let mut children = view.child_elements(node, cx).into_iter();
     let first = children.next();
     let second = children.next();
     let viewport = window.viewport_size();
     let first_px = px((f32::from(viewport.width) * fraction).max(48.));
-    let group = gpui_kit::component::h_resizable(element_id(node.id))
+    let shared = view.shared.clone();
+    let group = gpui_kit::component::h_resizable(element_id(node_id))
+        .on_resize(move |state, _window, cx| {
+            let sizes: Vec<f32> = {
+                let state = state.read(cx);
+                state.sizes().iter().map(|size| f32::from(*size)).collect()
+            };
+            let total: f32 = sizes.iter().sum();
+            let fraction = if total > 0. {
+                (sizes.first().copied().unwrap_or(0.) / total).clamp(0., 1.)
+            } else {
+                0.
+            };
+            fire(&shared, node_id, EventKind::ValueChanged, cx, || unsafe {
+                bridge::lui_ocaml_slider_changed(node_id, fraction as f64)
+            });
+        })
         .child(
             gpui_kit::component::resizable_panel()
                 .size(first_px)
@@ -1276,6 +1569,20 @@ fn menu_item(
     if !node.enabled() {
         row = row.opacity(0.5);
     }
+    // Hovering a plain item closes the sibling submenu that currently
+    // holds the owning menu's open slot.
+    let owner = menu_owner(view, node, cx);
+    let shared = view.shared.clone();
+    row = row.on_hover(move |hovered, _, cx| {
+        if *hovered {
+            if let Some((_, slot)) = &owner {
+                if let Some(other) = slot.get() {
+                    close_submenu(&shared, other, cx);
+                    slot.set(None);
+                }
+            }
+        }
+    });
     if press_gate(view, node.id) {
         row = row.cursor_pointer().on_click(press_handler(view, node.id));
     }
@@ -1736,6 +2043,21 @@ pub fn render_node(
             element = style::all(element, node);
             element.into_any_element()
         }
+        NodeKind::Kbd => {
+            let element = match gpui_kit::gpui::Keystroke::parse(&text_of(node)) {
+                Ok(stroke) => gpui_kit::component::kbd::Kbd::new(stroke).into_any_element(),
+                // Unparseable stroke still shows the raw label.
+                Err(_) => div()
+                    .px_1p5()
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .text_xs()
+                    .child(text_of(node))
+                    .into_any_element(),
+            };
+            style::all(div().child(element), node).into_any_element()
+        }
         NodeKind::Alert => {
             let variant = match variant_of(node) {
                 "destructive" | "error" => AlertVariant::Error,
@@ -1848,36 +2170,8 @@ pub fn render_node(
             overlay_modal(view, node, kind, window, cx)
         }
         NodeKind::FilePicker => file_picker(view, node, window, cx),
-        NodeKind::Select => {
-            // Trigger-shaped outline button; `press` opens the model-owned
-            // menu (usually mounted as a `dropdown-menu` sibling).
-            let mut element = Button::new(element_id(node.id))
-                .label(if text_of(node).is_empty() {
-                    "Select…".to_string()
-                } else {
-                    text_of(node)
-                })
-                .outline()
-                .icon(gpui_kit::assets::IconName::ChevronDown);
-            element = element.disabled(!node.enabled());
-            element = element.on_click(press_handler(view, node.id));
-            element = style::all(element, node);
-            element.into_any_element()
-        }
-        NodeKind::Combobox => {
-            // Editable field: input events feed `text_changed`/`submit`,
-            // clicks also fire `press` so the model can open its menu.
-            let field = input(view, node, kind, window, cx);
-            if press_gate(view, node.id) {
-                div()
-                    .id(ElementId::Name(format!("lui-{}-combo", node.id).into()))
-                    .on_click(press_handler(view, node.id))
-                    .child(field)
-                    .into_any_element()
-            } else {
-                field
-            }
-        }
+        NodeKind::Select => select_picker(view, node, window, cx),
+        NodeKind::Combobox => combobox_picker(view, node, kind, window, cx),
         NodeKind::FileImage => match node.string_prop(Property::PathValue) {
             Some(path) => {
                 let mut element = div()

@@ -866,6 +866,16 @@ let label ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pa
   
   node
 
+let kbd ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?value ?value_signal (_children : nothing list) : t =
+ fun context parent ->
+  let node = Lui_ui.create context Kbd in
+  apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~on_appear;
+  Option.iter (Lui_ui.string_property context node TextValue) value;
+  Option.iter (Lui_ui.string_property_signal context node TextValue) value_signal;
+  attach context parent node;
+
+  node
+
 let button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?on_appear ?text ?text_signal ?variant ?size ?icon ?icon_signal ?icon_placement ?label ?text_alignment ?selected ?autofocus ?disabled ?disabled_signal ?on_press ?on_long_press (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.button context in

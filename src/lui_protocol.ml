@@ -86,6 +86,7 @@ type node_kind =
   | SwipeActions
   | SwipeAction
   | FilePicker
+  | Kbd
   | Link
   | FileImage
   | FilePreview
@@ -850,6 +851,7 @@ let common_property_supported kind property =
     | Bubble
     | NumberStepper
     | StatusBar
+    | Kbd
     | Link -> true
     | _ -> false)
   | Enabled ->
@@ -953,6 +955,7 @@ let property_supported kind property =
     | InputGroupActions -> property = Gap
     | ListSection -> property = KeyValue || property = SeparatorValue
     | SwipeActions -> false
+    | Kbd -> property = TextValue
     | SwipeAction ->
       List.mem
         property

@@ -33,13 +33,15 @@ pub type Shared = Rc<RefCell<LuiShared>>;
 
 impl LuiShared {
     pub fn new() -> Shared {
-        Rc::new(RefCell::new(LuiShared {
+        let shared = Rc::new(RefCell::new(LuiShared {
             store: Store::default(),
             registry: ExtensionRegistry::default(),
             extension_renderers: HashMap::new(),
             views: HashMap::new(),
             last_errors: Vec::new(),
-        }))
+        }));
+        crate::extension::register_builtin_renderers(&shared);
+        shared
     }
 
     pub fn with_extensions(
