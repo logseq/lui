@@ -660,7 +660,7 @@ let suggestion_list
         ~background:"surface"
         ~corner_radius:12
         [ keyed
-            ~source
+            ~source:source
             ~key:item_key
             ~cmp:String.compare
             ~mount:(fun item_signal ->

@@ -1,9 +1,9 @@
 (* Todo list view: plain OCaml calls to the Lui_elements DSL —
    constructors take ~props then a positional children list: row ~gap:4 [ .. ].
    every prop has a `~p` static and `~p_signal` reactive twin — inside
-   `map`/`sample` ordinary values and if/match all work. `dyn`, `if_` and
-   `keyed` cover structural changes (different element kinds, show/hide,
-   identity-keyed lists). *)
+   `map`/`sample` ordinary values and if/match all work. children-position
+   `reactive f s`, `if_` and `keyed` cover structural changes (model-driven
+   subtrees, show/hide, identity-keyed lists). *)
 
 open Lui_protocol
 open Lui_elements

@@ -2,7 +2,9 @@
     [t = ui_context -> int option -> int], e.g. [row ~gap:4 \[ child \]].
     Every prop has a static [~p] and a reactive [~p_signal] twin; [dyn],
     [if_], and [keyed] mount reactive structure, while [~p_signal] updates
-    props in place. *)
+    props in place. With [lui_ppx] enabled, [reactive] is the single
+    reactive form: [~p:(reactive f s)] rewrites to a prop signal and a
+    [reactive f s] expression in a children list rewrites to [dyn f s]. *)
 
 type t = Lui_ui.ui_context -> int option -> int
 
@@ -103,22 +105,27 @@ val enable :
 val mount_children : 'a -> 'b -> ('a -> 'b option -> 'c) list -> unit
 val dynamic : (Lui_ui.ui_context -> int -> 'a) -> t
 
-(** [dyn ~equal f source] mounts [f model] under the parent node and remounts
-    it whenever the published model differs under [equal]. There is no
-    default: always pass a structural or field-wise equality (e.g. [(=)] or
-    [fun a b -> a.id = b.id]) so the subtree is left untouched when the change
-    does not affect this branch. A remount reconciles the new branch against
-    the old one: nodes of the same kind at the same position keep their ids
-    (platform views stay alive, scroll/focus state survives) and receive prop
-    diffs instead of drop+create churn. Structural changes remount only the
-    divergent nodes. *)
+(** [dyn ?equal f source] mounts [f model] under the parent node and
+    remounts it whenever the published model differs under [equal]
+    (default [(=)]). A remount reconciles the new branch against the old
+    one: nodes of the same kind at the same position keep their ids
+    (platform views stay alive, scroll/focus state survives) and receive
+    prop diffs instead of drop+create churn. Structural changes remount
+    only the divergent nodes.
+
+    Implementation detail: [lui_ppx] expands a children-position
+    [reactive f s] into this call — write [reactive f s ~equal:eq]
+    instead of calling [dyn] directly. *)
 val dyn :
-  equal:('a -> 'a -> bool) -> ('a -> t) -> 'a Signal.signal -> t
+  ?equal:('a -> 'a -> bool) -> ('a -> t) -> 'a Signal.signal -> t
+
+(** [if_ ~test child] mounts [child] under the parent while
+    [test] publishes [true] and removes it on [false]. *)
 val if_ : test:bool Signal.signal -> t -> t
 
-(** [keyed ~source ~key ~cmp ~mount] renders one mounted child per item of
-    [source], keyed by [key item] and diffed with [cmp] — a three-way
-    comparator returning [int] like {!Stdlib.compare}
+(** [keyed ~source ~key ~cmp ~mount] renders one mounted child
+    per item of [source], keyed by [key item] and diffed with
+    [cmp] — a three-way comparator returning [int] like {!Stdlib.compare}
     ([~cmp:Stdlib.compare] for most cases), not a less-than predicate. *)
 val keyed :
   source:'a list Signal.signal ->

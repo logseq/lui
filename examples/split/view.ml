@@ -20,7 +20,7 @@ let tab_page (tab : Lui_split.Model.tab) : t list =
 let view _context model_source send : t =
   column ~gap:0
     [
-      dyn
+      reactive
         ~equal:(fun (a : Model.t) (b : Model.t) ->
           a.Model.panes == b.Model.panes)
         (fun (model : Model.t) ->

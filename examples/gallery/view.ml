@@ -107,7 +107,7 @@ let toggle_button_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "ToggleButton"
     [ row ~gap:12
-        [ dyn
+        [ reactive
             ~equal:(fun (a : Model.t) (b : Model.t) ->
               a.Model.checked = b.Model.checked)
             (fun (m : Model.t) ->
@@ -134,7 +134,7 @@ let button_group_section model_source send : t =
     [ button_group ~label:"Document actions"
         [ button ~icon:`save ~text:"Save" ~disabled:(reactive disabled)
             ~on_press:(press send Model.ToggleDisabled) []
-        ; dyn
+        ; reactive
             ~equal:(fun (a : Model.t) (b : Model.t) ->
               a.Model.checked = b.Model.checked)
             (fun (m : Model.t) ->
@@ -191,7 +191,7 @@ let toggle_group_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "ToggleGroup"
     [ toggle_group ~label:"View options"
-        [ dyn
+        [ reactive
             ~equal:(fun (a : Model.t) (b : Model.t) ->
               a.Model.checked = b.Model.checked)
             (fun (m : Model.t) ->
@@ -201,7 +201,7 @@ let toggle_group_section model_source send : t =
             model_source
         ; toggle_button ~text:"Multi-select" ~disabled:(reactive disabled)
             ~on_toggle:noop []
-        ; dyn
+        ; reactive
             ~equal:(fun (a : Model.t) (b : Model.t) ->
               a.Model.checked = b.Model.checked)
             (fun (m : Model.t) ->
@@ -231,7 +231,7 @@ let breadcrumb_section send : t =
 let pagination_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   let tab_button ~text tab =
-    dyn
+    reactive
       ~equal:(fun (a : Model.t) (b : Model.t) ->
         a.Model.tab = b.Model.tab && a.Model.disabled = b.Model.disabled)
       (fun (m : Model.t) ->
@@ -261,7 +261,7 @@ let pagination_section model_source send : t =
 let tabs_buttons model_source send =
   let disabled = model_source >|= Model.disabled in
   let tab_button ~text tab =
-    dyn
+    reactive
       ~equal:(fun (a : Model.t) (b : Model.t) -> a.Model.tab = b.Model.tab)
       (fun (m : Model.t) ->
         button ~text ~selected:(m.Model.tab = tab)
@@ -692,7 +692,6 @@ let list_item_section model_source send : t =
     ]
 
 let context_menu_section model_source send : t =
-  let disabled = model_source >|= Model.disabled in
   section "ContextMenu"
     [ list ~gap:2 ~cross:`stretch ~max_width:480
         [ list_item ~text:"Quarterly report.md"
@@ -700,7 +699,8 @@ let context_menu_section model_source send : t =
                 [ menu_item ~text:"Rename"
                     ~on_press:(press send (Model.PerformContextAction "Rename")) []
                 ; separator []
-                ; menu_item ~text:"Archive" ~disabled:(reactive disabled)
+                ; menu_item ~text:"Archive"
+                    ~disabled:(reactive Model.disabled model_source)
                     ~on_press:(press send (Model.PerformContextAction "Archive")) []
                 ]
             ]
@@ -712,7 +712,6 @@ let context_menu_section model_source send : t =
     ]
 
 let menu_item_section model_source send : t =
-  let disabled = model_source >|= Model.disabled in
   section "MenuItem"
     [ dropdown_menu ~min_width:200
         [ menu_item ~text:"Rename" ~icon:`edit
@@ -723,7 +722,8 @@ let menu_item_section model_source send : t =
             ; menu_item ~text:"Export"
                 ~on_press:(press send (Model.PerformContextAction "Archive")) []
             ]
-        ; menu_item ~text:"Archive" ~disabled:(reactive disabled)
+        ; menu_item ~text:"Archive"
+            ~disabled:(reactive Model.disabled model_source)
             ~on_press:(press send (Model.PerformContextAction "Archive")) []
         ; menu_item ~text:"Delete" ~variant:`destructive ~icon:`trash ~size:`sm
             ~on_press:(press send (Model.PerformContextAction "Delete")) []
@@ -785,11 +785,9 @@ let table_cell_section send : t =
 
 let tree_section model_source send : t =
   let open_ = model_source >|= Model.accordion_open in
-  let report = model_source >|= Model.report_selected in
-  let checklist = model_source >|= Model.checklist_selected in
   section "Tree"
     [ tree ~gap:2 ~label:"Project files" ~max_width:480
-        [ dyn
+        [ reactive
             ~equal:(fun (a : Model.t) (b : Model.t) ->
               a.Model.accordion_open = b.Model.accordion_open)
             (fun (m : Model.t) ->
@@ -802,11 +800,13 @@ let tree_section model_source send : t =
         ; if_ ~test:open_
             (column ~padding_horizontal:20
                [ list_item ~role:`treeitem ~tree_level:2 ~icon:`file_text
-                   ~text:"Quarterly report.md" ~selected:(reactive report)
+                   ~text:"Quarterly report.md"
+                   ~selected:(reactive Model.report_selected model_source)
                    ~on_press:(press send (Model.SelectDocument "Quarterly report.md"))
                    []
                ; list_item ~role:`treeitem ~tree_level:2
-                   ~text:"Launch checklist.md" ~selected:(reactive checklist)
+                   ~text:"Launch checklist.md"
+                   ~selected:(reactive Model.checklist_selected model_source)
                    ~on_press:(press send (Model.SelectDocument "Launch checklist.md"))
                    []
                ])
@@ -1074,14 +1074,11 @@ let select_section model_source send : t =
 let combobox_section model_source send : t =
   let query = model_source >|= Model.picker_query in
   let open_ = model_source >|= Model.combobox_open in
-  let production_visible = model_source >|= Model.production_visible in
-  let staging_visible = model_source >|= Model.staging_visible in
-  let disabled = model_source >|= Model.disabled in
   let dismiss = press send Model.ClosePicker in
   section "Combobox"
     [ stack
         [ combobox ~text:(reactive query) ~placeholder:"Search environments"
-            ~disabled:(reactive disabled)
+            ~disabled:(reactive Model.disabled model_source)
             ~on_input:(on_input send (fun v -> Model.SetPickerQuery v))
             ~on_submit:(press send Model.CommitPickerQuery)
             ~on_press:(press send (Model.OpenPicker "combobox"))
@@ -1089,12 +1086,13 @@ let combobox_section model_source send : t =
         ; if_ ~test:open_
             (dropdown_menu ~anchor:`below ~anchor_alignment:`stretch
                ~anchor_offset:6.0 ~min_width:200 ~on_dismiss:dismiss
-               [ if_ ~test:production_visible
+               [ if_ ~test:(reactive Model.production_visible model_source)
                    (menu_item ~text:"Production" ~icon:`check
-                      ~disabled:(reactive disabled)
+                      ~disabled:(reactive Model.disabled model_source)
                       ~on_press:(press send (Model.SelectEnvironment "Production")) [])
-               ; if_ ~test:staging_visible
-                   (menu_item ~text:"Staging" ~disabled:(reactive disabled)
+               ; if_ ~test:(reactive Model.staging_visible model_source)
+                   (menu_item ~text:"Staging"
+                      ~disabled:(reactive Model.disabled model_source)
                       ~on_press:(press send (Model.SelectEnvironment "Staging")) [])
                ])
         ]
@@ -1460,7 +1458,7 @@ let split_panes_section model_source send : t =
           natively with drag-to-reorder, edge-drop splits and keyboard
           navigation."
         []
-    ; dyn
+    ; reactive
         ~equal:(fun (a : Model.t) (b : Model.t) ->
           a.Model.split_panes == b.Model.split_panes)
         (fun (m : Model.t) ->
@@ -1617,9 +1615,11 @@ let combine_section model_source send : t =
     ; if_ ~test:sheet_open_
         (form_sheet ~title:"New page"
            ~content:
-             [ input ~placeholder:"Page title" ~text_signal:field_value_
+             [ input ~placeholder:"Page title"
+                 ~text_signal:(reactive Model.field_value model_source)
                  ~on_input:(on_input send (fun v -> Model.SetFieldValue v)) []
-             ; toggle_row ~label:"Add to favorites" ~checked_signal:checked_
+             ; toggle_row ~label:"Add to favorites"
+                 ~checked_signal:(reactive Model.checked model_source)
                  ~on_toggle:(on_toggle send (fun v -> Model.SetChecked v)) ()
              ]
            ~cancel:("Cancel", press send Model.CloseCombineSheet)

@@ -297,7 +297,7 @@ let dynamic mount : t =
     ignore (mount context anchor);
     anchor
 
-let dyn ~equal f (source : 'a Signal.signal) : t =
+let dyn ?(equal = ( = )) f (source : 'a Signal.signal) : t =
  fun context parent ->
   dynamic
     (fun context node ->
@@ -309,7 +309,8 @@ let if_ ~test (children : t) : t =
  fun context parent ->
   dynamic
     (fun context node ->
-       Lui_dynamic.conditional context node test (fun branch_context ->
+       Lui_dynamic.conditional context node test
+         (fun branch_context ->
            children branch_context None))
     context parent
 
