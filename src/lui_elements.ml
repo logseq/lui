@@ -284,19 +284,6 @@ let mount_children context node children =
 (* Element adapters for dynamic structure: these mount reactive content
    under their parent node and return the parent as their (unused) node. *)
 
-(* A derived signal (Signal.map/cutoff over another signal) keeps its
-   upstream subscription alive until the derived signal itself is
-   disposed — an unowned one leaks a subscriber that re-runs its
-   transform on every source publish forever. Every signal handed to
-   dyn/if_/keyed is therefore tied to the node's scope; signals with no
-   upstream links (plain state signals) are left alone so they survive
-   the unmount. *)
-let own context (source : 'a Signal.signal) =
-  if !(source.Signal.upstream_subscriptions) <> [] then
-    Signal.own_signal context.Lui_ui.ui_scope source
-  else
-    source
-
 let dynamic mount : t =
  fun context parent ->
   match parent with
@@ -314,7 +301,7 @@ let dyn ?(equal = ( = )) f (source : 'a Signal.signal) : t =
  fun context parent ->
   dynamic
     (fun context node ->
-       Lui_dynamic.switch context node (own context source) equal
+       Lui_dynamic.switch context node source equal
          (fun branch_context value -> f value branch_context None))
     context parent
 
@@ -322,7 +309,7 @@ let if_ ~test (children : t) : t =
  fun context parent ->
   dynamic
     (fun context node ->
-       Lui_dynamic.conditional context node (own context test)
+       Lui_dynamic.conditional context node test
          (fun branch_context ->
            children branch_context None))
     context parent
@@ -331,7 +318,7 @@ let keyed ~source ~key ~cmp ~mount : t =
  fun context parent ->
   dynamic
     (fun context node ->
-       Lui_dynamic.keyed context node (own context source) key cmp
+       Lui_dynamic.keyed context node source key cmp
          (fun item_context item_source ->
             mount item_source item_context None))
     context parent

@@ -488,22 +488,20 @@ let test_if_test_toggles () =
     (creates_text (all_ops ()));
   ignore (Lui_app.dispose app)
 
-(* dyn/if_/keyed own derived sources: a [Signal.map] handed to [dyn] is
-   tied to the branch scope — unmounting the branch disposes the derived's
-   upstream subscription, so later publishes do not re-run the transform
-   (an unowned derived would keep firing forever). *)
-let test_dyn_owns_derived_source () =
-  let calls = ref 0 in
+(* A derived signal shared across remounts keeps working: consumers do
+   not own the sources they are handed, so hiding and re-showing the
+   branch re-subscribes to a still-live signal. *)
+let test_dyn_shared_source_survives_remount () =
   let app =
     Lui_app.create (recording_backend ()) { outer = true; inner = "in" }
       (fun model action ->
         match action with
         | `Hide -> { model with outer = false }
+        | `Show -> { model with outer = true }
         | `Inner inner -> { model with inner })
       (fun _context model_source _send ->
         let derived =
-          Signal.map (fun (m : nested_dyn_model) -> incr calls; m)
-            model_source
+          Signal.map (fun (m : nested_dyn_model) -> m.inner) model_source
         in
         Lui_elements.column
           [
@@ -512,9 +510,8 @@ let test_dyn_owns_derived_source () =
                 (Signal.map (fun (m : nested_dyn_model) -> m.outer)
                    model_source)
               (Lui_elements.dyn
-                 ~equal:(fun a b -> a.inner = b.inner)
-                 (fun (m : nested_dyn_model) ->
-                   Lui_elements.text ~value:m.inner [])
+                 ~equal:(fun a b -> a = b)
+                 (fun inner -> Lui_elements.text ~value:inner [])
                  derived);
           ])
   in
@@ -522,11 +519,20 @@ let test_dyn_owns_derived_source () =
   flush_app app;
   ignore (Lui_app.send app `Hide);
   flush_app app;
-  let calls_after_hide = !calls in
   ignore (Lui_app.send app (`Inner "changed"));
+  batches := [];
+  ignore (Lui_app.send app `Show);
   flush_app app;
-  Alcotest.(check bool) "unmounted derived not re-run" true
-    (!calls = calls_after_hide);
+  Alcotest.(check bool) "remount recreates the text node" true
+    (creates_text (all_ops ()));
+  Alcotest.(check bool) "remount emits latest inner" true
+    (List.exists
+       (function
+        | Lui_protocol.SetProp
+            (_, Lui_protocol.TextValue, Lui_protocol.StringValue "changed") ->
+            true
+        | _ -> false)
+       (all_ops ()));
   ignore (Lui_app.dispose app)
 
 let creates_text_count ops =
@@ -2768,7 +2774,7 @@ let () =
           Alcotest.test_case "if_ test toggles" `Quick
             test_if_test_toggles;
           Alcotest.test_case "owns derived source" `Quick
-            test_dyn_owns_derived_source;
+            test_dyn_shared_source_survives_remount;
           Alcotest.test_case "keyed source diffs" `Quick
             test_keyed_source;
         ] );

@@ -158,6 +158,11 @@ let dyn_supported args =
            rest_args
   | _ -> false
 
+(* Labels whose only value is a signal — there is no static twin, so
+   `~test:(reactive f s)` stays `~test:(Signal.map f s)` instead of
+   becoming a nonexistent `~test_signal:` parameter. *)
+let signal_only_labels = [ "test"; "source" ]
+
 class mapper =
   object
     inherit Ast_traverse.map as super
@@ -182,25 +187,30 @@ class mapper =
                              Pexp_ident { txt = Lident "reactive"; _ };
                            _ },
                          (Nolabel, first) :: rest ) )
-                   when not (ends_with name "_signal")
-                        && List.for_all
-                             (fun ((l : arg_label), _) -> l = Nolabel)
-                             rest ->
+                   when List.for_all
+                          (fun ((l : arg_label), _) -> l = Nolabel)
+                          rest ->
+                     let target =
+                       if List.mem name signal_only_labels
+                          || ends_with name "_signal"
+                       then name
+                       else name ^ "_signal"
+                     in
                      (match rest with
                       | [ (Nolabel, source) ] ->
                           (* reactive f src *)
-                          ( Labelled (name ^ "_signal"),
+                          ( Labelled target,
                             apply ~loc:arg.pexp_loc
                               (signal_map arg.pexp_loc) [ first; source ] )
                       | [] ->
                           (* reactive src: the arg itself is the signal *)
-                          (Labelled (name ^ "_signal"), first)
+                          (Labelled target, first)
                       | _ ->
                           (* reactive f s1 s2 .. sn *)
                           let sources =
                             List.map snd rest
                           in
-                          ( Labelled (name ^ "_signal"),
+                          ( Labelled target,
                             expand ~loc:arg.pexp_loc first sources ))
                  | _ -> (label, arg))
               args
