@@ -333,7 +333,10 @@ val row :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 val column :
   ?key:string ->
   ?gap:int ->
@@ -369,7 +372,10 @@ val column :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?on_press_detail:(Lui_protocol.event -> unit) ->
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_pointer_up:(Lui_protocol.event -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 val grid :
   ?key:string ->
   ?gap:int ->
@@ -402,7 +408,10 @@ val grid :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 val stack :
   ?key:string ->
   ?gap:int ->
@@ -435,7 +444,10 @@ val stack :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 
 (** [edge_inset ~edge \[content; pinned; ...\]] pins every child after the
     first to [edge] while [content] fills the view and scrolls beneath
@@ -479,7 +491,10 @@ val edge_inset :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   edge:edge ->
   ?visible:bool ->
-  ?visible_signal:bool Signal.signal -> t list -> t
+  ?visible_signal:bool Signal.signal ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 
 (** [overlay \[base; overlay_child; ...\]] renders the children after the
     first floating over [base] without affecting its layout. Each overlay
@@ -518,7 +533,10 @@ val overlay :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?alignment:alignment -> t list -> t
+  ?alignment:alignment ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 
 (** [align a child] sets [child]'s [alignment] hint, honored when [child]
     is mounted as an [overlay] child — e.g.
@@ -560,7 +578,10 @@ val view_that_fits :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?orientation:orientation -> t list -> t
+  ?orientation:orientation ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 val panel :
   ?key:string ->
   ?gap:int ->
@@ -593,7 +614,10 @@ val panel :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 val card :
   ?key:string ->
   ?gap:int ->
@@ -626,7 +650,10 @@ val card :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 val alert :
   ?key:string ->
   ?gap:int ->
@@ -662,7 +689,10 @@ val alert :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
-  ?variant:variant -> ?text_alignment:text_alignment -> ?label:string -> t list -> t
+  ?variant:variant -> ?text_alignment:text_alignment -> ?label:string ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 val bubble :
   ?key:string ->
   ?gap:int ->
@@ -698,7 +728,10 @@ val bubble :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
-  ?variant:variant -> ?label:string -> t list -> t
+  ?variant:variant -> ?label:string ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 val box :
   ?key:string ->
   ?gap:int ->
@@ -731,7 +764,10 @@ val box :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 val scroll :
   ?key:string ->
   ?gap:int ->
@@ -765,7 +801,10 @@ val scroll :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?orientation:orientation -> t list -> t
+  ?orientation:orientation ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 val list :
   ?key:string ->
   ?gap:int ->
@@ -808,7 +847,10 @@ val list :
   ?scroll_animated:bool ->
   ?track_visible_range:bool ->
   ?on_scroll_completed:(Lui_protocol.event -> unit) ->
-  ?on_visible_range:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_visible_range:(Lui_protocol.event -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 val virtual_list :
   ?key:string ->
   ?gap:int ->
@@ -841,7 +883,10 @@ val virtual_list :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  t list -> t
 val tabs :
   ?key:string ->
   ?gap:int ->

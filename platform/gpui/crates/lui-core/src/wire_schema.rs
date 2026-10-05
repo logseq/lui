@@ -446,6 +446,7 @@ pub enum Property {
     LoadingValue,
     ReferrerPolicy,
     TargetValue,
+    Opacity,
 }
 
 impl Property {
@@ -556,6 +557,7 @@ impl Property {
             "loading" => Some(Property::LoadingValue),
             "referrer-policy" => Some(Property::ReferrerPolicy),
             "target" => Some(Property::TargetValue),
+            "opacity" => Some(Property::Opacity),
             _ => None,
         }
     }
@@ -667,6 +669,7 @@ impl Property {
             Property::LoadingValue => "loading",
             Property::ReferrerPolicy => "referrer-policy",
             Property::TargetValue => "target",
+            Property::Opacity => "opacity",
         }
     }
 }

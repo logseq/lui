@@ -7307,6 +7307,7 @@ private struct LUISurfaceModifier: ViewModifier {
         content
             .padding(.horizontal, CGFloat(horizontal))
             .padding(.vertical, CGFloat(vertical))
+            .opacity(model.property(.opacity)?.doubleValue ?? 1)
             .frame(
                 maxWidth: LUIIntrinsicSurfacePolicy.fillsWidth(
                     kind: model.kind,

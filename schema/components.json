@@ -1482,6 +1482,11 @@
       "lg": "TargetValue",
       "wire": "target",
       "swift": "target"
+    },
+    {
+      "lg": "Opacity",
+      "wire": "opacity",
+      "swift": "opacity"
     }
   ],
   "events": [

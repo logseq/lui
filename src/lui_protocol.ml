@@ -219,6 +219,7 @@ type property =
   | LoadingValue
   | ReferrerPolicy
   | TargetValue
+  | Opacity
 
 module Property_map =
   Map.Make
@@ -1011,6 +1012,7 @@ let common_property_supported kind property =
   | PathValue -> kind = FileImage || kind = FilePreview
   | UrlValue -> kind = Link || kind = Image
   | TargetValue -> kind = Link
+  | Opacity -> can_contain_children kind
   | AltValue | LoadingValue | ReferrerPolicy -> kind = Image
   | MaxPixelSize | ImageFitValue -> kind = FileImage
   | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector
@@ -1241,6 +1243,7 @@ let property_value_supported property value =
     || value = "strict-origin-when-cross-origin"
     || value = "unsafe-url"
   | TargetValue, StringValue value -> value = "_self" || value = "_blank"
+  | Opacity, FloatValue value -> is_finite value && value >= 0.0 && value <= 1.0
   | ImageFitValue, StringValue value -> value = "fit" || value = "fill"
   | MaxPixelSize, IntValue value -> value > 0
   | Visible, BoolValue _ -> true

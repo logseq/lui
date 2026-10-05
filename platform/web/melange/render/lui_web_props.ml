@@ -729,6 +729,8 @@ and apply_secondary_property renderer node kind dom_node property value =
         W.Element.setAttribute "href" url dom_node;
         W.Element.setAttribute "target" "_blank" dom_node
       end
+  | Opacity, FloatValue value ->
+      set_style dom_node "opacity" (Js.Float.toString value)
   | TargetValue, StringValue target ->
       if kind = Link then begin
         W.Element.setAttribute "target" target dom_node;
@@ -856,6 +858,7 @@ let remove_property renderer node kind dom_node property =
              W.Element.removeAttribute "href" dom_node;
              W.Element.removeAttribute "target" dom_node
            end
+       | Opacity -> set_style dom_node "opacity" ""
        | TargetValue ->
            if kind = Link then begin
              W.Element.removeAttribute "target" dom_node;
