@@ -36,6 +36,40 @@ extern "C" {
     pub fn lui_ocaml_toggle_changed(node: i64, checked: c_int) -> c_int;
     pub fn lui_ocaml_radio_changed(node: i64) -> c_int;
     pub fn lui_ocaml_slider_changed(node: i64, fraction: c_double) -> c_int;
+    pub fn lui_ocaml_press_detail(
+        node: i64,
+        x: c_double,
+        y: c_double,
+        modifiers: c_int,
+        button: c_int,
+        target_class: *const c_char,
+    ) -> c_int;
+    pub fn lui_ocaml_pointer_down(
+        node: i64,
+        x: c_double,
+        y: c_double,
+        modifiers: c_int,
+        button: c_int,
+        target_class: *const c_char,
+    ) -> c_int;
+    pub fn lui_ocaml_pointer_up(
+        node: i64,
+        x: c_double,
+        y: c_double,
+        modifiers: c_int,
+        button: c_int,
+        target_class: *const c_char,
+    ) -> c_int;
+    pub fn lui_ocaml_context_menu_press(
+        node: i64,
+        x: c_double,
+        y: c_double,
+        modifiers: c_int,
+        button: c_int,
+        target_class: *const c_char,
+    ) -> c_int;
+    pub fn lui_ocaml_pointer_enter(node: i64) -> c_int;
+    pub fn lui_ocaml_pointer_leave(node: i64) -> c_int;
     pub fn lui_ocaml_extension_event(
         node: i64,
         identifier: *const c_char,

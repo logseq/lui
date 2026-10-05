@@ -89,6 +89,26 @@ let radio_changed node = dispatch (Change node)
 
 let slider_changed node value = dispatch (ValueChanged (node, value))
 
+let pointer_detail x y modifiers button target_class =
+  {x; y; modifiers; button; target_class}
+
+let press_detail node x y modifiers button target_class =
+  dispatch (PressDetail (node, pointer_detail x y modifiers button target_class))
+
+let pointer_down node x y modifiers button target_class =
+  dispatch (PointerDown (node, pointer_detail x y modifiers button target_class))
+
+let pointer_up node x y modifiers button target_class =
+  dispatch (PointerUp (node, pointer_detail x y modifiers button target_class))
+
+let pointer_enter node = dispatch (PointerEnter node)
+
+let pointer_leave node = dispatch (PointerLeave node)
+
+let context_menu_press node x y modifiers button target_class =
+  dispatch
+    (ContextMenuPress (node, pointer_detail x y modifiers button target_class))
+
 let dispose () =
   latest_patch := "";
   ignore (Lui_app.dispose (app ()));
@@ -110,6 +130,12 @@ let register prefix =
   register (prefix ^ "_toggle_changed") toggle_changed;
   register (prefix ^ "_radio_changed") radio_changed;
   register (prefix ^ "_slider_changed") slider_changed;
+  register (prefix ^ "_press_detail") press_detail;
+  register (prefix ^ "_pointer_down") pointer_down;
+  register (prefix ^ "_pointer_up") pointer_up;
+  register (prefix ^ "_pointer_enter") pointer_enter;
+  register (prefix ^ "_pointer_leave") pointer_leave;
+  register (prefix ^ "_context_menu_press") context_menu_press;
   register (prefix ^ "_dispose") dispose;
   register (prefix ^ "_root_node") root_node
 

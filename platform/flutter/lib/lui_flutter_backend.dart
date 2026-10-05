@@ -41,6 +41,24 @@ sealed class LUIEvent {
     required String payload,
   }) = LUIPickedEvent;
   const factory LUIEvent.doublePress({required int node}) = LUIDoublePressEvent;
+  const factory LUIEvent.pressDetail({
+    required int node,
+    required LUIPointerDetail detail,
+  }) = LUIPressDetailEvent;
+  const factory LUIEvent.pointerDown({
+    required int node,
+    required LUIPointerDetail detail,
+  }) = LUIPointerDownEvent;
+  const factory LUIEvent.pointerUp({
+    required int node,
+    required LUIPointerDetail detail,
+  }) = LUIPointerUpEvent;
+  const factory LUIEvent.pointerEnter({required int node}) = LUIPointerEnterEvent;
+  const factory LUIEvent.pointerLeave({required int node}) = LUIPointerLeaveEvent;
+  const factory LUIEvent.contextMenuPress({
+    required int node,
+    required LUIPointerDetail detail,
+  }) = LUIContextMenuPressEvent;
   const factory LUIEvent.extension({
     required int node,
     required String identifier,
@@ -84,6 +102,124 @@ final class LUIAppearEvent extends LUIEvent {
 
   @override
   int get hashCode => node.hashCode;
+}
+
+/// Shared payload for the pointer-detail events. [x]/[y] are client-space
+/// coordinates; [modifiers] is the PressModifiers bitmask (1=ctrl, 2=shift,
+/// 4=meta, 8=secondary button); [button] is the browser-style index
+/// (0 primary, 1 middle, 2 secondary); [targetClass] carries the deepest hit
+/// element's class list on web and stays empty on this host.
+@immutable
+final class LUIPointerDetail {
+  const LUIPointerDetail({
+    required this.x,
+    required this.y,
+    required this.modifiers,
+    required this.button,
+    required this.targetClass,
+  });
+
+  final double x;
+  final double y;
+  final int modifiers;
+  final int button;
+  final String targetClass;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIPointerDetail &&
+      other.x == x &&
+      other.y == y &&
+      other.modifiers == modifiers &&
+      other.button == button &&
+      other.targetClass == targetClass;
+
+  @override
+  int get hashCode => Object.hash(x, y, modifiers, button, targetClass);
+}
+
+final class LUIPressDetailEvent extends LUIEvent {
+  const LUIPressDetailEvent({required this.node, required this.detail});
+  final int node;
+  final LUIPointerDetail detail;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIPressDetailEvent &&
+      other.node == node &&
+      other.detail == detail;
+
+  @override
+  int get hashCode => Object.hash(node, detail);
+}
+
+final class LUIPointerDownEvent extends LUIEvent {
+  const LUIPointerDownEvent({required this.node, required this.detail});
+  final int node;
+  final LUIPointerDetail detail;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIPointerDownEvent &&
+      other.node == node &&
+      other.detail == detail;
+
+  @override
+  int get hashCode => Object.hash(node, detail);
+}
+
+final class LUIPointerUpEvent extends LUIEvent {
+  const LUIPointerUpEvent({required this.node, required this.detail});
+  final int node;
+  final LUIPointerDetail detail;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIPointerUpEvent &&
+      other.node == node &&
+      other.detail == detail;
+
+  @override
+  int get hashCode => Object.hash(node, detail);
+}
+
+final class LUIPointerEnterEvent extends LUIEvent {
+  const LUIPointerEnterEvent({required this.node});
+  final int node;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIPointerEnterEvent && other.node == node;
+
+  @override
+  int get hashCode => node.hashCode;
+}
+
+final class LUIPointerLeaveEvent extends LUIEvent {
+  const LUIPointerLeaveEvent({required this.node});
+  final int node;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIPointerLeaveEvent && other.node == node;
+
+  @override
+  int get hashCode => node.hashCode;
+}
+
+final class LUIContextMenuPressEvent extends LUIEvent {
+  const LUIContextMenuPressEvent({required this.node, required this.detail});
+  final int node;
+  final LUIPointerDetail detail;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LUIContextMenuPressEvent &&
+      other.node == node &&
+      other.detail == detail;
+
+  @override
+  int get hashCode => Object.hash(node, detail);
 }
 
 final class LUIDoublePressEvent extends LUIEvent {
@@ -1300,6 +1436,23 @@ final class LUIFlutterBackend {
       );
     }
     onEvent?.call(LUIEvent.press(node: node));
+    // GestureDetector's onTap exposes no hit position, so the press detail
+    // reports zero coordinates/modifiers — a real tap with fields this host
+    // cannot supply yet.
+    if (state.properties['pointer-enabled'] == true) {
+      onEvent?.call(
+        LUIEvent.pressDetail(
+          node: node,
+          detail: const LUIPointerDetail(
+            x: 0,
+            y: 0,
+            modifiers: 0,
+            button: 0,
+            targetClass: '',
+          ),
+        ),
+      );
+    }
   }
 
   void performExtensionEvent(
@@ -3823,6 +3976,13 @@ final class LUIFlutterBackend {
               _themeModes.contains(value));
     }
     if (kind == _NodeKind.contextMenu) return false;
+    // The pointer-detail family is opt-in via `pointer-enabled`, honored on
+    // every kind that renders (all but root, contextMenu, swipeActions).
+    if (property == 'pointer-enabled') {
+      return value is bool &&
+          kind != _NodeKind.root &&
+          kind != _NodeKind.swipeActions;
+    }
     // Position hint honored on overlay children and the overlay itself;
     // admitted before the restrictive kinds below. Inert elsewhere.
     if (property == 'alignment') {

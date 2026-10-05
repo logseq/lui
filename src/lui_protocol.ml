@@ -211,6 +211,7 @@ type property =
   | ImageFitValue
   | Visible
   | AlignmentValue
+  | PointerEnabled
 
 module Property_map =
   Map.Make
@@ -225,6 +226,19 @@ type wire_value =
   | BoolValue of bool
   | IntValue of int
   | FloatValue of float
+
+(* Pointer-level event payload shared by PressDetail, PointerDown,
+   PointerUp and ContextMenuPress. [modifiers] uses the same bitmask as
+   PressModifiers (1=ctrl, 2=shift, 4=meta, 8=secondary button).
+   [target_class] carries the deepest hit element's class list on web;
+   hosts without a DOM emit an empty string. *)
+type pointer_detail = {
+  x : float;
+  y : float;
+  modifiers : int;
+  button : int;
+  target_class : string;
+}
 
 (* New variants must be appended at the end (before ExtensionEvent):
    JS hosts match events by constructor ordinal (the melange TAG), so
@@ -245,6 +259,12 @@ type event =
   | VisibleRange of int * int * int
   | Picked of int * string
   | PressModifiers of int * int
+  | PressDetail of int * pointer_detail
+  | PointerDown of int * pointer_detail
+  | PointerUp of int * pointer_detail
+  | PointerEnter of int
+  | PointerLeave of int
+  | ContextMenuPress of int * pointer_detail
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -289,6 +309,12 @@ let event_node event =
   | ScrollCompleted (node, _, _)
   | VisibleRange (node, _, _)
   | Picked (node, _)
+  | PressDetail (node, _)
+  | PointerDown (node, _)
+  | PointerUp (node, _)
+  | PointerEnter node
+  | PointerLeave node
+  | ContextMenuPress (node, _)
   | ExtensionEvent (node, _, _, _) -> node
 
 let modal_surface kind = kind = Dialog || kind = Drawer || kind = Sheet
@@ -420,6 +446,24 @@ let event_supported kind event =
   | Appear _ -> kind <> Root
   | ScrollCompleted _ | VisibleRange _ -> kind = ListContainer
   | Picked _ -> kind = FilePicker
+  | PressDetail _ | PointerDown _ | PointerUp _ ->
+    (match kind with
+    | Button
+    | Column
+    | Radio
+    | Select
+    | Combobox
+    | MenuItem
+    | ListItem
+    | Text
+    | TableCell
+    | TimelineItem
+    | FileImage
+    | BottomTab
+    | SwipeAction -> true
+    | _ -> false)
+  | PointerEnter _ | PointerLeave _ -> kind <> Root
+  | ContextMenuPress _ -> context_menu_host_kind kind
   | ExtensionEvent _ -> false
 
 let true_property properties property =
@@ -442,6 +486,9 @@ let event_supported_for_properties kind properties event =
     match event with
     | Press _ | PressModifiers _ ->
       true_property properties PressEnabled
+    | PressDetail _ | PointerDown _ | PointerUp _ | PointerEnter _
+    | PointerLeave _ | ContextMenuPress _ ->
+      true_property properties PointerEnabled
     | Change _ -> true_property properties ChangeEnabled
     | ToggleChanged _ -> true_property properties ToggleEnabled
     | _ -> event_supported kind event
@@ -796,6 +843,7 @@ let common_property_supported kind property =
   | SubmitEnabled -> kind = Combobox || kind = ListItem
   | DoublePressEnabled -> kind = ListItem
   | AppearEnabled -> kind <> Root
+  | PointerEnabled -> kind <> Root
   | ImageIdValue | SourceX | SourceY | SourceWidth | SourceHeight ->
     kind = Avatar || kind = Image
   | SurfaceIdValue -> kind = MediaSurface
@@ -920,46 +968,59 @@ let property_supported kind property =
     | ContextMenu -> false
     | Toast ->
       property = DurationValue || property = AccessibilityLabel
-      || property = StyleClass
+      || property = StyleClass || property = PointerEnabled
     | Toolbar ->
       property = OrientationValue || property = AccessibilityLabel
       || property = Gap || property = StyleClass || property = PlacementValue
+      || property = PointerEnabled
     | BottomTabs ->
       property = AccessibilityLabel || property = StyleClass
       || property = GrowValue || property = WidthValue || property = HeightValue
       || property = MinWidth || property = MaxWidth || property = MinHeight
-      || property = MaxHeight
+      || property = MaxHeight || property = PointerEnabled
     | BottomTab ->
       property = TitleValue || property = InlineIconName
       || property = Selected || property = Enabled || property = PressEnabled
+      || property = PointerEnabled
     | MenuTrigger ->
       property = TextValue || property = InlineIconName
       || property = AccessibilityLabel || property = Enabled
       || property = ForegroundValue || property = StyleClass
+      || property = PointerEnabled
     | FilePicker ->
       property = PickerRequest || property = PickerTypes
       || property = PickerMultiple || property = PickerSource
       || property = PickerCompletion || property = Enabled
-      || property = AppearEnabled
+      || property = AppearEnabled || property = PointerEnabled
     | Accordion ->
       property = TextValue || property = Selected
       || property = ToggleEnabled || property = HeightValue
-    | Stepper -> property = ActiveIndex || property = AccessibilityLabel
-    | Step -> property = TextValue
+      || property = PointerEnabled
+    | Stepper ->
+      property = ActiveIndex || property = AccessibilityLabel
+      || property = PointerEnabled
+    | Step -> property = TextValue || property = PointerEnabled
     | Timeline ->
       property = Gap || property = GrowValue || property = AccessibilityLabel
+      || property = PointerEnabled
     | TimelineItem ->
       property = TitleValue || property = DescriptionValue
       || property = MetaValue || property = IndicatorValue
       || property = InlineIconName || property = VariantValue
       || property = Connector || property = Selected || property = PressEnabled
+      || property = PointerEnabled
     | InputGroup ->
       property = AccessibilityLabel || property = WidthValue
       || property = HeightValue || property = MinWidth || property = GrowValue
-    | InputGroupActions -> property = Gap
-    | ListSection -> property = KeyValue || property = SeparatorValue
+      || property = PointerEnabled
+    | InputGroupActions -> property = Gap || property = PointerEnabled
+    | ListSection ->
+      property = KeyValue || property = SeparatorValue
+      || property = PointerEnabled
     | SwipeActions -> false
-    | Kbd -> property = TextValue || property = StyleClass
+    | Kbd ->
+      property = TextValue || property = StyleClass
+      || property = PointerEnabled
     | SwipeAction ->
       List.mem
         property
@@ -970,10 +1031,12 @@ let property_supported kind property =
         ; Enabled
         ; BackgroundValue
         ; PressEnabled
+        ; PointerEnabled
         ]
     | Dialog ->
       property = DescriptionValue || common_property_supported kind property
-    | FilePreview -> property = PathValue
+    | FilePreview ->
+      property = PathValue || property = PointerEnabled
     | _ -> common_property_supported kind property
 
 let is_finite value =
@@ -1029,6 +1092,7 @@ let property_value_supported property value =
   | SubmitEnabled, BoolValue _ -> true
   | DoublePressEnabled, BoolValue _ -> true
   | AppearEnabled, BoolValue _ -> true
+  | PointerEnabled, BoolValue _ -> true
   | ImageIdValue, IntValue value -> value >= 0
   | SurfaceIdValue, IntValue value -> value >= 0
   | ActiveIndex, IntValue value -> value >= 0

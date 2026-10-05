@@ -1165,6 +1165,161 @@ let test_dispatch_drops_value_echoes () =
   Alcotest.(check int) "press still delivered" 1 !presses;
   ignore (Lui_app.dispose app)
 
+let test_pointer_events () =
+  let open Lui_protocol in
+  let detail =
+    { x = 12.5; y = 34.5; modifiers = 11; button = 1; target_class = "a b" }
+  in
+  (* node extraction *)
+  Alcotest.(check int) "press-detail node" 7
+    (event_node (PressDetail (7, detail)));
+  Alcotest.(check int) "pointer-down node" 7
+    (event_node (PointerDown (7, detail)));
+  Alcotest.(check int) "pointer-up node" 7
+    (event_node (PointerUp (7, detail)));
+  Alcotest.(check int) "pointer-enter node" 7
+    (event_node (PointerEnter 7));
+  Alcotest.(check int) "pointer-leave node" 7
+    (event_node (PointerLeave 7));
+  Alcotest.(check int) "context-menu node" 7
+    (event_node (ContextMenuPress (7, detail)));
+  (* kind-level support: press-capable kinds take the detail events *)
+  List.iter
+    (fun kind ->
+       Alcotest.(check bool)
+         (Printf.sprintf "%s admits press detail"
+            (Lui_wire_schema.node_kind_name kind))
+         true (event_supported kind (PressDetail (0, detail))))
+    [ Button; Column; Radio; Select; Combobox; MenuItem; ListItem; Text;
+      TableCell; TimelineItem; FileImage; BottomTab; SwipeAction ];
+  Alcotest.(check bool) "input press-detail denied" false
+    (event_supported Input (PressDetail (0, detail)));
+  Alcotest.(check bool) "text pointer down/up" true
+    (event_supported Text (PointerDown (0, detail))
+     && event_supported Text (PointerUp (0, detail)));
+  (* pointer enter/leave render on every kind but Root *)
+  List.iter
+    (fun kind ->
+       Alcotest.(check bool)
+         (Printf.sprintf "%s admits pointer enter/leave"
+            (Lui_wire_schema.node_kind_name kind))
+         true
+         (event_supported kind (PointerEnter 0)
+          && event_supported kind (PointerLeave 0)))
+    [ Button; Column; Text; Input; Icon; TableCell ];
+  Alcotest.(check bool) "root pointer enter denied" false
+    (event_supported Root (PointerEnter 0));
+  (* context-menu press on the kinds that can host a ContextMenu child *)
+  List.iter
+    (fun kind ->
+       Alcotest.(check bool)
+         (Printf.sprintf "%s admits context menu press"
+            (Lui_wire_schema.node_kind_name kind))
+         true (event_supported kind (ContextMenuPress (0, detail))))
+    [ Button; ToggleButton; Toggle; Radio; Slider; NumberStepper; TextField;
+      SecureField; Input; SearchField; Textarea; Checkbox; SwitchControl;
+      Select; Combobox; MenuItem; ListItem; Accordion; Text; TableCell ];
+  Alcotest.(check bool) "column context menu denied" false
+    (event_supported Column (ContextMenuPress (0, detail)));
+  (* standard nodes admit the family by kind — pointer-enabled only tells
+     hosts to attach listeners (same role as press-enabled on Press) *)
+  let props entries = List.to_seq entries |> Property_map.of_seq in
+  let pointer_on = props [ (PointerEnabled, BoolValue true) ] in
+  List.iter
+    (fun event ->
+       Alcotest.(check bool) "button admits by kind" true
+         (event_supported_for_properties Button Property_map.empty event);
+       Alcotest.(check bool) "button admits with prop" true
+         (event_supported_for_properties Button pointer_on event))
+    [ PressDetail (0, detail); PointerDown (0, detail);
+      PointerUp (0, detail); PointerEnter 0; PointerLeave 0;
+      ContextMenuPress (0, detail) ];
+  Alcotest.(check bool) "input press-detail still denied" false
+    (event_supported_for_properties Input pointer_on
+       (PressDetail (0, detail)));
+  Alcotest.(check bool) "input enter admitted" true
+    (event_supported_for_properties Input pointer_on (PointerEnter 0));
+  (* treeitem rows instead gate the family on pointer-enabled, mirroring
+     how Press gates on press-enabled *)
+  let treeitem entries =
+    props ((RoleValue, StringValue "treeitem") :: entries)
+  in
+  Alcotest.(check bool) "treeitem detail gated" false
+    (event_supported_for_properties Column (treeitem [])
+       (PressDetail (0, detail)));
+  Alcotest.(check bool) "treeitem enter gated" false
+    (event_supported_for_properties Column (treeitem []) (PointerEnter 0));
+  Alcotest.(check bool) "treeitem menu gated" false
+    (event_supported_for_properties Column (treeitem [])
+       (ContextMenuPress (0, detail)));
+  Alcotest.(check bool) "treeitem detail with prop" true
+    (event_supported_for_properties Column
+       (treeitem [ (PointerEnabled, BoolValue true) ])
+       (PressDetail (0, detail)));
+  Alcotest.(check bool) "treeitem enter with prop" true
+    (event_supported_for_properties Column
+       (treeitem [ (PointerEnabled, BoolValue true) ])
+       (PointerEnter 0));
+  (* pointer-enabled is a common bool property (not on root) *)
+  Alcotest.(check bool) "pointer-enabled on column" true
+    (property_supported Column PointerEnabled);
+  Alcotest.(check bool) "pointer-enabled on accordion" true
+    (property_supported Accordion PointerEnabled);
+  Alcotest.(check bool) "pointer-enabled not on root" false
+    (property_supported Root PointerEnabled);
+  Alcotest.(check bool) "pointer-enabled bool value" true
+    (property_value_supported PointerEnabled (BoolValue true));
+  Alcotest.(check bool) "pointer-enabled rejects int" false
+    (property_value_supported PointerEnabled (IntValue 1))
+
+let test_pointer_dispatch () =
+  let details = ref 0 in
+  let enters = ref 0 in
+  let leaves = ref 0 in
+  let menus = ref 0 in
+  let button_node = ref 0 in
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      (fun _context _model_source _send ->
+         Lui_elements.column
+           [
+             capture_node button_node
+               (Lui_elements.button
+                  ~on_press_detail:(fun _event -> incr details)
+                  ~on_pointer_enter:(fun _event -> incr enters)
+                  ~on_pointer_leave:(fun _event -> incr leaves)
+                  ~on_context_menu:(fun _event -> incr menus) []);
+           ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let detail =
+    { Lui_protocol.x = 1.0; y = 2.0; modifiers = 0; button = 0;
+      target_class = "" }
+  in
+  ignore
+    (Lui_app.dispatch_event app
+       (Lui_protocol.PressDetail (!button_node, detail)));
+  ignore
+    (Lui_app.dispatch_event app (Lui_protocol.PointerEnter !button_node));
+  ignore
+    (Lui_app.dispatch_event app (Lui_protocol.PointerLeave !button_node));
+  ignore
+    (Lui_app.dispatch_event app
+       (Lui_protocol.ContextMenuPress (!button_node, detail)));
+  flush_app app;
+  Alcotest.(check (list int)) "pointer handlers fired" [ 1; 1; 1; 1 ]
+    [ !details; !enters; !leaves; !menus ];
+  (* kind-unsupported events are still rejected at dispatch *)
+  Alcotest.check_raises "unsupported event rejected"
+    (Invalid_argument "event is unsupported by node kind")
+    (fun () ->
+       ignore
+         (Lui_app.dispatch_event app
+            (Lui_protocol.ValueChanged (!button_node, 0.5))));
+  ignore (Lui_app.dispose app)
+
 let test_dispatch_drops_unset_default_echoes () =
   let inputs = ref 0 in
   let field_node = ref 0 in
@@ -2780,6 +2935,8 @@ let () =
         ] );
       ( "dispatch",
         [
+          Alcotest.test_case "pointer events" `Quick test_pointer_events;
+          Alcotest.test_case "pointer dispatch" `Quick test_pointer_dispatch;
           Alcotest.test_case "value echoes dropped" `Quick
             test_dispatch_drops_value_echoes;
           Alcotest.test_case "unset default echoes dropped" `Quick

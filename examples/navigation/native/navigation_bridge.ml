@@ -151,6 +151,22 @@ let () =
   Callback.register "lui_ocaml_init" initialize;
   Callback.register "lui_ocaml_press" (fun node -> dispatch (Press node));
   Callback.register "lui_ocaml_appear" (fun node -> dispatch (Appear node));
+  Callback.register "lui_ocaml_press_detail" (fun node x y modifiers button target_class ->
+      dispatch
+        (PressDetail (node, {x; y; modifiers; button; target_class})));
+  Callback.register "lui_ocaml_pointer_down" (fun node x y modifiers button target_class ->
+      dispatch
+        (PointerDown (node, {x; y; modifiers; button; target_class})));
+  Callback.register "lui_ocaml_pointer_up" (fun node x y modifiers button target_class ->
+      dispatch
+        (PointerUp (node, {x; y; modifiers; button; target_class})));
+  Callback.register "lui_ocaml_pointer_enter" (fun node ->
+      dispatch (PointerEnter node));
+  Callback.register "lui_ocaml_pointer_leave" (fun node ->
+      dispatch (PointerLeave node));
+  Callback.register "lui_ocaml_context_menu_press" (fun node x y modifiers button target_class ->
+      dispatch
+        (ContextMenuPress (node, {x; y; modifiers; button; target_class})));
   let extension_event node identifier name json =
     Printf.eprintf "NAV host event %s %s\n%!" name json;
     dispatch

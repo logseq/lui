@@ -1436,6 +1436,11 @@
       "lg": "AlignmentValue",
       "wire": "alignment",
       "swift": "alignment"
+    },
+    {
+      "lg": "PointerEnabled",
+      "wire": "pointer-enabled",
+      "swift": "pointerEnabled"
     }
   ],
   "events": [
@@ -1531,28 +1536,77 @@
         ":int",
         ":int"
       ]
+    },
+    {
+      "lg": "PressDetail",
+      "fields": [
+        ":int",
+        ":pointer_detail"
+      ]
+    },
+    {
+      "lg": "PointerDown",
+      "fields": [
+        ":int",
+        ":pointer_detail"
+      ]
+    },
+    {
+      "lg": "PointerUp",
+      "fields": [
+        ":int",
+        ":pointer_detail"
+      ]
+    },
+    {
+      "lg": "PointerEnter",
+      "fields": [
+        ":int"
+      ]
+    },
+    {
+      "lg": "PointerLeave",
+      "fields": [
+        ":int"
+      ]
+    },
+    {
+      "lg": "ContextMenuPress",
+      "fields": [
+        ":int",
+        ":pointer_detail"
+      ]
     }
   ],
   "kindProperties": {
     "accordion": [
+
       "text",
       "selected",
       "toggle-enabled",
-      "height"
+      "height",
+      "pointer-enabled"
     ],
     "stepper": [
+
       "active",
-      "accessibility-label"
+      "accessibility-label",
+      "pointer-enabled"
     ],
     "step": [
-      "text"
+
+      "text",
+      "pointer-enabled"
     ],
     "timeline": [
+
       "gap",
       "grow",
-      "accessibility-label"
+      "accessibility-label",
+      "pointer-enabled"
     ],
     "timeline-item": [
+
       "title",
       "description",
       "meta",
@@ -1561,31 +1615,41 @@
       "variant",
       "connector",
       "selected",
-      "press-enabled"
+      "press-enabled",
+      "pointer-enabled"
     ],
     "input-group": [
+
       "accessibility-label",
       "width",
       "height",
       "min-width",
-      "grow"
+      "grow",
+      "pointer-enabled"
     ],
     "input-group-actions": [
-      "gap"
+
+      "gap",
+      "pointer-enabled"
     ],
     "toast": [
+
       "duration",
       "accessibility-label",
-      "style-class"
+      "style-class",
+      "pointer-enabled"
     ],
     "toolbar": [
+
       "orientation",
       "accessibility-label",
       "gap",
       "style-class",
-      "placement"
+      "placement",
+      "pointer-enabled"
     ],
     "bottom-tabs": [
+
       "accessibility-label",
       "style-class",
       "grow",
@@ -1594,52 +1658,67 @@
       "min-width",
       "max-width",
       "min-height",
-      "max-height"
+      "max-height",
+      "pointer-enabled"
     ],
     "bottom-tab": [
+
       "title",
       "icon",
       "selected",
       "enabled",
-      "press-enabled"
+      "press-enabled",
+      "pointer-enabled"
     ],
     "menu-trigger": [
+
       "text",
       "icon",
       "accessibility-label",
       "enabled",
       "foreground",
-      "style-class"
+      "style-class",
+      "pointer-enabled"
     ],
     "list-section": [
+
       "key",
-      "separator"
+      "separator",
+      "pointer-enabled"
     ],
     "swipe-actions": [],
     "swipe-action": [
+
       "text",
       "icon",
       "variant",
       "edge",
       "enabled",
       "background",
-      "press-enabled"
+      "press-enabled",
+      "pointer-enabled"
     ],
     "file-picker": [
+
       "request",
       "types",
       "multiple",
       "source",
       "completion",
       "enabled",
-      "appear-enabled"
+      "appear-enabled",
+      "pointer-enabled"
     ],
     "file-preview": [
-      "path"
+
+      "path",
+      "pointer-enabled"
     ],
     "kbd": [
+
       "text",
-      "style-class"
+      "style-class",
+      "pointer-enabled"
     ]
   },
   "kindExtraProperties": {

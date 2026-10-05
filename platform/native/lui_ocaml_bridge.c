@@ -123,6 +123,79 @@ LUI_EXPORT int32_t lui_ocaml_press_ex(int64_t node, int32_t modifiers) {
   return accepted;
 }
 
+/* Pointer-detail events carry the client coordinates, the modifier
+   bitmask (same encoding as lui_ocaml_press_ex), the mouse button index,
+   and the deepest hit element's class list (empty when the host has no
+   DOM). The OCaml callback receives (node, x, y, modifiers, button,
+   target_class). */
+static int32_t pointer_detail_locked(
+    const char *name,
+    int64_t node,
+    double x,
+    double y,
+    int32_t modifiers,
+    int32_t button,
+    const char *target_class) {
+  const value *dispatch = caml_named_value(name);
+  if (dispatch == NULL) {
+    return 0;
+  }
+  value argv[6];
+  argv[0] = Val_long(node);
+  argv[1] = caml_copy_double(x);
+  argv[2] = caml_copy_double(y);
+  argv[3] = Val_long(modifiers);
+  argv[4] = Val_long(button);
+  argv[5] = caml_copy_string(target_class != NULL ? target_class : "");
+  return emit_patch(caml_callbackN_exn(*dispatch, 6, argv));
+}
+
+#define LUI_POINTER_DETAIL_EXPORT(c_name, callback_name)                  \
+  LUI_EXPORT int32_t c_name(                                             \
+      int64_t node,                                                      \
+      double x,                                                          \
+      double y,                                                          \
+      int32_t modifiers,                                                 \
+      int32_t button,                                                    \
+      const char *target_class) {                                        \
+    int32_t accepted;                                                    \
+    caml_leave_blocking_section();                                       \
+    accepted = pointer_detail_locked(                                    \
+        callback_name, node, x, y, modifiers, button, target_class);     \
+    caml_enter_blocking_section();                                       \
+    return accepted;                                                     \
+  }
+
+LUI_POINTER_DETAIL_EXPORT(lui_ocaml_press_detail, "lui_ocaml_press_detail")
+LUI_POINTER_DETAIL_EXPORT(lui_ocaml_pointer_down, "lui_ocaml_pointer_down")
+LUI_POINTER_DETAIL_EXPORT(lui_ocaml_pointer_up, "lui_ocaml_pointer_up")
+LUI_POINTER_DETAIL_EXPORT(
+    lui_ocaml_context_menu_press, "lui_ocaml_context_menu_press")
+
+LUI_EXPORT int32_t lui_ocaml_pointer_enter(int64_t node) {
+  const value *dispatch = caml_named_value("lui_ocaml_pointer_enter");
+  int32_t accepted = 0;
+  if (dispatch == NULL) {
+    return 0;
+  }
+  caml_leave_blocking_section();
+  accepted = emit_patch(caml_callback_exn(*dispatch, Val_long(node)));
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+LUI_EXPORT int32_t lui_ocaml_pointer_leave(int64_t node) {
+  const value *dispatch = caml_named_value("lui_ocaml_pointer_leave");
+  int32_t accepted = 0;
+  if (dispatch == NULL) {
+    return 0;
+  }
+  caml_leave_blocking_section();
+  accepted = emit_patch(caml_callback_exn(*dispatch, Val_long(node)));
+  caml_enter_blocking_section();
+  return accepted;
+}
+
 LUI_EXPORT int32_t lui_ocaml_long_press(int64_t node) {
   const value *dispatch = caml_named_value("lui_ocaml_long_press");
   int32_t accepted = 0;

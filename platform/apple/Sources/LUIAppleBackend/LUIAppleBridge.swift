@@ -99,6 +99,26 @@ private final class LUIAppleBridge {
                 json.withCString { callback(12, Int32(node), $0) }
             case let .picked(node, payload):
                 payload.withCString { callback(13, Int32(node), $0) }
+            case let .pressDetail(node, x, y, modifiers, button, targetClass):
+                Self.pointerDetailPayload(x: x, y: y, modifiers: modifiers,
+                                          button: button, targetClass: targetClass)
+                    .withCString { callback(14, Int32(node), $0) }
+            case let .pointerDown(node, x, y, modifiers, button, targetClass):
+                Self.pointerDetailPayload(x: x, y: y, modifiers: modifiers,
+                                          button: button, targetClass: targetClass)
+                    .withCString { callback(15, Int32(node), $0) }
+            case let .pointerUp(node, x, y, modifiers, button, targetClass):
+                Self.pointerDetailPayload(x: x, y: y, modifiers: modifiers,
+                                          button: button, targetClass: targetClass)
+                    .withCString { callback(16, Int32(node), $0) }
+            case let .pointerEnter(node):
+                "".withCString { callback(17, Int32(node), $0) }
+            case let .pointerLeave(node):
+                "".withCString { callback(18, Int32(node), $0) }
+            case let .contextMenuPress(node, x, y, modifiers, button, targetClass):
+                Self.pointerDetailPayload(x: x, y: y, modifiers: modifiers,
+                                          button: button, targetClass: targetClass)
+                    .withCString { callback(19, Int32(node), $0) }
             case let .extension(node, identifier, name, values):
                 let payload: [String: Any] = [
                     "identifier": identifier,
@@ -110,6 +130,21 @@ private final class LUIAppleBridge {
                 json.withCString { callback(9, Int32(node), $0) }
             }
         }
+    }
+
+    private static func pointerDetailPayload(
+        x: Double, y: Double, modifiers: Int, button: Int, targetClass: String
+    ) -> String {
+        let payload: [String: Any] = [
+            "x": x,
+            "y": y,
+            "modifiers": modifiers,
+            "button": button,
+            "targetClass": targetClass,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return "" }
+        return json
     }
 
     private func refreshWindow() {

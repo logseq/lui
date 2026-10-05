@@ -263,6 +263,16 @@ let ev name (emit : event_sink) props =
            | P.ToggleChanged (_, checked) -> [ ("checked", Bool checked) ]
            | P.TextChanged (_, text) -> [ ("text", Str text) ]
            | P.ValueChanged (_, v) -> [ ("value", Num v) ]
+           | P.PressDetail (_, d)
+           | P.PointerDown (_, d)
+           | P.PointerUp (_, d)
+           | P.ContextMenuPress (_, d) ->
+             [ ("x", Num d.P.x)
+             ; ("y", Num d.P.y)
+             ; ("modifiers", Num (float_of_int d.P.modifiers))
+             ; ("button", Num (float_of_int d.P.button))
+             ; ("targetClass", Str d.P.target_class)
+             ]
            | _ -> []
          in
          emit ~id ~kind:name ~fields)

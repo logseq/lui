@@ -628,6 +628,8 @@ and apply_secondary_property renderer node kind dom_node property value =
       Util.set_state_attribute dom_node "data-toggle-enabled" enabled
   | PressEnabled, BoolValue enabled ->
       apply_press_enabled kind dom_node enabled
+  | PointerEnabled, BoolValue enabled ->
+      Util.set_state_attribute dom_node "data-pointer-enabled" enabled
   | RoleValue, StringValue role ->
       W.Element.setAttribute "role" role dom_node;
       W.Element.removeAttribute "aria-pressed" dom_node;

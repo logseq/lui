@@ -750,6 +750,19 @@ let enabled_node renderer node =
   | _ -> true
 let event_capability renderer node prop = true_property renderer node prop
 
+(* Mirrors the runtime's dispatch admission check so listeners only emit
+   events the runtime would accept for this node — including the
+   property-gated pointer events. *)
+let event_admitted renderer node_id event =
+  match node renderer.web_store node_id with
+  | Some current ->
+    (match standard_kind current with
+     | Some kind ->
+         Lui_protocol.event_supported_for_properties kind
+           current.retained_properties event
+     | None -> false)
+  | None -> false
+
 let submit_on_enter renderer node = true_property renderer node SubmitOnEnter
 let submit_enabled renderer node = true_property renderer node SubmitEnabled
 
