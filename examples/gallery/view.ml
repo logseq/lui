@@ -107,9 +107,7 @@ let toggle_button_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "ToggleButton"
     [ row ~gap:12
-        [ dyn
-            ~equal:(fun (a : Model.t) (b : Model.t) ->
-              a.Model.checked = b.Model.checked)
+        [ reactive
             (fun (m : Model.t) ->
               toggle_button ~variant:`outline ~size:`sm ~icon:`edit
                 ~text:"Controlled" ~selected:m.Model.checked
@@ -117,6 +115,8 @@ let toggle_button_section model_source send : t =
                 ~on_toggle:(on_toggle send (fun v -> Model.SetChecked v))
                 ~on_long_press:(press send Model.ToggleDisabled) [])
             model_source
+            ~equal:(fun (a : Model.t) (b : Model.t) ->
+              a.Model.checked = b.Model.checked)
         ; toggle_button ~variant:`ghost ~text:"Backend-owned"
             ~disabled:(reactive disabled) ~on_toggle:noop []
         ; toggle_button ~size:`icon ~icon:`check
@@ -134,14 +134,14 @@ let button_group_section model_source send : t =
     [ button_group ~label:"Document actions"
         [ button ~icon:`save ~text:"Save" ~disabled:(reactive disabled)
             ~on_press:(press send Model.ToggleDisabled) []
-        ; dyn
-            ~equal:(fun (a : Model.t) (b : Model.t) ->
-              a.Model.checked = b.Model.checked)
+        ; reactive
             (fun (m : Model.t) ->
               toggle_button ~icon:`check ~text:"Pin"
                 ~selected:m.Model.checked ~disabled:(reactive disabled)
                 ~on_toggle:(on_toggle send (fun v -> Model.SetChecked v)) [])
             model_source
+            ~equal:(fun (a : Model.t) (b : Model.t) ->
+              a.Model.checked = b.Model.checked)
         ]
     ]
 
@@ -191,24 +191,24 @@ let toggle_group_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "ToggleGroup"
     [ toggle_group ~label:"View options"
-        [ dyn
-            ~equal:(fun (a : Model.t) (b : Model.t) ->
-              a.Model.checked = b.Model.checked)
+        [ reactive
             (fun (m : Model.t) ->
               toggle_button ~text:"Controlled" ~selected:m.Model.checked
                 ~disabled:(reactive disabled)
                 ~on_toggle:(on_toggle send (fun v -> Model.SetChecked v)) [])
             model_source
-        ; toggle_button ~text:"Multi-select" ~disabled:(reactive disabled)
-            ~on_toggle:noop []
-        ; dyn
             ~equal:(fun (a : Model.t) (b : Model.t) ->
               a.Model.checked = b.Model.checked)
+        ; toggle_button ~text:"Multi-select" ~disabled:(reactive disabled)
+            ~on_toggle:noop []
+        ; reactive
             (fun (m : Model.t) ->
               button ~variant:`outline ~text:"Action chip"
                 ~selected:m.Model.checked ~disabled:(reactive disabled)
                 ~on_press:(press send Model.ToggleDisabled) [])
             model_source
+            ~equal:(fun (a : Model.t) (b : Model.t) ->
+              a.Model.checked = b.Model.checked)
         ]
     ; paragraph
         ~value:"Groups own native layout and focus navigation; each child owns its event and selection state."
@@ -231,14 +231,14 @@ let breadcrumb_section send : t =
 let pagination_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   let tab_button ~text tab =
-    dyn
-      ~equal:(fun (a : Model.t) (b : Model.t) ->
-        a.Model.tab = b.Model.tab && a.Model.disabled = b.Model.disabled)
+    reactive
       (fun (m : Model.t) ->
         button ~variant:`outline ~text ~selected:(m.Model.tab = tab)
           ~disabled:m.Model.disabled
           ~on_press:(press send (Model.SelectTab tab)) [])
       model_source
+      ~equal:(fun (a : Model.t) (b : Model.t) ->
+        a.Model.tab = b.Model.tab && a.Model.disabled = b.Model.disabled)
   in
   section "Pagination"
     [ pagination ~label:"Gallery pages"
@@ -789,9 +789,7 @@ let tree_section model_source send : t =
   let checklist = model_source >|= Model.checklist_selected in
   section "Tree"
     [ tree ~gap:2 ~label:"Project files" ~max_width:480
-        [ dyn
-            ~equal:(fun (a : Model.t) (b : Model.t) ->
-              a.Model.accordion_open = b.Model.accordion_open)
+        [ reactive
             (fun (m : Model.t) ->
               list_item ~role:`treeitem ~tree_level:1 ~icon:`folder_open
                 ~text:"Documents" ~expanded:m.Model.accordion_open
@@ -799,6 +797,8 @@ let tree_section model_source send : t =
                 ~on_press:(press send (Model.SelectDocument "Quarterly report.md"))
                 [])
             model_source
+            ~equal:(fun (a : Model.t) (b : Model.t) ->
+              a.Model.accordion_open = b.Model.accordion_open)
         ; if_ ~test_signal:open_
             (column ~padding_horizontal:20
                [ list_item ~role:`treeitem ~tree_level:2 ~icon:`file_text
@@ -1460,15 +1460,15 @@ let split_panes_section model_source send : t =
           natively with drag-to-reorder, edge-drop splits and keyboard
           navigation."
         []
-    ; dyn
-        ~equal:(fun (a : Model.t) (b : Model.t) ->
-          a.Model.split_panes == b.Model.split_panes)
+    ; reactive
         (fun (m : Model.t) ->
           Lui_split.Model.render
             ~build:(fun tab -> [ pane_body tab ])
             ~dispatch:(fun action -> ignore (send (Model.SplitPanes action)))
             m.Model.split_panes)
         model_source
+        ~equal:(fun (a : Model.t) (b : Model.t) ->
+          a.Model.split_panes == b.Model.split_panes)
     ]
 
 let tweak_paragraph : t =
