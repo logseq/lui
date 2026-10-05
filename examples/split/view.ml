@@ -21,12 +21,12 @@ let view _context model_source send : t =
   column ~gap:0
     [
       reactive
+        ~equal:(fun (a : Model.t) (b : Model.t) ->
+          a.Model.panes == b.Model.panes)
         (fun (model : Model.t) ->
           Lui_split.Model.render
             ~build:(fun tab -> tab_page tab)
             ~dispatch:(fun action -> ignore (send (Model.Split action)))
             model.Model.panes)
-        model_source
-        ~equal:(fun (a : Model.t) (b : Model.t) ->
-          a.Model.panes == b.Model.panes);
+        model_source;
     ]

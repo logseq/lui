@@ -455,9 +455,9 @@ let test_dyn_default_equal () =
     (creates_text (all_ops ()));
   ignore (Lui_app.dispose app)
 
-(* [if_ ~test_signal] mounts the child while the signal publishes [true]
+(* [if_ ~test] mounts the child while the signal publishes [true]
    and drops it on [false]. *)
-let test_if_test_signal_toggles () =
+let test_if_test_toggles () =
   let app =
     Lui_app.create (recording_backend ()) { outer = true; inner = "in" }
       (fun model action ->
@@ -468,7 +468,7 @@ let test_if_test_signal_toggles () =
         Lui_elements.column
           [
             Lui_elements.if_
-              ~test_signal:
+              ~test:
                 (Signal.map (fun (m : nested_dyn_model) -> m.outer)
                    model_source)
               (Lui_elements.text ~value:"child" []);
@@ -508,7 +508,7 @@ let test_dyn_owns_derived_source () =
         Lui_elements.column
           [
             Lui_elements.if_
-              ~test_signal:
+              ~test:
                 (Signal.map (fun (m : nested_dyn_model) -> m.outer)
                    model_source)
               (Lui_elements.dyn
@@ -537,16 +537,16 @@ let creates_text_count ops =
         | _ -> false)
        ops)
 
-(* [keyed ~source_signal] mounts one child per item and diffs republished
+(* [keyed ~source] mounts one child per item and diffs republished
    membership by key. *)
-let test_keyed_source_signal () =
+let test_keyed_source () =
   let app =
     Lui_app.create (recording_backend ()) [ "a"; "b" ]
       (fun model action -> match action with `Add item -> model @ [ item ])
       (fun _context model_source _send ->
         Lui_elements.column
           [
-            Lui_elements.keyed ~source_signal:model_source
+            Lui_elements.keyed ~source:model_source
               ~key:(fun (s : string) -> s) ~cmp:String.compare
               ~mount:(fun item_source ->
                 Lui_elements.text ~value_signal:item_source []);
@@ -813,7 +813,7 @@ let creates_button ops =
 let keyed_radio_group_view _context model_source _send =
   Lui_elements.radio_group ~label:"Language"
     [
-      Lui_elements.keyed_radio ~source_signal:model_source
+      Lui_elements.keyed_radio ~source:model_source
         ~key:(fun (choice : string) -> choice)
         ~cmp:String.compare
         ~mount:(fun choice_source ->
@@ -2765,12 +2765,12 @@ let () =
             test_keyed_radio_mounts_under_group;
           Alcotest.test_case "default (=) equal" `Quick
             test_dyn_default_equal;
-          Alcotest.test_case "if_ test_signal toggles" `Quick
-            test_if_test_signal_toggles;
+          Alcotest.test_case "if_ test toggles" `Quick
+            test_if_test_toggles;
           Alcotest.test_case "owns derived source" `Quick
             test_dyn_owns_derived_source;
-          Alcotest.test_case "keyed source_signal diffs" `Quick
-            test_keyed_source_signal;
+          Alcotest.test_case "keyed source diffs" `Quick
+            test_keyed_source;
         ] );
       ( "dispatch",
         [

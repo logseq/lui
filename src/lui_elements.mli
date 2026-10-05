@@ -119,16 +119,16 @@ val dynamic : (Lui_ui.ui_context -> int -> 'a) -> t
 val dyn :
   ?equal:('a -> 'a -> bool) -> ('a -> t) -> 'a Signal.signal -> t
 
-(** [if_ ~test_signal child] mounts [child] under the parent while
-    [test_signal] publishes [true] and removes it on [false]. *)
-val if_ : test_signal:bool Signal.signal -> t -> t
+(** [if_ ~test child] mounts [child] under the parent while
+    [test] publishes [true] and removes it on [false]. *)
+val if_ : test:bool Signal.signal -> t -> t
 
-(** [keyed ~source_signal ~key ~cmp ~mount] renders one mounted child
-    per item of [source_signal], keyed by [key item] and diffed with
+(** [keyed ~source ~key ~cmp ~mount] renders one mounted child
+    per item of [source], keyed by [key item] and diffed with
     [cmp] — a three-way comparator returning [int] like {!Stdlib.compare}
     ([~cmp:Stdlib.compare] for most cases), not a less-than predicate. *)
 val keyed :
-  source_signal:'a list Signal.signal ->
+  source:'a list Signal.signal ->
   key:('a -> 'b) ->
   cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> t) -> t
@@ -139,37 +139,37 @@ val keyed :
     child slot — e.g. [radio_group [keyed_radio ~mount:(fun s -> radio ...)]] —
     while [~mount] is still checked to produce that element kind. *)
 val keyed_step :
-  source_signal:'a list Signal.signal ->
+  source:'a list Signal.signal ->
   key:('a -> 'b) ->
   cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> step_el) -> step_el
 val keyed_timeline_item :
-  source_signal:'a list Signal.signal ->
+  source:'a list Signal.signal ->
   key:('a -> 'b) ->
   cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> timeline_item_el) -> timeline_item_el
 val keyed_bottom_tab :
-  source_signal:'a list Signal.signal ->
+  source:'a list Signal.signal ->
   key:('a -> 'b) ->
   cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> bottom_tab_el) -> bottom_tab_el
 val keyed_table_row :
-  source_signal:'a list Signal.signal ->
+  source:'a list Signal.signal ->
   key:('a -> 'b) ->
   cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> table_row_el) -> table_row_el
 val keyed_table_cell :
-  source_signal:'a list Signal.signal ->
+  source:'a list Signal.signal ->
   key:('a -> 'b) ->
   cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> table_cell_el) -> table_cell_el
 val keyed_radio :
-  source_signal:'a list Signal.signal ->
+  source:'a list Signal.signal ->
   key:('a -> 'b) ->
   cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> radio_el) -> radio_el
 val keyed_swipe_action :
-  source_signal:'a list Signal.signal ->
+  source:'a list Signal.signal ->
   key:('a -> 'b) ->
   cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> swipe_action_el) -> swipe_action_el

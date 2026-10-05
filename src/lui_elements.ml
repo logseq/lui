@@ -318,20 +318,20 @@ let dyn ?(equal = ( = )) f (source : 'a Signal.signal) : t =
          (fun branch_context value -> f value branch_context None))
     context parent
 
-let if_ ~test_signal (children : t) : t =
+let if_ ~test (children : t) : t =
  fun context parent ->
   dynamic
     (fun context node ->
-       Lui_dynamic.conditional context node (own context test_signal)
+       Lui_dynamic.conditional context node (own context test)
          (fun branch_context ->
            children branch_context None))
     context parent
 
-let keyed ~source_signal ~key ~cmp ~mount : t =
+let keyed ~source ~key ~cmp ~mount : t =
  fun context parent ->
   dynamic
     (fun context node ->
-       Lui_dynamic.keyed context node (own context source_signal) key cmp
+       Lui_dynamic.keyed context node (own context source) key cmp
          (fun item_context item_source ->
             mount item_source item_context None))
     context parent

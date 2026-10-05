@@ -196,7 +196,7 @@ let composer
        in
        [ (match attachments_visible_signal with
           | None -> strip
-          | Some test_signal -> if_ ~test_signal strip)
+          | Some test -> if_ ~test strip)
        ]
    in
    let field =
@@ -660,7 +660,7 @@ let suggestion_list
         ~background:"surface"
         ~corner_radius:12
         [ keyed
-            ~source_signal:source
+            ~source:source
             ~key:item_key
             ~cmp:String.compare
             ~mount:(fun item_signal ->
@@ -789,7 +789,7 @@ let menu_button
     ?key
     ?accessibility_identifier
     [ trigger
-    ; if_ ~test_signal:open_
+    ; if_ ~test:open_
         (dropdown_menu ~anchor ~anchor_alignment:`start ?on_dismiss menu)
     ]
 ;;
