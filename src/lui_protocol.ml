@@ -1026,7 +1026,7 @@ let common_property_supported kind property =
   | MaxPixelSize | ImageFitValue -> kind = FileImage
   | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector
   | PickerRequest | PickerTypes | PickerMultiple | PickerSource
-  | PickerCompletion -> false
+  | PickerCompletion | PickerAccept | PickerDirectory -> false
   | TitleValue -> kind = BottomTab
   | Gap ->
     kind = Row
