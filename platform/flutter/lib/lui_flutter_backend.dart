@@ -3345,6 +3345,8 @@ final class LUIFlutterBackend {
       // Non-visual node: file preview is presented by platform code
       // (QuickLook on Apple); Flutter keeps platform-effect previews.
       _NodeKind.filePreview => const SizedBox.shrink(),
+      // Line-break leaf: no native representation; renders nothing.
+      _NodeKind.br => const SizedBox.shrink(),
     };
 
     if (state.kind == _NodeKind.root || state.kind.isModalSurface) {

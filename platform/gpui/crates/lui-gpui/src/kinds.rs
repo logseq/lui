@@ -2282,5 +2282,7 @@ pub fn render_node(
         NodeKind::Image | NodeKind::MediaSurface | NodeKind::FilePreview => {
             extension::placeholder_box(view, node, kind.wire_name(), cx)
         }
+        // Line-break leaf: no native representation; renders nothing.
+        NodeKind::Br => div().id(element_id(node.id)).size_0().into_any_element(),
     }
 }

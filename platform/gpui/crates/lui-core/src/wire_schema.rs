@@ -88,6 +88,7 @@ pub enum NodeKind {
     Link,
     FileImage,
     FilePreview,
+    Br,
 }
 
 impl NodeKind {
@@ -179,6 +180,7 @@ impl NodeKind {
             "link" => Some(NodeKind::Link),
             "file-image" => Some(NodeKind::FileImage),
             "file-preview" => Some(NodeKind::FilePreview),
+            "br" => Some(NodeKind::Br),
             _ => None,
         }
     }
@@ -271,6 +273,7 @@ impl NodeKind {
             NodeKind::Link => "link",
             NodeKind::FileImage => "file-image",
             NodeKind::FilePreview => "file-preview",
+            NodeKind::Br => "br",
         }
     }
 

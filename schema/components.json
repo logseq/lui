@@ -340,6 +340,10 @@
     {
       "name": "file-preview",
       "status": "supported"
+    },
+    {
+      "name": "br",
+      "status": "supported"
     }
   ],
   "nodeKinds": [
@@ -943,6 +947,13 @@
       "wire": "file-preview",
       "dart": "filePreview",
       "swift": "filePreview",
+      "container": false
+    },
+    {
+      "lg": "Br",
+      "wire": "br",
+      "dart": "br",
+      "swift": "br",
       "container": false
     }
   ],
