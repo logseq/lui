@@ -421,6 +421,54 @@ let dom_node renderer node =
   | Some current -> current.platform_node
   | None -> invalid_arg "unknown DOM node"
 
+(* The `as` prop: swap a node's DOM element for one created with the
+   override [tag], carrying attributes, children, and the data-attrs
+   bookkeeping expando across. Event listeners do not survive the swap —
+   callers re-attach them. Returns [Some element] only when the tag
+   actually changed. *)
+external data_attrs_managed_get :
+  W.Element.t -> string Js.Undefined.t = "__luiDataAttrs"
+[@@mel.get]
+
+external data_attrs_managed_set : W.Element.t -> string -> unit =
+  "__luiDataAttrs"
+[@@mel.set]
+
+let retag renderer node_id tag =
+  match Store.node renderer.web_store node_id with
+  | Some current ->
+      let old = current.platform_node in
+      if String.lowercase_ascii (W.Element.tagName old) = tag then None
+      else begin
+        let next = W.Document.createElement tag renderer.web_document in
+        Array.iter
+          (fun attribute ->
+             W.Element.setAttribute (W.Attr.name attribute)
+               (W.Attr.value attribute) next)
+          (W.NamedNodeMap.toArray (W.Element.attributes old));
+        let rec move_children () =
+          match W.Element.firstChild old with
+          | Some child ->
+              W.Element.appendChild child next;
+              move_children ()
+          | None -> ()
+        in
+        move_children ();
+        (match Js.Undefined.toOption (data_attrs_managed_get old) with
+         | Some names -> data_attrs_managed_set next names
+         | None -> ());
+        (match W.Element.parentElement old with
+         | Some parent ->
+             ignore
+               (W.Element.replaceChild (W.Element.asNode next)
+                  (W.Element.asNode old) parent)
+         | None -> ());
+        Store.replace (Store.nodes renderer.web_store) node_id
+          { current with platform_node = next };
+        Some next
+      end
+  | None -> None
+
 let dom_node_before renderer previous_nodes node =
   match Store.node renderer.web_store node with
   | Some current -> current.platform_node

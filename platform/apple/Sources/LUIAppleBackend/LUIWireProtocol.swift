@@ -194,7 +194,8 @@ enum LUIWireValue: Decodable, Equatable {
             return value == "leading" || value == "trailing" || value == "top"
         case .title, .description, .meta, .indicator, .foreground, .borderColor,
              .text, .background, .placeholder, .accessibilityLabel,
-             .accessibilityIdentifier, .styleClass, .key, .scrollTarget:
+             .accessibilityIdentifier, .styleClass, .dataAttrs, .asTag,
+             .key, .scrollTarget:
             return stringValue != nil
         case .containerRelativeFrame:
             guard let value = stringValue else { return false }
@@ -805,8 +806,11 @@ struct LUIRetainedTree {
         case .grow: kind != .avatar && kind != .tooltip && !isModalSurface(kind)
         case .columns: kind == .grid
         case .padding, .width, .height: kind != .tooltip
-        case .styleClass:
+        case .styleClass, .dataAttrs:
             kind != .tooltip
+        case .asTag:
+            kind == .text || kind == .heading || kind == .paragraph ||
+                kind == .label
         case .background, .borderColor, .borderWidth,
              .cornerRadius,
              .minWidth, .maxWidth, .minHeight, .maxHeight:

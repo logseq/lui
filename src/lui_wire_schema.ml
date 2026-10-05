@@ -283,6 +283,8 @@ let property_name property =
   | Visible -> "visible"
   | AlignmentValue -> "alignment"
   | PointerEnabled -> "pointer-enabled"
+  | DataAttrs -> "data-attrs"
+  | As -> "as"
 
 let kind_property_matrix kind =
   match kind with
@@ -293,17 +295,17 @@ let kind_property_matrix kind =
   | TimelineItem -> Some [ TitleValue; DescriptionValue; MetaValue; IndicatorValue; InlineIconName; VariantValue; Connector; Selected; PressEnabled; PointerEnabled ]
   | InputGroup -> Some [ AccessibilityLabel; WidthValue; HeightValue; MinWidth; GrowValue; PointerEnabled ]
   | InputGroupActions -> Some [ Gap; PointerEnabled ]
-  | Toast -> Some [ DurationValue; AccessibilityLabel; StyleClass; PointerEnabled ]
-  | Toolbar -> Some [ OrientationValue; AccessibilityLabel; Gap; StyleClass; PlacementValue; PointerEnabled ]
-  | BottomTabs -> Some [ AccessibilityLabel; StyleClass; GrowValue; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; PointerEnabled ]
+  | Toast -> Some [ DurationValue; AccessibilityLabel; StyleClass; DataAttrs; PointerEnabled ]
+  | Toolbar -> Some [ OrientationValue; AccessibilityLabel; Gap; StyleClass; DataAttrs; PlacementValue; PointerEnabled ]
+  | BottomTabs -> Some [ AccessibilityLabel; StyleClass; DataAttrs; GrowValue; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; PointerEnabled ]
   | BottomTab -> Some [ TitleValue; InlineIconName; Selected; Enabled; PressEnabled; PointerEnabled ]
-  | MenuTrigger -> Some [ TextValue; InlineIconName; AccessibilityLabel; Enabled; ForegroundValue; StyleClass; PointerEnabled ]
+  | MenuTrigger -> Some [ TextValue; InlineIconName; AccessibilityLabel; Enabled; ForegroundValue; StyleClass; DataAttrs; PointerEnabled ]
   | ListSection -> Some [ KeyValue; SeparatorValue; PointerEnabled ]
   | SwipeActions -> Some [  ]
   | SwipeAction -> Some [ TextValue; InlineIconName; VariantValue; EdgeValue; Enabled; BackgroundValue; PressEnabled; PointerEnabled ]
   | FilePicker -> Some [ PickerRequest; PickerTypes; PickerMultiple; PickerSource; PickerCompletion; Enabled; AppearEnabled; PointerEnabled ]
   | FilePreview -> Some [ PathValue; PointerEnabled ]
-  | Kbd -> Some [ TextValue; StyleClass; PointerEnabled ]
+  | Kbd -> Some [ TextValue; StyleClass; DataAttrs; PointerEnabled ]
   | _ -> None
 
 let kind_extra_properties kind =
@@ -313,4 +315,4 @@ let kind_extra_properties kind =
 
 let all_node_kinds = [ Root; Row; Column; Grid; Stack; EdgeInset; Overlay; ViewThatFits; Panel; Card; Alert; Bubble; Box; Text; Heading; Paragraph; Label; Button; ToggleButton; Toggle; RadioGroup; Radio; Slider; NumberStepper; TextField; SecureField; Input; SearchField; Textarea; Checkbox; SwitchControl; Progress; Divider; Scroll; ListContainer; VirtualList; Tabs; BottomTabs; BottomTab; ButtonGroup; ToggleGroup; Spacer; Spinner; Icon; Select; Combobox; DropdownMenu; ContextMenu; MenuItem; MenuTrigger; ListItem; Avatar; Image; MediaSurface; Stepper; Step; Timeline; TimelineItem; InputGroup; InputGroupActions; Breadcrumb; Pagination; Accordion; Table; TableRow; TableCell; Tree; Resizable; Split; Dialog; Drawer; Sheet; Tooltip; Toast; Toolbar; StatusBar; ListSection; ListSectionHeader; ListSectionFooter; SwipeActions; SwipeAction; FilePicker; Kbd; Link; FileImage; FilePreview ]
 
-let all_properties = [ TextValue; Enabled; Gap; MainAlignment; CrossAlignment; GrowValue; GridColumns; PaddingValue; PaddingHorizontal; PaddingVertical; BackgroundValue; ForegroundValue; BorderColorValue; BorderWidth; CornerRadius; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; ContainerRelativeFrameValue; ContainerRelativeFrameInset; PlaceholderValue; AccessibilityLabel; AccessibilityIdentifier; StyleClass; HeadingLevel; Checked; ProgressValue; OrientationValue; PlacementValue; SizeValue; IconName; VariantValue; InlineIconName; IconPlacementValue; Selected; Autofocus; SubmitOnEnter; LongPressEnabled; ChangeEnabled; ToggleEnabled; PressEnabled; SubmitEnabled; DoublePressEnabled; AppearEnabled; ImageIdValue; SurfaceIdValue; ActiveIndex; TitleValue; DescriptionValue; MetaValue; IndicatorValue; Connector; SourceX; SourceY; SourceWidth; SourceHeight; AnchorValue; AnchorAlignmentValue; AnchorOffset; TooltipDelay; DurationValue; TextAlignment; RoleValue; TreeLevel; Expanded; ResizeDuration; ResizeEasing; ResizeOrigin; ThemeValue; ThemeMode; KeyValue; SeparatorValue; StyleValue; ScrollTarget; ScrollAnchor; ScrollToken; ScrollAnimated; TrackVisibleRange; EdgeValue; PickerRequest; PickerTypes; PickerMultiple; PickerSource; PickerCompletion; MinValue; MaxValue; StepValue; Detents; Sizing; PathValue; UrlValue; MaxPixelSize; ImageFitValue; Visible; AlignmentValue; PointerEnabled ]
+let all_properties = [ TextValue; Enabled; Gap; MainAlignment; CrossAlignment; GrowValue; GridColumns; PaddingValue; PaddingHorizontal; PaddingVertical; BackgroundValue; ForegroundValue; BorderColorValue; BorderWidth; CornerRadius; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; ContainerRelativeFrameValue; ContainerRelativeFrameInset; PlaceholderValue; AccessibilityLabel; AccessibilityIdentifier; StyleClass; HeadingLevel; Checked; ProgressValue; OrientationValue; PlacementValue; SizeValue; IconName; VariantValue; InlineIconName; IconPlacementValue; Selected; Autofocus; SubmitOnEnter; LongPressEnabled; ChangeEnabled; ToggleEnabled; PressEnabled; SubmitEnabled; DoublePressEnabled; AppearEnabled; ImageIdValue; SurfaceIdValue; ActiveIndex; TitleValue; DescriptionValue; MetaValue; IndicatorValue; Connector; SourceX; SourceY; SourceWidth; SourceHeight; AnchorValue; AnchorAlignmentValue; AnchorOffset; TooltipDelay; DurationValue; TextAlignment; RoleValue; TreeLevel; Expanded; ResizeDuration; ResizeEasing; ResizeOrigin; ThemeValue; ThemeMode; KeyValue; SeparatorValue; StyleValue; ScrollTarget; ScrollAnchor; ScrollToken; ScrollAnimated; TrackVisibleRange; EdgeValue; PickerRequest; PickerTypes; PickerMultiple; PickerSource; PickerCompletion; MinValue; MaxValue; StepValue; Detents; Sizing; PathValue; UrlValue; MaxPixelSize; ImageFitValue; Visible; AlignmentValue; PointerEnabled; DataAttrs; As ]

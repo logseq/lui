@@ -372,6 +372,50 @@ let apply_selected renderer node kind dom_node selected =
       (if selected then "true" else "false") dom_node
   end
 
+(* The `data-attrs` prop: name/value pairs decoded by
+   [Lui_protocol.data_attrs_decode]. The `__luiDataAttrs` expando lists the
+   managed names (joined by \x1f, which validation keeps out of names) so
+   updates can drop attributes that disappeared. Host re-validates names —
+   a bad name is skipped, never raises. *)
+external data_attrs_managed_get :
+  W.Element.t -> string Js.Undefined.t = "__luiDataAttrs"
+[@@mel.get]
+
+external data_attrs_managed_set : W.Element.t -> string -> unit =
+  "__luiDataAttrs"
+[@@mel.set]
+
+let apply_data_attrs dom_node payload =
+  match data_attrs_decode payload with
+  | pairs ->
+      let next_names = List.map fst pairs in
+      (match Js.Undefined.toOption (data_attrs_managed_get dom_node) with
+       | Some managed ->
+           List.iter
+             (fun name ->
+                if name <> "" && not (List.mem name next_names) then
+                  W.Element.removeAttribute name dom_node)
+             (String.split_on_char '\x1f' managed)
+       | None -> ());
+      List.iter
+        (fun (name, value) ->
+           if data_attr_name_ok name then
+             W.Element.setAttribute name value dom_node)
+        pairs;
+      data_attrs_managed_set dom_node (String.concat "\x1f" next_names)
+  | exception Invalid_argument _ ->
+      data_attrs_managed_set dom_node ""
+
+let remove_data_attrs dom_node =
+  match Js.Undefined.toOption (data_attrs_managed_get dom_node) with
+  | Some managed ->
+      List.iter
+        (fun name ->
+           if name <> "" then W.Element.removeAttribute name dom_node)
+        (String.split_on_char '\x1f' managed);
+      data_attrs_managed_set dom_node ""
+  | None -> ()
+
 let apply_autofocus dom_node autofocus =
   if autofocus then begin
     W.Element.setAttribute "autofocus" "autofocus" dom_node;
@@ -710,6 +754,7 @@ and apply_secondary_property renderer node kind dom_node property value =
       Util.set_state_attribute dom_node "data-pinned-hidden" (not visible)
   | AlignmentValue, StringValue alignment ->
       W.Element.setAttribute "data-alignment" alignment dom_node
+  | DataAttrs, StringValue payload -> apply_data_attrs dom_node payload
   | _ ->
       invalid_arg
         ("invalid DOM property value: " ^ Lui_wire_schema.property_name property)
@@ -801,6 +846,7 @@ let remove_property renderer node kind dom_node property =
              W.Element.setAttribute "aria-orientation" "horizontal" dom_node
            end
        | StyleClass -> refresh_node_class renderer node kind dom_node
+       | DataAttrs -> remove_data_attrs dom_node
        | _ -> ())
   | None -> invalid_arg "unknown DOM node"
 

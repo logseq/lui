@@ -1441,6 +1441,16 @@
       "lg": "PointerEnabled",
       "wire": "pointer-enabled",
       "swift": "pointerEnabled"
+    },
+    {
+      "lg": "DataAttrs",
+      "wire": "data-attrs",
+      "swift": "dataAttrs"
+    },
+    {
+      "lg": "As",
+      "wire": "as",
+      "swift": "asTag"
     }
   ],
   "events": [
@@ -1637,6 +1647,7 @@
       "duration",
       "accessibility-label",
       "style-class",
+      "data-attrs",
       "pointer-enabled"
     ],
     "toolbar": [
@@ -1645,6 +1656,7 @@
       "accessibility-label",
       "gap",
       "style-class",
+      "data-attrs",
       "placement",
       "pointer-enabled"
     ],
@@ -1652,6 +1664,7 @@
 
       "accessibility-label",
       "style-class",
+      "data-attrs",
       "grow",
       "width",
       "height",
@@ -1678,6 +1691,7 @@
       "enabled",
       "foreground",
       "style-class",
+      "data-attrs",
       "pointer-enabled"
     ],
     "list-section": [
@@ -1718,6 +1732,7 @@
 
       "text",
       "style-class",
+      "data-attrs",
       "pointer-enabled"
     ]
   },
