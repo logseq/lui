@@ -15,6 +15,8 @@ pub mod domops;
 pub mod extension;
 pub mod kinds;
 pub mod node_view;
+#[cfg(test)]
+pub mod ocaml_stubs;
 pub mod root;
 pub mod style;
 

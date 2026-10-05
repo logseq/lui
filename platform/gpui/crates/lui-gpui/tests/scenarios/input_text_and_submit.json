@@ -1,0 +1,116 @@
+{
+  "name": "typing into an input reports text-changed and Enter reports submit",
+  "steps": [
+    {
+      "apply": {
+        "generation": 1,
+        "ops": [
+          {
+            "op": "create-node",
+            "id": 1,
+            "kind": "root"
+          },
+          {
+            "op": "create-node",
+            "id": 2,
+            "kind": "column"
+          },
+          {
+            "op": "create-node",
+            "id": 3,
+            "kind": "input"
+          },
+          {
+            "op": "set-prop",
+            "id": 3,
+            "property": "placeholder",
+            "value": "Type here"
+          },
+          {
+            "op": "set-prop",
+            "id": 3,
+            "property": "width",
+            "value": 300
+          },
+          {
+            "op": "insert-child",
+            "parent": 1,
+            "child": 2,
+            "index": 0
+          },
+          {
+            "op": "insert-child",
+            "parent": 2,
+            "child": 3,
+            "index": 0
+          }
+        ]
+      }
+    },
+    {
+      "expect-bounds": {
+        "node": 3,
+        "rect": {
+          "width": {
+            "$gt": 0
+          },
+          "height": {
+            "$gt": 0
+          }
+        }
+      }
+    },
+    {
+      "click": 3
+    },
+    {
+      "expect-focused": 3
+    },
+    {
+      "expect-events": [
+        {
+          "kind": "press",
+          "node": 2
+        }
+      ]
+    },
+    {
+      "input": "abc"
+    },
+    {
+      "expect-events": [
+        {
+          "kind": "text-changed",
+          "node": 3,
+          "text": "a"
+        },
+        {
+          "kind": "text-changed",
+          "node": 3,
+          "text": "ab"
+        },
+        {
+          "kind": "text-changed",
+          "node": 3,
+          "text": "abc"
+        }
+      ]
+    },
+    {
+      "keys": "enter"
+    },
+    {
+      "expect-events": [
+        {
+          "kind": "submit",
+          "node": 3
+        },
+        {
+          "kind": "text-changed",
+          "node": 3,
+          "text": "abc"
+        }
+      ]
+    }
+  ]
+}

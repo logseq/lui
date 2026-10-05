@@ -1,0 +1,113 @@
+{
+  "name": "standard kinds fire their native events: button press, toggle change",
+  "steps": [
+    {
+      "apply": {
+        "generation": 1,
+        "ops": [
+          {
+            "op": "create-node",
+            "id": 1,
+            "kind": "root"
+          },
+          {
+            "op": "create-node",
+            "id": 2,
+            "kind": "column"
+          },
+          {
+            "op": "create-node",
+            "id": 3,
+            "kind": "button"
+          },
+          {
+            "op": "set-prop",
+            "id": 3,
+            "property": "text",
+            "value": "OK"
+          },
+          {
+            "op": "create-node",
+            "id": 4,
+            "kind": "toggle"
+          },
+          {
+            "op": "insert-child",
+            "parent": 1,
+            "child": 2,
+            "index": 0
+          },
+          {
+            "op": "insert-child",
+            "parent": 2,
+            "child": 3,
+            "index": 0
+          },
+          {
+            "op": "insert-child",
+            "parent": 2,
+            "child": 4,
+            "index": 1
+          }
+        ]
+      }
+    },
+    {
+      "expect-bounds": {
+        "node": 3,
+        "rect": {
+          "width": {
+            "$gt": 0
+          },
+          "height": {
+            "$gt": 0
+          }
+        }
+      }
+    },
+    {
+      "expect-bounds": {
+        "node": 4,
+        "rect": {
+          "width": {
+            "$gt": 0
+          },
+          "height": {
+            "$gt": 0
+          }
+        }
+      }
+    },
+    {
+      "click": 3
+    },
+    {
+      "expect-events": [
+        {
+          "kind": "press",
+          "node": 3
+        },
+        {
+          "kind": "press",
+          "node": 2
+        }
+      ]
+    },
+    {
+      "click": 4
+    },
+    {
+      "expect-events": [
+        {
+          "kind": "toggle-changed",
+          "node": 4,
+          "checked": true
+        },
+        {
+          "kind": "press",
+          "node": 2
+        }
+      ]
+    }
+  ]
+}

@@ -176,3 +176,59 @@ pub const fn current_os() -> c_int {
 /// subset of the ABI: referencing this type keeps `c_void` linked for crates
 /// building with `-C link-args` oddities. (No runtime effect.)
 pub type _Opaque = c_void;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+
+    /// The half of the ABI that runs without an OCaml runtime: what the C
+    /// callback writes, `take_patches` must hand back in order.
+    #[test]
+    fn patch_sink_round_trips_through_take_patches() {
+        let _ = take_patches();
+        let first = CString::new(r#"{"generation":1,"ops":[]}"#).unwrap();
+        let second = CString::new(r#"{"generation":2,"ops":[]}"#).unwrap();
+        unsafe {
+            patch_sink(first.as_ptr());
+            patch_sink(second.as_ptr());
+        }
+        let drained = take_patches();
+        assert_eq!(
+            drained,
+            vec![
+                r#"{"generation":1,"ops":[]}"#.to_string(),
+                r#"{"generation":2,"ops":[]}"#.to_string(),
+            ]
+        );
+        // The queue stays empty after draining.
+        assert!(take_patches().is_empty());
+    }
+
+    #[test]
+    fn patch_sink_ignores_null() {
+        let _ = take_patches();
+        unsafe { patch_sink(std::ptr::null()) };
+        assert!(take_patches().is_empty());
+    }
+
+    #[test]
+    fn modifiers_mask_matches_the_bridge_header_bits() {
+        assert_eq!(modifiers_mask(false, false, false, false), 0);
+        assert_eq!(modifiers_mask(true, false, false, false), 1);
+        assert_eq!(modifiers_mask(false, true, false, false), 2);
+        assert_eq!(modifiers_mask(false, false, true, false), 4);
+        assert_eq!(modifiers_mask(false, false, false, true), 8);
+        assert_eq!(modifiers_mask(true, true, true, true), 15);
+    }
+
+    #[test]
+    fn host_and_os_codes_match_the_protocol() {
+        // `src/lui_protocol.ml` host_kind/operating_system codes.
+        assert_eq!(HOST_GPUI, 6);
+        assert_eq!(OS_MACOS, 1);
+        #[cfg(target_os = "macos")]
+        assert_eq!(current_os(), OS_MACOS);
+    }
+}
+

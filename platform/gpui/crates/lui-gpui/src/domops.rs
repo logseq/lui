@@ -230,7 +230,10 @@ type LuiSharedGuard<'a> = std::cell::Ref<'a, crate::backend::LuiShared>;
 
 /// Root node bounds come from the window (no parent records them).
 pub fn note_root_bounds(shared: &Shared, width: f32, height: f32) {
-    if let Some(root) = shared.borrow().store.root {
+    // Read-then-write in two borrows: an `if let` scrutinee `Ref` would live
+    // for the whole body and `borrow_mut` would panic.
+    let root = shared.borrow().store.root;
+    if let Some(root) = root {
         shared.borrow_mut().node_bounds.insert(
             root,
             Bounds::new(
@@ -240,3 +243,116 @@ pub fn note_root_bounds(shared: &Shared, width: f32, height: f32) {
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lui_core::store::{Node, NodeIdentity};
+    use lui_core::wire::Value as WireValue;
+    use lui_core::wire_schema::{NodeKind, Property};
+    use std::collections::BTreeMap;
+
+    fn node(id: i64) -> Node {
+        Node {
+            id,
+            identity: NodeIdentity::Standard(NodeKind::Column),
+            props: BTreeMap::new(),
+            extension_props: BTreeMap::new(),
+            children: Vec::new(),
+            parent: None,
+        }
+    }
+
+    fn link(shared: &Shared, parent: i64, child: i64) {
+        let mut s = shared.borrow_mut();
+        s.store.nodes.get_mut(&parent).unwrap().children.push(child);
+        s.store.nodes.get_mut(&child).unwrap().parent = Some(parent);
+    }
+
+    fn shared_with(ids: &[i64]) -> Shared {
+        let shared = crate::backend::LuiShared::new();
+        {
+            let mut s = shared.borrow_mut();
+            for &id in ids {
+                s.store.nodes.insert(id, node(id));
+            }
+        }
+        shared
+    }
+
+    #[test]
+    fn resolve_ref_accepts_node_id_and_accessibility_identifier() {
+        let shared = shared_with(&[1, 2]);
+        shared
+            .borrow_mut()
+            .store
+            .nodes
+            .get_mut(&2)
+            .unwrap()
+            .props
+            .insert(
+                Property::AccessibilityIdentifier,
+                WireValue::Str("sidebar".into()),
+            );
+        assert_eq!(resolve_ref(&shared, &json!({"node-id": 2})), Some(2));
+        assert_eq!(resolve_ref(&shared, &json!({"#ref": "sidebar"})), Some(2));
+        assert_eq!(resolve_ref(&shared, &json!({"ref-id": "sidebar"})), Some(2));
+        // node-id wins when both are present.
+        assert_eq!(
+            resolve_ref(&shared, &json!({"node-id": 1, "#ref": "sidebar"})),
+            Some(1)
+        );
+        // `node-id` is trusted as-is — existence is the caller's problem.
+        assert_eq!(resolve_ref(&shared, &json!({"node-id": 99})), Some(99));
+        assert_eq!(resolve_ref(&shared, &json!({"#ref": "nope"})), None);
+        assert_eq!(resolve_ref(&shared, &json!(null)), None);
+    }
+
+    #[test]
+    fn child_index_finds_direct_and_nested_targets() {
+        let shared = shared_with(&[1, 2, 3, 4, 5]);
+        link(&shared, 1, 2);
+        link(&shared, 1, 3);
+        link(&shared, 3, 4);
+        link(&shared, 4, 5);
+        // Direct child.
+        assert_eq!(child_index_of(&shared, 1, 3), Some(1));
+        // Nested: climbs to the direct child (3) of the container (1).
+        assert_eq!(child_index_of(&shared, 1, 5), Some(1));
+        assert_eq!(child_index_of(&shared, 1, 4), Some(1));
+        // Not under the container.
+        assert_eq!(child_index_of(&shared, 2, 5), None);
+        // Missing nodes.
+        assert_eq!(child_index_of(&shared, 99, 5), None);
+    }
+
+    #[test]
+    fn bounds_json_is_null_for_unmeasured_nodes() {
+        assert_eq!(bounds_json(None), Value::Null);
+        let bounds = Bounds::new(
+            gpui_kit::gpui::point(px(10.), px(20.)),
+            gpui_kit::gpui::size(px(30.), px(40.)),
+        );
+        let value = bounds_json(Some(bounds));
+        assert_eq!(value["left"], json!(10.0));
+        assert_eq!(value["top"], json!(20.0));
+        assert_eq!(value["right"], json!(40.0));
+        assert_eq!(value["bottom"], json!(60.0));
+        assert_eq!(value["width"], json!(30.0));
+        assert_eq!(value["height"], json!(40.0));
+    }
+
+    #[test]
+    fn note_root_bounds_seeds_the_root_from_viewport_size() {
+        let shared = shared_with(&[1]);
+        // No root yet — nothing recorded.
+        note_root_bounds(&shared, 800., 600.);
+        assert!(shared.borrow().node_bounds.is_empty());
+        shared.borrow_mut().store.root = Some(1);
+        note_root_bounds(&shared, 800., 600.);
+        let b = *shared.borrow().node_bounds.get(&1).unwrap();
+        assert_eq!(f32::from(b.size.width), 800.0);
+        assert_eq!(f32::from(b.size.height), 600.0);
+    }
+}
+

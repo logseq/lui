@@ -1,0 +1,719 @@
+{
+  "name": "dom-op replies: measure-node rects, scroll-into-view, focus",
+  "steps": [
+    {
+      "apply": {
+        "generation": 1,
+        "ops": [
+          {
+            "op": "create-node",
+            "id": 1,
+            "kind": "root"
+          },
+          {
+            "op": "create-node",
+            "id": 2,
+            "kind": "column"
+          },
+          {
+            "op": "create-node",
+            "id": 3,
+            "kind": "list"
+          },
+          {
+            "op": "set-prop",
+            "id": 3,
+            "property": "height",
+            "value": 200
+          },
+          {
+            "op": "set-prop",
+            "id": 3,
+            "property": "accessibility-identifier",
+            "value": "rows"
+          },
+          {
+            "op": "create-node",
+            "id": 5,
+            "kind": "input"
+          },
+          {
+            "op": "set-prop",
+            "id": 5,
+            "property": "placeholder",
+            "value": "focus target"
+          },
+          {
+            "op": "insert-child",
+            "parent": 1,
+            "child": 2,
+            "index": 0
+          },
+          {
+            "op": "insert-child",
+            "parent": 2,
+            "child": 5,
+            "index": 0
+          },
+          {
+            "op": "insert-child",
+            "parent": 2,
+            "child": 3,
+            "index": 1
+          },
+          {
+            "op": "create-extension",
+            "id": 100,
+            "identifier": "logseq-div",
+            "fingerprint": "fp100"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 100,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 100,
+            "property": "text",
+            "value": "row 0"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 100,
+            "index": 0
+          },
+          {
+            "op": "create-extension",
+            "id": 101,
+            "identifier": "logseq-div",
+            "fingerprint": "fp101"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 101,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 101,
+            "property": "text",
+            "value": "row 1"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 101,
+            "index": 1
+          },
+          {
+            "op": "create-extension",
+            "id": 102,
+            "identifier": "logseq-div",
+            "fingerprint": "fp102"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 102,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 102,
+            "property": "text",
+            "value": "row 2"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 102,
+            "index": 2
+          },
+          {
+            "op": "create-extension",
+            "id": 103,
+            "identifier": "logseq-div",
+            "fingerprint": "fp103"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 103,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 103,
+            "property": "text",
+            "value": "row 3"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 103,
+            "index": 3
+          },
+          {
+            "op": "create-extension",
+            "id": 104,
+            "identifier": "logseq-div",
+            "fingerprint": "fp104"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 104,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 104,
+            "property": "text",
+            "value": "row 4"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 104,
+            "index": 4
+          },
+          {
+            "op": "create-extension",
+            "id": 105,
+            "identifier": "logseq-div",
+            "fingerprint": "fp105"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 105,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 105,
+            "property": "text",
+            "value": "row 5"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 105,
+            "index": 5
+          },
+          {
+            "op": "create-extension",
+            "id": 106,
+            "identifier": "logseq-div",
+            "fingerprint": "fp106"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 106,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 106,
+            "property": "text",
+            "value": "row 6"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 106,
+            "index": 6
+          },
+          {
+            "op": "create-extension",
+            "id": 107,
+            "identifier": "logseq-div",
+            "fingerprint": "fp107"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 107,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 107,
+            "property": "text",
+            "value": "row 7"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 107,
+            "index": 7
+          },
+          {
+            "op": "create-extension",
+            "id": 108,
+            "identifier": "logseq-div",
+            "fingerprint": "fp108"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 108,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 108,
+            "property": "text",
+            "value": "row 8"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 108,
+            "index": 8
+          },
+          {
+            "op": "create-extension",
+            "id": 109,
+            "identifier": "logseq-div",
+            "fingerprint": "fp109"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 109,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 109,
+            "property": "text",
+            "value": "row 9"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 109,
+            "index": 9
+          },
+          {
+            "op": "create-extension",
+            "id": 110,
+            "identifier": "logseq-div",
+            "fingerprint": "fp110"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 110,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 110,
+            "property": "text",
+            "value": "row 10"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 110,
+            "index": 10
+          },
+          {
+            "op": "create-extension",
+            "id": 111,
+            "identifier": "logseq-div",
+            "fingerprint": "fp111"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 111,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 111,
+            "property": "text",
+            "value": "row 11"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 111,
+            "index": 11
+          },
+          {
+            "op": "create-extension",
+            "id": 112,
+            "identifier": "logseq-div",
+            "fingerprint": "fp112"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 112,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 112,
+            "property": "text",
+            "value": "row 12"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 112,
+            "index": 12
+          },
+          {
+            "op": "create-extension",
+            "id": 113,
+            "identifier": "logseq-div",
+            "fingerprint": "fp113"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 113,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 113,
+            "property": "text",
+            "value": "row 13"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 113,
+            "index": 13
+          },
+          {
+            "op": "create-extension",
+            "id": 114,
+            "identifier": "logseq-div",
+            "fingerprint": "fp114"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 114,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 114,
+            "property": "text",
+            "value": "row 14"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 114,
+            "index": 14
+          },
+          {
+            "op": "create-extension",
+            "id": 115,
+            "identifier": "logseq-div",
+            "fingerprint": "fp115"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 115,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 115,
+            "property": "text",
+            "value": "row 15"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 115,
+            "index": 15
+          },
+          {
+            "op": "create-extension",
+            "id": 116,
+            "identifier": "logseq-div",
+            "fingerprint": "fp116"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 116,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 116,
+            "property": "text",
+            "value": "row 16"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 116,
+            "index": 16
+          },
+          {
+            "op": "create-extension",
+            "id": 117,
+            "identifier": "logseq-div",
+            "fingerprint": "fp117"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 117,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 117,
+            "property": "text",
+            "value": "row 17"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 117,
+            "index": 17
+          },
+          {
+            "op": "create-extension",
+            "id": 118,
+            "identifier": "logseq-div",
+            "fingerprint": "fp118"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 118,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 118,
+            "property": "text",
+            "value": "row 18"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 118,
+            "index": 18
+          },
+          {
+            "op": "create-extension",
+            "id": 119,
+            "identifier": "logseq-div",
+            "fingerprint": "fp119"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 119,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 119,
+            "property": "text",
+            "value": "row 19"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 119,
+            "index": 19
+          },
+          {
+            "op": "create-extension",
+            "id": 120,
+            "identifier": "logseq-div",
+            "fingerprint": "fp120"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 120,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 120,
+            "property": "text",
+            "value": "row 20"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 120,
+            "index": 20
+          },
+          {
+            "op": "create-extension",
+            "id": 121,
+            "identifier": "logseq-div",
+            "fingerprint": "fp121"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 121,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 121,
+            "property": "text",
+            "value": "row 21"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 121,
+            "index": 21
+          },
+          {
+            "op": "create-extension",
+            "id": 122,
+            "identifier": "logseq-div",
+            "fingerprint": "fp122"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 122,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 122,
+            "property": "text",
+            "value": "row 22"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 122,
+            "index": 22
+          },
+          {
+            "op": "create-extension",
+            "id": 123,
+            "identifier": "logseq-div",
+            "fingerprint": "fp123"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 123,
+            "property": "style-class",
+            "value": "h-20 w-full"
+          },
+          {
+            "op": "set-extension-prop",
+            "id": 123,
+            "property": "text",
+            "value": "row 23"
+          },
+          {
+            "op": "insert-child",
+            "parent": 3,
+            "child": 123,
+            "index": 23
+          }
+        ]
+      }
+    },
+    {
+      "dom-op": {
+        "op": "measure-node",
+        "body": {
+          "ref": {
+            "#ref": "rows"
+          }
+        },
+        "expect": {
+          "node-rect": {
+            "nodeId": 3,
+            "rect": {
+              "height": {
+                "$ge": 100
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "dom-op": {
+        "op": "scroll-into-view",
+        "body": {
+          "ref": {
+            "node-id": 123
+          }
+        },
+        "expect": {}
+      }
+    },
+    {
+      "expect-scroll": {
+        "node": 3,
+        "y": {
+          "$lt": -50
+        }
+      }
+    },
+    {
+      "dom-op": {
+        "op": "scroll-row-into-view",
+        "body": {
+          "scroller": {
+            "#ref": "rows"
+          },
+          "row": {
+            "node-id": 100
+          }
+        },
+        "expect": {}
+      }
+    },
+    {
+      "expect-scroll": {
+        "node": 3,
+        "y": {
+          "$gt": -1
+        }
+      }
+    },
+    {
+      "dom-op": {
+        "op": "focus",
+        "body": {
+          "ref": {
+            "node-id": 5
+          }
+        },
+        "expect": {}
+      }
+    },
+    {
+      "expect-focused": 5
+    }
+  ]
+}

@@ -222,3 +222,140 @@ pub fn decode_batch(json: &str) -> Result<Batch, DecodeError> {
         .collect::<Result<Vec<Op>, DecodeError>>()?;
     Ok(Batch { generation, ops })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decodes_every_op_variant() {
+        let json = r#"{
+            "generation": 7,
+            "ops": [
+                {"op": "create-node", "id": 1, "kind": "root"},
+                {"op": "create-extension", "id": 2, "identifier": "logseq-div",
+                 "fingerprint": "fp1"},
+                {"op": "set-prop", "id": 1, "property": "text", "value": "hi"},
+                {"op": "remove-prop", "id": 1, "property": "text"},
+                {"op": "set-extension-prop", "id": 2, "property": "style-class",
+                 "value": "p-4"},
+                {"op": "remove-extension-prop", "id": 2,
+                 "property": "style-class"},
+                {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
+                {"op": "move-child", "parent": 1, "child": 2, "index": 0},
+                {"op": "remove-child", "parent": 1, "child": 2},
+                {"op": "drop-node", "id": 2}
+            ]
+        }"#;
+        let batch = decode_batch(json).expect("batch decodes");
+        assert_eq!(batch.generation, 7);
+        assert_eq!(batch.ops.len(), 10);
+        match &batch.ops[0] {
+            Op::CreateNode { id, kind } => {
+                assert_eq!(*id, 1);
+                assert_eq!(kind, "root");
+            }
+            other => panic!("expected create-node, got {other:?}"),
+        }
+        match &batch.ops[1] {
+            Op::CreateExtension {
+                id,
+                identifier,
+                fingerprint,
+            } => {
+                assert_eq!(*id, 2);
+                assert_eq!(identifier, "logseq-div");
+                assert_eq!(fingerprint, "fp1");
+            }
+            other => panic!("expected create-extension, got {other:?}"),
+        }
+        match &batch.ops[2] {
+            Op::SetProp {
+                id,
+                property,
+                value,
+            } => {
+                assert_eq!(*id, 1);
+                assert_eq!(property, "text");
+                assert_eq!(*value, Value::Str("hi".into()));
+            }
+            other => panic!("expected set-prop, got {other:?}"),
+        }
+        match &batch.ops[6] {
+            Op::InsertChild {
+                parent,
+                child,
+                index,
+            } => {
+                assert_eq!((*parent, *child, *index), (1, 2, 0));
+            }
+            other => panic!("expected insert-child, got {other:?}"),
+        }
+        match &batch.ops[7] {
+            Op::MoveChild {
+                parent,
+                child,
+                index,
+            } => {
+                assert_eq!((*parent, *child, *index), (1, 2, 0));
+            }
+            other => panic!("expected move-child, got {other:?}"),
+        }
+        match &batch.ops[8] {
+            Op::RemoveChild { parent, child } => {
+                assert_eq!((*parent, *child), (1, 2));
+            }
+            other => panic!("expected remove-child, got {other:?}"),
+        }
+        match &batch.ops[9] {
+            Op::DropNode { id } => assert_eq!(*id, 2),
+            other => panic!("expected drop-node, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decodes_all_value_kinds() {
+        assert_eq!(
+            Value::from_json(&serde_json::json!("text")),
+            Some(Value::Str("text".into()))
+        );
+        assert_eq!(
+            Value::from_json(&serde_json::json!(true)),
+            Some(Value::Bool(true))
+        );
+        assert_eq!(
+            Value::from_json(&serde_json::json!(42)),
+            Some(Value::Int(42))
+        );
+        assert_eq!(
+            Value::from_json(&serde_json::json!(1.5)),
+            Some(Value::Float(1.5))
+        );
+        assert_eq!(Value::from_json(&serde_json::json!(null)), None);
+        assert_eq!(Value::from_json(&serde_json::json!([1])), None);
+    }
+
+    #[test]
+    fn value_accessors_are_type_tolerant() {
+        // Ints read as floats (OCaml emits IntValue where a float prop is
+        // expected); the reverse is not true.
+        assert_eq!(Value::Int(3).as_float(), Some(3.0));
+        assert_eq!(Value::Float(2.5).as_int(), None);
+        assert_eq!(Value::Bool(true).as_str(), None);
+    }
+
+    #[test]
+    fn rejects_unknown_op_and_missing_fields() {
+        for json in [
+            r#"{"generation":1,"ops":[{"op":"frobnicate","id":1}]}"#,
+            r#"{"generation":1,"ops":[{"op":"create-node"}]}"#,
+            r#"{"generation":1,"ops":[{"op":"set-prop","id":1,"property":"text"}]}"#,
+            r#"{"generation":1}"#,
+            r#"{"ops":[]}"#,
+            r#"[1,2,3]"#,
+            "not json",
+        ] {
+            assert!(decode_batch(json).is_err(), "should reject: {json}");
+        }
+    }
+}

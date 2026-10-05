@@ -395,3 +395,285 @@ impl Store {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::wire::decode_batch;
+
+    fn apply_json(store: &mut Store, json: &str) -> Applied {
+        let batch = decode_batch(json).expect("batch decodes");
+        store.apply(&batch).expect("batch applies")
+    }
+
+    fn children_of(store: &Store, id: i64) -> Vec<i64> {
+        store.node(id).expect("node exists").children.clone()
+    }
+
+    #[test]
+    fn create_attach_and_prop_ops_build_the_tree() {
+        let mut store = Store::default();
+        let applied = apply_json(
+            &mut store,
+            r#"{"generation": 1, "ops": [
+                {"op": "create-node", "id": 1, "kind": "root"},
+                {"op": "create-node", "id": 2, "kind": "column"},
+                {"op": "create-node", "id": 3, "kind": "text"},
+                {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
+                {"op": "insert-child", "parent": 2, "child": 3, "index": 0},
+                {"op": "set-prop", "id": 3, "property": "text",
+                 "value": "hello"},
+                {"op": "set-prop", "id": 2, "property": "gap", "value": 8},
+                {"op": "set-extension-prop", "id": 3,
+                 "property": "style-class", "value": "text-sm"}
+            ]}"#,
+        );
+        assert_eq!(applied.generation, 1);
+        assert_eq!(store.root, Some(1));
+        assert_eq!(children_of(&store, 1), vec![2]);
+        assert_eq!(children_of(&store, 2), vec![3]);
+        let text = store.node(3).expect("text node");
+        assert_eq!(text.parent, Some(2));
+        assert_eq!(text.string_prop(Property::TextValue), Some("hello"));
+        assert_eq!(text.extension_props.get("style-class"), Some(&Value::Str("text-sm".into())));
+        assert_eq!(store.node(2).unwrap().float_prop(Property::Gap), Some(8.0));
+        // Structural ops + every touched node are dirty.
+        assert!(applied.dirty.contains(&1));
+        assert!(applied.dirty.contains(&2));
+        assert!(applied.dirty.contains(&3));
+    }
+
+    #[test]
+    fn prop_updates_overwrite_and_remove() {
+        let mut store = Store::default();
+        apply_json(
+            &mut store,
+            r#"{"generation": 1, "ops": [
+                {"op": "create-node", "id": 1, "kind": "root"},
+                {"op": "create-node", "id": 2, "kind": "button"},
+                {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
+                {"op": "set-prop", "id": 2, "property": "text",
+                 "value": "before"},
+                {"op": "set-extension-prop", "id": 2, "property": "k",
+                 "value": 1}
+            ]}"#,
+        );
+        apply_json(
+            &mut store,
+            r#"{"generation": 2, "ops": [
+                {"op": "set-prop", "id": 2, "property": "text",
+                 "value": "after"},
+                {"op": "remove-prop", "id": 2, "property": "enabled"},
+                {"op": "set-extension-prop", "id": 2, "property": "k",
+                 "value": 2},
+                {"op": "remove-extension-prop", "id": 2, "property": "k"}
+            ]}"#,
+        );
+        let node = store.node(2).unwrap();
+        assert_eq!(node.string_prop(Property::TextValue), Some("after"));
+        assert!(node.prop(Property::Enabled).is_none());
+        assert!(node.extension_props.get("k").is_none());
+    }
+
+    #[test]
+    fn drop_node_removes_the_whole_subtree() {
+        let mut store = Store::default();
+        apply_json(
+            &mut store,
+            r#"{"generation": 1, "ops": [
+                {"op": "create-node", "id": 1, "kind": "root"},
+                {"op": "create-node", "id": 2, "kind": "column"},
+                {"op": "create-node", "id": 3, "kind": "text"},
+                {"op": "create-node", "id": 4, "kind": "text"},
+                {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
+                {"op": "insert-child", "parent": 2, "child": 3, "index": 0},
+                {"op": "insert-child", "parent": 3, "child": 4, "index": 0}
+            ]}"#,
+        );
+        let applied = apply_json(
+            &mut store,
+            r#"{"generation": 2, "ops": [{"op": "drop-node", "id": 2}]}"#,
+        );
+        assert_eq!(children_of(&store, 1), Vec::<i64>::new());
+        for id in [2, 3, 4] {
+            assert!(store.node(id).is_none(), "node {id} must be gone");
+            assert!(applied.dropped.contains(&id));
+        }
+        // The parent is dirty (child list changed); dropped nodes are not.
+        assert!(applied.dirty.contains(&1));
+        assert!(!applied.dirty.contains(&2));
+    }
+
+    #[test]
+    fn drop_root_clears_the_root_slot() {
+        let mut store = Store::default();
+        apply_json(
+            &mut store,
+            r#"{"generation": 1, "ops": [
+                {"op": "create-node", "id": 1, "kind": "root"}
+            ]}"#,
+        );
+        apply_json(
+            &mut store,
+            r#"{"generation": 2, "ops": [{"op": "drop-node", "id": 1}]}"#,
+        );
+        assert_eq!(store.root, None);
+    }
+
+    #[test]
+    fn insert_child_reparents_existing_nodes() {
+        let mut store = Store::default();
+        apply_json(
+            &mut store,
+            r#"{"generation": 1, "ops": [
+                {"op": "create-node", "id": 1, "kind": "root"},
+                {"op": "create-node", "id": 2, "kind": "column"},
+                {"op": "create-node", "id": 3, "kind": "column"},
+                {"op": "create-node", "id": 4, "kind": "text"},
+                {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
+                {"op": "insert-child", "parent": 1, "child": 3, "index": 1},
+                {"op": "insert-child", "parent": 2, "child": 4, "index": 0}
+            ]}"#,
+        );
+        apply_json(
+            &mut store,
+            r#"{"generation": 2, "ops": [
+                {"op": "insert-child", "parent": 3, "child": 4, "index": 0}
+            ]}"#,
+        );
+        assert_eq!(children_of(&store, 2), Vec::<i64>::new());
+        assert_eq!(children_of(&store, 3), vec![4]);
+        assert_eq!(store.node(4).unwrap().parent, Some(3));
+    }
+
+    #[test]
+    fn move_child_reorders_within_one_parent() {
+        let mut store = Store::default();
+        apply_json(
+            &mut store,
+            r#"{"generation": 1, "ops": [
+                {"op": "create-node", "id": 1, "kind": "root"},
+                {"op": "create-node", "id": 2, "kind": "text"},
+                {"op": "create-node", "id": 3, "kind": "text"},
+                {"op": "create-node", "id": 4, "kind": "text"},
+                {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
+                {"op": "insert-child", "parent": 1, "child": 3, "index": 1},
+                {"op": "insert-child", "parent": 1, "child": 4, "index": 2}
+            ]}"#,
+        );
+        apply_json(
+            &mut store,
+            r#"{"generation": 2, "ops": [
+                {"op": "move-child", "parent": 1, "child": 4, "index": 0}
+            ]}"#,
+        );
+        assert_eq!(children_of(&store, 1), vec![4, 2, 3]);
+    }
+
+    #[test]
+    fn insert_index_is_clamped_to_the_child_list() {
+        let mut store = Store::default();
+        apply_json(
+            &mut store,
+            r#"{"generation": 1, "ops": [
+                {"op": "create-node", "id": 1, "kind": "root"},
+                {"op": "create-node", "id": 2, "kind": "text"},
+                {"op": "create-node", "id": 3, "kind": "text"},
+                {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
+                {"op": "insert-child", "parent": 1, "child": 3, "index": 99}
+            ]}"#,
+        );
+        assert_eq!(children_of(&store, 1), vec![2, 3]);
+    }
+
+    #[test]
+    fn mid_batch_error_leaves_the_store_untouched() {
+        let mut store = Store::default();
+        apply_json(
+            &mut store,
+            r#"{"generation": 1, "ops": [
+                {"op": "create-node", "id": 1, "kind": "root"},
+                {"op": "create-node", "id": 2, "kind": "text"},
+                {"op": "insert-child", "parent": 1, "child": 2, "index": 0}
+            ]}"#,
+        );
+        let generation_before = store.generation;
+        // Second op targets a node that does not exist — the whole batch
+        // must roll back, including the valid ops before it.
+        let batch = decode_batch(
+            r#"{"generation": 2, "ops": [
+                {"op": "create-node", "id": 3, "kind": "text"},
+                {"op": "set-prop", "id": 99, "property": "text", "value": "x"}
+            ]}"#,
+        )
+        .unwrap();
+        assert!(store.apply(&batch).is_err());
+        assert_eq!(
+            store.nodes.keys().copied().collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+        assert_eq!(children_of(&store, 1), vec![2]);
+        assert_eq!(store.generation, generation_before);
+    }
+
+    #[test]
+    fn apply_rejects_invalid_ops() {
+        let mut store = Store::default();
+        let seed = |store: &mut Store| {
+            apply_json(
+                store,
+                r#"{"generation": 1, "ops": [
+                    {"op": "create-node", "id": 1, "kind": "root"},
+                    {"op": "create-node", "id": 2, "kind": "slider"},
+                    {"op": "insert-child", "parent": 1, "child": 2, "index": 0}
+                ]}"#,
+            );
+        };
+        seed(&mut store);
+        for json in [
+            // duplicate create
+            r#"{"generation":2,"ops":[{"op":"create-node","id":1,"kind":"text"}]}"#,
+            // unknown node kind
+            r#"{"generation":2,"ops":[{"op":"create-node","id":5,"kind":"nope"}]}"#,
+            // unknown property
+            r#"{"generation":2,"ops":[{"op":"set-prop","id":2,"property":"nope","value":1}]}"#,
+            // set-prop on missing node
+            r#"{"generation":2,"ops":[{"op":"set-prop","id":99,"property":"text","value":"x"}]}"#,
+            // drop missing node
+            r#"{"generation":2,"ops":[{"op":"drop-node","id":99}]}"#,
+            // insert into non-container (slider accepts no children)
+            r#"{"generation":2,"ops":[
+                {"op":"create-node","id":5,"kind":"text"},
+                {"op":"insert-child","parent":2,"child":5,"index":0}]}"#,
+            // insert into missing parent
+            r#"{"generation":2,"ops":[
+                {"op":"create-node","id":5,"kind":"text"},
+                {"op":"insert-child","parent":99,"child":5,"index":0}]}"#,
+            // insert missing child
+            r#"{"generation":2,"ops":[{"op":"insert-child","parent":1,"child":99,"index":0}]}"#,
+            // cycle: root under its own descendant
+            r#"{"generation":2,"ops":[
+                {"op":"create-node","id":5,"kind":"column"},
+                {"op":"insert-child","parent":1,"child":5,"index":1},
+                {"op":"insert-child","parent":5,"child":1,"index":0}]}"#,
+            // remove-child on a node that is not a child
+            r#"{"generation":2,"ops":[{"op":"remove-child","parent":1,"child":2},{"op":"remove-child","parent":1,"child":2}]}"#,
+            // move-child on a node that is not a child
+            r#"{"generation":2,"ops":[{"op":"move-child","parent":2,"child":1,"index":0}]}"#,
+        ] {
+            assert!(decode_batch(json).is_ok(), "decode: {json}");
+            let batch = decode_batch(json).unwrap();
+            assert!(store.apply(&batch).is_err(), "must reject: {json}");
+        }
+    }
+
+    #[test]
+    fn generation_tracks_the_last_applied_batch() {
+        let mut store = Store::default();
+        apply_json(&mut store, r#"{"generation": 11, "ops": []}"#);
+        assert_eq!(store.generation, 11);
+        apply_json(&mut store, r#"{"generation": 12, "ops": []}"#);
+        assert_eq!(store.generation, 12);
+    }
+}
+
