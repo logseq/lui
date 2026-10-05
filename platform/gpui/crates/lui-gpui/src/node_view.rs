@@ -3,7 +3,8 @@
 use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::component::slider::SliderState;
 use gpui_kit::gpui::{
-    div, App, Context, Entity, IntoElement, Render, SharedString, Subscription, Window,
+    div, App, Bounds, Context, Entity, IntoElement, Pixels, Render, ScrollHandle, SharedString,
+    Subscription, Window,
 };
 use lui_core::store::{NodeIdentity, Store};
 use lui_core::wire::Value;
@@ -48,6 +49,16 @@ impl NodeSnapshot {
 
     pub fn flag(&self, property: Property) -> bool {
         self.bool_prop(property) == Some(true)
+    }
+
+    /// Extension props arrive via `set-extension-prop` keyed by name
+    /// (string — e.g. "style-class", "text", "attrs", "events").
+    pub fn extension_prop(&self, name: &str) -> Option<&Value> {
+        self.extension_props.get(name)
+    }
+
+    pub fn extension_string_prop(&self, name: &str) -> Option<&str> {
+        self.extension_prop(name).and_then(Value::as_str)
     }
 
     pub fn enabled(&self) -> bool {
@@ -144,6 +155,11 @@ pub struct ComponentStates {
     pub open_submenu: std::rc::Rc<std::cell::Cell<Option<i64>>>,
     /// `split-view` → `DockArea` sync state (extension.rs registers it).
     pub dock: Option<crate::dock::DockSync>,
+    /// Scroll state for scrollable container kinds — `track_scroll`
+    /// registers it at render; `scroll_tracked` then marks this node as
+    /// the scroll ancestor the `scroll-into-view` dom-op looks for.
+    pub scroll: ScrollHandle,
+    pub scroll_tracked: bool,
     pub subscriptions: Vec<Subscription>,
 }
 
@@ -187,6 +203,29 @@ impl LuiNodeView {
             .filter(|child_id| self.shared.borrow().store.node(*child_id).is_some())
             .map(|child_id| self.child_view(child_id, cx).into_any_element())
             .collect()
+    }
+
+    /// `on_children_prepainted` listener recording each rendered child's
+    /// window-space bounds into `shared.node_bounds`. Attach it to a
+    /// container's outer `Div`; the prepainted order matches
+    /// [`Self::child_elements`] (both filter out dropped children).
+    pub fn bounds_recorder(
+        &self,
+        node: &NodeSnapshot,
+    ) -> impl Fn(Vec<Bounds<Pixels>>, &mut Window, &mut App) + 'static {
+        let shared = self.shared.clone();
+        let child_ids: Vec<i64> = node
+            .children
+            .iter()
+            .copied()
+            .filter(|child_id| shared.borrow().store.node(*child_id).is_some())
+            .collect();
+        move |bounds, _window, _cx| {
+            let mut shared = shared.borrow_mut();
+            for (id, bounds) in child_ids.iter().zip(bounds) {
+                shared.node_bounds.insert(*id, bounds);
+            }
+        }
     }
 }
 

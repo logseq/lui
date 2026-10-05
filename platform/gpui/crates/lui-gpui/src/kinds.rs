@@ -92,10 +92,16 @@ fn container(
     horizontal: bool,
     cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
+    // `on_children_prepainted` is a `Div` method — attach before `.id()`
+    // (which wraps the element in `Stateful`).
     let base = if horizontal {
-        h_flex().id(element_id(node.id))
+        h_flex()
+            .on_children_prepainted(view.bounds_recorder(node))
+            .id(element_id(node.id))
     } else {
-        v_flex().id(element_id(node.id))
+        v_flex()
+            .on_children_prepainted(view.bounds_recorder(node))
+            .id(element_id(node.id))
     };
     let mut element = base;
     if !node.enabled() {
@@ -634,7 +640,10 @@ fn stacked(
     cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
     let mut children = view.child_elements(node, cx).into_iter();
-    let mut element = div().id(element_id(node.id)).relative();
+    let mut element = div()
+        .relative()
+        .on_children_prepainted(view.bounds_recorder(node))
+        .id(element_id(node.id));
     if let Some(first) = children.next() {
         element = element.child(first);
     }
@@ -1768,10 +1777,13 @@ pub fn render_node(
         NodeKind::ListContainer | NodeKind::VirtualList => {
             // Scrollable collection container — the model slices children
             // (`visible-range` events land with native virtualization).
+            view.states.scroll_tracked = true;
             let mut element = v_flex()
-                .id(element_id(node.id))
                 .size_full()
-                .overflow_y_scroll();
+                .on_children_prepainted(view.bounds_recorder(node))
+                .id(element_id(node.id))
+                .overflow_y_scroll()
+                .track_scroll(&view.states.scroll);
             element = style::all(element, node);
             element
                 .children(view.child_elements(node, cx))
@@ -1901,10 +1913,13 @@ pub fn render_node(
             style::all(element, node).into_any_element()
         }
         NodeKind::Scroll => {
+            view.states.scroll_tracked = true;
             let mut element = v_flex()
-                .id(element_id(node.id))
                 .size_full()
-                .overflow_y_scroll();
+                .on_children_prepainted(view.bounds_recorder(node))
+                .id(element_id(node.id))
+                .overflow_y_scroll()
+                .track_scroll(&view.states.scroll);
             element = style::all(element, node);
             element
                 .children(view.child_elements(node, cx))
