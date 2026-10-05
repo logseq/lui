@@ -319,6 +319,9 @@ let updates_text ops =
      | _ -> false)
     ops
 
+let drops_node ops =
+  List.exists (function Lui_protocol.DropNode _ -> true | _ -> false) ops
+
 let dyn_reducer model action =
   match action with
   | `Tick -> { model with ticks = model.ticks + 1 }
@@ -421,6 +424,145 @@ let test_dyn_default_remounts () =
     (updates_text (all_ops ()));
   Alcotest.(check bool) "default republish mounts nothing" false
     (creates_text (all_ops ()));
+  ignore (Lui_app.dispose app)
+
+(* [~equal] defaults to [(=)]: republishing an equal value skips the
+   remount, a different value reconciles in place. *)
+let test_dyn_default_equal () =
+  let app =
+    Lui_app.create (recording_backend ()) { label = "first"; ticks = 0 }
+      dyn_reducer
+      (fun _context model_source _send ->
+        Lui_elements.column
+          [
+            Lui_elements.dyn
+              (fun (label : string) -> Lui_elements.text ~value:label [])
+              (Signal.map (fun (m : dyn_model) -> m.label) model_source);
+          ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  batches := [];
+  ignore (Lui_app.send app `Tick);
+  flush_app app;
+  Alcotest.(check bool) "equal republish emits nothing" true
+    (all_ops () = []);
+  ignore (Lui_app.send app (`Rename "second"));
+  flush_app app;
+  Alcotest.(check bool) "changed publish updates in place" true
+    (updates_text (all_ops ()));
+  Alcotest.(check bool) "changed publish mounts nothing" false
+    (creates_text (all_ops ()));
+  ignore (Lui_app.dispose app)
+
+(* [if_ ~test_signal] mounts the child while the signal publishes [true]
+   and drops it on [false]. *)
+let test_if_test_signal_toggles () =
+  let app =
+    Lui_app.create (recording_backend ()) { outer = true; inner = "in" }
+      (fun model action ->
+        match action with
+        | `Hide -> { model with outer = false }
+        | `Show -> { model with outer = true })
+      (fun _context model_source _send ->
+        Lui_elements.column
+          [
+            Lui_elements.if_
+              ~test_signal:
+                (Signal.map (fun (m : nested_dyn_model) -> m.outer)
+                   model_source)
+              (Lui_elements.text ~value:"child" []);
+          ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  Alcotest.(check bool) "if_ mounts child" true (creates_text (all_ops ()));
+  batches := [];
+  ignore (Lui_app.send app `Hide);
+  flush_app app;
+  Alcotest.(check bool) "if_ drops child" true (drops_node (all_ops ()));
+  batches := [];
+  ignore (Lui_app.send app `Show);
+  flush_app app;
+  Alcotest.(check bool) "if_ remounts child" true
+    (creates_text (all_ops ()));
+  ignore (Lui_app.dispose app)
+
+(* dyn/if_/keyed own derived sources: a [Signal.map] handed to [dyn] is
+   tied to the branch scope — unmounting the branch disposes the derived's
+   upstream subscription, so later publishes do not re-run the transform
+   (an unowned derived would keep firing forever). *)
+let test_dyn_owns_derived_source () =
+  let calls = ref 0 in
+  let app =
+    Lui_app.create (recording_backend ()) { outer = true; inner = "in" }
+      (fun model action ->
+        match action with
+        | `Hide -> { model with outer = false }
+        | `Inner inner -> { model with inner })
+      (fun _context model_source _send ->
+        let derived =
+          Signal.map (fun (m : nested_dyn_model) -> incr calls; m)
+            model_source
+        in
+        Lui_elements.column
+          [
+            Lui_elements.if_
+              ~test_signal:
+                (Signal.map (fun (m : nested_dyn_model) -> m.outer)
+                   model_source)
+              (Lui_elements.dyn
+                 ~equal:(fun a b -> a.inner = b.inner)
+                 (fun (m : nested_dyn_model) ->
+                   Lui_elements.text ~value:m.inner [])
+                 derived);
+          ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  ignore (Lui_app.send app `Hide);
+  flush_app app;
+  let calls_after_hide = !calls in
+  ignore (Lui_app.send app (`Inner "changed"));
+  flush_app app;
+  Alcotest.(check bool) "unmounted derived not re-run" true
+    (!calls = calls_after_hide);
+  ignore (Lui_app.dispose app)
+
+let creates_text_count ops =
+  List.length
+    (List.filter
+       (function
+        | Lui_protocol.CreateNode (_, Lui_protocol.Text) -> true
+        | _ -> false)
+       ops)
+
+(* [keyed ~source_signal] mounts one child per item and diffs republished
+   membership by key. *)
+let test_keyed_source_signal () =
+  let app =
+    Lui_app.create (recording_backend ()) [ "a"; "b" ]
+      (fun model action -> match action with `Add item -> model @ [ item ])
+      (fun _context model_source _send ->
+        Lui_elements.column
+          [
+            Lui_elements.keyed ~source_signal:model_source
+              ~key:(fun (s : string) -> s) ~cmp:String.compare
+              ~mount:(fun item_source ->
+                Lui_elements.text ~value_signal:item_source []);
+          ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  Alcotest.(check int) "keyed mounts items" 2
+    (creates_text_count (all_ops ()));
+  batches := [];
+  ignore (Lui_app.send app (`Add "c"));
+  flush_app app;
+  Alcotest.(check int) "keyed mounts the new item only" 1
+    (creates_text_count (all_ops ()));
+  Alcotest.(check bool) "keyed drops nothing on add" false
+    (drops_node (all_ops ()));
   ignore (Lui_app.dispose app)
 
 type ext_dyn_model = { ex_url : string }
@@ -668,13 +810,10 @@ let creates_button ops =
      | _ -> false)
     ops
 
-let drops_node ops =
-  List.exists (function Lui_protocol.DropNode _ -> true | _ -> false) ops
-
 let keyed_radio_group_view _context model_source _send =
   Lui_elements.radio_group ~label:"Language"
     [
-      Lui_elements.keyed_radio ~source:model_source
+      Lui_elements.keyed_radio ~source_signal:model_source
         ~key:(fun (choice : string) -> choice)
         ~cmp:String.compare
         ~mount:(fun choice_source ->
@@ -2624,6 +2763,14 @@ let () =
             test_alias_preserved_across_reconciles;
           Alcotest.test_case "keyed_radio mounts under group" `Quick
             test_keyed_radio_mounts_under_group;
+          Alcotest.test_case "default (=) equal" `Quick
+            test_dyn_default_equal;
+          Alcotest.test_case "if_ test_signal toggles" `Quick
+            test_if_test_signal_toggles;
+          Alcotest.test_case "owns derived source" `Quick
+            test_dyn_owns_derived_source;
+          Alcotest.test_case "keyed source_signal diffs" `Quick
+            test_keyed_source_signal;
         ] );
       ( "dispatch",
         [

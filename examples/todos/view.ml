@@ -44,7 +44,7 @@ let todo_row send item_source : t =
 
 let item_list model_source send : t =
   keyed
-    ~source:(map Model.items model_source)
+    ~source_signal:(map Model.items model_source)
     ~key:(fun (i : Model.todo) -> i.id)
     ~cmp:Stdlib.compare
     ~mount:(todo_row send)

@@ -71,7 +71,7 @@ let button_section model_source send : t =
   section "Button"
     [ button ~variant:`outline ~text:"Toggle disabled"
         ~on_press:(press send Model.ToggleDisabled) []
-    ; if_ ~test:disabled (paragraph ~value:"Controls are disabled." [])
+    ; if_ ~test_signal:disabled (paragraph ~value:"Controls are disabled." [])
     ; grid ~columns:2 ~gap:12
         [ button ~text:"Default" ~disabled:(reactive disabled)
             ~on_press:noop []
@@ -261,13 +261,13 @@ let pagination_section model_source send : t =
 let tabs_buttons model_source send =
   let disabled = model_source >|= Model.disabled in
   let tab_button ~text tab =
-    dyn
-      ~equal:(fun (a : Model.t) (b : Model.t) -> a.Model.tab = b.Model.tab)
+    reactive
       (fun (m : Model.t) ->
         button ~text ~selected:(m.Model.tab = tab)
           ~disabled:(reactive disabled)
           ~on_press:(press send (Model.SelectTab tab)) [])
       model_source
+      ~equal:(fun (a : Model.t) (b : Model.t) -> a.Model.tab = b.Model.tab)
   in
   [ tab_button ~text:"Overview" "overview"
   ; tab_button ~text:"Activity" "activity"
@@ -593,7 +593,7 @@ let dialog_section model_source send : t =
     ; paragraph
         ~value:"The same model-owned conditional drives the native modal on every host."
         []
-    ; if_ ~test:open_
+    ; if_ ~test_signal:open_
         (dialog ~text:"Rename note"
            ~description:"Choose a new name for this note."
            ~width:380 ~height:240 ~padding:24
@@ -618,7 +618,7 @@ let sheet_section model_source send : t =
         ~on_press:(press send Model.OpenSheet) []
     ; paragraph
         ~value:"Sheet uses the host platform's native modal presentation." []
-    ; if_ ~test:open_
+    ; if_ ~test_signal:open_
         (sheet ~text:"Share" ~height:320 ~padding:24
            ~on_dismiss:(press send Model.CloseSheet)
            [ column ~gap:12
@@ -799,7 +799,7 @@ let tree_section model_source send : t =
                 ~on_press:(press send (Model.SelectDocument "Quarterly report.md"))
                 [])
             model_source
-        ; if_ ~test:open_
+        ; if_ ~test_signal:open_
             (column ~padding_horizontal:20
                [ list_item ~role:`treeitem ~tree_level:2 ~icon:`file_text
                    ~text:"Quarterly report.md" ~selected:(reactive report)
@@ -953,7 +953,7 @@ let toast_section model_source send : t =
   section "Toast"
     [ button ~variant:`outline ~text:"Show notifications"
         ~on_press:(press send Model.ShowToasts) []
-    ; if_ ~test:open_
+    ; if_ ~test_signal:open_
         (column
            [ toast ~duration:2000 ~label:"Draft saved"
                ~on_dismiss:(press send Model.CloseToasts)
@@ -1066,7 +1066,7 @@ let select_section model_source send : t =
             ~disabled:(reactive disabled)
             ~on_press:(press send (Model.OpenPicker "select"))
             ~on_dismiss:(press send Model.ClosePicker) []
-        ; if_ ~test:open_ (environment_menu model_source send)
+        ; if_ ~test_signal:open_ (environment_menu model_source send)
         ]
     ; paragraph ~value:"Select opens a model-owned retained menu segment." []
     ]
@@ -1086,14 +1086,14 @@ let combobox_section model_source send : t =
             ~on_submit:(press send Model.CommitPickerQuery)
             ~on_press:(press send (Model.OpenPicker "combobox"))
             ~on_dismiss:dismiss []
-        ; if_ ~test:open_
+        ; if_ ~test_signal:open_
             (dropdown_menu ~anchor:`below ~anchor_alignment:`stretch
                ~anchor_offset:6.0 ~min_width:200 ~on_dismiss:dismiss
-               [ if_ ~test:production_visible
+               [ if_ ~test_signal:production_visible
                    (menu_item ~text:"Production" ~icon:`check
                       ~disabled:(reactive disabled)
                       ~on_press:(press send (Model.SelectEnvironment "Production")) [])
-               ; if_ ~test:staging_visible
+               ; if_ ~test_signal:staging_visible
                    (menu_item ~text:"Staging" ~disabled:(reactive disabled)
                       ~on_press:(press send (Model.SelectEnvironment "Staging")) [])
                ])
@@ -1114,7 +1114,7 @@ let dropdown_menu_section model_source send : t =
     [ stack
         [ button ~text:"Choose environment"
             ~on_press:(press send (Model.OpenPicker "dropdown")) []
-        ; if_ ~test:open_ (environment_menu model_source send)
+        ; if_ ~test_signal:open_ (environment_menu model_source send)
         ]
     ; paragraph
         ~value:(reactive (fun model -> "Environment: " ^ Model.environment model)
@@ -1609,12 +1609,12 @@ let combine_section model_source send : t =
         ~on_press:(press send Model.OpenCombineDialog) []
     ; button ~variant:`outline ~text:"Open form sheet"
         ~on_press:(press send Model.OpenCombineSheet) []
-    ; if_ ~test:dialog_open_
+    ; if_ ~test_signal:dialog_open_
         (confirm_dialog ~title:"Delete note?"
            ~message:"This cannot be undone." ~destructive:true
            ~on_dismiss:(press send Model.CloseCombineDialog)
            ~on_confirm:(press send Model.CloseCombineDialog) ())
-    ; if_ ~test:sheet_open_
+    ; if_ ~test_signal:sheet_open_
         (form_sheet ~title:"New page"
            ~content:
              [ input ~placeholder:"Page title" ~text_signal:field_value_
