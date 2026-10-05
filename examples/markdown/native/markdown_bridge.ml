@@ -26,8 +26,6 @@ let host_kind = function
   | 1 -> WebHost
   | 2 -> SwiftUIHost
   | 3 -> FlutterHost
-  | 4 -> QMLHost
-  | 5 -> WinUIHost
   | 6 -> GPUIHost
   | _ -> GenericHost
 

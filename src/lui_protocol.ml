@@ -104,8 +104,6 @@ type host_kind =
   | WebHost
   | SwiftUIHost
   | FlutterHost
-  | QMLHost
-  | WinUIHost
   | GPUIHost
 
 type platform_profile = {
