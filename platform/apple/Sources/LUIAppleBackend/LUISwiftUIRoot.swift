@@ -873,6 +873,9 @@ private struct LUINodeView: View {
             return AnyView(LUIFileImageView(model: model, backend: backend))
         case .filePreview:
             return AnyView(EmptyView())
+        case .br:
+            // Line-break leaf: no native representation; renders nothing.
+            return AnyView(EmptyView())
         case .stepper:
             return AnyView(LUIStepperView(model: model, backend: backend))
         case .step:

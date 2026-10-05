@@ -90,6 +90,7 @@ type node_kind =
   | Link
   | FileImage
   | FilePreview
+  | Br
 
 type operating_system =
   | GenericOS

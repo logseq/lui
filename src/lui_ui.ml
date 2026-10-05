@@ -147,6 +147,7 @@ let media_surface context = create context MediaSurface
 let link context = create context Link
 let file_image context = create context FileImage
 let file_preview context = create context FilePreview
+let br context = create context Br
 let stepper context = create context Stepper
 let step context = create context Step
 let timeline context = create context Timeline

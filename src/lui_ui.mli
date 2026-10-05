@@ -103,6 +103,7 @@ val media_surface : ui_context -> int
 val link : ui_context -> int
 val file_image : ui_context -> int
 val file_preview : ui_context -> int
+val br : ui_context -> int
 val stepper : ui_context -> int
 val step : ui_context -> int
 val timeline : ui_context -> int
