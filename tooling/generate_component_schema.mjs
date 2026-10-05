@@ -126,8 +126,7 @@ type host_kind =
   | WebHost
   | SwiftUIHost
   | FlutterHost
-  | QMLHost
-  | WinUIHost
+  | GPUIHost
 
 type platform_profile = {
   profile_os : operating_system;
@@ -353,204 +352,6 @@ ${decoderCases}
 `;
 }
 
-function renderCpp(schema) {
-  const enumCases = schema.nodeKinds.map(({ lg }) => `  ${lg},`).join('\n');
-  const propertyCases = schema.properties.map(({ lg }) => `  ${lg},`).join('\n');
-  const kindWireCases = schema.nodeKinds
-    .map(({ lg, wire }) => `    case NodeKind::${lg}: return "${wire}";`)
-    .join('\n');
-  const decodeCases = schema.nodeKinds
-    .map(({ lg, wire }) => `  if (std::strcmp(name, "${wire}") == 0) { *kind = NodeKind::${lg}; return true; }`)
-    .join('\n');
-  const containerKinds = schema.nodeKinds
-    .filter(({ container }) => container)
-    .map(({ lg }) => `    case NodeKind::${lg}:`)
-    .join('\n');
-  const componentName = (wire) =>
-    `Lui${wire.split('-').map((part) => part[0].toUpperCase() + part.slice(1)).join('')}.qml`;
-  const componentCases = schema.nodeKinds
-    .map(({ lg, wire }) => `    case NodeKind::${lg}: return "${componentName(wire)}";`)
-    .join('\n');
-  const propertyWireCases = schema.properties
-    .map(({ lg, wire }) => `    case Property::${lg}: return "${wire}";`)
-    .join('\n');
-  const propertyDecodeCases = schema.properties
-    .map(({ lg, wire }) => `  if (std::strcmp(name, "${wire}") == 0) { *property = Property::${lg}; return true; }`)
-    .join('\n');
-  return `${generatedHeader('//')}#pragma once
-
-#include <cstring>
-
-namespace LUI {
-
-enum class NodeKind {
-${enumCases}
-};
-
-enum class Property {
-${propertyCases}
-};
-
-inline const char *nodeKindWireName(NodeKind kind) {
-  switch (kind) {
-${kindWireCases}
-  }
-  return "unknown";
-}
-
-inline bool decodeNodeKind(const char *name, NodeKind *kind) {
-${decodeCases}
-  return false;
-}
-
-inline bool standardNodeName(const char *name) {
-  NodeKind ignored;
-  return decodeNodeKind(name, &ignored);
-}
-
-inline bool containerNodeKind(NodeKind kind) {
-  switch (kind) {
-${containerKinds}
-    return true;
-    default:
-    return false;
-  }
-}
-
-// QML file (inside the Lui module) rendering this node kind.
-inline const char *nodeKindComponentName(NodeKind kind) {
-  switch (kind) {
-${componentCases}
-  }
-  return "LuiBox.qml";
-}
-
-inline const char *propertyWireName(Property property) {
-  switch (property) {
-${propertyWireCases}
-  }
-  return "unknown";
-}
-
-inline bool decodePropertyWireName(const char *name, Property *property) {
-${propertyDecodeCases}
-  return false;
-}
-
-} // namespace LUI
-`;
-}
-
-function renderCSharp(schema) {
-  const nodeKinds = schema.nodeKinds.map(({ lg }) => `        ${lg},`).join('\n');
-  const properties = schema.properties.map(({ lg }) => `        ${lg},`).join('\n');
-  const kindWireEntries = schema.nodeKinds
-    .map(({ lg, wire }) => `            { "${wire}", LUINodeKind.${lg} },`)
-    .join('\n');
-  const kindNameCases = schema.nodeKinds
-    .map(({ lg, wire }) => `            LUINodeKind.${lg} => "${wire}",`)
-    .join('\n');
-  const containerCases = schema.nodeKinds
-    .filter(({ container }) => container)
-    .map(({ lg }) => `            LUINodeKind.${lg}`)
-    .join(' or\n');
-  const propertyWireEntries = schema.properties
-    .map(({ lg, wire }) => `            { "${wire}", LUIProperty.${lg} },`)
-    .join('\n');
-  const propertyNameCases = schema.properties
-    .map(({ lg, wire }) => `            LUIProperty.${lg} => "${wire}",`)
-    .join('\n');
-  const kindLg = new Map(schema.nodeKinds.map(({ wire, lg }) => [wire, lg]));
-  const propLg = new Map(schema.properties.map(({ wire, lg }) => [wire, lg]));
-  const matrixEntries = Object.entries(schema.kindProperties ?? {})
-    .map(([kindWire, propWires]) =>
-      `            { LUINodeKind.${kindLg.get(kindWire)}, Set(${propWires
-        .map((w) => `LUIProperty.${propLg.get(w)}`)
-        .join(', ')}) },`)
-    .join('\n');
-  const extraEntries = Object.entries(schema.kindExtraProperties ?? {})
-    .map(([kindWire, propWires]) =>
-      `            { LUINodeKind.${kindLg.get(kindWire)}, Set(${propWires
-        .map((w) => `LUIProperty.${propLg.get(w)}`)
-        .join(', ')}) },`)
-    .join('\n');
-  return `${generatedHeader('//')}
-#nullable enable
-
-using System.Collections.Generic;
-
-namespace LUI
-{
-    public enum LUINodeKind
-    {
-${nodeKinds}
-    }
-
-    public enum LUIProperty
-    {
-${properties}
-    }
-
-    public static class LUIWireSchema
-    {
-        private static readonly Dictionary<string, LUINodeKind> NodeKindsByWireName =
-            new Dictionary<string, LUINodeKind>
-        {
-${kindWireEntries}
-        };
-
-        private static readonly Dictionary<string, LUIProperty> PropertiesByWireName =
-            new Dictionary<string, LUIProperty>
-        {
-${propertyWireEntries}
-        };
-
-        public static string WireName(this LUINodeKind kind) => kind switch
-        {
-${kindNameCases}
-            _ => "unknown",
-        };
-
-        public static bool TryDecodeNodeKind(string? name, out LUINodeKind kind) =>
-            NodeKindsByWireName.TryGetValue(name ?? "", out kind);
-
-        public static bool IsStandardNodeName(string? name) =>
-            TryDecodeNodeKind(name, out _);
-
-        public static bool IsContainerKind(LUINodeKind kind) => kind switch
-        {
-${containerCases} => true,
-            _ => false,
-        };
-
-        public static string WireName(this LUIProperty property) => property switch
-        {
-${propertyNameCases}
-            _ => "unknown",
-        };
-
-        public static bool TryDecodeProperty(string? name, out LUIProperty property) =>
-            PropertiesByWireName.TryGetValue(name ?? "", out property);
-
-        private static HashSet<LUIProperty> Set(params LUIProperty[] values) =>
-            new HashSet<LUIProperty>(values);
-
-        public static readonly IReadOnlyDictionary<LUINodeKind, IReadOnlySet<LUIProperty>> RestrictiveMatrix =
-            new Dictionary<LUINodeKind, IReadOnlySet<LUIProperty>>
-        {
-${matrixEntries}
-        };
-
-        public static readonly IReadOnlyDictionary<LUINodeKind, IReadOnlySet<LUIProperty>> ExtraMatrix =
-            new Dictionary<LUINodeKind, IReadOnlySet<LUIProperty>>
-        {
-${extraEntries}
-        };
-    }
-}
-`;
-}
-
 function renderRust(schema) {
   const kindLg = new Map(schema.nodeKinds.map(({ wire, lg }) => [wire, lg]));
   const propLg = new Map(schema.properties.map(({ wire, lg }) => [wire, lg]));
@@ -564,7 +365,15 @@ function renderRust(schema) {
   const containerCases = schema.nodeKinds
     .filter(({ container }) => container)
     .map(({ lg }) => `NodeKind::${lg}`)
-    .join('\n            | ');
+    .join('\n                | ');
+  // Emit rustfmt-clean output: keep match arms at 8-space indent and wrap
+  // property arrays only when the single line would exceed 100 columns.
+  const wrapList = (prefix, items, closer) => {
+    const inline = `${prefix}[${items.join(', ')}]${closer}`;
+    if (inline.length <= 100) return inline;
+    const body = items.map((item) => `            ${item},`).join('\n');
+    return `${prefix}[\n${body}\n        ]${closer}`;
+  };
   const properties = schema.properties.map(({ lg }) => `    ${lg},`).join('\n');
   const propertyWireCases = schema.properties
     .map(({ lg, wire }) => `            "${wire}" => Some(Property::${lg}),`)
@@ -574,18 +383,21 @@ function renderRust(schema) {
     .join('\n');
   const matrixArms = Object.entries(schema.kindProperties ?? {})
     .map(([kindWire, propWires]) =>
-      `            NodeKind::${kindLg.get(kindWire)} => Some(&[${propWires
-        .map((w) => `Property::${propLg.get(w)}`)
-        .join(', ')}]),`)
+      wrapList(
+        `        NodeKind::${kindLg.get(kindWire)} => Some(&`,
+        propWires.map((w) => `Property::${propLg.get(w)}`),
+        '),',
+      ))
     .join('\n');
   const extraArms = Object.entries(schema.kindExtraProperties ?? {})
     .map(([kindWire, propWires]) =>
-      `            NodeKind::${kindLg.get(kindWire)} => &[${propWires
-        .map((w) => `Property::${propLg.get(w)}`)
-        .join(', ')}],`)
+      wrapList(
+        `        NodeKind::${kindLg.get(kindWire)} => &`,
+        propWires.map((w) => `Property::${propLg.get(w)}`),
+        ',',
+      ))
     .join('\n');
   return `${generatedHeader('//')}#[allow(clippy::match_same_arms)]
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum NodeKind {
 ${nodeKinds}
@@ -606,7 +418,10 @@ ${kindNameCases}
     }
 
     pub fn is_container(self) -> bool {
-        matches!(self, ${containerCases})
+        matches!(
+            self,
+            ${containerCases}
+        )
     }
 }
 
@@ -659,8 +474,6 @@ function artifacts(schema) {
     ['src/lui_wire_schema.mli', renderOCamlWireSignature()],
     ['platform/apple/Sources/LUIAppleBackend/LUIWireSchema.swift', renderSwift(schema)],
     ['platform/flutter/lib/lui_wire_schema.g.dart', renderDart(schema)],
-    ['platform/qt/lib/lui_wire_schema.h', renderCpp(schema)],
-    ['platform/winui/LUI.Core/LUIWireSchema.g.cs', renderCSharp(schema)],
     ['platform/gpui/crates/lui-core/src/wire_schema.rs', renderRust(schema)],
   ]);
 }

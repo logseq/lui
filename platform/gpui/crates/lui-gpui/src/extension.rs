@@ -63,7 +63,7 @@ pub fn render(
         }
         _ => {
             // Generic host: visible frame so unimplemented extensions are
-            // never silently blank — same role as WinUI's placeholder.
+            // never silently blank.
             let mut element = v_flex();
             element = element
                 .border_1()

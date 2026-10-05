@@ -8,7 +8,7 @@ func galleryExtensionRegistry() throws -> LUIAppleExtensionRegistry {
     try registry.register(
         LUIAppleExtension(
             identifier: "apple-map",
-            fingerprint: "lui-extension-v1|9:apple-map|profiles:ios/swiftui,macos/swiftui|standard-children:0|children:16:apple-map-marker|properties:14:latitude-delta:float:required:none,15:longitude-delta:float:required:none,8:latitude:float:required:none,9:longitude:float:required:none|events:",
+            fingerprint: "lui-extension-v1|9:apple-map|profiles:ios/swiftui,linux/gpui,macos/gpui,macos/swiftui,windows/gpui|standard-children:0|children:16:apple-map-marker|properties:14:latitude-delta:float:required:none,15:longitude-delta:float:required:none,8:latitude:float:required:none,9:longitude:float:required:none|events:",
             childIdentifiers: ["apple-map-marker"],
             properties: [
                 .init(name: "latitude", kind: .double, isRequired: true),
@@ -23,7 +23,7 @@ func galleryExtensionRegistry() throws -> LUIAppleExtensionRegistry {
     try registry.register(
         LUIAppleExtension(
             identifier: "apple-map-marker",
-            fingerprint: "lui-extension-v1|16:apple-map-marker|profiles:ios/swiftui,macos/swiftui|standard-children:0|children:|properties:5:title:string:required:none,8:latitude:float:required:none,9:longitude:float:required:none|events:",
+            fingerprint: "lui-extension-v1|16:apple-map-marker|profiles:ios/swiftui,linux/gpui,macos/gpui,macos/swiftui,windows/gpui|standard-children:0|children:|properties:5:title:string:required:none,8:latitude:float:required:none,9:longitude:float:required:none|events:",
             properties: [
                 .init(name: "title", kind: .string, isRequired: true),
                 .init(name: "latitude", kind: .double, isRequired: true),
@@ -37,7 +37,7 @@ func galleryExtensionRegistry() throws -> LUIAppleExtensionRegistry {
     try registry.registerTweak(
         LUIAppleTweak(
             identifier: "gallery-accent",
-            fingerprint: "lui-tweak-v1|14:gallery-accent|profiles:android/flutter,ios/flutter,ios/swiftui,linux/flutter,macos/flutter,macos/swiftui,web/web,windows/flutter|properties:"
+            fingerprint: "lui-tweak-v1|14:gallery-accent|profiles:android/flutter,ios/flutter,ios/swiftui,linux/flutter,linux/gpui,macos/flutter,macos/gpui,macos/swiftui,web/web,windows/flutter,windows/gpui|properties:"
         ) { content, _ in
             AnyView(
                 content

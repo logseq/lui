@@ -146,9 +146,8 @@ component map.
 
 Each platform resolves semantic color names to its own best-practice theme:
 the shared `--*` custom-property palette on Web, SwiftUI semantic colors on
-Apple, Material `colorScheme` on Flutter, Fluent theme resources on WinUI,
-and the `LuiStyle` palette on Qt. Applications override those defaults
-through two scoped props rather than per-platform code:
+Apple, and Material `colorScheme` on Flutter. Applications override those
+defaults through two scoped props rather than per-platform code:
 
 - `theme`: a flat JSON dictionary of design-token overrides, for example
   `{"primary": "#7c3aed", "primary-foreground": "#ffffff"}`. The table
@@ -193,13 +192,6 @@ Per-backend resolution:
 - **Flutter**: an inherited `_LUIThemeScope` widget merges tokens down the
   tree; `theme-mode` wraps the subtree in a `Theme` with a light/dark
   `ColorScheme`.
-- **WinUI**: brush resolution walks wire ancestors for the nearest token
-  table before Fluent resources; `theme-mode` maps to
-  `FrameworkElement.RequestedTheme`.
-- **Qt**: `LuiStyle.nodeColor` walks wire ancestors for the nearest token
-  table; `theme-mode` sets `QStyleHints::setColorScheme` (Qt 6.5+). The
-  scheme is process-global, so on Qt `theme-mode` is honored on `root`
-  only — scoped tokens still apply anywhere.
 
 ## Component admission
 

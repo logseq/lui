@@ -8,6 +8,18 @@
       {
         "os": "ios",
         "host": "swiftui"
+      },
+      {
+        "os": "macos",
+        "host": "gpui"
+      },
+      {
+        "os": "linux",
+        "host": "gpui"
+      },
+      {
+        "os": "windows",
+        "host": "gpui"
       }
     ],
     "all": [
@@ -42,6 +54,18 @@
       {
         "os": "windows",
         "host": "flutter"
+      },
+      {
+        "os": "macos",
+        "host": "gpui"
+      },
+      {
+        "os": "linux",
+        "host": "gpui"
+      },
+      {
+        "os": "windows",
+        "host": "gpui"
       }
     ],
     "splits": [
@@ -52,18 +76,6 @@
       {
         "os": "ios",
         "host": "swiftui"
-      },
-      {
-        "os": "linux",
-        "host": "qml"
-      },
-      {
-        "os": "macos",
-        "host": "qml"
-      },
-      {
-        "os": "windows",
-        "host": "qml"
       },
       {
         "os": "android",
@@ -86,8 +98,16 @@
         "host": "flutter"
       },
       {
+        "os": "macos",
+        "host": "gpui"
+      },
+      {
+        "os": "linux",
+        "host": "gpui"
+      },
+      {
         "os": "windows",
-        "host": "winui"
+        "host": "gpui"
       },
       {
         "os": "web",
@@ -98,6 +118,24 @@
       {
         "os": "web",
         "host": "web"
+      }
+    ],
+    "web-and-gpui": [
+      {
+        "os": "web",
+        "host": "web"
+      },
+      {
+        "os": "macos",
+        "host": "gpui"
+      },
+      {
+        "os": "linux",
+        "host": "gpui"
+      },
+      {
+        "os": "windows",
+        "host": "gpui"
       }
     ],
     "web-and-flutter": [
@@ -124,6 +162,18 @@
       {
         "os": "windows",
         "host": "flutter"
+      },
+      {
+        "os": "macos",
+        "host": "gpui"
+      },
+      {
+        "os": "linux",
+        "host": "gpui"
+      },
+      {
+        "os": "windows",
+        "host": "gpui"
       }
     ]
   },
@@ -271,7 +321,7 @@
     },
     {
       "identifier": "simulator-camera",
-      "profiles": "web",
+      "profiles": "web-and-gpui",
       "standardChildren": false,
       "children": [],
       "properties": [

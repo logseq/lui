@@ -159,8 +159,6 @@ let host_name host =
   | WebHost -> "web"
   | SwiftUIHost -> "swiftui"
   | FlutterHost -> "flutter"
-  | QMLHost -> "qml"
-  | WinUIHost -> "winui"
   | GPUIHost -> "gpui"
 
 let token value = string_of_int (String.length value) ^ ":" ^ value
