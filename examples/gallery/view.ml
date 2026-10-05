@@ -1483,6 +1483,53 @@ let tweak_paragraph : t =
 
 let tweak_section : t = section "Tweaks" [ tweak_paragraph ]
 
+(* GPUI extensions: `gpui-*` components only mount on the GPUI host —
+   gpui-kit widgets that have no cross-platform LUI kind. *)
+
+let gpui_extension_section model_source send : t =
+  section "GPUI"
+    [ paragraph
+        ~value:"gpui-* components: gpui-kit widgets exposed only on the GPUI
+          host. Interactive ones (rating, color picker) round-trip through
+          extension events."
+        []
+    ; label ~value:"Rating" []
+    ; Extension_schemas.gpui_rating
+        ~value:(Model.gpui_rating Model.initial)
+        ~value_signal:(model_source >|= Model.gpui_rating) ~max:5
+        ~on_change:(fun (event : Extension_schemas.gpui_rating_change) ->
+          ignore (send (Model.GpuiRate event.value)))
+        ()
+    ; label ~value:"Color picker" []
+    ; row ~gap:8 ~cross:`center
+        [ Extension_schemas.gpui_color_picker
+            ~value:(Model.gpui_color Model.initial)
+            ~value_signal:(model_source >|= Model.gpui_color)
+            ~on_change:(fun (event : Extension_schemas.gpui_color_picker_change) ->
+              ignore (send (Model.GpuiPickColor event.color)))
+            ()
+        ; kbd ~value:(reactive Model.gpui_color model_source) []
+        ]
+    ; label ~value:"Tags" []
+    ; row ~gap:8
+        [ Extension_schemas.gpui_tag ~text:"Primary" ~variant:"primary" ()
+        ; Extension_schemas.gpui_tag ~text:"Success" ~variant:"success" ()
+        ; Extension_schemas.gpui_tag ~text:"Warning" ~variant:"warning" ()
+        ; Extension_schemas.gpui_tag ~text:"Danger" ~variant:"danger" ()
+        ]
+    ; label ~value:"Bar chart" []
+    ; Extension_schemas.gpui_chart_bar ~name:"Weekly activity"
+        ~data:"Mon:12,Tue:19,Wed:8,Thu:24,Fri:16,Sat:6,Sun:9" ()
+    ; label ~value:"Table" []
+    ; Extension_schemas.gpui_table ~columns:"Name,Role,Status"
+        ~rows:"Ada Lovelace,Engineer,Active;Grace Hopper,Admiral,Active;Alan \
+               Turing,Mathematician,Away"
+        ~bordered:true ~stripe:true ()
+    ; Extension_schemas.gpui_empty ~title:"No search results"
+        ~description:"Try a different query or clear the filters."
+        [ button ~variant:`outline ~text:"Clear filters" ~on_press:noop [] ]
+    ]
+
 (* Composite components (lui_element_combine): generic layouts built
    purely from primitives — composer, banners, settings rows, sidebar. *)
 
@@ -1714,6 +1761,12 @@ let view context model_source send : t =
           split_panes_section model_source send;
         ]
     | WebOS -> sections @ [ native_extension_section; tweak_section ]
+    | _ -> sections
+  in
+  let sections =
+    match Lui_ui.host context with
+    | Lui_protocol.GPUIHost ->
+      sections @ [ gpui_extension_section model_source send ]
     | _ -> sections
   in
   column sections

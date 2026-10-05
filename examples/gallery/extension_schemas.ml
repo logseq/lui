@@ -64,6 +64,16 @@ type split_pane_pane_closed = {
 
 }
 
+type gpui_rating_change = {
+  event_node : int;
+  value : int;
+}
+
+type gpui_color_picker_change = {
+  event_node : int;
+  color : string;
+}
+
 let decode_simulator_map_region_change = function
   | ExtensionEvent (node, identifier, event_name, values)
     when String.equal event_name "region-change"
@@ -202,6 +212,32 @@ let decode_split_pane_pane_closed = function
     Some ({ event_node = node } : split_pane_pane_closed)
   | _ -> None
 
+let decode_gpui_rating_change = function
+  | ExtensionEvent (node, identifier, event_name, values)
+    when String.equal event_name "change"
+         && String.equal identifier "gpui-rating" ->
+    (match (String_map.find_opt "value" values) with
+     | (Some (IntValue value)) ->
+       Some ({
+         event_node = node;
+      value = value;
+       } : gpui_rating_change)
+     | _ -> None)
+  | _ -> None
+
+let decode_gpui_color_picker_change = function
+  | ExtensionEvent (node, identifier, event_name, values)
+    when String.equal event_name "change"
+         && String.equal identifier "gpui-color-picker" ->
+    (match (String_map.find_opt "color" values) with
+     | (Some (StringValue color)) ->
+       Some ({
+         event_node = node;
+      color = color;
+       } : gpui_color_picker_change)
+     | _ -> None)
+  | _ -> None
+
 let apple_map_schema =
   Lui_extension.component "apple-map" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost } ]
     false
@@ -217,14 +253,14 @@ let apple_map_marker_schema =
     [  ]
 
 let simulator_map_schema =
-  Lui_extension.component "simulator-map" [ { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost } ]
+  Lui_extension.component "simulator-map" [ { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost } ]
     false
     [ "simulator-map-marker" ]
     [ Lui_extension.property "label" Lui_extension.StringScalar true None; Lui_extension.property "latitude" Lui_extension.FloatScalar true None; Lui_extension.property "longitude" Lui_extension.FloatScalar true None; Lui_extension.property "latitude-delta" Lui_extension.FloatScalar true None; Lui_extension.property "longitude-delta" Lui_extension.FloatScalar true None ]
     [ Lui_extension.event "region-change" [ Lui_extension.event_field "latitude" Lui_extension.FloatScalar true; Lui_extension.event_field "longitude" Lui_extension.FloatScalar true; Lui_extension.event_field "latitude-delta" Lui_extension.FloatScalar true; Lui_extension.event_field "longitude-delta" Lui_extension.FloatScalar true ] ]
 
 let simulator_map_marker_schema =
-  Lui_extension.component "simulator-map-marker" [ { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost } ]
+  Lui_extension.component "simulator-map-marker" [ { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost } ]
     false
     [  ]
     [ Lui_extension.property "title" Lui_extension.StringScalar true None; Lui_extension.property "latitude" Lui_extension.FloatScalar true None; Lui_extension.property "longitude" Lui_extension.FloatScalar true None ]
@@ -245,31 +281,73 @@ let native_card_schema =
     [  ]
 
 let split_view_schema =
-  Lui_extension.component "split-view" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost } ]
+  Lui_extension.component "split-view" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost } ]
     false
     [ "split-branch"; "split-pane" ]
     [ Lui_extension.property "divider-thickness" Lui_extension.FloatScalar false None; Lui_extension.property "animation" Lui_extension.BoolScalar false None; Lui_extension.property "accessibility-identifier" Lui_extension.StringScalar false None ]
     [  ]
 
 let split_branch_schema =
-  Lui_extension.component "split-branch" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost } ]
+  Lui_extension.component "split-branch" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost } ]
     false
     [ "split-branch"; "split-pane" ]
     [ Lui_extension.property "orientation" Lui_extension.StringScalar true None; Lui_extension.property "ratio" Lui_extension.FloatScalar true None ]
     [ Lui_extension.event "ratio-changed" [ Lui_extension.event_field "ratio" Lui_extension.FloatScalar true ] ]
 
 let split_pane_schema =
-  Lui_extension.component "split-pane" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost } ]
+  Lui_extension.component "split-pane" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost } ]
     false
     [ "split-tab" ]
     [ Lui_extension.property "pane-id" Lui_extension.StringScalar true None; Lui_extension.property "selected" Lui_extension.StringScalar false None; Lui_extension.property "focused" Lui_extension.BoolScalar false None; Lui_extension.property "accessibility-identifier" Lui_extension.StringScalar false None ]
     [ Lui_extension.event "tab-selected" [ Lui_extension.event_field "tab" Lui_extension.StringScalar true ]; Lui_extension.event "tab-closed" [ Lui_extension.event_field "tab" Lui_extension.StringScalar true ]; Lui_extension.event "tab-moved" [ Lui_extension.event_field "tab" Lui_extension.StringScalar true; Lui_extension.event_field "index" Lui_extension.IntScalar true; Lui_extension.event_field "from-pane" Lui_extension.StringScalar true ]; Lui_extension.event "pane-focused" [  ]; Lui_extension.event "navigate" [ Lui_extension.event_field "direction" Lui_extension.StringScalar true ]; Lui_extension.event "split-requested" [ Lui_extension.event_field "orientation" Lui_extension.StringScalar true ]; Lui_extension.event "split-drop" [ Lui_extension.event_field "tab" Lui_extension.StringScalar true; Lui_extension.event_field "from-pane" Lui_extension.StringScalar true; Lui_extension.event_field "edge" Lui_extension.StringScalar true ]; Lui_extension.event "pane-closed" [  ] ]
 
 let split_tab_schema =
-  Lui_extension.component "split-tab" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost } ]
+  Lui_extension.component "split-tab" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = FlutterHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost } ]
     true
     [  ]
     [ Lui_extension.property "tab-id" Lui_extension.StringScalar true None; Lui_extension.property "title" Lui_extension.StringScalar true None; Lui_extension.property "icon" Lui_extension.StringScalar false None; Lui_extension.property "dirty" Lui_extension.BoolScalar false None; Lui_extension.property "closable" Lui_extension.BoolScalar false None; Lui_extension.property "accessibility-identifier" Lui_extension.StringScalar false None ]
+    [  ]
+
+let gpui_rating_schema =
+  Lui_extension.component "gpui-rating" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost } ]
+    false
+    [  ]
+    [ Lui_extension.property "value" Lui_extension.IntScalar true None; Lui_extension.property "max" Lui_extension.IntScalar false None; Lui_extension.property "accessibility-identifier" Lui_extension.StringScalar false None ]
+    [ Lui_extension.event "change" [ Lui_extension.event_field "value" Lui_extension.IntScalar true ] ]
+
+let gpui_color_picker_schema =
+  Lui_extension.component "gpui-color-picker" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost } ]
+    false
+    [  ]
+    [ Lui_extension.property "value" Lui_extension.StringScalar false None; Lui_extension.property "accessibility-identifier" Lui_extension.StringScalar false None ]
+    [ Lui_extension.event "change" [ Lui_extension.event_field "color" Lui_extension.StringScalar true ] ]
+
+let gpui_empty_schema =
+  Lui_extension.component "gpui-empty" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost } ]
+    true
+    [  ]
+    [ Lui_extension.property "title" Lui_extension.StringScalar true None; Lui_extension.property "description" Lui_extension.StringScalar false None; Lui_extension.property "accessibility-identifier" Lui_extension.StringScalar false None ]
+    [  ]
+
+let gpui_tag_schema =
+  Lui_extension.component "gpui-tag" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost } ]
+    false
+    [  ]
+    [ Lui_extension.property "text" Lui_extension.StringScalar true None; Lui_extension.property "variant" Lui_extension.StringScalar false None; Lui_extension.property "accessibility-identifier" Lui_extension.StringScalar false None ]
+    [  ]
+
+let gpui_chart_bar_schema =
+  Lui_extension.component "gpui-chart-bar" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost } ]
+    false
+    [  ]
+    [ Lui_extension.property "name" Lui_extension.StringScalar true None; Lui_extension.property "data" Lui_extension.StringScalar true None; Lui_extension.property "accessibility-identifier" Lui_extension.StringScalar false None ]
+    [  ]
+
+let gpui_table_schema =
+  Lui_extension.component "gpui-table" [ { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = LinuxOS; Lui_protocol.profile_host = GPUIHost }; { Lui_protocol.profile_os = WindowsOS; Lui_protocol.profile_host = GPUIHost } ]
+    false
+    [  ]
+    [ Lui_extension.property "columns" Lui_extension.StringScalar true None; Lui_extension.property "rows" Lui_extension.StringScalar true None; Lui_extension.property "bordered" Lui_extension.BoolScalar false None; Lui_extension.property "stripe" Lui_extension.BoolScalar false None; Lui_extension.property "accessibility-identifier" Lui_extension.StringScalar false None ]
     [  ]
 
 let gallery_accent_schema =
@@ -288,6 +366,12 @@ let registry () =
   Lui_extension.register_component registry split_branch_schema;
   Lui_extension.register_component registry split_pane_schema;
   Lui_extension.register_component registry split_tab_schema;
+  Lui_extension.register_component registry gpui_rating_schema;
+  Lui_extension.register_component registry gpui_color_picker_schema;
+  Lui_extension.register_component registry gpui_empty_schema;
+  Lui_extension.register_component registry gpui_tag_schema;
+  Lui_extension.register_component registry gpui_chart_bar_schema;
+  Lui_extension.register_component registry gpui_table_schema;
   Lui_extension.register_tweak registry gallery_accent_schema;
   Lui_extension.freeze registry;
   registry
@@ -803,4 +887,272 @@ let split_tab ?key ~tab_id ~title ?icon ?dirty ?closable ?accessibility_identifi
    | Some parent -> Lui_ui.append context parent node
    | None -> ());
   Lui_elements.mount_children context node children;
+  node
+
+let gpui_rating ?key ~value ?max ?accessibility_identifier ?value_signal ?max_signal ?accessibility_identifier_signal ?on_change () : Lui_elements.t =
+ fun context parent ->
+  let node = Lui_ui.extension context "gpui-rating" in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "value"
+         (IntValue value))
+    (Some value);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "value"
+         (Signal.map (fun value -> IntValue value) signal))
+    value_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "max"
+         (IntValue value))
+    max;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "max"
+         (Signal.map (fun value -> IntValue value) signal))
+    max_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "accessibility-identifier"
+         (StringValue value))
+    accessibility_identifier;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "accessibility-identifier"
+         (Signal.map (fun value -> StringValue value) signal))
+    accessibility_identifier_signal;
+  Option.iter
+    (fun handler ->
+       Lui_ui.on_event context node (fun raw ->
+         match decode_gpui_rating_change raw with
+         | Some event -> handler event
+         | None -> ()))
+    on_change;
+  (match parent with
+   | Some parent -> Lui_ui.append context parent node
+   | None -> ());
+
+  node
+
+let gpui_color_picker ?key ?value ?accessibility_identifier ?value_signal ?accessibility_identifier_signal ?on_change () : Lui_elements.t =
+ fun context parent ->
+  let node = Lui_ui.extension context "gpui-color-picker" in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "value"
+         (StringValue value))
+    value;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "value"
+         (Signal.map (fun value -> StringValue value) signal))
+    value_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "accessibility-identifier"
+         (StringValue value))
+    accessibility_identifier;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "accessibility-identifier"
+         (Signal.map (fun value -> StringValue value) signal))
+    accessibility_identifier_signal;
+  Option.iter
+    (fun handler ->
+       Lui_ui.on_event context node (fun raw ->
+         match decode_gpui_color_picker_change raw with
+         | Some event -> handler event
+         | None -> ()))
+    on_change;
+  (match parent with
+   | Some parent -> Lui_ui.append context parent node
+   | None -> ());
+
+  node
+
+let gpui_empty ?key ~title ?description ?accessibility_identifier ?title_signal ?description_signal ?accessibility_identifier_signal (children : Lui_elements.t list) : Lui_elements.t =
+ fun context parent ->
+  let node = Lui_ui.extension context "gpui-empty" in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "title"
+         (StringValue value))
+    (Some title);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "title"
+         (Signal.map (fun value -> StringValue value) signal))
+    title_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "description"
+         (StringValue value))
+    description;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "description"
+         (Signal.map (fun value -> StringValue value) signal))
+    description_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "accessibility-identifier"
+         (StringValue value))
+    accessibility_identifier;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "accessibility-identifier"
+         (Signal.map (fun value -> StringValue value) signal))
+    accessibility_identifier_signal;
+
+  (match parent with
+   | Some parent -> Lui_ui.append context parent node
+   | None -> ());
+  Lui_elements.mount_children context node children;
+  node
+
+let gpui_tag ?key ~text ?variant ?accessibility_identifier ?text_signal ?variant_signal ?accessibility_identifier_signal () : Lui_elements.t =
+ fun context parent ->
+  let node = Lui_ui.extension context "gpui-tag" in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "text"
+         (StringValue value))
+    (Some text);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "text"
+         (Signal.map (fun value -> StringValue value) signal))
+    text_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "variant"
+         (StringValue value))
+    variant;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "variant"
+         (Signal.map (fun value -> StringValue value) signal))
+    variant_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "accessibility-identifier"
+         (StringValue value))
+    accessibility_identifier;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "accessibility-identifier"
+         (Signal.map (fun value -> StringValue value) signal))
+    accessibility_identifier_signal;
+
+  (match parent with
+   | Some parent -> Lui_ui.append context parent node
+   | None -> ());
+
+  node
+
+let gpui_chart_bar ?key ~name ~data ?accessibility_identifier ?name_signal ?data_signal ?accessibility_identifier_signal () : Lui_elements.t =
+ fun context parent ->
+  let node = Lui_ui.extension context "gpui-chart-bar" in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "name"
+         (StringValue value))
+    (Some name);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "name"
+         (Signal.map (fun value -> StringValue value) signal))
+    name_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "data"
+         (StringValue value))
+    (Some data);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "data"
+         (Signal.map (fun value -> StringValue value) signal))
+    data_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "accessibility-identifier"
+         (StringValue value))
+    accessibility_identifier;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "accessibility-identifier"
+         (Signal.map (fun value -> StringValue value) signal))
+    accessibility_identifier_signal;
+
+  (match parent with
+   | Some parent -> Lui_ui.append context parent node
+   | None -> ());
+
+  node
+
+let gpui_table ?key ~columns ~rows ?bordered ?stripe ?accessibility_identifier ?columns_signal ?rows_signal ?bordered_signal ?stripe_signal ?accessibility_identifier_signal () : Lui_elements.t =
+ fun context parent ->
+  let node = Lui_ui.extension context "gpui-table" in
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "columns"
+         (StringValue value))
+    (Some columns);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "columns"
+         (Signal.map (fun value -> StringValue value) signal))
+    columns_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "rows"
+         (StringValue value))
+    (Some rows);
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "rows"
+         (Signal.map (fun value -> StringValue value) signal))
+    rows_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "bordered"
+         (BoolValue value))
+    bordered;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "bordered"
+         (Signal.map (fun value -> BoolValue value) signal))
+    bordered_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "stripe"
+         (BoolValue value))
+    stripe;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "stripe"
+         (Signal.map (fun value -> BoolValue value) signal))
+    stripe_signal;
+  Option.iter
+    (fun value ->
+       Lui_ui.extension_property context node "accessibility-identifier"
+         (StringValue value))
+    accessibility_identifier;
+  Option.iter
+    (fun signal ->
+       Lui_ui.extension_property_signal context node "accessibility-identifier"
+         (Signal.map (fun value -> StringValue value) signal))
+    accessibility_identifier_signal;
+
+  (match parent with
+   | Some parent -> Lui_ui.append context parent node
+   | None -> ());
+
   node

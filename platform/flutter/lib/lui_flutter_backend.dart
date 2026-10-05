@@ -3170,6 +3170,18 @@ final class LUIFlutterBackend {
         size: iconExtent,
         color: foreground,
       ),
+      _NodeKind.kbd => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.black.withOpacity(0.2), width: 0.5),
+        ),
+        child: Text(
+          state.properties['text'] as String? ?? '',
+          style: const TextStyle(fontFamily: 'monospace', fontSize: 10),
+        ),
+      ),
       _NodeKind.statusBar => statusBar(),
       // Non-visual node: presentation is driven by its properties on
       // platforms that implement the file-picker backend; children render

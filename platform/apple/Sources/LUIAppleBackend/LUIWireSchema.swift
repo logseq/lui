@@ -84,6 +84,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case swipeActions = "swipe-actions"
     case swipeAction = "swipe-action"
     case filePicker = "file-picker"
+    case kbd = "kbd"
     case link = "link"
     case fileImage = "file-image"
     case filePreview = "file-preview"
@@ -209,6 +210,7 @@ enum LUISchemaMatrix {
         .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled],
         .filePicker: [.request, .types, .multiple, .source, .completion, .enabled, .appearEnabled],
         .filePreview: [.path],
+        .kbd: [.text],
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [

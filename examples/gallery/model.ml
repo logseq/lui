@@ -28,6 +28,8 @@ type t = {
   combine_sheet_open : bool;
   combine_menu_open : bool;
   split_panes : Lui_split.Model.t;
+  gpui_rating : int;
+  gpui_color : string;
 }
 
 let gallery_split_state =
@@ -90,6 +92,8 @@ type action =
   | OpenCombineMenu
   | CloseCombineMenu
   | SplitPanes of Lui_split.Model.action
+  | GpuiRate of int
+  | GpuiPickColor of string
 
 let initial =
   {
@@ -119,6 +123,8 @@ let initial =
     combine_sheet_open = false;
     combine_menu_open = false;
     split_panes = gallery_split_state;
+    gpui_rating = 3;
+    gpui_color = "#3b82f6";
   }
 
 let update model action =
@@ -181,6 +187,8 @@ let update model action =
   | CloseCombineMenu -> { model with combine_menu_open = false }
   | SplitPanes action ->
     { model with split_panes = Lui_split.Model.update model.split_panes action }
+  | GpuiRate rating -> { model with gpui_rating = rating }
+  | GpuiPickColor color -> { model with gpui_color = color }
 
 let progress_label model =
   Printf.sprintf "Progress fraction: %.1f" model.progress
@@ -270,3 +278,7 @@ let split_fraction model = model.split_fraction
 let combine_dialog_open model = model.combine_dialog_open
 let combine_sheet_open model = model.combine_sheet_open
 let combine_menu_open model = model.combine_menu_open
+
+let gpui_rating model = model.gpui_rating
+
+let gpui_color model = model.gpui_color

@@ -2,7 +2,9 @@
 
 use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::component::slider::SliderState;
-use gpui_kit::gpui::{div, App, Context, Entity, IntoElement, Render, Subscription, Window};
+use gpui_kit::gpui::{
+    div, App, Context, Entity, IntoElement, Render, SharedString, Subscription, Window,
+};
 use lui_core::store::{NodeIdentity, Store};
 use lui_core::wire::Value;
 use lui_core::Property;
@@ -65,7 +67,7 @@ impl NodeSnapshot {
         self.string_prop(Property::RoleValue) == Some("treeitem")
     }
 
-    fn snapshot(store: &Store, id: i64) -> Option<NodeSnapshot> {
+    pub(crate) fn snapshot(store: &Store, id: i64) -> Option<NodeSnapshot> {
         let node = store.node(id)?;
         Some(NodeSnapshot {
             id,
@@ -78,6 +80,32 @@ impl NodeSnapshot {
     }
 }
 
+/// One option fed to a gpui-kit searchable list (`select`/`combobox`).
+/// `node_id` is the source `menu-item` LUI node — confirming the option
+/// fires `Press` on it, so the model's own `on_press` handler runs.
+#[derive(Clone)]
+pub struct LuiOption {
+    pub node_id: i64,
+    pub title: SharedString,
+    pub disabled: bool,
+}
+
+impl gpui_kit::component::searchable_list::SearchableListItem for LuiOption {
+    type Value = i64;
+
+    fn title(&self) -> SharedString {
+        self.title.clone()
+    }
+
+    fn value(&self) -> &i64 {
+        &self.node_id
+    }
+
+    fn disabled(&self) -> bool {
+        self.disabled
+    }
+}
+
 /// Stateful gpui-component backing states kept per node. Created lazily,
 /// survive re-renders, dropped with the view entity on `drop-node`.
 #[derive(Default)]
@@ -85,14 +113,37 @@ pub struct ComponentStates {
     pub input: Option<Entity<InputState>>,
     pub textarea: Option<Entity<TextareaState>>,
     pub slider: Option<Entity<SliderState>>,
+    pub select: Option<Entity<gpui_kit::component::select::SelectState<Vec<LuiOption>>>>,
+    pub combobox: Option<Entity<gpui_kit::component::combobox::ComboboxState<Vec<LuiOption>>>>,
+    pub color_picker: Option<Entity<gpui_kit::component::color_picker::ColorPickerState>>,
+    pub table:
+        Option<Entity<gpui_kit::component::table::TableState<crate::extension::LuiTableDelegate>>>,
+    /// Last applied `gpui-table` `columns`/`rows` signature — the delegate
+    /// is only rebuilt when the source strings change.
+    pub table_input: std::cell::RefCell<String>,
+    /// Last applied `gpui-color-picker` `value` string.
+    pub color_picker_input: std::cell::RefCell<String>,
+    /// Option node ids last pushed into the select/combobox delegate —
+    /// `set_items` is only called when the source list changes.
+    pub options_cache: std::cell::RefCell<Vec<i64>>,
     /// Open overlay anchored at a window point (context menu, popup menu).
     /// `Some(point)` renders the deferred layer, `None` is closed.
     pub overlay:
         std::rc::Rc<std::cell::Cell<Option<gpui_kit::gpui::Point<gpui_kit::gpui::Pixels>>>>,
+    /// Trigger bounds captured on prepaint for `dropdown-menu` popup
+    /// positioning — the deferred popup re-resolves against the latest
+    /// frame's bounds.
+    pub menu_bounds:
+        std::rc::Rc<std::cell::Cell<Option<gpui_kit::gpui::Bounds<gpui_kit::gpui::Pixels>>>>,
     /// Anchored tooltip visibility flag driven by hover listeners.
     pub tooltip: std::rc::Rc<std::cell::Cell<bool>>,
     /// Submenu popup open flag for `menu-trigger` rows.
     pub menu_open: std::rc::Rc<std::cell::Cell<bool>>,
+    /// The menu_trigger node id currently expanded inside this menu —
+    /// sibling coordination so only one submenu stays open at a time.
+    pub open_submenu: std::rc::Rc<std::cell::Cell<Option<i64>>>,
+    /// `split-view` → `DockArea` sync state (extension.rs registers it).
+    pub dock: Option<crate::dock::DockSync>,
     pub subscriptions: Vec<Subscription>,
 }
 
