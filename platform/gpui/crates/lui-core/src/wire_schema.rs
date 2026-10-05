@@ -450,6 +450,7 @@ pub enum Property {
     DisplayValue,
     TooltipText,
     TooltipKeys,
+    InputType,
 }
 
 impl Property {
@@ -564,6 +565,7 @@ impl Property {
             "display" => Some(Property::DisplayValue),
             "tooltip" => Some(Property::TooltipText),
             "tooltip-keys" => Some(Property::TooltipKeys),
+            "input-type" => Some(Property::InputType),
             _ => None,
         }
     }
@@ -679,6 +681,7 @@ impl Property {
             Property::DisplayValue => "display",
             Property::TooltipText => "tooltip",
             Property::TooltipKeys => "tooltip-keys",
+            Property::InputType => "input-type",
         }
     }
 }

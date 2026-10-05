@@ -58,6 +58,7 @@ type referrer_policy =
 type link_target = [ `self_ | `blank ]
 
 type display = [ `contents ]
+type input_kind = [ `text | `color ]
 type swipe_edge = [ `leading | `trailing ]
 
 (** [~as_] element-tag overrides for the phrasing kinds ([text],
@@ -2391,7 +2392,8 @@ val input :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?kind:input_kind -> t list -> t
 val search_field :
   ?key:string ->
   ?gap:int ->

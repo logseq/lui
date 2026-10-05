@@ -950,6 +950,7 @@ struct LUIRetainedTree {
         case .display: kind == .box || kind == .column || kind == .row
         case .tooltip, .tooltipKeys:
             kind == .button || kind == .icon || kind == .menuItem
+        case .inputType: kind == .input
         case .alt, .loading, .referrerPolicy: kind == .image
         case .maxPixelSize, .imageFit: kind == .fileImage
         case .active, .title, .description, .meta, .indicator, .connector: false

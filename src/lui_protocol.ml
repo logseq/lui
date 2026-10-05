@@ -223,6 +223,7 @@ type property =
   | DisplayValue
   | TooltipText
   | TooltipKeys
+  | InputType
 
 module Property_map =
   Map.Make
@@ -1018,6 +1019,7 @@ let common_property_supported kind property =
   | Opacity -> can_contain_children kind
   | DisplayValue -> kind = Box || kind = Column || kind = Row
   | TooltipText | TooltipKeys -> kind = Button || kind = Icon || kind = MenuItem
+  | InputType -> kind = Input
   | AltValue | LoadingValue | ReferrerPolicy -> kind = Image
   | MaxPixelSize | ImageFitValue -> kind = FileImage
   | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector
@@ -1251,6 +1253,7 @@ let property_value_supported property value =
   | Opacity, FloatValue value -> is_finite value && value >= 0.0 && value <= 1.0
   | DisplayValue, StringValue value -> value = "contents"
   | TooltipText, StringValue _ | TooltipKeys, StringValue _ -> true
+  | InputType, StringValue value -> value = "text" || value = "color"
   | ImageFitValue, StringValue value -> value = "fit" || value = "fill"
   | MaxPixelSize, IntValue value -> value > 0
   | Visible, BoolValue _ -> true
