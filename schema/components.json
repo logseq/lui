@@ -1638,7 +1638,8 @@
       "path"
     ],
     "kbd": [
-      "text"
+      "text",
+      "style-class"
     ]
   },
   "kindExtraProperties": {

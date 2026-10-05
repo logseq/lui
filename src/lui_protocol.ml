@@ -955,7 +955,7 @@ let property_supported kind property =
     | InputGroupActions -> property = Gap
     | ListSection -> property = KeyValue || property = SeparatorValue
     | SwipeActions -> false
-    | Kbd -> property = TextValue
+    | Kbd -> property = TextValue || property = StyleClass
     | SwipeAction ->
       List.mem
         property

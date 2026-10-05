@@ -210,7 +210,7 @@ enum LUISchemaMatrix {
         .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled],
         .filePicker: [.request, .types, .multiple, .source, .completion, .enabled, .appearEnabled],
         .filePreview: [.path],
-        .kbd: [.text],
+        .kbd: [.text, .styleClass],
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [

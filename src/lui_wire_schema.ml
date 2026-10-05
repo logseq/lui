@@ -302,7 +302,7 @@ let kind_property_matrix kind =
   | SwipeAction -> Some [ TextValue; InlineIconName; VariantValue; EdgeValue; Enabled; BackgroundValue; PressEnabled ]
   | FilePicker -> Some [ PickerRequest; PickerTypes; PickerMultiple; PickerSource; PickerCompletion; Enabled; AppearEnabled ]
   | FilePreview -> Some [ PathValue ]
-  | Kbd -> Some [ TextValue ]
+  | Kbd -> Some [ TextValue; StyleClass ]
   | _ -> None
 
 let kind_extra_properties kind =
