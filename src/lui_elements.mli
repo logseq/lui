@@ -2962,7 +2962,12 @@ val file_picker :
   ?completion:file_picker_token ->
   ?completion_signal:file_picker_token Signal.signal ->
   ?on_picked:(Lui_protocol.event -> unit) ->
-  ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_dismiss:(Lui_protocol.event -> unit) ->
+  ?accept:string ->
+  ?accept_signal:string Signal.signal ->
+  ?directory:bool ->
+  ?directory_signal:bool Signal.signal ->
+  t list -> t
 val toolbar :
   ?key:string ->
   ?gap:int ->

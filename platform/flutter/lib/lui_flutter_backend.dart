@@ -4143,6 +4143,8 @@ final class LUIFlutterBackend {
         'request' || 'completion' => value is String || value is int,
         'types' => value is String,
         'multiple' || 'enabled' || 'appear-enabled' => value is bool,
+        'accept' => value is String,
+        'directory' => value is bool,
         'source' =>
           value is String &&
               const {'files', 'photos', 'camera'}.contains(value),

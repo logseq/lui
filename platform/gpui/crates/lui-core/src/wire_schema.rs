@@ -451,6 +451,8 @@ pub enum Property {
     TooltipText,
     TooltipKeys,
     InputType,
+    PickerAccept,
+    PickerDirectory,
 }
 
 impl Property {
@@ -566,6 +568,8 @@ impl Property {
             "tooltip" => Some(Property::TooltipText),
             "tooltip-keys" => Some(Property::TooltipKeys),
             "input-type" => Some(Property::InputType),
+            "accept" => Some(Property::PickerAccept),
+            "directory" => Some(Property::PickerDirectory),
             _ => None,
         }
     }
@@ -682,6 +686,8 @@ impl Property {
             Property::TooltipText => "tooltip",
             Property::TooltipKeys => "tooltip-keys",
             Property::InputType => "input-type",
+            Property::PickerAccept => "accept",
+            Property::PickerDirectory => "directory",
         }
     }
 }
@@ -801,6 +807,8 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::PickerMultiple,
             Property::PickerSource,
             Property::PickerCompletion,
+            Property::PickerAccept,
+            Property::PickerDirectory,
             Property::Enabled,
             Property::AppearEnabled,
             Property::PointerEnabled,

@@ -1507,6 +1507,16 @@
       "lg": "InputType",
       "wire": "input-type",
       "swift": "inputType"
+    },
+    {
+      "lg": "PickerAccept",
+      "wire": "accept",
+      "swift": "pickerAccept"
+    },
+    {
+      "lg": "PickerDirectory",
+      "wire": "directory",
+      "swift": "pickerDirectory"
     }
   ],
   "events": [
@@ -1781,6 +1791,8 @@
       "multiple",
       "source",
       "completion",
+      "accept",
+      "directory",
       "enabled",
       "appear-enabled",
       "pointer-enabled"

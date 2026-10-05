@@ -224,6 +224,8 @@ type property =
   | TooltipText
   | TooltipKeys
   | InputType
+  | PickerAccept
+  | PickerDirectory
 
 module Property_map =
   Map.Make
@@ -1082,7 +1084,8 @@ let property_supported kind property =
     | FilePicker ->
       property = PickerRequest || property = PickerTypes
       || property = PickerMultiple || property = PickerSource
-      || property = PickerCompletion || property = Enabled
+      || property = PickerCompletion || property = PickerAccept
+      || property = PickerDirectory || property = Enabled
       || property = AppearEnabled || property = PointerEnabled
     | Accordion ->
       property = TextValue || property = Selected
@@ -1254,6 +1257,8 @@ let property_value_supported property value =
   | DisplayValue, StringValue value -> value = "contents"
   | TooltipText, StringValue _ | TooltipKeys, StringValue _ -> true
   | InputType, StringValue value -> value = "text" || value = "color"
+  | PickerAccept, StringValue _ -> true
+  | PickerDirectory, BoolValue _ -> true
   | ImageFitValue, StringValue value -> value = "fit" || value = "fill"
   | MaxPixelSize, IntValue value -> value > 0
   | Visible, BoolValue _ -> true

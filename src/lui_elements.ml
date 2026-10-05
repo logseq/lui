@@ -1649,7 +1649,7 @@ let toast ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pa
   mount_children context node children;
   node
 
-let file_picker ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?source ?request ?request_signal ?types ?types_signal ?multiple ?multiple_signal ?disabled ?disabled_signal ?completion ?completion_signal ?on_picked ?on_dismiss (children : t list) : t =
+let file_picker ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?source ?request ?request_signal ?types ?types_signal ?multiple ?multiple_signal ?disabled ?disabled_signal ?completion ?completion_signal ?on_picked ?on_dismiss ?accept ?accept_signal ?directory ?directory_signal (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.file_picker context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave;
@@ -1670,6 +1670,10 @@ let file_picker ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizont
   Option.iter (Lui_ui.string_property_signal context node PickerTypes) types_signal;
   Option.iter (Lui_ui.bool_property context node PickerMultiple) multiple;
   Option.iter (Lui_ui.bool_property_signal context node PickerMultiple) multiple_signal;
+  Option.iter (Lui_ui.string_property context node PickerAccept) accept;
+  Option.iter (Lui_ui.string_property_signal context node PickerAccept) accept_signal;
+  Option.iter (Lui_ui.bool_property context node PickerDirectory) directory;
+  Option.iter (Lui_ui.bool_property_signal context node PickerDirectory) directory_signal;
   Option.iter (Lui_ui.disabled context node) disabled;
   Option.iter (Lui_ui.disabled_signal context node) disabled_signal;
   Option.iter
