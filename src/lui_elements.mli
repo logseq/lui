@@ -1534,7 +1534,12 @@ val icon :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?name:icon ->
   ?name_signal:icon Signal.signal -> ?size:control_size ->
-  ?point_size:int -> nothing list -> t
+  ?point_size:int ->
+  ?tooltip:string ->
+  ?tooltip_signal:string Signal.signal ->
+  ?shortcut_hint:string ->
+  ?shortcut_hint_signal:string Signal.signal ->
+  nothing list -> t
 val text :
   ?key:string ->
   ?gap:int ->
@@ -1768,7 +1773,12 @@ val button :
   ?on_press_detail:(Lui_protocol.event -> unit) ->
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
   ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?tooltip:string ->
+  ?tooltip_signal:string Signal.signal ->
+  ?shortcut_hint:string ->
+  ?shortcut_hint_signal:string Signal.signal ->
+  t list -> t
 val toggle_button :
   ?key:string ->
   ?gap:int ->
@@ -3081,7 +3091,12 @@ val menu_item :
   ?on_press_detail:(Lui_protocol.event -> unit) ->
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
   ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?tooltip:string ->
+  ?tooltip_signal:string Signal.signal ->
+  ?shortcut_hint:string ->
+  ?shortcut_hint_signal:string Signal.signal ->
+  t list -> t
 val list_item :
   ?key:string ->
   ?gap:int ->

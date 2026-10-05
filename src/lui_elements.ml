@@ -980,7 +980,7 @@ let spinner ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?
   
   node
 
-let icon ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?name ?name_signal ?size ?point_size (_children : nothing list) : t =
+let icon ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?name ?name_signal ?size ?point_size ?tooltip ?tooltip_signal ?shortcut_hint ?shortcut_hint_signal (_children : nothing list) : t =
  fun context parent ->
   let node = Lui_ui.create context Icon in
   let width = match width with Some _ -> width | None -> point_size in
@@ -989,6 +989,10 @@ let icon ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pad
   Option.iter (Lui_ui.string_property context node IconName) (Option.map icon_value name);
   Option.iter (fun signal -> Lui_ui.string_property_signal context node IconName (Signal.map icon_value signal)) name_signal;
   Option.iter (Lui_ui.string_property context node SizeValue) (Option.map control_size_value size);
+  Option.iter (Lui_ui.string_property context node TooltipText) tooltip;
+  Option.iter (Lui_ui.string_property_signal context node TooltipText) tooltip_signal;
+  Option.iter (Lui_ui.string_property context node TooltipKeys) shortcut_hint;
+  Option.iter (Lui_ui.string_property_signal context node TooltipKeys) shortcut_hint_signal;
   attach context parent node;
   
   node
@@ -1063,7 +1067,7 @@ let kbd ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padd
 
   node
 
-let button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?variant ?size ?icon ?icon_signal ?icon_placement ?label ?text_alignment ?selected ?autofocus ?disabled ?disabled_signal ?on_press ?on_long_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu (children : t list) : t =
+let button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?variant ?size ?icon ?icon_signal ?icon_placement ?label ?text_alignment ?selected ?autofocus ?disabled ?disabled_signal ?on_press ?on_long_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?tooltip ?tooltip_signal ?shortcut_hint ?shortcut_hint_signal (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.button context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave;
@@ -1091,6 +1095,10 @@ let button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?p
      register_long_press context node handler
    | None -> ());
   apply_pointer_events context node ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ();
+  Option.iter (Lui_ui.string_property context node TooltipText) tooltip;
+  Option.iter (Lui_ui.string_property_signal context node TooltipText) tooltip_signal;
+  Option.iter (Lui_ui.string_property context node TooltipKeys) shortcut_hint;
+  Option.iter (Lui_ui.string_property_signal context node TooltipKeys) shortcut_hint_signal;
   attach context parent node;
   mount_children context node children;
   node
@@ -1708,7 +1716,7 @@ let accordion ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal
   mount_children context node children;
   node
 
-let menu_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?icon ?icon_signal ?role ?variant ?size ?tree_level ?expanded ?selected ?checked ?selected_signal ?checked_signal ?disabled ?disabled_signal ?on_press ?on_input ?on_submit ?on_dismiss ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu (children : t list) : t =
+let menu_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?icon ?icon_signal ?role ?variant ?size ?tree_level ?expanded ?selected ?checked ?selected_signal ?checked_signal ?disabled ?disabled_signal ?on_press ?on_input ?on_submit ?on_dismiss ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?tooltip ?tooltip_signal ?shortcut_hint ?shortcut_hint_signal (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.menu_item context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave;
@@ -1750,6 +1758,10 @@ let menu_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal
    | Some handler -> register_dismiss context node handler
    | None -> ());
   apply_pointer_events context node ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ();
+  Option.iter (Lui_ui.string_property context node TooltipText) tooltip;
+  Option.iter (Lui_ui.string_property_signal context node TooltipText) tooltip_signal;
+  Option.iter (Lui_ui.string_property context node TooltipKeys) shortcut_hint;
+  Option.iter (Lui_ui.string_property_signal context node TooltipKeys) shortcut_hint_signal;
   attach context parent node;
   mount_children context node children;
   node

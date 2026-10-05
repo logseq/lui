@@ -221,6 +221,8 @@ type property =
   | TargetValue
   | Opacity
   | DisplayValue
+  | TooltipText
+  | TooltipKeys
 
 module Property_map =
   Map.Make
@@ -1015,6 +1017,7 @@ let common_property_supported kind property =
   | TargetValue -> kind = Link
   | Opacity -> can_contain_children kind
   | DisplayValue -> kind = Box || kind = Column || kind = Row
+  | TooltipText | TooltipKeys -> kind = Button || kind = Icon || kind = MenuItem
   | AltValue | LoadingValue | ReferrerPolicy -> kind = Image
   | MaxPixelSize | ImageFitValue -> kind = FileImage
   | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector
@@ -1247,6 +1250,7 @@ let property_value_supported property value =
   | TargetValue, StringValue value -> value = "_self" || value = "_blank"
   | Opacity, FloatValue value -> is_finite value && value >= 0.0 && value <= 1.0
   | DisplayValue, StringValue value -> value = "contents"
+  | TooltipText, StringValue _ | TooltipKeys, StringValue _ -> true
   | ImageFitValue, StringValue value -> value = "fit" || value = "fill"
   | MaxPixelSize, IntValue value -> value > 0
   | Visible, BoolValue _ -> true

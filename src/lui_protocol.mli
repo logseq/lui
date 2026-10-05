@@ -219,6 +219,8 @@ type property =
   | TargetValue
   | Opacity
   | DisplayValue
+  | TooltipText
+  | TooltipKeys
 
 module Property_map : Map.S with type key = property
 
