@@ -1,0 +1,40 @@
+{
+  "name": "click on a logseq-button flows a dom-event back to OCaml",
+  "steps": [
+    {"apply": {
+      "generation": 1,
+      "ops": [
+        {"op": "create-node", "id": 1, "kind": "root"},
+        {"op": "create-extension", "id": 2, "identifier": "logseq-div", "fingerprint": "fp2"},
+        {"op": "create-extension", "id": 3, "identifier": "logseq-button", "fingerprint": "fp3"},
+        {"op": "set-extension-prop", "id": 3, "property": "style-class", "value": "flex p-4"},
+        {"op": "set-extension-prop", "id": 3, "property": "attrs", "value": "{\"id\": \"save-btn\"}"},
+        {"op": "set-extension-prop", "id": 3, "property": "events", "value": "click"},
+        {"op": "set-extension-prop", "id": 3, "property": "text", "value": "Save"},
+        {"op": "set-prop", "id": 3, "property": "accessibility-identifier", "value": "save-btn"},
+        {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
+        {"op": "insert-child", "parent": 2, "child": 3, "index": 0}
+      ]
+    }},
+    {"expect-bounds": {"node": 3, "rect": {"width": {"$gt": 0}, "height": {"$gt": 0}}}},
+    {"dom-op": {"op": "measure-node",
+                "body": {"ref": {"node-id": 3}},
+                "expect": {"node-rect": {
+                  "nodeId": 3,
+                  "rect": {"width": {"$gt": 0}, "height": {"$gt": 0},
+                           "left": {"$ge": 0}, "top": {"$ge": 0}}}}}},
+    {"dom-op": {"op": "measure-node",
+                "body": {"ref": {"#ref": "save-btn"}},
+                "expect": {"node-rect": {"nodeId": 3}}}},
+    {"click": 3},
+    {"expect-events": [
+      {"kind": "extension-event", "node": 3, "identifier": "logseq-button",
+       "name": "dom-event",
+       "json": {"name": "click",
+                "payload": {"name": "click", "nodeId": 3,
+                            "clientX": {"$ge": 0}, "clientY": {"$ge": 0},
+                            "target": {"tag": "BUTTON", "id": "save-btn",
+                                       "node-id": 3}}}}
+    ]}
+  ]
+}

@@ -9,3 +9,6 @@ lui-core = { path = "../lui-core" }
 gpui-kit.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }

@@ -1,0 +1,32 @@
+{
+  "name": "contextmenu fires a right-button dom-event; a plain node stays silent",
+  "steps": [
+    {"apply": {
+      "generation": 1,
+      "ops": [
+        {"op": "create-node", "id": 1, "kind": "root"},
+        {"op": "create-extension", "id": 2, "identifier": "logseq-div", "fingerprint": "fp2"},
+        {"op": "create-extension", "id": 4, "identifier": "logseq-div", "fingerprint": "fp4"},
+        {"op": "set-extension-prop", "id": 2, "property": "style-class", "value": "flex p-4"},
+        {"op": "set-extension-prop", "id": 2, "property": "attrs", "value": "{\"id\": \"ctx\"}"},
+        {"op": "set-extension-prop", "id": 2, "property": "events", "value": "contextmenu"},
+        {"op": "set-extension-prop", "id": 2, "property": "text", "value": "menu"},
+        {"op": "set-extension-prop", "id": 4, "property": "style-class", "value": "flex p-4"},
+        {"op": "set-extension-prop", "id": 4, "property": "text", "value": "quiet"},
+        {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
+        {"op": "insert-child", "parent": 1, "child": 4, "index": 1}
+      ]
+    }},
+    {"expect-bounds": {"node": 4, "rect": {"width": {"$gt": 0}}}},
+    {"right-click": 2},
+    {"expect-events": [
+      {"kind": "extension-event", "node": 2, "identifier": "logseq-div",
+       "name": "dom-event",
+       "json": {"name": "contextmenu",
+                "payload": {"name": "contextmenu", "nodeId": 2,
+                            "target": {"tag": "DIV", "id": "ctx"}}}}
+    ]},
+    {"click": 4},
+    {"expect-events": []}
+  ]
+}

@@ -1,0 +1,131 @@
+//! `lui_ocaml_*` stubs linked only into test builds (`#[cfg(test)]`): the
+//! real symbols come from the OCaml runtime in production. Each stub records
+//! the call into a shared queue so tests can assert the exact event stream
+//! the OCaml side would observe — this is the ABI round-trip coverage for
+//! `fire`/`dom_event`.
+
+use std::ffi::{c_char, c_double, c_int, CStr};
+use std::sync::Mutex;
+
+/// One call the OCaml runtime would have received, in wire order.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RecordedEvent {
+    Press(i64),
+    TextChanged { node: i64, text: String },
+    Submit(i64),
+    Dismiss(i64),
+    Picked { node: i64, payload: String },
+    ToggleChanged { node: i64, checked: bool },
+    RadioChanged(i64),
+    SliderChanged { node: i64, fraction: f64 },
+    ExtensionEvent {
+        node: i64,
+        identifier: String,
+        name: String,
+        json: String,
+    },
+}
+
+static EVENTS: Mutex<Vec<RecordedEvent>> = Mutex::new(Vec::new());
+
+fn record(event: RecordedEvent) {
+    if let Ok(mut events) = EVENTS.lock() {
+        events.push(event);
+    }
+}
+
+/// Drain the recorded event queue (FIFO). Call at test start to isolate
+/// against other tests' leftovers — tests run on one process.
+#[must_use]
+pub fn take_events() -> Vec<RecordedEvent> {
+    EVENTS
+        .lock()
+        .map(|mut events| std::mem::take(&mut *events))
+        .unwrap_or_default()
+}
+
+/// # Safety
+/// `ptr` must be a valid NUL-terminated UTF-8 string or null.
+unsafe fn cstr(ptr: *const c_char) -> String {
+    if ptr.is_null() {
+        return String::new();
+    }
+    // SAFETY: contract documented above; the caller is the lui bridge which
+    // always hands NUL-terminated CString buffers.
+    unsafe { CStr::from_ptr(ptr) }
+        .to_string_lossy()
+        .into_owned()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_press(node: i64) -> c_int {
+    record(RecordedEvent::Press(node));
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_text_changed(node: i64, text: *const c_char) -> c_int {
+    record(RecordedEvent::TextChanged {
+        node,
+        text: unsafe { cstr(text) },
+    });
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_submit(node: i64) -> c_int {
+    record(RecordedEvent::Submit(node));
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_dismiss(node: i64) -> c_int {
+    record(RecordedEvent::Dismiss(node));
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_picked(node: i64, payload: *const c_char) -> c_int {
+    record(RecordedEvent::Picked {
+        node,
+        payload: unsafe { cstr(payload) },
+    });
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_toggle_changed(node: i64, checked: c_int) -> c_int {
+    record(RecordedEvent::ToggleChanged {
+        node,
+        checked: checked != 0,
+    });
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_radio_changed(node: i64) -> c_int {
+    record(RecordedEvent::RadioChanged(node));
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_slider_changed(node: i64, fraction: c_double) -> c_int {
+    record(RecordedEvent::SliderChanged { node, fraction });
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_extension_event(
+    node: i64,
+    identifier: *const c_char,
+    name: *const c_char,
+    json_values: *const c_char,
+) -> c_int {
+    record(RecordedEvent::ExtensionEvent {
+        node,
+        identifier: unsafe { cstr(identifier) },
+        name: unsafe { cstr(name) },
+        json: unsafe { cstr(json_values) },
+    });
+    0
+}

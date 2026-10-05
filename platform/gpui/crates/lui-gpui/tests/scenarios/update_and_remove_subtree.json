@@ -1,0 +1,41 @@
+{
+  "name": "a second patch batch updates props and drops a subtree end-to-end",
+  "steps": [
+    {"apply": {
+      "generation": 1,
+      "ops": [
+        {"op": "create-node", "id": 1, "kind": "root"},
+        {"op": "create-extension", "id": 2, "identifier": "logseq-div", "fingerprint": "fp2"},
+        {"op": "create-extension", "id": 3, "identifier": "logseq-div", "fingerprint": "fp3"},
+        {"op": "create-extension", "id": 6, "identifier": "logseq-span", "fingerprint": "fp6"},
+        {"op": "set-extension-prop", "id": 2, "property": "style-class", "value": "h-20 w-full"},
+        {"op": "set-extension-prop", "id": 3, "property": "style-class", "value": "h-20 w-full"},
+        {"op": "set-extension-prop", "id": 6, "property": "text", "value": "old"},
+        {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
+        {"op": "insert-child", "parent": 1, "child": 3, "index": 1},
+        {"op": "insert-child", "parent": 2, "child": 6, "index": 0}
+      ]
+    }},
+    {"expect-bounds": {"node": 2, "rect": {"width": {"$gt": 0}}}},
+    {"expect-bounds": {"node": 6, "rect": {"width": {"$ge": 0}}}},
+    {"apply": {
+      "generation": 2,
+      "ops": [
+        {"op": "drop-node", "id": 2},
+        {"op": "create-extension", "id": 5, "identifier": "logseq-button", "fingerprint": "fp5"},
+        {"op": "set-extension-prop", "id": 5, "property": "style-class", "value": "flex p-4"},
+        {"op": "set-extension-prop", "id": 5, "property": "events", "value": "click"},
+        {"op": "set-extension-prop", "id": 5, "property": "text", "value": "New"},
+        {"op": "insert-child", "parent": 1, "child": 5, "index": 0}
+      ]
+    }},
+    {"expect-bounds": {"node": 2, "absent": true}},
+    {"expect-bounds": {"node": 6, "absent": true}},
+    {"expect-bounds": {"node": 5, "rect": {"width": {"$gt": 0}, "height": {"$gt": 0}}}},
+    {"click": 5},
+    {"expect-events": [
+      {"kind": "extension-event", "node": 5, "identifier": "logseq-button",
+       "name": "dom-event", "json": {"name": "click"}}
+    ]}
+  ]
+}

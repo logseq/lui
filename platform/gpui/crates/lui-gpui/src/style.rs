@@ -14,7 +14,8 @@ use lui_core::Property;
 use crate::node_view::NodeSnapshot;
 
 /// Parse a color token into `Hsla`: `#rgb[a]`/`#rrggbb[aa]`, `rgb[a](...)`,
-/// Tailwind names (`sky-500`, `red/80`, `slate-200/50`).
+/// Tailwind names (`sky-500`, `red/80`, `gray-200/50`). Palette coverage
+/// follows gpui-component's `ColorName` — `slate`/`zinc`/`stone` are not in it.
 pub fn color(token: &str) -> Option<Hsla> {
     let token = token.trim();
     if token.is_empty() {
@@ -22,6 +23,20 @@ pub fn color(token: &str) -> Option<Hsla> {
     }
     if let Ok(color) = try_parse_color(token) {
         return Some(color);
+    }
+    // Palette names don't compose with an `/opacity` suffix upstream
+    // (`slate-200/50`); apply the Tailwind opacity scale here.
+    if let Some((base, opacity)) = token.split_once('/') {
+        if let Ok(opacity) = opacity.parse::<f32>() {
+            let base_color = try_parse_color(base)
+                .ok()
+                .or_else(|| parse_hex(base))
+                .or_else(|| named(base));
+            if let Some(mut color) = base_color {
+                color.a *= (opacity / 100.0).clamp(0.0, 1.0);
+                return Some(color);
+            }
+        }
     }
     parse_hex(token).or_else(|| named(token))
 }
@@ -356,3 +371,375 @@ pub fn all<E: Styled>(element: E, node: &NodeSnapshot) -> E {
         None => element,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Snapshot-style assertions for the class -> Styled mapping table.
+    //! Each test pins one mapping entry so a table edit that silently
+    //! changes (or drops) a token fails loudly.
+
+    use super::*;
+    use gpui_kit::gpui::{
+        div, AbsoluteLength, DefiniteLength, Fill, FontStyle, FontWeight, Length, Overflow, Rems,
+        TextAlign, Visibility, WhiteSpace,
+    };
+    use gpui_kit::gpui::{Display, Styled};
+
+    /// `p`-scale utility shorthand: Tailwind's 4px scale on `n`.
+    fn px_len(n: f32) -> DefiniteLength {
+        AbsoluteLength::Pixels(px(n * 4.0)).into()
+    }
+
+    fn abs_len(n: f32) -> Length {
+        Length::Definite(px_len(n))
+    }
+
+    fn classes(token: &str) -> gpui_kit::gpui::StyleRefinement {
+        let mut element = style_class(div(), token);
+        element.style().clone()
+    }
+
+    #[test]
+    fn color_tokens_parse_all_supported_forms() {
+        for token in [
+            "#fff",
+            "#ff0000",
+            "#ff000080",
+            "#abc",
+            "sky-500",
+            "red/80",
+            "gray-200/50",
+            "transparent",
+            "black",
+            "white",
+        ] {
+            assert!(color(token).is_some(), "color({token:?})");
+        }
+        for token in [
+            "",
+            "   ",
+            "not-a-color",
+            "#",
+            "#ff",
+            "rgb(",
+            // gpui-component's palette table lacks slate/zinc/stone.
+            "slate-200",
+            "slate-200/50",
+        ] {
+            assert!(color(token).is_none(), "color({token:?}) must be None");
+        }
+    }
+
+    #[test]
+    fn hex_color_expands_short_and_alpha_forms() {
+        let hsla = color("#fff").unwrap();
+        assert_eq!(hsla, color("#ffffff").unwrap());
+        let alpha = color("#ff000080").unwrap();
+        assert!(alpha.a < 0.51 && alpha.a > 0.49, "alpha ~= 0.5: {alpha:?}");
+    }
+
+    #[test]
+    fn spacing_utilities_map_to_the_4px_scale() {
+        for (token, expected) in [
+            ("p-4", px_len(4.0)),
+            ("p-0", px_len(0.0)),
+            ("p-10", px_len(10.0)),
+        ] {
+            let s = classes(token);
+            for edge in [
+                s.padding.top,
+                s.padding.right,
+                s.padding.bottom,
+                s.padding.left,
+            ] {
+                assert_eq!(edge, Some(expected), "{token}");
+            }
+        }
+        let s = classes("px-2");
+        assert_eq!(s.padding.left, Some(px_len(2.0)));
+        assert_eq!(s.padding.right, Some(px_len(2.0)));
+        assert_eq!(s.padding.top, None);
+        let s = classes("py-3");
+        assert_eq!(s.padding.top, Some(px_len(3.0)));
+        assert_eq!(s.padding.bottom, Some(px_len(3.0)));
+        let s = classes("pt-1 pb-2 pl-3 pr-4");
+        assert_eq!(s.padding.top, Some(px_len(1.0)));
+        assert_eq!(s.padding.bottom, Some(px_len(2.0)));
+        assert_eq!(s.padding.left, Some(px_len(3.0)));
+        assert_eq!(s.padding.right, Some(px_len(4.0)));
+        // margins
+        let s = classes("m-2 mt-3 mb-1 mx-4");
+        assert_eq!(s.margin.top, Some(abs_len(3.0)));
+        assert_eq!(s.margin.bottom, Some(abs_len(1.0)));
+        assert_eq!(s.margin.left, Some(abs_len(4.0)));
+        assert_eq!(s.margin.right, Some(abs_len(4.0)));
+        // gaps
+        let s = classes("gap-2");
+        assert_eq!(s.gap.width, Some(px_len(2.0)));
+        assert_eq!(s.gap.height, Some(px_len(2.0)));
+        let s = classes("gap-x-4 gap-y-1");
+        assert_eq!(s.gap.width, Some(px_len(4.0)));
+        assert_eq!(s.gap.height, Some(px_len(1.0)));
+        // line height
+        assert_eq!(classes("leading-6").text.line_height, Some(px_len(6.0)));
+        // insets
+        let s = classes("top-2 bottom-4 left-1 right-3");
+        assert_eq!(s.inset.top, Some(abs_len(2.0)));
+        assert_eq!(s.inset.bottom, Some(abs_len(4.0)));
+        assert_eq!(s.inset.left, Some(abs_len(1.0)));
+        assert_eq!(s.inset.right, Some(abs_len(3.0)));
+    }
+
+    #[test]
+    fn longest_prefix_wins_over_shorter_ones() {
+        // `px-4` must not be eaten by `p-`; `min-w-0` not by `w-`.
+        let s = classes("px-4");
+        assert_eq!(s.padding.top, None, "px- must not set top padding");
+        assert_eq!(s.padding.left, Some(px_len(4.0)));
+        let s = classes("min-w-0");
+        assert_eq!(s.min_size.width, Some(abs_len(0.0)));
+        let s = classes("min-h-2");
+        assert_eq!(s.min_size.height, Some(abs_len(2.0)));
+        let s = classes("max-w-8 max-h-6");
+        assert_eq!(s.max_size.width, Some(abs_len(8.0)));
+        assert_eq!(s.max_size.height, Some(abs_len(6.0)));
+        // `size-N` sets both axes.
+        let s = classes("size-5");
+        assert_eq!(s.size.width, Some(abs_len(5.0)));
+        assert_eq!(s.size.height, Some(abs_len(5.0)));
+    }
+
+    #[test]
+    fn flex_and_alignment_tokens() {
+        assert_eq!(classes("flex").display, Some(Display::Flex));
+        for (token, want) in [
+            ("flex-row", gpui_kit::gpui::FlexDirection::Row),
+            ("flex-col", gpui_kit::gpui::FlexDirection::Column),
+        ] {
+            assert_eq!(classes(token).flex_direction, Some(want), "{token}");
+        }
+        assert_eq!(
+            classes("flex-wrap").flex_wrap,
+            Some(gpui_kit::gpui::FlexWrap::Wrap)
+        );
+        assert_eq!(
+            classes("flex-nowrap").flex_wrap,
+            Some(gpui_kit::gpui::FlexWrap::NoWrap)
+        );
+        assert_eq!(classes("flex-1").flex_grow, Some(1.0));
+        assert_eq!(classes("grow-0").flex_grow, Some(0.0));
+        assert_eq!(classes("shrink-0").flex_shrink, Some(0.0));
+        for (token, want) in [
+            ("items-start", gpui_kit::gpui::AlignItems::FlexStart),
+            ("items-center", gpui_kit::gpui::AlignItems::Center),
+            ("items-end", gpui_kit::gpui::AlignItems::FlexEnd),
+            ("items-baseline", gpui_kit::gpui::AlignItems::Baseline),
+            ("items-stretch", gpui_kit::gpui::AlignItems::Stretch),
+        ] {
+            assert_eq!(classes(token).align_items, Some(want), "{token}");
+        }
+        for (token, want) in [
+            ("justify-start", gpui_kit::gpui::JustifyContent::Start),
+            ("justify-center", gpui_kit::gpui::JustifyContent::Center),
+            ("justify-end", gpui_kit::gpui::JustifyContent::End),
+            ("justify-between", gpui_kit::gpui::JustifyContent::SpaceBetween),
+            ("justify-around", gpui_kit::gpui::JustifyContent::SpaceAround),
+            ("justify-evenly", gpui_kit::gpui::JustifyContent::SpaceEvenly),
+        ] {
+            assert_eq!(classes(token).justify_content, Some(want), "{token}");
+        }
+        for (token, want) in [
+            ("self-start", gpui_kit::gpui::AlignSelf::Start),
+            ("self-center", gpui_kit::gpui::AlignSelf::Center),
+            ("self-end", gpui_kit::gpui::AlignSelf::End),
+            ("self-stretch", gpui_kit::gpui::AlignSelf::Stretch),
+        ] {
+            assert_eq!(classes(token).align_self, Some(want), "{token}");
+        }
+    }
+
+    #[test]
+    fn sizing_tokens() {
+        let s = classes("w-full");
+        assert_eq!(
+            s.size.width,
+            Some(Length::Definite(DefiniteLength::Fraction(1.0)))
+        );
+        let s = classes("h-full");
+        assert_eq!(
+            s.size.height,
+            Some(Length::Definite(DefiniteLength::Fraction(1.0)))
+        );
+        let s = classes("w-10 h-20");
+        assert_eq!(s.size.width, Some(abs_len(10.0)));
+        assert_eq!(s.size.height, Some(abs_len(20.0)));
+    }
+
+    #[test]
+    fn visibility_position_and_overflow_tokens() {
+        assert_eq!(classes("hidden").visibility, Some(Visibility::Hidden));
+        assert_eq!(classes("visible").visibility, Some(Visibility::Visible));
+        assert_eq!(
+            classes("relative").position,
+            Some(gpui_kit::gpui::Position::Relative)
+        );
+        assert_eq!(
+            classes("absolute").position,
+            Some(gpui_kit::gpui::Position::Absolute)
+        );
+        let s = classes("inset-0");
+        for edge in [s.inset.top, s.inset.right, s.inset.bottom, s.inset.left] {
+            assert_eq!(
+                edge,
+                Some(Length::Definite(DefiniteLength::Absolute(
+                    AbsoluteLength::Pixels(px(0.0))
+                )))
+            );
+        }
+        assert_eq!(classes("overflow-hidden").overflow.x, Some(Overflow::Hidden));
+        assert_eq!(classes("overflow-hidden").overflow.y, Some(Overflow::Hidden));
+        assert_eq!(classes("overflow-x-hidden").overflow.x, Some(Overflow::Hidden));
+        assert_eq!(classes("overflow-y-hidden").overflow.y, Some(Overflow::Hidden));
+    }
+
+    #[test]
+    fn text_tokens() {
+        assert_eq!(classes("text-center").text.text_align, Some(TextAlign::Center));
+        assert_eq!(classes("text-right").text.text_align, Some(TextAlign::Right));
+        assert_eq!(classes("font-bold").text.font_weight, Some(FontWeight::BOLD));
+        assert_eq!(
+            classes("font-semibold").text.font_weight,
+            Some(FontWeight::SEMIBOLD)
+        );
+        assert_eq!(
+            classes("font-medium").text.font_weight,
+            Some(FontWeight::MEDIUM)
+        );
+        assert_eq!(
+            classes("font-mono").text.font_family.as_deref(),
+            Some("monospace")
+        );
+        assert_eq!(classes("italic").text.font_style, Some(FontStyle::Italic));
+        assert!(classes("underline").text.underline.is_some());
+        assert!(classes("line-through").text.strikethrough.is_some());
+        assert_eq!(classes("whitespace-nowrap").text.white_space, Some(WhiteSpace::Nowrap));
+        assert!(matches!(
+            classes("truncate").text.text_overflow,
+            Some(gpui_kit::gpui::TextOverflow::Truncate(_))
+        ));
+        // size scale
+        assert_eq!(
+            classes("text-xs").text.font_size,
+            Some(AbsoluteLength::Rems(Rems(0.75)))
+        );
+        assert_eq!(
+            classes("text-2xl").text.font_size,
+            Some(AbsoluteLength::Rems(Rems(1.5)))
+        );
+        // colored text resolves through the palette
+        let expected = color("sky-500").unwrap();
+        assert_eq!(classes("text-sky-500").text.color, Some(expected));
+    }
+
+    #[test]
+    fn borders_radius_and_surface_tokens() {
+        let s = classes("border");
+        for edge in [
+            s.border_widths.top,
+            s.border_widths.right,
+            s.border_widths.bottom,
+            s.border_widths.left,
+        ] {
+            assert_eq!(edge, Some(AbsoluteLength::Pixels(px(1.0))));
+        }
+        let s = classes("border-0");
+        for edge in [
+            s.border_widths.top,
+            s.border_widths.right,
+            s.border_widths.bottom,
+            s.border_widths.left,
+        ] {
+            assert_eq!(edge, Some(AbsoluteLength::Pixels(px(0.0))));
+        }
+        assert_eq!(
+            classes("border-t").border_widths.top,
+            Some(AbsoluteLength::Pixels(px(1.0)))
+        );
+        // radius scale — `rounded` is gpui's rounded_md (0.375rem = 6px)
+        let s = classes("rounded");
+        assert_eq!(
+            s.corner_radii.top_left,
+            Some(AbsoluteLength::Rems(Rems(0.375)))
+        );
+        let s = classes("rounded-none");
+        assert_eq!(s.corner_radii.top_left, Some(AbsoluteLength::Pixels(px(0.0))));
+        let s = classes("rounded-2xl");
+        assert_eq!(s.corner_radii.top_left, Some(AbsoluteLength::Pixels(px(16.0))));
+        // background + border colors flow through `color`
+        let expected = color("sky-500").unwrap();
+        assert_eq!(
+            classes("bg-sky-500").background,
+            Some(Fill::from(expected))
+        );
+        assert_eq!(
+            classes("border-sky-500").border_color,
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn unknown_and_semantic_tokens_are_ignored() {
+        let s = classes("cp__sidebar ls-page foo-bar-42 bg-not-a-color");
+        assert_eq!(s.padding.top, None);
+        assert_eq!(s.background, None);
+        assert_eq!(s.display, None);
+    }
+
+    #[test]
+    fn surface_and_layout_read_wire_props() {
+        use lui_core::store::NodeIdentity;
+        use lui_core::wire::Value;
+        use lui_core::wire_schema::NodeKind;
+        use std::collections::BTreeMap;
+        let mut props: BTreeMap<Property, Value> = BTreeMap::new();
+        props.insert(Property::WidthValue, Value::Float(120.0));
+        props.insert(Property::Gap, Value::Int(2));
+        props.insert(Property::MainAlignment, Value::Str("center".into()));
+        props.insert(
+            Property::BackgroundValue,
+            Value::Str("red-500".into()),
+        );
+        let node = NodeSnapshot {
+            id: 1,
+            identity: NodeIdentity::Standard(NodeKind::Column),
+            props,
+            extension_props: BTreeMap::new(),
+            children: Vec::new(),
+            parent: None,
+        };
+        let mut element = all(div(), &node);
+        let s = element.style();
+        assert_eq!(
+            s.size.width,
+            Some(Length::Definite(DefiniteLength::Absolute(
+                AbsoluteLength::Pixels(px(120.0))
+            )))
+        );
+        // wire `gap` is raw pixels, not the utility 4px scale
+        assert_eq!(
+            s.gap.width,
+            Some(DefiniteLength::Absolute(AbsoluteLength::Pixels(
+                px(2.0)
+            )))
+        );
+        assert_eq!(
+            s.justify_content,
+            Some(gpui_kit::gpui::JustifyContent::Center)
+        );
+        assert_eq!(
+            s.background,
+            Some(Fill::from(color("red-500").unwrap()))
+        );
+    }
+}
+

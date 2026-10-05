@@ -1809,6 +1809,7 @@ pub fn render_node(
         // Containers -----------------------------------------------------
         NodeKind::Root => {
             let mut element = v_flex()
+                .on_children_prepainted(view.bounds_recorder(node))
                 .id(element_id(node.id))
                 .size_full()
                 .bg(cx.theme().background)

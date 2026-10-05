@@ -397,7 +397,9 @@ pub fn render(
             || TABLE_TAGS.contains(&tag.as_str())
             || tag == "button" =>
         {
-            let mut element = v_flex().id(ElementId::Integer(node.id as u64));
+            let mut element = v_flex()
+                .on_children_prepainted(view.bounds_recorder(node))
+                .id(ElementId::Integer(node.id as u64));
             element = with_text(element, node);
             element = element.children(children);
             element = style::all(element, node);
@@ -409,6 +411,7 @@ pub fn render(
         }
         _ if INLINE_TAGS.contains(&tag.as_str()) => {
             let mut element = h_flex()
+                .on_children_prepainted(view.bounds_recorder(node))
                 .id(ElementId::Integer(node.id as u64))
                 .items_baseline();
             element = with_text(element, node);
@@ -423,7 +426,7 @@ pub fn render(
         // Unknown logseq-* tag: transparent passthrough, never a warning
         // frame — the logseq family is understood vocabulary, not "missing".
         _ => {
-            let mut element = v_flex();
+            let mut element = v_flex().on_children_prepainted(view.bounds_recorder(node));
             element = with_text(element, node);
             element = element.children(children);
             element = style::all(element, node);
@@ -431,3 +434,208 @@ pub fn render(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui_kit::gpui::Overflow;
+    use lui_core::wire::Value;
+    use lui_core::wire_schema::Property;
+    use std::collections::BTreeMap;
+
+    fn ext_node(
+        id: i64,
+        identifier: &str,
+        extension_props: &[(&str, Value)],
+        props: &[(Property, Value)],
+    ) -> Node {
+        Node {
+            id,
+            identity: NodeIdentity::Extension {
+                identifier: identifier.to_string(),
+                fingerprint: "fp".to_string(),
+            },
+            props: props.iter().cloned().collect(),
+            extension_props: extension_props
+                .iter()
+                .map(|(k, v)| ((*k).to_string(), v.clone()))
+                .collect::<BTreeMap<_, _>>(),
+            children: Vec::new(),
+            parent: None,
+        }
+    }
+
+    fn snapshot_of(node: &Node) -> NodeSnapshot {
+        NodeSnapshot {
+            id: node.id,
+            identity: node.identity.clone(),
+            props: node.props.clone(),
+            extension_props: node.extension_props.clone(),
+            children: node.children.clone(),
+            parent: node.parent,
+        }
+    }
+
+    fn link(store: &mut Store, parent: i64, child: i64) {
+        store.nodes.get_mut(&parent).unwrap().children.push(child);
+        store.nodes.get_mut(&child).unwrap().parent = Some(parent);
+    }
+
+    #[test]
+    fn tag_of_strips_the_logseq_prefix() {
+        assert_eq!(tag_of(&snapshot_of(&ext_node(1, "logseq-div", &[], &[]))), "div");
+        assert_eq!(
+            tag_of(&snapshot_of(&ext_node(1, "logseq-button", &[], &[]))),
+            "button"
+        );
+        // Other namespaces pass through untouched.
+        assert_eq!(tag_of(&snapshot_of(&ext_node(1, "gpui-table", &[], &[]))), "gpui-table");
+        // Standard kinds carry no tag.
+        let standard = Node {
+            id: 9,
+            identity: NodeIdentity::Standard(lui_core::wire_schema::NodeKind::Text),
+            props: BTreeMap::new(),
+            extension_props: BTreeMap::new(),
+            children: Vec::new(),
+            parent: None,
+        };
+        assert_eq!(tag_of(&snapshot_of(&standard)), "");
+    }
+
+    #[test]
+    fn attrs_parse_from_the_json_prop() {
+        let node = ext_node(
+            1,
+            "logseq-input",
+            &[("attrs", Value::Str(r#"{"id": "q", "value": "abc", "data-x": 1}"#.into()))],
+            &[],
+        );
+        assert_eq!(attr(&snapshot_of(&node), "id").as_deref(), Some("q"));
+        assert_eq!(attr(&snapshot_of(&node), "value").as_deref(), Some("abc"));
+        // Non-string members and missing keys yield None.
+        assert!(attr(&snapshot_of(&node), "data-x").is_none());
+        assert!(attr(&snapshot_of(&node), "missing").is_none());
+        // Broken JSON is not an error — just no attrs.
+        let bad = ext_node(2, "logseq-div", &[("attrs", Value::Str("{oops".into()))], &[]);
+        assert!(attr(&snapshot_of(&bad), "id").is_none());
+    }
+
+    #[test]
+    fn shallow_snapshot_shapes_the_dom_element() {
+        let node = ext_node(
+            7,
+            "logseq-button",
+            &[
+                ("style-class", Value::Str("flex p-2".into())),
+                (
+                    "attrs",
+                    Value::Str(r#"{"id": "save", "value": "v1", "checked": ""}"#.into()),
+                ),
+            ],
+            &[],
+        );
+        let store = Store {
+            nodes: [(7i64, node)].into_iter().collect(),
+            root: Some(7),
+            generation: 1,
+        };
+        let snap = shallow_snapshot(store.node(7).unwrap());
+        assert_eq!(snap["tag"], "BUTTON");
+        assert_eq!(snap["class"], "flex p-2");
+        assert_eq!(snap["id"], "save");
+        assert_eq!(snap["#ref"], "save");
+        assert_eq!(snap["node-id"], 7);
+        assert_eq!(snap["#new"], 7);
+        assert_eq!(snap["attrs"]["data-x"], serde_json::Value::Null);
+        assert_eq!(snap["attrs"]["id"], "save");
+        // value/checked are lifted to top-level fields like the web DOM.
+        assert_eq!(snap["value"], "v1");
+        assert_eq!(snap["checked"], true);
+    }
+
+    #[test]
+    fn target_snapshot_carries_the_ancestor_chain_root_first() {
+        let mut store = Store::default();
+        let root = ext_node(
+            1,
+            "logseq-main",
+            &[("attrs", Value::Str(r#"{"id": "app"}"#.into()))],
+            &[],
+        );
+        let mid = ext_node(2, "logseq-ul", &[], &[]);
+        let leaf = ext_node(
+            3,
+            "logseq-li",
+            &[("attrs", Value::Str(r#"{"id": "item-3"}"#.into()))],
+            &[],
+        );
+        store.nodes.insert(1, root);
+        store.nodes.insert(2, mid);
+        store.nodes.insert(3, leaf);
+        link(&mut store, 1, 2);
+        link(&mut store, 2, 3);
+        let snap = target_snapshot(&store, 3);
+        assert_eq!(snap["tag"], "LI");
+        assert_eq!(snap["id"], "item-3");
+        let ancestors = snap["ancestors"].as_array().expect("ancestors array");
+        assert_eq!(ancestors.len(), 2);
+        assert_eq!(ancestors[0]["tag"], "MAIN");
+        assert_eq!(ancestors[0]["id"], "app");
+        assert_eq!(ancestors[1]["tag"], "UL");
+        // Missing node -> JSON null (the host reports Null upstream).
+        assert_eq!(target_snapshot(&store, 99), serde_json::Value::Null);
+    }
+
+    #[test]
+    fn class_helpers_read_the_extension_prop() {
+        let node = ext_node(
+            1,
+            "logseq-div",
+            &[("style-class", Value::Str("flex p-4 overflow-y-scroll".into()))],
+            &[],
+        );
+        let snap = snapshot_of(&node);
+        assert_eq!(classes(&snap), "flex p-4 overflow-y-scroll");
+        assert!(has_class(&snap, "overflow-y-scroll"));
+        assert!(!has_class(&snap, "overflow-x-scroll"));
+    }
+
+    #[test]
+    fn scroll_classes_turn_on_the_matching_axes() {
+        let node = ext_node(
+            1,
+            "logseq-div",
+            &[("style-class", Value::Str("overflow-y-auto".into()))],
+            &[],
+        );
+        let mut element = with_scroll(v_flex().id(ElementId::Integer(1)), &snapshot_of(&node));
+        assert_eq!(element.style().overflow.y, Some(Overflow::Scroll));
+        assert_ne!(element.style().overflow.x, Some(Overflow::Scroll));
+        let node = ext_node(
+            1,
+            "logseq-div",
+            &[("style-class", Value::Str("overflow-auto".into()))],
+            &[],
+        );
+        let mut element = with_scroll(v_flex().id(ElementId::Integer(1)), &snapshot_of(&node));
+        assert_eq!(element.style().overflow.x, Some(Overflow::Scroll));
+        assert_eq!(element.style().overflow.y, Some(Overflow::Scroll));
+        let plain = ext_node(1, "logseq-div", &[], &[]);
+        let mut element = with_scroll(v_flex().id(ElementId::Integer(1)), &snapshot_of(&plain));
+        assert_ne!(element.style().overflow.x, Some(Overflow::Scroll));
+        assert_ne!(element.style().overflow.y, Some(Overflow::Scroll));
+    }
+
+    #[test]
+    fn text_prop_reads_the_text_extension_value() {
+        let node = ext_node(
+            1,
+            "logseq-span",
+            &[("text", Value::Str("hi".into()))],
+            &[],
+        );
+        assert_eq!(text_prop(&snapshot_of(&node)), "hi");
+        assert_eq!(text_prop(&snapshot_of(&ext_node(1, "logseq-div", &[], &[]))), "");
+    }
+}
+

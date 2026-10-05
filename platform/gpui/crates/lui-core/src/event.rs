@@ -148,3 +148,122 @@ pub fn event_allowed(node: &Node, event: EventKind) -> bool {
     }
     event_supported(kind, event)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::NodeIdentity;
+    use crate::wire::Value;
+    use std::collections::BTreeMap;
+
+    fn node_of_kind(kind: NodeKind) -> Node {
+        Node {
+            id: 1,
+            identity: NodeIdentity::Standard(kind),
+            props: BTreeMap::new(),
+            extension_props: BTreeMap::new(),
+            children: Vec::new(),
+            parent: None,
+        }
+    }
+
+    fn extension_node() -> Node {
+        Node {
+            id: 2,
+            identity: NodeIdentity::Extension {
+                identifier: "logseq-button".to_string(),
+                fingerprint: "fp".to_string(),
+            },
+            props: BTreeMap::new(),
+            extension_props: BTreeMap::new(),
+            children: Vec::new(),
+            parent: None,
+        }
+    }
+
+    #[test]
+    fn kind_table_matches_the_schema_support() {
+        use EventKind::*;
+        use NodeKind::*;
+        for (kind, event) in [
+            (Button, Press),
+            (Button, PressModifiers),
+            (ListItem, DoublePress),
+            (TextField, TextChanged),
+            (Textarea, Submit),
+            (Toggle, ToggleChanged),
+            (Radio, Change),
+            (Slider, ValueChanged),
+            (Dialog, Dismiss),
+            (ListContainer, ScrollCompleted),
+            (ListContainer, VisibleRange),
+            (FilePicker, Picked),
+            (Text, Appear),
+        ] {
+            assert!(
+                event_supported(kind, event),
+                "{kind:?} must support {event:?}"
+            );
+        }
+        for (kind, event) in [
+            (Button, TextChanged),
+            (TextField, Press),
+            (Root, Appear),
+            (Slider, DoublePress),
+            (Dialog, ToggleChanged),
+        ] {
+            assert!(
+                !event_supported(kind, event),
+                "{kind:?} must not support {event:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn extension_nodes_only_admit_extension_events() {
+        let node = extension_node();
+        assert!(event_allowed(&node, EventKind::ExtensionEvent));
+        for event in [
+            EventKind::Press,
+            EventKind::TextChanged,
+            EventKind::Submit,
+            EventKind::Appear,
+            EventKind::Dismiss,
+        ] {
+            assert!(!event_allowed(&node, event), "{event:?} must be gated");
+        }
+        // The kind table itself never admits ExtensionEvent — only
+        // extension identities route there.
+        assert!(!event_supported(NodeKind::Button, EventKind::ExtensionEvent));
+    }
+
+    #[test]
+    fn flag_props_override_the_kind_table() {
+        let mut node = node_of_kind(NodeKind::Text);
+        // treeitem role switches press/change/toggle to opt-in flags.
+        node.props.insert(
+            Property::RoleValue,
+            Value::Str("treeitem".to_string()),
+        );
+        assert!(!event_allowed(&node, EventKind::Press));
+        node.props
+            .insert(Property::PressEnabled, Value::Bool(true));
+        assert!(event_allowed(&node, EventKind::Press));
+        assert!(event_allowed(&node, EventKind::PressModifiers));
+        assert!(!event_allowed(&node, EventKind::ToggleChanged));
+        node.props
+            .insert(Property::ToggleEnabled, Value::Bool(true));
+        assert!(event_allowed(&node, EventKind::ToggleChanged));
+    }
+
+    #[test]
+    fn appear_enabled_flag_unlocks_appear() {
+        let mut node = node_of_kind(NodeKind::Root);
+        // Root never supports Appear in the kind table, but the flag wins.
+        assert!(!event_supported(NodeKind::Root, EventKind::Appear));
+        node.props
+            .insert(Property::AppearEnabled, Value::Bool(true));
+        assert!(event_allowed(&node, EventKind::Appear));
+    }
+}
+
