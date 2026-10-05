@@ -669,13 +669,8 @@ let common_property_supported kind property =
   | GrowValue ->
     kind <> Avatar && (not (modal_surface kind)) && kind <> Tooltip
   | GridColumns -> kind = Grid
-  | PaddingValue -> kind <> Avatar && kind <> Tooltip
-  | PaddingHorizontal ->
-    kind = Row || kind = Column || kind = Grid || kind = Box || kind = Button
-    || kind = Card || kind = Panel || kind = Scroll
-  | PaddingVertical ->
-    kind = Row || kind = Column || kind = Grid || kind = Box || kind = Card
-    || kind = Panel || kind = Scroll
+  | PaddingValue | PaddingHorizontal | PaddingVertical ->
+    kind <> Avatar && kind <> Tooltip
   | BackgroundValue | BorderColorValue | BorderWidth | CornerRadius ->
     (not (modal_surface kind)) && kind <> Tooltip
   | ForegroundValue ->
