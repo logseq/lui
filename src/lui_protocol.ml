@@ -640,6 +640,10 @@ let can_contain_children kind =
     | Toolbar
     | Alert
     | Bubble
+    | Text
+    | Heading
+    | Paragraph
+    | Label
     | BottomTabs
     | BottomTab
     | Link
@@ -1295,7 +1299,11 @@ let child_kind_supported parent_kind child_kind =
   else if parent_kind = Root then true
   else if parent_kind = MenuItem then child_kind = ContextMenu
   else if parent_kind = MenuTrigger then child_kind = DropdownMenu
-  else if context_menu_leaf_host_kind parent_kind then child_kind = ContextMenu
+  else if context_menu_leaf_host_kind parent_kind
+  then
+    (* Leaf hosts take a context-menu child only; a leaf host that is also
+       a container (button) keeps its regular children alongside. *)
+    child_kind = ContextMenu || can_contain_children parent_kind
   else if child_kind = ListSection then parent_kind = ListContainer
   else if child_kind = ListSectionHeader || child_kind = ListSectionFooter
   then parent_kind = ListSection

@@ -292,6 +292,7 @@ let standard_container_supported kind =
   | Root | Row | Column | Grid | Stack | Panel | Card | Box | Scroll
   | ListContainer | VirtualList | ListItem | Dialog | Sheet | Accordion
   | Resizable | Split | Drawer | Alert | Bubble | Toast | Toolbar
+  | Text | Heading | Paragraph | Label | Button
   | BottomTab -> true
   | _ -> false
 

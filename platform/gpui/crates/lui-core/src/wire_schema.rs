@@ -290,6 +290,10 @@ impl NodeKind {
                 | NodeKind::Alert
                 | NodeKind::Bubble
                 | NodeKind::Box
+                | NodeKind::Text
+                | NodeKind::Heading
+                | NodeKind::Paragraph
+                | NodeKind::Label
                 | NodeKind::Button
                 | NodeKind::RadioGroup
                 | NodeKind::Scroll
