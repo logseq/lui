@@ -189,28 +189,29 @@ enum LUIProperty: String, Decodable, Hashable {
     case imageFit = "image-fit"
     case visible = "visible"
     case alignment = "alignment"
+    case pointerEnabled = "pointer-enabled"
 }
 
 enum LUISchemaMatrix {
     static let restrictive: [LUINodeKind: Set<LUIProperty>] = [
-        .accordion: [.text, .selected, .toggleEnabled, .height],
-        .stepper: [.active, .accessibilityLabel],
-        .step: [.text],
-        .timeline: [.gap, .grow, .accessibilityLabel],
-        .timelineItem: [.title, .description, .meta, .indicator, .icon, .variant, .connector, .selected, .pressEnabled],
-        .inputGroup: [.accessibilityLabel, .width, .height, .minWidth, .grow],
-        .inputGroupActions: [.gap],
-        .toast: [.duration, .accessibilityLabel, .styleClass],
-        .toolbar: [.orientation, .accessibilityLabel, .gap, .styleClass, .placement],
-        .bottomTabs: [.accessibilityLabel, .styleClass, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight],
-        .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled],
-        .menuTrigger: [.text, .icon, .accessibilityLabel, .enabled, .foreground, .styleClass],
-        .listSection: [.key, .separator],
+        .accordion: [.text, .selected, .toggleEnabled, .height, .pointerEnabled],
+        .stepper: [.active, .accessibilityLabel, .pointerEnabled],
+        .step: [.text, .pointerEnabled],
+        .timeline: [.gap, .grow, .accessibilityLabel, .pointerEnabled],
+        .timelineItem: [.title, .description, .meta, .indicator, .icon, .variant, .connector, .selected, .pressEnabled, .pointerEnabled],
+        .inputGroup: [.accessibilityLabel, .width, .height, .minWidth, .grow, .pointerEnabled],
+        .inputGroupActions: [.gap, .pointerEnabled],
+        .toast: [.duration, .accessibilityLabel, .styleClass, .pointerEnabled],
+        .toolbar: [.orientation, .accessibilityLabel, .gap, .styleClass, .placement, .pointerEnabled],
+        .bottomTabs: [.accessibilityLabel, .styleClass, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight, .pointerEnabled],
+        .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled, .pointerEnabled],
+        .menuTrigger: [.text, .icon, .accessibilityLabel, .enabled, .foreground, .styleClass, .pointerEnabled],
+        .listSection: [.key, .separator, .pointerEnabled],
         .swipeActions: [],
-        .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled],
-        .filePicker: [.request, .types, .multiple, .source, .completion, .enabled, .appearEnabled],
-        .filePreview: [.path],
-        .kbd: [.text, .styleClass],
+        .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled, .pointerEnabled],
+        .filePicker: [.request, .types, .multiple, .source, .completion, .enabled, .appearEnabled, .pointerEnabled],
+        .filePreview: [.path, .pointerEnabled],
+        .kbd: [.text, .styleClass, .pointerEnabled],
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [

@@ -510,6 +510,18 @@ let attach_picker_press_event renderer node dom_node =
 
 let attach_picker_press_event_bang = attach_picker_press_event
 
+(* PressDetail for picker triggers: the shared click listener skips these
+   kinds (their click is suppressed after a pointer-down open), so the
+   detail rides the same branches that emit Press. *)
+let picker_emit_press_detail renderer node event =
+  let candidate =
+    PressDetail (node, Lui_web_util.pointer_detail_of event)
+  in
+  if
+    Store.enabled_node renderer node
+    && Store.event_admitted renderer node candidate
+  then emit renderer candidate
+
 let attach_picker_trigger_events renderer node dom_node =
   let current_pointer_type = ref "mouse" in
   let suppress_click = ref false in
@@ -541,7 +553,8 @@ let attach_picker_trigger_events renderer node dom_node =
           if Store.enabled_node renderer node
              && not (W.Element.isSameNode (W.Element.asNode control) dom_node)
           then Lui_web_util.focus_element control;
-          press ()
+          press ();
+          picker_emit_press_detail renderer node event
         end
         else if not (W.Element.isSameNode (W.Element.asNode control) dom_node)
         then W.Event.preventDefault event
@@ -593,7 +606,8 @@ let attach_picker_trigger_events renderer node dom_node =
         if Store.enabled_node renderer node
            && not (W.Element.isSameNode (W.Element.asNode control) dom_node)
         then Lui_web_util.focus_element control;
-        press ()
+        press ();
+        picker_emit_press_detail renderer node event
       end)
     dom_node;
   Hashtbl.replace renderer.web_cleanups node (fun () ->

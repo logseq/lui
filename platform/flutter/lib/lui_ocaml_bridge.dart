@@ -71,6 +71,23 @@ typedef _DartExtensionEvent = int Function(
   Pointer<Utf8> jsonValues,
 );
 
+typedef _NativePointerDetail = Int32 Function(
+  Int64 node,
+  Double x,
+  Double y,
+  Int32 modifiers,
+  Int32 button,
+  Pointer<Utf8> targetClass,
+);
+typedef _DartPointerDetail = int Function(
+  int node,
+  double x,
+  double y,
+  int modifiers,
+  int button,
+  Pointer<Utf8> targetClass,
+);
+
 final class LUIOcamlBridge {
   LUIOcamlBridge._(this.library, this.onPatch)
     : _start = library.lookupFunction<_NativeStart, _DartStart>(
@@ -121,7 +138,29 @@ final class LUIOcamlBridge {
       _extensionEvent = library
           .lookupFunction<_NativeExtensionEvent, _DartExtensionEvent>(
             'lui_ocaml_extension_event',
-          );
+          ),
+      _pressDetail = library
+          .lookupFunction<_NativePointerDetail, _DartPointerDetail>(
+            'lui_ocaml_press_detail',
+          ),
+      _pointerDown = library
+          .lookupFunction<_NativePointerDetail, _DartPointerDetail>(
+            'lui_ocaml_pointer_down',
+          ),
+      _pointerUp = library
+          .lookupFunction<_NativePointerDetail, _DartPointerDetail>(
+            'lui_ocaml_pointer_up',
+          ),
+      _contextMenuPress = library
+          .lookupFunction<_NativePointerDetail, _DartPointerDetail>(
+            'lui_ocaml_context_menu_press',
+          ),
+      _pointerEnter = library.lookupFunction<_NativePress, _DartPress>(
+        'lui_ocaml_pointer_enter',
+      ),
+      _pointerLeave = library.lookupFunction<_NativePress, _DartPress>(
+        'lui_ocaml_pointer_leave',
+      );
 
   factory LUIOcamlBridge.open(
     String libraryPath, {
@@ -149,6 +188,12 @@ final class LUIOcamlBridge {
   final _DartStop _stop;
   final _DartNode _rootNode;
   final _DartExtensionEvent _extensionEvent;
+  final _DartPointerDetail _pressDetail;
+  final _DartPointerDetail _pointerDown;
+  final _DartPointerDetail _pointerUp;
+  final _DartPointerDetail _contextMenuPress;
+  final _DartPress _pointerEnter;
+  final _DartPress _pointerLeave;
   NativeCallable<_NativePatchCallback>? _patchCallback;
 
   void start() {
@@ -186,6 +231,123 @@ final class LUIOcamlBridge {
 
   void press(int node) {
     if (_press(node) != 1) throw StateError('OCaml press dispatch failed');
+  }
+
+  int _pointerDetail(
+    _DartPointerDetail dispatch,
+    int node,
+    double x,
+    double y,
+    int modifiers,
+    int button,
+    String targetClass,
+  ) {
+    final nativeTarget = targetClass.toNativeUtf8();
+    try {
+      return dispatch(node, x, y, modifiers, button, nativeTarget);
+    } finally {
+      malloc.free(nativeTarget);
+    }
+  }
+
+  void pressDetail(
+    int node,
+    double x,
+    double y,
+    int modifiers,
+    int button,
+    String targetClass,
+  ) {
+    if (_pointerDetail(
+          _pressDetail,
+          node,
+          x,
+          y,
+          modifiers,
+          button,
+          targetClass,
+        ) !=
+        1) {
+      throw StateError('OCaml press-detail dispatch failed');
+    }
+  }
+
+  void pointerDown(
+    int node,
+    double x,
+    double y,
+    int modifiers,
+    int button,
+    String targetClass,
+  ) {
+    if (_pointerDetail(
+          _pointerDown,
+          node,
+          x,
+          y,
+          modifiers,
+          button,
+          targetClass,
+        ) !=
+        1) {
+      throw StateError('OCaml pointer-down dispatch failed');
+    }
+  }
+
+  void pointerUp(
+    int node,
+    double x,
+    double y,
+    int modifiers,
+    int button,
+    String targetClass,
+  ) {
+    if (_pointerDetail(
+          _pointerUp,
+          node,
+          x,
+          y,
+          modifiers,
+          button,
+          targetClass,
+        ) !=
+        1) {
+      throw StateError('OCaml pointer-up dispatch failed');
+    }
+  }
+
+  void contextMenuPress(
+    int node,
+    double x,
+    double y,
+    int modifiers,
+    int button,
+    String targetClass,
+  ) {
+    if (_pointerDetail(
+          _contextMenuPress,
+          node,
+          x,
+          y,
+          modifiers,
+          button,
+          targetClass,
+        ) !=
+        1) {
+      throw StateError('OCaml context-menu-press dispatch failed');
+    }
+  }
+
+  void pointerEnter(int node) {
+    if (_pointerEnter(node) != 1) {
+      throw StateError('OCaml pointer-enter dispatch failed');
+    }
+  }
+
+  void pointerLeave(int node) {
+    if (_pointerLeave(node) != 1) {
+      throw StateError('OCaml pointer-leave dispatch failed');
+    }
   }
 
   void longPress(int node) {

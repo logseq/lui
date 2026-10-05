@@ -436,6 +436,7 @@ pub enum Property {
     ImageFitValue,
     Visible,
     AlignmentValue,
+    PointerEnabled,
 }
 
 impl Property {
@@ -539,6 +540,7 @@ impl Property {
             "image-fit" => Some(Property::ImageFitValue),
             "visible" => Some(Property::Visible),
             "alignment" => Some(Property::AlignmentValue),
+            "pointer-enabled" => Some(Property::PointerEnabled),
             _ => None,
         }
     }
@@ -643,6 +645,7 @@ impl Property {
             Property::ImageFitValue => "image-fit",
             Property::Visible => "visible",
             Property::AlignmentValue => "alignment",
+            Property::PointerEnabled => "pointer-enabled",
         }
     }
 }
@@ -658,13 +661,19 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::Selected,
             Property::ToggleEnabled,
             Property::HeightValue,
+            Property::PointerEnabled,
         ]),
-        NodeKind::Stepper => Some(&[Property::ActiveIndex, Property::AccessibilityLabel]),
-        NodeKind::Step => Some(&[Property::TextValue]),
+        NodeKind::Stepper => Some(&[
+            Property::ActiveIndex,
+            Property::AccessibilityLabel,
+            Property::PointerEnabled,
+        ]),
+        NodeKind::Step => Some(&[Property::TextValue, Property::PointerEnabled]),
         NodeKind::Timeline => Some(&[
             Property::Gap,
             Property::GrowValue,
             Property::AccessibilityLabel,
+            Property::PointerEnabled,
         ]),
         NodeKind::TimelineItem => Some(&[
             Property::TitleValue,
@@ -676,6 +685,7 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::Connector,
             Property::Selected,
             Property::PressEnabled,
+            Property::PointerEnabled,
         ]),
         NodeKind::InputGroup => Some(&[
             Property::AccessibilityLabel,
@@ -683,12 +693,14 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::HeightValue,
             Property::MinWidth,
             Property::GrowValue,
+            Property::PointerEnabled,
         ]),
-        NodeKind::InputGroupActions => Some(&[Property::Gap]),
+        NodeKind::InputGroupActions => Some(&[Property::Gap, Property::PointerEnabled]),
         NodeKind::Toast => Some(&[
             Property::DurationValue,
             Property::AccessibilityLabel,
             Property::StyleClass,
+            Property::PointerEnabled,
         ]),
         NodeKind::Toolbar => Some(&[
             Property::OrientationValue,
@@ -696,6 +708,7 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::Gap,
             Property::StyleClass,
             Property::PlacementValue,
+            Property::PointerEnabled,
         ]),
         NodeKind::BottomTabs => Some(&[
             Property::AccessibilityLabel,
@@ -707,6 +720,7 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::MaxWidth,
             Property::MinHeight,
             Property::MaxHeight,
+            Property::PointerEnabled,
         ]),
         NodeKind::BottomTab => Some(&[
             Property::TitleValue,
@@ -714,6 +728,7 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::Selected,
             Property::Enabled,
             Property::PressEnabled,
+            Property::PointerEnabled,
         ]),
         NodeKind::MenuTrigger => Some(&[
             Property::TextValue,
@@ -722,8 +737,13 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::Enabled,
             Property::ForegroundValue,
             Property::StyleClass,
+            Property::PointerEnabled,
         ]),
-        NodeKind::ListSection => Some(&[Property::KeyValue, Property::SeparatorValue]),
+        NodeKind::ListSection => Some(&[
+            Property::KeyValue,
+            Property::SeparatorValue,
+            Property::PointerEnabled,
+        ]),
         NodeKind::SwipeActions => Some(&[]),
         NodeKind::SwipeAction => Some(&[
             Property::TextValue,
@@ -733,6 +753,7 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::Enabled,
             Property::BackgroundValue,
             Property::PressEnabled,
+            Property::PointerEnabled,
         ]),
         NodeKind::FilePicker => Some(&[
             Property::PickerRequest,
@@ -742,9 +763,14 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::PickerCompletion,
             Property::Enabled,
             Property::AppearEnabled,
+            Property::PointerEnabled,
         ]),
-        NodeKind::FilePreview => Some(&[Property::PathValue]),
-        NodeKind::Kbd => Some(&[Property::TextValue, Property::StyleClass]),
+        NodeKind::FilePreview => Some(&[Property::PathValue, Property::PointerEnabled]),
+        NodeKind::Kbd => Some(&[
+            Property::TextValue,
+            Property::StyleClass,
+            Property::PointerEnabled,
+        ]),
         _ => None,
     }
 }

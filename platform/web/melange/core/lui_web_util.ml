@@ -24,6 +24,33 @@ let pointer_mouse_event (event : Dom.event) : Dom.mouseEvent = as_mouse_event ev
 let pointer_type (event : Dom.event) : string = pointer_type_raw (as_pointer_event event)
 let pointer_id (event : Dom.event) : int = pointer_id_raw (as_pointer_event event)
 
+external class_name_raw : Dom.element -> string = "className" [@@mel.get]
+
+(* The class list of the deepest element hit by an event. Non-element
+   targets (e.g. text nodes) and SVG elements — whose className is an
+   SVGAnimatedString, not a string — yield "". *)
+let event_target_class_name event =
+  let name =
+    class_name_raw (event_target_to_element (W.Event.target event))
+  in
+  if Js.typeof name = "string" then name else ""
+
+(* Client-space payload shared by the pointer-detail events. [modifiers]
+   uses the PressModifiers bitmask (1=ctrl, 2=shift, 4=meta, 8=secondary
+   button); [target_class] is the deepest hit element's class list. *)
+let pointer_detail_of event : Lui_protocol.pointer_detail =
+  let mouse = pointer_mouse_event event in
+  let button = W.MouseEvent.button mouse in
+  { x = float_of_int (W.MouseEvent.clientX mouse);
+    y = float_of_int (W.MouseEvent.clientY mouse);
+    modifiers =
+      (if W.MouseEvent.ctrlKey mouse then 1 else 0)
+      lor (if W.MouseEvent.shiftKey mouse then 2 else 0)
+      lor (if W.MouseEvent.metaKey mouse then 4 else 0)
+      lor (if button = 2 then 8 else 0);
+    button;
+    target_class = event_target_class_name event }
+
 (* Element construction. [attributes] is (name, value) pairs applied before
    children are appended, matching the original element/5 helper. *)
 let element document tag class_name attributes children =

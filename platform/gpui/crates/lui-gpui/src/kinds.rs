@@ -20,8 +20,9 @@ use gpui_kit::component::Icon;
 use gpui_kit::component::{h_flex, v_flex, Disableable, Sizable};
 use gpui_kit::gpui::{
     anchored, deferred, div, point, px, Anchor, AnyElement, App, AppContext, ClickEvent, Context,
-    ElementId, FontWeight, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
-    ParentElement, PathPromptOptions, StatefulInteractiveElement, Styled, Window,
+    ElementId, FontWeight, InteractiveElement, IntoElement, Modifiers, MouseButton,
+    MouseDownEvent, ParentElement, PathPromptOptions, Pixels, Point,
+    StatefulInteractiveElement, Styled, Window,
 };
 use lui_core::bridge;
 use lui_core::store::NodeIdentity;
@@ -42,16 +43,79 @@ fn text_of(node: &NodeSnapshot) -> String {
     node.text()
 }
 
+/// The `modifiers` bitmask shared with `PressModifiers`: 1=ctrl, 2=shift,
+/// 4=platform (command on macOS), 8=secondary (right) button.
+fn pointer_modifier_mask(modifiers: &Modifiers, button: MouseButton) -> i32 {
+    (if modifiers.control { 1 } else { 0 })
+        | (if modifiers.shift { 2 } else { 0 })
+        | (if modifiers.platform { 4 } else { 0 })
+        | (if button == MouseButton::Right { 8 } else { 0 })
+}
+
+/// Browser-style button index: 0 primary, 1 auxiliary (middle), 2 secondary.
+fn pointer_button_index(button: MouseButton) -> i32 {
+    match button {
+        MouseButton::Middle => 1,
+        MouseButton::Right => 2,
+        _ => 0,
+    }
+}
+
+/// Emit the shared pointer-detail payload via the C bridge. `target_class`
+/// stays empty — there is no DOM hit element on this host.
+fn fire_pointer_detail<F>(
+    shared: &Shared,
+    node_id: i64,
+    event: EventKind,
+    cx: &mut App,
+    position: Point<Pixels>,
+    button: MouseButton,
+    modifiers: &Modifiers,
+    call: F,
+) -> i32
+where
+    F: FnOnce(f64, f64, i32, i32) -> i32,
+{
+    let x = f64::from(f32::from(position.x));
+    let y = f64::from(f32::from(position.y));
+    let modifiers = pointer_modifier_mask(modifiers, button);
+    let button = pointer_button_index(button);
+    fire(shared, node_id, event, cx, || call(x, y, modifiers, button))
+}
+
 /// Fire `Press` on a node when the gate allows it.
 fn press_handler(
     view: &LuiNodeView,
     node_id: i64,
 ) -> impl Fn(&ClickEvent, &mut Window, &mut App) + 'static {
     let shared = view.shared.clone();
-    move |_, _, cx| {
+    move |event, _, cx| {
         fire(&shared, node_id, EventKind::Press, cx, || unsafe {
             bridge::lui_ocaml_press(node_id)
         });
+        // `fire` re-gates admission (pointer-enabled + kind), so a click on
+        // a non-pointer node only reports the plain Press. Keyboard/touch
+        // activations report the primary button index (0).
+        let button = match event {
+            ClickEvent::Mouse(mouse) => mouse.down.button,
+            _ => MouseButton::Left,
+        };
+        let position = event.position();
+        let modifiers = event.modifiers();
+        fire_pointer_detail(
+            &shared,
+            node_id,
+            EventKind::PressDetail,
+            cx,
+            position,
+            button,
+            &modifiers,
+            |x, y, modifiers, button| unsafe {
+                bridge::lui_ocaml_press_detail(
+                    node_id, x, y, modifiers, button, c"".as_ptr(),
+                )
+            },
+        );
     }
 }
 
@@ -967,9 +1031,25 @@ fn list_item(
     if !menu_children.is_empty() {
         let open = view.states.overlay.clone();
         let entity = cx.entity().entity_id();
+        let shared_menu = view.shared.clone();
+        let node_id_menu = node.id;
         row = row.on_mouse_down(MouseButton::Right, move |event, _, cx| {
             open.set(Some(event.position));
             cx.notify(entity);
+            fire_pointer_detail(
+                &shared_menu,
+                node_id_menu,
+                EventKind::ContextMenuPress,
+                cx,
+                event.position,
+                event.button,
+                &event.modifiers,
+                |x, y, modifiers, button| unsafe {
+                    bridge::lui_ocaml_context_menu_press(
+                        node_id_menu, x, y, modifiers, button, c"".as_ptr(),
+                    )
+                },
+            );
         });
         if let Some(position) = view.states.overlay.get() {
             // Press-outside closes the popup; the menu node itself stays

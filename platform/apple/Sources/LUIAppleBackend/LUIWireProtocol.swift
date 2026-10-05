@@ -18,6 +18,15 @@ public enum LUIEvent: Equatable, Sendable {
     case scrollCompleted(node: Int, token: Int, outcome: String)
     case visibleRange(node: Int, first: Int, last: Int)
     case picked(node: Int, payload: String)
+    // Pointer-detail payloads share one record across the wire. On SwiftUI
+    // gestures that expose no hit position the host emits zero coordinates —
+    // never invented values.
+    case pressDetail(node: Int, x: Double, y: Double, modifiers: Int, button: Int, targetClass: String)
+    case pointerDown(node: Int, x: Double, y: Double, modifiers: Int, button: Int, targetClass: String)
+    case pointerUp(node: Int, x: Double, y: Double, modifiers: Int, button: Int, targetClass: String)
+    case pointerEnter(node: Int)
+    case pointerLeave(node: Int)
+    case contextMenuPress(node: Int, x: Double, y: Double, modifiers: Int, button: Int, targetClass: String)
     case `extension`(
         node: Int,
         identifier: String,
@@ -134,7 +143,8 @@ enum LUIWireValue: Decodable, Equatable {
             return (1...6).contains(value)
         case .checked, .selected, .autofocus, .submitOnEnter, .longPressEnabled,
              .changeEnabled, .toggleEnabled, .pressEnabled, .submitEnabled,
-             .doublePressEnabled, .appearEnabled, .connector, .expanded, .enabled,
+             .doublePressEnabled, .appearEnabled, .pointerEnabled, .connector,
+             .expanded, .enabled,
              .scrollAnimated, .trackVisibleRange:
             return boolValue != nil
         case .progressValue:
@@ -906,7 +916,7 @@ struct LUIRetainedTree {
                 || kind == .tableCell || kind == .fileImage || isTreeRow(kind)
         case .submitEnabled: kind == .combobox || kind == .listItem
         case .doublePressEnabled: kind == .listItem
-        case .appearEnabled: kind != .root
+        case .appearEnabled, .pointerEnabled: kind != .root
         case .image:
             kind == .avatar || kind == .image
         case .surface:

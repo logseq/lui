@@ -21,6 +21,12 @@ pub enum EventKind {
     ScrollCompleted,
     VisibleRange,
     Picked,
+    PressDetail,
+    PointerDown,
+    PointerUp,
+    PointerEnter,
+    PointerLeave,
+    ContextMenuPress,
     ExtensionEvent,
 }
 
@@ -30,7 +36,7 @@ pub fn event_supported(kind: NodeKind, event: EventKind) -> bool {
     use EventKind::*;
     use NodeKind::*;
     match event {
-        Press | PressModifiers => matches!(
+        Press | PressModifiers | PressDetail | PointerDown | PointerUp => matches!(
             kind,
             Button
                 | Column
@@ -45,6 +51,31 @@ pub fn event_supported(kind: NodeKind, event: EventKind) -> bool {
                 | FileImage
                 | BottomTab
                 | SwipeAction
+        ),
+        PointerEnter | PointerLeave => kind != Root,
+        // Mirrors `context_menu_host_kind` in `src/lui_protocol.ml`.
+        ContextMenuPress => matches!(
+            kind,
+            Button
+                | ToggleButton
+                | Toggle
+                | Radio
+                | Slider
+                | NumberStepper
+                | TextField
+                | SecureField
+                | Input
+                | SearchField
+                | Textarea
+                | Checkbox
+                | SwitchControl
+                | Select
+                | Combobox
+                | MenuItem
+                | ListItem
+                | Accordion
+                | Text
+                | TableCell
         ),
         LongPress => matches!(kind, Button | ToggleButton | ListItem),
         TextChanged => matches!(
@@ -102,6 +133,12 @@ pub fn event_allowed(node: &Node, event: EventKind) -> bool {
     if node.is_treeitem() {
         return match event {
             EventKind::Press | EventKind::PressModifiers => node.flag(Property::PressEnabled),
+            EventKind::PressDetail
+            | EventKind::PointerDown
+            | EventKind::PointerUp
+            | EventKind::PointerEnter
+            | EventKind::PointerLeave
+            | EventKind::ContextMenuPress => node.flag(Property::PointerEnabled),
             EventKind::Change => node.flag(Property::ChangeEnabled),
             EventKind::ToggleChanged => node.flag(Property::ToggleEnabled),
             _ => event_supported(kind, event),

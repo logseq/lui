@@ -80,6 +80,26 @@ let radio_changed node = dispatch (Change node)
 
 let slider_changed node value = dispatch (ValueChanged (node, value))
 
+let pointer_detail x y modifiers button target_class =
+  {x; y; modifiers; button; target_class}
+
+let press_detail node x y modifiers button target_class =
+  dispatch (PressDetail (node, pointer_detail x y modifiers button target_class))
+
+let pointer_down node x y modifiers button target_class =
+  dispatch (PointerDown (node, pointer_detail x y modifiers button target_class))
+
+let pointer_up node x y modifiers button target_class =
+  dispatch (PointerUp (node, pointer_detail x y modifiers button target_class))
+
+let pointer_enter node = dispatch (PointerEnter node)
+
+let pointer_leave node = dispatch (PointerLeave node)
+
+let context_menu_press node x y modifiers button target_class =
+  dispatch
+    (ContextMenuPress (node, pointer_detail x y modifiers button target_class))
+
 let dispose () =
   latest_patch := "";
   ignore (Lui_app.dispose (app ()));
@@ -100,5 +120,11 @@ let () =
   Callback.register "lui_ocaml_toggle_changed" toggle_changed;
   Callback.register "lui_ocaml_radio_changed" radio_changed;
   Callback.register "lui_ocaml_slider_changed" slider_changed;
+  Callback.register "lui_ocaml_press_detail" press_detail;
+  Callback.register "lui_ocaml_pointer_down" pointer_down;
+  Callback.register "lui_ocaml_pointer_up" pointer_up;
+  Callback.register "lui_ocaml_pointer_enter" pointer_enter;
+  Callback.register "lui_ocaml_pointer_leave" pointer_leave;
+  Callback.register "lui_ocaml_context_menu_press" context_menu_press;
   Callback.register "lui_ocaml_dispose" dispose;
   Callback.register "lui_ocaml_root_node" root_node

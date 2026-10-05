@@ -147,6 +147,19 @@ type wire_value =
   | IntValue of int
   | FloatValue of float
 
+(* Pointer-level event payload shared by PressDetail, PointerDown,
+   PointerUp and ContextMenuPress. [modifiers] uses the same bitmask as
+   PressModifiers (1=ctrl, 2=shift, 4=meta, 8=secondary button).
+   [target_class] carries the deepest hit element's class list on web;
+   hosts without a DOM emit an empty string. *)
+type pointer_detail = {
+  x : float;
+  y : float;
+  modifiers : int;
+  button : int;
+  target_class : string;
+}
+
 type event =
   | ${events}
   | ExtensionEvent of int * string * string * wire_value String_map.t

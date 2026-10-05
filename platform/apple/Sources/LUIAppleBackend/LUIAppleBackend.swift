@@ -174,6 +174,7 @@ final class LUINodeModel: Identifiable {
         properties[.doublePressEnabled]?.boolValue ?? false
     }
     var supportsAppear: Bool { properties[.appearEnabled]?.boolValue ?? false }
+    var supportsPointer: Bool { properties[.pointerEnabled]?.boolValue ?? false }
     var rowKey: String? { properties[.key]?.stringValue }
     var separatorVisibility: String? { properties[.separator]?.stringValue }
     var listStyle: String? { properties[.style]?.stringValue }
@@ -858,6 +859,27 @@ public final class LUIAppleBackend {
             throw invalid("node \(node) is not an enabled pressable control")
         }
         emit(.press(node: node))
+        // SwiftUI's tap gestures expose no hit position, so the press detail
+        // reports zero coordinates/modifiers — a real tap with real fields
+        // unavailable on this host.
+        if model.supportsPointer {
+            emit(.pressDetail(
+                node: node, x: 0, y: 0, modifiers: 0, button: 0, targetClass: ""))
+        }
+    }
+
+    func performPointerEnter(node: Int) throws {
+        guard let model = models[node], model.isEnabled, model.supportsPointer else {
+            throw invalid("node \(node) is not enabled for pointer events")
+        }
+        emit(.pointerEnter(node: node))
+    }
+
+    func performPointerLeave(node: Int) throws {
+        guard let model = models[node], model.isEnabled, model.supportsPointer else {
+            throw invalid("node \(node) is not enabled for pointer events")
+        }
+        emit(.pointerLeave(node: node))
     }
 
     func performLongPress(node: Int) throws {

@@ -151,11 +151,23 @@ let attach_toggle_event renderer node _kind dom_node =
          emit renderer (ToggleChanged (node, checked)))
     control
 
+(* Emits PressDetail for a real click only when the runtime would admit it
+   (pointer-enabled property plus kind support). Button/picker/radio click
+   paths call this directly so suppressed clicks stay suppressed; other
+   kinds get it from the plain click listener in attach_pointer_events. *)
+let emit_press_detail renderer node event =
+  let candidate = PressDetail (node, Util.pointer_detail_of event) in
+  if
+    enabled_node renderer node
+    && Store.event_admitted renderer node candidate
+  then emit renderer candidate
+
 let attach_radio_event renderer node dom_node =
   let control = Util.child_element dom_node 0 in
   W.Element.addEventListener "click"
     (fun event ->
-       if not (enabled_node renderer node) then W.Event.preventDefault event)
+       if not (enabled_node renderer node) then W.Event.preventDefault event
+       else emit_press_detail renderer node event)
     control;
   W.Element.addEventListener "change"
     (fun _event ->
@@ -381,7 +393,10 @@ let button_click renderer node kind dom_node state event =
     state.button_suppress_click := false;
     W.Event.preventDefault event
   end
-  else button_dispatch_primary renderer node kind dom_node
+  else begin
+    emit_press_detail renderer node event;
+    button_dispatch_primary renderer node kind dom_node
+  end
 
 let attach_button_events renderer node kind dom_node =
   let state =
@@ -419,9 +434,69 @@ let attach_button_events renderer node kind dom_node =
       W.Element.removeEventListener "contextmenu" context_menu dom_node;
       W.Element.removeEventListener "click" click dom_node)
 
+(* Kinds whose click path owns PressDetail emission (button family,
+   pickers, radio): a suppressed click there must not still emit it, so the
+   shared listener below skips them. *)
+let press_detail_via_click kind =
+  match kind with
+  | Button | ToggleButton | Toggle | ListItem | Select | Combobox | Radio ->
+      true
+  | _ -> false
+
+(* PointerDetail-family listeners, attached when the node opted in via the
+   pointer-enabled property. Emission re-checks admission at event time so
+   kind/property mismatches stay silent instead of crashing dispatch. *)
+let attach_pointer_events renderer node kind dom_node =
+  if Store.true_property renderer node PointerEnabled then begin
+    let emit_detail make_event event =
+      let candidate = make_event event in
+      if
+        enabled_node renderer node
+        && Store.event_admitted renderer node candidate
+      then emit renderer candidate
+    in
+    let pointer_down =
+      emit_detail (fun event -> PointerDown (node, Util.pointer_detail_of event))
+    in
+    let pointer_up =
+      emit_detail (fun event -> PointerUp (node, Util.pointer_detail_of event))
+    in
+    let pointer_enter = emit_detail (fun _event -> PointerEnter node) in
+    let pointer_leave = emit_detail (fun _event -> PointerLeave node) in
+    let context_menu =
+      emit_detail
+        (fun event -> ContextMenuPress (node, Util.pointer_detail_of event))
+    in
+    let click =
+      emit_detail
+        (fun event -> PressDetail (node, Util.pointer_detail_of event))
+    in
+    let attach_click = not (press_detail_via_click kind) in
+    W.Element.addEventListener "pointerdown" pointer_down dom_node;
+    W.Element.addEventListener "pointerup" pointer_up dom_node;
+    W.Element.addEventListener "pointerenter" pointer_enter dom_node;
+    W.Element.addEventListener "pointerleave" pointer_leave dom_node;
+    W.Element.addEventListener "contextmenu" context_menu dom_node;
+    if attach_click then
+      W.Element.addEventListener "click" click dom_node;
+    let previous_cleanup = Hashtbl.find_opt renderer.web_cleanups node in
+    Hashtbl.replace renderer.web_cleanups node (fun () ->
+        (match previous_cleanup with
+         | Some cleanup -> cleanup ()
+         | None -> ());
+        W.Element.removeEventListener "pointerdown" pointer_down dom_node;
+        W.Element.removeEventListener "pointerup" pointer_up dom_node;
+        W.Element.removeEventListener "pointerenter" pointer_enter dom_node;
+        W.Element.removeEventListener "pointerleave" pointer_leave dom_node;
+        W.Element.removeEventListener "contextmenu" context_menu dom_node;
+        if attach_click then
+          W.Element.removeEventListener "click" click dom_node)
+  end
+
 let attach_events renderer node kind dom_node =
   if kind <> ContextMenu then
     ignore (Lui_web_menu.attach_context_host_events renderer node dom_node);
+  attach_pointer_events renderer node kind dom_node;
   if tree_row_kind kind then
     ignore
       (Lui_web_focus.attach_tree_item_events renderer node kind dom_node);
@@ -475,6 +550,8 @@ let attach_events renderer node kind dom_node =
   | _ -> ()
 
 let attach_events_bang = attach_events
+let attach_pointer_events_bang = attach_pointer_events
+let emit_press_detail_bang = emit_press_detail
 let attach_text_events_bang = attach_text_events
 let attach_toggle_event_bang = attach_toggle_event
 let attach_radio_event_bang = attach_radio_event
