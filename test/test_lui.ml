@@ -1896,6 +1896,157 @@ let test_edge_overlay_fit_rules () =
     (node_properties_supported EdgeInset
        (props [ (EdgeValue, StringValue "bottom") ]))
 
+let test_data_attrs_protocol () =
+  let open Lui_protocol in
+  (* name policy: data-*/aria-* prefixes plus the three bare names *)
+  List.iter
+    (fun name ->
+       Alcotest.(check bool) name true (data_attr_name_ok name))
+    [ "data-x"; "data-testid"; "aria-label"; "aria-hidden"; "role"
+    ; "tabindex"; "draggable" ];
+  List.iter
+    (fun name ->
+       Alcotest.(check bool) name false (data_attr_name_ok name))
+    [ "id"; "class"; "style"; "onclick"; "data-"; "aria-"; "role-"
+    ; "Data-x"; "data"; "aria" ];
+  (* serialization round-trip *)
+  let pairs =
+    [ ("data-testid", "greeting"); ("role", "note")
+    ; ("aria-label", "a b c"); ("tabindex", "-1") ]
+  in
+  Alcotest.(check (list (pair string string))) "round-trip" pairs
+    (data_attrs_decode (data_attrs_encode pairs));
+  Alcotest.(check (list (pair string string))) "empty decodes" []
+    (data_attrs_decode (data_attrs_encode []));
+  Alcotest.(check (list (pair string string))) "bare payload" []
+    (data_attrs_decode "");
+  (* call-time validation raises *)
+  Alcotest.check_raises "encode rejects id"
+    (Invalid_argument "data-attrs: unsupported attribute name: id")
+    (fun () -> ignore (data_attrs_encode [ ("id", "x") ]));
+  Alcotest.check_raises "encode rejects separator in value"
+    (Invalid_argument "data-attrs: control character in name or value")
+    (fun () -> ignore (data_attrs_encode [ ("data-x", "a\x1fb") ]));
+  Alcotest.check_raises "decode rejects malformed"
+    (Invalid_argument "data-attrs: malformed payload")
+    (fun () -> ignore (data_attrs_decode "no-separator-here"));
+  (* wire-value validation *)
+  Alcotest.(check bool) "valid payload" true
+    (data_attrs_value_ok
+       (data_attrs_encode [ ("data-x", "1"); ("role", "note") ]));
+  Alcotest.(check bool) "id payload rejected" false
+    (data_attrs_value_ok "id\x1fx");
+  Alcotest.(check bool) "mixed payload rejected" false
+    (data_attrs_value_ok "data-x\x1f1\x1eonclick\x1fy");
+  Alcotest.(check bool) "malformed payload rejected" false
+    (data_attrs_value_ok "data-x");
+  (* prop admit/deny per kind *)
+  Alcotest.(check bool) "data-attrs on text" true
+    (property_supported Text DataAttrs);
+  Alcotest.(check bool) "data-attrs on toast" true
+    (property_supported Toast DataAttrs);
+  Alcotest.(check bool) "data-attrs on kbd" true
+    (property_supported Kbd DataAttrs);
+  Alcotest.(check bool) "data-attrs off tooltip" false
+    (property_supported Tooltip DataAttrs);
+  Alcotest.(check bool) "data-attrs off context-menu" false
+    (property_supported ContextMenu DataAttrs);
+  Alcotest.(check bool) "data-attrs string value" true
+    (property_value_supported DataAttrs (StringValue "data-x\x1f1"));
+  Alcotest.(check bool) "data-attrs rejects int" false
+    (property_value_supported DataAttrs (IntValue 1))
+
+let test_as_protocol () =
+  let open Lui_protocol in
+  (* phrasing kinds only *)
+  Alcotest.(check bool) "as on text" true (property_supported Text As);
+  Alcotest.(check bool) "as on heading" true (property_supported Heading As);
+  Alcotest.(check bool) "as on paragraph" true
+    (property_supported Paragraph As);
+  Alcotest.(check bool) "as on label" true (property_supported Label As);
+  Alcotest.(check bool) "as off button" false (property_supported Button As);
+  Alcotest.(check bool) "as off box" false (property_supported Box As);
+  Alcotest.(check bool) "as off tooltip" false (property_supported Tooltip As);
+  (* vocabulary admits every supported kind tag, rejects unknown *)
+  List.iter
+    (fun tag ->
+       Alcotest.(check bool) tag true (element_tag_known tag))
+    [ "span"; "em"; "strong"; "b"; "i"; "u"; "s"; "del"; "mark"; "small"
+    ; "code"; "kbd"; "sub"; "sup"; "pre"; "h1"; "h2"; "h3"; "h4"; "h5"
+    ; "h6"; "p"; "div"; "label" ];
+  Alcotest.(check bool) "marquee unknown" false
+    (element_tag_known "marquee");
+  Alcotest.(check bool) "a unknown" false (element_tag_known "a");
+  (* per-kind gating: block tags on phrasing kinds are refused *)
+  Alcotest.(check bool) "text em ok" true
+    (property_value_supported_for_kind Text As (StringValue "em"));
+  Alcotest.(check bool) "text div refused" false
+    (property_value_supported_for_kind Text As (StringValue "div"));
+  Alcotest.(check bool) "text h1 refused" false
+    (property_value_supported_for_kind Text As (StringValue "h1"));
+  Alcotest.(check bool) "heading h3 ok" true
+    (property_value_supported_for_kind Heading As (StringValue "h3"));
+  Alcotest.(check bool) "heading em refused" false
+    (property_value_supported_for_kind Heading As (StringValue "em"));
+  Alcotest.(check bool) "paragraph pre ok" true
+    (property_value_supported_for_kind Paragraph As (StringValue "pre"));
+  Alcotest.(check bool) "label label ok" true
+    (property_value_supported_for_kind Label As (StringValue "label"));
+  Alcotest.(check bool) "kind-less value check" true
+    (property_value_supported As (StringValue "kbd"));
+  Alcotest.(check bool) "non-string refused" false
+    (property_value_supported_for_kind Text As (IntValue 1))
+
+let data_attrs_view context _model _send =
+  Lui_elements.column
+    [
+      Lui_elements.text ~as_:`Em ~value:"hello"
+        ~data_attrs:[ ("data-testid", "greeting"); ("role", "note") ] [];
+      Lui_elements.text ~value:"reactive"
+        ~data_attrs_signal:
+          (Signal.constant context.Lui_ui.ui_scheduler
+             [ ("data-mood", "ok") ])
+        [];
+      Lui_elements.heading ~level:2 ~as_:`H2 ~value:"Title" [];
+      Lui_elements.paragraph ~as_:`P ~value:"para" [];
+      Lui_elements.label ~as_:`Span ~value:"lbl" [];
+      Lui_elements.kbd ~data_attrs:[ ("aria-label", "key") ] ~value:"esc" [];
+    ]
+
+let test_data_attrs_and_as_emit () =
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      data_attrs_view
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let open Lui_protocol in
+  let emitted property value =
+    List.exists
+      (function
+        | SetProp (_, property', value') ->
+            property' = property && value' = value
+        | _ -> false)
+      ops
+  in
+  Alcotest.(check bool) "data-attrs payload emitted" true
+    (emitted DataAttrs
+       (StringValue "data-testid\x1fgreeting\x1erole\x1fnote"));
+  Alcotest.(check bool) "signal payload encoded" true
+    (emitted DataAttrs (StringValue "data-mood\x1fok"));
+  Alcotest.(check bool) "aria on kbd" true
+    (emitted DataAttrs (StringValue "aria-label\x1fkey"));
+  Alcotest.(check bool) "text as em" true
+    (emitted As (StringValue "em"));
+  Alcotest.(check bool) "heading as h2" true
+    (emitted As (StringValue "h2"));
+  Alcotest.(check bool) "paragraph as p" true
+    (emitted As (StringValue "p"));
+  Alcotest.(check bool) "label as span" true
+    (emitted As (StringValue "span"))
+
 let test_property_matrix_sync () =
   (* property_supported's restrictive arms and additive extras must mirror
      schema/components.json (kindProperties / kindExtraProperties) as emitted
@@ -2903,6 +3054,11 @@ let () =
             test_edge_overlay_fit_rules;
           Alcotest.test_case "property matrix sync" `Quick
             test_property_matrix_sync;
+          Alcotest.test_case "data-attrs protocol" `Quick
+            test_data_attrs_protocol;
+          Alcotest.test_case "as protocol" `Quick test_as_protocol;
+          Alcotest.test_case "data-attrs + as emit" `Quick
+            test_data_attrs_and_as_emit;
         ] );
       ( "dyn",
         [

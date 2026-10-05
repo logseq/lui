@@ -210,6 +210,8 @@ type property =
   | Visible
   | AlignmentValue
   | PointerEnabled
+  | DataAttrs
+  | As
 
 module Property_map : Map.S with type key = property
 
@@ -303,6 +305,12 @@ val custom_icon_name_supported : string -> bool
 val icon_name_supported : string -> bool
 val main_alignment_supported : string -> bool
 val cross_alignment_supported : string -> bool
+val data_attr_name_ok : string -> bool
+val data_attrs_encode : (string * string) list -> string
+val data_attrs_decode : string -> (string * string) list
+val data_attrs_value_ok : string -> bool
+val element_tag_supported : node_kind -> string -> bool
+val element_tag_known : string -> bool
 val horizontal_container : node_kind -> bool
 val common_property_supported : node_kind -> property -> bool
 val property_supported : node_kind -> property -> bool

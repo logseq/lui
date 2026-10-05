@@ -437,6 +437,8 @@ pub enum Property {
     Visible,
     AlignmentValue,
     PointerEnabled,
+    DataAttrs,
+    As,
 }
 
 impl Property {
@@ -541,6 +543,8 @@ impl Property {
             "visible" => Some(Property::Visible),
             "alignment" => Some(Property::AlignmentValue),
             "pointer-enabled" => Some(Property::PointerEnabled),
+            "data-attrs" => Some(Property::DataAttrs),
+            "as" => Some(Property::As),
             _ => None,
         }
     }
@@ -646,6 +650,8 @@ impl Property {
             Property::Visible => "visible",
             Property::AlignmentValue => "alignment",
             Property::PointerEnabled => "pointer-enabled",
+            Property::DataAttrs => "data-attrs",
+            Property::As => "as",
         }
     }
 }
@@ -700,6 +706,7 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::DurationValue,
             Property::AccessibilityLabel,
             Property::StyleClass,
+            Property::DataAttrs,
             Property::PointerEnabled,
         ]),
         NodeKind::Toolbar => Some(&[
@@ -707,12 +714,14 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::AccessibilityLabel,
             Property::Gap,
             Property::StyleClass,
+            Property::DataAttrs,
             Property::PlacementValue,
             Property::PointerEnabled,
         ]),
         NodeKind::BottomTabs => Some(&[
             Property::AccessibilityLabel,
             Property::StyleClass,
+            Property::DataAttrs,
             Property::GrowValue,
             Property::WidthValue,
             Property::HeightValue,
@@ -737,6 +746,7 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::Enabled,
             Property::ForegroundValue,
             Property::StyleClass,
+            Property::DataAttrs,
             Property::PointerEnabled,
         ]),
         NodeKind::ListSection => Some(&[
@@ -769,6 +779,7 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
         NodeKind::Kbd => Some(&[
             Property::TextValue,
             Property::StyleClass,
+            Property::DataAttrs,
             Property::PointerEnabled,
         ]),
         _ => None,

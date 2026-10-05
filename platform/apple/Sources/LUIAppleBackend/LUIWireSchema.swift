@@ -190,6 +190,8 @@ enum LUIProperty: String, Decodable, Hashable {
     case visible = "visible"
     case alignment = "alignment"
     case pointerEnabled = "pointer-enabled"
+    case dataAttrs = "data-attrs"
+    case asTag = "as"
 }
 
 enum LUISchemaMatrix {
@@ -201,17 +203,17 @@ enum LUISchemaMatrix {
         .timelineItem: [.title, .description, .meta, .indicator, .icon, .variant, .connector, .selected, .pressEnabled, .pointerEnabled],
         .inputGroup: [.accessibilityLabel, .width, .height, .minWidth, .grow, .pointerEnabled],
         .inputGroupActions: [.gap, .pointerEnabled],
-        .toast: [.duration, .accessibilityLabel, .styleClass, .pointerEnabled],
-        .toolbar: [.orientation, .accessibilityLabel, .gap, .styleClass, .placement, .pointerEnabled],
-        .bottomTabs: [.accessibilityLabel, .styleClass, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight, .pointerEnabled],
+        .toast: [.duration, .accessibilityLabel, .styleClass, .dataAttrs, .pointerEnabled],
+        .toolbar: [.orientation, .accessibilityLabel, .gap, .styleClass, .dataAttrs, .placement, .pointerEnabled],
+        .bottomTabs: [.accessibilityLabel, .styleClass, .dataAttrs, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight, .pointerEnabled],
         .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled, .pointerEnabled],
-        .menuTrigger: [.text, .icon, .accessibilityLabel, .enabled, .foreground, .styleClass, .pointerEnabled],
+        .menuTrigger: [.text, .icon, .accessibilityLabel, .enabled, .foreground, .styleClass, .dataAttrs, .pointerEnabled],
         .listSection: [.key, .separator, .pointerEnabled],
         .swipeActions: [],
         .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled, .pointerEnabled],
         .filePicker: [.request, .types, .multiple, .source, .completion, .enabled, .appearEnabled, .pointerEnabled],
         .filePreview: [.path, .pointerEnabled],
-        .kbd: [.text, .styleClass, .pointerEnabled],
+        .kbd: [.text, .styleClass, .dataAttrs, .pointerEnabled],
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [

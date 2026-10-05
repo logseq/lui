@@ -153,6 +153,21 @@ let refresh_parent_for_prop renderer node property =
 
 let apply_create renderer node kind =
   let created = Nodes.dom_node renderer node in
+  (* the store already holds this batch's `as` prop at DOM-apply time, so a
+     phrasing kind created with an override tag gets swapped before the id
+     and event wiring below are attached. *)
+  let created =
+    match
+      Store.node renderer.web_store node
+      |> Option.map (fun current ->
+             Property_map.find_opt As current.retained_properties)
+    with
+    | Some (Some (StringValue tag)) -> (
+        match Nodes.retag renderer node tag with
+        | Some next -> next
+        | None -> created)
+    | _ -> created
+  in
   W.Element.setAttribute "id" (Util.node_dom_id node) created;
   if kind = Accordion then Util.initialize_accordion_semantics node created;
   if kind = ViewThatFits then Lui_web_fit.attach renderer node created;
@@ -418,8 +433,22 @@ let apply_set_prop renderer node property value =
   | Some current -> (
       match Store.standard_kind current with
       | Some kind ->
-          Lui_web_props.apply_property renderer node kind
-            current.platform_node property value;
+          (match property with
+           | As -> (
+               (* a mid-life tag change replaces the element, which drops
+                  listeners — clean up first, then re-attach onto the new
+                  element. *)
+               match value with
+               | StringValue tag -> (
+                   match Nodes.retag renderer node tag with
+                   | Some next ->
+                       cleanup_node renderer node;
+                       Lui_web_events.attach_events renderer node kind next
+                   | None -> ())
+               | _ -> ())
+           | _ ->
+               Lui_web_props.apply_property renderer node kind
+                 current.platform_node property value);
           refresh_parent_for_prop renderer node property
       | None -> invalid_arg "standard property targets extension node")
   | None -> ()
@@ -429,8 +458,16 @@ let apply_remove_prop renderer node property =
    | Some current -> (
        match Store.standard_kind current with
        | Some kind ->
-           Lui_web_props.remove_property renderer node kind
-             current.platform_node property;
+           (match property with
+            | As -> (
+                match Nodes.retag renderer node (Nodes.simple_node_tag kind) with
+                | Some next ->
+                    cleanup_node renderer node;
+                    Lui_web_events.attach_events renderer node kind next
+                | None -> ())
+            | _ ->
+                Lui_web_props.remove_property renderer node kind
+                  current.platform_node property);
            refresh_parent_for_prop renderer node property
        | None -> invalid_arg "standard property targets extension node")
    | None -> ())

@@ -212,6 +212,8 @@ type property =
   | Visible
   | AlignmentValue
   | PointerEnabled
+  | DataAttrs
+  | As
 
 module Property_map =
   Map.Make
@@ -646,6 +648,73 @@ let alignment_supported value =
   || value = "bottom-leading" || value = "bottom"
   || value = "bottom-trailing"
 
+(* [data-attrs] carries (name, value) attribute pairs on the wire as
+   [name\x1fvalue] records joined by \x1e. The allowed names are the DOM
+   attribute surface delegated handlers, CSS attribute selectors and e2e
+   locators contract on — [data-*], [aria-*], [role], [tabindex] and
+   [draggable] ([id] stays on [accessibility-identifier]). It is a web
+   DOM contract: native hosts parse-ignore it. *)
+let data_attr_name_ok name =
+  let has_prefix prefix =
+    String.length name > String.length prefix
+    && String.sub name 0 (String.length prefix) = prefix
+  in
+  name = "role" || name = "tabindex" || name = "draggable"
+  || has_prefix "data-" || has_prefix "aria-"
+
+let data_attrs_encode pairs =
+  List.iter
+    (fun (name, value) ->
+       if not (data_attr_name_ok name) then
+         invalid_arg ("data-attrs: unsupported attribute name: " ^ name);
+       if
+         String.contains name '\x1e'
+         || String.contains name '\x1f'
+         || String.contains value '\x1e'
+         || String.contains value '\x1f'
+       then invalid_arg "data-attrs: control character in name or value")
+    pairs;
+  String.concat "\x1e"
+    (List.map (fun (name, value) -> name ^ "\x1f" ^ value) pairs)
+
+let data_attrs_decode payload =
+  if payload = "" then []
+  else
+    List.map
+      (fun record ->
+         match String.split_on_char '\x1f' record with
+         | [ name; value ] -> (name, value)
+         | _ -> invalid_arg "data-attrs: malformed payload")
+      (String.split_on_char '\x1e' payload)
+
+let data_attrs_value_ok payload =
+  try
+    List.for_all
+      (fun (name, _value) -> data_attr_name_ok name)
+      (data_attrs_decode payload)
+  with Invalid_argument _ -> false
+
+(* [as] overrides the element tag a kind emits on web. The vocabulary is
+   checked per kind — a phrasing kind may only emit phrasing-adjacent
+   tags, so [text ~as_:`Div] fails validation instead of silently
+   breaking inline layout. Native hosts parse-ignore the prop. *)
+let element_tag_supported kind tag =
+  match kind with
+  | Text ->
+      List.mem tag
+        [ "span"; "em"; "strong"; "b"; "i"; "u"; "s"; "del"; "mark"
+        ; "small"; "code"; "kbd"; "sub"; "sup"; "pre" ]
+  | Heading -> List.mem tag [ "h1"; "h2"; "h3"; "h4"; "h5"; "h6" ]
+  | Paragraph -> List.mem tag [ "p"; "span"; "div"; "pre" ]
+  | Label -> List.mem tag [ "label"; "span"; "div" ]
+  | _ -> false
+
+let element_tag_known tag =
+  element_tag_supported Text tag
+  || element_tag_supported Heading tag
+  || element_tag_supported Paragraph tag
+  || element_tag_supported Label tag
+
 let can_contain_children kind =
   if horizontal_container kind || context_menu_leaf_host_kind kind then true
   else
@@ -742,7 +811,9 @@ let common_property_supported kind property =
      inert elsewhere. [property_supported] also admits it ahead of the
      restrictive arms so aligned children of restrictive kinds validate. *)
   | AlignmentValue -> kind <> Root
-  | StyleClass -> kind <> Tooltip
+  | StyleClass | DataAttrs -> kind <> Tooltip
+  | As ->
+      kind = Text || kind = Heading || kind = Paragraph || kind = Label
   | AccessibilityLabel ->
     kind = Button
     || kind = ToggleButton
@@ -969,15 +1040,17 @@ let property_supported kind property =
     | Toast ->
       property = DurationValue || property = AccessibilityLabel
       || property = StyleClass || property = PointerEnabled
+      || property = DataAttrs
     | Toolbar ->
       property = OrientationValue || property = AccessibilityLabel
       || property = Gap || property = StyleClass || property = PlacementValue
-      || property = PointerEnabled
+      || property = PointerEnabled || property = DataAttrs
     | BottomTabs ->
       property = AccessibilityLabel || property = StyleClass
       || property = GrowValue || property = WidthValue || property = HeightValue
       || property = MinWidth || property = MaxWidth || property = MinHeight
       || property = MaxHeight || property = PointerEnabled
+      || property = DataAttrs
     | BottomTab ->
       property = TitleValue || property = InlineIconName
       || property = Selected || property = Enabled || property = PressEnabled
@@ -986,7 +1059,7 @@ let property_supported kind property =
       property = TextValue || property = InlineIconName
       || property = AccessibilityLabel || property = Enabled
       || property = ForegroundValue || property = StyleClass
-      || property = PointerEnabled
+      || property = PointerEnabled || property = DataAttrs
     | FilePicker ->
       property = PickerRequest || property = PickerTypes
       || property = PickerMultiple || property = PickerSource
@@ -1020,7 +1093,7 @@ let property_supported kind property =
     | SwipeActions -> false
     | Kbd ->
       property = TextValue || property = StyleClass
-      || property = PointerEnabled
+      || property = PointerEnabled || property = DataAttrs
     | SwipeAction ->
       List.mem
         property
@@ -1156,6 +1229,8 @@ let property_value_supported property value =
   | Visible, BoolValue _ -> true
   | AlignmentValue, StringValue value ->
     alignment_supported value
+  | DataAttrs, StringValue payload -> data_attrs_value_ok payload
+  | As, StringValue tag -> element_tag_known tag
   | _ -> false
 
 let property_value_supported_for_kind kind property value =
@@ -1165,6 +1240,10 @@ let property_value_supported_for_kind kind property value =
       if kind = TableCell then
         control_size_supported size || size = "heading" || size = "display"
       else control_size_supported size
+    | _ -> false
+  else if property = As then
+    match value with
+    | StringValue tag -> element_tag_supported kind tag
     | _ -> false
   else property_value_supported property value
 

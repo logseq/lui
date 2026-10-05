@@ -1,0 +1,79 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LUI data-attrs and as regressions</title>
+<link rel="stylesheet" href="/platform/web/dist/lui.css">
+<script type="importmap">{"imports":{
+  "lui.web.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui.web.dom/",
+  "lui/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui/",
+  "melange-webapi/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange-webapi/",
+  "melange.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.dom/",
+  "melange.js/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.js/",
+  "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
+  "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
+}}</script>
+<style>body { margin: 24px; font: 16px system-ui } #host { max-width: 720px }</style>
+<main id="host"></main>
+<script type="module">
+import * as Web from "lui.web.dom/shell/lui_web.js"
+import * as Schema from "lui/lui_wire_schema.js"
+
+const host = document.querySelector("#host")
+const renderer = Web.create(undefined, host)
+const backend = Web.backend(renderer)
+const list = items => items.reduceRight((tl, hd) => ({ hd, tl }), 0)
+const properties = new Map(Array.from({ length: 101 }, (_, i) => [Schema.property_name(i), i]))
+const kinds = new Map(Array.from({ length: 86 }, (_, i) => [Schema.node_kind_name(i), i]))
+const children = new Map()
+let ops = [], generation = 0, id = 0
+
+const attrs = pairs => pairs.map(([name, value]) => `${name}\x1f${value}`).join("\x1e")
+
+function set(node, name, value) {
+  ops.push({ TAG: 3, _0: node, _1: properties.get(name),
+    _2: { TAG: typeof value === "string" ? 0 : 2, _0: value } })
+}
+function unset(node, name) {
+  ops.push({ TAG: 4, _0: node, _1: properties.get(name) })
+}
+function create(kind, parent, props = {}) {
+  const node = ++id
+  ops.push({ TAG: 0, _0: node, _1: kinds.get(kind) })
+  children.set(node, [])
+  for (const [key, value] of Object.entries(props)) set(node, key, value)
+  if (parent) {
+    const siblings = children.get(parent)
+    ops.push({ TAG: 7, _0: parent, _1: node, _2: siblings.length })
+    siblings.push(node)
+  }
+  return node
+}
+function flush() {
+  backend.apply_batch({ generation: ++generation, ops: list(ops) })
+  ops = []
+}
+
+const root = create("column", null, { gap: 8 })
+const tracked = create("text", root, {
+  text: "Tracked",
+  "data-attrs": attrs([
+    ["data-testid", "greeting"], ["role", "note"], ["tabindex", "0"],
+    ["aria-label", "greeting text"], ["draggable", "true"],
+  ]),
+})
+const heading = create("heading", root, { text: "Title", "heading-level": 2, as: "h3" })
+const inline = create("text", root, { text: "inline", as: "mark" })
+const nested = create("text", inline, { text: "child" })
+const para = create("paragraph", root, { text: "body", as: "div" })
+const lbl = create("label", root, { text: "field", as: "label" })
+flush()
+Web.mount(renderer, root, host)
+
+window.probe = {
+  renderer, backend, list, attrs,
+  node: (id) => document.getElementById(`lui-node-${id}`),
+  tracked, heading, inline, nested, para, lbl,
+  set: (node, name, value) => { set(node, name, value); flush() },
+  unset: (node, name) => { unset(node, name); flush() },
+}
+</script>
