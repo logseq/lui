@@ -1,0 +1,15 @@
+[package]
+name = "lui-demo"
+version = "0.1.0"
+edition = "2021"
+description = "GPUI demo hosting the OCaml LUI gallery via platform/native bridge"
+
+[dependencies]
+lui-core = { path = "../lui-core" }
+lui-gpui = { path = "../lui-gpui" }
+gpui-kit.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+
+[build-dependencies]
+serde_json.workspace = true

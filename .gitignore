@@ -17,3 +17,4 @@
 /platform/qt/demo/lui_*_runtime.o
 /platform/winui/**/bin/
 /platform/winui/**/obj/
+/platform/gpui/target/

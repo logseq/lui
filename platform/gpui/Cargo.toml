@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = ["crates/lui-core", "crates/lui-gpui", "crates/lui-demo"]
+
+[workspace.dependencies]
+serde_json = "1"
+anyhow = "1"
+gpui-kit = "0.7"

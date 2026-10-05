@@ -28,6 +28,7 @@ let host_kind = function
   | 3 -> FlutterHost
   | 4 -> QMLHost
   | 5 -> WinUIHost
+  | 6 -> GPUIHost
   | _ -> GenericHost
 
 let backend host_profile =

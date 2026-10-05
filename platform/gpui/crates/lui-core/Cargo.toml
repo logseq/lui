@@ -1,0 +1,8 @@
+[package]
+name = "lui-core"
+version = "0.1.0"
+edition = "2021"
+description = "Portable LUI wire-protocol core for the GPUI backend (no UI deps)"
+
+[dependencies]
+serde_json.workspace = true
