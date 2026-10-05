@@ -71,6 +71,11 @@
         {
           "kind": "press",
           "node": 2
+        },
+        {
+          "kind": "pointer-detail",
+          "node": 2,
+          "button": 0
         }
       ]
     },

@@ -18,6 +18,22 @@ pub enum RecordedEvent {
     ToggleChanged { node: i64, checked: bool },
     RadioChanged(i64),
     SliderChanged { node: i64, fraction: f64 },
+    PointerDetail {
+        node: i64,
+        x: f64,
+        y: f64,
+        modifiers: i32,
+        button: i32,
+        target_class: String,
+    },
+    ContextMenuPress {
+        node: i64,
+        x: f64,
+        y: f64,
+        modifiers: i32,
+        button: i32,
+        target_class: String,
+    },
     ExtensionEvent {
         node: i64,
         identifier: String,
@@ -111,6 +127,46 @@ pub unsafe extern "C" fn lui_ocaml_radio_changed(node: i64) -> c_int {
 #[no_mangle]
 pub unsafe extern "C" fn lui_ocaml_slider_changed(node: i64, fraction: c_double) -> c_int {
     record(RecordedEvent::SliderChanged { node, fraction });
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_press_detail(
+    node: i64,
+    x: c_double,
+    y: c_double,
+    modifiers: c_int,
+    button: c_int,
+    target_class: *const c_char,
+) -> c_int {
+    record(RecordedEvent::PointerDetail {
+        node,
+        x,
+        y,
+        modifiers,
+        button,
+        target_class: unsafe { cstr(target_class) },
+    });
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_context_menu_press(
+    node: i64,
+    x: c_double,
+    y: c_double,
+    modifiers: c_int,
+    button: c_int,
+    target_class: *const c_char,
+) -> c_int {
+    record(RecordedEvent::ContextMenuPress {
+        node,
+        x,
+        y,
+        modifiers,
+        button,
+        target_class: unsafe { cstr(target_class) },
+    });
     0
 }
 

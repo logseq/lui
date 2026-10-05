@@ -313,6 +313,42 @@ fn event_matches(recorded: &RecordedEvent, spec: &Value) -> bool {
                     .unwrap_or(true)
         }
         (
+            RecordedEvent::PointerDetail {
+                node,
+                x,
+                y,
+                modifiers,
+                button,
+                ..
+            },
+            "pointer-detail",
+        ) => {
+            node_is(spec, *node)
+                && spec
+                    .get("x")
+                    .and_then(Value::as_f64)
+                    .map(|want| (want - x).abs() < 1e-3)
+                    .unwrap_or(true)
+                && spec
+                    .get("y")
+                    .and_then(Value::as_f64)
+                    .map(|want| (want - y).abs() < 1e-3)
+                    .unwrap_or(true)
+                && spec
+                    .get("modifiers")
+                    .and_then(Value::as_i64)
+                    .map(|want| want == i64::from(*modifiers))
+                    .unwrap_or(true)
+                && spec
+                    .get("button")
+                    .and_then(Value::as_i64)
+                    .map(|want| want == i64::from(*button))
+                    .unwrap_or(true)
+        }
+        (RecordedEvent::ContextMenuPress { node, .. }, "context-menu-press") => {
+            node_is(spec, *node)
+        }
+        (
             RecordedEvent::ExtensionEvent {
                 node,
                 identifier,
