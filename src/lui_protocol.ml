@@ -618,6 +618,7 @@ let can_contain_children kind =
     | ListContainer
     | VirtualList
     | RadioGroup
+    | Button
     | DropdownMenu
     | ContextMenu
     | MenuTrigger
