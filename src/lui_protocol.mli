@@ -104,6 +104,7 @@ type host_kind =
   | FlutterHost
   | QMLHost
   | WinUIHost
+  | GPUIHost
 
 type platform_profile = {
   profile_os : operating_system;

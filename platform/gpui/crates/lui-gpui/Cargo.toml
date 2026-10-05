@@ -1,0 +1,11 @@
+[package]
+name = "lui-gpui"
+version = "0.1.0"
+edition = "2021"
+description = "GPUI (gpui-kit) renderer for the LUI retained node tree"
+
+[dependencies]
+lui-core = { path = "../lui-core" }
+gpui-kit.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
