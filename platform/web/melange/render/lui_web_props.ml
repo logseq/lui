@@ -736,6 +736,8 @@ and apply_secondary_property renderer node kind dom_node property value =
       W.Element.setAttribute "data-tooltip" value dom_node
   | TooltipKeys, StringValue value ->
       W.Element.setAttribute "data-tooltip-keys" value dom_node
+  | InputType, StringValue value ->
+      W.Element.setAttribute "type" value dom_node
   | TargetValue, StringValue target ->
       if kind = Link then begin
         W.Element.setAttribute "target" target dom_node;
@@ -867,6 +869,7 @@ let remove_property renderer node kind dom_node property =
        | DisplayValue -> set_style dom_node "display" ""
        | TooltipText -> W.Element.removeAttribute "data-tooltip" dom_node
        | TooltipKeys -> W.Element.removeAttribute "data-tooltip-keys" dom_node
+       | InputType -> W.Element.removeAttribute "type" dom_node
        | TargetValue ->
            if kind = Link then begin
              W.Element.removeAttribute "target" dom_node;

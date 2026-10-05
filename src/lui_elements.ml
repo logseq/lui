@@ -48,6 +48,7 @@ type referrer_policy =
 
 type link_target = [ `self_ | `blank ]
 type display = [ `contents ]
+type input_kind = [ `text | `color ]
 type swipe_edge = [ `leading | `trailing ]
 
 (* [~as_] element-tag overrides for the phrasing kinds ([text], [heading],
@@ -236,6 +237,10 @@ let link_target_value : link_target -> string = function
   | `blank -> "_blank"
 
 let display_value : display -> string = function `contents -> "contents"
+
+let input_kind_value : input_kind -> string = function
+  | `text -> "text"
+  | `color -> "color"
 
 let swipe_edge_value : swipe_edge -> string = function
   | `leading -> "leading"
@@ -1380,7 +1385,7 @@ let secure_field ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizon
   mount_children context node children;
   node
 
-let input ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?placeholder ?label ?autofocus ?submit_on_enter ?disabled ?disabled_signal ?on_input ?on_submit ?on_context_menu (children : t list) : t =
+let input ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?placeholder ?label ?autofocus ?submit_on_enter ?disabled ?disabled_signal ?on_input ?on_submit ?on_context_menu ?kind (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.input context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave;
@@ -1392,6 +1397,7 @@ let input ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pa
   Option.iter (Lui_ui.bool_property context node SubmitOnEnter) submit_on_enter;
   Option.iter (Lui_ui.disabled context node) disabled;
   Option.iter (Lui_ui.disabled_signal context node) disabled_signal;
+  Option.iter (Lui_ui.string_property context node InputType) (Option.map input_kind_value kind);
   (match on_input with
    | Some handler ->
      enable context node ChangeEnabled;

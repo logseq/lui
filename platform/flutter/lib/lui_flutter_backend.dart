@@ -4362,6 +4362,8 @@ final class LUIFlutterBackend {
             (kind == _NodeKind.button ||
                 kind == _NodeKind.icon ||
                 kind == _NodeKind.menuItem),
+      'input-type' =>
+        (value == 'text' || value == 'color') && kind == _NodeKind.input,
       'alt' => value is String && kind == _NodeKind.image,
       'loading' =>
         value is String &&

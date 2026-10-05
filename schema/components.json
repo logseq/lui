@@ -1502,6 +1502,11 @@
       "lg": "TooltipKeys",
       "wire": "tooltip-keys",
       "swift": "tooltipKeys"
+    },
+    {
+      "lg": "InputType",
+      "wire": "input-type",
+      "swift": "inputType"
     }
   ],
   "events": [

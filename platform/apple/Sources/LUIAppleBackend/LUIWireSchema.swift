@@ -201,6 +201,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case display = "display"
     case tooltip = "tooltip"
     case tooltipKeys = "tooltip-keys"
+    case inputType = "input-type"
 }
 
 enum LUISchemaMatrix {
