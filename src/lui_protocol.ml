@@ -640,6 +640,10 @@ let can_contain_children kind =
     | Toolbar
     | Alert
     | Bubble
+    | Text
+    | Heading
+    | Paragraph
+    | Label
     | BottomTabs
     | BottomTab
     | Link
