@@ -467,7 +467,7 @@
       "wire": "button",
       "dart": "button",
       "swift": "button",
-      "container": false
+      "container": true
     },
     {
       "lg": "ToggleButton",
