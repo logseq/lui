@@ -731,6 +731,7 @@ and apply_secondary_property renderer node kind dom_node property value =
       end
   | Opacity, FloatValue value ->
       set_style dom_node "opacity" (Js.Float.toString value)
+  | DisplayValue, StringValue value -> set_style dom_node "display" value
   | TargetValue, StringValue target ->
       if kind = Link then begin
         W.Element.setAttribute "target" target dom_node;
@@ -859,6 +860,7 @@ let remove_property renderer node kind dom_node property =
              W.Element.removeAttribute "target" dom_node
            end
        | Opacity -> set_style dom_node "opacity" ""
+       | DisplayValue -> set_style dom_node "display" ""
        | TargetValue ->
            if kind = Link then begin
              W.Element.removeAttribute "target" dom_node;

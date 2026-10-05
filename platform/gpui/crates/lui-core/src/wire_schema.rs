@@ -447,6 +447,7 @@ pub enum Property {
     ReferrerPolicy,
     TargetValue,
     Opacity,
+    DisplayValue,
 }
 
 impl Property {
@@ -558,6 +559,7 @@ impl Property {
             "referrer-policy" => Some(Property::ReferrerPolicy),
             "target" => Some(Property::TargetValue),
             "opacity" => Some(Property::Opacity),
+            "display" => Some(Property::DisplayValue),
             _ => None,
         }
     }
@@ -670,6 +672,7 @@ impl Property {
             Property::ReferrerPolicy => "referrer-policy",
             Property::TargetValue => "target",
             Property::Opacity => "opacity",
+            Property::DisplayValue => "display",
         }
     }
 }

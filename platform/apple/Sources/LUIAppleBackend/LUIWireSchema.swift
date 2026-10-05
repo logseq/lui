@@ -198,6 +198,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case referrerPolicy = "referrer-policy"
     case target = "target"
     case opacity = "opacity"
+    case display = "display"
 }
 
 enum LUISchemaMatrix {

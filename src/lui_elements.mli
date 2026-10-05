@@ -56,6 +56,8 @@ type referrer_policy =
   [ `no_referrer | `origin | `strict_origin_when_cross_origin | `unsafe_url ]
 
 type link_target = [ `self_ | `blank ]
+
+type display = [ `contents ]
 type swipe_edge = [ `leading | `trailing ]
 
 (** [~as_] element-tag overrides for the phrasing kinds ([text],
@@ -336,7 +338,7 @@ val row :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  t list -> t
+  ?display:display -> t list -> t
 val column :
   ?key:string ->
   ?gap:int ->
@@ -375,7 +377,7 @@ val column :
   ?on_pointer_up:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  t list -> t
+  ?display:display -> t list -> t
 val grid :
   ?key:string ->
   ?gap:int ->
@@ -767,7 +769,7 @@ val box :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  t list -> t
+  ?display:display -> t list -> t
 val scroll :
   ?key:string ->
   ?gap:int ->
