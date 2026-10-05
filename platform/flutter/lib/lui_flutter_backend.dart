@@ -4348,6 +4348,11 @@ final class LUIFlutterBackend {
             const {'_self', '_blank'}.contains(value) &&
             kind == _NodeKind.link,
       'opacity' => value is num && value >= 0 && value <= 1 && _canContainChildren(kind),
+      'display' =>
+        value == 'contents' &&
+            (kind == _NodeKind.box ||
+                kind == _NodeKind.column ||
+                kind == _NodeKind.row),
       'alt' => value is String && kind == _NodeKind.image,
       'loading' =>
         value is String &&

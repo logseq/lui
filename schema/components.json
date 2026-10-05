@@ -1487,6 +1487,11 @@
       "lg": "Opacity",
       "wire": "opacity",
       "swift": "opacity"
+    },
+    {
+      "lg": "DisplayValue",
+      "wire": "display",
+      "swift": "display"
     }
   ],
   "events": [

@@ -218,6 +218,7 @@ type property =
   | ReferrerPolicy
   | TargetValue
   | Opacity
+  | DisplayValue
 
 module Property_map : Map.S with type key = property
 
