@@ -193,6 +193,9 @@ enum LUIProperty: String, Decodable, Hashable {
     case pointerEnabled = "pointer-enabled"
     case dataAttrs = "data-attrs"
     case asTag = "as"
+    case alt = "alt"
+    case loading = "loading"
+    case referrerPolicy = "referrer-policy"
 }
 
 enum LUISchemaMatrix {

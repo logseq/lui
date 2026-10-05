@@ -2786,18 +2786,27 @@ final class LUIFlutterBackend {
     }
 
     Widget image() {
-      final imageID = state.properties['image'] as int;
+      final imageID = state.properties['image'] as int? ?? 0;
       final pixels = imageID == 0 ? null : _images[imageID];
       final source = imageSource(pixels);
       final hasDrawablePixels =
           pixels != null &&
           (!state.properties.containsKey('source-x') || source != null);
+      final url = state.properties['url'] as String? ?? '';
+      final altText = state.properties['alt'] as String? ?? '';
+      final semanticsLabel = altText.isEmpty ? accessibilityLabel : altText;
       return Semantics(
-        label: accessibilityLabel,
-        image: accessibilityLabel != null,
+        label: semanticsLabel,
+        image: semanticsLabel != null,
         excludeSemantics: true,
         child: !hasDrawablePixels
-            ? const SizedBox.expand()
+            ? url.isEmpty
+                  ? const SizedBox.expand()
+                  : Image.network(
+                      url,
+                      fit: BoxFit.fill,
+                      errorBuilder: (_, __, ___) => const SizedBox.expand(),
+                    )
             : CustomPaint(
                 painter: _LUIImagePainter(image: pixels, source: source),
               ),
@@ -4328,7 +4337,22 @@ final class LUIFlutterBackend {
             value.isFinite &&
             (kind == _NodeKind.avatar || kind == _NodeKind.image),
       'path' => value is String && kind == _NodeKind.fileImage,
-      'url' => value is String && kind == _NodeKind.link,
+      'url' =>
+        value is String && (kind == _NodeKind.link || kind == _NodeKind.image),
+      'alt' => value is String && kind == _NodeKind.image,
+      'loading' =>
+        value is String &&
+            const {'eager', 'lazy'}.contains(value) &&
+            kind == _NodeKind.image,
+      'referrer-policy' =>
+        value is String &&
+            const {
+              'no-referrer',
+              'origin',
+              'strict-origin-when-cross-origin',
+              'unsafe-url',
+            }.contains(value) &&
+            kind == _NodeKind.image,
       'image-fit' => value is String && const {'fit', 'fill'}.contains(value) && kind == _NodeKind.fileImage,
       'max-pixel-size' =>
         value is int && value > 0 && kind == _NodeKind.fileImage,
@@ -4817,8 +4841,9 @@ final class LUIFlutterBackend {
       }
       if (state.kind == _NodeKind.avatar || state.kind == _NodeKind.image) {
         if (state.kind == _NodeKind.image &&
-            !state.properties.containsKey('image')) {
-          throw const LUIBackendException('image requires image');
+            !state.properties.containsKey('image') &&
+            (state.properties['url'] as String? ?? '').isEmpty) {
+          throw const LUIBackendException('image requires image or url');
         }
         const sourceNames = {
           'source-x',
@@ -4836,7 +4861,8 @@ final class LUIFlutterBackend {
           );
         }
         if (sourceCount == sourceNames.length) {
-          if (!state.properties.containsKey('image')) {
+          if (!state.properties.containsKey('image') &&
+              (state.properties['url'] as String? ?? '').isEmpty) {
             throw LUIBackendException(
               '$mediaKind source crop requires an image',
             );

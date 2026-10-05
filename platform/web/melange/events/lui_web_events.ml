@@ -212,6 +212,12 @@ let attach_number_stepper_event renderer node dom_node =
        end)
     input
 
+let attach_load_event renderer node dom_node =
+  let pixels = Util.child_element dom_node 0 in
+  W.Element.addEventListener "load"
+    (fun _event -> emit renderer (Load node))
+    pixels
+
 let attach_accordion_event renderer node dom_node =
   W.Element.addEventListener "click"
     (fun event ->
@@ -526,6 +532,7 @@ let attach_events renderer node kind dom_node =
       ignore (Lui_web_menu.attach_context_menu_events renderer node dom_node)
   | Dialog | Sheet ->
       ignore (Lui_web_overlay.attach_modal_events renderer node dom_node)
+  | Image -> attach_load_event renderer node dom_node
   | MenuItem | MenuTrigger ->
       ignore (Lui_web_menu.attach_picker_press_event renderer node dom_node);
       W.Element.addEventListener "focusin"

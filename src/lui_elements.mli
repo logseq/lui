@@ -49,6 +49,11 @@ type role = [ `treeitem | `navigation | `navigation_heading ]
 type list_style = [ `plain | `inset | `inset_grouped ]
 type scroll_anchor = [ `top | `center | `bottom ]
 type separator_visibility = [ `visible | `hidden ]
+
+type image_loading = [ `eager | `lazy_ ]
+
+type referrer_policy =
+  [ `no_referrer | `origin | `strict_origin_when_cross_origin | `unsafe_url ]
 type swipe_edge = [ `leading | `trailing ]
 
 (** [~as_] element-tag overrides for the phrasing kinds ([text],
@@ -3188,6 +3193,12 @@ val image :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?image:int ->
   ?image_signal:int Signal.signal ->
+  ?url:string ->
+  ?url_signal:string Signal.signal ->
+  ?alt:string ->
+  ?loading:image_loading ->
+  ?referrer_policy:referrer_policy ->
+  ?on_load:(Lui_protocol.event -> unit) ->
   ?source_x:float ->
   ?source_y:float ->
   ?source_width:float -> ?source_height:float -> ?label:string -> nothing list -> t

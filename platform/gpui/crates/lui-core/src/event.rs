@@ -27,6 +27,7 @@ pub enum EventKind {
     PointerEnter,
     PointerLeave,
     ContextMenuPress,
+    Load,
     ExtensionEvent,
 }
 
@@ -112,6 +113,7 @@ pub fn event_supported(kind: NodeKind, event: EventKind) -> bool {
                 | FilePicker
         ),
         DoublePress => kind == ListItem,
+        Load => kind == Image,
         Appear => kind != Root,
         ScrollCompleted | VisibleRange => kind == ListContainer,
         Picked => kind == FilePicker,

@@ -3608,6 +3608,13 @@ private struct LUIImageView: View {
         if let image = model.imageDisplayImage(in: backend) {
             Image(decorative: image, scale: 1)
                 .resizable()
+        } else if let url = URL(string: model.property(.url)?.stringValue ?? "") {
+            AsyncImage(url: url) { image in
+                image.resizable()
+            } placeholder: {
+                Color.clear
+            }
+            .accessibilityLabel(model.property(.alt)?.stringValue ?? "")
         } else {
             Color.clear
         }

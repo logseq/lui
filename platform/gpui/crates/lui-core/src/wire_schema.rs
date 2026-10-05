@@ -442,6 +442,9 @@ pub enum Property {
     PointerEnabled,
     DataAttrs,
     As,
+    AltValue,
+    LoadingValue,
+    ReferrerPolicy,
 }
 
 impl Property {
@@ -548,6 +551,9 @@ impl Property {
             "pointer-enabled" => Some(Property::PointerEnabled),
             "data-attrs" => Some(Property::DataAttrs),
             "as" => Some(Property::As),
+            "alt" => Some(Property::AltValue),
+            "loading" => Some(Property::LoadingValue),
+            "referrer-policy" => Some(Property::ReferrerPolicy),
             _ => None,
         }
     }
@@ -655,6 +661,9 @@ impl Property {
             Property::PointerEnabled => "pointer-enabled",
             Property::DataAttrs => "data-attrs",
             Property::As => "as",
+            Property::AltValue => "alt",
+            Property::LoadingValue => "loading",
+            Property::ReferrerPolicy => "referrer-policy",
         }
     }
 }
