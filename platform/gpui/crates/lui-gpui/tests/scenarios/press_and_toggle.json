@@ -88,8 +88,18 @@
           "node": 3
         },
         {
+          "kind": "pointer-detail",
+          "node": 3,
+          "button": 0
+        },
+        {
           "kind": "press",
           "node": 2
+        },
+        {
+          "kind": "pointer-detail",
+          "node": 2,
+          "button": 0
         }
       ]
     },
@@ -106,6 +116,11 @@
         {
           "kind": "press",
           "node": 2
+        },
+        {
+          "kind": "pointer-detail",
+          "node": 2,
+          "button": 0
         }
       ]
     }
