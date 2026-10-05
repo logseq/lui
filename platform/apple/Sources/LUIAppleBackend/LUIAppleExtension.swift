@@ -345,6 +345,42 @@ public struct LUIAppleExtensionViewContext {
     public func emit(on nodeID: Int, name: String, values: [String: LUIExtensionValue] = [:]) throws {
         try backend.performExtensionEvent(node: nodeID, name: name, values: values)
     }
+
+    /// A context rooted at any node in the tree — lets a composite view
+    /// (e.g. a flattened row list rendering each row's real node) read
+    /// properties and emit through the context API for nodes that are not
+    /// its direct child.
+    public func context(of nodeID: Int) -> LUIAppleExtensionViewContext {
+        LUIAppleExtensionViewContext(nodeID: nodeID, backend: backend)
+    }
+
+    /// The full view of any node in the tree — for bail-out rows inside a
+    /// folded composite that must fall back to the real mounted subtree.
+    public func nodeView(of nodeID: Int) -> AnyView {
+        backend.anyNodeView(nodeID: nodeID)
+    }
+
+    /// A subtree-content stamp for measure caches and flat-list probes:
+    /// folds every descendant's mutation revision, so it changes whenever
+    /// anything under the node commits and stays equal when only nodes
+    /// outside the subtree do. Reading it in a View body also subscribes
+    /// the view to every descendant model's revision, so the view
+    /// re-resolves exactly when a descendant commits.
+    public func measureStamp(of nodeID: Int) -> Int {
+        var stamp = 0
+        func visit(_ id: Int) {
+            let rev = backend.extensionModel(id: id)?.revision
+                ?? backend.model(id: id)?.revision
+                ?? -1
+            stamp = stamp &* 31 &+ rev
+            let kids = backend.extensionModel(id: id)?.children
+                ?? backend.model(id: id)?.children
+                ?? []
+            for kid in kids { visit(kid) }
+        }
+        visit(nodeID)
+        return stamp
+    }
 }
 
 struct LUIExtensionNodeState {
