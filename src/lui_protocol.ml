@@ -218,6 +218,7 @@ type property =
   | AltValue
   | LoadingValue
   | ReferrerPolicy
+  | TargetValue
 
 module Property_map =
   Map.Make
@@ -1009,6 +1010,7 @@ let common_property_supported kind property =
     | _ -> false)
   | PathValue -> kind = FileImage || kind = FilePreview
   | UrlValue -> kind = Link || kind = Image
+  | TargetValue -> kind = Link
   | AltValue | LoadingValue | ReferrerPolicy -> kind = Image
   | MaxPixelSize | ImageFitValue -> kind = FileImage
   | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector
@@ -1238,6 +1240,7 @@ let property_value_supported property value =
     value = "no-referrer" || value = "origin"
     || value = "strict-origin-when-cross-origin"
     || value = "unsafe-url"
+  | TargetValue, StringValue value -> value = "_self" || value = "_blank"
   | ImageFitValue, StringValue value -> value = "fit" || value = "fill"
   | MaxPixelSize, IntValue value -> value > 0
   | Visible, BoolValue _ -> true

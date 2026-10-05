@@ -45,6 +45,8 @@ type image_loading = [ `eager | `lazy_ ]
 
 type referrer_policy =
   [ `no_referrer | `origin | `strict_origin_when_cross_origin | `unsafe_url ]
+
+type link_target = [ `self_ | `blank ]
 type swipe_edge = [ `leading | `trailing ]
 
 (* [~as_] element-tag overrides for the phrasing kinds ([text], [heading],
@@ -227,6 +229,10 @@ let referrer_policy_value : referrer_policy -> string = function
   | `origin -> "origin"
   | `strict_origin_when_cross_origin -> "strict-origin-when-cross-origin"
   | `unsafe_url -> "unsafe-url"
+
+let link_target_value : link_target -> string = function
+  | `self_ -> "_self"
+  | `blank -> "_blank"
 
 let swipe_edge_value : swipe_edge -> string = function
   | `leading -> "leading"
@@ -1940,12 +1946,13 @@ let media_surface ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizo
   
   node
 
-let link ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?url ?url_signal ?text ?text_signal ?icon ?icon_signal ?icon_placement ?label ?disabled ?disabled_signal (children : t list) : t =
+let link ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?url ?url_signal ?target ?text ?text_signal ?icon ?icon_signal ?icon_placement ?label ?disabled ?disabled_signal (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.create context Link in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave;
   Option.iter (Lui_ui.string_property context node UrlValue) url;
   Option.iter (Lui_ui.string_property_signal context node UrlValue) url_signal;
+  Option.iter (Lui_ui.string_property context node TargetValue) (Option.map link_target_value target);
   Option.iter (Lui_ui.string_property context node TextValue) text;
   Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);

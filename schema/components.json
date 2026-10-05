@@ -1477,6 +1477,11 @@
       "lg": "ReferrerPolicy",
       "wire": "referrer-policy",
       "swift": "referrerPolicy"
+    },
+    {
+      "lg": "TargetValue",
+      "wire": "target",
+      "swift": "target"
     }
   ],
   "events": [

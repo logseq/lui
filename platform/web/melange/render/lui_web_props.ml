@@ -729,6 +729,13 @@ and apply_secondary_property renderer node kind dom_node property value =
         W.Element.setAttribute "href" url dom_node;
         W.Element.setAttribute "target" "_blank" dom_node
       end
+  | TargetValue, StringValue target ->
+      if kind = Link then begin
+        W.Element.setAttribute "target" target dom_node;
+        if target = "_blank" then
+          W.Element.setAttribute "rel" "noopener noreferrer" dom_node
+        else W.Element.removeAttribute "rel" dom_node
+      end
   | AltValue, StringValue alt ->
       let image_node = Util.child_element dom_node 0 in
       W.Element.setAttribute "alt" alt image_node;
@@ -848,6 +855,11 @@ let remove_property renderer node kind dom_node property =
            else begin
              W.Element.removeAttribute "href" dom_node;
              W.Element.removeAttribute "target" dom_node
+           end
+       | TargetValue ->
+           if kind = Link then begin
+             W.Element.removeAttribute "target" dom_node;
+             W.Element.setAttribute "rel" "noopener noreferrer" dom_node
            end
        | AltValue ->
            let image_node = Util.child_element dom_node 0 in

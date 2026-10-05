@@ -216,6 +216,7 @@ type property =
   | AltValue
   | LoadingValue
   | ReferrerPolicy
+  | TargetValue
 
 module Property_map : Map.S with type key = property
 

@@ -54,6 +54,8 @@ type image_loading = [ `eager | `lazy_ ]
 
 type referrer_policy =
   [ `no_referrer | `origin | `strict_origin_when_cross_origin | `unsafe_url ]
+
+type link_target = [ `self_ | `blank ]
 type swipe_edge = [ `leading | `trailing ]
 
 (** [~as_] element-tag overrides for the phrasing kinds ([text],
@@ -3272,6 +3274,7 @@ val link :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?url:string ->
   ?url_signal:string Signal.signal ->
+  ?target:link_target ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?icon:icon ->
