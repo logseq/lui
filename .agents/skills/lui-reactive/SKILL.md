@@ -61,12 +61,15 @@ keyed ~source:items_s ~key:(fun it -> it.id) ~cmp:Int.compare
 
 ## Signals and ownership
 
-- `Lui_elements.dyn/if_/keyed` own their sources internally
-  (`Signal.own_signal` on derived signals) — ppx-expanded calls inherit
-  leak protection automatically. Do not add a second ownership layer.
-- Derived-signal transforms stop re-running once the owning node
-  unmounts; shared state signals (`Signal.value`/`state_signal`) carry
-  no upstream links and survive unmount by design.
+- `dyn`/`if_`/`keyed` do NOT own the signals they consume. A signal
+  handed to them must outlive every (re)mount of the branch — derive it
+  once at section emit (e.g. `let test = Signal.map f model_source`)
+  and share it. Creating a fresh `Signal.map` inside a remounting
+  branch body works but leaks an upstream subscription on each remount
+  — hoist derivations instead.
+- Arguments to `if_`/`reactive`/`keyed` are evaluated once when the
+  `t` is constructed, not per mount: an inline `reactive`/`Signal.map`
+  in argument position still produces a shared signal.
 
 ## Comments
 
