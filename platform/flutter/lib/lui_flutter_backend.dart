@@ -4339,6 +4339,10 @@ final class LUIFlutterBackend {
       'path' => value is String && kind == _NodeKind.fileImage,
       'url' =>
         value is String && (kind == _NodeKind.link || kind == _NodeKind.image),
+      'target' =>
+        value is String &&
+            const {'_self', '_blank'}.contains(value) &&
+            kind == _NodeKind.link,
       'alt' => value is String && kind == _NodeKind.image,
       'loading' =>
         value is String &&

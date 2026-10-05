@@ -445,6 +445,7 @@ pub enum Property {
     AltValue,
     LoadingValue,
     ReferrerPolicy,
+    TargetValue,
 }
 
 impl Property {
@@ -554,6 +555,7 @@ impl Property {
             "alt" => Some(Property::AltValue),
             "loading" => Some(Property::LoadingValue),
             "referrer-policy" => Some(Property::ReferrerPolicy),
+            "target" => Some(Property::TargetValue),
             _ => None,
         }
     }
@@ -664,6 +666,7 @@ impl Property {
             Property::AltValue => "alt",
             Property::LoadingValue => "loading",
             Property::ReferrerPolicy => "referrer-policy",
+            Property::TargetValue => "target",
         }
     }
 }
