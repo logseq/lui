@@ -665,6 +665,9 @@ let common_property_supported kind property =
     || kind = Card
     || kind = Panel
     || kind = Box
+    || kind = Button
+    || kind = MenuItem
+    || kind = ListItem
     || horizontal_container kind
   | GrowValue ->
     kind <> Avatar && (not (modal_surface kind)) && kind <> Tooltip
