@@ -23,8 +23,16 @@ impl LuiRootView {
 }
 
 impl Render for LuiRootView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let root_id = self.shared.borrow().store.root;
+        // No parent records the root node's bounds — seed them from the
+        // viewport so `measure-node` on the root has real data.
+        let size = window.viewport_size();
+        crate::domops::note_root_bounds(
+            &self.shared,
+            f32::from(size.width),
+            f32::from(size.height),
+        );
         match root_id {
             Some(id) => {
                 let view = LuiShared::view_for(&self.shared, id, cx);
