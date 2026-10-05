@@ -738,6 +738,10 @@ and apply_secondary_property renderer node kind dom_node property value =
       W.Element.setAttribute "data-tooltip-keys" value dom_node
   | InputType, StringValue value ->
       W.Element.setAttribute "type" value dom_node
+  | PickerAccept, StringValue value ->
+      W.Element.setAttribute "data-accept" value dom_node
+  | PickerDirectory, BoolValue value ->
+      Util.set_state_attribute dom_node "data-directory" value
   | TargetValue, StringValue target ->
       if kind = Link then begin
         W.Element.setAttribute "target" target dom_node;
@@ -870,6 +874,9 @@ let remove_property renderer node kind dom_node property =
        | TooltipText -> W.Element.removeAttribute "data-tooltip" dom_node
        | TooltipKeys -> W.Element.removeAttribute "data-tooltip-keys" dom_node
        | InputType -> W.Element.removeAttribute "type" dom_node
+       | PickerAccept -> W.Element.removeAttribute "data-accept" dom_node
+       | PickerDirectory ->
+           W.Element.removeAttribute "data-directory" dom_node
        | TargetValue ->
            if kind = Link then begin
              W.Element.removeAttribute "target" dom_node;

@@ -222,6 +222,8 @@ type property =
   | TooltipText
   | TooltipKeys
   | InputType
+  | PickerAccept
+  | PickerDirectory
 
 module Property_map : Map.S with type key = property
 

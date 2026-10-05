@@ -202,6 +202,8 @@ enum LUIProperty: String, Decodable, Hashable {
     case tooltip = "tooltip"
     case tooltipKeys = "tooltip-keys"
     case inputType = "input-type"
+    case pickerAccept = "accept"
+    case pickerDirectory = "directory"
 }
 
 enum LUISchemaMatrix {
@@ -221,7 +223,7 @@ enum LUISchemaMatrix {
         .listSection: [.key, .separator, .pointerEnabled],
         .swipeActions: [],
         .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled, .pointerEnabled],
-        .filePicker: [.request, .types, .multiple, .source, .completion, .enabled, .appearEnabled, .pointerEnabled],
+        .filePicker: [.request, .types, .multiple, .source, .completion, .pickerAccept, .pickerDirectory, .enabled, .appearEnabled, .pointerEnabled],
         .filePreview: [.path, .pointerEnabled],
         .kbd: [.text, .styleClass, .dataAttrs, .pointerEnabled],
     ]

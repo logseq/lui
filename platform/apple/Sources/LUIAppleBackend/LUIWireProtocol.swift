@@ -954,7 +954,8 @@ struct LUIRetainedTree {
         case .alt, .loading, .referrerPolicy: kind == .image
         case .maxPixelSize, .imageFit: kind == .fileImage
         case .active, .title, .description, .meta, .indicator, .connector: false
-        case .request, .types, .multiple, .source, .completion: false
+        case .request, .types, .multiple, .source, .completion,
+             .pickerAccept, .pickerDirectory: false
         case .visible: kind == .edgeInset
         // `.alignment` is admitted ahead of the restrictive matrix above.
         case .alignment: kind != .root
