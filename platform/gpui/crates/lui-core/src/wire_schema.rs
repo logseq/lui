@@ -739,7 +739,7 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::AppearEnabled,
         ]),
         NodeKind::FilePreview => Some(&[Property::PathValue]),
-        NodeKind::Kbd => Some(&[Property::TextValue]),
+        NodeKind::Kbd => Some(&[Property::TextValue, Property::StyleClass]),
         _ => None,
     }
 }
