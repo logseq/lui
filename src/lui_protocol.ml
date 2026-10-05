@@ -215,6 +215,9 @@ type property =
   | PointerEnabled
   | DataAttrs
   | As
+  | AltValue
+  | LoadingValue
+  | ReferrerPolicy
 
 module Property_map =
   Map.Make
@@ -268,6 +271,7 @@ type event =
   | PointerEnter of int
   | PointerLeave of int
   | ContextMenuPress of int * pointer_detail
+  | Load of int
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -318,6 +322,7 @@ let event_node event =
   | PointerEnter node
   | PointerLeave node
   | ContextMenuPress (node, _)
+  | Load node
   | ExtensionEvent (node, _, _, _) -> node
 
 let modal_surface kind = kind = Dialog || kind = Drawer || kind = Sheet
@@ -467,6 +472,7 @@ let event_supported kind event =
     | _ -> false)
   | PointerEnter _ | PointerLeave _ -> kind <> Root
   | ContextMenuPress _ -> context_menu_host_kind kind
+  | Load _ -> kind = Image
   | ExtensionEvent _ -> false
 
 let true_property properties property =
@@ -1002,7 +1008,8 @@ let common_property_supported kind property =
     | Link -> true
     | _ -> false)
   | PathValue -> kind = FileImage || kind = FilePreview
-  | UrlValue -> kind = Link
+  | UrlValue -> kind = Link || kind = Image
+  | AltValue | LoadingValue | ReferrerPolicy -> kind = Image
   | MaxPixelSize | ImageFitValue -> kind = FileImage
   | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector
   | PickerRequest | PickerTypes | PickerMultiple | PickerSource
@@ -1225,6 +1232,12 @@ let property_value_supported property value =
   | Detents, StringValue _ -> true
   | Sizing, StringValue value -> sizing_supported value
   | PathValue, StringValue _ | UrlValue, StringValue _ -> true
+  | AltValue, StringValue _ -> true
+  | LoadingValue, StringValue value -> value = "eager" || value = "lazy"
+  | ReferrerPolicy, StringValue value ->
+    value = "no-referrer" || value = "origin"
+    || value = "strict-origin-when-cross-origin"
+    || value = "unsafe-url"
   | ImageFitValue, StringValue value -> value = "fit" || value = "fill"
   | MaxPixelSize, IntValue value -> value > 0
   | Visible, BoolValue _ -> true
@@ -1340,6 +1353,7 @@ let node_properties_supported kind properties =
       else true)
   && (if kind = Avatar || kind = Image then
         let has_image = Property_map.mem ImageIdValue properties in
+        let has_url = string_property_nonempty properties UrlValue in
         let has_source_x = Property_map.mem SourceX properties in
         let has_source_y = Property_map.mem SourceY properties in
         let has_source_width = Property_map.mem SourceWidth properties in
@@ -1355,9 +1369,9 @@ let node_properties_supported kind properties =
         let source_width = float_property_of properties SourceWidth 0.0 in
         let source_height = float_property_of properties SourceHeight 0.0 in
         (if kind = Avatar then string_property_nonempty properties TextValue
-         else has_image)
+         else has_image || has_url)
         && (source_count = 0 || source_count = 4)
-        && (source_count = 0 || has_image)
+        && (source_count = 0 || has_image || has_url)
         && (source_count = 0
            || (source_x >= 0.0 && source_y >= 0.0 && source_width > 0.0
               && source_height > 0.0))

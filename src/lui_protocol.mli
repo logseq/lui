@@ -213,6 +213,9 @@ type property =
   | PointerEnabled
   | DataAttrs
   | As
+  | AltValue
+  | LoadingValue
+  | ReferrerPolicy
 
 module Property_map : Map.S with type key = property
 
@@ -259,6 +262,7 @@ type event =
   | PointerEnter of int
   | PointerLeave of int
   | ContextMenuPress of int * pointer_detail
+  | Load of int
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =

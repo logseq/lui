@@ -944,7 +944,8 @@ struct LUIRetainedTree {
         case .minValue, .maxValue, .stepValue: kind == .numberStepper
         case .detents, .sizing: kind == .sheet
         case .path: kind == .fileImage || kind == .filePreview
-        case .url: kind == .link
+        case .url: kind == .link || kind == .image
+        case .alt, .loading, .referrerPolicy: kind == .image
         case .maxPixelSize, .imageFit: kind == .fileImage
         case .active, .title, .description, .meta, .indicator, .connector: false
         case .request, .types, .multiple, .source, .completion: false
@@ -1296,8 +1297,9 @@ struct LUIRetainedTree {
                 }
             }
             if node.kind == .avatar || node.kind == .image {
-                if node.kind == .image, node.properties[.image]?.intValue == nil {
-                    throw invalid("image requires image")
+                if node.kind == .image, node.properties[.image]?.intValue == nil,
+                    (node.properties[.url]?.stringValue ?? "").isEmpty {
+                    throw invalid("image requires image or url")
                 }
                 let sourceProperties: [LUIProperty] = [
                     .sourceX, .sourceY, .sourceWidth, .sourceHeight,
@@ -1309,7 +1311,9 @@ struct LUIRetainedTree {
                     throw invalid("\(node.kind == .avatar ? "avatar" : "image") source crop requires all four coordinates")
                 }
                 if sourceCount == sourceProperties.count {
-                    guard node.properties[.image]?.intValue != nil else {
+                    let hasSource = node.properties[.image]?.intValue != nil
+                        || !(node.properties[.url]?.stringValue ?? "").isEmpty
+                    guard hasSource else {
                         throw invalid("avatar source crop requires an image")
                     }
                     let x = node.properties[.sourceX]?.doubleValue ?? -1.0

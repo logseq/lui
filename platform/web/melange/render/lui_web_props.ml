@@ -724,8 +724,21 @@ and apply_secondary_property renderer node kind dom_node property value =
   | AnchorOffset, FloatValue offset ->
       apply_anchor_offset kind dom_node offset
   | UrlValue, StringValue url ->
-      W.Element.setAttribute "href" url dom_node;
-      W.Element.setAttribute "target" "_blank" dom_node
+      if kind = Image then Widgets.update_image renderer node dom_node
+      else begin
+        W.Element.setAttribute "href" url dom_node;
+        W.Element.setAttribute "target" "_blank" dom_node
+      end
+  | AltValue, StringValue alt ->
+      let image_node = Util.child_element dom_node 0 in
+      W.Element.setAttribute "alt" alt image_node;
+      Util.set_state_attribute image_node "aria-hidden" (alt = "")
+  | LoadingValue, StringValue value ->
+      W.Element.setAttribute "loading" value
+        (Util.child_element dom_node 0)
+  | ReferrerPolicy, StringValue value ->
+      W.Element.setAttribute "referrerpolicy" value
+        (Util.child_element dom_node 0)
   | PathValue, StringValue path ->
       W.Element.setAttribute "data-path" path dom_node
   | ImageFitValue, StringValue value ->
@@ -831,8 +844,21 @@ let remove_property renderer node kind dom_node property =
              set_style dom_node "margin-inline" ""
            end
        | UrlValue ->
-           W.Element.removeAttribute "href" dom_node;
-           W.Element.removeAttribute "target" dom_node
+           if kind = Image then Widgets.update_image renderer node dom_node
+           else begin
+             W.Element.removeAttribute "href" dom_node;
+             W.Element.removeAttribute "target" dom_node
+           end
+       | AltValue ->
+           let image_node = Util.child_element dom_node 0 in
+           W.Element.setAttribute "alt" "" image_node;
+           Util.set_state_attribute image_node "aria-hidden" true
+       | LoadingValue ->
+           W.Element.removeAttribute "loading"
+             (Util.child_element dom_node 0)
+       | ReferrerPolicy ->
+           W.Element.removeAttribute "referrerpolicy"
+             (Util.child_element dom_node 0)
        | PathValue -> W.Element.removeAttribute "data-path" dom_node
        | ImageFitValue ->
            W.Element.removeAttribute "data-image-fit" dom_node;

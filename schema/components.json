@@ -1462,6 +1462,21 @@
       "lg": "As",
       "wire": "as",
       "swift": "asTag"
+    },
+    {
+      "lg": "AltValue",
+      "wire": "alt",
+      "swift": "alt"
+    },
+    {
+      "lg": "LoadingValue",
+      "wire": "loading",
+      "swift": "loading"
+    },
+    {
+      "lg": "ReferrerPolicy",
+      "wire": "referrer-policy",
+      "swift": "referrerPolicy"
     }
   ],
   "events": [
@@ -1596,6 +1611,12 @@
       "fields": [
         ":int",
         ":pointer_detail"
+      ]
+    },
+    {
+      "lg": "Load",
+      "fields": [
+        ":int"
       ]
     }
   ],

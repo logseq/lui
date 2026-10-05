@@ -147,8 +147,14 @@ let update_image renderer node dom_node =
       end
       else fill_image pixels "fill"
   | None ->
-      W.Element.removeAttribute "src" pixels;
-      Util.set_state_attribute pixels "hidden" true
+      (match Store.property renderer.web_store node UrlValue with
+       | Some (StringValue url) when url <> "" ->
+           W.Element.setAttribute "src" url pixels;
+           Util.set_state_attribute pixels "hidden" false;
+           fill_image pixels "fill"
+       | _ ->
+           W.Element.removeAttribute "src" pixels;
+           Util.set_state_attribute pixels "hidden" true)
 
 let update_image_bang = update_image
 

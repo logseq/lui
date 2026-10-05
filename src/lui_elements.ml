@@ -40,6 +40,11 @@ type role = [ `treeitem | `navigation | `navigation_heading ]
 type list_style = [ `plain | `inset | `inset_grouped ]
 type scroll_anchor = [ `top | `center | `bottom ]
 type separator_visibility = [ `visible | `hidden ]
+
+type image_loading = [ `eager | `lazy_ ]
+
+type referrer_policy =
+  [ `no_referrer | `origin | `strict_origin_when_cross_origin | `unsafe_url ]
 type swipe_edge = [ `leading | `trailing ]
 
 (* [~as_] element-tag overrides for the phrasing kinds ([text], [heading],
@@ -212,6 +217,16 @@ let scroll_anchor_value : scroll_anchor -> string = function
 let separator_value : separator_visibility -> string = function
   | `visible -> "visible"
   | `hidden -> "hidden"
+
+let image_loading_value : image_loading -> string = function
+  | `eager -> "eager"
+  | `lazy_ -> "lazy"
+
+let referrer_policy_value : referrer_policy -> string = function
+  | `no_referrer -> "no-referrer"
+  | `origin -> "origin"
+  | `strict_origin_when_cross_origin -> "strict-origin-when-cross-origin"
+  | `unsafe_url -> "unsafe-url"
 
 let swipe_edge_value : swipe_edge -> string = function
   | `leading -> "leading"
@@ -412,6 +427,7 @@ let is_submit = function Submit _ -> true | _ -> false
 let is_toggle = function ToggleChanged _ -> true | _ -> false
 let is_dismiss = function Dismiss _ -> true | _ -> false
 let is_picked = function Picked _ -> true | _ -> false
+let is_load = function Load _ -> true | _ -> false
 let is_appear = function Appear _ -> true | _ -> false
 let is_resize = function ValueChanged _ -> true | _ -> false
 let is_scroll_completed = function ScrollCompleted _ -> true | _ -> false
@@ -443,6 +459,9 @@ let register_dismiss context node handler =
 
 let register_picked context node handler =
   ignore (on_event context node is_picked handler)
+
+let register_load context node handler =
+  ignore (on_event context node is_load handler)
 
 let appear_handler context node handler =
   enable context node AppearEnabled;
@@ -1889,19 +1908,25 @@ let avatar ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?p
   
   node
 
-let image ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?image ?image_signal ?source_x ?source_y ?source_width ?source_height ?label (_children : nothing list) : t =
+let image ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?image ?image_signal ?url ?url_signal ?alt ?loading ?referrer_policy ?on_load ?source_x ?source_y ?source_width ?source_height ?label (_children : nothing list) : t =
  fun context parent ->
   let node = Lui_ui.create context Image in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave;
   Option.iter (Lui_ui.int_property context node ImageIdValue) image;
   Option.iter (Lui_ui.int_property_signal context node ImageIdValue) image_signal;
+  Option.iter (Lui_ui.string_property context node UrlValue) url;
+  Option.iter (Lui_ui.string_property_signal context node UrlValue) url_signal;
+  Option.iter (Lui_ui.string_property context node AltValue) alt;
+  Option.iter (Lui_ui.string_property context node LoadingValue) (Option.map image_loading_value loading);
+  Option.iter (Lui_ui.string_property context node ReferrerPolicy) (Option.map referrer_policy_value referrer_policy);
+  Option.iter (register_load context node) on_load;
   Option.iter (Lui_ui.float_property context node SourceX) source_x;
   Option.iter (Lui_ui.float_property context node SourceY) source_y;
   Option.iter (Lui_ui.float_property context node SourceWidth) source_width;
   Option.iter (Lui_ui.float_property context node SourceHeight) source_height;
   Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
   attach context parent node;
-  
+
   node
 
 let media_surface ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?surface ?surface_signal ?label (_children : nothing list) : t =
