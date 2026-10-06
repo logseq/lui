@@ -957,6 +957,10 @@ fn overlay_modal(
 
     let mut card = v_flex()
         .gap_2()
+        // The backdrop's hitbox is only visually under the card — without
+        // an occluding hitbox of its own, mouse-downs on the card surface
+        // still reach the backdrop and dismiss the modal.
+        .occlude()
         .bg(cx.theme().tokens.background)
         .text_color(cx.theme().foreground)
         .border_1()
