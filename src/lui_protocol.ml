@@ -1423,8 +1423,9 @@ let node_properties_supported kind properties =
   && (if kind = FileImage || kind = FilePreview then
         string_property_nonempty properties PathValue
       else true)
-  && (if kind = Link then string_property_nonempty properties UrlValue
-      else true)
+  (* no url requirement on Link: apps emit in-app navigation anchors
+     without an href (the apple store's validator doesn't require one
+     either) *)
   && (if kind = MediaSurface then Property_map.mem SurfaceIdValue properties
       else true)
   && (if kind = EdgeInset then Property_map.mem EdgeValue properties else true)

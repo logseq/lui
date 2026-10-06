@@ -573,10 +573,21 @@ let validate_extension_node registry current identifier =
 
 let validate_nodes nodes registry =
   Hashtbl.iter
-    (fun _node current ->
+    (fun node current ->
        match current.semantic_kind with
-       | StandardSemantic kind ->
-           validate_standard_node nodes registry current kind
+       | StandardSemantic kind -> (
+           try validate_standard_node nodes registry current kind
+           with Invalid_argument msg ->
+             let props =
+               Property_map.fold
+                 (fun k _v acc -> Lui_wire_schema.property_name k :: acc)
+                 current.retained_properties []
+               |> String.concat ","
+             in
+             invalid_arg
+               (Printf.sprintf "node %d kind=%s props=[%s]: %s" node
+                  (Lui_wire_schema.node_kind_name kind)
+                  props msg))
        | ExtensionSemantic (identifier, _) ->
            validate_extension_node registry current identifier)
     nodes
