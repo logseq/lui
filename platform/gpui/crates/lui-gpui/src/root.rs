@@ -5,11 +5,13 @@ use std::cell::OnceCell;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::v_flex;
 use gpui_kit::gpui::{
-    div, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render,
-    StatefulInteractiveElement, Styled, Subscription, Window,
+    div, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, MouseButton,
+    MouseUpEvent, ParentElement, Render, StatefulInteractiveElement, Styled,
+    Subscription, Window,
 };
 
 use crate::backend::{LuiShared, Shared};
+
 
 /// The view hosted inside `gpui_component::Root`. Renders the root node
 /// entity (itself redraw-isolated) or an empty screen while no root is
@@ -69,6 +71,7 @@ impl Render for LuiRootView {
                 // The LUI root node is typically a plain column; other
                 // backends get their outer scrolling from the host surface,
                 // so the window root supplies it here.
+                let click_shared = self.shared.clone();
                 v_flex()
                     .id("lui-root-scroll")
                     .size_full()
@@ -77,8 +80,58 @@ impl Render for LuiRootView {
                     .text_color(cx.theme().foreground)
                     .font_family(cx.theme().font_family.clone())
                     .track_focus(&focus)
-                    .on_key_down(move |ev: &KeyDownEvent, _window, cx| {
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        move |event: &MouseUpEvent, _window, cx| {
+                            // Web parity: a click targets the deepest hit
+                            // element, and document listeners see it even
+                            // when it lands on a plain element — dom.rs
+                            // only wires `click` on nodes that declared it.
+                            // Emit the hit through an extension carrier;
+                            // OCaml's 60ms coalescing drops the wired
+                            // duplicate when one also fires.
+                            let Some(hit) = crate::dom::deepest_hit(
+                                &click_shared,
+                                event.position,
+                            ) else {
+                                return;
+                            };
+                            let Some((carrier, ident)) =
+                                crate::dom::logseq_carrier(&click_shared, Some(hit))
+                            else {
+                                return;
+                            };
+                            let position = event.position;
+                            crate::dom::dom_event_via(
+                                &click_shared,
+                                carrier,
+                                &ident,
+                                hit,
+                                "click",
+                                serde_json::json!({
+                                    "clientX": f64::from(position.x),
+                                    "clientY": f64::from(position.y),
+                                }),
+                                cx,
+                            );
+                        },
+                    )
+                    .on_key_down(move |ev: &KeyDownEvent, window, cx| {
                         if ev.is_held {
+                            return;
+                        }
+                        // A focused text input (block editor, cmdk field)
+                        // already receives text through its registered
+                        // input handler — forwarding the same key as a
+                        // document keydown would double-insert it, and
+                        // native targets can't carry a `.ed-input` target
+                        // for the document handler to recognize.
+                        if ev.keystroke.key_char.is_some()
+                            && !ev.keystroke.modifiers.platform
+                            && !ev.keystroke.modifiers.control
+                            && window.focused(cx).is_some()
+                            && !focus.is_focused(window)
+                        {
                             return;
                         }
                         // dom-events must target an extension node — OCaml
