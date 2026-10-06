@@ -155,6 +155,11 @@ pub struct ComponentStates {
     pub open_submenu: std::rc::Rc<std::cell::Cell<Option<i64>>>,
     /// `split-view` → `DockArea` sync state (extension.rs registers it).
     pub dock: Option<crate::dock::DockSync>,
+    /// Per-node state bag for host-registered extension renderers: a host
+    /// stores its own `Rc<RefCell<T>>` here on first render and downcasts
+    /// it back on subsequent renders. Keeps app-specific hosts (e.g.
+    /// Logseq's `logseq-*` surfaces) out of the framework's state struct.
+    pub app_state: Option<std::rc::Rc<std::cell::RefCell<dyn std::any::Any>>>,
     /// Scroll state for scrollable container kinds — `track_scroll`
     /// registers it at render; `scroll_tracked` then marks this node as
     /// the scroll ancestor the `scroll-into-view` dom-op looks for.

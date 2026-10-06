@@ -196,7 +196,10 @@ fn target_snapshot(store: &Store, node_id: i64) -> serde_json::Value {
 /// a JSON *string* (StringScalar on the schema) carrying `nodeId` (drives
 /// the bubble walk), `target` (element snapshot for closest()/scope), and
 /// any event fields.
-fn dom_event(
+///
+/// `pub` so app-side extension renderers can emit `dom-event`s with the
+/// same target snapshot the builtin renderer produces.
+pub fn dom_event(
     shared: &Shared,
     node_id: i64,
     identifier: &str,

@@ -36,15 +36,9 @@ pub fn render(
     };
     let identifier = identifier.clone();
 
-    // `logseq-*` is the app's DOM-ish tag family — routed to the dedicated
-    // dom.rs renderer (transparent containers + style-class + dom-event),
-    // never the generic warning host.
-    if identifier.starts_with("logseq-") {
-        return dom::render(view, node, window, cx);
-    }
-
-    // A registered specialized renderer wins (this is how `gpui-*`
-    // components plug in).
+    // A registered specialized renderer wins — this is how `gpui-*`
+    // components plug in, and how a host may take over a `logseq-*`
+    // identifier (e.g. the logseq-editor input/measurement surface).
     let renderer = view
         .shared
         .borrow()
@@ -53,6 +47,13 @@ pub fn render(
         .copied();
     if let Some(render_extension) = renderer {
         return render_extension(view, node, window, cx);
+    }
+
+    // `logseq-*` is the app's DOM-ish tag family — routed to the dedicated
+    // dom.rs renderer (transparent containers + style-class + dom-event),
+    // never the generic warning host.
+    if identifier.starts_with("logseq-") {
+        return dom::render(view, node, window, cx);
     }
 
     let spec = view
@@ -159,7 +160,10 @@ fn ext_bool(node: &NodeSnapshot, name: &str) -> Option<bool> {
 
 /// Push one extension event back into the OCaml runtime and apply any
 /// resulting patches on the spot.
-pub(crate) fn fire_extension(
+///
+/// `pub` so app-side extension renderers (registered via
+/// `Shared::extension_renderers`) can emit events through the same path.
+pub fn fire_extension(
     shared: &Shared,
     node_id: i64,
     identifier: &std::ffi::CStr,
