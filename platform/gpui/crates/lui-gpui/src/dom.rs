@@ -25,9 +25,8 @@ use gpui_kit::gpui::{
 };
 use lui_core::bridge;
 use lui_core::store::{Node, NodeIdentity, Store};
-use lui_core::EventKind;
 
-use crate::backend::{fire, Shared};
+use crate::backend::Shared;
 use crate::extension::placeholder_box;
 use crate::node_view::{LuiNodeView, NodeSnapshot};
 use crate::style;
@@ -225,14 +224,18 @@ pub fn dom_event(
         "payload": payload.to_string(),
     });
     let values = CString::new(values.to_string()).unwrap_or_default();
-    fire(shared, node_id, EventKind::ExtensionEvent, cx, || unsafe {
+    // Host-initiated — bypass `event_allowed` (it admits ExtensionEvent
+    // only for extension nodes; a `dom-event` may legitimately target a
+    // standard node, e.g. the root for document keydown).
+    unsafe {
         bridge::lui_ocaml_extension_event(
             node_id,
             identifier.as_ptr(),
             event.as_ptr(),
             values.as_ptr(),
         )
-    });
+    };
+    crate::backend::drain_pending(shared, cx);
 }
 
 /// Attach DOM listeners declared in the `events` prop (space-separated
