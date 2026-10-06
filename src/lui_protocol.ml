@@ -395,6 +395,8 @@ let event_supported kind event =
     (match kind with
     | Button
     | Column
+    | Row
+    | Box
     | Radio
     | Select
     | Combobox
@@ -471,6 +473,8 @@ let event_supported kind event =
     (match kind with
     | Button
     | Column
+    | Row
+    | Box
     | Radio
     | Select
     | Combobox
@@ -923,6 +927,8 @@ let common_property_supported kind property =
   | PressEnabled ->
     kind = Text
     || kind = Column
+    || kind = Row
+    || kind = Box
     || kind = Radio
     || kind = Select
     || kind = Combobox

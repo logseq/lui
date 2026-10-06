@@ -152,7 +152,7 @@ fn radio_handler(
 fn container(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
-    kind: NodeKind,
+    _kind: NodeKind,
     horizontal: bool,
     cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
@@ -171,19 +171,9 @@ fn container(
     if !node.enabled() {
         element = element.opacity(0.5);
     }
-    let pressable = matches!(
-        kind,
-        NodeKind::Column
-            | NodeKind::ListItem
-            | NodeKind::TableCell
-            | NodeKind::TimelineItem
-            | NodeKind::MenuItem
-            | NodeKind::BottomTab
-            | NodeKind::SwipeAction
-            | NodeKind::Text
-            | NodeKind::FileImage
-    );
-    if pressable && press_gate(view, node.id) {
+    // Any container kind may carry `pressable` (the model enables the
+    // PressEnabled prop) — the gate decides, not the kind.
+    if press_gate(view, node.id) {
         element = element
             .cursor_pointer()
             .on_click(press_handler(view, node.id));
