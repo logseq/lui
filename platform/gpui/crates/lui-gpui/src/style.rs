@@ -352,11 +352,35 @@ fn apply_radius<E: Styled>(element: E, rest: &str) -> E {
     }
 }
 
+/// Parse `min-height:NNpx` / `height:NNpx` out of an extension node's
+/// `attrs.style` string. Native dom elements carry reserved heights as
+/// inline style (the lazy-mount placeholder contract), not style props.
+fn inline_style_px(node: &NodeSnapshot, prop: &str) -> Option<f64> {
+    let raw = node.extension_string_prop("attrs")?;
+    let attrs: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let style = attrs.get("style")?.as_str()?;
+    for decl in style.split(';') {
+        let mut parts = decl.splitn(2, ':');
+        if parts.next().map(str::trim) != Some(prop) {
+            continue;
+        }
+        let value = parts.next()?.trim().trim_end_matches("px");
+        return value.parse::<f64>().ok();
+    }
+    None
+}
+
 /// Convenience composition used by most kinds: frame + layout + surface +
 /// style-class, in wire order semantics. `style-class` lives in standard
 /// props for component kinds and in extension props for extension nodes.
 pub fn all<E: Styled>(element: E, node: &NodeSnapshot) -> E {
-    let element = frame(element, node);
+    let mut element = frame(element, node);
+    if let Some(value) = inline_style_px(node, "min-height") {
+        element = element.min_h(px_length(value));
+    }
+    if let Some(value) = inline_style_px(node, "height") {
+        element = element.h(px_length(value));
+    }
     let element = layout(element, node);
     let element = surface(element, node);
     let element = match node.float_prop(Property::Opacity) {
