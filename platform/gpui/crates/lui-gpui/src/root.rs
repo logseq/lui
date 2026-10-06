@@ -6,7 +6,7 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::v_flex;
 use gpui_kit::gpui::{
     div, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render,
-    StatefulInteractiveElement, Styled, Window,
+    StatefulInteractiveElement, Styled, Subscription, Window,
 };
 
 use crate::backend::{LuiShared, Shared};
@@ -23,6 +23,9 @@ use crate::backend::{LuiShared, Shared};
 pub struct LuiRootView {
     pub shared: Shared,
     focus: OnceCell<FocusHandle>,
+    /// Window appearance subscription (kept alive for the view's life):
+    /// OS light/dark switches re-apply the registered gpui-component theme.
+    appearance: OnceCell<Subscription>,
 }
 
 impl LuiRootView {
@@ -30,6 +33,7 @@ impl LuiRootView {
         LuiRootView {
             shared,
             focus: OnceCell::new(),
+            appearance: OnceCell::new(),
         }
     }
 }
@@ -46,6 +50,13 @@ impl Render for LuiRootView {
             f32::from(size.height),
         );
         let focus = self.focus.get_or_init(|| cx.focus_handle()).clone();
+        // Follow OS appearance changes: re-apply the registered theme so
+        // colors, scrollbar and resize-handle styles all track light/dark.
+        self.appearance.get_or_init(|| {
+            cx.observe_window_appearance(window, |_, window, cx| {
+                crate::theme::sync_window_appearance(window, cx);
+            })
+        });
         // Nothing focused → fall back to the root handle so key events
         // keep dispatching outside of editor surfaces.
         if window.focused(cx).is_none() {
@@ -63,6 +74,8 @@ impl Render for LuiRootView {
                     .size_full()
                     .overflow_y_scroll()
                     .bg(cx.theme().background)
+                    .text_color(cx.theme().foreground)
+                    .font_family(cx.theme().font_family.clone())
                     .track_focus(&focus)
                     .on_key_down(move |ev: &KeyDownEvent, _window, cx| {
                         if ev.is_held {
