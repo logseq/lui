@@ -34,7 +34,7 @@ class LuiWireTest {
         assertEquals(1, batch.generation)
         assertEquals(11, batch.ops.size)
         assertEquals(
-            LuiPatchOp.CreateNode(1, LuiNodeKind.root),
+            LuiPatchOp.CreateNode(1L, LuiNodeKind.root),
             batch.ops[0],
         )
         assertEquals(
@@ -53,7 +53,7 @@ class LuiWireTest {
             LuiPatchOp.SetExtensionProp(9, "title", LuiWireValue.Str("hi")),
             batch.ops[8],
         )
-        assertEquals(LuiPatchOp.DropNode(2), batch.ops[10])
+        assertEquals(LuiPatchOp.DropNode(2L), batch.ops[10])
     }
 
     @Test

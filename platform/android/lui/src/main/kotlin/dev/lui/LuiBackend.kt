@@ -11,19 +11,20 @@ import androidx.compose.ui.graphics.asImageBitmap
 
 /**
  * Public entry point of the Kotlin/LUI backend: owns the retained tree,
- * the extension registry, host-registered images, and the event sink
- * that forwards user events to the bridge.
+ * the extension registry, host-registered images, the icon resolver, and
+ * the event handler that forwards user events to the bridge.
  *
  * Typical use:
  * ```
- * val backend = LuiBackend { event -> LuiBridge.dispatch(event) }
- * backend.applyBatch(patchJson)
- * setContent { backend.Content() }
+ * val backend = LuiBackend(onEvent = { it.dispatchToBridge() })
+ * backend.applyJson(patchJson)
+ * setContent { backend.Content(rootId) }
  * ```
  */
 class LuiBackend(
-    val eventSink: LuiEventSink = LuiEventSink {},
+    val onEvent: (LuiEvent) -> Unit = {},
     val extensions: LuiExtensionRegistry = LuiExtensionRegistry(),
+    val icons: LuiIconResolver = LuiIconResolver.DEFAULT,
 ) {
     internal val tree = LuiRetainedTree(extensions)
 
@@ -43,12 +44,13 @@ class LuiBackend(
     internal var lastError: String? = null
         private set
 
-    fun node(id: Int): LuiNode? = tree.nodes[id]
-    fun extensionNode(id: Int): LuiExtensionNode? = tree.extensionNodes[id]
+    fun node(id: Long): LuiNode? = tree.nodes[id]
+    fun extensionNode(id: Long): LuiExtensionNode? = tree.extensionNodes[id]
 
     /** Apply one JSON patch batch. Returns false (state untouched) when the
      * batch fails validation — mirrors the other backends' reject semantics. */
-    fun applyBatch(source: String): Boolean {
+    fun applyJson(source: String?): Boolean {
+        if (source.isNullOrEmpty()) return false
         return try {
             tree.apply(LuiPatchBatch.parse(source))
             revision++
@@ -60,13 +62,16 @@ class LuiBackend(
         }
     }
 
-    fun emit(event: LuiEvent) = eventSink.onEvent(event)
+    /** Alias of [applyJson] kept for internal callers. */
+    fun applyBatch(source: String): Boolean = applyJson(source)
+
+    fun emit(event: LuiEvent) = onEvent(event)
 
     internal fun emitExtensionEvent(
-        node: Int,
+        node: Long,
         identifier: String,
         name: String,
-        values: Map<String, LuiWireValue>,
+        values: Map<String, Any?>,
     ) = emit(LuiEvent.Extension(node, identifier, name, values))
 
     fun registerImage(id: Int, image: ImageBitmap) {
@@ -87,14 +92,22 @@ class LuiBackend(
         mediaSurfaces.remove(id)
     }
 
-    /** Renders the retained tree's roots inside the ambient LuiTheme. */
+    /**
+     * Renders a node of the retained tree inside the ambient LuiTheme.
+     * Pass the id the bridge reports via `rootNode()`; a negative id
+     * renders every current root.
+     */
     @Composable
-    fun Content() {
+    fun Content(rootId: Long = -1L) {
         // Read the revision so this composable recomposes on each batch.
         val applied = revision
         if (applied == 0) return
-        for (rootId in tree.rootIds) {
+        if (rootId >= 0) {
             LuiNodeView(backend = this, id = rootId)
+            return
+        }
+        for (id in tree.rootIds) {
+            LuiNodeView(backend = this, id = id)
         }
     }
 }

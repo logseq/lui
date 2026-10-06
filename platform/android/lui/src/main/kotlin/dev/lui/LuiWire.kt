@@ -47,6 +47,15 @@ sealed class LuiWireValue {
         is DoubleValue -> value.toString()
     }
 
+    /** Platform-neutral scalar form (String/Int/Double/Boolean). */
+    val scalarValue: Any
+        get() = when (this) {
+            is Str -> value
+            is Bool -> value
+            is IntValue -> value
+            is DoubleValue -> value
+        }
+
     companion object {
         fun of(element: JsonElement): LuiWireValue {
             val primitive = element.jsonPrimitive
@@ -67,20 +76,24 @@ sealed class LuiWireValue {
 }
 
 sealed class LuiPatchOp {
-    data class CreateNode(val id: Int, val kind: LuiNodeKind) : LuiPatchOp()
-    data class CreateExtension(val id: Int, val identifier: String, val fingerprint: String) : LuiPatchOp()
-    data class DropNode(val id: Int) : LuiPatchOp()
-    data class SetProp(val id: Int, val property: String, val value: LuiWireValue) : LuiPatchOp()
-    data class RemoveProp(val id: Int, val property: String) : LuiPatchOp()
-    data class SetExtensionProp(val id: Int, val property: String, val value: LuiWireValue) : LuiPatchOp()
-    data class RemoveExtensionProp(val id: Int, val property: String) : LuiPatchOp()
-    data class InsertChild(val parent: Int, val child: Int, val index: Int) : LuiPatchOp()
-    data class RemoveChild(val parent: Int, val child: Int) : LuiPatchOp()
-    data class MoveChild(val parent: Int, val child: Int, val index: Int) : LuiPatchOp()
+    data class CreateNode(val id: Long, val kind: LuiNodeKind) : LuiPatchOp()
+    data class CreateExtension(val id: Long, val identifier: String, val fingerprint: String) : LuiPatchOp()
+    data class DropNode(val id: Long) : LuiPatchOp()
+    data class SetProp(val id: Long, val property: String, val value: LuiWireValue) : LuiPatchOp()
+    data class RemoveProp(val id: Long, val property: String) : LuiPatchOp()
+    data class SetExtensionProp(val id: Long, val property: String, val value: LuiWireValue) : LuiPatchOp()
+    data class RemoveExtensionProp(val id: Long, val property: String) : LuiPatchOp()
+    data class InsertChild(val parent: Long, val child: Long, val index: Int) : LuiPatchOp()
+    data class RemoveChild(val parent: Long, val child: Long) : LuiPatchOp()
+    data class MoveChild(val parent: Long, val child: Long, val index: Int) : LuiPatchOp()
 
     companion object {
         private fun requiredInt(obj: JsonObject, key: String): Int =
             obj[key]?.jsonPrimitive?.intOrNull
+                ?: throw LuiBackendException("missing or invalid '$key'")
+
+        private fun requiredLong(obj: JsonObject, key: String): Long =
+            obj[key]?.jsonPrimitive?.longOrNull
                 ?: throw LuiBackendException("missing or invalid '$key'")
 
         private fun requiredString(obj: JsonObject, key: String): String =
@@ -92,50 +105,50 @@ sealed class LuiPatchOp {
                 ?: throw LuiBackendException("operation must be an object")
             return when (val op = obj["op"]?.jsonPrimitive?.content) {
                 "create-node" -> CreateNode(
-                    id = requiredInt(obj, "id"),
+                    id = requiredLong(obj, "id"),
                     kind = LuiNodeKind.fromWire(requiredString(obj, "kind"))
                         ?: throw LuiBackendException("unknown node kind"),
                 )
                 "create-extension" -> CreateExtension(
-                    id = requiredInt(obj, "id"),
+                    id = requiredLong(obj, "id"),
                     identifier = requiredString(obj, "identifier"),
                     fingerprint = requiredString(obj, "fingerprint"),
                 )
-                "drop-node" -> DropNode(id = requiredInt(obj, "id"))
+                "drop-node" -> DropNode(id = requiredLong(obj, "id"))
                 "set-prop" -> SetProp(
-                    id = requiredInt(obj, "id"),
+                    id = requiredLong(obj, "id"),
                     property = requiredString(obj, "property"),
                     value = LuiWireValue.of(
                         obj["value"] ?: throw LuiBackendException("missing 'value'"),
                     ),
                 )
                 "remove-prop" -> RemoveProp(
-                    id = requiredInt(obj, "id"),
+                    id = requiredLong(obj, "id"),
                     property = requiredString(obj, "property"),
                 )
                 "set-extension-prop" -> SetExtensionProp(
-                    id = requiredInt(obj, "id"),
+                    id = requiredLong(obj, "id"),
                     property = requiredString(obj, "property"),
                     value = LuiWireValue.of(
                         obj["value"] ?: throw LuiBackendException("missing 'value'"),
                     ),
                 )
                 "remove-extension-prop" -> RemoveExtensionProp(
-                    id = requiredInt(obj, "id"),
+                    id = requiredLong(obj, "id"),
                     property = requiredString(obj, "property"),
                 )
                 "insert-child" -> InsertChild(
-                    parent = requiredInt(obj, "parent"),
-                    child = requiredInt(obj, "child"),
+                    parent = requiredLong(obj, "parent"),
+                    child = requiredLong(obj, "child"),
                     index = requiredInt(obj, "index"),
                 )
                 "remove-child" -> RemoveChild(
-                    parent = requiredInt(obj, "parent"),
-                    child = requiredInt(obj, "child"),
+                    parent = requiredLong(obj, "parent"),
+                    child = requiredLong(obj, "child"),
                 )
                 "move-child" -> MoveChild(
-                    parent = requiredInt(obj, "parent"),
-                    child = requiredInt(obj, "child"),
+                    parent = requiredLong(obj, "parent"),
+                    child = requiredLong(obj, "child"),
                     index = requiredInt(obj, "index"),
                 )
                 else -> throw LuiBackendException("unknown patch operation: $op")

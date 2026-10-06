@@ -11,34 +11,45 @@ data class LuiPointerDetail(
     val targetClass: String = "",
 )
 
-/** Events sent from the platform backend toward OCaml. */
+/** Events sent from the platform backend toward OCaml. Node ids are the
+ * wire int64 values. */
 sealed class LuiEvent {
-    data class Press(val node: Int) : LuiEvent()
-    data class LongPress(val node: Int) : LuiEvent()
-    data class TextChanged(val node: Int, val text: String) : LuiEvent()
-    data class Submit(val node: Int) : LuiEvent()
-    data class ToggleChanged(val node: Int, val checked: Boolean) : LuiEvent()
-    data class Change(val node: Int) : LuiEvent()
-    data class ValueChanged(val node: Int, val value: Double) : LuiEvent()
-    data class Dismiss(val node: Int) : LuiEvent()
-    data class DoublePress(val node: Int) : LuiEvent()
-    data class Appear(val node: Int) : LuiEvent()
-    data class ScrollCompleted(val node: Int, val token: Int, val outcome: String) : LuiEvent()
-    data class VisibleRange(val node: Int, val first: Int, val last: Int) : LuiEvent()
-    data class Picked(val node: Int, val payload: String) : LuiEvent()
-    data class PressModifiers(val node: Int, val modifiers: Int) : LuiEvent()
-    data class PressDetail(val node: Int, val detail: LuiPointerDetail) : LuiEvent()
-    data class PointerDown(val node: Int, val detail: LuiPointerDetail) : LuiEvent()
-    data class PointerUp(val node: Int, val detail: LuiPointerDetail) : LuiEvent()
-    data class PointerEnter(val node: Int) : LuiEvent()
-    data class PointerLeave(val node: Int) : LuiEvent()
-    data class ContextMenuPress(val node: Int, val detail: LuiPointerDetail) : LuiEvent()
-    data class Load(val node: Int) : LuiEvent()
+    abstract val node: Long
+
+    data class Appear(override val node: Long) : LuiEvent()
+    data class Press(override val node: Long) : LuiEvent()
+    data class LongPress(override val node: Long) : LuiEvent()
+    data class DoublePress(override val node: Long) : LuiEvent()
+    data class Change(override val node: Long) : LuiEvent()
+    data class Submit(override val node: Long) : LuiEvent()
+    data class Dismiss(override val node: Long) : LuiEvent()
+    data class TextChanged(override val node: Long, val text: String) : LuiEvent()
+    data class ToggleChanged(override val node: Long, val checked: Boolean) : LuiEvent()
+    data class ValueChanged(override val node: Long, val value: Double) : LuiEvent()
+    data class Picked(override val node: Long, val payload: String) : LuiEvent()
+    data class VisibleRange(override val node: Long, val first: Long, val last: Long) : LuiEvent()
+    data class ScrollCompleted(
+        override val node: Long,
+        val token: Long,
+        val outcome: String,
+    ) : LuiEvent()
+
+    data class PressModifiers(override val node: Long, val modifiers: Int) : LuiEvent()
+    data class PressDetail(override val node: Long, val detail: LuiPointerDetail) : LuiEvent()
+    data class PointerDown(override val node: Long, val detail: LuiPointerDetail) : LuiEvent()
+    data class PointerUp(override val node: Long, val detail: LuiPointerDetail) : LuiEvent()
+    data class PointerEnter(override val node: Long) : LuiEvent()
+    data class PointerLeave(override val node: Long) : LuiEvent()
+    data class ContextMenuPress(override val node: Long, val detail: LuiPointerDetail) : LuiEvent()
+    data class Load(override val node: Long) : LuiEvent()
+
+    /** `values` is a flat object of scalar values (String/Number/Boolean/null)
+     * validated OCaml-side against the extension's declared event schema. */
     data class Extension(
-        val node: Int,
+        override val node: Long,
         val identifier: String,
         val name: String,
-        val values: Map<String, LuiWireValue>,
+        val values: Map<String, Any?>,
     ) : LuiEvent()
 }
 

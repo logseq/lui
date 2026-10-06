@@ -94,75 +94,75 @@ object LuiBridge {
         return result.get()
     }
 
-    fun appear(node: Int) = dispatch { nativeAppear(node.toLong()) }
+    fun appear(node: Long) = dispatch { nativeAppear(node) }
 
-    fun press(node: Int) = dispatch { nativePress(node.toLong()) }
+    fun press(node: Long) = dispatch { nativePress(node) }
 
-    fun longPress(node: Int) = dispatch { nativeLongPress(node.toLong()) }
+    fun longPress(node: Long) = dispatch { nativeLongPress(node) }
 
-    fun textChanged(node: Int, text: String) = dispatch {
-        nativeTextChanged(node.toLong(), text)
+    fun textChanged(node: Long, text: String) = dispatch {
+        nativeTextChanged(node, text)
     }
 
-    fun submit(node: Int) = dispatch { nativeSubmit(node.toLong()) }
+    fun submit(node: Long) = dispatch { nativeSubmit(node) }
 
-    fun dismiss(node: Int) = dispatch { nativeDismiss(node.toLong()) }
+    fun dismiss(node: Long) = dispatch { nativeDismiss(node) }
 
-    fun picked(node: Int, payload: String) = dispatch {
-        nativePicked(node.toLong(), payload)
+    fun picked(node: Long, payload: String) = dispatch {
+        nativePicked(node, payload)
     }
 
-    fun doublePress(node: Int) = dispatch { nativeDoublePress(node.toLong()) }
+    fun doublePress(node: Long) = dispatch { nativeDoublePress(node) }
 
-    fun toggleChanged(node: Int, checked: Boolean) = dispatch {
-        nativeToggleChanged(node.toLong(), if (checked) 1 else 0)
+    fun toggleChanged(node: Long, checked: Boolean) = dispatch {
+        nativeToggleChanged(node, if (checked) 1 else 0)
     }
 
-    fun radioChanged(node: Int) = dispatch { nativeRadioChanged(node.toLong()) }
+    fun radioChanged(node: Long) = dispatch { nativeRadioChanged(node) }
 
-    fun sliderChanged(node: Int, fraction: Double) = dispatch {
-        nativeSliderChanged(node.toLong(), fraction)
+    fun sliderChanged(node: Long, fraction: Double) = dispatch {
+        nativeSliderChanged(node, fraction)
     }
 
-    fun pressDetail(node: Int, detail: LuiPointerDetail) = dispatch {
+    fun pressDetail(node: Long, detail: LuiPointerDetail) = dispatch {
         nativePressDetail(
-            node.toLong(), detail.x, detail.y,
+            node, detail.x, detail.y,
             detail.modifiers, detail.button, detail.targetClass,
         )
     }
 
-    fun pointerDown(node: Int, detail: LuiPointerDetail) = dispatch {
+    fun pointerDown(node: Long, detail: LuiPointerDetail) = dispatch {
         nativePointerDown(
-            node.toLong(), detail.x, detail.y,
+            node, detail.x, detail.y,
             detail.modifiers, detail.button, detail.targetClass,
         )
     }
 
-    fun pointerUp(node: Int, detail: LuiPointerDetail) = dispatch {
+    fun pointerUp(node: Long, detail: LuiPointerDetail) = dispatch {
         nativePointerUp(
-            node.toLong(), detail.x, detail.y,
+            node, detail.x, detail.y,
             detail.modifiers, detail.button, detail.targetClass,
         )
     }
 
-    fun pointerEnter(node: Int) = dispatch { nativePointerEnter(node.toLong()) }
+    fun pointerEnter(node: Long) = dispatch { nativePointerEnter(node) }
 
-    fun pointerLeave(node: Int) = dispatch { nativePointerLeave(node.toLong()) }
+    fun pointerLeave(node: Long) = dispatch { nativePointerLeave(node) }
 
-    fun contextMenuPress(node: Int, detail: LuiPointerDetail) = dispatch {
+    fun contextMenuPress(node: Long, detail: LuiPointerDetail) = dispatch {
         nativeContextMenuPress(
-            node.toLong(), detail.x, detail.y,
+            node, detail.x, detail.y,
             detail.modifiers, detail.button, detail.targetClass,
         )
     }
 
     fun extensionEvent(
-        node: Int,
+        node: Long,
         identifier: String,
         name: String,
         jsonValues: String,
     ) = dispatch {
-        nativeExtensionEvent(node.toLong(), identifier, name, jsonValues)
+        nativeExtensionEvent(node, identifier, name, jsonValues)
     }
 
     fun stop() = dispatch { nativeStop() }
@@ -280,7 +280,7 @@ fun LuiEvent.dispatchToBridge() {
             values.entries.joinToString(
                 prefix = "{", postfix = "}",
                 separator = ",",
-            ) { (key, value) -> "\"$key\":${value.toJsonLiteral()}" },
+            ) { (key, value) -> "\"$key\":${luiScalarLiteral(value)}" },
         )
         // Events the mobile bridge has no dedicated export for; the OCaml
         // side handles them through other paths or ignores them.
@@ -290,4 +290,14 @@ fun LuiEvent.dispatchToBridge() {
         is LuiEvent.Load,
         -> Unit
     }
+}
+
+/** Serializes one extension-event scalar (String/Number/Boolean/null) to
+ * its JSON literal. */
+private fun luiScalarLiteral(value: Any?): String = when (value) {
+    null -> "null"
+    is String -> kotlinx.serialization.json.JsonPrimitive(value).toString()
+    is Number -> value.toString()
+    is Boolean -> value.toString()
+    else -> "null"
 }

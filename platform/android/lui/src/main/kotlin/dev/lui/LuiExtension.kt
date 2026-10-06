@@ -39,26 +39,51 @@ class LuiExtensionEventSchema(
 /** View-model passed to extension composable builders. */
 class LuiExtensionContext internal constructor(
     internal val backend: LuiBackend,
-    val nodeId: Int,
+    val nodeId: Long,
     val identifier: String,
     val properties: Map<String, LuiWireValue>,
-    val children: List<Int> = emptyList(),
-    internal val renderChild: @Composable (Int) -> Unit,
+    val children: List<Long> = emptyList(),
+    internal val renderChild: @Composable (Long) -> Unit,
 ) {
     fun string(name: String): String? = properties[name]?.stringValue
     fun bool(name: String): Boolean? = properties[name]?.boolValue
     fun int(name: String): Int? = properties[name]?.intValue
     fun double(name: String): Double? = properties[name]?.doubleValue
 
+    /** Boolean prop that defaults to false when unset. */
+    fun flag(name: String): Boolean = bool(name) ?: false
+
+    /** Property as an untyped scalar (String/Int/Double/Boolean). */
+    @Suppress("UNCHECKED_CAST")
+    fun <T> property(name: String): T? = properties[name]?.scalarValue as? T
+
     fun emitEvent(name: String, values: Map<String, LuiWireValue> = emptyMap()) {
+        backend.emitExtensionEvent(
+            nodeId,
+            identifier,
+            name,
+            values.mapValues { it.value.scalarValue },
+        )
+    }
+
+    fun emit(name: String, values: Map<String, Any?>) {
         backend.emitExtensionEvent(nodeId, identifier, name, values)
     }
 
+    fun emit(name: String, vararg values: Pair<String, Any?>) =
+        emit(name, values.toMap())
+
     /** The extension node behind a declared-child id, if it is one. */
-    fun extensionChild(id: Int): LuiExtensionNode? = backend.extensionNode(id)
+    fun extensionChild(id: Long): LuiExtensionNode? = backend.extensionNode(id)
 
     @Composable
-    fun child(id: Int) = renderChild(id)
+    fun child(id: Long) = renderChild(id)
+
+    /** Renders every standard child in order. */
+    @Composable
+    fun Children() {
+        children.forEach { child(it) }
+    }
 }
 
 class LuiExtensionRegistration internal constructor(
@@ -122,6 +147,19 @@ class LuiExtensionRegistry {
             childIdentifiers = childIdentifiers,
             properties = properties,
             events = events,
+        ),
+    )
+
+    /** Minimal registration: `register("id", fingerprint) { context -> ... }`. */
+    fun register(
+        identifier: String,
+        fingerprint: String,
+        builder: @Composable (LuiExtensionContext) -> Unit,
+    ) = register(
+        LuiExtensionRegistration(
+            identifier = identifier,
+            fingerprint = fingerprint,
+            builder = { builder(this) },
         ),
     )
 

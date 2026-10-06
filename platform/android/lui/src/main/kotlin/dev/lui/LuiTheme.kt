@@ -26,8 +26,10 @@ import kotlinx.serialization.json.jsonPrimitive
 /** Semantic-color overrides inherited down the tree (`theme` prop). */
 val LocalLuiSemanticColors = compositionLocalOf<Map<String, Color>> { emptyMap() }
 
-/** Effective dark-mode flag inside the LUI tree (`theme-mode` prop). */
-val LocalLuiDarkTheme = compositionLocalOf { false }
+/** Effective dark-mode flag inside the LUI tree (`theme-mode` prop, or a
+ * host-provided override). Null means "not provided" — fall back to the
+ * system setting. */
+val LocalLuiThemeDark = compositionLocalOf<Boolean?> { null }
 
 /** Hex resolver shared by color-name props and theme tokens. Accepts
  * `#rgb`, `#rgba`, `#rrggbb` and `#rrggbbaa` (CSS alpha-suffix).
@@ -124,11 +126,12 @@ fun LuiTheme(
     darkScheme: ColorScheme = LuiThemeDefaults.darkScheme(),
     content: @Composable () -> Unit,
 ) {
-    val effectiveDark = dark ?: isSystemInDarkTheme()
+    // An explicit [dark] wins, then an app-provided local, then the system.
+    val effectiveDark = dark ?: LocalLuiThemeDark.current ?: isSystemInDarkTheme()
     MaterialTheme(colorScheme = if (effectiveDark) darkScheme else light) {
         val inherited = LocalLuiSemanticColors.current
         CompositionLocalProvider(
-            LocalLuiDarkTheme provides effectiveDark,
+            LocalLuiThemeDark provides effectiveDark,
             LocalLuiSemanticColors provides inherited + semanticColors,
         ) {
             content()

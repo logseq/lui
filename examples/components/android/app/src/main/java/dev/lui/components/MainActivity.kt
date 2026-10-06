@@ -30,7 +30,7 @@ import dev.lui.dispatchToBridge
 class MainActivity : ComponentActivity() {
 
     private val backend = LuiBackend(
-        eventSink = dev.lui.LuiEventSink { event -> event.dispatchToBridge() },
+        onEvent = { event -> event.dispatchToBridge() }
     )
 
     private var runtimeStarted = false

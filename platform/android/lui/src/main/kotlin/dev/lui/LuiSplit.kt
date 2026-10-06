@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -270,6 +272,7 @@ private fun LuiSplitPane(ext: LuiExtensionContext) {
                     val isSelected = id == selectedPair?.first
                     SplitTabChip(
                         node = tab,
+                        icons = ext.backend.icons,
                         selected = isSelected,
                         onSelect = {
                             ext.emitEvent("pane-focused")
@@ -296,12 +299,13 @@ private fun LuiSplitPane(ext: LuiExtensionContext) {
 @Composable
 private fun SplitTabChip(
     node: LuiExtensionNode,
+    icons: LuiIconResolver,
     selected: Boolean,
     onSelect: () -> Unit,
     onClose: () -> Unit,
 ) {
     val title = node.properties["title"]?.stringValue ?: ""
-    val icon = node.properties["icon"]?.stringValue?.let { LuiIcons.resolve(it) }
+    val icon = node.properties["icon"]?.stringValue?.let { icons.icon(it) }
     val dirty = node.properties["dirty"]?.boolValue == true
     val closable = node.properties["closable"]?.boolValue == true
 
@@ -343,7 +347,7 @@ private fun SplitTabChip(
             if (closable) {
                 IconButton(onClick = onClose, modifier = Modifier.size(20.dp)) {
                     Icon(
-                        LuiIcons.resolve("x"),
+                        icons.icon("x") ?: Icons.Filled.Close,
                         contentDescription = "Close",
                         modifier = Modifier.size(12.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -20,30 +20,30 @@ class LuiStoreTest {
         tree.apply(
             batch(
                 1,
-                LuiPatchOp.CreateNode(1, LuiNodeKind.root),
-                LuiPatchOp.CreateNode(2, LuiNodeKind.column),
-                LuiPatchOp.InsertChild(1, 2, 0),
+                LuiPatchOp.CreateNode(1L, LuiNodeKind.root),
+                LuiPatchOp.CreateNode(2L, LuiNodeKind.column),
+                LuiPatchOp.InsertChild(1L, 2L, 0),
                 LuiPatchOp.SetProp(2, "gap", LuiWireValue.IntValue(8)),
             ),
         )
         assertEquals(1, tree.generation)
-        assertEquals(listOf(1), tree.rootIds)
-        assertEquals(listOf(2), tree.nodes[1]!!.children)
-        assertEquals(1, tree.nodes[2]!!.parent)
-        assertEquals(LuiWireValue.IntValue(8), tree.nodes[2]!!.properties["gap"])
+        assertEquals(listOf(1L), tree.rootIds)
+        assertEquals(listOf(2L), tree.nodes[1L]!!.children)
+        assertEquals(1L, tree.nodes[2L]!!.parent)
+        assertEquals(LuiWireValue.IntValue(8), tree.nodes[2L]!!.properties["gap"])
 
         tree.apply(
             batch(
                 2,
-                LuiPatchOp.CreateNode(3, LuiNodeKind.text),
-                LuiPatchOp.InsertChild(1, 3, 1),
-                LuiPatchOp.RemoveChild(1, 2),
-                LuiPatchOp.DropNode(2),
+                LuiPatchOp.CreateNode(3L, LuiNodeKind.text),
+                LuiPatchOp.InsertChild(1L, 3L, 1),
+                LuiPatchOp.RemoveChild(1L, 2L),
+                LuiPatchOp.DropNode(2L),
             ),
         )
-        assertNull(tree.nodes[2])
-        assertEquals(listOf(3), tree.nodes[1]!!.children)
-        assertEquals(setOf(2), tree.lastDropped)
+        assertNull(tree.nodes[2L])
+        assertEquals(listOf(3L), tree.nodes[1L]!!.children)
+        assertEquals(setOf(2L), tree.lastDropped)
     }
 
     @Test
@@ -52,16 +52,16 @@ class LuiStoreTest {
         tree.apply(
             batch(
                 1,
-                LuiPatchOp.CreateNode(1, LuiNodeKind.root),
-                LuiPatchOp.CreateNode(2, LuiNodeKind.column),
-                LuiPatchOp.InsertChild(1, 2, 0),
+                LuiPatchOp.CreateNode(1L, LuiNodeKind.root),
+                LuiPatchOp.CreateNode(2L, LuiNodeKind.column),
+                LuiPatchOp.InsertChild(1L, 2L, 0),
             ),
         )
         val error = assertThrows(LuiBackendException::class.java) {
-            tree.apply(batch(3, LuiPatchOp.CreateNode(5, LuiNodeKind.column)))
+            tree.apply(batch(3, LuiPatchOp.CreateNode(5L, LuiNodeKind.column)))
         }
         assertTrue(error.message!!.contains("generation 2"))
-        assertNull(tree.nodes[5])
+        assertNull(tree.nodes[5L])
     }
 
     @Test
@@ -70,23 +70,23 @@ class LuiStoreTest {
         tree.apply(
             batch(
                 1,
-                LuiPatchOp.CreateNode(1, LuiNodeKind.root),
-                LuiPatchOp.CreateNode(2, LuiNodeKind.column),
-                LuiPatchOp.InsertChild(1, 2, 0),
+                LuiPatchOp.CreateNode(1L, LuiNodeKind.root),
+                LuiPatchOp.CreateNode(2L, LuiNodeKind.column),
+                LuiPatchOp.InsertChild(1L, 2L, 0),
             ),
         )
         assertThrows(LuiBackendException::class.java) {
             tree.apply(
                 batch(
                     2,
-                    LuiPatchOp.CreateNode(3, LuiNodeKind.text),
+                    LuiPatchOp.CreateNode(3L, LuiNodeKind.text),
                     // Attach an unknown parent -> whole batch must roll back.
-                    LuiPatchOp.InsertChild(99, 3, 0),
+                    LuiPatchOp.InsertChild(99L, 3L, 0),
                 ),
             )
         }
         assertEquals(1, tree.generation)
-        assertNull(tree.nodes[3])
+        assertNull(tree.nodes[3L])
     }
 
     @Test
@@ -95,15 +95,15 @@ class LuiStoreTest {
         tree.apply(
             batch(
                 1,
-                LuiPatchOp.CreateNode(1, LuiNodeKind.root),
-                LuiPatchOp.CreateNode(2, LuiNodeKind.text),
-                LuiPatchOp.InsertChild(1, 2, 0),
+                LuiPatchOp.CreateNode(1L, LuiNodeKind.root),
+                LuiPatchOp.CreateNode(2L, LuiNodeKind.text),
+                LuiPatchOp.InsertChild(1L, 2L, 0),
             ),
         )
         tree.apply(
             batch(2, LuiPatchOp.SetProp(2, "text", LuiWireValue.Str("hi"))),
         )
-        assertEquals(LuiWireValue.Str("hi"), tree.nodes[2]!!.properties["text"])
+        assertEquals(LuiWireValue.Str("hi"), tree.nodes[2L]!!.properties["text"])
     }
 
     @Test
@@ -112,17 +112,17 @@ class LuiStoreTest {
         tree.apply(
             batch(
                 1,
-                LuiPatchOp.CreateNode(1, LuiNodeKind.root),
-                LuiPatchOp.CreateNode(2, LuiNodeKind.column),
-                LuiPatchOp.CreateNode(3, LuiNodeKind.text),
-                LuiPatchOp.CreateNode(4, LuiNodeKind.text),
-                LuiPatchOp.InsertChild(1, 2, 0),
-                LuiPatchOp.InsertChild(2, 3, 0),
-                LuiPatchOp.InsertChild(2, 4, 1),
+                LuiPatchOp.CreateNode(1L, LuiNodeKind.root),
+                LuiPatchOp.CreateNode(2L, LuiNodeKind.column),
+                LuiPatchOp.CreateNode(3L, LuiNodeKind.text),
+                LuiPatchOp.CreateNode(4L, LuiNodeKind.text),
+                LuiPatchOp.InsertChild(1L, 2L, 0),
+                LuiPatchOp.InsertChild(2L, 3L, 0),
+                LuiPatchOp.InsertChild(2L, 4L, 1),
             ),
         )
-        tree.apply(batch(2, LuiPatchOp.MoveChild(2, 4, 0)))
-        assertEquals(listOf(4, 3), tree.nodes[2]!!.children)
+        tree.apply(batch(2, LuiPatchOp.MoveChild(2L, 4L, 0)))
+        assertEquals(listOf(4L, 3L), tree.nodes[2L]!!.children)
     }
 
     @Test
@@ -131,13 +131,13 @@ class LuiStoreTest {
         tree.apply(
             batch(
                 1,
-                LuiPatchOp.CreateNode(1, LuiNodeKind.root),
-                LuiPatchOp.CreateNode(2, LuiNodeKind.column),
-                LuiPatchOp.InsertChild(1, 2, 0),
+                LuiPatchOp.CreateNode(1L, LuiNodeKind.root),
+                LuiPatchOp.CreateNode(2L, LuiNodeKind.column),
+                LuiPatchOp.InsertChild(1L, 2L, 0),
             ),
         )
         assertThrows(LuiBackendException::class.java) {
-            tree.apply(batch(2, LuiPatchOp.DropNode(2)))
+            tree.apply(batch(2, LuiPatchOp.DropNode(2L)))
         }
         assertEquals(1, tree.generation)
     }
@@ -148,18 +148,18 @@ class LuiStoreTest {
         tree.apply(
             batch(
                 1,
-                LuiPatchOp.CreateNode(1, LuiNodeKind.root),
-                LuiPatchOp.CreateNode(2, LuiNodeKind.column),
-                LuiPatchOp.CreateNode(3, LuiNodeKind.column),
-                LuiPatchOp.InsertChild(1, 2, 0),
-                LuiPatchOp.InsertChild(2, 3, 0),
+                LuiPatchOp.CreateNode(1L, LuiNodeKind.root),
+                LuiPatchOp.CreateNode(2L, LuiNodeKind.column),
+                LuiPatchOp.CreateNode(3L, LuiNodeKind.column),
+                LuiPatchOp.InsertChild(1L, 2L, 0),
+                LuiPatchOp.InsertChild(2L, 3L, 0),
             ),
         )
         // Attaching the root under a descendant would create a cycle.
         assertThrows(LuiBackendException::class.java) {
-            tree.apply(batch(2, LuiPatchOp.InsertChild(3, 1, 0)))
+            tree.apply(batch(2, LuiPatchOp.InsertChild(3L, 1L, 0)))
         }
-        assertNull(tree.nodes[1]!!.parent)
+        assertNull(tree.nodes[1L]!!.parent)
     }
 
     @Test

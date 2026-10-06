@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -185,7 +186,7 @@ internal fun Modifier.luiChrome(node: LuiNode): Modifier {
 internal fun Modifier.luiGestures(
     backend: LuiBackend,
     node: LuiNode,
-    id: Int,
+    id: Long,
     onContextMenu: (Offset) -> Unit = {},
 ): Modifier {
     var modifier: Modifier = this
@@ -258,7 +259,7 @@ internal fun Modifier.luiGestures(
 
 /** Emits `Appear` once when an `appear-enabled` node first composes. */
 @Composable
-internal fun LuiAppear(backend: LuiBackend, node: LuiNode, id: Int) {
+internal fun LuiAppear(backend: LuiBackend, node: LuiNode, id: Long) {
     if (node.propBool("appear-enabled")) {
         LaunchedEffect(id) { backend.emit(LuiEvent.Appear(id)) }
     }
@@ -272,16 +273,16 @@ internal fun LuiAppear(backend: LuiBackend, node: LuiNode, id: Int) {
 @Composable
 internal fun LuiThemeScope(node: LuiNode, content: @Composable () -> Unit) {
     val inherited = LocalLuiSemanticColors.current
-    val ambientDark = LocalLuiDarkTheme.current
+    val ambientDark = LocalLuiThemeDark.current
     val schemeOverride = LuiThemeTokenDecoder.colorScheme(node.propString("theme-mode"))
-    val dark = schemeOverride ?: ambientDark
+    val dark = schemeOverride ?: (ambientDark ?: isSystemInDarkTheme())
     val own = LuiThemeTokenDecoder.colors(node.propString("theme"), dark)
     if (own.isEmpty() && schemeOverride == null) {
         content()
     } else {
         CompositionLocalProvider(
             LocalLuiSemanticColors provides inherited + own,
-            LocalLuiDarkTheme provides dark,
+            LocalLuiThemeDark provides dark,
         ) {
             content()
         }

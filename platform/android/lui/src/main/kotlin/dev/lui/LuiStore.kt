@@ -3,8 +3,8 @@ package dev.lui
 /** A retained standard node. Property keys are wire property names. */
 class LuiNode(
     val kind: LuiNodeKind,
-    var parent: Int? = null,
-    val children: MutableList<Int> = mutableListOf(),
+    var parent: Long? = null,
+    val children: MutableList<Long> = mutableListOf(),
     val properties: MutableMap<String, LuiWireValue> = mutableMapOf(),
 ) {
     fun copy(): LuiNode = LuiNode(kind, parent, children.toMutableList(), properties.toMutableMap())
@@ -14,8 +14,8 @@ class LuiNode(
 class LuiExtensionNode(
     val identifier: String,
     val fingerprint: String,
-    var parent: Int? = null,
-    val children: MutableList<Int> = mutableListOf(),
+    var parent: Long? = null,
+    val children: MutableList<Long> = mutableListOf(),
     val properties: MutableMap<String, LuiWireValue> = mutableMapOf(),
 ) {
     fun copy(): LuiExtensionNode =
@@ -32,51 +32,51 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
     var generation: Int = 0
         private set
 
-    var nodes: Map<Int, LuiNode> = emptyMap()
+    var nodes: Map<Long, LuiNode> = emptyMap()
         private set
-    var extensionNodes: Map<Int, LuiExtensionNode> = emptyMap()
+    var extensionNodes: Map<Long, LuiExtensionNode> = emptyMap()
         private set
 
     /** Nodes removed by the last applied batch (only `drop-node` deletes). */
-    var lastDropped: Set<Int> = emptySet()
+    var lastDropped: Set<Long> = emptySet()
         private set
 
-    val rootIds: List<Int>
+    val rootIds: List<Long>
         get() = nodes.filterValues { it.parent == null }.keys.toList() +
             extensionNodes.filterValues { it.parent == null }.keys.toList()
 
-    fun node(id: Int): LuiNode? = nodes[id]
-    fun extensionNode(id: Int): LuiExtensionNode? = extensionNodes[id]
-    fun contains(id: Int): Boolean = nodes.containsKey(id) || extensionNodes.containsKey(id)
+    fun node(id: Long): LuiNode? = nodes[id]
+    fun extensionNode(id: Long): LuiExtensionNode? = extensionNodes[id]
+    fun contains(id: Long): Boolean = nodes.containsKey(id) || extensionNodes.containsKey(id)
 
     private fun parentOf(
-        nodes: Map<Int, LuiNode>,
-        ext: Map<Int, LuiExtensionNode>,
-        id: Int,
-    ): Int? = nodes[id]?.parent ?: ext[id]?.parent
+        nodes: Map<Long, LuiNode>,
+        ext: Map<Long, LuiExtensionNode>,
+        id: Long,
+    ): Long? = nodes[id]?.parent ?: ext[id]?.parent
 
     private fun childrenOf(
-        nodes: Map<Int, LuiNode>,
-        ext: Map<Int, LuiExtensionNode>,
-        id: Int,
-    ): MutableList<Int>? = nodes[id]?.children ?: ext[id]?.children
+        nodes: Map<Long, LuiNode>,
+        ext: Map<Long, LuiExtensionNode>,
+        id: Long,
+    ): MutableList<Long>? = nodes[id]?.children ?: ext[id]?.children
 
     private fun setParent(
-        nodes: Map<Int, LuiNode>,
-        ext: Map<Int, LuiExtensionNode>,
-        id: Int,
-        parent: Int?,
+        nodes: Map<Long, LuiNode>,
+        ext: Map<Long, LuiExtensionNode>,
+        id: Long,
+        parent: Long?,
     ) {
         nodes[id]?.let { it.parent = parent }
         ext[id]?.let { it.parent = parent }
     }
 
-    private fun requireNode(nodes: Map<Int, LuiNode>, id: Int): LuiNode =
+    private fun requireNode(nodes: Map<Long, LuiNode>, id: Long): LuiNode =
         nodes[id] ?: throw LuiBackendException("unknown node $id")
 
     private fun requireExtension(
-        ext: Map<Int, LuiExtensionNode>,
-        id: Int,
+        ext: Map<Long, LuiExtensionNode>,
+        id: Long,
     ): LuiExtensionNode =
         ext[id] ?: throw LuiBackendException("unknown extension node $id")
 
@@ -89,7 +89,7 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
         }
         val nextNodes = nodes.mapValues { it.value.copy() }.toMutableMap()
         val nextExt = extensionNodes.mapValues { it.value.copy() }.toMutableMap()
-        val dropped = mutableSetOf<Int>()
+        val dropped = mutableSetOf<Long>()
         for (op in batch.ops) {
             applyOp(nextNodes, nextExt, op, dropped)
         }
@@ -101,10 +101,10 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
     }
 
     private fun applyOp(
-        nodes: MutableMap<Int, LuiNode>,
-        ext: MutableMap<Int, LuiExtensionNode>,
+        nodes: MutableMap<Long, LuiNode>,
+        ext: MutableMap<Long, LuiExtensionNode>,
         op: LuiPatchOp,
-        dropped: MutableSet<Int>,
+        dropped: MutableSet<Long>,
     ) {
         when (op) {
             is LuiPatchOp.CreateNode -> {
@@ -219,10 +219,10 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
     }
 
     private fun isDescendant(
-        nodes: Map<Int, LuiNode>,
-        ext: Map<Int, LuiExtensionNode>,
-        target: Int,
-        root: Int,
+        nodes: Map<Long, LuiNode>,
+        ext: Map<Long, LuiExtensionNode>,
+        target: Long,
+        root: Long,
     ): Boolean {
         var cursor = parentOf(nodes, ext, target)
         while (cursor != null) {
@@ -233,10 +233,10 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
     }
 
     private fun validateChildRelationship(
-        nodes: Map<Int, LuiNode>,
-        ext: Map<Int, LuiExtensionNode>,
-        parentID: Int,
-        childID: Int,
+        nodes: Map<Long, LuiNode>,
+        ext: Map<Long, LuiExtensionNode>,
+        parentID: Long,
+        childID: Long,
     ) {
         if (nodes[childID]?.kind == LuiNodeKind.root) {
             throw LuiBackendException("runtime root cannot be nested")
@@ -371,7 +371,7 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
         }
     }
 
-    private fun validateStates(nodes: Map<Int, LuiNode>) {
+    private fun validateStates(nodes: Map<Long, LuiNode>) {
         for (state in nodes.values) {
             if (state.kind == LuiNodeKind.root) {
                 if (state.parent != null) {
