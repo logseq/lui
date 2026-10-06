@@ -164,31 +164,40 @@ fn scroll_to_item(shared: &Shared, node_id: i64, ix: usize, cx: &mut App) {
 }
 
 fn focus_node(shared: &Shared, node_id: i64, cx: &mut App) {
-    let Some(view) = shared.borrow().views.get(&node_id).cloned() else {
-        return;
-    };
-    let Some(window_handle) = cx.windows().first().copied() else {
-        eprintln!("lui-gpui: focus on node {node_id}: no window");
-        return;
-    };
-    let _ = window_handle.update(cx, move |_, window, cx| {
-        view.update(cx, |view, cx| {
-            // Focusable component states own FocusHandles; generic nodes
-            // have no focusable element until the editor surface lands.
-            let handle = if let Some(input) = &view.states.input {
-                Some(input.read(cx).focus_handle(cx))
-            } else {
-                view.states
-                    .textarea
-                    .as_ref()
-                    .map(|textarea| textarea.read(cx).focus_handle(cx))
-            };
-            match handle {
-                Some(handle) => handle.focus(window, cx),
-                None => {
-                    eprintln!("lui-gpui: focus on node {node_id}: no focusable state")
+    // Dom-ops are serviced inside a nested update where the live window is
+    // parked, so `window_handle.update` fails with "window not found".
+    // Deferring runs the focus once the current update unwinds.
+    let shared = shared.clone();
+    cx.defer(move |cx| {
+        let Some(view) = shared.borrow().views.get(&node_id).cloned() else {
+            eprintln!("lui-gpui: focus on node {node_id}: no view");
+            return;
+        };
+        let Some(window_handle) = cx.windows().first().copied() else {
+            eprintln!("lui-gpui: focus on node {node_id}: no window");
+            return;
+        };
+        let _ = window_handle.update(cx, move |_, window, cx| {
+            view.update(cx, |view, cx| {
+                // Focusable component states own FocusHandles; generic nodes
+                // have no focusable element until the editor surface lands.
+                let handle = if let Some(input) = &view.states.input {
+                    Some(input.read(cx).focus_handle(cx))
+                } else {
+                    view.states
+                        .textarea
+                        .as_ref()
+                        .map(|textarea| textarea.read(cx).focus_handle(cx))
+                };
+                match handle {
+                    Some(handle) => handle.focus(window, cx),
+                    None => {
+                        eprintln!(
+                            "lui-gpui: focus on node {node_id}: no focusable state"
+                        )
+                    }
                 }
-            }
+            });
         });
     });
 }
