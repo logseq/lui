@@ -41,6 +41,8 @@ pub fn event_supported(kind: NodeKind, event: EventKind) -> bool {
             kind,
             Button
                 | Column
+                | Row
+                | Box
                 | Radio
                 | Select
                 | Combobox
