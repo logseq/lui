@@ -129,14 +129,12 @@ test('Bottom Tabs reserve distinct retained navigation node kinds', () => {
       {
         lg: 'BottomTabs',
         wire: 'bottom-tabs',
-        dart: 'bottomTabs',
         swift: 'bottomTabs',
         container: true,
       },
       {
         lg: 'BottomTab',
         wire: 'bottom-tab',
-        dart: 'bottomTab',
         swift: 'bottomTab',
         container: true,
       },
@@ -153,7 +151,6 @@ test('schema reserves one internal transparent root node', () => {
   assert.deepEqual(root, {
     lg: 'Root',
     wire: 'root',
-    dart: 'root',
     swift: 'root',
     container: true,
   });
@@ -176,14 +173,12 @@ test('schema validation rejects duplicate wire names before generation', () => {
         {
           lg: 'First',
           wire: 'duplicate',
-          dart: 'first',
           swift: 'first',
           container: false,
         },
         {
           lg: 'Second',
           wire: 'duplicate',
-          dart: 'second',
           swift: 'second',
           container: false,
         },

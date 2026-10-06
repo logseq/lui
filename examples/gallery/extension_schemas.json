@@ -24,24 +24,8 @@
     ],
     "all": [
       {
-        "os": "android",
-        "host": "flutter"
-      },
-      {
-        "os": "ios",
-        "host": "flutter"
-      },
-      {
         "os": "ios",
         "host": "swiftui"
-      },
-      {
-        "os": "linux",
-        "host": "flutter"
-      },
-      {
-        "os": "macos",
-        "host": "flutter"
       },
       {
         "os": "macos",
@@ -50,10 +34,6 @@
       {
         "os": "web",
         "host": "web"
-      },
-      {
-        "os": "windows",
-        "host": "flutter"
       },
       {
         "os": "macos",
@@ -78,26 +58,6 @@
         "host": "swiftui"
       },
       {
-        "os": "android",
-        "host": "flutter"
-      },
-      {
-        "os": "ios",
-        "host": "flutter"
-      },
-      {
-        "os": "linux",
-        "host": "flutter"
-      },
-      {
-        "os": "macos",
-        "host": "flutter"
-      },
-      {
-        "os": "windows",
-        "host": "flutter"
-      },
-      {
         "os": "web",
         "host": "web"
       },
@@ -118,44 +78,6 @@
       {
         "os": "web",
         "host": "web"
-      },
-      {
-        "os": "macos",
-        "host": "gpui"
-      },
-      {
-        "os": "linux",
-        "host": "gpui"
-      },
-      {
-        "os": "windows",
-        "host": "gpui"
-      }
-    ],
-    "web-and-flutter": [
-      {
-        "os": "web",
-        "host": "web"
-      },
-      {
-        "os": "macos",
-        "host": "flutter"
-      },
-      {
-        "os": "ios",
-        "host": "flutter"
-      },
-      {
-        "os": "android",
-        "host": "flutter"
-      },
-      {
-        "os": "linux",
-        "host": "flutter"
-      },
-      {
-        "os": "windows",
-        "host": "flutter"
       },
       {
         "os": "macos",
@@ -359,7 +281,7 @@
     },
     {
       "identifier": "native-card",
-      "profiles": "web-and-flutter",
+      "profiles": "web",
       "standardChildren": false,
       "children": [],
       "properties": [

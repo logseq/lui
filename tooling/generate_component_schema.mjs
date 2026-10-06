@@ -38,7 +38,6 @@ function validate(schema) {
   unique(schema.publicElements, 'name', 'public element name');
   unique(schema.nodeKinds, 'lg', 'node-kind LG name');
   unique(schema.nodeKinds, 'wire', 'node-kind wire name');
-  unique(schema.nodeKinds, 'dart', 'node-kind Dart name');
   unique(schema.nodeKinds, 'swift', 'node-kind Swift name');
   unique(schema.properties, 'lg', 'property LG name');
   unique(schema.properties, 'wire', 'property wire name');
@@ -125,7 +124,6 @@ type host_kind =
   | GenericHost
   | WebHost
   | SwiftUIHost
-  | FlutterHost
   | GPUIHost
 
 type platform_profile = {
@@ -348,29 +346,6 @@ ${extraEntries}
 `;
 }
 
-function renderDart(schema) {
-  const enumCases = schema.nodeKinds.map(({ dart }) => `  ${dart},`).join('\n');
-  const decoderCases = schema.nodeKinds
-    .map(({ dart, wire }) => `    '${wire}' => _NodeKind.${dart},`)
-    .join('\n');
-  return `${generatedHeader('//')}part of 'lui_flutter_backend.dart';
-
-enum _NodeKind {
-${enumCases}
-}
-
-_NodeKind _decodeNodeKind(Object? value) {
-  if (value is! String) {
-    throw const LUIBackendException('kind must be a string');
-  }
-  return switch (value) {
-${decoderCases}
-    _ => throw const LUIBackendException('unknown node kind'),
-  };
-}
-`;
-}
-
 function renderKotlin(schema) {
   // Kotlin enum entry names reuse the `swift` schema field: the camelCase
   // names are legal Kotlin identifiers, so no separate `kotlin` name set
@@ -557,7 +532,6 @@ function artifacts(schema) {
     ['src/lui_wire_schema.ml', renderOCamlWire(schema)],
     ['src/lui_wire_schema.mli', renderOCamlWireSignature()],
     ['platform/apple/Sources/LUIAppleBackend/LUIWireSchema.swift', renderSwift(schema)],
-    ['platform/flutter/lib/lui_wire_schema.g.dart', renderDart(schema)],
     ['platform/gpui/crates/lui-core/src/wire_schema.rs', renderRust(schema)],
     ['platform/android/lui/src/main/kotlin/dev/lui/LuiWireSchema.kt', renderKotlin(schema)],
   ]);

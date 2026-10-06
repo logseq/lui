@@ -4,11 +4,7 @@
 /.clj-kondo/
 /.lsp/
 /platform/apple/.build/
-/platform/flutter/.dart_tool/
-/platform/flutter/build/
-/examples/*/flutter/.dart_tool/
-/examples/*/flutter/build/
-/examples/components/flutter/android/app/src/main/jniLibs/
+/examples/components/android/app/src/main/jniLibs/
 /examples/components/ios-swiftui/.build/
 /examples/*/macos-appkit/.build/
 /platform/web/node_modules/

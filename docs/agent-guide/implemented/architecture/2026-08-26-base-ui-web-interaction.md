@@ -19,7 +19,7 @@ reference is the local Base UI checkout at commit
 
 The comparison applies to LUI's interactive Web elements. Pure layout and
 display elements keep native DOM semantics and do not need a Base UI state
-machine. SwiftUI and Flutter continue to use their native controls and
+machine. SwiftUI continues to use its native controls and
 presentation APIs; this report does not make Web behavior a cross-platform
 implementation detail.
 
@@ -320,7 +320,7 @@ Copying contracts from Base UI keeps Web behavior predictable and reviewable.
 - Web interactive elements follow Base UI's behavior and motion contracts
   inside one LG-owned implementation; platform objects, the retained tree, and
   the schema stay LUI-owned.
-- SwiftUI and Flutter keep native controls; this report does not make Web
+- SwiftUI keeps native controls; this report does not make Web
   behavior a cross-platform detail.
 - Interaction gaps close in tested slices; each slice carries its own
   qualification evidence before moving on.

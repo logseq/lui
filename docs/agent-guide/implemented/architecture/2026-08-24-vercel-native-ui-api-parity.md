@@ -187,22 +187,21 @@ The four direct text-entry elements are now schema-supported retained leaves.
 They share `text`, `placeholder`, `disabled`, `autofocus`, `label`,
 `on-input`, and `on-submit`; `textarea` alone adds `submit-on-enter` and grows
 without a public autoresize or line-count property. Web maps them to native
-`input`/`textarea`, Apple to SwiftUI text controls, and Flutter to retained
-Material `TextField` widgets.
+`input`/`textarea` and Apple to SwiftUI text controls.
 
 ## Platform mapping
 
-| Contract | Web | Apple | Flutter |
-| --- | --- | --- | --- |
-| row/column/list | CSS flex via Tailwind | `HStack`/`VStack` | `Row`/`Column` |
-| stack/panel/card | CSS overlay/surface | SwiftUI overlay/ZStack | `Stack`/Material surface |
-| scroll | CSS scrolling overlay box | `ScrollView` + `ZStack` | `SingleChildScrollView` + `Stack` |
-| spinner | semantic CSS activity glyph | indeterminate `ProgressView` | `CircularProgressIndicator` |
-| icon | bundled SVG CSS mask | SF Symbols `Image` | Material `Icon` |
-| grid | CSS grid | `LazyVGrid` | `GridView` |
-| controls | native HTML first | SwiftUI controls | Flutter widgets |
-| list-item | native button row | SwiftUI Button row | Material `ListTile` |
-| modal/menu | browser platform API when suitable | SwiftUI presentation | Flutter presentation APIs |
+| Contract | Web | Apple |
+| --- | --- | --- |
+| row/column/list | CSS flex via Tailwind | `HStack`/`VStack` |
+| stack/panel/card | CSS overlay/surface | SwiftUI overlay/ZStack |
+| scroll | CSS scrolling overlay box | `ScrollView` + `ZStack` |
+| spinner | semantic CSS activity glyph | indeterminate `ProgressView` |
+| icon | bundled SVG CSS mask | SF Symbols `Image` |
+| grid | CSS grid | `LazyVGrid` |
+| controls | native HTML first | SwiftUI controls |
+| list-item | native button row | SwiftUI Button row |
+| modal/menu | browser platform API when suitable | SwiftUI presentation |
 
 Backends may differ internally, but they cannot expose backend-specific props
 on a standard component.
@@ -214,7 +213,7 @@ Each delivered element must have:
 - a schema test for accepted and rejected attributes;
 - the same default and enum tests as the pinned reference;
 - retained wire and incremental update coverage;
-- Web, SwiftUI and Flutter mapping coverage;
+- Web and SwiftUI mapping coverage;
 - accessibility and interaction coverage proportional to the element;
 - a state-complete example in `examples/components/`.
 

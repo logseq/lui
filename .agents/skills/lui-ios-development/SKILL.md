@@ -18,7 +18,7 @@ error output**.
 
 - Diagnose by printing `caml_format_exception` in the host's emit bridge and
   checking whether the emitted op count per extension node matches what the
-  Swift/Flutter view expects.
+  Swift view expects.
 - Runtime validation errors carry details only when built with detailed
   messages (kind/property/value and parent/child kinds). If you see bare
   `invalid_arg "invalid property value"` / `"unsupported child kind"`, you're
@@ -56,8 +56,8 @@ An extension node's declared schema must match what the app actually mounts:
   `standard-children:0` → `unsupported child kind` at emit.
 - The `children` whitelist (which extension kinds may nest under this one) and
   `standardChildren` flag are baked into the component **fingerprint** — and
-  the fingerprint is computed independently on each host (Swift, Flutter) and
-  in the OCaml registry. All three must stay in sync or one platform emits
+  the fingerprint is computed independently on each host (Swift) and
+  in the OCaml registry. Both must stay in sync or one platform emits
   while the other rejects.
 - Keep the schemas OCaml-declared once (see `examples/gallery/extension_schemas.ml`);
   host files carry only the `fingerprint:` literals. `Lui_extension_check.check_registry`

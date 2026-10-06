@@ -60,7 +60,7 @@ fi
   -isysroot "$sdk_path" \
   -fPIC \
   -I "$target_prefix/lib/ocaml" \
-  -c "$repo_root/platform/flutter/native/lui_ocaml_bridge.c" \
+  -c "$repo_root/platform/native/lui_ocaml_bridge.c" \
   -o "$build_dir/lui_ocaml_bridge.o"
 
 native_fingerprint=$(shasum -a 256 \
