@@ -450,34 +450,70 @@ let is_resize = function ValueChanged _ -> true | _ -> false
 let is_scroll_completed = function ScrollCompleted _ -> true | _ -> false
 let is_visible_range = function VisibleRange _ -> true | _ -> false
 
+(* Fail loudly when a handler is registered for an event the node kind can
+   never emit. Dispatch rejects such events anyway, so a registration that
+   cannot fire is a bug — without this check it fails silently (e.g. a
+   Press handler on a kind the backend never wires up). Mirrors
+   [Lui_runtime.dispatch]'s admission check, evaluated at mount time once
+   the node's initial properties are in place. *)
+let pointer_detail_probe =
+  { x = 0.; y = 0.; modifiers = 0; button = 0; target_class = "" }
+
+let require_event_supported context node event label =
+  let kind = Lui_ui.node_kind context node in
+  let properties =
+    match
+      Hashtbl.find_opt
+        context.Lui_ui.ui_application.Lui_runtime.runtime_properties node
+    with
+    | Some current -> current
+    | None -> Property_map.empty
+  in
+  if
+    not (Lui_protocol.event_supported_for_properties kind properties event)
+  then
+    invalid_arg
+      (Printf.sprintf "%s handler is unsupported by node kind %s" label
+         (Lui_wire_schema.node_kind_name kind))
+
 let register_press context node handler =
+  require_event_supported context node (Press node) "press";
   ignore (on_event context node is_press handler)
 
 let register_long_press context node handler =
+  require_event_supported context node (LongPress node) "long-press";
   ignore (on_event context node is_long_press handler)
 
 let register_double_press context node handler =
+  require_event_supported context node (DoublePress node) "double-press";
   ignore (on_event context node is_double_press handler)
 
 let register_change context node handler =
+  require_event_supported context node (Change node) "change";
   ignore (on_event context node is_change handler)
 
 let register_input context node handler =
+  require_event_supported context node (TextChanged (node, "")) "input";
   ignore (on_event context node is_input handler)
 
 let register_submit context node handler =
+  require_event_supported context node (Submit node) "submit";
   ignore (on_event context node is_submit handler)
 
 let register_toggle context node handler =
+  require_event_supported context node (ToggleChanged (node, false)) "toggle";
   ignore (on_event context node is_toggle handler)
 
 let register_dismiss context node handler =
+  require_event_supported context node (Dismiss node) "dismiss";
   ignore (on_event context node is_dismiss handler)
 
 let register_picked context node handler =
+  require_event_supported context node (Picked (node, "")) "picked";
   ignore (on_event context node is_picked handler)
 
 let register_load context node handler =
+  require_event_supported context node (Load node) "load";
   ignore (on_event context node is_load handler)
 
 let appear_handler context node handler =
@@ -486,12 +522,17 @@ let appear_handler context node handler =
 
 let register_resize context node handler =
   enable context node ChangeEnabled;
+  require_event_supported context node (ValueChanged (node, 0.)) "resize";
   ignore (on_event context node is_resize handler)
 
 let register_scroll_completed context node handler =
+  require_event_supported context node (ScrollCompleted (node, 0, ""))
+    "scroll-completed";
   ignore (on_event context node is_scroll_completed handler)
 
 let register_visible_range context node handler =
+  require_event_supported context node (VisibleRange (node, 0, 0))
+    "visible-range";
   ignore (on_event context node is_visible_range handler)
 
 let is_press_detail = function PressDetail _ -> true | _ -> false
@@ -505,14 +546,23 @@ let is_context_menu_press = function
 
 let register_press_detail context node handler =
   enable context node PointerEnabled;
+  require_event_supported context node
+    (PressDetail (node, pointer_detail_probe))
+    "press-detail";
   ignore (on_event context node is_press_detail handler)
 
 let register_pointer_down context node handler =
   enable context node PointerEnabled;
+  require_event_supported context node
+    (PointerDown (node, pointer_detail_probe))
+    "pointer-down";
   ignore (on_event context node is_pointer_down handler)
 
 let register_pointer_up context node handler =
   enable context node PointerEnabled;
+  require_event_supported context node
+    (PointerUp (node, pointer_detail_probe))
+    "pointer-up";
   ignore (on_event context node is_pointer_up handler)
 
 let register_pointer_enter context node handler =
@@ -525,6 +575,9 @@ let register_pointer_leave context node handler =
 
 let register_context_menu_press context node handler =
   enable context node PointerEnabled;
+  require_event_supported context node
+    (ContextMenuPress (node, pointer_detail_probe))
+    "context-menu-press";
   ignore (on_event context node is_context_menu_press handler)
 
 let apply_pointer_events context node ?on_press_detail ?on_pointer_down
