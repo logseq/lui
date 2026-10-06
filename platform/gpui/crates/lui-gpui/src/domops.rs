@@ -230,7 +230,10 @@ type LuiSharedGuard<'a> = std::cell::Ref<'a, crate::backend::LuiShared>;
 
 /// Root node bounds come from the window (no parent records them).
 pub fn note_root_bounds(shared: &Shared, width: f32, height: f32) {
-    if let Some(root) = shared.borrow().store.root {
+    // Scrutinee temporaries outlive the `if let` body, so borrowing the
+    // store inline here would make the borrow_mut below a double borrow.
+    let root = shared.borrow().store.root;
+    if let Some(root) = root {
         shared.borrow_mut().node_bounds.insert(
             root,
             Bounds::new(
