@@ -1146,22 +1146,22 @@ struct LUISwiftUIBackendTests {
     @Test("menu-trigger requires a label, a dropdown-menu child, and rejects extra children")
     func menuTriggerValidation() throws {
         let backend = LUIAppleBackend()
-        // icon-only without an accessibility label
-        #expect(throws: LUIBackendError.self) {
-            try backend.apply(json: """
-            {"generation":1,"ops":[
-              {"op":"create-node","id":1,"kind":"row"},
-              {"op":"create-node","id":2,"kind":"menu-trigger"},
-              {"op":"create-node","id":3,"kind":"dropdown-menu"},
-              {"op":"set-prop","id":2,"property":"icon","value":"ellipsis"},
-              {"op":"insert-child","parent":1,"child":2,"index":0},
-              {"op":"insert-child","parent":2,"child":3,"index":0}
-            ]}
-            """)
-        }
+        // icon-only without an accessibility label is allowed (matches gpui semantics)
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"row"},
+          {"op":"create-node","id":2,"kind":"menu-trigger"},
+          {"op":"create-node","id":3,"kind":"dropdown-menu"},
+          {"op":"set-prop","id":2,"property":"icon","value":"ellipsis"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0}
+        ]}
+        """)
+        #expect(backend.model(id: 2)?.kind == .menuTrigger)
         // neither text nor icon
+        let unlabeled = LUIAppleBackend()
         #expect(throws: LUIBackendError.self) {
-            try backend.apply(json: """
+            try unlabeled.apply(json: """
             {"generation":1,"ops":[
               {"op":"create-node","id":1,"kind":"row"},
               {"op":"create-node","id":2,"kind":"menu-trigger"},
@@ -1172,8 +1172,9 @@ struct LUISwiftUIBackendTests {
             """)
         }
         // missing the dropdown-menu child
+        let orphan = LUIAppleBackend()
         #expect(throws: LUIBackendError.self) {
-            try backend.apply(json: """
+            try orphan.apply(json: """
             {"generation":1,"ops":[
               {"op":"create-node","id":1,"kind":"row"},
               {"op":"create-node","id":2,"kind":"menu-trigger"},
@@ -2216,19 +2217,18 @@ struct LUISwiftUIBackendTests {
         #expect(backend.generation == 2)
     }
 
-    @Test("rejects an unnamed icon-only Button")
-    func rejectsUnnamedIconButton() {
+    @Test("accepts an unnamed icon-only Button")
+    func acceptsUnnamedIconButton() throws {
         let backend = LUIAppleBackend()
-        #expect(throws: LUIBackendError.self) {
-            try backend.apply(json: """
-            {"generation":1,"ops":[
-              {"op":"create-node","id":1,"kind":"button"},
-              {"op":"set-prop","id":1,"property":"size","value":"icon"},
-              {"op":"set-prop","id":1,"property":"icon","value":"plus"}
-            ]}
-            """)
-        }
-        #expect(backend.generation == 0)
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"button"},
+          {"op":"set-prop","id":1,"property":"size","value":"icon"},
+          {"op":"set-prop","id":1,"property":"icon","value":"plus"}
+        ]}
+        """)
+        #expect(backend.generation == 1)
+        #expect(backend.model(id: 1)?.kind == .button)
     }
 
     @Test("maps ToggleButton as a distinct retained native control")
