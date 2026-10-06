@@ -1,0 +1,6 @@
+# Todo app: the list mounts items and Done removes the pressed row.
+expect text:Todos
+expect "write tests"
+press "Done"
+expect-absent "write tests"
+expect text:Todos
