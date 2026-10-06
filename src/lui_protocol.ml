@@ -91,6 +91,7 @@ type node_kind =
   | FileImage
   | FilePreview
   | Br
+  | Popover
 
 type operating_system =
   | GenericOS
@@ -226,6 +227,9 @@ type property =
   | InputType
   | PickerAccept
   | PickerDirectory
+  | PopupX
+  | PopupY
+  | AvailableHeight
 
 module Property_map =
   Map.Make
@@ -456,7 +460,8 @@ let event_supported kind event =
     | Drawer
     | Sheet
     | FilePreview
-    | FilePicker -> true
+    | FilePicker
+    | Popover -> true
     | _ -> false)
   | DoublePress _ -> kind = ListItem
   | Appear _ -> kind <> Root
@@ -783,7 +788,8 @@ let can_contain_children kind =
     | ListSection
     | ListSectionHeader
     | ListSectionFooter
-    | SwipeActions -> true
+    | SwipeActions
+    | Popover -> true
     | _ -> false
 
 let common_property_supported kind property =
@@ -934,7 +940,8 @@ let common_property_supported kind property =
     kind = Avatar || kind = Image
   | SurfaceIdValue -> kind = MediaSurface
   | AnchorValue | AnchorAlignmentValue | AnchorOffset ->
-    kind = DropdownMenu || kind = Tooltip
+    kind = DropdownMenu || kind = Tooltip || kind = Popover
+  | PopupX | PopupY | AvailableHeight -> kind = Popover
   | TooltipDelay -> kind = Tooltip
   | DurationValue -> false
   | TextAlignment ->
@@ -944,7 +951,8 @@ let common_property_supported kind property =
     || kind = TableCell
     || kind = Bubble
     || kind = StatusBar
-  | RoleValue -> tree_row_kind kind || kind = ListItem
+  | RoleValue ->
+    tree_row_kind kind || kind = ListItem || kind = Popover
   | TreeLevel | Expanded -> tree_row_kind kind
   | KeyValue | SeparatorValue -> kind = ListItem || kind = ListSection
   | StyleValue
@@ -1259,6 +1267,8 @@ let property_value_supported property value =
   | InputType, StringValue value -> value = "text" || value = "color"
   | PickerAccept, StringValue _ -> true
   | PickerDirectory, BoolValue _ -> true
+  | PopupX, FloatValue value | PopupY, FloatValue value -> is_finite value
+  | AvailableHeight, FloatValue value -> is_finite value && value >= 0.0
   | ImageFitValue, StringValue value -> value = "fit" || value = "fill"
   | MaxPixelSize, IntValue value -> value > 0
   | Visible, BoolValue _ -> true
@@ -1269,7 +1279,8 @@ let property_value_supported property value =
   | _ -> false
 
 let property_value_supported_for_kind kind property value =
-  if property = SizeValue then
+  if property = RoleValue && kind = Popover then value = StringValue "menu"
+  else if property = SizeValue then
     match value with
     | StringValue size ->
       if kind = TableCell then
@@ -1366,11 +1377,17 @@ let node_properties_supported kind properties =
               Property_map.mem AnchorValue properties
             else true)
       else true)
-  && (if kind = DropdownMenu || kind = Tooltip then
+  && (if kind = DropdownMenu || kind = Tooltip || kind = Popover then
         if Property_map.mem AnchorAlignmentValue properties
            || Property_map.mem AnchorOffset properties
         then Property_map.mem AnchorValue properties
         else true
+      else true)
+  && (if kind = Popover then
+        let has_x = Property_map.mem PopupX properties in
+        let has_y = Property_map.mem PopupY properties in
+        has_x = has_y
+        && (not has_x || not (Property_map.mem AnchorValue properties))
       else true)
   && (if kind = Avatar || kind = Image then
         let has_image = Property_map.mem ImageIdValue properties in

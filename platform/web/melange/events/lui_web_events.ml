@@ -528,6 +528,10 @@ let attach_events renderer node kind dom_node =
       ignore
         (Lui_web_menu.attach_dropdown_events renderer node
            (Util.child_element dom_node 0))
+  | Popover ->
+      ignore
+        (Lui_web_menu.attach_popover_events renderer node
+           (Util.child_element dom_node 0))
   | ContextMenu ->
       ignore (Lui_web_menu.attach_context_menu_events renderer node dom_node)
   | Dialog | Sheet ->

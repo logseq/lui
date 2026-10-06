@@ -53,6 +53,7 @@ let portal_parent renderer previous_nodes parent child =
   if prev_kind_is previous_nodes child Toast then renderer.web_toast_viewport
   else if
     prev_kind_is previous_nodes child DropdownMenu
+    || prev_kind_is previous_nodes child Popover
     || prev_modal previous_nodes child
     || prev_anchored_tooltip previous_nodes child
   then renderer.web_portal_root
@@ -199,6 +200,7 @@ let mount_inserted_child renderer parent child current =
            Lui_web_menu.update_picker_expanded renderer parent true
        | None -> ());
       Lui_web_menu.mount_dropdown renderer child
+  | Some Popover -> Lui_web_menu.mount_popover renderer child
   | Some (Dialog | Sheet) ->
       Lui_web_overlay.open_modal renderer child current.platform_node
   | Some Tooltip ->
@@ -239,7 +241,7 @@ let insert_child_dom renderer previous_nodes children_of parent child
       | Some Toast ->
           W.Element.appendChild (W.Element.asNode child_dom)
             renderer.web_toast_viewport
-      | Some DropdownMenu ->
+      | Some DropdownMenu | Some Popover ->
           W.Element.appendChild (W.Element.asNode child_dom)
             renderer.web_portal_root
       | Some Tooltip when Store.anchored_tooltip current ->
@@ -322,6 +324,9 @@ let apply_remove_child renderer previous_nodes parent child =
      | None -> ()
    else if prev_kind_is previous_nodes child DropdownMenu then
      Lui_web_menu.remove_dropdown_after_exit renderer child parent_node
+       child_node
+   else if prev_kind_is previous_nodes child Popover then
+     Lui_web_menu.remove_popover_after_exit renderer child parent_node
        child_node
    else (
      (* parent_node is re-resolved from the previous snapshot and can be

@@ -2284,5 +2284,8 @@ pub fn render_node(
         }
         // Line-break leaf: no native representation; renders nothing.
         NodeKind::Br => div().id(element_id(node.id)).size_0().into_any_element(),
+        // Native popover positioning is not implemented yet: render the
+        // children inline so the content stays reachable.
+        NodeKind::Popover => container(view, node, kind, false, cx),
     }
 }

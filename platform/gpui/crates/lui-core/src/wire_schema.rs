@@ -89,6 +89,7 @@ pub enum NodeKind {
     FileImage,
     FilePreview,
     Br,
+    Popover,
 }
 
 impl NodeKind {
@@ -181,6 +182,7 @@ impl NodeKind {
             "file-image" => Some(NodeKind::FileImage),
             "file-preview" => Some(NodeKind::FilePreview),
             "br" => Some(NodeKind::Br),
+            "popover" => Some(NodeKind::Popover),
             _ => None,
         }
     }
@@ -274,6 +276,7 @@ impl NodeKind {
             NodeKind::FileImage => "file-image",
             NodeKind::FilePreview => "file-preview",
             NodeKind::Br => "br",
+            NodeKind::Popover => "popover",
         }
     }
 
@@ -335,6 +338,7 @@ impl NodeKind {
                 | NodeKind::SwipeActions
                 | NodeKind::FilePicker
                 | NodeKind::Link
+                | NodeKind::Popover
         )
     }
 }
@@ -453,6 +457,9 @@ pub enum Property {
     InputType,
     PickerAccept,
     PickerDirectory,
+    PopupX,
+    PopupY,
+    AvailableHeight,
 }
 
 impl Property {
@@ -570,6 +577,9 @@ impl Property {
             "input-type" => Some(Property::InputType),
             "accept" => Some(Property::PickerAccept),
             "directory" => Some(Property::PickerDirectory),
+            "x" => Some(Property::PopupX),
+            "y" => Some(Property::PopupY),
+            "available-height" => Some(Property::AvailableHeight),
             _ => None,
         }
     }
@@ -688,6 +698,9 @@ impl Property {
             Property::InputType => "input-type",
             Property::PickerAccept => "accept",
             Property::PickerDirectory => "directory",
+            Property::PopupX => "x",
+            Property::PopupY => "y",
+            Property::AvailableHeight => "available-height",
         }
     }
 }

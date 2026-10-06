@@ -89,6 +89,7 @@ enum _NodeKind {
   fileImage,
   filePreview,
   br,
+  popover,
 }
 
 _NodeKind _decodeNodeKind(Object? value) {
@@ -183,6 +184,7 @@ _NodeKind _decodeNodeKind(Object? value) {
     'file-image' => _NodeKind.fileImage,
     'file-preview' => _NodeKind.filePreview,
     'br' => _NodeKind.br,
+    'popover' => _NodeKind.popover,
     _ => throw const LUIBackendException('unknown node kind'),
   };
 }

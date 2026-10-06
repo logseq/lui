@@ -59,6 +59,7 @@ type link_target = [ `self_ | `blank ]
 
 type display = [ `contents ]
 type input_kind = [ `text | `color ]
+type popover_role = [ `menu ]
 type swipe_edge = [ `leading | `trailing ]
 
 (** [~as_] element-tag overrides for the phrasing kinds ([text],
@@ -2967,6 +2968,74 @@ val file_picker :
   ?accept_signal:string Signal.signal ->
   ?directory:bool ->
   ?directory_signal:bool Signal.signal ->
+  t list -> t
+
+(** Portal-mounted positioned surface for menus, pickers and fixed
+    cover views. On web it renders as
+    [div.lui-popup-positioner > div.lui-popover] appended to the popup
+    portal; the positioner is [position:fixed]-style anchored while the
+    inner element re-enables pointer events and carries the popup's own
+    styling.
+
+    Positioning is one of three modes:
+
+    - [~at:(x, y)] — point positioning (pointer-anchored menus), clamped
+      to the viewport with [--lui-popup-available-width/height] set.
+    - [~anchor:`below] (optional [~anchor_alignment], [~anchor_offset]) —
+      anchored to the element under the popover's retained parent, with
+      viewport flipping and scroll/resize tracking.
+    - neither — cover mode: the positioner spans the viewport
+      ([data-cover], inset:0) for fullscreen surfaces.
+
+    [~available_height] bounds the popup's max-height and feeds
+    [--lui-popup-available-height]. [~role:`menu] sets role=menu on the
+    inner element (other roles go through [~data_attrs], which also
+    covers data-keep-selection). [~on_dismiss] fires on outside-press or
+    Escape while open. *)
+val popover :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?columns:int ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
+  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  ?at:float * float ->
+  ?at_signal:(float * float) Signal.signal ->
+  ?anchor:anchor ->
+  ?anchor_alignment:anchor_alignment ->
+  ?anchor_offset:float ->
+  ?available_height:float ->
+  ?available_height_signal:float Signal.signal ->
+  ?role:popover_role ->
+  ?on_dismiss:(Lui_protocol.event -> unit) ->
   t list -> t
 val toolbar :
   ?key:string ->

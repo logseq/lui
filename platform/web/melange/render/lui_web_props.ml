@@ -166,7 +166,9 @@ let refresh_node_class renderer node kind dom_node =
     if Store.treeitem renderer node then "lui-tree-item" else ""
   in
   W.Element.setClassName
-    (if kind = DropdownMenu then Util.child_element dom_node 0 else dom_node)
+    (if kind = DropdownMenu || kind = Popover then
+       Util.child_element dom_node 0
+     else dom_node)
     (String.trim
        (Nodes.base_class_name kind ^ " " ^ tree_class ^ " " ^ style_class))
 
@@ -675,7 +677,8 @@ and apply_secondary_property renderer node kind dom_node property value =
   | PointerEnabled, BoolValue enabled ->
       Util.set_state_attribute dom_node "data-pointer-enabled" enabled
   | RoleValue, StringValue role ->
-      W.Element.setAttribute "role" role dom_node;
+      W.Element.setAttribute "role" role
+        (if kind = Popover then Util.child_element dom_node 0 else dom_node);
       W.Element.removeAttribute "aria-pressed" dom_node;
       refresh_node_class renderer node kind dom_node
   | TreeLevel, IntValue level ->
@@ -742,6 +745,13 @@ and apply_secondary_property renderer node kind dom_node property value =
       W.Element.setAttribute "data-accept" value dom_node
   | PickerDirectory, BoolValue value ->
       Util.set_state_attribute dom_node "data-directory" value
+  | PopupX, FloatValue _ | PopupY, FloatValue _ ->
+      Lui_web_position.position_popover renderer node
+  | AvailableHeight, FloatValue value ->
+      let popup = Util.child_element dom_node 0 in
+      set_style popup "max-height" (Js.Float.toString value ^ "px");
+      set_style dom_node "--lui-popup-available-height"
+        (Js.Float.toString value ^ "px")
   | TargetValue, StringValue target ->
       if kind = Link then begin
         W.Element.setAttribute "target" target dom_node;
@@ -877,6 +887,12 @@ let remove_property renderer node kind dom_node property =
        | PickerAccept -> W.Element.removeAttribute "data-accept" dom_node
        | PickerDirectory ->
            W.Element.removeAttribute "data-directory" dom_node
+       | PopupX | PopupY ->
+           Lui_web_position.position_popover renderer node
+       | AvailableHeight ->
+           let popup = Util.child_element dom_node 0 in
+           set_style popup "max-height" "";
+           set_style dom_node "--lui-popup-available-height" ""
        | TargetValue ->
            if kind = Link then begin
              W.Element.removeAttribute "target" dom_node;

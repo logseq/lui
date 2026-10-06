@@ -418,6 +418,49 @@ let position_dropdown renderer node =
 
 let position_dropdown_bang = position_dropdown
 
+(* a popover positions in one of three modes: PopupX/PopupY set → point
+   positioning (pointer-anchored menus), AnchorValue set → anchored to the
+   element under its retained parent, neither → cover mode (the
+   positioner spans the viewport and needs no coordinates) *)
+let position_popover renderer node =
+  let positioner = Nodes.dom_node renderer node in
+  match Store.property renderer.web_store node PopupX with
+  | Some (FloatValue x) ->
+      (match Store.property renderer.web_store node PopupY with
+       | Some (FloatValue y) ->
+           Util.set_state_attribute positioner "hidden" false;
+           position_at_point renderer.web_document positioner x y
+       | _ -> ())
+  | _ ->
+      (match Store.property renderer.web_store node AnchorValue with
+       | Some (StringValue _) ->
+           if anchored renderer node then begin
+             let popup = Util.child_element positioner 0 in
+             let anchor = Nodes.dropdown_anchor_node renderer node in
+             let anchor_bounds = W.Element.getBoundingClientRect anchor in
+             let visible =
+               W.DomRect.width anchor_bounds > 0.0
+               || W.DomRect.height anchor_bounds > 0.0
+             in
+             Util.set_state_attribute positioner "hidden" (not visible);
+             if visible then begin
+               let offset = Nodes.dropdown_offset renderer node in
+               let side = Nodes.dropdown_side positioner in
+               let alignment =
+                 match
+                   W.Element.getAttribute "data-anchor-alignment" positioner
+                 with
+                 | Some value -> value
+                 | None -> "start"
+               in
+               position_anchored renderer.web_document positioner popup
+                 anchor_bounds side alignment offset
+             end
+           end
+       | _ -> ())
+
+let position_popover_bang = position_popover
+
 let point_in_triangle point_x point_y ax ay bx by cx cy =
   let cross_a =
     ((point_x -. bx) *. (ay -. by)) -. ((ax -. bx) *. (point_y -. by))

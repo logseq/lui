@@ -89,6 +89,7 @@ type node_kind =
   | FileImage
   | FilePreview
   | Br
+  | Popover
 
 type operating_system =
   | GenericOS
@@ -224,6 +225,9 @@ type property =
   | InputType
   | PickerAccept
   | PickerDirectory
+  | PopupX
+  | PopupY
+  | AvailableHeight
 
 module Property_map : Map.S with type key = property
 

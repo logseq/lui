@@ -3356,6 +3356,9 @@ final class LUIFlutterBackend {
       _NodeKind.filePreview => const SizedBox.shrink(),
       // Line-break leaf: no native representation; renders nothing.
       _NodeKind.br => const SizedBox.shrink(),
+      // Popover positioning is not implemented yet: render the children
+      // inline so the content stays reachable.
+      _NodeKind.popover => column(),
     };
 
     if (state.kind == _NodeKind.root || state.kind.isModalSurface) {
@@ -4386,15 +4389,21 @@ final class LUIFlutterBackend {
       'anchor' =>
         value is String &&
             const {'above', 'below', 'left', 'right'}.contains(value) &&
-            (kind == _NodeKind.dropdownMenu || kind == _NodeKind.tooltip),
+            (kind == _NodeKind.dropdownMenu || kind == _NodeKind.tooltip || kind == _NodeKind.popover),
       'anchor-alignment' =>
         value is String &&
             const {'start', 'end', 'stretch'}.contains(value) &&
-            (kind == _NodeKind.dropdownMenu || kind == _NodeKind.tooltip),
+            (kind == _NodeKind.dropdownMenu || kind == _NodeKind.tooltip || kind == _NodeKind.popover),
       'anchor-offset' =>
         value is num &&
             value.isFinite &&
-            (kind == _NodeKind.dropdownMenu || kind == _NodeKind.tooltip),
+            (kind == _NodeKind.dropdownMenu || kind == _NodeKind.tooltip || kind == _NodeKind.popover),
+      'x' =>
+        value is num && value.isFinite && kind == _NodeKind.popover,
+      'y' =>
+        value is num && value.isFinite && kind == _NodeKind.popover,
+      'available-height' =>
+        value is num && value.isFinite && value >= 0 && kind == _NodeKind.popover,
       'edge' =>
         value is String &&
             const {'top', 'bottom', 'leading', 'trailing'}.contains(value) &&
@@ -4548,7 +4557,9 @@ final class LUIFlutterBackend {
                 kind == _NodeKind.tableCell ||
                 kind == _NodeKind.bubble ||
                 kind == _NodeKind.statusBar),
-      'role' => value == 'treeitem' && value is String && _isTreeRowKind(kind),
+      'role' =>
+        (value == 'treeitem' && _isTreeRowKind(kind)) ||
+            (value == 'menu' && kind == _NodeKind.popover),
       'tree-level' => value is int && value > 0 && _isTreeRowKind(kind),
       'expanded' => value is bool && _isTreeRowKind(kind),
       'key' =>
@@ -5078,6 +5089,7 @@ final class LUIFlutterBackend {
       kind == _NodeKind.listSectionHeader ||
       kind == _NodeKind.listSectionFooter ||
       kind == _NodeKind.swipeActions ||
+      kind == _NodeKind.popover ||
       kind == _NodeKind.edgeInset ||
       kind == _NodeKind.overlay ||
       kind == _NodeKind.viewThatFits ||

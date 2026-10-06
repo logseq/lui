@@ -49,6 +49,7 @@ type referrer_policy =
 type link_target = [ `self_ | `blank ]
 type display = [ `contents ]
 type input_kind = [ `text | `color ]
+type popover_role = [ `menu ]
 type swipe_edge = [ `leading | `trailing ]
 
 (* [~as_] element-tag overrides for the phrasing kinds ([text], [heading],
@@ -241,6 +242,8 @@ let display_value : display -> string = function `contents -> "contents"
 let input_kind_value : input_kind -> string = function
   | `text -> "text"
   | `color -> "color"
+
+let popover_role_value : popover_role -> string = function `menu -> "menu"
 
 let swipe_edge_value : swipe_edge -> string = function
   | `leading -> "leading"
@@ -1572,6 +1575,37 @@ let dropdown_menu ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizo
      enable context node SubmitEnabled;
      register_submit context node handler
    | None -> ());
+  (match on_dismiss with
+   | Some handler -> register_dismiss context node handler
+   | None -> ());
+  attach context parent node;
+  mount_children context node children;
+  node
+
+let popover ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?opacity ?opacity_signal ?at ?at_signal ?anchor ?anchor_alignment ?anchor_offset ?available_height ?available_height_signal ?role ?on_dismiss (children : t list) : t =
+ fun context parent ->
+  let node = Lui_ui.popover context in
+  apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave;
+  Option.iter (Lui_ui.float_property context node Opacity) opacity;
+  Option.iter (Lui_ui.float_property_signal context node Opacity) opacity_signal;
+  Option.iter
+    (fun (x, y) ->
+      Lui_ui.float_property context node PopupX x;
+      Lui_ui.float_property context node PopupY y)
+    at;
+  Option.iter
+    (fun signal_ ->
+      Lui_ui.float_property_signal context node PopupX
+        (Signal.map fst signal_);
+      Lui_ui.float_property_signal context node PopupY
+        (Signal.map snd signal_))
+    at_signal;
+  Option.iter (Lui_ui.string_property context node AnchorValue) (Option.map anchor_value anchor);
+  Option.iter (Lui_ui.string_property context node AnchorAlignmentValue) (Option.map anchor_alignment_value anchor_alignment);
+  Option.iter (Lui_ui.float_property context node AnchorOffset) anchor_offset;
+  Option.iter (Lui_ui.float_property context node AvailableHeight) available_height;
+  Option.iter (Lui_ui.float_property_signal context node AvailableHeight) available_height_signal;
+  Option.iter (Lui_ui.string_property context node RoleValue) (Option.map popover_role_value role);
   (match on_dismiss with
    | Some handler -> register_dismiss context node handler
    | None -> ());
