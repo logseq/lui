@@ -334,6 +334,200 @@ fn with_text<E: ParentElement>(element: E, node: &NodeSnapshot) -> E {
 }
 
 /// Render one `logseq-<tag>` extension node.
+/// Overscan margin matching the web IntersectionObserver rootMargin —
+/// lazy rows mount before they reach the viewport edge.
+const VIEWPORT_OVERSCAN: f64 = 254.;
+
+/// `lazy-mount`/`virt-end` opt-ins from the `events` prop mark the node
+/// for the per-frame viewport sweep — the LUI native lazy contract: a
+/// `data-lazy-mount` row mounts its content when the host reports it
+/// near the viewport, a `virt-end` list paginates when its last child
+/// appears.
+fn register_viewport_watches(view: &LuiNodeView, node: &NodeSnapshot) {
+    let Some(events) = node.extension_string_prop("events") else {
+        return;
+    };
+    let mut lazy = false;
+    let mut end = false;
+    for name in events.split_whitespace() {
+        match name {
+            "lazy-mount" => lazy = true,
+            "virt-end" => end = true,
+            _ => {}
+        }
+    }
+    if !(lazy || end) {
+        return;
+    }
+    let mut shared = view.shared.borrow_mut();
+    if let Some(uuid) = lazy.then(|| attr(node, "data-lazy-mount")).flatten() {
+        shared
+            .viewport_watched
+            .entry(node.id)
+            .or_insert(crate::backend::ViewportWatch {
+                event: "lazy-mount",
+                identifier: identifier_of(node),
+                last_end_child: None,
+                lazy_uuid: uuid,
+            });
+    }
+    if end {
+        shared
+            .viewport_watched
+            .entry(node.id)
+            .or_insert(crate::backend::ViewportWatch {
+                event: "virt-end",
+                identifier: identifier_of(node),
+                last_end_child: None,
+                lazy_uuid: String::new(),
+            });
+    }
+}
+
+/// Fire `lazy-mount`/`virt-end` dom-events for watched nodes whose
+/// recorded bounds intersect the viewport (plus overscan). Runs once
+/// per frame from the host's UI tick; a lazy row fires exactly once —
+/// the OCaml `near` latch then republishes it as real content.
+pub fn fire_viewport_events(
+    shared: &Shared,
+    window: &Window,
+    cx: &mut gpui_kit::gpui::App,
+) {
+    let viewport_h = f64::from(window.viewport_size().height);
+    let mut drop_ids: Vec<i64> = Vec::new();
+    // lazy-mount hits grouped by parent node id → one dom-event each
+    // carrying all sibling uuids (one OCaml publish per list, not per row).
+    let mut lazy_groups: std::collections::HashMap<i64, (Vec<String>, Vec<i64>)> =
+        std::collections::HashMap::new();
+    // watched nodes whose parent declares no batch handler fire singly.
+    let mut singles: Vec<(i64, String)> = Vec::new();
+    let mut end_fires: Vec<(i64, String, i64)> = Vec::new();
+    {
+        let shared_ref = shared.borrow();
+        for (&id, watch) in &shared_ref.viewport_watched {
+            match watch.event {
+                "lazy-mount" => {
+                    // Republished without the marker → the row is real now.
+                    let still_lazy = shared_ref
+                        .store
+                        .node(id)
+                        .and_then(|n| n.extension_props.get("attrs"))
+                        .and_then(|v| v.as_str())
+                        .map(|raw| raw.contains("data-lazy-mount"))
+                        .unwrap_or(false);
+                    if !still_lazy {
+                        drop_ids.push(id);
+                        continue;
+                    }
+                    let Some(bounds) = shared_ref.node_bounds.get(&id) else {
+                        continue;
+                    };
+                    let top = f64::from(bounds.origin.y);
+                    let bottom = f64::from(bounds.bottom());
+                    if !(top < viewport_h + VIEWPORT_OVERSCAN && bottom > -VIEWPORT_OVERSCAN) {
+                        continue;
+                    }
+                    // Batch through the parent only when it opted into the
+                    // lazy-mount event itself (the lazy-rows container);
+                    // other parents keep per-node dispatch.
+                    let batched = shared_ref
+                        .store
+                        .node(id)
+                        .and_then(|n| n.parent)
+                        .and_then(|pid| shared_ref.store.node(pid))
+                        .filter(|p| {
+                            p.extension_props
+                                .get("events")
+                                .and_then(|v| v.as_str())
+                                .map(|events| {
+                                    events
+                                        .split_whitespace()
+                                        .any(|e| e == "lazy-mount")
+                                })
+                                .unwrap_or(false)
+                        })
+                        .map(|p| p.id);
+                    match batched {
+                        Some(pid) => {
+                            let entry = lazy_groups.entry(pid).or_default();
+                            entry.0.push(watch.lazy_uuid.clone());
+                            entry.1.push(id);
+                        }
+                        None => singles.push((id, watch.identifier.clone())),
+                    }
+                }
+                "virt-end" => {
+                    let Some(node) = shared_ref.store.node(id) else {
+                        drop_ids.push(id);
+                        continue;
+                    };
+                    let Some(&last) = node.children.last() else {
+                        continue;
+                    };
+                    if watch.last_end_child == Some(last) {
+                        continue;
+                    }
+                    let Some(bounds) = shared_ref.node_bounds.get(&last) else {
+                        continue;
+                    };
+                    let top = f64::from(bounds.origin.y);
+                    if top < viewport_h + VIEWPORT_OVERSCAN {
+                        end_fires.push((id, watch.identifier.clone(), last));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut shared_mut = shared.borrow_mut();
+    for id in drop_ids {
+        shared_mut.viewport_watched.remove(&id);
+    }
+    for (_, ids) in lazy_groups.values() {
+        for id in ids {
+            shared_mut.viewport_watched.remove(id);
+        }
+    }
+    for (id, _) in &singles {
+        shared_mut.viewport_watched.remove(id);
+    }
+    for (id, _, last) in &end_fires {
+        if let Some(w) = shared_mut.viewport_watched.get_mut(id) {
+            w.last_end_child = Some(*last);
+        }
+    }
+    drop(shared_mut);
+    for (pid, (uuids, _)) in lazy_groups {
+        let identifier = {
+            let shared_ref = shared.borrow();
+            shared_ref
+                .store
+                .node(pid)
+                .map(|n| match &n.identity {
+                    lui_core::store::NodeIdentity::Extension { identifier, .. } => {
+                        identifier.clone()
+                    }
+                    _ => String::new(),
+                })
+                .unwrap_or_default()
+        };
+        dom_event(
+            shared,
+            pid,
+            &identifier,
+            "lazy-mount",
+            serde_json::json!({ "uuids": uuids }),
+            cx,
+        );
+    }
+    for (id, identifier) in singles {
+        dom_event(shared, id, &identifier, "lazy-mount", serde_json::json!({}), cx);
+    }
+    for (id, identifier, _) in end_fires {
+        dom_event(shared, id, &identifier, "virt-end", serde_json::json!({}), cx);
+    }
+}
+
 pub fn render(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
@@ -345,6 +539,8 @@ pub fn render(
     if has_class(node, "hidden") {
         return div().into_any_element();
     }
+
+    register_viewport_watches(view, node);
 
     let children = view.child_elements(node, cx);
     let shared = view.shared.clone();

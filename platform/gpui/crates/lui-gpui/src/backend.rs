@@ -36,6 +36,24 @@ pub struct LuiShared {
     /// `LuiNodeView::bounds_recorder`. The `measure-node` dom-op reads
     /// this; entries are removed when a node drops.
     pub node_bounds: HashMap<i64, Bounds<Pixels>>,
+    /// Nodes that opted into a viewport-proximity dom-event through
+    /// `events` (`lazy-mount` rows, `virt-end` list tails — the LUI
+    /// native lazy contract). The per-frame sweep in `dom.rs` fires the
+    /// event once the node's recorded bounds reach the viewport.
+    pub viewport_watched: HashMap<i64, ViewportWatch>,
+}
+
+/// A registered viewport-proximity watch: which dom-event to fire and
+/// under which extension identifier (`dom_event` needs both).
+pub struct ViewportWatch {
+    pub event: &'static str,
+    pub identifier: String,
+    /// `virt-end` refires only when the list's last child changes
+    /// (pagination appended a new tail).
+    pub last_end_child: Option<i64>,
+    /// `lazy-mount`: the `data-lazy-mount` uuid the OCaml latch is
+    /// keyed on — hits batch per parent into a single dom-event.
+    pub lazy_uuid: String,
 }
 
 pub type Shared = Rc<RefCell<LuiShared>>;
@@ -50,6 +68,7 @@ impl LuiShared {
             views: HashMap::new(),
             last_errors: Vec::new(),
             node_bounds: HashMap::new(),
+            viewport_watched: HashMap::new(),
         }));
         crate::extension::register_builtin_renderers(&shared);
         shared
@@ -119,13 +138,36 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
     }
 
     let mut dirty_views = Vec::with_capacity(applied.dirty.len());
+    let mut notified = std::collections::BTreeSet::new();
     for &id in &applied.dirty {
-        // Only notify views for nodes that still exist and are mounted
-        // (a brand-new node is picked up by its parent's render).
-        if shared.borrow().store.node(id).is_none() {
-            continue;
+        // Notify the nearest ancestor (self included) whose view has
+        // actually painted (an entry in node_bounds). `views` also holds
+        // entities created for nodes that never made it into a rendered
+        // frame — notifying those is a no-op, so keep walking past them.
+        let mut current = Some(id);
+        let mut visited = std::collections::BTreeSet::new();
+        while let Some(nid) = current {
+            let mounted = {
+                let guard = shared.borrow();
+                guard.views.contains_key(&nid)
+                    && (guard.node_bounds.contains_key(&nid)
+                        || guard.store.root == Some(nid))
+            };
+            if mounted {
+                if notified.insert(nid) {
+                    dirty_views.push(LuiShared::view_for(shared, nid, cx));
+                }
+                break;
+            }
+            if !visited.insert(nid) {
+                break; // parent cycle — never walk twice
+            }
+            current = shared
+                .borrow()
+                .store
+                .node(nid)
+                .and_then(|node| node.parent);
         }
-        dirty_views.push(LuiShared::view_for(shared, id, cx));
     }
     for view in dirty_views {
         view.update(cx, |_, cx| cx.notify());
