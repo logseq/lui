@@ -451,8 +451,9 @@ let validate_image_source current =
 let validate_media_resource current =
   match standard_kind current with
   | Some Image ->
-      if not (Property_map.mem ImageIdValue current.retained_properties) then
-        invalid_arg "image requires image"
+      if not (Property_map.mem ImageIdValue current.retained_properties)
+         && not (Property_map.mem UrlValue current.retained_properties)
+      then invalid_arg "image requires image or url"
   | Some MediaSurface ->
       if not (Property_map.mem SurfaceIdValue current.retained_properties) then
         invalid_arg "media-surface requires surface"
