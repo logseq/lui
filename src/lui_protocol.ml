@@ -926,8 +926,8 @@ let common_property_supported kind property =
   | ToggleEnabled -> kind = Radio || kind = Drawer || tree_row_kind kind
   | PressEnabled ->
     kind = Text
-    || kind = Column
     || kind = Row
+    || kind = Column
     || kind = Box
     || kind = Radio
     || kind = Select

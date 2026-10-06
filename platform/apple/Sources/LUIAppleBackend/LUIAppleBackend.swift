@@ -80,6 +80,10 @@ import CoreGraphics
 public enum LUIAppleIconSource: Equatable, Sendable {
     case systemName(String)
     case assetName(String)
+    /// A single glyph from a font the app registered (e.g. an icon font
+    /// bundled with the host). `family` is the font's family name, `scalar`
+    /// the Unicode scalar of the glyph.
+    case fontGlyph(family: String, scalar: UInt32)
 }
 
 public struct LUIRootSection: Identifiable, Hashable, Sendable {
@@ -846,6 +850,8 @@ public final class LUIAppleBackend {
         guard let model = models[node],
               model.kind == .button || model.kind == .toggleButton ||
                 (model.kind == .column && model.supportsPress) ||
+                (model.kind == .row && model.supportsPress) ||
+                (model.kind == .box && model.supportsPress) ||
                 (model.kind == .text && model.supportsPress) ||
                 (model.kind == .bottomTab && model.supportsPress) ||
                 (model.kind == .tableCell && model.supportsPress) ||
@@ -868,14 +874,86 @@ public final class LUIAppleBackend {
         }
     }
 
-    func performPointerEnter(node: Int) throws {
+    /// Nearest ancestor (or self) of `node` that opted into pointer events.
+    /// Web attaches the pointer listeners on the listener-owning ancestor and
+    /// lets events bubble up to it; host monitors hit-test the deepest node
+    /// and retarget through this lookup for the same effect.
+    public func pointerEventTarget(of node: Int) -> Int? {
+        var current: Int? = node
+        while let id = current, let model = models[id] {
+            if model.isEnabled, model.supportsPointer { return id }
+            current = model.parent
+        }
+        return nil
+    }
+
+    /// Press/pointer details report the deepest hit's style class (web
+    /// `event.target.className`), not the listener node's class.
+    public func styleClass(of node: Int) -> String? {
+        models[node]?.properties[.styleClass]?.stringValue
+    }
+
+    /// Real-coordinate pointer-detail entry points. SwiftUI tap gestures
+    /// carry no position, so the host's event monitor resolves the hit and
+    /// supplies x/y/modifiers/button/targetClass itself.
+    public func performPointerDown(
+        node: Int, x: Double, y: Double, modifiers: Int, button: Int,
+        targetClass: String
+    ) throws {
+        guard let model = models[node], model.isEnabled, model.supportsPointer else {
+            throw invalid("node \(node) is not enabled for pointer events")
+        }
+        emit(.pointerDown(
+            node: node, x: x, y: y, modifiers: modifiers, button: button,
+            targetClass: targetClass))
+    }
+
+    public func performPointerUp(
+        node: Int, x: Double, y: Double, modifiers: Int, button: Int,
+        targetClass: String
+    ) throws {
+        guard let model = models[node], model.isEnabled, model.supportsPointer else {
+            throw invalid("node \(node) is not enabled for pointer events")
+        }
+        emit(.pointerUp(
+            node: node, x: x, y: y, modifiers: modifiers, button: button,
+            targetClass: targetClass))
+    }
+
+    public func performPressDetail(
+        node: Int, x: Double, y: Double, modifiers: Int, button: Int,
+        targetClass: String
+    ) throws {
+        guard allowsControlInteraction(node: node) else { return }
+        guard let model = models[node], model.isEnabled, model.supportsPointer else {
+            throw invalid("node \(node) is not enabled for pointer events")
+        }
+        emit(.pressDetail(
+            node: node, x: x, y: y, modifiers: modifiers, button: button,
+            targetClass: targetClass))
+    }
+
+    public func performContextMenuPress(
+        node: Int, x: Double, y: Double, modifiers: Int, button: Int,
+        targetClass: String
+    ) throws {
+        guard allowsControlInteraction(node: node) else { return }
+        guard let model = models[node], model.isEnabled, model.supportsPointer else {
+            throw invalid("node \(node) is not enabled for pointer events")
+        }
+        emit(.contextMenuPress(
+            node: node, x: x, y: y, modifiers: modifiers, button: button,
+            targetClass: targetClass))
+    }
+
+    public func performPointerEnter(node: Int) throws {
         guard let model = models[node], model.isEnabled, model.supportsPointer else {
             throw invalid("node \(node) is not enabled for pointer events")
         }
         emit(.pointerEnter(node: node))
     }
 
-    func performPointerLeave(node: Int) throws {
+    public func performPointerLeave(node: Int) throws {
         guard let model = models[node], model.isEnabled, model.supportsPointer else {
             throw invalid("node \(node) is not enabled for pointer events")
         }
