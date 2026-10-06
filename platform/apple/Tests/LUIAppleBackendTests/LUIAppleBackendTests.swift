@@ -1220,6 +1220,31 @@ struct LUISwiftUIBackendTests {
         #expect(toolbar.model(id: 1)?.children == [2])
     }
 
+    @Test("menu-item and button accept content children (gpui parity)")
+    func interactiveLeavesAcceptContentChildren() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"menu-item"},
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"create-node","id":4,"kind":"icon"},
+          {"op":"create-node","id":5,"kind":"button"},
+          {"op":"create-node","id":6,"kind":"icon"},
+          {"op":"set-prop","id":3,"property":"text","value":"Share"},
+          {"op":"set-prop","id":4,"property":"name","value":"chevron-right"},
+          {"op":"set-prop","id":6,"property":"name","value":"ellipsis"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":2,"child":4,"index":1},
+          {"op":"insert-child","parent":1,"child":5,"index":1},
+          {"op":"insert-child","parent":5,"child":6,"index":0}
+        ]}
+        """)
+        #expect(backend.model(id: 2)?.children == [3, 4])
+        #expect(backend.model(id: 5)?.children == [6])
+    }
+
     @Test("maps ListItem text and custom content to one retained native row")
     func mapsListItem() throws {
         let backend = LUIAppleBackend()
@@ -3954,15 +3979,16 @@ struct LUISwiftUIBackendTests {
         #expect(link.children == [3])
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
 
-        #expect(throws: LUIBackendError.self) {
-            try backend.apply(json: """
-            {"generation":2,"ops":[
-              {"op":"create-node","id":4,"kind":"link"},
-              {"op":"insert-child","parent":1,"child":4,"index":1}
-            ]}
-            """)
-        }
-        #expect(backend.generation == 1)
+        // Links without a url are valid: click-delegated links render as a
+        // pressable label (LUILinkView skips the Link wrapper when url is absent).
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"create-node","id":4,"kind":"link"},
+          {"op":"set-prop","id":4,"property":"text","value":"Page"},
+          {"op":"insert-child","parent":1,"child":4,"index":1}
+        ]}
+        """)
+        #expect(backend.generation == 2)
     }
 
     @Test("file-image accepts proportional fit/fill and rejects stretch")
