@@ -104,7 +104,6 @@ type host_kind =
   | GenericHost
   | WebHost
   | SwiftUIHost
-  | FlutterHost
   | GPUIHost
 
 type platform_profile = {

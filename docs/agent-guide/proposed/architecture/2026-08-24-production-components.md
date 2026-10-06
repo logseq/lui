@@ -5,7 +5,7 @@ Status: active design and delivery plan
 ## Problem
 
 LUI needs a production-grade retained, incremental UI runtime that targets
-Web, Apple platforms, and Flutter from one typed protocol, plus a component
+Web and Apple platforms from one typed protocol, plus a component
 showcase that exercises the complete public catalog without becoming a
 separate complex application. The decision under consideration is the public
 component vocabulary, the runtime and platform strategy, and the delivery
@@ -15,8 +15,8 @@ shape of that catalog.
 
 *Status: active design and delivery plan.*
 
-LUI becomes a production-grade retained, incremental UI runtime for Web,
-Apple platforms through one SwiftUI backend, and Flutter platforms. A small
+LUI becomes a production-grade retained, incremental UI runtime for Web and
+Apple platforms through one SwiftUI backend. A small
 showcase in `examples/` demonstrates the complete public component catalog and
 platform behavior without becoming a separate complex application.
 
@@ -78,7 +78,7 @@ typed retained operations
        |
 shared retained tree
        |
-Web DOM | SwiftUI model | Flutter model
+Web DOM | SwiftUI model
 ```
 
 Signal computations may depend on multiple Signals and other computed Signals.
@@ -123,11 +123,6 @@ contains only a `UIHostingController` around `LUISwiftUIRoot`; the iPhone
 Simulator compile contract embeds it in a `UINavigationController` and proves
 that no UIKit component implementation or duplicate state bridge is required.
 
-### Flutter
-
-LUI maps the shared contract to existing Flutter widgets and Material platform
-APIs. It composes widgets before adding custom render objects.
-
 ## Platform-specific tweaks
 
 The standard component API remains identical on every platform. Differences
@@ -145,8 +140,8 @@ component map.
 ## Theming
 
 Each platform resolves semantic color names to its own best-practice theme:
-the shared `--*` custom-property palette on Web, SwiftUI semantic colors on
-Apple, and Material `colorScheme` on Flutter. Applications override those
+the shared `--*` custom-property palette on Web and SwiftUI semantic colors on
+Apple. Applications override those
 defaults through two scoped props rather than per-platform code:
 
 - `theme`: a flat JSON dictionary of design-token overrides, for example
@@ -189,9 +184,6 @@ Per-backend resolution:
 - **Apple**: decoded entries merge over the `luiSemanticColors` environment
   dictionary that `LUIThemeColorResolver` already consults; `theme-mode`
   maps to `.preferredColorScheme` on the subtree.
-- **Flutter**: an inherited `_LUIThemeScope` widget merges tokens down the
-  tree; `theme-mode` wraps the subtree in a `Theme` with a light/dark
-  `ColorScheme`.
 
 ## Component admission
 
@@ -221,7 +213,7 @@ layout primitives.
   from LUI primitives.
 - Interactive composites such as Select, Dialog, Menu and Combobox remain
   semantic retained nodes.
-- SwiftUI and Flutter map those nodes to their platform presentation and
+- SwiftUI maps those nodes to their platform presentation and
   control APIs whenever the public contract permits it.
 - Web may combine native HTML APIs with reusable LUI behavior primitives for
   focus, selection, positioning, typeahead and dismissal.
@@ -253,11 +245,10 @@ wire protocol vocabulary.
 Delivered parity slices:
 
 - one shared component-gallery model, reducer, and Signal view under
-  `examples/components/lg`; Web and Flutter hosts reuse it without duplicating
-  application state, and the Flutter integration test crosses the real OCaml
-  FFI boundary;
+  `examples/components/lg`; hosts reuse it without duplicating
+  application state;
 - one real Android emulator qualification path builds the shared OCaml/JNI
-  library and Flutter APK, installs it, and drives adaptive navigation, touch
+  library and Android APK, installs it, and drives adaptive navigation, touch
   disclosure, retained English and Chinese IME input, recursive menus, native
   Dialog, Sheet, Tooltip long press, Select, Combobox, Checkbox, Switch, Toggle,
   RadioGroup, and Slider interaction through Maestro; stable destination
@@ -278,17 +269,17 @@ Delivered parity slices:
   dynamic regions preserve their local ordering and disposal boundaries;
 - `row`, `column`, and `grid`, including `main`, `cross`, `grow`, `columns`,
   and `gap` validation;
-- direct retained `stack`, `panel`, and `card` overlay nodes on Web, SwiftUI,
-  and Flutter;
+- direct retained `stack`, `panel`, and `card` overlay nodes on Web and
+  SwiftUI;
 - direct retained `list` flow nodes and multi-child `scroll` overlay semantics
-  on Web, SwiftUI, and Flutter;
+  on Web and SwiftUI;
 - direct retained `spinner` progress leaves with the reference 16/20/24 size
-  rungs, native SwiftUI/Flutter indicators, and a reduced-motion Web renderer;
+  rungs, native SwiftUI indicators, and a reduced-motion Web renderer;
 - direct retained `progress` leaves with a model-owned `float` fraction,
   render-time `0..1` clamping, and no range props or compound public parts;
 - direct retained `icon` leaves with the 51-name Vercel Native built-in
   vocabulary, 16/18/24 sizing, shared foreground tint, CSS-mask SVGs on Web,
-  SF Symbols on SwiftUI, and Material Icons on Flutter, plus immutable
+  SF Symbols on SwiftUI, plus immutable
   application-registered `app:` names on every backend;
 - direct text-bearing `checkbox` and `switch` controls with model-owned
   `checked`, `disabled`, `label`, and `on-toggle`; their labels and native
@@ -309,17 +300,17 @@ Delivered parity slices:
   warm window that never enters application state;
 - direct retained `accordion` disclosure containers with the exact
   `text`/`selected`/`on-toggle`/`height` contract, model-owned expansion,
-  retained collapsed children, and native Web, SwiftUI, and Flutter controls;
+  retained collapsed children, and native Web and SwiftUI controls;
 - direct retained `table`, `table-row`, and `table-cell` nodes with strict
   structural nesting, aligned columns, model-owned row selection, pressable
   cells, and identity-preserving text and selection patches;
 - direct retained `tree` navigation over ordinary row nodes, with strict
   role/hierarchy metadata, one native roving focus set, model-owned selection
-  and disclosure, ARIA keyboard behavior, and local Signal patches on Web,
-  SwiftUI, and Flutter;
+  and disclosure, ARIA keyboard behavior, and local Signal patches on Web and
+  SwiftUI;
 - direct retained `resizable` stacking surfaces with source-width
   reconciliation, backend-owned drag state, bounded assistive resizing, and
-  identity-preserving children on Web, SwiftUI, and Flutter;
+  identity-preserving children on Web and SwiftUI;
 - direct retained `split` layouts with exactly two identity-preserving panes,
   a model-owned fraction, pane minimums, native animation and reduced-motion
   handling, plus pointer, keyboard, and assistive resizing on every applicable
@@ -359,8 +350,7 @@ renderer even though the Button page's generated attribute table omits it.
 Web renders one native `button` and backend-owned inline icon content, styled
 through semantic Tailwind selectors and data attributes. SwiftUI renders one
 system `Button` with native label/icon composition, control sizing, focus, and
-accessibility traits. Flutter uses Material button APIs and native gesture,
-focus, semantics, and icon facilities. The internal event-capability bit does
+accessibility traits. The internal event-capability bit does
 not become a public LG attribute.
 
 ### ToggleButton contract
@@ -375,7 +365,7 @@ reconciliation channel. Native interaction updates pressed feedback
 immediately and the next changed model value corrects it. When `selected` is
 absent, selection is backend-owned transient state and survives unrelated
 property patches without entering the retained protocol tree. Web uses one
-native `button` with `aria-pressed`; SwiftUI and Flutter keep the transient
+native `button` with `aria-pressed`; SwiftUI keeps the transient
 selection in the identity-preserving native view state associated with that
 retained node.
 
@@ -392,7 +382,6 @@ namespace and remain host resources:
   CSS mask channel as built-ins;
 - SwiftUI registers a bare app name to either an SF Symbol or an Asset Catalog
   image;
-- Flutter registers a bare app name to `IconData`;
 - an unregistered but well-shaped `app:` name renders the platform's visible
   missing-icon fallback rather than becoming an invisible gap;
 - registration belongs to backend construction and is immutable while a
@@ -422,8 +411,7 @@ two elements.
 Each element remains one retained LUI node. Backend-owned implementation
 children do not enter the retained tree: Web uses a native checkbox input in a
 semantic label wrapper, SwiftUI uses `Toggle` with the platform checkbox or
-switch style, and Flutter composes its native `Checkbox` or `Switch` with the
-label. A checked or text patch updates that retained node and must not replace
+switch style. A checked or text patch updates that retained node and must not replace
 the platform control.
 
 ### Toggle, RadioGroup, Radio and Slider contract
@@ -444,7 +432,7 @@ These daily value controls preserve the pinned Vercel Native API:
 Radio activation emits `on-change` only for a new selection. Activating an
 already selected radio may still reach the legacy toggle or press fallback.
 Web radios share one native input name per retained group so browser focus and
-arrow navigation remain native. Flutter uses `RadioGroup`, and Apple keeps the
+arrow navigation remain native. Apple keeps the
 same semantic group while rendering platform controls. Slider drag state stays
 host-owned during interaction; the applied fraction returns through the typed
 event pipeline and the Signal remains the reconciliation source.
@@ -461,8 +449,7 @@ only when a backend renders the fill. Discrete indexes and counts remain
 integers.
 
 Web updates one retained progressbar DOM node and its CSS fill fraction.
-SwiftUI uses `ProgressView(value:)`, and Flutter uses
-`LinearProgressIndicator`; a Signal patch preserves the platform object and
+SwiftUI uses `ProgressView(value:)`; a Signal patch preserves the platform object and
 does not rebuild the gallery section.
 
 ## State ownership
@@ -503,8 +490,7 @@ the common Enter path to submit while Shift+Enter retains newline entry.
 Multiline `textarea` grows to its content until constrained by admitted layout
 bounds. Auto-sizing is an implementation behavior, not an extra `autoresize`
 prop. Web uses native `field-sizing: content`, SwiftUI uses vertical-axis native
-text layout, and Flutter uses an unbounded native multiline `TextField`. Signal
-text patches preserve the DOM element, SwiftUI model, Flutter controller,
+text layout. Signal text patches preserve the DOM element, SwiftUI model,
 selection, focus, and IME-owned transient state.
 
 ### InputGroup contract
@@ -532,8 +518,7 @@ Dynamic and keyed children remain ordinary LG retained structure.
 
 Web uses a semantic group and CSS `:focus-within` around the native textarea.
 SwiftUI composes the retained text editor and accessory row inside one native
-rounded field, and Flutter composes the retained `TextField` and action row
-inside one Material input surface. Text changes patch only the existing
+rounded field. Text changes patch only the existing
 textarea node, action swaps patch only the actions segment, and focus chrome is
 backend-owned transient state: none of these updates rebuild the InputGroup or
 application component.
@@ -563,10 +548,7 @@ focus move does not commit model selection until activation.
 
 Web uses retained native DOM controls, Tailwind component selectors, the shared
 Base UI-aligned portal, collision handling, keyboard traversal, and pointer
-corridors for nested menus. Flutter keeps one stable `MenuAnchor` around the
-trigger before and after the model mounts its menu, and maps nested rows to
-Material `SubmenuButton`; Material owns overlay placement, focus traversal,
-animation, collision handling, and outside dismissal. Apple keeps an equally
+corridors for nested menus. Apple keeps an equally
 stable SwiftUI host. Select and action menus use a native popover, while the
 editable Combobox uses a small SwiftUI `Layout` overlay because presenting a
 popover resigns the iPhone text field and breaks IME composition. That platform
@@ -597,9 +579,7 @@ waits to disambiguate it. Space dispatches `on-press`. Enter dispatches
 
 Web uses one retained native button row, native click/double-click ordering,
 and Tailwind component selectors. SwiftUI uses a native Button row with an
-additive simultaneous double-tap gesture and return-key handling. Flutter
-keeps a native Material `ListTile` and uses a small pointer-release adapter
-only for the reference's immediate-plus-additive click contract. All three
+additive simultaneous double-tap gesture and return-key handling. Both
 retain the row and its custom child subtree when a selection Signal changes.
 
 ### Avatar and registered-image contract
@@ -619,12 +599,11 @@ that id, independently of LG patch generations. The registry never becomes
 application state and never owns loading policy.
 
 The host registers an already-decoded platform image under a caller-chosen id:
-Web uses a URL plus decoded pixel dimensions, SwiftUI uses `CGImage`, and
-Flutter uses `dart:ui.Image`. Replacing an existing id is atomic. Unregistering
+Web uses a URL plus decoded pixel dimensions, and SwiftUI uses `CGImage`.
+Replacing an existing id is atomic. Unregistering
 removes the registry reference and restores initials on every referencing
 Avatar. Callers retain responsibility for URL/object-URL lifetime on Web and for any
-external references they keep to native image objects. Flutter explicitly
-releases its cloned image handles when the backend is disposed. Apple and Web
+external references they keep to native image objects. Apple and Web
 registry references follow the backend or renderer lifetime. On every
 backend, `unregister` immediately removes the registry slot.
 
@@ -661,7 +640,7 @@ a submitted frame draws a subdued deterministic id-derived placeholder, so
 snapshots do not depend on producer timing. Surface ids occupy
 an independent registry from image ids. A host producer submits an already
 decoded platform frame under a stable id: Web supplies a URL plus decoded
-pixel dimensions, SwiftUI a `CGImage`, and Flutter a `dart:ui.Image`.
+pixel dimensions, and SwiftUI a `CGImage`.
 Submitting another frame atomically replaces the pending frame for that id;
 native presentation consumes the latest frame and invalidates only retained
 MediaSurface nodes that reference it. Unregistering the surface removes its
@@ -696,8 +675,8 @@ metadata.
 
 The backend presents one horizontal native row with list semantics, numbered
 or completed indicators, labels, and connectors. Web uses semantic list items
-and Tailwind component selectors; SwiftUI uses retained `HStack` composition;
-Flutter uses retained `Row` widgets. Patching `active` updates the existing
+and Tailwind component selectors; SwiftUI uses retained `HStack` composition.
+Patching `active` updates the existing
 Stepper and direct Step presentations without rebuilding their child models or
 unrelated nodes.
 
@@ -721,8 +700,7 @@ they do not want a trailing line. A pressable item binds one event to its root
 and adds platform affordance without duplicating handlers on its text.
 
 Web renders one semantic list-item row with Tailwind component selectors.
-SwiftUI composes native labels, shapes, and Button behavior; Flutter composes
-Material text, icon, and InkWell behavior. Each backend keeps the semantic
+SwiftUI composes native labels, shapes, and Button behavior. Each backend keeps the semantic
 TimelineItem as one stable backend node: property Signals patch its internal
 native composition in place, and selection or copy changes never reconstruct
 the Timeline, sibling items, or application component.
@@ -743,7 +721,7 @@ authored `gap` or padding value wins for that field. A selected trigger changes
 only that retained Button node; it does not replace the Tabs node, sibling
 triggers or selected content. Web maps the strip to a `tablist` and direct
 Button children to `tab` semantics. Its `label` names the tablist for assistive
-technology. SwiftUI and Flutter use retained native Button controls with
+technology. SwiftUI uses retained native Button controls with
 platform tab-strip presentation and selected semantics. Enter or Space
 activates the focused trigger through the Button's normal platform behavior.
 On Web, horizontal Left and Right navigation follows computed LTR or RTL
@@ -782,8 +760,8 @@ move to the first and last eligible enabled control. Activation remains the
 child's native Enter or Space behavior and does not move selection by itself.
 Web exposes a labelled `group` with one roving Tab stop, preserves the latest
 eligible stop across unrelated retained patches, and implements the keymap by
-delegation. SwiftUI and Flutter use retained native controls plus their native
-focus systems. Reparenting a retained control into or out of a group updates
+delegation. SwiftUI uses retained native controls plus its native
+focus system. Reparenting a retained control into or out of a group updates
 only that control's contextual presentation and focus membership.
 
 ### Breadcrumb and Pagination contract
@@ -817,8 +795,8 @@ IconButton element yet, so the current public contract exercises Button
 children. Breadcrumb's pressable Text participates in normal sequential focus
 and native activation, but not in the reference's Button-only arrow group.
 Focus movement never selects or activates a child. Web exposes labelled group
-semantics with retained DOM nodes; SwiftUI and Flutter retain native controls
-and their native focus objects. Reparenting updates contextual focus membership
+semantics with retained DOM nodes; SwiftUI retains native controls
+and its native focus objects. Reparenting updates contextual focus membership
 without recreating the child.
 
 ## Showcase
@@ -836,11 +814,11 @@ element and covers:
 - reactive updates proving retained identity;
 - platform-specific tweaks that do not change the standard API.
 
-The same LG showcase source runs on Web, SwiftUI desktop/iOS, and Flutter
-desktop/mobile. Host shells stay deliberately small.
+The same LG showcase source runs on Web and SwiftUI desktop/iOS. Host
+shells stay deliberately small.
 
-The picker and ListItem sections are exercised through the real Web host and
-the Flutter host across the OCaml FFI boundary. Integration checks open and
+The picker and ListItem sections are exercised through the real Web and
+native hosts across the OCaml FFI boundary. Integration checks open and
 close overlays, commit selection and free-form submission, perform immediate
 single selection plus additive double-click activation, and assert that the
 retained Select, native text editor, and ListItem content survive their Signal
@@ -906,7 +884,7 @@ label). `gap`, flow alignment, selection, and application resize callbacks are
 invalid. Children stack; authors put an explicit row or column inside for flow.
 
 Web uses the browser's horizontal resize affordance and Tailwind surface
-chrome. SwiftUI and Flutter keep drag width in identity-preserving native view
+chrome. SwiftUI keeps drag width in identity-preserving native view
 state keyed by the retained node. A changed source width reconciles that state;
 painting, child, or sibling patches do not. Keyboard or assistive increment and
 decrement resize by a platform step without creating an LG event. Every backend
@@ -939,8 +917,7 @@ The remaining admitted Split attributes are the reference container surface
 vocabulary: `grow`, padding, colors, border, radius, width and height bounds,
 style class, and accessible label. Flow alignment and selection are invalid.
 Web uses a semantic separator with pointer capture, ArrowLeft/ArrowRight and
-Home/End. SwiftUI uses a `DragGesture` and adjustable separator semantics;
-Flutter uses a `GestureDetector`, resize cursor, and adjustable semantics.
+Home/End. SwiftUI uses a `DragGesture` and adjustable separator semantics.
 All hosts retain both pane identities across value patches and user resizing,
 and reject batches with fewer or more than two children atomically.
 
@@ -966,8 +943,7 @@ wins.
 Web presents an anchored menu surface at the pointer, clips it to the viewport,
 supports native menu keyboard traversal, and dismisses on Escape, outside
 press, item selection, blur, or a newer invocation. SwiftUI uses the system
-`contextMenu` presentation. Flutter uses the platform Material popup-menu path
-at the secondary-click or long-press position. Disabled items and separators
+`contextMenu` presentation. Disabled items and separators
 preserve their declared slots. Selecting an enabled item dispatches that
 retained MenuItem's existing typed `Press` event; dismissal and presentation
 remain backend-owned and never enter the LG model. ContextMenu and item Signal
@@ -1025,9 +1001,7 @@ Signals use those same names. Typography sizes `heading` and `display` are
 legal on TableCell but remain invalid on control-sized widgets.
 
 Web uses semantic `table`/`tr`/`td` DOM with grid, row, and grid-cell
-accessibility semantics. SwiftUI uses `Grid` and `GridRow`. Flutter composes
-retained per-row `Table` widgets so a row or cell patch does not rebuild an
-enclosing application component. The final row has no divider, selectable rows
+accessibility semantics. SwiftUI uses `Grid` and `GridRow`. The final row has no divider, selectable rows
 receive a full-width highlight, and an enabled pressable cell is one keyboard
 and accessibility activation target.
 
@@ -1064,8 +1038,7 @@ must return through LG and patch the same retained row.
 
 Web uses `role="tree"` and `role="treeitem"` with roving `tabindex`. SwiftUI
 uses one retained focus coordinator around native row content and exposes the
-same tree/list accessibility semantics on macOS and iOS. Flutter uses a native
-`FocusTraversalGroup` plus `Focus`/`Actions` around retained row widgets. None
+same tree/list accessibility semantics on macOS and iOS. None
 of the backends creates a parallel tree model or replaces the enclosing LG
 component when focus, selection, disclosure, or keyed row order changes.
 
@@ -1080,8 +1053,8 @@ while the title is rendered by the platform surface chrome.
 
 Every backend presents a dialog relative to the root rather than its declaring
 layout container. Web uses the native `dialog` top layer, SwiftUI uses one
-declarative modal presentation path for both Apple platforms, and Flutter uses
-the platform modal route/widget API. Escape or the platform back action and a
+declarative modal presentation path for both Apple platforms.
+Escape or the platform back action and a
 backdrop press emit one `Dismiss` event for the topmost dialog. Presentation
 moves focus into the dialog, traps traversal while it is modal, and restores
 the previously focused control after removal. Nested declaration must not make
@@ -1101,9 +1074,7 @@ patterns across Web, Apple, and Material platforms.
 
 Each backend uses its native sheet interaction. SwiftUI uses the system
 `.sheet` presentation, including platform swipe, keyboard, accessibility, and
-adaptive iPhone/iPad/macOS behavior. Flutter uses the Material modal bottom
-sheet route with its native drag, system-back, barrier, safe-area, and focus
-behavior. Web follows Base UI's sheet/drawer popup behavior while exposing only
+adaptive iPhone/iPad/macOS behavior. Web follows Base UI's sheet/drawer popup behavior while exposing only
 the portable `sheet` name. Platform adaptation must not leak additional public
 attributes.
 
@@ -1140,9 +1111,8 @@ must neither replace the trigger nor leak a pending timer or overlay.
 
 Web uses a semantic `role="tooltip"` DOM leaf and a document-scoped hover-intent
 coordinator. SwiftUI uses one stateful presenter attached to the retained
-trigger subtree and the platform popover/help accessibility path. Flutter
-wraps the retained trigger subtree with its native `Tooltip` presentation and a
-shared intent coordinator. Placement may auto-flip or adapt at host edges, but
+trigger subtree and the platform popover/help accessibility path.
+Placement may auto-flip or adapt at host edges, but
 the public edge preference and state boundary stay identical.
 
 #### Accordion contract
@@ -1163,8 +1133,7 @@ real button trigger linked to a retained `region` panel. Activation emits one
 open state. The panel measures its content and uses the Base UI 150 ms
 height-transition contract for opening and closing; reduced motion settles
 synchronously. SwiftUI uses `DisclosureGroup` with a model-backed binding.
-Flutter uses `ExpansionTile` with model-owned expansion and a stable retained
-key. Property patches update the same native node and never remount its child
+Property patches update the same native node and never remount its child
 models. Collapsing hides content visually but does not remove it from LUI's
 retained tree.
 
@@ -1179,7 +1148,7 @@ retained tree.
 - cold reproducible builds and packaged host apps;
 - performance budgets and long-running mutation tests;
 - accessibility audits and keyboard-only passes;
-- Web browser matrix, Apple desktop/iOS and Flutter desktop/Android coverage;
+- Web browser matrix, Apple desktop/iOS and Android coverage;
 - component gallery parity audit against the pinned reference.
 
 Runtime performance is qualified separately from deterministic correctness

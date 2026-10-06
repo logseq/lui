@@ -173,7 +173,6 @@ let () =
       (ExtensionEvent (node, identifier, name, Lui_json.parse_values json))
   in
   Callback.register "lui_ocaml_extension_event" extension_event;
-  Callback.register "lui_flutter_extension_event" extension_event;
   Callback.register "lui_ocaml_dispose" (fun () ->
       latest_patch := "";
       ignore (Lui_app.dispose (app ()));

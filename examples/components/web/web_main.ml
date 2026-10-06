@@ -583,8 +583,7 @@ let mount_gallery_shell renderer root host =
 
 (* Entry *)
 
-let app_icon_url =
-  "/examples/components/flutter/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_128.png"
+let app_icon_url = "/examples/components/web/app_icon_128.png"
 
 let main host =
   let registry = Extension_schemas.registry () in

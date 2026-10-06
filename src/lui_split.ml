@@ -21,11 +21,6 @@ let profiles =
   [
     { profile_os = MacOS; profile_host = SwiftUIHost };
     { profile_os = IOS; profile_host = SwiftUIHost };
-    { profile_os = AndroidOS; profile_host = FlutterHost };
-    { profile_os = IOS; profile_host = FlutterHost };
-    { profile_os = LinuxOS; profile_host = FlutterHost };
-    { profile_os = MacOS; profile_host = FlutterHost };
-    { profile_os = WindowsOS; profile_host = FlutterHost };
     { profile_os = MacOS; profile_host = GPUIHost };
     { profile_os = LinuxOS; profile_host = GPUIHost };
     { profile_os = WindowsOS; profile_host = GPUIHost };

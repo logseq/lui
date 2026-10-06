@@ -25,7 +25,6 @@ let operating_system = function
 let host_kind = function
   | 1 -> WebHost
   | 2 -> SwiftUIHost
-  | 3 -> FlutterHost
   | 6 -> GPUIHost
   | _ -> GenericHost
 
@@ -139,6 +138,5 @@ let () =
   Callback.register "lui_ocaml_pointer_leave" pointer_leave;
   Callback.register "lui_ocaml_context_menu_press" context_menu_press;
   Callback.register "lui_ocaml_extension_event" extension_event;
-  Callback.register "lui_flutter_extension_event" extension_event;
   Callback.register "lui_ocaml_dispose" dispose;
   Callback.register "lui_ocaml_root_node" root_node

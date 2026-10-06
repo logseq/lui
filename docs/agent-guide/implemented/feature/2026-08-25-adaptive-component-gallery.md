@@ -15,7 +15,6 @@ Present the component showcase as one component page at a time on every host:
 
 - iPhone starts with a component list and pushes one component detail.
 - iPad and Mac use a persistent sidebar and detail column.
-- Flutter uses Material navigation rail or drawer according to width.
 - Web uses a responsive sidebar or horizontal compact component picker.
 - The selected detail renders the existing LG retained subtree directly.
 - Component state and events remain owned by the LG model and Signals.
@@ -47,16 +46,6 @@ The SwiftUI host uses `NavigationSplitView` and `List`:
   system background, and a navigation title;
 - the host owns navigation selection only; it never mirrors component state.
 
-## Flutter mapping
-
-The Flutter host derives the same page descriptors from the wire-retained root:
-
-- compact width: Material `NavigationDrawer` plus one selected page;
-- regular width: scrollable `NavigationRail` plus one selected page;
-- page widgets keep stable retained node keys when navigation changes;
-- patch callbacks rebuild only host projection metadata while backend node
-  handles continue to invalidate incrementally.
-
 ## Web mapping
 
 The Web host derives the same page descriptors after the initial retained batch.
@@ -71,8 +60,7 @@ The LG integration test proves all 64 public components are unique direct page
 roots. Hosts that register the Gallery's `NativeExtension` expose 65 derived
 navigation entries. Browser verification checks all 65 entries at a compact
 viewport, exactly one mounted component heading, and no page-level horizontal
-overflow. Flutter backend tests cover direct-root section projection and
-retained widget identity.
+overflow.
 
 Maestro exercises list-to-detail navigation and real interactions for Button,
 Tabs, Dialog, text input, Checkbox/Switch Signal sharing, and Radio selection.

@@ -10,7 +10,7 @@ opam-version: "2.0"
 version: "0.1.0"
 synopsis: "A reactive retained cross-platform UI runtime in OCaml"
 description:
-  "Declarative UI, incremental patch batching, and Apple, Flutter, and Web backends powered by ocaml-signal. Element constructors follow the convention unit -> ?props -> children:t list -> unit -> t so optional props erase under a trailing unit argument."
+  "Declarative UI, incremental patch batching, and Apple and Web backends powered by ocaml-signal. Element constructors follow the convention unit -> ?props -> children:t list -> unit -> t so optional props erase under a trailing unit argument."
 maintainer: ["Tienson Qin <tiensonqin@gmail.com>"]
 authors: ["Tienson Qin"]
 license: "MIT"

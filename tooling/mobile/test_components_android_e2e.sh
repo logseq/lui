@@ -4,7 +4,7 @@ set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 app_id=dev.lui.components
-apk_path="$repo_root/examples/components/flutter/build/app/outputs/flutter-apk/app-debug.apk"
+apk_path="$repo_root/examples/components/android/app/build/outputs/apk/debug/app-debug.apk"
 flow="$repo_root/.maestro/android-components-interactions.yaml"
 screenshots_dir="$repo_root/_build/mobile-components/android-e2e"
 maestro_bin=${MAESTRO_BIN:-$(command -v maestro || true)}
@@ -33,8 +33,8 @@ adb -s "$device" get-state >/dev/null \
 if [[ ${LUI_ANDROID_E2E_SKIP_BUILD:-0} != 1 ]]; then
   "$repo_root/tooling/mobile/build_components_android.sh" >/dev/null
   (
-    cd "$repo_root/examples/components/flutter"
-    flutter build apk --debug --target-platform android-arm64
+    cd "$repo_root/examples/components/android"
+    ./gradlew :app:assembleDebug
   )
 fi
 [[ -f $apk_path ]] || die "Android Gallery APK is missing: $apk_path"

@@ -354,616 +354,528 @@
     {
       "lg": "Root",
       "wire": "root",
-      "dart": "root",
       "swift": "root",
       "container": true
     },
     {
       "lg": "Row",
       "wire": "row",
-      "dart": "row",
       "swift": "row",
       "container": true
     },
     {
       "lg": "Column",
       "wire": "column",
-      "dart": "column",
       "swift": "column",
       "container": true
     },
     {
       "lg": "Grid",
       "wire": "grid",
-      "dart": "grid",
       "swift": "grid",
       "container": true
     },
     {
       "lg": "Stack",
       "wire": "stack",
-      "dart": "stack",
       "swift": "stack",
       "container": true
     },
     {
       "lg": "EdgeInset",
       "wire": "edge-inset",
-      "dart": "edgeInset",
       "swift": "edgeInset",
       "container": true
     },
     {
       "lg": "Overlay",
       "wire": "overlay",
-      "dart": "overlay",
       "swift": "overlay",
       "container": true
     },
     {
       "lg": "ViewThatFits",
       "wire": "view-that-fits",
-      "dart": "viewThatFits",
       "swift": "viewThatFits",
       "container": true
     },
     {
       "lg": "Panel",
       "wire": "panel",
-      "dart": "panel",
       "swift": "panel",
       "container": true
     },
     {
       "lg": "Card",
       "wire": "card",
-      "dart": "card",
       "swift": "card",
       "container": true
     },
     {
       "lg": "Alert",
       "wire": "alert",
-      "dart": "alert",
       "swift": "alert",
       "container": true
     },
     {
       "lg": "Bubble",
       "wire": "bubble",
-      "dart": "bubble",
       "swift": "bubble",
       "container": true
     },
     {
       "lg": "Box",
       "wire": "box",
-      "dart": "box",
       "swift": "box",
       "container": true
     },
     {
       "lg": "Text",
       "wire": "text",
-      "dart": "text",
       "swift": "text",
       "container": true
     },
     {
       "lg": "Heading",
       "wire": "heading",
-      "dart": "heading",
       "swift": "heading",
       "container": true
     },
     {
       "lg": "Paragraph",
       "wire": "paragraph",
-      "dart": "paragraph",
       "swift": "paragraph",
       "container": true
     },
     {
       "lg": "Label",
       "wire": "label",
-      "dart": "label",
       "swift": "label",
       "container": true
     },
     {
       "lg": "Button",
       "wire": "button",
-      "dart": "button",
       "swift": "button",
       "container": true
     },
     {
       "lg": "ToggleButton",
       "wire": "toggle-button",
-      "dart": "toggleButton",
       "swift": "toggleButton",
       "container": false
     },
     {
       "lg": "Toggle",
       "wire": "toggle",
-      "dart": "toggle",
       "swift": "toggle",
       "container": false
     },
     {
       "lg": "RadioGroup",
       "wire": "radio-group",
-      "dart": "radioGroup",
       "swift": "radioGroup",
       "container": true
     },
     {
       "lg": "Radio",
       "wire": "radio",
-      "dart": "radio",
       "swift": "radio",
       "container": false
     },
     {
       "lg": "Slider",
       "wire": "slider",
-      "dart": "slider",
       "swift": "slider",
       "container": false
     },
     {
       "lg": "NumberStepper",
       "wire": "number-stepper",
-      "dart": "numberStepper",
       "swift": "numberStepper",
       "container": false
     },
     {
       "lg": "TextField",
       "wire": "text-field",
-      "dart": "textField",
       "swift": "textField",
       "container": false
     },
     {
       "lg": "SecureField",
       "wire": "secure-field",
-      "dart": "secureField",
       "swift": "secureField",
       "container": false
     },
     {
       "lg": "Input",
       "wire": "input",
-      "dart": "input",
       "swift": "input",
       "container": false
     },
     {
       "lg": "SearchField",
       "wire": "search-field",
-      "dart": "searchField",
       "swift": "searchField",
       "container": false
     },
     {
       "lg": "Textarea",
       "wire": "textarea",
-      "dart": "textarea",
       "swift": "textarea",
       "container": false
     },
     {
       "lg": "Checkbox",
       "wire": "checkbox",
-      "dart": "checkbox",
       "swift": "checkbox",
       "container": false
     },
     {
       "lg": "SwitchControl",
       "wire": "switch",
-      "dart": "switchControl",
       "swift": "switchControl",
       "container": false
     },
     {
       "lg": "Progress",
       "wire": "progress",
-      "dart": "progress",
       "swift": "progress",
       "container": false
     },
     {
       "lg": "Divider",
       "wire": "divider",
-      "dart": "divider",
       "swift": "divider",
       "container": false
     },
     {
       "lg": "Scroll",
       "wire": "scroll",
-      "dart": "scroll",
       "swift": "scroll",
       "container": true
     },
     {
       "lg": "ListContainer",
       "wire": "list",
-      "dart": "list",
       "swift": "list",
       "container": true
     },
     {
       "lg": "VirtualList",
       "wire": "virtual-list",
-      "dart": "virtualList",
       "swift": "virtualList",
       "container": true
     },
     {
       "lg": "Tabs",
       "wire": "tabs",
-      "dart": "tabs",
       "swift": "tabs",
       "container": true
     },
     {
       "lg": "BottomTabs",
       "wire": "bottom-tabs",
-      "dart": "bottomTabs",
       "swift": "bottomTabs",
       "container": true
     },
     {
       "lg": "BottomTab",
       "wire": "bottom-tab",
-      "dart": "bottomTab",
       "swift": "bottomTab",
       "container": true
     },
     {
       "lg": "ButtonGroup",
       "wire": "button-group",
-      "dart": "buttonGroup",
       "swift": "buttonGroup",
       "container": true
     },
     {
       "lg": "ToggleGroup",
       "wire": "toggle-group",
-      "dart": "toggleGroup",
       "swift": "toggleGroup",
       "container": true
     },
     {
       "lg": "Spacer",
       "wire": "spacer",
-      "dart": "spacer",
       "swift": "spacer",
       "container": false
     },
     {
       "lg": "Spinner",
       "wire": "spinner",
-      "dart": "spinner",
       "swift": "spinner",
       "container": false
     },
     {
       "lg": "Icon",
       "wire": "icon",
-      "dart": "icon",
       "swift": "icon",
       "container": false
     },
     {
       "lg": "Select",
       "wire": "select",
-      "dart": "select",
       "swift": "select",
       "container": false
     },
     {
       "lg": "Combobox",
       "wire": "combobox",
-      "dart": "combobox",
       "swift": "combobox",
       "container": false
     },
     {
       "lg": "DropdownMenu",
       "wire": "dropdown-menu",
-      "dart": "dropdownMenu",
       "swift": "dropdownMenu",
       "container": true
     },
     {
       "lg": "ContextMenu",
       "wire": "context-menu",
-      "dart": "contextMenu",
       "swift": "contextMenu",
       "container": true
     },
     {
       "lg": "MenuItem",
       "wire": "menu-item",
-      "dart": "menuItem",
       "swift": "menuItem",
       "container": true
     },
     {
       "lg": "MenuTrigger",
       "wire": "menu-trigger",
-      "dart": "menuTrigger",
       "swift": "menuTrigger",
       "container": true
     },
     {
       "lg": "ListItem",
       "wire": "list-item",
-      "dart": "listItem",
       "swift": "listItem",
       "container": true
     },
     {
       "lg": "Avatar",
       "wire": "avatar",
-      "dart": "avatar",
       "swift": "avatar",
       "container": false
     },
     {
       "lg": "Image",
       "wire": "image",
-      "dart": "image",
       "swift": "image",
       "container": false
     },
     {
       "lg": "MediaSurface",
       "wire": "media-surface",
-      "dart": "mediaSurface",
       "swift": "mediaSurface",
       "container": false
     },
     {
       "lg": "Stepper",
       "wire": "stepper",
-      "dart": "stepper",
       "swift": "stepper",
       "container": true
     },
     {
       "lg": "Step",
       "wire": "step",
-      "dart": "step",
       "swift": "step",
       "container": false
     },
     {
       "lg": "Timeline",
       "wire": "timeline",
-      "dart": "timeline",
       "swift": "timeline",
       "container": true
     },
     {
       "lg": "TimelineItem",
       "wire": "timeline-item",
-      "dart": "timelineItem",
       "swift": "timelineItem",
       "container": false
     },
     {
       "lg": "InputGroup",
       "wire": "input-group",
-      "dart": "inputGroup",
       "swift": "inputGroup",
       "container": true
     },
     {
       "lg": "InputGroupActions",
       "wire": "input-group-actions",
-      "dart": "inputGroupActions",
       "swift": "inputGroupActions",
       "container": true
     },
     {
       "lg": "Breadcrumb",
       "wire": "breadcrumb",
-      "dart": "breadcrumb",
       "swift": "breadcrumb",
       "container": true
     },
     {
       "lg": "Pagination",
       "wire": "pagination",
-      "dart": "pagination",
       "swift": "pagination",
       "container": true
     },
     {
       "lg": "Accordion",
       "wire": "accordion",
-      "dart": "accordion",
       "swift": "accordion",
       "container": true
     },
     {
       "lg": "Table",
       "wire": "table",
-      "dart": "table",
       "swift": "table",
       "container": true
     },
     {
       "lg": "TableRow",
       "wire": "table-row",
-      "dart": "tableRow",
       "swift": "tableRow",
       "container": true
     },
     {
       "lg": "TableCell",
       "wire": "table-cell",
-      "dart": "tableCell",
       "swift": "tableCell",
       "container": false
     },
     {
       "lg": "Tree",
       "wire": "tree",
-      "dart": "tree",
       "swift": "tree",
       "container": true
     },
     {
       "lg": "Resizable",
       "wire": "resizable",
-      "dart": "resizable",
       "swift": "resizable",
       "container": true
     },
     {
       "lg": "Split",
       "wire": "split",
-      "dart": "split",
       "swift": "split",
       "container": true
     },
     {
       "lg": "Dialog",
       "wire": "dialog",
-      "dart": "dialog",
       "swift": "dialog",
       "container": true
     },
     {
       "lg": "Drawer",
       "wire": "drawer",
-      "dart": "drawer",
       "swift": "drawer",
       "container": true
     },
     {
       "lg": "Sheet",
       "wire": "sheet",
-      "dart": "sheet",
       "swift": "sheet",
       "container": true
     },
     {
       "lg": "Tooltip",
       "wire": "tooltip",
-      "dart": "tooltip",
       "swift": "tooltip",
       "container": false
     },
     {
       "lg": "Toast",
       "wire": "toast",
-      "dart": "toast",
       "swift": "toast",
       "container": true
     },
     {
       "lg": "Toolbar",
       "wire": "toolbar",
-      "dart": "toolbar",
       "swift": "toolbar",
       "container": true
     },
     {
       "lg": "StatusBar",
       "wire": "status-bar",
-      "dart": "statusBar",
       "swift": "statusBar",
       "container": false
     },
     {
       "lg": "ListSection",
       "wire": "list-section",
-      "dart": "listSection",
       "swift": "listSection",
       "container": true
     },
     {
       "lg": "ListSectionHeader",
       "wire": "list-section-header",
-      "dart": "listSectionHeader",
       "swift": "listSectionHeader",
       "container": true
     },
     {
       "lg": "ListSectionFooter",
       "wire": "list-section-footer",
-      "dart": "listSectionFooter",
       "swift": "listSectionFooter",
       "container": true
     },
     {
       "lg": "SwipeActions",
       "wire": "swipe-actions",
-      "dart": "swipeActions",
       "swift": "swipeActions",
       "container": true
     },
     {
       "lg": "SwipeAction",
       "wire": "swipe-action",
-      "dart": "swipeAction",
       "swift": "swipeAction",
       "container": false
     },
     {
       "lg": "FilePicker",
       "wire": "file-picker",
-      "dart": "filePicker",
       "swift": "filePicker",
       "container": true
     },
     {
       "lg": "Kbd",
       "wire": "kbd",
-      "dart": "kbd",
       "swift": "kbd",
       "container": false
     },
     {
       "lg": "Link",
       "wire": "link",
-      "dart": "link",
       "swift": "link",
       "container": true
     },
     {
       "lg": "FileImage",
       "wire": "file-image",
-      "dart": "fileImage",
       "swift": "fileImage",
       "container": false
     },
     {
       "lg": "FilePreview",
       "wire": "file-preview",
-      "dart": "filePreview",
       "swift": "filePreview",
       "container": false
     },
     {
       "lg": "Br",
       "wire": "br",
-      "dart": "br",
       "swift": "br",
       "container": false
     },
     {
       "lg": "Popover",
       "wire": "popover",
-      "dart": "popover",
       "swift": "popover",
       "container": true
     }

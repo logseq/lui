@@ -37,7 +37,7 @@ func galleryExtensionRegistry() throws -> LUIAppleExtensionRegistry {
     try registry.registerTweak(
         LUIAppleTweak(
             identifier: "gallery-accent",
-            fingerprint: "lui-tweak-v1|14:gallery-accent|profiles:android/flutter,ios/flutter,ios/swiftui,linux/flutter,linux/gpui,macos/flutter,macos/gpui,macos/swiftui,web/web,windows/flutter,windows/gpui|properties:"
+            fingerprint: "lui-tweak-v1|14:gallery-accent|profiles:ios/swiftui,linux/gpui,macos/gpui,macos/swiftui,web/web,windows/gpui|properties:"
         ) { content, _ in
             AnyView(
                 content

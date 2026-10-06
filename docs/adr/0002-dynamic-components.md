@@ -9,7 +9,7 @@ Date: 2026-08-25
 LUI intentionally exposes a closed, typed standard component protocol. The
 closed protocol gives every standard element the same validation, retained
 identity, event semantics, accessibility contract, and backend coverage on
-Web, Apple, and Flutter.
+Web and Apple.
 
 Applications still need native capabilities that do not belong in the
 standard component catalog. Examples include an iOS MapKit view, a photo
@@ -41,7 +41,7 @@ shadow or alter a standard component.
 ```text
 standard LUI node
     -> generated closed protocol
-    -> built-in Web / SwiftUI / Flutter renderer
+    -> built-in Web / SwiftUI renderer
 
 registered component
     -> extension schema and retained extension node
@@ -288,16 +288,16 @@ structured collections.
 4. Add an Apple component registry with a stable `AnyView` boundary.
 5. Implement an application-owned MapKit example without adding its identifier
    to `schema/components.json`.
-6. Add Web and Flutter registry interfaces with the same lifecycle and
+6. Add a Web registry interface with the same lifecycle and
    validation rules.
 7. Add macro-generated typed LG wrappers. Host registrations stay explicit so
-   native factories remain ordinary Swift, Dart, or Web code.
+   native factories remain ordinary Swift or Web code.
 
 ## Implementation status
 
-Implemented on 2026-08-25 for the LG runtime and retained Web, SwiftUI, and
-Flutter backends. The component Gallery exercises an application-owned MapKit
-extension on Apple hosts and a native retained card on Web and Flutter without
+Implemented on 2026-08-25 for the LG runtime and retained Web and SwiftUI
+backends. The component Gallery exercises an application-owned MapKit
+extension on Apple hosts and a native retained card on Web without
 adding either identifier to the standard generated component schema.
 
 ## Acceptance criteria

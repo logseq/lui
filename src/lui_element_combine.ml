@@ -141,17 +141,10 @@ let composer_send_button context ?send_icon send_disabled on_send : t =
   let apple_icon = Option.value send_icon ~default:(`arrow_up : icon) in
   if Lui_ui.platform context = Lui_protocol.AndroidOS
   then
-    if Lui_ui.host context = Lui_protocol.FlutterHost
-    then
-      button
-        ~icon:android_icon ~variant:`primary ~size:`icon ~width:48 ~height:48
-        ~label:"Send" ~accessibility_identifier:"button.send"
-        ?disabled_signal:send_disabled ~on_press:on_send []
-    else
-      button
-        ~icon:android_icon ~variant:`primary ~label:"Send"
-        ~accessibility_identifier:"button.send" ?disabled_signal:send_disabled
-        ~on_press:on_send ~text:"Send" []
+    button
+      ~icon:android_icon ~variant:`primary ~label:"Send"
+      ~accessibility_identifier:"button.send" ?disabled_signal:send_disabled
+      ~on_press:on_send ~text:"Send" []
   else
     button
       ~icon:apple_icon ~variant:`ghost ~width:36 ~height:36
@@ -185,7 +178,6 @@ let composer
   : t
   =
  fun context parent ->
-   let flutter = Lui_ui.host context = Lui_protocol.FlutterHost in
    let attachment_strip =
      match attachments with
      | None -> []
@@ -223,9 +215,9 @@ let composer
        ?key ?accessibility_identifier
        ~style_class:"composer-surface"
        ~min_height:58 ~gap:0
-       ~padding_horizontal:(if flutter then 12 else 16)
-       ~padding_vertical:(if flutter then 12 else 8)
-       ~background:(if flutter then "surface-container-high" else "glass")
+       ~padding_horizontal:16
+       ~padding_vertical:8
+       ~background:"glass"
        ~corner_radius:24
        ([ box ~height:6 ~accessibility_identifier:"spacer.composer.top" [] ]
         @ attachment_strip
@@ -296,19 +288,12 @@ let composer_collapsed
   : t
   =
  fun context parent ->
-   if Lui_ui.host context = Lui_protocol.FlutterHost
-   then
-     (button
-        ?key ?accessibility_identifier ~variant:`secondary ?icon ~grow:1.0
-        ~height:58 ~padding_horizontal:20 ~label ~text:label ~on_press [])
-       context parent
-   else
-     (button
-        ?key ?accessibility_identifier ~variant:`ghost ~grow:1.0 ~height:58
-        ~padding_horizontal:30 ~background:"glass"
-        ~foreground:"muted-foreground" ~corner_radius:999 ?icon ~text:label
-        ~on_press [])
-       context parent
+   (button
+      ?key ?accessibility_identifier ~variant:`ghost ~grow:1.0 ~height:58
+      ~padding_horizontal:30 ~background:"glass"
+      ~foreground:"muted-foreground" ~corner_radius:999 ?icon ~text:label
+      ~on_press [])
+     context parent
 ;;
 
 (* ------------------------------------------------------------------ *)
