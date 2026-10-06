@@ -666,6 +666,8 @@ test("Compact Sheet arbitrates scroll, direction, distance, and velocity", async
 
 test("Button long press uses one movement-safe Pointer Events lifecycle", async () => {
   await openGalleryPage("Button")
+  const disabledState =
+    "document.body.textContent.includes('Controls are disabled.')"
 
   await evaluate(`(() => {
     const button = [...document.querySelectorAll('button')]
@@ -675,14 +677,17 @@ test("Button long press uses one movement-safe Pointer Events lifecycle", async 
       clientX: 100, clientY: 200, button: 0, buttons: 1,
     }))
   })()`)
-  await browser("wait", "380")
+  // The 350ms long-press timer plus emit→patch→render can exceed a fixed
+  // sleep under CI load — wait for the observable state instead.
+  await browser("wait", "--fn", disabledState)
   await evaluate(`document.querySelector('button[data-long-press-enabled]')?.dispatchEvent(
     new PointerEvent('pointerup', { bubbles: true, pointerId: 101, pointerType: 'touch' }),
   )`)
-  assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), true)
+  assert.equal(await state(disabledState), true)
 
   await clickButton("Toggle disabled")
-  assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), false)
+  await browser("wait", "--fn", `!(${disabledState})`)
+  assert.equal(await state(disabledState), false)
 
   await evaluate(`(() => {
     const button = document.querySelector('button[data-long-press-enabled]')
@@ -693,11 +698,11 @@ test("Button long press uses one movement-safe Pointer Events lifecycle", async 
     button.dispatchEvent(pointer('pointerdown', 100, 200))
     button.dispatchEvent(pointer('pointermove', 120, 200))
   })()`)
-  await browser("wait", "380")
+  await browser("wait", "600")
   await evaluate(`document.querySelector('button[data-long-press-enabled]')?.dispatchEvent(
     new PointerEvent('pointerup', { bubbles: true, pointerId: 102, pointerType: 'touch' }),
   )`)
-  assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), false)
+  assert.equal(await state(disabledState), false)
 
   await evaluate(`(() => {
     const button = document.querySelector('button[data-long-press-enabled]')
@@ -709,8 +714,8 @@ test("Button long press uses one movement-safe Pointer Events lifecycle", async 
       bubbles: true, pointerId: 103, pointerType: 'mouse',
     }))
   })()`)
-  await browser("wait", "380")
-  assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), false)
+  await browser("wait", "600")
+  assert.equal(await state(disabledState), false)
 
   await evaluate(`(() => {
     const button = document.querySelector('button[data-long-press-enabled]')
@@ -720,9 +725,9 @@ test("Button long press uses one movement-safe Pointer Events lifecycle", async 
     }))
   })()`)
   await browser("click-text", "nav button", "Row")
-  await browser("wait", "380")
+  await browser("wait", "600")
   await browser("click-text", "nav button", "Button")
-  assert.equal(await state(`document.body.textContent.includes('Controls are disabled.')`), false)
+  assert.equal(await state(disabledState), false)
 })
 
 test("Tree click toggles disclosure and keeps selection model-owned", async () => {
