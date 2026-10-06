@@ -155,6 +155,10 @@ let apply_create_extension nodes extension_platform_for registry node_id identif
       Lui_extension.tweak_fingerprint schema
     else Lui_extension.fingerprint schema
   in
+  (* the wire dedupes fingerprints: only the first create-extension for
+     an identifier carries the hash, later ones send "" — resolve it
+     against the registered spec like the SwiftUI host does *)
+  let fingerprint = if fingerprint = "" then expected else fingerprint in
   if fingerprint <> expected then invalid_arg "extension fingerprint mismatch";
   replace nodes node_id
     { platform_node = extension_platform_for node_id identifier;

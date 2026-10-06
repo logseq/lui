@@ -119,12 +119,15 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
                 }
                 val registration = registry.registration(op.identifier)
                     ?: throw LuiBackendException("unknown extension")
-                if (registration.fingerprint != op.fingerprint) {
+                // "" = same fingerprint as already registered for this
+                // identifier (per-session dedupe on the wire); resolve to
+                // the registered value like the SwiftUI host does
+                if (op.fingerprint.isNotEmpty() && registration.fingerprint != op.fingerprint) {
                     throw LuiBackendException("extension fingerprint mismatch")
                 }
                 ext[op.id] = LuiExtensionNode(
                     identifier = op.identifier,
-                    fingerprint = op.fingerprint,
+                    fingerprint = op.fingerprint.ifEmpty { registration.fingerprint },
                     properties = registration.defaultProperties(),
                 )
             }
