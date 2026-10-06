@@ -111,10 +111,10 @@ fn run_step(
             .get("body")
             .map(Value::to_string)
             .unwrap_or_else(|| "{}".to_string());
-        // Dom-ops take `&mut App`, not a window — call them at App scope like
-        // the host does, not inside a window update (the window is then on
-        // the update stack and `handle_dom_op`'s own `window.update` fails).
-        let replies = cx.cx.update(|app| handle_dom_op(shared, name, &body, app));
+        // Dom-ops take the live window — the host reaches them inside a
+        // frame callback where `cx.windows()` handles cannot be re-entered.
+        let replies =
+            cx.update(|window, app| handle_dom_op(shared, name, &body, window, app));
         if let Some(expect) = op.get("expect") {
             let expect = expect.as_object().expect("dom-op expect must be an object");
             for (reply_name, subset) in expect {

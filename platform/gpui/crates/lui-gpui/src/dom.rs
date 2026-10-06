@@ -25,6 +25,7 @@ use gpui_kit::gpui::{
 };
 use lui_core::bridge;
 use lui_core::store::{Node, NodeIdentity, Store};
+use lui_core::Property;
 
 use crate::backend::Shared;
 use crate::extension::placeholder_box;
@@ -112,19 +113,40 @@ fn has_class(node: &NodeSnapshot, name: &str) -> bool {
     classes(node).split_whitespace().any(|t| t == name)
 }
 
-/// `attrs` is a JSON object string; return one attribute's string value.
+/// One attribute's string value. Extension `attrs` is a JSON object;
+/// the standard `DataAttrs` prop is the \x1e/\x1f record list.
 fn attr(node: &NodeSnapshot, name: &str) -> Option<String> {
-    let raw = node.extension_string_prop("attrs")?;
-    let attrs: serde_json::Value = serde_json::from_str(raw).ok()?;
-    attrs.get(name)?.as_str().map(str::to_string)
+    if let Some(raw) = node.extension_string_prop("attrs") {
+        let attrs: serde_json::Value = serde_json::from_str(raw).ok()?;
+        return attrs.get(name)?.as_str().map(str::to_string);
+    }
+    node.string_prop(Property::DataAttrs)?
+        .split('\x1e')
+        .find_map(|record| {
+            let (key, value) = record.split_once('\x1f')?;
+            (key == name).then(|| value.to_string())
+        })
 }
 
+/// The `attrs` slot has two encodings by source: extension `attrs` is a
+/// JSON object ({name: value}); the standard `DataAttrs` prop is the
+/// \x1e/\x1f record list produced by data_attrs_encode.
 fn parsed_attrs(node: &Node) -> serde_json::Map<String, serde_json::Value> {
-    node.extension_props
-        .get("attrs")
-        .and_then(|v| v.as_str())
-        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
-        .and_then(|v| v.as_object().cloned())
+    if let Some(raw) = node.extension_props.get("attrs").and_then(|v| v.as_str()) {
+        return serde_json::from_str::<serde_json::Value>(raw)
+            .ok()
+            .and_then(|v| v.as_object().cloned())
+            .unwrap_or_default();
+    }
+    node.string_prop(Property::DataAttrs)
+        .map(|raw| {
+            raw.split('\x1e')
+                .filter_map(|record| {
+                    let (name, value) = record.split_once('\x1f')?;
+                    Some((name.to_string(), serde_json::Value::String(value.to_string())))
+                })
+                .collect::<serde_json::Map<String, serde_json::Value>>()
+        })
         .unwrap_or_default()
 }
 
@@ -139,26 +161,47 @@ fn shallow_snapshot(node: &Node) -> serde_json::Value {
             .to_uppercase(),
         NodeIdentity::Standard(kind) => kind.wire_name().to_uppercase(),
     };
+    // Standard props are the only carrier of id/class/attrs/text on plain
+    // elements — extension_props is empty for them, so a click target or
+    // doc-query snapshot must read the standard table too.
     let class = node
         .extension_props
         .get("style-class")
         .and_then(|v| v.as_str())
+        .or_else(|| node.string_prop(Property::StyleClass))
+        .unwrap_or("");
+    let acc_id = node
+        .extension_props
+        .get("accessibility-identifier")
+        .and_then(|v| v.as_str())
+        .or_else(|| node.string_prop(Property::AccessibilityIdentifier))
         .unwrap_or("");
     let attrs = parsed_attrs(node);
     let dom_id = attrs
         .get("id")
         .and_then(|v| v.as_str())
-        .unwrap_or("")
+        .unwrap_or(acc_id)
         .to_string();
+    let ref_handle = if dom_id.is_empty() {
+        format!("node-{}", node.id)
+    } else {
+        dom_id.clone()
+    };
     let mut el = serde_json::json!({
         "tag": tag,
         "class": class,
         "id": dom_id,
-        "#ref": dom_id,
+        "#ref": ref_handle,
         "ref-id": dom_id,
         "#new": node.id,
         "node-id": node.id,
         "attrs": serde_json::Value::Object(attrs),
+        "text": node
+            .extension_props
+            .get("text")
+            .and_then(|v| v.as_str())
+            .or_else(|| node.string_prop(Property::TextValue))
+            .unwrap_or(""),
     });
     if let Some(value) = el["attrs"].get("value").and_then(|v| v.as_str()) {
         el["value"] = serde_json::json!(value);
@@ -195,9 +238,71 @@ fn target_snapshot(store: &Store, node_id: i64) -> serde_json::Value {
 /// a JSON *string* (StringScalar on the schema) carrying `nodeId` (drives
 /// the bubble walk), `target` (element snapshot for closest()/scope), and
 /// any event fields.
-///
-/// `pub` so app-side extension renderers can emit `dom-event`s with the
-/// same target snapshot the builtin renderer produces.
+
+/// Nearest ancestor-or-self of `from` that is a `logseq-*` extension node,
+/// falling back to the first one in the tree. dom-events only reach OCaml
+/// through extension carriers whose logseq_dom handler accepts the
+/// `logseq-` identifier prefix.
+pub(crate) fn logseq_carrier(
+    shared: &Shared,
+    from: Option<i64>,
+) -> Option<(i64, String)> {
+    let shared = shared.borrow();
+    let store = &shared.store;
+    let ident_of = |id: i64| -> Option<String> {
+        match &store.node(id)?.identity {
+            NodeIdentity::Extension { identifier, .. }
+                if identifier.starts_with("logseq-") =>
+            {
+                Some(identifier.clone())
+            }
+            _ => None,
+        }
+    };
+    let mut cursor = from;
+    while let Some(id) = cursor {
+        if let Some(ident) = ident_of(id) {
+            return Some((id, ident));
+        }
+        cursor = store.node(id).and_then(|n| n.parent);
+    }
+    let mut stack = store.root.into_iter().collect::<Vec<_>>();
+    while let Some(id) = stack.pop() {
+        if let Some(node) = store.node(id) {
+            if let Some(ident) = ident_of(id) {
+                return Some((id, ident));
+            }
+            stack.extend(node.children.iter().copied());
+        }
+    }
+    None
+}
+
+/// Deepest painted node containing `position` — the DOM click target.
+pub(crate) fn deepest_hit(
+    shared: &Shared,
+    position: gpui_kit::gpui::Point<gpui_kit::gpui::Pixels>,
+) -> Option<i64> {
+    let shared = shared.borrow();
+    let store = &shared.store;
+    shared
+        .node_bounds
+        .iter()
+        .filter(|(id, bounds)| {
+            bounds.contains(&position) && store.node(**id).is_some()
+        })
+        .map(|(id, _)| *id)
+        .max_by_key(|id| {
+            let mut depth = 0u32;
+            let mut cursor = Some(*id);
+            while let Some(current) = cursor {
+                cursor = store.node(current).and_then(|n| n.parent);
+                depth += 1;
+            }
+            depth
+        })
+}
+
 pub fn dom_event(
     shared: &Shared,
     node_id: i64,
@@ -206,10 +311,27 @@ pub fn dom_event(
     fields: serde_json::Value,
     cx: &mut gpui_kit::gpui::App,
 ) {
-    let target = target_snapshot(&shared.borrow().store, node_id);
+    dom_event_via(shared, node_id, identifier, node_id, name, fields, cx);
+}
+
+/// Emit a `dom-event` through `carrier_id` — which must be an extension
+/// node, since OCaml drops extension events on standard nodes — while the
+/// payload's `nodeId`/`target` point at `target_id`, which may be a
+/// standard node. Used by the window-level click monitor: every DOM click
+/// targets the deepest hit element, not the listening ancestor.
+pub fn dom_event_via(
+    shared: &Shared,
+    carrier_id: i64,
+    identifier: &str,
+    target_id: i64,
+    name: &str,
+    fields: serde_json::Value,
+    cx: &mut gpui_kit::gpui::App,
+) {
+    let target = target_snapshot(&shared.borrow().store, target_id);
     let mut payload = serde_json::json!({
         "name": name,
-        "nodeId": node_id,
+        "nodeId": target_id,
         "target": target,
     });
     if let serde_json::Value::Object(extra) = fields {
@@ -229,7 +351,7 @@ pub fn dom_event(
     // standard node, e.g. the root for document keydown).
     unsafe {
         bridge::lui_ocaml_extension_event(
-            node_id,
+            carrier_id,
             identifier.as_ptr(),
             event.as_ptr(),
             values.as_ptr(),
@@ -259,10 +381,22 @@ fn with_dom_events<E: StatefulInteractiveElement>(
                 let node_id = node.id;
                 element = element.on_click(move |event: &gpui_kit::gpui::ClickEvent, _, cx| {
                     let position = event.position();
-                    dom_event(
+                    // DOM parity: the event target is the deepest painted
+                    // element under the cursor, not the listening ancestor —
+                    // document listeners resolve closest() from it.
+                    let (carrier, ident, target) =
+                        match deepest_hit(&shared, position) {
+                            Some(hit) => match logseq_carrier(&shared, Some(hit)) {
+                                Some((carrier, ident)) => (carrier, ident, hit),
+                                None => (node_id, identifier.clone(), hit),
+                            },
+                            None => (node_id, identifier.clone(), node_id),
+                        };
+                    dom_event_via(
                         &shared,
-                        node_id,
-                        &identifier,
+                        carrier,
+                        &ident,
+                        target,
                         "click",
                         serde_json::json!({
                             "clientX": f64::from(position.x),

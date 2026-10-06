@@ -4,7 +4,7 @@
 //! Ops that produce replies return `(name, json)` pairs the host feeds to
 //! `lui_ocaml_platform_event("name\njson")`.
 
-use gpui_kit::gpui::{px, App, Bounds, Focusable, Pixels};
+use gpui_kit::gpui::{px, App, Bounds, Focusable, Pixels, Window};
 use lui_core::Property;
 use serde_json::{json, Value};
 
@@ -75,7 +75,19 @@ fn child_index_of(shared: &Shared, container: i64, target: i64) -> Option<usize>
 
 /// Handle one dom-op. Returns `(name, json)` platform events to emit
 /// back to OCaml (currently just `node-rect` replies).
-pub fn handle_dom_op(shared: &Shared, op: &str, body: &str, cx: &mut App) -> Vec<(String, Value)> {
+///
+/// Takes the live `&mut Window`: callers reach this during window frame
+/// callbacks, where the window is on gpui's update stack — `cx.windows()`
+/// then yields handles whose `update` fails with "window not found", so
+/// ops that need a Window (focus, scroll, measurement) cannot discover
+/// one themselves.
+pub fn handle_dom_op(
+    shared: &Shared,
+    op: &str,
+    body: &str,
+    window: &mut Window,
+    cx: &mut App,
+) -> Vec<(String, Value)> {
     let parsed: Value = match serde_json::from_str(body) {
         Ok(v) => v,
         Err(e) => {
@@ -123,7 +135,7 @@ pub fn handle_dom_op(shared: &Shared, op: &str, body: &str, cx: &mut App) -> Vec
         }
         "focus" => {
             if let Some(id) = target {
-                focus_node(shared, id, cx);
+                focus_node(shared, id, window, cx);
             }
             Vec::new()
         }
@@ -163,42 +175,27 @@ fn scroll_to_item(shared: &Shared, node_id: i64, ix: usize, cx: &mut App) {
     }
 }
 
-fn focus_node(shared: &Shared, node_id: i64, cx: &mut App) {
-    // Dom-ops are serviced inside a nested update where the live window is
-    // parked, so `window_handle.update` fails with "window not found".
-    // Deferring runs the focus once the current update unwinds.
-    let shared = shared.clone();
-    cx.defer(move |cx| {
-        let Some(view) = shared.borrow().views.get(&node_id).cloned() else {
-            eprintln!("lui-gpui: focus on node {node_id}: no view");
-            return;
+fn focus_node(shared: &Shared, node_id: i64, window: &mut Window, cx: &mut App) {
+    let Some(view) = shared.borrow().views.get(&node_id).cloned() else {
+        return;
+    };
+    view.update(cx, |view, cx| {
+        // Focusable component states own FocusHandles; generic nodes
+        // have no focusable element until the editor surface lands.
+        let handle = if let Some(input) = &view.states.input {
+            Some(input.read(cx).focus_handle(cx))
+        } else {
+            view.states
+                .textarea
+                .as_ref()
+                .map(|textarea| textarea.read(cx).focus_handle(cx))
         };
-        let Some(window_handle) = cx.windows().first().copied() else {
-            eprintln!("lui-gpui: focus on node {node_id}: no window");
-            return;
-        };
-        let _ = window_handle.update(cx, move |_, window, cx| {
-            view.update(cx, |view, cx| {
-                // Focusable component states own FocusHandles; generic nodes
-                // have no focusable element until the editor surface lands.
-                let handle = if let Some(input) = &view.states.input {
-                    Some(input.read(cx).focus_handle(cx))
-                } else {
-                    view.states
-                        .textarea
-                        .as_ref()
-                        .map(|textarea| textarea.read(cx).focus_handle(cx))
-                };
-                match handle {
-                    Some(handle) => handle.focus(window, cx),
-                    None => {
-                        eprintln!(
-                            "lui-gpui: focus on node {node_id}: no focusable state"
-                        )
-                    }
-                }
-            });
-        });
+        match handle {
+            Some(handle) => handle.focus(window, cx),
+            None => {
+                eprintln!("lui-gpui: focus on node {node_id}: no focusable state")
+            }
+        }
     });
 }
 
