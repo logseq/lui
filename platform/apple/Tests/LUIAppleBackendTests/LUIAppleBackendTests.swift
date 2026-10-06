@@ -414,7 +414,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 1)
+        #expect(backend.generation == 2)
         #expect(backend.model(id: 1)?.children == [2])
         #expect(backend.model(id: 3) == nil)
     }
@@ -814,7 +814,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 0)
+        #expect(backend.generation == 1)
     }
 
     @Test("accepts centered button labels")
@@ -931,7 +931,7 @@ struct LUISwiftUIBackendTests {
             """)
         }
 
-        #expect(backend.generation == 1)
+        #expect(backend.generation == 2)
         #expect(backend.model(id: 4) == nil)
         #expect(row.children == children)
         #expect(row.revision == revision)
@@ -1497,7 +1497,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 0)
+        #expect(backend.generation == 1)
         #expect(backend.rootIDs.isEmpty)
         #expect(backend.model(id: 1) == nil)
     }
@@ -1567,7 +1567,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 0)
+        #expect(backend.generation == 1)
         #expect(backend.rootIDs.isEmpty)
     }
 
@@ -1675,7 +1675,7 @@ struct LUISwiftUIBackendTests {
                 {"generation":1,"ops":[\(operations)]}
                 """)
             }
-            #expect(backend.generation == 0)
+            #expect(backend.generation == 1)
             #expect(backend.rootIDs.isEmpty)
         }
     }
@@ -1984,7 +1984,7 @@ struct LUISwiftUIBackendTests {
                 {"generation":1,"ops":[\(operations)]}
                 """)
             }
-            #expect(backend.generation == 0)
+            #expect(backend.generation == 1)
             #expect(backend.rootIDs.isEmpty)
         }
     }
@@ -2107,7 +2107,7 @@ struct LUISwiftUIBackendTests {
                 ]}
                 """)
             }
-            #expect(backend.generation == 0)
+            #expect(backend.generation == 1)
         }
 
         let partial = LUIAppleBackend()
@@ -2120,7 +2120,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(partial.generation == 0)
+        #expect(partial.generation == 1)
     }
 
     @Test("rejects partial and invalid Avatar source crops atomically")
@@ -2136,11 +2136,11 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 0)
+        #expect(backend.generation == 1)
 
         #expect(throws: LUIBackendError.self) {
             try backend.apply(json: """
-            {"generation":1,"ops":[
+            {"generation":2,"ops":[
               {"op":"create-node","id":1,"kind":"avatar"},
               {"op":"set-prop","id":1,"property":"text","value":"ZN"},
               {"op":"set-prop","id":1,"property":"image","value":7},
@@ -2151,7 +2151,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 0)
+        #expect(backend.generation == 2)
 
         let expanded = LUIAppleBackend()
         #expect(throws: LUIBackendError.self) {
@@ -2214,7 +2214,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 2)
+        #expect(backend.generation == 3)
     }
 
     @Test("accepts an unnamed icon-only Button")
@@ -2347,7 +2347,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 2)
+        #expect(backend.generation == 3)
         #expect(progress.progressFraction == 1)
     }
 
@@ -2394,7 +2394,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 3)
+        #expect(backend.generation == 4)
         #expect(spinner.spinnerExtent == 24)
     }
 
@@ -2433,7 +2433,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 2)
+        #expect(backend.generation == 3)
         #expect(icon.iconSystemName == "trash")
     }
 
@@ -2492,7 +2492,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 2)
+        #expect(backend.generation == 3)
         #expect(separator.revision == revision + 1)
     }
 
@@ -2538,7 +2538,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 2)
+        #expect(backend.generation == 3)
         #expect(box.surfaceMinWidth == 80)
         #expect(box.revision == revision + 1)
     }
@@ -2599,7 +2599,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 1)
+        #expect(backend.generation == 2)
     }
 
     @Test("maps Vercel Native overlay surfaces to retained SwiftUI nodes")
@@ -2630,7 +2630,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 1)
+        #expect(backend.generation == 2)
         #expect(backend.model(id: 3)?.property(.orientation) == nil)
     }
 
@@ -2785,7 +2785,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 2)
+        #expect(backend.generation == 3)
     }
 
     @Test("removing a presented sheet node clears the modal presentation")
@@ -2867,7 +2867,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 2)
+        #expect(backend.generation == 3)
     }
 
     @Test("maps Toast and Toolbar to retained native SwiftUI compositions")
@@ -3154,17 +3154,17 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 0)
+        #expect(backend.generation == 1)
         #expect(backend.model(id: 1) == nil)
 
         #expect(throws: LUIBackendError.self) {
             try backend.apply(json: """
-            {"generation":1,"ops":[
+            {"generation":2,"ops":[
               {"op":"create-node","id":1,"kind":"timeline-item"}
             ]}
             """)
         }
-        #expect(backend.generation == 0)
+        #expect(backend.generation == 2)
         #expect(backend.model(id: 1) == nil)
     }
 
@@ -3297,17 +3297,17 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 0)
+        #expect(backend.generation == 1)
         #expect(backend.model(id: 1) == nil)
 
         #expect(throws: LUIBackendError.self) {
             try backend.apply(json: """
-            {"generation":1,"ops":[
+            {"generation":2,"ops":[
               {"op":"create-node","id":1,"kind":"input-group-actions"}
             ]}
             """)
         }
-        #expect(backend.generation == 0)
+        #expect(backend.generation == 2)
         #expect(backend.model(id: 1) == nil)
     }
 
@@ -3361,7 +3361,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 2)
+        #expect(backend.generation == 3)
     }
 
     @Test("maps List flow and multi-child Scroll to retained SwiftUI containers")
@@ -3498,11 +3498,11 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 1)
+        #expect(backend.generation == 2)
 
         #expect(throws: LUIBackendError.self) {
             try backend.apply(json: """
-            {"generation":2,"ops":[
+            {"generation":3,"ops":[
               {"op":"create-node","id":3,"kind":"number-stepper"},
               {"op":"set-prop","id":3,"property":"value","value":2.0}
             ]}
@@ -3510,7 +3510,7 @@ struct LUISwiftUIBackendTests {
         }
         #expect(throws: LUIBackendError.self) {
             try backend.apply(json: """
-            {"generation":2,"ops":[
+            {"generation":4,"ops":[
               {"op":"create-node","id":4,"kind":"number-stepper"},
               {"op":"set-prop","id":4,"property":"text","value":"Days"},
               {"op":"set-prop","id":4,"property":"value","value":2.0},
@@ -3519,7 +3519,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 1)
+        #expect(backend.generation == 4)
     }
 
     @Test("parses sheet detents and sizing props")
@@ -3570,12 +3570,12 @@ struct LUISwiftUIBackendTests {
         }
         #expect(throws: LUIBackendError.self) {
             try backend.apply(json: """
-            {"generation":4,"ops":[
+            {"generation":5,"ops":[
               {"op":"set-prop","id":1,"property":"detents","value":"large"}
             ]}
             """)
         }
-        #expect(backend.generation == 3)
+        #expect(backend.generation == 5)
     }
 
     @Test("maps ContextMenu metadata to native SwiftUI actions")
@@ -3631,7 +3631,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 1)
+        #expect(backend.generation == 2)
     }
 
     @Test("groups native list rows under heading sections")
@@ -3712,7 +3712,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 1)
+        #expect(backend.generation == 2)
     }
 
     @Test("registered extensions retain identity and reject invalid batches atomically")
@@ -3771,7 +3771,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 2)
+        #expect(backend.generation == 3)
         #expect(backend.extensionModel(id: 3) == nil)
 
         var received: LUIEvent?
@@ -3930,7 +3930,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 1)
+        #expect(backend.generation == 2)
     }
 
     @Test("C ABI forwards SwiftUI backend events")
@@ -4060,7 +4060,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 2)
+        #expect(backend.generation == 3)
     }
 
     @Test("file-preview presents through the store and dismiss emits an event")
@@ -4124,7 +4124,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 4)
+        #expect(backend.generation == 5)
     }
 
     private static let initialBatch = """

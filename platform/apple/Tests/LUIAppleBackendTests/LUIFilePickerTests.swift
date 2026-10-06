@@ -60,14 +60,14 @@ struct LUIFilePickerTests {
         }
         #expect(throws: LUIBackendError.self) {
             try backend.apply(json: """
-            {"generation":2,"ops":[
+            {"generation":3,"ops":[
               {"op":"set-prop","id":2,"property":"text","value":"nope"}
             ]}
             """)
         }
         #expect(throws: LUIBackendError.self) {
             try backend.apply(json: """
-            {"generation":2,"ops":[
+            {"generation":4,"ops":[
               {"op":"set-prop","id":2,"property":"multiple","value":"yes"}
             ]}
             """)
