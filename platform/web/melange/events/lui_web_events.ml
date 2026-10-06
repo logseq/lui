@@ -511,7 +511,7 @@ let attach_events renderer node kind dom_node =
   if kind = Toolbar then
     ignore (Lui_web_focus.attach_toolbar_events renderer node dom_node);
   match kind with
-  | Text | TableCell | TimelineItem | FileImage ->
+  | Text | TableCell | TimelineItem | FileImage | Row | Box | Column ->
       attach_pressable_text_events renderer node dom_node
   | Button | ToggleButton | Toggle ->
       attach_button_events renderer node kind dom_node

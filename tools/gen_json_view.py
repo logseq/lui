@@ -42,6 +42,22 @@ EVENT_NAME = {
     'on_dismiss': 'dismiss', 'on_resize': 'resize', 'on_appear': 'appear',
 }
 
+# Element args whose event the node kind can never emit per
+# `Lui_protocol.event_supported` — the renderer wires `ev` for every
+# event arg of an "id"-carrying node, so dead pairs are dropped here to
+# keep `Lui_elements.register_*`'s unsupported-kind failure unreachable.
+DEAD_EVENTS = {
+    'tree': {
+        'on_press', 'on_change', 'on_toggle', 'on_press_detail',
+        'on_pointer_down', 'on_pointer_up', 'on_context_menu',
+    },
+    'toggle_button': {'on_press'},
+    'select': {'on_input', 'on_submit'},
+    'dropdown_menu': {'on_press', 'on_input', 'on_submit'},
+    'menu_item': {'on_input', 'on_submit', 'on_dismiss'},
+    'list_item': {'on_input'},
+}
+
 ENUM_DECODER = {
     'variant': 'variant_opt', 'control_size': 'control_size_opt',
     'cell_size': 'cell_size_opt', 'main_alignment': 'main_opt',
@@ -72,8 +88,10 @@ def kind_of(name):
     return n.replace('_', '-')
 
 
-def extra_arg(name, typ):
-    """?arg application fragment, or None to skip (signals)."""
+def extra_arg(name, typ, element=None):
+    """?arg application fragment, or None to skip (signals, dead events)."""
+    if element and name in DEAD_EVENTS.get(element, ()):
+        return None
     j = name.replace('_', '-')
     if 'Signal.signal' in typ:
         return None
@@ -97,7 +115,7 @@ def extra_arg(name, typ):
     raise SystemExit(f'unhandled arg type: {name} : {typ}')
 
 
-def call_args(args):
+def call_args(args, element=None):
     parts = []
     for name, typ in args:
         if 'Signal.signal' in typ:
@@ -105,7 +123,7 @@ def call_args(args):
         if name in UNIVERSAL_ARG:
             parts.append(f'?{name}:{UNIVERSAL_ARG[name]}')
         else:
-            frag = extra_arg(name, typ)
+            frag = extra_arg(name, typ, element)
             if frag:
                 parts.append(frag)
     return ('\n      ' + ' '.join(parts)) if parts else ''
@@ -170,7 +188,7 @@ def main():
 
     for name, kind, args, ret in normal:
         kids = kids_expr(name, ret, parents)
-        out.append(f'    | "{kind}" ->\n      E.{name}{call_args(args)} {kids}\n')
+        out.append(f'    | "{kind}" ->\n      E.{name}{call_args(args, name)} {kids}\n')
     for name, kind, _, el_type, _ in restricted:
         out.append(
             f'    | "{kind}" ->\n'
@@ -245,7 +263,7 @@ and actions_of ~emit nodes : E.input_group_actions_el option =
         param = 'child_nodes' if tag != 'leaf' else '_child_nodes'
         out.append(f'''and build_{name} ~emit props {param} : E.{el_type} =
   let s = sty_of props in
-  E.{name}{call_args(args)} {kids}
+  E.{name}{call_args(args, name)} {kids}
 ''')
 
     out.append(TRAILER)
