@@ -2047,6 +2047,139 @@ let test_data_attrs_and_as_emit () =
   Alcotest.(check bool) "label as span" true
     (emitted As (StringValue "span"))
 
+let test_vocab_batch2 () =
+  let open Lui_protocol in
+  (* br leaf kind *)
+  Alcotest.(check bool) "br is a leaf" false (can_contain_children Br);
+  (* image url source + alt/loading/referrer-policy/on_load *)
+  Alcotest.(check bool) "url allowed on image" true
+    (property_supported Image UrlValue);
+  Alcotest.(check bool) "alt allowed on image" true
+    (property_supported Image AltValue);
+  Alcotest.(check bool) "loading eager accepted" true
+    (property_value_supported LoadingValue (StringValue "eager"));
+  Alcotest.(check bool) "loading junk rejected" false
+    (property_value_supported LoadingValue (StringValue "defer"));
+  Alcotest.(check bool) "referrer-policy accepted" true
+    (property_value_supported ReferrerPolicy
+       (StringValue "strict-origin-when-cross-origin"));
+  Alcotest.(check bool) "referrer-policy junk rejected" false
+    (property_value_supported ReferrerPolicy (StringValue "always"));
+  Alcotest.(check bool) "load is an image event" true
+    (event_supported_for_properties Image Property_map.empty (Load 0));
+  (* link ~target *)
+  Alcotest.(check bool) "target allowed on link" true
+    (property_supported Link TargetValue);
+  Alcotest.(check bool) "blank accepted" true
+    (property_value_supported TargetValue (StringValue "_blank"));
+  Alcotest.(check bool) "junk target rejected" false
+    (property_value_supported TargetValue (StringValue "popup"));
+  (* ~opacity *)
+  Alcotest.(check bool) "opacity allowed on column" true
+    (property_supported Column Opacity);
+  Alcotest.(check bool) "opacity rejected on leaf" false
+    (property_supported Icon Opacity);
+  Alcotest.(check bool) "opacity range check" false
+    (property_value_supported Opacity (FloatValue 1.5));
+  (* ~display:`contents *)
+  Alcotest.(check bool) "display allowed on row" true
+    (property_supported Row DisplayValue);
+  Alcotest.(check bool) "contents accepted" true
+    (property_value_supported DisplayValue (StringValue "contents"));
+  Alcotest.(check bool) "grid rejected" false
+    (property_value_supported DisplayValue (StringValue "grid"));
+  (* ~tooltip/~shortcut_hint *)
+  Alcotest.(check bool) "tooltip on button" true
+    (property_supported Button TooltipText);
+  Alcotest.(check bool) "tooltip-keys on menu-item" true
+    (property_supported MenuItem TooltipKeys);
+  Alcotest.(check bool) "tooltip rejected on column" false
+    (property_supported Column TooltipText);
+  (* input ~kind:`color (range stays mapped to `slider`) *)
+  Alcotest.(check bool) "input-type on input" true
+    (property_supported Input InputType);
+  Alcotest.(check bool) "color accepted" true
+    (property_value_supported InputType (StringValue "color"));
+  Alcotest.(check bool) "range rejected" false
+    (property_value_supported InputType (StringValue "range"));
+  (* file_picker ~accept/~directory *)
+  Alcotest.(check bool) "accept admitted" true
+    (property_supported FilePicker PickerAccept);
+  Alcotest.(check bool) "directory admitted" true
+    (property_supported FilePicker PickerDirectory);
+  Alcotest.(check bool) "accept rejected elsewhere" false
+    (property_supported Button PickerAccept);
+  (* popover *)
+  Alcotest.(check bool) "popover hosts children" true
+    (can_contain_children Popover);
+  Alcotest.(check bool) "dismiss is a popover event" true
+    (event_supported_for_properties Popover Property_map.empty (Dismiss 0));
+  Alcotest.(check bool) "anchor props on popover" true
+    (property_supported Popover AnchorValue);
+  Alcotest.(check bool) "x on popover" true
+    (property_supported Popover PopupX);
+  Alcotest.(check bool) "x rejected elsewhere" false
+    (property_supported Column PopupX);
+  Alcotest.(check bool) "available-height on popover" true
+    (property_supported Popover AvailableHeight);
+  Alcotest.(check bool) "role on popover" true
+    (property_supported Popover RoleValue);
+  Alcotest.(check bool) "menu role accepted on popover" true
+    (property_value_supported_for_kind Popover RoleValue
+       (StringValue "menu"));
+  Alcotest.(check bool) "treeitem role rejected on popover" false
+    (property_value_supported_for_kind Popover RoleValue
+       (StringValue "treeitem"));
+  let with_x =
+    Property_map.add PopupX (FloatValue 10.0) Property_map.empty
+  in
+  Alcotest.(check bool) "x without y rejected" false
+    (node_properties_supported Popover with_x);
+  let with_xy = Property_map.add PopupY (FloatValue 20.0) with_x in
+  Alcotest.(check bool) "x and y accepted" true
+    (node_properties_supported Popover with_xy);
+  let with_xy_anchor =
+    Property_map.add AnchorValue (StringValue "below") with_xy
+  in
+  Alcotest.(check bool) "point + anchor rejected" false
+    (node_properties_supported Popover with_xy_anchor);
+  let popover_node = ref 0 in
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      (fun _context _model_source _send ->
+         Lui_elements.column
+           [ capture_node popover_node
+               (Lui_elements.popover ~at:(10.0, 20.0)
+                  ~available_height:200.0 ~role:`menu []) ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let emitted property value =
+    List.exists
+      (function
+         | Lui_protocol.SetProp (id, property', value') ->
+           id = !popover_node && property' = property && value' = value
+         | _ -> false)
+      ops
+  in
+  Alcotest.(check bool) "popover node created" true
+    (List.exists
+       (function
+          | Lui_protocol.CreateNode (id, Lui_protocol.Popover) ->
+            id = !popover_node
+          | _ -> false)
+       ops);
+  Alcotest.(check bool) "x emitted" true
+    (emitted PopupX (FloatValue 10.0));
+  Alcotest.(check bool) "y emitted" true
+    (emitted PopupY (FloatValue 20.0));
+  Alcotest.(check bool) "available-height emitted" true
+    (emitted AvailableHeight (FloatValue 200.0));
+  Alcotest.(check bool) "role emitted" true
+    (emitted RoleValue (StringValue "menu"))
+
 let test_property_matrix_sync () =
   (* property_supported's restrictive arms and additive extras must mirror
      schema/components.json (kindProperties / kindExtraProperties) as emitted
@@ -3048,6 +3181,7 @@ let () =
           Alcotest.test_case "list suite rules" `Quick
             test_list_suite_rules;
           Alcotest.test_case "file-picker rules" `Quick test_file_picker;
+          Alcotest.test_case "vocab batch 2" `Quick test_vocab_batch2;
           Alcotest.test_case "media file rules" `Quick test_media_file_rules;
           Alcotest.test_case "media file mount" `Quick test_media_file_mount;
           Alcotest.test_case "edge/overlay/fit rules" `Quick
