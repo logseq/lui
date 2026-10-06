@@ -371,6 +371,71 @@ ${decoderCases}
 `;
 }
 
+function renderKotlin(schema) {
+  // Kotlin enum entry names reuse the `swift` schema field: the camelCase
+  // names are legal Kotlin identifiers, so no separate `kotlin` name set
+  // is needed. The only exception is `name`, which collides with
+  // Enum.name; it is emitted as `propName`.
+  const kotlinEnumName = (swift) =>
+    swift === 'name' ? 'propName' : swift;
+  const kindSwift = new Map(schema.nodeKinds.map(({ wire, swift }) => [wire, kotlinEnumName(swift)]));
+  const propSwift = new Map(schema.properties.map(({ wire, swift }) => [wire, kotlinEnumName(swift)]));
+  const nodeKinds = schema.nodeKinds
+    .map(({ swift, wire, container }) => `    ${kotlinEnumName(swift)}("${wire}", ${container ? 'true' : 'false'}),`)
+    .join('\n');
+  const properties = schema.properties
+    .map(({ swift, wire }) => `    ${kotlinEnumName(swift)}("${wire}"),`)
+    .join('\n');
+  const matrixEntries = Object.entries(schema.kindProperties ?? {})
+    .map(([kindWire, propWires]) =>
+      `        LuiNodeKind.${kindSwift.get(kindWire)} to setOf(${propWires.map((w) => `LuiProperty.${propSwift.get(w)}`).join(', ')}),`)
+    .join('\n');
+  const extraEntries = Object.entries(schema.kindExtraProperties ?? {})
+    .map(([kindWire, propWires]) =>
+      `        LuiNodeKind.${kindSwift.get(kindWire)} to setOf(${propWires.map((w) => `LuiProperty.${propSwift.get(w)}`).join(', ')}),`)
+    .join('\n');
+  return `${generatedHeader('//')}package dev.lui
+
+enum class LuiNodeKind(val wireName: String, val isContainer: Boolean) {
+${nodeKinds}
+    ;
+
+    companion object {
+        private val byWire: Map<String, LuiNodeKind> = entries.associateBy { it.wireName }
+
+        fun fromWire(wire: String): LuiNodeKind? = byWire[wire]
+    }
+}
+
+enum class LuiProperty(val wireName: String) {
+${properties}
+    ;
+
+    companion object {
+        private val byWire: Map<String, LuiProperty> = entries.associateBy { it.wireName }
+
+        fun fromWire(wire: String): LuiProperty? = byWire[wire]
+    }
+}
+
+/**
+ * Mirrors schema/components.json kindProperties: kinds listed here admit
+ * ONLY the given kind-specific props (plus the shared/common set), instead of
+ * the default "common set" behaviour for unlisted kinds. Absence means the
+ * kind follows the common-property rules in the backend.
+ */
+object LuiSchemaMatrix {
+    val restrictive: Map<LuiNodeKind, Set<LuiProperty>> = mapOf(
+${matrixEntries}
+    )
+
+    val extra: Map<LuiNodeKind, Set<LuiProperty>> = mapOf(
+${extraEntries}
+    )
+}
+`;
+}
+
 function renderRust(schema) {
   const kindLg = new Map(schema.nodeKinds.map(({ wire, lg }) => [wire, lg]));
   const propLg = new Map(schema.properties.map(({ wire, lg }) => [wire, lg]));
@@ -494,6 +559,7 @@ function artifacts(schema) {
     ['platform/apple/Sources/LUIAppleBackend/LUIWireSchema.swift', renderSwift(schema)],
     ['platform/flutter/lib/lui_wire_schema.g.dart', renderDart(schema)],
     ['platform/gpui/crates/lui-core/src/wire_schema.rs', renderRust(schema)],
+    ['platform/android/lui/src/main/kotlin/dev/lui/LuiWireSchema.kt', renderKotlin(schema)],
   ]);
 }
 

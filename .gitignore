@@ -15,3 +15,10 @@
 /platform/web/dist/
 
 /platform/gpui/target/
+
+# Android / Gradle build outputs
+.gradle/
+local.properties
+/platform/android/**/build/
+/examples/components/android/**/build/
+/examples/components/android/app/src/main/jniLibs/
