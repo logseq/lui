@@ -27,14 +27,45 @@ let todo_view _context model_source send =
                    ~on_press:(Lui_elements.press send (`Done item)) [] ])
           items)
 
+let todo_reducer model action =
+  match action with
+  | `Done item -> List.filter (fun x -> x <> item) model
+  | `Add item -> model @ [ item ]
+
+(* Scenario fixtures re-render on model change: content that must update
+   sits under a dyn bound to the model source, since a bare Signal.sample
+   does not subscribe the view. *)
+let todo_drive_view _context model_source send =
+  Lui_elements.column ~gap:8
+    [ Lui_elements.text ~value:"Todos" [];
+      Lui_elements.dyn ~equal:( = )
+        (fun (items : string list) ->
+           Lui_elements.column ~gap:8
+             (List.map
+                (fun item ->
+                   Lui_elements.row
+                     [ Lui_elements.text ~value:item [];
+                       Lui_elements.button ~text:"Done"
+                         ~on_press:(Lui_elements.press send (`Done item)) [] ])
+                items))
+        model_source ]
+
+(* Counter fixture shared with the counter.drive scenario. *)
+let counter_view _context model_source send =
+  Lui_elements.column
+    [ Lui_elements.dyn ~equal:( = )
+        (fun n ->
+           Lui_elements.text ~value:("count=" ^ string_of_int n) [])
+        model_source;
+      Lui_elements.button ~text:"Increment"
+        ~on_press:(Lui_elements.press send `Increment) [] ]
+
+let counter_reducer model `Increment = model + 1
+
 let test_app_lifecycle () =
   let app =
     Lui_app.create (recording_backend ()) [ "write tests" ]
-      (fun model action ->
-         match action with
-         | `Done item -> List.filter (fun x -> x <> item) model
-         | `Add item -> model @ [ item ])
-      todo_view
+      todo_reducer todo_view
   in
   Alcotest.(check bool) "not disposed" false (Lui_app.disposed app);
   Alcotest.(check bool) "start" true (Lui_app.start app);
@@ -898,52 +929,81 @@ let capture_node cell element : Lui_elements.t =
   cell := node;
   node
 
+(* Drive-backed sessions mount the app against a replayed node tree, so
+   behavior tests dispatch semantic events and assert on the tree a host
+   would see — wire-named kinds and props, child order — instead of
+   scanning raw patch ops. *)
+
+let drive_mount ?registry ?(profile = Lui_protocol.generic_profile ())
+    ~initial ~reducer ~view () =
+  Drive.Session.mount ?registry ~profile ~initial ~reducer ~view ()
+
+let drive_app (s : _ Drive.Session.t) = s.Drive.Session.app
+let drive_tree (s : _ Drive.Session.t) = s.Drive.Session.tree
+let drive_send s ev = (Drive.Session.driver s).send_event ev
+let drive_flush s = Drive.Session.flush s
+let drive_dispose s = Drive.Session.dispose s
+
+let drive_node s sel =
+  match Drive.Model.first (drive_tree s) sel with
+  | Some n -> n
+  | None ->
+    Alcotest.failf "no node matches selector; tree:\n%s"
+      (Drive.Model.dump (drive_tree s))
+
+let drive_children s (n : Drive.Model.node) =
+  Drive.Model.children (drive_tree s) n.Drive.Model.id
+
+let drive_kind_names s (n : Drive.Model.node) =
+  List.map (fun (c : Drive.Model.node) -> c.Drive.Model.kind)
+    (drive_children s n)
+
+let drive_prop s (n : Drive.Model.node) name =
+  Drive.Model.prop (drive_tree s) n.Drive.Model.id name
+
+let drive_press s sel =
+  Drive.Session.press s (drive_node s sel).Drive.Model.id
+
 let test_glass_button_actions () =
   let single_presses = ref 0 in
   let information_presses = ref 0 in
   let settings_presses = ref 0 in
-  let single_node = ref 0 in
-  let group_node = ref 0 in
   let action label icon presses : Lui_element_combine.action =
     Lui_element_combine.Press
       { label; icon; text = None; on_press = (fun _ -> incr presses) }
   in
-  let app =
-    Lui_app.create (recording_backend ()) ()
-      (fun model _action -> model)
-      (fun _context _model_source _send ->
+  let s =
+    drive_mount ~initial:()
+      ~reducer:(fun model _action -> model)
+      ~view:(fun _context _model_source _send ->
          Lui_elements.column
-           [ capture_node single_node
-               (Lui_element_combine.buttons
-                  ~actions:[ action "New note" `plus single_presses ]);
-             capture_node group_node
-               (Lui_element_combine.buttons
-                  ~actions:
-                    [ action "Information" `info information_presses;
-                      action "Settings" `settings settings_presses ]);
+           [ Lui_element_combine.buttons
+               ~actions:[ action "New note" `plus single_presses ];
+             Lui_element_combine.buttons
+               ~actions:
+                 [ action "Information" `info information_presses;
+                   action "Settings" `settings settings_presses ];
            ])
+      ()
   in
-  ignore (Lui_app.start app);
-  flush_app app;
+  let labelled label =
+    Drive.Model.(
+      All
+        [ Kind "button";
+          Prop ("accessibility-label", Lui_protocol.StringValue label) ])
+  in
   let group_children =
-    all_ops ()
-    |> List.filter_map (function
-         | Lui_protocol.InsertChild (parent, child, index)
-           when parent = !group_node -> Some (index, child)
-         | _ -> None)
-    |> List.sort (fun (left, _) (right, _) -> Int.compare left right)
-    |> List.map snd
+    drive_children s (drive_node s (Drive.Model.Kind "button-group"))
   in
   Alcotest.(check int) "group has two actions" 2 (List.length group_children);
+  drive_press s (labelled "New note");
   List.iter
-    (fun node ->
-       ignore (Lui_app.dispatch_event app (Lui_protocol.Press node)))
-    (!single_node :: group_children);
-  flush_app app;
+    (fun (n : Drive.Model.node) -> Drive.Session.press s n.Drive.Model.id)
+    group_children;
   Alcotest.(check (list int)) "each action has its own callback"
     [ 1; 1; 1 ]
     [ !single_presses; !information_presses; !settings_presses ];
-  ignore (Lui_app.dispose app)
+  drive_dispose s
 
 let test_glass_buttons_require_an_action () =
   let rejected =
@@ -955,9 +1015,6 @@ let test_glass_buttons_require_an_action () =
   Alcotest.(check bool) "empty group rejected" true rejected
 
 let test_glass_button_text_is_optional () =
-  let icon_only_node = ref 0 in
-  let text_node = ref 0 in
-  let group_node = ref 0 in
   let action : Lui_element_combine.action =
     Lui_element_combine.Press
       { label = "New note"; icon = `plus; text = None; on_press = (fun _ -> ()) }
@@ -966,63 +1023,60 @@ let test_glass_button_text_is_optional () =
     Lui_element_combine.Press
       { label; icon; text; on_press = (fun _ -> ()) }
   in
-  let app =
-    Lui_app.create (recording_backend ()) ()
-      (fun model _action -> model)
-      (fun _context _model_source _send ->
+  let s =
+    drive_mount ~initial:()
+      ~reducer:(fun model _action -> model)
+      ~view:(fun _context _model_source _send ->
          Lui_elements.column
-           [ capture_node icon_only_node
-               (Lui_element_combine.buttons ~actions:[ action ]);
-             capture_node text_node
-               (Lui_element_combine.buttons
-                  ~actions:
-                    [ with_press ~label:"New note" ~icon:`plus
-                        ~text:(Some "New note") ]);
-             capture_node group_node
-               (Lui_element_combine.buttons
-                  ~actions:
-                    [ with_press ~label:"Information" ~icon:`info
-                        ~text:(Some "Info")
-                    ; with_press ~label:"Settings" ~icon:`settings ~text:None
-                    ]);
+           [ Lui_element_combine.buttons ~actions:[ action ];
+             Lui_element_combine.buttons
+               ~actions:
+                 [ with_press ~label:"New note" ~icon:`plus
+                     ~text:(Some "New note") ];
+             Lui_element_combine.buttons
+               ~actions:
+                 [ with_press ~label:"Information" ~icon:`info
+                     ~text:(Some "Info")
+                 ; with_press ~label:"Settings" ~icon:`settings ~text:None
+                 ];
            ])
+      ()
   in
-  ignore (Lui_app.start app);
-  flush_app app;
-  let has_property node property value =
-    List.exists
-      (function
-       | Lui_protocol.SetProp (id, key, Lui_protocol.StringValue text) ->
-         id = node && key = property && text = value
-       | _ -> false)
-      (all_ops ())
+  let labelled label =
+    Drive.Model.(
+      All
+        [ Kind "button";
+          Prop ("accessibility-label", Lui_protocol.StringValue label) ])
   in
-  Alcotest.(check bool) "icon-only button keeps accessible label" true
-    (has_property !icon_only_node Lui_protocol.AccessibilityLabel "New note");
-  Alcotest.(check bool) "icon-only button has no visible text" false
-    (has_property !icon_only_node Lui_protocol.TextValue "New note");
+  let text_of (n : Drive.Model.node) = Drive.Model.string_prop n "text" in
+  let new_note_buttons =
+    Drive.Model.find (drive_tree s) (labelled "New note")
+  in
+  let icon_only =
+    match List.find_opt (fun n -> text_of n = None) new_note_buttons with
+    | Some n -> n
+    | None -> Alcotest.fail "no icon-only New note button"
+  in
+  Alcotest.(check (option string)) "icon-only button keeps accessible label"
+    (Some "New note")
+    (Drive.Model.string_prop icon_only "accessibility-label");
+  Alcotest.(check (option string)) "icon-only button has no visible text" None
+    (text_of icon_only);
   Alcotest.(check bool) "text button shows its text" true
-    (has_property !text_node Lui_protocol.TextValue "New note");
+    (List.exists (fun n -> text_of n = Some "New note") new_note_buttons);
   let group_children =
-    all_ops ()
-    |> List.filter_map (function
-         | Lui_protocol.InsertChild (parent, child, index)
-           when parent = !group_node -> Some (index, child)
-         | _ -> None)
-    |> List.sort (fun (left, _) (right, _) -> Int.compare left right)
-    |> List.map snd
+    drive_children s (drive_node s (Drive.Model.Kind "button-group"))
   in
   Alcotest.(check int) "group has two actions" 2 (List.length group_children);
-  Alcotest.(check bool) "first group action shows text" true
-    (has_property (List.hd group_children) Lui_protocol.TextValue "Info");
-  Alcotest.(check bool) "second group action is icon-only" false
-    (has_property (List.nth group_children 1) Lui_protocol.TextValue "Settings");
-  ignore (Lui_app.dispose app)
+  Alcotest.(check (option string)) "first group action shows text" (Some "Info")
+    (Drive.Model.string_prop (List.hd group_children) "text");
+  Alcotest.(check bool) "second group action is icon-only" true
+    (Drive.Model.string_prop (List.nth group_children 1) "text"
+     <> Some "Settings");
+  drive_dispose s
 
 let test_glass_button_menu_action () =
   let picked = ref 0 in
-  let single_node = ref 0 in
-  let group_node = ref 0 in
   let menu_entries () =
     [ Lui_elements.menu_item ~text:"Duplicate"
         ~on_press:(fun _ -> incr picked) [] ]
@@ -1032,138 +1086,96 @@ let test_glass_button_menu_action () =
       { label = "More actions"; icon = `ellipsis; text = None
       ; menu = menu_entries (); on_dismiss = None }
   in
-  let app =
-    Lui_app.create (recording_backend ()) ()
-      (fun model _action -> model)
-      (fun _context _model_source _send ->
+  let s =
+    drive_mount ~initial:()
+      ~reducer:(fun model _action -> model)
+      ~view:(fun _context _model_source _send ->
          Lui_elements.column
-           [ capture_node single_node
-               (Lui_element_combine.buttons ~actions:[ menu_action ]);
-             capture_node group_node
-               (Lui_element_combine.buttons
-                  ~actions:
-                    [ Lui_element_combine.Press
-                        { label = "New note"; icon = `plus; text = None
-                        ; on_press = (fun _ -> ()) }
-                    ; menu_action
-                    ]);
+           [ Lui_element_combine.buttons ~actions:[ menu_action ];
+             Lui_element_combine.buttons
+               ~actions:
+                 [ Lui_element_combine.Press
+                     { label = "New note"; icon = `plus; text = None
+                     ; on_press = (fun _ -> ()) }
+                 ; menu_action
+                 ];
            ])
+      ()
   in
-  ignore (Lui_app.start app);
-  flush_app app;
-  let ops = all_ops () in
-  let children_of parent =
-    ops
-    |> List.filter_map (function
-         | Lui_protocol.InsertChild (p, child, index)
-           when p = parent -> Some (index, child)
-         | _ -> None)
-    |> List.sort (fun (left, _) (right, _) -> Int.compare left right)
-    |> List.map snd
-  in
-  let kind_of node =
-    List.find_map
-      (function
-       | Lui_protocol.CreateNode (id, kind) when id = node -> Some kind
-       | _ -> None)
-      ops
-  in
-  let has_property node property value =
-    List.exists
-      (function
-       | Lui_protocol.SetProp (id, key, Lui_protocol.StringValue text) ->
-         id = node && key = property && text = value
-       | _ -> false)
-      ops
+  let group_with_children n =
+    List.find_opt
+      (fun (g : Drive.Model.node) ->
+         List.length g.Drive.Model.children = n)
+      (Drive.Model.find (drive_tree s) (Drive.Model.Kind "button-group"))
   in
   (* A lone menu action still shares the glass capsule shape: a one-member
      button group wraps the sizing cell (box is not a legal toolbar child). *)
-  Alcotest.(check bool) "single menu action capsule is a button group" true
-    (kind_of !single_node = Some Lui_protocol.ButtonGroup);
-  Alcotest.(check bool) "single menu action capsule is glass" true
-    (has_property !single_node Lui_protocol.BackgroundValue "glass");
-  let cells = children_of !single_node in
-  Alcotest.(check int) "single capsule wraps one cell" 1
-    (List.length cells);
-  let single_cell = children_of (List.hd cells) in
-  Alcotest.(check int) "single cell wraps one trigger" 1
-    (List.length single_cell);
-  let trigger = List.hd single_cell in
-  Alcotest.(check bool) "menu action mounts a menu-trigger" true
-    (kind_of trigger = Some Lui_protocol.MenuTrigger);
-  let menu_children = children_of trigger in
-  Alcotest.(check int) "trigger hosts one dropdown-menu" 1
-    (List.length menu_children);
-  Alcotest.(check bool) "trigger child is a dropdown-menu" true
-    (kind_of (List.hd menu_children) = Some Lui_protocol.DropdownMenu);
-  let items = children_of (List.hd menu_children) in
-  Alcotest.(check int) "menu has its items" 1 (List.length items);
-  Alcotest.(check bool) "menu item is a menu-item node" true
-    (kind_of (List.hd items) = Some Lui_protocol.MenuItem);
+  let single =
+    match group_with_children 1 with
+    | Some g -> g
+    | None -> Alcotest.fail "single menu capsule missing"
+  in
+  Alcotest.(check (option string)) "single menu action capsule is glass"
+    (Some "glass") (Drive.Model.string_prop single "background");
+  Alcotest.(check (list string)) "single capsule wraps one cell" [ "box" ]
+    (drive_kind_names s single);
+  let cell = List.hd (drive_children s single) in
+  Alcotest.(check (list string)) "single cell wraps one trigger"
+    [ "menu-trigger" ] (drive_kind_names s cell);
+  let trigger = List.hd (drive_children s cell) in
+  Alcotest.(check (list string)) "trigger hosts one dropdown-menu"
+    [ "dropdown-menu" ] (drive_kind_names s trigger);
+  let menu = List.hd (drive_children s trigger) in
+  Alcotest.(check (list string)) "menu has its items" [ "menu-item" ]
+    (drive_kind_names s menu);
   (* Mixed press + menu actions share one group capsule *)
-  let group_children = children_of !group_node in
-  Alcotest.(check int) "group has two cells" 2 (List.length group_children);
-  Alcotest.(check bool) "first cell is the press button" true
-    (kind_of (List.hd group_children) = Some Lui_protocol.Button);
-  Alcotest.(check bool) "second cell wraps the trigger" true
-    (kind_of (List.nth group_children 1) = Some Lui_protocol.Box);
+  let group =
+    match group_with_children 2 with
+    | Some g -> g
+    | None -> Alcotest.fail "mixed group missing"
+  in
+  Alcotest.(check (list string)) "group cells" [ "button"; "box" ]
+    (drive_kind_names s group);
   (* Menu items dispatch their own presses *)
   List.iter
-    (fun node ->
-       ignore (Lui_app.dispatch_event app (Lui_protocol.Press node)))
-    items;
-  flush_app app;
+    (fun (n : Drive.Model.node) -> Drive.Session.press s n.Drive.Model.id)
+    (drive_children s menu);
   Alcotest.(check int) "menu item press fires its handler" 1 !picked;
-  ignore (Lui_app.dispose app)
+  drive_dispose s
 
 let test_dispatch_drops_value_echoes () =
   let inputs = ref 0 in
   let toggles = ref 0 in
   let presses = ref 0 in
-  let field_node = ref 0 in
-  let checkbox_node = ref 0 in
-  let button_node = ref 0 in
-  let app =
-    Lui_app.create (recording_backend ()) ()
-      (fun model _action -> model)
-      (fun _context _model_source _send ->
+  let s =
+    drive_mount ~initial:()
+      ~reducer:(fun model _action -> model)
+      ~view:(fun _context _model_source _send ->
          Lui_elements.column
            [
-             capture_node field_node
-               (Lui_elements.text_field ~text:"hello"
-                  ~on_input:(fun _event -> incr inputs) []);
-             capture_node checkbox_node
-               (Lui_elements.checkbox ~checked:false
-                  ~on_toggle:(fun _event -> incr toggles) []);
-             capture_node button_node
-               (Lui_elements.button
-                  ~on_press:(fun _event -> incr presses) []);
+             Lui_elements.text_field ~text:"hello"
+               ~on_input:(fun _event -> incr inputs) [];
+             Lui_elements.checkbox ~checked:false
+               ~on_toggle:(fun _event -> incr toggles) [];
+             Lui_elements.button
+               ~on_press:(fun _event -> incr presses) [];
            ])
+      ()
   in
-  ignore (Lui_app.start app);
-  flush_app app;
-  ignore
-    (Lui_app.dispatch_event app
-       (Lui_protocol.TextChanged (!field_node, "hello")));
-  ignore
-    (Lui_app.dispatch_event app
-       (Lui_protocol.ToggleChanged (!checkbox_node, false)));
-  flush_app app;
+  let field = (drive_node s (Drive.Model.Kind "text-field")).Drive.Model.id in
+  let checkbox = (drive_node s (Drive.Model.Kind "checkbox")).Drive.Model.id in
+  let button = (drive_node s (Drive.Model.Kind "button")).Drive.Model.id in
+  Drive.Session.text_changed s field "hello";
+  Drive.Session.toggle s checkbox false;
   Alcotest.(check int) "text echo suppressed" 0 !inputs;
   Alcotest.(check int) "toggle echo suppressed" 0 !toggles;
-  ignore
-    (Lui_app.dispatch_event app
-       (Lui_protocol.TextChanged (!field_node, "hello!")));
-  ignore
-    (Lui_app.dispatch_event app
-       (Lui_protocol.ToggleChanged (!checkbox_node, true)));
-  ignore
-    (Lui_app.dispatch_event app (Lui_protocol.Press !button_node));
-  flush_app app;
+  Drive.Session.text_changed s field "hello!";
+  Drive.Session.toggle s checkbox true;
+  Drive.Session.press s button;
   Alcotest.(check int) "changed text delivered" 1 !inputs;
   Alcotest.(check int) "changed toggle delivered" 1 !toggles;
   Alcotest.(check int) "press still delivered" 1 !presses;
-  ignore (Lui_app.dispose app)
+  drive_dispose s
 
 let test_pointer_events () =
   let open Lui_protocol in
@@ -1277,38 +1289,29 @@ let test_pointer_dispatch () =
   let enters = ref 0 in
   let leaves = ref 0 in
   let menus = ref 0 in
-  let button_node = ref 0 in
-  let app =
-    Lui_app.create (recording_backend ()) ()
-      (fun model _action -> model)
-      (fun _context _model_source _send ->
+  let s =
+    drive_mount ~initial:()
+      ~reducer:(fun model _action -> model)
+      ~view:(fun _context _model_source _send ->
          Lui_elements.column
            [
-             capture_node button_node
-               (Lui_elements.button
-                  ~on_press_detail:(fun _event -> incr details)
-                  ~on_pointer_enter:(fun _event -> incr enters)
-                  ~on_pointer_leave:(fun _event -> incr leaves)
-                  ~on_context_menu:(fun _event -> incr menus) []);
+             Lui_elements.button
+               ~on_press_detail:(fun _event -> incr details)
+               ~on_pointer_enter:(fun _event -> incr enters)
+               ~on_pointer_leave:(fun _event -> incr leaves)
+               ~on_context_menu:(fun _event -> incr menus) [];
            ])
+      ()
   in
-  ignore (Lui_app.start app);
-  flush_app app;
+  let button = (drive_node s (Drive.Model.Kind "button")).Drive.Model.id in
   let detail =
     { Lui_protocol.x = 1.0; y = 2.0; modifiers = 0; button = 0;
       target_class = "" }
   in
-  ignore
-    (Lui_app.dispatch_event app
-       (Lui_protocol.PressDetail (!button_node, detail)));
-  ignore
-    (Lui_app.dispatch_event app (Lui_protocol.PointerEnter !button_node));
-  ignore
-    (Lui_app.dispatch_event app (Lui_protocol.PointerLeave !button_node));
-  ignore
-    (Lui_app.dispatch_event app
-       (Lui_protocol.ContextMenuPress (!button_node, detail)));
-  flush_app app;
+  drive_send s (Lui_protocol.PressDetail (button, detail));
+  drive_send s (Lui_protocol.PointerEnter button);
+  drive_send s (Lui_protocol.PointerLeave button);
+  drive_send s (Lui_protocol.ContextMenuPress (button, detail));
   Alcotest.(check (list int)) "pointer handlers fired" [ 1; 1; 1; 1 ]
     [ !details; !enters; !leaves; !menus ];
   (* kind-unsupported events are still rejected at dispatch *)
@@ -1316,36 +1319,29 @@ let test_pointer_dispatch () =
     (Invalid_argument "event is unsupported by node kind")
     (fun () ->
        ignore
-         (Lui_app.dispatch_event app
-            (Lui_protocol.ValueChanged (!button_node, 0.5))));
-  ignore (Lui_app.dispose app)
+         (Lui_app.dispatch_event (drive_app s)
+            (Lui_protocol.ValueChanged (button, 0.5))));
+  drive_dispose s
 
 let test_dispatch_drops_unset_default_echoes () =
   let inputs = ref 0 in
-  let field_node = ref 0 in
-  let app =
-    Lui_app.create (recording_backend ()) ()
-      (fun model _action -> model)
-      (fun _context _model_source _send ->
+  let s =
+    drive_mount ~initial:()
+      ~reducer:(fun model _action -> model)
+      ~view:(fun _context _model_source _send ->
          Lui_elements.column
            [
-             capture_node field_node
-               (Lui_elements.text_field
-                  ~on_input:(fun _event -> incr inputs) []);
+             Lui_elements.text_field
+               ~on_input:(fun _event -> incr inputs) [];
            ])
+      ()
   in
-  ignore (Lui_app.start app);
-  flush_app app;
-  ignore
-    (Lui_app.dispatch_event app (Lui_protocol.TextChanged (!field_node, "")));
-  flush_app app;
+  let field = (drive_node s (Drive.Model.Kind "text-field")).Drive.Model.id in
+  Drive.Session.text_changed s field "";
   Alcotest.(check int) "empty echo on unset text suppressed" 0 !inputs;
-  ignore
-    (Lui_app.dispatch_event app
-       (Lui_protocol.TextChanged (!field_node, "x")));
-  flush_app app;
+  Drive.Session.text_changed s field "x";
   Alcotest.(check int) "typed text delivered" 1 !inputs;
-  ignore (Lui_app.dispose app)
+  drive_dispose s
 
 (* Extension fingerprint sync: the gallery declares its extension schemas
    once in Extension_schemas (OCaml); host apps mirror the canonical
@@ -1657,66 +1653,49 @@ let test_file_picker () =
     (property_value_supported PickerSource (StringValue "screen"));
   let picked_payloads = ref [] in
   let dismissed = ref 0 in
-  let picker_node = ref 0 in
-  let int_picker_node = ref 0 in
-  let app =
-    Lui_app.create (recording_backend ()) ()
-      (fun model _action -> model)
-      (fun _context _model_source _send ->
+  let s =
+    drive_mount ~initial:()
+      ~reducer:(fun model _action -> model)
+      ~view:(fun _context _model_source _send ->
          Lui_elements.column
-           [ capture_node picker_node
-               (Lui_elements.file_picker ~source:`photos
-                  ~request:(`String "op-1") ~types:"public.image" ~multiple:true
-                  ~completion:(`String "")
-                  ~on_picked:(fun event ->
-                    match event with
-                    | Picked (_, payload) ->
-                      picked_payloads := payload :: !picked_payloads
-                    | _ -> ())
-                  ~on_dismiss:(fun _ -> incr dismissed)
-                  []);
-             capture_node int_picker_node
-               (Lui_elements.file_picker ~request:(`Int 7) []) ])
+           [ Lui_elements.file_picker ~source:`photos
+               ~request:(`String "op-1") ~types:"public.image" ~multiple:true
+               ~completion:(`String "")
+               ~on_picked:(fun event ->
+                 match event with
+                 | Picked (_, payload) ->
+                   picked_payloads := payload :: !picked_payloads
+                 | _ -> ())
+               ~on_dismiss:(fun _ -> incr dismissed)
+               [];
+             Lui_elements.file_picker ~request:(`Int 7) [] ])
+      ()
   in
-  ignore (Lui_app.start app);
-  flush_app app;
-  let ops = all_ops () in
-  let kind_of node =
-    List.find_map
-      (function
-       | CreateNode (id, kind) when id = node -> Some kind
-       | _ -> None)
-      ops
+  let picker =
+    drive_node s
+      (Drive.Model.All
+         [ Drive.Model.Kind "file-picker";
+           Drive.Model.Prop ("request", StringValue "op-1") ])
   in
-  let prop_value node property =
-    List.find_map
-      (function
-       | SetProp (id, key, value) when id = node && key = property ->
-         Some value
-       | _ -> None)
-      ops
-  in
-  Alcotest.(check bool) "node is a file-picker" true
-    (kind_of !picker_node = Some FilePicker);
-  Alcotest.(check bool) "request wired" true
-    (prop_value !picker_node PickerRequest = Some (StringValue "op-1"));
   Alcotest.(check bool) "int request wired" true
-    (prop_value !int_picker_node PickerRequest = Some (IntValue 7));
+    (Drive.Model.exists (drive_tree s)
+       (Drive.Model.All
+          [ Drive.Model.Kind "file-picker";
+            Drive.Model.Prop ("request", IntValue 7) ]));
   Alcotest.(check bool) "types wired" true
-    (prop_value !picker_node PickerTypes = Some (StringValue "public.image"));
+    (drive_prop s picker "types" = Some (StringValue "public.image"));
   Alcotest.(check bool) "multiple wired" true
-    (prop_value !picker_node PickerMultiple = Some (BoolValue true));
+    (drive_prop s picker "multiple" = Some (BoolValue true));
   Alcotest.(check bool) "source wired" true
-    (prop_value !picker_node PickerSource = Some (StringValue "photos"));
-  ignore
-    (Lui_app.dispatch_event app
-       (Picked (!picker_node, {|{"request":"op-1","files":[]}|})));
-  ignore (Lui_app.dispatch_event app (Dismiss !picker_node));
-  flush_app app;
+    (drive_prop s picker "source" = Some (StringValue "photos"));
+  Alcotest.(check bool) "completion wired" true
+    (drive_prop s picker "completion" = Some (StringValue ""));
+  drive_send s (Picked (picker.Drive.Model.id, {|{"request":"op-1","files":[]}|}));
+  Drive.Session.dismiss s picker.Drive.Model.id;
   Alcotest.(check (list string)) "picked delivered"
     [ {|{"request":"op-1","files":[]}|} ] !picked_payloads;
   Alcotest.(check int) "dismiss delivered" 1 !dismissed;
-  ignore (Lui_app.dispose app)
+  drive_dispose s
 
 let test_media_file_rules () =
   let open Lui_protocol in
@@ -1789,42 +1768,30 @@ let media_view _context _model _send =
     ]
 
 let test_media_file_mount () =
-  let app =
-    Lui_app.create (recording_backend ()) ()
-      (fun model _action -> model)
-      media_view
+  let s =
+    drive_mount ~initial:()
+      ~reducer:(fun model _action -> model)
+      ~view:media_view ()
   in
-  ignore (Lui_app.start app);
-  flush_app app;
-  let ops = all_ops () in
-  let open Lui_protocol in
-  let creates kind =
-    List.exists (function CreateNode (_, k) -> k = kind | _ -> false) ops
-  in
-  Alcotest.(check bool) "link mounted" true (creates Link);
-  Alcotest.(check bool) "file-image mounted" true (creates FileImage);
-  Alcotest.(check bool) "file-preview mounted" true (creates FilePreview);
+  let tree = drive_tree s in
+  let has sel = Drive.Model.exists tree sel in
+  let open Drive.Model in
+  Alcotest.(check bool) "link mounted" true (has (Kind "link"));
+  Alcotest.(check bool) "file-image mounted" true (has (Kind "file-image"));
+  Alcotest.(check bool) "file-preview mounted" true (has (Kind "file-preview"));
   Alcotest.(check bool) "url prop set" true
-    (List.exists
-       (function
-        | SetProp (_, UrlValue, StringValue "https://example.com") -> true
-        | _ -> false)
-       ops);
+    (has (All [ Kind "link";
+                Prop ("url", Lui_protocol.StringValue "https://example.com") ]));
   Alcotest.(check bool) "path prop set" true
-    (List.exists
-       (function
-        | SetProp (_, PathValue, StringValue "/tmp/pic.png") -> true
-        | _ -> false)
-       ops);
+    (has (All [ Kind "file-image";
+                Prop ("path", Lui_protocol.StringValue "/tmp/pic.png") ]));
   Alcotest.(check bool) "proportional fill prop set" true
-    (List.exists (function SetProp (_, ImageFitValue, StringValue "fill") -> true | _ -> false) ops);
+    (has (All [ Kind "file-image";
+                Prop ("image-fit", Lui_protocol.StringValue "fill") ]));
   Alcotest.(check bool) "max-pixel-size prop set" true
-    (List.exists
-       (function
-        | SetProp (_, MaxPixelSize, IntValue 512) -> true
-        | _ -> false)
-       ops);
-  ignore (Lui_app.dispose app)
+    (has (All [ Kind "file-image";
+                Prop ("max-pixel-size", Lui_protocol.IntValue 512) ]));
+  drive_dispose s
 
 let test_edge_overlay_fit_rules () =
   let open Lui_protocol in
@@ -2210,59 +2177,35 @@ let test_property_matrix_sync () =
 
 let test_number_stepper_props () =
   let changes = ref [] in
-  let stepper_node = ref 0 in
-  let app =
-    Lui_app.create (recording_backend ()) ()
-      (fun model _action -> model)
-      (fun _context _model_source _send ->
+  let s =
+    drive_mount ~initial:()
+      ~reducer:(fun model _action -> model)
+      ~view:(fun _context _model_source _send ->
          Lui_elements.column
-           [ capture_node stepper_node
-               (Lui_elements.number_stepper ~value:5.0 ~min:0.0 ~max:3660.0
-                  ~step:1.0 ~text:"Days"
-                  ~on_value_changed:(fun event ->
-                     match event with
-                     | Lui_protocol.ValueChanged (_, value) ->
-                         changes := value :: !changes
-                     | _ -> ())
-                  []) ])
+           [ Lui_elements.number_stepper ~value:5.0 ~min:0.0 ~max:3660.0
+               ~step:1.0 ~text:"Days"
+               ~on_value_changed:(fun event ->
+                  match event with
+                  | Lui_protocol.ValueChanged (_, value) ->
+                      changes := value :: !changes
+                  | _ -> ())
+               [] ])
+      ()
   in
-  ignore (Lui_app.start app);
-  flush_app app;
-  let ops = all_ops () in
-  Alcotest.(check bool) "number-stepper created" true
-    (List.exists
-       (function
-          | Lui_protocol.CreateNode (_, Lui_protocol.NumberStepper) -> true
-          | _ -> false)
-       ops);
-  let emitted property value =
-    List.exists
-      (function
-         | Lui_protocol.SetProp (_, property', value') ->
-           property' = property && value' = value
-         | _ -> false)
-      ops
+  let stepper = drive_node s (Drive.Model.Kind "number-stepper") in
+  let check_prop name value =
+    Alcotest.(check bool) name true (drive_prop s stepper name = Some value)
   in
-  Alcotest.(check bool) "value" true
-    (emitted Lui_protocol.ProgressValue (Lui_protocol.FloatValue 5.0));
-  Alcotest.(check bool) "min" true
-    (emitted Lui_protocol.MinValue (Lui_protocol.FloatValue 0.0));
-  Alcotest.(check bool) "max" true
-    (emitted Lui_protocol.MaxValue (Lui_protocol.FloatValue 3660.0));
-  Alcotest.(check bool) "step" true
-    (emitted Lui_protocol.StepValue (Lui_protocol.FloatValue 1.0));
-  Alcotest.(check bool) "text" true
-    (emitted Lui_protocol.TextValue (Lui_protocol.StringValue "Days"));
-  ignore
-    (Lui_app.dispatch_event app
-       (Lui_protocol.ValueChanged (!stepper_node, 5.0)));
-  ignore
-    (Lui_app.dispatch_event app
-       (Lui_protocol.ValueChanged (!stepper_node, 6.0)));
-  flush_app app;
+  check_prop "value" (Lui_protocol.FloatValue 5.0);
+  check_prop "min" (Lui_protocol.FloatValue 0.0);
+  check_prop "max" (Lui_protocol.FloatValue 3660.0);
+  check_prop "step" (Lui_protocol.FloatValue 1.0);
+  check_prop "text" (Lui_protocol.StringValue "Days");
+  Drive.Session.value_changed s stepper.Drive.Model.id 5.0;
+  Drive.Session.value_changed s stepper.Drive.Model.id 6.0;
   Alcotest.(check (list (float 0.0))) "echo dropped, change delivered"
     [ 6.0 ] !changes;
-  ignore (Lui_app.dispose app)
+  drive_dispose s
 
 let test_number_stepper_schema () =
   let open Lui_protocol in
@@ -2330,44 +2273,27 @@ let test_number_stepper_schema () =
                 (MaxValue, FloatValue 0.0) ]))
 
 let test_sheet_presentation_props () =
-  let app =
-    Lui_app.create (recording_backend ()) ()
-      (fun model _action -> model)
-      (fun _context _model_source _send ->
+  let s =
+    drive_mount ~initial:()
+      ~reducer:(fun model _action -> model)
+      ~view:(fun _context _model_source _send ->
          Lui_elements.column
            [ Lui_elements.sheet ~text:"Settings"
                ~detents:"medium,large" ~sizing:"form" [] ])
+      ()
   in
-  ignore (Lui_app.start app);
-  flush_app app;
-  let ops = all_ops () in
-  Alcotest.(check bool) "sheet created" true
-    (List.exists
-       (function
-          | Lui_protocol.CreateNode (_, Lui_protocol.Sheet) -> true
-          | _ -> false)
-       ops);
+  let sheet = drive_node s (Drive.Model.Kind "sheet") in
   Alcotest.(check bool) "detents emitted" true
-    (List.exists
-       (function
-          | Lui_protocol.SetProp (_, Lui_protocol.Detents,
-                                  Lui_protocol.StringValue "medium,large") ->
-            true
-          | _ -> false)
-       ops);
+    (drive_prop s sheet "detents"
+     = Some (Lui_protocol.StringValue "medium,large"));
   Alcotest.(check bool) "sizing emitted" true
-    (List.exists
-       (function
-          | Lui_protocol.SetProp (_, Lui_protocol.Sizing,
-                                  Lui_protocol.StringValue "form") -> true
-          | _ -> false)
-       ops);
+    (drive_prop s sheet "sizing" = Some (Lui_protocol.StringValue "form"));
   Alcotest.(check bool) "detents only on sheet" true
     (Lui_protocol.property_supported Lui_protocol.Sheet Lui_protocol.Detents);
   Alcotest.(check bool) "detents off dialog" false
     (Lui_protocol.property_supported Lui_protocol.Dialog
        Lui_protocol.Detents);
-  ignore (Lui_app.dispose app)
+  drive_dispose s
 
 let test_theme_tokens_json () =
   Alcotest.(check string) "fixed + adaptive values"
@@ -2378,14 +2304,6 @@ let test_theme_tokens_json () =
          ("primary", Lui_ui.Fixed "#7c3aed") ])
 
 (* ---------- Lui_json_view: the language-neutral view-model layer ---------- *)
-
-let str_contains ~needle s =
-  let n = String.length s and m = String.length needle in
-  let rec go i =
-    i + m <= n
-    && (String.sub s i m = needle || go (i + 1))
-  in
-  m = 0 || go 0
 
 let json_view_json =
   {|{"kind":"column","children":[
@@ -2417,61 +2335,34 @@ let test_json_view_render () =
         v
     | Error e -> Lui_elements.text ~value:("parse error: " ^ e) []
   in
-  let app =
-    Lui_app.create (recording_backend ()) ()
-      (fun model _action -> model) view
+  let s =
+    drive_mount ~initial:()
+      ~reducer:(fun model _action -> model) ~view ()
   in
-  ignore (Lui_app.start app);
-  flush_app app;
-  let ops = all_ops () in
-  let created k =
-    List.exists
-      (function Lui_protocol.CreateNode (_, k') -> k' = k | _ -> false)
-      ops
-  in
+  let tree = drive_tree s in
   List.iter
     (fun k ->
        Alcotest.(check bool)
-         (Printf.sprintf "created %s"
-            (Lui_wire_schema.node_kind_name k))
-         true (created k))
-    [ Lui_protocol.Card; SwitchControl; Slider; Icon; ToggleButton;
-      Table; TableRow; TableCell; RadioGroup; Radio; Stepper; Step;
-      BottomTabs; BottomTab; InputGroup; InputGroupActions; Button;
-      Split; Textarea; Text ];
+         (Printf.sprintf "created %s" k)
+         true (Drive.Model.exists tree (Drive.Model.Kind k)))
+    [ "card"; "switch"; "slider"; "icon"; "toggle-button";
+      "table"; "table-row"; "table-cell"; "radio-group"; "radio";
+      "stepper"; "step"; "bottom-tabs"; "bottom-tab"; "input-group";
+      "input-group-actions"; "button"; "split"; "textarea"; "text" ];
   (* unknown kinds render a visible placeholder, never a blank/raise *)
   Alcotest.(check bool) "placeholder text" true
-    (List.exists
-       (function
-          | Lui_protocol.SetProp (_, Lui_protocol.TextValue,
-                                  Lui_protocol.StringValue s) ->
-            str_contains ~needle:"unsupported component" s
-          | _ -> false)
-       ops);
-  (* press on the node carrying "id" routes through the event sink *)
-  let b1 =
-    List.find_map
-      (function
-         | Lui_protocol.CreateNode (id, Lui_protocol.ToggleButton) ->
-           Some id
-         | _ -> None)
-      ops
-  in
-  (match b1 with
-   | Some id ->
-     ignore
-       (Lui_app.dispatch_event app
-          (Lui_protocol.ToggleChanged (id, true)));
-     flush_app app;
-     Alcotest.(check (list (pair string string))) "event routed"
-       [ ("b1", "toggle") ]
-       (List.map (fun (id, k, _) -> (id, k)) !events);
-     Alcotest.(check bool) "checked field decoded" true
-       (match !events with
-        | [ (_, _, [ ("checked", Lui_json_view.Bool true) ]) ] -> true
-        | _ -> false)
-   | None -> Alcotest.fail "toggle-button node not created");
-  ignore (Lui_app.dispose app)
+    (Drive.Model.exists tree (Drive.Model.Text "unsupported component"));
+  (* events on a node carrying "id" route through the event sink *)
+  let b1 = drive_node s (Drive.Model.Kind "toggle-button") in
+  Drive.Session.toggle s b1.Drive.Model.id true;
+  Alcotest.(check (list (pair string string))) "event routed"
+    [ ("b1", "toggle") ]
+    (List.map (fun (id, k, _) -> (id, k)) !events);
+  Alcotest.(check bool) "checked field decoded" true
+    (match !events with
+     | [ (_, _, [ ("checked", Lui_json_view.Bool true) ]) ] -> true
+     | _ -> false);
+  drive_dispose s
 
 let test_json_view_parse () =
   (* malformed input is rejected wholesale — never a partial mount *)
@@ -2845,74 +2736,98 @@ let test_split_model () =
   Alcotest.(check int) "last pane survives" 1 (List.length (pane_ids (root state)))
 
 let test_composer_content_sizing () =
-  let root = ref 0 in
-  let backend = recording_backend () in
-  let app = Lui_app.create backend () (fun model _ -> model)
-    (fun _context _model _send -> capture_node root
-       (Lui_element_combine.composer ~placeholder:"Synthetic draft"
-          ~text:"One line" ~attachments:(Lui_elements.text ~value:"Synthetic attachment" []) ())) in
-  ignore (Lui_app.start app);
-  flush_app app;
-  let ops = all_ops () in
-  let grows = List.exists (function
-    | Lui_protocol.SetProp (node, Lui_protocol.GrowValue, Lui_protocol.FloatValue value)
-        when node = !root -> value > 0.
-    | _ -> false) ops in
-  Alcotest.(check bool) "composer does not fill available overlay height" false grows;
-  let textarea = List.find_map (function
-    | Lui_protocol.CreateNode (node, Lui_protocol.Textarea) -> Some node | _ -> None) ops |> Option.get in
+  let s =
+    drive_mount ~initial:() ~reducer:(fun model _ -> model)
+      ~view:(fun _context _model _send ->
+        Lui_element_combine.composer ~placeholder:"Synthetic draft"
+          ~text:"One line"
+          ~attachments:(Lui_elements.text ~value:"Synthetic attachment" []) ())
+      ()
+  in
+  let tree = drive_tree s in
+  let composer_root =
+    match
+      Hashtbl.find_opt tree.Drive.Model.nodes (Lui_app.root_node (drive_app s))
+    with
+    | Some n -> n
+    | None -> Alcotest.fail "composer root missing from drive tree"
+  in
+  Alcotest.(check bool) "composer does not fill available overlay height" true
+    (match Drive.Model.prop tree composer_root.Drive.Model.id "grow" with
+     | Some (Lui_protocol.FloatValue value) -> value <= 0.
+     | _ -> true);
+  let textarea = drive_node s (Drive.Model.Kind "textarea") in
   Alcotest.(check bool) "textarea has a bounded content height" true
-    (List.exists (function
-      | Lui_protocol.SetProp (node, Lui_protocol.MaxHeight, Lui_protocol.IntValue value)
-          when node = textarea -> value > 36 && value <= 200
-      | _ -> false) ops);
-  ignore (Lui_app.dispose app)
+    (match drive_prop s textarea "max-height" with
+     | Some (Lui_protocol.IntValue value) -> value > 36 && value <= 200
+     | _ -> false);
+  drive_dispose s
 
 let test_composer_attachment_preview_and_remove () =
   List.iter (fun disabled ->
     let removals = ref 0 in
-    let app = Lui_app.create (recording_backend ()) () (fun model _ -> model)
-      (fun _context _model _send ->
-         Lui_element_combine.composer_attachment ~disabled ~key:"synthetic-pdf"
-           ~path:"/tmp/synthetic.pdf" ~title:"Synthetic PDF" ~file_type:"pdf"
-           ~on_remove:(fun _ -> incr removals) ()) in
-    ignore (Lui_app.start app); flush_app app;
-    let labelled name = List.find_map (function
-      | Lui_protocol.SetProp (node, Lui_protocol.AccessibilityLabel,
-          Lui_protocol.StringValue value) when value = name -> Some node
-      | _ -> None) (all_ops ()) |> Option.get in
-    let preview = labelled "Preview Synthetic PDF" in
-    let remove = labelled "Remove Synthetic PDF" in
-    ignore (Lui_app.dispatch_event app (Lui_protocol.Press preview)); flush_app app;
-    let native_preview = List.find_map (function
-      | Lui_protocol.CreateNode (node, Lui_protocol.FilePreview) -> Some node
-      | _ -> None) (all_ops ()) |> Option.get in
-    ignore (Lui_app.dispatch_event app (Lui_protocol.Dismiss native_preview)); flush_app app;
-    ignore (Lui_app.dispatch_event app (Lui_protocol.Press remove)); flush_app app;
+    let s =
+      drive_mount ~initial:() ~reducer:(fun model _ -> model)
+        ~view:(fun _context _model _send ->
+          Lui_element_combine.composer_attachment ~disabled
+            ~key:"synthetic-pdf" ~path:"/tmp/synthetic.pdf"
+            ~title:"Synthetic PDF" ~file_type:"pdf"
+            ~on_remove:(fun _ -> incr removals) ())
+        ()
+    in
+    let labelled name =
+      Drive.Model.Prop ("accessibility-label", Lui_protocol.StringValue name)
+    in
+    drive_press s (labelled "Preview Synthetic PDF");
+    let native_preview = drive_node s (Drive.Model.Kind "file-preview") in
+    Drive.Session.dismiss s native_preview.Drive.Model.id;
+    drive_press s (labelled "Remove Synthetic PDF");
     Alcotest.(check int) "disabled removal cannot mutate a saving draft"
       (if disabled then 0 else 1) !removals;
-    ignore (Lui_app.dispose app)) [false; true]
+    drive_dispose s) [false; true]
 
 let test_composer_feedback_above_actions () =
-  let app = Lui_app.create (recording_backend ()) () (fun model _ -> model)
-    (fun _context _model _send ->
-       Lui_element_combine.composer ~placeholder:"Synthetic draft"
-         ~feedback:(Lui_elements.text ~value:"Synthetic camera unavailable" []) ()) in
-  ignore (Lui_app.start app); flush_app app;
-  let ops = all_ops () in
-  let node_for property value = List.find_map (function
-    | Lui_protocol.SetProp (node, key, Lui_protocol.StringValue actual)
-        when key = property && actual = value -> Some node | _ -> None) ops |> Option.get in
-  let feedback = node_for Lui_protocol.TextValue "Synthetic camera unavailable" in
-  let actions = node_for Lui_protocol.AccessibilityIdentifier "row.composer.controls" in
-  let placement node = List.find_map (function
-    | Lui_protocol.InsertChild (parent, child, index) when child = node -> Some (parent,index)
-    | _ -> None) ops |> Option.get in
-  let feedback_parent, feedback_index = placement feedback in
-  let action_parent, action_index = placement actions in
+  let s =
+    drive_mount ~initial:() ~reducer:(fun model _ -> model)
+      ~view:(fun _context _model _send ->
+        Lui_element_combine.composer ~placeholder:"Synthetic draft"
+          ~feedback:(Lui_elements.text ~value:"Synthetic camera unavailable" [])
+          ())
+      ()
+  in
+  let tree = drive_tree s in
+  let feedback =
+    drive_node s
+      (Drive.Model.Prop
+         ("text", Lui_protocol.StringValue "Synthetic camera unavailable"))
+  in
+  let actions =
+    drive_node s
+      (Drive.Model.Prop
+         ("accessibility-identifier",
+          Lui_protocol.StringValue "row.composer.controls"))
+  in
+  let index_in_parent (n : Drive.Model.node) =
+    match n.Drive.Model.parent with
+    | Some p -> (
+      match Hashtbl.find_opt tree.Drive.Model.nodes p with
+      | Some parent ->
+        List.find_index (fun c -> c = n.Drive.Model.id)
+          parent.Drive.Model.children
+      | None -> None)
+    | None -> None
+  in
   Alcotest.(check bool) "feedback shares surface and reserves space above controls"
-    true (feedback_parent = action_parent && feedback_index < action_index);
-  ignore (Lui_app.dispose app)
+    true
+    (match
+       ( feedback.Drive.Model.parent
+       , actions.Drive.Model.parent
+       , index_in_parent feedback
+       , index_in_parent actions )
+     with
+     | Some p, Some p', Some i, Some i' -> p = p' && i < i'
+     | _ -> false);
+  drive_dispose s
 
 
 
@@ -2941,12 +2856,15 @@ let navigation_fixture ?host_profile ?(apple=true) ?(accept=true) ?(reenter=fals
   let root_mounts = ref 0 and destination_mounts = ref 0 in
   let root_disposes = ref 0 and destination_disposes = ref 0 in
   let callback_count = ref 0 and edit = ref None in
-  let backend = recording_backend () in
-  let backend = if apple then {backend with Lui_protocol.backend_profile =
-    Lui_protocol.profile Lui_protocol.IOS Lui_protocol.SwiftUIHost} else backend in
+  let profile =
+    match host_profile with
+    | Some p -> p
+    | None ->
+      if apple then
+        Lui_protocol.profile Lui_protocol.IOS Lui_protocol.SwiftUIHost
+      else Lui_protocol.generic_profile ()
+  in
   let label_slot = Signal.state_slot "navigation-root-label" in
-  let backend = match host_profile with None -> backend
-    | Some backend_profile -> {backend with Lui_protocol.backend_profile} in
   let view _context source send =
     let root context parent =
       let label = Signal.state_at context.Lui_ui.ui_scheduler
@@ -2967,134 +2885,139 @@ let navigation_fixture ?host_profile ?(apple=true) ?(accept=true) ?(reenter=fals
         Lui_elements.text ~value:entry.Lui_navigation.route [] context parent)
       ~root ()
   in
-  let app = Lui_app.create_with_extensions backend (Lui_navigation.registry ())
-      Lui_navigation.Path.empty (fun _ path -> path) view in
-  ignore (Lui_app.start app); flush_app app;
-  (app, root_mounts, destination_mounts, root_disposes, destination_disposes, callback_count, edit)
+  let s =
+    drive_mount ~registry:(Lui_navigation.registry ()) ~profile
+      ~initial:Lui_navigation.Path.empty ~reducer:(fun _ path -> path)
+      ~view ()
+  in
+  (s, root_mounts, destination_mounts, root_disposes, destination_disposes, callback_count, edit)
 
-let navigation_prop app name =
-  let root = Lui_app.root_node app in
-  List.fold_left (fun value -> function
-    | Lui_protocol.SetExtensionProp (node, property, v) when node = root && property = name -> Some v
-    | _ -> value) None (all_ops ())
+let navigation_send s path =
+  ignore (Lui_app.send (drive_app s) path);
+  drive_flush s
 
-let navigation_revision app = match navigation_prop app "revision" with
+let navigation_root s = Lui_app.root_node (drive_app s)
+
+let navigation_prop s name =
+  Drive.Model.prop (drive_tree s) (navigation_root s) name
+
+let navigation_revision s =
+  match navigation_prop s "revision" with
   | Some (Lui_protocol.IntValue r) -> r
   | _ -> Alcotest.fail "navigation revision is absent"
 
-let navigation_event app revision name length =
+let navigation_event s revision name length =
   let open Lui_protocol in
   let fields = String_map.(empty |> add "revision" (IntValue revision)
     |> add "length" (IntValue length)) in
-  ignore (Lui_app.dispatch_event app (ExtensionEvent (Lui_app.root_node app, "navigation-stack", name, fields)));
-  flush_app app
+  Drive.Session.extension_event s ~node:(navigation_root s)
+    ~identifier:"navigation-stack" ~name ~fields
 
 let test_navigation_retains () =
-  let app, roots, destinations, root_disposes, destination_disposes, callbacks, edit = navigation_fixture () in
-  let push () = ignore (Lui_app.send app (Lui_navigation.Path.push "detail" (Lui_app.model app))); flush_app app in
+  let s, roots, destinations, root_disposes, destination_disposes, callbacks, edit = navigation_fixture () in
+  let push () = navigation_send s (Lui_navigation.Path.push "detail" (Lui_app.model (drive_app s))) in
   push (); push ();
   Alcotest.(check int) "root mounted once" 1 !roots;
   Alcotest.(check int) "each duplicate destination mounted once" 2 !destinations;
   Alcotest.(check int) "covered scope alive" 0 !root_disposes;
   Alcotest.(check int) "covered destination scope alive" 0 !destination_disposes;
-  Option.iter (fun edit -> edit "after") !edit; flush_app app;
+  Option.iter (fun edit -> edit "after") !edit; drive_flush s;
   Alcotest.(check bool) "covered root still observes local edits" true
-    (List.exists (function Lui_protocol.SetProp (_, Lui_protocol.TextValue, Lui_protocol.StringValue "after") -> true | _ -> false) (all_ops ()));
-  ignore (Lui_app.send app (Lui_navigation.Path.pop_to_root (Lui_app.model app))); flush_app app;
+    (Drive.Model.exists (drive_tree s)
+       (Drive.Model.Prop ("text", Lui_protocol.StringValue "after")));
+  navigation_send s (Lui_navigation.Path.pop_to_root (Lui_app.model (drive_app s)));
   Alcotest.(check int) "programmatic changes do not echo" 0 !callbacks;
   Alcotest.(check int) "outgoing retained before settlement" 0 !destination_disposes;
-  navigation_event app (navigation_revision app) "settled" 0;
+  navigation_event s (navigation_revision s) "settled" 0;
   Alcotest.(check int) "outgoing released after settlement" 2 !destination_disposes;
   Alcotest.(check int) "root survives return" 1 !roots;
-  ignore (Lui_app.dispose app);
+  drive_dispose s;
   Alcotest.(check int) "root disposed once on owner teardown" 1 !root_disposes
 
 let test_navigation_back () =
   List.iter (fun reenter ->
-    let app, _, mounts, _, disposes, callbacks, _ = navigation_fixture ~reenter () in
+    let s, _, mounts, _, disposes, callbacks, _ = navigation_fixture ~reenter () in
     let path = Lui_navigation.Path.(push "b" (push "a" empty)) in
-    ignore (Lui_app.send app path); flush_app app;
-    let old = navigation_revision app in
-    navigation_event app old "path-changed" 1;
+    navigation_send s path;
+    let old = navigation_revision s in
+    navigation_event s old "path-changed" 1;
     Alcotest.(check int) "one committed callback" 1 !callbacks;
     Alcotest.(check int) "callback path or reentrant replacement wins" (if reenter then 2 else 1)
-      (List.length (Lui_navigation.Path.entries (Lui_app.model app)));
-    navigation_event app old "path-changed" 0;
-    navigation_event app old "settled" 1;
+      (List.length (Lui_navigation.Path.entries (Lui_app.model (drive_app s))));
+    navigation_event s old "path-changed" 0;
+    navigation_event s old "settled" 1;
     Alcotest.(check int) "old revision ignored" 1 !callbacks;
     Alcotest.(check int) "old settlement cannot drop outgoing" 0 !disposes;
-    navigation_event app (navigation_revision app) "settled" (if reenter then 2 else 1);
+    navigation_event s (navigation_revision s) "settled" (if reenter then 2 else 1);
     Alcotest.(check int) "removed entry released exactly once" 1 !disposes;
     Alcotest.(check int) "retained entry not rebuilt" (if reenter then 3 else 2) !mounts;
-    ignore (Lui_app.dispose app)) [false; true]
+    drive_dispose s) [false; true]
 
 let test_navigation_rejects_invalid () =
-  let app, _, _, _, _, callbacks, _ = navigation_fixture ~accept:false () in
+  let s, _, _, _, _, callbacks, _ = navigation_fixture ~accept:false () in
   let path = Lui_navigation.Path.push "detail" Lui_navigation.Path.empty in
-  ignore (Lui_app.send app path); flush_app app;
-  let revision = navigation_revision app in
-  List.iter (fun length -> navigation_event app revision "path-changed" length) [-1; 1; 2];
+  navigation_send s path;
+  let revision = navigation_revision s in
+  List.iter (fun length -> navigation_event s revision "path-changed" length) [-1; 1; 2];
   Alcotest.(check int) "invalid and echo paths ignored" 0 !callbacks;
-  navigation_event app revision "path-changed" 0;
+  navigation_event s revision "path-changed" 0;
   Alcotest.(check int) "proposal delivered" 1 !callbacks;
-  Alcotest.(check int) "owner may reject proposal" 1 (List.length (Lui_navigation.Path.entries (Lui_app.model app)));
-  Alcotest.(check bool) "rejection publishes a fresh revision" true (revision <> navigation_revision app);
-  navigation_event app revision "path-changed" 0;
+  Alcotest.(check int) "owner may reject proposal" 1 (List.length (Lui_navigation.Path.entries (Lui_app.model (drive_app s))));
+  Alcotest.(check bool) "rejection publishes a fresh revision" true (revision <> navigation_revision s);
+  navigation_event s revision "path-changed" 0;
   Alcotest.(check int) "rejected proposal cannot repeat" 1 !callbacks;
-  ignore (Lui_app.dispose app)
+  drive_dispose s
 
 let test_navigation_rapid_and_switch () =
-  let app, _, mounts, _, disposes, _, _ = navigation_fixture () in
+  let s, _, mounts, _, disposes, _, _ = navigation_fixture () in
   let first = Lui_navigation.Path.push "first" Lui_navigation.Path.empty in
-  ignore (Lui_app.send app first); flush_app app;
-  let old = navigation_revision app in
-  ignore (Lui_app.send app Lui_navigation.Path.empty); flush_app app;
-  ignore (Lui_app.send app first); flush_app app;
+  navigation_send s first;
+  let old = navigation_revision s in
+  navigation_send s Lui_navigation.Path.empty;
+  navigation_send s first;
   Alcotest.(check int) "repush outgoing identity reuses subtree" 1 !mounts;
-  navigation_event app old "settled" 1;
+  navigation_event s old "settled" 1;
   Alcotest.(check int) "stale completion leaves live entry" 0 !disposes;
   let replacement = Lui_navigation.Path.push "new graph" Lui_navigation.Path.empty in
-  ignore (Lui_app.send app replacement); flush_app app;
-  navigation_event app old "path-changed" 0;
-  Alcotest.(check bool) "old graph callback cannot overwrite new graph" true (Lui_app.model app = replacement);
-  navigation_event app (navigation_revision app) "settled" 1;
+  navigation_send s replacement;
+  navigation_event s old "path-changed" 0;
+  Alcotest.(check bool) "old graph callback cannot overwrite new graph" true (Lui_app.model (drive_app s) = replacement);
+  navigation_event s (navigation_revision s) "settled" 1;
   Alcotest.(check int) "old graph entry cleaned" 1 !disposes;
-  ignore (Lui_app.dispose app);
+  drive_dispose s;
   Alcotest.(check int) "all destination scopes cleaned" 2 !disposes
 
 let test_navigation_fallback () =
   let open Lui_protocol in
   List.iter (fun host_profile ->
-  let app, roots, mounts, root_disposes, disposes, callbacks, _ = navigation_fixture ~host_profile ~apple:false () in
-  ignore (Lui_app.send app Lui_navigation.Path.(push "b" (push "a" empty))); flush_app app;
+  let s, roots, mounts, root_disposes, disposes, callbacks, _ = navigation_fixture ~host_profile ~apple:false () in
+  navigation_send s Lui_navigation.Path.(push "b" (push "a" empty));
   Alcotest.(check int) "fallback retains root" 1 !roots;
   Alcotest.(check int) "fallback mounts both entries" 2 !mounts;
   Alcotest.(check int) "covered fallback scope alive" 0 !root_disposes;
-  let back = List.find_map (function
-    | Lui_protocol.CreateNode (node, Lui_protocol.Button) -> Some node | _ -> None) (all_ops ()) |> Option.get in
-  ignore (Lui_app.dispatch_event app (Lui_protocol.Press back)); flush_app app;
+  drive_press s (Drive.Model.Kind "button");
   Alcotest.(check int) "fallback Back commits one proposal" 1 !callbacks;
   Alcotest.(check int) "fallback Back returns to covered entry" 1
-    (List.length (Lui_navigation.Path.entries (Lui_app.model app)));
+    (List.length (Lui_navigation.Path.entries (Lui_app.model (drive_app s))));
   Alcotest.(check int) "fallback Back preserves entry mount" 2 !mounts;
-  ignore (Lui_app.send app Lui_navigation.Path.empty); flush_app app;
+  navigation_send s Lui_navigation.Path.empty;
   Alcotest.(check int) "no-animation fallback cleans immediately" 2 !disposes;
   Alcotest.(check int) "fallback programmatic path does not echo" 1 !callbacks;
-  ignore (Lui_app.dispose app))
+  drive_dispose s)
     [generic_profile (); profile WebOS WebHost;
      profile LinuxOS GPUIHost; profile WindowsOS GPUIHost]
 
 let test_navigation_queued_stale () =
-  let app, _, _, _, _, callbacks, _ = navigation_fixture () in
-  ignore (Lui_app.send app Lui_navigation.Path.(push "old" empty)); flush_app app;
-  let revision = navigation_revision app in
+  let s, _, _, _, _, callbacks, _ = navigation_fixture () in
+  navigation_send s Lui_navigation.Path.(push "old" empty);
+  let revision = navigation_revision s in
   let replacement = Lui_navigation.Path.(push ("new" ^ " graph") empty) in
   (* The owner write is staged, but not flushed before the old host event. *)
-  ignore (Lui_app.send app replacement);
-  navigation_event app revision "path-changed" 0;
+  ignore (Lui_app.send (drive_app s) replacement);
+  navigation_event s revision "path-changed" 0;
   Alcotest.(check int) "queued owner write invalidates old callback" 0 !callbacks;
-  Alcotest.(check bool) "queued replacement wins" true (Lui_app.model app = replacement);
-  ignore (Lui_app.dispose app)
+  Alcotest.(check bool) "queued replacement wins" true (Lui_app.model (drive_app s) = replacement);
+  drive_dispose s
 
 let test_navigation_host_fingerprint () =
   let source = read_file (Filename.concat (source_root ())
@@ -3106,35 +3029,65 @@ let test_navigation_entry_state () =
   let open Lui_navigation in
   let slot = Signal.state_slot "detail-local" in
   let states = Hashtbl.create 4 in
-  let backend = { (recording_backend ()) with Lui_protocol.backend_profile =
-      Lui_protocol.profile Lui_protocol.IOS Lui_protocol.SwiftUIHost } in
-  let app = Lui_app.create_with_extensions backend (registry ()) Path.empty
-      (fun _ path -> path) (fun _ source send ->
+  let s =
+    drive_mount ~registry:(registry ())
+      ~profile:(Lui_protocol.profile Lui_protocol.IOS Lui_protocol.SwiftUIHost)
+      ~initial:Path.empty ~reducer:(fun _ path -> path)
+      ~view:(fun _ source send ->
     navigation_stack ~path_signal:source ~on_path_change:(fun path -> ignore (send path))
       ~root:(Lui_elements.box [])
       ~destination:(fun entry context parent ->
         let local = Signal.state_at context.Lui_ui.ui_scheduler context.Lui_ui.ui_state_scope slot 0 in
         Hashtbl.add states entry.id (local, context.Lui_ui.ui_state_scope);
-        Lui_elements.text ~value_signal:(Signal.map string_of_int (Signal.value local)) [] context parent) ()) in
-  ignore (Lui_app.start app); flush_app app;
+        Lui_elements.text ~value_signal:(Signal.map string_of_int (Signal.value local)) [] context parent) ()) ()
+  in
   let a = Path.push (fun () -> "same") Path.empty in
   let b = Path.push (fun () -> "same") a in
-  ignore (Lui_app.send app b); flush_app app;
+  navigation_send s b;
   let entries = Path.entries b in
   let first = (List.hd entries).id and second = (List.hd (List.tl entries)).id in
   let first_state, first_scope = Hashtbl.find states first in
   let second_state, second_scope = Hashtbl.find states second in
-  Signal.set first_state 7; Signal.set second_state 9; flush_app app;
-  ignore (Lui_app.send app (Path.pop b)); flush_app app;
+  Signal.set first_state 7; Signal.set second_state 9; drive_flush s;
+  navigation_send s (Path.pop b);
   Alcotest.(check int) "covered local state preserved" 7 (Signal.get_state first_state);
   Alcotest.(check bool) "covered entry state scope active" true (not !(first_scope.Signal.disposed_scope));
   Alcotest.(check bool) "outgoing state lives during transition" true (not !(second_scope.Signal.disposed_scope));
-  navigation_event app (navigation_revision app) "settled" 1;
+  navigation_event s (navigation_revision s) "settled" 1;
   Alcotest.(check bool) "only removed entry state disposed" false (not !(second_scope.Signal.disposed_scope));
   Alcotest.(check bool) "remaining entry state still active" true (not !(first_scope.Signal.disposed_scope));
-  ignore (Lui_app.dispose app);
+  drive_dispose s;
   Alcotest.(check bool) "owner teardown disposes surviving state" false (not !(first_scope.Signal.disposed_scope))
 
+
+(* .drive scenarios: the same selector/event DSL the CLI drives over FFI,
+   socket and WebSocket attach, replayed here against the in-process driver
+   so the scripts run in the unit suite. *)
+let run_drive_scenario file s =
+  let source =
+    read_file
+      (Filename.concat (source_root ())
+         (Filename.concat "test/scenarios" file))
+  in
+  (match
+     Drive.Scenario.run ~emit:ignore (Drive.Session.driver s) source
+   with
+   | [] -> ()
+   | failures ->
+     Alcotest.failf "%s\n%s" file
+       (String.concat "\n"
+          (List.map
+             (fun (f : Drive.Scenario.failure) ->
+                Printf.sprintf "line %d: %s" f.line f.message)
+             failures)));
+  drive_dispose s
+
+let test_drive_scenarios () =
+  run_drive_scenario "todo.drive"
+    (drive_mount ~initial:[ "write tests" ] ~reducer:todo_reducer
+       ~view:todo_drive_view ());
+  run_drive_scenario "counter.drive"
+    (drive_mount ~initial:0 ~reducer:counter_reducer ~view:counter_view ())
 
 let () =
   Alcotest.run "lui"
@@ -3236,6 +3189,10 @@ let () =
             test_number_stepper_schema;
           Alcotest.test_case "sheet detents + sizing" `Quick
             test_sheet_presentation_props;
+        ] );
+      ( "scenarios",
+        [
+          Alcotest.test_case "drive scripts" `Quick test_drive_scenarios;
         ] );
       ( "theming",
         [

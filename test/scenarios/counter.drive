@@ -1,0 +1,7 @@
+# Counter: each press of Increment re-renders the readout.
+expect text:count=0
+press "Increment"
+expect text:count=1
+expect-absent text:count=0
+press "Increment"
+expect text:count=2

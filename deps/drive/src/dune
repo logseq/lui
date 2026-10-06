@@ -1,0 +1,9 @@
+(library
+ (name drive)
+ (foreign_stubs
+  (language c)
+  (names drive_target)
+  (flags -fPIC))
+ (library_flags -cclib -ldl)
+ (libraries lui yojson unix threads.posix)
+ (modules model session scenario ffi live ws drive))
