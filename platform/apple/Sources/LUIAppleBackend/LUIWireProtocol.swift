@@ -1020,6 +1020,10 @@ struct LUIRetainedTree {
                 || kind == .link || kind == .listSection
                 || kind == .listSectionHeader || kind == .listSectionFooter
                 || kind == .swipeActions || kind == .popover
+                // text/button/menu-item already qualify via
+                // isContextMenuLeafHost; OCaml's can_contain_children
+                // also admits the remaining inline text hosts
+                || kind == .heading || kind == .paragraph || kind == .label
     }
 
     private static func acceptsExtensionChildren(_ kind: LUINodeKind) -> Bool {
@@ -1031,7 +1035,12 @@ struct LUIRetainedTree {
             kind == .drawer ||
             kind == .alert || kind == .bubble || kind == .toast || kind == .toolbar ||
             kind == .bottomTab || kind == .listSection ||
-            kind == .listSectionHeader || kind == .listSectionFooter
+            kind == .listSectionHeader || kind == .listSectionFooter ||
+            // keep in sync with OCaml Lui_extension
+            // .standard_container_supported: inline text hosts may carry
+            // extension children (e.g. an emoji node inside a text run)
+            kind == .text || kind == .heading || kind == .paragraph ||
+            kind == .label || kind == .button
     }
 
     private static func isModalSurface(_ kind: LUINodeKind) -> Bool {

@@ -724,12 +724,16 @@ public final class LUIAppleBackend {
 
     public func apply(decoded: DecodedPatchBatch) throws {
         let batch = decoded.batch
-        let expectedGeneration = generation + 1
-        guard batch.generation == expectedGeneration else {
-            throw invalid(
-                "expected patch generation \(expectedGeneration), received \(batch.generation)"
-            )
-        }
+        // A received generation is consumed whether or not its ops
+        // land — the OCaml runtime advances its own generation even
+        // when apply fails, so holding `generation` at the last
+        // success would reject every later batch and deafen the
+        // session permanently. Stale or repeated batches are dropped;
+        // a forward gap applies best-effort (ops that reference nodes
+        // a dropped batch created simply fail validation, keeping the
+        // tree consistent).
+        guard batch.generation > generation else { return }
+        generation = batch.generation
 
         let tA = CFAbsoluteTimeGetCurrent()
         let effects = try tree.applying(
@@ -762,7 +766,6 @@ public final class LUIAppleBackend {
                     "PERF apply-split gen=\(batch.generation) applying=\(Int((tB-tA)*1000))ms commit=\(Int((tC-tB)*1000))ms modal=\(Int((tD-tC)*1000))ms touched=\(effects.touched.count) dropped=\(effects.dropped.count)\n"
                         .data(using: .utf8)!)
             }
-            generation = batch.generation
         }
     }
 
