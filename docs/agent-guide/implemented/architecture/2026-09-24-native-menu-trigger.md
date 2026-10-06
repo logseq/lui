@@ -82,12 +82,6 @@ accessibility label lives on the trigger.
   the anchored popover (sheets cannot nest menus) via
   `LUIMenuPresentationPolicy`.
 
-### Flutter
-
-Parity is deferred: `menuTrigger` lands in the generated shared schema,
-but `lui_flutter_backend` does not render it yet. Consumers that run on
-Flutter keep working because nothing mounts `menu-trigger` there.
-
 ## Migration
 
 - `menu_item [ dropdown_menu entries ]` → `submenu ... entries` (or
@@ -131,7 +125,5 @@ label rules.
   the trigger, so nothing can clip the scalable icon.
 - `submenu` is a breaking API change: callers pass `label`/`disabled`
   instead of the old `role`/`variant`/`selected`/`checked` props.
-- Consumers on Flutter cannot mount `menu-trigger` yet; the parity
-  pass is deferred.
 - `dune build @all`, `dune runtest`, `dune build @fmt`, `swift test`,
   and the schema generator tests pass with the change.

@@ -170,7 +170,7 @@ Signal graph can avoid deriving unrelated subtrees in the first place.
 
 The widget tree is laid out into a flat retained `WidgetLayoutTree`. The shared
 engine owns row, column, grid, overlays, scroll regions, controls and composite
-layout. It does not delegate ordinary component layout to SwiftUI, Flutter or
+layout. It does not delegate ordinary component layout to SwiftUI or
 HTML.
 
 Rendering emits stable-id display-list commands. The runtime compares the
@@ -209,9 +209,9 @@ the component catalog to each platform's widget catalog.
 | Android | reference-rendered pixels copied into the Android surface | Android host, touch, soft keyboard/IME |
 
 Mobile is experimental. The iOS host is Objective-C/UIKit rather than SwiftUI,
-and the Android host does not map the catalog to Flutter widgets. This backend
+and the Android host does not map the catalog to platform widgets. This backend
 choice is not part of the public API contract and is not a reason for LUI to
-abandon its SwiftUI and Flutter mapping strategy.
+abandon its native mapping strategy.
 
 Vercel Native does selectively delegate experiences whose platform identity
 matters: scroll physics on macOS, application/context menus, dialogs, tray,
@@ -361,13 +361,12 @@ The LUI showcase should borrow the source-of-truth relationship:
 
 1. Keep Signal-granular dependency tracking instead of rebuilding the whole
    authored view after every state change.
-2. Reconcile transient state inside retained DOM, SwiftUI and Flutter objects
+2. Reconcile transient state inside retained DOM and SwiftUI objects
    rather than one custom canvas widget tree.
 3. Let each backend use native layout and controls where doing so preserves the
    Vercel Native contract.
 4. Use backend-specific dirty/presentation mechanisms: DOM property patches on
-   Web, observable model changes on SwiftUI, retained Element/RenderObject
-   updates in Flutter.
+   Web, observable model changes on SwiftUI.
 5. Generate documentation and showcase metadata in a language-neutral artifact
    consumable by all LUI build stages.
 

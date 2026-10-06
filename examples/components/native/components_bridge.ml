@@ -25,7 +25,6 @@ let operating_system = function
 let host_kind = function
   | 1 -> WebHost
   | 2 -> SwiftUIHost
-  | 3 -> FlutterHost
   | 6 -> GPUIHost
   | _ -> GenericHost
 
@@ -139,9 +138,7 @@ let register prefix =
   register (prefix ^ "_dispose") dispose;
   register (prefix ^ "_root_node") root_node
 
-(* platform/native/lui_ocaml_bridge.c looks up "lui_ocaml_*" and
-   platform/flutter/native/lui_ocaml_bridge.c looks up "lui_flutter_*". *)
+(* platform/native/lui_ocaml_bridge.c looks up "lui_ocaml_*". *)
 let () =
   Printexc.record_backtrace true;
-  register "lui_ocaml";
-  register "lui_flutter"
+  register "lui_ocaml"

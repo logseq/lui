@@ -56,7 +56,7 @@ animation or system/browser history integration. Covered page nodes are
 detached from the visible slot but remain in the LUI runtime with live scopes,
 subscriptions and OCaml local state. Popped pages dispose immediately. A host
 may recreate its visible widget when the page is reattached, so native widget
-state and scroll position need platform-specific verification. Web, Flutter,
+state and scroll position need platform-specific verification. Web
 and GPUI do not yet have native navigation extension renderers.
 
 ## Independent iOS Simulator demo

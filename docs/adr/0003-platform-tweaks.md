@@ -299,15 +299,15 @@ presentation or interaction affordances could become invisible failures.
 3. Lower selected tweak vectors to internal retained decorator nodes.
 4. Extend atomic patch validation and wire encoding for tweak decorators.
 5. Add Apple tweak rendering with a stable `AnyView` boundary.
-6. Add Web and Flutter tweak factories with the same ordering and validation
+6. Add a Web tweak factory with the same ordering and validation
    rules.
 7. Add examples for ordered tweaks, reactive tweak properties, inactive
    platform keys, and application-shell alternatives.
 
 ## Implementation status
 
-Implemented on 2026-08-25 in the LG authoring/runtime layer and retained Web,
-SwiftUI, and Flutter hosts. The component Gallery applies one shared
+Implemented on 2026-08-25 in the LG authoring/runtime layer and retained Web
+and SwiftUI hosts. The component Gallery applies one shared
 `gallery-accent` declaration to a paragraph; each host registers its own
 presentation factory. The decorator remains a retained node and the Gallery
 still mounts one component page at a time.

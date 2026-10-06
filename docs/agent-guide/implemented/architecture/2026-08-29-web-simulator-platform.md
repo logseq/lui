@@ -42,7 +42,7 @@ cover touch plus iPad/Android keyboard and pointer workflows.
 - Reimplementing SwiftUI as a general-purpose browser framework.
 - Making a full-screen Canvas renderer the default.
 - Pixel-copying private platform assets or undocumented system behavior.
-- Replacing the native Apple and Flutter/Android production backends.
+- Replacing the native Apple and Android production backends.
 
 ## Rendering boundary
 
@@ -72,7 +72,7 @@ the platform keyboard height; blur restores zero without replacing the input.
 
 The runtime backend capability profile remains `WebOS + WebHost`. The simulated
 OS is a separate Web projection value, because a browser must not claim to be a
-`SwiftUIHost` or `FlutterHost`. Extensions therefore continue to select their
+`SwiftUIHost`. Extensions therefore continue to select their
 Web adapters honestly while their surfaces receive iOS or Android presentation.
 
 ## Platform fidelity
@@ -99,8 +99,7 @@ the platform-sized control remains trailing. Dialog and Sheet action buttons
 emit ordinary model-owned events instead of mutating presentation locally.
 Phone sheets expose a decorative, accessibility-hidden drag handle and arbitrate
 downward dismissal against interactive descendants and scrolled content using
-distance and velocity thresholds. SwiftUI uses `presentationDragIndicator`,
-and Flutter uses the native Material bottom-sheet drag handle and route gesture.
+distance and velocity thresholds. SwiftUI uses `presentationDragIndicator`.
 
 The initial vertical slice establishes profile ownership and visibly different
 tokens for Button, text entry, Switch, Card, Dialog, and Sheet. Later slices add

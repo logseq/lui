@@ -21,6 +21,6 @@ LUI_GALLERY_OCAML_OBJECT="$android_root/android/arm64-v8a/mobile_app_complete.o"
   "$repo_root/tooling/mobile/build_components_android.sh"
 
 (
-  cd "$repo_root/examples/components/flutter"
-  flutter build apk --debug --target-platform android-arm64
+  cd "$repo_root/examples/components/android"
+  ./gradlew :app:assembleDebug
 )

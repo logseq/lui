@@ -19,7 +19,7 @@ opam_root=$(opam var root --safe)
 shared_root=${LG_OCAML_TOOLCHAIN_ROOT:-${LUI_MOBILE_TOOLCHAIN_ROOT:-$opam_root/lg-ocaml-toolchains}}
 target_prefix=${LG_ANDROID_OCAML_PREFIX:-$shared_root/ocaml-$ocaml_version/targets/$target}
 build_dir="$repo_root/_build/mobile-components/android/$android_abi"
-jni_library="$repo_root/examples/components/flutter/android/app/src/main/jniLibs/$android_abi/liblui_components.so"
+jni_library="$repo_root/examples/components/android/app/src/main/jniLibs/$android_abi/liblui_components.so"
 
 [[ -x $target_prefix/bin/ocamlopt.opt ]] || {
   echo "error: shared Android OCaml toolchain is missing: $target_prefix" >&2
@@ -68,7 +68,7 @@ fi
   --target="$target" \
   -fPIC \
   -I "$target_prefix/lib/ocaml" \
-  -c "$repo_root/platform/flutter/native/lui_ocaml_bridge.c" \
+  -c "$repo_root/platform/native/lui_ocaml_bridge.c" \
   -o "$build_dir/lui_ocaml_bridge.o"
 
 "$ndk_bin/clang" \

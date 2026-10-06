@@ -158,7 +158,6 @@ let host_name host =
   | GenericHost -> "generic"
   | WebHost -> "web"
   | SwiftUIHost -> "swiftui"
-  | FlutterHost -> "flutter"
   | GPUIHost -> "gpui"
 
 let token value = string_of_int (String.length value) ^ ":" ^ value

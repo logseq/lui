@@ -1,7 +1,7 @@
 (* Extension fingerprint drift check.
 
-   Host extension registries (Swift [LUIAppleExtension]/[LUIAppleTweak],
-   Dart [LUIFlutterExtension]/[LUIFlutterTweak]) carry a hand-mirrored
+   Host extension registries (Swift [LUIAppleExtension]/[LUIAppleTweak])
+   carry a hand-mirrored
    [fingerprint] string literal for every registered schema. The literal
    covers the full OCaml-declared schema — including the supported platform
    profiles, which the host does not know — so it cannot be recomputed on

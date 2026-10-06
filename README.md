@@ -7,12 +7,11 @@ patches to real UI objects:
 
 - **Apple**: one SwiftUI backend shared by iOS and macOS (`platform/apple`,
   `LUIAppleBackend` Swift package).
-- **Flutter**: Dart and Flutter widgets (`platform/flutter`).
 - **Web**: a Melange companion library (`platform/web/melange`) plus the
   shared stylesheet and icon set (`platform/web/src`).
 
-Apple and Flutter use one JSON object per atomic `patch_batch` at their
-native host boundaries; `Lui_wire` encodes the protocol directly. The Web
+Apple uses one JSON object per atomic `patch_batch` at its
+native host boundary; `Lui_wire` encodes the protocol directly. The Web
 backend runs in the same process as the OCaml application and applies typed
 patches to DOM nodes — no JSON bridge, no JavaScript UI framework.
 
@@ -23,7 +22,6 @@ src/                  the lui library (protocol, runtime, elements, app)
 examples/todos/       headless todo demo (pure OCaml + ocaml-signal)
 examples/gallery/     headless component-gallery demo
 platform/apple/       SwiftUI backend (SwiftPM package + tests)
-platform/flutter/     Flutter backend
 platform/web/         Melange DOM library, stylesheet, icons
 schema/               canonical component schema (components.json)
 tooling/              schema code generator and tests
