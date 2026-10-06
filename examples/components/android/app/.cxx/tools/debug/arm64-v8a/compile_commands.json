@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/ubuntu/repos/lui/examples/components/android/app/.cxx/Debug/406wr1e2/arm64-v8a",
+  "command": "/home/ubuntu/android-sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/ubuntu/android-sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/sysroot -Dlui_jni_bridge_EXPORTS -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -fno-limit-debug-info  -fPIC -o CMakeFiles/lui_jni_bridge.dir/lui_jni_bridge_stub.c.o -c /home/ubuntu/repos/lui/examples/components/android/app/src/main/cpp/lui_jni_bridge_stub.c",
+  "file": "/home/ubuntu/repos/lui/examples/components/android/app/src/main/cpp/lui_jni_bridge_stub.c"
+}
+]

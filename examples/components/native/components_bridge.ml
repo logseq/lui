@@ -25,6 +25,7 @@ let operating_system = function
 let host_kind = function
   | 1 -> WebHost
   | 2 -> SwiftUIHost
+  | 4 -> KotlinHost
   | 6 -> GPUIHost
   | _ -> GenericHost
 
@@ -108,6 +109,17 @@ let context_menu_press node x y modifiers button target_class =
   dispatch
     (ContextMenuPress (node, pointer_detail x y modifiers button target_class))
 
+(* Extension events travel as a flat JSON object of scalar values; decode it
+   and let the runtime validate the payload against the declared schema. *)
+let extension_event node identifier name json_values =
+  let values =
+    match Lui_json.parse_values json_values with
+    | values -> values
+    | exception Lui_json.Parse_error message ->
+      invalid_arg ("invalid extension event payload: " ^ message)
+  in
+  dispatch (ExtensionEvent (node, identifier, name, values))
+
 let dispose () =
   latest_patch := "";
   ignore (Lui_app.dispose (app ()));
@@ -135,10 +147,13 @@ let register prefix =
   register (prefix ^ "_pointer_enter") pointer_enter;
   register (prefix ^ "_pointer_leave") pointer_leave;
   register (prefix ^ "_context_menu_press") context_menu_press;
+  register (prefix ^ "_extension_event") extension_event;
   register (prefix ^ "_dispose") dispose;
   register (prefix ^ "_root_node") root_node
 
-(* platform/native/lui_ocaml_bridge.c looks up "lui_ocaml_*". *)
+(* platform/native/lui_ocaml_bridge.c looks up "lui_ocaml_*";
+   platform/android/lui's JNI bridge looks up "lui_kotlin_*". *)
 let () =
   Printexc.record_backtrace true;
-  register "lui_ocaml"
+  register "lui_ocaml";
+  register "lui_kotlin"

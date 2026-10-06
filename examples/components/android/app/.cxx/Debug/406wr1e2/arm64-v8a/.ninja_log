@@ -1,0 +1,3 @@
+# ninja log v5
+0	22	1791281377761547403	CMakeFiles/lui_jni_bridge.dir/lui_jni_bridge_stub.c.o	5a86272d66b57ded
+22	41	1791281377778547301	/home/ubuntu/repos/lui/examples/components/android/app/build/intermediates/cxx/Debug/406wr1e2/obj/arm64-v8a/liblui_jni_bridge.so	f70a42859ebf6bdb

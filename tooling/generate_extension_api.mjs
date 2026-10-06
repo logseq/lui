@@ -65,7 +65,7 @@ const osNames = {
 
 const hostNames = {
   generic: 'GenericHost', web: 'WebHost', swiftui: 'SwiftUIHost',
-  gpui: 'GPUIHost',
+  kotlin: 'KotlinHost', gpui: 'GPUIHost',
 };
 
 const munge = (name) => name.replace(/-/g, '_');

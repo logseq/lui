@@ -158,6 +158,7 @@ let host_name host =
   | GenericHost -> "generic"
   | WebHost -> "web"
   | SwiftUIHost -> "swiftui"
+  | KotlinHost -> "kotlin"
   | GPUIHost -> "gpui"
 
 let token value = string_of_int (String.length value) ^ ":" ^ value
