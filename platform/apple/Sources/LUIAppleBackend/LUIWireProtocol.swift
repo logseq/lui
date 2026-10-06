@@ -744,8 +744,12 @@ struct LUIRetainedTree {
             if parentNode.kind == .toolbar, !Self.isToolbarChild(childNode.kind) {
                 throw invalid("toolbar accepts only interactive controls and dividers")
             }
-            if parentNode.kind == .menuItem, childNode.kind != .contextMenu {
-                throw invalid("menu-item accepts only context-menu metadata")
+            // Interactive leaf hosts (button, menu-item, ...) accept context-menu
+            // metadata and content children (text/icon/etc., matching gpui), but
+            // never nested menu containers — submenus are not supported.
+            if Self.isContextMenuLeafHost(parentNode.kind),
+               childNode.kind == .dropdownMenu || childNode.kind == .menuTrigger {
+                throw invalid("interactive leaf cannot host menu containers")
             }
             if parentNode.kind == .listSection,
                childNode.kind != .listItem,
@@ -769,11 +773,6 @@ struct LUIRetainedTree {
             }
             if childNode.kind == .swipeAction, parentNode.kind != .swipeActions {
                 throw invalid("swipe-action requires a swipe-actions parent")
-            }
-            if parentNode.kind != .menuItem,
-               Self.isContextMenuLeafHost(parentNode.kind),
-               childNode.kind != .contextMenu {
-                throw invalid("interactive leaf accepts only context-menu metadata")
             }
             return
         }
@@ -1122,10 +1121,14 @@ struct LUIRetainedTree {
                 let text = node.properties[.text]?.stringValue ?? ""
                 let label = node.properties[.accessibilityLabel]?.stringValue ?? ""
                 let icon = node.properties[.icon]?.stringValue ?? ""
-                guard !text.isEmpty || !label.isEmpty else {
+                // Content may arrive as child nodes (text/label/icon) rather than
+                // properties — those children provide the accessible name,
+                // matching gpui toleration.
+                let hasNamedChild = hasNamedChild(node)
+                guard !text.isEmpty || !label.isEmpty || !icon.isEmpty || hasNamedChild else {
                     throw invalid("button requires an accessible name")
                 }
-                if text.isEmpty && !icon.isEmpty && label.isEmpty {
+                if text.isEmpty && !icon.isEmpty && label.isEmpty && !hasNamedChild {
                     throw invalid("icon-only button requires label")
                 }
             }
@@ -1187,7 +1190,8 @@ struct LUIRetainedTree {
                 }
             }
             if node.kind == .menuItem {
-                guard !(node.properties[.text]?.stringValue ?? "").isEmpty else {
+                let text = node.properties[.text]?.stringValue ?? ""
+                guard !text.isEmpty || hasNamedChild(node) else {
                     throw invalid("menu-item requires text")
                 }
             }
@@ -1380,10 +1384,6 @@ struct LUIRetainedTree {
                (node.properties[.path]?.stringValue ?? "").isEmpty {
                 throw invalid("file node requires path")
             }
-            if node.kind == .link,
-               (node.properties[.url]?.stringValue ?? "").isEmpty {
-                throw invalid("link requires url")
-            }
             if node.kind == .stepper, node.properties[.active]?.intValue == nil {
                 throw invalid("stepper requires active")
             }
@@ -1464,6 +1464,19 @@ struct LUIRetainedTree {
     private func hasAncestor(_ parent: Int?, kind: LUINodeKind) -> Bool {
         guard let parent, let node = nodes[parent] else { return false }
         return node.kind == kind || hasAncestor(node.parent, kind: kind)
+    }
+
+    // A direct child that supplies a name: a text/label/icon node or any
+    // child carrying text/name content. Callers must validate after child
+    // attachments from the same batch are applied.
+    private func hasNamedChild(_ node: LUINodeState) -> Bool {
+        node.children.contains { childID in
+            guard let child = nodes[childID] else { return false }
+            let childText = child.properties[.text]?.stringValue ?? ""
+            let childName = child.properties[.name]?.stringValue ?? ""
+            return child.kind == .text || child.kind == .label ||
+                child.kind == .icon || !childText.isEmpty || !childName.isEmpty
+        }
     }
 
     private func validateSizeAxis(
