@@ -87,6 +87,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 
@@ -415,10 +416,11 @@ private fun LuiNodeContent(
         }
 
         LuiNodeKind.switchControl -> Row(
-            modifier.fillMaxWidth(),
+            modifier,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(node.text(), Modifier.weight(1f))
+            if (node.text().isNotEmpty()) Text(node.text())
             Switch(
                 checked = node.propBool("checked"),
                 onCheckedChange = { value ->
@@ -850,17 +852,21 @@ private fun LuiButton(
                     contentDescription = node.propString("accessibility-label"),
                     modifier = Modifier.size(iconSize),
                 )
-                icon == null -> Text(node.text())
+                icon == null -> Text(
+                    node.text(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 else -> Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (node.propString("icon-placement") == "trailing") {
-                        Text(node.text())
+                        Text(node.text(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Icon(icon, contentDescription = null, modifier = Modifier.size(iconSize))
                     } else {
                         Icon(icon, contentDescription = null, modifier = Modifier.size(iconSize))
-                        Text(node.text())
+                        Text(node.text(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

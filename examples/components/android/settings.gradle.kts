@@ -17,4 +17,4 @@ rootProject.name = "lui-components-android"
 
 include(":app")
 include(":lui")
-project(":lui").projectDir = file("../../platform/android/lui")
+project(":lui").projectDir = file("../../../platform/android/lui")

@@ -4,7 +4,7 @@
     <application
         android:label="LUI Components"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/ic_launcher"
         android:supportsRtl="true">
 
         <activity

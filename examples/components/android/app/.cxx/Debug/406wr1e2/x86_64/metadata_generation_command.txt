@@ -1,0 +1,18 @@
+                        -H/home/ubuntu/repos/lui/examples/components/android/app/src/main/cpp
+-DCMAKE_SYSTEM_NAME=Android
+-DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+-DCMAKE_SYSTEM_VERSION=24
+-DANDROID_PLATFORM=android-24
+-DANDROID_ABI=x86_64
+-DCMAKE_ANDROID_ARCH_ABI=x86_64
+-DANDROID_NDK=/home/ubuntu/android-sdk/ndk/26.1.10909125
+-DCMAKE_ANDROID_NDK=/home/ubuntu/android-sdk/ndk/26.1.10909125
+-DCMAKE_TOOLCHAIN_FILE=/home/ubuntu/android-sdk/ndk/26.1.10909125/build/cmake/android.toolchain.cmake
+-DCMAKE_MAKE_PROGRAM=/home/ubuntu/android-sdk/cmake/3.22.1/bin/ninja
+-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/home/ubuntu/repos/lui/examples/components/android/app/build/intermediates/cxx/Debug/406wr1e2/obj/x86_64
+-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=/home/ubuntu/repos/lui/examples/components/android/app/build/intermediates/cxx/Debug/406wr1e2/obj/x86_64
+-DCMAKE_BUILD_TYPE=Debug
+-B/home/ubuntu/repos/lui/examples/components/android/app/.cxx/Debug/406wr1e2/x86_64
+-GNinja
+                        Build command args: []
+                        Version: 2

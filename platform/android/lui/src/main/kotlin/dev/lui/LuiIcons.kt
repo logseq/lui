@@ -20,7 +20,7 @@ object LuiIcons {
 
     fun resolve(name: String): ImageVector {
         if (name.startsWith("app:")) {
-            return registered[name.substring(4)] ?: Icons.Rounded.HelpOutline
+            return registered[name.substring(4)] ?: Icons.AutoMirrored.Rounded.HelpOutline
         }
         return when (name) {
             "alert" -> Icons.Rounded.Warning
@@ -47,7 +47,7 @@ object LuiIcons {
             "folder-open" -> Icons.Rounded.FolderOpen
             "git-branch" -> Icons.Rounded.AccountTree
             "git-merge" -> Icons.Rounded.Merge
-            "git-pull-request" -> Icons.Rounded.CallMerge
+            "git-pull-request" -> Icons.AutoMirrored.Rounded.CallMerge
             "info" -> Icons.Rounded.Info
             "menu" -> Icons.Rounded.Menu
             "mic" -> Icons.Rounded.Mic
@@ -74,7 +74,7 @@ object LuiIcons {
             "wrench" -> Icons.Rounded.Build
             "x" -> Icons.Rounded.Close
             "x-circle" -> Icons.Rounded.Cancel
-            else -> Icons.Rounded.HelpOutline
+            else -> Icons.AutoMirrored.Rounded.HelpOutline
         }
     }
 }
