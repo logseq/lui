@@ -163,6 +163,7 @@ private fun LuiExtensionView(backend: LuiBackend, id: Int) {
         nodeId = id,
         identifier = node.identifier,
         properties = node.properties,
+        children = node.children,
         renderChild = { childId -> LuiNodeView(backend, childId) },
     )
     context.builder()

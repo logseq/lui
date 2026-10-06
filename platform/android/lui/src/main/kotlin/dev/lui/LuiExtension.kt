@@ -42,6 +42,7 @@ class LuiExtensionContext internal constructor(
     val nodeId: Int,
     val identifier: String,
     val properties: Map<String, LuiWireValue>,
+    val children: List<Int> = emptyList(),
     internal val renderChild: @Composable (Int) -> Unit,
 ) {
     fun string(name: String): String? = properties[name]?.stringValue
@@ -52,6 +53,9 @@ class LuiExtensionContext internal constructor(
     fun emitEvent(name: String, values: Map<String, LuiWireValue> = emptyMap()) {
         backend.emitExtensionEvent(nodeId, identifier, name, values)
     }
+
+    /** The extension node behind a declared-child id, if it is one. */
+    fun extensionChild(id: Int): LuiExtensionNode? = backend.extensionNode(id)
 
     @Composable
     fun child(id: Int) = renderChild(id)

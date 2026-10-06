@@ -106,6 +106,7 @@ type host_kind =
   | GenericHost
   | WebHost
   | SwiftUIHost
+  | KotlinHost
   | GPUIHost
 
 type platform_profile = {

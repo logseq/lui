@@ -46,6 +46,10 @@
       {
         "os": "windows",
         "host": "gpui"
+      },
+      {
+        "os": "android",
+        "host": "kotlin"
       }
     ],
     "splits": [
@@ -72,6 +76,10 @@
       {
         "os": "windows",
         "host": "gpui"
+      },
+      {
+        "os": "android",
+        "host": "kotlin"
       }
     ],
     "web": [
@@ -104,6 +112,16 @@
       {
         "os": "windows",
         "host": "gpui"
+      }
+    ],
+    "web-and-kotlin": [
+      {
+        "os": "web",
+        "host": "web"
+      },
+      {
+        "os": "android",
+        "host": "kotlin"
       }
     ]
   },
@@ -281,7 +299,7 @@
     },
     {
       "identifier": "native-card",
-      "profiles": "web",
+      "profiles": "web-and-kotlin",
       "standardChildren": false,
       "children": [],
       "properties": [

@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        GalleryExtensions.register(backend.extensions)
 
         runtimeStarted = runCatching {
             LuiBridge.start(libraryName = "lui_jni_bridge") { json ->
