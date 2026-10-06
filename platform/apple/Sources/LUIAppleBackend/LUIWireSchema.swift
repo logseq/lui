@@ -89,6 +89,7 @@ enum LUINodeKind: String, Decodable, Equatable {
     case fileImage = "file-image"
     case filePreview = "file-preview"
     case br = "br"
+    case popover = "popover"
 }
 
 enum LUIProperty: String, Decodable, Hashable {
@@ -204,6 +205,9 @@ enum LUIProperty: String, Decodable, Hashable {
     case inputType = "input-type"
     case pickerAccept = "accept"
     case pickerDirectory = "directory"
+    case popupX = "x"
+    case popupY = "y"
+    case availableHeight = "available-height"
 }
 
 enum LUISchemaMatrix {

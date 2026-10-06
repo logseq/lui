@@ -344,6 +344,10 @@
     {
       "name": "br",
       "status": "supported"
+    },
+    {
+      "name": "popover",
+      "status": "supported"
     }
   ],
   "nodeKinds": [
@@ -955,6 +959,13 @@
       "dart": "br",
       "swift": "br",
       "container": false
+    },
+    {
+      "lg": "Popover",
+      "wire": "popover",
+      "dart": "popover",
+      "swift": "popover",
+      "container": true
     }
   ],
   "properties": [
@@ -1517,6 +1528,21 @@
       "lg": "PickerDirectory",
       "wire": "directory",
       "swift": "pickerDirectory"
+    },
+    {
+      "lg": "PopupX",
+      "wire": "x",
+      "swift": "popupX"
+    },
+    {
+      "lg": "PopupY",
+      "wire": "y",
+      "swift": "popupY"
+    },
+    {
+      "lg": "AvailableHeight",
+      "wire": "available-height",
+      "swift": "availableHeight"
     }
   ],
   "events": [

@@ -1406,3 +1406,94 @@ let remove_dropdown_after_exit renderer node parent positioner =
             Lui_web_layers.remove renderer.web_layers renderer.web_document node
         end)
   end
+
+(* --- popover --- *)
+
+let popover_positioned renderer node =
+  match Store.property renderer.web_store node AnchorValue with
+  | Some (StringValue _) -> true
+  | _ -> false
+
+let attach_popover_events renderer node _popover_node =
+  let document = renderer.web_document in
+  let positioner = Lui_web_nodes.dom_node renderer node in
+  let popup = Lui_web_util.child_element positioner 0 in
+  let owner =
+    match Store.node renderer.web_store node with
+    | Some current -> current.retained_parent
+    | None -> None
+  in
+  ignore
+    (Lui_web_layers.register renderer.web_layers
+       ~document ~id:node ~owner ~trigger:None ~content:positioner
+       ~style_targets:[positioner; popup]
+       ~policy:Lui_web_layers.Nonblocking
+       ~dismiss:(fun () -> emit renderer (Dismiss node))
+       ~close:(fun () -> ())
+       ~key_handler:(fun _event -> ())
+       ~present:false ~open_:false);
+  Hashtbl.replace renderer.web_cleanups node (fun () ->
+      Lui_web_popup_tracking.stop positioner;
+      if not (Lui_web_layers.is_present renderer.web_layers node) then
+        Lui_web_layers.remove renderer.web_layers renderer.web_document node)
+
+let attach_popover_events_bang = attach_popover_events
+
+let mount_popover renderer node =
+  match Store.node renderer.web_store node with
+  | Some current ->
+      let positioner = current.platform_node in
+      let popup = Lui_web_util.child_element positioner 0 in
+      W.Element.setAttribute "id"
+        (Lui_web_util.node_dom_id node ^ "-popup") popup;
+      if Store.property renderer.web_store node PopupX = None
+         && Store.property renderer.web_store node AnchorValue = None
+      then W.Element.setAttribute "data-cover" "" positioner;
+      W.Element.removeAttribute "inert" popup;
+      Lui_web_layers.reconcile_owner renderer.web_layers
+        renderer.web_document node current.retained_parent;
+      Lui_web_layers.open_layer renderer.web_layers renderer.web_document
+        node;
+      begin_popup_open popup;
+      Lui_web_position.position_popover renderer node;
+      if popover_positioned renderer node then
+        Lui_web_position.track renderer node popup
+          ~update:(fun () -> Lui_web_position.position_popover renderer node)
+          ~on_invalid:(fun () ->
+            Lui_web_util.set_state_attribute positioner "hidden" true)
+  | None -> invalid_arg "unknown popover node"
+
+let mount_popover_bang = mount_popover
+
+let remove_popover_after_exit renderer node parent positioner =
+  if not (Lui_web_layers.is_present renderer.web_layers node) then begin
+    match W.Element.parentElement positioner with
+    | Some actual_parent ->
+        ignore
+          (W.Element.removeChild (W.Element.asNode positioner) actual_parent)
+    | None -> ()
+  end else begin
+    let popup = Lui_web_util.child_element positioner 0 in
+    let token =
+      Lui_web_layers.close_layer renderer.web_layers renderer.web_document
+        node
+    in
+    begin_popup_close popup;
+    W.Element.setAttribute "inert" "" popup;
+    after_transition renderer.web_document popup 130 true (fun () ->
+        if
+          Lui_web_layers.transition renderer.web_layers node = token
+          && not (Lui_web_layers.is_open renderer.web_layers node)
+        then begin
+          if W.Element.contains (W.Element.asNode positioner) parent then
+            ignore
+              (W.Element.removeChild (W.Element.asNode positioner) parent);
+          Lui_web_layers.finish_present renderer.web_layers
+            renderer.web_document node token;
+          if Store.node renderer.web_store node = None then
+            Lui_web_layers.remove renderer.web_layers renderer.web_document
+              node
+        end)
+  end
+
+let remove_popover_after_exit_bang = remove_popover_after_exit

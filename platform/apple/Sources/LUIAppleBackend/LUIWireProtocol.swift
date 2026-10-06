@@ -235,7 +235,8 @@ enum LUIWireValue: Decodable, Equatable {
         case .role:
             guard let value = stringValue else { return false }
             return value == "treeitem" || value == "navigation" ||
-                value == "navigation-heading"
+                value == "navigation-heading" ||
+                (kind == .popover && value == "menu")
         case .treeLevel:
             guard let value = intValue else { return false }
             return value > 0
@@ -272,6 +273,39 @@ enum LUIWireValue: Decodable, Equatable {
             return Self.overlayAlignments.contains(value)
         case .gap, .padding:
             return intValue != nil
+        case .alt:
+            return stringValue != nil
+        case .loading:
+            guard let value = stringValue else { return false }
+            return value == "eager" || value == "lazy"
+        case .referrerPolicy:
+            guard let value = stringValue else { return false }
+            return [
+                "no-referrer", "origin",
+                "strict-origin-when-cross-origin", "unsafe-url",
+            ].contains(value)
+        case .target:
+            guard let value = stringValue else { return false }
+            return value == "_self" || value == "_blank"
+        case .opacity:
+            guard let value = doubleValue else { return false }
+            return value.isFinite && value >= 0 && value <= 1
+        case .display:
+            guard let value = stringValue else { return false }
+            return value == "contents"
+        case .tooltip, .tooltipKeys, .pickerAccept:
+            return stringValue != nil
+        case .inputType:
+            guard let value = stringValue else { return false }
+            return value == "text" || value == "color"
+        case .pickerDirectory:
+            return boolValue != nil
+        case .popupX, .popupY:
+            guard let value = doubleValue else { return false }
+            return value.isFinite
+        case .availableHeight:
+            guard let value = doubleValue else { return false }
+            return value.isFinite && value >= 0
         }
     }
 
@@ -928,13 +962,14 @@ struct LUIRetainedTree {
         case .sourceX, .sourceY, .sourceWidth, .sourceHeight:
             kind == .avatar || kind == .image
         case .anchor, .anchorAlignment, .anchorOffset:
-            kind == .dropdownMenu || kind == .tooltip
+            kind == .dropdownMenu || kind == .tooltip || kind == .popover
+        case .popupX, .popupY, .availableHeight: kind == .popover
         case .tooltipDelay: kind == .tooltip
         case .duration: false
         case .textAlignment:
             kind == .text || kind == .button || kind == .toggleButton ||
                 kind == .tableCell || kind == .bubble || kind == .statusBar
-        case .role: isTreeRow(kind) || kind == .listItem
+        case .role: isTreeRow(kind) || kind == .listItem || kind == .popover
         case .treeLevel, .expanded: isTreeRow(kind)
         case .key, .separator: kind == .listItem || kind == .listSection
         case .style, .scrollTarget, .scrollAnchor, .scrollToken,
@@ -982,7 +1017,7 @@ struct LUIRetainedTree {
             kind == .menuTrigger || kind == .filePicker || isContextMenuLeafHost(kind)
                 || kind == .link || kind == .listSection
                 || kind == .listSectionHeader || kind == .listSectionFooter
-                || kind == .swipeActions
+                || kind == .swipeActions || kind == .popover
     }
 
     private static func acceptsExtensionChildren(_ kind: LUINodeKind) -> Bool {

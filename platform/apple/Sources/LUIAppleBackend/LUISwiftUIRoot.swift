@@ -876,6 +876,19 @@ private struct LUINodeView: View {
         case .br:
             // Line-break leaf: no native representation; renders nothing.
             return AnyView(EmptyView())
+        case .popover:
+            // Native popover positioning is not implemented yet: render the
+            // children inline so the content stays reachable.
+            return AnyView(
+                VStack(
+                    alignment: .leading,
+                    spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+                ) {
+                    ForEach(model.children, id: \.self) { childID in
+                        LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                    }
+                }
+            )
         case .stepper:
             return AnyView(LUIStepperView(model: model, backend: backend))
         case .step:

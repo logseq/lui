@@ -101,6 +101,7 @@ let base_class_name kind =
   | FileImage -> "lui-file-image"
   | FilePreview -> "lui-file-preview"
   | Br -> "lui-br"
+  | Popover -> "lui-popover"
 
 let create_split_node renderer =
   let document = renderer.web_document in
@@ -204,6 +205,11 @@ let create_dropdown_node renderer =
     [ Util.element document "div" "lui-dropdown-menu"
         [ ("role", "listbox"); ("tabindex", "-1") ]
         [] ]
+
+let create_popover_node renderer =
+  let document = renderer.web_document in
+  Util.element document "div" "lui-popup-positioner" []
+    [ Util.element document "div" "lui-popover" [ ("tabindex", "-1") ] [] ]
 
 let create_avatar_node renderer =
   let document = renderer.web_document in
@@ -404,6 +410,7 @@ let platform_node renderer kind =
   | Select -> create_select_node renderer
   | Combobox -> create_combobox_node renderer
   | DropdownMenu -> create_dropdown_node renderer
+  | Popover -> create_popover_node renderer
   | MenuItem | MenuTrigger -> create_menu_item_node renderer
   | Avatar -> create_avatar_node renderer
   | Image | MediaSurface -> create_media_node renderer kind
