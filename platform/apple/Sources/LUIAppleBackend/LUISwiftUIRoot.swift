@@ -771,6 +771,7 @@ private struct LUINodeView: View {
             ) {
                 children
             }
+            .modifier(LUIContainerPressModifier(model: model, backend: backend))
             )
         case .text:
             return AnyView(LUITextView(model: model, backend: backend))
@@ -982,7 +983,8 @@ private struct LUINodeView: View {
             return AnyView(
                 LUIIconImage(
                     source: backend.iconSource(for: model.iconName),
-                    bundle: backend.appIconBundle
+                    bundle: backend.appIconBundle,
+                    size: CGFloat(model.iconHeight)
             )
                 .scaledToFit()
                 .frame(
@@ -5700,6 +5702,7 @@ private struct LUISelectedButtonModifier: ViewModifier {
 private struct LUIIconImage: View {
     let source: LUIAppleIconSource
     let bundle: Bundle?
+    var size: CGFloat = 16
 
     @ViewBuilder
     var body: some View {
@@ -5712,6 +5715,9 @@ private struct LUIIconImage: View {
             Image(name, bundle: bundle)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
+        case let .fontGlyph(family, scalar):
+            Text(String(Character(Unicode.Scalar(scalar) ?? Unicode.Scalar(UInt32(0xFFFD))!)))
+                .font(.custom(family, size: size))
         }
     }
 }
@@ -5862,8 +5868,11 @@ private struct LUIRowView: View {
         if model.property(.grow)?.doubleValue ?? 0 > 0
             || model.surfaceHeight != nil || model.surfaceMinHeight != nil {
             rowContent
+                .modifier(LUIContainerPressModifier(model: model, backend: backend))
         } else {
-            rowContent.fixedSize(horizontal: false, vertical: true)
+            rowContent
+                .fixedSize(horizontal: false, vertical: true)
+                .modifier(LUIContainerPressModifier(model: model, backend: backend))
         }
     }
 
@@ -5959,7 +5968,7 @@ private struct LUIColumnView: View {
                 ? .infinity : nil,
             alignment: frameAlignment
         )
-        .modifier(LUIColumnPressModifier(model: model, backend: backend))
+        .modifier(LUIContainerPressModifier(model: model, backend: backend))
     }
 
     @ViewBuilder
@@ -6032,7 +6041,7 @@ private struct LUIColumnView: View {
     }
 }
 
-private struct LUIColumnPressModifier: ViewModifier {
+private struct LUIContainerPressModifier: ViewModifier {
     let model: LUINodeModel
     let backend: LUIAppleBackend
 

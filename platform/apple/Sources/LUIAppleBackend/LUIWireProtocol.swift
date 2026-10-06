@@ -838,10 +838,13 @@ struct LUIRetainedTree {
         case .main, .cross:
             kind == .row || kind == .column || kind == .list || kind == .virtualList ||
                 kind == .card || kind == .panel || kind == .box ||
+                kind == .button || kind == .menuItem || kind == .listItem ||
                 isHorizontalGroup(kind)
         case .grow: kind != .avatar && kind != .tooltip && !isModalSurface(kind)
         case .columns: kind == .grid
-        case .padding, .width, .height: kind != .tooltip
+        case .padding, .paddingHorizontal, .paddingVertical:
+            kind != .avatar && kind != .tooltip
+        case .width, .height: kind != .tooltip
         case .styleClass, .dataAttrs:
             kind != .tooltip
         case .asTag:
@@ -853,10 +856,6 @@ struct LUIRetainedTree {
             kind != .tooltip && !isModalSurface(kind)
         case .containerRelativeFrame, .containerRelativeFrameInset:
             kind != .root && !isModalSurface(kind)
-        case .paddingHorizontal, .paddingVertical:
-            kind == .row || kind == .column || kind == .grid || kind == .box ||
-                kind == .card || kind == .panel || kind == .scroll ||
-                (property == .paddingHorizontal && kind == .button)
         case .foreground:
             kind == .row || kind == .column || kind == .grid || kind == .box ||
                 kind == .panel || kind == .card || kind == .stack ||
@@ -951,7 +950,8 @@ struct LUIRetainedTree {
         case .changeEnabled: kind == .radio || isTreeRow(kind)
         case .toggleEnabled: kind == .radio || kind == .drawer || isTreeRow(kind)
         case .pressEnabled:
-            kind == .text || kind == .column || kind == .radio || kind == .select ||
+            kind == .text || kind == .row || kind == .column || kind == .box ||
+                kind == .radio || kind == .select ||
                 kind == .combobox || kind == .menuItem || kind == .listItem
                 || kind == .tableCell || kind == .fileImage || isTreeRow(kind)
         case .submitEnabled: kind == .combobox || kind == .listItem
@@ -1128,9 +1128,6 @@ struct LUIRetainedTree {
                 guard !text.isEmpty || !label.isEmpty || !icon.isEmpty || hasNamedChild else {
                     throw invalid("button requires an accessible name")
                 }
-                if text.isEmpty && !icon.isEmpty && label.isEmpty && !hasNamedChild {
-                    throw invalid("icon-only button requires label")
-                }
             }
             if node.kind == .radioGroup || node.kind == .slider {
                 guard !(node.properties[.accessibilityLabel]?.stringValue ?? "").isEmpty else {
@@ -1201,9 +1198,6 @@ struct LUIRetainedTree {
                 let label = node.properties[.accessibilityLabel]?.stringValue ?? ""
                 guard !text.isEmpty || !icon.isEmpty else {
                     throw invalid("menu-trigger requires text or icon")
-                }
-                if text.isEmpty && label.isEmpty {
-                    throw invalid("icon-only menu-trigger requires an accessibility label")
                 }
                 guard node.children.count == 1,
                       let menuID = node.children.first,
