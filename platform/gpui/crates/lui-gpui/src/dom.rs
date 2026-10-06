@@ -328,6 +328,20 @@ pub fn dom_event_via(
     fields: serde_json::Value,
     cx: &mut gpui_kit::gpui::App,
 ) {
+    // The wired `on_click` handler and the root-level mouse-up monitor can
+    // both report one click in a single frame. Drop a same-target repeat
+    // inside the coalescing window OCaml applies anyway — hosts see one
+    // event per click regardless of which path wins the frame.
+    if name == "click" {
+        let now = std::time::Instant::now();
+        let mut guard = shared.borrow_mut();
+        if let Some((last_target, at)) = guard.last_click_emit {
+            if last_target == target_id && now.duration_since(at).as_millis() < 60 {
+                return;
+            }
+        }
+        guard.last_click_emit = Some((target_id, now));
+    }
     let target = target_snapshot(&shared.borrow().store, target_id);
     let mut payload = serde_json::json!({
         "name": name,

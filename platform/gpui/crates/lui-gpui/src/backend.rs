@@ -41,6 +41,12 @@ pub struct LuiShared {
     /// native lazy contract). The per-frame sweep in `dom.rs` fires the
     /// event once the node's recorded bounds reach the viewport.
     pub viewport_watched: HashMap<i64, ViewportWatch>,
+    /// Last `click` dom-event emission (target node, instant). The wired
+    /// `on_click` handler and the root-level mouse-up monitor can both
+    /// report the same click in one frame — emissions for the same
+    /// target inside this window are dropped, mirroring OCaml's 60ms
+    /// event coalescing so hosts see one event per click.
+    pub last_click_emit: Option<(i64, std::time::Instant)>,
 }
 
 /// A registered viewport-proximity watch: which dom-event to fire and
@@ -69,6 +75,7 @@ impl LuiShared {
             last_errors: Vec::new(),
             node_bounds: HashMap::new(),
             viewport_watched: HashMap::new(),
+            last_click_emit: None,
         }));
         crate::extension::register_builtin_renderers(&shared);
         shared
