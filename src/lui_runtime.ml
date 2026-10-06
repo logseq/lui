@@ -43,6 +43,10 @@ type application = {
   next_node_id : int ref;
   mounted_nodes : (int, node_kind) Hashtbl.t;
   runtime_extension_nodes : (int, string) Hashtbl.t;
+  (* identifiers whose schema fingerprint already went out on the wire —
+     hosts resolve an empty fingerprint against their registered spec,
+     so subsequent creates send "" instead of ~1.4KB each *)
+  runtime_fingerprint_sent : (string, unit) Hashtbl.t;
   runtime_properties : (int, wire_value Property_map.t) Hashtbl.t;
   runtime_extension_properties : (int, wire_value String_map.t) Hashtbl.t;
   runtime_children : (int, int list) Hashtbl.t;
@@ -115,6 +119,7 @@ let create_with_extensions scheduler backend registry =
     next_node_id = ref 0;
     mounted_nodes = Hashtbl.create 16;
     runtime_extension_nodes = Hashtbl.create 16;
+    runtime_fingerprint_sent = Hashtbl.create 16;
     runtime_properties = Hashtbl.create 16;
     runtime_extension_properties = Hashtbl.create 16;
     runtime_children = Hashtbl.create 16;
@@ -441,6 +446,13 @@ let index_map children =
   let result = Hashtbl.create 16 in
   List.iteri (fun index child -> Hashtbl.replace result child index) children;
   result
+
+let extension_wire_fingerprint application identifier fingerprint =
+  if Hashtbl.mem application.runtime_fingerprint_sent identifier then ""
+  else begin
+    Hashtbl.replace application.runtime_fingerprint_sent identifier ();
+    fingerprint
+  end
 
 let enqueue application operation =
   application.pending_ops := operation :: !(application.pending_ops)
@@ -892,7 +904,9 @@ let reconcile_subtree application saved parent old_root candidate_root =
              in
              enqueue
                application
-               (create_extension_op candidate identifier fingerprint)
+               (create_extension_op candidate identifier
+                  (extension_wire_fingerprint application identifier
+                     fingerprint))
            | None -> ()))
     candidate_nodes;
   List.iter
@@ -1080,7 +1094,8 @@ let create_extension_node application identifier =
   enqueue
     application
     (create_extension_op node identifier
-       (Lui_extension.fingerprint extension_schema));
+       (extension_wire_fingerprint application identifier
+          (Lui_extension.fingerprint extension_schema)));
   node
 
 let create_tweak_node application identifier =
@@ -1106,7 +1121,8 @@ let create_tweak_node application identifier =
   enqueue
     application
     (create_extension_op node identifier
-       (Lui_extension.tweak_fingerprint extension_schema));
+       (extension_wire_fingerprint application identifier
+          (Lui_extension.tweak_fingerprint extension_schema)));
   node
 
 let set_reload_key application node key =

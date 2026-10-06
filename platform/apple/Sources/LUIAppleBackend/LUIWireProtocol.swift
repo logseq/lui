@@ -552,12 +552,15 @@ struct LUIRetainedTree {
             guard let registration = extensionRegistry.registration(identifier) else {
                 throw invalid("unknown extension identifier")
             }
-            guard registration.fingerprint == fingerprint else {
+            // "" = same fingerprint as already registered for this
+            // identifier (per-session dedupe on the wire); resolve to the
+            // registered value so node state always carries the real one
+            guard fingerprint.isEmpty || registration.fingerprint == fingerprint else {
                 throw invalid("extension fingerprint mismatch")
             }
             extensionNodes[id] = LUIExtensionNodeState(
                 identifier: identifier,
-                fingerprint: fingerprint,
+                fingerprint: fingerprint.isEmpty ? registration.fingerprint : fingerprint,
                 parent: nil,
                 children: [],
                 properties: Dictionary(
