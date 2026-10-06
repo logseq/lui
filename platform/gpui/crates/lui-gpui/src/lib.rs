@@ -19,7 +19,9 @@ pub mod node_view;
 pub mod ocaml_stubs;
 pub mod root;
 pub mod style;
+pub mod theme;
 
 pub use backend::{apply_batch_json, drain_pending, fire, LuiShared, Shared};
 pub use node_view::{LuiNodeView, NodeSnapshot};
 pub use root::LuiRootView;
+pub use theme::init;

@@ -17,13 +17,14 @@ use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::Icon;
-use gpui_kit::component::{h_flex, v_flex, Disableable, Sizable};
+use gpui_kit::component::{h_flex, v_flex, Disableable, Selectable, Sizable};
 use gpui_kit::gpui::{
     anchored, deferred, div, img, point, px, Anchor, AnyElement, App, AppContext, ClickEvent,
     Context, ElementId, FontWeight, ImageSource, InteractiveElement, IntoElement, Modifiers,
     MouseButton, MouseDownEvent, ParentElement, PathPromptOptions, Pixels, Point, RenderImage,
     StatefulInteractiveElement, Styled, SvgSize, Window,
 };
+use gpui_kit::prelude::FluentBuilder;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
 use lui_core::bridge;
@@ -154,7 +155,7 @@ fn radio_handler(
 fn container(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
-    _kind: NodeKind,
+    kind: NodeKind,
     horizontal: bool,
     cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
@@ -169,7 +170,41 @@ fn container(
             .on_children_prepainted(view.bounds_recorder(node))
             .id(element_id(node.id))
     };
-    let mut element = base;
+    // Theme-carried default chrome per kind; explicit wire props and
+    // style-class applied by `style::all` below still win.
+    let mut element = match kind {
+        NodeKind::ButtonGroup | NodeKind::ToggleGroup | NodeKind::Breadcrumb => {
+            base.items_center().gap_1()
+        }
+        NodeKind::Pagination => base.items_center().gap_0p5(),
+        NodeKind::RadioGroup => base.items_center().gap_2(),
+        NodeKind::InputGroupActions => base.items_center().gap_1p5().px_2().pt_1().pb_2(),
+        NodeKind::InputGroup => base
+            .overflow_hidden()
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().input)
+            .bg(cx.theme().background),
+        NodeKind::Toolbar => base
+            .items_center()
+            .p_1()
+            .rounded(cx.theme().radius_lg)
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().tokens.popover),
+        NodeKind::TableRow => {
+            let last = is_last_sibling(view, node);
+            let hover_bg = cx.theme().accent;
+            base.w_full()
+                .when(!last, |element| {
+                    element.border_b_1().border_color(cx.theme().border)
+                })
+                .hover(move |style| style.bg(hover_bg))
+        }
+        NodeKind::TableCell => base.py_3().text_sm(),
+        NodeKind::Table => base.w_full(),
+        _ => base,
+    };
     if !node.enabled() {
         element = element.opacity(0.5);
     }
@@ -184,6 +219,26 @@ fn container(
     element
         .children(view.child_elements(node, cx))
         .into_any_element()
+}
+
+/// The parent node's kind (for context-sensitive defaults like a button
+/// rendered as a tab pill inside `tabs`).
+fn parent_kind(view: &LuiNodeView, node: &NodeSnapshot) -> Option<NodeKind> {
+    let shared = view.shared.borrow();
+    node.parent
+        .and_then(|parent_id| shared.store.node(parent_id))
+        .and_then(|parent| parent.identity.kind())
+}
+
+/// Whether the node is its parent's last child — used for row rules like
+/// the table's "every row but the last draws a bottom border".
+fn is_last_sibling(view: &LuiNodeView, node: &NodeSnapshot) -> bool {
+    let shared = view.shared.borrow();
+    node.parent
+        .and_then(|parent_id| shared.store.node(parent_id))
+        .and_then(|parent| parent.children.last().copied())
+        .map(|last| last == node.id)
+        .unwrap_or(false)
 }
 
 /// Cheap gate peek (same rule as `fire`, avoids wiring dead handlers).
@@ -240,8 +295,13 @@ fn button_size(button: Button, node: &NodeSnapshot) -> Button {
 fn button(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
-    _cx: &mut Context<LuiNodeView>,
+    cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
+    // A `button` mounted under `tabs` is a segmented-control entry, not a
+    // standalone push button — render it as a tab pill.
+    if parent_kind(view, node) == Some(NodeKind::Tabs) {
+        return tab_button(view, node, cx);
+    }
     let node_id = node.id;
     let icon_size = node.string_prop(Property::SizeValue) == Some("icon");
     let label = if icon_size {
@@ -260,9 +320,63 @@ fn button(
     {
         button = button.icon(icon);
     }
+    button = button.selected(node.flag(Property::Selected));
     button = button.disabled(!node.enabled());
     button = button.on_click(press_handler(view, node_id));
     style::all(button, node).into_any_element()
+}
+
+/// `button` inside `tabs`: a segmented-control pill per the gpui-component
+/// tab design — unselected pills read as secondary labels, the selected one
+/// gets the active surface and a resting shadow. The model owns `selected`
+/// and `on_press`; the host only paints the state.
+fn tab_button(
+    view: &mut LuiNodeView,
+    node: &NodeSnapshot,
+    cx: &mut Context<LuiNodeView>,
+) -> AnyElement {
+    let selected = node.flag(Property::Selected);
+    let theme = cx.theme();
+    let active_bg = theme.tokens.tab_active;
+    let active_fg = theme.tab_active_foreground;
+    let mut element = h_flex()
+        .id(element_id(node.id))
+        .items_center()
+        .justify_center()
+        .gap_1p5()
+        .h_8()
+        .px_3()
+        .rounded(theme.radius)
+        .text_sm();
+    if selected {
+        element = element
+            .bg(active_bg)
+            .text_color(active_fg)
+            .shadow_sm();
+    } else {
+        element = element.text_color(theme.tab_foreground).hover(move |style| {
+            style.bg(active_bg.background.opacity(0.6)).text_color(active_fg)
+        });
+    }
+    if let Some(icon) =
+        icon_name(node, Property::InlineIconName).or_else(|| icon_name(node, Property::IconName))
+    {
+        element = element.child(Icon::new(icon).size_4());
+    }
+    let label = text_of(node);
+    if !label.is_empty() {
+        element = element.child(label);
+    }
+    if !node.enabled() {
+        element = element.opacity(0.5);
+    }
+    if press_gate(view, node.id) {
+        element = element
+            .cursor_pointer()
+            .on_click(press_handler(view, node.id));
+    }
+    let element = style::all(element, node);
+    element.into_any_element()
 }
 
 /// Raw icon-name prop — `app:<name>` is an application icon; bare names
@@ -314,9 +428,13 @@ fn app_icon_image(
 }
 
 fn icon_name(node: &NodeSnapshot, property: Property) -> Option<gpui_kit::assets::IconName> {
-    let raw = node.string_prop(property)?;
-    // `app:` names are host-resolved; strip the prefix so app names that
-    // coincide with built-ins still hit the fast path.
+    node.string_prop(property).and_then(icon_for)
+}
+
+/// Map a wire icon name (`app:`-prefix already allowed) onto gpui-kit's
+/// built-in IconName set. `app:` names are host-resolved; strip the prefix
+/// so app names that coincide with built-ins still hit the fast path.
+fn icon_for(raw: &str) -> Option<gpui_kit::assets::IconName> {
     let name = raw.strip_prefix("app:").unwrap_or(raw);
     Some(match name {
         "alert" => gpui_kit::assets::IconName::TriangleAlert,
@@ -381,6 +499,13 @@ fn text_element(
 ) -> AnyElement {
     let children = view.child_elements(node, cx);
     let mut element = div().id(element_id(node.id));
+    // `label` is a form caption — smaller medium-weight text; `text` keeps
+    // the body default.
+    if node.identity.kind() == Some(NodeKind::Label) {
+        element = element
+            .text_sm()
+            .font_weight(FontWeight::MEDIUM);
+    }
     if children.is_empty() {
         element = element.child(text_of(node));
     } else {
@@ -474,6 +599,11 @@ fn input(
     if !node.enabled() {
         input = input.disabled(true);
     }
+    // Inside an `input-group` the group container owns the bordered surface;
+    // the field drops its own chrome.
+    if parent_kind(view, node) == Some(NodeKind::InputGroup) {
+        input = input.appearance(false);
+    }
     style::all(input, node).into_any_element()
 }
 
@@ -515,7 +645,11 @@ fn textarea(
         view.states.textarea = Some(state);
     }
     let state = view.states.textarea.clone().expect("initialized");
-    Textarea::new(&state).into_any_element()
+    let mut element = Textarea::new(&state);
+    if parent_kind(view, node) == Some(NodeKind::InputGroup) {
+        element = element.appearance(false);
+    }
+    element.into_any_element()
 }
 
 fn slider(
@@ -823,11 +957,16 @@ fn overlay_modal(
 
     let mut card = v_flex()
         .gap_2()
-        .bg(cx.theme().popover)
+        .bg(cx.theme().tokens.background)
+        .text_color(cx.theme().foreground)
         .border_1()
         .border_color(cx.theme().border);
     if !text_of(node).is_empty() {
-        card = card.child(div().font_weight(FontWeight::SEMIBOLD).child(text_of(node)));
+        let mut title = div().font_weight(FontWeight::SEMIBOLD).child(text_of(node));
+        if kind == NodeKind::Dialog {
+            title = title.text_lg();
+        }
+        card = card.child(title);
     }
     if let Some(description) = node.string_prop(Property::DescriptionValue) {
         card = card.child(
@@ -838,6 +977,7 @@ fn overlay_modal(
         );
     }
     card = card.children(children);
+    let shadows = cx.theme().shadow_tokens().lg;
 
     let surface = match kind {
         NodeKind::Dialog => card
@@ -846,8 +986,8 @@ fn overlay_modal(
                 .map(|w| px(w as f32))
                 .unwrap_or(px(400.)))
             .p_4()
-            .rounded_lg()
-            .shadow_lg()
+            .rounded(cx.theme().radius_lg)
+            .shadow(shadows)
             .into_any_element(),
         NodeKind::Drawer => card
             .w(node
@@ -856,7 +996,7 @@ fn overlay_modal(
                 .unwrap_or(px(320.)))
             .h_full()
             .p_4()
-            .shadow_lg()
+            .shadow(shadows)
             .into_any_element(),
         NodeKind::Sheet => card
             .w_full()
@@ -865,22 +1005,25 @@ fn overlay_modal(
                 .map(|h| px(h as f32))
                 .unwrap_or(px(360.)))
             .p_4()
-            .rounded_t_lg()
-            .shadow_lg()
+            .rounded_t(cx.theme().radius_lg)
+            .shadow(shadows)
             .into_any_element(),
         _ => card
             .max_w(px(360.))
             .p_3()
-            .rounded_lg()
-            .shadow_lg()
+            .rounded(cx.theme().radius_lg)
+            .shadow(shadows)
             .into_any_element(),
     };
 
-    let mut layer = div()
-        .relative()
-        .w(viewport.width)
-        .h(viewport.height)
-        .child(backdrop(view, node.id, window));
+    let mut layer = div().relative().w(viewport.width).h(viewport.height);
+    // Modal surfaces dim the content behind them and swallow outside clicks
+    // into `Dismiss`; a toast is transient chrome and leaves the window
+    // interactive.
+    if kind != NodeKind::Toast {
+        let backdrop = backdrop(view, node.id, window).bg(cx.theme().overlay);
+        layer = layer.child(backdrop);
+    }
     layer = match kind {
         NodeKind::Sheet => layer.v_flex().justify_end().child(surface),
         NodeKind::Drawer => layer.h_flex().justify_end().child(surface),
@@ -908,11 +1051,12 @@ fn menu_box(
     let mut element = v_flex()
         .gap_0p5()
         .p_1()
-        .bg(cx.theme().popover)
+        .bg(cx.theme().tokens.popover)
+        .text_color(cx.theme().popover_foreground)
         .border_1()
         .border_color(cx.theme().border)
-        .rounded_md()
-        .shadow_lg();
+        .rounded(cx.theme().radius)
+        .shadow(cx.theme().shadow_tokens().lg);
     let min_width = node.float_prop(Property::MinWidth).unwrap_or(160.).max(0.);
     element = element.min_w(px(min_width as f32));
     element.children(view.child_elements(node, cx))
@@ -999,12 +1143,15 @@ fn list_item(
         .w_full()
         .items_center()
         .gap_2()
-        .px_2()
-        .py_1()
-        .rounded_md()
+        .px_3()
+        .py_2()
+        .text_sm()
+        .rounded(cx.theme().radius)
         .hover(move |style| style.bg(hover_bg));
     if selected {
-        row = row.bg(cx.theme().accent);
+        row = row
+            .bg(cx.theme().accent)
+            .text_color(cx.theme().accent_foreground);
     }
 
     let level = node.int_prop(Property::TreeLevel).unwrap_or(0).max(0);
@@ -1063,17 +1210,18 @@ fn list_item(
         };
         if is_menu {
             menu_node_id = Some(*child_id);
-            menu_children = {
+            let grandchild_ids = {
                 let shared = view.shared.borrow();
                 shared
                     .store
                     .node(*child_id)
                     .map(|n| n.children.clone())
                     .unwrap_or_default()
-                    .into_iter()
-                    .map(|grandchild| view.child_view(grandchild, cx).into_any_element())
-                    .collect()
             };
+            menu_children = grandchild_ids
+                .into_iter()
+                .map(|grandchild| view.child_view(grandchild, cx).into_any_element())
+                .collect()
         } else {
             row = row.child(view.child_view(*child_id, cx).into_any_element());
         }
@@ -1121,11 +1269,12 @@ fn list_item(
                 .gap_0p5()
                 .p_1()
                 .min_w(px(160.))
-                .bg(cx.theme().popover)
+                .bg(cx.theme().tokens.popover)
+                .text_color(cx.theme().popover_foreground)
                 .border_1()
                 .border_color(cx.theme().border)
-                .rounded_md()
-                .shadow_lg();
+                .rounded(cx.theme().radius)
+                .shadow(cx.theme().shadow_tokens().lg);
             for menu_child in menu_children {
                 popup = popup.child(menu_child);
             }
@@ -1237,10 +1386,12 @@ fn menu_trigger(
     let mut row = h_flex()
         .id(element_id(node.id))
         .w_full()
+        .min_h(px(32.))
         .items_center()
         .gap_2()
         .px_2()
-        .py_1()
+        .py_1p5()
+        .text_sm()
         .rounded_sm()
         .hover(move |style| style.bg(hover_bg));
     row = row.child(div().w_4());
@@ -1306,17 +1457,18 @@ fn menu_trigger(
             }
         });
         if view.states.menu_open.get() {
-            let items = {
+            let item_ids = {
                 let shared = view.shared.borrow();
                 shared
                     .store
                     .node(menu_id)
                     .map(|n| n.children.clone())
                     .unwrap_or_default()
-                    .into_iter()
-                    .map(|child_id| view.child_view(child_id, cx).into_any_element())
-                    .collect::<Vec<_>>()
             };
+            let items = item_ids
+                .into_iter()
+                .map(|child_id| view.child_view(child_id, cx).into_any_element())
+                .collect::<Vec<_>>();
             if !items.is_empty() {
                 let open = view.states.menu_open.clone();
                 let entity = cx.entity().entity_id();
@@ -1693,10 +1845,12 @@ fn menu_item(
     let mut row = h_flex()
         .id(element_id(node.id))
         .w_full()
+        .min_h(px(32.))
         .items_center()
         .gap_2()
         .px_2()
-        .py_1()
+        .py_1p5()
+        .text_sm()
         .rounded_sm()
         .hover(move |style| style.bg(hover_bg));
     row = row.child(div().w_4().child(if selected {
@@ -1752,31 +1906,33 @@ fn accordion(
     } else {
         gpui_kit::assets::IconName::ChevronRight
     };
+    // Header reads as a labeled row: title on the leading edge, disclosure
+    // chevron on the trailing edge; the box itself is just a bottom rule.
     let mut element = v_flex()
         .id(element_id(node.id))
         .w_full()
-        .border_1()
+        .border_b_1()
         .border_color(cx.theme().border)
-        .rounded_md()
         .child(
             h_flex()
                 .id(ElementId::Name(format!("lui-{}-accordion", node.id).into()))
                 .w_full()
                 .items_center()
+                .justify_between()
                 .gap_2()
-                .px_3()
-                .py_2()
+                .py_4()
                 .cursor_pointer()
+                .child(
+                    div()
+                        .flex_1()
+                        .text_sm()
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(text_of(node)),
+                )
                 .child(
                     Icon::new(chevron)
                         .size_4()
                         .text_color(cx.theme().muted_foreground),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(text_of(node)),
                 )
                 .on_click(move |_, _, cx| {
                     fire(&shared, node_id, EventKind::ToggleChanged, cx, || unsafe {
@@ -1788,8 +1944,8 @@ fn accordion(
         element = element.child(
             v_flex()
                 .gap_1()
-                .px_3()
-                .pb_3()
+                .pb_4()
+                .text_sm()
                 .children(view.child_elements(node, cx)),
         );
     }
@@ -1853,6 +2009,127 @@ fn file_picker(
     style::all(button, node).into_any_element()
 }
 
+/// `bottom-tabs`: stacked pages (the `bottom-tab` children's content, all
+/// mounted so per-tab state survives switches; only the selected one is
+/// visible) above a tab bar of icon+label entries. Presses go to the
+/// `bottom-tab` node — the model owns which tab is `selected`.
+fn bottom_tabs(
+    view: &mut LuiNodeView,
+    node: &NodeSnapshot,
+    cx: &mut Context<LuiNodeView>,
+) -> AnyElement {
+    // Collect per-tab presentation data in one store borrow; rendering the
+    // grandchildren borrows again inside `child_view`.
+    let tabs: Vec<(i64, String, Option<gpui_kit::assets::IconName>)> = {
+        let shared = view.shared.borrow();
+        node.children
+            .iter()
+            .filter_map(|child_id| {
+                shared.store.node(*child_id).map(|child| {
+                    (
+                        *child_id,
+                        child.string_prop(Property::TitleValue).unwrap_or("").to_string(),
+                        child
+                            .string_prop(Property::InlineIconName)
+                            .or_else(|| child.string_prop(Property::IconName))
+                            .and_then(icon_for),
+                    )
+                })
+            })
+            .collect()
+    };
+    let selected_id = {
+        let shared = view.shared.borrow();
+        node.children
+            .iter()
+            .copied()
+            .find(|child_id| {
+                shared
+                    .store
+                    .node(*child_id)
+                    .map(|child| child.flag(Property::Selected))
+                    .unwrap_or(false)
+            })
+            .or_else(|| node.children.first().copied())
+    };
+
+    // Only the selected page renders — its content drives the area's
+    // height. Dormant pages' `LuiNodeView` entities stay alive in
+    // `shared.views`, so per-tab component state survives switches.
+    let mut pages = div().flex_1().min_h_0().w_full().relative();
+    if let Some(selected_id) = selected_id {
+        let grandchildren = {
+            let shared = view.shared.borrow();
+            shared
+                .store
+                .node(selected_id)
+                .map(|child| child.children.clone())
+                .unwrap_or_default()
+        };
+        let mut page = div()
+            .id(ElementId::Name(format!("lui-{selected_id}-page").into()))
+            .w_full();
+        for grandchild in grandchildren {
+            page = page.child(view.child_view(grandchild, cx).into_any_element());
+        }
+        pages = pages.child(page);
+    }
+
+    let active_fg = cx.theme().primary;
+    let inactive_fg = cx.theme().muted_foreground;
+    let mut bar = h_flex()
+        .w_full()
+        .items_stretch()
+        .justify_around()
+        .border_t_1()
+        .border_color(cx.theme().border)
+        .bg(cx.theme().tokens.tab_bar);
+    for (tab_id, title, icon) in tabs {
+        let active = Some(tab_id) == selected_id;
+        let fg = if active { active_fg } else { inactive_fg };
+        let mut item = v_flex()
+            .id(ElementId::Name(format!("lui-{tab_id}-tab").into()))
+            .flex_1()
+            .min_w_0()
+            .items_center()
+            .justify_center()
+            .gap_0p5()
+            .py_2()
+            .text_xs()
+            .text_color(fg);
+        if let Some(icon) = icon {
+            item = item.child(Icon::new(icon).size(px(22.)).text_color(fg));
+        }
+        if !title.is_empty() {
+            item = item.child(div().min_w_0().text_ellipsis().child(title));
+        }
+        let enabled = {
+            let shared = view.shared.borrow();
+            shared
+                .store
+                .node(tab_id)
+                .map(|child| child.enabled())
+                .unwrap_or(true)
+        };
+        if !enabled {
+            item = item.opacity(0.5);
+        } else if press_gate(view, tab_id) {
+            item = item
+                .cursor_pointer()
+                .on_click(press_handler(view, tab_id));
+        }
+        bar = bar.child(item);
+    }
+
+    let mut element = v_flex()
+        .on_children_prepainted(view.bounds_recorder(node))
+        .id(element_id(node.id))
+        .w_full()
+        .flex_1();
+    element = style::all(element, node);
+    element.child(pages).child(bar).into_any_element()
+}
+
 pub fn render_node(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
@@ -1871,7 +2148,8 @@ pub fn render_node(
                 .id(element_id(node.id))
                 .size_full()
                 .bg(cx.theme().background)
-                .text_color(cx.theme().foreground);
+                .text_color(cx.theme().foreground)
+                .font_family(cx.theme().font_family.clone());
             element = style::all(element, node);
             element
                 .children(view.child_elements(node, cx))
@@ -1887,19 +2165,30 @@ pub fn render_node(
         | NodeKind::RadioGroup
         | NodeKind::Pagination
         | NodeKind::TableRow => container(view, node, kind, true, cx),
-        NodeKind::StatusBar | NodeKind::BottomTabs => {
+        // `status-bar`: an inline status pill (secondary surface, caption
+        // text), not window chrome — the element carries no children.
+        NodeKind::StatusBar => {
             let mut element = h_flex()
                 .id(element_id(node.id))
                 .w_full()
-                .border_t_1()
-                .border_color(cx.theme().border)
-                .bg(cx.theme().background);
+                .items_center()
+                .gap_1p5()
+                .px_3()
+                .py_1p5()
+                .rounded(cx.theme().radius)
+                .bg(cx.theme().tokens.secondary)
+                .text_xs()
+                .text_color(cx.theme().secondary_foreground);
+            if node.string_prop(Property::TextAlignment) == Some("center") {
+                element = element.justify_center();
+            }
             element = style::all(element, node);
-            element
-                .child(div().flex_1().min_w_0().child(text_of(node)))
-                .children(view.child_elements(node, cx))
-                .into_any_element()
+            element.child(text_of(node)).into_any_element()
         }
+        NodeKind::BottomTabs => bottom_tabs(view, node, cx),
+        // `bottom-tab` nodes are data for the parent `bottom-tabs` bar and
+        // its pages — rendered there; standalone they mount invisibly.
+        NodeKind::BottomTab => div().id(element_id(node.id)).size_0().into_any_element(),
         NodeKind::Column
         | NodeKind::TableCell
         | NodeKind::Box
@@ -1976,10 +2265,12 @@ pub fn render_node(
         NodeKind::Panel => {
             let mut element = v_flex()
                 .id(element_id(node.id))
-                .rounded_lg()
+                .rounded(cx.theme().radius_tokens().xl)
                 .border_1()
                 .border_color(cx.theme().border)
-                .bg(cx.theme().background);
+                .bg(cx.theme().tokens.popover)
+                .text_color(cx.theme().popover_foreground)
+                .shadow(cx.theme().shadow_tokens().sm);
             element = style::all(element, node);
             element
                 .children(view.child_elements(node, cx))
@@ -1988,24 +2279,46 @@ pub fn render_node(
         NodeKind::Card => {
             let mut element = v_flex()
                 .id(element_id(node.id))
-                .rounded_lg()
+                .rounded(cx.theme().radius_tokens().xl)
                 .border_1()
                 .border_color(cx.theme().border)
-                .bg(cx.theme().popover)
-                .p_4()
-                .gap_2();
+                .bg(cx.theme().tokens.popover)
+                .text_color(cx.theme().popover_foreground)
+                .p_6();
             element = style::all(element, node);
             element
                 .children(view.child_elements(node, cx))
                 .into_any_element()
         }
+        // `bubble`: chat-style message surface — content-sized, capped at
+        // 80% of the parent; `primary` inverts to the accent fill, `ghost`
+        // drops the chrome entirely.
         NodeKind::Bubble => {
             let mut element = v_flex()
                 .id(element_id(node.id))
-                .rounded_lg()
-                .bg(cx.theme().accent)
-                .p_3()
-                .gap_1();
+                .self_start()
+                .max_w(gpui_kit::gpui::relative(0.8))
+                .gap_1()
+                .rounded(cx.theme().radius_tokens().xl)
+                .px_4()
+                .py_3();
+            match variant_of(node) {
+                "primary" => {
+                    element = element
+                        .bg(cx.theme().tokens.primary)
+                        .text_color(cx.theme().primary_foreground)
+                        .border_1()
+                        .border_color(cx.theme().primary)
+                }
+                "ghost" => element = element.px_0(),
+                _ => {
+                    element = element
+                        .bg(cx.theme().tokens.popover)
+                        .text_color(cx.theme().popover_foreground)
+                        .border_1()
+                        .border_color(cx.theme().border)
+                }
+            }
             element = style::all(element, node);
             element
                 .children(view.child_elements(node, cx))
@@ -2120,7 +2433,7 @@ pub fn render_node(
         }
 
         // Controls --------------------------------------------------------
-        NodeKind::Button | NodeKind::ToggleButton | NodeKind::BottomTab => button(view, node, cx),
+        NodeKind::Button | NodeKind::ToggleButton => button(view, node, cx),
         NodeKind::SwipeAction => container(view, node, kind, false, cx),
         NodeKind::Checkbox => {
             let mut element = Checkbox::new(element_id(node.id))
@@ -2214,11 +2527,17 @@ pub fn render_node(
                 Ok(stroke) => gpui_kit::component::kbd::Kbd::new(stroke).into_any_element(),
                 // Unparseable stroke still shows the raw label.
                 Err(_) => div()
+                    .h_5()
+                    .items_center()
                     .px_1p5()
                     .rounded_sm()
                     .border_1()
                     .border_color(cx.theme().border)
-                    .text_xs()
+                    .bg(cx.theme().tokens.secondary)
+                    .font_family(cx.theme().mono_font_family.clone())
+                    .text_size(px(10.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(cx.theme().muted_foreground)
                     .child(text_of(node))
                     .into_any_element(),
             };
@@ -2320,13 +2639,20 @@ pub fn render_node(
         }
         NodeKind::Tabs => {
             // LUI models own the tab buttons and their selected state; the
-            // host only owns list layout (horizontal or vertical strip).
+            // host owns the segmented-control strip (padded secondary pill,
+            // see `tab_button` for the entry styling).
             let vertical = node.string_prop(Property::OrientationValue) == Some("vertical");
             let mut element = if vertical {
-                v_flex().id(element_id(node.id)).gap_1()
+                v_flex().id(element_id(node.id)).items_stretch()
             } else {
-                h_flex().id(element_id(node.id)).gap_1()
+                h_flex().id(element_id(node.id)).items_center()
             };
+            element = element
+                .gap_1()
+                .p_1()
+                .rounded(cx.theme().radius_lg)
+                .bg(cx.theme().tokens.tab_bar_segmented)
+                .text_color(cx.theme().secondary_foreground);
             element = style::all(element, node);
             element
                 .children(view.child_elements(node, cx))

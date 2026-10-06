@@ -294,6 +294,17 @@ fn apply_utility<E: Styled>(mut element: E, token: &str) -> E {
         "line-through" => element.line_through(),
         "whitespace-nowrap" => element.whitespace_nowrap(),
         "truncate" => element.text_ellipsis(),
+        // Semantic text vocabulary shared with the Apple backend's
+        // style-class hook (`headline`/`subheadline`/`caption*`,
+        // `single-line`, `monospaced`).
+        "headline" => element.font_weight(gpui_kit::gpui::FontWeight::SEMIBOLD),
+        "subheadline" => element.text_sm(),
+        "caption" | "caption2" => element.text_xs(),
+        "title" => element
+            .text_xl()
+            .font_weight(gpui_kit::gpui::FontWeight::SEMIBOLD),
+        "single-line" => element.whitespace_nowrap().text_ellipsis(),
+        "monospaced" => element.font_family("monospace"),
         "cursor-pointer" => element.cursor_pointer(),
         "cursor-default" => element.cursor_default(),
         "border" => element.border_1(),

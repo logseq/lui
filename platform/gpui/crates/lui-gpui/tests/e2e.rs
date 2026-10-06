@@ -56,7 +56,7 @@ fn run_scenario(cx: &mut TestAppContext, source: &str) {
     // process-global.
     let _ = support::take_events();
 
-    cx.update(gpui_kit::init);
+    cx.update(lui_gpui::init);
     let shared = LuiShared::new();
     let build = shared.clone();
     let (_view, cx) =
