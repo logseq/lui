@@ -1,5 +1,5 @@
 {
-  "name": "contextmenu fires a right-button dom-event; a plain node stays silent",
+  "name": "contextmenu fires a right-button dom-event; a plain node emits a document click",
   "steps": [
     {"apply": {
       "generation": 1,
@@ -27,6 +27,12 @@
                             "target": {"tag": "DIV", "id": "ctx"}}}}
     ]},
     {"click": 4},
-    {"expect-events": []}
+    {"expect-events": [
+      {"kind": "extension-event", "node": 4, "identifier": "logseq-div",
+       "name": "dom-event",
+       "json": {"name": "click",
+                "payload": {"name": "click", "nodeId": 4,
+                            "target": {"tag": "DIV", "text": "quiet"}}}}
+    ]}
   ]
 }
