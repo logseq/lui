@@ -1,10 +1,12 @@
+import org.gradle.api.tasks.testing.Test
+
 plugins {
     id("com.android.library")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("org.jetbrains.kotlin.plugin.serialization")
     id("app.cash.paparazzi")
 }
+
+group = "dev.lui"
 
 android {
     namespace = "dev.lui"
@@ -12,15 +14,6 @@ android {
 
     defaultConfig {
         minSdk = 24
-
-        externalNativeBuild {
-            cmake {
-                // The OCaml headers/libs come from the host app's CMake
-                // project; the bridge itself is compiled by the app
-                // (see examples/components/android). This module ships
-                // the source only.
-            }
-        }
     }
 
     buildFeatures {
@@ -32,12 +25,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlin {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        }
-    }
-
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
@@ -45,6 +32,11 @@ android {
     // The lui_jni_bridge.c source compiles inside the host app (which owns
     // the OCaml static libs), so no externalNativeBuild block is set here
     // deliberately.
+}
+
+tasks.withType<Test>().configureEach {
+    // Paparazzi on Gradle 9 breaks on HTML test reports (cashapp/paparazzi#2111).
+    reports.html.required = false
 }
 
 dependencies {
@@ -60,5 +52,5 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("app.cash.paparazzi:paparazzi:1.3.5")
+    testImplementation("app.cash.paparazzi:paparazzi:2.0.0-alpha04")
 }
