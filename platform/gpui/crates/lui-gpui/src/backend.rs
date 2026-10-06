@@ -22,6 +22,11 @@ pub struct LuiShared {
     pub registry: ExtensionRegistry,
     /// Specialized visual renderers per extension identifier.
     pub extension_renderers: HashMap<String, ExtensionRenderer>,
+    /// Host hook resolving `app:<name>` icon names to full SVG markup
+    /// (viewBox + children) when the name isn't a built-in IconName.
+    /// Apps register their icon set (e.g. tabler) here; the `icon`
+    /// kind rasterizes the SVG through the window's svg renderer.
+    pub app_icon_svg: Option<Rc<dyn Fn(&str) -> Option<String>>>,
     /// node id -> view entity. Created lazily on first dirty/render touch,
     /// released on `drop-node` (GPUI then reclaims the view).
     pub views: HashMap<i64, Entity<LuiNodeView>>,
@@ -41,6 +46,7 @@ impl LuiShared {
             store: Store::default(),
             registry: ExtensionRegistry::default(),
             extension_renderers: HashMap::new(),
+            app_icon_svg: None,
             views: HashMap::new(),
             last_errors: Vec::new(),
             node_bounds: HashMap::new(),

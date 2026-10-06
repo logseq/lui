@@ -19,11 +19,13 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::Icon;
 use gpui_kit::component::{h_flex, v_flex, Disableable, Sizable};
 use gpui_kit::gpui::{
-    anchored, deferred, div, point, px, Anchor, AnyElement, App, AppContext, ClickEvent, Context,
-    ElementId, FontWeight, InteractiveElement, IntoElement, Modifiers, MouseButton,
-    MouseDownEvent, ParentElement, PathPromptOptions, Pixels, Point,
-    StatefulInteractiveElement, Styled, Window,
+    anchored, deferred, div, img, point, px, Anchor, AnyElement, App, AppContext, ClickEvent,
+    Context, ElementId, FontWeight, ImageSource, InteractiveElement, IntoElement, Modifiers,
+    MouseButton, MouseDownEvent, ParentElement, PathPromptOptions, Pixels, Point, RenderImage,
+    StatefulInteractiveElement, Styled, SvgSize, Window,
 };
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex};
 use lui_core::bridge;
 use lui_core::store::NodeIdentity;
 use lui_core::{EventKind, NodeKind, Property};
@@ -263,8 +265,59 @@ fn button(
     style::all(button, node).into_any_element()
 }
 
+/// Raw icon-name prop — `app:<name>` is an application icon; bare names
+/// map onto gpui-kit's built-in IconName set.
+fn icon_name_raw(node: &NodeSnapshot) -> Option<&str> {
+    node.string_prop(Property::InlineIconName)
+        .or_else(|| node.string_prop(Property::IconName))
+}
+
+/// Rasterize an `app:` icon name through the host's `app_icon_svg`
+/// resolver (e.g. a bundled tabler table). `currentColor` is bound to
+/// the theme foreground so the glyph follows the palette. Cached per
+/// (name, color, scale): icons are immutable.
+fn app_icon_image(
+    view: &LuiNodeView,
+    name: &str,
+    window: &mut Window,
+    cx: &mut Context<LuiNodeView>,
+) -> Option<Arc<RenderImage>> {
+    static CACHE: LazyLock<Mutex<HashMap<(String, u32, u32), Arc<RenderImage>>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
+    let resolver = view.shared.borrow().app_icon_svg.clone()?;
+    let color = cx.theme().foreground;
+    let rgb = color.to_rgb();
+    let hex = format!(
+        "#{:02x}{:02x}{:02x}",
+        (rgb.r * 255.) as u8,
+        (rgb.g * 255.) as u8,
+        (rgb.b * 255.) as u8
+    );
+    let scale = (window.scale_factor() * 4.).round() as u32;
+    let color_key = ((rgb.r * 255.) as u32) << 16
+        | ((rgb.g * 255.) as u32) << 8
+        | (rgb.b * 255.) as u32;
+    let key = (name.to_string(), color_key, scale);
+    if let Some(image) = CACHE.lock().ok().and_then(|c| c.get(&key).cloned()) {
+        return Some(image);
+    }
+    let svg = resolver(name)?.replace("currentColor", &hex);
+    let parsed = cx.svg_renderer().parse_svg(svg.as_bytes()).ok()?;
+    let image = cx
+        .svg_renderer()
+        .render_parsed(&parsed, SvgSize::ScaleFactor(window.scale_factor()))
+        .ok()?;
+    if let Ok(mut cache) = CACHE.lock() {
+        cache.insert(key, image.clone());
+    }
+    Some(image)
+}
+
 fn icon_name(node: &NodeSnapshot, property: Property) -> Option<gpui_kit::assets::IconName> {
-    let name = node.string_prop(property)?;
+    let raw = node.string_prop(property)?;
+    // `app:` names are host-resolved; strip the prefix so app names that
+    // coincide with built-ins still hit the fast path.
+    let name = raw.strip_prefix("app:").unwrap_or(raw);
     Some(match name {
         "alert" => gpui_kit::assets::IconName::TriangleAlert,
         "archive" => gpui_kit::assets::IconName::Archive,
@@ -324,9 +377,24 @@ fn icon_name(node: &NodeSnapshot, property: Property) -> Option<gpui_kit::assets
 fn text_element(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
-    _cx: &mut Context<LuiNodeView>,
+    cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
-    let mut element = div().id(element_id(node.id)).child(text_of(node));
+    let children = view.child_elements(node, cx);
+    let mut element = div().id(element_id(node.id));
+    if children.is_empty() {
+        element = element.child(text_of(node));
+    } else {
+        // Inline run: a `text` node can carry element children (logseq-*
+        // spans — page refs, katex slots — plus nested `text` runs). Lay
+        // the node's own text first, then children, wrapping like a DOM
+        // inline flow so they land on the same line when space allows.
+        let mut flow = h_flex().flex_wrap().items_baseline();
+        let text = text_of(node);
+        if !text.is_empty() {
+            flow = flow.child(text);
+        }
+        element = element.child(flow.children(children));
+    }
     // Press-capable text kinds (text, list-item content handled elsewhere).
     if press_gate(view, node.id) {
         element = element
@@ -2112,7 +2180,19 @@ pub fn render_node(
                 element = style::all(element, node);
                 element.into_any_element()
             }
-            None => extension::placeholder_box(view, node, "icon", cx),
+            None => match icon_name_raw(node)
+                .and_then(|raw| raw.strip_prefix("app:"))
+                .and_then(|name| app_icon_image(view, name, window, cx))
+            {
+                Some(image) => {
+                    let mut element = div()
+                        .size(px(18.))
+                        .child(img(ImageSource::Render(image)).size_full());
+                    element = style::all(element, node);
+                    element.into_any_element()
+                }
+                None => extension::placeholder_box(view, node, "icon", cx),
+            },
         },
         NodeKind::Avatar => {
             let mut element = gpui_kit::component::avatar::Avatar::new().name(text_of(node));
