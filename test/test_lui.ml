@@ -1753,7 +1753,8 @@ let test_media_file_rules () =
        (props [ (PathValue, StringValue "/x.png") ]));
   Alcotest.(check bool) "file-preview needs path" false
     (node_properties_supported FilePreview (props []));
-  Alcotest.(check bool) "link needs url" false
+  (* no url requirement on Link: in-app navigation anchors carry no href *)
+  Alcotest.(check bool) "link ok without url" true
     (node_properties_supported Link (props []));
   Alcotest.(check bool) "link ok" true
     (node_properties_supported Link
