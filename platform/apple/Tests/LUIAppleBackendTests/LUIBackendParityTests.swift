@@ -659,7 +659,7 @@ struct LUIBackendParityTests {
         }
 
         try backend.apply(json: """
-        {"generation":1,"ops":[
+        {"generation":2,"ops":[
           {"op":"create-node","id":1,"kind":"edge-inset"},
           {"op":"set-prop","id":1,"property":"edge","value":"top"},
           {"op":"set-prop","id":1,"property":"visible","value":false},
@@ -823,7 +823,7 @@ struct LUIListSuiteTests {
         // A list-section must sit directly under a list.
         #expect(throws: (any Error).self) {
             try backend.apply(json: """
-            {"generation":1,"ops":[
+            {"generation":2,"ops":[
               {"op":"create-node","id":1,"kind":"row"},
               {"op":"create-node","id":2,"kind":"list-section"},
               {"op":"insert-child","parent":1,"child":2,"index":0}
@@ -833,7 +833,7 @@ struct LUIListSuiteTests {
         // swipe-actions belong to a list-item.
         #expect(throws: (any Error).self) {
             try backend.apply(json: """
-            {"generation":1,"ops":[
+            {"generation":3,"ops":[
               {"op":"create-node","id":1,"kind":"list"},
               {"op":"create-node","id":2,"kind":"swipe-actions"},
               {"op":"insert-child","parent":1,"child":2,"index":0}
@@ -843,7 +843,7 @@ struct LUIListSuiteTests {
         // Disclosure rows still need toggle-enabled with expanded.
         #expect(throws: (any Error).self) {
             try backend.apply(json: """
-            {"generation":1,"ops":[
+            {"generation":4,"ops":[
               {"op":"create-node","id":1,"kind":"list"},
               {"op":"create-node","id":2,"kind":"list-item"},
               {"op":"set-prop","id":2,"property":"text","value":"Row"},
@@ -855,7 +855,7 @@ struct LUIListSuiteTests {
         // Unknown style vocab is rejected.
         #expect(throws: (any Error).self) {
             try backend.apply(json: """
-            {"generation":1,"ops":[
+            {"generation":5,"ops":[
               {"op":"create-node","id":1,"kind":"list"},
               {"op":"set-prop","id":1,"property":"style","value":"cards"}
             ]}
