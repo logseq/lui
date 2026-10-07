@@ -2696,7 +2696,13 @@ pub fn render_node(
             element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
-        NodeKind::Spacer => div().flex_1().into_any_element(),
+        // Web renders `lui-spacer` as a plain empty div — zero-size
+        // unless the view asks for growth via `~grow`/a class. Most
+        // callers use it as a nil anchor (conditional "no element"
+        // slots); an unconditional flex_1() inflates those anchors
+        // into blank gaps (e.g. the cmdk scroller's filter/empty
+        // placeholders). Explicit ~grow still lands via GrowValue.
+        NodeKind::Spacer => div().into_any_element(),
         NodeKind::Spinner => Spinner::new().into_any_element(),
         NodeKind::Icon => match icon_name(node, Property::InlineIconName)
             .or_else(|| icon_name(node, Property::IconName))
