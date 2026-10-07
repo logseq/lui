@@ -675,15 +675,19 @@ let alignment_supported value =
 (* [data-attrs] carries (name, value) attribute pairs on the wire as
    [name\x1fvalue] records joined by \x1e. The allowed names are the DOM
    attribute surface delegated handlers, CSS attribute selectors and e2e
-   locators contract on — [data-*], [aria-*], [role], [tabindex] and
-   [draggable] ([id] stays on [accessibility-identifier]). It is a web
-   DOM contract: native hosts parse-ignore it. *)
+   locators contract on — [data-*], [aria-*], [role], [tabindex],
+   [draggable] and [style] ([id] stays on [accessibility-identifier]).
+   [style] is the documented last-resort channel for inline declarations
+   no typed prop covers (e.g. CSS custom properties, overflow-anchor);
+   it lands via setAttribute on web and rides the attrs record on
+   native hosts. It is a web DOM contract: native hosts parse-ignore
+   the rest. *)
 let data_attr_name_ok name =
   let has_prefix prefix =
     String.length name > String.length prefix
     && String.sub name 0 (String.length prefix) = prefix
   in
-  name = "role" || name = "tabindex" || name = "draggable"
+  name = "role" || name = "tabindex" || name = "draggable" || name = "style"
   || has_prefix "data-" || has_prefix "aria-"
 
 let data_attrs_encode pairs =
