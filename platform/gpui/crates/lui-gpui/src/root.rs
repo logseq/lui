@@ -1,6 +1,8 @@
 //! Window-level root view: mounts the LUI root node's entity.
 
-use std::cell::OnceCell;
+use std::cell::{OnceCell, RefCell};
+use std::rc::Rc;
+use std::time::Instant;
 
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::v_flex;
@@ -139,6 +141,9 @@ impl Render for LuiRootView {
             f32::from(size.width),
             f32::from(size.height),
         );
+        // The imperative overlay layer re-renders through this view's
+        // entity: imperative-attach/detach dom-ops notify it.
+        self.shared.borrow_mut().imperative_host_view = Some(cx.entity_id());
         let focus = self.focus.get_or_init(|| cx.focus_handle()).clone();
         // Follow OS appearance changes: re-apply the registered theme so
         // colors, scrollbar and resize-handle styles all track light/dark.
@@ -155,6 +160,31 @@ impl Render for LuiRootView {
         match root_id {
             Some(id) => {
                 let view = LuiShared::view_for(&self.shared, id, cx);
+                // Imperative overlay roots (OCaml body-appended floaters,
+                // pushed via `imperative-attach`) mount in a window-level
+                // deferred layer above declarative popups (priority 4 vs.
+                // their 3). Their `position:fixed` styles resolve to
+                // `absolute` inside the viewport-sized layer, so each
+                // root self-places at its inline left/top.
+                let imperative_layer = {
+                    let ids = self.shared.borrow().imperative_roots.clone();
+                    if ids.is_empty() {
+                        None
+                    } else {
+                        let children: Vec<_> = ids
+                            .iter()
+                            .filter(|nid| self.shared.borrow().store.node(**nid).is_some())
+                            .map(|nid| LuiShared::view_for(&self.shared, *nid, cx))
+                            .collect();
+                        Some(crate::kinds::window_layer(
+                            v_flex()
+                                .w(size.width)
+                                .h(size.height)
+                                .children(children),
+                            4,
+                        ))
+                    }
+                };
                 // The LUI root node is typically a plain column; other
                 // backends get their outer scrolling from the host surface,
                 // so the window root supplies it here.
@@ -290,8 +320,19 @@ impl Render for LuiRootView {
                                     },
                                 );
                                 let move_shared = mouse_shared.clone();
+                                // Document `mousemove`: drag gestures
+                                // (block DnD, marquee selection) need a
+                                // continuous feed while a button is held,
+                                // and OCaml document listeners (submenu
+                                // arming, hover previews, highlight
+                                // tracking) key off the target element —
+                                // a same-hit free move carries no new
+                                // information, so emit on hit change plus
+                                // a capped continuous feed (~25/s).
+                                let last_move =
+                                    Rc::new(RefCell::new((None::<i64>, Instant::now())));
                                 window.on_mouse_event(
-                                    move |event: &MouseMoveEvent, phase, _window, _cx| {
+                                    move |event: &MouseMoveEvent, phase, _window, cx| {
                                         if phase != DispatchPhase::Capture {
                                             return;
                                         }
@@ -302,20 +343,59 @@ impl Render for LuiRootView {
                                         // never reaches the deferred
                                         // toast layer, so track the
                                         // pointer against painted bounds.
-                                        let mut shared_ref = move_shared.borrow_mut();
-                                        if shared_ref.toast_bounds.is_empty()
-                                            && shared_ref.toast_paused.is_empty()
                                         {
-                                            return;
+                                            let mut shared_ref = move_shared.borrow_mut();
+                                            if !shared_ref.toast_bounds.is_empty()
+                                                || !shared_ref.toast_paused.is_empty()
+                                            {
+                                                shared_ref.toast_paused = shared_ref
+                                                    .toast_bounds
+                                                    .iter()
+                                                    .filter(|(_, bounds)| {
+                                                        bounds.contains(&event.position)
+                                                    })
+                                                    .map(|(id, _)| *id)
+                                                    .collect();
+                                            }
                                         }
-                                        shared_ref.toast_paused = shared_ref
-                                            .toast_bounds
-                                            .iter()
-                                            .filter(|(_, bounds)| {
-                                                bounds.contains(&event.position)
-                                            })
-                                            .map(|(id, _)| *id)
-                                            .collect();
+                                        let hit = crate::dom::deepest_hit(
+                                            &move_shared,
+                                            event.position,
+                                        )
+                                        .or_else(|| move_shared.borrow().store.root);
+                                        let dragging =
+                                            event.pressed_button.is_some();
+                                        if !dragging {
+                                            let mut last = last_move.borrow_mut();
+                                            if last.0 == hit
+                                                && last.1.elapsed().as_millis() < 40
+                                            {
+                                                return;
+                                            }
+                                            *last = (hit, Instant::now());
+                                        }
+                                        let Some(hit) = hit else {
+                                            return;
+                                        };
+                                        let Some((carrier, ident)) = crate::dom::logseq_carrier(
+                                            &move_shared,
+                                            Some(hit),
+                                        ) else {
+                                            return;
+                                        };
+                                        let position = event.position;
+                                        crate::dom::dom_event_via(
+                                            &move_shared,
+                                            carrier,
+                                            &ident,
+                                            hit,
+                                            "mousemove",
+                                            serde_json::json!({
+                                                "clientX": f64::from(position.x),
+                                                "clientY": f64::from(position.y),
+                                            }),
+                                            cx,
+                                        );
                                     },
                                 );
                                 let up_shared = mouse_shared.clone();
@@ -373,52 +453,13 @@ impl Render for LuiRootView {
                                         );
                                     },
                                 );
-                                // Pointer-move while a button is held —
-                                // the DOM `mousemove` drag gestures
-                                // (block DnD, marquee selection) listen
-                                // for. Free moves stay silent: the
-                                // document only needs the drag phase.
-                                let move_shared = mouse_shared.clone();
-                                window.on_mouse_event(
-                                    move |event: &MouseMoveEvent, phase, _window, cx| {
-                                        if phase != DispatchPhase::Capture
-                                            || event.pressed_button
-                                                != Some(MouseButton::Left)
-                                        {
-                                            return;
-                                        }
-                                        let Some(hit) =
-                                            crate::dom::deepest_hit(&move_shared, event.position)
-                                                .or_else(|| move_shared.borrow().store.root)
-                                        else {
-                                            return;
-                                        };
-                                        let Some((carrier, ident)) =
-                                            crate::dom::logseq_carrier(&move_shared, Some(hit))
-                                        else {
-                                            return;
-                                        };
-                                        let position = event.position;
-                                        crate::dom::dom_event_via(
-                                            &move_shared,
-                                            carrier,
-                                            &ident,
-                                            hit,
-                                            "mousemove",
-                                            serde_json::json!({
-                                                "clientX": f64::from(position.x),
-                                                "clientY": f64::from(position.y),
-                                            }),
-                                            cx,
-                                        );
-                                    },
-                                );
                             },
                         )
                         .absolute()
                         .size(px(1.)),
                     )
                     .child(view)
+                    .children(imperative_layer)
                     .into_any_element()
             }
             None => div()
