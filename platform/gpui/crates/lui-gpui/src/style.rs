@@ -7,19 +7,142 @@
 //! Tailwind-shaped and `gpui_component::theme::color` carries the full
 //! Tailwind palette — plus a semantic-class hook apps can extend.
 
-use gpui_kit::component::theme::try_parse_color;
+use gpui_kit::component::theme::{try_parse_color, Theme};
 use gpui_kit::gpui::{px, rgba, AbsoluteLength, DefiniteLength, Hsla, Styled};
 use lui_core::Property;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::RwLock;
 
 use crate::node_view::NodeSnapshot;
 
+/// CSS custom properties pushed by the host `style-set-property` dom-op
+/// (`--ls-left-sidebar-width` and friends land on the document root).
+/// Keys keep the `--` prefix; resolution is global, mirroring the CSS
+/// cascade on `:root`.
+static CSS_VARS: RwLock<Option<HashMap<String, String>>> = RwLock::new(None);
+
+/// Write revision — bumped per `set_css_var`; used to dirty nodes that
+/// must re-render against the new var table.
+static CSS_VARS_REV: AtomicU64 = AtomicU64::new(0);
+
+pub fn css_vars_rev() -> u64 {
+    CSS_VARS_REV.load(Ordering::Relaxed)
+}
+
+/// Record a custom-property value (from `style-set-property`).
+pub fn set_css_var(name: &str, value: &str) {
+    CSS_VARS
+        .write()
+        .expect("css-var lock poisoned")
+        .get_or_insert_with(HashMap::new)
+        .insert(name.to_string(), value.to_string());
+    CSS_VARS_REV.fetch_add(1, Ordering::Relaxed);
+}
+
+fn css_var(name: &str) -> Option<String> {
+    CSS_VARS
+        .read()
+        .expect("css-var lock poisoned")
+        .as_ref()
+        .and_then(|vars| vars.get(name).cloned())
+}
+
+/// Builtin `--ls-*`/`--lx-*` CSS-variable names mapped onto the gpui theme
+/// — the web app's classes.css declares these on `:root`/`dark`, here they
+/// resolve through the active theme so dark mode follows the window.
+fn semantic_var_color(name: &str, theme: &Theme) -> Option<Hsla> {
+    Some(match name {
+        "--ls-primary-background-color" | "--ls-content-background-color" => theme.background,
+        "--ls-secondary-background-color"
+        | "--ls-tertiary-background-color"
+        | "--left-sidebar-bg-color"
+        | "--right-sidebar-bg-color" => theme.secondary,
+        "--ls-quaternary-background-color" | "--ls-quinary-background-color" => theme.muted,
+        "--ls-primary-text-color" | "--ls-title-text-color" | "--ls-header-button-text-color" => {
+            theme.foreground
+        }
+        "--ls-secondary-text-color" | "--ls-block-ref-text-color" => theme.muted_foreground,
+        "--ls-link-text-color"
+        | "--ls-link-ref-text-color"
+        | "--ls-link-ref-text-hover-color"
+        | "--ls-tag-text-color"
+        | "--ls-external-link-color" => theme.primary,
+        "--ls-active-primary-color" | "--ls-active-secondary-color" => theme.primary,
+        "--ls-block-highlight-color" | "--ls-highlight-color" | "--ls-selection-color" => {
+            theme.accent
+        }
+        "--ls-page-mark-bg-color" | "--ls-mark-highlight-color"
+        | "--ls-search-highlight-color" => theme.warning,
+        "--ls-border-color" | "--lx-guideline-color" | "--lx-gray-03" | "--lx-gray-04" => {
+            theme.border
+        }
+        // Subtle fills on gray-04: guideline borders and closed-bullet
+        // backgrounds ride this translucent tone in the web palette.
+        "--lx-gray-04-alpha" => theme.list_active,
+        "--lx-gray-09" => theme.border,
+        "--lx-gray-10" => theme.muted_foreground,
+        "--lx-gray-06" | "--lx-gray-08" => theme.muted,
+        "--ls-also-color-0" => theme.secondary_foreground,
+        // Bare surface tokens — the LUI `background`/`foreground` vocab
+        // (e.g. ~background:"secondary", "glass" on chrome.ml buttons).
+        "background" => theme.background,
+        "secondary" | "sidebar" => theme.secondary,
+        "muted" => theme.muted,
+        "muted-foreground" => theme.muted_foreground,
+        "secondary-foreground" => theme.secondary_foreground,
+        "foreground" => theme.foreground,
+        "primary" => theme.primary,
+        "accent" => theme.accent,
+        "border" => theme.border,
+        "warning" => theme.warning,
+        "popover" | "card" | "glass" => theme.popover,
+        _ => return None,
+    })
+}
+
+/// `var(--name, fallback)` resolution order: host-written vars, the
+/// builtin `--ls-*` semantic table (theme-aware), then the CSS fallback.
+fn resolve_var_color(inner: &str, theme: Option<&Theme>) -> Option<Hsla> {
+    let (name, fallback) = match inner.split_once(',') {
+        Some((name, fallback)) => (name.trim(), Some(fallback.trim())),
+        None => (inner.trim(), None),
+    };
+    if let Some(value) = css_var(name).and_then(|v| color_env(&v, theme)) {
+        return Some(value);
+    }
+    if let Some(theme) = theme {
+        if let Some(value) = semantic_var_color(name, theme) {
+            return Some(value);
+        }
+    }
+    fallback.and_then(|v| color_env(v, theme))
+}
+
 /// Parse a color token into `Hsla`: `#rgb[a]`/`#rrggbb[aa]`, `rgb[a](...)`,
-/// Tailwind names (`sky-500`, `red/80`, `gray-200/50`). Palette coverage
-/// follows gpui-component's `ColorName` — `slate`/`zinc`/`stone` are not in it.
+/// `var(--x[, fallback])`, Tailwind names (`sky-500`, `red/80`,
+/// `gray-200/50`). Palette coverage follows gpui-component's `ColorName`
+/// — `slate`/`zinc`/`stone` are not in it. `var()` resolution is
+/// theme-free here; `surface`/inline styles use the themed path.
 pub fn color(token: &str) -> Option<Hsla> {
+    color_env(token, None)
+}
+
+fn color_env(token: &str, theme: Option<&Theme>) -> Option<Hsla> {
     let token = token.trim();
     if token.is_empty() {
         return None;
+    }
+    if let Some(inner) = token
+        .strip_prefix("var(")
+        .and_then(|rest| rest.strip_suffix(')'))
+    {
+        return resolve_var_color(inner, theme);
+    }
+    if let Some(theme) = theme {
+        if let Some(value) = semantic_var_color(token, theme) {
+            return Some(value);
+        }
     }
     if let Ok(color) = try_parse_color(token) {
         return Some(color);
@@ -145,12 +268,18 @@ pub fn layout<E: Styled>(element: E, node: &NodeSnapshot) -> E {
 
 /// Apply surface props (`background`, `foreground`, `border-*`,
 /// `corner-radius`) on boxes/containers.
-pub fn surface<E: Styled>(element: E, node: &NodeSnapshot) -> E {
+pub fn surface<E: Styled>(element: E, node: &NodeSnapshot, theme: &Theme) -> E {
     let mut element = element;
-    if let Some(token) = node.string_prop(Property::BackgroundValue).and_then(color) {
+    if let Some(token) = node
+        .string_prop(Property::BackgroundValue)
+        .and_then(|token| color_themed(token, theme))
+    {
         element = element.bg(token);
     }
-    if let Some(token) = node.string_prop(Property::ForegroundValue).and_then(color) {
+    if let Some(token) = node
+        .string_prop(Property::ForegroundValue)
+        .and_then(|token| color_themed(token, theme))
+    {
         element = element.text_color(token);
     }
     if let Some(width) = node.float_prop(Property::BorderWidth) {
@@ -158,13 +287,52 @@ pub fn surface<E: Styled>(element: E, node: &NodeSnapshot) -> E {
             element = element.border(px(width as f32));
         }
     }
-    if let Some(token) = node.string_prop(Property::BorderColorValue).and_then(color) {
+    if let Some(token) = node
+        .string_prop(Property::BorderColorValue)
+        .and_then(|token| color_themed(token, theme))
+    {
         element = element.border_color(token);
     }
     if let Some(radius) = node.float_prop(Property::CornerRadius) {
         element = element.rounded(px(radius as f32));
     }
     element
+}
+
+/// Whether `token` resolves to a concrete utility style — mirrors
+/// `apply_utility` (keep in sync; the prefix families are matched
+/// conservatively — an unrecognized `bg-foo` still reports active, which
+/// only makes elision more conservative). Wrapper elision refuses to
+/// collapse a container whose `style-class` still carries layout or
+/// behavior semantics.
+pub fn utility_token_active(token: &str) -> bool {
+    if numeric_utility(token).is_some() {
+        return true;
+    }
+    if token.starts_with("bg-")
+        || token.starts_with("text-")
+        || token.starts_with("border-")
+        || token.starts_with("rounded-")
+    {
+        return true;
+    }
+    matches!(
+        token,
+        "flex" | "flexbox" | "flex-row" | "flex-col" | "flex-wrap" | "flex-nowrap" | "nowrap"
+            | "flex-1" | "grow" | "grow-1" | "grow-0" | "shrink" | "shrink-0" | "min-w-0"
+            | "min-h-0" | "min-w-full" | "min-h-full" | "items-start" | "items-center"
+            | "items-end" | "items-baseline" | "items-stretch" | "self-start" | "self-center"
+            | "self-end" | "self-stretch" | "justify-start" | "justify-center"
+            | "justify-end" | "justify-between" | "justify-around" | "justify-evenly"
+            | "w-full" | "h-full" | "size-full" | "w-screen" | "h-screen" | "hidden"
+            | "visible" | "relative" | "absolute" | "inset-0" | "overflow-hidden"
+            | "overflow-x-hidden" | "overflow-y-hidden" | "text-center" | "text-right"
+            | "font-bold" | "font-semibold" | "font-medium" | "font-mono" | "monospace"
+            | "italic" | "underline" | "line-through" | "whitespace-nowrap" | "truncate"
+            | "headline" | "subheadline" | "caption" | "caption2" | "title" | "single-line"
+            | "monospaced" | "cursor-pointer" | "cursor-default" | "border" | "border-0"
+            | "border-t" | "border-b" | "border-l" | "border-r" | "rounded"
+    )
 }
 
 /// Tailwind-style atomic class resolver for `style-class` tokens.
@@ -239,7 +407,7 @@ fn apply_utility<E: Styled>(mut element: E, token: &str) -> E {
         "flex" | "flexbox" => element.flex(),
         "flex-row" => element.flex_row(),
         "flex-col" => element.flex_col(),
-        "flex-wrap" | "wrap" => element.flex_wrap(),
+        "flex-wrap" => element.flex_wrap(),
         "flex-nowrap" | "nowrap" => element.flex_nowrap(),
         "flex-1" | "grow" | "grow-1" => element.flex_1(),
         "grow-0" => element.flex_grow(0.),
@@ -363,37 +531,378 @@ fn apply_radius<E: Styled>(element: E, rest: &str) -> E {
     }
 }
 
-/// Parse `min-height:NNpx` / `height:NNpx` out of an extension node's
-/// `attrs.style` string. Native dom elements carry reserved heights as
-/// inline style (the lazy-mount placeholder contract), not style props.
-fn inline_style_px(node: &NodeSnapshot, prop: &str) -> Option<f64> {
-    let raw = node.extension_string_prop("attrs")?;
-    let attrs: serde_json::Value = serde_json::from_str(raw).ok()?;
-    let style = attrs.get("style")?.as_str()?;
-    for decl in style.split(';') {
-        let mut parts = decl.splitn(2, ':');
-        if parts.next().map(str::trim) != Some(prop) {
-            continue;
-        }
-        let value = parts.next()?.trim().trim_end_matches("px");
-        return value.parse::<f64>().ok();
-    }
-    None
+fn color_themed(token: &str, theme: &Theme) -> Option<Hsla> {
+    color_env(token, Some(theme))
 }
 
-/// Convenience composition used by most kinds: frame + layout + surface +
-/// style-class, in wire order semantics. `style-class` lives in standard
-/// props for component kinds and in extension props for extension nodes.
-pub fn all<E: Styled>(element: E, node: &NodeSnapshot) -> E {
+/// Resolve a CSS length token to `DefiniteLength`: `NNpx`, `NNrem`,
+/// `NN%`, a bare number (px), or `var(--x[, fallback])`.
+fn resolve_length(token: &str) -> Option<DefiniteLength> {
+    let token = token.trim();
+    if let Some(inner) = token
+        .strip_prefix("var(")
+        .and_then(|rest| rest.strip_suffix(')'))
+    {
+        let (name, fallback) = match inner.split_once(',') {
+            Some((name, fallback)) => (name.trim(), Some(fallback.trim())),
+            None => (inner.trim(), None),
+        };
+        return css_var(name)
+            .and_then(|v| resolve_length(&v))
+            .or_else(|| fallback.and_then(resolve_length));
+    }
+    if let Some(px_value) = token.strip_suffix("px") {
+        return px_value.parse::<f64>().ok().map(px_length);
+    }
+    if let Some(rem_value) = token.strip_suffix("rem") {
+        return rem_value
+            .parse::<f32>()
+            .ok()
+            .map(|v| AbsoluteLength::Rems(gpui_kit::gpui::Rems(v)).into());
+    }
+    if let Some(percent) = token.strip_suffix('%') {
+        return percent
+            .parse::<f32>()
+            .ok()
+            .map(|v| DefiniteLength::Fraction(v / 100.0));
+    }
+    token.parse::<f64>().ok().map(px_length)
+}
+
+/// `resolve_length` specialized to pixels for edge sizes (margins,
+/// paddings, borders, radius) — gpui edge APIs take `Pixels`, not
+/// fractions. `rem` resolves against the 16px base.
+fn resolve_px(token: &str) -> Option<f32> {
+    let token = token.trim();
+    if let Some(inner) = token
+        .strip_prefix("var(")
+        .and_then(|rest| rest.strip_suffix(')'))
+    {
+        let (name, fallback) = match inner.split_once(',') {
+            Some((name, fallback)) => (name.trim(), Some(fallback.trim())),
+            None => (inner.trim(), None),
+        };
+        return css_var(name)
+            .and_then(|v| resolve_px(&v))
+            .or_else(|| fallback.and_then(resolve_px));
+    }
+    if let Some(px_value) = token.strip_suffix("px") {
+        return px_value.parse::<f32>().ok();
+    }
+    if let Some(rem_value) = token.strip_suffix("rem") {
+        return rem_value.parse::<f32>().ok().map(|v| v * 16.0);
+    }
+    token.parse::<f32>().ok()
+}
+
+/// Declarations of the node's inline `style` attribute — carried in the
+/// extension `attrs` JSON for logseq-* elements or in the `data-attrs`
+/// record for plain elements.
+fn inline_declarations(node: &NodeSnapshot) -> Vec<(String, String)> {
+    let mut style: Option<String> = None;
+    if let Some(raw) = node.extension_string_prop("attrs") {
+        if let Ok(attrs) = serde_json::from_str::<serde_json::Value>(raw) {
+            for key in ["style", "data-style"] {
+                if let Some(value) = attrs.get(key).and_then(|v| v.as_str()) {
+                    style = Some(value.to_string());
+                    break;
+                }
+            }
+        }
+    }
+    if style.is_none() {
+        if let Some(raw) = node.string_prop(Property::DataAttrs) {
+            style = raw
+                .split('\x1e')
+                .filter_map(|record| record.split_once('\x1f'))
+                .find(|(name, _)| *name == "style" || *name == "data-style")
+                .map(|(_, value)| value.to_string());
+        }
+    }
+    style
+        .map(|raw| {
+            raw.split(';')
+                .filter_map(|decl| {
+                    decl.split_once(':').map(|(name, value)| {
+                        (name.trim().to_ascii_lowercase(), value.trim().to_string())
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Apply a `margin`/`padding` shorthand's edge values (1-4 parts, px only).
+fn box_edges(value: &str) -> Option<[f64; 4]> {
+    let parts: Vec<f64> = value
+        .split_whitespace()
+        .filter_map(|part| part.trim_end_matches("px").parse::<f64>().ok())
+        .collect();
+    Some(match parts.len() {
+        1 => [parts[0]; 4],
+        2 => [parts[0], parts[1], parts[0], parts[1]],
+        3 => [parts[0], parts[1], parts[2], parts[1]],
+        4 => [parts[0], parts[1], parts[2], parts[3]],
+        _ => return None,
+    })
+}
+
+/// Whitespace split that keeps `var(--a, var(--b))` whole — a CSS value
+/// may carry spaces inside balanced parens.
+fn shorthand_parts(value: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0i32;
+    let mut start = None;
+    for (i, c) in value.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth = (depth - 1).max(0),
+            c if c.is_whitespace() && depth == 0 => {
+                if let Some(s) = start.take() {
+                    parts.push(&value[s..i]);
+                }
+                continue;
+            }
+            _ => {}
+        }
+        if start.is_none() {
+            start = Some(i);
+        }
+    }
+    if let Some(s) = start {
+        parts.push(&value[s..]);
+    }
+    parts
+}
+
+/// Translate an inline-style declaration into the matching gpui styling.
+/// The dom extension family uses inline style for layout-critical values
+/// (sidebar width vars, code editor heights, highlights) — ignoring them
+/// visibly breaks those surfaces.
+fn apply_inline_style<E: Styled>(mut element: E, node: &NodeSnapshot, theme: &Theme) -> E {
+    for (prop, value) in inline_declarations(node) {
+        if let Some(length) = resolve_length(&value) {
+            element = match prop.as_str() {
+                "width" => element.w(length),
+                "height" => element.h(length),
+                "min-width" => element.min_w(length),
+                "min-height" => element.min_h(length),
+                "max-width" => element.max_w(length),
+                "max-height" => element.max_h(length),
+                "line-height" => element.line_height(length),
+                _ => element,
+            };
+            if matches!(
+                prop.as_str(),
+                "width" | "height" | "min-width" | "min-height" | "max-width" | "max-height"
+                    | "line-height"
+            ) {
+                continue;
+            }
+        }
+        element = match prop.as_str() {
+            "display" => match value.as_str() {
+                "none" => element.invisible(),
+                "flex" | "inline-flex" => element.flex().flex_row(),
+                _ => element,
+            },
+            "align-items" => match value.as_str() {
+                "center" => element.items_center(),
+                "start" | "flex-start" => element.items_start(),
+                "end" | "flex-end" => element.items_end(),
+                "baseline" => element.items_baseline(),
+                "stretch" => element.items_stretch(),
+                _ => element,
+            },
+            "justify-content" => match value.as_str() {
+                "center" => element.justify_center(),
+                "end" | "flex-end" => element.justify_end(),
+                "start" | "flex-start" => element.justify_start(),
+                "space-between" => element.justify_between(),
+                "space-around" => element.justify_around(),
+                "space-evenly" => element.justify_evenly(),
+                _ => element,
+            },
+            "flex-shrink" => match value.parse::<f32>() {
+                Ok(v) => element.flex_shrink(v),
+                Err(_) => element,
+            },
+            "flex-grow" => match value.parse::<f32>() {
+                Ok(v) if v > 0. => element.flex_1(),
+                _ => element,
+            },
+            "position" => match value.as_str() {
+                "absolute" => element.absolute(),
+                "relative" => element.relative(),
+                _ => element,
+            },
+            "margin" => match box_edges(&value) {
+                Some([t, r, b, l]) => element
+                    .mt(px(t as f32))
+                    .mr(px(r as f32))
+                    .mb(px(b as f32))
+                    .ml(px(l as f32)),
+                None => element,
+            },
+            "margin-top" => match resolve_px(&value) {
+                Some(v) => element.mt(px(v)),
+                None => element,
+            },
+            "margin-bottom" => match resolve_px(&value) {
+                Some(v) => element.mb(px(v)),
+                None => element,
+            },
+            "margin-left" => match resolve_px(&value) {
+                Some(v) => element.ml(px(v)),
+                None => element,
+            },
+            "margin-right" => match resolve_px(&value) {
+                Some(v) => element.mr(px(v)),
+                None => element,
+            },
+            "padding" => match box_edges(&value) {
+                Some([t, r, b, l]) => element
+                    .pt(px(t as f32))
+                    .pr(px(r as f32))
+                    .pb(px(b as f32))
+                    .pl(px(l as f32)),
+                None => element,
+            },
+            "padding-top" => match resolve_px(&value) {
+                Some(v) => element.pt(px(v)),
+                None => element,
+            },
+            "padding-bottom" => match resolve_px(&value) {
+                Some(v) => element.pb(px(v)),
+                None => element,
+            },
+            "padding-left" => match resolve_px(&value) {
+                Some(v) => element.pl(px(v)),
+                None => element,
+            },
+            "padding-right" => match resolve_px(&value) {
+                Some(v) => element.pr(px(v)),
+                None => element,
+            },
+            "background" | "background-color" => match color_themed(&value, theme) {
+                Some(color) => element.bg(color),
+                None => element,
+            },
+            "color" => match color_themed(&value, theme) {
+                Some(color) => element.text_color(color),
+                None => element,
+            },
+            "border" => {
+                // `Npx solid <color>` shorthand.
+                let mut el = element;
+                for part in shorthand_parts(&value) {
+                    if let Some(v) = part.trim_end_matches("px").parse::<f32>().ok() {
+                        el = el.border(px(v));
+                    } else if let Some(c) = color_themed(part, theme) {
+                        el = el.border_color(c);
+                    }
+                }
+                el
+            }
+            "border-width" | "border-left" | "border-right" | "border-top"
+            | "border-bottom" => {
+                let mut el = element;
+                for part in shorthand_parts(&value) {
+                    if let Some(v) = part.trim_end_matches("px").parse::<f32>().ok() {
+                        el = match prop.as_str() {
+                            "border-left" => el.border_l(px(v)),
+                            "border-right" => el.border_r(px(v)),
+                            "border-top" => el.border_t(px(v)),
+                            "border-bottom" => el.border_b(px(v)),
+                            _ => el.border(px(v)),
+                        };
+                    } else if let Some(c) = color_themed(part, theme) {
+                        el = el.border_color(c);
+                    }
+                }
+                el
+            }
+            "border-color" => match color_themed(&value, theme) {
+                Some(color) => element.border_color(color),
+                None => element,
+            },
+            "border-radius" => match resolve_px(&value) {
+                Some(v) => element.rounded(px(v)),
+                None => element,
+            },
+            "font-weight" => match value.as_str() {
+                "bold" | "700" => element.font_weight(gpui_kit::gpui::FontWeight::BOLD),
+                "600" | "semibold" => element.font_weight(gpui_kit::gpui::FontWeight::SEMIBOLD),
+                "500" | "medium" => element.font_weight(gpui_kit::gpui::FontWeight::MEDIUM),
+                _ => element,
+            },
+            "font-style" if value == "italic" => element.italic(),
+            "text-decoration" | "text-decoration-line" => {
+                if value.contains("line-through") {
+                    element.line_through()
+                } else if value.contains("underline") {
+                    element.underline()
+                } else {
+                    element
+                }
+            }
+            "font-family" => {
+                if value.contains("monospace") || value.contains("mono") {
+                    element.font_family(theme.mono_font_family.clone())
+                } else {
+                    element
+                }
+            }
+            "font-size" => match resolve_px(&value) {
+                Some(v) => element.text_size(px(v)),
+                None => element,
+            },
+            "opacity" => match value.parse::<f32>() {
+                Ok(v) => element.opacity(v),
+                Err(_) => element,
+            },
+            "overflow" if value == "hidden" => element.overflow_hidden(),
+            "white-space" if value == "nowrap" => element.whitespace_nowrap(),
+            "cursor" if value == "pointer" => element.cursor_pointer(),
+            _ => element,
+        };
+    }
+    element
+}
+
+/// Font semantics of inline HTML tags — the web emits emphasis through
+/// tags (`<b>/<i>/<del>/<mark>/<code>`) and the `text` `as` prop carries
+/// the same vocabulary; gpui has no UA stylesheet, so callers apply the
+/// tag's style to the run.
+pub(crate) fn inline_tag_style<E: Styled>(element: E, tag: &str, theme: &Theme) -> E {
+    match tag {
+        "b" | "strong" => element.font_weight(gpui_kit::gpui::FontWeight::BOLD),
+        "i" | "em" | "dfn" | "var" => element.italic(),
+        "del" | "s" => element.line_through(),
+        "u" | "ins" => element.underline(),
+        "mark" => element.bg(theme.warning).text_color(theme.foreground),
+        "code" | "kbd" | "samp" => element
+            .font_family(theme.mono_font_family.clone())
+            .text_sm()
+            .px_1()
+            .rounded_sm()
+            .bg(theme.secondary),
+        "small" | "sub" | "sup" => element.text_xs(),
+        "a" => element.text_color(theme.primary).underline(),
+        _ => element,
+    }
+}
+
+/// Convenience composition used by most kinds: frame + inline style +
+/// layout + surface + style-class, in wire order semantics. `style-class`
+/// lives in standard props for component kinds and in extension props for
+/// extension nodes. `theme` resolves `var(--ls-*)`/semantic tokens the
+/// web app declares on `:root`.
+pub fn all<E: Styled>(element: E, node: &NodeSnapshot, theme: &Theme) -> E {
     let mut element = frame(element, node);
-    if let Some(value) = inline_style_px(node, "min-height") {
-        element = element.min_h(px_length(value));
-    }
-    if let Some(value) = inline_style_px(node, "height") {
-        element = element.h(px_length(value));
-    }
+    element = apply_inline_style(element, node, theme);
     let element = layout(element, node);
-    let element = surface(element, node);
+    let element = surface(element, node, theme);
     let element = match node.float_prop(Property::Opacity) {
         Some(value) => element.opacity(value as f32),
         None => element,
@@ -752,7 +1261,7 @@ mod tests {
             children: Vec::new(),
             parent: None,
         };
-        let mut element = all(div(), &node);
+        let mut element = all(div(), &node, &Theme::default());
         let s = element.style();
         assert_eq!(
             s.size.width,

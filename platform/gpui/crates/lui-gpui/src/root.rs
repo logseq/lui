@@ -5,8 +5,8 @@ use std::cell::OnceCell;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::v_flex;
 use gpui_kit::gpui::{
-    canvas, div, px, Context, DispatchPhase, FocusHandle, InteractiveElement, IntoElement,
-    KeyDownEvent, MouseButton, MouseDownEvent, MouseUpEvent, ParentElement, Render,
+    canvas, div, px, App, Context, DispatchPhase, FocusHandle, InteractiveElement, IntoElement,
+    MouseButton, MouseDownEvent, MouseUpEvent, ParentElement, Render,
     StatefulInteractiveElement, Styled, Subscription, Window,
 };
 
@@ -19,15 +19,20 @@ use crate::backend::{LuiShared, Shared};
 ///
 /// Owns a window-level FocusHandle so key events always have a dispatch
 /// path: when nothing else is focused (browse mode) the root holds focus,
-/// and its `on_key_down` forwards every keystroke to OCaml as a `keydown`
-/// dom-event, matching the web document keydown that global shortcuts and
-/// command dispatch listen on.
+/// and a global keystroke observer forwards every keystroke to OCaml as a
+/// `keydown` dom-event, matching the web document keydown that global
+/// shortcuts and command dispatch listen on.
 pub struct LuiRootView {
     pub shared: Shared,
     focus: OnceCell<FocusHandle>,
     /// Window appearance subscription (kept alive for the view's life):
     /// OS light/dark switches re-apply the registered gpui-component theme.
     appearance: OnceCell<Subscription>,
+    /// Global keystroke observer (kept alive for the view's life):
+    /// document `keydown` must fire for every keystroke, including ones
+    /// a focused input consumes — the element-level `on_key_down` only
+    /// sees keys in its own focus path.
+    keystroke: OnceCell<Subscription>,
 }
 
 impl LuiRootView {
@@ -36,8 +41,112 @@ impl LuiRootView {
             shared,
             focus: OnceCell::new(),
             appearance: OnceCell::new(),
+            keystroke: OnceCell::new(),
         }
     }
+}
+
+/// Emit a document `keydown` dom event for one keystroke.
+///
+/// DOM parity: a document keydown targets the focused element
+/// (document.activeElement). When a registered focusable holds focus
+/// the event's target is that node, letting OCaml route editing vs.
+/// browse-mode dispatch (`.ed-input` targets stay with the conduit,
+/// everything else reaches the global keymap). With no focus — browse
+/// mode — any extension node works: `emit_event` fans out to the
+/// document listeners regardless.
+fn emit_dom_keydown(
+    shared: &Shared,
+    ks: &gpui_kit::gpui::Keystroke,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    // The carrier must be an extension node — OCaml drops extension
+    // events on standard nodes. A focused standard node (e.g. an icon
+    // inside a logseq-* button) resolves to its nearest extension
+    // ancestor; with no focus at all any extension node works since
+    // `emit_event` fans out to the document listeners regardless.
+    let node_id = {
+        let found = shared.borrow_mut().focused_node(window);
+        let carrier = found.and_then(|id| {
+            let store = &shared.borrow().store;
+            let mut cur = Some(id);
+            while let Some(nid) = cur {
+                match store.node(nid) {
+                    Some(node) => {
+                        if matches!(
+                            node.identity,
+                            lui_core::store::NodeIdentity::Extension { .. }
+                        ) {
+                            return Some(nid);
+                        }
+                        cur = node.parent;
+                    }
+                    None => return None,
+                }
+            }
+            None
+        });
+        match carrier {
+            Some(id) => id,
+            None => {
+                let store = &shared.borrow().store;
+                let mut stack = store.root.into_iter().collect::<Vec<_>>();
+                let mut found = None;
+                while let Some(id) = stack.pop() {
+                    if let Some(node) = store.node(id) {
+                        if matches!(
+                            node.identity,
+                            lui_core::store::NodeIdentity::Extension { .. }
+                        ) {
+                            found = Some(id);
+                            break;
+                        }
+                        stack.extend(node.children.iter().copied());
+                    }
+                }
+                match found {
+                    Some(id) => id,
+                    None => return,
+                }
+            }
+        }
+    };
+    let mods = ks.modifiers;
+    // gpui reports named keys lowercase; DOM listeners match
+    // KeyboardEvent.key spellings.
+    let key = match ks.key.as_str() {
+        "escape" => "Escape",
+        "enter" | "return" => "Enter",
+        "tab" => "Tab",
+        "backspace" => "Backspace",
+        "delete" => "Delete",
+        "up" | "arrowup" => "ArrowUp",
+        "down" | "arrowdown" => "ArrowDown",
+        "left" | "arrowleft" => "ArrowLeft",
+        "right" | "arrowright" => "ArrowRight",
+        "home" => "Home",
+        "end" => "End",
+        "pageup" => "PageUp",
+        "pagedown" => "PageDown",
+        "space" => " ",
+        other => other,
+    };
+    crate::dom::dom_event(
+        shared,
+        node_id,
+        "",
+        "keydown",
+        serde_json::json!({
+            "key": key,
+            "keyChar": ks.key_char,
+            "metaKey": mods.platform,
+            "ctrlKey": mods.control,
+            "shiftKey": mods.shift,
+            "altKey": mods.alt,
+        }),
+        cx,
+    );
 }
 
 impl Render for LuiRootView {
@@ -64,7 +173,6 @@ impl Render for LuiRootView {
         if window.focused(cx).is_none() {
             focus.focus(window, cx);
         }
-        let keydown_shared = self.shared.clone();
         match root_id {
             Some(id) => {
                 let view = LuiShared::view_for(&self.shared, id, cx);
@@ -72,30 +180,21 @@ impl Render for LuiRootView {
                 // backends get their outer scrolling from the host surface,
                 // so the window root supplies it here.
                 let mouse_shared = self.shared.clone();
-                v_flex()
-                    .id("lui-root-scroll")
-                    .size_full()
-                    .overflow_y_scroll()
-                    .bg(cx.theme().background)
-                    .text_color(cx.theme().foreground)
-                    .font_family(cx.theme().font_family.clone())
-                    .track_focus(&focus)
-                    .on_key_down(move |ev: &KeyDownEvent, window, cx| {
-                        if ev.is_held {
-                            return;
-                        }
+                let contextmenu_shared = self.shared.clone();
+                let keystroke_focus = focus.clone();
+                self.keystroke.get_or_init(|| {
+                    let keydown_shared = self.shared.clone();
+                    cx.observe_keystrokes(move |_this, ev, window, cx| {
                         // A focused text input (block editor, cmdk field)
                         // already receives text through its registered
                         // input handler — forwarding the same key as a
-                        // document keydown would double-insert it, and
-                        // native targets can't carry a `.ed-input` target
-                        // for the document handler to recognize. Named
+                        // document keydown would double-insert it. Named
                         // keys are different: gpui reports Enter/Tab/
                         // Escape as control-char key_chars, the input
                         // never treats them as text, and document
                         // listeners (palette Enter/arrows, editor Esc)
                         // expect them — only printable key_chars are
-                        // suppressed.
+                        // suppressed while a non-root element is focused.
                         let text_char = ev
                             .keystroke
                             .key_char
@@ -105,72 +204,21 @@ impl Render for LuiRootView {
                             && !ev.keystroke.modifiers.platform
                             && !ev.keystroke.modifiers.control
                             && window.focused(cx).is_some()
-                            && !focus.is_focused(window)
+                            && !keystroke_focus.is_focused(window)
                         {
                             return;
                         }
-                        // dom-events must target an extension node — OCaml
-                        // drops extension events on standard nodes. Any
-                        // extension node works: emit_event fans out to the
-                        // document (window) listeners regardless.
-                        let node_id = {
-                            let store = &keydown_shared.borrow().store;
-                            let mut stack = store.root.into_iter().collect::<Vec<_>>();
-                            let mut found = None;
-                            while let Some(id) = stack.pop() {
-                                if let Some(node) = store.node(id) {
-                                    if matches!(
-                                        node.identity,
-                                        lui_core::store::NodeIdentity::Extension { .. }
-                                    ) {
-                                        found = Some(id);
-                                        break;
-                                    }
-                                    stack.extend(node.children.iter().copied());
-                                }
-                            }
-                            match found {
-                                Some(id) => id,
-                                None => return,
-                            }
-                        };
-                        let ks = &ev.keystroke;
-                        let mods = ks.modifiers;
-                        // gpui reports named keys lowercase; DOM listeners
-                        // match KeyboardEvent.key spellings.
-                        let key = match ks.key.as_str() {
-                            "escape" => "Escape",
-                            "enter" => "Enter",
-                            "tab" => "Tab",
-                            "backspace" => "Backspace",
-                            "delete" => "Delete",
-                            "arrowup" => "ArrowUp",
-                            "arrowdown" => "ArrowDown",
-                            "arrowleft" => "ArrowLeft",
-                            "arrowright" => "ArrowRight",
-                            "home" => "Home",
-                            "end" => "End",
-                            "pageup" => "PageUp",
-                            "pagedown" => "PageDown",
-                            "space" => " ",
-                            other => other,
-                        };
-                        crate::dom::dom_event(
-                            &keydown_shared,
-                            node_id,
-                            "",
-                            "keydown",
-                            serde_json::json!({
-                                "key": key,
-                                "keyChar": ks.key_char,
-                                "metaKey": mods.platform,
-                                "ctrlKey": mods.control,
-                                "shiftKey": mods.shift,
-                                "altKey": mods.alt,
-                            }),
-                            cx,
-                        );
+                        emit_dom_keydown(&keydown_shared, &ev.keystroke, window, cx);
                     })
+                });
+                v_flex()
+                    .id("lui-root-scroll")
+                    .size_full()
+                    .overflow_y_scroll()
+                    .bg(cx.theme().background)
+                    .text_color(cx.theme().foreground)
+                    .font_family(cx.theme().font_family.clone())
+                    .track_focus(&focus)
                     // Web parity: document `mousedown`/`click` listeners see
                     // every pointer press, whatever it lands on — dom.rs only
                     // wires element handlers for nodes that declared `click`,
@@ -261,6 +309,39 @@ impl Render for LuiRootView {
                         )
                         .absolute()
                         .size(px(1.)),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        move |event: &MouseDownEvent, _window, cx| {
+                            // Same contract as the click monitor: a
+                            // contextmenu anywhere in the root resolves a
+                            // carrier, letting `logseq-*` wrappers that
+                            // only scaffold events stay collapsible.
+                            let Some(hit) = crate::dom::deepest_hit(
+                                &contextmenu_shared,
+                                event.position,
+                            ) else {
+                                return;
+                            };
+                            let Some((carrier, ident)) =
+                                crate::dom::logseq_carrier(&contextmenu_shared, Some(hit))
+                            else {
+                                return;
+                            };
+                            let position = event.position;
+                            crate::dom::dom_event_via(
+                                &contextmenu_shared,
+                                carrier,
+                                &ident,
+                                hit,
+                                "contextmenu",
+                                serde_json::json!({
+                                    "clientX": f64::from(position.x),
+                                    "clientY": f64::from(position.y),
+                                }),
+                                cx,
+                            );
+                        },
                     )
                     .child(view)
                     .into_any_element()

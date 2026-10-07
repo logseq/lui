@@ -88,7 +88,7 @@ pub fn render(
                         .child(format!("[{identifier}]")),
                 )
                 .children(children);
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
     }
@@ -208,7 +208,7 @@ fn gpui_rating(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
     _window: &mut Window,
-    _cx: &mut Context<LuiNodeView>,
+    cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
     let shared = view.shared.clone();
     let node_id = node.id;
@@ -226,7 +226,7 @@ fn gpui_rating(
                 cx,
             );
         });
-    style::all(div().child(element), node).into_any_element()
+    style::all(div().child(element), node, cx.theme()).into_any_element()
 }
 
 fn parse_hex_color(text: &str) -> Option<gpui_kit::gpui::Hsla> {
@@ -280,7 +280,7 @@ fn gpui_color_picker(
         }
     }
     let element = ColorPicker::new(&state);
-    style::all(div().child(element), node).into_any_element()
+    style::all(div().child(element), node, cx.theme()).into_any_element()
 }
 
 /// `gpui-empty` — props `title`, `description`; standard children render in
@@ -300,7 +300,7 @@ fn gpui_empty(
     }
     let children = view.child_elements(node, cx);
     let element = Empty::new().header(header).children(children);
-    style::all(div().child(element), node).into_any_element()
+    style::all(div().child(element), node, cx.theme()).into_any_element()
 }
 
 /// `gpui-tag` — props `text`, `variant` (primary|secondary|danger|success|
@@ -309,7 +309,7 @@ fn gpui_tag(
     _view: &mut LuiNodeView,
     node: &NodeSnapshot,
     _window: &mut Window,
-    _cx: &mut Context<LuiNodeView>,
+    cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
     let variant = match ext_string(node, "variant").unwrap_or_default() {
         "secondary" => TagVariant::Secondary,
@@ -322,7 +322,7 @@ fn gpui_tag(
     let element = Tag::new()
         .with_variant(variant)
         .child(ext_string(node, "text").unwrap_or_default().to_string());
-    style::all(div().child(element), node).into_any_element()
+    style::all(div().child(element), node, cx.theme()).into_any_element()
 }
 
 /// `gpui-chart-bar` — props `name`, `data` ("Label:Value,Label:Value,…").
@@ -330,7 +330,7 @@ fn gpui_chart_bar(
     _view: &mut LuiNodeView,
     node: &NodeSnapshot,
     _window: &mut Window,
-    _cx: &mut Context<LuiNodeView>,
+    cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
     let data: Vec<(SharedString, f32)> = ext_string(node, "data")
         .unwrap_or_default()
@@ -348,7 +348,7 @@ fn gpui_chart_bar(
         .name(ext_string(node, "name").unwrap_or_default().to_string())
         .id(("gpui-chart-bar", node.id as usize))
         .value_axis(true);
-    style::all(div().w_full().h(px(240.)).child(element), node).into_any_element()
+    style::all(div().w_full().h(px(240.)).child(element), node, cx.theme()).into_any_element()
 }
 
 /// Flat data delegate for `gpui-table`: props carry the whole dataset as
@@ -443,5 +443,5 @@ fn gpui_table(
     let element = DataTable::new(&state)
         .bordered(ext_bool(node, "bordered").unwrap_or(true))
         .stripe(ext_bool(node, "stripe").unwrap_or(true));
-    style::all(div().w_full().h(px(320.)).child(element), node).into_any_element()
+    style::all(div().w_full().h(px(320.)).child(element), node, cx.theme()).into_any_element()
 }

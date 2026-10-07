@@ -69,8 +69,8 @@ const BLOCK_TAGS: &[&str] = &[
 /// Inline tags -> horizontal baseline row (approximation of inline flow;
 /// true text-run mixing lands with the real DOM renderer milestone).
 const INLINE_TAGS: &[&str] = &[
-    "a", "abbr", "b", "code", "data", "dfn", "em", "em-emoji", "i", "kbd", "label", "mark", "q",
-    "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var",
+    "a", "abbr", "b", "code", "data", "del", "dfn", "em", "em-emoji", "i", "ins", "kbd", "label",
+    "mark", "q", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var",
 ];
 
 /// Tags that behave as clickable controls.
@@ -105,6 +105,32 @@ fn identifier_of(node: &NodeSnapshot) -> String {
     }
 }
 
+/// Whether an extension node renders through a plain flex container arm —
+/// `Some(false)` for the `v_flex` arms (block/table/unknown tags),
+/// `Some(true)` for the `h_flex` inline arm, `None` for non-extension
+/// nodes and the leaf arms. Used by wrapper elision to match an
+/// extension wrapper's direction against its parent's. Takes a bare
+/// identity — usable on `NodeSnapshot`s and store nodes alike.
+pub(crate) fn ext_flex_direction_of(identity: &NodeIdentity) -> Option<bool> {
+    let NodeIdentity::Extension { identifier, .. } = identity else {
+        return None;
+    };
+    let tag = identifier.strip_prefix("logseq-").unwrap_or(identifier);
+    if tag == "button" || BLOCK_TAGS.contains(&tag) || TABLE_TAGS.contains(&tag) {
+        return Some(false);
+    }
+    if INLINE_TAGS.contains(&tag) {
+        return Some(true);
+    }
+    if matches!(tag, "raw-text" | "br" | "hr" | "input" | "textarea")
+        || VOID_TAGS.contains(&tag)
+    {
+        return None;
+    }
+    // The unknown-tag catch-all arm renders a plain `v_flex`.
+    Some(false)
+}
+
 fn classes(node: &NodeSnapshot) -> &str {
     node.extension_string_prop("style-class").unwrap_or("")
 }
@@ -130,15 +156,12 @@ fn attr(node: &NodeSnapshot, name: &str) -> Option<String> {
 
 /// The `attrs` slot has two encodings by source: extension `attrs` is a
 /// JSON object ({name: value}); the standard `DataAttrs` prop is the
-/// \x1e/\x1f record list produced by data_attrs_encode.
+/// \x1e/\x1f record list produced by data_attrs_encode. Both can coexist
+/// (a dom-ops `set-attr` writes the extension slot on a standard node),
+/// so merge them — extension attrs win on key collision.
 fn parsed_attrs(node: &Node) -> serde_json::Map<String, serde_json::Value> {
-    if let Some(raw) = node.extension_props.get("attrs").and_then(|v| v.as_str()) {
-        return serde_json::from_str::<serde_json::Value>(raw)
-            .ok()
-            .and_then(|v| v.as_object().cloned())
-            .unwrap_or_default();
-    }
-    node.string_prop(Property::DataAttrs)
+    let mut map = node
+        .string_prop(Property::DataAttrs)
         .map(|raw| {
             raw.split('\x1e')
                 .filter_map(|record| {
@@ -147,19 +170,48 @@ fn parsed_attrs(node: &Node) -> serde_json::Map<String, serde_json::Value> {
                 })
                 .collect::<serde_json::Map<String, serde_json::Value>>()
         })
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if let Some(raw) = node.extension_props.get("attrs").and_then(|v| v.as_str()) {
+        if let Ok(serde_json::Value::Object(extra)) = serde_json::from_str::<serde_json::Value>(raw)
+        {
+            for (key, value) in extra {
+                map.insert(key, value);
+            }
+        }
+    }
+    map
 }
 
 /// DOM-shaped element snapshot — mirrors imperative_dom.ml's
 /// flat_snapshot: handlers compare fields like tag/class/id and walk the
 /// `ancestors` chain for closest()/scope resolution.
+/// Standard kinds present the HTML tag their DOM twin would carry —
+/// delegated selectors (`a.page-ref`, `a.tag`, `button.x`) match on it.
+fn dom_tag_of_kind(kind: lui_core::wire_schema::NodeKind) -> String {
+    use lui_core::wire_schema::NodeKind;
+    match kind {
+        NodeKind::Link => "a",
+        NodeKind::Button | NodeKind::ToggleButton => "button",
+        NodeKind::Input | NodeKind::TextField | NodeKind::SearchField
+        | NodeKind::SecureField | NodeKind::NumberStepper => "input",
+        NodeKind::Textarea => "textarea",
+        NodeKind::Select | NodeKind::Combobox => "select",
+        NodeKind::MenuItem => "menuitem",
+        NodeKind::FileImage | NodeKind::Image | NodeKind::FilePreview => "img",
+        NodeKind::ListItem => "li",
+        NodeKind::BottomTab => "button",
+        kind => return kind.wire_name().to_uppercase(),
+    }
+    .to_uppercase()
+}
+
 fn shallow_snapshot(node: &Node) -> serde_json::Value {
     let tag = match &node.identity {
         NodeIdentity::Extension { identifier, .. } => identifier
             .strip_prefix("logseq-")
             .unwrap_or(identifier)
             .to_uppercase(),
-        NodeIdentity::Standard(kind) => kind.wire_name().to_uppercase(),
+        NodeIdentity::Standard(kind) => dom_tag_of_kind(*kind),
     };
     // Standard props are the only carrier of id/class/attrs/text on plain
     // elements — extension_props is empty for them, so a click target or
@@ -176,7 +228,20 @@ fn shallow_snapshot(node: &Node) -> serde_json::Value {
         .and_then(|v| v.as_str())
         .or_else(|| node.string_prop(Property::AccessibilityIdentifier))
         .unwrap_or("");
-    let attrs = parsed_attrs(node);
+    let mut attrs = parsed_attrs(node);
+    // Link props surface as the attrs a DOM `<a>` would carry — selectors
+    // (`a[target=_blank]`) and the default-action href lookup read them.
+    if node.identity.kind() == Some(lui_core::wire_schema::NodeKind::Link) {
+        if let Some(url) = node.string_prop(Property::UrlValue) {
+            attrs.insert("href".to_string(), serde_json::Value::String(url.to_string()));
+        }
+        if let Some(target) = node.string_prop(Property::TargetValue) {
+            attrs.insert(
+                "target".to_string(),
+                serde_json::Value::String(target.to_string()),
+            );
+        }
+    }
     let dom_id = attrs
         .get("id")
         .and_then(|v| v.as_str())
@@ -451,6 +516,15 @@ fn with_dom_events<E: StatefulInteractiveElement>(
     element
 }
 
+/// Font semantics of inline HTML tags — see `style::inline_tag_style`.
+fn tag_semantic_style<E: Styled>(
+    element: E,
+    tag: &str,
+    cx: &mut Context<LuiNodeView>,
+) -> E {
+    style::inline_tag_style(element, tag, cx.theme())
+}
+
 /// Text content of the node: the `text` extension prop carries the payload.
 fn text_prop(node: &NodeSnapshot) -> &str {
     node.extension_string_prop("text").unwrap_or("")
@@ -705,12 +779,12 @@ pub fn render(
             if !text.is_empty() {
                 element = element.child(SharedString::from(text));
             }
-            style::all(element, node).into_any_element()
+            style::all(element, node, cx.theme()).into_any_element()
         }
         "br" => div().h(px(6.)).into_any_element(),
         "hr" => {
             let mut element = div().py_1().w_full().child(Separator::horizontal());
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
         // Text entry — the InputState-backed editor lands with the editor
@@ -733,7 +807,7 @@ pub fn render(
             } else {
                 div().child(SharedString::from(value)).into_any_element()
             });
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
         _ if VOID_TAGS.contains(&tag.as_str()) => {
@@ -747,12 +821,22 @@ pub fn render(
             || TABLE_TAGS.contains(&tag.as_str())
             || tag == "button" =>
         {
+            // Plain v_flex container — wrapper elision applies. `multi`
+            // requires no gap source (class token, `gap` prop, or the
+            // same-named extension prop) between the children.
+            let multi = LuiNodeView::gapless(node)
+                && !classes(node)
+                    .split_whitespace()
+                    .any(|t| t == "gap" || t.starts_with("gap-"))
+                && node.extension_prop("gap").is_none();
+            let horizontal =
+                crate::node_view::snapshot_flex_direction(node).unwrap_or(false);
             let mut element = v_flex()
-                .on_children_prepainted(view.bounds_recorder(node))
+                .on_children_prepainted(view.bounds_recorder_flat(node, horizontal, multi))
                 .id(ElementId::Integer(node.id as u64));
             element = with_text(element, node);
-            element = element.children(children);
-            element = style::all(element, node);
+            element = element.children(view.child_elements_flat(node, horizontal, multi, cx));
+            element = style::all(element, node, cx.theme());
             element = with_scroll(element, node);
             if CLICKABLE_TAGS.contains(&tag.as_str()) || has_class(node, "cursor-pointer") {
                 element = element.cursor_pointer();
@@ -760,26 +844,86 @@ pub fn render(
             with_dom_events(element, &shared, node).into_any_element()
         }
         _ if INLINE_TAGS.contains(&tag.as_str()) => {
-            let mut element = h_flex()
-                .on_children_prepainted(view.bounds_recorder(node))
-                .id(ElementId::Integer(node.id as u64))
-                .items_baseline();
-            element = with_text(element, node);
-            element = element.children(children);
-            element = style::all(element, node);
-            element = with_scroll(element, node);
-            if CLICKABLE_TAGS.contains(&tag.as_str()) {
-                element = element.cursor_pointer();
+            // `<br>` splits the run into stacked lines (one h_flex each
+            // inside a v_flex). Flex-wrap would be the DOM-accurate shape,
+            // but taffy's hypothetical-cross-size pass re-lays-out every
+            // child per wrap line and explodes on nested wrap containers.
+            let br_at: Vec<bool> = {
+                let store = view.shared.borrow();
+                node.children
+                    .iter()
+                    .filter(|cid| store.store.node(**cid).is_some())
+                    .map(|cid| {
+                        NodeSnapshot::snapshot(&store.store, *cid)
+                            .map(|n| {
+                                matches!(
+                                    n.identity,
+                                    NodeIdentity::Standard(
+                                        lui_core::wire_schema::NodeKind::Br
+                                    )
+                                ) || tag_of(&n) == "br"
+                            })
+                            .unwrap_or(false)
+                    })
+                    .collect()
+            };
+            if br_at.iter().any(|b| *b) {
+                let mut lines: Vec<Vec<gpui_kit::gpui::AnyElement>> = vec![Vec::new()];
+                for (is_br, child) in br_at.into_iter().zip(children) {
+                    if is_br {
+                        lines.push(Vec::new());
+                    } else {
+                        lines.last_mut().unwrap().push(child);
+                    }
+                }
+                let mut element = v_flex()
+                    .on_children_prepainted(view.bounds_recorder(node))
+                    .id(ElementId::Integer(node.id as u64));
+                element = with_text(element, node);
+                element = element.children(lines.into_iter().map(|line| {
+                    h_flex()
+                        .items_start()
+                        .children(line)
+                        .into_any_element()
+                }));
+                element = tag_semantic_style(element, &tag, cx);
+                element = style::all(element, node, cx.theme());
+                element = with_scroll(element, node);
+                if CLICKABLE_TAGS.contains(&tag.as_str()) {
+                    element = element.cursor_pointer();
+                }
+                with_dom_events(element, &shared, node).into_any_element()
+            } else {
+                let mut element = h_flex()
+                    .on_children_prepainted(view.bounds_recorder(node))
+                    .id(ElementId::Integer(node.id as u64))
+                    .items_start();
+                element = with_text(element, node);
+                element = element.children(children);
+                element = tag_semantic_style(element, &tag, cx);
+                element = style::all(element, node, cx.theme());
+                element = with_scroll(element, node);
+                if CLICKABLE_TAGS.contains(&tag.as_str()) {
+                    element = element.cursor_pointer();
+                }
+                with_dom_events(element, &shared, node).into_any_element()
             }
-            with_dom_events(element, &shared, node).into_any_element()
         }
         // Unknown logseq-* tag: transparent passthrough, never a warning
         // frame — the logseq family is understood vocabulary, not "missing".
         _ => {
-            let mut element = v_flex().on_children_prepainted(view.bounds_recorder(node));
+            let multi = LuiNodeView::gapless(node)
+                && !classes(node)
+                    .split_whitespace()
+                    .any(|t| t == "gap" || t.starts_with("gap-"))
+                && node.extension_prop("gap").is_none();
+            let horizontal =
+                crate::node_view::snapshot_flex_direction(node).unwrap_or(false);
+            let mut element =
+                v_flex().on_children_prepainted(view.bounds_recorder_flat(node, horizontal, multi));
             element = with_text(element, node);
-            element = element.children(children);
-            element = style::all(element, node);
+            element = element.children(view.child_elements_flat(node, horizontal, multi, cx));
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
     }

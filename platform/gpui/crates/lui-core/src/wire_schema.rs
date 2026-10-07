@@ -339,6 +339,10 @@ impl NodeKind {
                 | NodeKind::FilePicker
                 | NodeKind::Link
                 | NodeKind::Popover
+                // Option children feed `option_items`; the picker never
+                // paints them as elements.
+                | NodeKind::Select
+                | NodeKind::Combobox
         )
     }
 }
