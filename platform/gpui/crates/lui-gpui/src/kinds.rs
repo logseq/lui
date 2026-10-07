@@ -2746,10 +2746,14 @@ pub fn render_node(
                 // Wide-content scroller (e.g. the views table): bounded
                 // horizontally, content-sized vertically. `h_full` inside
                 // a content-sized column would collapse the viewport.
+                // restrict_scroll_to_axis keeps vertical wheel deltas from
+                // being remapped to a horizontal pan — they must reach an
+                // outer vertical scroller instead.
                 let mut element = h_flex()
                     .w_full()
                     .id(element_id(node.id))
                     .overflow_x_scroll()
+                    .restrict_scroll_to_axis()
                     .track_scroll(&view.states.scroll);
                 element = style::all(element, node, cx.theme());
                 return element
