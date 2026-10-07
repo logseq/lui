@@ -1,9 +1,11 @@
-//! One `Entity<LuiNodeView>` per LUI node — the minimal re-render unit.
+//! Per-node component state, selective render caching, and geometry tracking.
 
 use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::component::slider::SliderState;
+use gpui_kit::component::ActiveTheme;
 use gpui_kit::gpui::{
-    div, App, Bounds, Context, Entity, IntoElement, Pixels, Render, ScrollHandle, SharedString,
+    div, AnyElement, App, Bounds, Context, Element, ElementId, Entity, GlobalElementId,
+    InspectorElementId, IntoElement, LayoutId, Pixels, Render, ScrollHandle, SharedString, Styled,
     Subscription, Window,
 };
 use lui_core::store::{NodeIdentity, Store};
@@ -49,11 +51,11 @@ fn elidable_node(
     if !standard_props_inert {
         return false;
     }
-    child.extension_props.iter().all(|(name, value)| {
-        match name.as_str() {
-            "attrs" | "data-style" => {
-                value.as_str().map(ext_attrs_inert).unwrap_or(false)
-            }
+    child
+        .extension_props
+        .iter()
+        .all(|(name, value)| match name.as_str() {
+            "attrs" | "data-style" => value.as_str().map(ext_attrs_inert).unwrap_or(false),
             "style-class" => value.as_str().map(&inert_class).unwrap_or(false),
             "events" => value.as_str().is_some_and(|events| {
                 events
@@ -61,8 +63,7 @@ fn elidable_node(
                     .all(|name| ext_event_covered(store, child, name))
             }),
             _ => false,
-        }
-    })
+        })
 }
 
 /// Whether some `logseq-*` ancestor also subscribes the dom-event `name`
@@ -283,13 +284,25 @@ impl NodeSnapshot {
     }
 
     pub(crate) fn snapshot(store: &Store, id: i64) -> Option<NodeSnapshot> {
+        Self::snapshot_with_children(store, id, true)
+    }
+
+    fn snapshot_with_children(
+        store: &Store,
+        id: i64,
+        include_children: bool,
+    ) -> Option<NodeSnapshot> {
         let node = store.node(id)?;
         Some(NodeSnapshot {
             id,
             identity: node.identity.clone(),
             props: node.props.clone(),
             extension_props: node.extension_props.clone(),
-            children: node.children.clone(),
+            children: if include_children {
+                node.children.clone()
+            } else {
+                Vec::new()
+            },
             parent: node.parent,
         })
     }
@@ -328,6 +341,8 @@ pub struct ComponentStates {
     pub input: Option<Entity<InputState>>,
     pub textarea: Option<Entity<TextareaState>>,
     pub slider: Option<Entity<SliderState>>,
+    pub split: Option<Entity<gpui_kit::component::resizable::ResizableState>>,
+    pub split_target: std::rc::Rc<std::cell::Cell<Option<(Pixels, f32)>>>,
     pub select: Option<Entity<gpui_kit::component::select::SelectState<Vec<LuiOption>>>>,
     pub combobox: Option<Entity<gpui_kit::component::combobox::ComboboxState<Vec<LuiOption>>>>,
     pub color_picker: Option<Entity<gpui_kit::component::color_picker::ColorPickerState>>,
@@ -394,8 +409,7 @@ impl LuiNodeView {
     }
 
     /// Entity handle for a child node (creating on demand). Used by every
-    /// container render to embed children as *entity* children — the key to
-    /// per-node redraw isolation.
+    /// container render to embed children while retaining component state.
     pub fn child_view(&self, child_id: i64, cx: &mut App) -> Entity<LuiNodeView> {
         LuiShared::view_for(&self.shared, child_id, cx)
     }
@@ -407,10 +421,79 @@ impl LuiNodeView {
         node: &NodeSnapshot,
         cx: &mut App,
     ) -> Vec<gpui_kit::gpui::AnyElement> {
-        self.flat_child_ids(&node.children, None)
-            .into_iter()
-            .map(|child_id| self.child_view(child_id, cx).into_any_element())
+        node.children
+            .iter()
+            .copied()
+            .filter(|child_id| self.shared.borrow().store.node(*child_id).is_some())
+            .map(|child_id| Self::element_for(&self.shared, child_id, cx))
             .collect()
+    }
+
+    /// Content-sized nodes must still measure their contents. Only nodes
+    /// with both dimensions declared can use GPUI's measurement-free cache.
+    pub(crate) fn element_for(shared: &Shared, id: i64, cx: &mut App) -> AnyElement {
+        let node = {
+            let shared = shared.borrow();
+            // Containers cannot use the leaf cache. Do not duplicate their
+            // children here, especially a virtual list's retained sequence.
+            shared
+                .store
+                .node(id)
+                .filter(|node| {
+                    node.children.is_empty()
+                        && node.float_prop(Property::WidthValue).is_some()
+                        && node.float_prop(Property::HeightValue).is_some()
+                })
+                .and_then(|_| NodeSnapshot::snapshot(&shared.store, id))
+        };
+        let view = LuiShared::view_for(shared, id, cx);
+        if let Some(node) = node {
+            let in_virtual_list = {
+                let shared = shared.borrow();
+                let mut cursor = node.parent;
+                let mut found = false;
+                while let Some(id) = cursor {
+                    if shared.virtual_lists.contains_key(&id) {
+                        found = true;
+                        break;
+                    }
+                    cursor = shared.store.node(id).and_then(|node| node.parent);
+                }
+                found
+            };
+            let cacheable = match &node.identity {
+                NodeIdentity::Standard(kind) => matches!(
+                    kind,
+                    lui_core::NodeKind::Text
+                        | lui_core::NodeKind::Heading
+                        | lui_core::NodeKind::Paragraph
+                        | lui_core::NodeKind::Label
+                        | lui_core::NodeKind::Spacer
+                        | lui_core::NodeKind::Divider
+                        | lui_core::NodeKind::Icon
+                        | lui_core::NodeKind::Kbd
+                ),
+                NodeIdentity::Extension { .. } => {
+                    let states = &view.read(cx).states;
+                    states.subscriptions.is_empty()
+                        && states.app_state.is_none()
+                        && states.input.is_none()
+                        && states.table.is_none()
+                        && states.dock.is_none()
+                        && states.color_picker.is_none()
+                }
+            };
+            if cacheable
+                && node.children.is_empty()
+                && !in_virtual_list
+                && node.float_prop(Property::WidthValue).is_some()
+                && node.float_prop(Property::HeightValue).is_some()
+            {
+                let mut frame = crate::style::all(div(), &node, cx.theme());
+                return view.cached(frame.style().clone()).into_any_element();
+            }
+        }
+        view.into_any_element()
     }
 
     /// Child ids for rendering, collapsing identity wrapper levels.
@@ -478,7 +561,7 @@ impl LuiNodeView {
 
     /// Like [`Self::child_elements`] but applies wrapper elision for a
     /// parent that renders a plain flex container.
-    /// [`Self::bounds_recorder_flat`] must observe the same expansion.
+    /// Each rendered node records its own geometry.
     pub fn child_elements_flat(
         &self,
         node: &NodeSnapshot,
@@ -488,59 +571,128 @@ impl LuiNodeView {
     ) -> Vec<gpui_kit::gpui::AnyElement> {
         self.flat_child_ids(&node.children, Some((horizontal, multi)))
             .into_iter()
-            .map(|child_id| self.child_view(child_id, cx).into_any_element())
+            .map(|child_id| Self::element_for(&self.shared, child_id, cx))
             .collect()
-    }
-
-    /// `bounds_recorder` variant matching [`Self::child_elements_flat`]:
-    /// records bounds for the elision-expanded child list so recorded
-    /// ids stay aligned with rendered order.
-    pub fn bounds_recorder_flat(
-        &self,
-        node: &NodeSnapshot,
-        horizontal: bool,
-        multi: bool,
-    ) -> impl Fn(Vec<Bounds<Pixels>>, &mut Window, &mut App) + 'static {
-        let shared = self.shared.clone();
-        let child_ids = self.flat_child_ids(&node.children, Some((horizontal, multi)));
-        move |bounds, _window, _cx| {
-            let mut shared = shared.borrow_mut();
-            for (id, bounds) in child_ids.iter().zip(bounds) {
-                shared.node_bounds.insert(*id, bounds);
-            }
-        }
-    }
-
-    /// `on_children_prepainted` listener recording each rendered child's
-    /// window-space bounds into `shared.node_bounds`. Attach it to a
-    /// container's outer `Div`; the prepainted order matches
-    /// [`Self::child_elements`] (both filter out dropped children).
-    pub fn bounds_recorder(
-        &self,
-        node: &NodeSnapshot,
-    ) -> impl Fn(Vec<Bounds<Pixels>>, &mut Window, &mut App) + 'static {
-        let shared = self.shared.clone();
-        let child_ids: Vec<i64> = node
-            .children
-            .iter()
-            .copied()
-            .filter(|child_id| shared.borrow().store.node(*child_id).is_some())
-            .collect();
-        move |bounds, _window, _cx| {
-            let mut shared = shared.borrow_mut();
-            for (id, bounds) in child_ids.iter().zip(bounds) {
-                shared.node_bounds.insert(*id, bounds);
-            }
-        }
     }
 }
 
 impl Render for LuiNodeView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(node) = self.snapshot() else {
+        // Virtual lists retain the child sequence between structural patches;
+        // scrolling and row updates must not copy all N child ids each frame.
+        let node = {
+            let shared = self.shared.borrow();
+            let include_children = shared
+                .virtual_lists
+                .get(&self.id)
+                .is_none_or(|list| list.children_dirty);
+            NodeSnapshot::snapshot_with_children(&shared.store, self.id, include_children)
+        };
+        let Some(node) = node else {
             // Node dropped since last notify; render nothing.
             return div().into_any_element();
         };
-        kinds::render_node(self, &node, window, cx)
+        NodeElement {
+            inner: kinds::render_node(self, &node, window, cx),
+            id: self.id,
+            shared: self.shared.clone(),
+        }
+        .into_any_element()
+    }
+}
+
+/// Delegate the layout unchanged: an extra Div would alter flex sizing and
+/// component geometry. Recording at this boundary works for every node kind.
+struct NodeElement {
+    inner: AnyElement,
+    id: i64,
+    shared: Shared,
+}
+
+impl IntoElement for NodeElement {
+    type Element = Self;
+    fn into_element(self) -> Self {
+        self
+    }
+}
+
+impl Element for NodeElement {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+    fn request_layout(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, ()) {
+        (self.inner.request_layout(window, cx), ())
+    }
+    fn prepaint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let own_list = {
+            let mut shared = self.shared.borrow_mut();
+            let own_list = shared.virtual_lists.contains_key(&self.id);
+            if let Some(list) = shared.virtual_lists.get_mut(&self.id) {
+                let painted = std::mem::take(&mut list.painted);
+                for id in painted {
+                    shared.node_bounds.remove(&id);
+                }
+            }
+            if own_list {
+                shared.painting_lists.push(self.id);
+            }
+            shared.node_bounds.insert(self.id, bounds);
+            // An outer list owns nested row geometry too, so unmounting a
+            // nested list retires all of its descendants' recorded bounds.
+            let lists = shared.painting_lists.clone();
+            for id in lists {
+                if let Some(list) = shared.virtual_lists.get_mut(&id) {
+                    list.painted.insert(self.id);
+                }
+            }
+            own_list
+        };
+        let focus = {
+            let shared = self.shared.borrow();
+            shared
+                .painting_lists
+                .last()
+                .and_then(|id| shared.virtual_lists.get(id))
+                .and_then(|list| list.row_focus.get(&self.id))
+                .cloned()
+        };
+        if let Some(focus) = focus {
+            window.set_focus_handle(&focus, cx);
+        }
+        self.inner.prepaint(window, cx);
+        if own_list {
+            self.shared.borrow_mut().painting_lists.pop();
+        }
+    }
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.inner.paint(window, cx);
     }
 }

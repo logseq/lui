@@ -78,7 +78,7 @@ All 85 wire `NodeKind`s render. Notable mappings:
   `SearchableListDelegate` over `menu_item` children), Kbd.
 - gpui-base `ResizablePanelGroup` backs both `resizable`
   (`width`/`min-width`/`max-width` → `size`/`size_range`) and `split`
-  (`value` fraction seeds pane one; `on_resize` reports the new
+  (`value` fraction tracks the measured group width; `on_resize` reports the new
   first-pane fraction via `slider_changed`).
 - `deferred` + `anchored` overlays back `dialog`/`sheet`/`drawer`/`toast`
   (full-window modal), `dropdown_menu` (anchored under its stack
@@ -109,9 +109,33 @@ All 85 wire `NodeKind`s render. Notable mappings:
 - `style-class` resolves common Tailwind utilities + `gpui-theme` colors;
   `cp-`/`ls-` semantic classes map through the style dictionary (subset).
 
-## Minimal-granularity rendering
+## Retained rendering and virtualization
 
-`Shared` keeps `HashMap<i64, Entity<LuiNodeView>>`. Applying a patch batch
-returns the dirty id set: `set-*` ops dirty the node, structural ops dirty
-the parent, `drop-node` releases the entity. Only dirty entities get
-`cx.notify()`, so gpui's prepaint reuses everything else.
+`Shared` retains one `Entity<LuiNodeView>` for each mounted node. Property
+patches notify the changed view; structural patches also notify the parent.
+Notification uses `App::notify` without updating the entity, so synchronous
+OCaml feedback can patch a node from inside its own input subscription.
+Rejected batches restore only the touched nodes' before-images; an ordinary
+property patch no longer copies the complete tree.
+
+GPUI's view cache skips content measurement. Explicitly sized stateless
+leaves use that cache; content-sized and stateful nodes keep normal layout
+so wrapping, intrinsic sizes, and component interactions remain correct.
+Entity children alone do not guarantee render isolation. Every node records
+its own bounds without adding an extra layout container.
+
+`virtual-list` uses gpui-kit's re-exported native `list` / `ListState` primitive.
+It measures variable-height rows lazily, renders the viewport plus measurement
+overscan, and keeps a focused row mounted for keyboard dispatch. The parent
+must give the list a finite viewport (for example, a `height` property).
+Row updates invalidate only that row's measurements; insert/remove/reorder
+operations reconcile the child sequence and preserve the visible node's
+scroll anchor. Scrolling does not copy the full child sequence. Imperative
+scroll operations can jump to an unmeasured row by logical index; offscreen
+geometry is retired. `list-container` remains an ordinary full collection.
+The store still retains all model nodes, and visited rows retain component
+state until dropped.
+
+Run the regression suite with `cargo test -p lui-core -p lui-gpui --locked`.
+A reproducible Store-only microbenchmark is available with
+`cargo run -p lui-core --release --example store_patch_bench`.

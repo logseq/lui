@@ -3093,6 +3093,7 @@ let test_drive_scenarios () =
 let () =
   Alcotest.run "lui"
     [
+      ("audit regressions", Test_audit.tests);
       ("navigation", [
         Alcotest.test_case "entry local states and function routes" `Quick test_navigation_entry_state;
         Alcotest.test_case "queued owner write versus stale host event" `Quick test_navigation_queued_stale;

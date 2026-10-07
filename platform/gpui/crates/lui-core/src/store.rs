@@ -112,6 +112,8 @@ pub struct Applied {
     pub generation: i64,
     /// Nodes whose props or child list changed — notify their entities.
     pub dirty: BTreeSet<i64>,
+    /// Parents whose child sequence changed, distinct from property updates.
+    pub structural: BTreeSet<i64>,
     /// Subtree roots + descendants removed by `drop-node`.
     pub dropped: Vec<i64>,
 }
@@ -139,18 +141,60 @@ impl Store {
             generation: batch.generation,
             ..Applied::default()
         };
-        // Stage the mutation so a mid-batch error leaves the tree intact.
-        let mut staged = Store {
-            nodes: self.nodes.clone(),
-            root: self.root,
-            generation: self.generation,
-        };
+        // Keep only the first before-image of each touched node. Property
+        // patches stay local while a rejected batch restores every link.
+        let root = self.root;
+        let mut undo = BTreeMap::new();
         for op in &batch.ops {
-            staged.apply_op(op, &mut applied)?;
+            self.record_before(op, &mut undo);
+            if let Err(error) = self.apply_op(op, &mut applied) {
+                for (id, node) in undo {
+                    match node {
+                        Some(node) => {
+                            self.nodes.insert(id, node);
+                        }
+                        None => {
+                            self.nodes.remove(&id);
+                        }
+                    }
+                }
+                self.root = root;
+                return Err(error);
+            }
         }
-        staged.generation = batch.generation;
-        *self = staged;
+        self.generation = batch.generation;
         Ok(applied)
+    }
+
+    fn record_before(&self, op: &Op, undo: &mut BTreeMap<i64, Option<Node>>) {
+        let mut ids = Vec::new();
+        match op {
+            Op::CreateNode { id, .. }
+            | Op::CreateExtension { id, .. }
+            | Op::SetProp { id, .. }
+            | Op::RemoveProp { id, .. }
+            | Op::SetExtensionProp { id, .. }
+            | Op::RemoveExtensionProp { id, .. } => ids.push(*id),
+            Op::InsertChild { parent, child, .. } => {
+                ids.extend([*parent, *child]);
+                ids.extend(self.node(*child).and_then(|node| node.parent));
+            }
+            Op::RemoveChild { parent, child } => ids.extend([*parent, *child]),
+            Op::MoveChild { parent, .. } => ids.push(*parent),
+            Op::DropNode { id } => {
+                ids.extend(self.node(*id).and_then(|node| node.parent));
+                let mut stack = vec![*id];
+                while let Some(id) = stack.pop() {
+                    ids.push(id);
+                    if let Some(node) = self.node(id) {
+                        stack.extend(node.children.iter().copied());
+                    }
+                }
+            }
+        }
+        for id in ids {
+            undo.entry(id).or_insert_with(|| self.node(id).cloned());
+        }
     }
 
     fn apply_op(&mut self, op: &Op, applied: &mut Applied) -> Result<(), BackendError> {
@@ -285,6 +329,7 @@ impl Store {
                 parent_node.children.retain(|child| *child != id);
             }
             applied.dirty.insert(parent);
+            applied.structural.insert(parent);
         }
         for current in subtree {
             self.nodes.remove(&current);
@@ -342,6 +387,7 @@ impl Store {
         parent_node.children.insert(index, child);
         self.nodes.get_mut(&child).expect("checked above").parent = Some(parent);
         applied.dirty.insert(parent);
+        applied.structural.insert(parent);
         Ok(())
     }
 
@@ -365,6 +411,7 @@ impl Store {
             child_node.parent = None;
         }
         applied.dirty.insert(parent);
+        applied.structural.insert(parent);
         Ok(())
     }
 
@@ -392,6 +439,7 @@ impl Store {
         let index = (index.max(0) as usize).min(parent_node.children.len());
         parent_node.children.insert(index, child);
         applied.dirty.insert(parent);
+        applied.structural.insert(parent);
         Ok(())
     }
 }
@@ -408,6 +456,71 @@ mod tests {
 
     fn children_of(store: &Store, id: i64) -> Vec<i64> {
         store.node(id).expect("node exists").children.clone()
+    }
+
+    #[test]
+    fn property_patch_preserves_unrelated_payload_storage() {
+        let mut store = Store::default();
+        apply_json(
+            &mut store,
+            r#"{"generation":1,"ops":[
+            {"op":"create-node","id":1,"kind":"root"},
+            {"op":"create-node","id":2,"kind":"text"},
+            {"op":"set-prop","id":2,"property":"text","value":"Unchanged payload"}
+        ]}"#,
+        );
+        let before = store
+            .node(2)
+            .unwrap()
+            .string_prop(Property::TextValue)
+            .unwrap()
+            .as_ptr();
+        apply_json(
+            &mut store,
+            r#"{"generation":2,"ops":[
+            {"op":"set-prop","id":1,"property":"width","value":400}
+        ]}"#,
+        );
+        let after = store
+            .node(2)
+            .unwrap()
+            .string_prop(Property::TextValue)
+            .unwrap()
+            .as_ptr();
+        assert_eq!(
+            before, after,
+            "a local patch must not reallocate unrelated payloads"
+        );
+    }
+
+    #[test]
+    fn rejected_batch_restores_reparented_and_dropped_nodes_and_root() {
+        let mut store = Store::default();
+        apply_json(
+            &mut store,
+            r#"{"generation":1,"ops":[
+            {"op":"create-node","id":1,"kind":"root"},
+            {"op":"create-node","id":2,"kind":"column"},
+            {"op":"create-node","id":3,"kind":"text"},
+            {"op":"insert-child","parent":1,"child":2,"index":0},
+            {"op":"insert-child","parent":2,"child":3,"index":0}
+        ]}"#,
+        );
+        let before = format!("{:?}", store.nodes);
+        let batch = decode_batch(
+            r#"{"generation":2,"ops":[
+            {"op":"insert-child","parent":1,"child":3,"index":0},
+            {"op":"drop-node","id":1},
+            {"op":"create-node","id":1,"kind":"root"},
+            {"op":"create-node","id":4,"kind":"text"},
+            {"op":"set-prop","id":99,"property":"text","value":"Reject"}
+        ]}"#,
+        )
+        .unwrap();
+        assert!(store.apply(&batch).is_err());
+        assert_eq!(format!("{:?}", store.nodes), before);
+        assert_eq!(store.root, Some(1));
+        assert_eq!(store.generation, 1);
     }
 
     #[test]

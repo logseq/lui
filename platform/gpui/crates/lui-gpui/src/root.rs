@@ -12,9 +12,8 @@ use gpui_kit::gpui::{
 
 use crate::backend::{LuiShared, Shared};
 
-
 /// The view hosted inside `gpui_component::Root`. Renders the root node
-/// entity (itself redraw-isolated) or an empty screen while no root is
+/// entity or an empty screen while no root is
 /// attached yet.
 ///
 /// Owns a window-level FocusHandle so key events always have a dispatch
@@ -112,6 +111,13 @@ fn emit_dom_keydown(
             }
         }
     };
+    let identifier = {
+        let shared = shared.borrow();
+        match shared.store.node(node_id).map(|node| &node.identity) {
+            Some(lui_core::store::NodeIdentity::Extension { identifier, .. }) => identifier.clone(),
+            _ => return,
+        }
+    };
     let mods = ks.modifiers;
     // gpui reports named keys lowercase; DOM listeners match
     // KeyboardEvent.key spellings.
@@ -135,7 +141,7 @@ fn emit_dom_keydown(
     crate::dom::dom_event(
         shared,
         node_id,
-        "",
+        &identifier,
         "keydown",
         serde_json::json!({
             "key": key,
@@ -180,7 +186,6 @@ impl Render for LuiRootView {
                 // backends get their outer scrolling from the host surface,
                 // so the window root supplies it here.
                 let mouse_shared = self.shared.clone();
-                let contextmenu_shared = self.shared.clone();
                 let keystroke_focus = focus.clone();
                 self.keystroke.get_or_init(|| {
                     let keydown_shared = self.shared.clone();
@@ -235,21 +240,20 @@ impl Render for LuiRootView {
                                 window.on_mouse_event(
                                     move |event: &MouseDownEvent, phase, _window, cx| {
                                         if phase != DispatchPhase::Capture
-                                            || event.button != MouseButton::Left
+                                            || !matches!(
+                                                event.button,
+                                                MouseButton::Left | MouseButton::Right
+                                            )
                                         {
                                             return;
                                         }
-                                        let Some(hit) = crate::dom::deepest_hit(
-                                            &down_shared,
-                                            event.position,
-                                        ) else {
+                                        let Some(hit) =
+                                            crate::dom::deepest_hit(&down_shared, event.position)
+                                        else {
                                             return;
                                         };
                                         let Some((carrier, ident)) =
-                                            crate::dom::logseq_carrier(
-                                                &down_shared,
-                                                Some(hit),
-                                            )
+                                            crate::dom::logseq_carrier(&down_shared, Some(hit))
                                         else {
                                             return;
                                         };
@@ -259,7 +263,11 @@ impl Render for LuiRootView {
                                             carrier,
                                             &ident,
                                             hit,
-                                            "mousedown",
+                                            if event.button == MouseButton::Right {
+                                                "contextmenu"
+                                            } else {
+                                                "mousedown"
+                                            },
                                             serde_json::json!({
                                                 "clientX": f64::from(position.x),
                                                 "clientY": f64::from(position.y),
@@ -276,17 +284,13 @@ impl Render for LuiRootView {
                                         {
                                             return;
                                         }
-                                        let Some(hit) = crate::dom::deepest_hit(
-                                            &up_shared,
-                                            event.position,
-                                        ) else {
+                                        let Some(hit) =
+                                            crate::dom::deepest_hit(&up_shared, event.position)
+                                        else {
                                             return;
                                         };
                                         let Some((carrier, ident)) =
-                                            crate::dom::logseq_carrier(
-                                                &up_shared,
-                                                Some(hit),
-                                            )
+                                            crate::dom::logseq_carrier(&up_shared, Some(hit))
                                         else {
                                             return;
                                         };
@@ -309,39 +313,6 @@ impl Render for LuiRootView {
                         )
                         .absolute()
                         .size(px(1.)),
-                    )
-                    .on_mouse_down(
-                        MouseButton::Right,
-                        move |event: &MouseDownEvent, _window, cx| {
-                            // Same contract as the click monitor: a
-                            // contextmenu anywhere in the root resolves a
-                            // carrier, letting `logseq-*` wrappers that
-                            // only scaffold events stay collapsible.
-                            let Some(hit) = crate::dom::deepest_hit(
-                                &contextmenu_shared,
-                                event.position,
-                            ) else {
-                                return;
-                            };
-                            let Some((carrier, ident)) =
-                                crate::dom::logseq_carrier(&contextmenu_shared, Some(hit))
-                            else {
-                                return;
-                            };
-                            let position = event.position;
-                            crate::dom::dom_event_via(
-                                &contextmenu_shared,
-                                carrier,
-                                &ident,
-                                hit,
-                                "contextmenu",
-                                serde_json::json!({
-                                    "clientX": f64::from(position.x),
-                                    "clientY": f64::from(position.y),
-                                }),
-                                cx,
-                            );
-                        },
                     )
                     .child(view)
                     .into_any_element()

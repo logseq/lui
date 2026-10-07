@@ -49,7 +49,7 @@ type application = {
   runtime_fingerprint_sent : (string, unit) Hashtbl.t;
   runtime_properties : (int, wire_value Property_map.t) Hashtbl.t;
   runtime_extension_properties : (int, wire_value String_map.t) Hashtbl.t;
-  runtime_children : (int, int list) Hashtbl.t;
+  runtime_children : (int, int Lui_sequence.t) Hashtbl.t;
   runtime_parents : (int, int) Hashtbl.t;
   pending_ops : patch_op list ref; (* stored in reverse order *)
   runtime_generation : int ref;
@@ -60,6 +60,7 @@ type application = {
   dynamic_segments : (int, dynamic_segment list) Hashtbl.t;
   runtime_reload_keys : (int, string) Hashtbl.t;
   runtime_node_aliases : (int, int) Hashtbl.t;
+  runtime_alias_targets : (int, int list) Hashtbl.t;
   runtime_handler_count : int ref;
   runtime_dynamic_segment_count : int ref;
   runtime_extension_dirty : bool ref;
@@ -74,13 +75,14 @@ type application = {
 }
 
 type runtime_checkpoint = {
+  checkpoint_nodes : int list option;
   checkpoint_generation : int;
   checkpoint_next_node_id : int;
   checkpoint_mounted_nodes : (int, node_kind) Hashtbl.t;
   checkpoint_extension_nodes : (int, string) Hashtbl.t;
   checkpoint_properties : (int, wire_value Property_map.t) Hashtbl.t;
   checkpoint_extension_properties : (int, wire_value String_map.t) Hashtbl.t;
-  checkpoint_children : (int, int list) Hashtbl.t;
+  checkpoint_children : (int, int Lui_sequence.t) Hashtbl.t;
   checkpoint_parents : (int, int) Hashtbl.t;
   checkpoint_pending_ops : patch_op list;
   checkpoint_next_handler_id : int;
@@ -99,7 +101,7 @@ type render_tree_snapshot = {
   render_extension_nodes : (int, string) Hashtbl.t;
   render_properties : (int, wire_value Property_map.t) Hashtbl.t;
   render_extension_properties : (int, wire_value String_map.t) Hashtbl.t;
-  render_children : (int, int list) Hashtbl.t;
+  render_children : (int, int Lui_sequence.t) Hashtbl.t;
   render_reload_keys : (int, string) Hashtbl.t;
 }
 
@@ -141,6 +143,7 @@ let create_with_extensions scheduler backend registry =
     dynamic_segments = Hashtbl.create 16;
     runtime_reload_keys = Hashtbl.create 16;
     runtime_node_aliases = Hashtbl.create 16;
+    runtime_alias_targets = Hashtbl.create 16;
     runtime_handler_count = ref 0;
     runtime_dynamic_segment_count = ref 0;
     runtime_extension_dirty = ref false;
@@ -151,28 +154,65 @@ let create_with_extensions scheduler backend registry =
 let create scheduler backend =
   create_with_extensions scheduler backend (Lui_extension.registry ())
 
-let checkpoint application =
+let remove_alias application candidate =
+  match Hashtbl.find_opt application.runtime_node_aliases candidate with
+  | None -> ()
+  | Some target ->
+    Hashtbl.remove application.runtime_node_aliases candidate;
+    let aliases = match Hashtbl.find_opt application.runtime_alias_targets target with
+      | Some aliases -> List.filter ((<>) candidate) aliases | None -> [] in
+    if aliases = [] then Hashtbl.remove application.runtime_alias_targets target
+    else Hashtbl.replace application.runtime_alias_targets target aliases
+
+let set_alias application candidate target =
+  remove_alias application candidate;
+  Hashtbl.replace application.runtime_node_aliases candidate target;
+  let aliases = match Hashtbl.find_opt application.runtime_alias_targets target with
+    | Some aliases -> aliases | None -> [] in
+  Hashtbl.replace application.runtime_alias_targets target (candidate :: aliases)
+
+let remove_target_aliases application target =
+  match Hashtbl.find_opt application.runtime_alias_targets target with
+  | None -> ()
+  | Some aliases ->
+    List.iter (Hashtbl.remove application.runtime_node_aliases) aliases;
+    Hashtbl.remove application.runtime_alias_targets target
+
+let checkpoint ?nodes application =
+  let copy table = match nodes with
+    | None -> Hashtbl.copy table
+    | Some nodes ->
+      let saved = Hashtbl.create (List.length nodes) in
+      List.iter (fun node -> match Hashtbl.find_opt table node with
+        | Some value -> Hashtbl.replace saved node value | None -> ()) nodes;
+      saved in
   {
+    checkpoint_nodes = nodes;
     checkpoint_generation = !(application.runtime_generation);
     checkpoint_next_node_id = !(application.next_node_id);
-    checkpoint_mounted_nodes = Hashtbl.copy application.mounted_nodes;
-    checkpoint_extension_nodes = Hashtbl.copy application.runtime_extension_nodes;
+    checkpoint_mounted_nodes = copy application.mounted_nodes;
+    checkpoint_extension_nodes = copy application.runtime_extension_nodes;
     checkpoint_properties =
-      Hashtbl.fold
-        (fun node values acc -> Hashtbl.add acc node values; acc)
-        application.runtime_properties (Hashtbl.create 16);
+      copy application.runtime_properties;
     checkpoint_extension_properties =
-      Hashtbl.copy application.runtime_extension_properties;
-    checkpoint_children = Hashtbl.copy application.runtime_children;
-    checkpoint_parents = Hashtbl.copy application.runtime_parents;
+      copy application.runtime_extension_properties;
+    checkpoint_children = copy application.runtime_children;
+    checkpoint_parents = copy application.runtime_parents;
     checkpoint_pending_ops = !(application.pending_ops);
     checkpoint_next_handler_id = !(application.next_handler_id);
-    checkpoint_event_handlers = Hashtbl.copy application.event_handlers;
+    checkpoint_event_handlers = copy application.event_handlers;
     checkpoint_next_dynamic_segment_id =
       !(application.next_dynamic_segment_id);
-    checkpoint_dynamic_segments = Hashtbl.copy application.dynamic_segments;
-    checkpoint_reload_keys = Hashtbl.copy application.runtime_reload_keys;
-    checkpoint_node_aliases = Hashtbl.copy application.runtime_node_aliases;
+    checkpoint_dynamic_segments = copy application.dynamic_segments;
+    checkpoint_reload_keys = copy application.runtime_reload_keys;
+    checkpoint_node_aliases = (match nodes with
+      | None -> Hashtbl.copy application.runtime_node_aliases
+      | Some nodes ->
+        let aliases = Hashtbl.create 16 in
+        List.iter (fun target -> match Hashtbl.find_opt application.runtime_alias_targets target with
+          | None -> ()
+          | Some candidates -> List.iter (fun candidate -> Hashtbl.replace aliases candidate target) candidates) nodes;
+        aliases);
     checkpoint_handler_count = !(application.runtime_handler_count);
     checkpoint_dynamic_segment_count =
       !(application.runtime_dynamic_segment_count);
@@ -192,9 +232,16 @@ let render_tree_snapshot application =
 let restore application saved =
   if !(application.runtime_generation) <> saved.checkpoint_generation then
     invalid_arg "cannot restore a stale runtime checkpoint";
+  let affected = match saved.checkpoint_nodes with
+    | None -> None
+    | Some nodes ->
+      let created = List.init (!(application.next_node_id) - saved.checkpoint_next_node_id)
+        (fun index -> saved.checkpoint_next_node_id + index + 1) in
+      Some (nodes @ created) in
   application.next_node_id := saved.checkpoint_next_node_id;
   let replace target source =
-    Hashtbl.reset target;
+    (match affected with None -> Hashtbl.reset target
+    | Some nodes -> List.iter (Hashtbl.remove target) nodes);
     Hashtbl.iter (fun key value -> Hashtbl.replace target key value) source
   in
   replace application.mounted_nodes saved.checkpoint_mounted_nodes;
@@ -211,7 +258,10 @@ let restore application saved =
     saved.checkpoint_next_dynamic_segment_id;
   replace application.dynamic_segments saved.checkpoint_dynamic_segments;
   replace application.runtime_reload_keys saved.checkpoint_reload_keys;
-  replace application.runtime_node_aliases saved.checkpoint_node_aliases;
+  (match affected with
+  | None -> Hashtbl.reset application.runtime_node_aliases; Hashtbl.reset application.runtime_alias_targets
+  | Some nodes -> List.iter (fun node -> remove_target_aliases application node; remove_alias application node) nodes);
+  Hashtbl.iter (set_alias application) saved.checkpoint_node_aliases;
   application.runtime_handler_count := saved.checkpoint_handler_count;
   application.runtime_dynamic_segment_count :=
     saved.checkpoint_dynamic_segment_count;
@@ -311,12 +361,12 @@ let rec collect_node_mapping application saved old_node candidate_node
     Hashtbl.replace claimed old_node ();
     let old_children =
       match Hashtbl.find_opt saved.checkpoint_children old_node with
-      | Some children -> children
+      | Some children -> Lui_sequence.to_list children
       | None -> []
     in
     let candidate_children =
       match Hashtbl.find_opt application.runtime_children candidate_node with
-      | Some children -> children
+      | Some children -> Lui_sequence.to_list children
       | None -> []
     in
     let old_reload_keys = saved.checkpoint_reload_keys in
@@ -367,7 +417,7 @@ and rescue_subtree application saved candidate_node old_global
         match
           Hashtbl.find_opt application.runtime_children candidate_node
         with
-        | Some children -> children
+        | Some children -> Lui_sequence.to_list children
         | None -> []
       in
       List.iter
@@ -400,11 +450,16 @@ let collect_subtree_nodes children_map root =
     let children =
       match Hashtbl.find_opt children_map node with
       | Some current -> current
-      | None -> []
+      | None -> Lui_sequence.empty
     in
-    List.fold_left (fun acc child -> collect child acc) (node :: acc) children
+    Lui_sequence.fold_left (fun acc child -> collect child acc) (node :: acc) children
   in
   List.rev (collect root [])
+
+let checkpoint_subtree application parent root =
+  let root = canonical_node application root in
+  let parent = canonical_node application parent in
+  checkpoint ~nodes:(parent :: collect_subtree_nodes application.runtime_children root) application
 
 let retire_checkpoint_dynamic_segments saved root =
   List.iter
@@ -436,11 +491,11 @@ let remap_children source candidate_nodes mapping base =
        let children =
          match Hashtbl.find_opt source candidate with
          | Some current -> current
-         | None -> []
+         | None -> Lui_sequence.empty
        in
        Hashtbl.replace base
          (map_node mapping candidate)
-         (List.map (fun child -> map_node mapping child) children))
+         (Lui_sequence.map (fun child -> map_node mapping child) children))
     candidate_nodes;
   base
 
@@ -448,7 +503,7 @@ let rebuild_parents children_map =
   let parents = Hashtbl.create 16 in
   Hashtbl.iter
     (fun parent children ->
-       List.iter (fun child -> Hashtbl.replace parents child parent) children)
+       Lui_sequence.iter (fun child -> Hashtbl.replace parents child parent) children)
     children_map;
   parents
 
@@ -764,7 +819,7 @@ let enqueue_drop application node =
 let rec emit_dropped_subtree application saved removed_set node =
   let children =
     match Hashtbl.find_opt saved.checkpoint_children node with
-    | Some current -> current
+    | Some current -> Lui_sequence.to_list current
     | None -> []
   in
   List.iter
@@ -862,7 +917,7 @@ let reconcile_subtree application saved parent old_root candidate_root =
   in
   let siblings =
     match Hashtbl.find_opt base_children parent with
-    | Some children -> children
+    | Some children -> Lui_sequence.to_list children
     | None -> []
   in
   let desired_parent_children =
@@ -872,7 +927,7 @@ let reconcile_subtree application saved parent old_root candidate_root =
         siblings
     else siblings @ [ desired_root ]
   in
-  Hashtbl.replace desired_children parent desired_parent_children;
+  Hashtbl.replace desired_children parent (Lui_sequence.of_list desired_parent_children);
   let base_handlers = Hashtbl.copy saved.checkpoint_event_handlers in
   remove_node_keys base_handlers old_nodes;
   let desired_handlers =
@@ -960,12 +1015,12 @@ let reconcile_subtree application saved parent old_root candidate_root =
     (fun node ->
        let old_children =
          match Hashtbl.find_opt saved.checkpoint_children node with
-         | Some children -> children
+         | Some children -> Lui_sequence.to_list children
          | None -> []
        in
        let new_children =
          match Hashtbl.find_opt desired_children node with
-         | Some children -> children
+         | Some children -> Lui_sequence.to_list children
          | None -> []
        in
        emit_child_diff application reparented node old_children new_children)
@@ -978,8 +1033,12 @@ let reconcile_subtree application saved parent old_root candidate_root =
            emit_dropped_subtree application saved removed_set node
        | None -> emit_dropped_subtree application saved removed_set node)
     removed_nodes;
+  let affected = match saved.checkpoint_nodes with
+    | None -> None
+    | Some nodes -> Some (nodes @ candidate_nodes) in
   let replace target source =
-    Hashtbl.reset target;
+    (match affected with None -> Hashtbl.reset target
+    | Some nodes -> List.iter (Hashtbl.remove target) nodes);
     Hashtbl.iter (fun key value -> Hashtbl.replace target key value) source
   in
   replace application.mounted_nodes desired_standard;
@@ -989,20 +1048,32 @@ let reconcile_subtree application saved parent old_root candidate_root =
     desired_extension_properties;
   replace application.runtime_children desired_children;
   let new_parents = rebuild_parents desired_children in
+  (match saved.checkpoint_nodes with
+  | Some _ ->
+    (match Hashtbl.find_opt saved.checkpoint_parents parent with
+    | Some owner -> Hashtbl.replace new_parents parent owner
+    | None -> ())
+  | None -> ());
   replace application.runtime_parents new_parents;
   replace application.event_handlers desired_handlers;
   replace application.dynamic_segments desired_segments;
   application.runtime_handler_count :=
-    Hashtbl.fold
+    (match saved.checkpoint_nodes with None -> 0 | Some _ ->
+      saved.checkpoint_handler_count - Hashtbl.fold
+        (fun _ handlers count -> count + List.length handlers) saved.checkpoint_event_handlers 0)
+    + Hashtbl.fold
       (fun _node handlers total -> total + List.length handlers)
       desired_handlers 0;
   application.runtime_dynamic_segment_count :=
-    Hashtbl.fold
+    (match saved.checkpoint_nodes with None -> 0 | Some _ ->
+      saved.checkpoint_dynamic_segment_count - Hashtbl.fold
+        (fun _ segments count -> count + List.length segments) saved.checkpoint_dynamic_segments 0)
+    + Hashtbl.fold
       (fun _parent segments total -> total + List.length segments)
       desired_segments 0;
   replace application.runtime_reload_keys desired_reload_keys;
   application.runtime_extension_dirty :=
-    Hashtbl.length desired_extensions > 0;
+    saved.checkpoint_extension_dirty || Hashtbl.length desired_extensions > 0;
   (* Aliases established by earlier reconciles still map other branches'
      mount-time ids onto the live ids they were reconciled into — clearing
      the whole table here would orphan every dynamic segment whose parent
@@ -1013,22 +1084,11 @@ let reconcile_subtree application saved parent old_root candidate_root =
      old_nodes die with the branch (their owning scopes were disposed
      above). Pruning them here keeps the table bounded by the live
      branches' candidate ids instead of growing on every remount. *)
-  let old_node_set = Hashtbl.create 16 in
-  List.iter (fun node -> Hashtbl.replace old_node_set node ()) old_nodes;
-  let stale_aliases =
-    Hashtbl.fold
-      (fun candidate target acc ->
-         if Hashtbl.mem old_node_set target then candidate :: acc else acc)
-      application.runtime_node_aliases []
-  in
-  List.iter
-    (fun candidate ->
-      Hashtbl.remove application.runtime_node_aliases candidate)
-    stale_aliases;
+  List.iter (remove_target_aliases application) old_nodes;
   Hashtbl.iter
     (fun candidate node ->
        if candidate <> node then
-         Hashtbl.replace application.runtime_node_aliases candidate node)
+         set_alias application candidate node)
     mapping;
   desired_root
 
@@ -1078,7 +1138,7 @@ let create_node application kind =
   let node = next_node application in
   Hashtbl.replace application.mounted_nodes node kind;
   Hashtbl.replace application.runtime_properties node Property_map.empty;
-  Hashtbl.replace application.runtime_children node [];
+  Hashtbl.replace application.runtime_children node Lui_sequence.empty;
   enqueue application (create_node_op node kind);
   node
 
@@ -1099,7 +1159,7 @@ let create_extension_node application identifier =
   Hashtbl.replace application.runtime_extension_nodes node identifier;
   Hashtbl.replace application.runtime_extension_properties node
     String_map.empty;
-  Hashtbl.replace application.runtime_children node [];
+  Hashtbl.replace application.runtime_children node Lui_sequence.empty;
   application.runtime_extension_dirty := true;
   enqueue
     application
@@ -1126,7 +1186,7 @@ let create_tweak_node application identifier =
   Hashtbl.replace application.runtime_extension_nodes node identifier;
   Hashtbl.replace application.runtime_extension_properties node
     String_map.empty;
-  Hashtbl.replace application.runtime_children node [];
+  Hashtbl.replace application.runtime_children node Lui_sequence.empty;
   application.runtime_extension_dirty := true;
   enqueue
     application
@@ -1145,7 +1205,7 @@ let children application node =
     Hashtbl.find_opt application.runtime_children
       (canonical_node application node)
   with
-  | Some children -> children
+  | Some children -> Lui_sequence.to_list children
   | None -> invalid_arg "unknown parent"
 
 let rec drop_subtree application node =
@@ -1172,7 +1232,7 @@ let rec drop_subtree application node =
                with Invalid_argument _ ->
                  Hashtbl.remove application.runtime_parents child);
               drop_subtree application child)
-           children;
+           (Lui_sequence.to_list children);
      | None -> ());
     drop_node application node
   end
@@ -1188,21 +1248,15 @@ and drop_node application node =
   | Some segments ->
     List.iter
       (fun segment -> segment.dynamic_segment_active := false)
-      segments
+      segments;
+    application.runtime_dynamic_segment_count :=
+      !(application.runtime_dynamic_segment_count) - List.length segments;
+    Hashtbl.remove application.dynamic_segments node
   | None -> ());
   (* Aliases targeting a dropped node belong to the branch that died
      with it; clearing them keeps the table bounded (they would resolve
      to a dead id anyway). *)
-  let stale_aliases =
-    Hashtbl.fold
-      (fun candidate target acc ->
-         if target = node then candidate :: acc else acc)
-      application.runtime_node_aliases []
-  in
-  List.iter
-    (fun candidate ->
-      Hashtbl.remove application.runtime_node_aliases candidate)
-    stale_aliases;
+  remove_target_aliases application node;
   Hashtbl.remove application.mounted_nodes node;
   Hashtbl.remove application.runtime_extension_nodes node;
   Hashtbl.remove application.runtime_properties node;
@@ -1222,7 +1276,7 @@ and remove_child application parent child =
   (match find_child_index current child with
   | Some index ->
     Hashtbl.replace application.runtime_children parent
-      (remove_at current index);
+      (Lui_sequence.of_list (remove_at current index));
     Hashtbl.remove application.runtime_parents child;
     application.runtime_extension_dirty := true
   | None -> invalid_arg "child is not attached to parent");
@@ -1374,7 +1428,7 @@ let insert_child application parent child index =
   let child = canonical_node application child in
   require_node application parent;
   require_node application child;
-  let current = children application parent in
+  let current = Hashtbl.find application.runtime_children parent in
   (match
      ( Hashtbl.find_opt application.mounted_nodes parent,
        Hashtbl.find_opt application.mounted_nodes child )
@@ -1413,15 +1467,35 @@ let insert_child application parent child index =
            | None, None -> "?")));
   if Hashtbl.mem application.runtime_parents child then
     invalid_arg "child is already attached";
-  if index < 0 || index > List.length current then
+  if index < 0 || index > Lui_sequence.length current then
     invalid_arg "child index is out of bounds";
   if descendant application child parent then
     invalid_arg "child insertion would create a cycle";
   Hashtbl.replace application.runtime_children parent
-    (insert_at current index child);
+    (Lui_sequence.insert current index child);
   Hashtbl.replace application.runtime_parents child parent;
   application.runtime_extension_dirty := true;
   enqueue application (insert_child_op parent child index)
+
+let remove_child_at application parent child index =
+  let current = Hashtbl.find application.runtime_children parent in
+  if Lui_sequence.get current index <> child then
+    invalid_arg "child index does not match";
+  Hashtbl.replace application.runtime_children parent (Lui_sequence.remove current index);
+  Hashtbl.remove application.runtime_parents child;
+  application.runtime_extension_dirty := true;
+  enqueue application (remove_child_op parent child)
+
+let move_child_at application parent child current_index index =
+  let current = Hashtbl.find application.runtime_children parent in
+  if Lui_sequence.get current current_index <> child then
+    invalid_arg "child index does not match";
+  if index < 0 || index >= Lui_sequence.length current then
+    invalid_arg "child index is out of bounds";
+  Hashtbl.replace application.runtime_children parent
+    (Lui_sequence.insert (Lui_sequence.remove current current_index) index child);
+  application.runtime_extension_dirty := true;
+  enqueue application (move_child_op parent child index)
 
 let move_child application parent child index =
   let parent = canonical_node application parent in
@@ -1431,13 +1505,8 @@ let move_child application parent child index =
   let current = children application parent in
   (match find_child_index current child with
   | Some current_index ->
-    if index < 0 || index >= List.length current then
-      invalid_arg "child index is out of bounds";
-    Hashtbl.replace application.runtime_children parent
-      (move_at current current_index index);
-    application.runtime_extension_dirty := true
-  | None -> invalid_arg "child is not attached to parent");
-  enqueue application (move_child_op parent child index)
+    move_child_at application parent child current_index index
+  | None -> invalid_arg "child is not attached to parent")
 
 (* A bound-property observer enqueued in the current stabilization round can
    outlive its node: a dyn remount dropped mid-round disposes the scope lazily,
@@ -1629,11 +1698,11 @@ let record_diagnostics application status operation_count
 let apply_pending_batch application batch operation_count next_generation =
   let committed =
     try application.runtime_backend.apply_batch batch
-    with Invalid_argument message ->
-      application.pending_ops := [];
+    with failure ->
       application.runtime_generation := next_generation;
-      ignore (record_diagnostics application Rejected operation_count 0);
-      invalid_arg message
+      ignore (record_diagnostics application Rejected operation_count
+        (List.length !(application.pending_ops)));
+      raise failure
   in
   if committed then begin
     application.runtime_generation := next_generation;
@@ -1661,8 +1730,8 @@ let rec flush application =
       try
         Signal.stabilize application.runtime_scheduler;
         if !(application.runtime_extension_dirty) then begin
-          application.runtime_extension_dirty := false;
-          validate_extension_nodes application
+          validate_extension_nodes application;
+          application.runtime_extension_dirty := false
         end;
         let operations = List.rev !(application.pending_ops) in
         (* detach before apply: ops queued while the backend applies
@@ -1693,7 +1762,8 @@ let diagnostics application = !(application.runtime_diagnostics)
 
 let generation application = !(application.runtime_generation)
 
-let child_count application node = List.length (children application node)
+let child_count application node =
+  Lui_sequence.length (Hashtbl.find application.runtime_children (canonical_node application node))
 
 let find_dynamic_segment_index segments segment_id =
   let rec loop segments index =

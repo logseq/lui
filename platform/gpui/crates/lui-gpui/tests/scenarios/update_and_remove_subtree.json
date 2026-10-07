@@ -35,6 +35,8 @@
     {"click": 5},
     {"expect-events": [
       {"kind": "extension-event", "node": 5, "identifier": "logseq-button",
+       "name": "dom-event", "json": {"name": "mousedown", "payload": {"nodeId": 5}}},
+      {"kind": "extension-event", "node": 5, "identifier": "logseq-button",
        "name": "dom-event", "json": {"name": "click"}}
     ]}
   ]

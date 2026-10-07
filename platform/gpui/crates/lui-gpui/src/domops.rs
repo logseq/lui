@@ -350,10 +350,21 @@ fn find_scroll_ancestor(shared: &Shared, node_id: i64, cx: &mut App) -> Option<i
 }
 
 fn scroll_to_item(shared: &Shared, node_id: i64, ix: usize, cx: &mut App) {
-    if let Some(view) = shared.borrow().views.get(&node_id).cloned() {
-        view.update(cx, |view, _| {
-            view.states.scroll.scroll_to_item(ix);
-        });
+    let guard = shared.borrow();
+    if let Some(list) = guard.virtual_lists.get(&node_id) {
+        if ix < list.state.item_count() {
+            // Unknown rows have no measured pixel offset yet. A logical
+            // jump mounts the target without measuring preceding rows.
+            list.state.scroll_to(gpui_kit::gpui::ListOffset {
+                item_ix: ix,
+                offset_in_item: px(0.),
+            });
+        }
+    } else if let Some(view) = guard.views.get(&node_id) {
+        view.read(cx).states.scroll.scroll_to_item(ix);
+    }
+    if let Some(view) = guard.views.get(&node_id) {
+        cx.notify(view.entity_id());
     }
 }
 
