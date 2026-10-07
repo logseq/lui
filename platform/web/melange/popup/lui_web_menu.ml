@@ -501,11 +501,48 @@ let show_context_menu renderer menu x y =
 
 (* --- picker event wiring --- *)
 
+(* The outermost DropdownMenu containing [node], climbing through
+   submenu trigger rows. *)
+let rec topmost_dropdown renderer node =
+  match Store.node renderer.web_store node with
+  | None -> None
+  | Some current ->
+      (match current.retained_parent with
+       | Some parent ->
+           (match topmost_dropdown renderer parent with
+            | Some _ as top -> top
+            | None ->
+                if Store.standard_kind_is current DropdownMenu then Some node
+                else None)
+       | None ->
+           if Store.standard_kind_is current DropdownMenu then Some node
+           else None)
+
 let attach_picker_press_event renderer node dom_node =
   W.Element.addEventListener "click"
     (fun _event ->
-      if Store.event_capability renderer node PressEnabled then
-        emit renderer (Press node))
+      if Store.event_capability renderer node PressEnabled then begin
+        emit renderer (Press node);
+        (* Activating an item in a plain dropdown dismisses the whole
+           menu, matching base-ui/context-menu behaviour. Picker items
+           close through the model and submenu triggers keep the menu
+           open, so only MenuItem rows in picker-less menus dismiss. *)
+        if
+          (match Store.node renderer.web_store node with
+           | Some current -> Store.standard_kind_is current MenuItem
+           | None -> false)
+        then
+          (match topmost_dropdown renderer node with
+           | Some menu when picker_for_dropdown renderer menu = None -> begin
+               emit renderer (Dismiss menu);
+               (* Menu-trigger hosts own their dropdown's open state
+                   locally, so a model that registers no dismiss handler
+                   leaves the layer open — close it directly. *)
+               if Lui_web_layers.is_open renderer.web_layers menu then
+                 set_dropdown_open renderer menu false
+             end
+           | _ -> ())
+      end)
     dom_node
 
 let attach_picker_press_event_bang = attach_picker_press_event
@@ -745,6 +782,9 @@ let dismiss_picker renderer node restore =
 
 let picker_tab renderer node picker event =
   let control = picker_control_element renderer picker in
+  (* Resolve the dropdown's DOM before dismissing: emit applies the close
+     batch synchronously, which drops the node from the store. *)
+  let dropdown_dom = Lui_web_nodes.dom_node renderer node in
   dismiss_picker renderer node false;
   let modal = Lui_web_layers.topmost_blocking renderer.web_layers in
   let roots =
@@ -762,7 +802,14 @@ let picker_tab renderer node picker event =
             match W.NodeList.item index nodes with
             | Some candidate ->
                 (match W.Element.ofNode candidate with
-                 | Some element when Lui_web_focus.sequential_focus_target_available element ->
+                 | Some element
+                   when Lui_web_focus.sequential_focus_target_available element
+                        (* The picker's own menu items are reached with
+                           arrow keys, not sequential Tab — and the menu
+                           they live in is being dismissed anyway. *)
+                        && not
+                             (W.Element.contains (W.Element.asNode element)
+                                dropdown_dom) ->
                      collect (index + 1) (element :: result)
                  | _ -> collect (index + 1) result)
             | None -> collect (index + 1) result
@@ -779,12 +826,12 @@ let picker_tab renderer node picker event =
   | Some index ->
       let next = index + (if W.KeyboardEvent.shiftKey event then -1 else 1) in
       let count = List.length candidates in
-      let next = if modal <> None then (next + count) mod count else next in
-      if next >= 0 && next < count then begin
-        W.KeyboardEvent.preventDefault event;
-        Lui_web_util.focus_element (List.nth candidates next)
-      end
-      else Lui_web_util.focus_element control
+      (* Sequential focus wraps at both ends: out-of-range delegates to the
+         browser's own Tab walk, which would restart from the menu item
+         that is being dismissed rather than from the picker control. *)
+      let next = (next + count) mod count in
+      W.KeyboardEvent.preventDefault event;
+      Lui_web_util.focus_element (List.nth candidates next)
   | None -> ()
 
 let dropdown_key_handler renderer node typeahead_buffer typeahead_timer
@@ -891,7 +938,11 @@ let attach_dropdown_events renderer node _dropdown_node =
   in
   let trigger =
     match picker_for_dropdown renderer node with
-    | Some picker -> Some (picker_control_element renderer picker)
+    | Some picker ->
+        (* The whole picker host counts as the trigger so a combobox's
+           chevron button (a sibling of its input control) does not read
+           as an outside press that dismisses the layer it just opened. *)
+        Some (Lui_web_nodes.dom_node renderer picker)
     | None ->
         (match owner with
          | Some parent ->
@@ -1349,9 +1400,34 @@ let highlight_initial_menu_item renderer container_id =
              (* Closed containers (e.g. a nested submenu that mounts
                 eagerly inside an open menu) must not steal focus when a
                 parent menu mounts. A dropdown's platform node is its
-                positioner, which carries data-open only while presented. *)
-             if W.Element.hasAttribute "data-open" container.platform_node
-             then begin
+                positioner; data-open lives on the popup child while the
+                menu is presented (menus that are their own popup, e.g.
+                context menus, carry it on the node itself). *)
+             let presented =
+               W.Element.hasAttribute "data-open" container.platform_node
+               ||
+               (match
+                  W.HtmlCollection.item 0
+                    (W.Element.children container.platform_node)
+                with
+                | Some popup -> W.Element.hasAttribute "data-open" popup
+                | None -> false)
+             in
+             (* Submenus (a dropdown nested under a menu row) open on
+                hover/focus of their trigger; focusing their items here
+                would steal focus from the parent menu's highlighted row.
+                Picker dropdowns place initial focus themselves in
+                mount_picker_dropdown. *)
+             let submenu_or_picker =
+               (match container.retained_parent with
+                | Some parent ->
+                    (match Store.node renderer.web_store parent with
+                     | Some parent_node -> Store.menu_item_row parent_node
+                     | None -> false)
+                | None -> false)
+               || picker_for_dropdown renderer container_id <> None
+             in
+             if presented && not submenu_or_picker then begin
              let nodes =
                W.Element.querySelectorAll
                  "[role=menuitem]:not([data-disabled]):not([aria-disabled='true']):not([data-menu-tail])"
@@ -1422,16 +1498,27 @@ let mount_dropdown renderer node =
         (Lui_web_util.node_dom_id node ^ "-popup") popup;
       refresh_dropdown_item_roles renderer node;
       refresh_combobox_list_state renderer node;
-      if not listbox then highlight_initial_menu_item renderer node;
       (match current.retained_parent with
        | Some parent ->
            (match Store.node renderer.web_store parent with
             | Some parent_node ->
                 if Store.menu_item_row parent_node then
+                  (* Submenus mount eagerly inside their parent menu and
+                     open later on hover/focus; the generic highlight must
+                     not steal focus from the parent menu's items. Keyboard
+                     entry (ArrowRight) focuses the first item directly. *)
                   ignore
                     (attach_submenu_hover renderer node current
                        parent_node.platform_node)
-                else mount_picker_dropdown renderer node
+                else begin
+                  (* Picker dropdowns place initial focus themselves
+                     (mount_picker_dropdown lands on the selected item); the
+                     generic highlight would race it and read stale
+                     selection state. *)
+                  if not listbox && picker_for_dropdown renderer node = None
+                  then highlight_initial_menu_item renderer node;
+                  mount_picker_dropdown renderer node
+                end
             | None -> invalid_arg "dropdown parent is unavailable")
        | None -> invalid_arg "dropdown requires an anchor parent")
   | None -> invalid_arg "unknown dropdown node"

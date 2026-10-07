@@ -1729,6 +1729,58 @@ body {
   transform: translateX(100%);
 }
 
+/* Simulated on-screen keyboard: the simulator marks data-lui-keyboard while
+   a text entry holds focus and reserves --lui-keyboard-height at the bottom
+   of the device viewport, so the keyboard chrome is drawn in that space —
+   above app content and the modal backdrop, below presented surfaces. */
+.lui-popup-portal[data-lui-keyboard="visible"] .lui-modal-layer::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  height: var(--lui-keyboard-height, 0px);
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgb(255 255 255 / 8%) 0 30px,
+      rgb(0 0 0 / 12%) 30px 34px
+    ),
+    rgb(38 38 42 / 92%);
+  border-top: 1px solid rgb(0 0 0 / 35%);
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 18%);
+}
+
+/* The same keyboard chrome outside a modal presentation: anchored to the
+   device viewport's bottom edge and painted beneath any presented layer. */
+.lui-popup-portal[data-lui-keyboard="visible"]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(100vw, var(--lui-viewport-width, 100vw));
+  bottom: calc(
+    100dvh - var(--lui-visual-top, 0px)
+    - (
+        var(--lui-visual-height, 100dvh) +
+        min(var(--lui-visual-height, 100dvh), var(--lui-viewport-height, 100dvh))
+      ) / 2
+  );
+  height: var(--lui-keyboard-height, 0px);
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgb(255 255 255 / 8%) 0 30px,
+      rgb(0 0 0 / 12%) 30px 34px
+    ),
+    rgb(38 38 42 / 92%);
+  border-top: 1px solid rgb(0 0 0 / 35%);
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 18%);
+}
+
 .lui-simulator-map {
   position: relative;
   display: block;
