@@ -376,6 +376,15 @@ pub struct ComponentStates {
     /// The menu_trigger node id currently expanded inside this menu —
     /// sibling coordination so only one submenu stays open at a time.
     pub open_submenu: std::rc::Rc<std::cell::Cell<Option<i64>>>,
+    /// Set when a submenu is closed programmatically (item activation,
+    /// Escape) while the pointer still rests over its trigger — blocks
+    /// the hover-open path until the pointer actually leaves the row.
+    pub submenu_suppress: std::rc::Rc<std::cell::Cell<bool>>,
+    /// Last painted bounds of a menu-trigger's popup. The popup can
+    /// overlap the row's own rect, so the row's `on_click` consults this
+    /// to ignore presses that actually landed inside the popup.
+    pub popup_bounds:
+        std::rc::Rc<std::cell::Cell<Option<gpui_kit::gpui::Bounds<gpui_kit::gpui::Pixels>>>>,
     /// `split-view` → `DockArea` sync state (extension.rs registers it).
     pub dock: Option<crate::dock::DockSync>,
     /// Per-node state bag for host-registered extension renderers: a host

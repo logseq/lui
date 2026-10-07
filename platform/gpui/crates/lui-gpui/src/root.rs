@@ -60,63 +60,13 @@ fn emit_dom_keydown(
     window: &mut Window,
     cx: &mut App,
 ) {
-    // The carrier must be an extension node — OCaml drops extension
-    // events on standard nodes. A focused standard node (e.g. an icon
-    // inside a logseq-* button) resolves to its nearest extension
-    // ancestor; with no focus at all any extension node works since
-    // `emit_event` fans out to the document listeners regardless.
-    let node_id = {
-        let found = shared.borrow_mut().focused_node(window);
-        let carrier = found.and_then(|id| {
-            let store = &shared.borrow().store;
-            let mut cur = Some(id);
-            while let Some(nid) = cur {
-                match store.node(nid) {
-                    Some(node) => {
-                        if matches!(
-                            node.identity,
-                            lui_core::store::NodeIdentity::Extension { .. }
-                        ) {
-                            return Some(nid);
-                        }
-                        cur = node.parent;
-                    }
-                    None => return None,
-                }
-            }
-            None
-        });
-        match carrier {
-            Some(id) => id,
-            None => {
-                let store = &shared.borrow().store;
-                let mut stack = store.root.into_iter().collect::<Vec<_>>();
-                let mut found = None;
-                while let Some(id) = stack.pop() {
-                    if let Some(node) = store.node(id) {
-                        if matches!(
-                            node.identity,
-                            lui_core::store::NodeIdentity::Extension { .. }
-                        ) {
-                            found = Some(id);
-                            break;
-                        }
-                        stack.extend(node.children.iter().copied());
-                    }
-                }
-                match found {
-                    Some(id) => id,
-                    None => return,
-                }
-            }
-        }
-    };
-    let identifier = {
-        let shared = shared.borrow();
-        match shared.store.node(node_id).map(|node| &node.identity) {
-            Some(lui_core::store::NodeIdentity::Extension { identifier, .. }) => identifier.clone(),
-            _ => return,
-        }
+    // The carrier must be a `logseq-*` dom extension node — `dom-event`
+    // is a logseq-dom convention; other extensions declare no `dom-event`
+    // schema and OCaml rejects the payload as invalid. Clicks use the
+    // same carrier walk (`dom::logseq_carrier`).
+    let found = shared.borrow_mut().focused_node(window);
+    let Some((node_id, identifier)) = crate::dom::logseq_carrier(shared, found) else {
+        return;
     };
     let mods = ks.modifiers;
     // gpui reports named keys lowercase; DOM listeners match
@@ -235,6 +185,13 @@ impl Render for LuiRootView {
                             && !keystroke_focus.is_focused(window)
                         {
                             return;
+                        }
+                        // Host-side Escape dismisses the topmost open
+                        // overlay — the web backend's `modal_key_handler`
+                        // equivalent. The keydown still reaches document
+                        // listeners below (web fires it too).
+                        if ev.keystroke.key == "escape" {
+                            crate::backend::dismiss_topmost_overlay(&keydown_shared, cx);
                         }
                         emit_dom_keydown(&keydown_shared, &ev.keystroke, window, cx);
                     })
