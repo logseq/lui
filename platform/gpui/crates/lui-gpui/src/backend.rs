@@ -8,7 +8,7 @@ use gpui_kit::gpui::{App, AppContext, Bounds, Entity, Pixels};
 use lui_core::bridge;
 use lui_core::extension::{ExtensionRegistry, ExtensionSpec};
 use lui_core::store::{Applied, BackendError, Store};
-use lui_core::wire::{decode_batch, DecodeError};
+use lui_core::wire::{decode_batch, DecodeError, Op};
 use lui_core::EventKind;
 
 use crate::extension::ExtensionRenderer;
@@ -33,9 +33,11 @@ pub struct LuiShared {
     /// Errors from the most recent batch applications (surfaced to the host).
     pub last_errors: Vec<String>,
     /// Most recently prepainted window-space bounds per node id, fed by
-    /// `LuiNodeView::bounds_recorder`. The `measure-node` dom-op reads
+    /// each node's layout element. The `measure-node` dom-op reads
     /// this; entries are removed when a node drops.
     pub node_bounds: HashMap<i64, Bounds<Pixels>>,
+    pub(crate) virtual_lists: HashMap<i64, crate::virtual_list::State>,
+    pub(crate) painting_lists: Vec<i64>,
     /// Nodes that opted into a viewport-proximity dom-event through
     /// `events` (`lazy-mount` rows, `virt-end` list tails — the LUI
     /// native lazy contract). The per-frame sweep in `dom.rs` fires the
@@ -74,6 +76,8 @@ impl LuiShared {
             views: HashMap::new(),
             last_errors: Vec::new(),
             node_bounds: HashMap::new(),
+            virtual_lists: HashMap::new(),
+            painting_lists: Vec::new(),
             viewport_watched: HashMap::new(),
             last_click_emit: None,
         }));
@@ -124,8 +128,8 @@ impl std::fmt::Display for ApplyError {
 impl std::error::Error for ApplyError {}
 
 /// Apply one JSON patch batch: commit to the store, drop released views, then
-/// notify exactly the entities whose node changed. This is the only place
-/// views are notified — rendering is always per-dirty-node.
+/// notify changed entities without acquiring update leases. Content-sized
+/// ancestors still participate in layout.
 pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<Applied, ApplyError> {
     let batch = decode_batch(json).map_err(ApplyError::Decode)?;
     let applied = {
@@ -142,11 +146,51 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
         let mut shared_ref = shared.borrow_mut();
         shared_ref.views.remove(id);
         shared_ref.node_bounds.remove(id);
+        shared_ref.viewport_watched.remove(id);
+        shared_ref.virtual_lists.remove(id);
+    }
+
+    {
+        let mut guard = shared.borrow_mut();
+        for id in &applied.structural {
+            if let Some(list) = guard.virtual_lists.get_mut(id) {
+                list.children_dirty = true;
+            }
+        }
+        for op in &batch.ops {
+            let id = match op {
+                Op::SetProp { id, .. }
+                | Op::RemoveProp { id, .. }
+                | Op::SetExtensionProp { id, .. }
+                | Op::RemoveExtensionProp { id, .. } => id,
+                _ => continue,
+            };
+            if let Some(list) = guard.virtual_lists.get(id) {
+                list.state.remeasure();
+            }
+        }
     }
 
     let mut dirty_views = Vec::with_capacity(applied.dirty.len());
     let mut notified = std::collections::BTreeSet::new();
     for &id in &applied.dirty {
+        // A changed descendant can change a row's measured height. Invalidate
+        // the containing list without reading/updating its leased view entity.
+        {
+            let guard = shared.borrow();
+            let mut child = id;
+            while let Some(parent) = guard.store.node(child).and_then(|node| node.parent) {
+                if let Some(list) = guard.virtual_lists.get(&parent) {
+                    if let Some(&index) = list.indices.get(&child) {
+                        list.state.remeasure_items(index..index + 1);
+                    }
+                    if let Some(view) = guard.views.get(&parent) {
+                        cx.notify(view.entity_id());
+                    }
+                }
+                child = parent;
+            }
+        }
         // Notify the nearest ancestor (self included) whose view has
         // actually painted (an entry in node_bounds). `views` also holds
         // entities created for nodes that never made it into a rendered
@@ -177,7 +221,7 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
         }
     }
     for view in dirty_views {
-        view.update(cx, |_, cx| cx.notify());
+        cx.notify(view.entity_id());
     }
     Ok(applied)
 }

@@ -1,5 +1,5 @@
 //! `NodeKind` -> gpui-kit element dispatch. Every container embeds children
-//! as `Entity<LuiNodeView>` handles so per-node redraw isolation holds.
+//! as retained entity handles, caching explicitly sized stateless leaves.
 
 use gpui_kit::base::{Align, ElementExt, Placement, Positioner, StyledExt};
 use gpui_kit::component::alert::{Alert, AlertVariant};
@@ -25,11 +25,11 @@ use gpui_kit::gpui::{
     StatefulInteractiveElement, Styled, SvgSize, Window,
 };
 use gpui_kit::prelude::FluentBuilder;
-use std::collections::HashMap;
-use std::sync::{Arc, LazyLock, Mutex};
 use lui_core::bridge;
 use lui_core::store::NodeIdentity;
 use lui_core::{EventKind, NodeKind, Property};
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex};
 
 use crate::backend::{fire, LuiShared, Shared};
 use crate::extension;
@@ -114,9 +114,7 @@ fn press_handler(
             button,
             &modifiers,
             |x, y, modifiers, button| unsafe {
-                bridge::lui_ocaml_press_detail(
-                    node_id, x, y, modifiers, button, c"".as_ptr(),
-                )
+                bridge::lui_ocaml_press_detail(node_id, x, y, modifiers, button, c"".as_ptr())
             },
         );
     }
@@ -162,13 +160,9 @@ fn container(
     // `on_children_prepainted` is a `Div` method — attach before `.id()`
     // (which wraps the element in `Stateful`).
     let base = if horizontal {
-        h_flex()
-            .on_children_prepainted(view.bounds_recorder(node))
-            .id(element_id(node.id))
+        h_flex().id(element_id(node.id))
     } else {
-        v_flex()
-            .on_children_prepainted(view.bounds_recorder(node))
-            .id(element_id(node.id))
+        v_flex().id(element_id(node.id))
     };
     // Theme-carried default chrome per kind; explicit wire props and
     // style-class applied by `style::all` below still win.
@@ -349,14 +343,15 @@ fn tab_button(
         .rounded(theme.radius)
         .text_sm();
     if selected {
-        element = element
-            .bg(active_bg)
-            .text_color(active_fg)
-            .shadow_sm();
+        element = element.bg(active_bg).text_color(active_fg).shadow_sm();
     } else {
-        element = element.text_color(theme.tab_foreground).hover(move |style| {
-            style.bg(active_bg.background.opacity(0.6)).text_color(active_fg)
-        });
+        element = element
+            .text_color(theme.tab_foreground)
+            .hover(move |style| {
+                style
+                    .bg(active_bg.background.opacity(0.6))
+                    .text_color(active_fg)
+            });
     }
     if let Some(icon) =
         icon_name(node, Property::InlineIconName).or_else(|| icon_name(node, Property::IconName))
@@ -583,6 +578,12 @@ fn input(
         view.states.input = Some(state);
     }
     let state = view.states.input.clone().expect("initialized");
+    let placeholder = node.string_prop(Property::PlaceholderValue).unwrap_or("");
+    if state.read(cx).presentation().placeholder().as_ref() != placeholder {
+        state.update(cx, |state, cx| {
+            state.set_placeholder(placeholder.to_string(), window, cx)
+        });
+    }
     // Controlled-value echo: push wire `value` into the state when it drifts.
     if let Some(value) = node
         .string_prop(Property::ProgressValue)
@@ -645,11 +646,27 @@ fn textarea(
         view.states.textarea = Some(state);
     }
     let state = view.states.textarea.clone().expect("initialized");
-    let mut element = Textarea::new(&state);
+    let placeholder = node.string_prop(Property::PlaceholderValue).unwrap_or("");
+    if state.read(cx).presentation().placeholder().as_ref() != placeholder {
+        state.update(cx, |state, cx| {
+            state.set_placeholder(placeholder.to_string(), window, cx)
+        });
+    }
+    if let Some(value) = node
+        .string_prop(Property::ProgressValue)
+        .or_else(|| node.string_prop(Property::TextValue))
+    {
+        if state.read(cx).value().as_ref() != value {
+            state.update(cx, |state, cx| {
+                state.set_value(value.to_string(), window, cx)
+            });
+        }
+    }
+    let mut element = Textarea::new(&state).disabled(!node.enabled());
     if parent_kind(view, node) == Some(NodeKind::InputGroup) {
         element = element.appearance(false);
     }
-    element.into_any_element()
+    style::all(element, node).into_any_element()
 }
 
 fn slider(
@@ -896,10 +913,7 @@ fn stacked(
     cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
     let mut children = view.child_elements(node, cx).into_iter();
-    let mut element = div()
-        .relative()
-        .on_children_prepainted(view.bounds_recorder(node))
-        .id(element_id(node.id));
+    let mut element = div().relative().id(element_id(node.id));
     if let Some(first) = children.next() {
         element = element.child(first);
     }
@@ -1555,50 +1569,67 @@ fn edge_inset(
     style::all(element, node).into_any_element()
 }
 
-/// `split`: two retained panes over a model-owned `value` fraction
-/// (first pane seeded at fraction × viewport, second fills). Drags
-/// report back as `ValueChanged` — the `on_resize` channel.
+/// Two retained panes. Reconcile the controlled fraction after measuring
+/// the group's actual allocation, and only when its width or model changes.
 fn split(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
-    window: &mut Window,
+    _window: &mut Window,
     cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
     let node_id = node.id;
     let fraction = node.float_prop(Property::ProgressValue).unwrap_or(0.5) as f32;
+    let fraction = if fraction.is_finite() {
+        fraction.clamp(0., 1.)
+    } else {
+        0.5
+    };
+    let state = view
+        .states
+        .split
+        .get_or_insert_with(|| cx.new(|_| Default::default()))
+        .clone();
+    let target = view.states.split_target.clone();
     let mut children = view.child_elements(node, cx).into_iter();
-    let first = children.next();
-    let second = children.next();
-    let viewport = window.viewport_size();
-    let first_px = px((f32::from(viewport.width) * fraction).max(48.));
     let shared = view.shared.clone();
     let group = gpui_kit::component::h_resizable(element_id(node_id))
-        .on_resize(move |state, _window, cx| {
-            let sizes: Vec<f32> = {
-                let state = state.read(cx);
-                state.sizes().iter().map(|size| f32::from(*size)).collect()
-            };
-            let total: f32 = sizes.iter().sum();
-            let fraction = if total > 0. {
-                (sizes.first().copied().unwrap_or(0.) / total).clamp(0., 1.)
-            } else {
-                0.
-            };
-            fire(&shared, node_id, EventKind::ValueChanged, cx, || unsafe {
-                bridge::lui_ocaml_slider_changed(node_id, fraction as f64)
-            });
+        .with_state(&state)
+        .on_resize(move |state, _, cx| {
+            let sizes = state.read(cx).sizes();
+            let total: f32 = sizes.iter().map(|size| f32::from(*size)).sum();
+            if total > 0. {
+                let fraction = f32::from(sizes[0]) / total;
+                fire(&shared, node_id, EventKind::ValueChanged, cx, || unsafe {
+                    bridge::lui_ocaml_slider_changed(node_id, fraction as f64)
+                });
+            }
         })
         .child(
             gpui_kit::component::resizable_panel()
-                .size(first_px)
-                .size_range(px(48.)..gpui_kit::gpui::Pixels::MAX)
-                .child(first.unwrap_or_else(|| div().into_any_element())),
+                .size_range(px(0.)..Pixels::MAX)
+                .child(children.next().unwrap_or_else(|| div().into_any_element())),
         )
         .child(
             gpui_kit::component::resizable_panel()
-                .child(second.unwrap_or_else(|| div().into_any_element())),
+                .size_range(px(0.)..Pixels::MAX)
+                .child(children.next().unwrap_or_else(|| div().into_any_element())),
         );
-    style::all(div().size_full().child(group), node).into_any_element()
+    style::all(div().size_full().child(group), node)
+        .on_children_prepainted(move |bounds, window, cx| {
+            let Some(bounds) = bounds.first() else { return };
+            let width = bounds.size.width;
+            if target.get() == Some((width, fraction)) {
+                return;
+            }
+            target.set(Some((width, fraction)));
+            let state = state.clone();
+            window.defer(cx, move |window, cx| {
+                state.update(cx, |state, cx| {
+                    state.resize_panel(0, width * fraction, window, cx)
+                });
+            });
+        })
+        .into_any_element()
 }
 
 /// `resizable`: one resizable pane (`width` seeds, `min-width`/`max-width`
@@ -2125,11 +2156,7 @@ fn bottom_tabs(
         bar = bar.child(item);
     }
 
-    let mut element = v_flex()
-        .on_children_prepainted(view.bounds_recorder(node))
-        .id(element_id(node.id))
-        .w_full()
-        .flex_1();
+    let mut element = v_flex().id(element_id(node.id)).w_full().flex_1();
     element = style::all(element, node);
     element.child(pages).child(bar).into_any_element()
 }
@@ -2148,7 +2175,6 @@ pub fn render_node(
         // Containers -----------------------------------------------------
         NodeKind::Root => {
             let mut element = v_flex()
-                .on_children_prepainted(view.bounds_recorder(node))
                 .id(element_id(node.id))
                 .size_full()
                 .bg(cx.theme().background)
@@ -2206,13 +2232,12 @@ pub fn render_node(
         NodeKind::Stepper => stepper(view, node, cx),
         NodeKind::Step => step(view, node, cx),
         NodeKind::TimelineItem => timeline_item(view, node, cx),
-        NodeKind::ListContainer | NodeKind::VirtualList => {
-            // Scrollable collection container — the model slices children
-            // (`visible-range` events land with native virtualization).
+        NodeKind::VirtualList => crate::virtual_list::render(view, node),
+        NodeKind::ListContainer => {
+            // Ordinary collections retain their complete child layout.
             view.states.scroll_tracked = true;
             let mut element = v_flex()
                 .size_full()
-                .on_children_prepainted(view.bounds_recorder(node))
                 .id(element_id(node.id))
                 .overflow_y_scroll()
                 .track_scroll(&view.states.scroll);
@@ -2372,7 +2397,6 @@ pub fn render_node(
             view.states.scroll_tracked = true;
             let mut element = v_flex()
                 .size_full()
-                .on_children_prepainted(view.bounds_recorder(node))
                 .id(element_id(node.id))
                 .overflow_y_scroll()
                 .track_scroll(&view.states.scroll);

@@ -745,7 +745,6 @@ pub fn render(
             || tag == "button" =>
         {
             let mut element = v_flex()
-                .on_children_prepainted(view.bounds_recorder(node))
                 .id(ElementId::Integer(node.id as u64));
             element = with_text(element, node);
             element = element.children(children);
@@ -758,7 +757,6 @@ pub fn render(
         }
         _ if INLINE_TAGS.contains(&tag.as_str()) => {
             let mut element = h_flex()
-                .on_children_prepainted(view.bounds_recorder(node))
                 .id(ElementId::Integer(node.id as u64))
                 .items_baseline();
             element = with_text(element, node);
@@ -773,7 +771,7 @@ pub fn render(
         // Unknown logseq-* tag: transparent passthrough, never a warning
         // frame — the logseq family is understood vocabulary, not "missing".
         _ => {
-            let mut element = v_flex().on_children_prepainted(view.bounds_recorder(node));
+            let mut element = v_flex();
             element = with_text(element, node);
             element = element.children(children);
             element = style::all(element, node);

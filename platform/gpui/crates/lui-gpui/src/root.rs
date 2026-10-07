@@ -14,7 +14,7 @@ use crate::backend::{LuiShared, Shared};
 
 
 /// The view hosted inside `gpui_component::Root`. Renders the root node
-/// entity (itself redraw-isolated) or an empty screen while no root is
+/// entity or an empty screen while no root is
 /// attached yet.
 ///
 /// Owns a window-level FocusHandle so key events always have a dispatch
@@ -90,10 +90,8 @@ impl Render for LuiRootView {
                             // Emit the hit through an extension carrier;
                             // OCaml's 60ms coalescing drops the wired
                             // duplicate when one also fires.
-                            let Some(hit) = crate::dom::deepest_hit(
-                                &click_shared,
-                                event.position,
-                            ) else {
+                            let Some(hit) = crate::dom::deepest_hit(&click_shared, event.position)
+                            else {
                                 return;
                             };
                             let Some((carrier, ident)) =
@@ -134,30 +132,10 @@ impl Render for LuiRootView {
                         {
                             return;
                         }
-                        // dom-events must target an extension node — OCaml
-                        // drops extension events on standard nodes. Any
-                        // extension node works: emit_event fans out to the
-                        // document (window) listeners regardless.
-                        let node_id = {
-                            let store = &keydown_shared.borrow().store;
-                            let mut stack = store.root.into_iter().collect::<Vec<_>>();
-                            let mut found = None;
-                            while let Some(id) = stack.pop() {
-                                if let Some(node) = store.node(id) {
-                                    if matches!(
-                                        node.identity,
-                                        lui_core::store::NodeIdentity::Extension { .. }
-                                    ) {
-                                        found = Some(id);
-                                        break;
-                                    }
-                                    stack.extend(node.children.iter().copied());
-                                }
-                            }
-                            match found {
-                                Some(id) => id,
-                                None => return,
-                            }
+                        let Some((node_id, identifier)) =
+                            crate::dom::logseq_carrier(&keydown_shared, None)
+                        else {
+                            return;
                         };
                         let ks = &ev.keystroke;
                         let mods = ks.modifiers;
@@ -169,10 +147,10 @@ impl Render for LuiRootView {
                             "tab" => "Tab",
                             "backspace" => "Backspace",
                             "delete" => "Delete",
-                            "arrowup" => "ArrowUp",
-                            "arrowdown" => "ArrowDown",
-                            "arrowleft" => "ArrowLeft",
-                            "arrowright" => "ArrowRight",
+                            "up" | "arrowup" => "ArrowUp",
+                            "down" | "arrowdown" => "ArrowDown",
+                            "left" | "arrowleft" => "ArrowLeft",
+                            "right" | "arrowright" => "ArrowRight",
                             "home" => "Home",
                             "end" => "End",
                             "pageup" => "PageUp",
@@ -183,7 +161,7 @@ impl Render for LuiRootView {
                         crate::dom::dom_event(
                             &keydown_shared,
                             node_id,
-                            "",
+                            &identifier,
                             "keydown",
                             serde_json::json!({
                                 "key": key,
