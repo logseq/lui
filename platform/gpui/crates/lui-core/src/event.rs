@@ -113,6 +113,7 @@ pub fn event_supported(kind: NodeKind, event: EventKind) -> bool {
                 | Sheet
                 | FilePreview
                 | FilePicker
+                | Popover
         ),
         DoublePress => kind == ListItem,
         Load => kind == Image,
