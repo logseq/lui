@@ -223,12 +223,21 @@ impl Render for LuiRootView {
                         {
                             return;
                         }
-                        // Host-side Escape dismisses the topmost open
-                        // overlay — the web backend's `modal_key_handler`
-                        // equivalent. The keydown still reaches document
-                        // listeners below (web fires it too).
+                        // Host-side Escape dismissal, topmost surface first —
+                        // the web backend's `modal_key_handler` equivalent.
                         if ev.keystroke.key == "escape" {
-                            crate::backend::dismiss_topmost_overlay(&keydown_shared, cx);
+                            // An open gpui-kit deferred popup (select,
+                            // combobox) owns the key via its own Cancel
+                            // binding and stops propagation there — like a
+                            // web listener on the popup itself. Forwarding
+                            // it below would double-dismiss (e.g. closing
+                            // the dialog under a select's open dropdown).
+                            let deferred = gpui_kit::base::GlobalState::is_in_deferred_context(cx);
+                            let dismissed = !deferred
+                                && crate::backend::dismiss_topmost_overlay(&keydown_shared, cx);
+                            if deferred || dismissed {
+                                return;
+                            }
                         }
                         // Arrow keys and Enter navigate the topmost open
                         // host menu — roving highlight, gpui's counterpart

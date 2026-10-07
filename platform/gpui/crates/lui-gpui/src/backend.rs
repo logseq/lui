@@ -107,7 +107,7 @@ pub struct LuiShared {
 
 /// How a host-side Escape closes one open overlay — pushed onto
 /// [`LuiShared::overlay_stack`] by the render arm that owns the popup.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum OverlayEntry {
     /// Store-driven overlay (dialog/sheet/drawer/dropdown/popover): the
     /// node exists only while open, so Escape just fires `Dismiss` and

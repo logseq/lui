@@ -1408,6 +1408,36 @@ fn menu_box(
 /// viewport clamp built in). `anchor-alignment:stretch` widens the menu to
 /// the trigger's width. A press outside the menu box fires `Dismiss` (the
 /// model then drops the node).
+/// The rect a non-positioned `dropdown-menu` anchors to: the menu mounts
+/// right after its trigger, so the previous sibling's painted rect (or,
+/// when the menu is the first/only child of an unpainted wrapper, the
+/// nearest painted ancestor's rect) is the anchor.
+fn menu_anchor_bounds(
+    shared: &Shared,
+    node_id: i64,
+    parent: Option<i64>,
+) -> Option<gpui_kit::gpui::Bounds<gpui_kit::gpui::Pixels>> {
+    let prev_sibling = parent.and_then(|parent_id| {
+        shared.borrow().store.node(parent_id).and_then(|p| {
+            p.children
+                .iter()
+                .position(|child| *child == node_id)
+                .filter(|i| *i > 0)
+                .and_then(|i| p.children.get(i - 1).copied())
+        })
+    });
+    let mut cursor = prev_sibling.or(parent);
+    loop {
+        match cursor {
+            Some(id) => match shared.borrow().node_bounds.get(&id) {
+                Some(bounds) => break Some(*bounds),
+                None => cursor = shared.borrow().store.node(id).and_then(|n| n.parent),
+            },
+            None => break None,
+        }
+    }
+}
+
 fn dropdown_menu(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
@@ -1440,7 +1470,29 @@ fn dropdown_menu(
     view.shared
         .borrow_mut()
         .push_overlay(node.id, OverlayEntry::Node);
-    let trigger_bounds = view.states.menu_bounds.get();
+    // The mount slot resolves the anchor: under a `stack`/`overlay` the
+    // wrapper is `.absolute().size_full()` over the (positioned) trigger
+    // wrap, so the whole trigger rect anchors the popup. Under any other
+    // parent the menu sits in flow right after its trigger — a zero-size
+    // slot there anchors the popup to the point directly beneath it
+    // without needing a positioned ancestor.
+    let positioned = matches!(
+        node.parent.and_then(|parent_id| {
+            view.shared
+                .borrow()
+                .store
+                .node(parent_id)
+                .and_then(|n| n.identity.kind())
+        }),
+        Some(NodeKind::Stack) | Some(NodeKind::Overlay)
+    );
+    // Seed the anchor at mount from the last painted anchor rect — the
+    // prepaint watcher only has to track drift afterwards.
+    let trigger_bounds = view
+        .states
+        .menu_bounds
+        .get()
+        .or_else(|| menu_anchor_bounds(&view.shared, node.id, node.parent));
     let mut popup = Positioner::side(trigger_bounds.unwrap_or_default())
         .placement(placement)
         .align(align)
@@ -1448,25 +1500,43 @@ fn dropdown_menu(
         .occlude();
     if stretch {
         if let Some(bounds) = trigger_bounds {
-            menu = menu.w(bounds.size.width);
+            if bounds.size.width > px(0.) {
+                menu = menu.w(bounds.size.width);
+            }
         }
     }
     popup = popup.child(menu.into_any_element());
-    div()
-        .id(element_id(node.id))
-        .absolute()
-        .size_full()
+    let mut slot = div().id(element_id(node.id));
+    slot = if positioned {
+        slot.absolute().size_full()
+    } else {
+        slot.size_0()
+    };
+    let shared_for_prepaint = view.shared.clone();
+    let node_id = node.id;
+    let parent_node = node.parent;
+    slot
         .on_prepaint({
             let entity_id = cx.entity().entity_id();
             let menu_bounds = view.states.menu_bounds.clone();
             move |bounds, _, cx| {
-                if menu_bounds.get() != Some(bounds) {
-                    menu_bounds.set(Some(bounds));
+                // Non-positioned mounts anchor to the trigger sibling /
+                // painted ancestor, not to this zero-size slot's point.
+                let anchor = if positioned {
+                    Some(bounds)
+                } else {
+                    menu_anchor_bounds(&shared_for_prepaint, node_id, parent_node)
+                };
+                if menu_bounds.get() != anchor {
+                    menu_bounds.set(anchor);
                     cx.notify(entity_id);
                 }
             }
         })
-        .child(deferred(popup).with_priority(2))
+        // Menus are the topmost transient surface: they can open inside
+        // imperative-root subtrees (priority 4, e.g. dialogs), which
+        // must not paint over them.
+        .child(deferred(popup).with_priority(5))
         .into_any_element()
 }
 
@@ -1637,7 +1707,9 @@ fn list_item(
             });
             row = row.child(
                 deferred(anchored().position(position).snap_to_window().child(popup))
-                    .with_priority(2),
+                    // Above imperative roots (4) — context menus can open
+                    // inside dialogs and other imperative subtrees.
+                    .with_priority(5),
             );
         }
     }
@@ -2181,7 +2253,7 @@ fn menu_trigger(
                             .snap_to_window()
                             .child(popup),
                     )
-                    .with_priority(3),
+                    .with_priority(5),
                 );
                 let element = div().child(row).child(layer);
                 return style::all(element, node, cx.theme()).into_any_element();
@@ -2942,6 +3014,14 @@ pub fn render_node(
                     .node(parent_id)
                     .and_then(|n| n.identity.kind())
             });
+            // A `dropdown-menu` declaring an anchor (or dismissable — every
+            // real menu registers Dismiss) is a floating menu: render it as
+            // a deferred popup anchored to its mount slot rather than
+            // pushing the layout inline. Only a menu with neither — e.g. a
+            // section showcasing menu items — renders in place.
+            let floating = matches!(parent_kind, Some(NodeKind::Stack) | Some(NodeKind::Overlay))
+                || node.string_prop(Property::AnchorValue).is_some()
+                || event_gate(view, node.id, EventKind::Dismiss);
             match parent_kind {
                 // A `dropdown-menu` nested under a `menu-trigger` (the
                 // `menu`/`submenu` element) is rendered by the trigger row
@@ -2951,11 +3031,7 @@ pub fn render_node(
                 }
                 // Mounted inside a `stack`/`overlay` (trigger + menu
                 // siblings): render as a deferred popover under the stack.
-                Some(NodeKind::Stack) | Some(NodeKind::Overlay) => {
-                    dropdown_menu(view, node, window, cx)
-                }
-                // Mounted inline (e.g. a section showcasing menu items):
-                // render the menu box in place.
+                _ if floating => dropdown_menu(view, node, window, cx),
                 _ => {
                     let mut box_ = menu_box(view, node, cx);
                     if event_gate(view, node.id, EventKind::Dismiss) {
@@ -3410,7 +3486,7 @@ pub fn render_node(
                                         .snap_to_window()
                                         .child(tip),
                                 )
-                                .with_priority(3),
+                                .with_priority(5),
                             )
                             .into_any_element()
                     } else {
@@ -3427,7 +3503,7 @@ pub fn render_node(
                                         .snap_to_window()
                                         .child(tip),
                                 )
-                                .with_priority(3),
+                                .with_priority(5),
                             )
                             .into_any_element()
                     };
@@ -3557,7 +3633,7 @@ fn popover(
             return div()
                 .id(element_id(node.id))
                 .size_0()
-                .child(deferred(layer).with_priority(3))
+                .child(deferred(layer).with_priority(5))
                 .into_any_element();
         }
         // `size_full` inside `anchored` resolves against an indefinite
@@ -3618,6 +3694,6 @@ fn popover(
     div()
         .id(element_id(node.id))
         .size_0()
-        .child(deferred(layer).with_priority(3))
+        .child(deferred(layer).with_priority(5))
         .into_any_element()
 }
