@@ -63,6 +63,14 @@ type application = {
   runtime_handler_count : int ref;
   runtime_dynamic_segment_count : int ref;
   runtime_extension_dirty : bool ref;
+  (* a batch commit can synchronously emit back into the app (a DOM op
+     fires focus/mount events whose listeners dispatch + flush). The
+     inner flush must not batch the same still-queued ops again — the
+     host's sequential-generation check throws and aborts the outer
+     apply mid-op, desyncing the store. Defer: mark dirty and run one
+     more pass after the outer commit unwinds. *)
+  runtime_flushing : bool ref;
+  runtime_flush_dirty : bool ref;
 }
 
 type runtime_checkpoint = {
@@ -136,6 +144,8 @@ let create_with_extensions scheduler backend registry =
     runtime_handler_count = ref 0;
     runtime_dynamic_segment_count = ref 0;
     runtime_extension_dirty = ref false;
+    runtime_flushing = ref false;
+    runtime_flush_dirty = ref false;
   }
 
 let create scheduler backend =
@@ -1626,28 +1636,57 @@ let apply_pending_batch application batch operation_count next_generation =
       invalid_arg message
   in
   if committed then begin
-    application.pending_ops := [];
     application.runtime_generation := next_generation;
     record_diagnostics application Applied operation_count 0
   end
   else begin
+    (* nothing applied host-side — the ops stay queued for the next
+       flush, which re-sends them under the generation the host still
+       expects. Ops queued while the backend applied this batch stay
+       queued behind them. *)
+    application.pending_ops :=
+      !(application.pending_ops) @ List.rev batch.ops;
     ignore (record_diagnostics application Rejected operation_count 0);
     invalid_arg "backend rejected patch batch"
   end
 
-let flush application =
-  Signal.stabilize application.runtime_scheduler;
-  if !(application.runtime_extension_dirty) then begin
-    application.runtime_extension_dirty := false;
-    validate_extension_nodes application
-  end;
-  let operations = List.rev !(application.pending_ops) in
-  if operations = [] then record_diagnostics application NoBatch 0 0
+let rec flush application =
+  if !(application.runtime_flushing) then begin
+    application.runtime_flush_dirty := true;
+    true
+  end
   else begin
-    let next_generation = !(application.runtime_generation) + 1 in
-    let batch = { generation = next_generation; ops = operations } in
-    apply_pending_batch application batch (List.length operations)
-      next_generation
+    application.runtime_flushing := true;
+    let flushed =
+      try
+        Signal.stabilize application.runtime_scheduler;
+        if !(application.runtime_extension_dirty) then begin
+          application.runtime_extension_dirty := false;
+          validate_extension_nodes application
+        end;
+        let operations = List.rev !(application.pending_ops) in
+        (* detach before apply: ops queued while the backend applies
+           this batch (emits re-entering through event dispatch) land
+           in the next batch instead of being re-sent under a stale
+           generation *)
+        application.pending_ops := [];
+        if operations = [] then record_diagnostics application NoBatch 0 0
+        else begin
+          let next_generation = !(application.runtime_generation) + 1 in
+          let batch = { generation = next_generation; ops = operations } in
+          apply_pending_batch application batch (List.length operations)
+            next_generation
+        end
+      with e ->
+        application.runtime_flushing := false;
+        raise e
+    in
+    application.runtime_flushing := false;
+    if !(application.runtime_flush_dirty) then begin
+      application.runtime_flush_dirty := false;
+      flush application
+    end
+    else flushed
   end
 
 let diagnostics application = !(application.runtime_diagnostics)
