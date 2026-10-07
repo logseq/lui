@@ -712,22 +712,40 @@ let context_menu_section model_source send : t =
     ]
 
 let menu_item_section model_source send : t =
+  let open_ =
+    model_source >|= (fun model -> Model.open_picker model = "menuitem")
+  in
+  let dismiss = press send Model.ClosePicker in
   section "MenuItem"
-    [ dropdown_menu ~min_width:200
-        [ menu_item ~text:"Rename" ~icon:`edit
-            ~on_press:(press send (Model.PerformContextAction "Rename")) []
-        ; submenu ~text:"Share"
-            [ menu_item ~text:"Copy link"
-                ~on_press:(press send (Model.PerformContextAction "Rename")) []
-            ; menu_item ~text:"Export"
-                ~on_press:(press send (Model.PerformContextAction "Archive")) []
-            ]
-        ; menu_item ~text:"Archive"
-            ~disabled:(reactive Model.disabled model_source)
-            ~on_press:(press send (Model.PerformContextAction "Archive")) []
-        ; menu_item ~text:"Delete" ~variant:`destructive ~icon:`trash ~size:`sm
-            ~on_press:(press send (Model.PerformContextAction "Delete")) []
+    [ stack
+        [ button ~text:"Document actions"
+            ~on_press:(press send (Model.OpenPicker "menuitem")) []
+        ; if_ ~test:open_
+            (dropdown_menu ~anchor:`below ~anchor_alignment:`start
+               ~anchor_offset:6.0 ~min_width:200 ~on_dismiss:dismiss
+               [ menu_item ~text:"Rename" ~icon:`edit
+                   ~on_press:(press send (Model.PerformContextAction "Rename"))
+                   []
+               ; submenu ~text:"Share" ~on_dismiss:dismiss
+                   [ menu_item ~text:"Copy link"
+                       ~on_press:
+                         (press send (Model.PerformContextAction "Copy link"))
+                       []
+                   ; menu_item ~text:"Export"
+                       ~on_press:
+                         (press send (Model.PerformContextAction "Export")) []
+                   ]
+               ; menu_item ~text:"Archive"
+                   ~disabled:(reactive Model.disabled model_source)
+                   ~on_press:(press send (Model.PerformContextAction "Archive"))
+                   []
+               ; menu_item ~text:"Delete" ~variant:`destructive ~icon:`trash
+                   ~size:`sm
+                   ~on_press:(press send (Model.PerformContextAction "Delete"))
+                   []
+               ])
         ]
+    ; paragraph ~value:(reactive Model.document_action model_source) []
     ]
 
 let table_section model_source send : t =

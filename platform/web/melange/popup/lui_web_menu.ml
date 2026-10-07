@@ -1478,7 +1478,9 @@ let highlight_initial_menu_item renderer container_id =
                         items
                     with
                     | Some element -> element
-                    | None -> List.nth items (List.length items - 1)
+                    (* items is collected in DOM order; with no selected
+                       row the highlight lands on the first item. *)
+                    | None -> List.hd items
                   in
                   W.Element.setAttribute "data-highlighted" "" target;
                   W.Element.setAttribute "tabindex" "0" target;
