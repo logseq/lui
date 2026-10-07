@@ -88,22 +88,28 @@ struct ClassStyle {
 static CLASS_STYLES: RwLock<Option<HashMap<String, ClassStyle>>> = RwLock::new(None);
 
 pub fn register_class_style(name: &str, declarations: &str, utilities: &str) {
-    let declarations = declarations
+    let declarations: Vec<(String, String)> = declarations
         .split(';')
         .filter_map(|decl| {
             decl.split_once(':')
                 .map(|(prop, value)| (prop.trim().to_ascii_lowercase(), value.trim().to_string()))
         })
         .collect();
-    let utilities = utilities
+    let utilities: Vec<String> = utilities
         .split_whitespace()
         .map(str::to_string)
         .collect();
-    CLASS_STYLES
-        .write()
-        .expect("class-style lock poisoned")
+    // Repeat registrations for one class merge, appending declarations:
+    // sites split a class's rules across install phases (e.g. a scrim's
+    // background in the theme block, its positioning in the layout
+    // table) and the later registration must not clobber the earlier.
+    let mut guard = CLASS_STYLES.write().expect("class-style lock poisoned");
+    let entry = guard
         .get_or_insert_with(HashMap::new)
-        .insert(name.to_string(), ClassStyle { declarations, utilities });
+        .entry(name.to_string())
+        .or_insert_with(ClassStyle::default);
+    entry.declarations.extend(declarations);
+    entry.utilities.extend(utilities);
 }
 
 fn class_style(name: &str) -> Option<ClassStyle> {
