@@ -1328,13 +1328,17 @@ let mount_picker_dropdown renderer node =
           end)
   | None -> ()
 
-(* base-ui parity: a menu opens with its LAST enabled item highlighted and
-   focused (useListNavigation's initial sync picks getMaxListIndex).
+(* base-ui parity: a menu opens with an item highlighted and focused
+   (useListNavigation's initial sync). A [data-selected] item wins —
+   select-style menus reopen on the current value; otherwise the LAST
+   enabled item is highlighted (getMaxListIndex). Items owned by a
+   nested submenu (inside a [data-submenu] positioner) and
    [data-menu-tail] items (e.g. a session block appended after the menu
    body mounts) are excluded — cljs-side they mount after the nav list
    syncs, so they never receive the initial highlight; arrow-key
-   navigation still reaches them. Deferred to a timeout so it lands after
-   the trigger's own click-focus and after the mount batch completes. *)
+   navigation still reaches them. Deferred to a timeout so it lands
+   after the trigger's own click-focus and after the mount batch
+   completes. *)
 let highlight_initial_menu_item renderer container_id =
   match Store.node renderer.web_store container_id with
   | None -> ()
@@ -1342,37 +1346,67 @@ let highlight_initial_menu_item renderer container_id =
       ignore
         (Js.Global.setTimeout
            ~f:(fun () ->
+             (* Closed containers (e.g. a nested submenu that mounts
+                eagerly inside an open menu) must not steal focus when a
+                parent menu mounts. A dropdown's platform node is its
+                positioner, which carries data-open only while presented. *)
+             if W.Element.hasAttribute "data-open" container.platform_node
+             then begin
              let nodes =
                W.Element.querySelectorAll
                  "[role=menuitem]:not([data-disabled]):not([aria-disabled='true']):not([data-menu-tail])"
                  container.platform_node
              in
              let n = W.NodeList.length nodes in
-             if n > 0 then begin
-               let rec clear index =
-                 if index < n then (
+             let rec in_submenu element =
+               match W.Element.parentElement element with
+               | None -> false
+               | Some parent ->
+                   if
+                     W.Element.isSameNode
+                       (W.Element.asNode parent)
+                       container.platform_node
+                   then false
+                   else
+                     (match W.Element.getAttribute "data-submenu" parent with
+                      | Some _ -> true
+                      | None -> in_submenu parent)
+             in
+             let rec collect index acc =
+               if index < 0 then acc
+               else
+                 collect (index - 1)
                    (match W.NodeList.item index nodes with
                     | Some item -> (
                         match W.Element.ofNode item with
                         | Some element ->
-                            W.Element.removeAttribute "data-highlighted"
-                              element;
-                            W.Element.setAttribute "tabindex" "-1" element
-                        | None -> ())
-                    | None -> ());
-                   clear (index + 1))
-               in
-               clear 0;
-               match W.NodeList.item (n - 1) nodes with
-               | Some item -> (
-                   match W.Element.ofNode item with
-                   | Some element ->
-                       W.Element.setAttribute "data-highlighted" ""
-                         element;
-                       W.Element.setAttribute "tabindex" "0" element;
-                       Lui_web_util.focus_element_without_scroll element
-                   | None -> ())
-               | None -> ()
+                            if in_submenu element then acc else element :: acc
+                        | None -> acc)
+                    | None -> acc)
+             in
+             let items = collect (n - 1) [] in
+             (match items with
+              | [] -> ()
+              | _ ->
+                  List.iter
+                    (fun element ->
+                      W.Element.removeAttribute "data-highlighted" element;
+                      W.Element.setAttribute "tabindex" "-1" element)
+                    items;
+                  let target =
+                    match
+                      List.find_opt
+                        (fun element ->
+                          W.Element.getAttribute "data-selected" element
+                          <> None)
+                        items
+                    with
+                    | Some element -> element
+                    | None -> List.nth items (List.length items - 1)
+                  in
+                  W.Element.setAttribute "data-highlighted" "" target;
+                  W.Element.setAttribute "tabindex" "0" target;
+                  Lui_web_util.focus_element_without_scroll target)
              end)
            0)
 

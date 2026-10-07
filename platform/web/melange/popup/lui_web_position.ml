@@ -22,11 +22,9 @@ let set_style element name value =
     (W.HtmlElement.style (W.Element.unsafeAsHtmlElement element))
     name value
 
-(* collision margin: 5px matches the cljs popup inset measured on
-   real menus (Radix popup-show! output sits ~5px off the viewport edge) *)
 let clamp_popup_axis value size viewport_start viewport_size =
-  let edge = viewport_start +. 5.0 in
-  let maximum = max edge (viewport_start +. viewport_size -. size -. 5.0) in
+  let edge = viewport_start +. 8.0 in
+  let maximum = max edge (viewport_start +. viewport_size -. size -. 8.0) in
   max edge (min value maximum)
 
 let resolved_popup_side preferred anchor_bounds popup_width popup_height
@@ -93,8 +91,8 @@ let position_anchored document positioner popup anchor_bounds preferred
   set_style popup
     (if vertical then "--lui-popup-available-height" else "--lui-popup-available-width")
     (css_px (min side_space (if vertical then available_height else available_width)));
-  let popup_width = float_of_int (W.HtmlElement.offsetWidth popup_element) in
-  let popup_height = float_of_int (W.HtmlElement.offsetHeight popup_element) in
+  let popup_width = 1.0 +. float_of_int (W.HtmlElement.offsetWidth popup_element) in
+  let popup_height = 1.0 +. float_of_int (W.HtmlElement.offsetHeight popup_element) in
   let aligned_left =
     match alignment with
     | "center" ->
