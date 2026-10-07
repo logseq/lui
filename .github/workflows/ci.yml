@@ -73,6 +73,12 @@ jobs:
         run: |
           echo "DUNE_CACHE=enabled" >> "$GITHUB_ENV"
           echo "DUNE_CACHE_TRANSPORT=direct" >> "$GITHUB_ENV"
+      - name: Cache node_modules
+        id: web-node-modules
+        uses: actions/cache@v4
+        with:
+          path: platform/web/node_modules
+          key: web-deps-${{ runner.os }}-${{ hashFiles('platform/web/package-lock.json') }}
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
@@ -81,8 +87,15 @@ jobs:
       - name: Install Web dependencies
         run: |
           opam install . --deps-only --with-test -y --locked
-          npm --prefix platform/web ci
-          node platform/web/node_modules/playwright/cli.js install --with-deps chromium firefox webkit
+          if [ "${{ steps.web-node-modules.outputs.cache-hit }}" != "true" ]; then
+            npm --prefix platform/web ci
+          fi
+      # System libraries are not cacheable across hosted runners (fresh image
+      # each run); browser binaries only download on a browser-cache miss.
+      - name: Install Playwright system libraries
+        run: node platform/web/node_modules/playwright/cli.js install-deps chromium firefox webkit
+      - name: Install Playwright browsers
+        run: node platform/web/node_modules/playwright/cli.js install chromium firefox webkit
       - name: Build production renderer and Gallery
         run: opam exec -- dune build @web
       - name: Web stylesheet and unit checks
