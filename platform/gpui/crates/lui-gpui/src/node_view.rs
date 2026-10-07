@@ -578,6 +578,10 @@ impl LuiNodeView {
 
 impl Render for LuiNodeView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Refresh the viewport table `style` resolves `vw`/`vh` units
+        // against — cheap per-node writes, always current on resize.
+        let size = window.viewport_size();
+        crate::style::set_viewport_size(f32::from(size.width), f32::from(size.height));
         // Virtual lists retain the child sequence between structural patches;
         // scrolling and row updates must not copy all N child ids each frame.
         let node = {

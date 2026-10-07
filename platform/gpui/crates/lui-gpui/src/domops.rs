@@ -187,6 +187,27 @@ pub fn handle_dom_op(
             }
             Vec::new()
         }
+        "class-add" | "class-remove" => {
+            if let Some(id) = target {
+                let token = parsed.get("class").and_then(Value::as_str).unwrap_or("");
+                let current = current_class(shared, id);
+                let mut classes: Vec<&str> = current.split_whitespace().collect();
+                match op {
+                    "class-add" => {
+                        if !token.is_empty() && !classes.contains(&token) {
+                            classes.push(token);
+                        }
+                    }
+                    _ => classes.retain(|c| *c != token),
+                }
+                apply_local(
+                    shared,
+                    &style_prop_batch(shared, id, "style-class", &classes.join(" ")),
+                    cx,
+                );
+            }
+            Vec::new()
+        }
         "set-text" => {
             if let Some(id) = target {
                 let text = parsed.get("text").and_then(Value::as_str).unwrap_or("");
@@ -227,6 +248,26 @@ pub fn handle_dom_op(
             eprintln!("lui-gpui: dom-op {other} unsupported: {body}");
             Vec::new()
         }
+    }
+}
+
+/// Current `style-class` value — a component prop or an extension prop
+/// depending on the node kind.
+fn current_class(shared: &Shared, node_id: i64) -> String {
+    let shared = shared.borrow();
+    let Some(node) = shared.store.node(node_id) else {
+        return String::new();
+    };
+    if matches!(node.identity, NodeIdentity::Extension { .. }) {
+        node.extension_props
+            .get("style-class")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    } else {
+        node.string_prop(Property::StyleClass)
+            .unwrap_or("")
+            .to_string()
     }
 }
 
@@ -412,7 +453,34 @@ fn dump_tree(shared: &Shared) {
                 )
             })
             .unwrap_or_default();
-        out.push_str(&format!("{}{} #{id}{bounds}\n", "  ".repeat(depth), kind));
+        let text: String = node
+            .string_prop(Property::TextValue)
+            .map(str::to_string)
+            .or_else(|| {
+                node.extension_props
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            })
+            .or_else(|| {
+                node.extension_props
+                    .get("attrs")
+                    .and_then(|v| v.as_str())
+                    .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+                    .and_then(|attrs| {
+                        attrs
+                            .get("data-raw-text")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string)
+                    })
+            })
+            .unwrap_or_default();
+        let text = if text.is_empty() {
+            String::new()
+        } else {
+            format!(" {:?}", &text[..text.len().min(60)])
+        };
+        out.push_str(&format!("{}{} #{id}{bounds}{text}\n", "  ".repeat(depth), kind));
         for child in &node.children {
             walk(shared, *child, depth + 1, out);
         }

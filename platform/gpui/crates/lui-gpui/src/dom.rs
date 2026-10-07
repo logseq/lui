@@ -136,7 +136,9 @@ fn classes(node: &NodeSnapshot) -> &str {
 }
 
 fn has_class(node: &NodeSnapshot, name: &str) -> bool {
-    classes(node).split_whitespace().any(|t| t == name)
+    let classes = classes(node);
+    classes.split_whitespace().any(|t| t == name)
+        || crate::style::class_has_utility(classes, name)
 }
 
 /// One attribute's string value. Extension `attrs` is a JSON object;
@@ -346,27 +348,111 @@ pub(crate) fn logseq_carrier(shared: &Shared, from: Option<i64>) -> Option<(i64,
     None
 }
 
-/// Deepest painted node containing `position` — the DOM click target.
+/// A `pointer-events` setting inside one inline-style value string —
+/// `Some(false)` for `none`, `Some(true)` otherwise.
+fn inline_pointer_events(style: &str) -> Option<bool> {
+    for decl in style.split(';') {
+        if let Some((prop, value)) = decl.split_once(':') {
+            if prop.trim().eq_ignore_ascii_case("pointer-events") {
+                return Some(value.trim() != "none");
+            }
+        }
+    }
+    None
+}
+
+/// Explicit `pointer-events` on one node — from a literal class token, a
+/// dictionary-registered semantic class, or an inline `style`
+/// declaration. `None` means inherit (CSS default `auto`).
+fn pointer_events_explicit(node: &lui_core::store::Node) -> Option<bool> {
+    let classes = node
+        .string_prop(Property::StyleClass)
+        .or_else(|| node.extension_props.get("style-class").and_then(|v| v.as_str()))
+        .unwrap_or("");
+    for token in classes.split_whitespace() {
+        match token {
+            "pointer-events-none" => return Some(false),
+            "pointer-events-auto" => return Some(true),
+            _ => {}
+        }
+        if let Some(enabled) = crate::style::class_pointer_events(token) {
+            return Some(enabled);
+        }
+    }
+    if let Some(raw) = node.extension_props.get("attrs").and_then(|v| v.as_str()) {
+        if let Ok(attrs) = serde_json::from_str::<serde_json::Value>(raw) {
+            for key in ["style", "data-style"] {
+                if let Some(style) = attrs.get(key).and_then(|v| v.as_str()) {
+                    if let Some(enabled) = inline_pointer_events(style) {
+                        return Some(enabled);
+                    }
+                }
+            }
+        }
+    }
+    if let Some(raw) = node.string_prop(Property::DataAttrs) {
+        for record in raw.split('\x1e') {
+            if let Some((name, value)) = record.split_once('\x1f') {
+                if matches!(name, "style" | "data-style") {
+                    if let Some(enabled) = inline_pointer_events(value) {
+                        return Some(enabled);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Whether `position` hits through `id` — `pointer-events` inherits, so
+/// the nearest ancestor's explicit setting decides.
+fn hit_transparent(shared: &std::cell::Ref<'_, crate::backend::LuiShared>, id: i64) -> bool {
+    let mut cursor = Some(id);
+    while let Some(current) = cursor {
+        let Some(node) = shared.store.node(current) else {
+            break;
+        };
+        if let Some(enabled) = pointer_events_explicit(node) {
+            return !enabled;
+        }
+        cursor = node.parent;
+    }
+    false
+}
+
+/// Painted node under `position` — the DOM click target. Document order
+/// is paint order: children cover their parent and later siblings cover
+/// earlier ones (the overlay layer is mounted last), so a depth-first
+/// walk in child order that keeps the LAST node containing the point
+/// reproduces topmost-first hit testing. `pointer-events: none` nodes
+/// (the always-mounted overlay shells) are skipped with their inherited
+/// state resolved along the ancestor chain.
 pub(crate) fn deepest_hit(
     shared: &Shared,
     position: gpui_kit::gpui::Point<gpui_kit::gpui::Pixels>,
 ) -> Option<i64> {
     let shared = shared.borrow();
-    let store = &shared.store;
-    shared
-        .node_bounds
-        .iter()
-        .filter(|(id, bounds)| bounds.contains(&position) && store.node(**id).is_some())
-        .map(|(id, _)| *id)
-        .max_by_key(|id| {
-            let mut depth = 0u32;
-            let mut cursor = Some(*id);
-            while let Some(current) = cursor {
-                cursor = store.node(current).and_then(|n| n.parent);
-                depth += 1;
-            }
-            depth
-        })
+    let mut best: Option<i64> = None;
+    let mut stack: Vec<i64> = Vec::new();
+    if let Some(root) = shared.store.root {
+        stack.push(root);
+    }
+    while let Some(id) = stack.pop() {
+        let Some(node) = shared.store.node(id) else {
+            continue;
+        };
+        if shared
+            .node_bounds
+            .get(&id)
+            .is_some_and(|bounds| bounds.contains(&position))
+            && !hit_transparent(&shared, id)
+        {
+            best = Some(id);
+        }
+        // Push children reversed so the pop order is document order.
+        stack.extend(node.children.iter().rev().copied());
+    }
+    best
 }
 
 pub fn dom_event(
@@ -755,7 +841,16 @@ pub fn render(
         // Text leaf: a bare run. Empty raw-text nodes act as zero-size
         // structural anchors (the DOM observer's `nil` placeholders).
         "raw-text" => {
+            // The text lands either via the `text` extension prop
+            // (`set_extension_prop`) or as the `data-raw-text` attr —
+            // the latter is the emit-side encoding the web backend
+            // swaps into a Text node.
             let text = text_prop(node).to_string();
+            let text = if text.is_empty() {
+                attr(node, "data-raw-text").unwrap_or_default()
+            } else {
+                text
+            };
             let mut element = div();
             if !text.is_empty() {
                 element = element.child(SharedString::from(text));

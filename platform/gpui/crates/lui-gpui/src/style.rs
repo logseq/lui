@@ -8,7 +8,7 @@
 //! Tailwind palette — plus a semantic-class hook apps can extend.
 
 use gpui_kit::component::theme::{try_parse_color, Theme};
-use gpui_kit::gpui::{px, rgba, AbsoluteLength, DefiniteLength, Hsla, Styled};
+use gpui_kit::gpui::{px, rgba, AbsoluteLength, DefiniteLength, Hsla, Length, Styled};
 use lui_core::Property;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -46,6 +46,112 @@ fn css_var(name: &str) -> Option<String> {
         .expect("css-var lock poisoned")
         .as_ref()
         .and_then(|vars| vars.get(name).cloned())
+}
+
+/// Viewport size in points — refreshed by `LuiNodeView::render` each
+/// frame so `vw`/`vh`-family units resolve against the window (CSS
+/// resolves them against the initial containing block, not the
+/// element's parent).
+static VIEWPORT: RwLock<(f32, f32)> = RwLock::new((1280.0, 800.0));
+
+pub fn set_viewport_size(w: f32, h: f32) {
+    *VIEWPORT.write().expect("viewport lock poisoned") = (w, h);
+}
+
+/// `<num>(d|s|l)?(vw|vh)` resolved against the current viewport.
+fn viewport_length(token: &str) -> Option<f32> {
+    let token = token.trim();
+    let (w, h) = *VIEWPORT.read().expect("viewport lock poisoned");
+    for (suffix, dim) in [
+        ("dvw", w), ("svw", w), ("lvw", w), ("vw", w),
+        ("dvh", h), ("svh", h), ("lvh", h), ("vh", h),
+    ] {
+        if let Some(num) = token.strip_suffix(suffix) {
+            return num.parse::<f32>().ok().map(|v| v * dim / 100.0);
+        }
+    }
+    None
+}
+
+/// App-registered semantic-class styles: `cp__*`/`ls-*`/`ui__*` tokens
+/// are app vocabulary the builtin resolver ignores. The app registers
+/// each class once at boot (`register_class_style`) as declarations
+/// (parsed like inline style) plus utility tokens (folded back through
+/// `apply_utility`, and visible to `has_class` behavior checks like
+/// `overflow-y-auto`).
+#[derive(Clone, Default)]
+struct ClassStyle {
+    declarations: Vec<(String, String)>,
+    utilities: Vec<String>,
+}
+
+static CLASS_STYLES: RwLock<Option<HashMap<String, ClassStyle>>> = RwLock::new(None);
+
+pub fn register_class_style(name: &str, declarations: &str, utilities: &str) {
+    let declarations = declarations
+        .split(';')
+        .filter_map(|decl| {
+            decl.split_once(':')
+                .map(|(prop, value)| (prop.trim().to_ascii_lowercase(), value.trim().to_string()))
+        })
+        .collect();
+    let utilities = utilities
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
+    CLASS_STYLES
+        .write()
+        .expect("class-style lock poisoned")
+        .get_or_insert_with(HashMap::new)
+        .insert(name.to_string(), ClassStyle { declarations, utilities });
+}
+
+fn class_style(name: &str) -> Option<ClassStyle> {
+    CLASS_STYLES
+        .read()
+        .expect("class-style lock poisoned")
+        .as_ref()
+        .and_then(|map| map.get(name).cloned())
+}
+
+/// Whether any of the node's class tokens expands (via the registered
+/// dictionary) to `token` — lets behavior checks like `has_class(node,
+/// "overflow-y-auto")` see utilities carried by semantic classes.
+pub fn class_has_utility(classes: &str, token: &str) -> bool {
+    let styles = CLASS_STYLES.read().expect("class-style lock poisoned");
+    let Some(styles) = styles.as_ref() else {
+        return false;
+    };
+    classes
+        .split_whitespace()
+        .filter_map(|c| styles.get(c))
+        .any(|s| s.utilities.iter().any(|u| u == token))
+}
+
+/// Explicit `pointer-events` a registered class declares — `Some(false)`
+/// for `none`, `Some(true)` for `auto`. Read from its declarations or
+/// utility tokens.
+pub fn class_pointer_events(name: &str) -> Option<bool> {
+    let registered = class_style(name)?;
+    if registered
+        .utilities
+        .iter()
+        .any(|u| u == "pointer-events-none")
+    {
+        return Some(false);
+    }
+    if registered
+        .utilities
+        .iter()
+        .any(|u| u == "pointer-events-auto")
+    {
+        return Some(true);
+    }
+    registered
+        .declarations
+        .iter()
+        .find(|(prop, _)| prop == "pointer-events")
+        .map(|(_, value)| value != "none")
 }
 
 /// Builtin `--ls-*`/`--lx-*` CSS-variable names mapped onto the gpui theme
@@ -309,6 +415,13 @@ pub fn utility_token_active(token: &str) -> bool {
     if numeric_utility(token).is_some() {
         return true;
     }
+    // A registered semantic class carries real layout — a wrapper whose
+    // class dictionary entry has declarations or utilities is not inert.
+    if let Some(registered) = class_style(token) {
+        if !registered.declarations.is_empty() || !registered.utilities.is_empty() {
+            return true;
+        }
+    }
     if token.starts_with("bg-")
         || token.starts_with("text-")
         || token.starts_with("border-")
@@ -338,11 +451,19 @@ pub fn utility_token_active(token: &str) -> bool {
 /// Tailwind-style atomic class resolver for `style-class` tokens.
 /// Covers the utility families the LUI apps emit (spacing, flex alignment,
 /// colors, radius, text size/weight); unknown tokens are ignored — semantic
-/// classes (e.g. `cp__*`, `ls-*`) are app vocabulary and need an app-registered
-/// dictionary (see `ExtensionRegistry` docs in README).
-pub fn style_class<E: Styled>(mut element: E, classes: &str) -> E {
+/// classes (e.g. `cp__*`, `ls-*`) are app vocabulary resolved through the
+/// registered style dictionary (`register_class_style`).
+pub fn style_class<E: Styled>(mut element: E, classes: &str, theme: &Theme) -> E {
     for token in classes.split_whitespace() {
         element = apply_utility(element, token);
+        if let Some(registered) = class_style(token) {
+            for (prop, value) in &registered.declarations {
+                element = apply_decl(element, prop, value, theme);
+            }
+            for utility in &registered.utilities {
+                element = apply_utility(element, utility);
+            }
+        }
     }
     element
 }
@@ -566,6 +687,9 @@ fn resolve_length(token: &str) -> Option<DefiniteLength> {
             .ok()
             .map(|v| DefiniteLength::Fraction(v / 100.0));
     }
+    if let Some(value) = viewport_length(token) {
+        return Some(px_length(value as f64));
+    }
     token.parse::<f64>().ok().map(px_length)
 }
 
@@ -592,7 +716,35 @@ fn resolve_px(token: &str) -> Option<f32> {
     if let Some(rem_value) = token.strip_suffix("rem") {
         return rem_value.parse::<f32>().ok().map(|v| v * 16.0);
     }
+    if let Some(value) = viewport_length(token) {
+        return Some(value);
+    }
     token.parse::<f32>().ok()
+}
+
+/// One edge value allowing `auto` — margins and insets are
+/// `LengthPercentageAuto` in taffy, unlike padding.
+fn len_or_auto(token: &str) -> Option<Length> {
+    let token = token.trim();
+    if token == "auto" {
+        return Some(Length::Auto);
+    }
+    resolve_length(token).map(Length::Definite)
+}
+
+/// Like `box_edges` but preserves `auto` edges (margin/inset only).
+fn box_len_edges(value: &str) -> Option<[Length; 4]> {
+    let parts: Vec<Length> = shorthand_parts(value)
+        .iter()
+        .filter_map(|part| len_or_auto(part))
+        .collect();
+    Some(match parts.len() {
+        1 => [parts[0]; 4],
+        2 => [parts[0], parts[1], parts[0], parts[1]],
+        3 => [parts[0], parts[1], parts[2], parts[1]],
+        4 => [parts[0], parts[1], parts[2], parts[3]],
+        _ => return None,
+    })
 }
 
 /// Declarations of the node's inline `style` attribute — carried in the
@@ -681,8 +833,19 @@ fn shorthand_parts(value: &str) -> Vec<&str> {
 /// visibly breaks those surfaces.
 fn apply_inline_style<E: Styled>(mut element: E, node: &NodeSnapshot, theme: &Theme) -> E {
     for (prop, value) in inline_declarations(node) {
-        if let Some(length) = resolve_length(&value) {
-            element = match prop.as_str() {
+        element = apply_decl(element, &prop, &value, theme);
+    }
+    element
+}
+
+/// Apply one `prop: value` CSS declaration — shared by inline styles and
+/// registered semantic classes.
+fn apply_decl<E: Styled>(mut element: E, prop: &str, value: &str, theme: &Theme) -> E {
+    {
+        let prop = prop;
+        let value = value;
+        if let Some(length) = resolve_length(value) {
+            element = match prop {
                 "width" => element.w(length),
                 "height" => element.h(length),
                 "min-width" => element.min_w(length),
@@ -693,20 +856,21 @@ fn apply_inline_style<E: Styled>(mut element: E, node: &NodeSnapshot, theme: &Th
                 _ => element,
             };
             if matches!(
-                prop.as_str(),
+                prop,
                 "width" | "height" | "min-width" | "min-height" | "max-width" | "max-height"
                     | "line-height"
             ) {
-                continue;
+                return element;
             }
         }
-        element = match prop.as_str() {
-            "display" => match value.as_str() {
+        element = match prop {
+            "display" => match value {
                 "none" => element.invisible(),
                 "flex" | "inline-flex" => element.flex().flex_row(),
+                "grid" => element.grid(),
                 _ => element,
             },
-            "align-items" => match value.as_str() {
+            "align-items" => match value {
                 "center" => element.items_center(),
                 "start" | "flex-start" => element.items_start(),
                 "end" | "flex-end" => element.items_end(),
@@ -714,7 +878,7 @@ fn apply_inline_style<E: Styled>(mut element: E, node: &NodeSnapshot, theme: &Th
                 "stretch" => element.items_stretch(),
                 _ => element,
             },
-            "justify-content" => match value.as_str() {
+            "justify-content" => match value {
                 "center" => element.justify_center(),
                 "end" | "flex-end" => element.justify_end(),
                 "start" | "flex-start" => element.justify_start(),
@@ -731,33 +895,53 @@ fn apply_inline_style<E: Styled>(mut element: E, node: &NodeSnapshot, theme: &Th
                 Ok(v) if v > 0. => element.flex_1(),
                 _ => element,
             },
-            "position" => match value.as_str() {
+            "position" => match value {
                 "absolute" => element.absolute(),
                 "relative" => element.relative(),
+                // Taffy has no viewport-anchored `fixed`; nearest-positioned-
+                // ancestor semantics mean overlay ancestors must be
+                // window-sized layers (the app registers those classes).
+                "fixed" | "sticky" => element.absolute(),
                 _ => element,
             },
-            "margin" => match box_edges(&value) {
-                Some([t, r, b, l]) => element
-                    .mt(px(t as f32))
-                    .mr(px(r as f32))
-                    .mb(px(b as f32))
-                    .ml(px(l as f32)),
+            "inset" => match box_len_edges(value) {
+                Some([t, r, b, l]) => element.top(t).right(r).bottom(b).left(l),
                 None => element,
             },
-            "margin-top" => match resolve_px(&value) {
-                Some(v) => element.mt(px(v)),
+            "top" => match len_or_auto(value) {
+                Some(v) => element.top(v),
                 None => element,
             },
-            "margin-bottom" => match resolve_px(&value) {
-                Some(v) => element.mb(px(v)),
+            "bottom" => match len_or_auto(value) {
+                Some(v) => element.bottom(v),
                 None => element,
             },
-            "margin-left" => match resolve_px(&value) {
-                Some(v) => element.ml(px(v)),
+            "left" => match len_or_auto(value) {
+                Some(v) => element.left(v),
                 None => element,
             },
-            "margin-right" => match resolve_px(&value) {
-                Some(v) => element.mr(px(v)),
+            "right" => match len_or_auto(value) {
+                Some(v) => element.right(v),
+                None => element,
+            },
+            "margin" => match box_len_edges(value) {
+                Some([t, r, b, l]) => element.mt(t).mr(r).mb(b).ml(l),
+                None => element,
+            },
+            "margin-top" => match len_or_auto(value) {
+                Some(v) => element.mt(v),
+                None => element,
+            },
+            "margin-bottom" => match len_or_auto(value) {
+                Some(v) => element.mb(v),
+                None => element,
+            },
+            "margin-left" => match len_or_auto(value) {
+                Some(v) => element.ml(v),
+                None => element,
+            },
+            "margin-right" => match len_or_auto(value) {
+                Some(v) => element.mr(v),
                 None => element,
             },
             "padding" => match box_edges(&value) {
@@ -809,7 +993,7 @@ fn apply_inline_style<E: Styled>(mut element: E, node: &NodeSnapshot, theme: &Th
                 let mut el = element;
                 for part in shorthand_parts(&value) {
                     if let Some(v) = part.trim_end_matches("px").parse::<f32>().ok() {
-                        el = match prop.as_str() {
+                        el = match prop {
                             "border-left" => el.border_l(px(v)),
                             "border-right" => el.border_r(px(v)),
                             "border-top" => el.border_t(px(v)),
@@ -830,7 +1014,7 @@ fn apply_inline_style<E: Styled>(mut element: E, node: &NodeSnapshot, theme: &Th
                 Some(v) => element.rounded(px(v)),
                 None => element,
             },
-            "font-weight" => match value.as_str() {
+            "font-weight" => match value {
                 "bold" | "700" => element.font_weight(gpui_kit::gpui::FontWeight::BOLD),
                 "600" | "semibold" => element.font_weight(gpui_kit::gpui::FontWeight::SEMIBOLD),
                 "500" | "medium" => element.font_weight(gpui_kit::gpui::FontWeight::MEDIUM),
@@ -861,7 +1045,49 @@ fn apply_inline_style<E: Styled>(mut element: E, node: &NodeSnapshot, theme: &Th
                 Ok(v) => element.opacity(v),
                 Err(_) => element,
             },
-            "overflow" if value == "hidden" => element.overflow_hidden(),
+            "aspect-ratio" => {
+                // "16 / 9", "4/3", or a bare ratio number.
+                let ratio = value
+                    .split('/')
+                    .filter_map(|part| part.trim().parse::<f32>().ok())
+                    .collect::<Vec<_>>();
+                match ratio.as_slice() {
+                    [w, h] if *h != 0. => element.aspect_ratio(w / h),
+                    [v] => element.aspect_ratio(*v),
+                    _ => element,
+                }
+            }
+            "flex-direction" => match value {
+                "column" | "column-reverse" => element.flex_col(),
+                "row" | "row-reverse" => element.flex_row(),
+                _ => element,
+            },
+            "flex" => match value {
+                "none" => element.flex_shrink(0.),
+                _ => match value.parse::<f32>() {
+                    Ok(v) if v > 0. => element.flex_grow(v).flex_shrink(1.),
+                    _ => element,
+                },
+            },
+            // `place-items: center` on an absolute-positioning layer — taffy
+            // aligns abspos children via the parent's justify/align, which
+            // is the expressible form of the web's `transform:
+            // translate(-50%,-50%)` centering.
+            "place-items" => match value {
+                v if v.contains("center") => element.items_center().justify_center(),
+                _ => element,
+            },
+            "justify-items" => match value {
+                "center" => element.justify_center(),
+                _ => element,
+            },
+            "overflow" => match value {
+                "hidden" => element.overflow_hidden(),
+                _ => element,
+            },
+            "overflow-x" if value == "hidden" => element.overflow_x_hidden(),
+            "overflow-y" if value == "hidden" => element.overflow_y_hidden(),
+            "visibility" if value == "hidden" => element.invisible(),
             "white-space" if value == "nowrap" => element.whitespace_nowrap(),
             "cursor" if value == "pointer" => element.cursor_pointer(),
             _ => element,
@@ -911,7 +1137,7 @@ pub fn all<E: Styled>(element: E, node: &NodeSnapshot, theme: &Theme) -> E {
         .string_prop(Property::StyleClass)
         .or_else(|| node.extension_string_prop("style-class"))
     {
-        Some(classes) => style_class(element, classes),
+        Some(classes) => style_class(element, classes, theme),
         None => element,
     }
 }
@@ -939,7 +1165,7 @@ mod tests {
     }
 
     fn classes(token: &str) -> gpui_kit::gpui::StyleRefinement {
-        let mut element = style_class(div(), token);
+        let mut element = style_class(div(), token, &Theme::default());
         element.style().clone()
     }
 
