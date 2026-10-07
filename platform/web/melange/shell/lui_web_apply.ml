@@ -199,54 +199,6 @@ let rec popup_container renderer node_id =
           | None -> None))
   | None -> None
 
-(* base-ui parity: a menu opens with its LAST enabled item highlighted and
-   focused (useListNavigation's initial sync picks getMaxListIndex).
-   [data-menu-tail] items (e.g. a session block appended after the menu
-   body mounts) are excluded — cljs-side they mount after the nav list
-   syncs, so they never receive the initial highlight; arrow-key
-   navigation still reaches them. Deferred to a timeout so it lands after
-   the trigger's own click-focus. Runs on every menu-item insert, so it
-   converges on the final enabled item. *)
-let highlight_last_menu_item renderer container_id =
-  match Store.node renderer.web_store container_id with
-  | None -> ()
-  | Some container ->
-      ignore
-        (Js.Global.setTimeout ~f:(fun () ->
-             let nodes =
-               W.Element.querySelectorAll
-                 "[role=menuitem]:not([data-disabled]):not([aria-disabled='true']):not([data-menu-tail])"
-                 container.platform_node
-               in
-             let n = W.NodeList.length nodes in
-             if n > 0 then begin
-               let rec clear index =
-                 if index < n then (
-                   (match W.NodeList.item index nodes with
-                    | Some item -> (
-                        match W.Element.ofNode item with
-                        | Some element ->
-                            W.Element.removeAttribute "data-highlighted"
-                              element;
-                            W.Element.setAttribute "tabindex" "-1" element
-                        | None -> ())
-                    | None -> ());
-                   clear (index + 1))
-               in
-               clear 0;
-               match W.NodeList.item (n - 1) nodes with
-               | Some item -> (
-                   match W.Element.ofNode item with
-                   | Some element ->
-                       W.Element.setAttribute "data-highlighted" ""
-                         element;
-                       W.Element.setAttribute "tabindex" "0" element;
-                       Util.focus_element_without_scroll element
-                   | None -> ())
-               | None -> ()
-             end)
-          0)
-
 let insert_menu_item_role renderer _child current parent =
   if Store.menu_item_row current then
     match popup_container renderer parent with
@@ -254,7 +206,7 @@ let insert_menu_item_role renderer _child current parent =
         W.Element.setAttribute "role" "menuitem" current.platform_node;
         W.Element.setAttribute "tabindex" "-1" current.platform_node;
         W.Element.removeAttribute "aria-selected" current.platform_node;
-        highlight_last_menu_item renderer container_id
+        Lui_web_menu.highlight_initial_menu_item renderer container_id
     | _ -> ()
 
 (* a child removed or reparented by a later op in the same batch has no
