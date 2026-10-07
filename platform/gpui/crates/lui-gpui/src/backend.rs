@@ -56,6 +56,42 @@ pub struct LuiShared {
     /// dispatch can route editing vs. browse mode. Entries whose node
     /// dropped are pruned on lookup.
     pub focus_nodes: Vec<(i64, FocusHandle)>,
+    /// Open dismissible overlays, in open order (topmost last). Overlay
+    /// render arms register themselves so a host-side Escape can close
+    /// the topmost layer — the gpui counterpart of the web backend's
+    /// `lui_web_layers` key handlers (`modal_key_handler`). Stale
+    /// entries (node dropped, or host open-state cleared) are pruned
+    /// when the stack is read.
+    pub overlay_stack: Vec<(i64, OverlayEntry)>,
+    /// Open toast node ids in mount order. Each toast renders its own
+    /// window layer pinned top-right — stacking them needs the open
+    /// order plus each toast's painted height (toasts that arrived
+    /// earlier sit above later ones).
+    pub toasts: Vec<i64>,
+    /// Painted surface height per open toast id — read to compute the
+    /// vertical offset of every toast below it.
+    pub toast_heights: HashMap<i64, f32>,
+}
+
+/// How a host-side Escape closes one open overlay — pushed onto
+/// [`LuiShared::overlay_stack`] by the render arm that owns the popup.
+#[derive(Clone, Copy)]
+pub enum OverlayEntry {
+    /// Store-driven overlay (dialog/sheet/drawer/dropdown/popover): the
+    /// node exists only while open, so Escape just fires `Dismiss` and
+    /// the model drops it.
+    Node,
+    /// A list-item's right-click menu: `states.overlay` holds the open
+    /// point; Escape clears it and fires `Dismiss` on the `context-menu`
+    /// child, matching the popup's own press-outside path.
+    ContextMenu,
+    /// A menu-trigger's nested submenu: `states.menu_open` holds it;
+    /// Escape clears it (and the owning menu's open-sub-menu slot) and
+    /// fires `Dismiss` on the dropdown/context-menu child.
+    Submenu,
+    /// A tooltip bubble: `states.tooltip` holds it; Escape clears it —
+    /// tooltips have no `Dismiss` event (web hides them host-side too).
+    Tooltip,
 }
 
 /// A registered viewport-proximity watch: which dom-event to fire and
@@ -88,6 +124,9 @@ impl LuiShared {
             viewport_watched: HashMap::new(),
             last_click_emit: None,
             focus_nodes: Vec::new(),
+            overlay_stack: Vec::new(),
+            toasts: Vec::new(),
+            toast_heights: HashMap::new(),
         }));
         crate::extension::register_builtin_renderers(&shared);
         shared
@@ -134,6 +173,156 @@ impl LuiShared {
             .find(|(_, h)| h.is_focused(window))
             .map(|(id, _)| *id)
     }
+
+    /// Push `id` onto the open-overlay stack. An already-present entry
+    /// keeps its position so re-renders never reorder the stack — order
+    /// is always "first opened", and the topmost entry is the newest
+    /// still-open overlay.
+    pub fn push_overlay(&mut self, id: i64, entry: OverlayEntry) {
+        if let Some(slot) = self
+            .overlay_stack
+            .iter_mut()
+            .find(|(existing, _)| *existing == id)
+        {
+            *slot = (id, entry);
+        } else {
+            self.overlay_stack.push((id, entry));
+        }
+    }
+}
+
+/// Whether a stack entry's overlay is still open — the node must live,
+/// and host-driven entries additionally check their owning view's open
+/// state so closed popups prune themselves.
+fn overlay_entry_open(shared: &Shared, id: i64, entry: OverlayEntry, cx: &App) -> bool {
+    let shared = shared.borrow();
+    if shared.store.node(id).is_none() {
+        return false;
+    }
+    let Some(view) = shared.views.get(&id) else {
+        return matches!(entry, OverlayEntry::Node);
+    };
+    let view = view.read(cx);
+    match entry {
+        OverlayEntry::Node => true,
+        OverlayEntry::ContextMenu => view.states.overlay.get().is_some(),
+        OverlayEntry::Submenu => view.states.menu_open.get(),
+        OverlayEntry::Tooltip => view.states.tooltip.get(),
+    }
+}
+
+/// Close the topmost open overlay for a host-side Escape — the gpui
+/// counterpart of the web backend's modal/popup Escape handlers.
+/// Prunes stale entries (closed popups keep their slot until read), then
+/// dismisses the newest still-open entry: store-driven overlays get a
+/// `Dismiss` event; host-driven open states are cleared on their view
+/// first and then report `Dismiss` on their menu node, the same path
+/// their press-outside handlers take. Returns whether an overlay was
+/// dismissed.
+pub fn dismiss_topmost_overlay(shared: &Shared, cx: &mut App) -> bool {
+    let entry = loop {
+        let top = shared.borrow().overlay_stack.last().copied();
+        match top {
+            Some((id, entry)) if overlay_entry_open(shared, id, entry, cx) => {
+                break Some((id, entry));
+            }
+            Some(_) => {
+                shared.borrow_mut().overlay_stack.pop();
+            }
+            None => break None,
+        }
+    };
+    let Some((id, entry)) = entry else {
+        return false;
+    };
+    match entry {
+        OverlayEntry::Node => {
+            fire(shared, id, EventKind::Dismiss, cx, || unsafe {
+                bridge::lui_ocaml_dismiss(id)
+            });
+        }
+        OverlayEntry::ContextMenu => {
+            if let Some(view) = shared.borrow().views.get(&id).cloned() {
+                view.read(cx).states.overlay.set(None);
+                cx.notify(view.entity_id());
+            }
+            // The `context-menu` child carries the Dismiss registration,
+            // mirroring the popup's own press-outside handler.
+            let menu_id = {
+                let shared_ref = shared.borrow();
+                shared_ref
+                    .store
+                    .node(id)
+                    .into_iter()
+                    .flat_map(|node| node.children.iter().copied())
+                    .find(|child| {
+                        shared_ref
+                            .store
+                            .node(*child)
+                            .and_then(|n| n.identity.kind())
+                            == Some(lui_core::wire_schema::NodeKind::ContextMenu)
+                    })
+            };
+            if let Some(menu_id) = menu_id {
+                fire(shared, menu_id, EventKind::Dismiss, cx, || unsafe {
+                    bridge::lui_ocaml_dismiss(menu_id)
+                });
+            }
+        }
+        OverlayEntry::Submenu => {
+            // Clear the trigger's open flag plus the owning menu's
+            // open-sub-menu slot, then Dismiss the menu child — the same
+            // sequence the submenu's press-outside handler runs.
+            let owner_slot = {
+                let shared_ref = shared.borrow();
+                shared_ref
+                    .store
+                    .node(id)
+                    .and_then(|node| node.parent)
+                    .and_then(|parent| shared_ref.views.get(&parent).cloned())
+                    .map(|view| view.read(cx).states.open_submenu.clone())
+            };
+            if let Some(slot) = owner_slot {
+                if slot.get() == Some(id) {
+                    slot.set(None);
+                }
+            }
+            if let Some(view) = shared.borrow().views.get(&id).cloned() {
+                view.read(cx).states.menu_open.set(false);
+                // The pointer may still rest on the trigger — disarm the
+                // hover-open path until it leaves, like `close_host_menus`.
+                view.read(cx).states.submenu_suppress.set(true);
+                cx.notify(view.entity_id());
+            }
+            let menu_id = {
+                let shared_ref = shared.borrow();
+                shared_ref
+                    .store
+                    .node(id)
+                    .into_iter()
+                    .flat_map(|node| node.children.iter().copied())
+                    .find(|child| {
+                        matches!(
+                            shared_ref.store.node(*child).and_then(|n| n.identity.kind()),
+                            Some(lui_core::wire_schema::NodeKind::DropdownMenu)
+                                | Some(lui_core::wire_schema::NodeKind::ContextMenu)
+                        )
+                    })
+            };
+            if let Some(menu_id) = menu_id {
+                fire(shared, menu_id, EventKind::Dismiss, cx, || unsafe {
+                    bridge::lui_ocaml_dismiss(menu_id)
+                });
+            }
+        }
+        OverlayEntry::Tooltip => {
+            if let Some(view) = shared.borrow().views.get(&id).cloned() {
+                view.read(cx).states.tooltip.set(false);
+                cx.notify(view.entity_id());
+            }
+        }
+    }
+    true
 }
 
 #[derive(Debug)]
@@ -185,6 +374,8 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
         shared_ref.node_bounds.remove(id);
         shared_ref.viewport_watched.remove(id);
         shared_ref.virtual_lists.remove(id);
+        shared_ref.toasts.retain(|toast_id| *toast_id != *id);
+        shared_ref.toast_heights.remove(id);
     }
 
     {

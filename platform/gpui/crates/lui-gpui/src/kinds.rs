@@ -35,7 +35,7 @@ use std::collections::HashMap;
 use std::ffi::CString;
 use std::sync::{Arc, LazyLock, Mutex};
 
-use crate::backend::{fire, LuiShared, Shared};
+use crate::backend::{fire, LuiShared, OverlayEntry, Shared};
 use crate::dom;
 use crate::extension;
 use crate::node_view::{LuiNodeView, LuiOption, NodeSnapshot};
@@ -1206,7 +1206,50 @@ fn overlay_modal(
     layer = match kind {
         NodeKind::Sheet => layer.v_flex().justify_end().child(surface),
         NodeKind::Drawer => layer.h_flex().justify_end().child(surface),
-        NodeKind::Toast => layer.child(div().absolute().top_4().right_4().child(surface)),
+        NodeKind::Toast => {
+            // Toasts share the top-right viewport: each stacks below the
+            // ones opened before it, offset by their painted heights
+            // (a height that hasn't painted yet falls back to a slot
+            // estimate and corrects itself on the next frame).
+            let offset = {
+                let mut shared_ref = view.shared.borrow_mut();
+                if !shared_ref.toasts.contains(&node.id) {
+                    shared_ref.toasts.push(node.id);
+                }
+                shared_ref
+                    .toasts
+                    .iter()
+                    .take_while(|id| **id != node.id)
+                    .map(|id| shared_ref.toast_heights.get(id).copied().unwrap_or(80.) + 8.)
+                    .sum::<f32>()
+            };
+            layer.child(
+                div()
+                    .absolute()
+                    .top(px(16. + offset))
+                    .right_4()
+                    .child(surface)
+                    .on_prepaint({
+                        let shared = view.shared.clone();
+                        let node_id = node.id;
+                        move |bounds, _, cx| {
+                            let height: f32 = bounds.size.height.into();
+                            let mut shared_ref = shared.borrow_mut();
+                            if shared_ref.toast_heights.get(&node_id) != Some(&height) {
+                                shared_ref.toast_heights.insert(node_id, height);
+                                // Toasts below re-resolve their offset next frame.
+                                for id in &shared_ref.toasts {
+                                    if *id != node_id {
+                                        if let Some(view) = shared_ref.views.get(id) {
+                                            cx.notify(view.entity_id());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }),
+            )
+        }
         _ => layer
             .v_flex()
             .items_center()
@@ -1214,6 +1257,11 @@ fn overlay_modal(
             .child(surface),
     };
 
+    if kind != NodeKind::Toast {
+        view.shared
+            .borrow_mut()
+            .push_overlay(node.id, OverlayEntry::Node);
+    }
     div()
         .id(element_id(node.id))
         .size_0()
@@ -1276,6 +1324,9 @@ fn dropdown_menu(
             });
         });
     }
+    view.shared
+        .borrow_mut()
+        .push_overlay(node.id, OverlayEntry::Node);
     let trigger_bounds = view.states.menu_bounds.get();
     let mut popup = Positioner::side(trigger_bounds.unwrap_or_default())
         .placement(placement)
@@ -1439,6 +1490,9 @@ fn list_item(
         if let Some(position) = view.states.overlay.get() {
             // Press-outside closes the popup; the menu node itself stays
             // owned by the model.
+            view.shared
+                .borrow_mut()
+                .push_overlay(node.id, OverlayEntry::ContextMenu);
             let open = view.states.overlay.clone();
             let entity = cx.entity().entity_id();
             let menu_id = menu_node_id;
@@ -1476,6 +1530,71 @@ fn list_item(
     }
 
     style::all(row, node, cx.theme()).into_any_element()
+}
+
+/// Pressing a `menu-item` that sits inside a host-owned menu (a
+/// context-menu point popup or a `menu`/`submenu` trigger's mounted
+/// `dropdown-menu`) must collapse the whole popup chain like the web
+/// backend's native menus do. Model-owned `dropdown-menu` layers — ones
+/// mounted under a `stack`/`overlay` so the model decides when they drop —
+/// are left alone, and an item rendered inline (no menu ancestor) closes
+/// nothing at all.
+fn close_host_menus(shared: &Shared, node_id: i64, cx: &mut App) {
+    let mut trigger_ids = Vec::new();
+    let mut menu_ids = Vec::new();
+    let mut context_host_ids = Vec::new();
+    {
+        let shared = shared.borrow();
+        let mut next = shared.store.node(node_id).and_then(|n| n.parent);
+        while let Some(id) = next {
+            let Some(parent) = shared.store.node(id) else {
+                break;
+            };
+            next = parent.parent;
+            match parent.identity.kind() {
+                Some(NodeKind::MenuTrigger) => trigger_ids.push(id),
+                Some(NodeKind::DropdownMenu) => menu_ids.push(id),
+                Some(NodeKind::ContextMenu) => {
+                    menu_ids.push(id);
+                    if let Some(host) = parent.parent {
+                        // The context-menu popup is point state on the host
+                        // node's view (`states.overlay`).
+                        context_host_ids.push(host);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if menu_ids.is_empty() {
+        return;
+    }
+    let set_state = {
+        let shared = shared.clone();
+        move |id: i64, cx: &mut App, apply: &dyn Fn(&mut LuiNodeView)| {
+            let entity = shared.borrow().views.get(&id).cloned();
+            if let Some(entity) = entity {
+                let entity_id = entity.entity_id();
+                entity.update(cx, |v, _cx| apply(v));
+                cx.notify(entity_id);
+            }
+        }
+    };
+    for trigger_id in trigger_ids {
+        set_state(trigger_id, cx, &|v| {
+            v.states.menu_open.set(false);
+            // The pointer still rests on the trigger (or just did on the
+            // activated item) — keep the hover-open path disarmed until
+            // the pointer leaves.
+            v.states.submenu_suppress.set(true);
+        });
+    }
+    for menu_id in menu_ids {
+        set_state(menu_id, cx, &|v| v.states.open_submenu.set(None));
+    }
+    for host_id in context_host_ids {
+        set_state(host_id, cx, &|v| v.states.overlay.set(None));
+    }
 }
 
 fn event_gate_id(shared: &crate::backend::Shared, node_id: i64, event: EventKind) -> bool {
@@ -1604,10 +1723,22 @@ fn menu_trigger(
         let entity = cx.entity().entity_id();
         let shared = view.shared.clone();
         let node_id = node.id;
+        let suppress = view.states.submenu_suppress.clone();
         row = row.on_hover({
             let owner = owner.clone();
             move |hovered, _, cx| {
-                if *hovered && !open.get() {
+                // A programmatic close while the pointer rests on the row
+                // must stick — hover-open re-arms only after the pointer
+                // actually leaves the trigger.
+                if !*hovered {
+                    suppress.set(false);
+                    return;
+                }
+                // Hover-open only applies to submenu triggers (a menu has an
+                // owning dropdown/context menu). A standalone `menu` is
+                // press-to-open — hover-opening here would make the
+                // subsequent click's toggle immediately close it again.
+                if !open.get() && owner.is_some() && !suppress.get() {
                     // Sibling coordination: evict whichever submenu trigger
                     // currently holds the owning menu's open slot, then
                     // claim it.
@@ -1622,11 +1753,23 @@ fn menu_trigger(
                 }
             }
         });
+        let popup_bounds = view.states.popup_bounds.clone();
         row = row.cursor_pointer().on_click({
             let open = view.states.menu_open.clone();
             let entity = cx.entity().entity_id();
             let owner = owner.clone();
-            move |_, _, cx| {
+            let popup_bounds = popup_bounds.clone();
+            move |event, _, cx| {
+                // The popup can paint over the row's own bounds, so clicks
+                // inside it also reach this handler — ignore those; only a
+                // press on the trigger row itself toggles the menu.
+                if popup_bounds
+                    .get()
+                    .map(|bounds| bounds.contains(&event.position()))
+                    .unwrap_or(false)
+                {
+                    return;
+                }
                 let next = !open.get();
                 if let Some((_, slot)) = &owner {
                     slot.set(next.then_some(node_id));
@@ -1636,6 +1779,9 @@ fn menu_trigger(
             }
         });
         if view.states.menu_open.get() {
+            view.shared
+                .borrow_mut()
+                .push_overlay(node.id, OverlayEntry::Submenu);
             let item_ids = {
                 let shared = view.shared.borrow();
                 shared
@@ -1662,7 +1808,10 @@ fn menu_trigger(
                     .border_color(cx.theme().border)
                     .rounded_md()
                     .shadow_lg()
-                    .children(items);
+                    .children(items)
+                    .on_prepaint(move |bounds, _, _| {
+                        popup_bounds.set(Some(bounds));
+                    });
                 popup = popup.on_mouse_down_out({
                     let owner = owner.clone();
                     let node_id = node.id;
@@ -1681,20 +1830,39 @@ fn menu_trigger(
                         }
                     }
                 });
-                row = row.child(
-                    div().absolute().top_0().right_0().size_0().child(
-                        deferred(
-                            anchored()
-                                .anchor(Anchor::TopLeft)
-                                .offset(point(px(-2.), px(-4.)))
-                                .snap_to_window()
-                                .child(popup),
-                        )
-                        .with_priority(3),
-                    ),
+                // Submenus open at the row's right edge; a standalone `menu`
+                // (no owning menu) opens below the trigger like a pulldown.
+                // The popup mounts as a *sibling* of the row — as a child it
+                // would let clicks on its items bubble into the row's
+                // `on_click` and toggle the submenu back open.
+                let anchor_div = if owner.is_some() {
+                    div().absolute().top_0().right_0().size_0()
+                } else {
+                    div().absolute().left_0().bottom_0().size_0()
+                };
+                let offset = if owner.is_some() {
+                    point(px(-2.), px(-4.))
+                } else {
+                    point(px(0.), px(4.))
+                };
+                let layer = anchor_div.child(
+                    deferred(
+                        anchored()
+                            .anchor(Anchor::TopLeft)
+                            .offset(offset)
+                            .snap_to_window()
+                            .child(popup),
+                    )
+                    .with_priority(3),
                 );
+                let element = div().child(row).child(layer);
+                return style::all(element, node, cx.theme()).into_any_element();
             }
         }
+    } else {
+        // Stale popup bounds from an earlier open must not mask clicks on
+        // the trigger itself once the popup is gone.
+        view.states.popup_bounds.set(None);
     }
 
     style::all(row, node, cx.theme()).into_any_element()
@@ -2081,7 +2249,15 @@ fn menu_item(
         }
     });
     if press_gate(view, node.id) {
-        row = row.cursor_pointer().on_click(press_handler(view, node.id));
+        let press = press_handler(view, node.id);
+        let shared = view.shared.clone();
+        let node_id = node.id;
+        row = row
+            .cursor_pointer()
+            .on_click(move |event, window, cx| {
+                press(event, window, cx);
+                close_host_menus(&shared, node_id, cx);
+            });
     }
     style::all(row, node, cx.theme()).into_any_element()
 }
@@ -2859,6 +3035,9 @@ pub fn render_node(
                         }
                     });
                 if view.states.tooltip.get() {
+                    view.shared
+                        .borrow_mut()
+                        .push_overlay(node.id, OverlayEntry::Tooltip);
                     let above = node.string_prop(Property::AnchorValue) != Some("below");
                     let offset = node.float_prop(Property::AnchorOffset).unwrap_or(4.) as f32;
                     let mut tip = div()
@@ -3015,6 +3194,9 @@ fn popover(
                 bridge::lui_ocaml_dismiss(node_id)
             });
         });
+        view.shared
+            .borrow_mut()
+            .push_overlay(node.id, OverlayEntry::Node);
     }
     // `anchor` is the side of the point the popup opens on; combined with
     // `anchor-alignment` it picks which corner of the popup sits at the
