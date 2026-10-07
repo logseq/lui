@@ -35,8 +35,13 @@ fn resolve_ref(shared: &Shared, ref_: &Value) -> Option<i64> {
         .nodes
         .iter()
         .find(|(_, node)| {
-            node.prop(Property::AccessibilityIdentifier)
+            // identifiers live in extension_props for plain elements and
+            // in the standard prop table for components — match
+            // shallow_snapshot's lookup order
+            node.extension_props
+                .get("accessibility-identifier")
                 .and_then(|v| v.as_str())
+                .or_else(|| node.string_prop(Property::AccessibilityIdentifier))
                 == Some(ident)
         })
         .map(|(id, _)| *id)
@@ -115,9 +120,12 @@ pub fn handle_dom_op(
         "measure-node" => {
             let mut events = Vec::new();
             if let Some(id) = target {
+                // Echo the request ref: OCaml keys measured rects by
+                // nodeId, but "#ref"/"ref-id" handle lookups need the
+                // identifier back to correlate the reply.
                 events.push((
                     "node-rect".to_string(),
-                    json!({ "nodeId": id, "rect": bounds_json(node_bounds(shared, id)) }),
+                    json!({ "nodeId": id, "rect": bounds_json(node_bounds(shared, id)), "ref": ref_ }),
                 ));
             }
             events
@@ -244,10 +252,32 @@ pub fn handle_dom_op(
             }
             Vec::new()
         }
-        "set-text" => {
+        "set-text" | "set-text-content" => {
             if let Some(id) = target {
                 let text = parsed.get("text").and_then(Value::as_str).unwrap_or("");
                 apply_local(shared, &style_prop_batch(shared, id, "text", text), cx);
+            }
+            Vec::new()
+        }
+        // element.remove() — detach from the parent and drop the subtree,
+        // the same pair the reconciler emits for a removed node.
+        "remove" => {
+            if let Some(id) = target {
+                let parent = shared
+                    .borrow()
+                    .store
+                    .node(id)
+                    .and_then(|n| n.parent);
+                if let Some(parent) = parent {
+                    let batch = json!({
+                        "generation": 0,
+                        "ops": [
+                            {"op": "remove-child", "parent": parent, "child": id},
+                            {"op": "drop-node", "id": id},
+                        ],
+                    });
+                    apply_local(shared, &batch.to_string(), cx);
+                }
             }
             Vec::new()
         }

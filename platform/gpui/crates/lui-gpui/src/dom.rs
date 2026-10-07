@@ -820,6 +820,18 @@ pub fn rearm_viewport_watch(shared: &mut crate::backend::LuiShared, id: i64) {
 /// the OCaml `near` latch then republishes it as real content.
 pub fn fire_viewport_events(shared: &Shared, window: &Window, cx: &mut gpui_kit::gpui::App) {
     let viewport_h = f64::from(window.viewport_size().height);
+    if std::env::var_os("LUI_GPUI_DUMP_WATCH").is_some() {
+        let r = shared.borrow();
+        if !r.viewport_watched.is_empty() {
+            eprintln!(
+                "watched={:?}",
+                r.viewport_watched
+                    .iter()
+                    .map(|(id, w)| (*id, w.event, w.last_end_child))
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
     let mut drop_ids: Vec<i64> = Vec::new();
     // lazy-mount hits grouped by parent node id → one dom-event each
     // carrying all sibling uuids (one OCaml publish per list, not per row).
@@ -889,11 +901,16 @@ pub fn fire_viewport_events(shared: &Shared, window: &Window, cx: &mut gpui_kit:
                     if watch.last_end_child == Some(last) {
                         continue;
                     }
-                    let Some(bounds) = shared_ref.node_bounds.get(&last) else {
+                    // Measure the list's own bottom edge, not the last
+                    // child's top: a child below the scroll clip never
+                    // prepaints, so its bounds are never recorded and the
+                    // watch would deadlock — the list fires exactly once
+                    // per child-count change when its content end nears.
+                    let Some(bounds) = shared_ref.node_bounds.get(&id) else {
                         continue;
                     };
-                    let top = f64::from(bounds.origin.y);
-                    if top < viewport_h + VIEWPORT_OVERSCAN {
+                    let bottom = f64::from(bounds.bottom());
+                    if bottom < viewport_h + VIEWPORT_OVERSCAN {
                         end_fires.push((id, watch.identifier.clone(), last));
                     }
                 }

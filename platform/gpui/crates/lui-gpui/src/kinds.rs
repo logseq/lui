@@ -744,7 +744,13 @@ fn input(
     // Register the field's focus handle so the root keydown forwarder
     // can target keydowns at this node (document.activeElement parity).
     let handle = state.read(cx).focus_handle(cx);
-    view.shared.borrow_mut().register_focus(node_id, handle);
+    view.shared.borrow_mut().register_focus(node_id, handle.clone());
+    // Edge-triggered autofocus: the first render of a node carrying
+    // `autofocus` takes focus; re-emits don't steal focus back.
+    if node.flag(Property::Autofocus) && !view.states.autofocus_done {
+        view.states.autofocus_done = true;
+        window.defer(cx, move |window, cx| handle.focus(window, cx));
+    }
     // Controlled-value echo: push wire `value` into the state, but only
     // when the prop itself changed (re-emit or a `set-value` op).
     // Comparing against the live text would fight the user's typing in
@@ -816,7 +822,13 @@ fn textarea(
     }
     let state = view.states.textarea.clone().expect("initialized");
     let handle = state.read(cx).focus_handle(cx);
-    view.shared.borrow_mut().register_focus(node_id, handle);
+    view.shared.borrow_mut().register_focus(node_id, handle.clone());
+    // Edge-triggered autofocus: the first render of a node carrying
+    // `autofocus` takes focus; re-emits don't steal focus back.
+    if node.flag(Property::Autofocus) && !view.states.autofocus_done {
+        view.states.autofocus_done = true;
+        window.defer(cx, move |window, cx| handle.focus(window, cx));
+    }
     let placeholder = node.string_prop(Property::PlaceholderValue).unwrap_or("");
     if state.read(cx).presentation().placeholder().as_ref() != placeholder {
         state.update(cx, |state, cx| {
@@ -3035,10 +3047,14 @@ pub fn render_node(
                 // Wide-content scroller (e.g. the views table): bounded
                 // horizontally, content-sized vertically. `h_full` inside
                 // a content-sized column would collapse the viewport.
+                // restrict_scroll_to_axis keeps vertical wheel deltas from
+                // being remapped to a horizontal pan — they must reach an
+                // outer vertical scroller instead.
                 let mut element = h_flex()
                     .w_full()
                     .id(element_id(node.id))
                     .overflow_x_scroll()
+                    .restrict_scroll_to_axis()
                     .track_scroll(&view.states.scroll);
                 element = style::all(element, node, cx.theme());
                 return element
@@ -3453,6 +3469,60 @@ fn popover(
     cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
     if node.float_prop(Property::PopupX).is_none() {
+        // Element-anchored popover (`anchor`/`anchor-alignment`/`anchor-offset`
+        // set, no point): the node is emitted in-flow right after its trigger
+        // (web anchors to the parent's last child), so a zero-size layer's own
+        // origin is the trigger's bottom-left — the anchor point. `anchor`
+        // picks which popup corner sits at that point; `anchor-alignment`
+        // adjusts the cross axis.
+        if node.string_prop(Property::AnchorValue).is_some() {
+            let offset = node.float_prop(Property::AnchorOffset).unwrap_or(0.) as f32;
+            let (corner, dx, dy) = match (
+                node.string_prop(Property::AnchorValue),
+                node.string_prop(Property::AnchorAlignmentValue),
+            ) {
+                // below+start: popup's top-left at the trigger's bottom-left.
+                (Some("below"), Some("end")) => (Anchor::TopRight, 0., offset),
+                (Some("below"), Some("center")) => (Anchor::TopCenter, 0., offset),
+                (Some("below"), _) => (Anchor::TopLeft, 0., offset),
+                // above/left/right: same anchor point, the popup's opposing
+                // corner lands on it.
+                (Some("above"), Some("end")) => (Anchor::BottomRight, 0., -offset),
+                (Some("above"), Some("center")) => (Anchor::BottomCenter, 0., -offset),
+                (Some("above"), _) => (Anchor::BottomLeft, 0., -offset),
+                (Some("left"), _) => (Anchor::RightCenter, -offset, 0.),
+                (Some("right"), _) => (Anchor::LeftCenter, offset, 0.),
+                _ => (Anchor::TopLeft, 0., offset),
+            };
+            let mut menu = menu_box(view, node, cx);
+            if let Some(available) = node.float_prop(Property::AvailableHeight) {
+                if available > 0. {
+                    menu = menu.max_h(px(available as f32)).overflow_hidden();
+                }
+            }
+            if event_gate(view, node.id, EventKind::Dismiss) {
+                let shared = view.shared.clone();
+                let node_id = node.id;
+                menu = menu.on_mouse_down_out(move |_, _, cx| {
+                    fire(&shared, node_id, EventKind::Dismiss, cx, || unsafe {
+                        bridge::lui_ocaml_dismiss(node_id)
+                    });
+                });
+            }
+            view.shared
+                .borrow_mut()
+                .push_overlay(node.id, OverlayEntry::Node);
+            let layer = anchored()
+                .anchor(corner)
+                .offset(point(px(dx), px(dy)))
+                .snap_to_window()
+                .child(menu);
+            return div()
+                .id(element_id(node.id))
+                .size_0()
+                .child(deferred(layer).with_priority(3))
+                .into_any_element();
+        }
         // `size_full` inside `anchored` resolves against an indefinite
         // size and collapses to 0x0 — size the layer to the viewport
         // explicitly like `overlay_modal` does.
