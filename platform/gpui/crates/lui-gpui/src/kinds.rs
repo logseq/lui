@@ -393,6 +393,10 @@ fn button(
         icon_name(node, Property::InlineIconName).or_else(|| icon_name(node, Property::IconName))
     {
         button = button.icon(icon);
+    } else if let Some(data) = app_icon_data(view, node) {
+        // `app:` names resolve through the host — raw svg data keeps
+        // `currentColor` bound to the button's text color.
+        button = button.icon(Icon::default().data(&data));
     }
     button = button.selected(node.flag(Property::Selected));
     button = button.disabled(!node.enabled());
@@ -504,6 +508,16 @@ fn app_icon_image(
 
 fn icon_name(node: &NodeSnapshot, property: Property) -> Option<gpui_kit::assets::IconName> {
     node.string_prop(property).and_then(icon_for)
+}
+
+/// Raw svg bytes for an `app:` icon name via the host's `app_icon_svg`
+/// resolver — `currentColor` is left in place so the consumer's text
+/// color binds it (unlike `app_icon_image`, which pre-bakes the theme
+/// foreground into a bitmap for standalone image slots).
+fn app_icon_data(view: &LuiNodeView, node: &NodeSnapshot) -> Option<Vec<u8>> {
+    let name = icon_name_raw(node)?.strip_prefix("app:")?;
+    let resolver = view.shared.borrow().app_icon_svg.clone()?;
+    Some(resolver(name)?.into_bytes())
 }
 
 /// Map a wire icon name (`app:`-prefix already allowed) onto gpui-kit's
@@ -723,8 +737,11 @@ fn input(
         input = input.disabled(true);
     }
     // Inside an `input-group` the group container owns the bordered surface;
-    // the field drops its own chrome.
-    if parent_kind(view, node) == Some(NodeKind::InputGroup) {
+    // the field drops its own chrome. `data-appearance="none"` opts the
+    // field out anywhere else (borderless in-dialog search fields).
+    if parent_kind(view, node) == Some(NodeKind::InputGroup)
+        || crate::dom::attr(node, "data-appearance").as_deref() == Some("none")
+    {
         input = input.appearance(false);
     }
     style::all(input, node, cx.theme()).into_any_element()

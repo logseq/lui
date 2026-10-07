@@ -143,7 +143,7 @@ fn has_class(node: &NodeSnapshot, name: &str) -> bool {
 
 /// One attribute's string value. Extension `attrs` is a JSON object;
 /// the standard `DataAttrs` prop is the \x1e/\x1f record list.
-fn attr(node: &NodeSnapshot, name: &str) -> Option<String> {
+pub(crate) fn attr(node: &NodeSnapshot, name: &str) -> Option<String> {
     if let Some(raw) = node.extension_string_prop("attrs") {
         let attrs: serde_json::Value = serde_json::from_str(raw).ok()?;
         return attrs.get(name)?.as_str().map(str::to_string);

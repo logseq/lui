@@ -887,6 +887,18 @@ fn apply_decl<E: Styled>(mut element: E, prop: &str, value: &str, theme: &Theme)
                 "space-evenly" => element.justify_evenly(),
                 _ => element,
             },
+            "gap" => match resolve_px(&value) {
+                Some(v) => element.gap(px(v)),
+                None => element,
+            },
+            "column-gap" | "gap-x" => match resolve_px(&value) {
+                Some(v) => element.gap_x(px(v)),
+                None => element,
+            },
+            "row-gap" | "gap-y" => match resolve_px(&value) {
+                Some(v) => element.gap_y(px(v)),
+                None => element,
+            },
             "flex-shrink" => match value.parse::<f32>() {
                 Ok(v) => element.flex_shrink(v),
                 Err(_) => element,
