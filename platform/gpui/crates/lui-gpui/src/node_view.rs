@@ -2,6 +2,7 @@
 
 use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::component::slider::SliderState;
+use gpui_kit::component::ActiveTheme;
 use gpui_kit::gpui::{
     div, AnyElement, App, Bounds, Context, Element, ElementId, Entity, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, Pixels, Render, ScrollHandle, SharedString, Styled,
@@ -9,10 +10,213 @@ use gpui_kit::gpui::{
 };
 use lui_core::store::{NodeIdentity, Store};
 use lui_core::wire::Value;
-use lui_core::Property;
+use lui_core::{NodeKind, Property};
 
 use crate::backend::{LuiShared, Shared};
 use crate::kinds;
+
+/// Whether a child node may collapse into its same-direction flex parent.
+/// Standard containers need inert standard props and no extension props;
+/// `logseq-*` extension containers additionally allow `attrs` carrying
+/// only metadata and layout-inert inline declarations, `style-class`
+/// with no active utility tokens, and `events` every name of which some
+/// `logseq-*` ancestor also subscribes (an elided node's own listeners
+/// are never attached, so coverage must come from an ancestor's
+/// element). The node stays in the store either way — `closest()` and
+/// carrier resolution walk the store parent chain, not the render tree.
+fn elidable_node(
+    store: &Store,
+    child: &lui_core::store::Node,
+    parent_horizontal: bool,
+    multi: bool,
+) -> bool {
+    let direction = node_flex_direction(child);
+    if direction != Some(parent_horizontal) || child.children.is_empty() {
+        return false;
+    }
+    if child.children.len() > 1 && !multi {
+        return false;
+    }
+    let inert_class = |classes: &str| {
+        classes
+            .split_whitespace()
+            .all(|t| !crate::style::utility_token_active(t))
+    };
+    let standard_props_inert = child.props.iter().all(|(p, v)| match p {
+        Property::AccessibilityIdentifier => true,
+        Property::StyleClass => v.as_str().map(&inert_class).unwrap_or(false),
+        Property::DataAttrs => v.as_str().map(data_attrs_inert).unwrap_or(false),
+        _ => false,
+    });
+    if !standard_props_inert {
+        return false;
+    }
+    child
+        .extension_props
+        .iter()
+        .all(|(name, value)| match name.as_str() {
+            "attrs" | "data-style" => value.as_str().map(ext_attrs_inert).unwrap_or(false),
+            "style-class" => value.as_str().map(&inert_class).unwrap_or(false),
+            "events" => value.as_str().is_some_and(|events| {
+                events
+                    .split_whitespace()
+                    .all(|name| ext_event_covered(store, child, name))
+            }),
+            _ => false,
+        })
+}
+
+/// Whether some `logseq-*` ancestor also subscribes the dom-event `name`
+/// — an elided wrapper's own listener is never attached, so its event
+/// coverage must come from an ancestor element's handler. (Hit
+/// resolution already walks store ancestors to the nearest carrier.)
+fn ext_event_covered(store: &Store, node: &lui_core::store::Node, name: &str) -> bool {
+    // The root window element emits `click`/`contextmenu` for any hit
+    // (root::render mouse monitors), so those names are covered for
+    // every node regardless of ancestor listeners.
+    if matches!(name, "click" | "contextmenu") {
+        return true;
+    }
+    let mut cursor = node.parent;
+    while let Some(id) = cursor {
+        let Some(parent) = store.node(id) else {
+            break;
+        };
+        if matches!(parent.identity, NodeIdentity::Extension { .. })
+            && parent
+                .extension_props
+                .get("events")
+                .and_then(|v| v.as_str())
+                .is_some_and(|events| events.split_whitespace().any(|e| e == name))
+        {
+            return true;
+        }
+        cursor = parent.parent;
+    }
+    false
+}
+
+/// Whether an extension `attrs`/`data-style` payload carries nothing but
+/// metadata keys and layout-inert inline declarations — `position:
+/// relative|static`, zeroed margins/padding, `box-sizing`,
+/// `overflow-anchor`. Anything else keeps the wrapper: its inline style
+/// may carry real layout (`width`, `display`, transforms).
+fn ext_attrs_inert(raw: &str) -> bool {
+    let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return false;
+    };
+    map.iter().all(|(key, value)| {
+        if key != "style" && key != "data-style" {
+            return true;
+        }
+        let Some(style) = value.as_str() else {
+            return false;
+        };
+        style.split(';').all(inline_decl_inert)
+    })
+}
+
+/// Whether a `data-attrs` record list (\x1e/\x1f encoded) carries
+/// nothing but metadata and layout-inert inline style — same rule as
+/// `ext_attrs_inert` for the standard `DataAttrs` prop.
+fn data_attrs_inert(raw: &str) -> bool {
+    raw.split('\x1e').all(|record| {
+        let Some((key, value)) = record.split_once('\x1f') else {
+            return true;
+        };
+        if key != "style" && key != "data-style" {
+            return true;
+        }
+        value.split(';').all(inline_decl_inert)
+    })
+}
+
+/// Whether one `name: value` inline declaration cannot change layout —
+/// `position: relative|static` with no offsets, zeroed margins/padding,
+/// `box-sizing`, `overflow-anchor`.
+fn inline_decl_inert(decl: &str) -> bool {
+    let Some((prop, value)) = decl.split_once(':') else {
+        return decl.trim().is_empty();
+    };
+    match prop.trim() {
+        "position" => matches!(value.trim(), "relative" | "static"),
+        "margin" | "margin-top" | "margin-right" | "margin-bottom" | "margin-left"
+        | "padding" | "padding-top" | "padding-right" | "padding-bottom" | "padding-left" => {
+            let value = value.trim();
+            value == "0" || value.starts_with("0px") || value.starts_with("0 ")
+        }
+        "box-sizing" | "overflow-anchor" => true,
+        _ => false,
+    }
+}
+
+/// The flex direction a node actually renders: `flex-row`/`flex-col`
+/// class tokens override the kind's default (style.rs applies
+/// `.flex_row()`/`.flex_col()` on top of the container base), then the
+/// kind/`logseq-*` tag dispatch decides. `None` for non-container kinds.
+pub(crate) fn node_flex_direction(node: &lui_core::store::Node) -> Option<bool> {
+    flex_direction_of(&node.identity, &node.props, &node.extension_props)
+}
+
+/// [`node_flex_direction`] on a render-time snapshot — the callers in
+/// `kinds`/`dom` hold `NodeSnapshot`s, not store nodes.
+pub(crate) fn snapshot_flex_direction(node: &NodeSnapshot) -> Option<bool> {
+    flex_direction_of(&node.identity, &node.props, &node.extension_props)
+}
+
+fn flex_direction_of(
+    identity: &NodeIdentity,
+    props: &lui_core::store::NodeProps,
+    ext_props: &lui_core::store::NodeExtensionProps,
+) -> Option<bool> {
+    let classes = props
+        .get(&Property::StyleClass)
+        .and_then(|v| v.as_str())
+        .or_else(|| ext_props.get("style-class").and_then(|v| v.as_str()));
+    if let Some(classes) = classes {
+        if classes.split_whitespace().any(|t| t == "flex-row") {
+            return Some(true);
+        }
+        if classes.split_whitespace().any(|t| t == "flex-col") {
+            return Some(false);
+        }
+    }
+    container_direction(identity.kind()).or_else(|| crate::dom::ext_flex_direction_of(identity))
+}
+
+/// Flex direction a node renders through `kinds::container` —
+/// `Some(true)` horizontal (`h_flex`), `Some(false)` vertical
+/// (`v_flex`), `None` for kinds rendered by other code paths (which
+/// wrapper elision never touches). Mirrors the `container` dispatch in
+/// `kinds::render_node`.
+fn container_direction(kind: Option<NodeKind>) -> Option<bool> {
+    match kind {
+        Some(
+            NodeKind::Row
+            | NodeKind::ButtonGroup
+            | NodeKind::ToggleGroup
+            | NodeKind::InputGroup
+            | NodeKind::InputGroupActions
+            | NodeKind::Breadcrumb
+            | NodeKind::Toolbar
+            | NodeKind::RadioGroup
+            | NodeKind::Pagination
+            | NodeKind::TableRow,
+        ) => Some(true),
+        Some(
+            NodeKind::Column
+            | NodeKind::TableCell
+            | NodeKind::Box
+            | NodeKind::Table
+            | NodeKind::Tree
+            | NodeKind::ListSection
+            | NodeKind::SwipeActions
+            | NodeKind::SwipeAction
+            | NodeKind::Timeline,
+        ) => Some(false),
+        _ => None,
+    }
+}
 
 /// Immutable per-render copy of one node's state. Render never holds the
 /// shared borrow while building elements (child entities are created via
@@ -285,11 +489,90 @@ impl LuiNodeView {
                 && node.float_prop(Property::WidthValue).is_some()
                 && node.float_prop(Property::HeightValue).is_some()
             {
-                let mut frame = crate::style::all(div(), &node);
+                let mut frame = crate::style::all(div(), &node, cx.theme());
                 return view.cached(frame.style().clone()).into_any_element();
             }
         }
         view.into_any_element()
+    }
+
+    /// Child ids for rendering, collapsing identity wrapper levels.
+    ///
+    /// `parent` is `Some((horizontal, multi))` when the parent renders a
+    /// plain flex container: `horizontal` is its direction and `multi`
+    /// is true when the parent separates children by nothing but their
+    /// own boxes (no `gap` prop, no `gap-*` class token, no kind-level
+    /// default gap) so a wrapper may expand several children into its
+    /// slot without changing spacing.
+    ///
+    /// A node elides when it renders through `kinds::container` in the
+    /// same direction as the parent, has at least one child, and carries
+    /// only inert props: `accessibility-identifier`, or `style-class`
+    /// whose tokens all resolve to no gpui style (app-vocabulary classes
+    /// like `ls-*`). Event and attribute semantics are unaffected —
+    /// elided nodes stay in the store, so `closest()`/carrier walks
+    /// still resolve them; only their layout level disappears. Inside a
+    /// same-direction flex parent such a wrapper is a layout identity —
+    /// children inherit the same main-axis slots and the same cross-axis
+    /// stretch. Deep wrapper chains (foldable/virtuoso scaffold mirrored
+    /// from the web DOM) otherwise multiply taffy's per-level flex
+    /// re-measure into exponential layout cost.
+    ///
+    /// `None` for contexts whose child slot is not a plain flex container
+    /// (links, text flows) — no elision there since the wrapper's slot
+    /// semantics are unknown.
+    fn flat_child_ids(&self, children: &[i64], parent: Option<(bool, bool)>) -> Vec<i64> {
+        let Some((horizontal, multi)) = parent else {
+            return children
+                .iter()
+                .copied()
+                .filter(|id| self.shared.borrow().store.node(*id).is_some())
+                .collect();
+        };
+        let shared = self.shared.borrow();
+        let mut out = Vec::with_capacity(children.len());
+        let mut stack: Vec<i64> = children.iter().rev().copied().collect();
+        while let Some(id) = stack.pop() {
+            let Some(child) = shared.store.node(id) else {
+                continue;
+            };
+            let elide = elidable_node(&shared.store, child, horizontal, multi);
+            if elide {
+                stack.extend(child.children.iter().rev().copied());
+            } else {
+                out.push(id);
+            }
+        }
+        out
+    }
+
+    /// Whether the node's own flex container may host multi-child
+    /// elision — no explicit `gap` prop and no `gap`/`gap-*` style-class
+    /// token. Callers additionally exclude kinds whose `container`
+    /// chrome adds a default gap.
+    pub fn gapless(node: &NodeSnapshot) -> bool {
+        node.prop(Property::Gap).is_none()
+            && !node
+                .string_prop(Property::StyleClass)
+                .unwrap_or("")
+                .split_whitespace()
+                .any(|t| t == "gap" || t.starts_with("gap-"))
+    }
+
+    /// Like [`Self::child_elements`] but applies wrapper elision for a
+    /// parent that renders a plain flex container.
+    /// Each rendered node records its own geometry.
+    pub fn child_elements_flat(
+        &self,
+        node: &NodeSnapshot,
+        horizontal: bool,
+        multi: bool,
+        cx: &mut App,
+    ) -> Vec<gpui_kit::gpui::AnyElement> {
+        self.flat_child_ids(&node.children, Some((horizontal, multi)))
+            .into_iter()
+            .map(|child_id| Self::element_for(&self.shared, child_id, cx))
+            .collect()
     }
 }
 

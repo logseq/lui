@@ -2,7 +2,8 @@
 
 use crate::node_view::{LuiNodeView, NodeSnapshot};
 use crate::style;
-use gpui_kit::gpui::{div, px, AnyElement, IntoElement, ListState, Styled};
+use gpui_kit::component::ActiveTheme;
+use gpui_kit::gpui::{div, px, AnyElement, App, IntoElement, ListState, Styled};
 use std::collections::HashMap;
 
 /// Retained virtualization metadata lives outside Entity leases so feedback
@@ -18,7 +19,7 @@ pub(crate) struct State {
 
 /// A list that measures variable-height rows lazily. Structural changes
 /// splice only the differing span and preserve the logical scroll anchor.
-pub(crate) fn render(view: &mut LuiNodeView, node: &NodeSnapshot) -> AnyElement {
+pub(crate) fn render(view: &mut LuiNodeView, node: &NodeSnapshot, cx: &mut App) -> AnyElement {
     use gpui_kit::gpui::{list, ListAlignment, ListState};
     let (state, children) = {
         let mut shared = view.shared.borrow_mut();
@@ -111,5 +112,5 @@ pub(crate) fn render(view: &mut LuiNodeView, node: &NodeSnapshot) -> AnyElement 
         LuiNodeView::element_for(&shared, id, cx)
     })
     .size_full();
-    style::all(element, node).into_any_element()
+    style::all(element, node, cx.theme()).into_any_element()
 }

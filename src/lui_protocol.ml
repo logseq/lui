@@ -764,6 +764,10 @@ let can_contain_children kind =
     | MenuTrigger
     | MenuItem
     | ListItem
+    (* Option children feed the host picker's item list; they are not
+       rendered as subtrees. *)
+    | Select
+    | Combobox
     | Dialog
     | Drawer
     | Sheet

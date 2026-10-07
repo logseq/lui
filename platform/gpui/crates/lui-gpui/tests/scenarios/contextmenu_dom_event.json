@@ -29,10 +29,17 @@
     {"click": 4},
     {"expect-events": [
       {"kind": "extension-event", "node": 4, "identifier": "logseq-div",
+       "name": "dom-event", "json": {"name": "mousedown", "payload": {"nodeId": 4}}},
+      {"kind": "extension-event", "node": 4, "identifier": "logseq-div",
        "name": "dom-event",
        "json": {"name": "click",
                 "payload": {"name": "click", "nodeId": 4,
                             "target": {"tag": "DIV", "text": "quiet"}}}}
+    ]},
+    {"right-click": 4},
+    {"expect-events": [
+      {"kind": "extension-event", "node": 4, "identifier": "logseq-div",
+       "name": "dom-event", "json": {"name": "contextmenu", "payload": {"nodeId": 4}}}
     ]}
   ]
 }

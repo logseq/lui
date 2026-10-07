@@ -20,7 +20,7 @@ use gpui_kit::component::separator::Separator;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::gpui::{
-    div, px, AnyElement, Context, ElementId, InteractiveElement, IntoElement, MouseButton,
+    div, px, AnyElement, Context, ElementId, InteractiveElement, IntoElement,
     ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
 };
 use lui_core::bridge;
@@ -69,8 +69,8 @@ const BLOCK_TAGS: &[&str] = &[
 /// Inline tags -> horizontal baseline row (approximation of inline flow;
 /// true text-run mixing lands with the real DOM renderer milestone).
 const INLINE_TAGS: &[&str] = &[
-    "a", "abbr", "b", "code", "data", "dfn", "em", "em-emoji", "i", "kbd", "label", "mark", "q",
-    "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var",
+    "a", "abbr", "b", "code", "data", "del", "dfn", "em", "em-emoji", "i", "ins", "kbd", "label",
+    "mark", "q", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var",
 ];
 
 /// Tags that behave as clickable controls.
@@ -105,6 +105,32 @@ fn identifier_of(node: &NodeSnapshot) -> String {
     }
 }
 
+/// Whether an extension node renders through a plain flex container arm —
+/// `Some(false)` for the `v_flex` arms (block/table/unknown tags),
+/// `Some(true)` for the `h_flex` inline arm, `None` for non-extension
+/// nodes and the leaf arms. Used by wrapper elision to match an
+/// extension wrapper's direction against its parent's. Takes a bare
+/// identity — usable on `NodeSnapshot`s and store nodes alike.
+pub(crate) fn ext_flex_direction_of(identity: &NodeIdentity) -> Option<bool> {
+    let NodeIdentity::Extension { identifier, .. } = identity else {
+        return None;
+    };
+    let tag = identifier.strip_prefix("logseq-").unwrap_or(identifier);
+    if tag == "button" || BLOCK_TAGS.contains(&tag) || TABLE_TAGS.contains(&tag) {
+        return Some(false);
+    }
+    if INLINE_TAGS.contains(&tag) {
+        return Some(true);
+    }
+    if matches!(tag, "raw-text" | "br" | "hr" | "input" | "textarea")
+        || VOID_TAGS.contains(&tag)
+    {
+        return None;
+    }
+    // The unknown-tag catch-all arm renders a plain `v_flex`.
+    Some(false)
+}
+
 fn classes(node: &NodeSnapshot) -> &str {
     node.extension_string_prop("style-class").unwrap_or("")
 }
@@ -130,36 +156,65 @@ fn attr(node: &NodeSnapshot, name: &str) -> Option<String> {
 
 /// The `attrs` slot has two encodings by source: extension `attrs` is a
 /// JSON object ({name: value}); the standard `DataAttrs` prop is the
-/// \x1e/\x1f record list produced by data_attrs_encode.
+/// \x1e/\x1f record list produced by data_attrs_encode. Both can coexist
+/// (a dom-ops `set-attr` writes the extension slot on a standard node),
+/// so merge them — extension attrs win on key collision.
 fn parsed_attrs(node: &Node) -> serde_json::Map<String, serde_json::Value> {
-    if let Some(raw) = node.extension_props.get("attrs").and_then(|v| v.as_str()) {
-        return serde_json::from_str::<serde_json::Value>(raw)
-            .ok()
-            .and_then(|v| v.as_object().cloned())
-            .unwrap_or_default();
-    }
-    node.string_prop(Property::DataAttrs)
+    let mut map = node
+        .string_prop(Property::DataAttrs)
         .map(|raw| {
             raw.split('\x1e')
                 .filter_map(|record| {
                     let (name, value) = record.split_once('\x1f')?;
-                    Some((name.to_string(), serde_json::Value::String(value.to_string())))
+                    Some((
+                        name.to_string(),
+                        serde_json::Value::String(value.to_string()),
+                    ))
                 })
                 .collect::<serde_json::Map<String, serde_json::Value>>()
         })
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if let Some(raw) = node.extension_props.get("attrs").and_then(|v| v.as_str()) {
+        if let Ok(serde_json::Value::Object(extra)) = serde_json::from_str::<serde_json::Value>(raw)
+        {
+            for (key, value) in extra {
+                map.insert(key, value);
+            }
+        }
+    }
+    map
 }
 
 /// DOM-shaped element snapshot — mirrors imperative_dom.ml's
 /// flat_snapshot: handlers compare fields like tag/class/id and walk the
 /// `ancestors` chain for closest()/scope resolution.
+/// Standard kinds present the HTML tag their DOM twin would carry —
+/// delegated selectors (`a.page-ref`, `a.tag`, `button.x`) match on it.
+fn dom_tag_of_kind(kind: lui_core::wire_schema::NodeKind) -> String {
+    use lui_core::wire_schema::NodeKind;
+    match kind {
+        NodeKind::Link => "a",
+        NodeKind::Button | NodeKind::ToggleButton => "button",
+        NodeKind::Input | NodeKind::TextField | NodeKind::SearchField
+        | NodeKind::SecureField | NodeKind::NumberStepper => "input",
+        NodeKind::Textarea => "textarea",
+        NodeKind::Select | NodeKind::Combobox => "select",
+        NodeKind::MenuItem => "menuitem",
+        NodeKind::FileImage | NodeKind::Image | NodeKind::FilePreview => "img",
+        NodeKind::ListItem => "li",
+        NodeKind::BottomTab => "button",
+        kind => return kind.wire_name().to_uppercase(),
+    }
+    .to_uppercase()
+}
+
 fn shallow_snapshot(node: &Node) -> serde_json::Value {
     let tag = match &node.identity {
         NodeIdentity::Extension { identifier, .. } => identifier
             .strip_prefix("logseq-")
             .unwrap_or(identifier)
             .to_uppercase(),
-        NodeIdentity::Standard(kind) => kind.wire_name().to_uppercase(),
+        NodeIdentity::Standard(kind) => dom_tag_of_kind(*kind),
     };
     // Standard props are the only carrier of id/class/attrs/text on plain
     // elements — extension_props is empty for them, so a click target or
@@ -176,7 +231,23 @@ fn shallow_snapshot(node: &Node) -> serde_json::Value {
         .and_then(|v| v.as_str())
         .or_else(|| node.string_prop(Property::AccessibilityIdentifier))
         .unwrap_or("");
-    let attrs = parsed_attrs(node);
+    let mut attrs = parsed_attrs(node);
+    // Link props surface as the attrs a DOM `<a>` would carry — selectors
+    // (`a[target=_blank]`) and the default-action href lookup read them.
+    if node.identity.kind() == Some(lui_core::wire_schema::NodeKind::Link) {
+        if let Some(url) = node.string_prop(Property::UrlValue) {
+            attrs.insert(
+                "href".to_string(),
+                serde_json::Value::String(url.to_string()),
+            );
+        }
+        if let Some(target) = node.string_prop(Property::TargetValue) {
+            attrs.insert(
+                "target".to_string(),
+                serde_json::Value::String(target.to_string()),
+            );
+        }
+    }
     let dom_id = attrs
         .get("id")
         .and_then(|v| v.as_str())
@@ -243,10 +314,7 @@ fn target_snapshot(store: &Store, node_id: i64) -> serde_json::Value {
 /// falling back to the first one in the tree. dom-events only reach OCaml
 /// through extension carriers whose logseq_dom handler accepts the
 /// `logseq-` identifier prefix.
-pub(crate) fn logseq_carrier(
-    shared: &Shared,
-    from: Option<i64>,
-) -> Option<(i64, String)> {
+pub(crate) fn logseq_carrier(shared: &Shared, from: Option<i64>) -> Option<(i64, String)> {
     let shared = shared.borrow();
     let store = &shared.store;
     let ident_of = |id: i64| -> Option<String> {
@@ -288,9 +356,7 @@ pub(crate) fn deepest_hit(
     shared
         .node_bounds
         .iter()
-        .filter(|(id, bounds)| {
-            bounds.contains(&position) && store.node(**id).is_some()
-        })
+        .filter(|(id, bounds)| bounds.contains(&position) && store.node(**id).is_some())
         .map(|(id, _)| *id)
         .max_by_key(|id| {
             let mut depth = 0u32;
@@ -343,6 +409,9 @@ pub fn dom_event_via(
         guard.last_click_emit = Some((target_id, now));
     }
     let target = target_snapshot(&shared.borrow().store, target_id);
+    if std::env::var_os("LUI_GPUI_DUMP_DOM").is_some() {
+        eprintln!("dom-event {name} target={target_id} snap={target}");
+    }
     let mut payload = serde_json::json!({
         "name": name,
         "nodeId": target_id,
@@ -375,8 +444,8 @@ pub fn dom_event_via(
 }
 
 /// Attach DOM listeners declared in the `events` prop (space-separated
-/// names). The scaffold wires pointer/click; the rest arrive with the
-/// input/focus milestone.
+/// names). Context menus use the window observer so one pointer press
+/// cannot emit through both an element listener and its root.
 fn with_dom_events<E: StatefulInteractiveElement>(
     element: E,
     shared: &Shared,
@@ -420,32 +489,15 @@ fn with_dom_events<E: StatefulInteractiveElement>(
                     );
                 });
             }
-            "contextmenu" => {
-                let shared = shared.clone();
-                let identifier = identifier.clone();
-                let node_id = node.id;
-                element = element.on_mouse_down(
-                    MouseButton::Right,
-                    move |event: &gpui_kit::gpui::MouseDownEvent, _, cx| {
-                        let position = event.position;
-                        dom_event(
-                            &shared,
-                            node_id,
-                            &identifier,
-                            "contextmenu",
-                            serde_json::json!({
-                                "clientX": f64::from(position.x),
-                                "clientY": f64::from(position.y),
-                            }),
-                            cx,
-                        );
-                    },
-                );
-            }
             _ => {}
         }
     }
     element
+}
+
+/// Font semantics of inline HTML tags — see `style::inline_tag_style`.
+fn tag_semantic_style<E: Styled>(element: E, tag: &str, cx: &mut Context<LuiNodeView>) -> E {
+    style::inline_tag_style(element, tag, cx.theme())
 }
 
 /// Text content of the node: the `text` extension prop carries the payload.
@@ -536,11 +588,7 @@ fn register_viewport_watches(view: &LuiNodeView, node: &NodeSnapshot) {
 /// recorded bounds intersect the viewport (plus overscan). Runs once
 /// per frame from the host's UI tick; a lazy row fires exactly once —
 /// the OCaml `near` latch then republishes it as real content.
-pub fn fire_viewport_events(
-    shared: &Shared,
-    window: &Window,
-    cx: &mut gpui_kit::gpui::App,
-) {
+pub fn fire_viewport_events(shared: &Shared, window: &Window, cx: &mut gpui_kit::gpui::App) {
     let viewport_h = f64::from(window.viewport_size().height);
     let mut drop_ids: Vec<i64> = Vec::new();
     // lazy-mount hits grouped by parent node id → one dom-event each
@@ -587,11 +635,7 @@ pub fn fire_viewport_events(
                             p.extension_props
                                 .get("events")
                                 .and_then(|v| v.as_str())
-                                .map(|events| {
-                                    events
-                                        .split_whitespace()
-                                        .any(|e| e == "lazy-mount")
-                                })
+                                .map(|events| events.split_whitespace().any(|e| e == "lazy-mount"))
                                 .unwrap_or(false)
                         })
                         .map(|p| p.id);
@@ -669,10 +713,24 @@ pub fn fire_viewport_events(
         );
     }
     for (id, identifier) in singles {
-        dom_event(shared, id, &identifier, "lazy-mount", serde_json::json!({}), cx);
+        dom_event(
+            shared,
+            id,
+            &identifier,
+            "lazy-mount",
+            serde_json::json!({}),
+            cx,
+        );
     }
     for (id, identifier, _) in end_fires {
-        dom_event(shared, id, &identifier, "virt-end", serde_json::json!({}), cx);
+        dom_event(
+            shared,
+            id,
+            &identifier,
+            "virt-end",
+            serde_json::json!({}),
+            cx,
+        );
     }
 }
 
@@ -702,12 +760,12 @@ pub fn render(
             if !text.is_empty() {
                 element = element.child(SharedString::from(text));
             }
-            style::all(element, node).into_any_element()
+            style::all(element, node, cx.theme()).into_any_element()
         }
         "br" => div().h(px(6.)).into_any_element(),
         "hr" => {
             let mut element = div().py_1().w_full().child(Separator::horizontal());
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
         // Text entry — the InputState-backed editor lands with the editor
@@ -730,7 +788,7 @@ pub fn render(
             } else {
                 div().child(SharedString::from(value)).into_any_element()
             });
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
         _ if VOID_TAGS.contains(&tag.as_str()) => {
@@ -744,11 +802,19 @@ pub fn render(
             || TABLE_TAGS.contains(&tag.as_str())
             || tag == "button" =>
         {
-            let mut element = v_flex()
-                .id(ElementId::Integer(node.id as u64));
+            // Plain v_flex container — wrapper elision applies. `multi`
+            // requires no gap source (class token, `gap` prop, or the
+            // same-named extension prop) between the children.
+            let multi = LuiNodeView::gapless(node)
+                && !classes(node)
+                    .split_whitespace()
+                    .any(|t| t == "gap" || t.starts_with("gap-"))
+                && node.extension_prop("gap").is_none();
+            let horizontal = crate::node_view::snapshot_flex_direction(node).unwrap_or(false);
+            let mut element = v_flex().id(ElementId::Integer(node.id as u64));
             element = with_text(element, node);
-            element = element.children(children);
-            element = style::all(element, node);
+            element = element.children(view.child_elements_flat(node, horizontal, multi, cx));
+            element = style::all(element, node, cx.theme());
             element = with_scroll(element, node);
             if CLICKABLE_TAGS.contains(&tag.as_str()) || has_class(node, "cursor-pointer") {
                 element = element.cursor_pointer();
@@ -756,25 +822,80 @@ pub fn render(
             with_dom_events(element, &shared, node).into_any_element()
         }
         _ if INLINE_TAGS.contains(&tag.as_str()) => {
-            let mut element = h_flex()
-                .id(ElementId::Integer(node.id as u64))
-                .items_baseline();
-            element = with_text(element, node);
-            element = element.children(children);
-            element = style::all(element, node);
-            element = with_scroll(element, node);
-            if CLICKABLE_TAGS.contains(&tag.as_str()) {
-                element = element.cursor_pointer();
+            // `<br>` splits the run into stacked lines (one h_flex each
+            // inside a v_flex). Flex-wrap would be the DOM-accurate shape,
+            // but taffy's hypothetical-cross-size pass re-lays-out every
+            // child per wrap line and explodes on nested wrap containers.
+            let br_at: Vec<bool> = {
+                let store = view.shared.borrow();
+                node.children
+                    .iter()
+                    .filter(|cid| store.store.node(**cid).is_some())
+                    .map(|cid| {
+                        NodeSnapshot::snapshot(&store.store, *cid)
+                            .map(|n| {
+                                matches!(
+                                    n.identity,
+                                    NodeIdentity::Standard(
+                                        lui_core::wire_schema::NodeKind::Br
+                                    )
+                                ) || tag_of(&n) == "br"
+                            })
+                            .unwrap_or(false)
+                    })
+                    .collect()
+            };
+            if br_at.iter().any(|b| *b) {
+                let mut lines: Vec<Vec<gpui_kit::gpui::AnyElement>> = vec![Vec::new()];
+                for (is_br, child) in br_at.into_iter().zip(children) {
+                    if is_br {
+                        lines.push(Vec::new());
+                    } else {
+                        lines.last_mut().unwrap().push(child);
+                    }
+                }
+                let mut element = v_flex().id(ElementId::Integer(node.id as u64));
+                element = with_text(element, node);
+                element = element.children(
+                    lines
+                        .into_iter()
+                        .map(|line| h_flex().items_start().children(line).into_any_element()),
+                );
+                element = tag_semantic_style(element, &tag, cx);
+                element = style::all(element, node, cx.theme());
+                element = with_scroll(element, node);
+                if CLICKABLE_TAGS.contains(&tag.as_str()) {
+                    element = element.cursor_pointer();
+                }
+                with_dom_events(element, &shared, node).into_any_element()
+            } else {
+                let mut element = h_flex()
+                    .id(ElementId::Integer(node.id as u64))
+                    .items_start();
+                element = with_text(element, node);
+                element = element.children(children);
+                element = tag_semantic_style(element, &tag, cx);
+                element = style::all(element, node, cx.theme());
+                element = with_scroll(element, node);
+                if CLICKABLE_TAGS.contains(&tag.as_str()) {
+                    element = element.cursor_pointer();
+                }
+                with_dom_events(element, &shared, node).into_any_element()
             }
-            with_dom_events(element, &shared, node).into_any_element()
         }
         // Unknown logseq-* tag: transparent passthrough, never a warning
         // frame — the logseq family is understood vocabulary, not "missing".
         _ => {
+            let multi = LuiNodeView::gapless(node)
+                && !classes(node)
+                    .split_whitespace()
+                    .any(|t| t == "gap" || t.starts_with("gap-"))
+                && node.extension_prop("gap").is_none();
+            let horizontal = crate::node_view::snapshot_flex_direction(node).unwrap_or(false);
             let mut element = v_flex();
             element = with_text(element, node);
-            element = element.children(children);
-            element = style::all(element, node);
+            element = element.children(view.child_elements_flat(node, horizontal, multi, cx));
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
     }
@@ -852,7 +973,10 @@ mod tests {
         let node = ext_node(
             1,
             "logseq-input",
-            &[("attrs", Value::Str(r#"{"id": "q", "value": "abc", "data-x": 1}"#.into()))],
+            &[(
+                "attrs",
+                Value::Str(r#"{"id": "q", "value": "abc", "data-x": 1}"#.into()),
+            )],
             &[],
         );
         assert_eq!(attr(&snapshot_of(&node), "id").as_deref(), Some("q"));
@@ -861,7 +985,12 @@ mod tests {
         assert!(attr(&snapshot_of(&node), "data-x").is_none());
         assert!(attr(&snapshot_of(&node), "missing").is_none());
         // Broken JSON is not an error — just no attrs.
-        let bad = ext_node(2, "logseq-div", &[("attrs", Value::Str("{oops".into()))], &[]);
+        let bad = ext_node(
+            2,
+            "logseq-div",
+            &[("attrs", Value::Str("{oops".into()))],
+            &[],
+        );
         assert!(attr(&snapshot_of(&bad), "id").is_none());
     }
 
@@ -936,7 +1065,10 @@ mod tests {
         let node = ext_node(
             1,
             "logseq-div",
-            &[("style-class", Value::Str("flex p-4 overflow-y-scroll".into()))],
+            &[(
+                "style-class",
+                Value::Str("flex p-4 overflow-y-scroll".into()),
+            )],
             &[],
         );
         let snap = snapshot_of(&node);
@@ -973,14 +1105,11 @@ mod tests {
 
     #[test]
     fn text_prop_reads_the_text_extension_value() {
-        let node = ext_node(
-            1,
-            "logseq-span",
-            &[("text", Value::Str("hi".into()))],
-            &[],
-        );
+        let node = ext_node(1, "logseq-span", &[("text", Value::Str("hi".into()))], &[]);
         assert_eq!(text_prop(&snapshot_of(&node)), "hi");
-        assert_eq!(text_prop(&snapshot_of(&ext_node(1, "logseq-div", &[], &[]))), "");
+        assert_eq!(
+            text_prop(&snapshot_of(&ext_node(1, "logseq-div", &[], &[]))),
+            ""
+        );
     }
 }
-
