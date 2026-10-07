@@ -127,6 +127,17 @@ impl std::error::Error for ApplyError {}
 /// notify exactly the entities whose node changed. This is the only place
 /// views are notified — rendering is always per-dirty-node.
 pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<Applied, ApplyError> {
+    if std::env::var("LUI_GPUI_DUMP_BATCHES").is_ok() {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/tmp/lui-batches.jsonl")
+        {
+            let _ = f.write_all(json.as_bytes());
+            let _ = f.write_all(b"\n");
+        }
+    }
     let batch = decode_batch(json).map_err(ApplyError::Decode)?;
     let applied = {
         let mut shared_ref = shared.borrow_mut();
