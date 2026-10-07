@@ -6,7 +6,7 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::v_flex;
 use gpui_kit::gpui::{
     canvas, div, px, App, Context, DispatchPhase, FocusHandle, InteractiveElement, IntoElement,
-    MouseButton, MouseDownEvent, MouseUpEvent, ParentElement, Render,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render,
     StatefulInteractiveElement, Styled, Subscription, Window,
 };
 
@@ -333,6 +333,46 @@ impl Render for LuiRootView {
                                             &ident,
                                             hit,
                                             "click",
+                                            serde_json::json!({
+                                                "clientX": f64::from(position.x),
+                                                "clientY": f64::from(position.y),
+                                            }),
+                                            cx,
+                                        );
+                                    },
+                                );
+                                // Pointer-move while a button is held —
+                                // the DOM `mousemove` drag gestures
+                                // (block DnD, marquee selection) listen
+                                // for. Free moves stay silent: the
+                                // document only needs the drag phase.
+                                let move_shared = mouse_shared.clone();
+                                window.on_mouse_event(
+                                    move |event: &MouseMoveEvent, phase, _window, cx| {
+                                        if phase != DispatchPhase::Capture
+                                            || event.pressed_button
+                                                != Some(MouseButton::Left)
+                                        {
+                                            return;
+                                        }
+                                        let Some(hit) =
+                                            crate::dom::deepest_hit(&move_shared, event.position)
+                                                .or_else(|| move_shared.borrow().store.root)
+                                        else {
+                                            return;
+                                        };
+                                        let Some((carrier, ident)) =
+                                            crate::dom::logseq_carrier(&move_shared, Some(hit))
+                                        else {
+                                            return;
+                                        };
+                                        let position = event.position;
+                                        crate::dom::dom_event_via(
+                                            &move_shared,
+                                            carrier,
+                                            &ident,
+                                            hit,
+                                            "mousemove",
                                             serde_json::json!({
                                                 "clientX": f64::from(position.x),
                                                 "clientY": f64::from(position.y),
