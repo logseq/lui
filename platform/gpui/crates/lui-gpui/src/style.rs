@@ -407,7 +407,7 @@ pub fn layout<E: Styled>(element: E, node: &NodeSnapshot) -> E {
             "start" => element.items_start(),
             "end" => element.items_end(),
             "baseline" => element.items_baseline(),
-            "stretch" => element,
+            "stretch" => element.items_stretch(),
             _ => element.items_center(),
         };
     }
