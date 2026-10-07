@@ -2926,9 +2926,13 @@ fn popover(
     cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
     if node.float_prop(Property::PopupX).is_none() {
-        let _ = window;
+        // `size_full` inside `anchored` resolves against an indefinite
+        // size and collapses to 0x0 — size the layer to the viewport
+        // explicitly like `overlay_modal` does.
+        let viewport = window.viewport_size();
         let content = v_flex()
-            .size_full()
+            .w(viewport.width)
+            .h(viewport.height)
             .children(view.child_elements(node, cx));
         return div()
             .id(element_id(node.id))
