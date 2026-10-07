@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gpui_kit::gpui::{App, AppContext, Bounds, Entity, FocusHandle, Pixels, Window};
+use gpui_kit::gpui::{App, AppContext, Bounds, Entity, FocusHandle, Pixels, Point, Window};
 use lui_core::bridge;
 use lui_core::extension::{ExtensionRegistry, ExtensionSpec};
 use lui_core::store::{Applied, BackendError, Store};
@@ -71,6 +71,24 @@ pub struct LuiShared {
     /// Painted surface height per open toast id — read to compute the
     /// vertical offset of every toast below it.
     pub toast_heights: HashMap<i64, f32>,
+    /// Window-space bounds per open toast id, corrected out of the
+    /// deferred layer's pre-offset prepaint space — hover-pause and
+    /// swipe hit-testing (element events never reach the deferred layer).
+    pub toast_bounds: HashMap<i64, Bounds<Pixels>>,
+    /// Toast swipe-to-dismiss in flight: (toast id, press point).
+    pub toast_drag: Option<(i64, Point<Pixels>)>,
+    /// Toast ids the pointer rests on — auto-dismiss budgets stop
+    /// ticking while hovered (web: pause on interaction).
+    pub toast_paused: std::collections::HashSet<i64>,
+    /// Milliseconds until each open toast auto-dismisses — a spawned
+    /// timer task decrements it and fires `Dismiss` at zero.
+    pub toast_remaining_ms: HashMap<i64, f64>,
+    /// Toast ids with a running auto-dismiss timer task — guards
+    /// re-registration across re-renders.
+    pub toast_timers: std::collections::HashSet<i64>,
+    /// Keyboard-highlighted menu item — roving focus for arrow-key
+    /// navigation inside open menus (web menu keyboard parity).
+    pub menu_highlight: Option<i64>,
 }
 
 /// How a host-side Escape closes one open overlay — pushed onto
@@ -127,6 +145,12 @@ impl LuiShared {
             overlay_stack: Vec::new(),
             toasts: Vec::new(),
             toast_heights: HashMap::new(),
+            toast_bounds: HashMap::new(),
+            toast_drag: None,
+            toast_paused: std::collections::HashSet::new(),
+            toast_remaining_ms: HashMap::new(),
+            toast_timers: std::collections::HashSet::new(),
+            menu_highlight: None,
         }));
         crate::extension::register_builtin_renderers(&shared);
         shared
@@ -242,27 +266,14 @@ pub fn dismiss_topmost_overlay(shared: &Shared, cx: &mut App) -> bool {
             });
         }
         OverlayEntry::ContextMenu => {
+            shared.borrow_mut().menu_highlight = None;
             if let Some(view) = shared.borrow().views.get(&id).cloned() {
                 view.read(cx).states.overlay.set(None);
                 cx.notify(view.entity_id());
             }
             // The `context-menu` child carries the Dismiss registration,
             // mirroring the popup's own press-outside handler.
-            let menu_id = {
-                let shared_ref = shared.borrow();
-                shared_ref
-                    .store
-                    .node(id)
-                    .into_iter()
-                    .flat_map(|node| node.children.iter().copied())
-                    .find(|child| {
-                        shared_ref
-                            .store
-                            .node(*child)
-                            .and_then(|n| n.identity.kind())
-                            == Some(lui_core::wire_schema::NodeKind::ContextMenu)
-                    })
-            };
+            let menu_id = menu_child_id(shared, id);
             if let Some(menu_id) = menu_id {
                 fire(shared, menu_id, EventKind::Dismiss, cx, || unsafe {
                     bridge::lui_ocaml_dismiss(menu_id)
@@ -294,21 +305,8 @@ pub fn dismiss_topmost_overlay(shared: &Shared, cx: &mut App) -> bool {
                 view.read(cx).states.submenu_suppress.set(true);
                 cx.notify(view.entity_id());
             }
-            let menu_id = {
-                let shared_ref = shared.borrow();
-                shared_ref
-                    .store
-                    .node(id)
-                    .into_iter()
-                    .flat_map(|node| node.children.iter().copied())
-                    .find(|child| {
-                        matches!(
-                            shared_ref.store.node(*child).and_then(|n| n.identity.kind()),
-                            Some(lui_core::wire_schema::NodeKind::DropdownMenu)
-                                | Some(lui_core::wire_schema::NodeKind::ContextMenu)
-                        )
-                    })
-            };
+            shared.borrow_mut().menu_highlight = None;
+            let menu_id = menu_child_id(shared, id);
             if let Some(menu_id) = menu_id {
                 fire(shared, menu_id, EventKind::Dismiss, cx, || unsafe {
                     bridge::lui_ocaml_dismiss(menu_id)
@@ -323,6 +321,108 @@ pub fn dismiss_topmost_overlay(shared: &Shared, cx: &mut App) -> bool {
         }
     }
     true
+}
+
+/// First `dropdown-menu`/`context-menu` child of `node_id` — the popup
+/// menu a menu-trigger or context-menu host owns.
+pub(crate) fn menu_child_id(shared: &Shared, node_id: i64) -> Option<i64> {
+    let shared_ref = shared.borrow();
+    shared_ref
+        .store
+        .node(node_id)
+        .into_iter()
+        .flat_map(|node| node.children.iter().copied())
+        .find(|child| {
+            matches!(
+                shared_ref
+                    .store
+                    .node(*child)
+                    .and_then(|n| n.identity.kind()),
+                Some(lui_core::wire_schema::NodeKind::DropdownMenu)
+                    | Some(lui_core::wire_schema::NodeKind::ContextMenu)
+            )
+        })
+}
+
+/// Topmost open menu for arrow-key navigation — its menu node id, plus
+/// the menu-trigger id when it is a submenu (ArrowLeft collapses back
+/// to the trigger). Scans the overlay stack newest-first: a non-menu
+/// overlay (dialog, sheet) on top captures keys, so menus beneath it
+/// are unreachable; tooltips float above without capturing. Returns
+/// None when no menu is reachable.
+pub(crate) fn topmost_menu(shared: &Shared, cx: &App) -> Option<(i64, Option<i64>)> {
+    let stack: Vec<(i64, OverlayEntry)> = shared.borrow().overlay_stack.clone();
+    for (id, entry) in stack.into_iter().rev() {
+        if !overlay_entry_open(shared, id, entry, cx) {
+            continue;
+        }
+        match entry {
+            OverlayEntry::Tooltip => continue,
+            OverlayEntry::Node => {
+                let kind = {
+                    let shared_ref = shared.borrow();
+                    shared_ref.store.node(id).and_then(|n| n.identity.kind())
+                };
+                return match kind {
+                    Some(lui_core::wire_schema::NodeKind::DropdownMenu)
+                    | Some(lui_core::wire_schema::NodeKind::ContextMenu) => Some((id, None)),
+                    _ => None,
+                };
+            }
+            OverlayEntry::ContextMenu => {
+                return menu_child_id(shared, id).map(|menu_id| (menu_id, None));
+            }
+            OverlayEntry::Submenu => {
+                return menu_child_id(shared, id).map(|menu_id| (menu_id, Some(id)));
+            }
+        }
+    }
+    None
+}
+
+/// Move the keyboard highlight to `id` — roving focus across menu
+/// items — repainting the old and new highlighted rows.
+pub(crate) fn set_menu_highlight(shared: &Shared, id: Option<i64>, cx: &mut App) {
+    let entities = {
+        let mut shared_ref = shared.borrow_mut();
+        if shared_ref.menu_highlight == id {
+            return;
+        }
+        let previous = shared_ref.menu_highlight;
+        shared_ref.menu_highlight = id;
+        // Entities to repaint: the previous and current items plus every
+        // open menu's popup owner. Menu items inside the deferred popup
+        // layer are not tracked by window invalidation (App::notify only
+        // repaints tracked entities), so repainting the in-flow view that
+        // builds the popup is what re-evaluates item `.when(highlight)`.
+        let mut ids: Vec<i64> = [previous, id].into_iter().flatten().collect();
+        for (owner, entry) in &shared_ref.overlay_stack {
+            let owns_menu = match entry {
+                OverlayEntry::Submenu | OverlayEntry::ContextMenu => true,
+                OverlayEntry::Node => shared_ref
+                    .store
+                    .node(*owner)
+                    .and_then(|n| n.identity.kind())
+                    .is_some_and(|kind| {
+                        matches!(
+                            kind,
+                            lui_core::wire_schema::NodeKind::DropdownMenu
+                                | lui_core::wire_schema::NodeKind::ContextMenu
+                        )
+                    }),
+                OverlayEntry::Tooltip => false,
+            };
+            if owns_menu {
+                ids.push(*owner);
+            }
+        }
+        ids.iter()
+            .filter_map(|item| shared_ref.views.get(item).map(|v| v.entity_id()))
+            .collect::<Vec<_>>()
+    };
+    for entity in entities {
+        cx.notify(entity);
+    }
 }
 
 #[derive(Debug)]
@@ -376,6 +476,16 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
         shared_ref.virtual_lists.remove(id);
         shared_ref.toasts.retain(|toast_id| *toast_id != *id);
         shared_ref.toast_heights.remove(id);
+        shared_ref.toast_bounds.remove(id);
+        shared_ref.toast_paused.remove(id);
+        shared_ref.toast_remaining_ms.remove(id);
+        shared_ref.toast_timers.remove(id);
+        if shared_ref.toast_drag.map(|(toast_id, _)| toast_id) == Some(*id) {
+            shared_ref.toast_drag = None;
+        }
+        if shared_ref.menu_highlight == Some(*id) {
+            shared_ref.menu_highlight = None;
+        }
     }
 
     {
