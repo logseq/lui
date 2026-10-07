@@ -298,7 +298,19 @@ pub fn apply_stream_json(shared: &Shared, json: &str, cx: &mut App) {
 /// `lui_ocaml_start` and after each `lui_ocaml_*` event returns — each call
 /// synchronously pushed the next batch into the queue.
 pub fn drain_pending(shared: &Shared, cx: &mut App) {
+    let dump = std::env::var_os("LOGSEQ_GPUI_DUMP_PATCHES").is_some();
     for json in bridge::take_patches() {
+        if dump {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open("/tmp/gpui-patches.jsonl")
+            {
+                let _ = f.write_all(json.as_bytes());
+                let _ = f.write_all(b"\n");
+            }
+        }
         apply_stream_json(shared, &json, cx);
     }
 }

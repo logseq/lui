@@ -2332,6 +2332,16 @@ pub fn render_node(
         NodeIdentity::Standard(kind) => *kind,
         NodeIdentity::Extension { .. } => return extension::render(view, node, window, cx),
     };
+    // display:none — a `hidden` token (literal or carried by a registered
+    // semantic class) removes the node from layout, same as the
+    // extension-arm check in dom.rs.
+    if let Some(classes) = node.string_prop(Property::StyleClass) {
+        if classes.split_whitespace().any(|t| t == "hidden")
+            || crate::style::class_has_utility(classes, "hidden")
+        {
+            return div().into_any_element();
+        }
+    }
     match kind {
         // Containers -----------------------------------------------------
         NodeKind::Root => {
@@ -2723,8 +2733,14 @@ pub fn render_node(
             // page-ref title text) — a bare `text_of` would drop them.
             let node_id = node.id;
             let shared = view.shared.clone();
-            let mut element = Link::new(element_id(node.id))
-                .child(text_of(node))
+            let mut element = Link::new(element_id(node.id));
+            // An empty `text` prop still lays out a phantom line inside the
+            // link's column — only attach a run when there is one.
+            let text = text_of(node);
+            if !text.is_empty() {
+                element = element.child(text);
+            }
+            element = element
                 .children(view.child_elements(node, cx))
                 .on_click(move |event: &ClickEvent, _, cx| {
                     fire(&shared, node_id, EventKind::Press, cx, || unsafe {
