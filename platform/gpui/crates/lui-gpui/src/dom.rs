@@ -316,13 +316,31 @@ fn target_snapshot(store: &Store, node_id: i64) -> serde_json::Value {
 /// falling back to the first one in the tree. dom-events only reach OCaml
 /// through extension carriers whose logseq_dom handler accepts the
 /// `logseq-` identifier prefix.
+/// Non-DOM `logseq-*` extensions — widget conduits and surfaces that own
+/// their input through dedicated conduit events. A `dom-event` routed to
+/// one of these (or carrying one as its target) feeds document keydowns
+/// into the wrong model — the invisible `logseq-editor` sink in
+/// particular would absorb every unbound keystroke and write it into its
+/// block buffer.
+const LOGSEQ_CONDUIT_IDENTS: &[&str] = &[
+    "logseq-editor",
+    "logseq-codemirror",
+    "logseq-em-emoji",
+    "logseq-katex",
+    "logseq-virt",
+];
+
+pub(crate) fn is_dom_carrier(identifier: &str) -> bool {
+    identifier.starts_with("logseq-") && !LOGSEQ_CONDUIT_IDENTS.contains(&identifier)
+}
+
 pub(crate) fn logseq_carrier(shared: &Shared, from: Option<i64>) -> Option<(i64, String)> {
     let shared = shared.borrow();
     let store = &shared.store;
     let ident_of = |id: i64| -> Option<String> {
         match &store.node(id)?.identity {
             NodeIdentity::Extension { identifier, .. }
-                if identifier.starts_with("logseq-") =>
+                if is_dom_carrier(identifier) =>
             {
                 Some(identifier.clone())
             }
@@ -404,6 +422,31 @@ fn pointer_events_explicit(node: &lui_core::store::Node) -> Option<bool> {
     None
 }
 
+/// Structural `pointer-events` implied by the node's own shape — an
+/// always-mounted cover `popover` is a positioning shell, not a surface:
+/// it must not swallow clicks meant for the content below, while its
+/// floating children (point-anchored popovers, dialogs, sheets, drawers,
+/// toasts) and any node that registered pointer handlers stay hittable.
+/// `None` means inherit.
+fn pointer_events_implicit(node: &lui_core::store::Node) -> Option<bool> {
+    use lui_core::wire_schema::NodeKind;
+    if let NodeIdentity::Standard(kind) = &node.identity {
+        match kind {
+            // No popup-x prop => cover shell (positions children above the
+            // page, owns no surface of its own).
+            NodeKind::Popover => return Some(node.float_prop(Property::PopupX).is_some()),
+            NodeKind::Dialog | NodeKind::Drawer | NodeKind::Sheet | NodeKind::Toast => {
+                return Some(true)
+            }
+            _ => {}
+        }
+    }
+    if node.flag(Property::PointerEnabled) || node.flag(Property::PressEnabled) {
+        return Some(true);
+    }
+    None
+}
+
 /// Whether `position` hits through `id` — `pointer-events` inherits, so
 /// the nearest ancestor's explicit setting decides.
 fn hit_transparent(shared: &std::cell::Ref<'_, crate::backend::LuiShared>, id: i64) -> bool {
@@ -412,7 +455,8 @@ fn hit_transparent(shared: &std::cell::Ref<'_, crate::backend::LuiShared>, id: i
         let Some(node) = shared.store.node(current) else {
             break;
         };
-        if let Some(enabled) = pointer_events_explicit(node) {
+        if let Some(enabled) = pointer_events_explicit(node).or_else(|| pointer_events_implicit(node))
+        {
             return !enabled;
         }
         cursor = node.parent;

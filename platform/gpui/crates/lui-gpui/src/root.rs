@@ -247,8 +247,16 @@ impl Render for LuiRootView {
                                         {
                                             return;
                                         }
+                                        // No painted node under the point
+                                        // still means a document click —
+                                        // target the root so OCaml's
+                                        // outside-editor blur/commit
+                                        // handlers see it.
                                         let Some(hit) =
                                             crate::dom::deepest_hit(&down_shared, event.position)
+                                                .or_else(|| {
+                                                    down_shared.borrow().store.root
+                                                })
                                         else {
                                             return;
                                         };
@@ -286,6 +294,7 @@ impl Render for LuiRootView {
                                         }
                                         let Some(hit) =
                                             crate::dom::deepest_hit(&up_shared, event.position)
+                                                .or_else(|| up_shared.borrow().store.root)
                                         else {
                                             return;
                                         };
