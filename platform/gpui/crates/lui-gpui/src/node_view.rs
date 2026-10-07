@@ -664,6 +664,10 @@ impl Element for NodeElement {
                 shared.painting_lists.push(self.id);
             }
             shared.node_bounds.insert(self.id, bounds);
+            // Re-arm a consumed lazy-mount/virt-end watch — the node may
+            // have kept its id without re-rendering, leaving the render
+            // path no chance to register a fresh watch.
+            crate::dom::rearm_viewport_watch(&mut shared, self.id);
             if std::env::var_os("LUI_GPUI_DUMP_BOUNDS").is_some() {
                 use std::sync::{Mutex, OnceLock};
                 static SEEN: OnceLock<Mutex<std::collections::HashSet<String>>> =

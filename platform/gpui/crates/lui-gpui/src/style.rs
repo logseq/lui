@@ -207,6 +207,44 @@ fn semantic_var_color(name: &str, theme: &Theme) -> Option<Hsla> {
         "border" => theme.border,
         "warning" => theme.warning,
         "popover" | "card" | "glass" => theme.popover,
+        _ => return rx_var_color(name, theme),
+    })
+}
+
+/// `--rx-<color>-<step>` — the radix accent palette the web app injects
+/// onto `:root` at runtime; gpui has no injector, so resolve the steps
+/// the accent swatches use (-06 inactive ring, -07/-09 fill and active
+/// ring) from a fixed base table matching the radix scale.
+fn rx_var_color(name: &str, theme: &Theme) -> Option<Hsla> {
+    let rest = name.strip_prefix("--rx-")?;
+    let (color, step) = rest.rsplit_once('-')?;
+    let mut base = match color {
+        "none" => theme.border,
+        "logseq" => theme.primary,
+        _ => parse_hex(rx_base_hex(color)?)?,
+    };
+    if step == "06" {
+        base.a *= 0.45;
+    }
+    Some(base)
+}
+
+fn rx_base_hex(color: &str) -> Option<&'static str> {
+    Some(match color {
+        "tomato" => "#e54d2e",
+        "red" => "#e5484d",
+        "crimson" => "#e93d82",
+        "pink" => "#d6409f",
+        "plum" => "#ab4aba",
+        "purple" => "#6e56cf",
+        "violet" => "#5b5bd6",
+        "indigo" => "#3e63dd",
+        "blue" => "#0091ff",
+        "cyan" => "#00a2c7",
+        "teal" => "#12a594",
+        "green" => "#46a758",
+        "grass" => "#62993c",
+        "orange" => "#ed8b4a",
         _ => return None,
     })
 }

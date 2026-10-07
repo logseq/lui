@@ -562,7 +562,7 @@ pub fn dom_event_via(
     // Host-initiated — bypass `event_allowed` (it admits ExtensionEvent
     // only for extension nodes; a `dom-event` may legitimately target a
     // standard node, e.g. the root for document keydown).
-    unsafe {
+    let rc = unsafe {
         bridge::lui_ocaml_extension_event(
             carrier_id,
             identifier.as_ptr(),
@@ -570,6 +570,9 @@ pub fn dom_event_via(
             values.as_ptr(),
         )
     };
+    if std::env::var_os("LUI_GPUI_DUMP_LAZY").is_some() {
+        eprintln!("ext-event {name} carrier={carrier_id} rc={rc}");
+    }
     crate::backend::drain_pending(shared, cx);
 }
 
@@ -714,6 +717,76 @@ fn register_viewport_watches(view: &LuiNodeView, node: &NodeSnapshot) {
     }
 }
 
+/// Store-node twin of `register_viewport_watches` — prepaint re-arms a
+/// `lazy-mount`/`virt-end` watch the render path never (re)installed:
+/// a lazy row that republishes identical props keeps its node id and
+/// never re-renders, so after its first fire consumed the watch entry
+/// nothing registers a new one and the row stays collapsed forever
+/// (`g h` back onto the same page hits exactly this). Called from
+/// `LuiNodeView::prepaint`, which runs for every live node each frame.
+pub fn rearm_viewport_watch(shared: &mut crate::backend::LuiShared, id: i64) {
+    if shared.viewport_watched.contains_key(&id) {
+        return;
+    }
+    let Some(node) = shared.store.node(id) else {
+        return;
+    };
+    let Some(events) = node
+        .extension_props
+        .get("events")
+        .and_then(|v| v.as_str())
+    else {
+        return;
+    };
+    let mut lazy = false;
+    let mut end = false;
+    for name in events.split_whitespace() {
+        match name {
+            "lazy-mount" => lazy = true,
+            "virt-end" => end = true,
+            _ => {}
+        }
+    }
+    if !(lazy || end) {
+        return;
+    }
+    let identifier = match &node.identity {
+        lui_core::store::NodeIdentity::Extension { identifier, .. } => identifier.clone(),
+        _ => String::new(),
+    };
+    // A mounted row keeps its `data-lazy-mount` attr; only re-arm the
+    // lazy watch while the placeholder is still childless — otherwise a
+    // consumed watch would re-fire every frame against real content.
+    if lazy && node.children.is_empty() {
+        if let Some(uuid) = parsed_attrs(node)
+            .get("data-lazy-mount")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+        {
+            shared.viewport_watched.insert(
+                id,
+                crate::backend::ViewportWatch {
+                    event: "lazy-mount",
+                    identifier: identifier.clone(),
+                    last_end_child: None,
+                    lazy_uuid: uuid,
+                },
+            );
+        }
+    }
+    if end {
+        shared.viewport_watched.insert(
+            id,
+            crate::backend::ViewportWatch {
+                event: "virt-end",
+                identifier,
+                last_end_child: None,
+                lazy_uuid: String::new(),
+            },
+        );
+    }
+}
+
 /// Fire `lazy-mount`/`virt-end` dom-events for watched nodes whose
 /// recorded bounds intersect the viewport (plus overscan). Runs once
 /// per frame from the host's UI tick; a lazy row fires exactly once —
@@ -819,6 +892,17 @@ pub fn fire_viewport_events(shared: &Shared, window: &Window, cx: &mut gpui_kit:
         }
     }
     drop(shared_mut);
+    if std::env::var_os("LUI_GPUI_DUMP_LAZY").is_some()
+        && (!lazy_groups.is_empty() || !singles.is_empty() || !end_fires.is_empty())
+    {
+        eprintln!(
+            "lazy-sweep groups={} singles={} ends={} watched={}",
+            lazy_groups.len(),
+            singles.len(),
+            end_fires.len(),
+            shared.borrow().viewport_watched.len()
+        );
+    }
     for (pid, (uuids, _)) in lazy_groups {
         let identifier = {
             let shared_ref = shared.borrow();
