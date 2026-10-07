@@ -393,17 +393,19 @@ fn button(
     }
     let node_id = node.id;
     let icon_size = node.string_prop(Property::SizeValue) == Some("icon");
-    let label = if icon_size {
-        String::new()
-    } else {
-        text_of(node)
-    };
-    let mut button = Button::new(element_id(node_id)).label(label);
+    let mut button = Button::new(element_id(node_id));
+    // gpui-component sizes an icon-only button as a square only when the
+    // label is absent — an empty label string reads as a text button and
+    // gets text-button padding. Leave it unset for `size:"icon"` and
+    // drop empty labels on regular buttons for the same reason.
+    if !icon_size {
+        let label = text_of(node);
+        if !label.is_empty() {
+            button = button.label(label);
+        }
+    }
     button = button_variant(button, node);
     button = button_size(button, node);
-    if icon_size {
-        button = button.compact();
-    }
     if let Some(icon) =
         icon_name(node, Property::InlineIconName).or_else(|| icon_name(node, Property::IconName))
     {
