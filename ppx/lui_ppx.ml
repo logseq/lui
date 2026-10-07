@@ -34,8 +34,8 @@ let apply ~loc fn args =
 let lam ~loc pats body =
   List.fold_right (B.pexp_fun ~loc Nolabel None) pats body
 
-(* Names for the destructured signal values: v2 .. vn. *)
-let vname i = Printf.sprintf "v%d" i
+(* Fresh names prevent generated binders from capturing the user's closures. *)
+let vname _index = gen_symbol ~prefix:"__lui_signal_" ()
 
 (* [tuple_signal loc ~start sources] builds a signal publishing the tuple
    (v_start .. v_n) for two or more sources. *)

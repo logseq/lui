@@ -94,7 +94,7 @@ let switch context parent source equal mount =
             ()
           | Some old_node ->
             let old_scope = !current_scope in
-            let saved = Lui_runtime.checkpoint application in
+            let saved = Lui_runtime.checkpoint_subtree application parent old_node in
             let candidate = ref None in
             (try
                let branch_context, new_node, new_retired =
@@ -215,52 +215,130 @@ let mount_keyed_item context parent segment key_fn compare mount nodes_ref
     item_source =
   let current = Signal.sample item_source in
   let key = key_fn current in
-  let item_context = Lui_ui.child_context context "keyed-item" in
+  let item_context = Lui_ui.context context.Lui_ui.ui_application
+    (Signal.child_scope "keyed-item" context.Lui_ui.ui_scope) in
   let item_scope = item_context.Lui_ui.ui_scope in
   let node = mount item_context item_source in
-  nodes_ref := !nodes_ref @ [ { ui_key = key; ui_node = node } ];
+  nodes_ref := { ui_key = key; ui_node = node } :: !nodes_ref;
   Signal.on_unmount item_scope (fun () ->
       if !(segment.Lui_runtime.dynamic_segment_active) then
         teardown_branch context.Lui_ui.ui_application segment parent node;
       remove_key_node nodes_ref key compare);
   item_scope
 
-let keyed context parent source key_fn compare mount =
+(* Each keyed row owns its state registry and lifecycle. A single owner
+   cleanup avoids quadratic registration of thousands of child scopes. *)
+type 'item keyed_entry = {
+  keyed_item_state : 'item Signal.state;
+  keyed_item_scope : Signal.scope;
+  keyed_item_node : int;
+}
+
+let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
+  let module Keys = Map.Make (struct type t = key let compare = compare end) in
   let application = context.Lui_ui.ui_application in
+  let scheduler = context.Lui_ui.ui_scheduler in
   let segment = Lui_runtime.register_dynamic_segment application parent in
+  let entries = ref Keys.empty in
+  let ordered = ref [||] in
   let nodes_ref = ref [] in
-  let keyed_value =
-    Signal.keyed context.Lui_ui.ui_scope source key_fn compare
-      (fun item_source ->
-         mount_keyed_item context parent segment key_fn compare mount
-           nodes_ref item_source)
-      (fun patch ->
-         match patch with
-         | Signal.Insert (key, index) ->
-           (match find_key_node !nodes_ref key compare with
-           | Some node ->
-             Lui_runtime.insert_child application parent node
-               (Lui_runtime.dynamic_segment_insert_index segment index);
-             Lui_runtime.resize_dynamic_segment application segment 1
-           | None -> invalid_arg "missing inserted keyed node")
-         | Signal.Remove (_key, _index) -> ()
-         | Signal.Move (key, _from_index, to_index) ->
-           (match find_key_node !nodes_ref key compare with
-           | Some node ->
-             Lui_runtime.move_child application parent node
-               (Lui_runtime.dynamic_segment_index segment to_index)
-           | None -> invalid_arg "missing moved keyed node"))
-  in
-  let dispose_callback =
-    segment_disposer application segment (fun () ->
-        Signal.dispose_keyed keyed_value)
-  in
+  let disposed = ref false in
+  let dispose_entry entry =
+    Signal.dispose_scope entry.keyed_item_scope;
+    Signal.dispose_signal (Signal.value entry.keyed_item_state) in
+  let remove_entry index entry =
+    if Lui_runtime.node_live application parent && Lui_runtime.node_live application entry.keyed_item_node then begin
+      Lui_runtime.remove_child_at application (Lui_runtime.canonical_node application parent)
+        (Lui_runtime.canonical_node application entry.keyed_item_node)
+        (Lui_runtime.dynamic_segment_index segment index);
+      Lui_runtime.drop_subtree application entry.keyed_item_node
+    end;
+    Lui_runtime.release_dynamic_segment application segment;
+    dispose_entry entry in
+  let reconcile items =
+    if not !disposed && Lui_runtime.node_live application parent then begin
+      let items = Array.of_list items in
+      let desired = ref Keys.empty in
+      Array.iteri (fun index item ->
+        let key = key_fn item in
+        if Keys.mem key !desired then invalid_arg "keyed collection contains a duplicate key";
+        desired := Keys.add key index !desired) items;
+      let old = !ordered in
+      let old_positions = ref Keys.empty in
+      Array.iteri (fun index (key, _) -> old_positions := Keys.add key index !old_positions) old;
+      (* Prefix sums track the remaining old rows while new rows are placed
+         left to right; each retained row's current index costs O(log n). *)
+      let counts = Array.make (Array.length old + 1) 0 in
+      let add index delta =
+        let index = ref (index + 1) in
+        while !index < Array.length counts do
+          counts.(!index) <- counts.(!index) + delta;
+          index := !index + (!index land (- !index))
+        done in
+      let before index =
+        let total = ref 0 and index = ref index in
+        while !index > 0 do
+          total := !total + counts.(!index);
+          index := !index - (!index land (- !index))
+        done;
+        !total in
+      for index = Array.length old - 1 downto 0 do
+        let key, entry = old.(index) in
+        if not (Keys.mem key !desired) then begin
+          remove_entry index entry;
+          entries := Keys.remove key !entries
+        end else add index 1
+      done;
+      let next = Array.mapi (fun index item ->
+        let key = key_fn item in
+        let entry = match Keys.find_opt key !entries with
+          | Some entry ->
+            let old_index = Keys.find key !old_positions in
+            let current_index = index + before old_index in
+            if current_index <> index then
+              Lui_runtime.move_child_at application (Lui_runtime.canonical_node application parent)
+                (Lui_runtime.canonical_node application entry.keyed_item_node)
+                (Lui_runtime.dynamic_segment_index segment current_index)
+                (Lui_runtime.dynamic_segment_index segment index);
+            add old_index (-1);
+            if Signal.get_state entry.keyed_item_state <> item then Signal.set entry.keyed_item_state item;
+            entry
+          | None ->
+            let item_state = Signal.state scheduler item in
+            let scope = Signal.scope "keyed-item" in
+            let item_context = Lui_ui.context application scope in
+            let node =
+              try
+                let node = mount item_context (Signal.value item_state) in
+                Signal.mount scope;
+                node
+              with failure -> Signal.dispose_scope scope; Signal.dispose_signal (Signal.value item_state); raise failure in
+            Lui_runtime.insert_child application parent node (Lui_runtime.dynamic_segment_insert_index segment index);
+            Lui_runtime.resize_dynamic_segment application segment 1;
+            let entry = { keyed_item_state = item_state; keyed_item_scope = scope; keyed_item_node = node } in
+            entries := Keys.add key entry !entries;
+            entry in
+        key, entry) items in
+      ordered := next;
+      nodes_ref := Array.to_list (Array.map (fun (key, entry) -> { ui_key = key; ui_node = entry.keyed_item_node }) next)
+    end in
+  reconcile (Signal.sample source);
+  let subscription = Signal.subscribe ~emit_initial:false source reconcile in
+  ignore (Signal.own context.Lui_ui.ui_scope subscription);
+  let dispose_callback () =
+    if not !disposed then begin
+      disposed := true;
+      Signal.dispose_subscription subscription;
+      for index = Array.length !ordered - 1 downto 0 do
+        let _, entry = (!ordered).(index) in
+        if !(segment.Lui_runtime.dynamic_segment_active) then remove_entry index entry
+        else dispose_entry entry
+      done;
+      ordered := [||]; entries := Keys.empty; nodes_ref := [];
+      Lui_runtime.unregister_dynamic_segment application segment
+    end in
   Signal.on_dispose context.Lui_ui.ui_scope dispose_callback;
-  {
-    dispose_dynamic_keyed = dispose_callback;
-    key_nodes = nodes_ref;
-    key_compare = compare;
-  }
+  { dispose_dynamic_keyed = dispose_callback; key_nodes = nodes_ref; key_compare = compare }
 
 let keyed_node keyed_value key =
   match

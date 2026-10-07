@@ -27,6 +27,7 @@ type 'root hot_reload_session = {
   hot_reload_requested_generation : int ref;
   hot_reload_completed_generation : int ref;
   hot_reload_events : reload_event list ref;
+  hot_reload_restart_reason : string option ref;
 }
 
 let create source_hash contract_hash root =
@@ -42,6 +43,7 @@ let create source_hash contract_hash root =
     hot_reload_requested_generation = ref 0;
     hot_reload_completed_generation = ref 0;
     hot_reload_events = ref [];
+    hot_reload_restart_reason = ref None;
   }
 
 let request session =
@@ -60,6 +62,8 @@ let preflight session request candidate_source_hash contract_hash =
     Some (ReloadRejected (request, "candidate generation was not requested"))
   else if request < requested || request <= completed then
     Some (ReloadStale request)
+  else if Option.is_some !(session.hot_reload_restart_reason) then
+    Some (ReloadRestartRequired (request, Option.get !(session.hot_reload_restart_reason)))
   else if contract_hash <> session.hot_reload_contract_hash then
     Some (ReloadRestartRequired (request, "root contract changed"))
   else if candidate_source_hash = source_hash session then
@@ -86,6 +90,11 @@ let record_completed_event session request source_hash status elapsed_ms =
 let reject session request source_hash message elapsed_ms =
   record_completed_event session request source_hash
     (ReloadRejected (request, message)) elapsed_ms
+
+let require_restart session request source_hash message elapsed_ms =
+  session.hot_reload_restart_reason := Some message;
+  record_completed_event session request source_hash
+    (ReloadRestartRequired (request, message)) elapsed_ms
 
 let validate_and_publish session request source_hash root validate
     elapsed_ms =

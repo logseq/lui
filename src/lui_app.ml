@@ -334,21 +334,25 @@ let reload_view app request source_hash contract_hash view elapsed_ms =
             Some
               (Lui_runtime.reconcile_subtree application saved
                  app.app_root_node old_view node);
+          Signal.mount candidate_scope;
           ignore (Lui_runtime.flush application);
           None
-        with Invalid_argument message ->
-          Lui_runtime.restore application saved;
-          ignore
-            (restore_state_scopes state.reload_state_scopes
-               saved_state_scopes);
-          Signal.dispose_scope candidate_scope;
-          Some message
+        with failure ->
+          let message = match failure with
+            | Invalid_argument message -> message
+            | _ -> Printexc.to_string failure in
+          if Lui_runtime.generation application = saved.checkpoint_generation then begin
+            Lui_runtime.restore application saved;
+            ignore (restore_state_scopes state.reload_state_scopes saved_state_scopes);
+            Signal.dispose_scope candidate_scope;
+            Some (false, message)
+          end else Some (true, message)
       in
       (match failure with
-      | Some message ->
+      | Some (false, message) ->
         reject_view state request source_hash contract_hash view message
           elapsed_ms
-      | None ->
+      | (None | Some (true, _)) ->
         let node =
           match !(candidate_node) with
           | Some current -> current
@@ -356,14 +360,24 @@ let reload_view app request source_hash contract_hash view elapsed_ms =
             invalid_arg "candidate view did not return a node"
         in
         Lui_runtime.retire_checkpoint_dynamic_segments saved old_view;
-        Signal.dispose_scope old_scope;
-        ignore
-          (prune_state_scopes state.reload_state_scopes
-             candidate_active_state_paths);
-        Signal.mount candidate_scope;
+        (* The candidate is committed. Publish its ownership before running
+           fallible old-view cleanup; a committed tree cannot be rolled back. *)
         state.reload_view_scope := candidate_scope;
         state.reload_view_node := node;
-        Lui_hot_reload.publish session request source_hash contract_hash
-          view
-          (fun _candidate -> None)
-          elapsed_ms)
+        let cleanup_failure = ref None in
+        List.iter (fun cleanup ->
+          try cleanup () with error ->
+            if !cleanup_failure = None then
+              cleanup_failure := Some (Printexc.to_string error))
+          [(fun () -> Signal.dispose_scope old_scope);
+           (fun () -> ignore (prune_state_scopes state.reload_state_scopes candidate_active_state_paths))];
+        let failure = match failure, !cleanup_failure with
+          | Some _, _ -> failure
+          | None, Some message -> Some (true, message)
+          | None, None -> None in
+        (match failure with
+        | Some (_, message) ->
+          Lui_hot_reload.require_restart session request source_hash message elapsed_ms
+        | None ->
+          Lui_hot_reload.publish session request source_hash contract_hash
+            view (fun _candidate -> None) elapsed_ms))

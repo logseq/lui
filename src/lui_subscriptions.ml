@@ -63,7 +63,9 @@ let unchanged active specs =
        specs
 
 let dispose_started started =
-  List.iter Signal.dispose_subscription !started
+  (* Attempt every cancellation without masking the original startup failure. *)
+  List.iter (fun subscription ->
+    try Signal.dispose_subscription subscription with _ -> ()) !started
 
 let build_desired active specs dispatch =
   let started = ref [] in
@@ -99,9 +101,11 @@ let build_desired active specs dispatch =
              })
       specs;
     SubscriptionsPrepared desired
-  with Invalid_argument message ->
+  with failure ->
     dispose_started started;
-    SubscriptionsPrepareRejected message
+    (match failure with
+    | Invalid_argument message -> SubscriptionsPrepareRejected message
+    | _ -> raise failure)
 
 let reconcile coordinator generation specs =
   let completed = !(coordinator.subscription_completed_generation) in
