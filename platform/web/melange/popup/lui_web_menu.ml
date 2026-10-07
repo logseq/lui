@@ -1328,18 +1328,67 @@ let mount_picker_dropdown renderer node =
           end)
   | None -> ()
 
+(* base-ui parity: a menu opens with its LAST enabled item highlighted and
+   focused (useListNavigation's initial sync picks getMaxListIndex).
+   [data-menu-tail] items (e.g. a session block appended after the menu
+   body mounts) are excluded — cljs-side they mount after the nav list
+   syncs, so they never receive the initial highlight; arrow-key
+   navigation still reaches them. Deferred to a timeout so it lands after
+   the trigger's own click-focus and after the mount batch completes. *)
+let highlight_initial_menu_item renderer container_id =
+  match Store.node renderer.web_store container_id with
+  | None -> ()
+  | Some container ->
+      ignore
+        (Js.Global.setTimeout
+           ~f:(fun () ->
+             let nodes =
+               W.Element.querySelectorAll
+                 "[role=menuitem]:not([data-disabled]):not([aria-disabled='true']):not([data-menu-tail])"
+                 container.platform_node
+             in
+             let n = W.NodeList.length nodes in
+             if n > 0 then begin
+               let rec clear index =
+                 if index < n then (
+                   (match W.NodeList.item index nodes with
+                    | Some item -> (
+                        match W.Element.ofNode item with
+                        | Some element ->
+                            W.Element.removeAttribute "data-highlighted"
+                              element;
+                            W.Element.setAttribute "tabindex" "-1" element
+                        | None -> ())
+                    | None -> ());
+                   clear (index + 1))
+               in
+               clear 0;
+               match W.NodeList.item (n - 1) nodes with
+               | Some item -> (
+                   match W.Element.ofNode item with
+                   | Some element ->
+                       W.Element.setAttribute "data-highlighted" ""
+                         element;
+                       W.Element.setAttribute "tabindex" "0" element;
+                       Lui_web_util.focus_element_without_scroll element
+                   | None -> ())
+               | None -> ()
+             end)
+           0)
+
 let mount_dropdown renderer node =
   match Store.node renderer.web_store node with
   | Some current ->
       let popup = Lui_web_util.child_element current.platform_node 0 in
+      let listbox = Lui_web_nodes.dropdown_listbox renderer node in
       W.Element.setAttribute "role"
-        (if Lui_web_nodes.dropdown_listbox renderer node then "listbox"
-         else "menu")
+        (if listbox then "listbox" else "menu")
         popup;
       W.Element.setAttribute "id"
         (Lui_web_util.node_dom_id node ^ "-popup") popup;
       refresh_dropdown_item_roles renderer node;
       refresh_combobox_list_state renderer node;
+      if not listbox then highlight_initial_menu_item renderer node;
       (match current.retained_parent with
        | Some parent ->
            (match Store.node renderer.web_store parent with
@@ -1460,7 +1509,11 @@ let mount_popover renderer node =
         Lui_web_position.track renderer node popup
           ~update:(fun () -> Lui_web_position.position_popover renderer node)
           ~on_invalid:(fun () ->
-            Lui_web_util.set_state_attribute positioner "hidden" true)
+            Lui_web_util.set_state_attribute positioner "hidden" true);
+      if
+        Store.property renderer.web_store node RoleValue
+        = Some (StringValue "menu")
+      then highlight_initial_menu_item renderer node
   | None -> invalid_arg "unknown popover node"
 
 let mount_popover_bang = mount_popover

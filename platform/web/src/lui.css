@@ -3,55 +3,55 @@
 @custom-variant dark (&:where(.dark, .dark *, [data-kb-theme=dark], [data-kb-theme=dark] *));
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --error: oklch(0.93 0.0314 17.73);
-  --error-foreground: oklch(0.64 0.2082 25.38);
-  --success: oklch(0.95 0.0506 162.83);
-  --success-foreground: oklch(0.69 0.1481 162.37);
-  --warning: oklch(0.96 0.0569 95.61);
-  --warning-foreground: oklch(0.71 0.186 48.13);
-  --input: oklch(0.922 0 0);
-  --border: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --radius: 0.5rem;
+  --lui-background: oklch(1 0 0);
+  --lui-foreground: oklch(0.145 0 0);
+  --lui-card: oklch(1 0 0);
+  --lui-card-foreground: oklch(0.145 0 0);
+  --lui-primary: oklch(0.205 0 0);
+  --lui-primary-foreground: oklch(0.985 0 0);
+  --lui-secondary: oklch(0.97 0 0);
+  --lui-secondary-foreground: oklch(0.205 0 0);
+  --lui-accent: oklch(0.97 0 0);
+  --lui-accent-foreground: oklch(0.205 0 0);
+  --lui-muted-foreground: oklch(0.556 0 0);
+  --lui-destructive: oklch(0.577 0.245 27.325);
+  --lui-destructive-foreground: oklch(0.985 0 0);
+  --lui-error: oklch(0.93 0.0314 17.73);
+  --lui-error-foreground: oklch(0.64 0.2082 25.38);
+  --lui-success: oklch(0.95 0.0506 162.83);
+  --lui-success-foreground: oklch(0.69 0.1481 162.37);
+  --lui-warning: oklch(0.96 0.0569 95.61);
+  --lui-warning-foreground: oklch(0.71 0.186 48.13);
+  --lui-input: oklch(0.922 0 0);
+  --lui-border: oklch(0.922 0 0);
+  --lui-ring: oklch(0.708 0 0);
+  --lui-radius: 0.5rem;
 }
 
 .dark,
 [data-kb-theme="dark"] {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --error: oklch(0.26 0.0886 26.05);
-  --error-foreground: oklch(0.64 0.2082 25.38);
-  --success: oklch(0.26 0.0487 172.54);
-  --success-foreground: oklch(0.69 0.1481 162.37);
-  --warning: oklch(0.29 0.0638 53.82);
-  --warning-foreground: oklch(0.71 0.186 48.13);
-  --input: oklch(0.269 0 0);
-  --border: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
+  --lui-background: oklch(0.145 0 0);
+  --lui-foreground: oklch(0.985 0 0);
+  --lui-card: oklch(0.145 0 0);
+  --lui-card-foreground: oklch(0.985 0 0);
+  --lui-primary: oklch(0.985 0 0);
+  --lui-primary-foreground: oklch(0.205 0 0);
+  --lui-secondary: oklch(0.269 0 0);
+  --lui-secondary-foreground: oklch(0.985 0 0);
+  --lui-accent: oklch(0.269 0 0);
+  --lui-accent-foreground: oklch(0.985 0 0);
+  --lui-muted-foreground: oklch(0.708 0 0);
+  --lui-destructive: oklch(0.396 0.141 25.723);
+  --lui-destructive-foreground: oklch(0.637 0.237 25.331);
+  --lui-error: oklch(0.26 0.0886 26.05);
+  --lui-error-foreground: oklch(0.64 0.2082 25.38);
+  --lui-success: oklch(0.26 0.0487 172.54);
+  --lui-success-foreground: oklch(0.69 0.1481 162.37);
+  --lui-warning: oklch(0.29 0.0638 53.82);
+  --lui-warning-foreground: oklch(0.71 0.186 48.13);
+  --lui-input: oklch(0.269 0 0);
+  --lui-border: oklch(0.269 0 0);
+  --lui-ring: oklch(0.439 0 0);
 }
 
 body {
@@ -66,8 +66,8 @@ body {
   --lui-platform-accent: #007aff;
   --lui-platform-control-radius: 10px;
   --lui-platform-surface-radius: 14px;
-  --primary: var(--lui-platform-accent);
-  --ring: var(--lui-platform-accent);
+  --lui-primary: var(--lui-platform-accent);
+  --lui-ring: var(--lui-platform-accent);
   --color-primary: var(--lui-platform-accent);
   --color-ring: var(--lui-platform-accent);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
@@ -77,40 +77,40 @@ body {
   --lui-platform-accent: #6750a4;
   --lui-platform-control-radius: 20px;
   --lui-platform-surface-radius: 28px;
-  --primary: var(--lui-platform-accent);
-  --ring: var(--lui-platform-accent);
+  --lui-primary: var(--lui-platform-accent);
+  --lui-ring: var(--lui-platform-accent);
   --color-primary: var(--lui-platform-accent);
   --color-ring: var(--lui-platform-accent);
   font-family: Roboto, "Noto Sans", system-ui, sans-serif;
 }
 
 @theme {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-error: var(--error);
-  --color-error-foreground: var(--error-foreground);
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--lui-background);
+  --color-foreground: var(--lui-foreground);
+  --color-card: var(--lui-card);
+  --color-card-foreground: var(--lui-card-foreground);
+  --color-primary: var(--lui-primary);
+  --color-primary-foreground: var(--lui-primary-foreground);
+  --color-secondary: var(--lui-secondary);
+  --color-secondary-foreground: var(--lui-secondary-foreground);
+  --color-accent: var(--lui-accent);
+  --color-accent-foreground: var(--lui-accent-foreground);
+  --color-muted-foreground: var(--lui-muted-foreground);
+  --color-destructive: var(--lui-destructive);
+  --color-destructive-foreground: var(--lui-destructive-foreground);
+  --color-error: var(--lui-error);
+  --color-error-foreground: var(--lui-error-foreground);
+  --color-success: var(--lui-success);
+  --color-success-foreground: var(--lui-success-foreground);
+  --color-warning: var(--lui-warning);
+  --color-warning-foreground: var(--lui-warning-foreground);
+  --color-input: var(--lui-input);
+  --color-border: var(--lui-border);
+  --color-ring: var(--lui-ring);
+  --radius-sm: calc(var(--lui-radius) - 4px);
+  --radius-md: calc(var(--lui-radius) - 2px);
+  --radius-lg: var(--lui-radius);
+  --radius-xl: calc(var(--lui-radius) + 4px);
 }
 
 @layer components {
@@ -943,12 +943,12 @@ body {
     min-width: min(10rem, var(--lui-popup-available-width, calc(100vw - 1rem)));
     flex-direction: column;
     overflow: auto;
-    border: 1px solid var(--foreground);
+    border: 1px solid var(--lui-foreground);
     border-radius: 0;
-    background: var(--background);
-    color: var(--foreground);
+    background: var(--lui-background);
+    color: var(--lui-foreground);
     padding: 0.25rem;
-    box-shadow: 0.25rem 0.25rem 0 var(--foreground);
+    box-shadow: 0.25rem 0.25rem 0 var(--lui-foreground);
     pointer-events: auto;
     z-index: 1;
     transform-origin: top left;
@@ -1160,7 +1160,7 @@ body {
     @apply border-transparent bg-primary text-primary-foreground;
   }
 
-  .lui-badge--secondary {
+  .lui-badge--lui-secondary {
     @apply border-transparent bg-secondary text-secondary-foreground;
   }
 
@@ -1168,15 +1168,15 @@ body {
     @apply text-foreground;
   }
 
-  .lui-badge--success {
+  .lui-badge--lui-success {
     @apply border-success-foreground bg-success text-success-foreground;
   }
 
-  .lui-badge--warning {
+  .lui-badge--lui-warning {
     @apply border-warning-foreground bg-warning text-warning-foreground;
   }
 
-  .lui-badge--error {
+  .lui-badge--lui-error {
     @apply border-error-foreground bg-error text-error-foreground;
   }
 
@@ -1834,7 +1834,7 @@ body {
   padding: 12px;
   border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
   border-radius: var(--lui-platform-surface-radius, 16px);
-  background: color-mix(in srgb, var(--background) 96%, currentColor 4%);
+  background: color-mix(in srgb, var(--lui-background) 96%, currentColor 4%);
 }
 
 .lui-simulator-camera-frame {
@@ -1887,7 +1887,7 @@ body {
 
 .lui-simulator-camera [role="alert"] {
   margin: 0;
-  color: var(--destructive);
+  color: var(--lui-destructive);
   font-size: 13px;
 }
 
@@ -1972,7 +1972,7 @@ body {
   overflow: hidden;
   border: 1px solid rgb(255 255 255 / 54%);
   border-radius: 32px;
-  background: color-mix(in srgb, var(--background) 72%, transparent);
+  background: color-mix(in srgb, var(--lui-background) 72%, transparent);
   box-shadow:
     0 12px 30px rgb(0 0 0 / 14%),
     inset 0 1px 0 rgb(255 255 255 / 58%);
@@ -1997,7 +1997,7 @@ body {
   margin: 0;
   padding: 12px 0 var(--lui-safe-area-bottom);
   border-radius: 0;
-  background: color-mix(in srgb, var(--lui-platform-accent) 8%, var(--background));
+  background: color-mix(in srgb, var(--lui-platform-accent) 8%, var(--lui-background));
   backdrop-filter: none;
 }
 
@@ -2033,7 +2033,7 @@ body {
 
 @media (prefers-reduced-transparency: reduce) {
   [data-lui-platform="ios"] .lui-bottom-tabs-bar {
-    background: var(--background);
+    background: var(--lui-background);
     backdrop-filter: none;
   }
 }
