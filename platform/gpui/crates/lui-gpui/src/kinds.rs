@@ -1,7 +1,9 @@
 //! `NodeKind` -> gpui-kit element dispatch. Every container embeds children
 //! as retained entity handles, caching explicitly sized stateless leaves.
 
-use gpui_kit::base::{Align, ElementExt, Placement, Positioner, StyledExt};
+use gpui_kit::base::{
+    Align, ElementExt, InteractiveElementExt, Placement, Positioner, StyledExt,
+};
 use gpui_kit::component::alert::{Alert, AlertVariant};
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::checkbox::Checkbox;
@@ -23,7 +25,7 @@ use gpui_kit::gpui::{
     Context, ElementId, Focusable, FontWeight, ImageSource, InteractiveElement, IntoElement,
     Modifiers, MouseButton, MouseDownEvent, ParentElement, PathPromptOptions, Pixels, Point,
     RenderImage,
-    StatefulInteractiveElement, Styled, SvgSize, Window,
+    StatefulInteractiveElement, Styled, SvgSize, Window, WindowControlArea,
 };
 use gpui_kit::prelude::FluentBuilder;
 use lui_core::bridge;
@@ -289,7 +291,20 @@ fn container(
             .cursor_pointer()
             .on_click(press_handler(view, node.id));
     }
-    let element = style::all(element, node, cx.theme());
+    let mut element = style::all(element, node, cx.theme());
+    // `data-window-titlebar` marks the container as the platform titlebar
+    // region: dragging uncovered areas moves the window and a double-click
+    // zooms it (hosts opt in via a transparent/merged titlebar).
+    if dom::attr(node, "data-window-titlebar").is_some() {
+        element = element
+            .window_control_area(WindowControlArea::Drag)
+            .on_double_click(|_, window, _| {
+                #[cfg(target_os = "macos")]
+                window.titlebar_double_click();
+                #[cfg(not(target_os = "macos"))]
+                window.zoom_window();
+            });
+    }
     element
         .children(view.child_elements_flat(node, flat_horizontal, multi, cx))
         .into_any_element()

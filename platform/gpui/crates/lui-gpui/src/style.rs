@@ -186,8 +186,12 @@ fn semantic_var_color(name: &str, theme: &Theme) -> Option<Hsla> {
         // Subtle fills on gray-04: guideline borders and closed-bullet
         // backgrounds ride this translucent tone in the web palette.
         "--lx-gray-04-alpha" => theme.list_active,
+        // kbd keycap fill + its hairline separator.
+        "--lx-gray-06-alpha" => theme.accent,
+        "--lx-gray-07-alpha" => theme.border,
         "--lx-gray-09" => theme.border,
         "--lx-gray-10" => theme.muted_foreground,
+        "--lx-gray-12" => theme.foreground,
         "--lx-gray-06" | "--lx-gray-08" => theme.muted,
         "--ls-also-color-0" => theme.secondary_foreground,
         // Bare surface tokens — the LUI `background`/`foreground` vocab
