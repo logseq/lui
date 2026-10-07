@@ -679,10 +679,15 @@ fn with_scroll<E: StatefulInteractiveElement>(element: E, node: &NodeSnapshot) -
 }
 
 /// Push the node's `text` prop as a leading text child when present.
+/// `data-emoji` carries the em-emoji glyph — the web stylesheet lifts it
+/// into rendered content, so it is plain text here.
 fn with_text<E: ParentElement>(element: E, node: &NodeSnapshot) -> E {
     let text = text_prop(node);
     if text.is_empty() {
-        element
+        match attr(node, "data-emoji") {
+            Some(glyph) => element.child(SharedString::from(glyph)),
+            None => element,
+        }
     } else {
         element.child(SharedString::from(text.to_string()))
     }
