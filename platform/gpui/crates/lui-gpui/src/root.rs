@@ -193,6 +193,10 @@ impl Render for LuiRootView {
                         if ev.keystroke.key == "escape" {
                             crate::backend::dismiss_topmost_overlay(&keydown_shared, cx);
                         }
+                        // Arrow keys and Enter navigate the topmost open
+                        // host menu — roving highlight, gpui's counterpart
+                        // of the web menu's keyboard focus.
+                        crate::kinds::menu_nav_key(&keydown_shared, &ev.keystroke.key, cx);
                         emit_dom_keydown(&keydown_shared, &ev.keystroke, window, cx);
                     })
                 });
@@ -226,6 +230,27 @@ impl Render for LuiRootView {
                                             )
                                         {
                                             return;
+                                        }
+                                        // A press on a toast starts a
+                                        // possible swipe-to-dismiss; the
+                                        // mousedown still forwards below.
+                                        // Element handlers never reach the
+                                        // deferred toast layer, so swipe is
+                                        // tracked at window level against
+                                        // corrected painted bounds.
+                                        let toast = {
+                                            let shared_ref = down_shared.borrow();
+                                            shared_ref
+                                                .toast_bounds
+                                                .iter()
+                                                .find(|(_, bounds)| {
+                                                    bounds.contains(&event.position)
+                                                })
+                                                .map(|(id, _)| *id)
+                                        };
+                                        if let Some(toast_id) = toast {
+                                            down_shared.borrow_mut().toast_drag =
+                                                Some((toast_id, event.position));
                                         }
                                         // No painted node under the point
                                         // still means a document click —
@@ -264,6 +289,35 @@ impl Render for LuiRootView {
                                         );
                                     },
                                 );
+                                let move_shared = mouse_shared.clone();
+                                window.on_mouse_event(
+                                    move |event: &MouseMoveEvent, phase, _window, _cx| {
+                                        if phase != DispatchPhase::Capture {
+                                            return;
+                                        }
+                                        // Toasts pause their auto-dismiss
+                                        // budget while the pointer rests
+                                        // on them (web: pause on
+                                        // interaction). Element hover
+                                        // never reaches the deferred
+                                        // toast layer, so track the
+                                        // pointer against painted bounds.
+                                        let mut shared_ref = move_shared.borrow_mut();
+                                        if shared_ref.toast_bounds.is_empty()
+                                            && shared_ref.toast_paused.is_empty()
+                                        {
+                                            return;
+                                        }
+                                        shared_ref.toast_paused = shared_ref
+                                            .toast_bounds
+                                            .iter()
+                                            .filter(|(_, bounds)| {
+                                                bounds.contains(&event.position)
+                                            })
+                                            .map(|(id, _)| *id)
+                                            .collect();
+                                    },
+                                );
                                 let up_shared = mouse_shared.clone();
                                 window.on_mouse_event(
                                     move |event: &MouseUpEvent, phase, _window, cx| {
@@ -271,6 +325,27 @@ impl Render for LuiRootView {
                                             || event.button != MouseButton::Left
                                         {
                                             return;
+                                        }
+                                        // Release ends a toast swipe —
+                                        // far enough toward the pinned
+                                        // (right) edge dismisses it.
+                                        let drag = up_shared.borrow_mut().toast_drag.take();
+                                        if let Some((toast_id, start)) = drag {
+                                            let dx = f32::from(event.position.x)
+                                                - f32::from(start.x);
+                                            if dx > 48. {
+                                                crate::backend::fire(
+                                                    &up_shared,
+                                                    toast_id,
+                                                    lui_core::EventKind::Dismiss,
+                                                    cx,
+                                                    || unsafe {
+                                                        lui_core::bridge::lui_ocaml_dismiss(
+                                                            toast_id,
+                                                        )
+                                                    },
+                                                );
+                                            }
                                         }
                                         let Some(hit) =
                                             crate::dom::deepest_hit(&up_shared, event.position)

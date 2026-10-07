@@ -22,7 +22,7 @@ use gpui_kit::component::Icon;
 use gpui_kit::component::{h_flex, v_flex, Disableable, Selectable, Sizable};
 use gpui_kit::gpui::{
     anchored, deferred, div, img, point, px, Anchor, AnyElement, App, AppContext, ClickEvent,
-    Context, ElementId, Focusable, FontWeight, ImageSource, InteractiveElement, IntoElement,
+    Bounds, Context, ElementId, Focusable, FontWeight, ImageSource, InteractiveElement, IntoElement,
     Modifiers, MouseButton, MouseDownEvent, ParentElement, PathPromptOptions, Pixels, Point,
     RenderImage,
     StatefulInteractiveElement, Styled, SvgSize, Window, WindowControlArea,
@@ -277,7 +277,10 @@ fn container(
                 })
                 .hover(move |style| style.bg(hover_bg))
         }
-        NodeKind::TableCell => base.py_3().text_sm(),
+        NodeKind::TableCell => base
+            .py_3()
+            .text_sm()
+            .text_color(cx.theme().foreground),
         NodeKind::Table => base.w_full(),
         _ => base,
     };
@@ -304,6 +307,11 @@ fn container(
                 #[cfg(not(target_os = "macos"))]
                 window.zoom_window();
             });
+    }
+    // `table-cell` carries its label in the `text` prop rather than a
+    // text child — render it like the other text-bearing kinds.
+    if kind == NodeKind::TableCell {
+        element = element.child(text_of(node));
     }
     element
         .children(view.child_elements_flat(node, flat_horizontal, multi, cx))
@@ -1213,8 +1221,73 @@ fn overlay_modal(
             // estimate and corrects itself on the next frame).
             let offset = {
                 let mut shared_ref = view.shared.borrow_mut();
-                if !shared_ref.toasts.contains(&node.id) {
+                let fresh = !shared_ref.toasts.contains(&node.id);
+                if fresh {
                     shared_ref.toasts.push(node.id);
+                }
+                // Web parity: a positive `duration` auto-dismisses; a
+                // spawned timer ticks the remaining budget down (paused
+                // while the pointer rests on the toast) and fires
+                // `Dismiss` at zero — the same path Close takes.
+                let duration_ms = node.float_prop(Property::DurationValue).unwrap_or(0.);
+                if fresh && duration_ms > 0. && shared_ref.toast_timers.insert(node.id) {
+                    shared_ref.toast_remaining_ms.insert(node.id, duration_ms);
+                    let shared = view.shared.clone();
+                    let toast_id = node.id;
+                    window
+                        .spawn(cx, move |cx: &mut gpui_kit::gpui::AsyncWindowContext| {
+                            let mut cx = cx.clone();
+                            async move {
+                                loop {
+                                    cx.background_executor()
+                                        .timer(std::time::Duration::from_millis(80))
+                                        .await;
+                                    let done = cx
+                                        .update(|_window, cx| {
+                                            let mut shared_ref = shared.borrow_mut();
+                                            let gone = !shared_ref.toasts.contains(&toast_id)
+                                                || shared_ref.store.node(toast_id).is_none();
+                                            if gone {
+                                                shared_ref.toast_timers.remove(&toast_id);
+                                                shared_ref.toast_remaining_ms.remove(&toast_id);
+                                                shared_ref.toast_paused.remove(&toast_id);
+                                                return true;
+                                            }
+                                            if shared_ref.toast_paused.contains(&toast_id) {
+                                                return false;
+                                            }
+                                            let remaining = shared_ref
+                                                .toast_remaining_ms
+                                                .get(&toast_id)
+                                                .copied()
+                                                .unwrap_or(0.)
+                                                - 80.;
+                                            shared_ref
+                                                .toast_remaining_ms
+                                                .insert(toast_id, remaining);
+                                            if remaining > 0. {
+                                                return false;
+                                            }
+                                            shared_ref.toast_timers.remove(&toast_id);
+                                            shared_ref.toast_remaining_ms.remove(&toast_id);
+                                            drop(shared_ref);
+                                            crate::backend::fire(
+                                                &shared,
+                                                toast_id,
+                                                EventKind::Dismiss,
+                                                cx,
+                                                || unsafe { bridge::lui_ocaml_dismiss(toast_id) },
+                                            );
+                                            true
+                                        })
+                                        .unwrap_or(true);
+                                    if done {
+                                        break;
+                                    }
+                                }
+                            }
+                        })
+                        .detach();
                 }
                 shared_ref
                     .toasts
@@ -1235,6 +1308,24 @@ fn overlay_modal(
                         move |bounds, _, cx| {
                             let height: f32 = bounds.size.height.into();
                             let mut shared_ref = shared.borrow_mut();
+                            // Deferred-anchored children prepaint in the
+                            // anchor's pre-offset space; the node's own
+                            // `node_bounds` entry records that offset (the
+                            // size-0 anchor sits where the layer's origin
+                            // lands). Subtract it to recover window-space
+                            // bounds for swipe/hover hit-testing.
+                            let anchor = shared_ref
+                                .node_bounds
+                                .get(&node_id)
+                                .map(|b| b.origin)
+                                .unwrap_or_default();
+                            shared_ref.toast_bounds.insert(
+                                node_id,
+                                Bounds {
+                                    origin: bounds.origin - anchor,
+                                    size: bounds.size,
+                                },
+                            );
                             if shared_ref.toast_heights.get(&node_id) != Some(&height) {
                                 shared_ref.toast_heights.insert(node_id, height);
                                 // Toasts below re-resolve their offset next frame.
@@ -1648,6 +1739,183 @@ fn close_submenu(shared: &Shared, trigger_id: i64, cx: &mut App) {
     }
 }
 
+/// Enabled items of `menu_id` in render order — `menu-item` and
+/// `menu-trigger` rows. A trigger is itself an item; its popup menu
+/// lives in a sibling layer, never among its own children, so the walk
+/// never descends past triggers or items. Separators/groups are
+/// skipped but descended.
+fn menu_item_ids(shared: &Shared, menu_id: i64) -> Vec<i64> {
+    let shared_ref = shared.borrow();
+    let mut items = Vec::new();
+    let mut stack: Vec<i64> = shared_ref
+        .store
+        .node(menu_id)
+        .into_iter()
+        .flat_map(|node| node.children.iter().rev().copied())
+        .collect();
+    while let Some(id) = stack.pop() {
+        let Some(node) = shared_ref.store.node(id) else {
+            continue;
+        };
+        match node.identity.kind() {
+            Some(NodeKind::MenuItem) | Some(NodeKind::MenuTrigger) => {
+                if node.enabled() {
+                    items.push(id);
+                }
+            }
+            _ => stack.extend(node.children.iter().rev().copied()),
+        }
+    }
+    items
+}
+
+/// Open a menu-trigger's submenu for Right/Enter — the same state
+/// writes as its hover path: claim the owning menu's open-sub-menu
+/// slot (evicting a sibling), set the trigger's open flag, and
+/// register the layer for Escape.
+fn open_menu_trigger(shared: &Shared, trigger_id: i64, cx: &mut App) {
+    let owner_slot = {
+        let shared_ref = shared.borrow();
+        shared_ref
+            .store
+            .node(trigger_id)
+            .and_then(|node| node.parent)
+            .filter(|parent| {
+                shared_ref
+                    .store
+                    .node(*parent)
+                    .map(|n| {
+                        matches!(
+                            n.identity.kind(),
+                            Some(NodeKind::DropdownMenu) | Some(NodeKind::ContextMenu)
+                        )
+                    })
+                    .unwrap_or(false)
+            })
+            .and_then(|parent| shared_ref.views.get(&parent).cloned())
+            .map(|view| view.read(cx).states.open_submenu.clone())
+    };
+    if let Some(slot) = owner_slot {
+        if let Some(other) = slot.get().filter(|id| *id != trigger_id) {
+            close_submenu(shared, other, cx);
+        }
+        slot.set(Some(trigger_id));
+    }
+    if let Some(view) = shared.borrow().views.get(&trigger_id).cloned() {
+        view.read(cx).states.menu_open.set(true);
+        view.read(cx).states.submenu_suppress.set(false);
+        cx.notify(view.entity_id());
+    }
+    shared
+        .borrow_mut()
+        .push_overlay(trigger_id, crate::backend::OverlayEntry::Submenu);
+}
+
+/// Activate a menu item for Enter — the same Press/PressDetail pair a
+/// pointer click reports (primary button, item center), then closes
+/// the menus owning it.
+fn activate_menu_item(shared: &Shared, node_id: i64, cx: &mut App) {
+    if !event_gate_id(shared, node_id, EventKind::Press) {
+        return;
+    }
+    fire(shared, node_id, EventKind::Press, cx, || unsafe {
+        bridge::lui_ocaml_press(node_id)
+    });
+    let position = shared
+        .borrow()
+        .node_bounds
+        .get(&node_id)
+        .map(|bounds| bounds.center())
+        .unwrap_or(point(px(0.), px(0.)));
+    fire_pointer_detail(
+        shared,
+        node_id,
+        EventKind::PressDetail,
+        cx,
+        position,
+        MouseButton::Left,
+        &Modifiers::default(),
+        |x, y, modifiers, button, target_class| unsafe {
+            bridge::lui_ocaml_press_detail(node_id, x, y, modifiers, button, target_class)
+        },
+    );
+    close_host_menus(shared, node_id, cx);
+}
+
+/// Arrow/Enter keyboard navigation for the topmost open host menu —
+/// gpui's counterpart of the web menu's roving focus. Up/Down move a
+/// highlighted item (wrapping), Right opens a highlighted submenu
+/// trigger, Enter activates a highlighted item (a trigger opens its
+/// submenu), Left collapses a submenu back to its trigger row. Escape
+/// keeps the layered `dismiss_topmost_overlay` behavior. Returns
+/// whether a menu handled the key — the keydown still reaches document
+/// listeners afterward (web parity).
+pub(crate) fn menu_nav_key(shared: &Shared, key: &str, cx: &mut App) -> bool {
+    if !matches!(key, "up" | "down" | "left" | "right" | "enter") {
+        return false;
+    }
+    let Some((menu_id, trigger_id)) = crate::backend::topmost_menu(shared, cx) else {
+        return false;
+    };
+    let items = menu_item_ids(shared, menu_id);
+    if items.is_empty() {
+        return true;
+    }
+    let index = shared
+        .borrow()
+        .menu_highlight
+        .and_then(|id| items.iter().position(|item| *item == id));
+    match key {
+        "up" | "down" => {
+            let next = match (index, key) {
+                (None, "down") => 0,
+                (None, _) => items.len() - 1,
+                (Some(i), "down") => (i + 1) % items.len(),
+                (Some(i), _) => {
+                    if i == 0 {
+                        items.len() - 1
+                    } else {
+                        i - 1
+                    }
+                }
+            };
+            crate::backend::set_menu_highlight(shared, Some(items[next]), cx);
+        }
+        "left" => {
+            if trigger_id.is_some() {
+                // Collapse only this submenu layer; the highlight
+                // returns to the trigger row.
+                crate::backend::dismiss_topmost_overlay(shared, cx);
+                crate::backend::set_menu_highlight(shared, trigger_id, cx);
+            }
+        }
+        "right" | "enter" => {
+            let Some(id) = index.map(|i| items[i]) else {
+                // Roving focus starts on the first arrow press — Enter
+                // with nothing highlighted does nothing (web parity).
+                return true;
+            };
+            let kind = shared
+                .borrow()
+                .store
+                .node(id)
+                .and_then(|node| node.identity.kind());
+            if kind == Some(NodeKind::MenuTrigger) {
+                open_menu_trigger(shared, id, cx);
+                // Move the highlight into the submenu's first item.
+                if let Some(menu_id) = crate::backend::menu_child_id(shared, id) {
+                    let first = menu_item_ids(shared, menu_id).into_iter().next();
+                    crate::backend::set_menu_highlight(shared, first, cx);
+                }
+            } else if key == "enter" {
+                activate_menu_item(shared, id, cx);
+            }
+        }
+        _ => {}
+    }
+    true
+}
+
 fn menu_trigger(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
@@ -1716,6 +1984,12 @@ fn menu_trigger(
     if !node.enabled() {
         row = row.opacity(0.5);
     }
+    // Keyboard navigation paints the highlighted row with the same
+    // accent as pointer hover.
+    row = row.when(
+        view.shared.borrow().menu_highlight == Some(node.id),
+        |row| row.bg(hover_bg),
+    );
 
     if let Some(menu_id) = menu_node_id {
         let owner = menu_owner(view, node, cx);
@@ -1734,6 +2008,9 @@ fn menu_trigger(
                     suppress.set(false);
                     return;
                 }
+                // Pointer hover moves the roving highlight too — one
+                // highlight model for pointer and keys (web parity).
+                crate::backend::set_menu_highlight(&shared, Some(node_id), cx);
                 // Hover-open only applies to submenu triggers (a menu has an
                 // owning dropdown/context menu). A standalone `menu` is
                 // press-to-open — hover-opening here would make the
@@ -2234,12 +2511,22 @@ fn menu_item(
     if !node.enabled() {
         row = row.opacity(0.5);
     }
+    // Keyboard navigation paints the highlighted row with the same
+    // accent as pointer hover.
+    row = row.when(
+        view.shared.borrow().menu_highlight == Some(node.id),
+        |row| row.bg(hover_bg),
+    );
     // Hovering a plain item closes the sibling submenu that currently
     // holds the owning menu's open slot.
     let owner = menu_owner(view, node, cx);
     let shared = view.shared.clone();
+    let node_id = node.id;
     row = row.on_hover(move |hovered, _, cx| {
         if *hovered {
+            // Pointer hover moves the roving highlight too — one
+            // highlight model for pointer and keys (web parity).
+            crate::backend::set_menu_highlight(&shared, Some(node_id), cx);
             if let Some((_, slot)) = &owner {
                 if let Some(other) = slot.get() {
                     close_submenu(&shared, other, cx);
