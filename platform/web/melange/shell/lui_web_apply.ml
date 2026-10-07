@@ -174,22 +174,24 @@ let apply_create renderer node kind =
   if kind = ViewThatFits then Lui_web_fit.attach renderer node created;
   Lui_web_events.attach_events renderer node kind created
 
-(* The nearest ancestor that forms a popup container. Menu items are
-   often nested inside box wrappers (e.g. a cm entry box), so the direct
-   parent kind alone is not enough — walk up to the container node. *)
+(* The nearest ancestor that forms a popup container, returned as
+   (container_node_id, container_role). Menu items are often nested inside
+   box wrappers (e.g. a cm entry box), so the direct parent kind alone is
+   not enough — walk up to the container node. *)
 let rec popup_container renderer node_id =
   match Store.node renderer.web_store node_id with
   | Some current -> (
       match Store.standard_kind current with
-      | Some ContextMenu -> Some `Menu
+      | Some ContextMenu -> Some (node_id, `Menu)
       | Some DropdownMenu ->
-          if Nodes.dropdown_listbox renderer node_id then Some `Listbox
-          else Some `Menu
+          if Nodes.dropdown_listbox renderer node_id then
+            Some (node_id, `Listbox)
+          else Some (node_id, `Menu)
       | Some Popover -> (
           (* a popover is a menu container only when ~role:`menu was
              passed (RoleValue "menu"); otherwise it is a plain panel *)
           match Store.property renderer.web_store node_id RoleValue with
-          | Some (StringValue "menu") -> Some `Menu
+          | Some (StringValue "menu") -> Some (node_id, `Menu)
           | _ -> None)
       | _ -> (
           match current.retained_parent with
@@ -197,13 +199,51 @@ let rec popup_container renderer node_id =
           | None -> None))
   | None -> None
 
+(* base-ui parity: a menu opens with its LAST enabled item highlighted and
+   focused (useListNavigation's initial sync picks getMaxListIndex). Runs
+   on every menu-item insert, so it converges on the final enabled item. *)
+let highlight_last_menu_item renderer container_id =
+  match Store.node renderer.web_store container_id with
+  | None -> ()
+  | Some container ->
+      let nodes =
+        W.Element.querySelectorAll
+          "[role=menuitem]:not([data-disabled]):not([aria-disabled='true'])"
+          container.platform_node
+      in
+      let n = W.NodeList.length nodes in
+      if n > 0 then
+        let rec clear index =
+          if index < n then (
+            (match W.NodeList.item index nodes with
+             | Some item -> (
+                 match W.Element.ofNode item with
+                 | Some element ->
+                     W.Element.removeAttribute "data-highlighted" element;
+                     W.Element.setAttribute "tabindex" "-1" element
+                 | None -> ())
+             | None -> ());
+            clear (index + 1))
+        in
+        clear 0;
+        match W.NodeList.item (n - 1) nodes with
+        | Some item -> (
+            match W.Element.ofNode item with
+            | Some element ->
+                W.Element.setAttribute "data-highlighted" "" element;
+                W.Element.setAttribute "tabindex" "0" element;
+                Util.focus_element_without_scroll element
+            | None -> ())
+        | None -> ()
+
 let insert_menu_item_role renderer _child current parent =
   if Store.menu_item_row current then
     match popup_container renderer parent with
-    | Some `Menu ->
+    | Some (container_id, `Menu) ->
         W.Element.setAttribute "role" "menuitem" current.platform_node;
         W.Element.setAttribute "tabindex" "-1" current.platform_node;
-        W.Element.removeAttribute "aria-selected" current.platform_node
+        W.Element.removeAttribute "aria-selected" current.platform_node;
+        highlight_last_menu_item renderer container_id
     | _ -> ()
 
 (* a child removed or reparented by a later op in the same batch has no
