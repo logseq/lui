@@ -664,6 +664,31 @@ impl Element for NodeElement {
                 shared.painting_lists.push(self.id);
             }
             shared.node_bounds.insert(self.id, bounds);
+            if std::env::var_os("LUI_GPUI_DUMP_BOUNDS").is_some() {
+                use std::sync::{Mutex, OnceLock};
+                static SEEN: OnceLock<Mutex<std::collections::HashSet<String>>> =
+                    OnceLock::new();
+                let class = shared
+                    .store
+                    .node(self.id)
+                    .and_then(|n| {
+                        n.props
+                            .iter()
+                            .find(|(p, _)| **p == lui_core::Property::StyleClass)
+                            .and_then(|(_, v)| v.as_str())
+                    })
+                    .unwrap_or("")
+                    .to_string();
+                let key = format!("id={} {:?} {:?}", self.id, bounds, class);
+                if SEEN
+                    .get_or_init(|| Mutex::new(std::collections::HashSet::new()))
+                    .lock()
+                    .unwrap()
+                    .insert(key.clone())
+                {
+                    eprintln!("bounds {key}");
+                }
+            }
             // An outer list owns nested row geometry too, so unmounting a
             // nested list retires all of its descendants' recorded bounds.
             let lists = shared.painting_lists.clone();
