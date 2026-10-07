@@ -251,6 +251,15 @@ fn shallow_snapshot(node: &Node) -> serde_json::Value {
         .or_else(|| node.string_prop(Property::AccessibilityIdentifier))
         .unwrap_or("");
     let mut attrs = parsed_attrs(node);
+    // The typed accessibility props are the DOM attrs a real element
+    // would carry — delegated selectors (`[aria-label]`) and the
+    // tooltip reader look for them in attrs, not in the prop table.
+    if let Some(label) = node.string_prop(Property::AccessibilityLabel) {
+        attrs.insert(
+            "aria-label".to_string(),
+            serde_json::Value::String(label.to_string()),
+        );
+    }
     // Link props surface as the attrs a DOM `<a>` would carry — selectors
     // (`a[target=_blank]`) and the default-action href lookup read them.
     if node.identity.kind() == Some(lui_core::wire_schema::NodeKind::Link) {
