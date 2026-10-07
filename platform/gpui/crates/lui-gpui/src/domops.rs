@@ -224,6 +224,24 @@ pub fn handle_dom_op(
             }
             Vec::new()
         }
+        // element.setSelectionRange(s, e) — reach the InputState through
+        // the mounted view, like focus_node.
+        "set-selection-range" => {
+            if let Some(id) = target {
+                let start = parsed.get("start").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let end = parsed.get("end").and_then(Value::as_u64).unwrap_or(0) as usize;
+                if let Some(view) = shared.borrow().views.get(&id).cloned() {
+                    view.update(cx, |view, cx| {
+                        if let Some(input) = &view.states.input {
+                            input.update(cx, |st, cx| {
+                                st.set_selected_range(start..end, cx)
+                            });
+                        }
+                    });
+                }
+            }
+            Vec::new()
+        }
         "style-set-property" => {
             let name = parsed.get("property").and_then(Value::as_str).unwrap_or("");
             let value = parsed.get("value").and_then(Value::as_str).unwrap_or("");
