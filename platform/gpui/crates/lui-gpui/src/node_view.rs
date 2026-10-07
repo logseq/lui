@@ -356,6 +356,10 @@ pub struct ComponentStates {
     /// Option node ids last pushed into the select/combobox delegate —
     /// `set_items` is only called when the source list changes.
     pub options_cache: std::cell::RefCell<Vec<i64>>,
+    /// Wire `value` last echoed into `input` — the controlled echo only
+    /// applies when the prop itself changes (re-emit or `set-value`),
+    /// never against text the user typed into an uncontrolled field.
+    pub input_value_echoed: std::cell::RefCell<Option<String>>,
     /// Open overlay anchored at a window point (context menu, popup menu).
     /// `Some(point)` renders the deferred layer, `None` is closed.
     pub overlay:

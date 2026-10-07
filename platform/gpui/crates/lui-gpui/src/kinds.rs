@@ -735,16 +735,21 @@ fn input(
     // can target keydowns at this node (document.activeElement parity).
     let handle = state.read(cx).focus_handle(cx);
     view.shared.borrow_mut().register_focus(node_id, handle);
-    // Controlled-value echo: push wire `value` into the state when it drifts.
-    if let Some(value) = node
+    // Controlled-value echo: push wire `value` into the state, but only
+    // when the prop itself changed (re-emit or a `set-value` op).
+    // Comparing against the live text would fight the user's typing in
+    // uncontrolled fields — the wire prop stays at its mount value.
+    let wire_value = node
         .string_prop(Property::ProgressValue)
         .or_else(|| node.string_prop(Property::TextValue))
-    {
-        let current = state.read(cx).value().to_string();
-        if value != current {
-            state.update(cx, |state, cx| {
-                state.set_value(value.to_string(), window, cx)
-            });
+        .map(str::to_string);
+    if wire_value != *view.states.input_value_echoed.borrow() {
+        *view.states.input_value_echoed.borrow_mut() = wire_value.clone();
+        if let Some(value) = wire_value {
+            let current = state.read(cx).value().to_string();
+            if value != current {
+                state.update(cx, |state, cx| state.set_value(value, window, cx));
+            }
         }
     }
     let mut input = Input::new(&state);
