@@ -5,15 +5,25 @@
 //! `lui_ocaml_platform_event("name\njson")`.
 
 use gpui_kit::gpui::{px, App, Bounds, Focusable, Pixels, Window};
+use lui_core::store::NodeIdentity;
 use lui_core::Property;
 use serde_json::{json, Value};
 
 use crate::backend::Shared;
+use crate::style;
 
 /// Resolve one `{"node-id"|"#ref"|"ref-id": …}` ref to a node id.
+/// `{"#ref": 0}` / `{"#ref": -1}` are OCaml's documentElement / document.body
+/// placeholders — both map to the store root on the native side.
 fn resolve_ref(shared: &Shared, ref_: &Value) -> Option<i64> {
     if let Some(id) = ref_.get("node-id").and_then(Value::as_i64) {
         return Some(id);
+    }
+    if let Some(n) = ref_.get("#ref").and_then(Value::as_i64) {
+        if n <= 0 {
+            return shared.borrow().store.root;
+        }
+        return None;
     }
     let ident = ref_
         .get("#ref")
@@ -143,10 +153,182 @@ pub fn handle_dom_op(
             dump_tree(shared);
             Vec::new()
         }
+        // Imperative mutation ops from imperative_dom/editor_dom — they
+        // patch the rendered node's attrs/class/text/style the way a DOM
+        // mutation would. Implemented as store ops so the dirty path
+        // re-renders exactly the touched node.
+        "set-attr" => {
+            if let Some(id) = target {
+                let name = parsed.get("name").and_then(Value::as_str).unwrap_or("");
+                let value = parsed.get("value").and_then(Value::as_str).unwrap_or("");
+                let mut attrs = current_attrs(shared, id);
+                attrs.insert(name.to_string(), Value::String(value.to_string()));
+                apply_local(shared, &attr_batch(id, attrs), cx);
+            }
+            Vec::new()
+        }
+        "remove-attr" => {
+            if let Some(id) = target {
+                let name = parsed.get("name").and_then(Value::as_str).unwrap_or("");
+                let mut attrs = current_attrs(shared, id);
+                attrs.remove(name);
+                apply_local(shared, &attr_batch(id, attrs), cx);
+            }
+            Vec::new()
+        }
+        "set-class" => {
+            if let Some(id) = target {
+                let class = parsed.get("class").and_then(Value::as_str).unwrap_or("");
+                apply_local(
+                    shared,
+                    &style_prop_batch(shared, id, "style-class", class),
+                    cx,
+                );
+            }
+            Vec::new()
+        }
+        "set-text" => {
+            if let Some(id) = target {
+                let text = parsed.get("text").and_then(Value::as_str).unwrap_or("");
+                apply_local(shared, &style_prop_batch(shared, id, "text", text), cx);
+            }
+            Vec::new()
+        }
+        "style-set-property" => {
+            let name = parsed.get("property").and_then(Value::as_str).unwrap_or("");
+            let value = parsed.get("value").and_then(Value::as_str).unwrap_or("");
+            if name.starts_with("--") {
+                style::set_css_var(name, value);
+                // The var table is global: re-render the whole tree by
+                // dirtying the root.
+                if let Some(root) = shared.borrow().store.root {
+                    bump_node(shared, root, cx);
+                }
+            } else if let Some(id) = target {
+                let mut attrs = current_attrs(shared, id);
+                let style_str = attrs
+                    .get("style")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                attrs.insert(
+                    "style".to_string(),
+                    Value::String(set_style_decl(&style_str, name, value)),
+                );
+                apply_local(shared, &attr_batch(id, attrs), cx);
+            }
+            Vec::new()
+        }
+        // Native slots render synchronously at emit time — the pending
+        // marker exists for the web doc-scan; accepting it here keeps the
+        // log clean.
+        "katex-pending" | "hljs-pending" => Vec::new(),
         other => {
             eprintln!("lui-gpui: dom-op {other} unsupported: {body}");
             Vec::new()
         }
+    }
+}
+
+/// Current extension `attrs` JSON object for `node_id` (empty map when
+/// absent or unparseable).
+fn current_attrs(shared: &Shared, node_id: i64) -> serde_json::Map<String, Value> {
+    let shared = shared.borrow();
+    let Some(node) = shared.store.node(node_id) else {
+        return serde_json::Map::new();
+    };
+    node.extension_props
+        .get("attrs")
+        .and_then(|v| v.as_str())
+        .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default()
+}
+
+/// `set-extension-prop attrs` batch serializing `attrs` back to its JSON
+/// object form.
+fn attr_batch(node_id: i64, attrs: serde_json::Map<String, Value>) -> String {
+    json!({
+        "generation": 0,
+        "ops": [{
+            "op": "set-extension-prop",
+            "id": node_id,
+            "property": "attrs",
+            "value": Value::Object(attrs).to_string(),
+        }],
+    })
+    .to_string()
+}
+
+/// Class/text writes route to the standard `style-class`/`text` prop on
+/// component nodes and the extension prop on extension nodes.
+fn style_prop_batch(
+    shared: &Shared,
+    node_id: i64,
+    prop: &str,
+    value: &str,
+) -> String {
+    let is_extension = {
+        let shared = shared.borrow();
+        matches!(
+            shared.store.node(node_id).map(|n| &n.identity),
+            Some(NodeIdentity::Extension { .. })
+        )
+    };
+    let op = if is_extension {
+        "set-extension-prop"
+    } else {
+        "set-prop"
+    };
+    json!({
+        "generation": 0,
+        "ops": [{
+            "op": op,
+            "id": node_id,
+            "property": prop,
+            "value": value,
+        }],
+    })
+    .to_string()
+}
+
+/// Write `name: value` into a CSS declaration string, replacing an
+/// existing declaration of the same name.
+fn set_style_decl(style: &str, name: &str, value: &str) -> String {
+    let mut decls: Vec<String> = style
+        .split(';')
+        .map(str::trim)
+        .filter(|decl| {
+            !decl.is_empty()
+                && decl
+                    .split_once(':')
+                    .map(|(k, _)| k.trim() != name)
+                    .unwrap_or(true)
+        })
+        .map(str::to_string)
+        .collect();
+    decls.push(format!("{name}:{value}"));
+    decls.join(";")
+}
+
+/// Touch `node_id` so the renderer rebuilds it (used for global CSS-var
+/// changes, where dependents live anywhere in the tree).
+fn bump_node(shared: &Shared, node_id: i64, cx: &mut App) {
+    let batch = json!({
+        "generation": 0,
+        "ops": [{
+            "op": "set-extension-prop",
+            "id": node_id,
+            "property": "css-vars-rev",
+            "value": style::css_vars_rev().to_string(),
+        }],
+    });
+    let _ = crate::backend::apply_batch_json(shared, &batch.to_string(), cx);
+}
+
+fn apply_local(shared: &Shared, batch_json: &str, cx: &mut App) {
+    if let Err(err) = crate::backend::apply_batch_json(shared, batch_json, cx) {
+        eprintln!("lui-gpui: dom-op apply failed: {err}");
     }
 }
 

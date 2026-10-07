@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gpui_kit::gpui::{App, AppContext, Bounds, Entity, Pixels};
+use gpui_kit::gpui::{App, AppContext, Bounds, Entity, FocusHandle, Pixels, Window};
 use lui_core::bridge;
 use lui_core::extension::{ExtensionRegistry, ExtensionSpec};
 use lui_core::store::{Applied, BackendError, Store};
@@ -47,6 +47,13 @@ pub struct LuiShared {
     /// target inside this window are dropped, mirroring OCaml's 60ms
     /// event coalescing so hosts see one event per click.
     pub last_click_emit: Option<(i64, std::time::Instant)>,
+    /// Focusable element registry: node id -> the FocusHandle its
+    /// rendered element tracks. The root-level keydown forwarder
+    /// resolves `document.activeElement` parity through this — the
+    /// dom-event's target must be the focused element's node so OCaml
+    /// dispatch can route editing vs. browse mode. Entries whose node
+    /// dropped are pruned on lookup.
+    pub focus_nodes: Vec<(i64, FocusHandle)>,
 }
 
 /// A registered viewport-proximity watch: which dom-event to fire and
@@ -76,6 +83,7 @@ impl LuiShared {
             node_bounds: HashMap::new(),
             viewport_watched: HashMap::new(),
             last_click_emit: None,
+            focus_nodes: Vec::new(),
         }));
         crate::extension::register_builtin_renderers(&shared);
         shared
@@ -103,6 +111,24 @@ impl LuiShared {
         let view = cx.new(|_cx| LuiNodeView::new(id, shared.clone()));
         shared.borrow_mut().views.insert(id, view.clone());
         view
+    }
+
+    /// Register the FocusHandle a node's rendered element tracks so the
+    /// root keydown forwarder can resolve the focused element's node.
+    pub fn register_focus(&mut self, node_id: i64, handle: FocusHandle) {
+        self.focus_nodes.retain(|(id, _)| *id != node_id);
+        self.focus_nodes.push((node_id, handle));
+    }
+
+    /// The node whose element currently holds window focus, if any
+    /// registered one does (prunes entries for dropped nodes).
+    pub fn focused_node(&mut self, window: &Window) -> Option<i64> {
+        let store = &self.store;
+        self.focus_nodes.retain(|(id, _)| store.node(*id).is_some());
+        self.focus_nodes
+            .iter()
+            .find(|(_, h)| h.is_focused(window))
+            .map(|(id, _)| *id)
     }
 }
 

@@ -20,18 +20,21 @@ use gpui_kit::component::Icon;
 use gpui_kit::component::{h_flex, v_flex, Disableable, Selectable, Sizable};
 use gpui_kit::gpui::{
     anchored, deferred, div, img, point, px, Anchor, AnyElement, App, AppContext, ClickEvent,
-    Context, ElementId, FontWeight, ImageSource, InteractiveElement, IntoElement, Modifiers,
-    MouseButton, MouseDownEvent, ParentElement, PathPromptOptions, Pixels, Point, RenderImage,
+    Context, ElementId, Focusable, FontWeight, ImageSource, InteractiveElement, IntoElement,
+    Modifiers, MouseButton, MouseDownEvent, ParentElement, PathPromptOptions, Pixels, Point,
+    RenderImage,
     StatefulInteractiveElement, Styled, SvgSize, Window,
 };
 use gpui_kit::prelude::FluentBuilder;
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::sync::{Arc, LazyLock, Mutex};
 use lui_core::bridge;
 use lui_core::store::NodeIdentity;
 use lui_core::{EventKind, NodeKind, Property};
 
 use crate::backend::{fire, LuiShared, Shared};
+use crate::dom;
 use crate::extension;
 use crate::node_view::{LuiNodeView, LuiOption, NodeSnapshot};
 use crate::style;
@@ -65,7 +68,9 @@ fn pointer_button_index(button: MouseButton) -> i32 {
 }
 
 /// Emit the shared pointer-detail payload via the C bridge. `target_class`
-/// stays empty — there is no DOM hit element on this host.
+/// is the deepest painted node's style class — the DOM click target's
+/// class list, which model handlers use to distinguish row-body clicks
+/// from clicks on nested action buttons.
 fn fire_pointer_detail<F>(
     shared: &Shared,
     node_id: i64,
@@ -77,13 +82,72 @@ fn fire_pointer_detail<F>(
     call: F,
 ) -> i32
 where
-    F: FnOnce(f64, f64, i32, i32) -> i32,
+    F: FnOnce(f64, f64, i32, i32, *const std::ffi::c_char) -> i32,
 {
     let x = f64::from(f32::from(position.x));
     let y = f64::from(f32::from(position.y));
     let modifiers = pointer_modifier_mask(modifiers, button);
     let button = pointer_button_index(button);
-    fire(shared, node_id, event, cx, || call(x, y, modifiers, button))
+    let target_class = {
+        let hit = dom::deepest_hit(shared, position).unwrap_or(node_id);
+        let shared_ref = shared.borrow();
+        shared_ref
+            .store
+            .node(hit)
+            .and_then(|n| {
+                n.string_prop(Property::StyleClass).or_else(|| {
+                    n.extension_props
+                        .get("style-class")
+                        .and_then(lui_core::wire::Value::as_str)
+                })
+            })
+            .unwrap_or_default()
+            .to_string()
+    };
+    let target_class = CString::new(target_class).unwrap_or_default();
+    fire(shared, node_id, event, cx, || {
+        call(x, y, modifiers, button, target_class.as_ptr())
+    })
+}
+
+/// Emulate DOM click bubbling up the store's parent chain: some kit
+/// elements (Link, buttons) stop MouseDown propagation, so ancestor
+/// nodes never see the click — fire `Press`/`PressDetail` on each
+/// ancestor the gate admits. The deepest node's own press already
+/// fired; pass its id as `from` to start above it.
+fn bubble_press(
+    shared: &Shared,
+    from: i64,
+    cx: &mut App,
+    position: Point<Pixels>,
+    button: MouseButton,
+    modifiers: &Modifiers,
+) {
+    let mut next = {
+        let shared_ref = shared.borrow();
+        shared_ref.store.node(from).and_then(|n| n.parent)
+    };
+    while let Some(pid) = next {
+        next = {
+            let shared_ref = shared.borrow();
+            shared_ref.store.node(pid).and_then(|n| n.parent)
+        };
+        fire(shared, pid, EventKind::Press, cx, || unsafe {
+            bridge::lui_ocaml_press(pid)
+        });
+        fire_pointer_detail(
+            shared,
+            pid,
+            EventKind::PressDetail,
+            cx,
+            position,
+            button,
+            modifiers,
+            |x, y, modifiers, button, target_class| unsafe {
+                bridge::lui_ocaml_press_detail(pid, x, y, modifiers, button, target_class)
+            },
+        );
+    }
 }
 
 /// Fire `Press` on a node when the gate allows it.
@@ -113,9 +177,9 @@ fn press_handler(
             position,
             button,
             &modifiers,
-            |x, y, modifiers, button| unsafe {
+            |x, y, modifiers, button, target_class| unsafe {
                 bridge::lui_ocaml_press_detail(
-                    node_id, x, y, modifiers, button, c"".as_ptr(),
+                    node_id, x, y, modifiers, button, target_class,
                 )
             },
         );
@@ -160,14 +224,33 @@ fn container(
     cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
     // `on_children_prepainted` is a `Div` method — attach before `.id()`
-    // (which wraps the element in `Stateful`).
+    // (which wraps the element in `Stateful`). The `*_flat` variants apply
+    // wrapper elision for this plain flex container — the recorder must
+    // observe the same expansion as the rendered children. `multi` allows
+    // a same-direction wrapper to expand several children into its slot,
+    // which is only safe when this parent introduces no gap of its own
+    // (neither a prop/class token nor the kind-level chrome below).
+    let multi = LuiNodeView::gapless(node)
+        && !matches!(
+            kind,
+            NodeKind::ButtonGroup
+                | NodeKind::ToggleGroup
+                | NodeKind::Breadcrumb
+                | NodeKind::Pagination
+                | NodeKind::RadioGroup
+                | NodeKind::InputGroupActions
+        );
+    // `flex-row`/`flex-col` class tokens applied by `style::all` override
+    // the kind's direction — child elision must match the direction that
+    // actually renders.
+    let flat_horizontal = crate::node_view::snapshot_flex_direction(node).unwrap_or(horizontal);
     let base = if horizontal {
         h_flex()
-            .on_children_prepainted(view.bounds_recorder(node))
+            .on_children_prepainted(view.bounds_recorder_flat(node, flat_horizontal, multi))
             .id(element_id(node.id))
     } else {
         v_flex()
-            .on_children_prepainted(view.bounds_recorder(node))
+            .on_children_prepainted(view.bounds_recorder_flat(node, flat_horizontal, multi))
             .id(element_id(node.id))
     };
     // Theme-carried default chrome per kind; explicit wire props and
@@ -215,9 +298,9 @@ fn container(
             .cursor_pointer()
             .on_click(press_handler(view, node.id));
     }
-    let element = style::all(element, node);
+    let element = style::all(element, node, cx.theme());
     element
-        .children(view.child_elements(node, cx))
+        .children(view.child_elements_flat(node, flat_horizontal, multi, cx))
         .into_any_element()
 }
 
@@ -323,7 +406,7 @@ fn button(
     button = button.selected(node.flag(Property::Selected));
     button = button.disabled(!node.enabled());
     button = button.on_click(press_handler(view, node_id));
-    style::all(button, node).into_any_element()
+    style::all(button, node, cx.theme()).into_any_element()
 }
 
 /// `button` inside `tabs`: a segmented-control pill per the gpui-component
@@ -375,7 +458,7 @@ fn tab_button(
             .cursor_pointer()
             .on_click(press_handler(view, node.id));
     }
-    let element = style::all(element, node);
+    let element = style::all(element, node, cx.theme());
     element.into_any_element()
 }
 
@@ -511,14 +594,55 @@ fn text_element(
     } else {
         // Inline run: a `text` node can carry element children (logseq-*
         // spans — page refs, katex slots — plus nested `text` runs). Lay
-        // the node's own text first, then children, wrapping like a DOM
-        // inline flow so they land on the same line when space allows.
-        let mut flow = h_flex().flex_wrap().items_baseline();
+        // the node's own text first, then children, in one baseline row.
+        // `br` children split the run into stacked lines — flex-wrap
+        // would be the DOM-accurate shape, but taffy's
+        // hypothetical-cross-size pass explodes on nested wrap containers.
+        let br_at: Vec<bool> = {
+            let store = view.shared.borrow();
+            node.children
+                .iter()
+                .filter(|cid| store.store.node(**cid).is_some())
+                .map(|cid| {
+                    NodeSnapshot::snapshot(&store.store, *cid)
+                        .map(|n| {
+                            matches!(
+                                n.identity,
+                                NodeIdentity::Standard(NodeKind::Br)
+                            )
+                        })
+                        .unwrap_or(false)
+                })
+                .collect()
+        };
         let text = text_of(node);
-        if !text.is_empty() {
-            flow = flow.child(text);
+        if br_at.iter().any(|b| *b) {
+            let mut lines: Vec<Vec<AnyElement>> = vec![Vec::new()];
+            if !text.is_empty() {
+                lines[0].push(div().child(text).into_any_element());
+            }
+            for (is_br, child) in br_at.into_iter().zip(children) {
+                if is_br {
+                    lines.push(Vec::new());
+                } else {
+                    lines.last_mut().unwrap().push(child);
+                }
+            }
+            element = element.children(lines.into_iter().map(|line| {
+                h_flex().items_start().children(line).into_any_element()
+            }));
+        } else {
+            let mut flow = h_flex().items_start();
+            if !text.is_empty() {
+                flow = flow.child(text);
+            }
+            element = element.child(flow.children(children));
         }
-        element = element.child(flow.children(children));
+    }
+    // `as` carries the semantic inline tag (code/strong/em/mark/…) — the
+    // same styling table as the logseq-* extension elements.
+    if let Some(as_tag) = node.string_prop(Property::As) {
+        element = style::inline_tag_style(element, as_tag, cx.theme());
     }
     // Press-capable text kinds (text, list-item content handled elsewhere).
     if press_gate(view, node.id) {
@@ -526,7 +650,7 @@ fn text_element(
             .cursor_pointer()
             .on_click(press_handler(view, node.id));
     }
-    element = style::all(element, node);
+    element = style::all(element, node, cx.theme());
     element.into_any_element()
 }
 
@@ -583,6 +707,10 @@ fn input(
         view.states.input = Some(state);
     }
     let state = view.states.input.clone().expect("initialized");
+    // Register the field's focus handle so the root keydown forwarder
+    // can target keydowns at this node (document.activeElement parity).
+    let handle = state.read(cx).focus_handle(cx);
+    view.shared.borrow_mut().register_focus(node_id, handle);
     // Controlled-value echo: push wire `value` into the state when it drifts.
     if let Some(value) = node
         .string_prop(Property::ProgressValue)
@@ -604,7 +732,7 @@ fn input(
     if parent_kind(view, node) == Some(NodeKind::InputGroup) {
         input = input.appearance(false);
     }
-    style::all(input, node).into_any_element()
+    style::all(input, node, cx.theme()).into_any_element()
 }
 
 fn textarea(
@@ -645,6 +773,8 @@ fn textarea(
         view.states.textarea = Some(state);
     }
     let state = view.states.textarea.clone().expect("initialized");
+    let handle = state.read(cx).focus_handle(cx);
+    view.shared.borrow_mut().register_focus(node_id, handle);
     let mut element = Textarea::new(&state);
     if parent_kind(view, node) == Some(NodeKind::InputGroup) {
         element = element.appearance(false);
@@ -703,7 +833,7 @@ fn slider(
         slider = slider.vertical();
     }
     slider = slider.disabled(!node.enabled());
-    style::all(slider, node).into_any_element()
+    style::all(slider, node, cx.theme()).into_any_element()
 }
 
 /// `menu-item` children of `node` as selectable options. Children are the
@@ -768,7 +898,7 @@ fn select_picker(
             .icon(gpui_kit::assets::IconName::ChevronDown);
         element = element.disabled(!node.enabled());
         element = element.on_click(press_handler(view, node_id));
-        element = style::all(element, node);
+        element = style::all(element, node, cx.theme());
         return element.into_any_element();
     }
     if view.states.select.is_none() {
@@ -800,7 +930,7 @@ fn select_picker(
         text_of(node)
     });
     element = element.disabled(!node.enabled());
-    style::all(element, node).into_any_element()
+    style::all(element, node, cx.theme()).into_any_element()
 }
 
 /// `combobox`: native gpui-kit Combobox (editable + searchable) when
@@ -885,7 +1015,7 @@ fn combobox_picker(
         });
     element = element.placeholder(placeholder);
     element = element.disabled(!node.enabled());
-    style::all(element, node).into_any_element()
+    style::all(element, node, cx.theme()).into_any_element()
 }
 
 /// `overlay`/`stack`: first child lays out in-flow (sizing the stack to the
@@ -912,7 +1042,7 @@ fn stacked(
             .child(child)
             .into_any_element()
     }));
-    style::all(element, node).into_any_element()
+    style::all(element, node, cx.theme()).into_any_element()
 }
 
 /// Full-window backdrop that swallows outside clicks into `Dismiss`.
@@ -1254,9 +1384,9 @@ fn list_item(
                 event.position,
                 event.button,
                 &event.modifiers,
-                |x, y, modifiers, button| unsafe {
+                |x, y, modifiers, button, target_class| unsafe {
                     bridge::lui_ocaml_context_menu_press(
-                        node_id_menu, x, y, modifiers, button, c"".as_ptr(),
+                        node_id_menu, x, y, modifiers, button, target_class,
                     )
                 },
             );
@@ -1300,7 +1430,7 @@ fn list_item(
         }
     }
 
-    style::all(row, node).into_any_element()
+    style::all(row, node, cx.theme()).into_any_element()
 }
 
 fn event_gate_id(shared: &crate::backend::Shared, node_id: i64, event: EventKind) -> bool {
@@ -1522,7 +1652,7 @@ fn menu_trigger(
         }
     }
 
-    style::all(row, node).into_any_element()
+    style::all(row, node, cx.theme()).into_any_element()
 }
 
 /// `edge_inset`: last child is the pinned bar — overlaid at the `edge`
@@ -1552,7 +1682,7 @@ fn edge_inset(
             element = element.child(layer);
         }
     }
-    style::all(element, node).into_any_element()
+    style::all(element, node, cx.theme()).into_any_element()
 }
 
 /// `split`: two retained panes over a model-owned `value` fraction
@@ -1598,7 +1728,7 @@ fn split(
             gpui_kit::component::resizable_panel()
                 .child(second.unwrap_or_else(|| div().into_any_element())),
         );
-    style::all(div().size_full().child(group), node).into_any_element()
+    style::all(div().size_full().child(group), node, cx.theme()).into_any_element()
 }
 
 /// `resizable`: one resizable pane (`width` seeds, `min-width`/`max-width`
@@ -1622,7 +1752,7 @@ fn resizable(
                 .children(view.child_elements(node, cx)),
         )
         .child(gpui_kit::component::resizable_panel().child(div().size_full().into_any_element()));
-    style::all(div().size_full().child(group), node).into_any_element()
+    style::all(div().size_full().child(group), node, cx.theme()).into_any_element()
 }
 
 /// `stepper`: horizontal step indicator — one circle + label per `step`
@@ -1674,7 +1804,7 @@ fn stepper(
             }
         }
     }
-    style::all(element, node).into_any_element()
+    style::all(element, node, cx.theme()).into_any_element()
 }
 
 /// `step`: one stepper entry — numbered circle (check when the parent
@@ -1754,7 +1884,7 @@ fn step(view: &mut LuiNodeView, node: &NodeSnapshot, cx: &mut Context<LuiNodeVie
     if !node.enabled() {
         row = row.opacity(0.5);
     }
-    style::all(row, node).into_any_element()
+    style::all(row, node, cx.theme()).into_any_element()
 }
 
 /// `timeline-item`: indicator column (icon badge + optional connector
@@ -1835,7 +1965,7 @@ fn timeline_item(
     if press_gate(view, node.id) {
         row = row.cursor_pointer().on_click(press_handler(view, node.id));
     }
-    style::all(row, node).into_any_element()
+    style::all(row, node, cx.theme()).into_any_element()
 }
 
 /// `menu-item`: accent-hover row with check slot, icon, label and press.
@@ -1891,7 +2021,7 @@ fn menu_item(
     if press_gate(view, node.id) {
         row = row.cursor_pointer().on_click(press_handler(view, node.id));
     }
-    style::all(row, node).into_any_element()
+    style::all(row, node, cx.theme()).into_any_element()
 }
 
 /// `accordion`: disclosure header (chevron + text, click fires
@@ -1953,7 +2083,7 @@ fn accordion(
                 .children(view.child_elements(node, cx)),
         );
     }
-    style::all(element, node).into_any_element()
+    style::all(element, node, cx.theme()).into_any_element()
 }
 
 /// `file-picker`: button opens the platform path prompt; chosen paths go
@@ -1962,7 +2092,7 @@ fn file_picker(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
     _window: &mut Window,
-    _cx: &mut Context<LuiNodeView>,
+    cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
     let node_id = node.id;
     let shared = view.shared.clone();
@@ -2010,7 +2140,7 @@ fn file_picker(
             })
             .detach();
     });
-    style::all(button, node).into_any_element()
+    style::all(button, node, cx.theme()).into_any_element()
 }
 
 /// `bottom-tabs`: stacked pages (the `bottom-tab` children's content, all
@@ -2130,7 +2260,7 @@ fn bottom_tabs(
         .id(element_id(node.id))
         .w_full()
         .flex_1();
-    element = style::all(element, node);
+    element = style::all(element, node, cx.theme());
     element.child(pages).child(bar).into_any_element()
 }
 
@@ -2154,7 +2284,7 @@ pub fn render_node(
                 .bg(cx.theme().background)
                 .text_color(cx.theme().foreground)
                 .font_family(cx.theme().font_family.clone());
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element
                 .children(view.child_elements(node, cx))
                 .into_any_element()
@@ -2186,7 +2316,7 @@ pub fn render_node(
             if node.string_prop(Property::TextAlignment) == Some("center") {
                 element = element.justify_center();
             }
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.child(text_of(node)).into_any_element()
         }
         NodeKind::BottomTabs => bottom_tabs(view, node, cx),
@@ -2216,7 +2346,7 @@ pub fn render_node(
                 .id(element_id(node.id))
                 .overflow_y_scroll()
                 .track_scroll(&view.states.scroll);
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element
                 .children(view.child_elements(node, cx))
                 .into_any_element()
@@ -2275,7 +2405,7 @@ pub fn render_node(
                 .bg(cx.theme().tokens.popover)
                 .text_color(cx.theme().popover_foreground)
                 .shadow(cx.theme().shadow_tokens().sm);
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element
                 .children(view.child_elements(node, cx))
                 .into_any_element()
@@ -2289,7 +2419,7 @@ pub fn render_node(
                 .bg(cx.theme().tokens.popover)
                 .text_color(cx.theme().popover_foreground)
                 .p_6();
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element
                 .children(view.child_elements(node, cx))
                 .into_any_element()
@@ -2323,7 +2453,7 @@ pub fn render_node(
                         .border_color(cx.theme().border)
                 }
             }
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element
                 .children(view.child_elements(node, cx))
                 .into_any_element()
@@ -2331,7 +2461,7 @@ pub fn render_node(
         NodeKind::Grid => {
             let columns = node.int_prop(Property::GridColumns).unwrap_or(0).max(0);
             let mut element = div().id(element_id(node.id)).v_flex().gap_2();
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             if columns > 0 {
                 let mut rows: Vec<AnyElement> = Vec::new();
                 let mut row: Vec<AnyElement> = Vec::new();
@@ -2366,17 +2496,32 @@ pub fn render_node(
             if let Some(first) = view.child_elements(node, cx).into_iter().next() {
                 element = element.child(first);
             }
-            style::all(element, node).into_any_element()
+            style::all(element, node, cx.theme()).into_any_element()
         }
         NodeKind::Scroll => {
             view.states.scroll_tracked = true;
+            if node.string_prop(Property::OrientationValue) == Some("horizontal") {
+                // Wide-content scroller (e.g. the views table): bounded
+                // horizontally, content-sized vertically. `h_full` inside
+                // a content-sized column would collapse the viewport.
+                let mut element = h_flex()
+                    .w_full()
+                    .on_children_prepainted(view.bounds_recorder(node))
+                    .id(element_id(node.id))
+                    .overflow_x_scroll()
+                    .track_scroll(&view.states.scroll);
+                element = style::all(element, node, cx.theme());
+                return element
+                    .children(view.child_elements(node, cx))
+                    .into_any_element();
+            }
             let mut element = v_flex()
                 .size_full()
                 .on_children_prepainted(view.bounds_recorder(node))
                 .id(element_id(node.id))
                 .overflow_y_scroll()
                 .track_scroll(&view.states.scroll);
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element
                 .children(view.child_elements(node, cx))
                 .into_any_element()
@@ -2391,7 +2536,7 @@ pub fn render_node(
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(cx.theme().muted_foreground)
                 .child(text_of(node));
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
         NodeKind::ListSectionFooter => {
@@ -2403,7 +2548,7 @@ pub fn render_node(
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
                 .child(text_of(node));
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
 
@@ -2417,7 +2562,7 @@ pub fn render_node(
             if node.string_prop(Property::TextAlignment) == Some("center") {
                 element = element.text_center();
             }
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
         NodeKind::Heading => {
@@ -2432,7 +2577,7 @@ pub fn render_node(
                 3 => element.text_lg(),
                 _ => element.text_base(),
             };
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.child(text_of(node)).into_any_element()
         }
 
@@ -2445,7 +2590,7 @@ pub fn render_node(
                 .checked(node.flag(Property::Checked))
                 .disabled(!node.enabled())
                 .on_click(toggle_handler(view, node.id));
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
         NodeKind::SwitchControl | NodeKind::Toggle => {
@@ -2453,7 +2598,7 @@ pub fn render_node(
                 .checked(node.flag(Property::Checked))
                 .disabled(!node.enabled())
                 .on_click(toggle_handler(view, node.id));
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
         NodeKind::Radio => {
@@ -2462,7 +2607,7 @@ pub fn render_node(
                 .checked(node.flag(Property::Selected) || node.flag(Property::Checked))
                 .disabled(!node.enabled())
                 .on_click(radio_handler(view, node.id));
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
         NodeKind::Slider => slider(view, node, window, cx),
@@ -2474,7 +2619,7 @@ pub fn render_node(
         NodeKind::Progress => {
             let value = node.float_prop(Property::ProgressValue).unwrap_or(0.0) as f32;
             let mut element = Progress::new(element_id(node.id)).value(value);
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
         NodeKind::Divider => {
@@ -2484,7 +2629,7 @@ pub fn render_node(
             } else {
                 Separator::vertical()
             };
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
         NodeKind::Spacer => div().flex_1().into_any_element(),
@@ -2494,7 +2639,7 @@ pub fn render_node(
         {
             Some(icon) => {
                 let mut element = Icon::new(icon);
-                element = style::all(element, node);
+                element = style::all(element, node, cx.theme());
                 element.into_any_element()
             }
             None => match icon_name_raw(node)
@@ -2505,7 +2650,7 @@ pub fn render_node(
                     let mut element = div()
                         .size(px(18.))
                         .child(img(ImageSource::Render(image)).size_full());
-                    element = style::all(element, node);
+                    element = style::all(element, node, cx.theme());
                     element.into_any_element()
                 }
                 None => extension::placeholder_box(view, node, "icon", cx),
@@ -2516,14 +2661,67 @@ pub fn render_node(
             if let Some(url) = node.string_prop(Property::UrlValue) {
                 element = element.src(url.to_string());
             }
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
         NodeKind::Link => {
+            // Children are inline runs (external-link label pieces,
+            // page-ref title text) — a bare `text_of` would drop them.
+            let node_id = node.id;
+            let shared = view.shared.clone();
             let mut element = Link::new(element_id(node.id))
                 .child(text_of(node))
-                .on_click(press_handler(view, node.id));
-            element = style::all(element, node);
+                .children(view.child_elements(node, cx))
+                .on_click(move |event: &ClickEvent, _, cx| {
+                    fire(&shared, node_id, EventKind::Press, cx, || unsafe {
+                        bridge::lui_ocaml_press(node_id)
+                    });
+                    let button = match event {
+                        ClickEvent::Mouse(mouse) => mouse.down.button,
+                        _ => MouseButton::Left,
+                    };
+                    let position = event.position();
+                    let modifiers = event.modifiers();
+                    fire_pointer_detail(
+                        &shared,
+                        node_id,
+                        EventKind::PressDetail,
+                        cx,
+                        position,
+                        button,
+                        &modifiers,
+                        |x, y, modifiers, button, target_class| unsafe {
+                            bridge::lui_ocaml_press_detail(
+                                node_id, x, y, modifiers, button, target_class,
+                            )
+                        },
+                    );
+                    // DOM-parity click: delegated document listeners
+                    // (`a.page-ref`, `a.tag`, `a[target=_blank]`) match
+                    // the target snapshot's tag/class/attrs.
+                    let hit = dom::deepest_hit(&shared, position).unwrap_or(node_id);
+                    let (carrier, ident) = match dom::logseq_carrier(&shared, Some(hit)) {
+                        Some(pair) => pair,
+                        None => (node_id, String::new()),
+                    };
+                    dom::dom_event_via(
+                        &shared,
+                        carrier,
+                        &ident,
+                        hit,
+                        "click",
+                        serde_json::json!({
+                            "clientX": f64::from(position.x),
+                            "clientY": f64::from(position.y),
+                        }),
+                        cx,
+                    );
+                    // The kit Link stops MouseDown propagation, so
+                    // ancestor press handlers never see this click —
+                    // bubble it manually (DOM parity).
+                    bubble_press(&shared, node_id, cx, position, button, &modifiers);
+                });
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
         NodeKind::Kbd => {
@@ -2545,7 +2743,7 @@ pub fn render_node(
                     .child(text_of(node))
                     .into_any_element(),
             };
-            style::all(div().child(element), node).into_any_element()
+            style::all(div().child(element), node, cx.theme()).into_any_element()
         }
         NodeKind::Alert => {
             let variant = match variant_of(node) {
@@ -2558,7 +2756,7 @@ pub fn render_node(
             if let Some(description) = node.string_prop(Property::DescriptionValue) {
                 element = element.title(description.to_string());
             }
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element.into_any_element()
         }
         NodeKind::Tooltip => {
@@ -2657,7 +2855,7 @@ pub fn render_node(
                 .rounded(cx.theme().radius_lg)
                 .bg(cx.theme().tokens.tab_bar_segmented)
                 .text_color(cx.theme().secondary_foreground);
-            element = style::all(element, node);
+            element = style::all(element, node, cx.theme());
             element
                 .children(view.child_elements(node, cx))
                 .into_any_element()
@@ -2673,7 +2871,7 @@ pub fn render_node(
                 let mut element = div()
                     .id(element_id(node.id))
                     .child(gpui_kit::gpui::img(std::path::PathBuf::from(path)));
-                element = style::all(element, node);
+                element = style::all(element, node, cx.theme());
                 element.into_any_element()
             }
             None => extension::placeholder_box(view, node, "file-image", cx),
@@ -2683,10 +2881,85 @@ pub fn render_node(
         NodeKind::Image | NodeKind::MediaSurface | NodeKind::FilePreview => {
             extension::placeholder_box(view, node, kind.wire_name(), cx)
         }
-        // Line-break leaf: no native representation; renders nothing.
-        NodeKind::Br => div().id(element_id(node.id)).size_0().into_any_element(),
-        // Native popover positioning is not implemented yet: render the
-        // children inline so the content stays reachable.
-        NodeKind::Popover => container(view, node, kind, false, cx),
+        // Line break: a full-width zero-height item ends the current line
+        // in the wrapping inline flow (text runs lay out via flex-wrap).
+        NodeKind::Br => div()
+            .id(element_id(node.id))
+            .w_full()
+            .h(px(0.))
+            .into_any_element(),
+        NodeKind::Popover => popover(view, node, window, cx),
     }
+}
+
+/// `popover`: model-owned floating layer — emitted while open. With
+/// `popup-x`/`popup-y` it is point-anchored (e.g. the caret rect bottom
+/// for completions and the click point for menus): the content box gets
+/// the dropdown-menu surface and `anchor`/`anchor-alignment` pick which
+/// corner of the popup sits at the point. Without a point it is a cover
+/// layer: the positioner spans the window so overlay hosts (`.cp__overlays`,
+/// dialog overlay columns) float above the page instead of rendering
+/// in-flow at the document tail. Outside presses fire `Dismiss` so the
+/// model drops the node; `available-height` bounds the box when the model
+/// pre-computed a remaining-space budget.
+fn popover(
+    view: &mut LuiNodeView,
+    node: &NodeSnapshot,
+    window: &mut Window,
+    cx: &mut Context<LuiNodeView>,
+) -> AnyElement {
+    if node.float_prop(Property::PopupX).is_none() {
+        let _ = window;
+        let content = v_flex()
+            .size_full()
+            .children(view.child_elements(node, cx));
+        return div()
+            .id(element_id(node.id))
+            .size_0()
+            .child(window_layer(content, 3))
+            .into_any_element();
+    }
+    let x = node.float_prop(Property::PopupX).unwrap_or(0.) as f32;
+    let y = node.float_prop(Property::PopupY).unwrap_or(0.) as f32;
+    let mut menu = menu_box(view, node, cx);
+    if let Some(available) = node.float_prop(Property::AvailableHeight) {
+        if available > 0. {
+            menu = menu.max_h(px(available as f32)).overflow_hidden();
+        }
+    }
+    if event_gate(view, node.id, EventKind::Dismiss) {
+        let shared = view.shared.clone();
+        let node_id = node.id;
+        menu = menu.on_mouse_down_out(move |_, _, cx| {
+            fire(&shared, node_id, EventKind::Dismiss, cx, || unsafe {
+                bridge::lui_ocaml_dismiss(node_id)
+            });
+        });
+    }
+    // `anchor` is the side of the point the popup opens on; combined with
+    // `anchor-alignment` it picks which corner of the popup sits at the
+    // point (web positioner: side=above + align=end -> bottom-right).
+    let corner = match (
+        node.string_prop(Property::AnchorValue),
+        node.string_prop(Property::AnchorAlignmentValue),
+    ) {
+        (Some("above"), Some("end")) => Anchor::BottomRight,
+        (Some("above"), Some("center")) => Anchor::BottomCenter,
+        (Some("above"), _) => Anchor::BottomLeft,
+        (Some("below"), Some("end")) => Anchor::TopRight,
+        (Some("below"), Some("center")) => Anchor::TopCenter,
+        (Some("left"), _) => Anchor::RightCenter,
+        (Some("right"), _) => Anchor::LeftCenter,
+        _ => Anchor::TopLeft,
+    };
+    let layer = anchored()
+        .position(point(px(x), px(y)))
+        .anchor(corner)
+        .snap_to_window()
+        .child(menu);
+    div()
+        .id(element_id(node.id))
+        .size_0()
+        .child(deferred(layer).with_priority(3))
+        .into_any_element()
 }
