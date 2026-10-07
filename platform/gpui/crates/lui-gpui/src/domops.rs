@@ -215,6 +215,15 @@ pub fn handle_dom_op(
             }
             Vec::new()
         }
+        // element.value = v — writes the wire `value` prop that the input
+        // kind's controlled-value echo pushes into its InputState.
+        "set-value" => {
+            if let Some(id) = target {
+                let value = parsed.get("value").and_then(Value::as_str).unwrap_or("");
+                apply_local(shared, &style_prop_batch(shared, id, "value", value), cx);
+            }
+            Vec::new()
+        }
         "style-set-property" => {
             let name = parsed.get("property").and_then(Value::as_str).unwrap_or("");
             let value = parsed.get("value").and_then(Value::as_str).unwrap_or("");
@@ -480,7 +489,20 @@ fn dump_tree(shared: &Shared) {
         } else {
             format!(" {:?}", &text[..text.len().min(60)])
         };
-        out.push_str(&format!("{}{} #{id}{bounds}{text}\n", "  ".repeat(depth), kind));
+        let classes = node
+            .string_prop(Property::StyleClass)
+            .or_else(|| {
+                node.extension_props
+                    .get("style-class")
+                    .and_then(|v| v.as_str())
+            })
+            .map(|c| format!(" .{}", c.split_whitespace().collect::<Vec<_>>().join(" .")))
+            .unwrap_or_default();
+        out.push_str(&format!(
+            "{}{} #{id}{classes}{bounds}{text}\n",
+            "  ".repeat(depth),
+            kind
+        ));
         for child in &node.children {
             walk(shared, *child, depth + 1, out);
         }
