@@ -798,6 +798,10 @@ and apply_secondary_property renderer node kind dom_node property value =
   | AlignmentValue, StringValue alignment ->
       W.Element.setAttribute "data-alignment" alignment dom_node
   | DataAttrs, StringValue payload -> apply_data_attrs dom_node payload
+  | KeyValue, StringValue key ->
+      W.Element.setAttribute "data-key" key dom_node
+  | SeparatorValue, StringValue separator ->
+      W.Element.setAttribute "data-separator" separator dom_node
   | _ ->
       invalid_arg
         ("invalid DOM property value: " ^ Lui_wire_schema.property_name property)
