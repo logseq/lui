@@ -142,6 +142,22 @@ fn has_class(node: &NodeSnapshot, name: &str) -> bool {
         || crate::style::class_has_utility(classes, name)
 }
 
+/// One attribute's string value on a store `Node` — same merge rules as
+/// [`attr`] (extension `attrs` JSON wins, then the `DataAttrs` record
+/// list). Used where only the store node is in hand (menu nav walks).
+pub(crate) fn store_attr(node: &lui_core::store::Node, name: &str) -> Option<String> {
+    if let Some(raw) = node.extension_props.get("attrs").and_then(|v| v.as_str()) {
+        let attrs: serde_json::Value = serde_json::from_str(raw).ok()?;
+        return attrs.get(name)?.as_str().map(str::to_string);
+    }
+    node.string_prop(Property::DataAttrs)?
+        .split('\x1e')
+        .find_map(|record| {
+            let (key, value) = record.split_once('\x1f')?;
+            (key == name).then(|| value.to_string())
+        })
+}
+
 /// One attribute's string value. Extension `attrs` is a JSON object;
 /// the standard `DataAttrs` prop is the \x1e/\x1f record list.
 pub(crate) fn attr(node: &NodeSnapshot, name: &str) -> Option<String> {

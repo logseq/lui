@@ -376,13 +376,29 @@ pub(crate) fn topmost_menu(shared: &Shared, cx: &App) -> Option<(i64, Option<i64
         match entry {
             OverlayEntry::Tooltip => continue,
             OverlayEntry::Node => {
-                let kind = {
+                let (kind, role) = {
                     let shared_ref = shared.borrow();
-                    shared_ref.store.node(id).and_then(|n| n.identity.kind())
+                    match shared_ref.store.node(id) {
+                        Some(node) => (
+                            node.identity.kind(),
+                            node.string_prop(lui_core::wire_schema::Property::RoleValue)
+                                .map(str::to_string),
+                        ),
+                        None => (None, None),
+                    }
                 };
                 return match kind {
                     Some(lui_core::wire_schema::NodeKind::DropdownMenu)
                     | Some(lui_core::wire_schema::NodeKind::ContextMenu) => Some((id, None)),
+                    // Model-owned popovers marked role=menu (context
+                    // menus, dropdown lists) join keyboard nav too —
+                    // their rows are `menu-item` nodes roving the same
+                    // highlight.
+                    Some(lui_core::wire_schema::NodeKind::Popover)
+                        if role.as_deref() == Some("menu") =>
+                    {
+                        Some((id, None))
+                    }
                     _ => None,
                 };
             }

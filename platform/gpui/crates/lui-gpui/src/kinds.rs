@@ -287,6 +287,14 @@ fn container(
     if !node.enabled() {
         element = element.opacity(0.5);
     }
+    // role=menuitem container rows join the host menu's roving
+    // highlight (menu_item_ids collects them); paint it with the
+    // accent the menu-item kind uses.
+    element = element.when(
+        crate::dom::attr(node, "role").as_deref() == Some("menuitem")
+            && view.shared.borrow().menu_highlight == Some(node.id),
+        |element| element.bg(cx.theme().accent),
+    );
     // Any container kind may carry `pressable` (the model enables the
     // PressEnabled prop) — the gate decides, not the kind.
     if press_gate(view, node.id) {
@@ -1759,6 +1767,15 @@ fn menu_item_ids(shared: &Shared, menu_id: i64) -> Vec<i64> {
         };
         match node.identity.kind() {
             Some(NodeKind::MenuItem) | Some(NodeKind::MenuTrigger) => {
+                if node.enabled() {
+                    items.push(id);
+                }
+            }
+            // Model-owned menus mark rows with role=menuitem in data
+            // attrs (ghost-button rows that are not the menu-item kind);
+            // they join the roving highlight too. They terminate the
+            // walk like real items — a menuitem never nests another.
+            _ if crate::dom::store_attr(node, "role").as_deref() == Some("menuitem") => {
                 if node.enabled() {
                     items.push(id);
                 }

@@ -102,6 +102,9 @@ pub fn event_supported(kind: NodeKind, event: EventKind) -> bool {
         ),
         Change => kind == Radio,
         ValueChanged => matches!(kind, Slider | NumberStepper | Split),
+        // Keep in sync with lui_protocol.ml — Popover admits dismiss
+        // there; omitting it here skipped overlay tracking for model
+        // popovers (no Esc/outside-close, no menu keyboard nav).
         Dismiss => matches!(
             kind,
             Select
@@ -113,6 +116,7 @@ pub fn event_supported(kind: NodeKind, event: EventKind) -> bool {
                 | Sheet
                 | FilePreview
                 | FilePicker
+                | Popover
         ),
         DoublePress => kind == ListItem,
         Load => kind == Image,

@@ -8,8 +8,8 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::v_flex;
 use gpui_kit::gpui::{
     canvas, div, px, App, Context, DispatchPhase, FocusHandle, InteractiveElement, IntoElement,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render,
-    StatefulInteractiveElement, Styled, Subscription, Window,
+    KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement,
+    Render, StatefulInteractiveElement, Styled, Subscription, Window,
 };
 
 use crate::backend::{LuiShared, Shared};
@@ -66,7 +66,14 @@ fn emit_dom_keydown(
     // is a logseq-dom convention; other extensions declare no `dom-event`
     // schema and OCaml rejects the payload as invalid. Clicks use the
     // same carrier walk (`dom::logseq_carrier`).
-    let found = shared.borrow_mut().focused_node(window);
+    // While a host menu is open the menu element is the web's
+    // document.activeElement — target it instead of the focused node so
+    // an editor keeps its hands off arrow/Enter keystrokes the menu
+    // already handled.
+    let found = match crate::backend::topmost_menu(shared, cx) {
+        Some((menu_id, _)) => Some(menu_id),
+        None => shared.borrow_mut().focused_node(window),
+    };
     let Some((node_id, identifier)) = crate::dom::logseq_carrier(shared, found) else {
         return;
     };
@@ -250,6 +257,33 @@ impl Render for LuiRootView {
                         canvas(
                             |_, _, _| {},
                             move |_bounds, _, window, _cx| {
+                                // gpui still dispatches every keystroke
+                                // to the focused view — an editor would
+                                // act on arrows/Enter meant for an open
+                                // host menu (web: the menu holds DOM
+                                // focus). menu_nav_key handles these in
+                                // observe_keystrokes; consume them at
+                                // capture so the focused view never sees
+                                // them while a menu is open.
+                                let menu_key_shared = mouse_shared.clone();
+                                window.on_key_event(
+                                    move |event: &KeyDownEvent, phase, _window, cx| {
+                                        if phase != DispatchPhase::Capture {
+                                            return;
+                                        }
+                                        if matches!(
+                                            event.keystroke.key.as_str(),
+                                            "up" | "down" | "left" | "right" | "enter"
+                                        ) && crate::backend::topmost_menu(
+                                            &menu_key_shared,
+                                            cx,
+                                        )
+                                        .is_some()
+                                        {
+                                            cx.stop_propagation();
+                                        }
+                                    },
+                                );
                                 let down_shared = mouse_shared.clone();
                                 window.on_mouse_event(
                                     move |event: &MouseDownEvent, phase, _window, cx| {
