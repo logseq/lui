@@ -227,7 +227,11 @@ pub fn handle_dom_op(
                 // leaving the typed text behind. Push it into the mounted
                 // InputState directly and mark it echoed so the re-render
                 // doesn't fight the field.
-                if let Some(view) = shared.borrow().views.get(&id).cloned() {
+                // Read-then-act in two borrows: a scrutinee `Ref` lives
+                // for the whole `if let` body, and `view.update` may emit
+                // events that drain patches — a nested `borrow_mut` panics.
+                let view = shared.borrow().views.get(&id).cloned();
+                if let Some(view) = view {
                     let value = value.to_string();
                     view.update(cx, |view, cx| {
                         *view.states.input_value_echoed.borrow_mut() = Some(value.clone());
@@ -247,7 +251,8 @@ pub fn handle_dom_op(
             if let Some(id) = target {
                 let start = parsed.get("start").and_then(Value::as_u64).unwrap_or(0) as usize;
                 let end = parsed.get("end").and_then(Value::as_u64).unwrap_or(0) as usize;
-                if let Some(view) = shared.borrow().views.get(&id).cloned() {
+                let view = shared.borrow().views.get(&id).cloned();
+                if let Some(view) = view {
                     view.update(cx, |view, cx| {
                         if let Some(input) = &view.states.input {
                             input.update(cx, |st, cx| {
@@ -265,8 +270,11 @@ pub fn handle_dom_op(
             if name.starts_with("--") {
                 style::set_css_var(name, value);
                 // The var table is global: re-render the whole tree by
-                // dirtying the root.
-                if let Some(root) = shared.borrow().store.root {
+                // dirtying the root. Read-then-act in two borrows — the
+                // scrutinee `Ref` would outlive bump_node's apply_batch_json
+                // and its nested `borrow_mut` would panic.
+                let root = shared.borrow().store.root;
+                if let Some(root) = root {
                     bump_node(shared, root, cx);
                 }
             } else if let Some(id) = target {
@@ -454,7 +462,10 @@ fn scroll_to_item(shared: &Shared, node_id: i64, ix: usize, cx: &mut App) {
 }
 
 fn focus_node(shared: &Shared, node_id: i64, window: &mut Window, cx: &mut App) {
-    let Some(view) = shared.borrow().views.get(&node_id).cloned() else {
+    // Same scrutinee-borrow hazard: `view.update` can emit events that
+    // drain patches (a nested `borrow_mut`), so copy the entity out first.
+    let view = shared.borrow().views.get(&node_id).cloned();
+    let Some(view) = view else {
         return;
     };
     view.update(cx, |view, cx| {
