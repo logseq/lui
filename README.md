@@ -9,11 +9,20 @@ patches to real UI objects:
   `LUIAppleBackend` Swift package).
 - **Web**: a Melange companion library (`platform/web/melange`) plus the
   shared stylesheet and icon set (`platform/web/src`).
+- **GPUI**: a Rust desktop backend on `gpui-kit` (`platform/gpui`), where
+  every LUI node is an `Entity<LuiNodeView>` so a batch only re-renders the
+  nodes it dirtied.
+- **Android**: a Kotlin backend (`platform/android`, package `dev.lui`)
+  applying patches to native Android views.
 
 Apple uses one JSON object per atomic `patch_batch` at its
 native host boundary; `Lui_wire` encodes the protocol directly. The Web
 backend runs in the same process as the OCaml application and applies typed
-patches to DOM nodes — no JSON bridge, no JavaScript UI framework.
+patches to DOM nodes — no JSON bridge, no JavaScript UI framework. GPUI and
+Android talk to the OCaml runtime over the `lui_ocaml_*` C ABI
+(`platform/native/lui_ocaml_bridge.c`): the OCaml side emits wire batches
+through a dylib, and each backend keeps a retained node store that applies
+them incrementally.
 
 ## Layout
 
@@ -23,6 +32,9 @@ examples/todos/       headless todo demo (pure OCaml + ocaml-signal)
 examples/gallery/     headless component-gallery demo
 platform/apple/       SwiftUI backend (SwiftPM package + tests)
 platform/web/         Melange DOM library, stylesheet, icons
+platform/gpui/        Rust GPUI backend (lui-core / lui-gpui / lui-demo crates)
+platform/android/     Kotlin Android backend (Gradle, dev.lui package)
+platform/native/      shared lui_ocaml_* C ABI used by native hosts
 schema/               canonical component schema (components.json)
 tooling/              schema code generator and tests
 test/                 alcotest suite
@@ -105,6 +117,10 @@ make test        # schema contract tests + dune @runtest
 make test-ocaml  # alcotest suite only
 make test-apple  # SwiftUI backend tests (macOS)
 ```
+
+Per-platform backend builds and test recipes are documented under each
+`platform/` directory (`platform/gpui/README.md` for the Rust backend, the
+Gradle wrapper under `platform/android` for Android).
 
 ## Component schema
 
