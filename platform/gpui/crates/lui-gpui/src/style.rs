@@ -185,9 +185,20 @@ fn semantic_var_color(name: &str, theme: &Theme) -> Option<Hsla> {
         | "--ls-tag-text-color"
         | "--ls-external-link-color" => theme.primary,
         "--ls-active-primary-color" | "--ls-active-secondary-color" => theme.primary,
-        "--ls-block-highlight-color" | "--ls-highlight-color" | "--ls-selection-color" => {
-            theme.accent
+        // vars-classic.css selection tint, expressed as a translucent
+        // source color: the overlay quad paints over the text on gpui,
+        // so a half-alpha source composites to the opaque web value on
+        // the page background while glyphs stay readable.
+        "--ls-block-highlight-color" => {
+            return Some(if theme.is_dark() {
+                // ≈ #0a3d4b at 60% over the dark background
+                rgba(0x00526999).into()
+            } else {
+                // #81cdfb at 50% composites to web's #c0e6fd on white
+                rgba(0x81cdfb80).into()
+            });
         }
+        "--ls-highlight-color" | "--ls-selection-color" => theme.accent,
         "--ls-page-mark-bg-color" | "--ls-mark-highlight-color"
         | "--ls-search-highlight-color" => theme.warning,
         "--ls-border-color" => theme.border,
