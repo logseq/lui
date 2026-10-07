@@ -360,6 +360,9 @@ pub struct ComponentStates {
     /// applies when the prop itself changes (re-emit or `set-value`),
     /// never against text the user typed into an uncontrolled field.
     pub input_value_echoed: std::cell::RefCell<Option<String>>,
+    /// Edge-triggered `autofocus`: set once the field's first render has
+    /// taken focus, so re-renders don't steal focus back.
+    pub autofocus_done: bool,
     /// Open overlay anchored at a window point (context menu, popup menu).
     /// `Some(point)` renders the deferred layer, `None` is closed.
     pub overlay:

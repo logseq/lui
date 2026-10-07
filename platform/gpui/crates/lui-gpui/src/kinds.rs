@@ -734,7 +734,13 @@ fn input(
     // Register the field's focus handle so the root keydown forwarder
     // can target keydowns at this node (document.activeElement parity).
     let handle = state.read(cx).focus_handle(cx);
-    view.shared.borrow_mut().register_focus(node_id, handle);
+    view.shared.borrow_mut().register_focus(node_id, handle.clone());
+    // Edge-triggered autofocus: the first render of a node carrying
+    // `autofocus` takes focus; re-emits don't steal focus back.
+    if node.flag(Property::Autofocus) && !view.states.autofocus_done {
+        view.states.autofocus_done = true;
+        window.defer(cx, move |window, cx| handle.focus(window, cx));
+    }
     // Controlled-value echo: push wire `value` into the state, but only
     // when the prop itself changed (re-emit or a `set-value` op).
     // Comparing against the live text would fight the user's typing in
@@ -806,7 +812,13 @@ fn textarea(
     }
     let state = view.states.textarea.clone().expect("initialized");
     let handle = state.read(cx).focus_handle(cx);
-    view.shared.borrow_mut().register_focus(node_id, handle);
+    view.shared.borrow_mut().register_focus(node_id, handle.clone());
+    // Edge-triggered autofocus: the first render of a node carrying
+    // `autofocus` takes focus; re-emits don't steal focus back.
+    if node.flag(Property::Autofocus) && !view.states.autofocus_done {
+        view.states.autofocus_done = true;
+        window.defer(cx, move |window, cx| handle.focus(window, cx));
+    }
     let placeholder = node.string_prop(Property::PlaceholderValue).unwrap_or("");
     if state.read(cx).presentation().placeholder().as_ref() != placeholder {
         state.update(cx, |state, cx| {
