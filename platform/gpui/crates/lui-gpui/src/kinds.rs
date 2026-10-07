@@ -1115,7 +1115,7 @@ fn backdrop(view: &LuiNodeView, node_id: i64, window: &Window) -> gpui_kit::gpui
 }
 
 /// Deferred layer covering the whole window at (0,0).
-fn window_layer(content: impl IntoElement, priority: usize) -> impl IntoElement {
+pub(crate) fn window_layer(content: impl IntoElement, priority: usize) -> impl IntoElement {
     deferred(
         anchored()
             .position(point(px(0.), px(0.)))

@@ -478,6 +478,10 @@ pub(crate) fn deepest_hit(
     let shared = shared.borrow();
     let mut best: Option<i64> = None;
     let mut stack: Vec<i64> = Vec::new();
+    // Imperative overlay roots paint in the topmost window layer — seed
+    // them below the document root (reversed, so the last-attached root
+    // is hit-tested last) so their subtree always wins the hit.
+    stack.extend(shared.imperative_roots.iter().rev().copied());
     if let Some(root) = shared.store.root {
         stack.push(root);
     }

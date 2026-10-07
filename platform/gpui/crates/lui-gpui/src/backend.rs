@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gpui_kit::gpui::{App, AppContext, Bounds, Entity, FocusHandle, Pixels, Point, Window};
+use gpui_kit::gpui::{App, AppContext, Bounds, Entity, EntityId, FocusHandle, Pixels, Point, Window};
 use lui_core::bridge;
 use lui_core::extension::{ExtensionRegistry, ExtensionSpec};
 use lui_core::store::{Applied, BackendError, Store};
@@ -89,6 +89,20 @@ pub struct LuiShared {
     /// Keyboard-highlighted menu item — roving focus for arrow-key
     /// navigation inside open menus (web menu keyboard parity).
     pub menu_highlight: Option<i64>,
+    /// OCaml imperative-DOM overlay roots (`imperative-attach` dom-op),
+    /// in attach order — body-appended floaters (pickers, property
+    /// popups) materialize as orphaned `logseq-*` nodes that the root
+    /// view mounts in a window-level deferred layer above declarative
+    /// popups, so they paint over the surface that spawned them.
+    pub imperative_roots: Vec<i64>,
+    /// Entity of the `LuiRootView` hosting the imperative overlay
+    /// layer — attach/detach ops notify it so the layer (un)mounts on
+    /// the next frame. Registered from the root view's render.
+    pub imperative_host_view: Option<EntityId>,
+    /// Last imperative-subtree bounds frame reported to OCaml via the
+    /// `imperative-rects` feed (node id -> l/t/r/b) — the feed diffs
+    /// painted bounds against this map so unchanged frames stay quiet.
+    pub imperative_rect_reported: HashMap<i64, (f32, f32, f32, f32)>,
 }
 
 /// How a host-side Escape closes one open overlay — pushed onto
@@ -151,6 +165,9 @@ impl LuiShared {
             toast_remaining_ms: HashMap::new(),
             toast_timers: std::collections::HashSet::new(),
             menu_highlight: None,
+            imperative_roots: Vec::new(),
+            imperative_host_view: None,
+            imperative_rect_reported: HashMap::new(),
         }));
         crate::extension::register_builtin_renderers(&shared);
         shared
@@ -486,6 +503,8 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
         if shared_ref.menu_highlight == Some(*id) {
             shared_ref.menu_highlight = None;
         }
+        shared_ref.imperative_roots.retain(|root| root != id);
+        shared_ref.imperative_rect_reported.remove(id);
     }
 
     {
@@ -556,6 +575,21 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
                 .store
                 .node(nid)
                 .and_then(|node| node.parent);
+        }
+        // A dirty node under an imperative overlay root that never
+        // resolved a mounted ancestor paints on the host layer's next
+        // frame instead — its parent chain ends at the orphan root.
+        let (on_imperative_root, host_view) = {
+            let guard = shared.borrow();
+            (
+                visited.iter().any(|nid| guard.imperative_roots.contains(nid)),
+                guard.imperative_host_view,
+            )
+        };
+        if on_imperative_root {
+            if let Some(entity) = host_view {
+                cx.notify(entity);
+            }
         }
     }
     for view in dirty_views {
