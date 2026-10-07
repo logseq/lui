@@ -20,8 +20,9 @@ use gpui_kit::component::separator::Separator;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::gpui::{
-    div, px, AnyElement, Context, ElementId, InteractiveElement, IntoElement,
-    ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
+    div, px, AnyElement, Bounds, Context, ElementId, InteractiveElement,
+    IntoElement, ParentElement, Pixels, SharedString,
+    StatefulInteractiveElement, Styled, Window,
 };
 use lui_core::bridge;
 use lui_core::store::{Node, NodeIdentity, Store};
@@ -286,7 +287,14 @@ fn shallow_snapshot(node: &Node) -> serde_json::Value {
 }
 
 /// Full target snapshot: shallow element + ancestor chain (root first).
-fn target_snapshot(store: &Store, node_id: i64) -> serde_json::Value {
+/// Painted bounds ride along as "rect" on the target and every ancestor
+/// so OCaml `bounding_rect` resolves synchronously on event targets
+/// (popup anchors) instead of round-tripping a measure-node dom-op.
+fn target_snapshot(
+    store: &Store,
+    node_bounds: &std::collections::HashMap<i64, Bounds<Pixels>>,
+    node_id: i64,
+) -> serde_json::Value {
     let Some(node) = store.node(node_id) else {
         return serde_json::Value::Null;
     };
@@ -295,7 +303,11 @@ fn target_snapshot(store: &Store, node_id: i64) -> serde_json::Value {
     while let Some(id) = parent {
         match store.node(id) {
             Some(p) => {
-                ancestors.push(shallow_snapshot(p));
+                let mut snap = shallow_snapshot(p);
+                if let Some(b) = node_bounds.get(&p.id) {
+                    snap["rect"] = crate::domops::bounds_json(Some(*b));
+                }
+                ancestors.push(snap);
                 parent = p.parent;
             }
             None => break,
@@ -303,6 +315,9 @@ fn target_snapshot(store: &Store, node_id: i64) -> serde_json::Value {
     }
     ancestors.reverse();
     let mut target = shallow_snapshot(node);
+    if let Some(b) = node_bounds.get(&node_id) {
+        target["rect"] = crate::domops::bounds_json(Some(*b));
+    }
     target["ancestors"] = serde_json::json!(ancestors);
     target
 }
@@ -542,7 +557,10 @@ pub fn dom_event_via(
         }
         guard.last_click_emit = Some((target_id, now));
     }
-    let target = target_snapshot(&shared.borrow().store, target_id);
+    let target = {
+        let guard = shared.borrow();
+        target_snapshot(&guard.store, &guard.node_bounds, target_id)
+    };
     if std::env::var_os("LUI_GPUI_DUMP_DOM").is_some() {
         eprintln!("dom-event {name} target={target_id} snap={target}");
     }
@@ -1275,7 +1293,7 @@ mod tests {
         store.nodes.insert(3, leaf);
         link(&mut store, 1, 2);
         link(&mut store, 2, 3);
-        let snap = target_snapshot(&store, 3);
+        let snap = target_snapshot(&store, &std::collections::HashMap::new(), 3);
         assert_eq!(snap["tag"], "LI");
         assert_eq!(snap["id"], "item-3");
         let ancestors = snap["ancestors"].as_array().expect("ancestors array");
@@ -1284,7 +1302,10 @@ mod tests {
         assert_eq!(ancestors[0]["id"], "app");
         assert_eq!(ancestors[1]["tag"], "UL");
         // Missing node -> JSON null (the host reports Null upstream).
-        assert_eq!(target_snapshot(&store, 99), serde_json::Value::Null);
+        assert_eq!(
+            target_snapshot(&store, &std::collections::HashMap::new(), 99),
+            serde_json::Value::Null
+        );
     }
 
     #[test]

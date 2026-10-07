@@ -51,7 +51,7 @@ fn node_bounds(shared: &Shared, node_id: i64) -> Option<Bounds<Pixels>> {
     shared.borrow().node_bounds.get(&node_id).copied()
 }
 
-fn bounds_json(bounds: Option<Bounds<Pixels>>) -> Value {
+pub(crate) fn bounds_json(bounds: Option<Bounds<Pixels>>) -> Value {
     match bounds {
         Some(b) => json!({
             "left": f32::from(b.origin.x),
