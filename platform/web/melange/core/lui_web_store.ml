@@ -613,9 +613,44 @@ let describe_op op =
   | MoveChild (parent, child, index) ->
       Printf.sprintf "MoveChild parent=%d child=%d index=%d" parent child index
 
-let apply_operations nodes platform_for extension_platform_for registry batch =
+(* The node ids an op can mutate: the named node, plus parent and child for
+   structural ops (children list and parent pointer both change). Mirrors the
+   Apple store's affectedIDs — snapshotting exactly these entries before each
+   op lets a rejected batch roll the mirror back completely. *)
+let affected_ids operation =
+  match operation with
+  | CreateNode (node, _)
+  | CreateExtension (node, _, _)
+  | DropNode node
+  | SetProp (node, _, _)
+  | RemoveProp (node, _)
+  | SetExtensionProp (node, _, _)
+  | RemoveExtensionProp (node, _) -> [ node ]
+  | InsertChild (parent, child, _)
+  | RemoveChild (parent, child)
+  | MoveChild (parent, child, _) -> [ parent; child ]
+
+let snapshot_before nodes snapshots operation =
+  List.iter
+    (fun node_id ->
+       if not (Hashtbl.mem snapshots node_id) then
+         Hashtbl.replace snapshots node_id
+           (Hashtbl.find_opt nodes node_id))
+    (affected_ids operation)
+
+let restore_snapshots nodes snapshots =
+  Hashtbl.iter
+    (fun node_id previous ->
+       match previous with
+       | Some node -> Hashtbl.replace nodes node_id node
+       | None -> Hashtbl.remove nodes node_id)
+    snapshots
+
+let apply_operations nodes platform_for extension_platform_for registry
+    snapshots batch =
   List.iteri
     (fun index op ->
+       snapshot_before nodes snapshots op;
        try apply_op nodes platform_for extension_platform_for registry op
        with
        | Invalid_argument message ->
@@ -625,21 +660,62 @@ let apply_operations nodes platform_for extension_platform_for registry batch =
     batch.ops;
   validate_nodes nodes registry
 
+(* Generation semantics match the Apple store: a received generation is
+   consumed whether or not its ops land — the runtime advances its own
+   generation even when apply_batch raises, so holding retained_generation at
+   the last success would reject every later batch and wedge the session
+   permanently. Stale or repeated batches are dropped; a forward gap applies
+   best-effort (ops that reference nodes a dropped batch created simply fail
+   validation, and the whole batch rolls back).
+
+   Failure semantics also match Apple: a rejected batch rolls the mirror back
+   to the pre-batch state — ops are not left half-applied. The rejection is
+   logged fail-loud (with the enriched node id/kind/props context from
+   validate_nodes/apply_operations) and re-raised so the runtime records the
+   batch as Rejected.
+
+   Returns [true] when the batch's ops were committed to the mirror, [false]
+   when the batch was dropped as stale — callers must skip any DOM apply for
+   a dropped batch. *)
 let commit_batch store platform_for extension_platform_for registry send_batch
     batch =
-  let expected_generation = store.retained_generation + 1 in
-  if expected_generation <> batch.generation then
-    invalid_arg
-      (Printf.sprintf "expected patch generation %d, received %d"
-         expected_generation batch.generation);
-  apply_operations store.retained_nodes platform_for extension_platform_for
-    registry batch;
-  if send_batch batch then begin
-    store.retained_batches <- store.retained_batches @ [ batch ];
-    store.retained_generation <- batch.generation;
-    true
+  if batch.generation <= store.retained_generation then begin
+    Js.Console.warn
+      (Printf.sprintf
+         "lui web store: dropping stale patch batch generation %d \
+          (already at %d, %d ops)"
+         batch.generation store.retained_generation
+         (List.length batch.ops));
+    false
   end
-  else invalid_arg "platform rejected patch batch"
+  else begin
+    store.retained_generation <- batch.generation;
+    let snapshots = Hashtbl.create 16 in
+    (try
+       apply_operations store.retained_nodes platform_for
+         extension_platform_for registry snapshots batch;
+       if send_batch batch then begin
+         store.retained_batches <- store.retained_batches @ [ batch ];
+         true
+       end
+       else invalid_arg "platform rejected patch batch"
+     with exn ->
+       restore_snapshots store.retained_nodes snapshots;
+       let message =
+         match exn with
+         | Invalid_argument message -> message
+         | Js.Exn.Error error ->
+             (match Js.Exn.message error with
+              | Some message -> message
+              | None -> "unknown JS exception")
+         | _ -> Printexc.to_string exn
+       in
+       Js.Console.error
+         (Printf.sprintf
+            "lui web store: rejected patch batch generation %d (%d ops): %s"
+            batch.generation (List.length batch.ops) message);
+       raise exn)
+  end
 
 let apply_batch_with store platform_for send_batch batch =
   commit_batch store platform_for unavailable_extension_platform
