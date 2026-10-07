@@ -1648,14 +1648,17 @@ fn list_item(
 /// Pressing a `menu-item` that sits inside a host-owned menu (a
 /// context-menu point popup or a `menu`/`submenu` trigger's mounted
 /// `dropdown-menu`) must collapse the whole popup chain like the web
-/// backend's native menus do. Model-owned `dropdown-menu` layers — ones
-/// mounted under a `stack`/`overlay` so the model decides when they drop —
-/// are left alone, and an item rendered inline (no menu ancestor) closes
+/// backend's native menus do. A `popover` ancestor hosting the items is
+/// a model-owned menu surface — it closes by firing its registered
+/// `Dismiss` event. Model-owned `dropdown-menu` layers — ones mounted
+/// under a `stack`/`overlay` so the model decides when they drop — are
+/// left alone, and an item rendered inline (no menu ancestor) closes
 /// nothing at all.
 fn close_host_menus(shared: &Shared, node_id: i64, cx: &mut App) {
     let mut trigger_ids = Vec::new();
     let mut menu_ids = Vec::new();
     let mut context_host_ids = Vec::new();
+    let mut popover_ids = Vec::new();
     {
         let shared = shared.borrow();
         let mut next = shared.store.node(node_id).and_then(|n| n.parent);
@@ -1675,12 +1678,22 @@ fn close_host_menus(shared: &Shared, node_id: i64, cx: &mut App) {
                         context_host_ids.push(host);
                     }
                 }
+                // A `popover` hosting menu items is a menu surface too —
+                // model-owned, so it closes through its Dismiss event.
+                Some(NodeKind::Popover) => popover_ids.push(id),
                 _ => {}
             }
         }
     }
-    if menu_ids.is_empty() {
+    if menu_ids.is_empty() && popover_ids.is_empty() {
         return;
+    }
+    for popover_id in popover_ids {
+        if event_gate_id(shared, popover_id, EventKind::Dismiss) {
+            fire(shared, popover_id, EventKind::Dismiss, cx, || unsafe {
+                bridge::lui_ocaml_dismiss(popover_id)
+            });
+        }
     }
     let set_state = {
         let shared = shared.clone();
