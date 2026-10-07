@@ -153,6 +153,29 @@ fn emit_dom_keydown(
         }),
         cx,
     );
+    // Web parity: ⌘V fires a document `paste` event, not just a keydown.
+    // A focused logseq-editor conduit emits its own paste with the sink
+    // as target — emitting here too would paste twice.
+    if mods.platform
+        && !mods.control
+        && !mods.alt
+        && !mods.shift
+        && key.eq_ignore_ascii_case("v")
+        && identifier != "logseq-editor"
+    {
+        let text = cx
+            .read_from_clipboard()
+            .and_then(|item| item.text())
+            .unwrap_or_default();
+        crate::dom::dom_event(
+            shared,
+            node_id,
+            &identifier,
+            "paste",
+            serde_json::json!({ "clipboardData": { "text": text } }),
+            cx,
+        );
+    }
 }
 
 impl Render for LuiRootView {
