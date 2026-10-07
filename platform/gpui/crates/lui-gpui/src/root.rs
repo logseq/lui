@@ -5,9 +5,9 @@ use std::cell::OnceCell;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::v_flex;
 use gpui_kit::gpui::{
-    div, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, MouseButton,
-    MouseUpEvent, ParentElement, Render, StatefulInteractiveElement, Styled,
-    Subscription, Window,
+    canvas, div, px, Context, DispatchPhase, FocusHandle, InteractiveElement, IntoElement,
+    KeyDownEvent, MouseButton, MouseDownEvent, MouseUpEvent, ParentElement, Render,
+    StatefulInteractiveElement, Styled, Subscription, Window,
 };
 
 use crate::backend::{LuiShared, Shared};
@@ -71,7 +71,7 @@ impl Render for LuiRootView {
                 // The LUI root node is typically a plain column; other
                 // backends get their outer scrolling from the host surface,
                 // so the window root supplies it here.
-                let click_shared = self.shared.clone();
+                let mouse_shared = self.shared.clone();
                 v_flex()
                     .id("lui-root-scroll")
                     .size_full()
@@ -80,42 +80,6 @@ impl Render for LuiRootView {
                     .text_color(cx.theme().foreground)
                     .font_family(cx.theme().font_family.clone())
                     .track_focus(&focus)
-                    .on_mouse_up(
-                        MouseButton::Left,
-                        move |event: &MouseUpEvent, _window, cx| {
-                            // Web parity: a click targets the deepest hit
-                            // element, and document listeners see it even
-                            // when it lands on a plain element — dom.rs
-                            // only wires `click` on nodes that declared it.
-                            // Emit the hit through an extension carrier;
-                            // OCaml's 60ms coalescing drops the wired
-                            // duplicate when one also fires.
-                            let Some(hit) = crate::dom::deepest_hit(
-                                &click_shared,
-                                event.position,
-                            ) else {
-                                return;
-                            };
-                            let Some((carrier, ident)) =
-                                crate::dom::logseq_carrier(&click_shared, Some(hit))
-                            else {
-                                return;
-                            };
-                            let position = event.position;
-                            crate::dom::dom_event_via(
-                                &click_shared,
-                                carrier,
-                                &ident,
-                                hit,
-                                "click",
-                                serde_json::json!({
-                                    "clientX": f64::from(position.x),
-                                    "clientY": f64::from(position.y),
-                                }),
-                                cx,
-                            );
-                        },
-                    )
                     .on_key_down(move |ev: &KeyDownEvent, window, cx| {
                         if ev.is_held {
                             return;
@@ -125,8 +89,19 @@ impl Render for LuiRootView {
                         // input handler — forwarding the same key as a
                         // document keydown would double-insert it, and
                         // native targets can't carry a `.ed-input` target
-                        // for the document handler to recognize.
-                        if ev.keystroke.key_char.is_some()
+                        // for the document handler to recognize. Named
+                        // keys are different: gpui reports Enter/Tab/
+                        // Escape as control-char key_chars, the input
+                        // never treats them as text, and document
+                        // listeners (palette Enter/arrows, editor Esc)
+                        // expect them — only printable key_chars are
+                        // suppressed.
+                        let text_char = ev
+                            .keystroke
+                            .key_char
+                            .as_deref()
+                            .is_some_and(|s| s.chars().all(|c| !c.is_control()));
+                        if text_char
                             && !ev.keystroke.modifiers.platform
                             && !ev.keystroke.modifiers.control
                             && window.focused(cx).is_some()
@@ -196,6 +171,97 @@ impl Render for LuiRootView {
                             cx,
                         );
                     })
+                    // Web parity: document `mousedown`/`click` listeners see
+                    // every pointer press, whatever it lands on — dom.rs only
+                    // wires element handlers for nodes that declared `click`,
+                    // so forward both phases from a window-level observer
+                    // (the same mechanism the editor conduit uses; element
+                    // `.on_mouse_*` listeners never reach this root through
+                    // gpui's hit dispatch). OCaml's 60ms coalescing drops the
+                    // duplicate when a wired `click` also fires.
+                    .child(
+                        canvas(
+                            |_, _, _| {},
+                            move |_bounds, _, window, _cx| {
+                                let down_shared = mouse_shared.clone();
+                                window.on_mouse_event(
+                                    move |event: &MouseDownEvent, phase, _window, cx| {
+                                        if phase != DispatchPhase::Capture
+                                            || event.button != MouseButton::Left
+                                        {
+                                            return;
+                                        }
+                                        let Some(hit) = crate::dom::deepest_hit(
+                                            &down_shared,
+                                            event.position,
+                                        ) else {
+                                            return;
+                                        };
+                                        let Some((carrier, ident)) =
+                                            crate::dom::logseq_carrier(
+                                                &down_shared,
+                                                Some(hit),
+                                            )
+                                        else {
+                                            return;
+                                        };
+                                        let position = event.position;
+                                        crate::dom::dom_event_via(
+                                            &down_shared,
+                                            carrier,
+                                            &ident,
+                                            hit,
+                                            "mousedown",
+                                            serde_json::json!({
+                                                "clientX": f64::from(position.x),
+                                                "clientY": f64::from(position.y),
+                                            }),
+                                            cx,
+                                        );
+                                    },
+                                );
+                                let up_shared = mouse_shared.clone();
+                                window.on_mouse_event(
+                                    move |event: &MouseUpEvent, phase, _window, cx| {
+                                        if phase != DispatchPhase::Capture
+                                            || event.button != MouseButton::Left
+                                        {
+                                            return;
+                                        }
+                                        let Some(hit) = crate::dom::deepest_hit(
+                                            &up_shared,
+                                            event.position,
+                                        ) else {
+                                            return;
+                                        };
+                                        let Some((carrier, ident)) =
+                                            crate::dom::logseq_carrier(
+                                                &up_shared,
+                                                Some(hit),
+                                            )
+                                        else {
+                                            return;
+                                        };
+                                        let position = event.position;
+                                        crate::dom::dom_event_via(
+                                            &up_shared,
+                                            carrier,
+                                            &ident,
+                                            hit,
+                                            "click",
+                                            serde_json::json!({
+                                                "clientX": f64::from(position.x),
+                                                "clientY": f64::from(position.y),
+                                            }),
+                                            cx,
+                                        );
+                                    },
+                                );
+                            },
+                        )
+                        .absolute()
+                        .size(px(1.)),
+                    )
                     .child(view)
                     .into_any_element()
             }

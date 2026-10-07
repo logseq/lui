@@ -343,6 +343,9 @@ pub fn dom_event_via(
         guard.last_click_emit = Some((target_id, now));
     }
     let target = target_snapshot(&shared.borrow().store, target_id);
+    if std::env::var_os("LUI_GPUI_DUMP_DOM").is_some() {
+        eprintln!("dom-event {name} target={target_id} snap={target}");
+    }
     let mut payload = serde_json::json!({
         "name": name,
         "nodeId": target_id,
