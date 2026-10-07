@@ -57,6 +57,27 @@ jobs:
       - uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: "5.5"
+      - name: Cache opam switch
+        uses: actions/cache@v4
+        with:
+          path: ~/.opam
+          key: opam-${{ runner.os }}-5.5-${{ hashFiles('*.opam*', 'dune-project') }}
+      - name: Cache dune
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/dune
+          key: dune-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            dune-${{ runner.os }}-
+      - name: Enable dune cache
+        run: |
+          echo "DUNE_CACHE=enabled" >> "$GITHUB_ENV"
+          echo "DUNE_CACHE_TRANSPORT=direct" >> "$GITHUB_ENV"
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('platform/web/package-lock.json') }}
       - name: Install Web dependencies
         run: |
           opam install . --deps-only --with-test -y --locked
