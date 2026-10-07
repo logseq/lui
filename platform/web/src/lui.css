@@ -1160,7 +1160,7 @@ body {
     @apply border-transparent bg-primary text-primary-foreground;
   }
 
-  .lui-badge--lui-secondary {
+  .lui-badge--secondary {
     @apply border-transparent bg-secondary text-secondary-foreground;
   }
 
@@ -1168,15 +1168,15 @@ body {
     @apply text-foreground;
   }
 
-  .lui-badge--lui-success {
+  .lui-badge--success {
     @apply border-success-foreground bg-success text-success-foreground;
   }
 
-  .lui-badge--lui-warning {
+  .lui-badge--warning {
     @apply border-warning-foreground bg-warning text-warning-foreground;
   }
 
-  .lui-badge--lui-error {
+  .lui-badge--error {
     @apply border-error-foreground bg-error text-error-foreground;
   }
 
