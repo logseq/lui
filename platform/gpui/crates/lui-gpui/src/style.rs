@@ -158,6 +158,16 @@ pub fn class_pointer_events(name: &str) -> Option<bool> {
 /// — the web app's classes.css declares these on `:root`/`dark`, here they
 /// resolve through the active theme so dark mode follows the window.
 fn semantic_var_color(name: &str, theme: &Theme) -> Option<Hsla> {
+    // `--lx-gray-*` under the logseq accent: light binds the radix gray
+    // scale; dark leaves every step (and every `-alpha` step) unset so
+    // each use resolves its own `var(--ls-*)` fallback — dark bullets
+    // ride --ls-block-bullet-color's teal, matching the classic theme.
+    if let Some(step) = name.strip_prefix("--lx-gray-") {
+        if theme.is_dark() || step.ends_with("-alpha") {
+            return None;
+        }
+        return radix_gray(step, false, false);
+    }
     Some(match name {
         "--ls-primary-background-color" | "--ls-content-background-color" => theme.background,
         "--ls-secondary-background-color"
@@ -175,24 +185,47 @@ fn semantic_var_color(name: &str, theme: &Theme) -> Option<Hsla> {
         | "--ls-tag-text-color"
         | "--ls-external-link-color" => theme.primary,
         "--ls-active-primary-color" | "--ls-active-secondary-color" => theme.primary,
-        "--ls-block-highlight-color" | "--ls-highlight-color" | "--ls-selection-color" => {
-            theme.accent
+        // vars-classic.css selection tint, expressed as a translucent
+        // source color: the overlay quad paints over the text on gpui,
+        // so a half-alpha source composites to the opaque web value on
+        // the page background while glyphs stay readable.
+        "--ls-block-highlight-color" => {
+            return Some(if theme.is_dark() {
+                // ≈ #0a3d4b at 60% over the dark background
+                rgba(0x00526999).into()
+            } else {
+                // #81cdfb at 50% composites to web's #c0e6fd on white
+                rgba(0x81cdfb80).into()
+            });
         }
+        "--ls-highlight-color" | "--ls-selection-color" => theme.accent,
         "--ls-page-mark-bg-color" | "--ls-mark-highlight-color"
         | "--ls-search-highlight-color" => theme.warning,
-        "--ls-border-color" | "--lx-guideline-color" | "--lx-gray-03" | "--lx-gray-04" => {
-            theme.border
+        "--ls-border-color" => theme.border,
+        // vars-classic.css: warm hairline in light, teal in dark.
+        "--ls-guideline-color" => {
+            return Some(if theme.is_dark() {
+                rgba(0x0b4a5aff).into()
+            } else {
+                rgba(0x2e1b0514).into()
+            });
         }
-        // Subtle fills on gray-04: guideline borders and closed-bullet
-        // backgrounds ride this translucent tone in the web palette.
-        "--lx-gray-04-alpha" => theme.list_active,
-        // kbd keycap fill + its hairline separator.
-        "--lx-gray-06-alpha" => theme.accent,
-        "--lx-gray-07-alpha" => theme.border,
-        "--lx-gray-09" => theme.border,
-        "--lx-gray-10" => theme.muted_foreground,
-        "--lx-gray-12" => theme.foreground,
-        "--lx-gray-06" | "--lx-gray-08" => theme.muted,
+        // vars-classic.css bullet tokens — the dark values are the
+        // classic teal pair; light resolves --lx-gray-08's gray.
+        "--ls-block-bullet-color" => {
+            return Some(if theme.is_dark() {
+                rgba(0x608e91ff).into()
+            } else {
+                rgba(0x433f3840).into()
+            });
+        }
+        "--ls-block-bullet-border-color" => {
+            return Some(if theme.is_dark() {
+                rgba(0x0f4958ff).into()
+            } else {
+                rgba(0xdededeff).into()
+            });
+        }
         "--ls-also-color-0" => theme.secondary_foreground,
         // Bare surface tokens — the LUI `background`/`foreground` vocab
         // (e.g. ~background:"secondary", "glass" on chrome.ml buttons).
@@ -217,7 +250,17 @@ fn semantic_var_color(name: &str, theme: &Theme) -> Option<Hsla> {
 /// ring) from a fixed base table matching the radix scale.
 fn rx_var_color(name: &str, theme: &Theme) -> Option<Hsla> {
     let rest = name.strip_prefix("--rx-")?;
+    let (rest, alpha) = match rest.strip_suffix("-alpha") {
+        Some(rest) => (rest, true),
+        None => (rest, false),
+    };
     let (color, step) = rest.rsplit_once('-')?;
+    if color == "gray" {
+        return radix_gray(step, alpha, theme.is_dark());
+    }
+    if alpha {
+        return None;
+    }
     let mut base = match color {
         "none" => theme.border,
         "logseq" => theme.primary,
@@ -227,6 +270,40 @@ fn rx_var_color(name: &str, theme: &Theme) -> Option<Hsla> {
         base.a *= 0.45;
     }
     Some(base)
+}
+
+/// radix `gray` scale — the light table is the `--lx-gray-*` binding of
+/// the logseq accent; both modes back `--rx-gray-*` fallbacks (incl. the
+/// `grayA` translucent series the kbd/bullet classes fall back to).
+const GRAY_LIGHT: [&str; 12] = [
+    "#fcfcfd", "#f9f9fb", "#eff0f3", "#e7e8eb", "#e0e1e6", "#d8d9e0", "#cdced6",
+    "#b9bbc6", "#8b8d98", "#80838d", "#60646c", "#1c2024",
+];
+const GRAY_DARK: [&str; 12] = [
+    "#161719", "#1c1d1f", "#232426", "#28292c", "#2e2f33", "#35373c", "#43474f",
+    "#5a5f69", "#696f78", "#777b84", "#b0b4ba", "#edeef0",
+];
+// `grayA` — translucent series as RRGGBBAA (radix alpha steps over the
+// gray-12/-12d hue; close enough for hairline fills).
+const GRAYA_LIGHT: [u32; 12] = [
+    0x1c202403, 0x1c202406, 0x1c202410, 0x1c202413, 0x1c20241a, 0x1c202425, 0x1c202433,
+    0x1c202441, 0x1c202473, 0x1c202483, 0x1c2024a1, 0x1c2024e6,
+];
+const GRAYA_DARK: [u32; 12] = [
+    0xedeef002, 0xedeef006, 0xedeef00c, 0xedeef012, 0xedeef019, 0xedeef01f, 0xedeef029,
+    0xedeef03d, 0xedeef04e, 0xedeef066, 0xedeef0a7, 0xedeef0ef,
+];
+
+fn radix_gray(step: &str, alpha: bool, dark: bool) -> Option<Hsla> {
+    let index = step.parse::<usize>().ok()?.checked_sub(1)?;
+    if index >= 12 {
+        return None;
+    }
+    if alpha {
+        Some(rgba(if dark { GRAYA_DARK[index] } else { GRAYA_LIGHT[index] }).into())
+    } else {
+        parse_hex(if dark { GRAY_DARK[index] } else { GRAY_LIGHT[index] })
+    }
 }
 
 fn rx_base_hex(color: &str) -> Option<&'static str> {
@@ -330,7 +407,9 @@ fn parse_hex(token: &str) -> Option<Hsla> {
     };
     let (r, g, b) = (*bytes.first()?, *bytes.get(1)?, *bytes.get(2)?);
     let a = *bytes.get(3).unwrap_or(&255);
-    Some(rgba((r as u32) << 16 | (g as u32) << 8 | b as u32 | ((a as u32) << 24)).into())
+    Some(
+        rgba((r as u32) << 24 | (g as u32) << 16 | (b as u32) << 8 | a as u32).into(),
+    )
 }
 
 fn named(token: &str) -> Option<Hsla> {
@@ -338,7 +417,7 @@ fn named(token: &str) -> Option<Hsla> {
     // semantic/transparent names.
     match token {
         "transparent" => Some(rgba(0x00000000).into()),
-        "black" => Some(rgba(0xff000000).into()),
+        "black" => Some(rgba(0x000000ff).into()),
         "white" => Some(rgba(0xffffffff).into()),
         _ => None,
     }
@@ -1566,4 +1645,3 @@ mod tests {
         );
     }
 }
-
