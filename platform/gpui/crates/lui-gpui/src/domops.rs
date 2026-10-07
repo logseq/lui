@@ -208,10 +208,32 @@ pub fn handle_dom_op(
             }
             Vec::new()
         }
-        "set-text" => {
+        "set-text" | "set-text-content" => {
             if let Some(id) = target {
                 let text = parsed.get("text").and_then(Value::as_str).unwrap_or("");
                 apply_local(shared, &style_prop_batch(shared, id, "text", text), cx);
+            }
+            Vec::new()
+        }
+        // element.remove() — detach from the parent and drop the subtree,
+        // the same pair the reconciler emits for a removed node.
+        "remove" => {
+            if let Some(id) = target {
+                let parent = shared
+                    .borrow()
+                    .store
+                    .node(id)
+                    .and_then(|n| n.parent);
+                if let Some(parent) = parent {
+                    let batch = json!({
+                        "generation": 0,
+                        "ops": [
+                            {"op": "remove-child", "parent": parent, "child": id},
+                            {"op": "drop-node", "id": id},
+                        ],
+                    });
+                    apply_local(shared, &batch.to_string(), cx);
+                }
             }
             Vec::new()
         }
