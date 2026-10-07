@@ -1724,31 +1724,38 @@ fn event_gate_id(shared: &crate::backend::Shared, node_id: i64, event: EventKind
 /// unconditionally, so the host decides visibility: hover opens the nested
 /// menu as a deferred popup at the row's right edge, an outside press fires
 /// the menu node's `Dismiss`.
-/// The `(owner id, open-slot)` of the nearest ancestor dropdown/context
-/// menu — submenu sibling coordination: only one trigger may hold it.
+/// The `(owner id, open-slot)` of the nearest ancestor menu surface —
+/// submenu sibling coordination: only one trigger may hold it. The
+/// surface is a dropdown/context menu node, or a `popover` declared
+/// with `role: "menu"`; plain containers between the trigger and the
+/// surface are skipped.
 fn menu_owner(
     view: &LuiNodeView,
     node: &NodeSnapshot,
     cx: &mut App,
 ) -> Option<(i64, std::rc::Rc<std::cell::Cell<Option<i64>>>)> {
-    let parent_id = node.parent?;
-    let is_menu = view
-        .shared
-        .borrow()
-        .store
-        .node(parent_id)
-        .map(|n| {
-            matches!(
-                n.identity.kind(),
-                Some(NodeKind::DropdownMenu) | Some(NodeKind::ContextMenu)
-            )
-        })
-        .unwrap_or(false);
-    if !is_menu {
-        return None;
-    }
-    let owner = LuiShared::view_for(&view.shared, parent_id, cx);
-    Some((parent_id, owner.read(cx).states.open_submenu.clone()))
+    let owner_id = {
+        let shared = view.shared.borrow();
+        let mut ancestor = node.parent;
+        loop {
+            let id = ancestor?;
+            let n = match shared.store.node(id) {
+                Some(n) => n,
+                None => break None,
+            };
+            let is_menu_surface = match n.identity.kind() {
+                Some(NodeKind::DropdownMenu) | Some(NodeKind::ContextMenu) => true,
+                Some(NodeKind::Popover) => n.string_prop(Property::RoleValue) == Some("menu"),
+                _ => false,
+            };
+            if is_menu_surface {
+                break Some(id);
+            }
+            ancestor = n.parent;
+        }
+    }?;
+    let owner = LuiShared::view_for(&view.shared, owner_id, cx);
+    Some((owner_id, owner.read(cx).states.open_submenu.clone()))
 }
 
 /// Close another trigger's submenu popup (the one holding the slot).
