@@ -1549,7 +1549,7 @@ let gpui_extension_section model_source send : t =
 (* Composite components (lui_element_combine): generic layouts built
    purely from primitives — composer, banners, settings rows, sidebar. *)
 
-let combine_section model_source send : t =
+let combine_section ?(picker_available = false) model_source send : t =
   let open Lui_element_combine in
   let dialog_open_ = model_source >|= Model.combine_dialog_open in
   let sheet_open_ = model_source >|= Model.combine_sheet_open in
@@ -1603,18 +1603,50 @@ let combine_section model_source send : t =
           ]
         ()
     ; composer ~placeholder:"Capture"
+        ~attachments_visible_signal:(reactive (fun m -> m.Model.composer_files <> []) model_source)
+        ~attachments:(row ~gap:8
+          [ reactive (fun m -> row ~gap:8 (List.map
+              (fun (file : Lui_picked_files.file) ->
+                composer_attachment ~key:file.path ~path:file.path
+                  ~title:file.name ~file_type:file.content_type
+                  ~disabled:(m.Model.composer_request <> m.Model.composer_completion)
+                  ~on_remove:(press send (Model.ComposerRemove file.path)) ())
+              m.Model.composer_files)) model_source ])
+        ~feedback:(text ~foreground:"muted-foreground"
+          ~value:(reactive (fun m -> m.Model.composer_feedback) model_source) [])
         ~text_signal:field_value_
         ~on_input:(on_input send (fun v -> Model.SetFieldValue v))
         ~actions:
-          [ button ~variant:`ghost ~icon:`plus ~width:32 ~height:32
+          [ button ~variant:`ghost ~icon:`plus ~width:44 ~height:44
               ~label:"Add attachment" ~accessibility_identifier:"button.attachment"
-              ~on_press:noop []
-          ; button ~variant:`ghost ~icon:`mic ~width:32 ~height:32
-              ~foreground:"border" ~label:"Voice input"
-              ~accessibility_identifier:"button.mic" ~on_press:noop []
+              ~disabled:(reactive (fun m -> not picker_available || m.Model.composer_request <> m.Model.composer_completion) model_source)
+              ~on_press:(press send (Model.ComposerRequest `files)) []
+          ; button ~variant:`ghost ~text:"Photos" ~width:64 ~height:44
+              ~label:"Add photos" ~accessibility_identifier:"button.photos"
+              ~disabled:(reactive (fun m -> not picker_available || m.Model.composer_request <> m.Model.composer_completion) model_source)
+              ~on_press:(press send (Model.ComposerRequest `photos)) []
           ]
-        ~send_disabled_signal:(field_value_ >|= fun v -> v = "")
-        ~on_send:(press send (Model.SetFieldValue "")) ()
+        ~send_disabled_signal:(reactive (fun m ->
+          (m.Model.field_value = "" && m.Model.composer_files = [])
+          || m.Model.composer_request <> m.Model.composer_completion) model_source)
+        ~on_send:(press send Model.ComposerSend) ()
+    ; (if not picker_available then
+        text ~foreground:"muted-foreground" ~style_class:"caption"
+          ~value:"This demo imports files and photos on the Apple host. Other hosts can supply their own attachment actions." []
+        else reactive ~equal:(fun a b -> a.Model.composer_request = b.Model.composer_request
+        && a.Model.composer_completion = b.Model.composer_completion
+        && a.Model.composer_source = b.Model.composer_source)
+        (fun m -> file_picker ~source:m.Model.composer_source ~multiple:true
+          ~accessibility_identifier:"picker.composer"
+          ~request:(`Int m.Model.composer_request)
+          ~completion:(`Int m.Model.composer_completion)
+          ~on_picked:(function
+            | Picked (_, payload) ->
+              (match Lui_picked_files.decode payload with
+               | Ok batch -> ignore (send (Model.ComposerPicked batch))
+               | Error _ -> ignore (send Model.ComposerCancelled))
+            | _ -> ())
+          ~on_dismiss:(press send Model.ComposerCancelled) []) model_source)
     ; composer_collapsed ~label:"Capture" ~icon:`plus ~on_press:noop ()
     ; suggestion_list ~source:suggestions ~item_key:(fun s -> s)
         ~label:(fun s -> s)
@@ -1763,7 +1795,7 @@ let view context model_source send : t =
     ; toolbar_section model_source send
     ; accordion_section model_source send
     ; radio_section model_source send
-    ; combine_section model_source send
+    ; combine_section ~picker_available:(Lui_ui.host context = SwiftUIHost) model_source send
     ; combine_sidebar_section model_source send
     ; spotify_section
     ; youtube_section

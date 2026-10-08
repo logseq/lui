@@ -458,6 +458,18 @@ public final class LUIAppleBackend {
         filePickerOperations[node] = operation
     }
 
+    func acceptFilePickerSelection(node: Int, token: LUIWireValue, files: [LUIRetainedFile]) -> Bool {
+        guard var operation = filePickerOperations[node],
+              operation.token == token, operation.phase == .presenting else {
+            releaseFilePickerFiles(files)
+            return false
+        }
+        operation.phase = .awaitingCompletion
+        operation.files = files
+        filePickerOperations[node] = operation
+        return true
+    }
+
     /// Drops the operation and releases every file it retained.
     func clearFilePickerOperation(node: Int) {
         guard let operation = filePickerOperations.removeValue(forKey: node)

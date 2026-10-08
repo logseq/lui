@@ -58,6 +58,14 @@ private final class GalleryHost {
     private(set) var rootID: Int?
     private(set) var sections: [LUIRootSection] = []
     private var started = false
+    private let composerImports = GalleryComposerImports()
+    private var composerPickers: Set<Int> = []
+    private var pickerRequests: [Int: Int] = [:]
+    private var attachmentPaths: [Int: String] = [:]
+    private var composerPatchRevision = 0
+    private var composerChildren: [Int: Set<Int>] = [:]
+    private var composerParents: [Int: Int] = [:]
+    private var composerEpoch = 0
 
     init() {
         do {
@@ -67,7 +75,8 @@ private final class GalleryHost {
         } catch {
             fatalError("Invalid Gallery extension registry: \(error)")
         }
-        backend.onEvent = { event in
+        backend.onEvent = { [weak self] event in
+            guard let self else { return }
             switch event {
             case let .press(node): _ = luiOCamlPress(Int64(node))
             case let .longPress(node): _ = luiOCamlLongPress(Int64(node))
@@ -76,7 +85,11 @@ private final class GalleryHost {
             case let .submit(node): _ = luiOCamlSubmit(Int64(node))
             case let .dismiss(node): _ = luiOCamlDismiss(Int64(node))
             case let .picked(node, payload):
-                payload.withCString { _ = luiOCamlPicked(Int64(node), $0) }
+                if self.composerPickers.contains(node) {
+                    Task { await self.importComposerSelection(node: node, payload: payload) }
+                } else {
+                    payload.withCString { _ = luiOCamlPicked(Int64(node), $0) }
+                }
             case let .doublePress(node): _ = luiOCamlDoublePress(Int64(node))
             case let .toggleChanged(node, checked):
                 _ = luiOCamlToggleChanged(Int64(node), checked ? 1 : 0)
@@ -86,6 +99,9 @@ private final class GalleryHost {
             case let .appear(node): _ = luiOCamlAppear(Int64(node))
             case .extension:
                 assertionFailure("Gallery extensions do not declare LG events")
+            case .scrollCompleted, .visibleRange, .pressDetail, .pointerDown,
+                 .pointerUp, .pointerEnter, .pointerLeave, .contextMenuPress:
+                break
             }
         }
     }
@@ -102,6 +118,7 @@ private final class GalleryHost {
     func apply(json: String) {
         do {
             try backend.apply(json: json)
+            trackComposerPatch(json)
             rootID = backend.rootIDs.first
             sections = rootID.map(backend.rootSections(rootID:)) ?? []
         } catch {
@@ -109,11 +126,91 @@ private final class GalleryHost {
         }
     }
 
+    private func trackComposerPatch(_ json: String) {
+        guard let data = json.data(using: .utf8),
+              let batch = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let ops = batch["ops"] as? [[String: Any]] else { return }
+        for op in ops {
+            let operation = op["op"] as? String
+            if operation == "insert-child", let parent = op["parent"] as? Int,
+               let child = op["child"] as? Int {
+                if let previous = composerParents[child] { composerChildren[previous]?.remove(child) }
+                composerChildren[parent, default: []].insert(child)
+                composerParents[child] = parent
+                continue
+            }
+            if operation == "remove-child", let parent = op["parent"] as? Int,
+               let child = op["child"] as? Int {
+                composerChildren[parent]?.remove(child)
+                composerParents.removeValue(forKey: child)
+                continue
+            }
+            guard let id = op["id"] as? Int else { continue }
+            if operation == "drop-node" || operation == "detach-subtree" {
+                forgetComposerSubtree(id)
+            } else if operation == "remove-prop" {
+                if op["property"] as? String == "request" { pickerRequests.removeValue(forKey: id) }
+                if op["property"] as? String == "accessibility-identifier" {
+                    composerPickers.remove(id)
+                    attachmentPaths.removeValue(forKey: id)
+                }
+            } else if operation == "set-prop" {
+                if op["property"] as? String == "request", let request = op["value"] as? Int {
+                    pickerRequests[id] = request
+                }
+                if op["property"] as? String == "accessibility-identifier", let value = op["value"] as? String {
+                    composerPickers.remove(id)
+                    attachmentPaths.removeValue(forKey: id)
+                    if value == "picker.composer" { composerPickers.insert(id) }
+                    let prefix = "composer-attachment:"
+                    if value.hasPrefix(prefix) { attachmentPaths[id] = String(value.dropFirst(prefix.count)) }
+                }
+            }
+        }
+        let paths = Set(attachmentPaths.values)
+        composerPatchRevision += 1
+        let revision = composerPatchRevision
+        Task { await composerImports.retain(paths, revision: revision) }
+    }
+
+    private func forgetComposerSubtree(_ root: Int) {
+        var remaining = [root]
+        while let id = remaining.popLast() {
+            remaining.append(contentsOf: composerChildren.removeValue(forKey: id) ?? [])
+            if let parent = composerParents.removeValue(forKey: id) { composerChildren[parent]?.remove(id) }
+            composerPickers.remove(id)
+            pickerRequests.removeValue(forKey: id)
+            attachmentPaths.removeValue(forKey: id)
+        }
+    }
+
+    private func importComposerSelection(node: Int, payload: String) async {
+        let request = pickerRequests[node]
+        let epoch = composerEpoch
+        let result = await composerImports.stage(payload)
+        guard started, composerEpoch == epoch, composerPickers.contains(node), pickerRequests[node] == request else {
+            await composerImports.retain(Set(attachmentPaths.values), revision: composerPatchRevision,
+                finishing: result?.created ?? [])
+            return
+        }
+        guard let batch = result else { _ = luiOCamlDismiss(Int64(node)); return }
+        batch.payload.withCString { _ = luiOCamlPicked(Int64(node), $0) }
+        await composerImports.retain(Set(attachmentPaths.values), revision: composerPatchRevision,
+            finishing: batch.created)
+    }
+
     func stop() {
         guard started else { return }
         _ = luiOCamlStop()
         started = false
+        composerEpoch += 1
+        composerPickers.removeAll()
+        pickerRequests.removeAll()
+        attachmentPaths.removeAll()
+        composerChildren.removeAll()
+        composerParents.removeAll()
         activeHost = nil
+        Task { await composerImports.clear() }
     }
 }
 
@@ -228,7 +325,6 @@ private struct GalleryRootView: View {
     }
 
     private func detailView(sectionID: Int) -> some View {
-        let section = host.sections.first { $0.id == sectionID }
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 LUISwiftUIRoot(backend: host.backend, rootID: sectionID)

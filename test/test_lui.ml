@@ -2975,6 +2975,98 @@ let test_composer_feedback_above_actions () =
      | _ -> false);
   drive_dispose s
 
+let test_composer_inline_input_and_cards () =
+  let s =
+    drive_mount ~initial:() ~reducer:(fun model _ -> model)
+      ~view:(fun _context _model _send ->
+        Lui_element_combine.composer ~placeholder:"Message"
+          ~actions:[Lui_elements.button ~label:"Add attachment" []]
+          ~on_send:(fun _ -> ())
+          ~attachments:(Lui_elements.row ~gap:8
+            [Lui_element_combine.composer_attachment
+               ~key:"photo" ~path:"/tmp/photo.png" ~title:"Photo"
+               ~file_type:"image/png" ~on_remove:(fun _ -> ()) ();
+             Lui_element_combine.composer_attachment
+               ~key:"document" ~path:"/tmp/report.pdf"
+               ~title:"A very long report name that must stay inside its card.pdf"
+               ~file_type:"application/pdf" ~on_remove:(fun _ -> ()) ()]) ()) ()
+  in
+  let labelled name = Drive.Model.Prop
+      ("accessibility-label", Lui_protocol.StringValue name) in
+  let field = drive_node s (Drive.Model.Kind "textarea") in
+  let add = drive_node s (labelled "Add attachment") in
+  let send = drive_node s (labelled "Send") in
+  Alcotest.(check bool) "add, input and send share the controls row" true
+    (field.Drive.Model.parent = add.Drive.Model.parent
+     && field.Drive.Model.parent = send.Drive.Model.parent);
+  let image = drive_node s (Drive.Model.Kind "file-image") in
+  Alcotest.(check bool) "MIME image fills a square thumbnail" true
+    (drive_prop s image "width" = Some (Lui_protocol.IntValue 120)
+     && drive_prop s image "height" = Some (Lui_protocol.IntValue 120)
+     && drive_prop s image "image-fit" = Some (Lui_protocol.StringValue "fill"));
+  let remove = drive_node s (labelled "Remove Photo") in
+  Alcotest.(check bool) "removal uses a 44pt icon target" true
+    (drive_prop s remove "width" = Some (Lui_protocol.IntValue 44)
+     && drive_prop s remove "height" = Some (Lui_protocol.IntValue 44)
+     && drive_prop s remove "text" = None);
+  let strip = drive_node s (Drive.Model.Kind "scroll") in
+  Alcotest.(check bool) "attachments stay horizontally scrollable" true
+    (drive_prop s strip "orientation" = Some (Lui_protocol.StringValue "horizontal"));
+  drive_dispose s
+
+let test_picked_files_batch () =
+  let decode json = match Lui_picked_files.decode json with
+    | Ok result -> result
+    | Error message -> Alcotest.fail message in
+  let batch = decode {|{"request":7,"failures":1,"files":[
+    {"path":"/tmp/z.png","name":"图片.png","content-type":"image/png"},
+    {"name":"missing path"},
+    {"path":"/tmp/a.txt","name":"A \"note\".txt","content-type":"text/plain"}]}|} in
+  Alcotest.(check (list string)) "ordered valid files survive partial failure"
+    ["/tmp/z.png"; "/tmp/a.txt"]
+    (List.map (fun (file : Lui_picked_files.file) -> file.path) batch.files);
+  Alcotest.(check int) "each failed entry is visible" 2 batch.failures;
+  Alcotest.(check bool) "numeric token is preserved" true (batch.request = `Int 7);
+  let empty = decode {|{"request":"cancelled","files":[]}|} in
+  Alcotest.(check int) "empty batch remains empty" 0 (List.length empty.files);
+  List.iter (fun source -> Alcotest.(check bool) "invalid envelope rejected" true
+    (Result.is_error (Lui_picked_files.decode source)))
+    ["{}"; "[]"; "{\"request\":true,\"files\":[]}"; "{\"request\":1,\"files\":[] } trailing"]
+
+let test_gallery_composer_batches () =
+  let file n : Lui_picked_files.file =
+    { path = Printf.sprintf "/tmp/synthetic-%d.txt" n;
+      name = Printf.sprintf "Synthetic %d" n; content_type = "text/plain" } in
+  let picked request files : Lui_picked_files.t =
+    {request = `Int request; files; failures = 0} in
+  let request m = Model.update m (Model.ComposerRequest `files) in
+  let paths m = List.map (fun (f : Lui_picked_files.file) -> f.path) m.Model.composer_files in
+  let first = request Model.initial in
+  let first = Model.update first (Model.ComposerPicked (picked 1 [file 2; file 1])) in
+  Alcotest.(check (list string)) "a whole selection arrives in order"
+    [(file 2).path; (file 1).path] (paths first);
+  let cancelled = Model.update (request first) Model.ComposerCancelled in
+  Alcotest.(check (list string)) "cancel preserves attachments" (paths first) (paths cancelled);
+  let next = request cancelled in
+  let stale = Model.update next (Model.ComposerPicked (picked 1 [file 9])) in
+  Alcotest.(check (list string)) "stale result cannot mutate the current request" (paths first) (paths stale);
+  let next = Model.update next (Model.ComposerPicked
+    (picked next.Model.composer_request [file 1; file 3; file 3; file 4])) in
+  Alcotest.(check (list string)) "existing and in-batch duplicate paths are skipped"
+    (List.map (fun n -> (file n).path) [2;1;3;4]) (paths next);
+  let removed = Model.update next (Model.ComposerRemove (file 1).path) in
+  let readded = request removed in
+  let readded = Model.update readded (Model.ComposerPicked (picked readded.Model.composer_request [file 1])) in
+  Alcotest.(check (list string)) "removed item can be readded at the end"
+    (List.map (fun n -> (file n).path) [2;3;4;1]) (paths readded);
+  let limited = request readded in
+  let limited = Model.update limited (Model.ComposerPicked
+    (picked limited.Model.composer_request (List.init 12 (fun n -> file (n + 10))))) in
+  Alcotest.(check int) "demo caps pending attachments at eight" 8 (List.length limited.Model.composer_files);
+  Alcotest.(check bool) "limit feedback is visible" true (limited.Model.composer_feedback <> "");
+  let sent = Model.update limited Model.ComposerSend in
+  Alcotest.(check int) "demo send clears owned attachments" 0 (List.length sent.Model.composer_files)
+
 
 
 (* Navigation exercises the public component through a real retained runtime,
@@ -3255,6 +3347,9 @@ let () =
           Alcotest.test_case "composer content sizing" `Quick test_composer_content_sizing;
           Alcotest.test_case "composer attachment preview and removal" `Quick test_composer_attachment_preview_and_remove;
           Alcotest.test_case "composer feedback above actions" `Quick test_composer_feedback_above_actions;
+          Alcotest.test_case "composer inline input and square cards" `Quick test_composer_inline_input_and_cards;
+          Alcotest.test_case "ordered picked file batches" `Quick test_picked_files_batch;
+          Alcotest.test_case "gallery composer batches" `Quick test_gallery_composer_batches;
           Alcotest.test_case "lifecycle" `Quick test_app_lifecycle;
           Alcotest.test_case "backend patches" `Quick
             test_backend_receives_patches;

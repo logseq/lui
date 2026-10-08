@@ -5723,6 +5723,9 @@ private struct LUIIconImage: View {
 }
 
 enum LUITextLinePolicy {
+    static func boundsAttachmentScaling(styleClass: String?) -> Bool {
+        hasStyle("composer-attachment-label", in: styleClass)
+    }
     static func lineLimit(styleClass: String?) -> Int? {
         if hasStyle("single-line", in: styleClass) { return 1 }
         return hasStyle("line-clamp-3", in: styleClass) ? 3 : nil
@@ -5735,6 +5738,20 @@ enum LUITextLinePolicy {
     private static func hasStyle(_ target: String, in styleClass: String?) -> Bool {
         guard let styleClass else { return false }
         return styleClass.split(separator: " ").contains { String($0) == target }
+    }
+}
+
+private struct LUIAttachmentTextScalingModifier: ViewModifier {
+    let enabled: Bool
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled {
+            // Square thumbnails keep their labels inside the tile. The full
+            // name remains available on the preview and removal controls.
+            content.dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        } else {
+            content
+        }
     }
 }
 
@@ -5756,6 +5773,7 @@ private struct LUITextView: View {
                     .frame(maxWidth: alignedMaxWidth, alignment: frameAlignment)
                     .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(layoutPriority)
+                    .modifier(attachmentScaling)
             }
             .buttonStyle(.plain)
         } else {
@@ -5766,7 +5784,13 @@ private struct LUITextView: View {
                 .frame(maxWidth: alignedMaxWidth, alignment: frameAlignment)
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(layoutPriority)
+                .modifier(attachmentScaling)
         }
+    }
+
+    private var attachmentScaling: LUIAttachmentTextScalingModifier {
+        LUIAttachmentTextScalingModifier(enabled: LUITextLinePolicy.boundsAttachmentScaling(
+            styleClass: model.property(.styleClass)?.stringValue))
     }
 
     private var textContent: Text {

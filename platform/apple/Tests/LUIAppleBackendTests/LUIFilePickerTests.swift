@@ -1,9 +1,35 @@
 import Testing
+import Foundation
 @testable import LUIAppleBackend
 
 @MainActor
 @Suite("LUI file-picker backend")
 struct LUIFilePickerTests {
+    @Test("ordered batches retain files until acknowledgement, stale results release their own copies")
+    func batchSelectionLifetime() throws {
+        let backend = try makeBackend()
+        func file(_ name: String) throws -> LUIRetainedFile {
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + name)
+            try Data(name.utf8).write(to: url)
+            return LUIRetainedFile(url: url, securityScoped: false, temporary: true)
+        }
+        let first = try file("first.txt"), second = try file("second.txt")
+        let stale = try file("stale.txt")
+        defer { for f in [first, second, stale] { try? FileManager.default.removeItem(at: f.url) } }
+        backend.setFilePickerOperation(node: 2, LUIFilePickerOperation(token: .int(2), phase: .presenting))
+        #expect(!backend.acceptFilePickerSelection(node: 2, token: .int(1), files: [stale]))
+        #expect(!FileManager.default.fileExists(atPath: stale.url.path))
+        #expect(backend.filePickerOperation(node: 2)?.phase == .presenting)
+        #expect(backend.acceptFilePickerSelection(node: 2, token: .int(2), files: [second, first]))
+        #expect(backend.filePickerOperation(node: 2)?.files.map(\.url) == [second.url, first.url])
+        #expect(FileManager.default.fileExists(atPath: first.url.path))
+        backend.clearFilePickerOperation(node: 2)
+        #expect(!FileManager.default.fileExists(atPath: first.url.path))
+        #expect(!FileManager.default.fileExists(atPath: second.url.path))
+        let late = try file("late.txt")
+        #expect(!backend.acceptFilePickerSelection(node: 2, token: .int(2), files: [late]))
+        #expect(!FileManager.default.fileExists(atPath: late.url.path))
+    }
     private func makeBackend() throws -> LUIAppleBackend {
         let backend = LUIAppleBackend()
         try backend.apply(json: """

@@ -186,6 +186,13 @@ struct LUISwiftUIBackendTests {
         ) == 1)
     }
 
+    @Test("square attachment labels retain readable bounded text scaling")
+    func attachmentTextScaling() {
+        #expect(LUITextLinePolicy.boundsAttachmentScaling(styleClass: "single-line composer-attachment-label"))
+        #expect(!LUITextLinePolicy.boundsAttachmentScaling(styleClass: "single-line"))
+        #expect(!LUITextLinePolicy.boundsAttachmentScaling(styleClass: nil))
+    }
+
     @Test("semantic muted foreground uses secondary text styling")
     func semanticMutedForegroundUsesSecondaryTextStyling() {
         #expect(LUIThemeColorPolicy.isMutedForeground("muted-foreground"))

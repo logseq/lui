@@ -165,7 +165,7 @@ let composer
       ?accessibility_identifier
       ?attachments
       ?attachments_visible_signal
-      ?(attachments_height = 140)
+      ?(attachments_height = 128)
       ?feedback
       ?(actions = [])
       ~placeholder
@@ -201,7 +201,8 @@ let composer
    in
    let field =
      textarea
-       ~min_height:36 ~max_height:168 ~style_class:"composer-input" ~placeholder
+       ~grow:1.0 ~min_width:0 ~min_height:36 ~max_height:168
+       ~style_class:"composer-input" ~placeholder
        ~label:(match label with Some value -> value | None -> placeholder)
        ?text ?text_signal ~autofocus ?submit_on_enter
        ~accessibility_identifier:"field.composer" ?on_input ?on_submit []
@@ -227,21 +228,13 @@ let composer
        ~padding_vertical:(if kotlin then 12 else 8)
        ~background:(if kotlin then "surface-container-high" else "glass")
        ~corner_radius:24
-       ([ box ~height:6 ~accessibility_identifier:"spacer.composer.top" [] ]
-        @ attachment_strip
-        @ [ field
-          ; box ~height:8
-              ~accessibility_identifier:"spacer.composer.field-controls" []
-          ]
+       (attachment_strip
         @ Option.to_list feedback
         @ [ row
-              ~gap:8 ~height:44 ~cross:`center
+              ~gap:8 ~min_height:44 ~cross:`end_
               ~accessibility_identifier:"row.composer.controls"
               (actions
-               @ [ spacer
-                     ~grow:1.0
-                     ~accessibility_identifier:"spacer.composer.controls" []
-                 ]
+               @ [ field ]
                @ send_button)
           ])
    in
@@ -253,35 +246,56 @@ let composer
 
 let composer_attachment_preview_slot = Signal.state_slot "composer-attachment-preview"
 
-let composer_attachment ?(disabled = false) ~key ~path ~title ~file_type ~on_remove () : t =
+let composer_attachment ?(disabled = false) ?status ~key ~path ~title ~file_type ~on_remove () : t =
  fun context parent ->
    let context = Lui_ui.child_context context ("composer-attachment:" ^ key) in
    let preview = Signal.state_at context.ui_scheduler context.ui_state_scope
        composer_attachment_preview_slot false in
    let show _ = Signal.set preview true in
    let name = if String.trim title = "" then "Attachment" else title in
-   let image = List.mem (String.lowercase_ascii file_type)
+   let file_type = String.lowercase_ascii (String.trim file_type) in
+   let image = String.starts_with ~prefix:"image/" file_type || List.mem file_type
        [ "png"; "jpg"; "jpeg"; "gif"; "webp"; "heic" ] in
-   column ~key ~width:184 ~gap:4 ~padding:4 ~corner_radius:10
-     ~background:"#839B7F0B"
-     [ row ~gap:4 ~cross:`center
-         [ (if image then file_image ~path ~max_pixel_size:128
-                ~width:48 ~height:48 ~corner_radius:8
+   let extension = Filename.extension name in
+   let kind = if String.contains file_type '/' && String.length extension > 1 then
+       String.uppercase_ascii (String.sub extension 1 (String.length extension - 1))
+     else match List.rev (String.split_on_char '/' file_type) with
+     | value :: _ when value <> "" -> String.uppercase_ascii value
+     | _ -> "FILE" in
+   let details = Option.value status ~default:kind in
+   column ~key ~width:120 ~gap:0
+     ~accessibility_identifier:("composer-attachment:" ^ key)
+     [ overlay ~width:120 ~height:120 ~corner_radius:20 ~background:"secondary"
+         ([ (if image then file_image ~path ~max_pixel_size:384 ~fit:`fill
+                ~width:120 ~height:120 ~corner_radius:20
                 ~label:("Preview " ^ name) ~on_press:show []
-            else button ~icon:(`app "doc") ~width:48 ~height:48
-                ~variant:`ghost ~label:("Preview " ^ name) ~on_press:show [])
-         ; button ~text:name ~width:120 ~min_height:48 ~variant:`ghost
-             ~label:("Preview " ^ name) ~on_press:show []
-         ]
-     ; button ~text:"Remove" ~height:44 ~variant:`ghost
-         ~disabled
-         ~label:("Remove " ^ name)
-         ~accessibility_identifier:("composer-attachment-remove:" ^ key)
-         ~on_press:(fun event -> if not disabled then on_remove event) []
-     ; dyn ~equal:Bool.equal
-         (fun visible -> if visible then file_preview ~path
-              ~on_dismiss:(fun _ -> Signal.set preview false) [] else column [])
-         (Signal.value preview)
+            else
+              column ~width:120 ~height:120 ~padding:12 ~gap:4
+                [ icon ~name:`file_text ~width:24 ~height:24 ~foreground:"accent" []
+                ; spacer ~grow:1.0 []
+                ; text ~value:name ~max_width:96 ~style_class:"single-line composer-attachment-label" []
+                ; text ~value:details ~max_width:96 ~foreground:"muted-foreground"
+                    ~style_class:"single-line caption composer-attachment-label" [] ])
+         ] @ (if image then [] else
+            [button ~width:120 ~height:120 ~variant:`ghost ~background:"transparent"
+               ~label:("Preview " ^ name) ~on_press:show []]) @ [
+           align `top_trailing
+             (overlay ~width:44 ~height:44
+                [ column ~width:44 ~height:44 ~main:`center ~cross:`center
+                    [box ~width:28 ~height:28 ~background:"#00000066" ~corner_radius:14 []]
+                ; button ~icon:`x ~size:`sm ~width:44 ~height:44 ~variant:`ghost
+                    ~background:"transparent" ~foreground:"white"
+                    ~disabled ~label:("Remove " ^ name)
+                    ~accessibility_identifier:("composer-attachment-remove:" ^ key)
+                    ~on_press:(fun event -> if not disabled then on_remove event) [] ])
+         ] @ (if image then match status with
+            | None -> []
+            | Some status -> [align `bottom_leading
+                (box ~width:120 ~padding:8 ~background:"#00000099"
+                  [text ~value:status ~foreground:"white" ~style_class:"single-line composer-attachment-label" []])]
+            else []))
+     ; if_ ~test:(Signal.value preview)
+         (file_preview ~path ~on_dismiss:(fun _ -> Signal.set preview false) [])
      ] context parent
 ;;
 
