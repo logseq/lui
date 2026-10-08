@@ -23,6 +23,21 @@ private typealias LUIEditorFont = UIFont
 /// over strings which win over keywords — a close approximation of a real
 /// lexer for editor-sized buffers.
 public enum LUICodeHighlighter {
+    private static var textColor: LUIEditorColor {
+        #if canImport(AppKit)
+        .labelColor
+        #else
+        .label
+        #endif
+    }
+
+    private static var commentColor: LUIEditorColor {
+        #if canImport(AppKit)
+        .secondaryLabelColor
+        #else
+        .secondaryLabel
+        #endif
+    }
 
     /// Skip highlighting past this size — regex passes are O(n) but a
     /// degenerate paste should never stall the editor.
@@ -150,7 +165,7 @@ public enum LUICodeHighlighter {
             ofSize: fontSize, weight: .regular)
         storage.beginEditing()
         storage.setAttributes(
-            [.font: base, .foregroundColor: LUIEditorColor.labelColor],
+            [.font: base, .foregroundColor: textColor],
             range: full)
         guard storage.length <= maxHighlightLength,
               let rules = rules(for: language), storage.length > 0
@@ -163,7 +178,7 @@ public enum LUICodeHighlighter {
             0: .systemBlue,      // keywords
             1: .systemPurple,    // extras (preprocessor/tags/selectors)
             2: .systemRed,       // strings
-            3: .secondaryLabelColor, // comments
+            3: commentColor,    // comments
         ]
         func apply(_ pattern: String, _ color: LUIEditorColor,
                    _ options: NSRegularExpression.Options = []) {
@@ -319,9 +334,10 @@ public struct LUICodeEditor: NSViewRepresentable {
             let selection = textView.selectedRange()
             textView.string = text
             let length = (text as NSString).length
+            let location = min(selection.location, length)
             textView.setSelectedRange(NSRange(
-                location: min(selection.location, length),
-                length: min(selection.length, length - selection.location)))
+                location: location,
+                length: min(selection.length, length - location)))
             suppressCallbacks = false
             // string= dropped the previous attributes
             highlightedLanguage = nil
@@ -439,11 +455,10 @@ public struct LUICodeEditor: UIViewRepresentable {
                 in: NSRange(location: 0, length: storage.length),
                 with: text)
             let length = (text as NSString).length
-            if let selection {
-                textView.selectedRange = NSRange(
-                    location: min(selection.location, length),
-                    length: min(selection.length, length - selection.location))
-            }
+            let location = min(selection.location, length)
+            textView.selectedRange = NSRange(
+                location: location,
+                length: min(selection.length, length - location))
             suppressCallbacks = false
             // replaced storage dropped the previous attributes
             highlightedLanguage = nil

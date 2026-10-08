@@ -18,6 +18,7 @@ private final class ObservationFlag: @unchecked Sendable {
     var value = false
 }
 
+#if os(macOS)
 private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
     capturedAppleEvent = CapturedAppleEvent(
         kind: kind,
@@ -25,6 +26,7 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
         text: text.map(String.init(cString:)) ?? ""
     )
 }
+#endif
 
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
@@ -3933,6 +3935,7 @@ struct LUISwiftUIBackendTests {
         #expect(backend.generation == 2)
     }
 
+    #if os(macOS)
     @Test("C ABI forwards SwiftUI backend events")
     func cABIForwardsEvent() {
         capturedAppleEvent = nil
@@ -3955,6 +3958,7 @@ struct LUISwiftUIBackendTests {
         #expect(luiApplePerformAction(1) == 1)
         #expect(capturedAppleEvent == CapturedAppleEvent(kind: 0, node: 1, text: ""))
     }
+    #endif
 
     @Test("maps Link to a retained node with url")
     func mapsLink() throws {
