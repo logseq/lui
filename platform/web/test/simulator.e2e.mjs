@@ -568,6 +568,7 @@ test("platform switching preserves focused retained input identity and rejects u
   )
 
   await evaluate(`document.querySelector('.lui-text-field')?.blur()`)
+  await browser("wait", "--fn", "document.querySelector('#app')?.getAttribute('data-lui-keyboard') === 'hidden'")
   assert.deepEqual(
     await state(`({
       hostKeyboard: document.querySelector('#app')?.getAttribute('data-lui-keyboard'),
