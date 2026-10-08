@@ -123,6 +123,12 @@ jobs:
           restore-keys: |
             swiftpm-${{ runner.os }}-${{ hashFiles('Package.swift') }}-
       - run: swift test
+      - name: Compile iOS backend and tests
+        run: >-
+          xcodebuild -scheme LUI-Package
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/lui-ios-build"
+          build-for-testing
 
   cargo-tests:
     runs-on: ubuntu-latest
