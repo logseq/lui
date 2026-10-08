@@ -32,7 +32,6 @@ use lui_core::bridge;
 use lui_core::store::NodeIdentity;
 use lui_core::{EventKind, NodeKind, Property};
 use std::collections::HashMap;
-use std::ffi::CString;
 use std::sync::{Arc, LazyLock, Mutex};
 
 use crate::backend::{fire, LuiShared, OverlayEntry, Shared};
@@ -106,7 +105,7 @@ where
             .unwrap_or_default()
             .to_string()
     };
-    let target_class = CString::new(target_class).unwrap_or_default();
+    let target_class = bridge::c_string(&target_class);
     fire(shared, node_id, event, cx, || {
         call(x, y, modifiers, button, target_class.as_ptr())
     })
@@ -726,9 +725,12 @@ fn input(
                 move |_this, state, event: &InputEvent, cx| match event {
                     InputEvent::Change => {
                         let text = state.read(cx).value().to_string();
-                        let sending = std::ffi::CString::new(text.clone()).unwrap_or_default();
                         fire(&shared, node_id, EventKind::TextChanged, cx, || unsafe {
-                            bridge::lui_ocaml_text_changed(node_id, sending.as_ptr())
+                            bridge::lui_ocaml_text_changed_utf8(
+                                node_id,
+                                text.as_ptr() as *const std::ffi::c_char,
+                                text.len() as std::ffi::c_int,
+                            )
                         });
                     }
                     InputEvent::PressEnter { .. } => {
@@ -819,9 +821,12 @@ fn textarea(
         let subscription = cx.subscribe(&state, move |_this, state, event: &InputEvent, cx| {
             if let InputEvent::Change = event {
                 let text = state.read(cx).value().to_string();
-                let sending = std::ffi::CString::new(text).unwrap_or_default();
                 fire(&shared, node_id, EventKind::TextChanged, cx, || unsafe {
-                    bridge::lui_ocaml_text_changed(node_id, sending.as_ptr())
+                    bridge::lui_ocaml_text_changed_utf8(
+                        node_id,
+                        text.as_ptr() as *const std::ffi::c_char,
+                        text.len() as std::ffi::c_int,
+                    )
                 });
             }
         });
@@ -1064,9 +1069,12 @@ fn combobox_picker(
                         })
                         .unwrap_or_default();
                     if event_gate_id(&shared, node_id, EventKind::TextChanged) {
-                        let sending = std::ffi::CString::new(title).unwrap_or_default();
                         fire(&shared, node_id, EventKind::TextChanged, cx, || unsafe {
-                            bridge::lui_ocaml_text_changed(node_id, sending.as_ptr())
+                            bridge::lui_ocaml_text_changed_utf8(
+                                node_id,
+                                title.as_ptr() as *const std::ffi::c_char,
+                                title.len() as std::ffi::c_int,
+                            )
                         });
                     }
                     fire(&shared, item_id, EventKind::Press, cx, || unsafe {
@@ -2793,9 +2801,12 @@ fn file_picker(
                         None => "[]".to_string(),
                     };
                     let _ = cx.update(move |_window, cx| {
-                        let sending = std::ffi::CString::new(payload).unwrap_or_default();
                         fire(&shared, node_id, EventKind::Picked, cx, || unsafe {
-                            bridge::lui_ocaml_picked(node_id, sending.as_ptr())
+                            bridge::lui_ocaml_picked_utf8(
+                                node_id,
+                                payload.as_ptr() as *const std::ffi::c_char,
+                                payload.len() as std::ffi::c_int,
+                            )
                         });
                     });
                 }

@@ -14,8 +14,6 @@
 //! column flex containers, inline tags become baseline-aligned rows, void /
 //! media / SVG tags become labeled placeholders until a real surface exists.
 
-use std::ffi::CString;
-
 use gpui_kit::component::separator::Separator;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::{h_flex, v_flex};
@@ -599,22 +597,24 @@ pub fn dom_event_via(
             payload[k] = v;
         }
     }
-    let identifier = CString::new(identifier).unwrap_or_default();
-    let event = CString::new("dom-event").unwrap();
     let values = serde_json::json!({
         "name": name,
         "payload": payload.to_string(),
     });
-    let values = CString::new(values.to_string()).unwrap_or_default();
+    let values = values.to_string();
+    let event_name = "dom-event";
     // Host-initiated — bypass `event_allowed` (it admits ExtensionEvent
     // only for extension nodes; a `dom-event` may legitimately target a
     // standard node, e.g. the root for document keydown).
     let rc = unsafe {
-        bridge::lui_ocaml_extension_event(
+        bridge::lui_ocaml_extension_event_utf8(
             carrier_id,
-            identifier.as_ptr(),
-            event.as_ptr(),
-            values.as_ptr(),
+            identifier.as_ptr() as *const std::ffi::c_char,
+            identifier.len() as std::ffi::c_int,
+            event_name.as_ptr() as *const std::ffi::c_char,
+            event_name.len() as std::ffi::c_int,
+            values.as_ptr() as *const std::ffi::c_char,
+            values.len() as std::ffi::c_int,
         )
     };
     if std::env::var_os("LUI_GPUI_DUMP_LAZY").is_some() {

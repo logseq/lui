@@ -185,3 +185,61 @@ pub unsafe extern "C" fn lui_ocaml_extension_event(
     });
     0
 }
+
+unsafe fn bytes(ptr: *const c_char, len: c_int) -> String {
+    if ptr.is_null() || len <= 0 {
+        return String::new();
+    }
+    let slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, len as usize) };
+    String::from_utf8_lossy(slice).into_owned()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_text_changed_utf8(
+    node: i64,
+    text: *const c_char,
+    text_len: c_int,
+) -> c_int {
+    record(RecordedEvent::TextChanged {
+        node,
+        text: unsafe { bytes(text, text_len) },
+    });
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_picked_utf8(
+    node: i64,
+    payload: *const c_char,
+    len: c_int,
+) -> c_int {
+    record(RecordedEvent::Picked {
+        node,
+        payload: unsafe { bytes(payload, len) },
+    });
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_extension_event_utf8(
+    node: i64,
+    identifier: *const c_char,
+    identifier_len: c_int,
+    name: *const c_char,
+    name_len: c_int,
+    json_values: *const c_char,
+    json_len: c_int,
+) -> c_int {
+    record(RecordedEvent::ExtensionEvent {
+        node,
+        identifier: unsafe { bytes(identifier, identifier_len) },
+        name: unsafe { bytes(name, name_len) },
+        json: unsafe { bytes(json_values, json_len) },
+    });
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_resync() -> c_int {
+    0
+}

@@ -2,7 +2,7 @@
 //! nodes by ref (`{"node-id": n}` or `{"#ref"/"ref-id": "identifier"}` —
 //! the identifier matches a node's `accessibility-identifier` prop).
 //! Ops that produce replies return `(name, json)` pairs the host feeds to
-//! `lui_ocaml_platform_event("name\njson")`.
+//! `lui_ocaml_extension_event` (a `dom-event` whose JSON carries the reply).
 
 use gpui_kit::gpui::{px, App, Bounds, Focusable, Pixels, Window};
 use lui_core::store::NodeIdentity;
@@ -650,7 +650,7 @@ pub fn note_root_bounds(shared: &Shared, width: f32, height: f32) {
 /// reported frame. OCaml's imperative registry answers element rect
 /// reads from this table instead of a measure round-trip — the host
 /// calls it each pump tick and feeds the payload to
-/// `lui_ocaml_platform_event("imperative-rects\n…")`.
+/// `lui_ocaml_extension_event` (`imperative-rects` JSON).
 pub fn imperative_rects_payload(shared: &Shared) -> Option<Value> {
     let mut guard = shared.borrow_mut();
     if guard.imperative_roots.is_empty() && guard.imperative_rect_reported.is_empty() {

@@ -76,6 +76,16 @@ extern "C" {
         name: *const c_char,
         json_values: *const c_char,
     ) -> c_int;
+    pub fn lui_ocaml_extension_event_utf8(
+        node: i64,
+        identifier: *const c_char,
+        identifier_len: c_int,
+        name: *const c_char,
+        name_len: c_int,
+        json_values: *const c_char,
+        json_len: c_int,
+    ) -> c_int;
+    pub fn lui_ocaml_resync() -> c_int;
     pub fn lui_ocaml_stop() -> c_int;
     pub fn lui_ocaml_root_node() -> i64;
 }
@@ -111,11 +121,25 @@ pub fn take_patches() -> Vec<String> {
     }
 }
 
-/// Map a GPUI `Keystroke`-style modifier state to the bridge's bitmask.
-/// Mirrors `LUIEventModifiers` in the Apple backend (shift=1, ctrl=2,
-/// alt/opt=4, cmd=8); kept here so host crates stay UI-free.
+/// Map a modifier state to the protocol bitmask: 1=ctrl, 2=shift,
+/// 4=command/meta. Alt has no protocol bit. Secondary click is bit 8 and is
+/// applied by the pointer path (`pointer_modifier_mask`), not here.
 pub fn modifiers_mask(shift: bool, control: bool, alt: bool, command: bool) -> c_int {
-    (shift as c_int) | ((control as c_int) << 1) | ((alt as c_int) << 2) | ((command as c_int) << 3)
+    let _ = alt;
+    (if control { 1 } else { 0 }) | (if shift { 2 } else { 0 }) | (if command { 4 } else { 0 })
+}
+
+/// NUL-terminated copy that drops interior NUL bytes instead of turning the
+/// whole string into empty (which hosts treat as a user clear).
+pub fn c_string(text: &str) -> std::ffi::CString {
+    match std::ffi::CString::new(text) {
+        Ok(value) => value,
+        Err(error) => {
+            let mut bytes = error.into_vec();
+            bytes.retain(|byte| *byte != 0);
+            std::ffi::CString::new(bytes).unwrap_or_else(|_| std::ffi::CString::new("").unwrap())
+        }
+    }
 }
 
 /// Convenience: start the OCaml runtime with [`patch_sink`]. Returns the
@@ -215,11 +239,11 @@ mod tests {
     #[test]
     fn modifiers_mask_matches_the_bridge_header_bits() {
         assert_eq!(modifiers_mask(false, false, false, false), 0);
-        assert_eq!(modifiers_mask(true, false, false, false), 1);
-        assert_eq!(modifiers_mask(false, true, false, false), 2);
-        assert_eq!(modifiers_mask(false, false, true, false), 4);
-        assert_eq!(modifiers_mask(false, false, false, true), 8);
-        assert_eq!(modifiers_mask(true, true, true, true), 15);
+        assert_eq!(modifiers_mask(true, false, false, false), 2);
+        assert_eq!(modifiers_mask(false, true, false, false), 1);
+        assert_eq!(modifiers_mask(false, false, true, false), 0);
+        assert_eq!(modifiers_mask(false, false, false, true), 4);
+        assert_eq!(modifiers_mask(true, true, true, true), 7);
     }
 
     #[test]

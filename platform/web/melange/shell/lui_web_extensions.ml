@@ -42,7 +42,7 @@ let remove_extension_property renderer node property =
   | None -> ()
 
 let cleanup_extension_node renderer previous_nodes node =
-  match Hashtbl.find_opt previous_nodes node with
+  match previous_nodes node with
   | Some current -> (
       match Store.extension_identity current with
       | Some (identifier, _) ->

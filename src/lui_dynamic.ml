@@ -263,6 +263,40 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
         let key = key_fn item in
         if Keys.mem key !desired then invalid_arg "keyed collection contains a duplicate key";
         desired := Keys.add key index !desired) items;
+      (* Mount every new row before any removal. A raising [mount] then
+         leaves [ordered], the segment, and the previous entries untouched. *)
+      let mounted = ref [] in
+      let fresh =
+        try
+          Array.map (fun item ->
+            let key = key_fn item in
+            match Keys.find_opt key !entries with
+            | Some _ -> None
+            | None ->
+              let item_state = Signal.state scheduler item in
+              let scope = Signal.scope "keyed-item" in
+              let item_context = Lui_ui.context application scope in
+              match
+                (try Ok (mount item_context (Signal.value item_state))
+                 with failure -> Error failure)
+              with
+              | Error failure ->
+                Signal.dispose_scope scope;
+                Signal.dispose_signal (Signal.value item_state);
+                raise failure
+              | Ok node ->
+                Signal.mount scope;
+                mounted := (scope, item_state) :: !mounted;
+                Some (item_state, scope, node))
+            items
+        with failure ->
+          List.iter
+            (fun (scope, item_state) ->
+               Signal.dispose_scope scope;
+               Signal.dispose_signal (Signal.value item_state))
+            !mounted;
+          raise failure
+      in
       let old = !ordered in
       let old_positions = ref Keys.empty in
       Array.iteri (fun index (key, _) -> old_positions := Keys.add key index !old_positions) old;
@@ -282,45 +316,56 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
           index := !index - (!index land (- !index))
         done;
         !total in
-      for index = Array.length old - 1 downto 0 do
-        let key, entry = old.(index) in
-        if not (Keys.mem key !desired) then begin
-          remove_entry index entry;
-          entries := Keys.remove key !entries
-        end else add index 1
-      done;
-      let next = Array.mapi (fun index item ->
-        let key = key_fn item in
-        let entry = match Keys.find_opt key !entries with
-          | Some entry ->
-            let old_index = Keys.find key !old_positions in
-            let current_index = index + before old_index in
-            if current_index <> index then
-              Lui_runtime.move_child_at application (Lui_runtime.canonical_node application parent)
-                (Lui_runtime.canonical_node application entry.keyed_item_node)
-                (Lui_runtime.dynamic_segment_index segment current_index)
-                (Lui_runtime.dynamic_segment_index segment index);
-            add old_index (-1);
-            if Signal.get_state entry.keyed_item_state <> item then Signal.set entry.keyed_item_state item;
-            entry
-          | None ->
-            let item_state = Signal.state scheduler item in
-            let scope = Signal.scope "keyed-item" in
-            let item_context = Lui_ui.context application scope in
-            let node =
-              try
-                let node = mount item_context (Signal.value item_state) in
-                Signal.mount scope;
-                node
-              with failure -> Signal.dispose_scope scope; Signal.dispose_signal (Signal.value item_state); raise failure in
-            Lui_runtime.insert_child application parent node (Lui_runtime.dynamic_segment_insert_index segment index);
-            Lui_runtime.resize_dynamic_segment application segment 1;
-            let entry = { keyed_item_state = item_state; keyed_item_scope = scope; keyed_item_node = node } in
-            entries := Keys.add key entry !entries;
-            entry in
-        key, entry) items in
-      ordered := next;
-      nodes_ref := Array.to_list (Array.map (fun (key, entry) -> { ui_key = key; ui_node = entry.keyed_item_node }) next)
+      let saved = Lui_runtime.checkpoint application in
+      let previous_entries = !entries in
+      (try
+         for index = Array.length old - 1 downto 0 do
+           let key, entry = old.(index) in
+           if not (Keys.mem key !desired) then begin
+             remove_entry index entry;
+             entries := Keys.remove key !entries
+           end else add index 1
+         done;
+         let next = Array.mapi (fun index item ->
+           let key = key_fn item in
+           let entry = match Keys.find_opt key !entries with
+             | Some entry ->
+               let old_index = Keys.find key !old_positions in
+               let current_index = index + before old_index in
+               if current_index <> index then
+                 Lui_runtime.move_child_at application (Lui_runtime.canonical_node application parent)
+                   (Lui_runtime.canonical_node application entry.keyed_item_node)
+                   (Lui_runtime.dynamic_segment_index segment current_index)
+                   (Lui_runtime.dynamic_segment_index segment index);
+               add old_index (-1);
+               (* Physical equality: structural [<>] raises when an item
+                  contains a closure. *)
+               if item != Signal.get_state entry.keyed_item_state then
+                 Signal.set entry.keyed_item_state item;
+               entry
+             | None ->
+               let item_state, scope, node =
+                 match fresh.(index) with
+                 | Some mounted_item -> mounted_item
+                 | None -> invalid_arg "keyed mount missing"
+               in
+               Lui_runtime.insert_child application parent node (Lui_runtime.dynamic_segment_insert_index segment index);
+               Lui_runtime.resize_dynamic_segment application segment 1;
+               let entry = { keyed_item_state = item_state; keyed_item_scope = scope; keyed_item_node = node } in
+               entries := Keys.add key entry !entries;
+               entry in
+           key, entry) items in
+         ordered := next;
+         nodes_ref := Array.to_list (Array.map (fun (key, entry) -> { ui_key = key; ui_node = entry.keyed_item_node }) next)
+       with failure ->
+         Lui_runtime.restore application saved;
+         entries := previous_entries;
+         List.iter
+           (fun (scope, item_state) ->
+              Signal.dispose_scope scope;
+              Signal.dispose_signal (Signal.value item_state))
+           !mounted;
+         raise failure)
     end in
   reconcile (Signal.sample source);
   let subscription = Signal.subscribe ~emit_initial:false source reconcile in

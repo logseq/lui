@@ -1,5 +1,11 @@
 (* Retained runtime: mounts a node tree, queues patch ops, and flushes
-   patch batches to a backend after signal stabilization. *)
+   patch batches to a backend after signal stabilization.
+
+   The runtime is intentionally single-threaded. Every table below is a
+   plain mutable Hashtbl with no domain lock: one OCaml domain (the host
+   thread that runs [flush] and event dispatch) may touch an application.
+   Other domains must not call into it, including from parallel signal
+   schedulers. *)
 
 open Lui_protocol
 
@@ -21,6 +27,16 @@ type flush_status =
   | NoBatch
   | Applied
   | Rejected
+
+(* Last value sent to the host or delivered to handlers for one control.
+   [None] means the channel is still at the unset default ("" / false / 0.0),
+   so a mount-time report of that default is an echo. A later edit that
+   returns to the default is not: it differs from the last recorded value. *)
+type echo_state = {
+  echo_text : string option;
+  echo_toggle : bool option;
+  echo_value : float option;
+}
 
 type flush_diagnostics = {
   flush_status : flush_status;
@@ -52,6 +68,11 @@ type application = {
   runtime_children : (int, int Lui_sequence.t) Hashtbl.t;
   runtime_parents : (int, int) Hashtbl.t;
   pending_ops : patch_op list ref; (* stored in reverse order *)
+  (* Nodes with a CreateNode/CreateExtension still in [pending_ops]. Kept in
+     sync with that list so same-batch drop elision does not scan it. *)
+  pending_creates : (int, unit) Hashtbl.t;
+  (* Per-node echo baselines for text / toggle / slider channels. *)
+  runtime_echo : (int, echo_state) Hashtbl.t;
   runtime_generation : int ref;
   runtime_diagnostics : flush_diagnostics ref;
   next_handler_id : int ref;
@@ -85,6 +106,8 @@ type runtime_checkpoint = {
   checkpoint_children : (int, int Lui_sequence.t) Hashtbl.t;
   checkpoint_parents : (int, int) Hashtbl.t;
   checkpoint_pending_ops : patch_op list;
+  checkpoint_pending_creates : (int, unit) Hashtbl.t;
+  checkpoint_echo : (int, echo_state) Hashtbl.t;
   checkpoint_next_handler_id : int;
   checkpoint_event_handlers : (int, event_handler list) Hashtbl.t;
   checkpoint_next_dynamic_segment_id : int;
@@ -135,6 +158,8 @@ let create_with_extensions scheduler backend registry =
     runtime_children = Hashtbl.create 16;
     runtime_parents = Hashtbl.create 16;
     pending_ops = ref [];
+    pending_creates = Hashtbl.create 16;
+    runtime_echo = Hashtbl.create 16;
     runtime_generation = ref 0;
     runtime_diagnostics = ref (empty_diagnostics ());
     next_handler_id = ref 0;
@@ -178,9 +203,17 @@ let remove_target_aliases application target =
     List.iter (Hashtbl.remove application.runtime_node_aliases) aliases;
     Hashtbl.remove application.runtime_alias_targets target
 
+(* Entry-sized snapshot. [Hashtbl.copy] duplicates the bucket array, which
+   [Hashtbl.clear] does not shrink, so a checkpoint after a large flush
+   would allocate with the historical node count. *)
+let snapshot_hashtbl table =
+  let saved = Hashtbl.create (Hashtbl.length table) in
+  Hashtbl.iter (fun key value -> Hashtbl.replace saved key value) table;
+  saved
+
 let checkpoint ?nodes application =
   let copy table = match nodes with
-    | None -> Hashtbl.copy table
+    | None -> snapshot_hashtbl table
     | Some nodes ->
       let saved = Hashtbl.create (List.length nodes) in
       List.iter (fun node -> match Hashtbl.find_opt table node with
@@ -199,6 +232,13 @@ let checkpoint ?nodes application =
     checkpoint_children = copy application.runtime_children;
     checkpoint_parents = copy application.runtime_parents;
     checkpoint_pending_ops = !(application.pending_ops);
+    (* Pending creates are a batch-global set: restore clears the live
+       table and replays this snapshot, so a subtree checkpoint must
+       still keep creates that belong to other nodes in the same batch.
+       The set is empty after a flush, so a local update does not copy
+       the mounted tree. Echo is per-node state and follows [nodes]. *)
+    checkpoint_pending_creates = snapshot_hashtbl application.pending_creates;
+    checkpoint_echo = copy application.runtime_echo;
     checkpoint_next_handler_id = !(application.next_handler_id);
     checkpoint_event_handlers = copy application.event_handlers;
     checkpoint_next_dynamic_segment_id =
@@ -218,6 +258,55 @@ let checkpoint ?nodes application =
       !(application.runtime_dynamic_segment_count);
     checkpoint_extension_dirty = !(application.runtime_extension_dirty);
   }
+
+(* Full create/set/insert batch describing the live tree. A host that has
+   rejected a delta and rolled its mirror back applies this after clearing
+   local state, adopting [generation] as the new baseline. *)
+let resync_batch application =
+  let root = ref None in
+  Hashtbl.iter
+    (fun node kind -> if kind = Root then root := Some node)
+    application.mounted_nodes;
+  let generation = max 1 !(application.runtime_generation) in
+  match !root with
+  | None -> { generation; ops = [] }
+  | Some root_node ->
+    let ops = ref [] in
+    let add operation = ops := operation :: !ops in
+    let rec walk node =
+      (match Hashtbl.find_opt application.mounted_nodes node with
+      | Some kind -> add (create_node_op node kind)
+      | None -> (
+        match Hashtbl.find_opt application.runtime_extension_nodes node with
+        | Some identifier ->
+          add (create_extension_op node identifier "")
+        | None -> ()));
+      (match Hashtbl.find_opt application.runtime_properties node with
+      | Some props ->
+        Property_map.iter
+          (fun property value -> add (set_prop_op node property value))
+          props
+      | None -> ());
+      (match Hashtbl.find_opt application.runtime_extension_properties node with
+      | Some props ->
+        String_map.iter
+          (fun property value ->
+             add (set_extension_prop_op node property value))
+          props
+      | None -> ());
+      let kids =
+        match Hashtbl.find_opt application.runtime_children node with
+        | Some children -> Lui_sequence.to_list children
+        | None -> []
+      in
+      List.iteri
+        (fun index child ->
+           walk child;
+           add (insert_child_op node child index))
+        kids
+    in
+    walk root_node;
+    { generation; ops = List.rev !ops }
 
 let render_tree_snapshot application =
   {
@@ -252,6 +341,11 @@ let restore application saved =
   replace application.runtime_children saved.checkpoint_children;
   replace application.runtime_parents saved.checkpoint_parents;
   application.pending_ops := saved.checkpoint_pending_ops;
+  Hashtbl.clear application.pending_creates;
+  Hashtbl.iter
+    (fun node () -> Hashtbl.replace application.pending_creates node ())
+    saved.checkpoint_pending_creates;
+  replace application.runtime_echo saved.checkpoint_echo;
   application.next_handler_id := saved.checkpoint_next_handler_id;
   replace application.event_handlers saved.checkpoint_event_handlers;
   application.next_dynamic_segment_id :=
@@ -327,7 +421,7 @@ let key_unique counts key = Hashtbl.find_opt counts key = Some 1
    block row and a read-only references row), and adopting one claimant's
    subtree would steal another's, with the winner flipping whenever
    traversal order changed. *)
-let match_candidate_child old_children
+let match_candidate_child (old_children : int array)
     old_keyed old_reload_keys candidate_reload_keys old_global
     old_key_counts candidate_key_counts reparented claimed index
     candidate_child =
@@ -345,8 +439,8 @@ let match_candidate_child old_children
               Some adopted
           | _ -> None))
   | None ->
-      if index < List.length old_children then
-        let position_child = List.nth old_children index in
+      if index < Array.length old_children then
+        let position_child = old_children.(index) in
         if Hashtbl.mem old_reload_keys position_child then None
         else Some position_child
       else None
@@ -364,6 +458,7 @@ let rec collect_node_mapping application saved old_node candidate_node
       | Some children -> Lui_sequence.to_list children
       | None -> []
     in
+    let old_children_index = Array.of_list old_children in
     let candidate_children =
       match Hashtbl.find_opt application.runtime_children candidate_node with
       | Some children -> Lui_sequence.to_list children
@@ -376,7 +471,7 @@ let rec collect_node_mapping application saved old_node candidate_node
     List.iteri
       (fun index candidate_child ->
          match
-           match_candidate_child old_children old_keyed old_reload_keys
+           match_candidate_child old_children_index old_keyed old_reload_keys
              candidate_reload_keys old_global old_key_counts
              candidate_key_counts reparented claimed index candidate_child
          with
@@ -519,8 +614,15 @@ let extension_wire_fingerprint application identifier fingerprint =
     fingerprint
   end
 
+let remember_pending_create application operation =
+  match operation with
+  | CreateNode (node, _) | CreateExtension (node, _, _) ->
+    Hashtbl.replace application.pending_creates node ()
+  | _ -> ()
+
 let enqueue application operation =
-  application.pending_ops := operation :: !(application.pending_ops)
+  application.pending_ops := operation :: !(application.pending_ops);
+  remember_pending_create application operation
 
 let rec find_child_index_in children child index =
   match children with
@@ -672,12 +774,7 @@ let operation_mentions_node node operation =
   subject = Some node || child = Some node
 
 let pending_create_exists application node =
-  List.exists
-    (function
-      | CreateNode (candidate, _) | CreateExtension (candidate, _, _) ->
-          candidate = node
-      | _ -> false)
-    !(application.pending_ops)
+  Hashtbl.mem application.pending_creates node
 
 (* A node created and dropped within one batch cancels out: its whole op
    group is pruned. Structural ops emitted while it was attached counted
@@ -810,7 +907,8 @@ let enqueue_drop application node =
               | Some operation -> operation :: acc
               | None -> acc)
            []
-           (List.rev original)
+           (List.rev original);
+       Hashtbl.remove application.pending_creates node
      with Abort_elision ->
        application.pending_ops := original;
        enqueue application (drop_node_op node))
@@ -917,6 +1015,11 @@ let reconcile_subtree application saved parent old_root candidate_root =
     remap_node_values application.runtime_properties candidate_nodes mapping
       base_properties
   in
+  let base_echo = Hashtbl.copy saved.checkpoint_echo in
+  remove_node_keys base_echo old_nodes;
+  let desired_echo =
+    remap_node_values application.runtime_echo candidate_nodes mapping base_echo
+  in
   let desired_extension_properties =
     remap_node_values application.runtime_extension_properties candidate_nodes
       mapping base_extension_properties
@@ -956,6 +1059,10 @@ let reconcile_subtree application saved parent old_root candidate_root =
   if Hashtbl.find_opt application.mounted_nodes candidate_root = Some Root then
     invalid_arg "runtime root cannot be nested";
   application.pending_ops := saved.checkpoint_pending_ops;
+  Hashtbl.clear application.pending_creates;
+  Hashtbl.iter
+    (fun node () -> Hashtbl.replace application.pending_creates node ())
+    saved.checkpoint_pending_creates;
   List.iter
     (fun candidate ->
        if candidate = map_node mapping candidate then
@@ -1057,6 +1164,7 @@ let reconcile_subtree application saved parent old_root candidate_root =
   replace application.mounted_nodes desired_standard;
   replace application.runtime_extension_nodes desired_extensions;
   replace application.runtime_properties desired_properties;
+  replace application.runtime_echo desired_echo;
   replace application.runtime_extension_properties
     desired_extension_properties;
   replace application.runtime_children desired_children;
@@ -1221,16 +1329,110 @@ let children application node =
   | Some children -> Lui_sequence.to_list children
   | None -> invalid_arg "unknown parent"
 
-let rec drop_subtree application node =
+let rec created_subtree_ids application node acc =
+  if not (pending_create_exists application node) then None
+  else
+    let acc = node :: acc in
+    match Hashtbl.find_opt application.runtime_children node with
+    | None -> Some acc
+    | Some children ->
+      let rec loop acc kids =
+        match kids with
+        | [] -> Some acc
+        | child :: rest -> (
+          match created_subtree_ids application child acc with
+          | None -> None
+          | Some acc -> loop acc rest)
+      in
+      loop acc (Lui_sequence.to_list children)
+
+(* Drop a same-batch subtree in one elision pass. Returns false when a
+   descendant was also inserted outside the subtree (index repair then has
+   to run per node) or when elision aborts. *)
+and try_elide_created_subtree application root =
+  match created_subtree_ids application root [] with
+  | None -> false
+  | Some ids ->
+    let set = Hashtbl.create (List.length ids) in
+    List.iter (fun id -> Hashtbl.replace set id ()) ids;
+    let external_insert =
+      List.exists
+        (fun operation ->
+           match operation with
+           | InsertChild (parent, child, _) | MoveChild (parent, child, _) ->
+             Hashtbl.mem set child
+             && (not (Hashtbl.mem set parent))
+             && child <> root
+           | _ -> false)
+        !(application.pending_ops)
+    in
+    if external_insert then false
+    else
+      let saved_ops = !(application.pending_ops) in
+      let saved_creates = snapshot_hashtbl application.pending_creates in
+      enqueue_drop application root;
+      let aborted =
+        List.exists
+          (function DropNode id -> id = root | _ -> false)
+          !(application.pending_ops)
+      in
+      if aborted then begin
+        application.pending_ops := saved_ops;
+        Hashtbl.clear application.pending_creates;
+        Hashtbl.iter
+          (fun node () -> Hashtbl.replace application.pending_creates node ())
+          saved_creates;
+        false
+      end
+      else begin
+        application.pending_ops :=
+          List.filter
+            (fun operation ->
+               let other id = Hashtbl.mem set id && id <> root in
+               match operation with
+               | CreateNode (id, _)
+               | CreateExtension (id, _, _)
+               | DropNode id
+               | DetachSubtree id
+               | SetProp (id, _, _)
+               | RemoveProp (id, _)
+               | SetExtensionProp (id, _, _)
+               | RemoveExtensionProp (id, _) ->
+                 not (other id)
+               | InsertChild (parent, child, _)
+               | RemoveChild (parent, child)
+               | MoveChild (parent, child, _) ->
+                 not (other parent || other child))
+            !(application.pending_ops);
+        (match Hashtbl.find_opt application.runtime_parents root with
+        | Some parent -> (
+          try unlink_child application parent root
+          with Invalid_argument _ ->
+            Hashtbl.remove application.runtime_parents root)
+        | None -> ());
+        List.iter
+          (fun id ->
+             if id <> root then unmount_node application id;
+             Hashtbl.remove application.pending_creates id)
+          ids;
+        Hashtbl.replace application.runtime_children root Lui_sequence.empty;
+        unmount_node application root;
+        Hashtbl.remove application.pending_creates root;
+        true
+      end
+
+and drop_subtree application node =
   let node = canonical_node application node in
   if
     Hashtbl.mem application.mounted_nodes node
     || Hashtbl.mem application.runtime_extension_nodes node
   then
-    if pending_create_exists application node then
-      (* created inside this batch: keep the per-node ops so the elision
-         replay can prune the whole group *)
-      drop_subtree_ops application node
+    if pending_create_exists application node then begin
+      if not (try_elide_created_subtree application node) then
+        (* created inside this batch: keep the per-node ops so the elision
+           replay can prune the whole group *)
+        drop_subtree_ops application node
+    end
     else begin
       (* the detach op carries the unlink with it — the store drops the
          subtree whatever parent still records the root *)
@@ -1262,13 +1464,14 @@ and drop_subtree_ops application node =
      | None -> ());
     (match Hashtbl.find_opt application.runtime_children node with
      | Some children ->
+         let kids = Lui_sequence.to_list children in
+         Hashtbl.replace application.runtime_children node Lui_sequence.empty;
          List.iter
            (fun child ->
-              (try remove_child application node child
-               with Invalid_argument _ ->
-                 Hashtbl.remove application.runtime_parents child);
+              Hashtbl.remove application.runtime_parents child;
+              enqueue application (remove_child_op node child);
               drop_subtree application child)
-           (Lui_sequence.to_list children);
+           kids;
      | None -> ());
     drop_node application node
   end
@@ -1307,6 +1510,7 @@ and unmount_node application node =
   Hashtbl.remove application.runtime_children node;
   Hashtbl.remove application.runtime_parents node;
   Hashtbl.remove application.runtime_reload_keys node;
+  Hashtbl.remove application.runtime_echo node;
   application.runtime_extension_dirty := true
 
 and drop_node application node =
@@ -1320,11 +1524,11 @@ and drop_node application node =
   enqueue_drop application node
 
 and unlink_child application parent child =
-  let current = children application parent in
-  match find_child_index current child with
+  let current = Hashtbl.find application.runtime_children parent in
+  match Lui_sequence.index current child with
   | Some index ->
     Hashtbl.replace application.runtime_children parent
-      (Lui_sequence.of_list (remove_at current index));
+      (Lui_sequence.remove current index);
     Hashtbl.remove application.runtime_parents child;
     application.runtime_extension_dirty := true
   | None -> invalid_arg "child is not attached to parent"
@@ -1336,6 +1540,52 @@ and remove_child application parent child =
   require_node application child;
   unlink_child application parent child;
   enqueue application (remove_child_op parent child)
+
+let echo_state application node =
+  match Hashtbl.find_opt application.runtime_echo node with
+  | Some state -> state
+  | None -> { echo_text = None; echo_toggle = None; echo_value = None }
+
+let put_echo application node state =
+  match state with
+  | { echo_text = None; echo_toggle = None; echo_value = None } ->
+    Hashtbl.remove application.runtime_echo node
+  | _ -> Hashtbl.replace application.runtime_echo node state
+
+let note_sent_echo application node property value =
+  let state = echo_state application node in
+  let state =
+    match (property, value) with
+    | TextValue, StringValue text -> { state with echo_text = Some text }
+    | (Checked | Expanded | Selected), BoolValue flag ->
+      { state with echo_toggle = Some flag }
+    | ProgressValue, FloatValue number ->
+      { state with echo_value = Some number }
+    | _ -> state
+  in
+  put_echo application node state
+
+let note_removed_echo application node property =
+  let state = echo_state application node in
+  let state =
+    match property with
+    | TextValue -> { state with echo_text = None }
+    | Checked | Expanded | Selected -> { state with echo_toggle = None }
+    | ProgressValue -> { state with echo_value = None }
+    | _ -> state
+  in
+  put_echo application node state
+
+let note_reported_echo application node event =
+  let state = echo_state application node in
+  let state =
+    match event with
+    | TextChanged (_, text) -> { state with echo_text = Some text }
+    | ToggleChanged (_, flag) -> { state with echo_toggle = Some flag }
+    | ValueChanged (_, number) -> { state with echo_value = Some number }
+    | _ -> state
+  in
+  put_echo application node state
 
 let set_prop application node property value =
   let node = canonical_node application node in
@@ -1359,6 +1609,7 @@ let set_prop application node property value =
   if Property_map.find_opt property current <> Some value then begin
     Hashtbl.replace application.runtime_properties node
       (Property_map.add property value current);
+    note_sent_echo application node property value;
     enqueue application (set_prop_op node property value)
   end
 
@@ -1372,9 +1623,12 @@ let remove_prop application node property =
     | Some values -> values
     | None -> Property_map.empty
   in
-  Hashtbl.replace application.runtime_properties node
-    (Property_map.remove property current);
-  enqueue application (remove_prop_op node property)
+  if Property_map.mem property current then begin
+    Hashtbl.replace application.runtime_properties node
+      (Property_map.remove property current);
+    note_removed_echo application node property;
+    enqueue application (remove_prop_op node property)
+  end
 
 let set_extension_prop application node property value =
   let node = canonical_node application node in
@@ -1613,35 +1867,22 @@ let on_event scope application node callback =
   Signal.on_dispose scope
     (fun () -> remove_handler application node handler_id)
 
-(* A change event whose payload already equals the property last sent to the
-   host carries no new state: the control is reporting the value the runtime
-   itself rendered (or its unset default). Dropping it suppresses mount-time
-   echoes — freshly mounted controls re-reporting their bound value — while
-   genuine edits still reach handlers. *)
-let event_is_value_echo properties event =
+(* A change event is an echo only when it repeats the value last sent to the
+   host or last delivered to handlers. Unset channels use the platform
+   default ("" / false / 0.0) so a freshly mounted control re-reporting that
+   default is suppressed, but a later edit back to the default is not. *)
+let event_is_value_echo application node event =
+  let state = echo_state application node in
   match event with
   | TextChanged (_, text) ->
-    (match Property_map.find_opt TextValue properties with
-    | Some (StringValue current) -> current = text
-    | Some _ -> false
-    | None -> text = "")
+    (match state.echo_text with Some current -> current = text | None -> text = "")
   | ToggleChanged (_, checked_value) ->
-    (match Property_map.find_opt Checked properties with
-    | Some (BoolValue current) -> current = checked_value
-    | Some _ -> false
-    | None -> (
-        match Property_map.find_opt Expanded properties with
-        | Some (BoolValue current) -> current = checked_value
-        | Some _ -> false
-        | None -> (
-            match Property_map.find_opt Selected properties with
-            | Some (BoolValue current) -> current = checked_value
-            | Some _ -> false
-            | None -> not checked_value)))
+    (match state.echo_toggle with
+    | Some current -> current = checked_value
+    | None -> not checked_value)
   | ValueChanged (_, value) ->
-    (match Property_map.find_opt ProgressValue properties with
-    | Some (FloatValue current) -> current = value
-    | Some _ -> false
+    (match state.echo_value with
+    | Some current -> current = value
     | None -> value = 0.0)
   | _ -> false
 
@@ -1675,10 +1916,11 @@ let dispatch application event =
         not
           (event_supported_for_properties kind properties event)
       then invalid_arg "event is unsupported by node kind";
-      event_is_value_echo properties event
+      event_is_value_echo application node event
   in
   if suppressed then true
-  else
+  else begin
+    note_reported_echo application node event;
     match Hashtbl.find_opt application.event_handlers node with
     | Some handlers ->
       List.iter
@@ -1688,6 +1930,7 @@ let dispatch application event =
         handlers;
       true
     | None -> true
+  end
 
 let validate_extension_nodes application =
   let properties = application.runtime_extension_properties in
@@ -1770,6 +2013,7 @@ let apply_pending_batch application batch operation_count next_generation =
        queued behind them. *)
     application.pending_ops :=
       !(application.pending_ops) @ List.rev batch.ops;
+    List.iter (remember_pending_create application) batch.ops;
     ignore (record_diagnostics application Rejected operation_count 0);
     invalid_arg "backend rejected patch batch"
   end
@@ -1794,6 +2038,7 @@ let rec flush application =
            in the next batch instead of being re-sent under a stale
            generation *)
         application.pending_ops := [];
+        Hashtbl.clear application.pending_creates;
         if operations = [] then record_diagnostics application NoBatch 0 0
         else begin
           let next_generation = !(application.runtime_generation) + 1 in

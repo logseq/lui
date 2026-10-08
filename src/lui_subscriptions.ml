@@ -40,15 +40,19 @@ let reject coordinator generation message =
   SubscriptionsRejected (generation, message)
 
 let validate_unique_keys specs =
-  let rec loop specs seen =
+  let seen = Hashtbl.create (List.length specs) in
+  let rec loop specs =
     match specs with
     | [] -> None
     | spec :: rest ->
       let key = spec.subscription_key in
-      if List.mem key seen then Some ("duplicate subscription key " ^ key)
-      else loop rest (key :: seen)
+      if Hashtbl.mem seen key then Some ("duplicate subscription key " ^ key)
+      else begin
+        Hashtbl.replace seen key ();
+        loop rest
+      end
   in
-  loop specs []
+  loop specs
 
 let same_active active spec =
   active.active_subscription_fingerprint = spec.subscription_fingerprint

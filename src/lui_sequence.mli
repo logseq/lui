@@ -5,6 +5,7 @@ val empty : 'a t
 val length : 'a t -> int
 val insert : 'a t -> int -> 'a -> 'a t
 val get : 'a t -> int -> 'a
+val index : 'a t -> 'a -> int option
 val remove : 'a t -> int -> 'a t
 val to_list : 'a t -> 'a list
 val of_list : 'a list -> 'a t

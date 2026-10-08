@@ -132,8 +132,6 @@ pub fn placeholder_box(
 // set-extension-prop ops dirty the node, this render reads the new props.
 // Interactive components fire events through `lui_ocaml_extension_event`.
 
-use std::ffi::CString;
-
 use gpui_kit::component::chart::BarChart;
 use gpui_kit::component::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader, EmptyTitle};
@@ -171,13 +169,15 @@ pub fn fire_extension(
     values: String,
     cx: &mut App,
 ) {
-    let sending = CString::new(values).unwrap_or_default();
     unsafe {
-        bridge::lui_ocaml_extension_event(
+        bridge::lui_ocaml_extension_event_utf8(
             node_id,
             identifier.as_ptr(),
+            identifier.to_bytes().len() as std::ffi::c_int,
             name.as_ptr(),
-            sending.as_ptr(),
+            name.to_bytes().len() as std::ffi::c_int,
+            values.as_ptr() as *const std::ffi::c_char,
+            values.len() as std::ffi::c_int,
         )
     };
     drain_pending(shared, cx);

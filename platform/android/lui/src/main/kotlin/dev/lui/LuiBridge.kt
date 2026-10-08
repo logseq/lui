@@ -51,9 +51,10 @@ object LuiBridge {
      */
     @JvmStatic
     @Suppress("unused")
-    private fun dispatchPatch(json: String) {
+    private fun dispatchPatch(json: ByteArray) {
         val sink = patchSink ?: return
-        mainHandler.post { sink.onPatch(json) }
+        val text = json.toString(Charsets.UTF_8)
+        mainHandler.post { sink.onPatch(text) }
     }
 
     /**
@@ -71,9 +72,13 @@ object LuiBridge {
             result.set(nativeStart(PLATFORM_ANDROID, hostCode))
             latch.countDown()
         }
-        latch.await(30, TimeUnit.SECONDS)
-        started = true
-        return result.get() != 0
+        val completed = latch.await(30, TimeUnit.SECONDS)
+        if (!completed) {
+            started = false
+            return false
+        }
+        started = result.get() == 1
+        return started
     }
 
     private inline fun dispatch(crossinline call: () -> Int) {
@@ -90,18 +95,26 @@ object LuiBridge {
             result.set(call())
             latch.countDown()
         }
-        latch.await(10, TimeUnit.SECONDS)
+        if (!latch.await(10, TimeUnit.SECONDS)) {
+            error("LuiBridge call timed out")
+        }
         return result.get()
     }
+
+    private fun utf8(text: String): ByteArray = text.toByteArray(Charsets.UTF_8)
 
     fun appear(node: Long) = dispatch { nativeAppear(node) }
 
     fun press(node: Long) = dispatch { nativePress(node) }
 
+    fun pressModifiers(node: Long, modifiers: Int) = dispatch {
+        nativePressEx(node, modifiers)
+    }
+
     fun longPress(node: Long) = dispatch { nativeLongPress(node) }
 
     fun textChanged(node: Long, text: String) = dispatch {
-        nativeTextChanged(node, text)
+        nativeTextChanged(node, utf8(text))
     }
 
     fun submit(node: Long) = dispatch { nativeSubmit(node) }
@@ -109,7 +122,7 @@ object LuiBridge {
     fun dismiss(node: Long) = dispatch { nativeDismiss(node) }
 
     fun picked(node: Long, payload: String) = dispatch {
-        nativePicked(node, payload)
+        nativePicked(node, utf8(payload))
     }
 
     fun doublePress(node: Long) = dispatch { nativeDoublePress(node) }
@@ -127,21 +140,21 @@ object LuiBridge {
     fun pressDetail(node: Long, detail: LuiPointerDetail) = dispatch {
         nativePressDetail(
             node, detail.x, detail.y,
-            detail.modifiers, detail.button, detail.targetClass,
+            detail.modifiers, detail.button, utf8(detail.targetClass),
         )
     }
 
     fun pointerDown(node: Long, detail: LuiPointerDetail) = dispatch {
         nativePointerDown(
             node, detail.x, detail.y,
-            detail.modifiers, detail.button, detail.targetClass,
+            detail.modifiers, detail.button, utf8(detail.targetClass),
         )
     }
 
     fun pointerUp(node: Long, detail: LuiPointerDetail) = dispatch {
         nativePointerUp(
             node, detail.x, detail.y,
-            detail.modifiers, detail.button, detail.targetClass,
+            detail.modifiers, detail.button, utf8(detail.targetClass),
         )
     }
 
@@ -152,7 +165,7 @@ object LuiBridge {
     fun contextMenuPress(node: Long, detail: LuiPointerDetail) = dispatch {
         nativeContextMenuPress(
             node, detail.x, detail.y,
-            detail.modifiers, detail.button, detail.targetClass,
+            detail.modifiers, detail.button, utf8(detail.targetClass),
         )
     }
 
@@ -162,8 +175,18 @@ object LuiBridge {
         name: String,
         jsonValues: String,
     ) = dispatch {
-        nativeExtensionEvent(node, identifier, name, jsonValues)
+        nativeExtensionEvent(node, utf8(identifier), utf8(name), utf8(jsonValues))
     }
+
+    fun visibleRange(node: Long, first: Long, last: Long) = dispatch {
+        nativeVisibleRange(node, first, last)
+    }
+
+    fun scrollCompleted(node: Long, token: Long, outcome: String) = dispatch {
+        nativeScrollCompleted(node, token, utf8(outcome))
+    }
+
+    fun load(node: Long) = dispatch { nativeLoad(node) }
 
     fun stop() = dispatch { nativeStop() }
 
@@ -183,13 +206,15 @@ object LuiBridge {
 
     private external fun nativeLongPress(node: Long): Int
 
-    private external fun nativeTextChanged(node: Long, text: String): Int
+    private external fun nativePressEx(node: Long, modifiers: Int): Int
+
+    private external fun nativeTextChanged(node: Long, text: ByteArray): Int
 
     private external fun nativeSubmit(node: Long): Int
 
     private external fun nativeDismiss(node: Long): Int
 
-    private external fun nativePicked(node: Long, payload: String): Int
+    private external fun nativePicked(node: Long, payload: ByteArray): Int
 
     private external fun nativeDoublePress(node: Long): Int
 
@@ -205,7 +230,7 @@ object LuiBridge {
         y: Double,
         modifiers: Int,
         button: Int,
-        targetClass: String,
+        targetClass: ByteArray,
     ): Int
 
     private external fun nativePointerDown(
@@ -214,7 +239,7 @@ object LuiBridge {
         y: Double,
         modifiers: Int,
         button: Int,
-        targetClass: String,
+        targetClass: ByteArray,
     ): Int
 
     private external fun nativePointerUp(
@@ -223,7 +248,7 @@ object LuiBridge {
         y: Double,
         modifiers: Int,
         button: Int,
-        targetClass: String,
+        targetClass: ByteArray,
     ): Int
 
     private external fun nativePointerEnter(node: Long): Int
@@ -236,15 +261,25 @@ object LuiBridge {
         y: Double,
         modifiers: Int,
         button: Int,
-        targetClass: String,
+        targetClass: ByteArray,
     ): Int
 
     private external fun nativeExtensionEvent(
         node: Long,
-        identifier: String,
-        name: String,
-        jsonValues: String,
+        identifier: ByteArray,
+        name: ByteArray,
+        jsonValues: ByteArray,
     ): Int
+
+    private external fun nativeVisibleRange(node: Long, first: Long, last: Long): Int
+
+    private external fun nativeScrollCompleted(
+        node: Long,
+        token: Long,
+        outcome: ByteArray,
+    ): Int
+
+    private external fun nativeLoad(node: Long): Int
 
     private external fun nativeStop(): Int
 
@@ -280,15 +315,14 @@ fun LuiEvent.dispatchToBridge() {
             values.entries.joinToString(
                 prefix = "{", postfix = "}",
                 separator = ",",
-            ) { (key, value) -> "\"$key\":${luiScalarLiteral(value)}" },
+            ) { (key, value) ->
+                "${kotlinx.serialization.json.JsonPrimitive(key)}:${luiScalarLiteral(value)}"
+            },
         )
-        // Events the mobile bridge has no dedicated export for; the OCaml
-        // side handles them through other paths or ignores them.
-        is LuiEvent.PressModifiers,
-        is LuiEvent.ScrollCompleted,
-        is LuiEvent.VisibleRange,
-        is LuiEvent.Load,
-        -> Unit
+        is LuiEvent.PressModifiers -> bridge.pressModifiers(node, modifiers)
+        is LuiEvent.ScrollCompleted -> bridge.scrollCompleted(node, token, outcome)
+        is LuiEvent.VisibleRange -> bridge.visibleRange(node, first, last)
+        is LuiEvent.Load -> bridge.load(node)
     }
 }
 

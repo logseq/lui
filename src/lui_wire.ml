@@ -29,13 +29,16 @@ let encode_value value =
   | BoolValue enabled -> if enabled then "true" else "false"
   | IntValue number -> string_of_int number
   | FloatValue number ->
-    let encoded = string_of_float number in
+    (* %.17g round-trips a float64. NaN and infinities are not JSON
+       numbers; callers must reject them before they reach the wire. *)
+    if classify_float number <> FP_normal
+       && classify_float number <> FP_subnormal
+       && classify_float number <> FP_zero
+    then invalid_arg "float value is not finite";
+    let encoded = Printf.sprintf "%.17g" number in
     if String.contains encoded '.' || String.contains encoded 'e'
        || String.contains encoded 'E'
-    then
-      if String.length encoded > 0 && encoded.[String.length encoded - 1] = '.'
-      then encoded ^ "0"
-      else encoded
+    then encoded
     else encoded ^ ".0"
 
 let encode_op operation =

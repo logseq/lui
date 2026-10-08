@@ -43,6 +43,7 @@ let create_with_extensions host app_icons registry adapters =
     web_images = Hashtbl.create 8;
     web_media_surfaces = Hashtbl.create 4;
     web_cleanups = Hashtbl.create 8;
+    web_pointer_cleanups = Hashtbl.create 8;
     web_layers = Lui_web_layers.create ();
     web_modal_return_focus = ref None;
     web_modal_focus_returns = Hashtbl.create 4;
@@ -86,7 +87,9 @@ let apply_extension_property =
 let remove_extension_property =
   Lui_web_extensions.remove_extension_property
 
-let cleanup_extension_node = Lui_web_extensions.cleanup_extension_node
+let cleanup_extension_node renderer previous_nodes node =
+  Lui_web_extensions.cleanup_extension_node renderer
+    (Hashtbl.find_opt previous_nodes) node
 
 let set_event_handler renderer handler =
   renderer.web_event_handler := handler;
@@ -97,9 +100,6 @@ let backend renderer =
     apply_batch =
       (fun batch ->
         try
-          let previous_nodes =
-            Hashtbl.copy renderer.web_store.retained_nodes
-          in
           let applied =
             try
               Store.apply_batch_with_extensions renderer.web_store
@@ -113,9 +113,12 @@ let backend renderer =
           in
           (* The store returns false only for a stale batch it dropped without
              applying — replaying its ops against the DOM would resurrect ops
-             that were already consumed. *)
+             that were already consumed. [prior] is the before-image of nodes
+             this batch touched; untouched ids fall through to the live store. *)
           (if applied then
-             try Lui_web_apply.apply_dom_batch renderer previous_nodes batch
+             try
+               Lui_web_apply.apply_dom_batch renderer
+                 (Store.prior renderer.web_store) batch
              with Invalid_argument msg ->
                invalid_arg ("dom batch: " ^ msg));
           true

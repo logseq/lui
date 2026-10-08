@@ -124,3 +124,22 @@ jobs:
             swiftpm-${{ runner.os }}-${{ hashFiles('Package.swift') }}-
       - run: swift test
 
+  cargo-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - name: lui-core tests
+        working-directory: platform/gpui
+        run: cargo test -p lui-core
+
+  c-bridge-stress:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.5"
+      - name: GC stress the native pointer bridge
+        run: opam exec -- sh platform/native/stress/run.sh
+

@@ -452,52 +452,66 @@ let press_detail_via_click kind =
 (* PointerDetail-family listeners, attached when the node opted in via the
    pointer-enabled property. Emission re-checks admission at event time so
    kind/property mismatches stay silent instead of crashing dispatch. *)
+let release_pointer_events renderer node =
+  match Hashtbl.find_opt renderer.web_pointer_cleanups node with
+  | Some cleanup ->
+      cleanup ();
+      Hashtbl.remove renderer.web_pointer_cleanups node
+  | None -> ()
+
+(* Pointer listeners follow the PointerEnabled prop, including updates after
+   the node was created. A second sync while already attached is a no-op so
+   hot reload does not stack listeners. *)
+let sync_pointer_events renderer node kind dom_node =
+  let enabled = Store.true_property renderer node PointerEnabled in
+  match Hashtbl.find_opt renderer.web_pointer_cleanups node with
+  | Some _ when enabled -> ()
+  | Some _ -> release_pointer_events renderer node
+  | None when not enabled -> ()
+  | None ->
+      let emit_detail make_event event =
+        let candidate = make_event event in
+        if
+          enabled_node renderer node
+          && Store.event_admitted renderer node candidate
+        then emit renderer candidate
+      in
+      let pointer_down =
+        emit_detail (fun event ->
+            PointerDown (node, Util.pointer_detail_of event))
+      in
+      let pointer_up =
+        emit_detail (fun event -> PointerUp (node, Util.pointer_detail_of event))
+      in
+      let pointer_enter = emit_detail (fun _event -> PointerEnter node) in
+      let pointer_leave = emit_detail (fun _event -> PointerLeave node) in
+      let context_menu =
+        emit_detail
+          (fun event -> ContextMenuPress (node, Util.pointer_detail_of event))
+      in
+      let click =
+        emit_detail
+          (fun event -> PressDetail (node, Util.pointer_detail_of event))
+      in
+      let attach_click = not (press_detail_via_click kind) in
+      W.Element.addEventListener "pointerdown" pointer_down dom_node;
+      W.Element.addEventListener "pointerup" pointer_up dom_node;
+      W.Element.addEventListener "pointerenter" pointer_enter dom_node;
+      W.Element.addEventListener "pointerleave" pointer_leave dom_node;
+      W.Element.addEventListener "contextmenu" context_menu dom_node;
+      if attach_click then
+        W.Element.addEventListener "click" click dom_node;
+      Hashtbl.replace renderer.web_pointer_cleanups node (fun () ->
+          W.Element.removeEventListener "pointerdown" pointer_down dom_node;
+          W.Element.removeEventListener "pointerup" pointer_up dom_node;
+          W.Element.removeEventListener "pointerenter" pointer_enter dom_node;
+          W.Element.removeEventListener "pointerleave" pointer_leave dom_node;
+          W.Element.removeEventListener "contextmenu" context_menu dom_node;
+          if attach_click then
+            W.Element.removeEventListener "click" click dom_node)
+
 let attach_pointer_events renderer node kind dom_node =
-  if Store.true_property renderer node PointerEnabled then begin
-    let emit_detail make_event event =
-      let candidate = make_event event in
-      if
-        enabled_node renderer node
-        && Store.event_admitted renderer node candidate
-      then emit renderer candidate
-    in
-    let pointer_down =
-      emit_detail (fun event -> PointerDown (node, Util.pointer_detail_of event))
-    in
-    let pointer_up =
-      emit_detail (fun event -> PointerUp (node, Util.pointer_detail_of event))
-    in
-    let pointer_enter = emit_detail (fun _event -> PointerEnter node) in
-    let pointer_leave = emit_detail (fun _event -> PointerLeave node) in
-    let context_menu =
-      emit_detail
-        (fun event -> ContextMenuPress (node, Util.pointer_detail_of event))
-    in
-    let click =
-      emit_detail
-        (fun event -> PressDetail (node, Util.pointer_detail_of event))
-    in
-    let attach_click = not (press_detail_via_click kind) in
-    W.Element.addEventListener "pointerdown" pointer_down dom_node;
-    W.Element.addEventListener "pointerup" pointer_up dom_node;
-    W.Element.addEventListener "pointerenter" pointer_enter dom_node;
-    W.Element.addEventListener "pointerleave" pointer_leave dom_node;
-    W.Element.addEventListener "contextmenu" context_menu dom_node;
-    if attach_click then
-      W.Element.addEventListener "click" click dom_node;
-    let previous_cleanup = Hashtbl.find_opt renderer.web_cleanups node in
-    Hashtbl.replace renderer.web_cleanups node (fun () ->
-        (match previous_cleanup with
-         | Some cleanup -> cleanup ()
-         | None -> ());
-        W.Element.removeEventListener "pointerdown" pointer_down dom_node;
-        W.Element.removeEventListener "pointerup" pointer_up dom_node;
-        W.Element.removeEventListener "pointerenter" pointer_enter dom_node;
-        W.Element.removeEventListener "pointerleave" pointer_leave dom_node;
-        W.Element.removeEventListener "contextmenu" context_menu dom_node;
-        if attach_click then
-          W.Element.removeEventListener "click" click dom_node)
-  end
+  sync_pointer_events renderer node kind dom_node
 
 let attach_events renderer node kind dom_node =
   if kind <> ContextMenu then

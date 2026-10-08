@@ -136,7 +136,27 @@ impl Store {
 
     /// Apply one decoded batch. On error the batch is rejected wholesale:
     /// partial state must not leak into a tree the renderer trusts.
+    /// Drop the mirror so the next batch may adopt any positive generation.
+    /// Hosts call this before applying a resync snapshot.
+    pub fn reset(&mut self) {
+        self.nodes.clear();
+        self.root = None;
+        self.generation = 0;
+    }
+
     pub fn apply(&mut self, batch: &Batch) -> Result<Applied, BackendError> {
+        if batch.generation <= 0 {
+            return Err(err(format!(
+                "patch generation {} is not positive",
+                batch.generation
+            )));
+        }
+        if self.generation != 0 && batch.generation != self.generation + 1 {
+            return Err(err(format!(
+                "patch generation {} is not contiguous with {}",
+                batch.generation, self.generation
+            )));
+        }
         let mut applied = Applied {
             generation: batch.generation,
             ..Applied::default()
@@ -406,12 +426,15 @@ impl Store {
             .nodes
             .get_mut(&parent)
             .ok_or_else(|| err(format!("remove-child: unknown parent {parent}")))?;
-        if !parent_node.children.contains(&child) {
-            return Err(err(format!(
-                "remove-child: node {child} is not a child of {parent}"
-            )));
-        }
-        parent_node.children.retain(|entry| *entry != child);
+        let position = match parent_node.children.iter().position(|entry| *entry == child) {
+            Some(position) => position,
+            None => {
+                return Err(err(format!(
+                    "remove-child: node {child} is not a child of {parent}"
+                )));
+            }
+        };
+        parent_node.children.remove(position);
         if let Some(child_node) = self.nodes.get_mut(&child) {
             child_node.parent = None;
         }
@@ -792,6 +815,13 @@ mod tests {
         assert_eq!(store.generation, 11);
         apply_json(&mut store, r#"{"generation": 12, "ops": []}"#);
         assert_eq!(store.generation, 12);
+        let skipped = decode_batch(r#"{"generation": 14, "ops": []}"#).unwrap();
+        assert!(store.apply(&skipped).is_err());
+        assert_eq!(store.generation, 12);
+        store.reset();
+        assert_eq!(store.generation, 0);
+        apply_json(&mut store, r#"{"generation": 14, "ops": []}"#);
+        assert_eq!(store.generation, 14);
     }
 }
 

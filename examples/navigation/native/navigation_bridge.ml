@@ -2,8 +2,7 @@ open Lui_protocol
 
 type route = Detail of int
 
-let current_app = ref None
-let latest_patch = ref ""
+let bridge = Lui_native_bridge.create "Navigation"
 let root_mounts = ref 0
 let detail_mounts = ref 0
 let root_counter = ref None
@@ -114,67 +113,25 @@ let view _context path_signal send =
         context parent)
     ()
 
-let app () = Option.get !current_app
-
 let initialize _platform _host =
-  latest_patch := "";
-  let backend =
-    {
-      backend_profile = profile IOS SwiftUIHost;
-      apply_batch =
-        (fun batch ->
-          Printf.eprintf "NAV patch ops=%d\n%!" (List.length batch.ops);
-          latest_patch := Lui_wire.encode_batch batch;
-          true);
-    }
-  in
-  let value =
-    Lui_app.create_with_extensions backend
+  bridge.Lui_native_bridge.trace <-
+    Some
+      (fun batch ->
+        Printf.eprintf "NAV patch ops=%d\n%!" (List.length batch.ops));
+  bridge.Lui_native_bridge.note_extension <-
+    Some
+      (fun name json -> Printf.eprintf "NAV host event %s %s\n%!" name json);
+  let app =
+    Lui_app.create_with_extensions
+      (Lui_native_bridge.backend bridge (profile IOS SwiftUIHost))
       (Lui_navigation.registry ())
       Lui_navigation.Path.empty
       (fun _ path -> path)
       view
   in
-  current_app := Some value;
-  ignore (Lui_app.start value);
-  ignore (Lui_app.flush value);
-  !latest_patch
-
-let dispatch event =
-  latest_patch := "";
-  ignore (Lui_app.dispatch_event (app ()) event);
-  ignore (Lui_app.flush (app ()));
-  !latest_patch
+  Lui_native_bridge.boot bridge app
 
 let () =
   Printexc.record_backtrace true;
   Callback.register "lui_ocaml_init" initialize;
-  Callback.register "lui_ocaml_press" (fun node -> dispatch (Press node));
-  Callback.register "lui_ocaml_appear" (fun node -> dispatch (Appear node));
-  Callback.register "lui_ocaml_press_detail" (fun node x y modifiers button target_class ->
-      dispatch
-        (PressDetail (node, {x; y; modifiers; button; target_class})));
-  Callback.register "lui_ocaml_pointer_down" (fun node x y modifiers button target_class ->
-      dispatch
-        (PointerDown (node, {x; y; modifiers; button; target_class})));
-  Callback.register "lui_ocaml_pointer_up" (fun node x y modifiers button target_class ->
-      dispatch
-        (PointerUp (node, {x; y; modifiers; button; target_class})));
-  Callback.register "lui_ocaml_pointer_enter" (fun node ->
-      dispatch (PointerEnter node));
-  Callback.register "lui_ocaml_pointer_leave" (fun node ->
-      dispatch (PointerLeave node));
-  Callback.register "lui_ocaml_context_menu_press" (fun node x y modifiers button target_class ->
-      dispatch
-        (ContextMenuPress (node, {x; y; modifiers; button; target_class})));
-  let extension_event node identifier name json =
-    Printf.eprintf "NAV host event %s %s\n%!" name json;
-    dispatch
-      (ExtensionEvent (node, identifier, name, Lui_json.parse_values json))
-  in
-  Callback.register "lui_ocaml_extension_event" extension_event;
-  Callback.register "lui_ocaml_dispose" (fun () ->
-      latest_patch := "";
-      ignore (Lui_app.dispose (app ()));
-      !latest_patch);
-  Callback.register "lui_ocaml_root_node" (fun () -> Lui_app.root_node (app ()))
+  Lui_native_bridge.register ~register_named:Callback.register "lui_ocaml" bridge
