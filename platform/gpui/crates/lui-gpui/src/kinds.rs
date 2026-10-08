@@ -1189,12 +1189,15 @@ fn overlay_modal(
     let shadows = cx.theme().shadow_tokens().lg;
 
     let surface = match kind {
+        // No .p_4() here: dialog padding is class-owned on the web twin
+        // (ui__dialog-content padding:1.5rem, ls-dialog-cmdk padding:0)
+        // — a baked pad would double up under class padding and can
+        // never be zeroed by ls-dialog-* overrides
         NodeKind::Dialog => card
             .w(node
                 .float_prop(Property::WidthValue)
                 .map(|w| px(w as f32))
                 .unwrap_or(px(400.)))
-            .p_4()
             .rounded(cx.theme().radius_lg)
             .shadow(shadows)
             .into_any_element(),
