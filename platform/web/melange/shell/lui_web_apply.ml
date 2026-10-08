@@ -512,9 +512,34 @@ let known_node renderer previous_nodes node =
    mounted outside the detaching parent chain (portal members, modal
    layer shells, bottom-tab triggers). Members inside the subtree leave
    the document with their ancestor's detach; only elements whose actual
-   parent is still connected get removed here. No exit transitions: the
-   subtree is unmounted wholesale, not closed. *)
+   parent is still connected get removed here. A departing popup root keeps
+   its visual subtree until its existing exit transition completes. *)
 let apply_detach_subtree renderer previous_nodes children_of node =
+  let exit_boundary =
+    match prev_node previous_nodes node with
+    | Some previous
+      when Lui_web_layers.is_present renderer.web_layers node
+           && (prev_modal previous_nodes node
+               || Store.standard_kind_is previous DropdownMenu
+               || Store.standard_kind_is previous Popover) ->
+        (match previous.retained_parent with
+         | Some parent ->
+             let boundary =
+               if prev_modal previous_nodes node then
+                 Util.modal_layer_node previous.platform_node
+               else previous.platform_node
+             in
+             apply_remove_child renderer previous_nodes parent node;
+             Some boundary
+         | None -> None)
+    | _ -> None
+  in
+  let retained_for_exit element =
+    match exit_boundary with
+    | Some boundary ->
+        W.Element.contains (W.Element.asNode element) boundary
+    | None -> false
+  in
   let detach_element node_id =
     match prev_node previous_nodes node_id with
     | Some previous ->
@@ -526,7 +551,8 @@ let apply_detach_subtree renderer previous_nodes children_of node =
         in
         (match W.Element.parentElement target with
          | Some actual_parent ->
-             if element_is_connected actual_parent then
+             if element_is_connected actual_parent
+                && not (retained_for_exit target) then
                ignore
                  (W.Element.removeChild
                     (W.Element.asNode target) actual_parent)
@@ -541,7 +567,8 @@ let apply_detach_subtree renderer previous_nodes children_of node =
          | Some element ->
              (match W.Element.parentElement element with
               | Some actual_parent ->
-                  if element_is_connected actual_parent then
+                  if element_is_connected actual_parent
+                     && not (retained_for_exit element) then
                     ignore
                       (W.Element.removeChild
                          (W.Element.asNode element) actual_parent)
@@ -563,19 +590,21 @@ let apply_detach_subtree renderer previous_nodes children_of node =
                        W.Element.querySelector
                          ("#" ^ Util.bottom_tab_trigger_id node_id) bar
                      with
-                     | Some trigger ->
+                     | Some trigger when not (retained_for_exit trigger) ->
                          ignore
                            (W.Element.removeChild
                               (W.Element.asNode trigger) bar)
-                     | None -> ())
+                     | Some _ | None -> ())
                 | None -> ())
            | _ -> ())
       | None -> ()
   in
   let rec visit node_id =
-    (* the root leaves first so inside-subtree member parents read
-       disconnected and skip their own detach *)
-    (if Lui_web_layers.layer_at renderer.web_layers node_id <> None then
+    (* Outside an exiting popup, the root leaves first so member parents
+       read disconnected and skip their own detach. The exit callback owns
+       the root layer registration until it removes the retained visuals. *)
+    (if (node_id <> node || exit_boundary = None)
+        && Lui_web_layers.layer_at renderer.web_layers node_id <> None then
        Lui_web_layers.remove renderer.web_layers renderer.web_document
          node_id);
     detach_element node_id;
@@ -586,8 +615,8 @@ let apply_detach_subtree renderer previous_nodes children_of node =
   in
   visit node;
   (* parent-side follow-ups mirror apply_remove_child *)
-  match prev_node previous_nodes node with
-  | Some previous ->
+  match (exit_boundary, prev_node previous_nodes node) with
+  | None, Some previous ->
       (match previous.retained_parent with
        | Some parent ->
            Lui_web_focus.refresh_button_context renderer parent;
@@ -603,7 +632,7 @@ let apply_detach_subtree renderer previous_nodes children_of node =
             end);
            refresh_dropdown_parent renderer parent
        | None -> ())
-  | None -> ()
+  | _ -> ()
 
 let apply_dom_op renderer previous_nodes children_of operation =
   match operation with

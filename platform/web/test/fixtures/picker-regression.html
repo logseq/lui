@@ -24,14 +24,12 @@ button{margin:4px}
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js";
 import * as Layers from "lui.web.dom/core/lui_web_layers.js";
-import * as Schema from "lui/lui_wire_schema.js";
+import { Protocol, properties as props, kinds } from "./protocol-fixture.mjs";
 
 const host = document.querySelector("#host");
 const renderer = Web.create(undefined, host);
 const backend = Web.backend(renderer);
 const list = values => values.reduceRight((tail, head) => ({ hd: head, tl: tail }), 0);
-const props = new Map(Array.from({ length: 98 }, (_, index) => [Schema.property_name(index), index]));
-const kinds = new Map(Array.from({ length: 86 }, (_, index) => [Schema.node_kind_name(index), index]));
 const nodes = new Map();
 const handlers = new Map();
 const events = [];
@@ -53,17 +51,17 @@ let withSubmenu = false;
 
 const set = (nodeId, name, value) => {
   const tag = typeof value === "string" ? 0 : typeof value === "boolean" ? 1 : 2;
-  ops.push({ TAG: 3, _0: nodeId, _1: props.get(name), _2: { TAG: tag, _0: value } });
+  ops.push(Protocol.set_prop_op(nodeId, props.get(name), { TAG: tag, _0: value }));
 };
 
 function node(kind, parent, properties = {}) {
   const nodeId = ++nextId;
-  ops.push({ TAG: 0, _0: nodeId, _1: kinds.get(kind) });
+  ops.push(Protocol.create_node_op(nodeId, kinds.get(kind)));
   nodes.set(nodeId, { parent, children: [] });
   for (const [name, value] of Object.entries(properties)) set(nodeId, name, value);
   if (parent) {
     const siblings = nodes.get(parent).children;
-    ops.push({ TAG: 7, _0: parent, _1: nodeId, _2: siblings.length });
+    ops.push(Protocol.insert_child_op(parent, nodeId, siblings.length));
     siblings.push(nodeId);
   }
   return nodeId;
@@ -80,10 +78,10 @@ function drop(nodeId) {
   for (const child of [...nodes.get(nodeId).children]) drop(child);
   const parent = nodes.get(nodeId).parent;
   if (parent) {
-    ops.push({ TAG: 8, _0: parent, _1: nodeId });
+    ops.push(Protocol.remove_child_op(parent, nodeId));
     nodes.get(parent).children = nodes.get(parent).children.filter(child => child !== nodeId);
   }
-  ops.push({ TAG: 2, _0: nodeId });
+  ops.push(Protocol.drop_node_op(nodeId));
   nodes.delete(nodeId);
   handlers.delete(nodeId);
 }
@@ -277,7 +275,7 @@ window.audit = {
     const nodeId = node("menu-item", null, { text, enabled: true, "press-enabled": true });
     nodes.get(nodeId).parent = menu;
     nodes.get(menu).children.splice(index, 0, nodeId);
-    ops.push({ TAG: 7, _0: menu, _1: nodeId, _2: index });
+    ops.push(Protocol.insert_child_op(menu, nodeId, index));
     currentItems.splice(index, 0, { id: nodeId, text, enabled: true });
     handlers.set(nodeId, () => {
       pickerValues.set(activePicker, text);

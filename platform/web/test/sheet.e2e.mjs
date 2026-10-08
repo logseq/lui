@@ -33,12 +33,17 @@ async function openSheet() {
   await browser("click-button", "Open regression sheet")
   const sheet = session.page.locator(".lui-sheet").first()
   await sheet.waitFor({ state: "visible" })
-  await sheet.evaluate(async (element) => {
+  await settleSheetMotion(sheet)
+  return sheet
+}
+
+async function settleSheetMotion(locator) {
+  await locator.evaluate(async (element) => {
+    const sheet = element.closest(".lui-sheet")
     await new Promise((resolve) => requestAnimationFrame(() => resolve()))
-    await Promise.all(element.getAnimations().map((animation) => animation.finished.catch(() => {})))
+    await Promise.all(sheet.getAnimations().map((animation) => animation.finished.catch(() => {})))
     await new Promise((resolve) => requestAnimationFrame(() => resolve()))
   })
-  return sheet
 }
 
 async function touchEvent(type, touchPoints) {
@@ -57,6 +62,9 @@ async function touchDrag(locator, {
   reverseBy,
   duration = 120,
 } = {}) {
+  // CDP sends coordinates directly, so wait for snap-back motion before
+  // measuring the target, as Playwright does for its pointer actions.
+  await settleSheetMotion(locator)
   const bounds = await locator.boundingBox()
   assert.ok(bounds, "touch target should be visible")
   const x = bounds.x + bounds.width / 2
