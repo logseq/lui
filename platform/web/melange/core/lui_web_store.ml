@@ -176,6 +176,43 @@ let apply_drop_node nodes node_id =
     invalid_arg "cannot drop a node with children"
   else Hashtbl.remove nodes node_id
 
+(* detach-subtree unmounts a whole retained subtree in one op: the root
+   is unlinked from whatever parent still records it (the emit path may
+   have already sent its remove-child), then the root and every
+   descendant — properties, children and extension registrations — leave
+   the mirror. *)
+let apply_detach_subtree nodes node_id =
+  let root = fetch nodes node_id "node" in
+  (match root.retained_parent with
+   | Some parent_id ->
+       (match Hashtbl.find_opt nodes parent_id with
+        | Some parent_node ->
+            replace nodes parent_id
+              (with_children parent_node
+                 (List.filter
+                    (fun child -> child <> node_id)
+                    parent_node.retained_children))
+        | None -> ())
+   | None -> ());
+  let rec drop node_id =
+    match Hashtbl.find_opt nodes node_id with
+    | Some node ->
+        List.iter drop node.retained_children;
+        Hashtbl.remove nodes node_id
+    | None -> ()
+  in
+  drop node_id
+
+(* every member of the subtree rooted at [node_id], for rollback
+   snapshots — detach-subtree mutates them all at once. *)
+let rec collect_subtree nodes node_id acc =
+  match Hashtbl.find_opt nodes node_id with
+  | Some node ->
+      List.fold_left
+        (fun acc child -> collect_subtree nodes child acc)
+        (node_id :: acc) node.retained_children
+  | None -> acc
+
 let apply_set_prop nodes node_id property value =
   let current = fetch nodes node_id "node" in
   match standard_kind current with
@@ -279,6 +316,7 @@ let apply_op nodes platform_for extension_platform_for registry operation =
       apply_create_extension nodes extension_platform_for registry node
         identifier fingerprint
   | DropNode node -> apply_drop_node nodes node
+  | DetachSubtree node -> apply_detach_subtree nodes node
   | SetProp (node, property, value) ->
       if Hashtbl.mem nodes node then
         apply_set_prop nodes node property value
@@ -608,6 +646,7 @@ let describe_op op =
   | InsertChild (parent, child, index) ->
       Printf.sprintf "InsertChild parent=%d child=%d index=%d" parent child
         index
+  | DetachSubtree node -> Printf.sprintf "DetachSubtree node=%d" node
   | RemoveChild (parent, child) ->
       Printf.sprintf "RemoveChild parent=%d child=%d" parent child
   | MoveChild (parent, child, index) ->
@@ -617,7 +656,7 @@ let describe_op op =
    structural ops (children list and parent pointer both change). Mirrors the
    Apple store's affectedIDs — snapshotting exactly these entries before each
    op lets a rejected batch roll the mirror back completely. *)
-let affected_ids operation =
+let affected_ids nodes operation =
   match operation with
   | CreateNode (node, _)
   | CreateExtension (node, _, _)
@@ -629,6 +668,14 @@ let affected_ids operation =
   | InsertChild (parent, child, _)
   | RemoveChild (parent, child)
   | MoveChild (parent, child, _) -> [ parent; child ]
+  | DetachSubtree node -> (
+      match Hashtbl.find_opt nodes node with
+      | Some root ->
+          let subtree = collect_subtree nodes node [] in
+          (match root.retained_parent with
+           | Some parent -> parent :: subtree
+           | None -> subtree)
+      | None -> [ node ])
 
 let snapshot_before nodes snapshots operation =
   List.iter
@@ -636,7 +683,7 @@ let snapshot_before nodes snapshots operation =
        if not (Hashtbl.mem snapshots node_id) then
          Hashtbl.replace snapshots node_id
            (Hashtbl.find_opt nodes node_id))
-    (affected_ids operation)
+    (affected_ids nodes operation)
 
 let restore_snapshots nodes snapshots =
   Hashtbl.iter

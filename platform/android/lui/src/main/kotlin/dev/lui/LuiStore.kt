@@ -142,6 +142,16 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
                 }
                 dropped.add(op.id)
             }
+            is LuiPatchOp.DetachSubtree -> {
+                // detach-subtree unmounts a whole retained subtree: the
+                // root is unlinked from whatever parent still records it
+                // and every descendant is dropped recursively — handlers
+                // and registry entries die with it.
+                if (!nodes.containsKey(op.id) && !ext.containsKey(op.id)) {
+                    throw LuiBackendException("unknown node ${op.id}")
+                }
+                dropSubtree(nodes, ext, op.id, dropped)
+            }
             is LuiPatchOp.SetProp -> {
                 val node = requireNode(nodes, op.id)
                 if (!LuiKindRules.supports(node.kind, op.property, op.value)) {
@@ -219,6 +229,24 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
                 children.add(op.index, op.child)
             }
         }
+    }
+
+    private fun dropSubtree(
+        nodes: MutableMap<Long, LuiNode>,
+        ext: MutableMap<Long, LuiExtensionNode>,
+        id: Long,
+        dropped: MutableSet<Long>,
+    ) {
+        childrenOf(nodes, ext, id)?.toList()?.forEach {
+            dropSubtree(nodes, ext, it, dropped)
+        }
+        parentOf(nodes, ext, id)?.let { parent ->
+            childrenOf(nodes, ext, parent)?.remove(id)
+        }
+        setParent(nodes, ext, id, null)
+        nodes.remove(id)
+        ext.remove(id)
+        dropped.add(id)
     }
 
     private fun isDescendant(

@@ -167,6 +167,7 @@ type patch_op =
   | CreateNode of int * node_kind
   | CreateExtension of int * string * string
   | DropNode of int
+  | DetachSubtree of int
   | SetProp of int * property * wire_value
   | RemoveProp of int * property
   | SetExtensionProp of int * string * wire_value
@@ -233,6 +234,7 @@ val child_kind_supported : node_kind -> node_kind -> bool
 val create_node_op : int -> node_kind -> patch_op
 val create_extension_op : int -> string -> string -> patch_op
 val drop_node_op : int -> patch_op
+val detach_subtree_op : int -> patch_op
 val set_prop_op : int -> property -> wire_value -> patch_op
 val remove_prop_op : int -> property -> patch_op
 val set_extension_prop_op : int -> string -> wire_value -> patch_op

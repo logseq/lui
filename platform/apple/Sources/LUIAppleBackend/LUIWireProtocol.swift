@@ -44,6 +44,10 @@ enum LUIPatchOperation: Decodable, Sendable {
     case createNode(id: Int, kind: LUINodeKind)
     case createExtension(id: Int, identifier: String, fingerprint: String)
     case dropNode(id: Int)
+    /// Unmounts a whole retained subtree: the root is unlinked from
+    /// whatever parent still records it and every descendant is dropped
+    /// — handlers and registry entries die with the node recursively.
+    case detachSubtree(id: Int)
     case setProp(id: Int, property: LUIProperty, value: LUIWireValue)
     case removeProp(id: Int, property: LUIProperty)
     case setExtensionProp(id: Int, property: String, value: LUIWireValue)
@@ -72,6 +76,8 @@ enum LUIPatchOperation: Decodable, Sendable {
             )
         case "drop-node":
             self = .dropNode(id: try values.decode(Int.self, forKey: .id))
+        case "detach-subtree":
+            self = .detachSubtree(id: try values.decode(Int.self, forKey: .id))
         case "set-prop":
             self = .setProp(
                 id: try values.decode(Int.self, forKey: .id),
@@ -439,6 +445,29 @@ struct LUIRetainedTree {
                    kind == .filePreview {
                     effects.modalRelevant.insert(id)
                 }
+                // `detachSubtree` erases the whole subtree: snapshot every
+                // member plus the recording parent for rollback, and read
+                // member kinds before apply erases them.
+                var detachMembers: [Int] = []
+                var detachParent: Int? = nil
+                if case let .detachSubtree(id) = operation {
+                    detachMembers = subtreeIDs(of: id)
+                    detachParent = parent(of: id)
+                    var extras = detachMembers
+                    if let detachParent { extras.append(detachParent) }
+                    for memberID in extras where !snapshotted.contains(memberID) {
+                        snapshotted.insert(memberID)
+                        oldNodes[memberID] = nodes[memberID]
+                        oldExtensions[memberID] = extensionNodes[memberID]
+                    }
+                    for memberID in detachMembers {
+                        if let kind = nodes[memberID]?.kind,
+                           kind == .dialog || kind == .sheet || kind == .list ||
+                           kind == .filePreview {
+                            effects.modalRelevant.insert(memberID)
+                        }
+                    }
+                }
                 try apply(operation, extensionRegistry: extensionRegistry)
                 switch operation {
                 case let .createNode(id, _), let .setProp(id, _, _),
@@ -451,6 +480,14 @@ struct LUIRetainedTree {
                 case let .dropNode(id):
                     effects.touched.insert(id)
                     effects.dropped.insert(id)
+                case let .detachSubtree(id):
+                    effects.structural = true
+                    effects.touched.formUnion(detachMembers)
+                    effects.dropped.formUnion(detachMembers)
+                    if let detachParent {
+                        effects.touched.insert(detachParent)
+                        structuralChildren.insert(id)
+                    }
                 case let .insertChild(parent, child, _):
                     effects.structural = true
                     effects.touched.formUnion([parent, child])
@@ -525,7 +562,7 @@ struct LUIRetainedTree {
         case let .createNode(id, _), let .setProp(id, _, _),
              let .removeProp(id, _), let .createExtension(id, _, _),
              let .setExtensionProp(id, _, _), let .removeExtensionProp(id, _),
-             let .dropNode(id):
+             let .dropNode(id), let .detachSubtree(id):
             return [id]
         case let .insertChild(parent, child, _),
              let .removeChild(parent, child),
@@ -576,6 +613,22 @@ struct LUIRetainedTree {
             }
             nodes[id] = nil
             extensionNodes[id] = nil
+        case let .detachSubtree(id):
+            // detach-subtree unmounts a whole retained subtree: the root
+            // is unlinked from whatever parent still records it (the
+            // emit path may have already sent its remove-child) and
+            // every descendant is dropped — properties, children and
+            // extension registrations die with it recursively.
+            guard contains(id) else { throw invalid("unknown node") }
+            if let parent = parent(of: id),
+               var parentChildren = children(of: parent) {
+                parentChildren.removeAll { $0 == id }
+                setChildren(parentChildren, for: parent)
+            }
+            for memberID in subtreeIDs(of: id) {
+                nodes[memberID] = nil
+                extensionNodes[memberID] = nil
+            }
         case let .setProp(id, property, value):
             guard var node = nodes[id] else { throw invalid("unknown node") }
             let normalizedValue = value.normalized(for: property)
@@ -660,6 +713,17 @@ struct LUIRetainedTree {
 
     private func children(of id: Int) -> [Int]? {
         nodes[id]?.children ?? extensionNodes[id]?.children
+    }
+
+    /// Every member of the subtree rooted at `id` (for detach-subtree).
+    private func subtreeIDs(of id: Int) -> [Int] {
+        var result: [Int] = []
+        var pending: [Int] = [id]
+        while let current = pending.popLast() {
+            result.append(current)
+            pending.append(contentsOf: children(of: current) ?? [])
+        }
+        return result
     }
 
     private mutating func setParent(_ parent: Int?, for id: Int) {

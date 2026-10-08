@@ -76,6 +76,12 @@ pub enum Op {
     DropNode {
         id: i64,
     },
+    /// Unmounts a whole retained subtree: the root is unlinked from
+    /// whatever parent still records it and every descendant is dropped
+    /// — handlers and registry entries die with the node recursively.
+    DetachSubtree {
+        id: i64,
+    },
     SetProp {
         id: i64,
         property: String,
@@ -168,6 +174,9 @@ fn decode_op(json: &Json) -> Result<Op, DecodeError> {
             fingerprint: string_field(object, "fingerprint", op_name)?.to_string(),
         }),
         "drop-node" => Ok(Op::DropNode {
+            id: int_field(object, "id", op_name)?,
+        }),
+        "detach-subtree" => Ok(Op::DetachSubtree {
             id: int_field(object, "id", op_name)?,
         }),
         "set-prop" => Ok(Op::SetProp {

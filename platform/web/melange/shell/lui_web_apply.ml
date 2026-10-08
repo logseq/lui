@@ -506,6 +506,105 @@ let known_node renderer previous_nodes node =
   | Some _ -> true
   | None -> prev_node previous_nodes node <> None
 
+(* detach-subtree replaces the per-node remove/drop op pair for a whole
+   removed subtree: one pass unmounts every member — layer registrations,
+   extension resources, registered cleanups — and removes the elements
+   mounted outside the detaching parent chain (portal members, modal
+   layer shells, bottom-tab triggers). Members inside the subtree leave
+   the document with their ancestor's detach; only elements whose actual
+   parent is still connected get removed here. No exit transitions: the
+   subtree is unmounted wholesale, not closed. *)
+let apply_detach_subtree renderer previous_nodes children_of node =
+  let detach_element node_id =
+    match prev_node previous_nodes node_id with
+    | Some previous ->
+        let surface = previous.platform_node in
+        let target =
+          if prev_modal previous_nodes node_id then
+            Util.modal_layer_node surface
+          else surface
+        in
+        (match W.Element.parentElement target with
+         | Some actual_parent ->
+             if element_is_connected actual_parent then
+               ignore
+                 (W.Element.removeChild
+                    (W.Element.asNode target) actual_parent)
+         | None -> ())
+    | None ->
+        (* a member created inside this batch has no pre-batch record but
+           a portal-mounted element can still sit outside the subtree *)
+        (match
+           W.Document.getElementById (Util.node_dom_id node_id)
+             renderer.web_document
+         with
+         | Some element ->
+             (match W.Element.parentElement element with
+              | Some actual_parent ->
+                  if element_is_connected actual_parent then
+                    ignore
+                      (W.Element.removeChild
+                         (W.Element.asNode element) actual_parent)
+              | None -> ())
+         | None -> ())
+  in
+  let detach_bottom_tab_trigger node_id =
+    if prev_kind_is previous_nodes node_id BottomTab then
+      match prev_node previous_nodes node_id with
+      | Some previous ->
+          (match previous.retained_parent with
+           | Some parent when prev_kind_is previous_nodes parent BottomTabs ->
+               (match prev_node previous_nodes parent with
+                | Some tabs_node ->
+                    let bar =
+                      Util.bottom_tabs_bar_node tabs_node.platform_node
+                    in
+                    (match
+                       W.Element.querySelector
+                         ("#" ^ Util.bottom_tab_trigger_id node_id) bar
+                     with
+                     | Some trigger ->
+                         ignore
+                           (W.Element.removeChild
+                              (W.Element.asNode trigger) bar)
+                     | None -> ())
+                | None -> ())
+           | _ -> ())
+      | None -> ()
+  in
+  let rec visit node_id =
+    (* the root leaves first so inside-subtree member parents read
+       disconnected and skip their own detach *)
+    (if Lui_web_layers.layer_at renderer.web_layers node_id <> None then
+       Lui_web_layers.remove renderer.web_layers renderer.web_document
+         node_id);
+    detach_element node_id;
+    detach_bottom_tab_trigger node_id;
+    Ext.cleanup_extension_node renderer previous_nodes node_id;
+    cleanup_node renderer node_id;
+    List.iter visit (children_of node_id)
+  in
+  visit node;
+  (* parent-side follow-ups mirror apply_remove_child *)
+  match prev_node previous_nodes node with
+  | Some previous ->
+      (match previous.retained_parent with
+       | Some parent ->
+           Lui_web_focus.refresh_button_context renderer parent;
+           refresh_structured_children renderer parent;
+           (match prev_node previous_nodes parent with
+            | Some parent_node ->
+                if Store.standard_kind_is parent_node BottomTabs then
+                  Lui_web_widgets.refresh_bottom_tabs renderer parent
+            | None -> ());
+           (if Store.standard_kind_is previous DropdownMenu then begin
+              Lui_web_menu.update_picker_expanded renderer parent false;
+              clear_submenu_trigger renderer previous_nodes parent
+            end);
+           refresh_dropdown_parent renderer parent
+       | None -> ())
+  | None -> ()
+
 let apply_dom_op renderer previous_nodes children_of operation =
   match operation with
   | CreateNode (node, kind) ->
@@ -522,6 +621,9 @@ let apply_dom_op renderer previous_nodes children_of operation =
         Ext.cleanup_extension_node renderer previous_nodes node;
         cleanup_node renderer node
       end
+  | DetachSubtree node ->
+      if known_node renderer previous_nodes node then
+        apply_detach_subtree renderer previous_nodes children_of node
   | SetProp (node, property, value) ->
       apply_set_prop renderer node property value
   | RemoveProp (node, property) -> apply_remove_prop renderer node property
@@ -586,6 +688,17 @@ let apply_dom_batch renderer previous_nodes batch =
           (List.filter
              (fun other -> other <> child)
              (children_of parent))
+    | DetachSubtree node -> (
+        match prev_node previous_nodes node with
+        | Some previous ->
+            (match previous.retained_parent with
+             | Some parent ->
+                 Hashtbl.replace shadow parent
+                   (List.filter
+                      (fun other -> other <> node)
+                      (children_of parent))
+             | None -> ())
+        | None -> ())
     | MoveChild (parent, child, index) ->
         let without =
           List.filter

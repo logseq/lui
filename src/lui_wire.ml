@@ -47,6 +47,8 @@ let encode_op operation =
     Printf.sprintf "{\"op\":\"create-extension\",\"id\":%d,\"identifier\":%s,\"fingerprint\":%s}"
       node (quoted identifier) (quoted fingerprint)
   | DropNode node -> Printf.sprintf "{\"op\":\"drop-node\",\"id\":%d}" node
+  | DetachSubtree node ->
+    Printf.sprintf "{\"op\":\"detach-subtree\",\"id\":%d}" node
   | SetProp (node, property, value) ->
     Printf.sprintf "{\"op\":\"set-prop\",\"id\":%d,\"property\":%s,\"value\":%s}"
       node

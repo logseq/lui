@@ -290,6 +290,7 @@ type patch_op =
   | CreateNode of int * node_kind
   | CreateExtension of int * string * string
   | DropNode of int
+  | DetachSubtree of int
   | SetProp of int * property * wire_value
   | RemoveProp of int * property
   | SetExtensionProp of int * string * wire_value
@@ -1574,6 +1575,8 @@ let create_extension_op node identifier fingerprint =
   CreateExtension (node, identifier, fingerprint)
 
 let drop_node_op node = DropNode node
+
+let detach_subtree_op node = DetachSubtree node
 
 let set_prop_op node property value = SetProp (node, property, value)
 

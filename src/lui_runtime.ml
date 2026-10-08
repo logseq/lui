@@ -651,6 +651,7 @@ let operation_mentions_node node operation =
     | CreateNode (subject, _)
     | CreateExtension (subject, _, _)
     | DropNode subject
+    | DetachSubtree subject
     | SetProp (subject, _, _)
     | RemoveProp (subject, _)
     | SetExtensionProp (subject, _, _)
@@ -817,6 +818,18 @@ let enqueue_drop application node =
   else enqueue application (drop_node_op node)
 
 let rec emit_dropped_subtree application saved removed_set node =
+  if pending_create_exists application node then
+    (* a node created inside this batch still needs the per-node walk so
+       the elision replay can prune its whole op group *)
+    emit_dropped_subtree_ops application saved removed_set node
+  else
+    (* one op for the whole subtree: the store unlinks the root from its
+       parent (the emit_child_diff remove-child may have already done so)
+       and unmounts every descendant — props, children, handlers and
+       extension registrations all die with it *)
+    enqueue application (detach_subtree_op node)
+
+and emit_dropped_subtree_ops application saved removed_set node =
   let children =
     match Hashtbl.find_opt saved.checkpoint_children node with
     | Some current -> Lui_sequence.to_list current
@@ -1213,6 +1226,29 @@ let rec drop_subtree application node =
   if
     Hashtbl.mem application.mounted_nodes node
     || Hashtbl.mem application.runtime_extension_nodes node
+  then
+    if pending_create_exists application node then
+      (* created inside this batch: keep the per-node ops so the elision
+         replay can prune the whole group *)
+      drop_subtree_ops application node
+    else begin
+      (* the detach op carries the unlink with it — the store drops the
+         subtree whatever parent still records the root *)
+      (match Hashtbl.find_opt application.runtime_parents node with
+       | Some parent ->
+           (try unlink_child application parent node
+            with Invalid_argument _ ->
+              Hashtbl.remove application.runtime_parents node)
+       | None -> ());
+      unmount_subtree application node;
+      enqueue application (detach_subtree_op node)
+    end
+
+and drop_subtree_ops application node =
+  let node = canonical_node application node in
+  if
+    Hashtbl.mem application.mounted_nodes node
+    || Hashtbl.mem application.runtime_extension_nodes node
   then begin
     (* A branch teardown can reach a node the runtime already detached
        elsewhere (segment children get re-linked during reconciles and
@@ -1237,13 +1273,20 @@ let rec drop_subtree application node =
     drop_node application node
   end
 
-and drop_node application node =
-  let node = canonical_node application node in
-  require_node application node;
-  if Hashtbl.mem application.runtime_parents node then
-    invalid_arg "cannot drop an attached node";
-  if children application node <> [] then
-    invalid_arg "cannot drop a node with children";
+and unmount_subtree application node =
+  (* local teardown of a whole subtree: same state teardown as
+     drop_subtree but with the single detach op emitted by the caller *)
+  (match Hashtbl.find_opt application.runtime_children node with
+   | Some children ->
+       List.iter
+         (fun child ->
+            Hashtbl.remove application.runtime_parents child;
+            unmount_subtree application child)
+         (Lui_sequence.to_list children)
+   | None -> ());
+  unmount_node application node
+
+and unmount_node application node =
   (match Hashtbl.find_opt application.dynamic_segments node with
   | Some segments ->
     List.iter
@@ -1264,22 +1307,34 @@ and drop_node application node =
   Hashtbl.remove application.runtime_children node;
   Hashtbl.remove application.runtime_parents node;
   Hashtbl.remove application.runtime_reload_keys node;
-  application.runtime_extension_dirty := true;
+  application.runtime_extension_dirty := true
+
+and drop_node application node =
+  let node = canonical_node application node in
+  require_node application node;
+  if Hashtbl.mem application.runtime_parents node then
+    invalid_arg "cannot drop an attached node";
+  if children application node <> [] then
+    invalid_arg "cannot drop a node with children";
+  unmount_node application node;
   enqueue_drop application node
+
+and unlink_child application parent child =
+  let current = children application parent in
+  match find_child_index current child with
+  | Some index ->
+    Hashtbl.replace application.runtime_children parent
+      (Lui_sequence.of_list (remove_at current index));
+    Hashtbl.remove application.runtime_parents child;
+    application.runtime_extension_dirty := true
+  | None -> invalid_arg "child is not attached to parent"
 
 and remove_child application parent child =
   let parent = canonical_node application parent in
   let child = canonical_node application child in
   require_node application parent;
   require_node application child;
-  let current = children application parent in
-  (match find_child_index current child with
-  | Some index ->
-    Hashtbl.replace application.runtime_children parent
-      (Lui_sequence.of_list (remove_at current index));
-    Hashtbl.remove application.runtime_parents child;
-    application.runtime_extension_dirty := true
-  | None -> invalid_arg "child is not attached to parent");
+  unlink_child application parent child;
   enqueue application (remove_child_op parent child)
 
 let set_prop application node property value =

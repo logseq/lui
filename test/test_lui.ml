@@ -188,6 +188,7 @@ let describe_op (operation : Lui_protocol.patch_op) =
     Printf.sprintf "create:%d:%s" id (Lui_wire_schema.node_kind_name kind)
   | CreateExtension (id, _, _) -> Printf.sprintf "create-ext:%d" id
   | DropNode id -> Printf.sprintf "drop:%d" id
+  | DetachSubtree id -> Printf.sprintf "detach:%d" id
   | SetProp (id, _, _) -> Printf.sprintf "set-prop:%d" id
   | RemoveProp (id, _) -> Printf.sprintf "remove-prop:%d" id
   | SetExtensionProp (id, _, _) -> Printf.sprintf "set-ext-prop:%d" id
@@ -351,7 +352,11 @@ let updates_text ops =
     ops
 
 let drops_node ops =
-  List.exists (function Lui_protocol.DropNode _ -> true | _ -> false) ops
+  List.exists
+    (function
+      | Lui_protocol.DropNode _ | Lui_protocol.DetachSubtree _ -> true
+      | _ -> false)
+    ops
 
 let dyn_reducer model action =
   match action with

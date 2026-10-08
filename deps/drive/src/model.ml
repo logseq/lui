@@ -57,6 +57,7 @@ let apply_op t = function
   | CreateExtension (id, identifier, _fp) ->
     Hashtbl.replace t.nodes id (new_node id ("extension:" ^ identifier))
   | DropNode id -> drop t id
+  | DetachSubtree id -> drop t id
   | SetProp (id, p, v) -> (
     match Hashtbl.find_opt t.nodes id with
     | Some n -> Hashtbl.replace n.props (Lui_wire_schema.property_name p) v
@@ -110,6 +111,7 @@ let apply_wire_op t (json : Yojson.Safe.t) =
   | "create-extension" ->
     Hashtbl.replace t.nodes id (new_node id ("extension:" ^ str "identifier"))
   | "drop-node" -> drop t id
+  | "detach-subtree" -> drop t id
   | "set-prop" | "set-extension-prop" -> (
     match wire_value_of_json (member "value" json) with
     | Some v -> set (str "property") v

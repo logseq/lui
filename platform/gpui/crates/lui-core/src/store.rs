@@ -181,7 +181,7 @@ impl Store {
             }
             Op::RemoveChild { parent, child } => ids.extend([*parent, *child]),
             Op::MoveChild { parent, .. } => ids.push(*parent),
-            Op::DropNode { id } => {
+            Op::DropNode { id } | Op::DetachSubtree { id } => {
                 ids.extend(self.node(*id).and_then(|node| node.parent));
                 let mut stack = vec![*id];
                 while let Some(id) = stack.pop() {
@@ -221,7 +221,12 @@ impl Store {
                     applied,
                 )?;
             }
-            Op::DropNode { id } => self.drop_node(*id, applied)?,
+            // drop_node already unlinks the root from its parent and
+            // removes the whole subtree recursively — exactly the
+            // detach-subtree contract.
+            Op::DropNode { id } | Op::DetachSubtree { id } => {
+                self.drop_node(*id, applied)?
+            }
             Op::SetProp {
                 id,
                 property,

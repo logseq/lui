@@ -79,6 +79,10 @@ sealed class LuiPatchOp {
     data class CreateNode(val id: Long, val kind: LuiNodeKind) : LuiPatchOp()
     data class CreateExtension(val id: Long, val identifier: String, val fingerprint: String) : LuiPatchOp()
     data class DropNode(val id: Long) : LuiPatchOp()
+    /** Unmounts a whole retained subtree: the root is unlinked from
+        whatever parent still records it and every descendant is dropped
+        — handlers and registry entries die with the node recursively. */
+    data class DetachSubtree(val id: Long) : LuiPatchOp()
     data class SetProp(val id: Long, val property: String, val value: LuiWireValue) : LuiPatchOp()
     data class RemoveProp(val id: Long, val property: String) : LuiPatchOp()
     data class SetExtensionProp(val id: Long, val property: String, val value: LuiWireValue) : LuiPatchOp()
@@ -115,6 +119,7 @@ sealed class LuiPatchOp {
                     fingerprint = requiredString(obj, "fingerprint"),
                 )
                 "drop-node" -> DropNode(id = requiredLong(obj, "id"))
+                "detach-subtree" -> DetachSubtree(id = requiredLong(obj, "id"))
                 "set-prop" -> SetProp(
                     id = requiredLong(obj, "id"),
                     property = requiredString(obj, "property"),
