@@ -852,6 +852,30 @@ test("DropdownMenu typeahead moves focus to the matching enabled item", async ()
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Staging")
 })
 
+test("DropdownMenu initial focus preserves early keyboard navigation", async () => {
+  await openGalleryPage("DropdownMenu")
+  await evaluate(`(() => {
+    const original = window.setTimeout
+    window.__menuMountTasks = []
+    window.__restoreMenuTimers = () => { window.setTimeout = original }
+    window.setTimeout = (callback, delay, ...args) => {
+      if (delay === 0 && typeof callback === 'function') {
+        window.__menuMountTasks.push(() => callback(...args))
+        return original(() => {}, 0)
+      }
+      return original(callback, delay, ...args)
+    }
+  })()`)
+  await clickButton("Choose environment")
+  await evaluate("window.__restoreMenuTimers()")
+  assert.ok(await state("window.__menuMountTasks.length > 0"))
+  await session.page.getByRole("menuitem", { name: "Production", exact: true }).focus()
+  await browser("press", "s")
+  assert.equal(await state("document.activeElement?.textContent.trim()"), "Staging")
+  await evaluate("window.__menuMountTasks.splice(0).forEach(task => task())")
+  assert.equal(await state("document.activeElement?.textContent.trim()"), "Staging")
+})
+
 test("DropdownMenu ArrowRight enters a third-level submenu", async () => {
   await openLayerRegressionPage()
   await clickButton("Open dialog")
