@@ -1394,8 +1394,8 @@ let mount_picker_dropdown renderer node =
 
 (* base-ui parity: a menu opens with an item highlighted and focused
    (useListNavigation's initial sync). A [data-selected] item wins —
-   select-style menus reopen on the current value; otherwise the LAST
-   enabled item is highlighted (getMaxListIndex). Items owned by a
+   select-style menus reopen on the current value; otherwise the first
+   enabled item is highlighted. Items owned by a
    nested submenu (inside a [data-submenu] positioner) and
    [data-menu-tail] items (e.g. a session block appended after the menu
    body mounts) are excluded — cljs-side they mount after the nav list
@@ -1440,7 +1440,24 @@ let highlight_initial_menu_item renderer container_id =
                 | None -> false)
                || picker_for_dropdown renderer container_id <> None
              in
-             if presented && not submenu_or_picker then begin
+             (* Keyboard input can reach the menu before this deferred
+                initialization. Preserve focus already moved into the menu
+                or one of its owned portals. *)
+             let focus_already_inside =
+               let document =
+                 W.Document.unsafeAsHtmlDocument renderer.web_document
+               in
+               match W.HtmlDocument.activeElement document with
+               | Some active ->
+                   List.exists
+                     (fun root ->
+                       W.Element.contains (W.Element.asNode active) root)
+                     (Lui_web_layers.focus_roots renderer.web_layers
+                        container_id)
+               | None -> false
+             in
+             if presented && not submenu_or_picker
+                && not focus_already_inside then begin
              let nodes =
                W.Element.querySelectorAll
                  "[role=menuitem]:not([data-disabled]):not([aria-disabled='true']):not([data-menu-tail])"
