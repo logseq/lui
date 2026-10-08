@@ -192,6 +192,19 @@ test("OCaml, CSS, and JavaScript update through Vite without a manual refresh", 
       false,
     )
 
+    // Revisit an earlier build so Dune can restore output with an older mtime.
+    const cachedOcamlUpdate = Promise.race([
+      nextPageLoad(page),
+      page.getByText("OCaml hot reload applied.", { exact: true })
+        .waitFor()
+        .then(() => "hmr"),
+    ])
+    await writeFile(gallerySource, ocamlUpdated)
+    assert.equal(await cachedOcamlUpdate, "reload", "Cached OCaml output must reload the document")
+    await page.waitForLoadState("networkidle")
+    await openSwitch(page)
+    await page.getByText("OCaml hot reload applied.", { exact: true }).waitFor()
+
     await page.goto(
       `${origin}/platform/web/test/fixtures/hot-reload/index.html`,
       { waitUntil: "networkidle" },

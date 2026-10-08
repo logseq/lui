@@ -453,6 +453,10 @@ let encode_user_style entries =
   String.concat "\x1f"
     (List.map (fun (name, baseline) -> name ^ "\x1e" ^ baseline) entries)
 
+let remove_empty_style_attribute dom_node =
+  if W.Element.getAttribute "style" dom_node = Some "" then
+    W.Element.removeAttribute "style" dom_node
+
 let clear_user_style dom_node =
   let style = element_style dom_node in
   (match Js.Undefined.toOption (user_style_get dom_node) with
@@ -463,7 +467,8 @@ let clear_user_style dom_node =
             else style_set style name baseline "")
          (decode_user_style encoded)
    | None -> ());
-  user_style_set dom_node ""
+  user_style_set dom_node "";
+  remove_empty_style_attribute dom_node
 
 let apply_user_style dom_node payload =
   let style = element_style dom_node in
@@ -491,7 +496,8 @@ let apply_user_style dom_node payload =
          (name, baseline))
       next
   in
-  user_style_set dom_node (encode_user_style recorded)
+  user_style_set dom_node (encode_user_style recorded);
+  remove_empty_style_attribute dom_node
 
 let apply_data_attrs dom_node payload =
   match data_attrs_decode payload with

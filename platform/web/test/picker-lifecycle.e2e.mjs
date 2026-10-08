@@ -401,23 +401,37 @@ test("Combobox composition patches retain the native input, draft and selection"
 })
 
 test("DropdownMenu submenu presence finishes on close and stale close cannot remove a reopened submenu", async () => {
+  await session.page.goto("about:blank")
+  await session.page.clock.install({ time: new Date("2030-01-01T00:00:00Z") })
   await openPickerPage()
+  // Exercise the fallback timer without racing native CSS transition events.
+  await session.page.addStyleTag({
+    content: ".lui-popup-positioner[data-submenu] .lui-dropdown-menu { transition: none !important; }",
+  })
   await session.evaluate("window.audit.enableSubmenu()")
   await openSelectWithKey()
   const more = session.page.locator(".lui-menu-item").filter({ hasText: "More" })
+  const submenu = session.page.locator(".lui-popup-positioner[data-submenu] .lui-dropdown-menu")
+  const submenuState = () => submenu.evaluate(popup => ({
+    open: popup.hasAttribute("data-open"),
+    ending: popup.hasAttribute("data-ending-style"),
+    present: window.audit.submenuPresent(),
+  }))
   await more.hover()
   await waitFor("document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-open]')")
   assert.equal(await state("window.audit.submenuPresent()"), true)
+  await session.page.clock.pauseAt(new Date("2030-01-01T00:01:00Z"))
 
   await session.page.mouse.move(4, 4)
-  await waitFor("document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-ending-style]')")
+  await session.page.clock.runFor(120)
+  assert.deepEqual(await submenuState(), { open: false, ending: true, present: true })
   await more.hover()
-  await waitFor("document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-open]')")
-  assert.equal(await state("window.audit.submenuPresent()"), true)
-  await waitFor("!document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-ending-style]')")
+  await session.page.clock.runFor(130)
+  assert.deepEqual(await submenuState(), { open: true, ending: false, present: true })
 
   await session.page.mouse.move(4, 4)
-  await waitFor("!document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-open]')")
-  await waitFor("!document.querySelector('.lui-popup-positioner[data-submenu] .lui-dropdown-menu[data-ending-style]')")
-  assert.equal(await state("window.audit.submenuPresent()"), false)
+  await session.page.clock.runFor(120)
+  assert.deepEqual(await submenuState(), { open: false, ending: true, present: true })
+  await session.page.clock.runFor(130)
+  assert.deepEqual(await submenuState(), { open: false, ending: false, present: false })
 })
