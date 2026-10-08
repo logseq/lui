@@ -40,11 +40,11 @@ val buttons : actions:action list -> t
 
 (** Message/capture input capsule: optional horizontal attachment strip
     ([attachments_visible_signal] mounts the strip only while its signal holds),
-    a content-sized [composer-input] textarea capped at 168pt, and a controls row of caller
-    [actions] followed by an optional send button. [on_press] fires when
+    a controls row of caller [actions], a content-sized [composer-input]
+    textarea capped at 168pt, and an optional send button. [on_press] fires when
     the capsule itself is pressed (e.g. to focus the field);
     [autofocus_signal] drives the textarea's autofocus reactively.
-    [attachments_height] bounds the strip (default 140pt); [feedback] is
+    [attachments_height] bounds the strip (default 128pt); [feedback] is
     laid out inside the surface above controls, reserving its own space. *)
 val composer :
   ?key:string ->
@@ -69,11 +69,14 @@ val composer :
   ?on_press:(Lui_protocol.event -> unit) ->
   unit -> t
 
-(** Pending attachment card for the shared composer slot. The preview uses
-    the host's native file preview; removal is an explicit named 44pt action.
-    [key] must identify the staged item across edits and reorderings. *)
+(** Square 120pt attachment card for the shared composer slot. Images fill
+    the tile; documents show their name and type (MIME or extension).
+    [status] overrides the type caption, for example during import or failure.
+    The preview uses the host's native file preview; removal is a separately
+    named 44pt icon action. [key] identifies the staged item across edits and
+    reorderings. The caller owns the file and its lifetime. *)
 val composer_attachment :
-  ?disabled:bool -> key:string -> path:string -> title:string -> file_type:string ->
+  ?disabled:bool -> ?status:string -> key:string -> path:string -> title:string -> file_type:string ->
   on_remove:(Lui_protocol.event -> unit) -> unit -> t
 
 (** Collapsed form of the composer: a capsule button the host expands back

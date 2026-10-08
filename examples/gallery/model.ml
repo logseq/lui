@@ -27,6 +27,11 @@ type t = {
   combine_dialog_open : bool;
   combine_sheet_open : bool;
   combine_menu_open : bool;
+  composer_files : Lui_picked_files.file list;
+  composer_request : int;
+  composer_completion : int;
+  composer_source : Lui_elements.file_picker_source;
+  composer_feedback : string;
   split_panes : Lui_split.Model.t;
   gpui_rating : int;
   gpui_color : string;
@@ -91,6 +96,11 @@ type action =
   | CloseCombineSheet
   | OpenCombineMenu
   | CloseCombineMenu
+  | ComposerRequest of Lui_elements.file_picker_source
+  | ComposerPicked of Lui_picked_files.t
+  | ComposerCancelled
+  | ComposerRemove of string
+  | ComposerSend
   | SplitPanes of Lui_split.Model.action
   | GpuiRate of int
   | GpuiPickColor of string
@@ -122,6 +132,11 @@ let initial =
     combine_dialog_open = false;
     combine_sheet_open = false;
     combine_menu_open = false;
+    composer_files = [];
+    composer_request = 0;
+    composer_completion = 0;
+    composer_source = `files;
+    composer_feedback = "";
     split_panes = gallery_split_state;
     gpui_rating = 3;
     gpui_color = "#3b82f6";
@@ -185,6 +200,33 @@ let update model action =
   | CloseCombineSheet -> { model with combine_sheet_open = false }
   | OpenCombineMenu -> { model with combine_menu_open = true }
   | CloseCombineMenu -> { model with combine_menu_open = false }
+  | ComposerRequest source ->
+    if model.composer_request <> model.composer_completion then model
+    else { model with composer_request = model.composer_request + 1;
+      composer_source = source; composer_feedback = "" }
+  | ComposerPicked batch ->
+    if batch.request <> `Int model.composer_request
+       || model.composer_request = model.composer_completion then model
+    else
+      let seen = Hashtbl.create 8 in
+      List.iter (fun (file : Lui_picked_files.file) -> Hashtbl.replace seen file.path ()) model.composer_files;
+      let count = ref (List.length model.composer_files) in
+      let skipped = ref batch.failures in
+      let added = List.filter (fun (file : Lui_picked_files.file) ->
+        if Hashtbl.mem seen file.path then false
+        else if !count >= 8 then (incr skipped; false)
+        else (Hashtbl.add seen file.path (); incr count; true)) batch.files in
+      { model with composer_files = model.composer_files @ added;
+        composer_completion = model.composer_request;
+        composer_feedback = if !skipped = 0 then "" else
+          Printf.sprintf "%d attachment(s) could not be added (limit 8, 50 MiB each)." !skipped }
+  | ComposerCancelled ->
+    { model with composer_completion = model.composer_request }
+  | ComposerRemove path ->
+    { model with composer_files = List.filter
+      (fun (file : Lui_picked_files.file) -> file.path <> path) model.composer_files }
+  | ComposerSend ->
+    { model with composer_files = []; field_value = ""; composer_feedback = "" }
   | SplitPanes action ->
     { model with split_panes = Lui_split.Model.update model.split_panes action }
   | GpuiRate rating -> { model with gpui_rating = rating }

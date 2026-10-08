@@ -262,23 +262,22 @@ struct LUIFilePickerView: View {
         presented = false
     }
 
-    private func finishPicked(files: [LUIRetainedFile]) {
-        guard var operation else {
+    private func finishPicked(files: [LUIRetainedFile], token: LUIWireValue? = nil, failures: Int = 0) {
+        guard let token = token ?? operation?.token else {
             // The operation was released (node dropped or completed) before
             // the pick landed — drop the files rather than leaking their
             // security scope / temp copies.
             backend.releaseFilePickerFiles(files)
             return
         }
+        guard backend.acceptFilePickerSelection(node: model.id, token: token, files: files) else { return }
         handled = true
-        operation.phase = .awaitingCompletion
-        operation.files = files
-        backend.setFilePickerOperation(node: model.id, operation)
-        emitPicked(token: operation.token, files: files)
+        emitPicked(token: token, files: files, failures: failures)
         presented = false
     }
 
-    private func finishCancelled() {
+    private func finishCancelled(token: LUIWireValue? = nil) {
+        if let token, operation?.token != token { return }
         handled = true
         presented = false
         backend.clearFilePickerOperation(node: model.id)
@@ -307,7 +306,7 @@ struct LUIFilePickerView: View {
 
     #if canImport(PhotosUI)
     private func handlePhotoSelection(_ items: [PhotosPickerItem]) {
-        guard operation != nil, source == "photos", !items.isEmpty else { return }
+        guard let token = operation?.token, source == "photos", !items.isEmpty else { return }
         // Mark handled before clearing the selection: `presented` flips to
         // false in the same update, and the cancel-detection hook must not
         // fire while the async import below is still running.
@@ -315,14 +314,16 @@ struct LUIFilePickerView: View {
         photoSelection = []
         Task {
             var files: [LUIRetainedFile] = []
+            var failures = 0
             for item in items {
-                guard let file = await Self.importPhotoItem(item) else { continue }
+                guard operation?.token == token else { break }
+                guard let file = await Self.importPhotoItem(item) else { failures += 1; continue }
                 files.append(file)
             }
-            if files.isEmpty {
-                finishCancelled()
+            if files.isEmpty && failures == 0 {
+                finishCancelled(token: token)
             } else {
-                finishPicked(files: files)
+                finishPicked(files: files, token: token, failures: failures)
             }
         }
     }
@@ -374,7 +375,7 @@ struct LUIFilePickerView: View {
 
     // MARK: - payload
 
-    private func emitPicked(token: LUIWireValue, files: [LUIRetainedFile]) {
+    private func emitPicked(token: LUIWireValue, files: [LUIRetainedFile], failures: Int = 0) {
         let request: Any = switch token {
         case let .string(value): value
         case let .int(value): NSNumber(value: value)
@@ -388,7 +389,7 @@ struct LUIFilePickerView: View {
                 "content-type": Self.contentType(of: file.url),
             ]
         }
-        let payload: [String: Any] = ["request": request, "files": entries]
+        let payload: [String: Any] = ["request": request, "files": entries, "failures": failures]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else { return }
         try? backend.performPicked(node: model.id, payload: json)
@@ -420,6 +421,7 @@ private struct LUIPhotosPickerModifier: ViewModifier {
             content.photosPicker(
                 isPresented: presented,
                 selection: $selection,
+                selectionBehavior: .ordered,
                 matching: filter
             )
         } else {
