@@ -68,7 +68,9 @@ function melangeHotReload() {
       } else {
         try {
           const info = await stat(generatedModule)
-          if (info.mtimeMs > since) {
+          // Cached Dune artifacts retain their mtime; linking them into the
+          // output tree updates ctime even when compilation is skipped.
+          if (Math.max(info.mtimeMs, info.ctimeMs) > since) {
             // Dune replaces the whole emit tree during a rebuild, so the
             // changed module can settle while sibling entries are still
             // missing. Wait for a quiet window with all entries present.
