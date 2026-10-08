@@ -1712,10 +1712,15 @@ fn list_item(
                 }
             });
             row = row.child(
-                deferred(anchored().position(position).snap_to_window().child(popup))
-                    // Above imperative roots (4) — context menus can open
-                    // inside dialogs and other imperative subtrees.
-                    .with_priority(5),
+                deferred(
+                    anchored()
+                        .position(position)
+                        .snap_to_window()
+                        .child(popup),
+                )
+                // Above imperative roots (4) — context menus can open
+                // inside dialogs and other imperative subtrees.
+                .with_priority(5),
             );
         }
     }
@@ -3616,10 +3621,20 @@ fn popover(
                 (Some("right"), _) => (Anchor::LeftCenter, offset, 0.),
                 _ => (Anchor::TopLeft, 0., offset),
             };
-            let mut menu = menu_box(view, node, cx);
+            // Stateful wrapper so the capped menu can track its scroll
+            // offset — scroll methods live on StatefulInteractiveElement.
+            let mut menu = menu_box(view, node, cx).id(ElementId::Name(
+                format!("lui-{}-popmenu", node.id).into(),
+            ));
             if let Some(available) = node.float_prop(Property::AvailableHeight) {
                 if available > 0. {
-                    menu = menu.max_h(px(available as f32)).overflow_hidden();
+                    // Web popup content scrolls when it hits the cap
+                    // (overflow-y:auto on the card) — clipping would make
+                    // the tail items unreachable.
+                    menu = menu
+                        .max_h(px(available as f32))
+                        .overflow_y_scroll()
+                        .track_scroll(&view.states.scroll);
                 }
             }
             if event_gate(view, node.id, EventKind::Dismiss) {
@@ -3661,10 +3676,20 @@ fn popover(
     }
     let x = node.float_prop(Property::PopupX).unwrap_or(0.) as f32;
     let y = node.float_prop(Property::PopupY).unwrap_or(0.) as f32;
-    let mut menu = menu_box(view, node, cx);
+    // Stateful wrapper so the capped menu can track its scroll offset —
+    // scroll methods live on StatefulInteractiveElement.
+    let mut menu = menu_box(view, node, cx).id(ElementId::Name(
+        format!("lui-{}-popmenu", node.id).into(),
+    ));
     if let Some(available) = node.float_prop(Property::AvailableHeight) {
         if available > 0. {
-            menu = menu.max_h(px(available as f32)).overflow_hidden();
+            // Web popup content scrolls when it hits the cap
+            // (overflow-y:auto on the card) — clipping would make the
+            // tail items unreachable.
+            menu = menu
+                .max_h(px(available as f32))
+                .overflow_y_scroll()
+                .track_scroll(&view.states.scroll);
         }
     }
     if event_gate(view, node.id, EventKind::Dismiss) {
