@@ -1391,6 +1391,9 @@ fn menu_box(
     let mut element = v_flex()
         .gap_0p5()
         .p_1()
+        // Occluding hitbox: without it mouse-downs on the menu surface
+        // pass through to elements painted beneath the deferred layer.
+        .occlude()
         .bg(cx.theme().tokens.popover)
         .text_color(cx.theme().popover_foreground)
         .border_1()
@@ -1684,6 +1687,9 @@ fn list_item(
                 .id(ElementId::Name(format!("lui-{}-ctxmenu", node.id).into()))
                 .gap_0p5()
                 .p_1()
+                // Occluding hitbox — keep presses on the menu surface
+                // from reaching rows painted beneath the deferred layer.
+                .occlude()
                 .min_w(px(160.))
                 .bg(cx.theme().tokens.popover)
                 .text_color(cx.theme().popover_foreground)
@@ -2202,6 +2208,9 @@ fn menu_trigger(
                     .id(ElementId::Name(format!("lui-{}-submenu", node.id).into()))
                     .gap_0p5()
                     .p_1()
+                    // Occluding hitbox — submenu rows must not leak
+                    // presses to elements under the deferred layer.
+                    .occlude()
                     .min_w(px(min_width))
                     .bg(cx.theme().popover)
                     .border_1()
