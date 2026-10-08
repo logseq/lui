@@ -90,6 +90,67 @@ let view ?(mount_failure=false) label _context _model _send context _parent =
   if mount_failure then Signal.on_mount context.Lui_ui.ui_scope (fun () -> failwith "mount failed");
   Lui_ui.text context label
 
+let check_resync mirror application =
+  let restored = Drive.Model.create () in
+  let snapshot = Lui_runtime.resync_batch application in
+  Drive.Model.apply_batch restored snapshot;
+  Alcotest.(check int) "all live nodes restored" (Drive.Model.node_count mirror)
+    (Drive.Model.node_count restored);
+  Hashtbl.iter
+    (fun id (expected : Drive.Model.node) ->
+      let actual = Hashtbl.find restored.Drive.Model.nodes id in
+      Alcotest.(check string) "node kind restored" expected.kind actual.kind;
+      Alcotest.(check (option int)) "parent restored" expected.parent actual.parent;
+      Alcotest.(check (list int)) "child order restored" expected.children actual.children;
+      let props node =
+        Hashtbl.to_seq node.Drive.Model.props |> List.of_seq |> List.sort compare
+      in
+      Alcotest.(check bool) "properties restored" true (props expected = props actual))
+    mirror.Drive.Model.nodes;
+  Alcotest.(check int) "current generation restored" (Drive.Model.generation mirror)
+    (Drive.Model.generation restored);
+  restored
+
+let resync_default_app () =
+  let mirror = Drive.Model.create () in
+  let next = ref None in
+  let app = Lui_app.create (backend (fun batch ->
+    next := Some batch; Drive.Model.apply_batch mirror batch; true))
+    () (fun model () -> model) (view "snow\000雪😀") in
+  ignore (Lui_app.start app);
+  ignore (Lui_app.flush app);
+  let restored = check_resync mirror (Lui_app.runtime app) in
+  let root = Lui_app.root_node app in
+  Lui_runtime.set_prop (Lui_app.runtime app) root TextValue (StringValue "updated");
+  ignore (Lui_app.flush app);
+  Drive.Model.apply_batch restored (Option.get !next);
+  let node = Hashtbl.find restored.Drive.Model.nodes root in
+  Alcotest.(check bool) "later deltas update restored tree" true
+    (Hashtbl.find node.props "text" = StringValue "updated")
+
+let resync_detached_nodes () =
+  let mirror = Drive.Model.create () in
+  let registry = Lui_extension.registry () in
+  Lui_extension.register_component registry
+    (Lui_extension.component "audit-widget" [generic_profile ()] true []
+      [Lui_extension.property "title" StringScalar true None] []);
+  let app = Lui_runtime.create_with_extensions (Signal.scheduler ())
+    (backend (fun batch -> Drive.Model.apply_batch mirror batch; true)) registry in
+  let root = Lui_runtime.create_node app Root in
+  let child = Lui_runtime.create_node app Column in
+  Lui_runtime.insert_child app root child 0;
+  let floating = Lui_runtime.create_extension_node app "audit-widget" in
+  Lui_runtime.set_extension_prop app floating "title" (StringValue "floating");
+  let first = Lui_runtime.create_node app Text in
+  let second = Lui_runtime.create_node app Text in
+  Lui_runtime.insert_child app floating first 0;
+  Lui_runtime.insert_child app floating second 1;
+  ignore (Lui_runtime.flush app);
+  ignore (check_resync mirror app);
+  Lui_runtime.drop_subtree app first;
+  ignore (Lui_runtime.flush app);
+  ignore (check_resync mirror app)
+
 let reload_app apply =
   let app = Lui_app.create_reloadable (backend apply) "old" "contract" ()
     (fun model () -> model) (view "old") in
@@ -244,6 +305,8 @@ let tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f)
    "extension validation retries", extension_retry;
    "backend exceptions and reentrant writes", backend_failure;
    "subscription startup cleanup", subscription_failure;
+   "resync ordinary application and subsequent deltas", resync_default_app;
+   "resync root and detached extension trees", resync_detached_nodes;
    "reload mount rollback", reload_mount_failure;
    "reload uncertain commit", reload_commit_failure;
    "reload postcommit cleanup failure", reload_cleanup_failure;
