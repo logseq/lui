@@ -379,14 +379,11 @@ fn color_env(token: &str, theme: Option<&Theme>) -> Option<Hsla> {
         return Some(color);
     }
     // Palette names don't compose with an `/opacity` suffix upstream
-    // (`slate-200/50`); apply the Tailwind opacity scale here.
+    // (`slate-200/50`); apply the Tailwind opacity scale here. Any
+    // resolvable base works, so `var(--ls-x)/90` and `#aabbcc/50` too.
     if let Some((base, opacity)) = token.split_once('/') {
         if let Ok(opacity) = opacity.parse::<f32>() {
-            let base_color = try_parse_color(base)
-                .ok()
-                .or_else(|| parse_hex(base))
-                .or_else(|| named(base));
-            if let Some(mut color) = base_color {
+            if let Some(mut color) = color_env(base, theme) {
                 color.a *= (opacity / 100.0).clamp(0.0, 1.0);
                 return Some(color);
             }
