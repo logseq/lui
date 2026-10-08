@@ -690,17 +690,27 @@ let data_attr_name_ok name =
   name = "role" || name = "tabindex" || name = "draggable" || name = "style"
   || has_prefix "data-" || has_prefix "aria-"
 
+(* String.contains compiles to try/index/with — every miss allocates
+   and unwinds an exception, and data-attrs validation runs it 4x per
+   pair on every element mount. A plain byte scan keeps misses
+   allocation-free *)
+let has_ctrl_char s =
+  let len = String.length s in
+  let rec go i =
+    if i >= len then false
+    else
+      let c = String.unsafe_get s i in
+      c = '\x1e' || c = '\x1f' || go (i + 1)
+  in
+  go 0
+
 let data_attrs_encode pairs =
   List.iter
     (fun (name, value) ->
        if not (data_attr_name_ok name) then
          invalid_arg ("data-attrs: unsupported attribute name: " ^ name);
-       if
-         String.contains name '\x1e'
-         || String.contains name '\x1f'
-         || String.contains value '\x1e'
-         || String.contains value '\x1f'
-       then invalid_arg "data-attrs: control character in name or value")
+       if has_ctrl_char name || has_ctrl_char value then
+         invalid_arg "data-attrs: control character in name or value")
     pairs;
   String.concat "\x1e"
     (List.map (fun (name, value) -> name ^ "\x1f" ^ value) pairs)
