@@ -30,7 +30,25 @@ impl NodeIdentity {
     /// children; the store treats every extension as child-capable.
     pub fn accepts_children(&self) -> bool {
         match self {
-            NodeIdentity::Standard(kind) => kind.is_container(),
+            NodeIdentity::Standard(kind) => {
+                // Mirrors `context_menu_leaf_host_kind` in lui_protocol.ml.
+                kind.is_container()
+                    || matches!(
+                        kind,
+                        NodeKind::ToggleButton
+                            | NodeKind::Toggle
+                            | NodeKind::Radio
+                            | NodeKind::Slider
+                            | NodeKind::NumberStepper
+                            | NodeKind::TextField
+                            | NodeKind::SecureField
+                            | NodeKind::Input
+                            | NodeKind::SearchField
+                            | NodeKind::Textarea
+                            | NodeKind::Checkbox
+                            | NodeKind::SwitchControl
+                    )
+            }
             NodeIdentity::Extension { .. } => true,
         }
     }
@@ -56,6 +74,9 @@ pub struct Node {
     pub extension_props: NodeExtensionProps,
     pub children: Vec<i64>,
     pub parent: Option<i64>,
+    /// Explicit model writes to text/value, including equal-value writes.
+    /// Renderers use this revision to preserve edits across unrelated redraws.
+    pub value_revision: u64,
 }
 
 impl Node {
@@ -259,6 +280,9 @@ impl Store {
                     .get_mut(id)
                     .ok_or_else(|| err(format!("set-prop: unknown node {id}")))?;
                 node.props.insert(property, value.clone());
+                if matches!(property, Property::TextValue | Property::ProgressValue) {
+                    node.value_revision = node.value_revision.wrapping_add(1);
+                }
                 applied.dirty.insert(*id);
             }
             Op::RemoveProp { id, property } => {
@@ -270,6 +294,9 @@ impl Store {
                     .get_mut(id)
                     .ok_or_else(|| err(format!("remove-prop: unknown node {id}")))?;
                 node.props.remove(&property);
+                if matches!(property, Property::TextValue | Property::ProgressValue) {
+                    node.value_revision = node.value_revision.wrapping_add(1);
+                }
                 applied.dirty.insert(*id);
             }
             Op::SetExtensionProp {
@@ -282,6 +309,9 @@ impl Store {
                     .get_mut(id)
                     .ok_or_else(|| err(format!("set-extension-prop: unknown node {id}")))?;
                 node.extension_props.insert(property.clone(), value.clone());
+                if matches!(property.as_str(), "text" | "value") {
+                    node.value_revision = node.value_revision.wrapping_add(1);
+                }
                 applied.dirty.insert(*id);
             }
             Op::RemoveExtensionProp { id, property } => {
@@ -290,6 +320,9 @@ impl Store {
                     .get_mut(id)
                     .ok_or_else(|| err(format!("remove-extension-prop: unknown node {id}")))?;
                 node.extension_props.remove(property);
+                if matches!(property.as_str(), "text" | "value") {
+                    node.value_revision = node.value_revision.wrapping_add(1);
+                }
                 applied.dirty.insert(*id);
             }
             Op::InsertChild {
@@ -331,6 +364,7 @@ impl Store {
                 extension_props: BTreeMap::new(),
                 children: Vec::new(),
                 parent: None,
+                value_revision: 0,
             },
         );
         applied.dirty.insert(id);
@@ -765,7 +799,7 @@ mod tests {
                 store,
                 r#"{"generation": 1, "ops": [
                     {"op": "create-node", "id": 1, "kind": "root"},
-                    {"op": "create-node", "id": 2, "kind": "slider"},
+                    {"op": "create-node", "id": 2, "kind": "spinner"},
                     {"op": "insert-child", "parent": 1, "child": 2, "index": 0}
                 ]}"#,
             );
@@ -782,7 +816,7 @@ mod tests {
             r#"{"generation":2,"ops":[{"op":"set-prop","id":99,"property":"text","value":"x"}]}"#,
             // drop missing node
             r#"{"generation":2,"ops":[{"op":"drop-node","id":99}]}"#,
-            // insert into non-container (slider accepts no children)
+            // insert into non-container (spinner accepts no children)
             r#"{"generation":2,"ops":[
                 {"op":"create-node","id":5,"kind":"text"},
                 {"op":"insert-child","parent":2,"child":5,"index":0}]}"#,

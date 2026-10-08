@@ -1220,6 +1220,7 @@ mod tests {
                 .collect::<BTreeMap<_, _>>(),
             children: Vec::new(),
             parent: None,
+            value_revision: 0,
         }
     }
 
@@ -1231,6 +1232,7 @@ mod tests {
             extension_props: node.extension_props.clone(),
             children: node.children.clone(),
             parent: node.parent,
+            value_revision: node.value_revision,
         }
     }
 
@@ -1256,6 +1258,7 @@ mod tests {
             extension_props: BTreeMap::new(),
             children: Vec::new(),
             parent: None,
+            value_revision: 0,
         };
         assert_eq!(tag_of(&snapshot_of(&standard)), "");
     }

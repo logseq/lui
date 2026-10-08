@@ -287,25 +287,18 @@ pub fn handle_dom_op(
             if let Some(id) = target {
                 let value = parsed.get("value").and_then(Value::as_str).unwrap_or("");
                 apply_local(shared, &style_prop_batch(shared, id, "value", value), cx);
-                // The controlled echo only fires on a wire-prop *change* —
-                // a set-value matching the mount-time prop (e.g. clearing
-                // a palette field whose prop is already "") is skipped,
-                // leaving the typed text behind. Push it into the mounted
-                // InputState directly and mark it echoed so the re-render
-                // doesn't fight the field.
-                // Read-then-act in two borrows: a scrutinee `Ref` lives
-                // for the whole `if let` body, and `view.update` may emit
-                // events that drain patches — a nested `borrow_mut` panics.
+                // Imperative writes use the same revision as declarative patches.
+                // Apply before a following set-selection-range in this dom-op batch.
+                let snapshot = crate::node_view::NodeSnapshot::snapshot(&shared.borrow().store, id);
                 let view = shared.borrow().views.get(&id).cloned();
-                if let Some(view) = view {
-                    let value = value.to_string();
+                if let (Some(node), Some(view)) = (snapshot, view) {
                     view.update(cx, |view, cx| {
-                        *view.states.input_value_echoed.borrow_mut() = Some(value.clone());
-                        if let Some(input) = &view.states.input {
-                            input.update(cx, |st, cx| {
-                                st.set_value(value.clone(), window, cx)
-                            });
-                        }
+                        view.states.sync_input_value(
+                            value.to_string(),
+                            node.value_revision,
+                            window,
+                            cx,
+                        );
                     });
                 }
             }
@@ -714,6 +707,7 @@ mod tests {
             extension_props: BTreeMap::new(),
             children: Vec::new(),
             parent: None,
+            value_revision: 0,
         }
     }
 

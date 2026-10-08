@@ -18,6 +18,8 @@ use crate::node_view::LuiNodeView;
 /// Mutations happen only inside [`apply_batch_json`]; renders only read.
 pub struct LuiShared {
     pub store: Store,
+    /// Root views own the rendering session; the last root releases entities.
+    pub(crate) root_owners: usize,
     /// Registered extension specs (`gpui-*` namespace + app extensions).
     pub registry: ExtensionRegistry,
     /// Specialized visual renderers per extension identifier.
@@ -145,6 +147,7 @@ impl LuiShared {
     pub fn new() -> Shared {
         let shared = Rc::new(RefCell::new(LuiShared {
             store: Store::default(),
+            root_owners: 0,
             registry: ExtensionRegistry::default(),
             extension_renderers: HashMap::new(),
             app_icon_svg: None,

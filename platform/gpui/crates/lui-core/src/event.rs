@@ -170,6 +170,7 @@ mod tests {
             extension_props: BTreeMap::new(),
             children: Vec::new(),
             parent: None,
+            value_revision: 0,
         }
     }
 
@@ -184,6 +185,7 @@ mod tests {
             extension_props: BTreeMap::new(),
             children: Vec::new(),
             parent: None,
+            value_revision: 0,
         }
     }
 

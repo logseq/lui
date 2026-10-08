@@ -4,13 +4,14 @@ use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::component::slider::SliderState;
 use gpui_kit::component::ActiveTheme;
 use gpui_kit::gpui::{
-    div, AnyElement, App, Bounds, Context, Element, ElementId, Entity, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, Pixels, Render, ScrollHandle, SharedString, Styled,
-    Subscription, Window,
+    div, AnyElement, App, Bounds, Context, Element, ElementId, Entity, GlobalElementId, Hitbox,
+    HitboxBehavior, InspectorElementId, IntoElement, LayoutId, LongPressEvent, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, ScrollHandle,
+    SharedString, Styled, Subscription, TouchPhase, Window,
 };
 use lui_core::store::{NodeIdentity, Store};
 use lui_core::wire::Value;
-use lui_core::{NodeKind, Property};
+use lui_core::{bridge, EventKind, NodeKind, Property};
 
 use crate::backend::{LuiShared, Shared};
 use crate::kinds;
@@ -30,6 +31,16 @@ fn elidable_node(
     parent_horizontal: bool,
     multi: bool,
 ) -> bool {
+    // Only plain anonymous layout wrappers are identities. Semantic controls
+    // have intrinsic chrome even with no props, and named nodes must measure.
+    if let NodeIdentity::Standard(kind) = child.identity {
+        if !matches!(kind, NodeKind::Column | NodeKind::Row | NodeKind::Box) {
+            return false;
+        }
+    }
+    if child.props.contains_key(&Property::AccessibilityIdentifier) {
+        return false;
+    }
     let direction = node_flex_direction(child);
     if direction != Some(parent_horizontal) || child.children.is_empty() {
         return false;
@@ -106,6 +117,9 @@ fn ext_attrs_inert(raw: &str) -> bool {
         return false;
     };
     map.iter().all(|(key, value)| {
+        if key == "id" && value.as_str().is_some_and(|id| !id.is_empty()) {
+            return false;
+        }
         if key != "style" && key != "data-style" {
             return true;
         }
@@ -229,6 +243,7 @@ pub struct NodeSnapshot {
     pub extension_props: lui_core::store::NodeExtensionProps,
     pub children: Vec<i64>,
     pub parent: Option<i64>,
+    pub value_revision: u64,
 }
 
 impl NodeSnapshot {
@@ -304,6 +319,7 @@ impl NodeSnapshot {
                 Vec::new()
             },
             parent: node.parent,
+            value_revision: node.value_revision,
         })
     }
 }
@@ -311,7 +327,7 @@ impl NodeSnapshot {
 /// One option fed to a gpui-kit searchable list (`select`/`combobox`).
 /// `node_id` is the source `menu-item` LUI node — confirming the option
 /// fires `Press` on it, so the model's own `on_press` handler runs.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct LuiOption {
     pub node_id: i64,
     pub title: SharedString,
@@ -334,6 +350,77 @@ impl gpui_kit::component::searchable_list::SearchableListItem for LuiOption {
     }
 }
 
+/// Keep the active query when model patches replace a picker's delegate.
+pub struct LuiOptions {
+    items: gpui_kit::component::searchable_list::SearchableVec<LuiOption>,
+    query: std::rc::Rc<std::cell::RefCell<String>>,
+}
+
+impl LuiOptions {
+    pub fn new(
+        items: Vec<LuiOption>,
+        query: std::rc::Rc<std::cell::RefCell<String>>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self {
+        use gpui_kit::component::searchable_list::SearchableListDelegate;
+        let mut items = gpui_kit::component::searchable_list::SearchableVec::from(items);
+        items.perform_search(&query.borrow(), window, cx).detach();
+        Self { items, query }
+    }
+}
+
+impl gpui_kit::component::searchable_list::SearchableListDelegate for LuiOptions {
+    type Item = LuiOption;
+
+    fn items_count(&self, section: usize) -> usize {
+        self.items.items_count(section)
+    }
+
+    fn item(&self, ix: gpui_kit::component::IndexPath) -> Option<&LuiOption> {
+        self.items.item(ix)
+    }
+
+    fn position<V>(&self, value: &V) -> Option<gpui_kit::component::IndexPath>
+    where
+        LuiOption: gpui_kit::component::searchable_list::SearchableListItem<Value = V>,
+        V: PartialEq,
+    {
+        self.items.position(value)
+    }
+
+    fn on_will_change(
+        &mut self,
+        selection: &mut Vec<(gpui_kit::component::IndexPath, LuiOption)>,
+        changes: &[gpui_kit::component::searchable_list::SearchableListChange],
+    ) {
+        use gpui_kit::component::searchable_list::SearchableListChange;
+        let changes = changes
+            .iter()
+            .filter_map(|change| match change {
+                SearchableListChange::Select { index } => self
+                    .item(*index)
+                    .is_some_and(|item| !item.disabled)
+                    .then_some(SearchableListChange::Select { index: *index }),
+                SearchableListChange::Deselect { index } => {
+                    Some(SearchableListChange::Deselect { index: *index })
+                }
+            })
+            .collect::<Vec<_>>();
+        self.items.on_will_change(selection, &changes);
+    }
+
+    fn perform_search(
+        &mut self,
+        query: &str,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> gpui_kit::gpui::Task<()> {
+        *self.query.borrow_mut() = query.to_string();
+        self.items.perform_search(query, window, cx)
+    }
+}
+
 /// Stateful gpui-component backing states kept per node. Created lazily,
 /// survive re-renders, dropped with the view entity on `drop-node`.
 #[derive(Default)]
@@ -343,8 +430,8 @@ pub struct ComponentStates {
     pub slider: Option<Entity<SliderState>>,
     pub split: Option<Entity<gpui_kit::component::resizable::ResizableState>>,
     pub split_target: std::rc::Rc<std::cell::Cell<Option<(Pixels, f32)>>>,
-    pub select: Option<Entity<gpui_kit::component::select::SelectState<Vec<LuiOption>>>>,
-    pub combobox: Option<Entity<gpui_kit::component::combobox::ComboboxState<Vec<LuiOption>>>>,
+    pub select: Option<Entity<gpui_kit::component::select::SelectState<LuiOptions>>>,
+    pub combobox: Option<Entity<gpui_kit::component::combobox::ComboboxState<LuiOptions>>>,
     pub color_picker: Option<Entity<gpui_kit::component::color_picker::ColorPickerState>>,
     pub table:
         Option<Entity<gpui_kit::component::table::TableState<crate::extension::LuiTableDelegate>>>,
@@ -353,13 +440,16 @@ pub struct ComponentStates {
     pub table_input: std::cell::RefCell<String>,
     /// Last applied `gpui-color-picker` `value` string.
     pub color_picker_input: std::cell::RefCell<String>,
-    /// Option node ids last pushed into the select/combobox delegate —
+    /// Options last pushed into the select/combobox delegate —
     /// `set_items` is only called when the source list changes.
-    pub options_cache: std::cell::RefCell<Vec<i64>>,
-    /// Wire `value` last echoed into `input` — the controlled echo only
-    /// applies when the prop itself changes (re-emit or `set-value`),
-    /// never against text the user typed into an uncontrolled field.
+    pub options_cache: std::cell::RefCell<Vec<LuiOption>>,
+    pub options_query: std::rc::Rc<std::cell::RefCell<String>>,
+    /// Last explicit model value applied to the backing input state.
     pub input_value_echoed: std::cell::RefCell<Option<String>>,
+    pub input_value_revision: Option<u64>,
+    pub appeared: std::rc::Rc<std::cell::Cell<bool>>,
+    pub pointer_hovered: std::rc::Rc<std::cell::Cell<bool>>,
+    pub pending_long_press: std::rc::Rc<std::cell::Cell<(u64, Option<Point<Pixels>>)>>,
     /// Edge-triggered `autofocus`: set once the field's first render has
     /// taken focus, so re-renders don't steal focus back.
     pub autofocus_done: bool,
@@ -409,6 +499,33 @@ pub struct LuiNodeView {
     pub id: i64,
     pub shared: Shared,
     pub states: ComponentStates,
+}
+
+impl ComponentStates {
+    /// Apply explicit model writes uniformly, including imperative set-value.
+    pub(crate) fn sync_input_value(
+        &mut self,
+        value: String,
+        revision: u64,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        if self.input_value_revision == Some(revision) {
+            return;
+        }
+        self.input_value_revision = Some(revision);
+        *self.input_value_echoed.borrow_mut() = Some(value.clone());
+        if let Some(state) = &self.input {
+            if state.read(cx).value().as_ref() != value {
+                state.update(cx, |state, cx| state.set_value(value.clone(), window, cx));
+            }
+        }
+        if let Some(state) = &self.textarea {
+            if state.read(cx).value().as_ref() != value {
+                state.update(cx, |state, cx| state.set_value(value, window, cx));
+            }
+        }
+    }
 }
 
 impl LuiNodeView {
@@ -616,6 +733,13 @@ impl Render for LuiNodeView {
             inner: kinds::render_node(self, &node, window, cx),
             id: self.id,
             shared: self.shared.clone(),
+            appear_enabled: node.flag(Property::AppearEnabled),
+            pointer_enabled: node.enabled() && node.flag(Property::PointerEnabled),
+            long_press_enabled: node.enabled() && node.flag(Property::LongPressEnabled),
+            double_press_enabled: node.enabled() && node.flag(Property::DoublePressEnabled),
+            appeared: self.states.appeared.clone(),
+            pointer_hovered: self.states.pointer_hovered.clone(),
+            pending_long_press: self.states.pending_long_press.clone(),
         }
         .into_any_element()
     }
@@ -627,6 +751,13 @@ struct NodeElement {
     inner: AnyElement,
     id: i64,
     shared: Shared,
+    appear_enabled: bool,
+    pointer_enabled: bool,
+    long_press_enabled: bool,
+    double_press_enabled: bool,
+    appeared: std::rc::Rc<std::cell::Cell<bool>>,
+    pointer_hovered: std::rc::Rc<std::cell::Cell<bool>>,
+    pending_long_press: std::rc::Rc<std::cell::Cell<(u64, Option<Point<Pixels>>)>>,
 }
 
 impl IntoElement for NodeElement {
@@ -638,7 +769,7 @@ impl IntoElement for NodeElement {
 
 impl Element for NodeElement {
     type RequestLayoutState = ();
-    type PrepaintState = ();
+    type PrepaintState = Option<Hitbox>;
     fn id(&self) -> Option<ElementId> {
         None
     }
@@ -662,7 +793,18 @@ impl Element for NodeElement {
         _: &mut (),
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Option<Hitbox> {
+        if self.appear_enabled && !self.appeared.replace(true) {
+            let shared = self.shared.clone();
+            let id = self.id;
+            window.defer(cx, move |_, cx| {
+                crate::backend::fire(&shared, id, EventKind::Appear, cx, || unsafe {
+                    bridge::lui_ocaml_appear(id)
+                });
+            });
+        }
+        let hitbox = (self.pointer_enabled || self.long_press_enabled || self.double_press_enabled)
+            .then(|| window.insert_hitbox(bounds, HitboxBehavior::Normal));
         let own_list = {
             let mut shared = self.shared.borrow_mut();
             let own_list = shared.virtual_lists.contains_key(&self.id);
@@ -731,6 +873,7 @@ impl Element for NodeElement {
         if own_list {
             self.shared.borrow_mut().painting_lists.pop();
         }
+        hitbox
     }
     fn paint(
         &mut self,
@@ -738,10 +881,173 @@ impl Element for NodeElement {
         _: Option<&InspectorElementId>,
         _: Bounds<Pixels>,
         _: &mut (),
-        _: &mut (),
+        hitbox: &mut Option<Hitbox>,
         window: &mut Window,
         cx: &mut App,
     ) {
         self.inner.paint(window, cx);
+        let Some(event_hitbox) = hitbox else { return };
+        let id = self.id;
+        if self.pointer_enabled {
+            let shared = self.shared.clone();
+            let hitbox = event_hitbox.clone();
+            window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
+                if phase.capture() && hitbox.is_hovered(window) {
+                    kinds::fire_pointer_detail(
+                        &shared,
+                        id,
+                        EventKind::PointerDown,
+                        cx,
+                        event.position,
+                        event.button,
+                        &event.modifiers,
+                        |x, y, modifiers, button, class| unsafe {
+                            bridge::lui_ocaml_pointer_down(id, x, y, modifiers, button, class)
+                        },
+                    );
+                }
+            });
+            let shared = self.shared.clone();
+            let hitbox = event_hitbox.clone();
+            window.on_mouse_event(move |event: &MouseUpEvent, phase, window, cx| {
+                if phase.capture() && hitbox.is_hovered(window) {
+                    kinds::fire_pointer_detail(
+                        &shared,
+                        id,
+                        EventKind::PointerUp,
+                        cx,
+                        event.position,
+                        event.button,
+                        &event.modifiers,
+                        |x, y, modifiers, button, class| unsafe {
+                            bridge::lui_ocaml_pointer_up(id, x, y, modifiers, button, class)
+                        },
+                    );
+                }
+            });
+            let shared = self.shared.clone();
+            let hitbox = event_hitbox.clone();
+            let hovered = self.pointer_hovered.clone();
+            window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
+                if phase.capture() {
+                    let next = hitbox.is_hovered(window);
+                    if hovered.replace(next) != next {
+                        let event = if next {
+                            EventKind::PointerEnter
+                        } else {
+                            EventKind::PointerLeave
+                        };
+                        crate::backend::fire(&shared, id, event, cx, || unsafe {
+                            if next {
+                                bridge::lui_ocaml_pointer_enter(id)
+                            } else {
+                                bridge::lui_ocaml_pointer_leave(id)
+                            }
+                        });
+                    }
+                }
+            });
+        }
+        if self.double_press_enabled {
+            let shared = self.shared.clone();
+            let hitbox = event_hitbox.clone();
+            window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
+                if phase.capture()
+                    && hitbox.is_hovered(window)
+                    && event.button == MouseButton::Left
+                    && event.click_count == 2
+                {
+                    crate::backend::fire(&shared, id, EventKind::DoublePress, cx, || unsafe {
+                        bridge::lui_ocaml_double_press(id)
+                    });
+                }
+            });
+        }
+        if self.long_press_enabled {
+            let shared = std::rc::Rc::downgrade(&self.shared);
+            let pending = self.pending_long_press.clone();
+            let hitbox = event_hitbox.clone();
+            window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
+                if !phase.capture()
+                    || event.button != MouseButton::Left
+                    || !hitbox.is_hovered(window)
+                {
+                    return;
+                }
+                let position = event.position;
+                let generation = pending.get().0.wrapping_add(1);
+                pending.set((generation, Some(position)));
+                let pending = std::rc::Rc::downgrade(&pending);
+                let shared = shared.clone();
+                window
+                    .spawn(cx, move |cx: &mut gpui_kit::gpui::AsyncWindowContext| {
+                        let mut cx = cx.clone();
+                        async move {
+                            cx.background_executor()
+                                .timer(std::time::Duration::from_millis(500))
+                                .await;
+                            _ = cx.update(|_, cx| {
+                                let (Some(pending), Some(shared)) =
+                                    (pending.upgrade(), shared.upgrade())
+                                else {
+                                    return;
+                                };
+                                if pending.get() != (generation, Some(position)) {
+                                    return;
+                                }
+                                pending.set((pending.get().0, None));
+                                let enabled = {
+                                    let state = shared.borrow();
+                                    state.root_owners > 0
+                                        && state.store.node(id).is_some_and(|node| {
+                                            node.enabled() && node.flag(Property::LongPressEnabled)
+                                        })
+                                };
+                                if enabled {
+                                    crate::backend::fire(
+                                        &shared,
+                                        id,
+                                        EventKind::LongPress,
+                                        cx,
+                                        || unsafe { bridge::lui_ocaml_long_press(id) },
+                                    );
+                                }
+                            });
+                        }
+                    })
+                    .detach();
+            });
+            let pending = self.pending_long_press.clone();
+            window.on_mouse_event(move |event: &MouseUpEvent, phase, _, _| {
+                if phase.capture() && event.button == MouseButton::Left {
+                    pending.set((pending.get().0, None));
+                }
+            });
+            let pending = self.pending_long_press.clone();
+            window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, _| {
+                if phase.capture()
+                    && pending.get().1.is_some_and(|start| {
+                        f32::from(event.position.x - start.x).abs() > 6.0
+                            || f32::from(event.position.y - start.y).abs() > 6.0
+                    })
+                {
+                    pending.set((pending.get().0, None));
+                }
+            });
+            let pending = self.pending_long_press.clone();
+            let shared = self.shared.clone();
+            let hitbox = event_hitbox.clone();
+            window.on_mouse_event(move |event: &LongPressEvent, phase, window, cx| {
+                if phase.capture()
+                    && event.phase == TouchPhase::Started
+                    && hitbox.is_hovered(window)
+                {
+                    pending.set((pending.get().0, None));
+                    crate::backend::fire(&shared, id, EventKind::LongPress, cx, || unsafe {
+                        bridge::lui_ocaml_long_press(id)
+                    });
+                }
+            });
+        }
     }
 }
