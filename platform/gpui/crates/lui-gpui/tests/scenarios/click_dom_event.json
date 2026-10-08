@@ -31,6 +31,8 @@
       {"kind": "extension-event", "node": 3, "identifier": "logseq-button",
        "name": "dom-event", "json": {"name": "mousedown", "payload": {"nodeId": 3}}},
       {"kind": "extension-event", "node": 3, "identifier": "logseq-button",
+       "name": "dom-event", "json": {"name": "mouseup", "payload": {"nodeId": 3}}},
+      {"kind": "extension-event", "node": 3, "identifier": "logseq-button",
        "name": "dom-event",
        "json": {"name": "click",
                 "payload": {"name": "click", "nodeId": 3,

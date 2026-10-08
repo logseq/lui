@@ -407,6 +407,9 @@ impl Render for LuiRootView {
                                 // a capped continuous feed (~25/s).
                                 let last_move =
                                     Rc::new(RefCell::new((None::<i64>, Instant::now())));
+                                let last_click =
+                                    Rc::new(RefCell::new((None::<i64>, Instant::now()
+                                        - std::time::Duration::from_secs(1))));
                                 window.on_mouse_event(
                                     move |event: &MouseMoveEvent, phase, _window, cx| {
                                         if phase != DispatchPhase::Capture {
@@ -515,18 +518,57 @@ impl Render for LuiRootView {
                                             return;
                                         };
                                         let position = event.position;
+                                        let coords = serde_json::json!({
+                                            "clientX": f64::from(position.x),
+                                            "clientY": f64::from(position.y),
+                                        });
+                                        // "mouseup" precedes "click"
+                                        // (DOM order) — drag gestures
+                                        // commit on it; "click" still
+                                        // fires for click handlers.
+                                        crate::dom::dom_event_via(
+                                            &up_shared,
+                                            carrier,
+                                            &ident,
+                                            hit,
+                                            "mouseup",
+                                            coords.clone(),
+                                            cx,
+                                        );
                                         crate::dom::dom_event_via(
                                             &up_shared,
                                             carrier,
                                             &ident,
                                             hit,
                                             "click",
-                                            serde_json::json!({
-                                                "clientX": f64::from(position.x),
-                                                "clientY": f64::from(position.y),
-                                            }),
+                                            coords.clone(),
                                             cx,
                                         );
+                                        // DOM dblclick: second click on
+                                        // the same node within 500ms.
+                                        let double = {
+                                            let mut last =
+                                                last_click.borrow_mut();
+                                            let is_double = last.0 == Some(hit)
+                                                && last
+                                                    .1
+                                                    .elapsed()
+                                                    .as_millis()
+                                                    < 500;
+                                            *last = (Some(hit), Instant::now());
+                                            is_double
+                                        };
+                                        if double {
+                                            crate::dom::dom_event_via(
+                                                &up_shared,
+                                                carrier,
+                                                &ident,
+                                                hit,
+                                                "dblclick",
+                                                coords,
+                                                cx,
+                                            );
+                                        }
                                     },
                                 );
                             },
