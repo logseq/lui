@@ -132,6 +132,36 @@ test("data-attrs applies, updates and removes inline style declarations", async 
   assert.equal(await tracked.getAttribute("style"), null)
 })
 
+test("empty data-attrs style updates remove the empty attribute", async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/data-attrs-regression.html`)
+  const tracked = page.locator(`#lui-node-${await page.evaluate(() => window.probe.tracked)}`)
+  for (const replacement of [[["style", ""]], [["data-testid", "updated"]]]) {
+    await page.evaluate((replacement) => {
+      const { tracked, set, attrs } = window.probe
+      set(tracked, "data-attrs", attrs([["style", "--probe-color: teal"]]))
+      set(tracked, "data-attrs", attrs(replacement))
+    }, replacement)
+    assert.equal(await tracked.getAttribute("style"), null)
+  }
+})
+
+test("removing user style restores retained layout styles", async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/data-attrs-regression.html`)
+  const tracked = page.locator(`#lui-node-${await page.evaluate(() => window.probe.tracked)}`)
+  await page.evaluate(() => {
+    const { tracked, set, attrs } = window.probe
+    set(tracked, "width", 120)
+    set(tracked, "data-attrs", attrs([["style", "width: 64px; --probe-color: teal"]]))
+  })
+  assert.equal(await tracked.evaluate((el) => el.style.width), "64px")
+  await page.evaluate(() => window.probe.unset(window.probe.tracked, "data-attrs"))
+  assert.deepEqual(await tracked.evaluate((el) => ({
+    width: el.style.width,
+    color: el.style.getPropertyValue("--probe-color"),
+    hasStyle: el.hasAttribute("style"),
+  })), { width: "120px", color: "", hasStyle: true })
+})
+
 test("as emits the override tag on create", async () => {
   await page.goto(`${origin}/platform/web/test/fixtures/data-attrs-regression.html`)
   const tags = await page.evaluate(() => {
