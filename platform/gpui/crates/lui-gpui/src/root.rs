@@ -196,7 +196,6 @@ impl Render for LuiRootView {
                 // backends get their outer scrolling from the host surface,
                 // so the window root supplies it here.
                 let mouse_shared = self.shared.clone();
-                let keystroke_focus = focus.clone();
                 self.keystroke.get_or_init(|| {
                     let keydown_shared = self.shared.clone();
                     cx.observe_keystrokes(move |_this, ev, window, cx| {
@@ -209,7 +208,11 @@ impl Render for LuiRootView {
                         // never treats them as text, and document
                         // listeners (palette Enter/arrows, editor Esc)
                         // expect them — only printable key_chars are
-                        // suppressed while a non-root element is focused.
+                        // suppressed, and only while a REGISTERED
+                        // editable holds focus. Other focused elements
+                        // (virtual-list rows, misc focus handles) don't
+                        // insert text, so forwarding their letters keeps
+                        // document chords ("t t", "g o", ...) alive.
                         let text_char = ev
                             .keystroke
                             .key_char
@@ -218,8 +221,7 @@ impl Render for LuiRootView {
                         if text_char
                             && !ev.keystroke.modifiers.platform
                             && !ev.keystroke.modifiers.control
-                            && window.focused(cx).is_some()
-                            && !keystroke_focus.is_focused(window)
+                            && keydown_shared.borrow_mut().focused_node(window).is_some()
                         {
                             return;
                         }

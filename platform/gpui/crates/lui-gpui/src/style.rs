@@ -1250,7 +1250,9 @@ pub(crate) fn inline_tag_style<E: Styled>(element: E, tag: &str, theme: &Theme) 
             .rounded_sm()
             .bg(theme.secondary),
         "small" | "sub" | "sup" => element.text_xs(),
-        "a" => element.text_color(theme.primary).underline(),
+        // Logseq's reset styles `a { text-decoration: none }` — links are
+        // colored, never underlined (all-pages/journals parity).
+        "a" => element.text_color(theme.primary),
         _ => element,
     }
 }
