@@ -1867,21 +1867,22 @@ let test_edge_overlay_fit_rules () =
 
 let test_data_attrs_protocol () =
   let open Lui_protocol in
-  (* name policy: data-*/aria-* prefixes plus the three bare names *)
+  (* Name policy includes documented DOM attributes and inline style. *)
   List.iter
     (fun name ->
        Alcotest.(check bool) name true (data_attr_name_ok name))
     [ "data-x"; "data-testid"; "aria-label"; "aria-hidden"; "role"
-    ; "tabindex"; "draggable" ];
+    ; "tabindex"; "draggable"; "style" ];
   List.iter
     (fun name ->
        Alcotest.(check bool) name false (data_attr_name_ok name))
-    [ "id"; "class"; "style"; "onclick"; "data-"; "aria-"; "role-"
+    [ "id"; "class"; "onclick"; "data-"; "aria-"; "role-"
     ; "Data-x"; "data"; "aria" ];
   (* serialization round-trip *)
   let pairs =
     [ ("data-testid", "greeting"); ("role", "note")
-    ; ("aria-label", "a b c"); ("tabindex", "-1") ]
+    ; ("aria-label", "a b c"); ("tabindex", "-1")
+    ; ("style", "--accent: teal; overflow-anchor: none") ]
   in
   Alcotest.(check (list (pair string string))) "round-trip" pairs
     (data_attrs_decode (data_attrs_encode pairs));
@@ -1903,6 +1904,8 @@ let test_data_attrs_protocol () =
   Alcotest.(check bool) "valid payload" true
     (data_attrs_value_ok
        (data_attrs_encode [ ("data-x", "1"); ("role", "note") ]));
+  Alcotest.(check bool) "inline style payload" true
+    (data_attrs_value_ok "style\x1f--accent: teal; overflow-anchor: none");
   Alcotest.(check bool) "id payload rejected" false
     (data_attrs_value_ok "id\x1fx");
   Alcotest.(check bool) "mixed payload rejected" false

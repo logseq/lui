@@ -17,16 +17,14 @@
 <main id="host"></main>
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js";
-import * as Schema from "lui/lui_wire_schema.js";
+import { Protocol, properties as props, kinds } from "./protocol-fixture.mjs";
 const host=document.querySelector("#host"), renderer=Web.create(undefined,host), backend=Web.backend(renderer);
 const list=a=>a.reduceRight((tl,hd)=>({hd,tl}),0);
-const props=new Map(Array.from({length:98},(_,i)=>[Schema.property_name(i),i]));
-const kinds=new Map(Array.from({length:86},(_,i)=>[Schema.node_kind_name(i),i]));
 const nodes=new Map(),handlers=new Map(),events=[];let ops=[],generation=0,id=0,dialog=null,nestedDialog=null,menu=null,submenu=null,select=null,sheet=null,sheetInput=null;
-const set=(n,name,value)=>ops.push({TAG:3,_0:n,_1:props.get(name),_2:{TAG:typeof value==="string"?0:typeof value==="boolean"?1:2,_0:value}});
-function node(kind,parent,p={}){const n=++id;ops.push({TAG:0,_0:n,_1:kinds.get(kind)});nodes.set(n,{parent,children:[]});for(const [k,v]of Object.entries(p))set(n,k,v);if(parent){const siblings=nodes.get(parent).children;ops.push({TAG:7,_0:parent,_1:n,_2:siblings.length});siblings.push(n);}return n;}
+const set=(n,name,value)=>ops.push(Protocol.set_prop_op(n,props.get(name),{TAG:typeof value==="string"?0:typeof value==="boolean"?1:2,_0:value}));
+function node(kind,parent,p={}){const n=++id;ops.push(Protocol.create_node_op(n,kinds.get(kind)));nodes.set(n,{parent,children:[]});for(const [k,v]of Object.entries(p))set(n,k,v);if(parent){const siblings=nodes.get(parent).children;ops.push(Protocol.insert_child_op(parent,n,siblings.length));siblings.push(n);}return n;}
 function flush(){if(ops.length){backend.apply_batch({generation:++generation,ops:list(ops)});ops=[];}}
-function drop(n){if(!n||!nodes.has(n))return;for(const c of [...nodes.get(n).children])drop(c);const p=nodes.get(n).parent;if(p){ops.push({TAG:8,_0:p,_1:n});nodes.get(p).children=nodes.get(p).children.filter(x=>x!==n);}ops.push({TAG:2,_0:n});nodes.delete(n);handlers.delete(n);}
+function drop(n){if(!n||!nodes.has(n))return;for(const c of [...nodes.get(n).children])drop(c);const p=nodes.get(n).parent;if(p){ops.push(Protocol.remove_child_op(p,n));nodes.get(p).children=nodes.get(p).children.filter(x=>x!==n);}ops.push(Protocol.drop_node_op(n));nodes.delete(n);handlers.delete(n);}
 function button(parent,text,fn){const n=node("button",parent,{text});handlers.set(n,fn);return n;}
 function closeSubmenu(){if(submenu){drop(submenu);submenu=null;flush();}}
 function closeMenu(){if(menu){drop(menu);menu=null;submenu=null;flush();}}
@@ -36,7 +34,7 @@ function closeDialog(which="main"){const target=which==="nested"?nestedDialog:di
 function addScrollContent(parent){const scroller=node("scroll",parent,{height:120,width:300,"accessibility-identifier":"inner-scroll"});const content=node("column",scroller,{gap:8});node("text",content,{text:"Inner scroll start"});node("box",content,{height:480});node("text",content,{text:"Inner scroll end"});}
 function closeSheet(){if(sheet){drop(sheet);sheet=null;sheetInput=null;if(window.audit)window.audit.sheetInput=null;flush();}}
 function openSheet(){if(sheet)return;sheet=node("sheet",root,{text:"Regression sheet",height:320,padding:16});handlers.set(sheet,closeSheet);const body=node("column",sheet,{gap:12});node("paragraph",body,{text:"Sheet content stays in the retained renderer."});sheetInput=node("input",body,{placeholder:"Draft","accessibility-identifier":"sheet-input"});addScrollContent(body);node("box",body,{height:420});button(body,"Cancel",closeSheet);flush();if(window.audit)window.audit.sheetInput=document.querySelector("#sheet-input");}
-function fastReopenDialog(){if(!dialog)return;const retained=dialog,index=nodes.get(root).children.indexOf(dialog);backend.apply_batch({generation:++generation,ops:list([{TAG:8,_0:root,_1:retained}])});nodes.get(root).children.splice(index,1);backend.apply_batch({generation:++generation,ops:list([{TAG:7,_0:root,_1:retained,_2:index}])});nodes.get(root).children.splice(index,0,retained);}
+function fastReopenDialog(){if(!dialog)return;const retained=dialog,index=nodes.get(root).children.indexOf(dialog);backend.apply_batch({generation:++generation,ops:list([Protocol.remove_child_op(root,retained)])});nodes.get(root).children.splice(index,1);backend.apply_batch({generation:++generation,ops:list([Protocol.insert_child_op(root,retained,index)])});nodes.get(root).children.splice(index,0,retained);}
 function openDialog(mode="normal",parent=root,which="main"){const current=which==="nested"?nestedDialog:dialog;if(current)return;const d=node("dialog",parent,{text:which==="nested"?"Nested modal":"Layer regression dialog",width:440,height:420,padding:24});if(which==="nested")nestedDialog=d;else dialog=d;handlers.set(d,()=>closeDialog(which));if(mode!=="empty"){const c=node("column",d,{gap:16});if(mode==="focus"){node("link",c,{text:"Focus link",url:"https://example.com"});const hiddenGroup=node("column",c,{"style-class":"fixture-hidden"});const hidden=button(hiddenGroup,"Hidden candidate",()=>{});set(hidden,"accessibility-identifier","hidden-control");button(c,"Close dialog",()=>closeDialog(which));}else{node("input",c,{placeholder:"Dialog input"});picker(c);addScrollContent(c);if(which==="main"){button(c,"Open nested modal",()=>openDialog("empty",d,"nested"));button(c,"Reopen same dialog",fastReopenDialog);}button(c,"Close dialog",()=>closeDialog(which));}}flush();}
 const root=node("column",null,{gap:18});
 button(root,"Open dialog",()=>openDialog());
@@ -57,7 +55,7 @@ function setupTracking(count=4,tooltip=false){
     handlers.set(popup,close);flush();return popup;
   }
   function close(){if(popup){drop(popup);popup=null;flush();}}
-  function retainReopen(){const n=popup,index=nodes.get(stack).children.indexOf(n);backend.apply_batch({generation:++generation,ops:list([{TAG:8,_0:stack,_1:n},{TAG:7,_0:stack,_1:n,_2:index}])});}
+  function retainReopen(){const n=popup,index=nodes.get(stack).children.indexOf(n);backend.apply_batch({generation:++generation,ops:list([Protocol.remove_child_op(stack,n),Protocol.insert_child_op(stack,n,index)])});}
   handlers.set(trigger,open);
   node("box",content,{height:900});flush();
   if(tooltip)open();

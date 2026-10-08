@@ -1,40 +1,39 @@
 import assert from "node:assert/strict"
-import { access } from "node:fs/promises"
 import test from "node:test"
 
-// Exercises the compiled web retained store directly (the same store the
-// Electron host runs). Requires `dune build` — the module is emitted by the
-// examples/components/web melange.emit target.
-const storeUrl = new URL(
-  "../../../_build/default/examples/components/web/lui-components-web/node_modules/lui.web.dom/core/lui_web_store.js",
+// Exercise the compiled retained store and use its matching protocol
+// constructors. Requires `opam exec -- dune build @web` before running.
+const modulesUrl = new URL(
+  "../../../_build/default/examples/components/web/lui-components-web/node_modules/",
   import.meta.url,
 )
+const [Store, Protocol, Schema] = await Promise.all([
+  import(new URL("lui.web.dom/core/lui_web_store.js", modulesUrl)),
+  import(new URL("lui/lui_protocol.js", modulesUrl)),
+  import(new URL("lui/lui_wire_schema.js", modulesUrl)),
+])
 
-const Store = await import(storeUrl).catch(() => null)
+function schemaValue(values, nameOf, name) {
+  for (let rest = values; rest; rest = rest.tl) {
+    if (nameOf(rest.hd) === name) return rest.hd
+  }
+  throw new Error(`unknown schema value: ${name}`)
+}
 
-// patch_op / wire_value / node_kind tags follow declaration order in
-// src/lui_protocol.ml (checked against the emitted switch in
-// lui_web_store.js).
 const list = (...items) => items.reduceRight((tl, hd) => ({ hd, tl }), 0)
 const batch = (generation, ops) => ({ generation, ops: list(...ops) })
-const createNode = (id, kind) => ({ TAG: 0, _0: id, _1: kind })
-const setProp = (id, prop, value) => ({ TAG: 3, _0: id, _1: prop, _2: value })
-const insertChild = (parent, child, index) => ({
-  TAG: 7,
-  _0: parent,
-  _1: child,
-  _2: index,
-})
+const createNode = Protocol.create_node_op
+const setProp = Protocol.set_prop_op
+const insertChild = Protocol.insert_child_op
 const stringValue = (text) => ({ TAG: 0, _0: text })
-const Button = 17
-const TextValue = 0
+const Button = schemaValue(Schema.all_node_kinds, Schema.node_kind_name, "button")
+const TextValue = schemaValue(Schema.all_properties, Schema.property_name, "text")
 
 const platform = () => ({})
 const invalidArgument = (messagePart) => (error) =>
   typeof error?._1 === "string" && error._1.includes(messagePart)
 
-test("rejected batch consumes its generation, next batch still applies", async (t) => {
-  if (!Store) return t.skip("run `dune build` to emit the web store")
+test("rejected batch consumes its generation, next batch still applies", () => {
   const store = Store.create_store()
 
   // A button with no text or accessibility label fails batch validation.
@@ -61,8 +60,7 @@ test("rejected batch consumes its generation, next batch still applies", async (
   assert.notEqual(Store.node(store, 2), undefined)
 })
 
-test("mid-batch op failure rolls back earlier ops", async (t) => {
-  if (!Store) return t.skip("run `dune build` to emit the web store")
+test("mid-batch op failure rolls back earlier ops", () => {
   const store = Store.create_store()
 
   assert.throws(
@@ -95,8 +93,7 @@ test("mid-batch op failure rolls back earlier ops", async (t) => {
   )
 })
 
-test("stale batch is dropped without replaying; gap batch applies best-effort", async (t) => {
-  if (!Store) return t.skip("run `dune build` to emit the web store")
+test("stale batch is dropped without replaying; gap batch applies best-effort", () => {
   const store = Store.create_store()
 
   assert.equal(

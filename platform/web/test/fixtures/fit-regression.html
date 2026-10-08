@@ -16,30 +16,28 @@
 <main id="host"></main>
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js"
-import * as Schema from "lui/lui_wire_schema.js"
+import { Protocol, properties, kinds } from "./protocol-fixture.mjs"
 
 const host = document.querySelector("#host")
 const renderer = Web.create(undefined, host)
 const backend = Web.backend(renderer)
 const list = items => items.reduceRight((tl, hd) => ({ hd, tl }), 0)
-const properties = new Map(Array.from({ length: 98 }, (_, i) => [Schema.property_name(i), i]))
-const kinds = new Map(Array.from({ length: 86 }, (_, i) => [Schema.node_kind_name(i), i]))
 const children = new Map()
 const handlers = new Map()
 let ops = [], generation = 0, id = 0
 
 function set(node, name, value) {
-  ops.push({ TAG: 3, _0: node, _1: properties.get(name),
-    _2: { TAG: typeof value === "string" ? 0 : 2, _0: value } })
+  ops.push(Protocol.set_prop_op(node, properties.get(name),
+    { TAG: typeof value === "string" ? 0 : 2, _0: value }))
 }
 function create(kind, parent, props = {}) {
   const node = ++id
-  ops.push({ TAG: 0, _0: node, _1: kinds.get(kind) })
+  ops.push(Protocol.create_node_op(node, kinds.get(kind)))
   children.set(node, [])
   for (const [key, value] of Object.entries(props)) set(node, key, value)
   if (parent) {
     const siblings = children.get(parent)
-    ops.push({ TAG: 7, _0: parent, _1: node, _2: siblings.length })
+    ops.push(Protocol.insert_child_op(parent, node, siblings.length))
     siblings.push(node)
   }
   return node
