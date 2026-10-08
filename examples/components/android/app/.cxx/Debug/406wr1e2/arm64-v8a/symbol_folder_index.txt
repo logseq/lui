@@ -1,1 +1,0 @@
-/home/ubuntu/repos/lui/examples/components/android/app/build/intermediates/cxx/Debug/406wr1e2/obj/arm64-v8a

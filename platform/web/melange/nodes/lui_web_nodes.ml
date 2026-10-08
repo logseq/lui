@@ -482,7 +482,7 @@ let dom_node_before renderer previous_nodes node =
   match Store.node renderer.web_store node with
   | Some current -> current.platform_node
   | None ->
-      (match Hashtbl.find_opt previous_nodes node with
+      (match previous_nodes node with
        | Some previous -> previous.platform_node
        | None -> invalid_arg "unknown DOM node")
 
@@ -500,7 +500,7 @@ let dom_child_container_before renderer previous_nodes node dom_node =
   match Store.node renderer.web_store node with
   | Some current -> retained_content_container current dom_node
   | None ->
-      (match Hashtbl.find_opt previous_nodes node with
+      (match previous_nodes node with
        | Some previous -> retained_content_container previous dom_node
        | None -> dom_node)
 

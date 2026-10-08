@@ -14,6 +14,7 @@
 
 # Android / Gradle build outputs
 .gradle/
+**/.cxx/
 local.properties
 /platform/android/**/build/
 /examples/components/android/**/build/

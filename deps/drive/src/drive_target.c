@@ -109,7 +109,10 @@ static void *sym(void *lib, const char *name) {
 
 static void target_finalize(value v) {
   drive_target *t = Target_val(v);
-  if (t->lib) dlclose(t->lib);
+  /* The loaded library bundles its own OCaml runtime. dlclose would unmap
+     that runtime while this process may still be inside it, so the handle
+     is intentionally leaked for the life of the process. */
+  if (current == t) current = NULL;
   pthread_mutex_destroy(&t->q_lock);
   for (int j = t->head; j != t->tail; j = (j + 1) % t->cap) free(t->queue[j]);
   free(t->queue);
@@ -162,8 +165,10 @@ CAMLprim value drive_target_open(value pathv) {
   t->text_changed = sym(lib, "lui_ocaml_text_changed");
   t->toggle_changed = sym(lib, "lui_ocaml_toggle_changed");
   t->slider_changed = sym(lib, "lui_ocaml_slider_changed");
-  t->extension = sym(lib, "lui_ocaml_extension");
-  t->poll = sym(lib, "lui_ocaml_poll");
+  t->extension = sym(lib, "lui_ocaml_extension_event");
+  /* lui_ocaml_poll is not part of the bridge ABI. Leave the slot NULL
+     instead of dlsym'ing a symbol that will never be there. */
+  t->poll = NULL;
   t->stop = sym(lib, "lui_ocaml_stop");
   t->root_node = sym(lib, "lui_ocaml_root_node");
   if (t->start == NULL) caml_failwith("drive: library exports no lui_ocaml_start");

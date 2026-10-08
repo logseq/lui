@@ -90,32 +90,8 @@ let create_with_extensions backend registry initial_model reducer view =
   }
 
 let create backend initial_model reducer view =
-  let scheduler = Signal.scheduler () in
-  let application = Lui_runtime.create scheduler backend in
-  let scope = Signal.scope "app" in
-  let context = Lui_ui.context application scope in
-  let model_state = Signal.state scheduler initial_model in
-  let lifecycle = ref Running in
-  let send_action action =
-    if !(lifecycle) = Running then begin
-      reduce model_state reducer action;
-      true
-    end
-    else false
-  in
-  let root =
-    (view context (Signal.value model_state) send_action) context None
-  in
-  {
-    app_scheduler = scheduler;
-    app_runtime = application;
-    app_scope = scope;
-    app_read_model = (fun () -> Signal.get_state model_state);
-    app_send_action = send_action;
-    app_root_node = root;
-    app_lifecycle_state = lifecycle;
-    app_reload_state = None;
-  }
+  create_with_extensions backend (Lui_extension.registry ()) initial_model
+    reducer view
 
 let create_reloadable_with_extensions backend registry source_hash
     contract_hash initial_model reducer view =
@@ -173,54 +149,8 @@ let create_reloadable_with_extensions backend registry source_hash
 
 let create_reloadable backend source_hash contract_hash initial_model
     reducer view =
-  let scheduler = Signal.scheduler () in
-  let application = Lui_runtime.create scheduler backend in
-  let scope = Signal.scope "app" in
-  let view_scope = Signal.child_scope "app-view-0" scope in
-  let state_scope = Signal.child_scope "app-view-state" scope in
-  let state_scopes = Hashtbl.create 16 in
-  let active_state_paths = Hashtbl.create 16 in
-  let context =
-    Lui_ui.context_with_state_registry application view_scope state_scope
-      state_scopes active_state_paths
-  in
-  let model_state = Signal.state scheduler initial_model in
-  let lifecycle = ref Running in
-  let send_action action =
-    if !(lifecycle) = Running then begin
-      reduce model_state reducer action;
-      true
-    end
-    else false
-  in
-  let root = Lui_runtime.create_node application Lui_protocol.Root in
-  let view_node =
-    (view context (Signal.value model_state) send_action) context None
-  in
-  let session = Lui_hot_reload.create source_hash contract_hash view in
-  let app =
-    {
-      app_scheduler = scheduler;
-      app_runtime = application;
-      app_scope = scope;
-      app_read_model = (fun () -> Signal.get_state model_state);
-      app_send_action = send_action;
-      app_root_node = root;
-      app_lifecycle_state = lifecycle;
-      app_reload_state =
-        Some
-          {
-            reload_model_source = Signal.value model_state;
-            reload_view_scope = ref view_scope;
-            reload_state_scope = state_scope;
-            reload_state_scopes = state_scopes;
-            reload_view_node = ref view_node;
-            reload_session = session;
-          };
-    }
-  in
-  Lui_runtime.insert_child application root view_node 0;
-  app
+  create_reloadable_with_extensions backend (Lui_extension.registry ())
+    source_hash contract_hash initial_model reducer view
 
 let start app =
   if !(app.app_lifecycle_state) = Running then begin

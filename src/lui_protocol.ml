@@ -1177,7 +1177,7 @@ let property_value_supported property value =
   | Gap, IntValue value -> value >= 0
   | MainAlignment, StringValue value -> main_alignment_supported value
   | CrossAlignment, StringValue value -> cross_alignment_supported value
-  | GrowValue, FloatValue value -> value >= 0.0
+  | GrowValue, FloatValue value -> is_finite value && value >= 0.0
   | GridColumns, IntValue value -> value >= 0
   | PaddingValue, IntValue _ -> true
   | PaddingHorizontal, IntValue value -> value >= 0
@@ -1202,7 +1202,7 @@ let property_value_supported property value =
   | StyleClass, StringValue _ -> true
   | HeadingLevel, IntValue value -> value >= 1 && value <= 6
   | Checked, BoolValue _ -> true
-  | ProgressValue, FloatValue _ -> true
+  | ProgressValue, FloatValue value -> is_finite value
   | OrientationValue, StringValue value -> orientation_supported value
   | PlacementValue, StringValue value -> placement_supported value
   | SizeValue, StringValue value -> control_size_supported value
@@ -1237,7 +1237,7 @@ let property_value_supported property value =
     value = "above" || value = "below" || value = "left" || value = "right"
   | AnchorAlignmentValue, StringValue value ->
     value = "start" || value = "end" || value = "stretch"
-  | AnchorOffset, FloatValue _ -> true
+  | AnchorOffset, FloatValue value -> is_finite value
   | TooltipDelay, IntValue value | DurationValue, IntValue value ->
     value >= 0 && value <= 2147483647
   | TextAlignment, StringValue value ->

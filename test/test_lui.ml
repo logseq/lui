@@ -178,6 +178,13 @@ let elided_ops ops ghost =
     Lui_runtime.create (Signal.scheduler ()) (recording_backend ())
   in
   runtime.Lui_runtime.pending_ops := List.rev ops;
+  List.iter
+    (function
+      | Lui_protocol.CreateNode (id, _)
+      | Lui_protocol.CreateExtension (id, _, _) ->
+        Hashtbl.replace runtime.Lui_runtime.pending_creates id ()
+      | _ -> ())
+    ops;
   Lui_runtime.enqueue_drop runtime ghost;
   List.rev !(runtime.Lui_runtime.pending_ops)
 
@@ -1347,6 +1354,136 @@ let test_dispatch_drops_unset_default_echoes () =
   Drive.Session.text_changed s field "x";
   Alcotest.(check int) "typed text delivered" 1 !inputs;
   drive_dispose s
+
+(* A control that already left its unset default must deliver the trip
+   back to that default. "" / false / 0.0 are real input, not mount echoes. *)
+let test_value_return_to_default_is_delivered () =
+  let inputs = ref 0 in
+  let toggles = ref 0 in
+  let slides = ref 0 in
+  let s =
+    drive_mount ~initial:()
+      ~reducer:(fun model _action -> model)
+      ~view:(fun _context _model_source _send ->
+         Lui_elements.column
+           [
+             Lui_elements.text_field ~text:"hello"
+               ~on_input:(fun _event -> incr inputs) [];
+             Lui_elements.checkbox ~checked:true
+               ~on_toggle:(fun _event -> incr toggles) [];
+             Lui_elements.slider ~value:0.5
+               ~on_change:(fun _event -> incr slides) [];
+           ])
+      ()
+  in
+  let field = (drive_node s (Drive.Model.Kind "text-field")).Drive.Model.id in
+  let checkbox = (drive_node s (Drive.Model.Kind "checkbox")).Drive.Model.id in
+  let slider = (drive_node s (Drive.Model.Kind "slider")).Drive.Model.id in
+  Drive.Session.text_changed s field "";
+  Alcotest.(check int) "cleared text delivered" 1 !inputs;
+  Drive.Session.toggle s checkbox false;
+  Alcotest.(check int) "unchecked box delivered" 1 !toggles;
+  Drive.Session.value_changed s slider 0.0;
+  Alcotest.(check int) "slider zero delivered" 1 !slides;
+  drive_dispose s
+
+let test_drop_large_subtree_is_one_detach () =
+  let mount count =
+    batches := [];
+    let app =
+      Lui_app.create (recording_backend ()) true
+        (fun shown _action -> not shown)
+        (fun _context model_source _send ->
+          Lui_elements.column
+            [
+              Lui_elements.if_ ~test:model_source
+                (Lui_elements.column
+                   (List.init count (fun index ->
+                        Lui_elements.text ~value:(string_of_int index) [])));
+            ])
+    in
+    ignore (Lui_app.start app);
+    flush_app app;
+    batches := [];
+    let started = Sys.time () in
+    ignore (Lui_app.send app ());
+    flush_app app;
+    let elapsed = Sys.time () -. started in
+    let ops = all_ops () in
+    ignore (Lui_app.dispose app);
+    (elapsed, ops)
+  in
+  let count_kind predicate ops =
+    List.length (List.filter predicate ops)
+  in
+  let detaches ops =
+    count_kind (function Lui_protocol.DetachSubtree _ -> true | _ -> false) ops
+  in
+  let removes ops =
+    count_kind (function Lui_protocol.RemoveChild _ -> true | _ -> false) ops
+  in
+  let _elapsed_small, ops_small = mount 50 in
+  let elapsed_small, _ = mount 200 in
+  let elapsed_large, ops_large = mount 800 in
+  Alcotest.(check int) "small drop is one detach" 1 (detaches ops_small);
+  Alcotest.(check int) "large drop is one detach" 1 (detaches ops_large);
+  (* The branch root is unlinked with one remove-child; descendants leave
+     with the detach and are not removed one by one. *)
+  Alcotest.(check int) "only the branch root is removed" 1 (removes ops_large);
+  if elapsed_large > (elapsed_small *. 12.) +. 0.25 then
+    Alcotest.failf "dropping 4x nodes took %gs after %gs" elapsed_large
+      elapsed_small
+
+let test_float_encoding_rejects_non_finite () =
+  let open Lui_protocol in
+  Alcotest.check_raises "nan rejected"
+    (Invalid_argument "float value is not finite") (fun () ->
+      ignore (Lui_wire.encode_value (FloatValue nan)));
+  Alcotest.check_raises "infinity rejected"
+    (Invalid_argument "float value is not finite") (fun () ->
+      ignore (Lui_wire.encode_value (FloatValue infinity)));
+  Alcotest.(check string) "integral float keeps a decimal" "1.0"
+    (Lui_wire.encode_value (FloatValue 1.0));
+  let precise = 1.0 +. epsilon_float in
+  Alcotest.(check string) "round-trip digits"
+    (Printf.sprintf "%.17g" precise)
+    (Lui_wire.encode_value (FloatValue precise));
+  Alcotest.(check bool) "progress rejects nan" false
+    (property_value_supported ProgressValue (FloatValue nan));
+  Alcotest.(check bool) "grow rejects infinity" false
+    (property_value_supported GrowValue (FloatValue infinity));
+  Alcotest.(check bool) "anchor rejects nan" false
+    (property_value_supported AnchorOffset (FloatValue nan))
+
+let test_keyed_mount_failure_keeps_previous_rows () =
+  let boom = ref false in
+  let app =
+    Lui_app.create (recording_backend ()) [ "a" ]
+      (fun _model next -> next)
+      (fun _context model_source _send ->
+        Lui_elements.column
+          [
+            Lui_elements.keyed ~source:model_source ~key:(fun item -> item)
+              ~cmp:String.compare
+              ~mount:(fun item_source ->
+                if !boom && Signal.sample item_source = "bad" then
+                  failwith "keyed mount failed";
+                Lui_elements.text ~value_signal:item_source []);
+          ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  batches := [];
+  boom := true;
+  Alcotest.check_raises "mount failure" (Failure "keyed mount failed")
+    (fun () ->
+      ignore (Lui_app.send app [ "bad" ]);
+      flush_app app);
+  Alcotest.(check int) "failed mount committed no text" 0
+    (creates_text_count (all_ops ()));
+  Alcotest.(check bool) "failed mount dropped nothing" false
+    (drops_node (all_ops ()));
+  ignore (Lui_app.dispose app)
 
 (* Extension fingerprint sync: the gallery declares its extension schemas
    once in Extension_schemas (OCaml); host apps mirror the canonical
@@ -3131,6 +3268,8 @@ let () =
             test_same_batch_drop_untracked_aborts;
           Alcotest.test_case "same-batch drop poisoned parent aborts" `Quick
             test_same_batch_drop_poisoned_parent_aborts;
+          Alcotest.test_case "large subtree drop is one detach" `Quick
+            test_drop_large_subtree_is_one_detach;
         ] );
       ( "protocol",
         [
@@ -3149,6 +3288,8 @@ let () =
             test_property_matrix_sync;
           Alcotest.test_case "data-attrs protocol" `Quick
             test_data_attrs_protocol;
+          Alcotest.test_case "finite float encoding" `Quick
+            test_float_encoding_rejects_non_finite;
           Alcotest.test_case "as protocol" `Quick test_as_protocol;
           Alcotest.test_case "data-attrs + as emit" `Quick
             test_data_attrs_and_as_emit;
@@ -3181,6 +3322,8 @@ let () =
             test_dyn_shared_source_survives_remount;
           Alcotest.test_case "keyed source diffs" `Quick
             test_keyed_source;
+          Alcotest.test_case "keyed mount failure keeps rows" `Quick
+            test_keyed_mount_failure_keeps_previous_rows;
         ] );
       ( "dispatch",
         [
@@ -3190,6 +3333,8 @@ let () =
             test_dispatch_drops_value_echoes;
           Alcotest.test_case "unset default echoes dropped" `Quick
             test_dispatch_drops_unset_default_echoes;
+          Alcotest.test_case "return to default is delivered" `Quick
+            test_value_return_to_default_is_delivered;
         ] );
       ( "number stepper + sheet sizing",
         [

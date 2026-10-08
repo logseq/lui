@@ -25,6 +25,8 @@ let pointer_type (event : Dom.event) : string = pointer_type_raw (as_pointer_eve
 let pointer_id (event : Dom.event) : int = pointer_id_raw (as_pointer_event event)
 
 external class_name_raw : Dom.element -> string = "className" [@@mel.get]
+external client_x : Dom.mouseEvent -> float = "clientX" [@@mel.get]
+external client_y : Dom.mouseEvent -> float = "clientY" [@@mel.get]
 
 (* The class list of the deepest element hit by an event. Non-element
    targets (e.g. text nodes) and SVG elements — whose className is an
@@ -41,8 +43,8 @@ let event_target_class_name event =
 let pointer_detail_of event : Lui_protocol.pointer_detail =
   let mouse = pointer_mouse_event event in
   let button = W.MouseEvent.button mouse in
-  { x = float_of_int (W.MouseEvent.clientX mouse);
-    y = float_of_int (W.MouseEvent.clientY mouse);
+  { x = client_x mouse;
+    y = client_y mouse;
     modifiers =
       (if W.MouseEvent.ctrlKey mouse then 1 else 0)
       lor (if W.MouseEvent.shiftKey mouse then 2 else 0)

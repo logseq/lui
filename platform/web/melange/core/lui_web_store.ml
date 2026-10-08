@@ -7,7 +7,7 @@ open Lui_web_types
 
 let create_store () =
   { retained_nodes = Hashtbl.create 64;
-    retained_batches = [];
+    retained_prior = Hashtbl.create 16;
     retained_generation = 0 }
 
 let find_child_index children child =
@@ -738,13 +738,11 @@ let commit_batch store platform_for extension_platform_for registry send_batch
   else begin
     store.retained_generation <- batch.generation;
     let snapshots = Hashtbl.create 16 in
+    store.retained_prior <- snapshots;
     (try
        apply_operations store.retained_nodes platform_for
          extension_platform_for registry snapshots batch;
-       if send_batch batch then begin
-         store.retained_batches <- store.retained_batches @ [ batch ];
-         true
-       end
+       if send_batch batch then true
        else invalid_arg "platform rejected patch batch"
      with exn ->
        restore_snapshots store.retained_nodes snapshots;
@@ -816,7 +814,14 @@ let children store node_id =
   | None -> invalid_arg "unknown node"
 
 let node_count store = Hashtbl.length store.retained_nodes
-let batches store = store.retained_batches
+(* Patch history used to grow without bound and nothing in the renderer
+   reads it. The query stays so existing callers compile; it is empty. *)
+let batches _store = []
+
+let prior store node_id =
+  match Hashtbl.find_opt store.retained_prior node_id with
+  | Some previous -> previous
+  | None -> node store node_id
 let generation store = store.retained_generation
 
 (* Shared queries that only read the mirror — used by every feature module. *)

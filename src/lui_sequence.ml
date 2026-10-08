@@ -39,6 +39,19 @@ let rec get tree index =
     let size = length left in
     if index < size then get left index
     else if index = size then value else get right (index - size - 1)
+let rec index_from tree target base =
+  match tree with
+  | Empty -> None
+  | Node (left, value, right, _, _) ->
+    let left_len = length left in
+    if value = target then Some (base + left_len)
+    else
+      match index_from left target base with
+      | Some found -> Some found
+      | None -> index_from right target (base + left_len + 1)
+
+let index tree target = index_from tree target 0
+
 let rec remove tree index =
   if index < 0 || index >= length tree then invalid_arg "sequence remove index";
   match tree with

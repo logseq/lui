@@ -11,7 +11,7 @@ module Ext = Lui_web_extensions
 external element_is_connected : W.Element.t -> bool = "isConnected"
   [@@mel.get]
 
-let prev_node previous_nodes node_id = Hashtbl.find_opt previous_nodes node_id
+let prev_node previous_nodes node_id = previous_nodes node_id
 
 let prev_kind_is previous_nodes node_id expected =
   match prev_node previous_nodes node_id with
@@ -64,6 +64,7 @@ let portal_parent renderer previous_nodes parent child =
       (Nodes.dom_node_before renderer previous_nodes parent)
 
 let cleanup_node renderer node =
+  Lui_web_events.release_pointer_events renderer node;
   match Hashtbl.find_opt renderer.web_cleanups node with
   | Some cleanup ->
       cleanup ();
@@ -79,23 +80,106 @@ let child_counted_in_container child container =
   | Some actual -> actual == container
   | None -> false
 
-let visible_child_index renderer ~container ~children index =
-  let rec loop children source_index result =
-    if source_index >= index then result
-    else
-      match children with
-      | [] -> result
-      | child :: rest ->
-          let counted =
-            match Store.node renderer.web_store child with
-            | Some child_node ->
-                child_counted_in_container child_node container
-            | None -> false
-          in
-          loop rest (source_index + 1)
-            (if counted then result + 1 else result)
+(* Growable int buffer. Append is amortized O(1); the visible-child prefix
+   is filled once per child so repeated inserts into one parent stay linear. *)
+type int_buf = {mutable data : int array; mutable len : int}
+
+let int_buf_create capacity =
+  {data = Array.make (max 4 capacity) 0; len = 0}
+
+let int_buf_ensure buf extra =
+  if buf.len + extra > Array.length buf.data then begin
+    let next_len = max (buf.len + extra) (Array.length buf.data * 2) in
+    let next = Array.make next_len 0 in
+    Array.blit buf.data 0 next 0 buf.len;
+    buf.data <- next
+  end
+
+let int_buf_push buf value =
+  int_buf_ensure buf 1;
+  buf.data.(buf.len) <- value;
+  buf.len <- buf.len + 1
+
+let int_buf_insert buf index value =
+  let index = if index < 0 then 0 else if index > buf.len then buf.len else index in
+  int_buf_ensure buf 1;
+  Array.blit buf.data index buf.data (index + 1) (buf.len - index);
+  buf.data.(index) <- value;
+  buf.len <- buf.len + 1
+
+let int_buf_remove_at buf index =
+  Array.blit buf.data (index + 1) buf.data index (buf.len - index - 1);
+  buf.len <- buf.len - 1
+
+let int_buf_index buf value =
+  let rec loop index =
+    if index >= buf.len then None
+    else if buf.data.(index) = value then Some index
+    else loop (index + 1)
   in
-  loop children 0 0
+  loop 0
+
+type child_shadow = {
+  items : int_buf;
+  prefix : int_buf;
+  mutable prefix_filled : int;
+  mutable prefix_container : W.Element.t option;
+}
+
+let shadow_of_list children =
+  let items = int_buf_create (List.length children) in
+  List.iter (int_buf_push items) children;
+  let prefix = int_buf_create 1 in
+  int_buf_push prefix 0;
+  {items; prefix; prefix_filled = 1; prefix_container = None}
+
+let shadow_invalidate shadow index =
+  if shadow.prefix_filled > index + 1 then shadow.prefix_filled <- index + 1
+
+let shadow_insert shadow index child =
+  int_buf_insert shadow.items index child;
+  shadow_invalidate shadow index
+
+let shadow_ids shadow =
+  Array.sub shadow.items.data 0 shadow.items.len |> Array.to_list
+
+let shadow_remove shadow child =
+  match int_buf_index shadow.items child with
+  | None -> ()
+  | Some index ->
+      int_buf_remove_at shadow.items index;
+      shadow_invalidate shadow index
+
+let visible_child_index renderer ~container ~children index =
+  let reset =
+    match children.prefix_container with
+    | Some previous when previous == container -> false
+    | _ -> true
+  in
+  if reset then begin
+    children.prefix.len <- 0;
+    int_buf_push children.prefix 0;
+    children.prefix_filled <- 1;
+    children.prefix_container <- Some container
+  end;
+  let index =
+    if index < 0 then 0
+    else if index > children.items.len then children.items.len
+    else index
+  in
+  while children.prefix_filled <= index do
+    let slot = children.prefix_filled - 1 in
+    let child = children.items.data.(slot) in
+    let previous = children.prefix.data.(slot) in
+    let counted =
+      match Store.node renderer.web_store child with
+      | Some child_node -> child_counted_in_container child_node container
+      | None -> false
+    in
+    int_buf_push children.prefix (previous + if counted then 1 else 0);
+    children.prefix_filled <- children.prefix_filled + 1
+  done;
+  children.prefix.data.(index)
 
 let focused_descendant renderer dom_node =
   let document =
@@ -289,7 +373,6 @@ let apply_insert_child renderer previous_nodes children_of parent child
   insert_child_dom renderer previous_nodes children_of parent child index;
   Lui_web_split.update_split renderer parent;
   Lui_web_focus.refresh_button_context renderer child;
-  Lui_web_split.update_split renderer parent;
   refresh_structured_children renderer parent;
   (match Store.node renderer.web_store child with
    | Some current ->
@@ -475,6 +558,9 @@ let apply_set_prop renderer node property value =
            | _ ->
                Lui_web_props.apply_property renderer node kind
                  current.platform_node property value);
+          if property = PointerEnabled then
+            Lui_web_events.sync_pointer_events renderer node kind
+              current.platform_node;
           refresh_parent_for_prop renderer node property
       | None -> invalid_arg "standard property targets extension node")
   | None -> ()
@@ -494,6 +580,9 @@ let apply_remove_prop renderer node property =
             | _ ->
                 Lui_web_props.remove_property renderer node kind
                   current.platform_node property);
+           if property = PointerEnabled then
+             Lui_web_events.sync_pointer_events renderer node kind
+               current.platform_node;
            refresh_parent_for_prop renderer node property
        | None -> invalid_arg "standard property targets extension node")
    | None -> ())
@@ -611,7 +700,7 @@ let apply_detach_subtree renderer previous_nodes children_of node =
     detach_bottom_tab_trigger node_id;
     Ext.cleanup_extension_node renderer previous_nodes node_id;
     cleanup_node renderer node_id;
-    List.iter visit (children_of node_id)
+    List.iter visit (shadow_ids (children_of node_id))
   in
   visit node;
   (* parent-side follow-ups mirror apply_remove_child *)
@@ -692,65 +781,92 @@ let apply_dom_batch renderer previous_nodes batch =
     | None ->
         let children =
           match prev_node previous_nodes parent with
-          | Some node -> node.retained_children
-          | None -> []
+          | Some node -> shadow_of_list node.retained_children
+          | None -> shadow_of_list []
         in
         Hashtbl.replace shadow parent children;
         children
   in
-  let shadow_insert children index child =
-    let rec loop position rest acc =
-      match rest with
-      | [] -> List.rev (child :: acc)
-      | _ when position = index -> List.rev_append acc (child :: rest)
-      | head :: tail -> loop (position + 1) tail (head :: acc)
-    in
-    loop 0 children []
-  in
   let mirror operation =
     match operation with
     | InsertChild (parent, child, index) ->
-        Hashtbl.replace shadow parent
-          (shadow_insert (children_of parent) index child)
-    | RemoveChild (parent, child) ->
-        Hashtbl.replace shadow parent
-          (List.filter
-             (fun other -> other <> child)
-             (children_of parent))
+        shadow_insert (children_of parent) index child
+    | RemoveChild (parent, child) -> shadow_remove (children_of parent) child
     | DetachSubtree node -> (
         match prev_node previous_nodes node with
-        | Some previous ->
-            (match previous.retained_parent with
-             | Some parent ->
-                 Hashtbl.replace shadow parent
-                   (List.filter
-                      (fun other -> other <> node)
-                      (children_of parent))
-             | None -> ())
+        | Some previous -> (
+            match previous.retained_parent with
+            | Some parent -> shadow_remove (children_of parent) node
+            | None -> ())
         | None -> ())
     | MoveChild (parent, child, index) ->
-        let without =
-          List.filter
-            (fun other -> other <> child)
-            (children_of parent)
-        in
-        Hashtbl.replace shadow parent
-          (shadow_insert without index child)
+        let children = children_of parent in
+        shadow_remove children child;
+        shadow_insert children index child
     | _ -> ()
   in
   List.iter
     (fun operation ->
        mirror operation;
-       try
-         apply_dom_op renderer previous_nodes children_of operation
+       try apply_dom_op renderer previous_nodes children_of operation
        with Invalid_argument msg ->
          invalid_arg
            (Printf.sprintf "op %s: %s" (Lui_wire.encode_op operation) msg))
     batch.ops;
-  let label_roving label f =
-    try ignore (f renderer)
-    with Invalid_argument msg -> invalid_arg (label ^ ": " ^ msg)
+  (* Refresh roving tabindex only on groups this batch could have changed,
+     walking from each touched id to the nearest tree, toolbar, or
+     horizontal group instead of scanning the whole store. *)
+  let touched = Hashtbl.create 16 in
+  let note id = Hashtbl.replace touched id () in
+  List.iter
+    (fun operation ->
+       match operation with
+       | CreateNode (id, _)
+       | CreateExtension (id, _, _)
+       | DropNode id
+       | DetachSubtree id
+       | SetProp (id, _, _)
+       | RemoveProp (id, _)
+       | SetExtensionProp (id, _, _)
+       | RemoveExtensionProp (id, _) ->
+         note id
+       | InsertChild (parent, child, _)
+       | RemoveChild (parent, child)
+       | MoveChild (parent, child, _) ->
+         note parent;
+         note child)
+    batch.ops;
+  let refreshed = Hashtbl.create 8 in
+  let refresh id kind =
+    if not (Hashtbl.mem refreshed id) then begin
+      Hashtbl.replace refreshed id ();
+      if kind = Tree then Lui_web_focus.update_tree_roving renderer id
+      else if kind = Toolbar then
+        ignore (Lui_web_focus.refresh_toolbar_roving renderer id)
+      else if Lui_web_focus.horizontal_focus_kind kind then
+        ignore (Lui_web_focus.refresh_horizontal_group_roving renderer id kind)
+    end
   in
-  label_roving "hgroup-roving" Lui_web_focus.update_all_horizontal_group_roving;
-  label_roving "tree-roving" Lui_web_focus.update_all_tree_roving;
-  label_roving "toolbar-roving" Lui_web_focus.update_all_toolbar_roving
+  let visited = Hashtbl.create 16 in
+  let rec climb id =
+    if Hashtbl.mem visited id then ()
+    else begin
+      Hashtbl.replace visited id ();
+      match Store.node renderer.web_store id with
+      | Some current ->
+          (match Store.standard_kind current with
+           | Some kind -> refresh id kind
+           | None -> ());
+          (match current.retained_parent with
+           | Some parent -> climb parent
+           | None -> ())
+      | None -> (
+          match prev_node previous_nodes id with
+          | Some previous -> (
+              match previous.retained_parent with
+              | Some parent -> climb parent
+              | None -> ())
+          | None -> ())
+    end
+  in
+  Hashtbl.iter (fun id () -> climb id) touched

@@ -551,6 +551,9 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
         // the containing list without reading/updating its leased view entity.
         {
             let guard = shared.borrow();
+            if guard.virtual_lists.is_empty() {
+                // No virtual lists: the parent walk only exists to remeasure them.
+            } else {
             let mut child = id;
             while let Some(parent) = guard.store.node(child).and_then(|node| node.parent) {
                 if let Some(list) = guard.virtual_lists.get(&parent) {
@@ -562,6 +565,7 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
                     }
                 }
                 child = parent;
+            }
             }
         }
         // Notify the nearest ancestor (self included) whose view has
@@ -617,6 +621,34 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
 /// Apply a patch payload that may be either one batch object `{ops:[…]}`
 /// or the stream form `[batch, batch, …]` (what `take_patches` returns in
 /// hosts that fold event results into the sink).
+fn note_rejected_batch(shared: &Shared, message: String, cx: &mut App) {
+    eprintln!("lui-gpui: rejected batch: {message}");
+    shared.borrow_mut().last_errors.push(message);
+    // The runtime can rebuild the live tree at the current generation. Clear
+    // the mirror only when that snapshot actually arrives, so a missing
+    // resync export leaves the rolled-back store in place.
+    let accepted = unsafe { bridge::lui_ocaml_resync() };
+    if accepted == 0 {
+        return;
+    }
+    let patches = bridge::take_patches();
+    if patches.is_empty() {
+        return;
+    }
+    {
+        let mut guard = shared.borrow_mut();
+        guard.store.reset();
+        guard.views.clear();
+    }
+    for json in patches {
+        if let Err(error) = apply_batch_json(shared, &json, cx) {
+            let message = error.to_string();
+            eprintln!("lui-gpui: resync batch rejected: {message}");
+            shared.borrow_mut().last_errors.push(message);
+        }
+    }
+}
+
 pub fn apply_stream_json(shared: &Shared, json: &str, cx: &mut App) {
     let parsed = serde_json::from_str::<serde_json::Value>(json);
     match parsed {
@@ -624,23 +656,17 @@ pub fn apply_stream_json(shared: &Shared, json: &str, cx: &mut App) {
             for batch in batches {
                 let batch = batch.to_string();
                 if let Err(error) = apply_batch_json(shared, &batch, cx) {
-                    let message = error.to_string();
-                    eprintln!("lui-gpui: rejected batch: {message}");
-                    shared.borrow_mut().last_errors.push(message);
+                    note_rejected_batch(shared, error.to_string(), cx);
                 }
             }
         }
         Ok(_) => {
             if let Err(error) = apply_batch_json(shared, json, cx) {
-                let message = error.to_string();
-                eprintln!("lui-gpui: rejected batch: {message}");
-                shared.borrow_mut().last_errors.push(message);
+                note_rejected_batch(shared, error.to_string(), cx);
             }
         }
         Err(error) => {
-            let message = format!("decode: {error}");
-            eprintln!("lui-gpui: rejected batch: {message}");
-            shared.borrow_mut().last_errors.push(message);
+            note_rejected_batch(shared, format!("decode: {error}"), cx);
         }
     }
 }

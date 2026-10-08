@@ -1,1 +1,0 @@
-/home/ubuntu/repos/lui/examples/components/android/app/src/main/cpp/CMakeLists.txt

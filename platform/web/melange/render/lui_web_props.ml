@@ -387,6 +387,112 @@ external data_attrs_managed_set : W.Element.t -> string -> unit =
   "__luiDataAttrs"
 [@@mel.set]
 
+external element_style : W.Element.t -> Dom.cssStyleDeclaration = "style"
+[@@mel.get]
+
+external style_get : Dom.cssStyleDeclaration -> string -> string
+  = "getPropertyValue"
+[@@mel.send]
+
+external style_set : Dom.cssStyleDeclaration -> string -> string -> string -> unit
+  = "setProperty"
+[@@mel.send]
+
+external style_remove : Dom.cssStyleDeclaration -> string -> string
+  = "removeProperty"
+[@@mel.send]
+
+(* User `style` declarations layered on top of LUI-owned inline style.
+   Stored as name \x1e baseline records joined by \x1f. A baseline of ""
+   means the property was unset before the user override. *)
+external user_style_get : W.Element.t -> string Js.undefined = "__luiUserStyle"
+[@@mel.get]
+
+external user_style_set : W.Element.t -> string -> unit = "__luiUserStyle"
+[@@mel.set]
+
+let parse_user_style text =
+  let trim value =
+    let start = ref 0 in
+    let stop = ref (String.length value) in
+    while !start < !stop && value.[!start] = ' ' do incr start done;
+    while !stop > !start && value.[!stop - 1] = ' ' do decr stop done;
+    String.sub value !start (!stop - !start)
+  in
+  List.filter_map
+    (fun declaration ->
+       let declaration = trim declaration in
+       match String.index_opt declaration ':' with
+       | None -> None
+       | Some colon ->
+         let name =
+           trim (String.sub declaration 0 colon) |> String.lowercase_ascii
+         in
+         let value =
+           trim
+             (String.sub declaration (colon + 1)
+                (String.length declaration - colon - 1))
+         in
+         if name = "" then None else Some (name, value))
+    (String.split_on_char ';' text)
+
+let decode_user_style encoded =
+  if encoded = "" then []
+  else
+    List.filter_map
+      (fun entry ->
+         match String.index_opt entry '\x1e' with
+         | None -> None
+         | Some split ->
+           Some
+             ( String.sub entry 0 split,
+               String.sub entry (split + 1) (String.length entry - split - 1) ))
+      (String.split_on_char '\x1f' encoded)
+
+let encode_user_style entries =
+  String.concat "\x1f"
+    (List.map (fun (name, baseline) -> name ^ "\x1e" ^ baseline) entries)
+
+let clear_user_style dom_node =
+  let style = element_style dom_node in
+  (match Js.Undefined.toOption (user_style_get dom_node) with
+   | Some encoded ->
+       List.iter
+         (fun (name, baseline) ->
+            if baseline = "" then ignore (style_remove style name)
+            else style_set style name baseline "")
+         (decode_user_style encoded)
+   | None -> ());
+  user_style_set dom_node ""
+
+let apply_user_style dom_node payload =
+  let style = element_style dom_node in
+  let previous =
+    match Js.Undefined.toOption (user_style_get dom_node) with
+    | Some encoded -> decode_user_style encoded
+    | None -> []
+  in
+  let next = parse_user_style payload in
+  List.iter
+    (fun (name, baseline) ->
+       if not (List.exists (fun (next_name, _) -> next_name = name) next) then
+         if baseline = "" then ignore (style_remove style name)
+         else style_set style name baseline "")
+    previous;
+  let recorded =
+    List.map
+      (fun (name, value) ->
+         let baseline =
+           match List.find_opt (fun (previous_name, _) -> previous_name = name) previous with
+           | Some (_, baseline) -> baseline
+           | None -> style_get style name
+         in
+         style_set style name value "";
+         (name, baseline))
+      next
+  in
+  user_style_set dom_node (encode_user_style recorded)
+
 let apply_data_attrs dom_node payload =
   match data_attrs_decode payload with
   | pairs ->
@@ -396,16 +502,19 @@ let apply_data_attrs dom_node payload =
            List.iter
              (fun name ->
                 if name <> "" && not (List.mem name next_names) then
-                  W.Element.removeAttribute name dom_node)
+                  if name = "style" then clear_user_style dom_node
+                  else W.Element.removeAttribute name dom_node)
              (String.split_on_char '\x1f' managed)
        | None -> ());
       List.iter
         (fun (name, value) ->
            if data_attr_name_ok name then
-             W.Element.setAttribute name value dom_node)
+             if name = "style" then apply_user_style dom_node value
+             else W.Element.setAttribute name value dom_node)
         pairs;
       data_attrs_managed_set dom_node (String.concat "\x1f" next_names)
   | exception Invalid_argument _ ->
+      clear_user_style dom_node;
       data_attrs_managed_set dom_node ""
 
 let remove_data_attrs dom_node =
@@ -413,7 +522,8 @@ let remove_data_attrs dom_node =
   | Some managed ->
       List.iter
         (fun name ->
-           if name <> "" then W.Element.removeAttribute name dom_node)
+           if name = "style" then clear_user_style dom_node
+           else if name <> "" then W.Element.removeAttribute name dom_node)
         (String.split_on_char '\x1f' managed);
       data_attrs_managed_set dom_node ""
   | None -> ()
