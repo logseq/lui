@@ -229,8 +229,21 @@ let scroll_picker_item renderer dropdown element =
     else if W.DomRect.bottom item > bottom then W.DomRect.bottom item -. bottom
     else 0.
   in
-  if delta <> 0. then
-    W.Element.setScrollTop popup (W.Element.scrollTop popup +. delta)
+  if delta <> 0. then begin
+    (* Bounding rectangles include the opening transform, but scrollTop uses
+       layout pixels. Convert the visual distance before scrolling. *)
+    let layout_height =
+      float_of_int
+        (W.HtmlElement.offsetHeight (W.Element.unsafeAsHtmlElement popup))
+    in
+    let visual_height = W.DomRect.height bounds in
+    let scale =
+      if layout_height > 0. && visual_height > 0. then
+        visual_height /. layout_height
+      else 1.
+    in
+    W.Element.setScrollTop popup (W.Element.scrollTop popup +. delta /. scale)
+  end
 
 let set_combobox_active renderer picker dropdown index =
   let items = picker_menu_items renderer dropdown in
