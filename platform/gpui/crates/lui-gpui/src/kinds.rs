@@ -434,6 +434,12 @@ fn button(
     button = button.selected(node.flag(Property::Selected));
     button = button.disabled(!node.enabled());
     button = button.on_click(press_handler(view, node_id));
+    // Structured children render inside the button (e.g. the font
+    // picker's ls-font Ag/name column) — the web twin mounts them in the
+    // <button> body, so the label prop is not a substitute.
+    for child_id in &node.children {
+        button = button.child(view.child_view(*child_id, cx).into_any_element());
+    }
     style::all(button, node, cx.theme()).into_any_element()
 }
 
@@ -966,6 +972,9 @@ fn select_picker(
     if items.is_empty() {
         // Trigger-shaped outline button; `press` opens the model-owned
         // menu (usually mounted as a `dropdown-menu` sibling).
+        // Web select triggers read `label … chevron-down` (trailing
+        // chevron); gpui-component's `icon` paints before the label, so
+        // use the dropdown caret instead.
         let mut element = Button::new(element_id(node_id))
             .label(if text_of(node).is_empty() {
                 "Select…".to_string()
@@ -973,7 +982,7 @@ fn select_picker(
                 text_of(node)
             })
             .outline()
-            .icon(gpui_kit::assets::IconName::ChevronDown);
+            .dropdown_caret(true);
         element = element.disabled(!node.enabled());
         element = element.on_click(press_handler(view, node_id));
         element = style::all(element, node, cx.theme());
@@ -1608,6 +1617,10 @@ fn list_item(
         icon_name(node, Property::InlineIconName).or_else(|| icon_name(node, Property::IconName))
     {
         row = row.child(Icon::new(icon).size_4());
+    } else if let Some(data) = app_icon_data(view, node) {
+        // `app:` names (settings nav, etc.) rasterize through the host's
+        // icon resolver, same as Button.
+        row = row.child(Icon::default().data(&data).size_4());
     }
 
     if !text_of(node).is_empty() {

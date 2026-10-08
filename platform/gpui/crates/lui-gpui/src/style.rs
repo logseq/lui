@@ -1263,19 +1263,24 @@ pub(crate) fn inline_tag_style<E: Styled>(element: E, tag: &str, theme: &Theme) 
 /// extension nodes. `theme` resolves `var(--ls-*)`/semantic tokens the
 /// web app declares on `:root`.
 pub fn all<E: Styled>(element: E, node: &NodeSnapshot, theme: &Theme) -> E {
-    let mut element = frame(element, node);
-    element = apply_inline_style(element, node, theme);
-    let element = layout(element, node);
-    let element = surface(element, node, theme);
-    let element = match node.float_prop(Property::Opacity) {
-        Some(value) => element.opacity(value as f32),
-        None => element,
-    };
-    match node
+    // Cascade order: the semantic class is the lowest layer (like a CSS
+    // rule); typed props (frame/layout/surface) and the inline `style`
+    // attr all behave as inline styles on the web twin and must win over
+    // it — e.g. `ui__button as-text` carries `background:transparent`
+    // while `~background` is the swatch's real fill.
+    let element = match node
         .string_prop(Property::StyleClass)
         .or_else(|| node.extension_string_prop("style-class"))
     {
         Some(classes) => style_class(element, classes, theme),
+        None => element,
+    };
+    let mut element = frame(element, node);
+    element = apply_inline_style(element, node, theme);
+    let element = layout(element, node);
+    let element = surface(element, node, theme);
+    match node.float_prop(Property::Opacity) {
+        Some(value) => element.opacity(value as f32),
         None => element,
     }
 }
