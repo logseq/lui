@@ -3009,6 +3009,11 @@ let test_composer_inline_input_and_cards () =
     (drive_prop s remove "width" = Some (Lui_protocol.IntValue 44)
      && drive_prop s remove "height" = Some (Lui_protocol.IntValue 44)
      && drive_prop s remove "text" = None);
+  let title = drive_node s (Drive.Model.Prop
+      ("text", Lui_protocol.StringValue "A very long report name that must stay inside its card.pdf")) in
+  Alcotest.(check bool) "document name keeps its bounded leading-aligned area" true
+    (drive_prop s title "max-width" = Some (Lui_protocol.IntValue 96)
+     && drive_prop s title "text-alignment" = Some (Lui_protocol.StringValue "start"));
   let strip = drive_node s (Drive.Model.Kind "scroll") in
   Alcotest.(check bool) "attachments stay horizontally scrollable" true
     (drive_prop s strip "orientation" = Some (Lui_protocol.StringValue "horizontal"));

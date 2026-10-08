@@ -273,8 +273,8 @@ let composer_attachment ?(disabled = false) ?status ~key ~path ~title ~file_type
               column ~width:120 ~height:120 ~padding:12 ~gap:4
                 [ icon ~name:`file_text ~width:24 ~height:24 ~foreground:"accent" []
                 ; spacer ~grow:1.0 []
-                ; text ~value:name ~max_width:96 ~style_class:"single-line composer-attachment-label" []
-                ; text ~value:details ~max_width:96 ~foreground:"muted-foreground"
+                ; text ~value:name ~text_alignment:`start ~max_width:96 ~style_class:"single-line composer-attachment-label" []
+                ; text ~value:details ~text_alignment:`start ~max_width:96 ~foreground:"muted-foreground"
                     ~style_class:"single-line caption composer-attachment-label" [] ])
          ] @ (if image then [] else
             [button ~width:120 ~height:120 ~variant:`ghost ~background:"transparent"
