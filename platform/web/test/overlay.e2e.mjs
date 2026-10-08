@@ -398,6 +398,7 @@ test("Sheet uses the same modal lifecycle with its own native surface", async ()
     await state(`(() => {
       const layer = document.querySelector('.lui-modal-layer[data-ending-style]')
       const endingObserved = Boolean(layer)
+      const contentPresent = Boolean(layer?.querySelector('input[placeholder="Share link"]'))
       layer?.querySelector('.lui-sheet')?.dispatchEvent(
         new TransitionEvent('transitioncancel', {
           bubbles: true,
@@ -406,10 +407,11 @@ test("Sheet uses the same modal lifecycle with its own native surface", async ()
       )
       return {
         endingObserved,
+        contentPresent,
         remainingLayers: document.querySelectorAll('.lui-modal-layer').length,
       }
     })()`),
-    { endingObserved: true, remainingLayers: 0 },
+    { endingObserved: true, contentPresent: true, remainingLayers: 0 },
   )
 })
 
@@ -848,6 +850,30 @@ test("DropdownMenu typeahead moves focus to the matching enabled item", async ()
 
   await browser("press", "s")
   assert.equal(await state(`document.activeElement?.textContent.trim()`), "Staging")
+})
+
+test("DropdownMenu initial focus preserves early keyboard navigation", async () => {
+  await openGalleryPage("DropdownMenu")
+  await evaluate(`(() => {
+    const original = window.setTimeout
+    window.__menuMountTasks = []
+    window.__restoreMenuTimers = () => { window.setTimeout = original }
+    window.setTimeout = (callback, delay, ...args) => {
+      if (delay === 0 && typeof callback === 'function') {
+        window.__menuMountTasks.push(() => callback(...args))
+        return original(() => {}, 0)
+      }
+      return original(callback, delay, ...args)
+    }
+  })()`)
+  await clickButton("Choose environment")
+  await evaluate("window.__restoreMenuTimers()")
+  assert.ok(await state("window.__menuMountTasks.length > 0"))
+  await session.page.getByRole("menuitem", { name: "Production", exact: true }).focus()
+  await browser("press", "s")
+  assert.equal(await state("document.activeElement?.textContent.trim()"), "Staging")
+  await evaluate("window.__menuMountTasks.splice(0).forEach(task => task())")
+  assert.equal(await state("document.activeElement?.textContent.trim()"), "Staging")
 })
 
 test("DropdownMenu ArrowRight enters a third-level submenu", async () => {

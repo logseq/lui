@@ -107,6 +107,31 @@ test("data-attrs rejects invalid names and control characters", async () => {
   assert.equal(await tracked.getAttribute("data-testid"), "greeting")
 })
 
+test("data-attrs applies, updates and removes inline style declarations", async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/data-attrs-regression.html`)
+  const tracked = page.locator(`#lui-node-${await page.evaluate(() => window.probe.tracked)}`)
+  await page.evaluate(() => {
+    window.probe.set(window.probe.tracked, "data-attrs",
+      window.probe.attrs([["style", "--probe-color: tomato; overflow-anchor: none"]]))
+  })
+  assert.deepEqual(await tracked.evaluate((el) => ({
+    color: el.style.getPropertyValue("--probe-color"),
+    anchor: el.style.getPropertyValue("overflow-anchor"),
+  })), { color: "tomato", anchor: "none" })
+
+  await page.evaluate(() => {
+    window.probe.set(window.probe.tracked, "data-attrs",
+      window.probe.attrs([["style", "--probe-color: teal"]]))
+  })
+  assert.deepEqual(await tracked.evaluate((el) => ({
+    color: el.style.getPropertyValue("--probe-color"),
+    anchor: el.style.getPropertyValue("overflow-anchor"),
+  })), { color: "teal", anchor: "" })
+
+  await page.evaluate(() => window.probe.unset(window.probe.tracked, "data-attrs"))
+  assert.equal(await tracked.getAttribute("style"), null)
+})
+
 test("as emits the override tag on create", async () => {
   await page.goto(`${origin}/platform/web/test/fixtures/data-attrs-regression.html`)
   const tags = await page.evaluate(() => {

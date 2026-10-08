@@ -317,6 +317,41 @@ test("Combobox list navigation scrolls its popup and preserves highlighted optio
   assert.equal(await state("document.querySelectorAll('[data-highlighted]').length"), 0)
 })
 
+test("Combobox navigation reveals options inside a scaled popup", async () => {
+  await openPickerPage()
+  await session.page.addStyleTag({ content: `
+    .lui-dropdown-menu {
+      transform: scale(0.5) !important;
+      transform-origin: top left !important;
+      transition: none !important;
+    }
+  ` })
+  await session.page.locator("#picker-combo input").focus()
+  await session.command("press", "ArrowDown")
+  await waitFor("document.querySelector('.lui-dropdown-menu[data-open]')")
+  for (let index = 0; index < 23; index++) await session.command("press", "ArrowDown")
+  const bounds = await state(`(() => {
+    const active = document.getElementById(
+      document.querySelector('[aria-activedescendant]').getAttribute('aria-activedescendant'),
+    )
+    const popup = document.querySelector('.lui-dropdown-menu[data-open]')
+    const itemRect = active.getBoundingClientRect()
+    const popupRect = popup.getBoundingClientRect()
+    return {
+      text: active.textContent.trim(),
+      top: itemRect.top,
+      bottom: itemRect.bottom,
+      popupTop: popupRect.top,
+      popupBottom: popupRect.bottom,
+      pageScrollY: window.scrollY,
+    }
+  })()`)
+  assert.equal(bounds.text, "Option 23")
+  assert.equal(bounds.pageScrollY, 0)
+  assert.ok(bounds.top >= bounds.popupTop - 1, JSON.stringify(bounds))
+  assert.ok(bounds.bottom <= bounds.popupBottom + 1, JSON.stringify(bounds))
+})
+
 test("Combobox composition patches retain the native input, draft and selection", async () => {
   await openPickerPage()
   await session.page.locator("#picker-combo input").evaluate(element => {
