@@ -259,54 +259,55 @@ let checkpoint ?nodes application =
     checkpoint_extension_dirty = !(application.runtime_extension_dirty);
   }
 
-(* Full create/set/insert batch describing the live tree. A host that has
+(* Full create/set/insert batch describing all live trees, including
+   ordinary app roots and independently mounted extensions. A host that has
    rejected a delta and rolled its mirror back applies this after clearing
    local state, adopting [generation] as the new baseline. *)
 let resync_batch application =
-  let root = ref None in
-  Hashtbl.iter
-    (fun node kind -> if kind = Root then root := Some node)
-    application.mounted_nodes;
+  let roots = ref [] in
+  let add_root node _ =
+    if not (Hashtbl.mem application.runtime_parents node) then
+      roots := node :: !roots
+  in
+  Hashtbl.iter add_root application.mounted_nodes;
+  Hashtbl.iter add_root application.runtime_extension_nodes;
   let generation = max 1 !(application.runtime_generation) in
-  match !root with
-  | None -> { generation; ops = [] }
-  | Some root_node ->
-    let ops = ref [] in
-    let add operation = ops := operation :: !ops in
-    let rec walk node =
-      (match Hashtbl.find_opt application.mounted_nodes node with
-      | Some kind -> add (create_node_op node kind)
-      | None -> (
-        match Hashtbl.find_opt application.runtime_extension_nodes node with
-        | Some identifier ->
-          add (create_extension_op node identifier "")
-        | None -> ()));
-      (match Hashtbl.find_opt application.runtime_properties node with
-      | Some props ->
-        Property_map.iter
-          (fun property value -> add (set_prop_op node property value))
-          props
-      | None -> ());
-      (match Hashtbl.find_opt application.runtime_extension_properties node with
-      | Some props ->
-        String_map.iter
-          (fun property value ->
-             add (set_extension_prop_op node property value))
-          props
-      | None -> ());
-      let kids =
-        match Hashtbl.find_opt application.runtime_children node with
-        | Some children -> Lui_sequence.to_list children
-        | None -> []
-      in
-      List.iteri
-        (fun index child ->
-           walk child;
-           add (insert_child_op node child index))
-        kids
+  let ops = ref [] in
+  let add operation = ops := operation :: !ops in
+  let rec walk node =
+    (match Hashtbl.find_opt application.mounted_nodes node with
+    | Some kind -> add (create_node_op node kind)
+    | None -> (
+      match Hashtbl.find_opt application.runtime_extension_nodes node with
+      | Some identifier ->
+        add (create_extension_op node identifier "")
+      | None -> ()));
+    (match Hashtbl.find_opt application.runtime_properties node with
+    | Some props ->
+      Property_map.iter
+        (fun property value -> add (set_prop_op node property value))
+        props
+    | None -> ());
+    (match Hashtbl.find_opt application.runtime_extension_properties node with
+    | Some props ->
+      String_map.iter
+        (fun property value ->
+           add (set_extension_prop_op node property value))
+        props
+    | None -> ());
+    let kids =
+      match Hashtbl.find_opt application.runtime_children node with
+      | Some children -> Lui_sequence.to_list children
+      | None -> []
     in
-    walk root_node;
-    { generation; ops = List.rev !ops }
+    List.iteri
+      (fun index child ->
+         walk child;
+         add (insert_child_op node child index))
+      kids
+  in
+  List.iter walk (List.sort Int.compare !roots);
+  { generation; ops = List.rev !ops }
 
 let render_tree_snapshot application =
   {
