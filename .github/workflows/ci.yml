@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   ocaml-tests:
     runs-on: ubuntu-latest
@@ -20,16 +24,20 @@ jobs:
         with:
           ocaml-compiler: "5.5"
       - name: Cache opam switch
-        uses: actions/cache@v4
+        id: opam-switch
+        uses: actions/cache/restore@v4
         with:
-          path: ~/.opam
-          key: opam-${{ runner.os }}-5.5-${{ hashFiles('*.opam*', 'dune-project') }}
+          path: _opam
+          key: opam-switch-${{ runner.os }}-${{ runner.arch }}-5.5-${{ hashFiles('*.opam*', 'dune-project') }}-${{ github.sha }}
+          restore-keys: |
+            opam-switch-${{ runner.os }}-${{ runner.arch }}-5.5-${{ hashFiles('*.opam*', 'dune-project') }}-
       - name: Cache dune
         uses: actions/cache@v4
         with:
           path: ~/.cache/dune
-          key: dune-${{ runner.os }}-${{ github.sha }}
+          key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
           restore-keys: |
+            dune-${{ runner.os }}-${{ github.job }}-
             dune-${{ runner.os }}-
       - name: Enable dune cache
         run: |
@@ -39,6 +47,12 @@ jobs:
       # --locked makes opam read it instead of lui.opam.
       - name: Install lui dependencies
         run: opam install . --deps-only --with-test -y --locked
+      - name: Save opam switch
+        if: steps.opam-switch.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: _opam
+          key: ${{ steps.opam-switch.outputs.cache-primary-key }}
       - name: Schema tests
         run: node --test tooling/test/*.mjs
       - name: OCaml tests
@@ -58,16 +72,20 @@ jobs:
         with:
           ocaml-compiler: "5.5"
       - name: Cache opam switch
-        uses: actions/cache@v4
+        id: opam-switch
+        uses: actions/cache/restore@v4
         with:
-          path: ~/.opam
-          key: opam-${{ runner.os }}-5.5-${{ hashFiles('*.opam*', 'dune-project') }}
+          path: _opam
+          key: opam-switch-${{ runner.os }}-${{ runner.arch }}-5.5-${{ hashFiles('*.opam*', 'dune-project') }}-${{ github.sha }}
+          restore-keys: |
+            opam-switch-${{ runner.os }}-${{ runner.arch }}-5.5-${{ hashFiles('*.opam*', 'dune-project') }}-
       - name: Cache dune
         uses: actions/cache@v4
         with:
           path: ~/.cache/dune
-          key: dune-${{ runner.os }}-${{ github.sha }}
+          key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
           restore-keys: |
+            dune-${{ runner.os }}-${{ github.job }}-
             dune-${{ runner.os }}-
       - name: Enable dune cache
         run: |
@@ -90,6 +108,12 @@ jobs:
           if [ "${{ steps.web-node-modules.outputs.cache-hit }}" != "true" ]; then
             npm --prefix platform/web ci
           fi
+      - name: Save opam switch
+        if: steps.opam-switch.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: _opam
+          key: ${{ steps.opam-switch.outputs.cache-primary-key }}
       # System libraries are not cacheable across hosted runners (fresh image
       # each run); browser binaries only download on a browser-cache miss.
       - name: Install Playwright system libraries
@@ -101,7 +125,14 @@ jobs:
       - name: Web stylesheet and unit checks
         run: npm --prefix platform/web run check
       - name: Browser regressions
-        run: node --test --test-concurrency=1 platform/web/test/*.e2e.mjs
+        run: |
+          tests=()
+          for file in platform/web/test/*.e2e.mjs; do
+            if [[ "$file" != */hot-reload.e2e.mjs ]]; then
+              tests+=("$file")
+            fi
+          done
+          node --test --test-concurrency=2 "${tests[@]}"
       - name: Firefox and WebKit overlay ownership
         run: |
           for browser in firefox webkit; do
@@ -109,6 +140,9 @@ jobs:
           done
       - name: WebKit retained Gallery regressions
         run: LUI_WEB_BROWSER=webkit node --test platform/web/test/firefox.e2e.mjs
+      # Hot reload edits shared sources and starts Dune, so it runs alone.
+      - name: Hot reload regression
+        run: node --test platform/web/test/hot-reload.e2e.mjs
 
   apple-tests:
     # Package.swift requires swift-tools-version 6.2 (Xcode 26).
