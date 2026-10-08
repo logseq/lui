@@ -155,8 +155,6 @@ impl Store {
         self.nodes.get(&id)
     }
 
-    /// Apply one decoded batch. On error the batch is rejected wholesale:
-    /// partial state must not leak into a tree the renderer trusts.
     /// Drop the mirror so the next batch may adopt any positive generation.
     /// Hosts call this before applying a resync snapshot.
     pub fn reset(&mut self) {
@@ -165,6 +163,7 @@ impl Store {
         self.generation = 0;
     }
 
+    /// Apply one runtime batch atomically and advance its generation.
     pub fn apply(&mut self, batch: &Batch) -> Result<Applied, BackendError> {
         if batch.generation <= 0 {
             return Err(err(format!(
@@ -178,15 +177,26 @@ impl Store {
                 batch.generation, self.generation
             )));
         }
+        let applied = self.apply_ops(&batch.ops, batch.generation)?;
+        self.generation = batch.generation;
+        Ok(applied)
+    }
+
+    /// Apply host DOM mutations atomically without advancing the runtime stream.
+    pub fn apply_local(&mut self, ops: &[Op]) -> Result<Applied, BackendError> {
+        self.apply_ops(ops, self.generation)
+    }
+
+    fn apply_ops(&mut self, ops: &[Op], generation: i64) -> Result<Applied, BackendError> {
         let mut applied = Applied {
-            generation: batch.generation,
+            generation,
             ..Applied::default()
         };
         // Keep only the first before-image of each touched node. Property
         // patches stay local while a rejected batch restores every link.
         let root = self.root;
         let mut undo = BTreeMap::new();
-        for op in &batch.ops {
+        for op in ops {
             self.record_before(op, &mut undo);
             if let Err(error) = self.apply_op(op, &mut applied) {
                 for (id, node) in undo {
@@ -203,7 +213,6 @@ impl Store {
                 return Err(error);
             }
         }
-        self.generation = batch.generation;
         Ok(applied)
     }
 

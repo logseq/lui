@@ -791,3 +791,126 @@ fn context_menu_leaf_hosts_accept_their_menu_children() {
         );
     }
 }
+
+#[gpui_kit::test]
+fn imperative_input_updates_preserve_runtime_generation(cx: &mut TestAppContext) {
+    mount!(
+        cx,
+        shared,
+        window,
+        r#"{"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"root"},
+        {"op":"create-node","id":2,"kind":"input"},
+        {"op":"set-prop","id":2,"property":"value","value":""},
+        {"op":"insert-child","parent":1,"child":2,"index":0}]}"#
+    );
+    for value in ["imperative", "", ""] {
+        window.update(|window, app| {
+            let input = shared.borrow().views[&2]
+                .read(app)
+                .states
+                .input
+                .as_ref()
+                .unwrap()
+                .clone();
+            input.update(app, |state, cx| state.set_value("typed", window, cx));
+            lui_gpui::domops::handle_dom_op(
+                &shared,
+                "set-value",
+                &serde_json::json!({"ref":{"node-id":2},"value":value}).to_string(),
+                window,
+                app,
+            );
+            assert_eq!(
+                shared
+                    .borrow()
+                    .store
+                    .node(2)
+                    .unwrap()
+                    .string_prop(lui_core::Property::ProgressValue),
+                Some(value)
+            );
+            assert_eq!(input.read(app).value().as_ref(), value);
+            assert_eq!(shared.borrow().store.generation, 1);
+        });
+        window.run_until_parked();
+        window.update(|_, app| {
+            let input = shared.borrow().views[&2]
+                .read(app)
+                .states
+                .input
+                .as_ref()
+                .unwrap()
+                .clone();
+            assert_eq!(input.read(app).value().as_ref(), value);
+        });
+    }
+    window.update(|_, app| {
+        apply_batch_json(
+            &shared,
+            r#"{"generation":2,"ops":[
+        {"op":"set-prop","id":2,"property":"value","value":"model"}]}"#,
+            app,
+        )
+        .unwrap();
+        assert!(apply_batch_json(&shared, r#"{"generation":0,"ops":[]}"#, app).is_err());
+        assert!(apply_batch_json(&shared, r#"{"generation":4,"ops":[]}"#, app).is_err());
+        assert_eq!(shared.borrow().store.generation, 2);
+    });
+}
+
+#[gpui_kit::test]
+fn imperative_dom_mutations_preserve_runtime_generation(cx: &mut TestAppContext) {
+    mount!(
+        cx,
+        shared,
+        window,
+        r#"{"generation":1,"ops":[
+        {"op":"create-node","id":1,"kind":"root"},
+        {"op":"create-node","id":2,"kind":"text"},
+        {"op":"insert-child","parent":1,"child":2,"index":0}]}"#
+    );
+    window.update(|window, app| {
+        for (op, body) in [
+            ("class-add", r#"{"ref":{"node-id":2},"class":"accent"}"#),
+            ("set-text", r#"{"ref":{"node-id":2},"text":"updated"}"#),
+            (
+                "style-set-property",
+                r#"{"ref":{"node-id":2},"property":"color","value":"red"}"#,
+            ),
+            (
+                "style-set-property",
+                r#"{"property":"--gpui-binding-test-color","value":"blue"}"#,
+            ),
+        ] {
+            lui_gpui::domops::handle_dom_op(&shared, op, body, window, app);
+        }
+        {
+            let guard = shared.borrow();
+            let node = guard.store.node(2).unwrap();
+            assert_eq!(
+                node.string_prop(lui_core::Property::StyleClass),
+                Some("accent")
+            );
+            assert_eq!(
+                node.string_prop(lui_core::Property::TextValue),
+                Some("updated")
+            );
+            let attrs: serde_json::Value =
+                serde_json::from_str(node.extension_props["attrs"].as_str().unwrap()).unwrap();
+            assert_eq!(attrs["style"], "color:red");
+            assert!(guard
+                .store
+                .node(1)
+                .unwrap()
+                .extension_props
+                .contains_key("css-vars-rev"));
+            assert_eq!(guard.store.generation, 1);
+        }
+        lui_gpui::domops::handle_dom_op(&shared, "remove", r#"{"ref":{"node-id":2}}"#, window, app);
+        assert!(shared.borrow().store.node(2).is_none());
+        assert!(!shared.borrow().views.contains_key(&2));
+        assert_eq!(shared.borrow().store.generation, 1);
+        apply_batch_json(&shared, r#"{"generation":2,"ops":[]}"#, app).unwrap();
+    });
+}

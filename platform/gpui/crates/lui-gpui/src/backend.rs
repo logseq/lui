@@ -8,7 +8,7 @@ use gpui_kit::gpui::{App, AppContext, Bounds, Entity, EntityId, FocusHandle, Pix
 use lui_core::bridge;
 use lui_core::extension::{ExtensionRegistry, ExtensionSpec};
 use lui_core::store::{Applied, BackendError, Store};
-use lui_core::wire::{decode_batch, DecodeError, Op};
+use lui_core::wire::{decode_batch, Batch, DecodeError, Op};
 use lui_core::EventKind;
 
 use crate::extension::ExtensionRenderer;
@@ -502,6 +502,27 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
             .map_err(ApplyError::Backend)?
     };
 
+    notify_applied(shared, &batch, &applied, cx);
+    Ok(applied)
+}
+
+/// Apply imperative host mutations without consuming a runtime generation.
+pub(crate) fn apply_local_batch_json(
+    shared: &Shared,
+    json: &str,
+    cx: &mut App,
+) -> Result<Applied, ApplyError> {
+    let batch = decode_batch(json).map_err(ApplyError::Decode)?;
+    let applied = shared
+        .borrow_mut()
+        .store
+        .apply_local(&batch.ops)
+        .map_err(ApplyError::Backend)?;
+    notify_applied(shared, &batch, &applied, cx);
+    Ok(applied)
+}
+
+fn notify_applied(shared: &Shared, batch: &Batch, applied: &Applied, cx: &mut App) {
     // Release entities for dropped subtrees first: a fresh node id reuse is
     // impossible (ids are monotonic), so removal order is safe.
     for id in &applied.dropped {
@@ -557,18 +578,18 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
             if guard.virtual_lists.is_empty() {
                 // No virtual lists: the parent walk only exists to remeasure them.
             } else {
-            let mut child = id;
-            while let Some(parent) = guard.store.node(child).and_then(|node| node.parent) {
-                if let Some(list) = guard.virtual_lists.get(&parent) {
-                    if let Some(&index) = list.indices.get(&child) {
-                        list.state.remeasure_items(index..index + 1);
+                let mut child = id;
+                while let Some(parent) = guard.store.node(child).and_then(|node| node.parent) {
+                    if let Some(list) = guard.virtual_lists.get(&parent) {
+                        if let Some(&index) = list.indices.get(&child) {
+                            list.state.remeasure_items(index..index + 1);
+                        }
+                        if let Some(view) = guard.views.get(&parent) {
+                            cx.notify(view.entity_id());
+                        }
                     }
-                    if let Some(view) = guard.views.get(&parent) {
-                        cx.notify(view.entity_id());
-                    }
+                    child = parent;
                 }
-                child = parent;
-            }
             }
         }
         // Notify the nearest ancestor (self included) whose view has
@@ -618,7 +639,6 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
     for view in dirty_views {
         cx.notify(view.entity_id());
     }
-    Ok(applied)
 }
 
 /// Apply a patch payload that may be either one batch object `{ops:[…]}`

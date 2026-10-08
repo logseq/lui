@@ -475,11 +475,11 @@ fn bump_node(shared: &Shared, node_id: i64, cx: &mut App) {
             "value": style::css_vars_rev().to_string(),
         }],
     });
-    let _ = crate::backend::apply_batch_json(shared, &batch.to_string(), cx);
+    let _ = crate::backend::apply_local_batch_json(shared, &batch.to_string(), cx);
 }
 
 fn apply_local(shared: &Shared, batch_json: &str, cx: &mut App) {
-    if let Err(err) = crate::backend::apply_batch_json(shared, batch_json, cx) {
+    if let Err(err) = crate::backend::apply_local_batch_json(shared, batch_json, cx) {
         eprintln!("lui-gpui: dom-op apply failed: {err}");
     }
 }
