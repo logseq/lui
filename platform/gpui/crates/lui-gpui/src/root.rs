@@ -38,11 +38,42 @@ pub struct LuiRootView {
 
 impl LuiRootView {
     pub fn new(shared: Shared) -> Self {
+        shared.borrow_mut().root_owners += 1;
         LuiRootView {
             shared,
             focus: OnceCell::new(),
             appearance: OnceCell::new(),
             keystroke: OnceCell::new(),
+        }
+    }
+}
+
+// Retained entities point back to Shared. Their owner is the root session,
+// so release them explicitly when its last root goes away, including stateful
+// widgets and subscriptions that also retain Shared in their callbacks.
+impl Drop for LuiRootView {
+    fn drop(&mut self) {
+        let mut shared = self.shared.borrow_mut();
+        shared.root_owners -= 1;
+        if shared.root_owners == 0 {
+            shared.views.clear();
+            shared.virtual_lists.clear();
+            shared.node_bounds.clear();
+            shared.focus_nodes.clear();
+            shared.overlay_stack.clear();
+            shared.viewport_watched.clear();
+            shared.imperative_host_view = None;
+            shared.toasts.clear();
+            shared.toast_timers.clear();
+            shared.toast_heights.clear();
+            shared.toast_bounds.clear();
+            shared.toast_drag = None;
+            shared.toast_paused.clear();
+            shared.toast_remaining_ms.clear();
+            shared.menu_highlight = None;
+            shared.last_click_emit = None;
+            shared.painting_lists.clear();
+            shared.imperative_rect_reported.clear();
         }
     }
 }

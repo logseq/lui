@@ -8,10 +8,13 @@ use gpui_kit::component::alert::{Alert, AlertVariant};
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::combobox::{Combobox, ComboboxEvent, ComboboxState};
-use gpui_kit::component::input::{Input, InputEvent, InputState, Textarea, TextareaState};
+use gpui_kit::component::input::{
+    Input, InputEvent, InputState, NumberInput, NumberStep, Textarea, TextareaState,
+};
 use gpui_kit::component::link::Link;
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::radio::Radio;
+use gpui_kit::component::searchable_list::SearchableListDelegate;
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::separator::Separator;
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState, SliderValue};
@@ -37,7 +40,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use crate::backend::{fire, LuiShared, OverlayEntry, Shared};
 use crate::dom;
 use crate::extension;
-use crate::node_view::{LuiNodeView, LuiOption, NodeSnapshot};
+use crate::node_view::{LuiNodeView, LuiOption, LuiOptions, NodeSnapshot};
 use crate::style;
 
 fn element_id(node_id: i64) -> ElementId {
@@ -72,7 +75,7 @@ fn pointer_button_index(button: MouseButton) -> i32 {
 /// is the deepest painted node's style class — the DOM click target's
 /// class list, which model handlers use to distinguish row-body clicks
 /// from clicks on nested action buttons.
-fn fire_pointer_detail<F>(
+pub(crate) fn fire_pointer_detail<F>(
     shared: &Shared,
     node_id: i64,
     event: EventKind,
@@ -111,6 +114,23 @@ where
     })
 }
 
+fn fire_press(
+    shared: &Shared,
+    node_id: i64,
+    modifiers: &Modifiers,
+    button: MouseButton,
+    cx: &mut App,
+) {
+    let mask = pointer_modifier_mask(modifiers, button);
+    fire(shared, node_id, EventKind::PressModifiers, cx, || unsafe {
+        if mask == 0 {
+            bridge::lui_ocaml_press(node_id)
+        } else {
+            bridge::lui_ocaml_press_ex(node_id, mask)
+        }
+    });
+}
+
 /// Emulate DOM click bubbling up the store's parent chain: some kit
 /// elements (Link, buttons) stop MouseDown propagation, so ancestor
 /// nodes never see the click — fire `Press`/`PressDetail` on each
@@ -133,9 +153,7 @@ fn bubble_press(
             let shared_ref = shared.borrow();
             shared_ref.store.node(pid).and_then(|n| n.parent)
         };
-        fire(shared, pid, EventKind::Press, cx, || unsafe {
-            bridge::lui_ocaml_press(pid)
-        });
+        fire_press(shared, pid, modifiers, button, cx);
         fire_pointer_detail(
             shared,
             pid,
@@ -158,9 +176,7 @@ fn press_handler(
 ) -> impl Fn(&ClickEvent, &mut Window, &mut App) + 'static {
     let shared = view.shared.clone();
     move |event, _, cx| {
-        fire(&shared, node_id, EventKind::Press, cx, || unsafe {
-            bridge::lui_ocaml_press(node_id)
-        });
+        fire_press(&shared, node_id, &event.modifiers(), MouseButton::Left, cx);
         // `fire` re-gates admission (pointer-enabled + kind), so a click on
         // a non-pointer node only reports the plain Press. Keyboard/touch
         // activations report the primary button index (0).
@@ -689,6 +705,19 @@ fn text_element(
     element.into_any_element()
 }
 
+fn input_model_value(node: &NodeSnapshot) -> String {
+    if node.identity.kind() == Some(NodeKind::NumberStepper) {
+        return node
+            .float_prop(Property::ProgressValue)
+            .unwrap_or(0.0)
+            .to_string();
+    }
+    node.string_prop(Property::ProgressValue)
+        .or_else(|| node.string_prop(Property::TextValue))
+        .unwrap_or_default()
+        .to_string()
+}
+
 fn input(
     view: &mut LuiNodeView,
     node: &NodeSnapshot,
@@ -702,11 +731,7 @@ fn input(
             .string_prop(Property::PlaceholderValue)
             .unwrap_or("")
             .to_string();
-        let value = node
-            .string_prop(Property::ProgressValue)
-            .or_else(|| node.string_prop(Property::TextValue))
-            .unwrap_or("")
-            .to_string();
+        let value = input_model_value(node);
         let masked = kind == NodeKind::SecureField;
         let state = cx.new(|cx| {
             let mut state = InputState::new(window, cx).placeholder(placeholder);
@@ -725,13 +750,29 @@ fn input(
                 move |_this, state, event: &InputEvent, cx| match event {
                     InputEvent::Change => {
                         let text = state.read(cx).value().to_string();
-                        fire(&shared, node_id, EventKind::TextChanged, cx, || unsafe {
-                            bridge::lui_ocaml_text_changed_utf8(
-                                node_id,
-                                text.as_ptr() as *const std::ffi::c_char,
-                                text.len() as std::ffi::c_int,
-                            )
-                        });
+                        if kind == NodeKind::NumberStepper {
+                            if let Ok(value) = text.trim().parse::<f64>() {
+                                if value.is_finite() {
+                                    fire(
+                                        &shared,
+                                        node_id,
+                                        EventKind::ValueChanged,
+                                        cx,
+                                        || unsafe {
+                                            bridge::lui_ocaml_slider_changed(node_id, value)
+                                        },
+                                    );
+                                }
+                            }
+                        } else {
+                            fire(&shared, node_id, EventKind::TextChanged, cx, || unsafe {
+                                bridge::lui_ocaml_text_changed_utf8(
+                                    node_id,
+                                    text.as_ptr() as *const std::ffi::c_char,
+                                    text.len() as std::ffi::c_int,
+                                )
+                            });
+                        }
                     }
                     InputEvent::PressEnter { .. } => {
                         fire(&shared, node_id, EventKind::Submit, cx, || unsafe {
@@ -761,22 +802,28 @@ fn input(
         view.states.autofocus_done = true;
         window.defer(cx, move |window, cx| handle.focus(window, cx));
     }
-    // Controlled-value echo: push wire `value` into the state, but only
-    // when the prop itself changed (re-emit or a `set-value` op).
-    // Comparing against the live text would fight the user's typing in
-    // uncontrolled fields — the wire prop stays at its mount value.
-    let wire_value = node
-        .string_prop(Property::ProgressValue)
-        .or_else(|| node.string_prop(Property::TextValue))
-        .map(str::to_string);
-    if wire_value != *view.states.input_value_echoed.borrow() {
-        *view.states.input_value_echoed.borrow_mut() = wire_value.clone();
-        if let Some(value) = wire_value {
-            let current = state.read(cx).value().to_string();
-            if value != current {
-                state.update(cx, |state, cx| state.set_value(value, window, cx));
-            }
-        }
+    // A model write is an instruction even when its value is unchanged.
+    // Unrelated redraws leave the local edit and selection untouched.
+    view.states
+        .sync_input_value(input_model_value(node), node.value_revision, window, cx);
+    if kind == NodeKind::NumberStepper {
+        state.update(cx, |state, cx| {
+            state.set_min(node.float_prop(Property::MinValue), window, cx);
+            state.set_max(node.float_prop(Property::MaxValue), window, cx);
+            state.set_step(
+                Some(NumberStep::from(
+                    node.float_prop(Property::StepValue).unwrap_or(1.0),
+                )),
+                window,
+                cx,
+            );
+        });
+        return style::all(
+            NumberInput::new(&state).disabled(!node.enabled()),
+            node,
+            cx.theme(),
+        )
+        .into_any_element();
     }
     let mut input = Input::new(&state);
     if !node.enabled() {
@@ -848,16 +895,8 @@ fn textarea(
             state.set_placeholder(placeholder.to_string(), window, cx)
         });
     }
-    if let Some(value) = node
-        .string_prop(Property::ProgressValue)
-        .or_else(|| node.string_prop(Property::TextValue))
-    {
-        if state.read(cx).value().as_ref() != value {
-            state.update(cx, |state, cx| {
-                state.set_value(value.to_string(), window, cx)
-            });
-        }
-    }
+    view.states
+        .sync_input_value(input_model_value(node), node.value_revision, window, cx);
     let mut element = Textarea::new(&state).disabled(!node.enabled());
     if parent_kind(view, node) == Some(NodeKind::InputGroup) {
         element = element.appearance(false);
@@ -945,12 +984,10 @@ fn option_items(view: &LuiNodeView, node: &NodeSnapshot) -> Vec<LuiOption> {
 }
 
 /// Push the option list into the state's delegate only when the source
-/// node ids changed — re-setting items mid-render resets the search
-/// query otherwise.
+/// option contents changed. Stable delegates preserve the active search.
 fn sync_options(view: &LuiNodeView, items: Vec<LuiOption>, set: impl FnOnce(Vec<LuiOption>)) {
-    let ids: Vec<i64> = items.iter().map(|item| item.node_id).collect();
-    if *view.states.options_cache.borrow() != ids {
-        *view.states.options_cache.borrow_mut() = ids;
+    if *view.states.options_cache.borrow() != items {
+        *view.states.options_cache.borrow_mut() = items.clone();
         set(items);
     }
 }
@@ -985,12 +1022,15 @@ fn select_picker(
         return element.into_any_element();
     }
     if view.states.select.is_none() {
-        let state = cx
-            .new(|cx| SelectState::new(Vec::<LuiOption>::new(), None, window, cx).searchable(true));
+        let query = view.states.options_query.clone();
+        let state = cx.new(|cx| {
+            let items = LuiOptions::new(Vec::new(), query, window, cx);
+            SelectState::new(items, None, window, cx).searchable(true)
+        });
         let shared = view.shared.clone();
         let subscription = cx.subscribe(
             &state,
-            move |_this, _state, event: &SelectEvent<Vec<LuiOption>>, cx| {
+            move |_this, _state, event: &SelectEvent<LuiOptions>, cx| {
                 if let SelectEvent::Confirm(Some(item_id)) = event {
                     let item_id = *item_id;
                     fire(&shared, item_id, EventKind::Press, cx, || unsafe {
@@ -1003,8 +1043,21 @@ fn select_picker(
         view.states.select = Some(state);
     }
     let state = view.states.select.clone().expect("initialized");
+    let query = view.states.options_query.clone();
     sync_options(view, items, |items| {
-        state.update(cx, |state, cx| state.set_items(items, window, cx));
+        state.update(cx, |state, cx| {
+            let selected = state.selected_value().copied();
+            let selected_exists = selected.is_some_and(|id| items.iter().any(|item| item.node_id == id));
+            let items = LuiOptions::new(items, query, window, cx);
+            let index = selected.and_then(|value| items.position(&value));
+            state.set_items(items, window, cx);
+            // Preserve the list's uncommitted search cursor and selections
+            // temporarily excluded by the query.
+            if selected.is_some() && (index.is_some() || !selected_exists) {
+                state.set_selected_index(index, window, cx);
+            }
+            cx.notify();
+        });
     });
     let mut element = Select::new(&state);
     element = element.placeholder(if text_of(node).is_empty() {
@@ -1044,17 +1097,19 @@ fn combobox_picker(
         };
     }
     if view.states.combobox.is_none() {
+        let query = view.states.options_query.clone();
         let state = cx.new(|cx| {
-            ComboboxState::new(Vec::<LuiOption>::new(), Vec::new(), window, cx).searchable(true)
+            let items = LuiOptions::new(Vec::new(), query, window, cx);
+            ComboboxState::new(items, Vec::new(), window, cx).searchable(true)
         });
         let shared = view.shared.clone();
         let subscription = cx.subscribe(
             &state,
-            move |_this, _state, event: &ComboboxEvent<Vec<LuiOption>>, cx| {
+            move |_this, _state, event: &ComboboxEvent<LuiOptions>, cx| {
                 let item_id = match event {
-                    ComboboxEvent::Confirm(values) | ComboboxEvent::Change(values) => {
-                        values.first().copied()
-                    }
+                    ComboboxEvent::Change(values) => values.first().copied(),
+                    // Confirm is also emitted when closing/canceling the popup.
+                    ComboboxEvent::Confirm(_) => None,
                 };
                 if let Some(item_id) = item_id {
                     let title = shared
@@ -1087,8 +1142,19 @@ fn combobox_picker(
         view.states.combobox = Some(state);
     }
     let state = view.states.combobox.clone().expect("initialized");
+    let query = view.states.options_query.clone();
     sync_options(view, items, |items| {
-        state.update(cx, |state, cx| state.set_items(items, window, cx));
+        state.update(cx, |state, cx| {
+            let selected = state.selected_values();
+            let search = state.query(cx).to_string();
+            state.set_items(LuiOptions::new(items, query, window, cx), window, cx);
+            // Resolve committed values in the full list, then restore the
+            // user's search so hidden selections survive option patches.
+            state.set_selected_values(&selected, window, cx);
+            if !search.is_empty() {
+                state.set_query(search, window, cx);
+            }
+        });
     });
     let mut element = Combobox::new(&state);
     let label = text_of(node);
@@ -3321,8 +3387,10 @@ pub fn render_node(
         // slots); an unconditional flex_1() inflates those anchors
         // into blank gaps (e.g. the cmdk scroller's filter/empty
         // placeholders). Explicit ~grow still lands via GrowValue.
-        NodeKind::Spacer => div().into_any_element(),
-        NodeKind::Spinner => Spinner::new().into_any_element(),
+        NodeKind::Spacer => style::all(div(), node, cx.theme()).into_any_element(),
+        NodeKind::Spinner => {
+            style::all(div().child(Spinner::new()), node, cx.theme()).into_any_element()
+        }
         NodeKind::Icon => match icon_name(node, Property::InlineIconName)
             .or_else(|| icon_name(node, Property::IconName))
         {
@@ -3368,15 +3436,13 @@ pub fn render_node(
             element = element
                 .children(view.child_elements(node, cx))
                 .on_click(move |event: &ClickEvent, _, cx| {
-                    fire(&shared, node_id, EventKind::Press, cx, || unsafe {
-                        bridge::lui_ocaml_press(node_id)
-                    });
                     let button = match event {
                         ClickEvent::Mouse(mouse) => mouse.down.button,
                         _ => MouseButton::Left,
                     };
                     let position = event.position();
                     let modifiers = event.modifiers();
+                    fire_press(&shared, node_id, &modifiers, button, cx);
                     fire_pointer_detail(
                         &shared,
                         node_id,

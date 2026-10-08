@@ -310,6 +310,8 @@ impl NodeKind {
                 | NodeKind::BottomTab
                 | NodeKind::ButtonGroup
                 | NodeKind::ToggleGroup
+                | NodeKind::Select
+                | NodeKind::Combobox
                 | NodeKind::DropdownMenu
                 | NodeKind::ContextMenu
                 | NodeKind::MenuItem

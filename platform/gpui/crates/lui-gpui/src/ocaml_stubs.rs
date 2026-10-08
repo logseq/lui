@@ -11,6 +11,17 @@ use std::sync::Mutex;
 #[derive(Debug, Clone, PartialEq)]
 pub enum RecordedEvent {
     Press(i64),
+    PressModifiers {
+        node: i64,
+        modifiers: i32,
+    },
+    Appear(i64),
+    LongPress(i64),
+    DoublePress(i64),
+    PointerDown(i64),
+    PointerUp(i64),
+    PointerEnter(i64),
+    PointerLeave(i64),
     TextChanged { node: i64, text: String },
     Submit(i64),
     Dismiss(i64),
@@ -183,6 +194,68 @@ pub unsafe extern "C" fn lui_ocaml_extension_event(
         name: unsafe { cstr(name) },
         json: unsafe { cstr(json_values) },
     });
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_press_ex(node: i64, modifiers: c_int) -> c_int {
+    record(RecordedEvent::PressModifiers { node, modifiers });
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_appear(node: i64) -> c_int {
+    record(RecordedEvent::Appear(node));
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_long_press(node: i64) -> c_int {
+    record(RecordedEvent::LongPress(node));
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_double_press(node: i64) -> c_int {
+    record(RecordedEvent::DoublePress(node));
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_pointer_enter(node: i64) -> c_int {
+    record(RecordedEvent::PointerEnter(node));
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_pointer_leave(node: i64) -> c_int {
+    record(RecordedEvent::PointerLeave(node));
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_pointer_down(
+    node: i64,
+    _x: c_double,
+    _y: c_double,
+    _modifiers: c_int,
+    _button: c_int,
+    _target_class: *const c_char,
+) -> c_int {
+    record(RecordedEvent::PointerDown(node));
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_pointer_up(
+    node: i64,
+    _x: c_double,
+    _y: c_double,
+    _modifiers: c_int,
+    _button: c_int,
+    _target_class: *const c_char,
+) -> c_int {
+    record(RecordedEvent::PointerUp(node));
     0
 }
 

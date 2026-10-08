@@ -129,9 +129,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: platform/gpui -> target
+          cache-on-failure: true
       - name: lui-core tests
         working-directory: platform/gpui
-        run: cargo test -p lui-core
+        run: cargo test -p lui-core --locked
+
+  gpui-tests:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: platform/gpui -> target
+          cache-on-failure: true
+      - name: GPUI renderer and core tests
+        working-directory: platform/gpui
+        run: cargo test -p lui-core -p lui-gpui --locked
 
   c-bridge-stress:
     runs-on: ubuntu-latest
@@ -142,4 +160,3 @@ jobs:
           ocaml-compiler: "5.5"
       - name: GC stress the native pointer bridge
         run: opam exec -- sh platform/native/stress/run.sh
-

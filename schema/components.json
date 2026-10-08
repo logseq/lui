@@ -619,13 +619,13 @@
       "lg": "Select",
       "wire": "select",
       "swift": "select",
-      "container": false
+      "container": true
     },
     {
       "lg": "Combobox",
       "wire": "combobox",
       "swift": "combobox",
-      "container": false
+      "container": true
     },
     {
       "lg": "DropdownMenu",
