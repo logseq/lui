@@ -61,6 +61,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -268,7 +270,11 @@ private fun LuiNodeContent(
         LuiNodeKind.timeline,
         -> Column(
             modifier = modifier,
-            verticalArrangement = Arrangement.spacedBy(gapOf(node).dp),
+            verticalArrangement = Arrangement.spacedBy(
+                gapOf(node).dp,
+                alignment = mainVerticalAlignment(node.propString("main")),
+            ),
+            horizontalAlignment = crossHorizontalAlignment(node.propString("cross")),
         ) {
             children.forEachNode { childId -> GrowChildColumn(backend, childId) }
         }
@@ -320,7 +326,10 @@ private fun LuiNodeContent(
             color = luiThemeColor(node.propString("foreground"), foreground = true)
                 ?: Color.Unspecified,
             textAlign = textAlignment(node.propString("text-alignment")),
-            style = LuiTypography.textStyleForSize(node.propString("size")),
+            style = LuiTypography.textStyle(
+                node.propString("size"),
+                node.propString("style-class"),
+            ),
         )
 
         LuiNodeKind.heading -> Text(
@@ -619,6 +628,18 @@ private fun LuiNodeContent(
 }
 
 private fun mainHorizontalAlignment(name: String?): Alignment.Horizontal = when (name) {
+    "center" -> Alignment.CenterHorizontally
+    "end" -> Alignment.End
+    else -> Alignment.Start
+}
+
+private fun mainVerticalAlignment(name: String?): Alignment.Vertical = when (name) {
+    "center" -> Alignment.CenterVertically
+    "end" -> Alignment.Bottom
+    else -> Alignment.Top
+}
+
+private fun crossHorizontalAlignment(name: String?): Alignment.Horizontal = when (name) {
     "center" -> Alignment.CenterHorizontally
     "end" -> Alignment.End
     else -> Alignment.Start
@@ -930,6 +951,12 @@ private fun LuiButton(
             onClick = onClick,
             modifier = modifier,
             enabled = enabled,
+            // Borderless buttons use the accent in Compose, but the Apple
+            // backend renders them with the dark foreground — match it so
+            // header/toolbar glyphs are not tinted primary.
+            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                contentColor = foreground ?: MaterialTheme.colorScheme.onSurface,
+            ),
         ) { label() }
     }
 }
@@ -970,6 +997,8 @@ private fun LuiTextControl(
     val combobox = node.kind == LuiNodeKind.combobox
     val enabled = node.isEnabled()
     val grouped = node.parent?.let { backend.node(it)?.kind } == LuiNodeKind.inputGroup
+    val borderless = (node.propString("style-class") ?: "").split(' ')
+        .contains("composer-input")
 
     // Local text keeps typing responsive; the model's `text` prop re-syncs
     // when a patch changes it.
@@ -977,46 +1006,77 @@ private fun LuiTextControl(
     val modelText = node.text()
     LaunchedEffect(modelText) { if (modelText != localText) localText = modelText }
 
-    OutlinedTextField(
-        value = localText,
-        onValueChange = { value ->
-            localText = value
-            backend.emit(LuiEvent.TextChanged(id, value))
-        },
-        modifier = modifier.then(
-            if (grouped) Modifier.fillMaxWidth() else Modifier.width(240.dp),
-        ),
-        enabled = enabled,
-        placeholder = node.propString("placeholder")?.let { p -> { Text(p) } },
-        singleLine = !multiline,
-        minLines = if (multiline) 3 else 1,
-        visualTransformation = if (secure) {
-            androidx.compose.ui.text.input.PasswordVisualTransformation()
-        } else {
-            androidx.compose.ui.text.input.VisualTransformation.None
-        },
-        trailingIcon = if (combobox || search) {
-            {
-                Icon(
-                    if (combobox) Icons.Filled.KeyboardArrowDown else backend.icons.icon("search") ?: Icons.Filled.Search,
-                    contentDescription = null,
-                    modifier = if (combobox && enabled) {
-                        Modifier.pointerInput(id) {
-                            detectTapGestures { backend.emit(LuiEvent.Press(id)) }
-                        }
-                    } else {
-                        Modifier
-                    },
-                )
-            }
-        } else {
-            null
-        },
-        textStyle = MaterialTheme.typography.bodyMedium.copy(
-            color = luiThemeColor(node.propString("foreground"), foreground = true)
-                ?: MaterialTheme.colorScheme.onSurface,
-        ),
+    val fieldModifier = modifier.then(
+        if (grouped || borderless) Modifier.fillMaxWidth() else Modifier.width(240.dp),
     )
+    val fieldTextStyle = MaterialTheme.typography.bodyMedium.copy(
+        color = luiThemeColor(node.propString("foreground"), foreground = true)
+            ?: MaterialTheme.colorScheme.onSurface,
+    )
+    val onValueChange: (String) -> Unit = { value ->
+        localText = value
+        backend.emit(LuiEvent.TextChanged(id, value))
+    }
+    val placeholderContent: (@Composable () -> Unit)? =
+        node.propString("placeholder")?.let { p -> { Text(p) } }
+    val transformation = if (secure) {
+        androidx.compose.ui.text.input.PasswordVisualTransformation()
+    } else {
+        androidx.compose.ui.text.input.VisualTransformation.None
+    }
+    val trailing: (@Composable () -> Unit)? = if (combobox || search) {
+        {
+            Icon(
+                if (combobox) Icons.Filled.KeyboardArrowDown else backend.icons.icon("search") ?: Icons.Filled.Search,
+                contentDescription = null,
+                modifier = if (combobox && enabled) {
+                    Modifier.pointerInput(id) {
+                        detectTapGestures { backend.emit(LuiEvent.Press(id)) }
+                    }
+                } else {
+                    Modifier
+                },
+            )
+        }
+    } else {
+        null
+    }
+
+    if (borderless) {
+        TextField(
+            value = localText,
+            onValueChange = onValueChange,
+            modifier = fieldModifier,
+            enabled = enabled,
+            placeholder = placeholderContent,
+            singleLine = !multiline,
+            minLines = if (multiline) 3 else 1,
+            visualTransformation = transformation,
+            trailingIcon = trailing,
+            textStyle = fieldTextStyle,
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                disabledContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                disabledIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+            ),
+        )
+    } else {
+        OutlinedTextField(
+            value = localText,
+            onValueChange = onValueChange,
+            modifier = fieldModifier,
+            enabled = enabled,
+            placeholder = placeholderContent,
+            singleLine = !multiline,
+            minLines = if (multiline) 3 else 1,
+            visualTransformation = transformation,
+            trailingIcon = trailing,
+            textStyle = fieldTextStyle,
+        )
+    }
 }
 
 @Composable
@@ -1638,12 +1698,19 @@ private fun LuiDrawer(
     val presented = node.propBool("selected")
     val width = node.propInt("width", 320)
     val enabled = node.isEnabled()
+    // Android back closes the drawer instead of leaving the app — mirrors
+    // tapping the scrim.
+    androidx.activity.compose.BackHandler(
+        enabled = presented && enabled && node.propBool("toggle-enabled"),
+    ) {
+        backend.emit(LuiEvent.ToggleChanged(id, false))
+    }
     Box(modifier.fillMaxSize()) {
         children.firstOrNull()?.let { LuiNodeView(backend, it) }
         if (presented) {
             Box(
                 Modifier.fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.32f))
+                    .background(Color.Black.copy(alpha = 0f))
                     .pointerInput(id) {
                         detectTapGestures {
                             if (enabled && node.propBool("toggle-enabled")) {
