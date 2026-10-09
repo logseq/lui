@@ -10,6 +10,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -200,5 +202,36 @@ object LuiTypography {
             "display" -> theme.displaySmall
             else -> theme.bodyMedium
         }
+    }
+
+    /**
+     * Mirrors the Apple backend's `LUITextView.font`: `style-class` tokens
+     * pick the text style (title2/headline/subheadline/caption/footnote),
+     * headline and subheadline render semibold, `semibold` forces it, and
+     * `mono` switches to a monospaced family. `size` remains the base
+     * mapping when no style-class token matches.
+     */
+    @Composable
+    fun textStyle(size: String?, styleClass: String?): TextStyle {
+        val theme = MaterialTheme.typography
+        val classes = styleClass?.split(' ') ?: emptyList()
+        var style: TextStyle = when {
+            classes.contains("title2") -> theme.titleLarge
+            classes.contains("headline") -> theme.bodyLarge
+            classes.contains("subheadline") -> theme.bodyMedium
+            classes.contains("caption") -> theme.bodySmall
+            classes.contains("footnote") -> theme.labelMedium
+            else -> textStyleForSize(size)
+        }
+        if (classes.contains("semibold") ||
+            classes.contains("headline") ||
+            classes.contains("subheadline")
+        ) {
+            style = style.copy(fontWeight = FontWeight.SemiBold)
+        }
+        if (classes.contains("mono")) {
+            style = style.copy(fontFamily = FontFamily.Monospace)
+        }
+        return style
     }
 }
