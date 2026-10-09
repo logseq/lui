@@ -759,6 +759,9 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::StyleClass,
             Property::DataAttrs,
             Property::PointerEnabled,
+            Property::PaddingValue,
+            Property::PaddingHorizontal,
+            Property::PaddingVertical,
         ]),
         NodeKind::Toolbar => Some(&[
             Property::OrientationValue,

@@ -1648,12 +1648,27 @@ let mount_popover renderer node =
       let popup = Lui_web_util.child_element positioner 0 in
       W.Element.setAttribute "id"
         (Lui_web_util.node_dom_id node ^ "-popup") popup;
-      if Store.property renderer.web_store node PopupX = None
-         && Store.property renderer.web_store node AnchorValue = None
-      then W.Element.setAttribute "data-cover" "" positioner;
+      let cover = Store.property renderer.web_store node PopupX = None
+         && Store.property renderer.web_store node AnchorValue = None in
+      if cover then W.Element.setAttribute "data-cover" "" positioner;
+      Lui_web_layers.set_policy renderer.web_layers renderer.web_document node
+        (if cover then Lui_web_layers.Blocking else Lui_web_layers.Nonblocking);
       W.Element.removeAttribute "inert" popup;
       Lui_web_layers.reconcile_owner renderer.web_layers
         renderer.web_document node current.retained_parent;
+      let trigger =
+        if popover_positioned renderer node then
+          Some (Lui_web_nodes.dropdown_anchor_node renderer node)
+        else if cover then None
+        else
+          let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
+          match W.HtmlDocument.activeElement document, W.HtmlDocument.body document with
+          | Some active, Some body when not (W.Element.isSameNode
+              (W.Element.asNode active) body) -> Some active
+          | _ -> None
+      in
+      Lui_web_layers.reconcile_trigger renderer.web_layers
+        renderer.web_document node trigger;
       Lui_web_layers.open_layer renderer.web_layers renderer.web_document
         node;
       begin_popup_open popup;

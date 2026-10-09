@@ -71,5 +71,9 @@ function setupContextTracking(){
   window.audit.context={host,menu,grow,activations:[],remove:()=>{drop(host);flush();}};
   grow(2);
 }
-window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,setupContextTracking,openSheet,closeSheet,sheetInput:null};
+function addToast(text,duration=0){const toast=node("toast",root,{duration,padding:16});node("text",toast,{text});handlers.set(toast,()=>{drop(toast);flush();});flush();return toast;}
+function openCover(name){const cover=node("popover",root);const body=node("column",cover,{padding:24,width:400});node("input",body,{placeholder:name,autofocus:true});handlers.set(cover,()=>{drop(cover);flush();});flush();return cover;}
+function alignedOverlays(){for(const alignment of ['top-leading','top','top-trailing','leading','center','trailing','bottom-leading','bottom','bottom-trailing']){const overlay=node('overlay',root,{width:200,height:100,'accessibility-identifier':`overlay-${alignment}`});node('box',overlay,{width:200,height:100});node('box',overlay,{width:20,height:20,alignment});}flush();}
+function togglePopover(){const stack=node('row',root);let popup=null;function close(){if(popup){drop(popup);popup=null;flush();}}button(stack,'Toggle anchored popup',()=>{if(popup){close();return;}popup=node('popover',stack,{anchor:'below'});node('text',popup,{text:'Anchored popup content'});handlers.set(popup,close);flush();});flush();}
+window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,setupContextTracking,openSheet,closeSheet,addToast,openCover,alignedOverlays,togglePopover,sheetInput:null};
 </script>

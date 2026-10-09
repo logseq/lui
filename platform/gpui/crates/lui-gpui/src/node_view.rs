@@ -235,7 +235,7 @@ fn container_direction(kind: Option<NodeKind>) -> Option<bool> {
 /// Immutable per-render copy of one node's state. Render never holds the
 /// shared borrow while building elements (child entities are created via
 /// `cx.new`, which must not overlap a store borrow).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NodeSnapshot {
     pub id: i64,
     pub identity: NodeIdentity,
@@ -538,7 +538,9 @@ impl LuiNodeView {
     }
 
     pub fn snapshot(&self) -> Option<NodeSnapshot> {
-        NodeSnapshot::snapshot(&self.shared.borrow().store, self.id)
+        let shared = self.shared.borrow();
+        NodeSnapshot::snapshot(&shared.store, self.id)
+            .or_else(|| shared.closing_nodes.get(&self.id).cloned())
     }
 
     /// Entity handle for a child node (creating on demand). Used by every
@@ -557,7 +559,11 @@ impl LuiNodeView {
         node.children
             .iter()
             .copied()
-            .filter(|child_id| self.shared.borrow().store.node(*child_id).is_some())
+            .filter(|child_id| {
+                let shared = self.shared.borrow();
+                shared.store.node(*child_id).is_some()
+                    || shared.closing_nodes.contains_key(child_id)
+            })
             .map(|child_id| Self::element_for(&self.shared, child_id, cx))
             .collect()
     }
@@ -726,6 +732,7 @@ impl Render for LuiNodeView {
                 .get(&self.id)
                 .is_none_or(|list| list.children_dirty);
             NodeSnapshot::snapshot_with_children(&shared.store, self.id, include_children)
+                .or_else(|| shared.closing_nodes.get(&self.id).cloned())
         };
         let Some(node) = node else {
             // Node dropped since last notify; render nothing.

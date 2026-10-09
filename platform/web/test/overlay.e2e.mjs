@@ -35,6 +35,17 @@ async function clickButton(name) {
   await browser("click-button", name)
 }
 
+test("Anchored popover trigger toggles without outside-press reopening", async () => {
+  await openLayerRegressionPage()
+  await evaluate('window.audit.togglePopover()')
+  for (let cycle = 0; cycle < 3; cycle++) {
+    await clickButton('Toggle anchored popup')
+    assert.equal(await session.page.locator('.lui-popover[data-open]').count(), 1)
+    await clickButton('Toggle anchored popup')
+    assert.equal(await session.page.locator('.lui-popover[data-open]').count(), 0)
+  }
+})
+
 async function state(expression) {
   const output = await evaluate(`JSON.stringify(${expression})`)
   return JSON.parse(JSON.parse(output))
@@ -2097,6 +2108,86 @@ test("Toolbar input keeps editing keys until its caret reaches a boundary", asyn
       { key: "ArrowLeft", prevented: true, focusedText: "Bold", inputFocused: false },
     ],
   )
+})
+
+test("Toast mounted inside a hovered viewport inherits the paused duration", async () => {
+  await openLayerRegressionPage()
+  await evaluate(`window.audit.addToast('Persistent notification')`)
+  await browser('hover', '.lui-toast')
+  await evaluate(`window.audit.addToast('New notification', 400)`)
+  await browser('wait', '650')
+  assert.equal(await state(`document.querySelectorAll('.lui-toast[data-open]').length`), 2)
+  assert.equal(await state(`document.querySelectorAll('.lui-toast[data-expanded]').length`), 2)
+  await browser('hover', 'h1')
+  await browser('wait', '650')
+  assert.equal(await state(`document.querySelectorAll('.lui-toast[data-open]').length`), 1)
+})
+
+test("Cover popovers retain parent dialogs when the next layer receives focus", async () => {
+  await openLayerRegressionPage()
+  await evaluate(`window.audit.openCover('Parent dialog')`)
+  await browser('wait', '--fn', `document.activeElement?.placeholder === 'Parent dialog'`)
+  await evaluate(`window.audit.openCover('Child dialog')`)
+  await browser('wait', '--fn', `document.activeElement?.placeholder === 'Child dialog'`)
+  assert.equal(await state(`document.querySelectorAll('.lui-popover[data-open]').length`), 2)
+  await browser('press', 'Escape')
+  await browser('wait', '200')
+  assert.equal(await state(`document.querySelectorAll('.lui-popover[data-open]').length`), 1)
+  assert.equal(await state(`document.querySelector('input').placeholder`), 'Parent dialog')
+})
+
+test("Overlay alignment clears the centered inset on trailing and bottom edges", async () => {
+  await openLayerRegressionPage()
+  await evaluate(`window.audit.alignedOverlays()`)
+  const positions = await state(`Array.from(document.querySelectorAll('[id^=overlay-]')).map(overlay => {
+    const parent = overlay.getBoundingClientRect(), child = overlay.lastElementChild.getBoundingClientRect()
+    return [child.left - parent.left, child.top - parent.top]
+  })`)
+  assert.deepEqual(positions, [[0,0],[90,0],[180,0],[0,40],[90,40],[180,40],[0,80],[90,80],[180,80]])
+})
+
+test("Toast F6 focuses the newest active notification", async () => {
+  await openLayerRegressionPage()
+  await evaluate(`window.audit.addToast('Older notification'); window.audit.addToast('Newest notification')`)
+  await browser('press', 'F6')
+  assert.equal(await state(`document.activeElement.textContent`), 'Newest notification')
+})
+
+test("Toast owns measured stacking and retains its content through exit", async () => {
+  await openGalleryPage("Toast")
+  await clickButton("Show notifications")
+  await browser('wait', '--fn', "document.querySelector('.lui-toast')?.style.getPropertyValue('--toast-height')")
+  const metrics = await state(`Array.from(document.querySelectorAll('.lui-toast')).map(toast => ({
+    index: toast.style.getPropertyValue('--toast-index'),
+    height: parseFloat(toast.style.getPropertyValue('--toast-height')),
+    offset: parseFloat(toast.style.getPropertyValue('--toast-offset-y')),
+  }))`)
+  assert.deepEqual(metrics.map(metric => metric.index), ['1', '0'])
+  assert.ok(metrics.every(metric => metric.height > 0))
+  assert.equal(metrics[1].offset, 0)
+  await browser('hover', '.lui-toast:last-child')
+  assert.equal(await state(`document.querySelectorAll('.lui-toast[data-expanded]').length`), 2)
+  await evaluate(`document.querySelector('.lui-toast:last-child button').click()`)
+  assert.equal(await state(`Array.from(document.querySelectorAll('.lui-toast[data-ending-style]')).some(toast => toast.textContent.includes('Synced'))`), true)
+  await browser('wait', '600')
+  assert.equal(await state(`document.querySelectorAll('.lui-toast[data-ending-style]').length`), 0)
+})
+
+test("Toast enters over rendered frames and reduced motion exits immediately", async () => {
+  await openGalleryPage('Toast')
+  const startingOpacity = await state(`(() => {
+    Array.from(document.querySelectorAll('button')).find(button => button.textContent.trim() === 'Show notifications').click()
+    return Number(getComputedStyle(document.querySelector('.lui-toast:last-child')).opacity)
+  })()`)
+  assert.equal(startingOpacity, 0)
+  await browser('wait', '100')
+  const enteringOpacity = await state(`Number(getComputedStyle(document.querySelector('.lui-toast:last-child')).opacity)`)
+  assert.ok(enteringOpacity > 0 && enteringOpacity < 1)
+  await browser('wait', '300')
+  assert.equal(await state(`Number(getComputedStyle(document.querySelector('.lui-toast:last-child')).opacity)`), 1)
+  await browser('set', 'media', 'light', 'reduced-motion')
+  await evaluate(`document.querySelector('.lui-toast:last-child button').click()`)
+  assert.equal(await state(`document.querySelectorAll('.lui-toast').length`), 0)
 })
 
 test("Toast portals stable updates and supports Base UI down/right touch dismissal", async () => {

@@ -440,47 +440,47 @@ body {
 
   .lui-overlay > [data-alignment='top-leading'],
   .lui-overlay[data-alignment='top-leading'] > :not(:first-child):not([data-alignment]) {
-    @apply left-0 top-0 translate-x-0 translate-y-0;
+    @apply left-0 right-auto top-0 bottom-auto translate-x-0 translate-y-0;
   }
 
   .lui-overlay > [data-alignment='top'],
   .lui-overlay[data-alignment='top'] > :not(:first-child):not([data-alignment]) {
-    @apply left-1/2 top-0 -translate-x-1/2 translate-y-0;
+    @apply left-1/2 right-auto top-0 bottom-auto -translate-x-1/2 translate-y-0;
   }
 
   .lui-overlay > [data-alignment='top-trailing'],
   .lui-overlay[data-alignment='top-trailing'] > :not(:first-child):not([data-alignment]) {
-    @apply right-0 top-0 translate-x-0 translate-y-0;
+    @apply left-auto right-0 top-0 bottom-auto translate-x-0 translate-y-0;
   }
 
   .lui-overlay > [data-alignment='leading'],
   .lui-overlay[data-alignment='leading'] > :not(:first-child):not([data-alignment]) {
-    @apply left-0 top-1/2 translate-x-0 -translate-y-1/2;
+    @apply left-0 right-auto top-1/2 bottom-auto translate-x-0 -translate-y-1/2;
   }
 
   .lui-overlay > [data-alignment='center'],
   .lui-overlay[data-alignment='center'] > :not(:first-child):not([data-alignment]) {
-    @apply left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2;
+    @apply left-1/2 right-auto top-1/2 bottom-auto -translate-x-1/2 -translate-y-1/2;
   }
 
   .lui-overlay > [data-alignment='trailing'],
   .lui-overlay[data-alignment='trailing'] > :not(:first-child):not([data-alignment]) {
-    @apply right-0 top-1/2 translate-x-0 -translate-y-1/2;
+    @apply left-auto right-0 top-1/2 bottom-auto translate-x-0 -translate-y-1/2;
   }
 
   .lui-overlay > [data-alignment='bottom-leading'],
   .lui-overlay[data-alignment='bottom-leading'] > :not(:first-child):not([data-alignment]) {
-    @apply bottom-0 left-0 translate-x-0 translate-y-0;
+    @apply top-auto bottom-0 left-0 right-auto translate-x-0 translate-y-0;
   }
 
   .lui-overlay > [data-alignment='bottom'],
   .lui-overlay[data-alignment='bottom'] > :not(:first-child):not([data-alignment]) {
-    @apply bottom-0 left-1/2 -translate-x-1/2 translate-y-0;
+    @apply top-auto bottom-0 left-1/2 right-auto -translate-x-1/2 translate-y-0;
   }
 
   .lui-overlay > [data-alignment='bottom-trailing'],
   .lui-overlay[data-alignment='bottom-trailing'] > :not(:first-child):not([data-alignment]) {
-    @apply bottom-0 right-0 translate-x-0 translate-y-0;
+    @apply top-auto bottom-0 left-auto right-0 translate-x-0 translate-y-0;
   }
 
   .lui-view-that-fits {
@@ -558,13 +558,19 @@ body {
     @apply ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 
-  .lui-toast-viewport:not(:hover):not(:focus-within) > .lui-toast:not(:last-child) {
+  :where(.lui-toast-viewport:not(:hover):not(:focus-within) > .lui-toast:not(:last-child)) {
     margin-bottom: -3rem;
     transform: translateY(0.5rem) scale(0.96);
   }
 
   .lui-toast[data-swiping] {
     transition: none;
+  }
+
+  .lui-toast[data-starting-style],
+  .lui-toast[data-ending-style] {
+    opacity: 0;
+    transform: translateY(1rem);
   }
 
   .lui-accordion {

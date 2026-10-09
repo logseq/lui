@@ -986,14 +986,60 @@ let mount_tooltip_bang = mount_tooltip
 
 let toast_duration renderer node = Store.toast_duration renderer node
 
-let first_toast_node renderer toast =
+let active_toasts renderer =
   let children = W.Element.children renderer.web_toast_viewport in
-  match W.HtmlCollection.item 0 children with
-  | Some first_toast ->
-      W.Element.isSameNode (W.Element.asNode first_toast) toast
-  | None -> false
+  let rec collect index result =
+    match W.HtmlCollection.item index children with
+    | None -> List.rev result
+    | Some child ->
+        collect (index + 1)
+          (if W.Element.hasAttribute "data-ending-style" child then result
+           else child :: result)
+  in
+  collect 0 []
 
-let first_toast_node_ = first_toast_node
+let refresh_toasts renderer =
+  let toasts = List.rev (active_toasts renderer) in
+  let offset = ref 0 in
+  let front_height = ref None in
+  List.iteri (fun index toast ->
+      (* Clear the assigned height before reading intrinsic layout, so a
+         retained notification can shrink after its content changes. *)
+      set_style_on toast "--toast-height" "";
+      set_style_on toast "--toast-frontmost-height" "";
+      let height = W.HtmlElement.offsetHeight (W.Element.unsafeAsHtmlElement toast) in
+      if index = 0 then front_height := Some height;
+      set_style_on toast "--toast-index" (string_of_int index);
+      set_style_on toast "--toast-height" (string_of_int height ^ "px");
+      set_style_on toast "--toast-frontmost-height"
+        (string_of_int (Option.get !front_height) ^ "px");
+      set_style_on toast "--toast-offset-y" (string_of_int !offset ^ "px");
+      offset := !offset + height)
+    toasts
+
+let expand_toasts renderer expanded =
+  List.iter (fun toast ->
+      if expanded then W.Element.setAttribute "data-expanded" "" toast
+      else W.Element.removeAttribute "data-expanded" toast)
+    (active_toasts renderer)
+
+let remove_toast_after_exit renderer toast =
+  ignore (begin_popup_close toast);
+  W.Element.setAttribute "inert" "" toast;
+  W.Element.removeAttribute "role" toast;
+  refresh_toasts renderer;
+  ignore (after_transition renderer.web_document toast 500 true (fun () ->
+      (match W.Element.parentElement toast with
+       | Some parent -> ignore (W.Element.removeChild (W.Element.asNode toast) parent)
+       | None -> ());
+      refresh_toasts renderer;
+      true))
+
+let frontmost_toast_node renderer toast =
+  match List.rev (active_toasts renderer) with
+  | first_toast :: _ ->
+      W.Element.isSameNode (W.Element.asNode first_toast) toast
+  | [] -> false
 
 type toast_state = {
   toast_timer : Js.Global.timeoutId option ref;
@@ -1054,18 +1100,22 @@ let toast_resume ctx =
 
 let toast_pointer_enter ctx _event =
   ctx.toast_state.pointer_inside := true;
+  expand_toasts ctx.toast_renderer true;
   toast_cancel ctx
 
 let toast_pointer_leave ctx _event =
   ctx.toast_state.pointer_inside := false;
+  if not !(ctx.toast_state.focus_inside) then expand_toasts ctx.toast_renderer false;
   toast_resume ctx
 
 let toast_focus_in ctx _event =
   ctx.toast_state.focus_inside := true;
+  expand_toasts ctx.toast_renderer true;
   toast_cancel ctx
 
 let toast_focus_out ctx _event =
   ctx.toast_state.focus_inside := false;
+  if not !(ctx.toast_state.pointer_inside) then expand_toasts ctx.toast_renderer false;
   toast_resume ctx
 
 let toast_pointer_down ctx event =
@@ -1183,7 +1233,7 @@ let toast_pointer_cancel ctx event =
 let toast_key ctx event =
   if
     W.KeyboardEvent.key event = "F6"
-    && first_toast_node ctx.toast_renderer ctx.toast_element
+    && frontmost_toast_node ctx.toast_renderer ctx.toast_element
   then begin
     W.KeyboardEvent.preventDefault event;
     W.HtmlElement.focus
@@ -1192,14 +1242,21 @@ let toast_key ctx event =
 
 let mount_toast renderer node toast =
   let document = renderer.web_document in
+  let viewport = renderer.web_toast_viewport in
+  let pointer_inside = W.Element.matches ":hover" viewport in
+  let focus_inside =
+    match W.HtmlDocument.activeElement (W.Document.unsafeAsHtmlDocument document) with
+    | Some active -> W.Element.contains (W.Element.asNode active) viewport
+    | None -> false
+  in
   let ctx = {
     toast_renderer = renderer;
     toast_node_id = node;
     toast_element = toast;
     toast_state = {
       toast_timer = ref None;
-      pointer_inside = ref false;
-      focus_inside = ref false;
+      pointer_inside = ref pointer_inside;
+      focus_inside = ref focus_inside;
       active_pointer = ref None;
       start_x = ref None;
       start_y = ref None;
@@ -1218,11 +1275,27 @@ let mount_toast renderer node toast =
   let pointer_cancel_handler event = toast_pointer_cancel ctx event in
   let key_handler event = toast_key ctx event in
   let previous_cleanup = Hashtbl.find_opt renderer.web_cleanups node in
-  toast_schedule ctx;
-  W.Element.addEventListener "pointerenter" pointer_enter_handler toast;
-  W.Element.addEventListener "pointerleave" pointer_leave_handler toast;
-  W.Element.addEventListener "focusin" focus_in_handler toast;
-  W.Element.addEventListener "focusout" focus_out_handler toast;
+  toast_reset_swipe ctx;
+  ignore (begin_popup_open toast);
+  let observer = Webapi.ResizeObserver.make (fun _ -> refresh_toasts renderer) in
+  Webapi.ResizeObserver.observe observer toast;
+  Webapi.requestAnimationFrame (fun _ ->
+      if W.Element.hasAttribute "data-open" toast then begin
+        let children = W.Element.children toast in
+        let rec observe index =
+          match W.HtmlCollection.item index children with
+          | Some child -> Webapi.ResizeObserver.observe observer child; observe (index + 1)
+          | None -> ()
+        in
+        observe 0;
+        refresh_toasts renderer
+      end);
+  expand_toasts renderer (pointer_inside || focus_inside);
+  toast_resume ctx;
+  W.Element.addEventListener "pointerenter" pointer_enter_handler viewport;
+  W.Element.addEventListener "pointerleave" pointer_leave_handler viewport;
+  W.Element.addEventListener "focusin" focus_in_handler viewport;
+  W.Element.addEventListener "focusout" focus_out_handler viewport;
   W.Element.addEventListener "pointerdown" pointer_down_handler toast;
   W.Element.addEventListener "pointermove" pointer_move_handler toast;
   W.Element.addEventListener "pointerup" pointer_up_handler toast;
@@ -1233,12 +1306,13 @@ let mount_toast renderer node toast =
        | Some cleanup -> cleanup ()
        | None -> ());
       toast_cancel ctx;
+      Webapi.ResizeObserver.disconnect observer;
       W.Element.removeEventListener
-        "pointerenter" pointer_enter_handler toast;
+        "pointerenter" pointer_enter_handler viewport;
       W.Element.removeEventListener
-        "pointerleave" pointer_leave_handler toast;
-      W.Element.removeEventListener "focusin" focus_in_handler toast;
-      W.Element.removeEventListener "focusout" focus_out_handler toast;
+        "pointerleave" pointer_leave_handler viewport;
+      W.Element.removeEventListener "focusin" focus_in_handler viewport;
+      W.Element.removeEventListener "focusout" focus_out_handler viewport;
       W.Element.removeEventListener
         "pointerdown" pointer_down_handler toast;
       W.Element.removeEventListener

@@ -1095,6 +1095,8 @@ let property_supported kind property =
       property = DurationValue || property = AccessibilityLabel
       || property = StyleClass || property = PointerEnabled
       || property = DataAttrs
+      || property = PaddingValue || property = PaddingHorizontal
+      || property = PaddingVertical
     | Toolbar ->
       property = OrientationValue || property = AccessibilityLabel
       || property = Gap || property = StyleClass || property = PlacementValue

@@ -491,6 +491,20 @@ let reconcile_owner registry document id owner =
       refresh registry document
   | None -> ()
 
+let set_policy registry document id policy =
+  match Hashtbl.find_opt registry.layers id with
+  | Some layer ->
+      layer.policy <- policy;
+      refresh registry document
+  | None -> ()
+
+let reconcile_trigger registry document id trigger =
+  match layer_at registry id with
+  | Some layer ->
+      layer.trigger <- trigger;
+      refresh registry document
+  | None -> ()
+
 let open_layer registry document id =
   match layer_at registry id with
   | Some layer ->

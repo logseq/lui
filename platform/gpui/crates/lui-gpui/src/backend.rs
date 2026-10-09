@@ -12,12 +12,15 @@ use lui_core::wire::{decode_batch, Batch, DecodeError, Op};
 use lui_core::EventKind;
 
 use crate::extension::ExtensionRenderer;
-use crate::node_view::LuiNodeView;
+use crate::node_view::{LuiNodeView, NodeSnapshot};
 
 /// Everything every node view needs, shared behind one `Rc<RefCell<_>>`.
 /// Mutations happen only inside [`apply_batch_json`]; renders only read.
 pub struct LuiShared {
     pub store: Store,
+    /// Removed popup trees remain visual-only until their exit completes.
+    pub(crate) closing_nodes: HashMap<i64, NodeSnapshot>,
+    pub(crate) closing_roots: Vec<i64>,
     /// Root views own the rendering session; the last root releases entities.
     pub(crate) root_owners: usize,
     /// Registered extension specs (`gpui-*` namespace + app extensions).
@@ -147,6 +150,8 @@ impl LuiShared {
     pub fn new() -> Shared {
         let shared = Rc::new(RefCell::new(LuiShared {
             store: Store::default(),
+            closing_nodes: HashMap::new(),
+            closing_roots: Vec::new(),
             root_owners: 0,
             registry: ExtensionRegistry::default(),
             extension_renderers: HashMap::new(),
@@ -494,6 +499,7 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
         }
     }
     let batch = decode_batch(json).map_err(ApplyError::Decode)?;
+    let closing = capture_closing_popups(shared, &batch);
     let applied = {
         let mut shared_ref = shared.borrow_mut();
         shared_ref
@@ -502,6 +508,7 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
             .map_err(ApplyError::Backend)?
     };
 
+    retain_closing_popups(shared, closing, &applied, cx);
     notify_applied(shared, &batch, &applied, cx);
     Ok(applied)
 }
@@ -513,13 +520,117 @@ pub(crate) fn apply_local_batch_json(
     cx: &mut App,
 ) -> Result<Applied, ApplyError> {
     let batch = decode_batch(json).map_err(ApplyError::Decode)?;
+    let closing = capture_closing_popups(shared, &batch);
     let applied = shared
         .borrow_mut()
         .store
         .apply_local(&batch.ops)
         .map_err(ApplyError::Backend)?;
+    retain_closing_popups(shared, closing, &applied, cx);
     notify_applied(shared, &batch, &applied, cx);
     Ok(applied)
+}
+
+type ClosingPopup = (i64, Vec<NodeSnapshot>);
+
+fn capture_closing_popups(shared: &Shared, batch: &Batch) -> Vec<ClosingPopup> {
+    let guard = shared.borrow();
+    let mut captured = std::collections::HashSet::new();
+    let mut result = Vec::new();
+    for operation in &batch.ops {
+        let id = match operation {
+            Op::DropNode { id } | Op::DetachSubtree { id } => *id,
+            _ => continue,
+        };
+        let mut pending = vec![id];
+        while let Some(id) = pending.pop() {
+            if captured.contains(&id) {
+                continue;
+            }
+            let Some(node) = guard.store.node(id) else {
+                continue;
+            };
+            if node
+                .identity
+                .kind()
+                .is_some_and(crate::kinds::animated_popup)
+                && guard.node_bounds.contains_key(&id)
+            {
+                let mut nodes = Vec::new();
+                let mut members = vec![id];
+                while let Some(member) = members.pop() {
+                    if !captured.insert(member) {
+                        continue;
+                    }
+                    if let Some(snapshot) = NodeSnapshot::snapshot(&guard.store, member) {
+                        members.extend(snapshot.children.iter().rev().copied());
+                        nodes.push(snapshot);
+                    }
+                }
+                result.push((id, nodes));
+            } else {
+                pending.extend(node.children.iter().rev().copied());
+            }
+        }
+    }
+    result
+}
+
+fn retain_closing_popups(
+    shared: &Shared,
+    closing: Vec<ClosingPopup>,
+    applied: &Applied,
+    cx: &mut App,
+) {
+    let dropped: std::collections::HashSet<_> = applied.dropped.iter().copied().collect();
+    for (root, nodes) in closing {
+        if !dropped.contains(&root) {
+            continue;
+        }
+        let duration = crate::kinds::popup_duration(&nodes[0]);
+        let mut members = Vec::new();
+        {
+            let mut guard = shared.borrow_mut();
+            for mut node in nodes {
+                if !dropped.contains(&node.id) {
+                    continue;
+                }
+                node.children.retain(|id| dropped.contains(id));
+                members.push(node.id);
+                guard.closing_nodes.insert(node.id, node);
+            }
+            guard.closing_roots.push(root);
+            if let Some(host) = guard.imperative_host_view {
+                cx.notify(host);
+            }
+            if let Some(view) = guard.views.get(&root) {
+                cx.notify(view.entity_id());
+            }
+        }
+        let shared = shared.clone();
+        cx.spawn(async move |cx| {
+            cx.background_executor().timer(duration).await;
+            let _ = cx.update(|cx| {
+                let mut guard = shared.borrow_mut();
+                guard.closing_roots.retain(|id| *id != root);
+                let retired: std::collections::HashSet<_> = members.iter().copied().collect();
+                guard.overlay_stack.retain(|(id, _)| !retired.contains(id));
+                guard.focus_nodes.retain(|(id, _)| !retired.contains(id));
+                for id in members {
+                    guard.closing_nodes.remove(&id);
+                    guard.views.remove(&id);
+                    guard.node_bounds.remove(&id);
+                    guard.virtual_lists.remove(&id);
+                    guard.toast_heights.remove(&id);
+                    guard.toast_bounds.remove(&id);
+                }
+                if let Some(host) = guard.imperative_host_view {
+                    cx.notify(host);
+                }
+            });
+        })
+        .detach();
+    }
 }
 
 fn notify_applied(shared: &Shared, batch: &Batch, applied: &Applied, cx: &mut App) {
@@ -527,13 +638,16 @@ fn notify_applied(shared: &Shared, batch: &Batch, applied: &Applied, cx: &mut Ap
     // impossible (ids are monotonic), so removal order is safe.
     for id in &applied.dropped {
         let mut shared_ref = shared.borrow_mut();
-        shared_ref.views.remove(id);
-        shared_ref.node_bounds.remove(id);
+        let closing = shared_ref.closing_nodes.contains_key(id);
+        if !closing {
+            shared_ref.views.remove(id);
+            shared_ref.node_bounds.remove(id);
+            shared_ref.toast_heights.remove(id);
+            shared_ref.toast_bounds.remove(id);
+            shared_ref.virtual_lists.remove(id);
+        }
         shared_ref.viewport_watched.remove(id);
-        shared_ref.virtual_lists.remove(id);
         shared_ref.toasts.retain(|toast_id| *toast_id != *id);
-        shared_ref.toast_heights.remove(id);
-        shared_ref.toast_bounds.remove(id);
         shared_ref.toast_paused.remove(id);
         shared_ref.toast_remaining_ms.remove(id);
         shared_ref.toast_timers.remove(id);

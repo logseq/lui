@@ -24,11 +24,11 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::Icon;
 use gpui_kit::component::{h_flex, v_flex, Disableable, Selectable, Sizable};
 use gpui_kit::gpui::{
-    anchored, deferred, div, img, point, px, Anchor, AnyElement, App, AppContext, ClickEvent,
-    Bounds, Context, ElementId, Focusable, FontWeight, ImageSource, InteractiveElement, IntoElement,
-    Modifiers, MouseButton, MouseDownEvent, ParentElement, PathPromptOptions, Pixels, Point,
-    RenderImage,
-    StatefulInteractiveElement, Styled, SvgSize, Window, WindowControlArea,
+    anchored, deferred, div, img, point, px, Anchor, Animation, AnimationExt, AnyElement, App,
+    AppContext, Bounds, ClickEvent, Context, ElementId, Focusable, FontWeight, ImageSource,
+    InteractiveElement, IntoElement, Modifiers, MouseButton, MouseDownEvent, ParentElement,
+    PathPromptOptions, Pixels, Point, RenderImage, StatefulInteractiveElement, Styled, SvgSize,
+    Window, WindowControlArea,
 };
 use gpui_kit::prelude::FluentBuilder;
 use lui_core::bridge;
@@ -47,6 +47,54 @@ fn element_id(node_id: i64) -> ElementId {
     // Element ids live inside the entity's own id space — per-node ids are
     // unique and stable across renders.
     ElementId::Name(format!("lui-{node_id}").into())
+}
+
+pub(crate) fn animated_popup(kind: NodeKind) -> bool {
+    matches!(
+        kind,
+        NodeKind::Dialog
+            | NodeKind::Drawer
+            | NodeKind::Sheet
+            | NodeKind::Toast
+            | NodeKind::Popover
+            | NodeKind::DropdownMenu
+    )
+}
+
+pub(crate) fn popup_duration(node: &NodeSnapshot) -> std::time::Duration {
+    let millis = match node.identity.kind() {
+        Some(NodeKind::Toast) => 500,
+        Some(NodeKind::Dialog) => 150,
+        Some(NodeKind::Drawer | NodeKind::Sheet) => 200,
+        Some(NodeKind::Popover)
+            if node.float_prop(Property::PopupX).is_none()
+                && node.string_prop(Property::AnchorValue).is_none() =>
+        {
+            150
+        }
+        _ => 130,
+    };
+    std::time::Duration::from_millis(millis)
+}
+
+fn popup_motion<E: IntoElement + Styled + 'static>(
+    surface: E,
+    node: &NodeSnapshot,
+    shared: &Shared,
+) -> AnyElement {
+    let closing = shared.borrow().closing_nodes.contains_key(&node.id);
+    surface
+        .with_animation(
+            ElementId::Name(
+                format!("lui-{}-{}", node.id, if closing { "exit" } else { "enter" }).into(),
+            ),
+            Animation::new(popup_duration(node))
+                .with_easing(|progress| 1. - (1. - progress).powi(3)),
+            move |surface, progress| {
+                surface.opacity(if closing { 1. - progress } else { progress })
+            },
+        )
+        .into_any_element()
 }
 
 fn text_of(node: &NodeSnapshot) -> String {
@@ -1303,12 +1351,15 @@ fn overlay_modal(
             .rounded_t(cx.theme().radius_lg)
             .shadow(shadows)
             .into_any_element(),
-        _ => card
-            .max_w(px(360.))
-            .p_3()
-            .rounded(cx.theme().radius_lg)
-            .shadow(shadows)
-            .into_any_element(),
+        _ => style::all(
+            card.max_w(px(360.))
+                .p_3()
+                .rounded(cx.theme().radius_lg)
+                .shadow(shadows),
+            node,
+            cx.theme(),
+        )
+        .into_any_element(),
     };
 
     let mut layer = div().relative().w(viewport.width).h(viewport.height);
@@ -1327,7 +1378,15 @@ fn overlay_modal(
             // ones opened before it, offset by their painted heights
             // (a height that hasn't painted yet falls back to a slot
             // estimate and corrects itself on the next frame).
-            let offset = {
+            let closing = view.shared.borrow().closing_nodes.contains_key(&node.id);
+            let offset = if closing {
+                view.shared
+                    .borrow()
+                    .toast_bounds
+                    .get(&node.id)
+                    .map(|bounds| f32::from(bounds.origin.y) - 16.)
+                    .expect("closing toast must retain its painted bounds")
+            } else {
                 let mut shared_ref = view.shared.borrow_mut();
                 let fresh = !shared_ref.toasts.contains(&node.id);
                 if fresh {
@@ -1464,7 +1523,7 @@ fn overlay_modal(
     div()
         .id(element_id(node.id))
         .size_0()
-        .child(window_layer(layer, 2))
+        .child(window_layer(popup_motion(layer, node, &view.shared), 2))
         .into_any_element()
 }
 
@@ -1594,7 +1653,7 @@ fn dropdown_menu(
             }
         }
     }
-    popup = popup.child(menu.into_any_element());
+    popup = popup.child(popup_motion(menu, node, &view.shared));
     let mut slot = div().id(element_id(node.id));
     slot = if positioned {
         slot.absolute().size_full()
@@ -1604,29 +1663,28 @@ fn dropdown_menu(
     let shared_for_prepaint = view.shared.clone();
     let node_id = node.id;
     let parent_node = node.parent;
-    slot
-        .on_prepaint({
-            let entity_id = cx.entity().entity_id();
-            let menu_bounds = view.states.menu_bounds.clone();
-            move |bounds, _, cx| {
-                // Non-positioned mounts anchor to the trigger sibling /
-                // painted ancestor, not to this zero-size slot's point.
-                let anchor = if positioned {
-                    Some(bounds)
-                } else {
-                    menu_anchor_bounds(&shared_for_prepaint, node_id, parent_node)
-                };
-                if menu_bounds.get() != anchor {
-                    menu_bounds.set(anchor);
-                    cx.notify(entity_id);
-                }
+    slot.on_prepaint({
+        let entity_id = cx.entity().entity_id();
+        let menu_bounds = view.states.menu_bounds.clone();
+        move |bounds, _, cx| {
+            // Non-positioned mounts anchor to the trigger sibling /
+            // painted ancestor, not to this zero-size slot's point.
+            let anchor = if positioned {
+                Some(bounds)
+            } else {
+                menu_anchor_bounds(&shared_for_prepaint, node_id, parent_node)
+            };
+            if menu_bounds.get() != anchor {
+                menu_bounds.set(anchor);
+                cx.notify(entity_id);
             }
-        })
-        // Menus are the topmost transient surface: they can open inside
-        // imperative-root subtrees (priority 4, e.g. dialogs), which
-        // must not paint over them.
-        .child(deferred(popup).with_priority(5))
-        .into_any_element()
+        }
+    })
+    // Menus are the topmost transient surface: they can open inside
+    // imperative-root subtrees (priority 4, e.g. dialogs), which
+    // must not paint over them.
+    .child(deferred(popup).with_priority(5))
+    .into_any_element()
 }
 
 /// `list-item`/`treeitem` row: indent by `tree-level`, disclosure chevron
@@ -3746,7 +3804,7 @@ fn popover(
                 .anchor(corner)
                 .offset(point(px(dx), px(dy)))
                 .snap_to_window()
-                .child(menu);
+                .child(popup_motion(menu, node, &view.shared));
             return div()
                 .id(element_id(node.id))
                 .size_0()
@@ -3761,10 +3819,13 @@ fn popover(
             .w(viewport.width)
             .h(viewport.height)
             .children(view.child_elements(node, cx));
+        view.shared
+            .borrow_mut()
+            .push_overlay(node.id, OverlayEntry::Node);
         return div()
             .id(element_id(node.id))
             .size_0()
-            .child(window_layer(content, 3))
+            .child(window_layer(popup_motion(content, node, &view.shared), 3))
             .into_any_element();
     }
     let x = node.float_prop(Property::PopupX).unwrap_or(0.) as f32;
@@ -3817,7 +3878,7 @@ fn popover(
         .position(point(px(x), px(y)))
         .anchor(corner)
         .snap_to_window()
-        .child(menu);
+        .child(popup_motion(menu, node, &view.shared));
     div()
         .id(element_id(node.id))
         .size_0()
