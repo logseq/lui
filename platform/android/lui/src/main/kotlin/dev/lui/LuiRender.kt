@@ -108,7 +108,11 @@ private fun defaultPadding(kind: LuiNodeKind): Int = when (kind) {
  */
 @Composable
 internal fun Modifier.luiChrome(node: LuiNode): Modifier {
-    val width = node.prop("width")?.intValue
+    // On `drawer` the `width` prop is the side panel's width (LuiDrawer reads
+    // it for the Surface), not the element's own size — the drawer container
+    // always fills its parent. Mirrors the SwiftUI backend where width only
+    // reaches the panel.
+    val width = if (node.kind == LuiNodeKind.drawer) null else node.prop("width")?.intValue
     val height = node.prop("height")?.intValue
     val minWidth = node.prop("min-width")?.intValue ?: 0
     val maxWidth = node.prop("max-width")?.intValue ?: Int.MAX_VALUE
