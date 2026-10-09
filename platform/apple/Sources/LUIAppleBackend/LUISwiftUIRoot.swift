@@ -669,6 +669,15 @@ private struct LUINodeView: View {
     @Environment(\.luiTreeContext) private var treeContext
     @Environment(\.luiSemanticColors) private var semanticColors
     @Environment(\.luiDialogButtonsExtracted) private var dialogButtonsExtracted
+    @Environment(\.luiPinnedDrawerChrome) private var pinnedDrawerChrome
+
+    /// In-content buttons tagged `drawer-toggle` are redundant while the
+    /// pinned split view supplies the system collapse control.
+    private var drawerToggleSuppressed: Bool {
+        pinnedDrawerChrome
+            && LUIDrawerToggleMarker.isDrawerToggle(
+                styleClass: model.property(.styleClass)?.stringValue)
+    }
 
     @ViewBuilder
     var body: some View {
@@ -795,10 +804,10 @@ private struct LUINodeView: View {
                     .font(.body)
             )
         case .button:
-            if dialogButtonsExtracted { return AnyView(EmptyView()) }
+            if dialogButtonsExtracted || drawerToggleSuppressed { return AnyView(EmptyView()) }
             return AnyView(LUIButtonView(model: model, backend: backend))
         case .toggleButton:
-            if dialogButtonsExtracted { return AnyView(EmptyView()) }
+            if dialogButtonsExtracted || drawerToggleSuppressed { return AnyView(EmptyView()) }
             return AnyView(LUIButtonView(model: model, backend: backend, isToggle: true))
         case .textField, .secureField, .input, .searchField, .textarea:
             return AnyView(LUITextControlView(model: model, backend: backend))
