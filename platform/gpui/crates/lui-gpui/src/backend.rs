@@ -41,6 +41,9 @@ pub struct LuiShared {
     /// each node's layout element. The `measure-node` dom-op reads
     /// this; entries are removed when a node drops.
     pub node_bounds: HashMap<i64, Bounds<Pixels>>,
+    /// Text layouts actually prepainted by the renderer. Hosts use these
+    /// glyph positions for carets and hit testing, including inherited styles.
+    pub text_layouts: HashMap<i64, gpui_kit::gpui::TextLayout>,
     pub(crate) virtual_lists: HashMap<i64, crate::virtual_list::State>,
     pub(crate) painting_lists: Vec<i64>,
     /// Nodes that opted into a viewport-proximity dom-event through
@@ -159,6 +162,7 @@ impl LuiShared {
             views: HashMap::new(),
             last_errors: Vec::new(),
             node_bounds: HashMap::new(),
+            text_layouts: HashMap::new(),
             virtual_lists: HashMap::new(),
             painting_lists: Vec::new(),
             viewport_watched: HashMap::new(),
@@ -620,6 +624,7 @@ fn retain_closing_popups(
                     guard.closing_nodes.remove(&id);
                     guard.views.remove(&id);
                     guard.node_bounds.remove(&id);
+                    guard.text_layouts.remove(&id);
                     guard.virtual_lists.remove(&id);
                     guard.toast_heights.remove(&id);
                     guard.toast_bounds.remove(&id);
@@ -642,6 +647,7 @@ fn notify_applied(shared: &Shared, batch: &Batch, applied: &Applied, cx: &mut Ap
         if !closing {
             shared_ref.views.remove(id);
             shared_ref.node_bounds.remove(id);
+            shared_ref.text_layouts.remove(id);
             shared_ref.toast_heights.remove(id);
             shared_ref.toast_bounds.remove(id);
             shared_ref.virtual_lists.remove(id);
@@ -776,6 +782,7 @@ fn note_rejected_batch(shared: &Shared, message: String, cx: &mut App) {
         let mut guard = shared.borrow_mut();
         guard.store.reset();
         guard.views.clear();
+        guard.text_layouts.clear();
     }
     for json in patches {
         if let Err(error) = apply_batch_json(shared, &json, cx) {

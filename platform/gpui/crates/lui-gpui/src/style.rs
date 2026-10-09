@@ -12,7 +12,7 @@ use gpui_kit::gpui::{px, rgba, AbsoluteLength, DefiniteLength, Hsla, Length, Sty
 use lui_core::Property;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use crate::node_view::NodeSnapshot;
 
@@ -85,7 +85,7 @@ struct ClassStyle {
     utilities: Vec<String>,
 }
 
-static CLASS_STYLES: RwLock<Option<HashMap<String, ClassStyle>>> = RwLock::new(None);
+static CLASS_STYLES: RwLock<Option<HashMap<String, Arc<ClassStyle>>>> = RwLock::new(None);
 
 pub fn register_class_style(name: &str, declarations: &str, utilities: &str) {
     let declarations: Vec<(String, String)> = declarations
@@ -107,12 +107,13 @@ pub fn register_class_style(name: &str, declarations: &str, utilities: &str) {
     let entry = guard
         .get_or_insert_with(HashMap::new)
         .entry(name.to_string())
-        .or_insert_with(ClassStyle::default);
+        .or_insert_with(|| Arc::new(ClassStyle::default()));
+    let entry = Arc::make_mut(entry);
     entry.declarations.extend(declarations);
     entry.utilities.extend(utilities);
 }
 
-fn class_style(name: &str) -> Option<ClassStyle> {
+fn class_style(name: &str) -> Option<Arc<ClassStyle>> {
     CLASS_STYLES
         .read()
         .expect("class-style lock poisoned")

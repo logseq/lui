@@ -821,6 +821,7 @@ impl Element for NodeElement {
                 let painted = std::mem::take(&mut list.painted);
                 for id in painted {
                     shared.node_bounds.remove(&id);
+                    shared.text_layouts.remove(&id);
                 }
             }
             if own_list {

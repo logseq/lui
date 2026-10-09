@@ -61,6 +61,7 @@ impl Drop for LuiRootView {
             shared.closing_roots.clear();
             shared.virtual_lists.clear();
             shared.node_bounds.clear();
+            shared.text_layouts.clear();
             shared.focus_nodes.clear();
             shared.overlay_stack.clear();
             shared.viewport_watched.clear();
