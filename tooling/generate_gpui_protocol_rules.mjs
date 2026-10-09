@@ -36,7 +36,11 @@ let () =
       Printf.printf " %s" (String.escaped value)) strings;
     print_newline ()) properties
 `);
-  execFileSync('opam', ['exec', '--', 'ocamlopt', '-o', 'export', 'lui_protocol.ml', 'export.ml'], { cwd: directory, stdio: ['ignore', 'ignore', 'pipe'] });
+  // Keep local opam switch discovery at the repository root. Sources and
+  // compiler artifacts stay in the temporary directory.
+  execFileSync('opam', ['exec', '--', 'ocamlopt', '-I', directory,
+    '-o', resolve(directory, 'export'), resolve(directory, 'lui_protocol.ml'), resolve(directory, 'export.ml')],
+  { cwd: root, stdio: ['ignore', 'ignore', 'pipe'] });
   const lines = execFileSync(resolve(directory, 'export'), { cwd: directory, encoding: 'utf8' }).trim().split('\n');
   // Spaces in enumerated strings are not part of the protocol vocabulary.
   const masks = category => lines.filter(s => s.startsWith(category + ' ')).map(s => {
