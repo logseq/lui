@@ -5188,13 +5188,17 @@ private struct LUIButtonView: View {
         } else {
             switch model.buttonVariant {
         case "primary":
-            button.buttonStyle(.borderedProminent)
+            // Prominent buttons pin the label to white: an ambient
+            // `foregroundStyle` from the host app would otherwise bleed
+            // through `.borderedProminent` and render dark text on the
+            // accent fill. Matches Android's onPrimary/onError label color.
+            button.buttonStyle(.borderedProminent).foregroundStyle(.white)
         case "secondary":
             button.buttonStyle(.bordered).tint(.secondary)
         case "outline":
             button.buttonStyle(.bordered)
         case "destructive":
-            button.buttonStyle(.borderedProminent).tint(.red)
+            button.buttonStyle(.borderedProminent).tint(.red).foregroundStyle(.white)
         case "ghost":
             button.buttonStyle(.borderless)
         default:
