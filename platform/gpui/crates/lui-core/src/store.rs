@@ -612,6 +612,17 @@ mod tests {
     }
 
     #[test]
+    fn empty_dialog_is_rejected() {
+        let mut store = Store::default();
+        let batch = decode_batch(r#"{"generation":1,"ops":[
+            {"op":"create-node","id":1,"kind":"root"},
+            {"op":"create-node","id":2,"kind":"dialog"},
+            {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}"#).unwrap();
+        assert!(store.apply(&batch).is_err());
+    }
+
+    #[test]
     fn property_patch_preserves_unrelated_payload_storage() {
         let mut store = Store::default();
         apply_json(

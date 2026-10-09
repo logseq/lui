@@ -1396,7 +1396,7 @@ let node_properties_supported kind properties =
         (text <> "" || icon <> "")
         && (if text = "" then label <> "" else true)
       else true)
-  && (if modal_surface kind then string_property_nonempty properties TextValue
+  && (if kind = Drawer || kind = Sheet then string_property_nonempty properties TextValue
       else true)
   && (if kind = Tooltip then
         string_property_nonempty properties TextValue

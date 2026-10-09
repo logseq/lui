@@ -180,9 +180,12 @@ pub(crate) fn node(store: &Store, node: &Node) -> Result<(), BackendError> {
             nonempty(P::TextValue) || nonempty(P::PlaceholderValue),
             "selector requires text or placeholder",
         )?,
+        K::Dialog => fail(
+            nonempty(P::TextValue) || !node.children.is_empty(),
+            "dialog requires text or content children",
+        )?,
         K::MenuItem
         | K::Accordion
-        | K::Dialog
         | K::Drawer
         | K::Sheet
         | K::Tooltip

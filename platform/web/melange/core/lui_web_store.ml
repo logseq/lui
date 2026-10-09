@@ -562,6 +562,10 @@ let validate_root current =
   end
 
 let validate_standard_node nodes _registry current kind =
+  if kind = Dialog
+     && string_property_of current.retained_properties TextValue = ""
+     && Lui_sequence.length current.retained_children = 0
+  then invalid_arg "dialog requires text or content children";
   if kind = Radio
      && not (has_ancestor_kind nodes current.retained_parent RadioGroup)
   then invalid_arg "radio must be contained by a radio-group";

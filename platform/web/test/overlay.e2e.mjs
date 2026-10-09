@@ -35,6 +35,26 @@ async function clickButton(name) {
   await browser("click-button", name)
 }
 
+test("Untitled dialog paints and focuses its content and dismisses on Escape", async () => {
+  await openLayerRegressionPage()
+  await evaluate('window.audit.openDialog("untitled")')
+  const input = session.page.locator('.lui-dialog input')
+  await input.waitFor({ state: 'visible' })
+  await session.page.waitForFunction(() => document.activeElement === document.querySelector('.lui-dialog input'))
+  await input.fill('Search query')
+  assert.equal(await input.inputValue(), 'Search query')
+  await input.press('Escape')
+  await session.page.locator('.lui-dialog').waitFor({ state: 'detached' })
+})
+
+test("A dialog without a title or content is rejected", async () => {
+  await openLayerRegressionPage()
+  assert.equal(await state(`(() => {
+    try { window.audit.openDialog("untitled-empty"); return false }
+    catch (error) { return error._1.includes("dialog requires text or content children") }
+  })()`), true)
+})
+
 test("Anchored popover trigger toggles without outside-press reopening", async () => {
   await openLayerRegressionPage()
   await evaluate('window.audit.togglePopover()')

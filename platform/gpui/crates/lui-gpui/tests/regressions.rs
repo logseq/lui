@@ -7,6 +7,30 @@ use lui_gpui::{apply_batch_json, LuiRootView, LuiShared};
 static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[gpui_kit::test]
+fn untitled_dialog_paints_its_content(cx: &mut TestAppContext) {
+    let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+    cx.update(lui_gpui::init);
+    let shared = LuiShared::new();
+    cx.update(|app| {
+        apply_batch_json(&shared, r#"{"generation":1,"ops":[
+            {"op":"create-node","id":1,"kind":"root"},
+            {"op":"create-node","id":2,"kind":"dialog"},
+            {"op":"set-prop","id":2,"property":"width","value":400},
+            {"op":"create-node","id":3,"kind":"text"},
+            {"op":"set-prop","id":3,"property":"text","value":"Search content"},
+            {"op":"insert-child","parent":2,"child":3,"index":0},
+            {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}"#, app).unwrap();
+    });
+    let build = shared.clone();
+    let (_, window) = cx.add_window_view(move |_, _| LuiRootView::new(build));
+    window.run_until_parked();
+    let bounds = shared.borrow().node_bounds.get(&3).copied().unwrap();
+    assert!(f32::from(bounds.size.width) > 0.);
+    assert!(f32::from(bounds.size.height) > 0.);
+}
+
+#[gpui_kit::test]
 fn empty_cover_host_paints_a_new_popup_after_model_updates(cx: &mut TestAppContext) {
     let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
     cx.update(lui_gpui::init);
