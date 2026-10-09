@@ -33,6 +33,25 @@ enum LUIDrawerGeometry {
     }
 }
 
+struct LUIPinnedDrawerChromeKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var luiPinnedDrawerChrome: Bool {
+        get { self[LUIPinnedDrawerChromeKey.self] }
+        set { self[LUIPinnedDrawerChromeKey.self] = newValue }
+    }
+}
+
+/// Buttons tagged `drawer-toggle` in `style_class` opt into being suppressed
+/// while the system supplies the drawer affordance (pinned split-view chrome).
+enum LUIDrawerToggleMarker {
+    static func isDrawerToggle(styleClass: String?) -> Bool {
+        styleClass?.split(separator: " ").contains("drawer-toggle") == true
+    }
+}
+
 enum LUIDrawerSafeAreaGeometry {
     static let mainPanelBottomInset: CGFloat = 0
 }
@@ -116,12 +135,21 @@ struct LUIDrawerView: View {
     }
 
     /// On regular-width windows (iPad, the iPhone Duo inner display) the panel
-    /// pins beside the main content instead of overlaying it; compact widths
-    /// keep the edge-swipe overlay drawer. Once the iOS 27.1 SDK is the build
-    /// floor this pinned layout should map to `ArrangementView` so the split
-    /// aligns to the fold.
+    /// pins beside the main content through `NavigationSplitView`, giving the
+    /// system's own collapse control, gestures and column memory; compact
+    /// widths keep the edge-swipe overlay drawer. Once the iOS 27.1 SDK is the
+    /// build floor the fold-aware layout should map to `ArrangementView`.
     private var pinsSidebar: Bool {
         horizontalSizeClass == .regular
+    }
+
+    private var splitColumnVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { presented ? .all : .detailOnly },
+            set: { visibility in
+                updatePresentation(visibility != .detailOnly)
+            }
+        )
     }
 
     var body: some View {
@@ -158,17 +186,15 @@ struct LUIDrawerView: View {
 
     @ViewBuilder
     private func pinnedBody(width: CGFloat, geometry: GeometryProxy) -> some View {
-        HStack(alignment: .top, spacing: 0) {
+        NavigationSplitView(columnVisibility: splitColumnVisibility) {
             if hasLoadedPanel, let panelID = model.children.dropFirst().first {
                 LUIAnyNodeView(nodeID: panelID, backend: backend)
-                    .frame(
-                        width: presented ? width : 0,
-                        alignment: .leading
-                    )
-                    .clipped()
                     .frame(maxHeight: .infinity, alignment: .leading)
-                    .opacity(presented ? 1.0 : 0.0)
-                    .allowsHitTesting(presented)
+                    .navigationSplitViewColumnWidth(
+                        min: width * 0.8,
+                        ideal: width,
+                        max: width * 1.25
+                    )
                     .accessibilityHidden(
                         LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
                             isPresented: presented,
@@ -176,8 +202,7 @@ struct LUIDrawerView: View {
                         )
                     )
             }
-            Divider()
-                .opacity(presented ? 1.0 : 0.0)
+        } detail: {
             if let mainID = model.children.first {
                 LUIAnyNodeView(nodeID: mainID, backend: backend)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -185,6 +210,10 @@ struct LUIDrawerView: View {
                         top: geometry.safeAreaInsets.top
                     ))
                     .modifier(LUIDrawerMainSurfaceModifier())
+                    // The split view's own collapse control replaces any
+                    // in-content `drawer-toggle` button; compact widths leave
+                    // the flag unset so the overlay keeps its toggle.
+                    .environment(\.luiPinnedDrawerChrome, true)
             }
         }
     }

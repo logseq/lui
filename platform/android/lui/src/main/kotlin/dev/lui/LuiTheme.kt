@@ -10,6 +10,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -85,10 +88,12 @@ fun luiThemeColor(name: String?, foreground: Boolean = false): Color? {
         "muted-foreground" -> scheme.onSurfaceVariant
         "destructive" -> scheme.error
         "destructive-foreground" -> scheme.onError
-        "success" -> scheme.tertiaryContainer
-        "success-foreground" -> scheme.onTertiaryContainer
-        "warning" -> scheme.secondaryContainer
-        "warning-foreground" -> scheme.onSecondaryContainer
+        // iOS maps these to SwiftUI .green/.orange at 15% container opacity
+        // (LUIThemePolicy); Material container roles read as dark neutrals.
+        "success" -> Color(0xFF34C759).copy(alpha = 0.15f)
+        "success-foreground" -> Color(0xFF34C759)
+        "warning" -> Color(0xFFFF9500).copy(alpha = 0.15f)
+        "warning-foreground" -> Color(0xFFFF9500)
         "error" -> scheme.errorContainer
         "error-foreground" -> scheme.onErrorContainer
         "border" -> scheme.outlineVariant
@@ -177,16 +182,19 @@ object LuiThemeTokenDecoder {
 }
 
 object LuiTypography {
+    // Apple font sizes (SwiftUI text styles), mirrored 1pt = 1sp:
+    // largeTitle 34, title 28, title2 22, title3 20, headline 17,
+    // body 17, subheadline 15, footnote 13, caption 12, caption2 11.
     @Composable
     fun headingStyle(level: Int): TextStyle {
         val theme = MaterialTheme.typography
         return when (level) {
-            1 -> theme.headlineLarge
-            2 -> theme.headlineMedium
-            3 -> theme.titleLarge
-            4 -> theme.titleMedium
-            5 -> theme.titleSmall
-            else -> theme.labelLarge
+            1 -> theme.headlineLarge.copy(fontSize = 34.sp)
+            2 -> theme.headlineMedium.copy(fontSize = 28.sp)
+            3 -> theme.titleLarge.copy(fontSize = 22.sp)
+            4 -> theme.titleMedium.copy(fontSize = 20.sp)
+            5 -> theme.bodyLarge.copy(fontSize = 17.sp)
+            else -> theme.titleSmall.copy(fontSize = 15.sp)
         }
     }
 
@@ -194,11 +202,42 @@ object LuiTypography {
     fun textStyleForSize(size: String?): TextStyle {
         val theme = MaterialTheme.typography
         return when (size) {
-            "sm" -> theme.bodySmall
-            "lg" -> theme.titleMedium
-            "heading" -> theme.headlineSmall
-            "display" -> theme.displaySmall
-            else -> theme.bodyMedium
+            "sm" -> theme.bodySmall.copy(fontSize = 12.sp)
+            "lg" -> theme.titleMedium.copy(fontSize = 20.sp)
+            "heading" -> theme.headlineSmall.copy(fontSize = 28.sp)
+            "display" -> theme.displaySmall.copy(fontSize = 34.sp)
+            else -> theme.bodyLarge.copy(fontSize = 17.sp)
         }
+    }
+
+    /**
+     * Mirrors the Apple backend's `LUITextView.font`: `style-class` tokens
+     * pick the text style (title2/headline/subheadline/caption/footnote),
+     * headline and subheadline render semibold, `semibold` forces it, and
+     * `mono` switches to a monospaced family. `size` remains the base
+     * mapping when no style-class token matches.
+     */
+    @Composable
+    fun textStyle(size: String?, styleClass: String?): TextStyle {
+        val theme = MaterialTheme.typography
+        val classes = styleClass?.split(' ') ?: emptyList()
+        var style: TextStyle = when {
+            classes.contains("title2") -> theme.titleLarge.copy(fontSize = 22.sp)
+            classes.contains("headline") -> theme.bodyLarge.copy(fontSize = 17.sp)
+            classes.contains("subheadline") -> theme.titleSmall.copy(fontSize = 15.sp)
+            classes.contains("caption") -> theme.bodySmall.copy(fontSize = 12.sp)
+            classes.contains("footnote") -> theme.labelMedium.copy(fontSize = 13.sp)
+            else -> textStyleForSize(size)
+        }
+        if (classes.contains("semibold") ||
+            classes.contains("headline") ||
+            classes.contains("subheadline")
+        ) {
+            style = style.copy(fontWeight = FontWeight.SemiBold)
+        }
+        if (classes.contains("mono")) {
+            style = style.copy(fontFamily = FontFamily.Monospace)
+        }
+        return style
     }
 }
