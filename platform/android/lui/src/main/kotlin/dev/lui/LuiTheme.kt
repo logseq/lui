@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -179,16 +180,19 @@ object LuiThemeTokenDecoder {
 }
 
 object LuiTypography {
+    // Apple font sizes (SwiftUI text styles), mirrored 1pt = 1sp:
+    // largeTitle 34, title 28, title2 22, title3 20, headline 17,
+    // body 17, subheadline 15, footnote 13, caption 12, caption2 11.
     @Composable
     fun headingStyle(level: Int): TextStyle {
         val theme = MaterialTheme.typography
         return when (level) {
-            1 -> theme.headlineLarge
-            2 -> theme.headlineMedium
-            3 -> theme.titleLarge
-            4 -> theme.titleMedium
-            5 -> theme.titleSmall
-            else -> theme.labelLarge
+            1 -> theme.headlineLarge.copy(fontSize = 34.sp)
+            2 -> theme.headlineMedium.copy(fontSize = 28.sp)
+            3 -> theme.titleLarge.copy(fontSize = 22.sp)
+            4 -> theme.titleMedium.copy(fontSize = 20.sp)
+            5 -> theme.bodyLarge.copy(fontSize = 17.sp)
+            else -> theme.titleSmall.copy(fontSize = 15.sp)
         }
     }
 
@@ -196,11 +200,11 @@ object LuiTypography {
     fun textStyleForSize(size: String?): TextStyle {
         val theme = MaterialTheme.typography
         return when (size) {
-            "sm" -> theme.bodySmall
-            "lg" -> theme.titleMedium
-            "heading" -> theme.headlineSmall
-            "display" -> theme.displaySmall
-            else -> theme.bodyMedium
+            "sm" -> theme.bodySmall.copy(fontSize = 12.sp)
+            "lg" -> theme.titleMedium.copy(fontSize = 20.sp)
+            "heading" -> theme.headlineSmall.copy(fontSize = 28.sp)
+            "display" -> theme.displaySmall.copy(fontSize = 34.sp)
+            else -> theme.bodyLarge.copy(fontSize = 17.sp)
         }
     }
 
@@ -216,11 +220,11 @@ object LuiTypography {
         val theme = MaterialTheme.typography
         val classes = styleClass?.split(' ') ?: emptyList()
         var style: TextStyle = when {
-            classes.contains("title2") -> theme.titleLarge
-            classes.contains("headline") -> theme.bodyLarge
-            classes.contains("subheadline") -> theme.bodyMedium
-            classes.contains("caption") -> theme.bodySmall
-            classes.contains("footnote") -> theme.labelMedium
+            classes.contains("title2") -> theme.titleLarge.copy(fontSize = 22.sp)
+            classes.contains("headline") -> theme.bodyLarge.copy(fontSize = 17.sp)
+            classes.contains("subheadline") -> theme.titleSmall.copy(fontSize = 15.sp)
+            classes.contains("caption") -> theme.bodySmall.copy(fontSize = 12.sp)
+            classes.contains("footnote") -> theme.labelMedium.copy(fontSize = 13.sp)
             else -> textStyleForSize(size)
         }
         if (classes.contains("semibold") ||
