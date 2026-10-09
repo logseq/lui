@@ -33,6 +33,25 @@ enum LUIDrawerGeometry {
     }
 }
 
+struct LUIPinnedDrawerChromeKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var luiPinnedDrawerChrome: Bool {
+        get { self[LUIPinnedDrawerChromeKey.self] }
+        set { self[LUIPinnedDrawerChromeKey.self] = newValue }
+    }
+}
+
+/// Buttons tagged `drawer-toggle` in `style_class` opt into being suppressed
+/// while the system supplies the drawer affordance (pinned split-view chrome).
+enum LUIDrawerToggleMarker {
+    static func isDrawerToggle(styleClass: String?) -> Bool {
+        styleClass?.split(separator: " ").contains("drawer-toggle") == true
+    }
+}
+
 enum LUIDrawerSafeAreaGeometry {
     static let mainPanelBottomInset: CGFloat = 0
 }
@@ -191,6 +210,10 @@ struct LUIDrawerView: View {
                         top: geometry.safeAreaInsets.top
                     ))
                     .modifier(LUIDrawerMainSurfaceModifier())
+                    // The split view's own collapse control replaces any
+                    // in-content `drawer-toggle` button; compact widths leave
+                    // the flag unset so the overlay keeps its toggle.
+                    .environment(\.luiPinnedDrawerChrome, true)
             }
         }
     }
