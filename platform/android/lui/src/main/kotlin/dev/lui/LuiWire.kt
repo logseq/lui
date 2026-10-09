@@ -20,12 +20,19 @@ class LuiBackendException(message: String) : Exception(message)
 sealed class LuiWireValue {
     data class Str(val value: String) : LuiWireValue()
     data class Bool(val value: Boolean) : LuiWireValue()
-    data class IntValue(val value: Int) : LuiWireValue()
+    data class IntValue(val value: Long) : LuiWireValue() {
+        constructor(value: Int) : this(value.toLong())
+    }
     data class DoubleValue(val value: Double) : LuiWireValue()
 
     val stringValue: String? get() = (this as? Str)?.value
     val boolValue: Boolean? get() = (this as? Bool)?.value
-    val intValue: Int? get() = (this as? IntValue)?.value
+    val intValue: Int? get() = (this as? IntValue)?.value?.let {
+        if (it < Int.MIN_VALUE || it > Int.MAX_VALUE) {
+            throw LuiBackendException("integer exceeds platform index or dimension range")
+        }
+        it.toInt()
+    }
     val doubleValue: Double?
         get() = when (this) {
             is DoubleValue -> value
@@ -59,10 +66,10 @@ sealed class LuiWireValue {
     companion object {
         fun of(element: JsonElement): LuiWireValue {
             val primitive = element.jsonPrimitive
-            primitive.booleanOrNull?.let { return Bool(it) }
-            primitive.longOrNull?.let { return IntValue(it.toInt()) }
-            primitive.doubleOrNull?.let { return DoubleValue(it) }
             if (primitive.isString) return Str(primitive.content)
+            primitive.booleanOrNull?.let { return Bool(it) }
+            primitive.longOrNull?.let { return IntValue(it) }
+            primitive.doubleOrNull?.let { return DoubleValue(it) }
             throw LuiBackendException("unsupported wire value")
         }
 

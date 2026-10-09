@@ -300,7 +300,7 @@ let sequence_ordering () =
     Alcotest.(check (list int)) "indexed sequence agrees with list" !values (Lui_sequence.to_list !sequence)
   done
 
-let tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f)
+let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f)
   ["keyed state isolation and lifetime", keyed_states;
    "extension validation retries", extension_retry;
    "backend exceptions and reentrant writes", backend_failure;
@@ -316,3 +316,193 @@ let tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f)
    "nested switch ownership and rollback", switch_parent_and_rollback;
    "keyed cleanup after outer drop", keyed_outer_drop;
    "persistent sequence ordering", sequence_ordering]
+
+
+let review_sibling_state () =
+  let app = runtime () in
+  let context = Lui_ui.context app (Signal.scope "siblings") in
+  let parent = Lui_ui.column context in
+  let source = Signal.state context.ui_scheduler 0 in
+  let slot = Signal.state_slot "draft" in
+  let states = ref [] in
+  let mount initial row _ =
+    let state = Signal.state_at row.Lui_ui.ui_scheduler row.ui_state_scope slot initial in
+    states := state :: !states;
+    Lui_ui.text row (string_of_int (Signal.get_state state)) in
+  ignore (Lui_dynamic.switch context parent (Signal.value source) Int.equal (mount 10));
+  ignore (Lui_dynamic.switch context parent (Signal.value source) Int.equal (mount 20));
+  let second, first = match !states with [second; first] -> second, first | _ -> assert false in
+  Alcotest.(check int) "second owner initializes independently" 20 (Signal.get_state second);
+  Signal.set first 99;
+  Alcotest.(check int) "sibling draft remains independent" 20 (Signal.get_state second);
+  Signal.set source 1; ignore (Lui_runtime.flush app);
+  Alcotest.(check (list int)) "both owners retain their drafts on remount" [20; 99]
+    (List.map Signal.get_state (List.filteri (fun index _ -> index < 2) !states))
+
+let review_keyed_candidate_failure hook_failure =
+  let app = runtime () in
+  let context = Lui_ui.context app (Signal.scope "candidate-owner") in
+  let parent = Lui_ui.column context in
+  let source = Signal.state context.ui_scheduler [1] in
+  let scopes = ref [] in
+  ignore (Lui_dynamic.keyed context parent (Signal.value source) Fun.id Int.compare
+    (fun row item ->
+      let key = Signal.sample item in
+      if key > 1 then scopes := row.Lui_ui.ui_scope :: !scopes;
+      let node = Lui_ui.text row (string_of_int key) in
+      if key = 3 then begin
+        if hook_failure then Signal.on_mount row.ui_scope (fun () -> failwith "candidate failed")
+        else failwith "candidate failed"
+      end;
+      node));
+  ignore (Lui_runtime.flush app);
+  let old = Lui_runtime.children app parent in
+  Signal.set source [1; 2; 3];
+  check_failure "candidate rejected" (attempt (fun () -> ignore (Lui_runtime.flush app)));
+  Alcotest.(check int) "unpublished nodes removed" 2 (Lui_runtime.mounted_count app);
+  Alcotest.(check (list int)) "published rows retained" old (Lui_runtime.children app parent);
+  List.iter (fun scope -> Alcotest.(check bool) "candidate scope disposed" true
+    !(scope.Signal.disposed_scope)) !scopes;
+  Signal.set source [1; 4]; ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "later publication succeeds without leaked nodes" 3 (Lui_runtime.mounted_count app)
+
+let review_keyed_cleanup_failure () =
+  let app = runtime () in
+  let context = Lui_ui.context app (Signal.scope "cleanup-owner") in
+  let parent = Lui_ui.column context in
+  let source = Signal.state context.ui_scheduler [1] in
+  ignore (Lui_dynamic.keyed context parent (Signal.value source) Fun.id Int.compare
+    (fun row item ->
+      if Signal.sample item = 1 then Signal.on_dispose row.Lui_ui.ui_scope (fun () -> failwith "retirement failed");
+      Lui_ui.text row "row"));
+  ignore (Lui_runtime.flush app);
+  Signal.set source [];
+  check_failure "cleanup error reported" (attempt (fun () -> ignore (Lui_runtime.flush app)));
+  Alcotest.(check (list int)) "committed removal remains committed" [] (Lui_runtime.children app parent);
+  Signal.set source [2]; ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "next publication works" 1 (Lui_runtime.child_count app parent)
+
+let review_segment_checkpoint () =
+  let app = runtime () in
+  let parent = Lui_runtime.create_node app Column in
+  let segment = Lui_runtime.register_dynamic_segment app parent in
+  Lui_runtime.resize_dynamic_segment app segment 1;
+  let saved = Lui_runtime.checkpoint app in
+  Lui_runtime.release_dynamic_segment app segment;
+  Lui_runtime.restore app saved;
+  Alcotest.(check int) "segment size restored independently" 1
+    !(segment.Lui_runtime.dynamic_segment_size)
+
+let review_library_derived_ownership () =
+  let app = runtime () in
+  let owner = Signal.scope "derived-owner" in
+  let context = Lui_ui.context app owner in
+  let parent = Lui_ui.column context in
+  let source = Signal.state context.ui_scheduler ["accent", Lui_ui.Fixed "blue"] in
+  let branch = Signal.state context.ui_scheduler 0 in
+  ignore (Lui_dynamic.switch context parent (Signal.value branch) Int.equal
+    (fun row _ ->
+      let node = Lui_ui.column row in
+      Lui_ui.theme_signal row node (Signal.value source);
+      node));
+  ignore (Lui_runtime.flush app);
+  for index = 1 to 20 do Signal.set branch index; ignore (Lui_runtime.flush app) done;
+  Signal.set source ["accent", Lui_ui.Fixed "green"];
+  Signal.stabilize context.ui_scheduler;
+  Alcotest.(check int) "only current derivations recompute" 3
+    (Signal.last_stabilization context.ui_scheduler).stabilization_dirty_tasks;
+  Signal.dispose_scope owner;
+  Signal.set source ["accent", Lui_ui.Fixed "red"];
+  Signal.stabilize context.ui_scheduler;
+  Alcotest.(check int) "owner releases all derivations" 1
+    (Signal.last_stabilization context.ui_scheduler).stabilization_dirty_tasks;
+  Alcotest.(check bool) "borrowed source remains usable" true
+    (Signal.get_state source = ["accent", Lui_ui.Fixed "red"])
+
+let review_retired_event () =
+  let app = runtime () in
+  let scope = Signal.scope "old-handler" in
+  let node = Lui_runtime.create_node app Button in
+  Lui_runtime.set_prop app node TextValue (StringValue "press");
+  let calls = ref 0 in
+  Lui_runtime.on_event scope app node (fun _ -> incr calls);
+  ignore (Lui_runtime.dispatch app (Press node));
+  Signal.dispose_scope scope;
+  let replacement_scope = Signal.scope "new-handler" in
+  Lui_runtime.on_event replacement_scope app node (fun _ -> calls := !calls + 10);
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "retired registration cannot receive a queued event" 0 !calls;
+  ignore (Lui_runtime.dispatch app (Press node)); ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "new event reaches current handler" 10 !calls
+
+let review_subscription_retirement () =
+  let coordinator = Lui_subscriptions.create () in
+  let cancelled = ref [] in
+  let spec version fail = {Lui_subscriptions.subscription_key = "one";
+    subscription_fingerprint = version; start_subscription = (fun () ->
+      {Signal.disposed = ref false; cancel = (fun () ->
+        cancelled := version :: !cancelled;
+        if fail then failwith "retirement failed")})} in
+  ignore (Lui_subscriptions.reconcile coordinator 1 [spec "old" true]);
+  check_failure "retirement error reported" (attempt (fun () ->
+    ignore (Lui_subscriptions.reconcile coordinator 2 [spec "new" false])));
+  Lui_subscriptions.dispose coordinator;
+  Alcotest.(check (list string)) "replacement remains owned and cancellable" ["new"; "old"] !cancelled
+
+let review_keyed_locality () =
+  let update unrelated =
+    let app = runtime () in
+    let context = Lui_ui.context app (Signal.scope "local-keyed") in
+    for _ = 1 to unrelated do ignore (Lui_ui.text context "unrelated") done;
+    let parent = Lui_ui.column context in
+    let source = Signal.state context.ui_scheduler [1; 2] in
+    ignore (Lui_dynamic.keyed context parent (Signal.value source) Fun.id Int.compare
+      (fun row item -> Lui_ui.text row (string_of_int (Signal.sample item))));
+    ignore (Lui_runtime.flush app);
+    allocated (fun () ->
+      Signal.set source [2; 1; 3]; ignore (Lui_runtime.flush app)) in
+  let small = update 1000 and large = update 10000 in
+  Alcotest.(check bool) "keyed update does not copy unrelated application nodes" true (large < small *. 3.)
+
+let review_keyed_unchanged () =
+  let app = runtime () in
+  let context = Lui_ui.context app (Signal.scope "unchanged-keyed") in
+  for _ = 1 to 1000 do ignore (Lui_ui.text context "unrelated") done;
+  let parent = Lui_ui.column context in
+  let source = Signal.state context.ui_scheduler [1] in
+  ignore (Lui_dynamic.keyed context parent (Signal.value source) Fun.id Int.compare
+    (fun row item -> Lui_ui.text row (string_of_int (Signal.sample item))));
+  ignore (Lui_runtime.flush app);
+  let bytes = allocated (fun () -> Signal.set source [1]; ignore (Lui_runtime.flush app)) in
+  Alcotest.(check bool) "unchanged publication has bounded bookkeeping" true (bytes < 2048.)
+
+let review_wide_reorder () =
+  let measure count =
+    let app = runtime () in
+    let parent = Lui_runtime.create_node app VirtualList in
+    let old = List.init count (fun index -> index + 2) in
+    let desired = List.rev old in
+    let reparented = Hashtbl.create 0 in
+    let before = Sys.time () in
+    Lui_runtime.emit_child_diff app reparented parent old desired;
+    let elapsed = Sys.time () -. before in
+    let moves = List.length (List.filter (function MoveChild _ -> true | _ -> false) !(app.Lui_runtime.pending_ops)) in
+    Alcotest.(check int) "reversal emits the required moves" (count - 1) moves;
+    elapsed in
+  ignore (measure 500);
+  let small = measure 4000 and large = measure 16000 in
+  Alcotest.(check bool) "wide reconciliation scales subquadratically" true
+    (large < small *. 9. +. 0.03)
+
+let tests = existing_tests @ List.map (fun (name, test) -> Alcotest.test_case name `Quick test)
+  ["review wide child reorder", review_wide_reorder;
+   "review sibling owner identity", review_sibling_state;
+   "review keyed candidate rollback", (fun () -> review_keyed_candidate_failure false);
+   "review keyed mount hook rollback", (fun () -> review_keyed_candidate_failure true);
+   "review keyed cleanup commit", review_keyed_cleanup_failure;
+   "review deep segment rollback", review_segment_checkpoint;
+   "review library derivation ownership", review_library_derived_ownership;
+   "review retired queued event", review_retired_event;
+   "review subscription retirement", review_subscription_retirement;
+   "review keyed locality", review_keyed_locality;
+   "review unchanged keyed publication", review_keyed_unchanged]

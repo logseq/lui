@@ -129,6 +129,7 @@ type swipe_action_el
     [] compiles and any real child is a type error. *)
 type nothing = |
 val mount : 'a -> ?parent:'b -> ('a -> 'b option -> 'c) -> 'c
+val scoped : (Lui_ui.ui_context -> t) -> t
 val reactive : ('a -> 'b) -> 'a Signal.signal -> 'b Signal.signal
 val map : ('a -> 'b) -> 'a Signal.signal -> 'b Signal.signal
 val sample : 'a Signal.signal -> 'a

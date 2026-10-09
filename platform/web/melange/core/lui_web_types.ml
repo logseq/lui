@@ -68,12 +68,12 @@ type semantic_kind =
 (** Backend-side mirror of a runtime node. Properties live in the runtime's
     own persistent maps so updates stay cheap and snapshot-friendly. *)
 type 'platform retained_node = {
-  platform_node : 'platform;
+  platform_node : 'platform Lazy.t;
   semantic_kind : semantic_kind;
   mutable retained_parent : int option;
   mutable retained_properties : wire_value Property_map.t;
   mutable retained_extension_properties : wire_value String_map.t;
-  mutable retained_children : int list;
+  retained_children : int Lui_sequence.t;
 }
 
 (** Mirror of the runtime tree plus the history needed for generation checks
@@ -85,6 +85,14 @@ type 'platform retained_store = {
      so callers fall back to [retained_nodes] instead of copying the store. *)
   mutable retained_prior : (int, 'platform retained_node option) Hashtbl.t;
   mutable retained_generation : int;
+}
+
+type web_virtual_list = {
+  refresh_virtual : unit -> unit;
+  resize_virtual_row : int -> unit;
+  dispose_virtual : unit -> unit;
+  virtual_row_live : int -> bool;
+  virtual_live_rows : unit -> int list;
 }
 
 type web_renderer = {
@@ -101,6 +109,9 @@ type web_renderer = {
   web_images : (int, web_image_resource) Hashtbl.t;
   web_media_surfaces : (int, web_image_resource) Hashtbl.t;
   web_cleanups : (int, unit -> unit) Hashtbl.t;
+  web_virtual_lists : (int, web_virtual_list) Hashtbl.t;
+  web_lists : (int, bool -> unit) Hashtbl.t;
+  web_mounted_roots : (int, web_node) Hashtbl.t;
   web_pointer_cleanups : (int, unit -> unit) Hashtbl.t;
   web_layers : Lui_web_layers.t;
   web_modal_return_focus : web_node option ref;

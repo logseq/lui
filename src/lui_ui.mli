@@ -10,6 +10,7 @@ type ui_context = {
   ui_state_scopes : (string, Signal.scope) Hashtbl.t;
   ui_active_state_paths : (string, bool) Hashtbl.t;
   ui_state_path : string;
+  ui_next_owner_id : int ref;
   ui_profile : Lui_protocol.platform_profile;
 }
 val make_context :
@@ -27,6 +28,7 @@ val context_with_state_registry :
   Signal.scope ->
   (string, Signal.scope) Hashtbl.t -> (string, bool) Hashtbl.t -> ui_context
 val child_context : ui_context -> string -> ui_context
+val owner_name : ui_context -> string -> string
 val node_kind : ui_context -> int -> Lui_protocol.node_kind
 val profile : ui_context -> Lui_protocol.platform_profile
 val platform : ui_context -> Lui_protocol.operating_system

@@ -6,6 +6,7 @@ use std::fmt;
 
 use crate::wire::{Batch, Op, Value};
 use crate::wire_schema::{NodeKind, Property};
+use crate::{order::Order, protocol_rules, validation};
 
 /// What a node is: a standard schema kind, or an app-registered extension
 /// (`create-extension` op; identifier + fingerprint come from ADR 0002).
@@ -30,25 +31,7 @@ impl NodeIdentity {
     /// children; the store treats every extension as child-capable.
     pub fn accepts_children(&self) -> bool {
         match self {
-            NodeIdentity::Standard(kind) => {
-                // Mirrors `context_menu_leaf_host_kind` in lui_protocol.ml.
-                kind.is_container()
-                    || matches!(
-                        kind,
-                        NodeKind::ToggleButton
-                            | NodeKind::Toggle
-                            | NodeKind::Radio
-                            | NodeKind::Slider
-                            | NodeKind::NumberStepper
-                            | NodeKind::TextField
-                            | NodeKind::SecureField
-                            | NodeKind::Input
-                            | NodeKind::SearchField
-                            | NodeKind::Textarea
-                            | NodeKind::Checkbox
-                            | NodeKind::SwitchControl
-                    )
-            }
+            NodeIdentity::Standard(kind) => protocol_rules::container_supported(*kind),
             NodeIdentity::Extension { .. } => true,
         }
     }
@@ -196,27 +179,72 @@ impl Store {
         // patches stay local while a rejected batch restores every link.
         let root = self.root;
         let mut undo = BTreeMap::new();
-        for op in ops {
-            self.record_before(op, &mut undo);
-            if let Err(error) = self.apply_op(op, &mut applied) {
-                for (id, node) in undo {
-                    match node {
-                        Some(node) => {
-                            self.nodes.insert(id, node);
-                        }
-                        None => {
-                            self.nodes.remove(&id);
-                        }
+        let mut orders = BTreeMap::new();
+        let result = (|| {
+            for op in ops {
+                self.record_before(op, &mut undo, &orders);
+                self.apply_op(op, &mut applied, &mut orders)?;
+            }
+            for (id, order) in &orders {
+                if let Some(node) = self.nodes.get_mut(id) {
+                    node.children = order.ids();
+                }
+            }
+            let mut affected = BTreeSet::new();
+            let mut descend = Vec::new();
+            for (&id, previous) in &undo {
+                affected.insert(id);
+                if let Some(parent) = self.node(id).and_then(|n| n.parent) {
+                    if self.node(parent).and_then(|n| n.identity.kind())
+                        == Some(NodeKind::ContextMenu)
+                    {
+                        affected.insert(parent);
                     }
                 }
-                self.root = root;
-                return Err(error);
+                if self.node(id).and_then(|n| n.parent) != previous.as_ref().and_then(|n| n.parent)
+                {
+                    descend.push(id);
+                }
             }
+            let mut visited = BTreeSet::new();
+            while let Some(id) = descend.pop() {
+                if visited.insert(id) {
+                    affected.insert(id);
+                    if let Some(node) = self.node(id) {
+                        descend.extend(node.children.iter().copied());
+                    }
+                }
+            }
+            for id in affected {
+                if let Some(node) = self.node(id) {
+                    validation::node(self, node)?;
+                }
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            for (id, node) in undo {
+                match node {
+                    Some(node) => {
+                        self.nodes.insert(id, node);
+                    }
+                    None => {
+                        self.nodes.remove(&id);
+                    }
+                }
+            }
+            self.root = root;
+            return Err(error);
         }
         Ok(applied)
     }
 
-    fn record_before(&self, op: &Op, undo: &mut BTreeMap<i64, Option<Node>>) {
+    fn record_before(
+        &self,
+        op: &Op,
+        undo: &mut BTreeMap<i64, Option<Node>>,
+        orders: &BTreeMap<i64, Order>,
+    ) {
         let mut ids = Vec::new();
         match op {
             Op::CreateNode { id, .. }
@@ -237,7 +265,11 @@ impl Store {
                 while let Some(id) = stack.pop() {
                     ids.push(id);
                     if let Some(node) = self.node(id) {
-                        stack.extend(node.children.iter().copied());
+                        stack.extend(
+                            orders
+                                .get(&id)
+                                .map_or_else(|| node.children.clone(), Order::ids),
+                        );
                     }
                 }
             }
@@ -247,7 +279,12 @@ impl Store {
         }
     }
 
-    fn apply_op(&mut self, op: &Op, applied: &mut Applied) -> Result<(), BackendError> {
+    fn apply_op(
+        &mut self,
+        op: &Op,
+        applied: &mut Applied,
+        orders: &mut BTreeMap<i64, Order>,
+    ) -> Result<(), BackendError> {
         match op {
             Op::CreateNode { id, kind } => {
                 let kind = NodeKind::from_wire(kind)
@@ -275,7 +312,7 @@ impl Store {
             // removes the whole subtree recursively — exactly the
             // detach-subtree contract.
             Op::DropNode { id } | Op::DetachSubtree { id } => {
-                self.drop_node(*id, applied)?
+                self.drop_node(*id, applied, orders)?
             }
             Op::SetProp {
                 id,
@@ -288,6 +325,13 @@ impl Store {
                     .nodes
                     .get_mut(id)
                     .ok_or_else(|| err(format!("set-prop: unknown node {id}")))?;
+                validation::property(
+                    node.identity
+                        .kind()
+                        .ok_or_else(|| err("standard property targets extension node"))?,
+                    property,
+                    Some(value),
+                )?;
                 node.props.insert(property, value.clone());
                 if matches!(property, Property::TextValue | Property::ProgressValue) {
                     node.value_revision = node.value_revision.wrapping_add(1);
@@ -302,6 +346,13 @@ impl Store {
                     .nodes
                     .get_mut(id)
                     .ok_or_else(|| err(format!("remove-prop: unknown node {id}")))?;
+                validation::property(
+                    node.identity
+                        .kind()
+                        .ok_or_else(|| err("standard property targets extension node"))?,
+                    property,
+                    None,
+                )?;
                 node.props.remove(&property);
                 if matches!(property, Property::TextValue | Property::ProgressValue) {
                     node.value_revision = node.value_revision.wrapping_add(1);
@@ -317,6 +368,9 @@ impl Store {
                     .nodes
                     .get_mut(id)
                     .ok_or_else(|| err(format!("set-extension-prop: unknown node {id}")))?;
+                if node.identity.kind().is_some() {
+                    return Err(err("extension property targets standard node"));
+                }
                 node.extension_props.insert(property.clone(), value.clone());
                 if matches!(property.as_str(), "text" | "value") {
                     node.value_revision = node.value_revision.wrapping_add(1);
@@ -328,6 +382,9 @@ impl Store {
                     .nodes
                     .get_mut(id)
                     .ok_or_else(|| err(format!("remove-extension-prop: unknown node {id}")))?;
+                if node.identity.kind().is_some() {
+                    return Err(err("extension property targets standard node"));
+                }
                 node.extension_props.remove(property);
                 if matches!(property.as_str(), "text" | "value") {
                     node.value_revision = node.value_revision.wrapping_add(1);
@@ -339,17 +396,17 @@ impl Store {
                 child,
                 index,
             } => {
-                self.attach(*parent, *child, *index, applied)?;
+                self.attach(*parent, *child, *index, applied, orders)?;
             }
             Op::RemoveChild { parent, child } => {
-                self.detach(*parent, *child, applied)?;
+                self.detach(*parent, *child, applied, orders)?;
             }
             Op::MoveChild {
                 parent,
                 child,
                 index,
             } => {
-                self.move_child(*parent, *child, *index, applied)?;
+                self.move_child(*parent, *child, *index, applied, orders)?;
             }
         }
         Ok(())
@@ -380,7 +437,12 @@ impl Store {
         Ok(())
     }
 
-    fn drop_node(&mut self, id: i64, applied: &mut Applied) -> Result<(), BackendError> {
+    fn drop_node(
+        &mut self,
+        id: i64,
+        applied: &mut Applied,
+        orders: &mut BTreeMap<i64, Order>,
+    ) -> Result<(), BackendError> {
         // Collect the whole subtree before mutating links.
         let mut stack = vec![id];
         let mut subtree = Vec::new();
@@ -390,17 +452,18 @@ impl Store {
                 .get(&current)
                 .ok_or_else(|| err(format!("drop-node: unknown node {current}")))?;
             subtree.push(current);
-            stack.extend(node.children.iter().copied());
+            stack.extend(
+                orders
+                    .get(&current)
+                    .map_or_else(|| node.children.clone(), Order::ids),
+            );
         }
         if let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) {
-            if let Some(parent_node) = self.nodes.get_mut(&parent) {
-                parent_node.children.retain(|child| *child != id);
-            }
-            applied.dirty.insert(parent);
-            applied.structural.insert(parent);
+            self.detach(parent, id, applied, orders)?;
         }
         for current in subtree {
             self.nodes.remove(&current);
+            orders.remove(&current);
             applied.dirty.remove(&current);
             applied.dropped.push(current);
         }
@@ -427,6 +490,7 @@ impl Store {
         child: i64,
         index: i64,
         applied: &mut Applied,
+        orders: &mut BTreeMap<i64, Order>,
     ) -> Result<(), BackendError> {
         let parent_node = self
             .nodes
@@ -441,18 +505,37 @@ impl Store {
         if !self.nodes.contains_key(&child) {
             return Err(err(format!("insert-child: unknown child {child}")));
         }
+        let child_node = self.node(child).expect("checked above");
+        if let (Some(parent_kind), Some(child_kind)) =
+            (parent_node.identity.kind(), child_node.identity.kind())
+        {
+            if !protocol_rules::child_supported(parent_kind, child_kind) {
+                return Err(err("unsupported parent/child kind pair"));
+            }
+        } else if child_node.identity.kind() == Some(NodeKind::Root) {
+            return Err(err("runtime root cannot have a parent"));
+        }
         if self.is_ancestor(child, parent) {
             return Err(err(format!(
                 "insert-child: {child} is an ancestor of {parent} (cycle)"
             )));
         }
+        let length = orders
+            .get(&parent)
+            .map_or(parent_node.children.len(), Order::len);
+        let same_parent = child_node.parent == Some(parent);
+        if index < 0 || index as usize > length - usize::from(same_parent) {
+            return Err(err("insert-child index is out of bounds"));
+        }
         // A re-parent is expressed as insert on the new parent: detach first.
         if let Some(old_parent) = self.nodes.get(&child).and_then(|node| node.parent) {
-            self.detach(old_parent, child, applied)?;
+            self.detach(old_parent, child, applied, orders)?;
         }
         let parent_node = self.nodes.get_mut(&parent).expect("checked above");
-        let index = (index.max(0) as usize).min(parent_node.children.len());
-        parent_node.children.insert(index, child);
+        orders
+            .entry(parent)
+            .or_insert_with(|| Order::new(&parent_node.children))
+            .insert(index as usize, child);
         self.nodes.get_mut(&child).expect("checked above").parent = Some(parent);
         applied.dirty.insert(parent);
         applied.structural.insert(parent);
@@ -464,20 +547,20 @@ impl Store {
         parent: i64,
         child: i64,
         applied: &mut Applied,
+        orders: &mut BTreeMap<i64, Order>,
     ) -> Result<(), BackendError> {
         let parent_node = self
             .nodes
             .get_mut(&parent)
             .ok_or_else(|| err(format!("remove-child: unknown parent {parent}")))?;
-        let position = match parent_node.children.iter().position(|entry| *entry == child) {
-            Some(position) => position,
-            None => {
-                return Err(err(format!(
-                    "remove-child: node {child} is not a child of {parent}"
-                )));
-            }
-        };
-        parent_node.children.remove(position);
+        let order = orders
+            .entry(parent)
+            .or_insert_with(|| Order::new(&parent_node.children));
+        if !order.remove(child) {
+            return Err(err(format!(
+                "remove-child: node {child} is not a child of {parent}"
+            )));
+        }
         if let Some(child_node) = self.nodes.get_mut(&child) {
             child_node.parent = None;
         }
@@ -492,23 +575,22 @@ impl Store {
         child: i64,
         index: i64,
         applied: &mut Applied,
+        orders: &mut BTreeMap<i64, Order>,
     ) -> Result<(), BackendError> {
         let parent_node = self
             .nodes
             .get_mut(&parent)
             .ok_or_else(|| err(format!("move-child: unknown parent {parent}")))?;
-        let position = parent_node
-            .children
-            .iter()
-            .position(|entry| *entry == child)
-            .ok_or_else(|| {
-                err(format!(
-                    "move-child: node {child} is not a child of {parent}"
-                ))
-            })?;
-        parent_node.children.remove(position);
-        let index = (index.max(0) as usize).min(parent_node.children.len());
-        parent_node.children.insert(index, child);
+        let order = orders
+            .entry(parent)
+            .or_insert_with(|| Order::new(&parent_node.children));
+        if order.index(child).is_none() {
+            return Err(err("move-child targets a non-child"));
+        }
+        if index < 0 || index as usize >= order.len() {
+            return Err(err("move-child index is out of bounds"));
+        }
+        order.move_to(child, index as usize);
         applied.dirty.insert(parent);
         applied.structural.insert(parent);
         Ok(())
@@ -535,7 +617,7 @@ mod tests {
         apply_json(
             &mut store,
             r#"{"generation":1,"ops":[
-            {"op":"create-node","id":1,"kind":"root"},
+            {"op":"create-node","id":1,"kind":"column"},
             {"op":"create-node","id":2,"kind":"text"},
             {"op":"set-prop","id":2,"property":"text","value":"Unchanged payload"}
         ]}"#,
@@ -608,7 +690,7 @@ mod tests {
                 {"op": "set-prop", "id": 3, "property": "text",
                  "value": "hello"},
                 {"op": "set-prop", "id": 2, "property": "gap", "value": 8},
-                {"op": "set-extension-prop", "id": 3,
+                {"op": "set-prop", "id": 3,
                  "property": "style-class", "value": "text-sm"}
             ]}"#,
         );
@@ -619,7 +701,10 @@ mod tests {
         let text = store.node(3).expect("text node");
         assert_eq!(text.parent, Some(2));
         assert_eq!(text.string_prop(Property::TextValue), Some("hello"));
-        assert_eq!(text.extension_props.get("style-class"), Some(&Value::Str("text-sm".into())));
+        assert_eq!(
+            text.prop(Property::StyleClass),
+            Some(&Value::Str("text-sm".into()))
+        );
         assert_eq!(store.node(2).unwrap().float_prop(Property::Gap), Some(8.0));
         // Structural ops + every touched node are dirty.
         assert!(applied.dirty.contains(&1));
@@ -638,7 +723,8 @@ mod tests {
                 {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
                 {"op": "set-prop", "id": 2, "property": "text",
                  "value": "before"},
-                {"op": "set-extension-prop", "id": 2, "property": "k",
+                {"op": "create-extension", "id": 3, "identifier": "test-widget", "fingerprint": "test"},
+                {"op": "set-extension-prop", "id": 3, "property": "k",
                  "value": 1}
             ]}"#,
         );
@@ -648,15 +734,15 @@ mod tests {
                 {"op": "set-prop", "id": 2, "property": "text",
                  "value": "after"},
                 {"op": "remove-prop", "id": 2, "property": "enabled"},
-                {"op": "set-extension-prop", "id": 2, "property": "k",
+                {"op": "set-extension-prop", "id": 3, "property": "k",
                  "value": 2},
-                {"op": "remove-extension-prop", "id": 2, "property": "k"}
+                {"op": "remove-extension-prop", "id": 3, "property": "k"}
             ]}"#,
         );
         let node = store.node(2).unwrap();
         assert_eq!(node.string_prop(Property::TextValue), Some("after"));
         assert!(node.prop(Property::Enabled).is_none());
-        assert!(node.extension_props.get("k").is_none());
+        assert!(!store.node(3).unwrap().extension_props.contains_key("k"));
     }
 
     #[test]
@@ -665,7 +751,7 @@ mod tests {
         apply_json(
             &mut store,
             r#"{"generation": 1, "ops": [
-                {"op": "create-node", "id": 1, "kind": "root"},
+                {"op": "create-node", "id": 1, "kind": "column"},
                 {"op": "create-node", "id": 2, "kind": "column"},
                 {"op": "create-node", "id": 3, "kind": "text"},
                 {"op": "create-node", "id": 4, "kind": "text"},
@@ -694,7 +780,9 @@ mod tests {
         apply_json(
             &mut store,
             r#"{"generation": 1, "ops": [
-                {"op": "create-node", "id": 1, "kind": "root"}
+                {"op": "create-node", "id": 1, "kind": "root"},
+                {"op": "create-node", "id": 2, "kind": "text"},
+                {"op": "insert-child", "parent": 1, "child": 2, "index": 0}
             ]}"#,
         );
         apply_json(
@@ -710,7 +798,7 @@ mod tests {
         apply_json(
             &mut store,
             r#"{"generation": 1, "ops": [
-                {"op": "create-node", "id": 1, "kind": "root"},
+                {"op": "create-node", "id": 1, "kind": "column"},
                 {"op": "create-node", "id": 2, "kind": "column"},
                 {"op": "create-node", "id": 3, "kind": "column"},
                 {"op": "create-node", "id": 4, "kind": "text"},
@@ -736,7 +824,7 @@ mod tests {
         apply_json(
             &mut store,
             r#"{"generation": 1, "ops": [
-                {"op": "create-node", "id": 1, "kind": "root"},
+                {"op": "create-node", "id": 1, "kind": "column"},
                 {"op": "create-node", "id": 2, "kind": "text"},
                 {"op": "create-node", "id": 3, "kind": "text"},
                 {"op": "create-node", "id": 4, "kind": "text"},
@@ -755,16 +843,16 @@ mod tests {
     }
 
     #[test]
-    fn insert_index_is_clamped_to_the_child_list() {
+    fn insert_at_the_end_preserves_child_order() {
         let mut store = Store::default();
         apply_json(
             &mut store,
             r#"{"generation": 1, "ops": [
-                {"op": "create-node", "id": 1, "kind": "root"},
+                {"op": "create-node", "id": 1, "kind": "column"},
                 {"op": "create-node", "id": 2, "kind": "text"},
                 {"op": "create-node", "id": 3, "kind": "text"},
                 {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
-                {"op": "insert-child", "parent": 1, "child": 3, "index": 99}
+                {"op": "insert-child", "parent": 1, "child": 3, "index": 1}
             ]}"#,
         );
         assert_eq!(children_of(&store, 1), vec![2, 3]);
@@ -792,10 +880,7 @@ mod tests {
         )
         .unwrap();
         assert!(store.apply(&batch).is_err());
-        assert_eq!(
-            store.nodes.keys().copied().collect::<Vec<_>>(),
-            vec![1, 2]
-        );
+        assert_eq!(store.nodes.keys().copied().collect::<Vec<_>>(), vec![1, 2]);
         assert_eq!(children_of(&store, 1), vec![2]);
         assert_eq!(store.generation, generation_before);
     }
@@ -868,3 +953,109 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod review_regressions {
+    use super::Store;
+    use crate::wire::decode_batch;
+
+    #[test]
+    fn invalid_schema_patches_rollback_and_allow_a_corrected_retry() {
+        let cases = [
+            r#"{"op":"set-prop","id":2,"property":"checked","value":true}"#,
+            r#"{"op":"set-prop","id":2,"property":"text","value":42}"#,
+            r#"{"op":"set-prop","id":1,"property":"width","value":-2}"#,
+            r#"{"op":"set-prop","id":1,"property":"width","value":"wide"}"#,
+            r#"{"op":"set-extension-prop","id":2,"property":"text","value":"wrong boundary"}"#,
+            r#"{"op":"insert-child","parent":1,"child":2,"index":99}"#,
+        ];
+        for operation in cases {
+            let mut store = Store::default();
+            store
+                .apply(
+                    &decode_batch(
+                        r#"{"generation":1,"ops":[
+                {"op":"create-node","id":1,"kind":"column"},
+                {"op":"create-node","id":2,"kind":"text"},
+                {"op":"set-prop","id":2,"property":"text","value":"before"},
+                {"op":"insert-child","parent":1,"child":2,"index":0}
+            ]}"#,
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+            let before = format!("{:?}", store.nodes);
+            let patch = decode_batch(&format!(
+                r#"{{"generation":2,"ops":[
+                {{"op":"set-prop","id":2,"property":"text","value":"candidate"}},
+                {operation}
+            ]}}"#
+            ))
+            .unwrap();
+            assert!(store.apply(&patch).is_err(), "must reject: {operation}");
+            assert_eq!(format!("{:?}", store.nodes), before);
+            store
+                .apply(
+                    &decode_batch(
+                        r#"{"generation":2,"ops":[
+                {"op":"set-prop","id":2,"property":"text","value":"corrected"}
+            ]}"#,
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn invalid_context_menu_metadata_is_rejected() {
+        for extra in [
+            r#"{"op":"create-node","id":3,"kind":"context-menu"},{"op":"insert-child","parent":1,"child":3,"index":1}"#,
+            r#"{"op":"create-node","id":3,"kind":"menu-item"},{"op":"set-prop","id":3,"property":"text","value":"Action"},{"op":"insert-child","parent":2,"child":3,"index":0}"#,
+            r#"{"op":"create-node","id":3,"kind":"divider"},{"op":"set-prop","id":3,"property":"width","value":4},{"op":"insert-child","parent":2,"child":3,"index":0}"#,
+        ] {
+            let batch = decode_batch(&format!(
+                r#"{{"generation":1,"ops":[
+                {{"op":"create-node","id":1,"kind":"text"}},
+                {{"op":"create-node","id":2,"kind":"context-menu"}},
+                {{"op":"insert-child","parent":1,"child":2,"index":0}},
+                {extra}
+            ]}}"#
+            ))
+            .unwrap();
+            let mut store = Store::default();
+            assert!(store.apply(&batch).is_err(), "must reject: {extra}");
+            assert!(store.nodes.is_empty());
+        }
+    }
+
+    #[test]
+    fn canonical_parent_child_constraints_are_enforced() {
+        let cases = [
+            r#"{"generation":1,"ops":[
+                {"op":"create-node","id":1,"kind":"column"},
+                {"op":"create-node","id":2,"kind":"list-section"},
+                {"op":"insert-child","parent":1,"child":2,"index":0}
+            ]}"#,
+            r#"{"generation":1,"ops":[
+                {"op":"create-node","id":1,"kind":"radio-group"},
+                {"op":"create-node","id":2,"kind":"text"},
+                {"op":"insert-child","parent":1,"child":2,"index":0}
+            ]}"#,
+            r#"{"generation":1,"ops":[
+                {"op":"create-node","id":1,"kind":"root"},
+                {"op":"create-node","id":2,"kind":"column"},
+                {"op":"create-node","id":3,"kind":"column"},
+                {"op":"insert-child","parent":1,"child":2,"index":0},
+                {"op":"insert-child","parent":1,"child":3,"index":1}
+            ]}"#,
+        ];
+        for json in cases {
+            let mut store = Store::default();
+            assert!(
+                store.apply(&decode_batch(json).unwrap()).is_err(),
+                "must reject: {json}"
+            );
+            assert!(store.nodes.is_empty());
+        }
+    }
+}

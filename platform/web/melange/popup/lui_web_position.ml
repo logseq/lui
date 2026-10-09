@@ -296,7 +296,7 @@ let picker_menu_items renderer dropdown =
                Store.menu_item_row child_node
                && Store.enabled_node renderer child
            | None -> false)
-        current.retained_children
+        (Lui_sequence.to_list current.retained_children)
   | None -> []
 
 let picker_selected_index renderer dropdown =

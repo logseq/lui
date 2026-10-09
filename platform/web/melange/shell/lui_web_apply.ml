@@ -64,6 +64,9 @@ let portal_parent renderer previous_nodes parent child =
       (Nodes.dom_node_before renderer previous_nodes parent)
 
 let cleanup_node renderer node =
+  (match Hashtbl.find_opt renderer.web_virtual_lists node with
+   | Some state -> state.dispose_virtual ()
+   | None -> ());
   Lui_web_events.release_pointer_events renderer node;
   match Hashtbl.find_opt renderer.web_cleanups node with
   | Some cleanup ->
@@ -76,110 +79,45 @@ let cleanup_node renderer node =
    children (menus, modals, toasts), never-mounted segments and nodes
    dropped inside the same batch all sit outside it and must be skipped *)
 let child_counted_in_container child container =
-  match child.platform_node |> W.Element.parentElement with
+  match (Lazy.force child.platform_node) |> W.Element.parentElement with
   | Some actual -> actual == container
   | None -> false
 
-(* Growable int buffer. Append is amortized O(1); the visible-child prefix
-   is filled once per child so repeated inserts into one parent stay linear. *)
-type int_buf = {mutable data : int array; mutable len : int}
-
-let int_buf_create capacity =
-  {data = Array.make (max 4 capacity) 0; len = 0}
-
-let int_buf_ensure buf extra =
-  if buf.len + extra > Array.length buf.data then begin
-    let next_len = max (buf.len + extra) (Array.length buf.data * 2) in
-    let next = Array.make next_len 0 in
-    Array.blit buf.data 0 next 0 buf.len;
-    buf.data <- next
-  end
-
-let int_buf_push buf value =
-  int_buf_ensure buf 1;
-  buf.data.(buf.len) <- value;
-  buf.len <- buf.len + 1
-
-let int_buf_insert buf index value =
-  let index = if index < 0 then 0 else if index > buf.len then buf.len else index in
-  int_buf_ensure buf 1;
-  Array.blit buf.data index buf.data (index + 1) (buf.len - index);
-  buf.data.(index) <- value;
-  buf.len <- buf.len + 1
-
-let int_buf_remove_at buf index =
-  Array.blit buf.data (index + 1) buf.data index (buf.len - index - 1);
-  buf.len <- buf.len - 1
-
-let int_buf_index buf value =
-  let rec loop index =
-    if index >= buf.len then None
-    else if buf.data.(index) = value then Some index
-    else loop (index + 1)
-  in
-  loop 0
-
 type child_shadow = {
-  items : int_buf;
-  prefix : int_buf;
-  mutable prefix_filled : int;
+  items : Lui_indexed_sequence.t;
   mutable prefix_container : W.Element.t option;
 }
 
 let shadow_of_list children =
-  let items = int_buf_create (List.length children) in
-  List.iter (int_buf_push items) children;
-  let prefix = int_buf_create 1 in
-  int_buf_push prefix 0;
-  {items; prefix; prefix_filled = 1; prefix_container = None}
-
-let shadow_invalidate shadow index =
-  if shadow.prefix_filled > index + 1 then shadow.prefix_filled <- index + 1
+  { items = Lui_indexed_sequence.of_list children; prefix_container = None }
 
 let shadow_insert shadow index child =
-  int_buf_insert shadow.items index child;
-  shadow_invalidate shadow index
+  Lui_indexed_sequence.insert shadow.items index child;
+  Lui_indexed_sequence.set_weight shadow.items child 0
 
-let shadow_ids shadow =
-  Array.sub shadow.items.data 0 shadow.items.len |> Array.to_list
+let shadow_ids shadow = Lui_indexed_sequence.to_list shadow.items
 
 let shadow_remove shadow child =
-  match int_buf_index shadow.items child with
+  if Lui_indexed_sequence.index shadow.items child <> None then
+    Lui_indexed_sequence.remove shadow.items child
+
+let shadow_refresh_weight renderer shadow child =
+  match shadow.prefix_container with
   | None -> ()
-  | Some index ->
-      int_buf_remove_at shadow.items index;
-      shadow_invalidate shadow index
+  | Some container ->
+    let counted = match Store.node renderer.web_store child with
+      | Some current when Lazy.is_val current.platform_node ->
+        child_counted_in_container current container
+      | _ -> false in
+    Lui_indexed_sequence.set_weight shadow.items child (if counted then 1 else 0)
 
 let visible_child_index renderer ~container ~children index =
-  let reset =
-    match children.prefix_container with
-    | Some previous when previous == container -> false
-    | _ -> true
-  in
-  if reset then begin
-    children.prefix.len <- 0;
-    int_buf_push children.prefix 0;
-    children.prefix_filled <- 1;
-    children.prefix_container <- Some container
-  end;
-  let index =
-    if index < 0 then 0
-    else if index > children.items.len then children.items.len
-    else index
-  in
-  while children.prefix_filled <= index do
-    let slot = children.prefix_filled - 1 in
-    let child = children.items.data.(slot) in
-    let previous = children.prefix.data.(slot) in
-    let counted =
-      match Store.node renderer.web_store child with
-      | Some child_node -> child_counted_in_container child_node container
-      | None -> false
-    in
-    int_buf_push children.prefix (previous + if counted then 1 else 0);
-    children.prefix_filled <- children.prefix_filled + 1
-  done;
-  children.prefix.data.(index)
+  (match children.prefix_container with
+   | Some previous when previous == container -> ()
+   | _ ->
+     children.prefix_container <- Some container;
+     List.iter (shadow_refresh_weight renderer children) (shadow_ids children));
+  Lui_indexed_sequence.prefix_weight children.items index
 
 let focused_descendant renderer dom_node =
   let document =
@@ -256,6 +194,7 @@ let apply_create renderer node kind =
   W.Element.setAttribute "id" (Util.node_dom_id node) created;
   if kind = Accordion then Util.initialize_accordion_semantics node created;
   if kind = ViewThatFits then Lui_web_fit.attach renderer node created;
+  if kind = ListContainer then Lui_web_list.install renderer node;
   Lui_web_events.attach_events renderer node kind created
 
 (* The nearest ancestor that forms a popup container, returned as
@@ -287,9 +226,9 @@ let insert_menu_item_role renderer _child current parent =
   if Store.menu_item_row current then
     match popup_container renderer parent with
     | Some (container_id, `Menu) ->
-        W.Element.setAttribute "role" "menuitem" current.platform_node;
-        W.Element.setAttribute "tabindex" "-1" current.platform_node;
-        W.Element.removeAttribute "aria-selected" current.platform_node;
+        W.Element.setAttribute "role" "menuitem" (Lazy.force current.platform_node);
+        W.Element.setAttribute "tabindex" "-1" (Lazy.force current.platform_node);
+        W.Element.removeAttribute "aria-selected" (Lazy.force current.platform_node);
         Lui_web_menu.highlight_initial_menu_item renderer container_id
     | _ -> ()
 
@@ -307,12 +246,12 @@ let mount_inserted_child renderer parent child current =
       Lui_web_menu.mount_dropdown renderer child
   | Some Popover -> Lui_web_menu.mount_popover renderer child
   | Some (Dialog | Sheet) ->
-      Lui_web_overlay.open_modal renderer child current.platform_node
+      Lui_web_overlay.open_modal renderer child (Lazy.force current.platform_node)
   | Some Tooltip ->
       if Store.anchored_tooltip current then
-        Lui_web_overlay.mount_tooltip renderer child current.platform_node
+        Lui_web_overlay.mount_tooltip renderer child (Lazy.force current.platform_node)
   | Some Toast ->
-      Lui_web_overlay.mount_toast renderer child current.platform_node
+      Lui_web_overlay.mount_toast renderer child (Lazy.force current.platform_node)
   | _ -> ()
 
 let insert_child_dom renderer previous_nodes children_of parent child
@@ -402,9 +341,9 @@ let clear_submenu_trigger _renderer previous_nodes parent =
   | Some parent_node ->
       if Store.menu_item_row parent_node then begin
         W.Element.removeAttribute "data-submenu-trigger"
-          parent_node.platform_node;
-        W.Element.removeAttribute "aria-haspopup" parent_node.platform_node;
-        W.Element.removeAttribute "aria-expanded" parent_node.platform_node
+          (Lazy.force parent_node.platform_node);
+        W.Element.removeAttribute "aria-haspopup" (Lazy.force parent_node.platform_node);
+        W.Element.removeAttribute "aria-expanded" (Lazy.force parent_node.platform_node)
       end
   | None -> ()
 
@@ -557,10 +496,10 @@ let apply_set_prop renderer node property value =
                | _ -> ())
            | _ ->
                Lui_web_props.apply_property renderer node kind
-                 current.platform_node property value);
+                 (Lazy.force current.platform_node) property value);
           if property = PointerEnabled then
             Lui_web_events.sync_pointer_events renderer node kind
-              current.platform_node;
+              (Lazy.force current.platform_node);
           refresh_parent_for_prop renderer node property
       | None -> invalid_arg "standard property targets extension node")
   | None -> ()
@@ -579,10 +518,10 @@ let apply_remove_prop renderer node property =
                 | None -> ())
             | _ ->
                 Lui_web_props.remove_property renderer node kind
-                  current.platform_node property);
+                  (Lazy.force current.platform_node) property);
            if property = PointerEnabled then
              Lui_web_events.sync_pointer_events renderer node kind
-               current.platform_node;
+               (Lazy.force current.platform_node);
            refresh_parent_for_prop renderer node property
        | None -> invalid_arg "standard property targets extension node")
    | None -> ())
@@ -594,6 +533,77 @@ let known_node renderer previous_nodes node =
   match Store.node renderer.web_store node with
   | Some _ -> true
   | None -> prev_node previous_nodes node <> None
+
+(* The retained mirror contains every row. Only rows in a virtual window
+   have platform resources; patches to other rows remain in the mirror until
+   the row enters a window. *)
+let rec visible_in_virtual renderer previous_nodes node =
+  let current = match Store.node renderer.web_store node with
+    | Some _ as current -> current | None -> previous_nodes node in
+  match current with
+  | Some current -> (match current.retained_parent with
+    | None -> true
+    | Some parent ->
+      let parent_node = match Store.node renderer.web_store parent with
+        | Some _ as current -> current | None -> previous_nodes parent in
+      (match parent_node with
+       | Some current when Store.standard_kind_is current VirtualList ->
+         (match Hashtbl.find_opt renderer.web_virtual_lists parent with
+          | Some state -> state.virtual_row_live node
+          | None -> false)
+         && visible_in_virtual renderer previous_nodes parent
+       | _ -> visible_in_virtual renderer previous_nodes parent))
+  | None -> false
+
+let reset_platform renderer node current =
+  let platform_node = match current.semantic_kind with
+    | StandardSemantic kind -> lazy (Nodes.platform_node renderer kind)
+    | ExtensionSemantic (identifier, _) ->
+      lazy (Ext.extension_platform_node renderer node identifier) in
+  Hashtbl.replace renderer.web_store.retained_nodes node {current with platform_node}
+
+let rec unmount_retained renderer node =
+  match Store.node renderer.web_store node with
+  | None -> ()
+  | Some current ->
+    if Lazy.is_val current.platform_node then begin
+      cleanup_node renderer node;
+      Ext.cleanup_extension_node renderer (Store.node renderer.web_store) node;
+      Lui_web_layers.remove renderer.web_layers renderer.web_document node;
+      let element = Lazy.force current.platform_node in
+      (match W.Element.parentElement element with
+       | Some parent -> ignore (W.Element.removeChild (W.Element.asNode element) parent)
+       | None -> ());
+      Lui_sequence.iter (unmount_retained renderer) current.retained_children;
+      reset_platform renderer node current
+    end
+
+let rec materialize renderer node =
+  match Store.node renderer.web_store node with
+  | None -> invalid_arg "cannot materialize an unknown node"
+  | Some current ->
+    (match current.semantic_kind with
+     | StandardSemantic kind ->
+       apply_create renderer node kind;
+       Property_map.iter (apply_set_prop renderer node) current.retained_properties
+     | ExtensionSemantic _ ->
+       W.Element.setAttribute "id" (Util.node_dom_id node) (Lazy.force current.platform_node);
+       String_map.iter (Ext.apply_extension_property renderer node)
+         current.retained_extension_properties);
+    if Store.standard_kind_is current VirtualList then
+      Lui_web_virtual.install renderer node ~materialize:(materialize renderer)
+        ~unmount:(unmount_retained renderer)
+    else begin
+      let shadow = shadow_of_list [] in
+      let children_of _ = shadow in
+      Lui_sequence.to_list current.retained_children
+      |> List.iteri (fun index child ->
+        ignore (materialize renderer child);
+        shadow_insert shadow index child;
+        apply_insert_child renderer (Store.node renderer.web_store) children_of node child index;
+        shadow_refresh_weight renderer shadow child)
+    end;
+    Nodes.dom_node renderer node
 
 (* detach-subtree replaces the per-node remove/drop op pair for a whole
    removed subtree: one pass unmounts every member — layer registrations,
@@ -615,8 +625,8 @@ let apply_detach_subtree renderer previous_nodes children_of node =
          | Some parent ->
              let boundary =
                if prev_modal previous_nodes node then
-                 Util.modal_layer_node previous.platform_node
-               else previous.platform_node
+                 Util.modal_layer_node (Lazy.force previous.platform_node)
+               else (Lazy.force previous.platform_node)
              in
              apply_remove_child renderer previous_nodes parent node;
              Some boundary
@@ -631,8 +641,8 @@ let apply_detach_subtree renderer previous_nodes children_of node =
   in
   let detach_element node_id =
     match prev_node previous_nodes node_id with
-    | Some previous ->
-        let surface = previous.platform_node in
+    | Some previous when Lazy.is_val previous.platform_node ->
+        let surface = (Lazy.force previous.platform_node) in
         let target =
           if prev_modal previous_nodes node_id then
             Util.modal_layer_node surface
@@ -646,6 +656,7 @@ let apply_detach_subtree renderer previous_nodes children_of node =
                  (W.Element.removeChild
                     (W.Element.asNode target) actual_parent)
          | None -> ())
+    | Some _ -> ()
     | None ->
         (* a member created inside this batch has no pre-batch record but
            a portal-mounted element can still sit outside the subtree *)
@@ -673,7 +684,7 @@ let apply_detach_subtree renderer previous_nodes children_of node =
                (match prev_node previous_nodes parent with
                 | Some tabs_node ->
                     let bar =
-                      Util.bottom_tabs_bar_node tabs_node.platform_node
+                      Util.bottom_tabs_bar_node (Lazy.force tabs_node.platform_node)
                     in
                     (match
                        W.Element.querySelector
@@ -724,6 +735,17 @@ let apply_detach_subtree renderer previous_nodes children_of node =
   | _ -> ()
 
 let apply_dom_op renderer previous_nodes children_of operation =
+  let visible node = visible_in_virtual renderer previous_nodes node in
+  let virtual_parent parent = match Store.node renderer.web_store parent with
+    | Some current -> Store.standard_kind_is current VirtualList | None -> false in
+  let apply = match operation with
+    | CreateNode (node, _) | CreateExtension (node, _, _)
+    | DropNode node | DetachSubtree node
+    | SetProp (node, _, _) | RemoveProp (node, _)
+    | SetExtensionProp (node, _, _) | RemoveExtensionProp (node, _) -> visible node
+    | InsertChild (parent, child, _) | MoveChild (parent, child, _)
+    | RemoveChild (parent, child) -> visible child && not (virtual_parent parent) in
+  if apply then
   match operation with
   | CreateNode (node, kind) ->
       if Store.node renderer.web_store node <> None then
@@ -732,7 +754,7 @@ let apply_dom_op renderer previous_nodes children_of operation =
       match Store.node renderer.web_store node with
       | Some current ->
           W.Element.setAttribute "id" (Util.node_dom_id node)
-            current.platform_node
+            (Lazy.force current.platform_node)
       | None -> ())
   | DropNode node ->
       if known_node renderer previous_nodes node then begin
@@ -781,7 +803,7 @@ let apply_dom_batch renderer previous_nodes batch =
     | None ->
         let children =
           match prev_node previous_nodes parent with
-          | Some node -> shadow_of_list node.retained_children
+          | Some node -> shadow_of_list (Lui_sequence.to_list node.retained_children)
           | None -> shadow_of_list []
         in
         Hashtbl.replace shadow parent children;
@@ -808,7 +830,12 @@ let apply_dom_batch renderer previous_nodes batch =
   List.iter
     (fun operation ->
        mirror operation;
-       try apply_dom_op renderer previous_nodes children_of operation
+       try
+         apply_dom_op renderer previous_nodes children_of operation;
+         (match operation with
+          | InsertChild (parent, child, _) | MoveChild (parent, child, _) ->
+            shadow_refresh_weight renderer (children_of parent) child
+          | _ -> ())
        with Invalid_argument msg ->
          invalid_arg
            (Printf.sprintf "op %s: %s" (Lui_wire.encode_op operation) msg))
@@ -816,6 +843,19 @@ let apply_dom_batch renderer previous_nodes batch =
   (* Refresh roving tabindex only on groups this batch could have changed,
      walking from each touched id to the nearest tree, toolbar, or
      horizontal group instead of scanning the whole store. *)
+  let structural = Hashtbl.create 16 in
+  let focus_touched = Hashtbl.create 16 in
+  let mark_ancestors table id =
+    let rec walk id =
+      if not (Hashtbl.mem table id) then begin
+        Hashtbl.replace table id ();
+        let current = match Store.node renderer.web_store id with
+          | Some current -> Some current
+          | None -> prev_node previous_nodes id in
+        Option.iter (fun current -> Option.iter walk current.retained_parent) current
+      end
+    in walk id
+  in
   let touched = Hashtbl.create 16 in
   let note id = Hashtbl.replace touched id () in
   List.iter
@@ -855,8 +895,8 @@ let apply_dom_batch renderer previous_nodes batch =
       match Store.node renderer.web_store id with
       | Some current ->
           (match Store.standard_kind current with
-           | Some kind -> refresh id kind
-           | None -> ());
+           | Some kind when Hashtbl.mem focus_touched id -> refresh id kind
+           | _ -> ());
           (match current.retained_parent with
            | Some parent -> climb parent
            | None -> ())
@@ -869,4 +909,74 @@ let apply_dom_batch renderer previous_nodes batch =
           | None -> ())
     end
   in
-  Hashtbl.iter (fun id () -> climb id) touched
+  List.iter (function
+    | InsertChild (parent, _, _) | RemoveChild (parent, _) | MoveChild (parent, _, _) ->
+      mark_ancestors structural parent; mark_ancestors focus_touched parent
+    | DropNode id | DetachSubtree id ->
+      mark_ancestors structural id; mark_ancestors focus_touched id
+    | SetProp (id, (Enabled | Selected | RoleValue | TreeLevel | Expanded | OrientationValue | TextValue), _)
+    | RemoveProp (id, (Enabled | Selected | RoleValue | TreeLevel | Expanded | OrientationValue | TextValue)) ->
+      mark_ancestors focus_touched id
+    | _ -> ()) batch.ops;
+  Hashtbl.iter (fun id () -> climb id) touched;
+  Hashtbl.iter (fun id () ->
+    match Store.node renderer.web_store id with
+    | Some current when Store.standard_kind_is current VirtualList
+      && visible_in_virtual renderer previous_nodes id ->
+      Lui_web_virtual.install renderer id ~materialize:(materialize renderer)
+        ~unmount:(unmount_retained renderer)
+    | _ -> ()) visited;
+  Hashtbl.iter (fun id () ->
+    Option.iter (fun refresh -> refresh (Hashtbl.mem structural id)) (Hashtbl.find_opt renderer.web_lists id)) visited;
+  Hashtbl.iter (fun id () ->
+    Option.iter (fun state -> state.refresh_virtual ())
+      (Hashtbl.find_opt renderer.web_virtual_lists id)) visited;
+  List.iter (function
+    | SetProp (id, HeightValue, _) | RemoveProp (id, HeightValue) ->
+      (match Store.node renderer.web_store id with
+       | Some current -> Option.iter (fun parent ->
+           Option.iter (fun state -> state.resize_virtual_row id)
+             (Hashtbl.find_opt renderer.web_virtual_lists parent)) current.retained_parent
+       | None -> ())
+    | _ -> ()) batch.ops
+
+(* A platform exception may occur after some DOM writes have succeeded.
+   Rebuild from the committed mirror so the next generation starts from the
+   same tree on both sides. This exceptional path deliberately visits the
+   whole store; normal batches retain their affected-node locality. *)
+let recover_dom renderer =
+  let resources = Hashtbl.copy renderer.web_store.retained_nodes in
+  Hashtbl.iter (fun id previous ->
+    match previous with
+    | Some current when not (Hashtbl.mem resources id) -> Hashtbl.add resources id current
+    | _ -> ()) renderer.web_store.retained_prior;
+  let cleanup_error = ref None in
+  let attempt action = try action () with error ->
+    if !cleanup_error = None then cleanup_error := Some error in
+  Hashtbl.fold (fun id _ ids -> id :: ids) renderer.web_layers.layers []
+  |> List.iter (fun id -> attempt (fun () ->
+    Lui_web_layers.remove renderer.web_layers renderer.web_document id));
+  Hashtbl.iter (fun id current ->
+    if Lazy.is_val current.platform_node then begin
+      attempt (fun () -> cleanup_node renderer id);
+      attempt (fun () -> Ext.cleanup_extension_node renderer (Hashtbl.find_opt resources) id);
+      let element = Lazy.force current.platform_node in
+      attempt (fun () -> match W.Element.parentElement element with
+        | Some parent -> ignore (W.Element.removeChild (W.Element.asNode element) parent)
+        | None -> ())
+    end) resources;
+  Hashtbl.clear renderer.web_cleanups;
+  Hashtbl.clear renderer.web_pointer_cleanups;
+  Hashtbl.clear renderer.web_virtual_lists;
+  Hashtbl.clear renderer.web_lists;
+  Hashtbl.iter (reset_platform renderer) renderer.web_store.retained_nodes;
+  let roots = Hashtbl.fold (fun id current roots ->
+    if current.retained_parent = None then id :: roots else roots)
+    renderer.web_store.retained_nodes [] in
+  List.iter (fun id ->
+    let element = materialize renderer id in
+    Option.iter (fun host -> W.Element.appendChild (W.Element.asNode element) host)
+      (Hashtbl.find_opt renderer.web_mounted_roots id)) roots;
+  Hashtbl.iter (fun _ state -> state.refresh_virtual ()) renderer.web_virtual_lists;
+  Hashtbl.iter (fun _ refresh -> refresh false) renderer.web_lists;
+  Option.iter raise !cleanup_error

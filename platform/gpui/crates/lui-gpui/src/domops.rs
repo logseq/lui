@@ -207,7 +207,7 @@ pub fn handle_dom_op(
                 let value = parsed.get("value").and_then(Value::as_str).unwrap_or("");
                 let mut attrs = current_attrs(shared, id);
                 attrs.insert(name.to_string(), Value::String(value.to_string()));
-                apply_local(shared, &attr_batch(id, attrs), cx);
+                apply_local(shared, &attr_batch(shared, id, attrs), cx);
             }
             Vec::new()
         }
@@ -216,7 +216,7 @@ pub fn handle_dom_op(
                 let name = parsed.get("name").and_then(Value::as_str).unwrap_or("");
                 let mut attrs = current_attrs(shared, id);
                 attrs.remove(name);
-                apply_local(shared, &attr_batch(id, attrs), cx);
+                apply_local(shared, &attr_batch(shared, id, attrs), cx);
             }
             Vec::new()
         }
@@ -263,11 +263,7 @@ pub fn handle_dom_op(
         // the same pair the reconciler emits for a removed node.
         "remove" => {
             if let Some(id) = target {
-                let parent = shared
-                    .borrow()
-                    .store
-                    .node(id)
-                    .and_then(|n| n.parent);
+                let parent = shared.borrow().store.node(id).and_then(|n| n.parent);
                 if let Some(parent) = parent {
                     let batch = json!({
                         "generation": 0,
@@ -281,12 +277,11 @@ pub fn handle_dom_op(
             }
             Vec::new()
         }
-        // element.value = v — writes the wire `value` prop that the input
-        // kind's controlled-value echo pushes into its InputState.
+        // element.value = v writes the canonical text property for input controls.
         "set-value" => {
             if let Some(id) = target {
                 let value = parsed.get("value").and_then(Value::as_str).unwrap_or("");
-                apply_local(shared, &style_prop_batch(shared, id, "value", value), cx);
+                apply_local(shared, &style_prop_batch(shared, id, "text", value), cx);
                 // Imperative writes use the same revision as declarative patches.
                 // Apply before a following set-selection-range in this dom-op batch.
                 let snapshot = crate::node_view::NodeSnapshot::snapshot(&shared.borrow().store, id);
@@ -314,9 +309,7 @@ pub fn handle_dom_op(
                 if let Some(view) = view {
                     view.update(cx, |view, cx| {
                         if let Some(input) = &view.states.input {
-                            input.update(cx, |st, cx| {
-                                st.set_selected_range(start..end, cx)
-                            });
+                            input.update(cx, |st, cx| st.set_selected_range(start..end, cx));
                         }
                     });
                 }
@@ -328,13 +321,10 @@ pub fn handle_dom_op(
             let value = parsed.get("value").and_then(Value::as_str).unwrap_or("");
             if name.starts_with("--") {
                 style::set_css_var(name, value);
-                // The var table is global: re-render the whole tree by
-                // dirtying the root. Read-then-act in two borrows — the
-                // scrutinee `Ref` would outlive bump_node's apply_batch_json
-                // and its nested `borrow_mut` would panic.
-                let root = shared.borrow().store.root;
-                if let Some(root) = root {
-                    bump_node(shared, root, cx);
+                // Global variables can affect any retained view, without changing wire state.
+                let views: Vec<_> = shared.borrow().views.values().cloned().collect();
+                for view in views {
+                    cx.notify(view.entity_id());
                 }
             } else if let Some(id) = target {
                 let mut attrs = current_attrs(shared, id);
@@ -347,7 +337,7 @@ pub fn handle_dom_op(
                     "style".to_string(),
                     Value::String(set_style_decl(&style_str, name, value)),
                 );
-                apply_local(shared, &attr_batch(id, attrs), cx);
+                apply_local(shared, &attr_batch(shared, id, attrs), cx);
             }
             Vec::new()
         }
@@ -382,44 +372,43 @@ fn current_class(shared: &Shared, node_id: i64) -> String {
     }
 }
 
-/// Current extension `attrs` JSON object for `node_id` (empty map when
-/// absent or unparseable).
+/// Read either the standard encoded attributes or the extension JSON object.
 fn current_attrs(shared: &Shared, node_id: i64) -> serde_json::Map<String, Value> {
-    let shared = shared.borrow();
-    let Some(node) = shared.store.node(node_id) else {
-        return serde_json::Map::new();
-    };
-    node.extension_props
-        .get("attrs")
-        .and_then(|v| v.as_str())
-        .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
-        .and_then(|v| v.as_object().cloned())
+    shared
+        .borrow()
+        .store
+        .node(node_id)
+        .map(crate::dom::parsed_attrs)
         .unwrap_or_default()
 }
 
-/// `set-extension-prop attrs` batch serializing `attrs` back to its JSON
-/// object form.
-fn attr_batch(node_id: i64, attrs: serde_json::Map<String, Value>) -> String {
-    json!({
-        "generation": 0,
-        "ops": [{
-            "op": "set-extension-prop",
-            "id": node_id,
-            "property": "attrs",
-            "value": Value::Object(attrs).to_string(),
-        }],
-    })
-    .to_string()
+/// Attribute writes respect the standard/extension wire boundary.
+fn attr_batch(shared: &Shared, node_id: i64, attrs: serde_json::Map<String, Value>) -> String {
+    let is_extension = matches!(
+        shared.borrow().store.node(node_id).map(|n| &n.identity),
+        Some(NodeIdentity::Extension { .. })
+    );
+    let (op, property, value) = if is_extension {
+        (
+            "set-extension-prop",
+            "attrs",
+            Value::Object(attrs).to_string(),
+        )
+    } else {
+        let encoded = attrs
+            .iter()
+            .map(|(name, value)| format!("{name}\u{1f}{}", value.as_str().unwrap_or("")))
+            .collect::<Vec<_>>()
+            .join("\u{1e}");
+        ("set-prop", "data-attrs", encoded)
+    };
+    json!({"generation":0,"ops":[{"op":op,"id":node_id,"property":property,"value":value}]})
+        .to_string()
 }
 
 /// Class/text writes route to the standard `style-class`/`text` prop on
 /// component nodes and the extension prop on extension nodes.
-fn style_prop_batch(
-    shared: &Shared,
-    node_id: i64,
-    prop: &str,
-    value: &str,
-) -> String {
+fn style_prop_batch(shared: &Shared, node_id: i64, prop: &str, value: &str) -> String {
     let is_extension = {
         let shared = shared.borrow();
         matches!(
@@ -461,21 +450,6 @@ fn set_style_decl(style: &str, name: &str, value: &str) -> String {
         .collect();
     decls.push(format!("{name}:{value}"));
     decls.join(";")
-}
-
-/// Touch `node_id` so the renderer rebuilds it (used for global CSS-var
-/// changes, where dependents live anywhere in the tree).
-fn bump_node(shared: &Shared, node_id: i64, cx: &mut App) {
-    let batch = json!({
-        "generation": 0,
-        "ops": [{
-            "op": "set-extension-prop",
-            "id": node_id,
-            "property": "css-vars-rev",
-            "value": style::css_vars_rev().to_string(),
-        }],
-    });
-    let _ = crate::backend::apply_local_batch_json(shared, &batch.to_string(), cx);
 }
 
 fn apply_local(shared: &Shared, batch_json: &str, cx: &mut App) {
@@ -803,4 +777,3 @@ mod tests {
         assert_eq!(f32::from(b.size.height), 600.0);
     }
 }
-

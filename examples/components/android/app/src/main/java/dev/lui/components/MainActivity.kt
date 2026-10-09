@@ -41,9 +41,7 @@ class MainActivity : ComponentActivity() {
         GalleryExtensions.register(backend.extensions)
 
         runtimeStarted = runCatching {
-            LuiBridge.start(libraryName = "lui_jni_bridge") { json ->
-                backend.applyBatch(json)
-            }
+            LuiBridge.start(libraryName = "lui_jni_bridge", backend = backend)
         }.getOrDefault(false)
 
         setContent {

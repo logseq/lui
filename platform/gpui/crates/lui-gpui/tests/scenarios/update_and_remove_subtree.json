@@ -5,14 +5,16 @@
       "generation": 1,
       "ops": [
         {"op": "create-node", "id": 1, "kind": "root"},
+        {"op": "create-node", "id": 100, "kind": "panel"},
+        {"op": "insert-child", "parent": 1, "child": 100, "index": 0},
         {"op": "create-extension", "id": 2, "identifier": "logseq-div", "fingerprint": "fp2"},
         {"op": "create-extension", "id": 3, "identifier": "logseq-div", "fingerprint": "fp3"},
         {"op": "create-extension", "id": 6, "identifier": "logseq-span", "fingerprint": "fp6"},
         {"op": "set-extension-prop", "id": 2, "property": "style-class", "value": "h-20 w-full"},
         {"op": "set-extension-prop", "id": 3, "property": "style-class", "value": "h-20 w-full"},
         {"op": "set-extension-prop", "id": 6, "property": "text", "value": "old"},
-        {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
-        {"op": "insert-child", "parent": 1, "child": 3, "index": 1},
+        {"op": "insert-child", "parent": 100, "child": 2, "index": 0},
+        {"op": "insert-child", "parent": 100, "child": 3, "index": 1},
         {"op": "insert-child", "parent": 2, "child": 6, "index": 0}
       ]
     }},
@@ -26,7 +28,7 @@
         {"op": "set-extension-prop", "id": 5, "property": "style-class", "value": "flex p-4"},
         {"op": "set-extension-prop", "id": 5, "property": "events", "value": "click"},
         {"op": "set-extension-prop", "id": 5, "property": "text", "value": "New"},
-        {"op": "insert-child", "parent": 1, "child": 5, "index": 0}
+        {"op": "insert-child", "parent": 100, "child": 5, "index": 0}
       ]
     }},
     {"expect-bounds": {"node": 2, "absent": true}},

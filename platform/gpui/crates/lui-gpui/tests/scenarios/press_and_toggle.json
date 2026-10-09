@@ -31,6 +31,7 @@
             "id": 4,
             "kind": "toggle"
           },
+          {"op": "set-prop", "id": 4, "property": "text", "value": "Toggle"},
           {
             "op": "insert-child",
             "parent": 1,

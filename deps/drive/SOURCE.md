@@ -1,7 +1,7 @@
 # Vendored `drive`
 
-Source: https://github.com/logseq/drive (`src/` at commit `17590f4`,
-the `devin/lui-event-variants` event-vocabulary fix).
+Source: https://github.com/logseq/drive (`src/` at commit
+`1e1653d5bdd0810e89d9e3a32b2e0ea2811c1cf5`, upstream `main`).
 
 The unit suite drives UI behavior through `Drive.Session` / `Drive.Model`
 / `Drive.Scenario`. `drive` depends on `lui`, so an opam-installed

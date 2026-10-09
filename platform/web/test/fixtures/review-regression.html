@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LUI review regressions</title>
+<link rel="stylesheet" href="/platform/web/dist/lui.css">
+<script type="importmap">{"imports":{
+  "@tanstack/virtual-core": "/platform/web/dist/tanstack-virtual.js",
+          "lui.web.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui.web.dom/",
+  "lui/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui/",
+  "melange-webapi/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange-webapi/",
+  "melange.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.dom/",
+  "melange.js/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.js/",
+  "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
+  "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
+}}</script>
+<style>
+body { margin: 10px; font: 16px system-ui }
+#host { width: 400px }
+.lui-virtual-list, .lui-list { height: 240px; overflow: auto }
+.review-virtual-row { display: block; height: 24px }
+</style>
+<main id="host"></main>
+<script type="module">
+import * as Web from "lui.web.dom/shell/lui_web.js"
+import { Protocol, properties, kinds } from "./protocol-fixture.mjs"
+const host = document.querySelector("#host")
+const renderer = Web.create(undefined, host)
+const backend = Web.backend(renderer)
+const list = items => items.reduceRight((tl, hd) => ({ hd, tl }), 0)
+const scalar = value => ({ TAG: typeof value === "string" ? 0 : typeof value === "boolean" ? 1 : 2, _0: value })
+const set = (id, name, value) => Protocol.set_prop_op(id, properties.get(name), scalar(value))
+const create = (id, kind) => Protocol.create_node_op(id, kinds.get(kind))
+let generation = 1
+const events = []
+Web.set_event_handler(renderer, event => { events.push(event); return true })
+const operations = [create(1, "column"), create(2, "text"), create(3, "text"),
+  set(2, "text", "before A"), set(3, "text", "before B"),
+  Protocol.insert_child_op(1, 2, 0), Protocol.insert_child_op(1, 3, 1),
+  create(4, "virtual-list"), set(4, "height", 240), Protocol.insert_child_op(1, 4, 2)]
+for (let index = 0; index < 1000; index++) {
+  const id = index + 5
+  operations.push(create(id, "text"), set(id, "text", `virtual row ${index}`), set(id, "style-class", "review-virtual-row"),
+    set(id, "height", 24), Protocol.insert_child_op(4, id, index))
+}
+operations.push(create(1005, "list"), set(1005, "height", 240),
+  Protocol.insert_child_op(1, 1005, 3))
+for (let index = 0; index < 100; index++) {
+  const id = index + 1006
+  operations.push(create(id, "list-item"), set(id, "text", `list row ${index}`),
+    set(id, "key", `row-${index}`), set(id, "height", 24), Protocol.insert_child_op(1005, id, index))
+}
+backend.apply_batch({ generation, ops: list(operations) })
+Web.mount(renderer, 1, host)
+window.review = {
+  renderer, backend, events, set, Protocol, kinds,
+  node: id => document.getElementById(`lui-node-${id}`),
+  apply: operations => backend.apply_batch({ generation: ++generation, ops: list(operations) }),
+  property: (id, name) => Web.property(renderer, id, properties.get(name)),
+}
+</script>

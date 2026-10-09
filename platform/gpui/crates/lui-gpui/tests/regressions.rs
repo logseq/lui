@@ -39,14 +39,14 @@ fn single_node_patch_keeps_unchanged_sibling_render_cached(cx: &mut TestAppConte
             &shared,
             r#"{"generation":1,"ops":[
             {"op":"create-node","id":1,"kind":"root"},
+            {"op":"create-node","id":4,"kind":"column"},
+            {"op":"insert-child","parent":1,"child":4,"index":0},
             {"op":"create-extension","id":2,"identifier":"review-counting","fingerprint":"fp"},
             {"op":"create-extension","id":3,"identifier":"review-counting","fingerprint":"fp"},
-            {"op":"set-prop","id":2,"property":"width","value":80},
-            {"op":"set-prop","id":2,"property":"height","value":32},
-            {"op":"set-prop","id":3,"property":"width","value":80},
-            {"op":"set-prop","id":3,"property":"height","value":32},
-            {"op":"insert-child","parent":1,"child":2,"index":0},
-            {"op":"insert-child","parent":1,"child":3,"index":1}
+            {"op":"set-extension-prop","id":2,"property":"style-class","value":"w-20 h-8"},
+            {"op":"set-extension-prop","id":3,"property":"style-class","value":"w-20 h-8"},
+            {"op":"insert-child","parent":4,"child":2,"index":0},
+            {"op":"insert-child","parent":4,"child":3,"index":1}
         ]}"#,
             app,
         )
@@ -418,7 +418,7 @@ fn split_tracks_model_ratio_and_parent_resize(cx: &mut TestAppContext) {
     let build = shared.clone();
     let (_, window) = cx.add_window_view(move |_, _| LuiRootView::new(build));
     window.run_until_parked();
-    for (generation, width, fraction) in [(2, 400., 0.25), (3, 600., 0.25)] {
+    for (generation, width, fraction) in [(2, 400, 0.25), (3, 600, 0.25)] {
         window.update(|_, app| {
             apply_batch_json(
                 &shared,
@@ -517,12 +517,14 @@ fn text_fields_track_placeholder_updates(cx: &mut TestAppContext) {
             &shared,
             r#"{"generation":1,"ops":[
         {"op":"create-node","id":1,"kind":"root"},
+        {"op":"create-node","id":4,"kind":"column"},
+        {"op":"insert-child","parent":1,"child":4,"index":0},
         {"op":"create-node","id":2,"kind":"textarea"},
         {"op":"create-node","id":3,"kind":"input"},
         {"op":"set-prop","id":2,"property":"placeholder","value":"Before"},
         {"op":"set-prop","id":3,"property":"placeholder","value":"Before"},
-        {"op":"insert-child","parent":1,"child":2,"index":0},
-        {"op":"insert-child","parent":1,"child":3,"index":1}
+        {"op":"insert-child","parent":4,"child":2,"index":0},
+        {"op":"insert-child","parent":4,"child":3,"index":1}
     ]}"#,
             app,
         )

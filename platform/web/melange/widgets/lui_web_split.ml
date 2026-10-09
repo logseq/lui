@@ -136,7 +136,7 @@ let update_split renderer node =
   match Store.node renderer.web_store node with
   | Some current ->
       if Store.standard_kind_is current Split then
-        reconcile_split renderer node current.platform_node
+        reconcile_split renderer node (Lazy.force current.platform_node)
           (split_progress_source renderer node)
   | None -> ()
 

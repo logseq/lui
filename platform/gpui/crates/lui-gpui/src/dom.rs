@@ -173,10 +173,8 @@ pub(crate) fn attr(node: &NodeSnapshot, name: &str) -> Option<String> {
 
 /// The `attrs` slot has two encodings by source: extension `attrs` is a
 /// JSON object ({name: value}); the standard `DataAttrs` prop is the
-/// \x1e/\x1f record list produced by data_attrs_encode. Both can coexist
-/// (a dom-ops `set-attr` writes the extension slot on a standard node),
-/// so merge them — extension attrs win on key collision.
-fn parsed_attrs(node: &Node) -> serde_json::Map<String, serde_json::Value> {
+/// \x1e/\x1f record list produced by data_attrs_encode.
+pub(crate) fn parsed_attrs(node: &Node) -> serde_json::Map<String, serde_json::Value> {
     let mut map = node
         .string_prop(Property::DataAttrs)
         .map(|raw| {

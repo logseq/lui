@@ -17,16 +17,19 @@ let standard_kind_strict current =
 let tree_ancestor = Store.tree_ancestor
 
 let tree_items_under renderer parent =
-  let rec collect items child =
-    let items =
-      if Store.treeitem renderer child then child :: items else items
-    in
-    List.fold_left collect items
-      (Store.children renderer.web_store child)
+  let children node =
+    match Hashtbl.find_opt renderer.web_virtual_lists node with
+    | Some state -> state.virtual_live_rows ()
+    | None -> Store.children renderer.web_store node
   in
-  List.rev
-    (List.fold_left collect []
-       (Store.children renderer.web_store parent))
+  let rec collect items child =
+    match Store.node renderer.web_store child with
+    | Some current when Lazy.is_val current.platform_node ->
+        let items = if Store.treeitem renderer child then child :: items else items in
+        List.fold_left collect items (children child)
+    | _ -> items
+  in
+  List.rev (List.fold_left collect [] (children parent))
 
 let tree_focus_items_under renderer parent =
   List.filter
@@ -677,8 +680,8 @@ let toolbar_focus_node store node =
   | Some current ->
       let kind = standard_kind_strict current in
       if Store.direct_toggle kind || kind = Combobox then
-        Util.child_element current.platform_node 0
-      else current.platform_node
+        Util.child_element (Lazy.force current.platform_node) 0
+      else (Lazy.force current.platform_node)
   | None -> invalid_arg "unknown toolbar item"
 
 let apply_toolbar_disabled_semantics renderer item =
@@ -723,7 +726,7 @@ let toolbar_input_owns_key store item event forward_key backward_key =
   match Store.node store item with
   | Some current ->
       if toolbar_text_input_kind (standard_kind_strict current) then
-        let control = Util.text_control_node current.platform_node in
+        let control = Util.text_control_node (Lazy.force current.platform_node) in
         let start = W.HtmlInputElement.selectionStart control in
         let finish = W.HtmlInputElement.selectionEnd control in
         let length =
@@ -746,7 +749,7 @@ let select_toolbar_input store item =
   match Store.node store item with
   | Some current ->
       if toolbar_text_input_kind (standard_kind_strict current) then
-        let control = Util.text_control_node current.platform_node in
+        let control = Util.text_control_node (Lazy.force current.platform_node) in
         W.HtmlInputElement.setSelectionRange 0
           (String.length (W.HtmlInputElement.value control)) control
   | None -> ()
@@ -899,7 +902,7 @@ let refresh_tabs_roving store document tabs =
             | Some current ->
                 if
                   W.Element.isSameNode
-                    (W.Element.asNode current.platform_node) focused
+                    (W.Element.asNode (Lazy.force current.platform_node)) focused
                 then Some index
                 else loop (index + 1)
             | None -> loop (index + 1)
@@ -925,7 +928,7 @@ let refresh_tabs_roving store document tabs =
     (fun child ->
        match Store.node store child with
        | Some current ->
-           W.Element.setAttribute "tabindex" "-1" current.platform_node
+           W.Element.setAttribute "tabindex" "-1" (Lazy.force current.platform_node)
        | None -> ())
     all_children;
   List.iteri
@@ -934,7 +937,7 @@ let refresh_tabs_roving store document tabs =
        | Some current ->
            W.Element.setAttribute "tabindex"
              (if index = target then "0" else "-1")
-             current.platform_node
+             (Lazy.force current.platform_node)
        | None -> ())
     children
 
@@ -944,7 +947,7 @@ let refresh_button_context renderer node =
   match Store.node renderer.web_store node with
   | Some current ->
       if Store.standard_kind_is current Button then begin
-        let element = current.platform_node in
+        let element = (Lazy.force current.platform_node) in
         let selected = Store.selected_property renderer node in
         if direct_tab_trigger renderer node then begin
           W.Element.setAttribute "role" "tab" element;

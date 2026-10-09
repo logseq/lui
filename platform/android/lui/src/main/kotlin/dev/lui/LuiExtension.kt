@@ -82,7 +82,7 @@ class LuiExtensionContext internal constructor(
     /** Renders every standard child in order. */
     @Composable
     fun Children() {
-        children.forEach { child(it) }
+        children.forEachNode { child(it) }
     }
 }
 

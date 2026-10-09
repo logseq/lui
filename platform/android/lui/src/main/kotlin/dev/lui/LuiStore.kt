@@ -24,7 +24,7 @@ class LuiExtensionNode(
 
 /**
  * Retained node store. Mirrors the Flutter backend's apply semantics:
- * ops are validated against deep copies and the whole batch is rejected
+ * touched records are copied once and the whole batch is rejected
  * (no state change) when any op or post-condition fails. Generation must
  * advance by exactly one per batch.
  */
@@ -32,18 +32,20 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
     var generation: Int = 0
         private set
 
-    var nodes: Map<Long, LuiNode> = emptyMap()
+    private val retainedNodes = mutableMapOf<Long, LuiNode>()
+    private val retainedExtensions = mutableMapOf<Long, LuiExtensionNode>()
+    val nodes: Map<Long, LuiNode> get() = retainedNodes
+    val extensionNodes: Map<Long, LuiExtensionNode> get() = retainedExtensions
+    var lastChanged: Set<Long> = emptySet()
         private set
-    var extensionNodes: Map<Long, LuiExtensionNode> = emptyMap()
-        private set
+    private val roots = linkedSetOf<Long>()
 
     /** Nodes removed by the last applied batch (only `drop-node` deletes). */
     var lastDropped: Set<Long> = emptySet()
         private set
 
-    val rootIds: List<Long>
-        get() = nodes.filterValues { it.parent == null }.keys.toList() +
-            extensionNodes.filterValues { it.parent == null }.keys.toList()
+    var rootIds: List<Long> = emptyList()
+        private set
 
     fun node(id: Long): LuiNode? = nodes[id]
     fun extensionNode(id: Long): LuiExtensionNode? = extensionNodes[id]
@@ -87,17 +89,68 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
                 "expected patch generation $expected, received ${batch.generation}",
             )
         }
-        val nextNodes = nodes.mapValues { it.value.copy() }.toMutableMap()
-        val nextExt = extensionNodes.mapValues { it.value.copy() }.toMutableMap()
-        val dropped = mutableSetOf<Long>()
-        for (op in batch.ops) {
-            applyOp(nextNodes, nextExt, op, dropped)
+        val previousNodes = mutableMapOf<Long, LuiNode?>()
+        val previousExt = mutableMapOf<Long, LuiExtensionNode?>()
+        fun touch(id: Long) {
+            if (previousNodes.containsKey(id)) return
+            val node = retainedNodes[id]
+            val extension = retainedExtensions[id]
+            previousNodes[id] = node
+            previousExt[id] = extension
+            node?.let { retainedNodes[id] = it.copy() }
+            extension?.let { retainedExtensions[id] = it.copy() }
         }
-        validateStates(nextNodes)
-        nodes = nextNodes
-        extensionNodes = nextExt
+        fun touchSubtree(id: Long) {
+            touch(id)
+            childrenOf(nodes, extensionNodes, id)?.toList()?.forEach { touchSubtree(it) }
+        }
+        val dropped = mutableSetOf<Long>()
+        try {
+            for (op in batch.ops) {
+                when (op) {
+                    is LuiPatchOp.CreateNode -> touch(op.id)
+                    is LuiPatchOp.CreateExtension -> touch(op.id)
+                    is LuiPatchOp.DropNode -> touch(op.id)
+                    is LuiPatchOp.SetProp -> touch(op.id)
+                    is LuiPatchOp.RemoveProp -> touch(op.id)
+                    is LuiPatchOp.SetExtensionProp -> touch(op.id)
+                    is LuiPatchOp.RemoveExtensionProp -> touch(op.id)
+                    is LuiPatchOp.InsertChild -> { touch(op.parent); touch(op.child) }
+                    is LuiPatchOp.RemoveChild -> { touch(op.parent); touch(op.child) }
+                    is LuiPatchOp.MoveChild -> touch(op.parent)
+                    is LuiPatchOp.DetachSubtree -> {
+                        parentOf(nodes, extensionNodes, op.id)?.let { touch(it) }
+                        touchSubtree(op.id)
+                    }
+                }
+                applyOp(retainedNodes, retainedExtensions, op, dropped)
+            }
+            validateStates(previousNodes.keys.mapNotNull { retainedNodes[it] })
+        } catch (failure: Exception) {
+            previousNodes.forEach { (id, node) ->
+                if (node == null) retainedNodes.remove(id) else retainedNodes[id] = node
+            }
+            previousExt.forEach { (id, node) ->
+                if (node == null) retainedExtensions.remove(id) else retainedExtensions[id] = node
+            }
+            throw failure
+        }
+        var rootsChanged = false
+        for (id in previousNodes.keys) {
+            val isRoot = contains(id) && parentOf(nodes, extensionNodes, id) == null
+            rootsChanged = (if (isRoot) roots.add(id) else roots.remove(id)) || rootsChanged
+        }
+        if (rootsChanged) rootIds = roots.toList()
+        lastChanged = previousNodes.keys.toSet()
         lastDropped = dropped
         generation = batch.generation
+    }
+
+    internal fun applyInitialSnapshot(batch: LuiPatchBatch) {
+        check(generation == 0 && nodes.isEmpty() && extensionNodes.isEmpty())
+        if (batch.generation < 1) throw LuiBackendException("invalid snapshot generation")
+        generation = batch.generation - 1
+        apply(batch)
     }
 
     private fun applyOp(
@@ -255,7 +308,7 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
         target: Long,
         root: Long,
     ): Boolean {
-        var cursor = parentOf(nodes, ext, target)
+        var cursor: Long? = target
         while (cursor != null) {
             if (cursor == root) return true
             cursor = parentOf(nodes, ext, cursor)
@@ -402,8 +455,8 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
         }
     }
 
-    private fun validateStates(nodes: Map<Long, LuiNode>) {
-        for (state in nodes.values) {
+    private fun validateStates(nodes: List<LuiNode>) {
+        for (state in nodes) {
             if (state.kind == LuiNodeKind.root) {
                 if (state.parent != null) {
                     throw LuiBackendException("runtime root cannot have a parent")

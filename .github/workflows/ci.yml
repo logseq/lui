@@ -20,17 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: ocaml/setup-ocaml@v3
-        with:
-          ocaml-compiler: "5.5"
-      - name: Cache opam switch
-        id: opam-switch
-        uses: actions/cache/restore@v4
-        with:
-          path: _opam
-          key: opam-switch-${{ runner.os }}-${{ runner.arch }}-5.5-${{ hashFiles('*.opam*', 'dune-project') }}-${{ github.sha }}
-          restore-keys: |
-            opam-switch-${{ runner.os }}-${{ runner.arch }}-5.5-${{ hashFiles('*.opam*', 'dune-project') }}-
+      - uses: ./.github/actions/setup-lui-ocaml
       - name: Cache dune
         uses: actions/cache@v4
         with:
@@ -43,20 +33,14 @@ jobs:
         run: |
           echo "DUNE_CACHE=enabled" >> "$GITHUB_ENV"
           echo "DUNE_CACHE_TRANSPORT=direct" >> "$GITHUB_ENV"
-      # The ocaml-signal pin lives in lui.opam.locked (pin-depends);
-      # --locked makes opam read it instead of lui.opam.
-      - name: Install lui dependencies
-        run: opam install . --deps-only --with-test -y --locked
-      - name: Save opam switch
-        if: steps.opam-switch.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: _opam
-          key: ${{ steps.opam-switch.outputs.cache-primary-key }}
       - name: Schema tests
         run: node --test tooling/test/*.mjs
+      - name: GPUI protocol parity
+        run: node tooling/generate_gpui_protocol_rules.mjs --check
       - name: OCaml tests
         run: opam exec -- dune build --action-stderr-on-success=must-be-empty @runtest
+      - name: Runtime performance qualification
+        run: bash tooling/performance/qualify_runtime.sh
 
   web-tests:
     runs-on: ubuntu-latest
@@ -68,17 +52,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: platform/web/package-lock.json
-      - uses: ocaml/setup-ocaml@v3
-        with:
-          ocaml-compiler: "5.5"
-      - name: Cache opam switch
-        id: opam-switch
-        uses: actions/cache/restore@v4
-        with:
-          path: _opam
-          key: opam-switch-${{ runner.os }}-${{ runner.arch }}-5.5-${{ hashFiles('*.opam*', 'dune-project') }}-${{ github.sha }}
-          restore-keys: |
-            opam-switch-${{ runner.os }}-${{ runner.arch }}-5.5-${{ hashFiles('*.opam*', 'dune-project') }}-
+      - uses: ./.github/actions/setup-lui-ocaml
       - name: Cache dune
         uses: actions/cache@v4
         with:
@@ -104,16 +78,9 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('platform/web/package-lock.json') }}
       - name: Install Web dependencies
         run: |
-          opam install . --deps-only --with-test -y --locked
           if [ "${{ steps.web-node-modules.outputs.cache-hit }}" != "true" ]; then
             npm --prefix platform/web ci
           fi
-      - name: Save opam switch
-        if: steps.opam-switch.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: _opam
-          key: ${{ steps.opam-switch.outputs.cache-primary-key }}
       # System libraries are not cacheable across hosted runners (fresh image
       # each run); browser binaries only download on a browser-cache miss.
       - name: Install Playwright system libraries
@@ -176,6 +143,9 @@ jobs:
       - name: lui-core tests
         working-directory: platform/gpui
         run: cargo test -p lui-core --locked
+      - name: Store performance qualification
+        working-directory: platform/gpui
+        run: cargo run -p lui-core --release --locked --example store_patch_bench
 
   gpui-tests:
     runs-on: macos-26
@@ -195,8 +165,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ocaml/setup-ocaml@v3
+      - uses: ./.github/actions/setup-lui-ocaml
         with:
-          ocaml-compiler: "5.5"
+          scope: compiler
       - name: GC stress the native pointer bridge
         run: opam exec -- sh platform/native/stress/run.sh

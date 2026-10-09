@@ -7,7 +7,10 @@
 pub mod bridge;
 pub mod event;
 pub mod extension;
+mod order;
+mod protocol_rules;
 pub mod store;
+mod validation;
 pub mod wire;
 pub mod wire_schema;
 

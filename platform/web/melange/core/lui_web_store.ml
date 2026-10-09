@@ -10,37 +10,12 @@ let create_store () =
     retained_prior = Hashtbl.create 16;
     retained_generation = 0 }
 
-let find_child_index children child =
-  let rec loop index rest =
-    match rest with
-    | [] -> None
-    | candidate :: tail ->
-        if candidate = child then Some index else loop (index + 1) tail
-  in
-  loop 0 children
-
-let remove_at values removed_index =
-  List.filteri (fun index _ -> index <> removed_index) values
-
-let insert_at values inserted_index value =
-  if inserted_index < 0 || inserted_index > List.length values then
-    invalid_arg "child index is out of bounds";
-  let rec loop index rest acc =
-    match rest with
-    | [] -> List.rev acc
-    | head :: tail ->
-        let acc = if index = inserted_index then value :: acc else acc in
-        loop (index + 1) tail (head :: acc)
-  in
-  if inserted_index = List.length values then values @ [ value ]
-  else loop 0 values []
-
+let find_child_index = Lui_sequence.index
+let remove_at = Lui_sequence.remove
+let insert_at = Lui_sequence.insert
 let move_at values from_index to_index =
-  match List.nth_opt values from_index with
-  | None -> values
-  | Some value ->
-      let without = remove_at values from_index in
-      insert_at without to_index value
+  let value = Lui_sequence.get values from_index in
+  Lui_sequence.insert (Lui_sequence.remove values from_index) to_index value
 
 let standard_kind current =
   match current.semantic_kind with
@@ -85,7 +60,7 @@ let rec retained_child_supported registry nodes parent child =
   match child.semantic_kind with
   | ExtensionSemantic (child_identifier, _) ->
       if Lui_extension.is_tweak registry child_identifier then
-        match child.retained_children with
+        match (Lui_sequence.to_list child.retained_children) with
         | [ inner_id ] ->
             (match Hashtbl.find_opt nodes inner_id with
              | Some inner -> retained_child_supported registry nodes parent inner
@@ -97,7 +72,7 @@ let rec retained_child_supported registry nodes parent child =
              Lui_extension.standard_container_supported parent_kind
          | ExtensionSemantic (parent_identifier, _) ->
              if Lui_extension.is_tweak registry parent_identifier then
-               parent.retained_children = []
+               Lui_sequence.length parent.retained_children = 0
              else
                Lui_extension.identifier_allowed
                  (extension_schema registry parent_identifier)
@@ -112,7 +87,7 @@ let rec retained_child_supported registry nodes parent child =
              && child_kind_supported parent_kind child_kind
          | ExtensionSemantic (parent_identifier, _) ->
              if Lui_extension.is_tweak registry parent_identifier then
-               parent.retained_children = []
+               Lui_sequence.length parent.retained_children = 0
              else
                (extension_schema registry parent_identifier)
                  .extension_standard_children)
@@ -140,12 +115,12 @@ let fetch nodes node_id what =
 let apply_create_node nodes platform_for node_id kind =
   if Hashtbl.mem nodes node_id then invalid_arg "node already exists";
   replace nodes node_id
-    { platform_node = platform_for kind;
+    { platform_node = lazy (platform_for kind);
       semantic_kind = StandardSemantic kind;
       retained_parent = None;
       retained_properties = Property_map.empty;
       retained_extension_properties = String_map.empty;
-      retained_children = [] }
+      retained_children = Lui_sequence.empty }
 
 let apply_create_extension nodes extension_platform_for registry node_id identifier fingerprint =
   if Hashtbl.mem nodes node_id then invalid_arg "node already exists";
@@ -161,18 +136,18 @@ let apply_create_extension nodes extension_platform_for registry node_id identif
   let fingerprint = if fingerprint = "" then expected else fingerprint in
   if fingerprint <> expected then invalid_arg "extension fingerprint mismatch";
   replace nodes node_id
-    { platform_node = extension_platform_for node_id identifier;
+    { platform_node = lazy (extension_platform_for node_id identifier);
       semantic_kind = ExtensionSemantic (identifier, fingerprint);
       retained_parent = None;
       retained_properties = Property_map.empty;
       retained_extension_properties = String_map.empty;
-      retained_children = [] }
+      retained_children = Lui_sequence.empty }
 
 let apply_drop_node nodes node_id =
   let current = fetch nodes node_id "node" in
   if current.retained_parent <> None then
     invalid_arg "cannot drop an attached node"
-  else if current.retained_children <> [] then
+  else if Lui_sequence.length current.retained_children <> 0 then
     invalid_arg "cannot drop a node with children"
   else Hashtbl.remove nodes node_id
 
@@ -189,15 +164,15 @@ let apply_detach_subtree nodes node_id =
         | Some parent_node ->
             replace nodes parent_id
               (with_children parent_node
-                 (List.filter
-                    (fun child -> child <> node_id)
-                    parent_node.retained_children))
+                 (match Lui_sequence.index parent_node.retained_children node_id with
+                  | Some index -> Lui_sequence.remove parent_node.retained_children index
+                  | None -> parent_node.retained_children))
         | None -> ())
    | None -> ());
   let rec drop node_id =
     match Hashtbl.find_opt nodes node_id with
     | Some node ->
-        List.iter drop node.retained_children;
+        List.iter drop (Lui_sequence.to_list node.retained_children);
         Hashtbl.remove nodes node_id
     | None -> ()
   in
@@ -210,7 +185,7 @@ let rec collect_subtree nodes node_id acc =
   | Some node ->
       List.fold_left
         (fun acc child -> collect_subtree nodes child acc)
-        (node_id :: acc) node.retained_children
+        (node_id :: acc) (Lui_sequence.to_list node.retained_children)
   | None -> acc
 
 let apply_set_prop nodes node_id property value =
@@ -284,9 +259,12 @@ let apply_insert_child nodes registry parent_id child_id index =
     replace nodes child_id { child_node with retained_parent = Some parent_id }
   end
 
-let apply_remove_child nodes parent_id child_id =
+let apply_remove_child ?order nodes parent_id child_id =
   let parent_node = fetch nodes parent_id "parent" in
-  match find_child_index parent_node.retained_children child_id with
+  let position = match order with
+    | Some order -> Lui_indexed_sequence.index order child_id
+    | None -> find_child_index parent_node.retained_children child_id in
+  match position with
   | Some index ->
       let child_node = fetch nodes child_id "child" in
       replace nodes parent_id
@@ -295,9 +273,12 @@ let apply_remove_child nodes parent_id child_id =
       replace nodes child_id { child_node with retained_parent = None }
   | None -> invalid_arg "child is not attached to parent"
 
-let apply_move_child nodes parent_id child_id index =
+let apply_move_child ?order nodes parent_id child_id index =
   let parent_node = fetch nodes parent_id "parent" in
-  match find_child_index parent_node.retained_children child_id with
+  let position = match order with
+    | Some order -> Lui_indexed_sequence.index order child_id
+    | None -> find_child_index parent_node.retained_children child_id in
+  match position with
   | Some current_index ->
       replace nodes parent_id
         (with_children parent_node
@@ -385,7 +366,7 @@ let validate_list_item_content nodes current =
         (fun child ->
           not (metadata_child nodes child)
           && not (disclosure && list_item_row_child nodes child))
-        current.retained_children
+        (Lui_sequence.to_list current.retained_children)
     in
     if text = "" && content_children = [] then
       invalid_arg "list-item requires text or children"
@@ -412,7 +393,7 @@ let context_menu_child_has_nested nodes child kind =
       match Hashtbl.find_opt nodes nested_id with
       | Some nested -> standard_kind_is nested kind
       | None -> false)
-    child.retained_children
+    (Lui_sequence.to_list child.retained_children)
 
 let validate_context_menu_child nodes child =
   let properties = child.retained_properties in
@@ -440,7 +421,7 @@ let validate_context_menu nodes current =
         match Hashtbl.find_opt nodes child_id with
         | Some current -> standard_kind_is current ContextMenu
         | None -> false)
-      current.retained_children
+      (Lui_sequence.to_list current.retained_children)
   in
   if List.length context_children > 1 then
     invalid_arg "host accepts at most one context-menu";
@@ -455,7 +436,7 @@ let validate_context_menu nodes current =
         match Hashtbl.find_opt nodes child_id with
         | Some child -> validate_context_menu_child nodes child
         | None -> invalid_arg "unknown context-menu child")
-      current.retained_children
+      (Lui_sequence.to_list current.retained_children)
   end
 
 let validate_image_source current =
@@ -525,7 +506,7 @@ let child_kind_of nodes child_id =
 let validate_input_group nodes current =
   match standard_kind current with
   | Some InputGroup ->
-      let children = current.retained_children in
+      let children = (Lui_sequence.to_list current.retained_children) in
       if children = [] || List.length children > 2 then
         invalid_arg "input-group requires one textarea and optional actions";
       if child_kind_of nodes (List.hd children) <> Textarea then
@@ -564,19 +545,19 @@ let validate_tree_item nodes current =
 
 let validate_split current =
   if standard_kind_is current Split
-     && List.length current.retained_children <> 2
+     && Lui_sequence.length current.retained_children <> 2
   then invalid_arg "split requires exactly two children"
 
 let validate_drawer current =
   if standard_kind_is current Drawer
-     && List.length current.retained_children <> 2
+     && Lui_sequence.length current.retained_children <> 2
   then invalid_arg "drawer requires exactly two children"
 
 let validate_root current =
   if standard_kind_is current Root then begin
     if current.retained_parent <> None then
       invalid_arg "runtime root cannot have a parent";
-    if List.length current.retained_children <> 1 then
+    if Lui_sequence.length current.retained_children <> 1 then
       invalid_arg "runtime root requires exactly one child"
   end
 
@@ -606,12 +587,11 @@ let validate_extension_node registry current identifier =
   then invalid_arg "extension properties are incomplete";
   if
     Lui_extension.is_tweak registry identifier
-    && List.length current.retained_children <> 1
+    && Lui_sequence.length current.retained_children <> 1
   then invalid_arg "platform tweak requires exactly one child"
 
-let validate_nodes nodes registry =
-  Hashtbl.iter
-    (fun node current ->
+let validate_nodes ?affected nodes registry =
+  let validate node current =
        match current.semantic_kind with
        | StandardSemantic kind -> (
            try validate_standard_node nodes registry current kind
@@ -627,8 +607,13 @@ let validate_nodes nodes registry =
                   (Lui_wire_schema.node_kind_name kind)
                   props msg))
        | ExtensionSemantic (identifier, _) ->
-           validate_extension_node registry current identifier)
-    nodes
+           validate_extension_node registry current identifier in
+  match affected with
+  | None -> Hashtbl.iter validate nodes
+  | Some affected -> Hashtbl.iter (fun node () ->
+      match Hashtbl.find_opt nodes node with
+      | Some current -> validate node current
+      | None -> ()) affected
 
 let describe_op op =
   match op with
@@ -695,17 +680,71 @@ let restore_snapshots nodes snapshots =
 
 let apply_operations nodes platform_for extension_platform_for registry
     snapshots batch =
+  let orders = Hashtbl.create 8 in
+  let order_for parent = match Hashtbl.find_opt orders parent with
+    | Some order -> order
+    | None ->
+      let current = fetch nodes parent "parent" in
+      let order = Lui_indexed_sequence.of_list (Lui_sequence.to_list current.retained_children) in
+      Hashtbl.replace orders parent order;
+      order in
+  let apply operation = match operation with
+    | MoveChild (parent, child, index) ->
+      let order = order_for parent in
+      apply_move_child ~order nodes parent child index;
+      Lui_indexed_sequence.move order child index
+    | RemoveChild (parent, child) ->
+      let order = order_for parent in
+      apply_remove_child ~order nodes parent child;
+      Lui_indexed_sequence.remove order child
+    | InsertChild (parent, child, index) ->
+      apply_insert_child nodes registry parent child index;
+      Option.iter (fun order -> Lui_indexed_sequence.insert order index child)
+        (Hashtbl.find_opt orders parent)
+    | DetachSubtree node ->
+      let current = fetch nodes node "node" in
+      Option.iter (Hashtbl.remove orders) current.retained_parent;
+      apply_detach_subtree nodes node
+    | operation -> apply_op nodes platform_for extension_platform_for registry operation in
   List.iteri
     (fun index op ->
        snapshot_before nodes snapshots op;
-       try apply_op nodes platform_for extension_platform_for registry op
+       try apply op
        with
        | Invalid_argument message ->
            invalid_arg
              (Printf.sprintf "patch op %d (%s): %s" index (describe_op op)
                 message))
     batch.ops;
-  validate_nodes nodes registry
+  let affected = Hashtbl.create (Hashtbl.length snapshots) in
+  let note node =
+    Hashtbl.replace affected node ();
+    (* Context-menu validity depends on its children's event properties.
+       Ordinary ancestors depend on child structure, whose operations already
+       journal the affected parent. A text edit must not scan its siblings. *)
+    match Hashtbl.find_opt nodes node with
+    | Some current -> Option.iter (fun parent ->
+        match Hashtbl.find_opt nodes parent with
+        | Some parent_node when standard_kind_is parent_node ContextMenu ->
+          Hashtbl.replace affected parent ()
+        | _ -> ()) current.retained_parent
+    | None -> () in
+  let descended = Hashtbl.create 16 in
+  let rec descendants node =
+    if not (Hashtbl.mem descended node) then begin
+      Hashtbl.replace descended node ();
+      note node;
+      match Hashtbl.find_opt nodes node with
+      | Some current -> List.iter descendants (Lui_sequence.to_list current.retained_children)
+      | None -> ()
+    end in
+  Hashtbl.iter (fun node previous ->
+    note node;
+    match previous, Hashtbl.find_opt nodes node with
+    | Some previous, Some current when previous.retained_parent <> current.retained_parent ->
+      descendants node
+    | _ -> ()) snapshots;
+  validate_nodes ~affected nodes registry
 
 (* Generation semantics match the Apple store: a received generation is
    consumed whether or not its ops land — the runtime advances its own
@@ -786,7 +825,7 @@ let nodes store = store.retained_nodes
 
 let platform_node store node_id =
   match node store node_id with
-  | Some current -> Some current.platform_node
+  | Some current -> Some (Lazy.force current.platform_node)
   | None -> None
 
 let property store node_id property =
@@ -810,7 +849,7 @@ let extension_property store node_id property =
 
 let children store node_id =
   match node store node_id with
-  | Some current -> current.retained_children
+  | Some current -> (Lui_sequence.to_list current.retained_children)
   | None -> invalid_arg "unknown node"
 
 let node_count store = Hashtbl.length store.retained_nodes

@@ -122,6 +122,12 @@ export default defineConfig({
   root: projectRoot,
   publicDir: false,
   plugins: [melangeHotReload()],
+  resolve: {
+    alias: {
+      "@tanstack/virtual-core": path.join(projectRoot,
+        "platform/web/node_modules/@tanstack/virtual-core/dist/esm/index.js"),
+    },
+  },
   optimizeDeps: {
     noDiscovery: true,
   },

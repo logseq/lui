@@ -5,6 +5,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.key
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -26,7 +30,11 @@ class LuiBackend(
     val extensions: LuiExtensionRegistry = LuiExtensionRegistry(),
     val icons: LuiIconResolver = LuiIconResolver.DEFAULT,
 ) {
-    internal val tree = LuiRetainedTree(extensions)
+    internal var tree = LuiRetainedTree(extensions)
+        private set
+    private data class ObservedNode(val node: LuiNode?, val extension: LuiExtensionNode?)
+    private val observedNodes = mutableMapOf<Long, MutableState<ObservedNode>>()
+    private var roots by mutableStateOf<List<Long>>(emptyList())
 
     /** Bump on every applied batch so composables recompose. */
     internal var revision by mutableIntStateOf(0)
@@ -44,8 +52,18 @@ class LuiBackend(
     internal var lastError: String? = null
         private set
 
-    fun node(id: Long): LuiNode? = tree.nodes[id]
-    fun extensionNode(id: Long): LuiExtensionNode? = tree.extensionNodes[id]
+    private fun observed(id: Long): ObservedNode = observedNodes.getOrPut(id) {
+        mutableStateOf(ObservedNode(tree.node(id), tree.extensionNode(id)))
+    }.value
+
+    fun node(id: Long): LuiNode? = observed(id).node
+    fun extensionNode(id: Long): LuiExtensionNode? = observed(id).extension
+
+    private fun publish(changed: Set<Long>) = Snapshot.withMutableSnapshot {
+        changed.forEach { id -> observedNodes[id]?.value = ObservedNode(tree.node(id), tree.extensionNode(id)) }
+        roots = tree.rootIds
+        revision++
+    }
 
     /** Apply one JSON patch batch. Returns false (state untouched) when the
      * batch fails validation — mirrors the other backends' reject semantics. */
@@ -53,7 +71,7 @@ class LuiBackend(
         if (source.isNullOrEmpty()) return false
         return try {
             tree.apply(LuiPatchBatch.parse(source))
-            revision++
+            publish(tree.lastChanged)
             lastError = null
             true
         } catch (error: LuiBackendException) {
@@ -64,6 +82,19 @@ class LuiBackend(
 
     /** Alias of [applyJson] kept for internal callers. */
     fun applyBatch(source: String): Boolean = applyJson(source)
+
+    /** Replace the host mirror with a fully validated authoritative runtime snapshot. */
+    fun applySnapshot(source: String): Boolean = try {
+        val replacement = LuiRetainedTree(extensions)
+        replacement.applyInitialSnapshot(LuiPatchBatch.parse(source))
+        tree = replacement
+        publish(observedNodes.keys.toSet())
+        lastError = null
+        true
+    } catch (error: LuiBackendException) {
+        lastError = error.message
+        false
+    }
 
     fun emit(event: LuiEvent) = onEvent(event)
 
@@ -99,15 +130,12 @@ class LuiBackend(
      */
     @Composable
     fun Content(rootId: Long = -1L) {
-        // Read the revision so this composable recomposes on each batch.
-        val applied = revision
-        if (applied == 0) return
         if (rootId >= 0) {
             LuiNodeView(backend = this, id = rootId)
             return
         }
-        for (id in tree.rootIds) {
-            LuiNodeView(backend = this, id = id)
+        for (id in roots) {
+            key(id) { LuiNodeView(backend = this, id = id) }
         }
     }
 }

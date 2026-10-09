@@ -181,6 +181,7 @@ fn number_stepper_displays_model_value_and_emits_numeric_changes(cx: &mut TestAp
         r#"{"generation":1,"ops":[
         {"op":"create-node","id":1,"kind":"root"},
         {"op":"create-node","id":2,"kind":"number-stepper"},
+        {"op":"set-prop","id":2,"property":"accessibility-label","value":"Quantity"},
         {"op":"set-prop","id":2,"property":"value","value":42.0},
         {"op":"set-prop","id":2,"property":"min","value":0.0},
         {"op":"set-prop","id":2,"property":"max","value":50.0},
@@ -252,6 +253,7 @@ fn picker_accepts_options_and_combobox_commits_once(cx: &mut TestAppContext) {
         r#"{"generation":1,"ops":[
         {"op":"create-node","id":1,"kind":"root"},
         {"op":"create-node","id":2,"kind":"combobox"},
+        {"op":"set-prop","id":2,"property":"placeholder","value":"Choose"},
         {"op":"create-node","id":3,"kind":"menu-item"},
         {"op":"set-prop","id":3,"property":"text","value":"Option"},
         {"op":"insert-child","parent":2,"child":3,"index":0},
@@ -386,10 +388,12 @@ fn closing_window_releases_stateful_controls(cx: &mut TestAppContext) {
         window,
         r#"{"generation":1,"ops":[
         {"op":"create-node","id":1,"kind":"root"},
+        {"op":"create-node","id":4,"kind":"column"},
+        {"op":"insert-child","parent":1,"child":4,"index":0},
         {"op":"create-node","id":2,"kind":"input"},
         {"op":"create-node","id":3,"kind":"textarea"},
-        {"op":"insert-child","parent":1,"child":2,"index":0},
-        {"op":"insert-child","parent":1,"child":3,"index":1}]}"#
+        {"op":"insert-child","parent":4,"child":2,"index":0},
+        {"op":"insert-child","parent":4,"child":3,"index":1}]}"#
     );
     let weak = std::rc::Rc::downgrade(&shared);
     window.update(|window, _| window.remove_window());
@@ -413,6 +417,7 @@ fn semantic_toolbar_and_named_wrappers_keep_geometry(cx: &mut TestAppContext) {
         {"op":"create-node","id":1,"kind":"root"},
         {"op":"create-node","id":2,"kind":"row"},
         {"op":"create-node","id":3,"kind":"toolbar"},
+        {"op":"set-prop","id":3,"property":"accessibility-label","value":"Actions"},
         {"op":"set-prop","id":3,"property":"accessibility-identifier","value":"toolbar"},
         {"op":"create-node","id":4,"kind":"text"},
         {"op":"set-prop","id":4,"property":"text","value":"Label"},
@@ -466,8 +471,8 @@ fn spacer_applies_explicit_dimensions(cx: &mut TestAppContext) {
         r#"{"generation":1,"ops":[
         {"op":"create-node","id":1,"kind":"root"},
         {"op":"create-node","id":2,"kind":"spacer"},
-        {"op":"set-prop","id":2,"property":"width","value":40.0},
-        {"op":"set-prop","id":2,"property":"height","value":40.0},
+        {"op":"set-prop","id":2,"property":"width","value":40},
+        {"op":"set-prop","id":2,"property":"height","value":40},
         {"op":"insert-child","parent":1,"child":2,"index":0}]}"#
     );
     assert_eq!(f32::from(shared.borrow().node_bounds[&2].size.height), 40.0);
@@ -552,6 +557,7 @@ fn combobox_refresh_preserves_selection_outside_active_search(cx: &mut TestAppCo
         r#"{"generation":1,"ops":[
         {"op":"create-node","id":1,"kind":"root"},
         {"op":"create-node","id":2,"kind":"combobox"},
+        {"op":"set-prop","id":2,"property":"placeholder","value":"Choose"},
         {"op":"create-node","id":3,"kind":"menu-item"},
         {"op":"set-prop","id":3,"property":"text","value":"Alpha"},
         {"op":"create-node","id":4,"kind":"menu-item"},
@@ -776,15 +782,34 @@ fn context_menu_leaf_hosts_accept_their_menu_children() {
         "switch",
     ] {
         let mut store = Store::default();
-        let batch = decode_batch(
-            &serde_json::json!({"generation":1,"ops":[
-                {"op":"create-node","id":1,"kind":kind},
-                {"op":"create-node","id":2,"kind":"context-menu"},
-                {"op":"insert-child","parent":1,"child":2,"index":0}
-            ]})
-            .to_string(),
-        )
-        .unwrap();
+        let mut ops = vec![
+            serde_json::json!({"op":"create-node","id":1,"kind":kind}),
+            serde_json::json!({"op":"create-node","id":2,"kind":"context-menu"}),
+            serde_json::json!({"op":"insert-child","parent":1,"child":2,"index":0}),
+        ];
+        if [
+            "toggle-button",
+            "toggle",
+            "radio",
+            "slider",
+            "number-stepper",
+        ]
+        .contains(&kind)
+        {
+            ops.push(serde_json::json!({"op":"set-prop","id":1,"property":"accessibility-label","value":"Control"}));
+        }
+        if ["slider", "number-stepper"].contains(&kind) {
+            ops.push(serde_json::json!({"op":"set-prop","id":1,"property":"value","value":0.5}));
+        }
+        if kind == "radio" {
+            ops.extend([
+                serde_json::json!({"op":"create-node","id":3,"kind":"radio-group"}),
+                serde_json::json!({"op":"set-prop","id":3,"property":"accessibility-label","value":"Choices"}),
+                serde_json::json!({"op":"insert-child","parent":3,"child":1,"index":0}),
+            ]);
+        }
+        let batch =
+            decode_batch(&serde_json::json!({"generation":1,"ops":ops}).to_string()).unwrap();
         assert!(
             store.apply(&batch).is_ok(),
             "{kind} must accept its context menu"
@@ -801,7 +826,7 @@ fn imperative_input_updates_preserve_runtime_generation(cx: &mut TestAppContext)
         r#"{"generation":1,"ops":[
         {"op":"create-node","id":1,"kind":"root"},
         {"op":"create-node","id":2,"kind":"input"},
-        {"op":"set-prop","id":2,"property":"value","value":""},
+        {"op":"set-prop","id":2,"property":"text","value":""},
         {"op":"insert-child","parent":1,"child":2,"index":0}]}"#
     );
     for value in ["imperative", "", ""] {
@@ -827,7 +852,7 @@ fn imperative_input_updates_preserve_runtime_generation(cx: &mut TestAppContext)
                     .store
                     .node(2)
                     .unwrap()
-                    .string_prop(lui_core::Property::ProgressValue),
+                    .string_prop(lui_core::Property::TextValue),
                 Some(value)
             );
             assert_eq!(input.read(app).value().as_ref(), value);
@@ -849,7 +874,7 @@ fn imperative_input_updates_preserve_runtime_generation(cx: &mut TestAppContext)
         apply_batch_json(
             &shared,
             r#"{"generation":2,"ops":[
-        {"op":"set-prop","id":2,"property":"value","value":"model"}]}"#,
+        {"op":"set-prop","id":2,"property":"text","value":"model"}]}"#,
             app,
         )
         .unwrap();
@@ -867,8 +892,10 @@ fn imperative_dom_mutations_preserve_runtime_generation(cx: &mut TestAppContext)
         window,
         r#"{"generation":1,"ops":[
         {"op":"create-node","id":1,"kind":"root"},
+        {"op":"create-node","id":3,"kind":"column"},
+        {"op":"insert-child","parent":1,"child":3,"index":0},
         {"op":"create-node","id":2,"kind":"text"},
-        {"op":"insert-child","parent":1,"child":2,"index":0}]}"#
+        {"op":"insert-child","parent":3,"child":2,"index":0}]}"#
     );
     window.update(|window, app| {
         for (op, body) in [
@@ -896,15 +923,12 @@ fn imperative_dom_mutations_preserve_runtime_generation(cx: &mut TestAppContext)
                 node.string_prop(lui_core::Property::TextValue),
                 Some("updated")
             );
-            let attrs: serde_json::Value =
-                serde_json::from_str(node.extension_props["attrs"].as_str().unwrap()).unwrap();
-            assert_eq!(attrs["style"], "color:red");
-            assert!(guard
-                .store
-                .node(1)
-                .unwrap()
-                .extension_props
-                .contains_key("css-vars-rev"));
+            assert_eq!(
+                node.string_prop(lui_core::Property::DataAttrs),
+                Some("style\u{1f}color:red")
+            );
+            assert!(node.extension_props.is_empty());
+            assert!(guard.store.node(1).unwrap().extension_props.is_empty());
             assert_eq!(guard.store.generation, 1);
         }
         lui_gpui::domops::handle_dom_op(&shared, "remove", r#"{"ref":{"node-id":2}}"#, window, app);
