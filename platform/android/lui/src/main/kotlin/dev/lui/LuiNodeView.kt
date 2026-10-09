@@ -947,17 +947,45 @@ private fun LuiButton(
                 contentColor = MaterialTheme.colorScheme.onError,
             ),
         ) { label() }
-        else -> TextButton(
-            onClick = onClick,
-            modifier = modifier,
-            enabled = enabled,
-            // Borderless buttons use the accent in Compose, but the Apple
-            // backend renders them with the dark foreground — match it so
-            // header/toolbar glyphs are not tinted primary.
-            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                contentColor = foreground ?: MaterialTheme.colorScheme.onSurface,
-            ),
-        ) { label() }
+        else -> {
+            // Icon-only ghost buttons are icon controls: the Apple backend
+            // sizes them at the 40pt touch target with no label padding,
+            // while a TextButton would enforce M3 min-width + padding and
+            // inflate glass capsules like the header's sync/overflow group.
+            if (icon != null && node.text().isEmpty() && children.isEmpty()) {
+                val sized =
+                    if (node.prop("width") != null || node.prop("height") != null) {
+                        modifier
+                    } else {
+                        modifier.size(40.dp)
+                    }
+                Box(
+                    sized
+                        .clip(CircleShape)
+                        .clickable(enabled = enabled, onClick = onClick),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        icon,
+                        contentDescription = node.propString("accessibility-label"),
+                        modifier = Modifier.size(iconSize),
+                        tint = foreground ?: MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            } else {
+                TextButton(
+                    onClick = onClick,
+                    modifier = modifier,
+                    enabled = enabled,
+                    // Borderless buttons use the accent in Compose, but the Apple
+                    // backend renders them with the dark foreground — match it so
+                    // header/toolbar glyphs are not tinted primary.
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                        contentColor = foreground ?: MaterialTheme.colorScheme.onSurface,
+                    ),
+                ) { label() }
+            }
+        }
     }
 }
 
@@ -1188,37 +1216,57 @@ private fun LuiMenuTrigger(backend: LuiBackend, node: LuiNode, id: Long, modifie
     val icon = node.propString("icon")?.let { backend.icons.icon(it) }
     val iconSize = if (node.text().isEmpty()) 24.dp else 16.dp
     var open by remember(id) { mutableStateOf(false) }
+    val triggerForeground =
+        luiThemeColor(node.propString("foreground"), foreground = true)
+            ?: MaterialTheme.colorScheme.onSurface
 
     Box {
-        TextButton(
-            onClick = { open = !open },
-            enabled = enabled,
-            modifier = modifier,
-            // TextButton contentColor defaults to primary; the Apple backend
-            // renders menu triggers with the dark foreground, so keep glyphs
-            // like the header overflow icon from being tinted.
-            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                contentColor =
-                    luiThemeColor(node.propString("foreground"), foreground = true)
-                        ?: MaterialTheme.colorScheme.onSurface,
-            ),
-        ) {
-            if (icon != null && node.text().isEmpty()) {
+        if (icon != null && node.text().isEmpty()) {
+            // Icon-only triggers are icon controls like the Apple backend's
+            // 40pt capsule cells — a TextButton's M3 min-width + padding
+            // would inflate the enclosing glass capsule.
+            val sized =
+                if (node.prop("width") != null || node.prop("height") != null) {
+                    modifier
+                } else {
+                    modifier.size(40.dp)
+                }
+            Box(
+                sized
+                    .clip(CircleShape)
+                    .clickable(enabled = enabled) { open = !open },
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
                     icon,
                     contentDescription = node.propString("accessibility-label"),
                     modifier = Modifier.size(iconSize),
+                    tint = triggerForeground,
                 )
-            } else if (icon != null) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(icon, null, Modifier.size(iconSize))
-                    if (node.text().isNotEmpty()) Text(node.text())
+            }
+        } else {
+            TextButton(
+                onClick = { open = !open },
+                enabled = enabled,
+                modifier = modifier,
+                // TextButton contentColor defaults to primary; the Apple backend
+                // renders menu triggers with the dark foreground, so keep glyphs
+                // like the header overflow icon from being tinted.
+                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                    contentColor = triggerForeground,
+                ),
+            ) {
+                if (icon != null) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(icon, null, Modifier.size(iconSize))
+                        if (node.text().isNotEmpty()) Text(node.text())
+                    }
+                } else {
+                    Text(node.text())
                 }
-            } else {
-                Text(node.text())
             }
         }
         val menu = menuId?.let { backend.node(it) }
