@@ -427,7 +427,7 @@ let platform_node renderer kind =
 
 let dom_node renderer node =
   match Store.node renderer.web_store node with
-  | Some current -> current.platform_node
+  | Some current -> (Lazy.force current.platform_node)
   | None -> invalid_arg "unknown DOM node"
 
 (* The `as` prop: swap a node's DOM element for one created with the
@@ -446,7 +446,7 @@ external data_attrs_managed_set : W.Element.t -> string -> unit =
 let retag renderer node_id tag =
   match Store.node renderer.web_store node_id with
   | Some current ->
-      let old = current.platform_node in
+      let old = (Lazy.force current.platform_node) in
       if String.lowercase_ascii (W.Element.tagName old) = tag then None
       else begin
         let next = W.Document.createElement tag renderer.web_document in
@@ -473,17 +473,17 @@ let retag renderer node_id tag =
                   (W.Element.asNode old) parent)
          | None -> ());
         Store.replace (Store.nodes renderer.web_store) node_id
-          { current with platform_node = next };
+          { current with platform_node = lazy next };
         Some next
       end
   | None -> None
 
 let dom_node_before renderer previous_nodes node =
   match Store.node renderer.web_store node with
-  | Some current -> current.platform_node
+  | Some current -> (Lazy.force current.platform_node)
   | None ->
       (match previous_nodes node with
-       | Some previous -> previous.platform_node
+       | Some previous -> (Lazy.force previous.platform_node)
        | None -> invalid_arg "unknown DOM node")
 
 let retained_content_container current dom_node =
@@ -538,11 +538,11 @@ let dropdown_anchor_node renderer node =
            (match Store.node renderer.web_store parent with
             | Some parent_node ->
                 if Store.menu_item_row parent_node then
-                  parent_node.platform_node
+                  (Lazy.force parent_node.platform_node)
                 else
                   let container =
                     retained_content_container
-                      parent_node parent_node.platform_node
+                      parent_node (Lazy.force parent_node.platform_node)
                   in
                   let children = W.Element.children container in
                   let length = W.HtmlCollection.length children in

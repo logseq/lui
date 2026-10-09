@@ -6,6 +6,7 @@ import android.os.Looper
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * JNI bridge to the OCaml LUI runtime, porting the semantics of
@@ -31,7 +32,7 @@ object LuiBridge {
     const val HOST_KOTLIN: Int = 4
 
     fun interface PatchSink {
-        fun onPatch(json: String)
+        fun onPatch(json: String, snapshot: Boolean): Boolean
     }
 
     private val ocamlThread = HandlerThread("lui-ocaml").apply { start() }
@@ -43,6 +44,12 @@ object LuiBridge {
 
     @Volatile
     private var started = false
+    private val session = AtomicLong()
+    private var nativeLoaded = false
+    @Volatile
+    private var awaitingSnapshot = false
+    // Read and written only by the OCaml handler thread.
+    private var emittingSnapshot = false
 
     /**
      * Called from JNI while the OCaml domain lock is held. Only copies the
@@ -53,52 +60,81 @@ object LuiBridge {
     @Suppress("unused")
     private fun dispatchPatch(json: ByteArray) {
         val sink = patchSink ?: return
+        val token = session.get()
+        val snapshot = emittingSnapshot
         val text = json.toString(Charsets.UTF_8)
-        mainHandler.post { sink.onPatch(text) }
+        mainHandler.post {
+            if (!started || session.get() != token || patchSink !== sink) return@post
+            if (awaitingSnapshot && !snapshot) return@post
+            if (sink.onPatch(text, snapshot)) {
+                if (snapshot) awaitingSnapshot = false
+            } else {
+                check(!snapshot) { "LUI host rejected the authoritative runtime snapshot" }
+                awaitingSnapshot = true
+                ocamlHandler.post {
+                    if (session.get() != token) return@post
+                    emittingSnapshot = true
+                    try {
+                        check(nativeResync() == 1) { "LUI runtime snapshot failed" }
+                    } finally {
+                        emittingSnapshot = false
+                    }
+                }
+            }
+        }
     }
 
-    /**
-     * Loads the OCaml runtime library and starts the app, delivering patch
-     * batches to [sink] on the main thread. Blocks until `nativeStart`
-     * returns. Call once per process.
-     */
+    /** Start a session with a retained backend that can apply both deltas and snapshots. */
+    fun start(libraryName: String, hostCode: Int = HOST_KOTLIN, backend: LuiBackend): Boolean =
+        start(libraryName, hostCode, PatchSink { json, snapshot ->
+            if (snapshot) backend.applySnapshot(json) else backend.applyBatch(json)
+        })
+
+    /** Start an ordered runtime session and retire any previous receiver. */
+    @Synchronized
     fun start(libraryName: String, hostCode: Int = HOST_KOTLIN, sink: PatchSink): Boolean {
-        if (started) return true
+        if (started) stop()
+        val token = session.incrementAndGet()
+        awaitingSnapshot = false
         patchSink = sink
-        System.loadLibrary(libraryName)
-        val result = AtomicReference<Int>()
-        val latch = CountDownLatch(1)
-        ocamlHandler.post {
-            result.set(nativeStart(PLATFORM_ANDROID, hostCode))
-            latch.countDown()
+        try {
+            System.loadLibrary(libraryName)
+            nativeLoaded = true
+            val accepted = dispatchOnRuntime(30) { nativeStart(PLATFORM_ANDROID, hostCode) == 1 }
+            started = accepted
+            return accepted
+        } finally {
+            if (!started && session.get() == token) {
+                patchSink = null
+                session.incrementAndGet()
+                if (nativeLoaded) ocamlHandler.post { nativeStop() }
+            }
         }
-        val completed = latch.await(30, TimeUnit.SECONDS)
-        if (!completed) {
-            started = false
-            return false
-        }
-        started = result.get() == 1
-        return started
     }
 
-    private inline fun dispatch(crossinline call: () -> Int) {
-        check(started) { "LuiBridge.start() has not been called" }
-        ocamlHandler.post { call() }
-    }
-
-    /** Synchronous dispatch for calls that must return a value. */
-    private inline fun <T> dispatchBlocking(crossinline call: () -> T): T {
-        check(started) { "LuiBridge.start() has not been called" }
-        val result = AtomicReference<T>()
+    private fun <T> dispatchOnRuntime(timeoutSeconds: Long, call: () -> T): T {
+        val result = AtomicReference<Result<T>>()
         val latch = CountDownLatch(1)
         ocamlHandler.post {
-            result.set(call())
-            latch.countDown()
+            try { result.set(runCatching(call)) } finally { latch.countDown() }
         }
-        if (!latch.await(10, TimeUnit.SECONDS)) {
-            error("LuiBridge call timed out")
+        check(latch.await(timeoutSeconds, TimeUnit.SECONDS)) { "LuiBridge call timed out" }
+        return result.get().getOrThrow()
+    }
+
+    private fun dispatch(call: () -> Int) {
+        check(started) { "LuiBridge.start() has not been called" }
+        val token = session.get()
+        ocamlHandler.post { if (started && session.get() == token) call() }
+    }
+
+    private fun <T> dispatchBlocking(call: () -> T): T {
+        check(started) { "LuiBridge.start() has not been called" }
+        val token = session.get()
+        return dispatchOnRuntime(10) {
+            check(started && session.get() == token) { "LuiBridge session was retired" }
+            call()
         }
-        return result.get()
     }
 
     private fun utf8(text: String): ByteArray = text.toByteArray(Charsets.UTF_8)
@@ -188,7 +224,15 @@ object LuiBridge {
 
     fun load(node: Long) = dispatch { nativeLoad(node) }
 
-    fun stop() = dispatch { nativeStop() }
+    @Synchronized
+    fun stop() {
+        val active = started
+        started = false
+        patchSink = null
+        awaitingSnapshot = false
+        session.incrementAndGet()
+        if (active && nativeLoaded) ocamlHandler.post { nativeStop() }
+    }
 
     /** Root node id of the running app, or -1 when unavailable. */
     fun rootNode(): Long = dispatchBlocking { nativeRootNode() }
@@ -282,6 +326,8 @@ object LuiBridge {
     private external fun nativeLoad(node: Long): Int
 
     private external fun nativeStop(): Int
+
+    private external fun nativeResync(): Int
 
     private external fun nativeRootNode(): Long
 }

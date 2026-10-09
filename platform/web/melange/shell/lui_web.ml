@@ -43,6 +43,9 @@ let create_with_extensions host app_icons registry adapters =
     web_images = Hashtbl.create 8;
     web_media_surfaces = Hashtbl.create 4;
     web_cleanups = Hashtbl.create 8;
+    web_virtual_lists = Hashtbl.create 4;
+    web_lists = Hashtbl.create 4;
+    web_mounted_roots = Hashtbl.create 4;
     web_pointer_cleanups = Hashtbl.create 8;
     web_layers = Lui_web_layers.create ();
     web_modal_return_focus = ref None;
@@ -119,8 +122,12 @@ let backend renderer =
              try
                Lui_web_apply.apply_dom_batch renderer
                  (Store.prior renderer.web_store) batch
-             with Invalid_argument msg ->
-               invalid_arg ("dom batch: " ^ msg));
+             with original_error ->
+               (try Lui_web_apply.recover_dom renderer
+                with recovery_error ->
+                  invalid_arg
+                    ("DOM recovery failed after " ^ Printexc.to_string original_error
+                     ^ ": " ^ Printexc.to_string recovery_error)));
           true
         with Js.Exn.Error error ->
           (* DOM calls and platform node creation throw JS exceptions, not
@@ -136,10 +143,13 @@ let backend renderer =
           invalid_arg ("batch apply: " ^ detail)) }
 
 let mount renderer root host =
+  Hashtbl.replace renderer.web_mounted_roots root host;
   W.Element.appendChild
     (W.Element.asNode (Lui_web_nodes.dom_node renderer root))
     host;
-  Lui_web_split.update_splits_under renderer root
+  Lui_web_split.update_splits_under renderer root;
+  Hashtbl.iter (fun _ state -> state.refresh_virtual ()) renderer.web_virtual_lists;
+  Hashtbl.iter (fun _ refresh -> refresh false) renderer.web_lists
 
 let rec first_section_title renderer node =
   match Store.node renderer.web_store node with
@@ -161,7 +171,7 @@ let rec first_section_title renderer node =
                | Some _ as found -> found
                | None -> search rest)
         in
-        search current.retained_children
+        search (Lui_sequence.to_list current.retained_children)
   | None -> None
 
 let root_sections renderer root =
@@ -191,7 +201,7 @@ let some_node value = Some value
 
 let node renderer node_id =
   match Store.node renderer.web_store node_id with
-  | Some current -> Some current.platform_node
+  | Some current -> Some (Lazy.force current.platform_node)
   | None -> None
 
 let property renderer node_id property =

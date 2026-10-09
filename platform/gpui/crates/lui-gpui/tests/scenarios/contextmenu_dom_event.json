@@ -5,6 +5,8 @@
       "generation": 1,
       "ops": [
         {"op": "create-node", "id": 1, "kind": "root"},
+        {"op": "create-node", "id": 100, "kind": "panel"},
+        {"op": "insert-child", "parent": 1, "child": 100, "index": 0},
         {"op": "create-extension", "id": 2, "identifier": "logseq-div", "fingerprint": "fp2"},
         {"op": "create-extension", "id": 4, "identifier": "logseq-div", "fingerprint": "fp4"},
         {"op": "set-extension-prop", "id": 2, "property": "style-class", "value": "flex p-4"},
@@ -13,8 +15,8 @@
         {"op": "set-extension-prop", "id": 2, "property": "text", "value": "menu"},
         {"op": "set-extension-prop", "id": 4, "property": "style-class", "value": "flex p-4"},
         {"op": "set-extension-prop", "id": 4, "property": "text", "value": "quiet"},
-        {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
-        {"op": "insert-child", "parent": 1, "child": 4, "index": 1}
+        {"op": "insert-child", "parent": 100, "child": 2, "index": 0},
+        {"op": "insert-child", "parent": 100, "child": 4, "index": 1}
       ]
     }},
     {"expect-bounds": {"node": 4, "rect": {"width": {"$gt": 0}}}},

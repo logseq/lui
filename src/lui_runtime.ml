@@ -112,6 +112,7 @@ type runtime_checkpoint = {
   checkpoint_event_handlers : (int, event_handler list) Hashtbl.t;
   checkpoint_next_dynamic_segment_id : int;
   checkpoint_dynamic_segments : (int, dynamic_segment list) Hashtbl.t;
+  checkpoint_segment_values : (dynamic_segment * int * int * bool) list;
   checkpoint_reload_keys : (int, string) Hashtbl.t;
   checkpoint_node_aliases : (int, int) Hashtbl.t;
   checkpoint_handler_count : int;
@@ -219,6 +220,7 @@ let checkpoint ?nodes application =
       List.iter (fun node -> match Hashtbl.find_opt table node with
         | Some value -> Hashtbl.replace saved node value | None -> ()) nodes;
       saved in
+  let segments = copy application.dynamic_segments in
   {
     checkpoint_nodes = nodes;
     checkpoint_generation = !(application.runtime_generation);
@@ -243,7 +245,11 @@ let checkpoint ?nodes application =
     checkpoint_event_handlers = copy application.event_handlers;
     checkpoint_next_dynamic_segment_id =
       !(application.next_dynamic_segment_id);
-    checkpoint_dynamic_segments = copy application.dynamic_segments;
+    checkpoint_dynamic_segments = segments;
+    checkpoint_segment_values = Hashtbl.fold (fun _ segments values ->
+      List.fold_left (fun values segment ->
+        (segment, !(segment.dynamic_segment_base), !(segment.dynamic_segment_size),
+         !(segment.dynamic_segment_active)) :: values) values segments) segments [];
     checkpoint_reload_keys = copy application.runtime_reload_keys;
     checkpoint_node_aliases = (match nodes with
       | None -> Hashtbl.copy application.runtime_node_aliases
@@ -352,6 +358,10 @@ let restore application saved =
   application.next_dynamic_segment_id :=
     saved.checkpoint_next_dynamic_segment_id;
   replace application.dynamic_segments saved.checkpoint_dynamic_segments;
+  List.iter (fun (segment, base, size, active) ->
+    segment.dynamic_segment_base := base;
+    segment.dynamic_segment_size := size;
+    segment.dynamic_segment_active := active) saved.checkpoint_segment_values;
   replace application.runtime_reload_keys saved.checkpoint_reload_keys;
   (match affected with
   | None -> Hashtbl.reset application.runtime_node_aliases; Hashtbl.reset application.runtime_alias_targets
@@ -678,43 +688,34 @@ let emit_child_diff application reparented parent old_children
          end)
       old_children
   in
-  (* Simulate the reorder on flat arrays: [desired] is indexed directly and
-     [current] grows in place, so an unchanged list costs O(n) instead of
-     rescanning it via List.length/List.nth on every step. *)
-  let desired = Array.of_list desired_children in
-  let count = Array.length desired in
-  let current = Array.make count 0 in
+  (* A placed prefix plus the unplaced old rows describes the current
+     order. Prefix sums locate retained rows without shifting arrays. *)
   let positions = index_map surviving in
-  let length = ref (List.length surviving) in
-  List.iteri (fun index child -> current.(index) <- child) surviving;
-  let shift_into index value =
-    for j = !length downto index + 1 do
-      let moved = current.(j - 1) in
-      current.(j) <- moved;
-      Hashtbl.replace positions moved j
-    done;
-    current.(index) <- value;
-    Hashtbl.replace positions value index
+  let counts = Array.make (List.length surviving + 1) 0 in
+  let add position delta =
+    let index = ref (position + 1) in
+    while !index < Array.length counts do
+      counts.(!index) <- counts.(!index) + delta;
+      index := !index + (!index land (- !index))
+    done
   in
-  for index = 0 to count - 1 do
-    let child = desired.(index) in
+  let before position =
+    let total = ref 0 and index = ref position in
+    while !index > 0 do
+      total := !total + counts.(!index);
+      index := !index - (!index land (- !index))
+    done;
+    !total
+  in
+  List.iteri (fun index _ -> add index 1) surviving;
+  List.iteri (fun index child ->
     match Hashtbl.find_opt positions child with
-    | Some from_index ->
-      if from_index <> index then begin
+    | Some old_index ->
+      if before old_index <> 0 then
         enqueue application (move_child_op parent child index);
-        for j = from_index downto index + 1 do
-          let moved = current.(j - 1) in
-          current.(j) <- moved;
-          Hashtbl.replace positions moved j
-        done;
-        current.(index) <- child;
-        Hashtbl.replace positions child index
-      end
-    | None ->
-      enqueue application (insert_child_op parent child index);
-      shift_into index child;
-      incr length
-  done
+      add old_index (-1)
+    | None -> enqueue application (insert_child_op parent child index))
+    desired_children
 
 let emit_property_diff application node old_values desired_values =
   Property_map.iter
@@ -1927,7 +1928,11 @@ let dispatch application event =
       List.iter
         (fun handler ->
            Signal.enqueue_effect application.runtime_scheduler (fun () ->
-               handler.handler_callback event))
+               let current = Option.value
+                 (Hashtbl.find_opt application.event_handlers node) ~default:[] in
+               if node_live application node
+                  && List.exists (fun registered -> registered == handler) current
+               then handler.handler_callback event))
         handlers;
       true
     | None -> true

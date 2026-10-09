@@ -46,26 +46,30 @@ let teardown_branch application segment parent node =
     Lui_runtime.drop_subtree application node
 
 let segment_disposer application segment dispose_reactive () =
-  dispose_reactive ();
-  Lui_runtime.unregister_dynamic_segment application segment
+  Fun.protect dispose_reactive
+    ~finally:(fun () -> Lui_runtime.unregister_dynamic_segment application segment)
 
 let switch context parent source equal mount =
   let application = context.Lui_ui.ui_application in
   let segment = Lui_runtime.register_dynamic_segment application parent in
   let node_ref = ref None in
   let disposed = ref false in
+  let branch_name = Lui_ui.owner_name context "switch-branch" in
   let mount_branch key =
-    let branch_context = Lui_ui.child_context context "switch-branch" in
+    let branch_context = Lui_ui.child_context context branch_name in
     let branch_scope = branch_context.Lui_ui.ui_scope in
     (* Reconciled branches must skip node teardown: their nodes were handed
        to the new tree (or already dropped by [emit_dropped_subtree]), so the
        unmount hook may not remove or drop them. *)
     let retired = ref false in
-    let node = mount branch_context key in
+    let node = try mount branch_context key with failure ->
+      retired := true;
+      (try Signal.dispose_scope branch_scope with _ -> ());
+      raise failure in
     Signal.on_unmount branch_scope (fun () ->
         if !(segment.Lui_runtime.dynamic_segment_active) && not !retired
         then teardown_branch application segment parent node;
-        if !node_ref = Some node then node_ref := None);
+        if not !retired && !node_ref = Some node then node_ref := None);
     branch_context, node, retired
   in
   let initial_key = Signal.sample source in
@@ -96,6 +100,7 @@ let switch context parent source equal mount =
             let old_scope = !current_scope in
             let saved = Lui_runtime.checkpoint_subtree application parent old_node in
             let candidate = ref None in
+            let committed = ref false in
             (try
                let branch_context, new_node, new_retired =
                  mount_branch next_key
@@ -116,15 +121,17 @@ let switch context parent source equal mount =
                Signal.mount branch_context.Lui_ui.ui_scope;
                !current_retired := true;
                Lui_runtime.retire_checkpoint_dynamic_segments saved old_node;
-               Signal.dispose_scope old_scope;
                current_key := next_key;
                node_ref := Some desired_root;
                current_scope := branch_context.Lui_ui.ui_scope;
-               current_retired := new_retired
+               current_retired := new_retired;
+               committed := true;
+               Signal.dispose_scope old_scope
              with failure ->
                (* A mount or reconcile failure can leave tables half rebuilt;
                   restore the checkpoint and discard the candidate branch so
                   the old branch stays mounted. *)
+               if not !committed then begin
                Lui_runtime.restore application saved;
                (match !candidate with
                | Some (branch_context, retired) ->
@@ -133,8 +140,9 @@ let switch context parent source equal mount =
                     hook must not run [teardown_branch] against the live
                     branch's registrations. *)
                  retired := true;
-                 Signal.dispose_scope branch_context.Lui_ui.ui_scope
+                 (try Signal.dispose_scope branch_context.Lui_ui.ui_scope with _ -> ())
                | None -> ());
+               end;
                raise failure))
   in
   ignore (Signal.own context.Lui_ui.ui_scope subscription);
@@ -158,12 +166,13 @@ let conditional context parent source mount =
   let application = context.Lui_ui.ui_application in
   let segment = Lui_runtime.register_dynamic_segment application parent in
   let node_ref = ref None in
+  let branch_name = Lui_ui.owner_name context "conditional-branch" in
   let switch_value =
     Signal.switch context.Lui_ui.ui_scope source
       (fun left right -> left = right)
       (fun visible ->
          let branch_context =
-           Lui_ui.child_context context "conditional-branch"
+           Lui_ui.child_context context branch_name
          in
          let branch_scope = branch_context.Lui_ui.ui_scope in
          (if visible && Lui_runtime.node_live application parent then
@@ -244,59 +253,67 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
   let nodes_ref = ref [] in
   let disposed = ref false in
   let dispose_entry entry =
-    Signal.dispose_scope entry.keyed_item_scope;
-    Signal.dispose_signal (Signal.value entry.keyed_item_state) in
-  let remove_entry index entry =
+    Fun.protect (fun () -> Signal.dispose_scope entry.keyed_item_scope)
+      ~finally:(fun () -> Signal.dispose_signal (Signal.value entry.keyed_item_state)) in
+  let detach_entry index entry =
     if Lui_runtime.node_live application parent && Lui_runtime.node_live application entry.keyed_item_node then begin
       Lui_runtime.remove_child_at application (Lui_runtime.canonical_node application parent)
         (Lui_runtime.canonical_node application entry.keyed_item_node)
         (Lui_runtime.dynamic_segment_index segment index);
       Lui_runtime.drop_subtree application entry.keyed_item_node
     end;
-    Lui_runtime.release_dynamic_segment application segment;
+    Lui_runtime.release_dynamic_segment application segment in
+  let remove_entry index entry =
+    detach_entry index entry;
     dispose_entry entry in
   let reconcile items =
     if not !disposed && Lui_runtime.node_live application parent then begin
       let items = Array.of_list items in
+      let old = !ordered in
+      let unchanged = ref (Array.length items = Array.length old) in
+      let index = ref 0 in
+      while !unchanged && !index < Array.length items do
+        let key, entry = old.(!index) in
+        unchanged := compare key (key_fn items.(!index)) = 0
+          && items.(!index) == Signal.get_state entry.keyed_item_state;
+        incr index
+      done;
+      if not !unchanged then begin
       let desired = ref Keys.empty in
       Array.iteri (fun index item ->
         let key = key_fn item in
         if Keys.mem key !desired then invalid_arg "keyed collection contains a duplicate key";
         desired := Keys.add key index !desired) items;
-      (* Mount every new row before any removal. A raising [mount] then
-         leaves [ordered], the segment, and the previous entries untouched. *)
+      let nodes = Array.fold_left (fun nodes (_, entry) ->
+        List.rev_append (Lui_runtime.collect_subtree_nodes
+          application.Lui_runtime.runtime_children entry.keyed_item_node) nodes)
+        [Lui_runtime.canonical_node application parent] old in
+      let saved = Lui_runtime.checkpoint ~nodes application in
+      let previous_entries = !entries in
       let mounted = ref [] in
-      let fresh =
-        try
-          Array.map (fun item ->
-            let key = key_fn item in
-            match Keys.find_opt key !entries with
-            | Some _ -> None
-            | None ->
-              let item_state = Signal.state scheduler item in
-              let scope = Signal.scope "keyed-item" in
-              let item_context = Lui_ui.context application scope in
-              match
-                (try Ok (mount item_context (Signal.value item_state))
-                 with failure -> Error failure)
-              with
-              | Error failure ->
-                Signal.dispose_scope scope;
-                Signal.dispose_signal (Signal.value item_state);
-                raise failure
-              | Ok node ->
-                Signal.mount scope;
-                mounted := (scope, item_state) :: !mounted;
-                Some (item_state, scope, node))
-            items
-        with failure ->
-          List.iter
-            (fun (scope, item_state) ->
-               Signal.dispose_scope scope;
-               Signal.dispose_signal (Signal.value item_state))
-            !mounted;
-          raise failure
-      in
+      let retired = ref [] in
+      let cleanup_candidates () = List.iter (fun entry ->
+        try dispose_entry entry with _ -> ()) !mounted in
+      (try
+      (* Own every candidate before running its constructor or mount hooks. *)
+      let fresh = Array.map (fun item ->
+        let key = key_fn item in
+        match Keys.find_opt key !entries with
+        | Some _ -> None
+        | None ->
+          let item_state = Signal.state scheduler item in
+          let scope = Signal.scope "keyed-item" in
+          let item_context = Lui_ui.context application scope in
+          let node = try mount item_context (Signal.value item_state)
+            with failure ->
+              (try Signal.dispose_scope scope with _ -> ());
+              Signal.dispose_signal (Signal.value item_state);
+              raise failure in
+          let entry = { keyed_item_state = item_state; keyed_item_scope = scope;
+                        keyed_item_node = node } in
+          mounted := entry :: !mounted;
+          Signal.mount scope;
+          Some entry) items in
       let old = !ordered in
       let old_positions = ref Keys.empty in
       Array.iteri (fun index (key, _) -> old_positions := Keys.add key index !old_positions) old;
@@ -316,13 +333,11 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
           index := !index - (!index land (- !index))
         done;
         !total in
-      let saved = Lui_runtime.checkpoint application in
-      let previous_entries = !entries in
-      (try
          for index = Array.length old - 1 downto 0 do
            let key, entry = old.(index) in
            if not (Keys.mem key !desired) then begin
-             remove_entry index entry;
+             detach_entry index entry;
+             retired := entry :: !retired;
              entries := Keys.remove key !entries
            end else add index 1
          done;
@@ -344,14 +359,12 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
                  Signal.set entry.keyed_item_state item;
                entry
              | None ->
-               let item_state, scope, node =
-                 match fresh.(index) with
-                 | Some mounted_item -> mounted_item
-                 | None -> invalid_arg "keyed mount missing"
-               in
-               Lui_runtime.insert_child application parent node (Lui_runtime.dynamic_segment_insert_index segment index);
+               let entry = match fresh.(index) with
+                 | Some entry -> entry
+                 | None -> invalid_arg "keyed mount missing" in
+               Lui_runtime.insert_child application parent entry.keyed_item_node
+                 (Lui_runtime.dynamic_segment_insert_index segment index);
                Lui_runtime.resize_dynamic_segment application segment 1;
-               let entry = { keyed_item_state = item_state; keyed_item_scope = scope; keyed_item_node = node } in
                entries := Keys.add key entry !entries;
                entry in
            key, entry) items in
@@ -360,12 +373,15 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
        with failure ->
          Lui_runtime.restore application saved;
          entries := previous_entries;
-         List.iter
-           (fun (scope, item_state) ->
-              Signal.dispose_scope scope;
-              Signal.dispose_signal (Signal.value item_state))
-           !mounted;
-         raise failure)
+         cleanup_candidates ();
+         raise failure);
+      (* Structural ownership commits before fallible retirement callbacks. *)
+      let failure = ref None in
+      List.iter (fun entry -> try dispose_entry entry with error ->
+        if !failure = None then failure := Some error) !retired;
+      (match !failure with None -> ()
+       | Some error -> raise error)
+      end
     end in
   reconcile (Signal.sample source);
   let subscription = Signal.subscribe ~emit_initial:false source reconcile in
@@ -374,13 +390,19 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
     if not !disposed then begin
       disposed := true;
       Signal.dispose_subscription subscription;
-      for index = Array.length !ordered - 1 downto 0 do
-        let _, entry = (!ordered).(index) in
-        if !(segment.Lui_runtime.dynamic_segment_active) then remove_entry index entry
-        else dispose_entry entry
-      done;
+      let previous = !ordered in
       ordered := [||]; entries := Keys.empty; nodes_ref := [];
-      Lui_runtime.unregister_dynamic_segment application segment
+      let failure = ref None in
+      let attempt cleanup = try cleanup () with error ->
+        if !failure = None then failure := Some error in
+      for index = Array.length previous - 1 downto 0 do
+        let _, entry = previous.(index) in
+        attempt (fun () ->
+          if !(segment.Lui_runtime.dynamic_segment_active) then remove_entry index entry
+          else dispose_entry entry)
+      done;
+      attempt (fun () -> Lui_runtime.unregister_dynamic_segment application segment);
+      match !failure with None -> () | Some error -> raise error
     end in
   Signal.on_dispose context.Lui_ui.ui_scope dispose_callback;
   { dispose_dynamic_keyed = dispose_callback; key_nodes = nodes_ref; key_compare = compare }

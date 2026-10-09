@@ -574,8 +574,9 @@ impl LuiNodeView {
                 .node(id)
                 .filter(|node| {
                     node.children.is_empty()
-                        && node.float_prop(Property::WidthValue).is_some()
-                        && node.float_prop(Property::HeightValue).is_some()
+                        && ((node.float_prop(Property::WidthValue).is_some()
+                            && node.float_prop(Property::HeightValue).is_some())
+                            || matches!(node.identity, NodeIdentity::Extension { .. }))
                 })
                 .and_then(|_| NodeSnapshot::snapshot(&shared.store, id))
         };
@@ -616,14 +617,15 @@ impl LuiNodeView {
                         && states.color_picker.is_none()
                 }
             };
-            if cacheable
-                && node.children.is_empty()
-                && !in_virtual_list
-                && node.float_prop(Property::WidthValue).is_some()
-                && node.float_prop(Property::HeightValue).is_some()
-            {
+            if cacheable && !in_virtual_list {
                 let mut frame = crate::style::all(div(), &node, cx.theme());
-                return view.cached(frame.style().clone()).into_any_element();
+                let fixed = |length| matches!(length,
+                    Some(gpui_kit::gpui::Length::Definite(gpui_kit::gpui::DefiniteLength::Absolute(_))));
+                // Standard dimensions and fixed extension CSS sizes both admit
+                // caching. Content and parent-relative sizes must still measure.
+                if fixed(frame.style().size.width) && fixed(frame.style().size.height) {
+                    return view.cached(frame.style().clone()).into_any_element();
+                }
             }
         }
         view.into_any_element()

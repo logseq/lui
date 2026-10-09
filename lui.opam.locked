@@ -4,8 +4,8 @@
 # specific part is `pin-depends`, which replaces the manual `opam pin`
 # step that CI, the blueprint, and README used to run.
 #
-# ocaml-signal is pinned to main HEAD (unified get/get_state accessors
-# + declared melange build dep).
+# Snapshot of ocaml-signal main, including ranked propagation, robust
+# disposal, and O(n log n) keyed reconciliation (2026-10-09).
 opam-version: "2.0"
 version: "0.1.0"
 synopsis: "A reactive retained cross-platform UI runtime in OCaml"
@@ -27,7 +27,7 @@ depends: [
 pin-depends: [
   [
     "ocaml-signal.0.1.0"
-    "git+https://github.com/logseq/ocaml-signal.git#main"
+    "git+https://github.com/logseq/ocaml-signal.git#df355e15869ceb7220c0365ae7057e4c3fc558b2"
   ]
 ]
 build: [

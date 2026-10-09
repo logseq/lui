@@ -23,13 +23,13 @@ let extension_platform_node renderer node identifier =
    the store already skipped it, so skip the DOM write too. *)
 let apply_extension_property renderer node property value =
   match Store.node renderer.web_store node with
-  | Some current -> (
+  | Some current when Lazy.is_val current.platform_node -> (
       match Store.extension_identity current with
       | Some (identifier, _) ->
           (extension_adapter renderer identifier).web_extension_set_property
-            current.platform_node property value
+            (Lazy.force current.platform_node) property value
       | None -> invalid_arg "extension property targets standard DOM node")
-  | None -> ()
+  | Some _ | None -> ()
 
 let remove_extension_property renderer node property =
   match Store.node renderer.web_store node with
@@ -37,16 +37,16 @@ let remove_extension_property renderer node property =
       match Store.extension_identity current with
       | Some (identifier, _) ->
           (extension_adapter renderer identifier).web_extension_remove_property
-            current.platform_node property
+            (Lazy.force current.platform_node) property
       | None -> invalid_arg "extension property targets standard DOM node")
   | None -> ()
 
 let cleanup_extension_node renderer previous_nodes node =
   match previous_nodes node with
-  | Some current -> (
+  | Some current when Lazy.is_val current.platform_node -> (
       match Store.extension_identity current with
       | Some (identifier, _) ->
           (extension_adapter renderer identifier).web_extension_cleanup
-            current.platform_node
+            (Lazy.force current.platform_node)
       | None -> ())
-  | None -> ()
+  | Some _ | None -> ()

@@ -202,8 +202,8 @@ let refresh_image_id renderer image_id =
             = Some (IntValue image_id)
        then
          if Store.standard_kind_is current Avatar then
-           update_avatar renderer node current.platform_node
-         else update_image renderer node current.platform_node)
+           update_avatar renderer node (Lazy.force current.platform_node)
+         else update_image renderer node (Lazy.force current.platform_node))
     (Store.nodes renderer.web_store);
   true
 
@@ -246,7 +246,7 @@ let refresh_media_surface_id renderer surface_id =
          Store.standard_kind_is current MediaSurface
          && Property_map.find_opt SurfaceIdValue current.retained_properties
             = Some (IntValue surface_id)
-       then update_media_surface renderer node current.platform_node)
+       then update_media_surface renderer node (Lazy.force current.platform_node))
     (Store.nodes renderer.web_store);
   true
 
@@ -372,7 +372,7 @@ let refresh_bottom_tabs renderer tabs =
        match Store.node renderer.web_store child with
        | Some current ->
            let active = selected = Some child in
-           let panel = current.platform_node in
+           let panel = (Lazy.force current.platform_node) in
            Util.set_state_attribute panel "hidden" (not active);
            Util.set_state_attribute panel "inert" (not active);
            (match bottom_tab_trigger renderer child with

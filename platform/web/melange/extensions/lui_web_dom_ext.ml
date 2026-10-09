@@ -103,11 +103,8 @@ let apply_attrs el json =
 
 (* -- events prop -- *)
 
-let is_undefined_json v =
-  match Js.Json.classify v with Js.Json.JSONFalse -> true | _ -> false
-
 let put_target_fields d (t : Js.Json.t) =
-  let put name v = if not (is_undefined_json v) then Js.Dict.set d name v in
+  let put name v = Js.Dict.set d name v in
   (match Js.Undefined.toOption (prop_undef t "value") with
    | Some v -> put "value" (Js.Json.string v)
    | None -> ());
@@ -134,7 +131,7 @@ let put_target_fields d (t : Js.Json.t) =
 
 let json_of_event name (ev : Js.Json.t) : string =
   let d = Js.Dict.empty () in
-  let put name v = if not (is_undefined_json v) then Js.Dict.set d name v in
+  let put name v = Js.Dict.set d name v in
   put "type" (Js.Json.string name);
   let s k = Option.iter (fun v -> put k (Js.Json.string v)) in
   let b k = Option.iter (fun v -> put k (Js.Json.boolean v)) in

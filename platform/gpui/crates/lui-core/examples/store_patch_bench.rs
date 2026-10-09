@@ -10,7 +10,7 @@ fn main() {
         let mut ops = Vec::new();
         ops.push(Op::CreateNode {
             id: 1,
-            kind: "root".into(),
+            kind: "column".into(),
         });
         for id in 2..count + 2 {
             ops.push(Op::CreateNode {
@@ -36,7 +36,7 @@ fn main() {
         let mut store = Store::default();
         store.apply(&Batch { generation: 1, ops }).unwrap();
         let mut patch = Batch {
-            generation: 2,
+            generation: 1,
             ops: vec![Op::SetProp {
                 id: 2,
                 property: "text".into(),
@@ -44,6 +44,7 @@ fn main() {
             }],
         };
         for _ in 0..5 {
+            patch.generation += 1;
             store.apply(&patch).unwrap();
         }
         let started = Instant::now();

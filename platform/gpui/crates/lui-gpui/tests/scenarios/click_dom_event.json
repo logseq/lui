@@ -11,7 +11,7 @@
         {"op": "set-extension-prop", "id": 3, "property": "attrs", "value": "{\"id\": \"save-btn\"}"},
         {"op": "set-extension-prop", "id": 3, "property": "events", "value": "click"},
         {"op": "set-extension-prop", "id": 3, "property": "text", "value": "Save"},
-        {"op": "set-prop", "id": 3, "property": "accessibility-identifier", "value": "save-btn"},
+        {"op": "set-extension-prop", "id": 3, "property": "accessibility-identifier", "value": "save-btn"},
         {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
         {"op": "insert-child", "parent": 2, "child": 3, "index": 0}
       ]

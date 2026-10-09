@@ -342,6 +342,8 @@ let icon_value : icon -> string = function
 
 let mount context ?parent element = element context parent
 
+let scoped build : t = fun context parent -> build context context parent
+
 (* Signal conveniences for view code: `map f src`, `sample src`,
    `src >|= f`, `const` — short spellings for the reactive props. *)
 
@@ -356,6 +358,9 @@ let ( >|= ) source f = Signal.map f source
 let get = Signal.get
 
 let get_state = Signal.get_state
+
+let owned_map context project source =
+  Signal.own_signal context.Lui_ui.ui_scope (Signal.map project source)
 
 let attach context parent node =
   match parent with
@@ -622,7 +627,7 @@ let apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding 
   Option.iter
     (fun source ->
        Lui_ui.string_property_signal context node DataAttrs
-         (Signal.map data_attrs_encode source))
+         (owned_map context data_attrs_encode source))
     data_attrs_signal;
   (match on_appear with
    | Some handler -> appear_handler context node handler
@@ -850,7 +855,7 @@ let bottom_tab ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizonta
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave;
   Option.iter (Lui_ui.string_property context node TitleValue) title;
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
-  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (owned_map context icon_value signal_)) icon_signal;
   Option.iter (Lui_ui.bool_property context node Selected) selected;
   Option.iter (Lui_ui.bool_property_signal context node Selected) selected_signal;
   Option.iter (Lui_ui.bool_property context node Enabled) enabled;
@@ -1048,7 +1053,7 @@ let icon ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pad
   let height = match height with Some _ -> height | None -> point_size in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave;
   Option.iter (Lui_ui.string_property context node IconName) (Option.map icon_value name);
-  Option.iter (fun signal -> Lui_ui.string_property_signal context node IconName (Signal.map icon_value signal)) name_signal;
+  Option.iter (fun signal -> Lui_ui.string_property_signal context node IconName (owned_map context icon_value signal)) name_signal;
   Option.iter (Lui_ui.string_property context node SizeValue) (Option.map control_size_value size);
   Option.iter (Lui_ui.string_property context node TooltipText) tooltip;
   Option.iter (Lui_ui.string_property_signal context node TooltipText) tooltip_signal;
@@ -1137,7 +1142,7 @@ let button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?p
   Option.iter (Lui_ui.string_property context node VariantValue) (Option.map variant_value variant);
   Option.iter (Lui_ui.string_property context node SizeValue) (Option.map control_size_value size);
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
-  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (owned_map context icon_value signal_)) icon_signal;
   Option.iter (Lui_ui.string_property context node IconPlacementValue) (Option.map icon_placement_value icon_placement);
   Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
   Option.iter (Lui_ui.string_property context node TextAlignment) (Option.map text_alignment_value text_alignment);
@@ -1173,7 +1178,7 @@ let toggle_button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizo
   Option.iter (Lui_ui.string_property context node VariantValue) (Option.map variant_value variant);
   Option.iter (Lui_ui.string_property context node SizeValue) (Option.map control_size_value size);
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
-  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (owned_map context icon_value signal_)) icon_signal;
   Option.iter (Lui_ui.string_property context node IconPlacementValue) (Option.map icon_placement_value icon_placement);
   Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
   Option.iter (Lui_ui.string_property context node TextAlignment) (Option.map text_alignment_value text_alignment);
@@ -1649,9 +1654,9 @@ let popover ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?
   Option.iter
     (fun signal_ ->
       Lui_ui.float_property_signal context node PopupX
-        (Signal.map fst signal_);
+        (owned_map context fst signal_);
       Lui_ui.float_property_signal context node PopupY
-        (Signal.map snd signal_))
+        (owned_map context snd signal_))
     at_signal;
   Option.iter (Lui_ui.string_property context node AnchorValue) (Option.map anchor_value anchor);
   Option.iter (Lui_ui.string_property context node AnchorAlignmentValue) (Option.map anchor_alignment_value anchor_alignment);
@@ -1749,7 +1754,7 @@ let file_picker ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizont
   Option.iter
     (fun source ->
       Lui_ui.value_property_signal context node PickerRequest
-        (Signal.map
+        (owned_map context
            (fun token -> file_picker_token_wire_value token)
            source))
     request_signal;
@@ -1771,7 +1776,7 @@ let file_picker ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizont
   Option.iter
     (fun source ->
       Lui_ui.value_property_signal context node PickerCompletion
-        (Signal.map
+        (owned_map context
            (fun token -> file_picker_token_wire_value token)
            source))
     completion_signal;
@@ -1820,7 +1825,7 @@ let menu_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal
   Option.iter (Lui_ui.string_property context node TextValue) text;
   Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
-  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (owned_map context icon_value signal_)) icon_signal;
   Option.iter (Lui_ui.string_property context node RoleValue) (Option.map role_value role);
   Option.iter (Lui_ui.string_property context node VariantValue) (Option.map variant_value variant);
   Option.iter (Lui_ui.string_property context node SizeValue) (Option.map control_size_value size);
@@ -1880,12 +1885,12 @@ let menu_trigger ?key ?accessibility_identifier ?accessibility_identifier_signal
   Option.iter
     (fun source ->
        Lui_ui.string_property_signal context node DataAttrs
-         (Signal.map data_attrs_encode source))
+         (owned_map context data_attrs_encode source))
     data_attrs_signal;
   Option.iter (Lui_ui.string_property context node TextValue) text;
   Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
-  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (owned_map context icon_value signal_)) icon_signal;
   Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
   Option.iter (Lui_ui.disabled context node) disabled;
   Option.iter (Lui_ui.disabled_signal context node) disabled_signal;
@@ -1916,7 +1921,7 @@ let list_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal
   Option.iter (Lui_ui.string_property context node TextValue) text;
   Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
-  Option.iter (fun signal -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal)) icon_signal;
+  Option.iter (fun signal -> Lui_ui.string_property_signal context node InlineIconName (owned_map context icon_value signal)) icon_signal;
   Option.iter (Lui_ui.string_property context node IconPlacementValue) (Option.map icon_placement_value icon_placement);
   Option.iter (Lui_ui.string_property context node RoleValue) (Option.map role_value role);
   Option.iter (Lui_ui.int_property context node TreeLevel) tree_level;
@@ -2025,7 +2030,7 @@ let swipe_action ?key ?accessibility_identifier ?text ?text_signal ?icon
   Option.iter
     (fun signal ->
        Lui_ui.string_property_signal context node InlineIconName
-         (Signal.map icon_value signal))
+         (owned_map context icon_value signal))
     icon_signal;
   Option.iter (Lui_ui.string_property context node VariantValue)
     (Option.map variant_value variant);
@@ -2101,7 +2106,7 @@ let link ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pad
   Option.iter (Lui_ui.string_property context node TextValue) text;
   Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
-  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (owned_map context icon_value signal_)) icon_signal;
   Option.iter (Lui_ui.string_property context node IconPlacementValue) (Option.map icon_placement_value icon_placement);
   Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
   Option.iter (Lui_ui.disabled context node) disabled;
@@ -2185,7 +2190,7 @@ let timeline_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizo
   Option.iter (Lui_ui.string_property context node MetaValue) meta;
   Option.iter (Lui_ui.string_property context node IndicatorValue) indicator;
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
-  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (Signal.map icon_value signal_)) icon_signal;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node InlineIconName (owned_map context icon_value signal_)) icon_signal;
   Option.iter (Lui_ui.string_property context node VariantValue) (Option.map variant_value variant);
   Option.iter (Lui_ui.bool_property context node Connector) connector;
   Option.iter (Lui_ui.bool_property context node Selected) selected;

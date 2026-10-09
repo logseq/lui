@@ -4,7 +4,8 @@ set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 results=$(mktemp "${TMPDIR:-/tmp}/lui-performance.XXXXXX")
-trap 'rm -f "$results"' EXIT
+bench_dir=$(mktemp -d "${TMPDIR:-/tmp}/lui-bench.XXXXXX")
+trap 'rm -f "$results"; rm -rf "$bench_dir"' EXIT
 
 local_text_limit=${LUI_PERF_LOCAL_TEXT_1K_MS_MAX:-10}
 typing_limit=${LUI_PERF_TYPING_10K_60_MS_MAX:-250}
@@ -32,9 +33,14 @@ check_budget() {
 }
 
 cd "$repo_root"
-opam exec -- dune build test/lui_runtime_native.exe -j 1
-if ! opam exec -- dune exec test/lui_runtime_native.exe -- \
-  test --color=never --verbose 'lui.benchmark-test' >"$results"; then
+opam exec -- dune build src/lui.cmxa -j 1
+cp tooling/performance/runtime_bench.ml "$bench_dir/"
+opam exec -- ocamlfind ocamlopt -linkpkg -package ocaml-signal,unix \
+  -I "$repo_root/_build/default/src/.lui.objs/byte" \
+  -I "$repo_root/_build/default/src/.lui.objs/native" \
+  "$repo_root/_build/default/src/lui.cmxa" \
+  "$bench_dir/runtime_bench.ml" -o "$bench_dir/runtime_bench"
+if ! "$bench_dir/runtime_bench" >"$results"; then
   sed -n '1,240p' "$results"
   exit 1
 fi
@@ -46,3 +52,7 @@ check_budget keyed_reorder_1k_ms "$keyed_reorder_limit"
 check_budget keyed_middle_edit_1k_ms "$keyed_edit_limit"
 check_budget scroll_background_ms "$scroll_limit"
 check_budget sustained_local_mutations_10k_ms "$sustained_limit"
+
+check_budget flat_mount_10k_ms "${LUI_PERF_FLAT_MOUNT_10K_MS_MAX:-500}"
+check_budget wide_reorder_10k_ms "${LUI_PERF_WIDE_REORDER_10K_MS_MAX:-250}"
+check_budget branch_mount_dispose_1k_ms "${LUI_PERF_BRANCH_LIFECYCLE_1K_MS_MAX:-250}"

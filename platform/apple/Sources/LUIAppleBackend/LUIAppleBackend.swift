@@ -408,10 +408,7 @@ final class LUINodeModel: Identifiable {
 @MainActor
 public final class LUIAppleBackend {
     public private(set) var generation = 0
-    /// Bumped once per `commit`. Views that must bypass incremental collection
-    /// updates (e.g. `List` on iOS 26, whose update-coalescing collection view
-    /// can lose inserts and then assert on the next update's count check)
-    /// key their identity on this so every commit is a full rebuild.
+    /// Number of observable model commits, for diagnostics.
     public private(set) var commitSequence = 0
     public var onEvent: ((LUIEvent) -> Void)?
 

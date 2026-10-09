@@ -11,6 +11,7 @@ type ui_context = {
   ui_state_scopes : (string, Signal.scope) Hashtbl.t;
   ui_active_state_paths : (string, bool) Hashtbl.t;
   ui_state_path : string;
+  ui_next_owner_id : int ref;
   ui_profile : platform_profile;
 }
 
@@ -24,6 +25,7 @@ let make_context application scope state_scope state_scopes
     ui_state_scopes = state_scopes;
     ui_active_state_paths = active_state_paths;
     ui_state_path = state_path;
+    ui_next_owner_id = ref 0;
     ui_profile =
       application.Lui_runtime.runtime_backend.backend_profile;
   }
@@ -57,6 +59,11 @@ let child_context parent name =
   Hashtbl.replace active_state_paths path true;
   make_context parent.ui_application scope state_scope state_scopes
     active_state_paths path
+
+let owner_name context name =
+  let index = !(context.ui_next_owner_id) in
+  incr context.ui_next_owner_id;
+  name ^ "-" ^ string_of_int index
 
 let node_kind context node =
   Lui_runtime.require_standard_node_kind context.ui_application node
@@ -328,7 +335,7 @@ let value_property context node property value =
 let value_property_signal context node property source =
   ignore
     (Lui_runtime.bind_prop context.ui_scope context.ui_application node
-       property (Signal.own_signal context.ui_scope source))
+       property source)
 
 let disabled context node disabled =
   bool_property context node Enabled (not disabled)
@@ -453,11 +460,11 @@ let theme context node tokens =
 
 let theme_signal context node source =
   string_property_signal context node ThemeValue
-    (Signal.map theme_tokens_json source)
+    (Signal.own_signal context.ui_scope (Signal.map theme_tokens_json source))
 
 let theme_mode context node mode =
   string_property context node ThemeMode (theme_mode_value mode)
 
 let theme_mode_signal context node source =
   string_property_signal context node ThemeMode
-    (Signal.map theme_mode_value source)
+    (Signal.own_signal context.ui_scope (Signal.map theme_mode_value source))

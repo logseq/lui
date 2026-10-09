@@ -73,6 +73,8 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
+import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -146,7 +148,7 @@ private fun LuiChromeSurface(backend: LuiBackend, node: LuiNode, id: Long) {
                     },
                     offset = with(LocalDensity.current) { DpOffset(anchor.x.toDp(), 0.dp) },
                 ) {
-                    menu.children.forEach { childId -> LuiMenuEntry(backend, childId) }
+                    menu.children.forEachNode { childId -> LuiMenuEntry(backend, childId) }
                 }
             }
         }
@@ -250,7 +252,7 @@ private fun LuiNodeContent(
                 else -> Alignment.CenterVertically
             },
         ) {
-            children.forEach { childId -> GrowChildRow(backend, childId) }
+            children.forEachNode { childId -> GrowChildRow(backend, childId) }
         }
 
         LuiNodeKind.column,
@@ -268,14 +270,14 @@ private fun LuiNodeContent(
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(gapOf(node).dp),
         ) {
-            children.forEach { childId -> GrowChildColumn(backend, childId) }
+            children.forEachNode { childId -> GrowChildColumn(backend, childId) }
         }
 
         LuiNodeKind.virtualList -> LazyColumn(
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(gapOf(node).dp),
         ) {
-            items(children.size) { index -> LuiNodeView(backend, children[index]) }
+            items(children, key = { it }) { childId -> LuiNodeView(backend, childId) }
         }
 
         LuiNodeKind.grid -> LuiGrid(backend, node, modifier, children)
@@ -300,13 +302,13 @@ private fun LuiNodeContent(
             if (node.text().isNotEmpty()) {
                 Text(node.text(), style = MaterialTheme.typography.titleSmall)
             }
-            Box { children.forEach { LuiNodeView(backend, it) } }
+            Box { children.forEachNode { LuiNodeView(backend, it) } }
         }
 
         LuiNodeKind.bubble -> LuiBubble(backend, node, modifier, children)
 
         LuiNodeKind.box -> Column(modifier.fillMaxWidth()) {
-            children.forEach { childId -> GrowChildColumn(backend, childId) }
+            children.forEachNode { childId -> GrowChildColumn(backend, childId) }
         }
 
         LuiNodeKind.text,
@@ -344,7 +346,7 @@ private fun LuiNodeContent(
         )
 
         LuiNodeKind.radioGroup -> Row(modifier) {
-            children.forEach { LuiNodeView(backend, it) }
+            children.forEachNode { LuiNodeView(backend, it) }
         }
 
         LuiNodeKind.radio -> Row(
@@ -456,7 +458,7 @@ private fun LuiNodeContent(
                     },
                 ),
             ) {
-                children.forEach { LuiNodeView(backend, it) }
+                children.forEachNode { LuiNodeView(backend, it) }
             }
         }
 
@@ -473,7 +475,7 @@ private fun LuiNodeContent(
             ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            children.forEach { childId -> GrowChildRow(backend, childId) }
+            children.forEachNode { childId -> GrowChildRow(backend, childId) }
         }
 
         LuiNodeKind.bottomTabs -> LuiBottomTabs(backend, node, modifier)
@@ -524,7 +526,7 @@ private fun LuiNodeContent(
                 shadowElevation = 8.dp,
             ) {
                 Column {
-                    children.forEach { childId -> LuiMenuEntry(backend, childId) }
+                    children.forEachNode { childId -> LuiMenuEntry(backend, childId) }
                 }
             }
         }
@@ -544,7 +546,7 @@ private fun LuiNodeContent(
         LuiNodeKind.mediaSurface -> LuiMediaSurface(backend, node, modifier)
 
         LuiNodeKind.stepper -> Row(modifier.wrapContentSize()) {
-            children.forEach { LuiNodeView(backend, it) }
+            children.forEachNode { LuiNodeView(backend, it) }
         }
 
         LuiNodeKind.step -> LuiStep(backend, node, id, modifier)
@@ -558,7 +560,7 @@ private fun LuiNodeContent(
             horizontalArrangement = Arrangement.spacedBy(gapOf(node).dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            children.forEach { childId -> GrowChildRow(backend, childId) }
+            children.forEachNode { childId -> GrowChildRow(backend, childId) }
         }
 
         LuiNodeKind.accordion -> LuiAccordion(backend, node, id, modifier, children)
@@ -611,7 +613,7 @@ private fun LuiNodeContent(
         LuiNodeKind.dialog, LuiNodeKind.sheet -> Unit // modal surfaces handled above
 
         else -> Column(modifier) {
-            children.forEach { LuiNodeView(backend, it) }
+            children.forEachNode { LuiNodeView(backend, it) }
         }
     }
 }
@@ -639,7 +641,7 @@ private fun LuiGrid(
         verticalArrangement = Arrangement.spacedBy(gap.dp),
         maxItemsInEachRow = columns,
     ) {
-        children.forEach { childId ->
+        children.forEachNode { childId ->
             Box(Modifier.weight(1f)) { LuiNodeView(backend, childId) }
         }
     }
@@ -667,7 +669,7 @@ private fun LuiStackLike(
 
     val stackContent: @Composable () -> Unit = {
         Box(modifier) {
-            visible.forEach { childId ->
+            visible.forEachNode { childId ->
                 val child = backend.node(childId)
                 val fill = (child?.prop("grow")?.numberValue ?: 0.0) > 0
                 Box(
@@ -711,7 +713,7 @@ private fun LuiStackLike(
                     expanded = true,
                     onDismissRequest = { backend.emit(LuiEvent.Dismiss(menuId)) },
                 ) {
-                    menu.children.forEach { childId -> LuiMenuEntry(backend, childId) }
+                    menu.children.forEachNode { childId -> LuiMenuEntry(backend, childId) }
                 }
             }
         }
@@ -749,11 +751,11 @@ private fun LuiEdgeInset(
             ) {
                 if (edge == "leading" || edge == "trailing") {
                     Row(Modifier.align(alignment)) {
-                        pinned.forEach { LuiNodeView(backend, it) }
+                        pinned.forEachNode { LuiNodeView(backend, it) }
                     }
                 } else {
                     Column(Modifier.align(alignment)) {
-                        pinned.forEach { LuiNodeView(backend, it) }
+                        pinned.forEachNode { LuiNodeView(backend, it) }
                     }
                 }
             }
@@ -771,7 +773,7 @@ private fun LuiOverlay(
 ) {
     val fallback = overlayAlignment(node.propString("alignment"))
     Box(modifier) {
-        children.forEachIndexed { index, childId ->
+        children.forEachIndexedNode { index, childId ->
             if (index == 0) {
                 LuiNodeView(backend, childId)
             } else {
@@ -796,7 +798,7 @@ private fun LuiBubble(
     children: List<Long>,
 ) {
     Column(modifier.width(IntrinsicSize.Max)) {
-        Box { children.forEach { LuiNodeView(backend, it) } }
+        Box { children.forEachNode { LuiNodeView(backend, it) } }
         if (node.text().isNotEmpty()) {
             val alignment = when (node.propString("text-alignment")) {
                 "start" -> Alignment.Start
@@ -849,7 +851,7 @@ private fun LuiButton(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                children.forEach { LuiNodeView(backend, it) }
+                children.forEachNode { LuiNodeView(backend, it) }
             }
         } else {
             when {
@@ -1081,7 +1083,7 @@ private fun LuiMenuItem(backend: LuiBackend, node: LuiNode, id: Long, modifier: 
                     expanded = submenuOpen,
                     onDismissRequest = { submenuOpen = false },
                 ) {
-                    submenu.children.forEach { LuiMenuEntry(backend, it) }
+                    submenu.children.forEachNode { LuiMenuEntry(backend, it) }
                 }
             }
         }
@@ -1148,7 +1150,7 @@ private fun LuiMenuTrigger(backend: LuiBackend, node: LuiNode, id: Long, modifie
                     backend.emit(LuiEvent.Dismiss(menuId))
                 },
             ) {
-                menu.children.forEach { LuiMenuEntry(backend, it) }
+                menu.children.forEachNode { LuiMenuEntry(backend, it) }
             }
         }
     }
@@ -1175,7 +1177,7 @@ private fun LuiListItem(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (node.text().isNotEmpty()) Text(node.text())
-                    children.forEach { LuiNodeView(backend, it) }
+                    children.forEachNode { LuiNodeView(backend, it) }
                 }
             }
         },
@@ -1502,7 +1504,7 @@ private fun LuiInputGroup(
         color = MaterialTheme.colorScheme.surface,
     ) {
         Column(Modifier.fillMaxWidth()) {
-            children.forEach { LuiNodeView(backend, it) }
+            children.forEachNode { LuiNodeView(backend, it) }
         }
     }
 }
@@ -1518,8 +1520,8 @@ private fun LuiBottomTabs(backend: LuiBackend, node: LuiNode, modifier: Modifier
             destinationIds.getOrNull(selectedIndex)?.let { LuiNodeView(backend, it) }
         }
         NavigationBar {
-            destinationIds.forEachIndexed { index, destId ->
-                val dest = backend.node(destId) ?: return@forEachIndexed
+            destinationIds.forEachIndexedNode { index, destId ->
+                val dest = backend.node(destId) ?: return@forEachIndexedNode
                 NavigationBarItem(
                     selected = index == selectedIndex,
                     onClick = {
@@ -1564,7 +1566,7 @@ private fun LuiAccordion(
         }
         if (expanded) {
             Column {
-                children.forEach { LuiNodeView(backend, it) }
+                children.forEachNode { LuiNodeView(backend, it) }
             }
         }
     }
@@ -1583,7 +1585,7 @@ private fun LuiTableRow(
     val gap = gapOf(node)
     Column(modifier) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            children.forEach { childId ->
+            children.forEachNode { childId ->
                 val grow = backend.node(childId)?.prop("grow")?.numberValue ?: 0.0
                 val cellModifier = Modifier.padding(horizontal = (gap / 2).dp).let {
                     if (grow > 0) it.weight(grow.toFloat().coerceAtLeast(0.001f)) else it
@@ -1658,7 +1660,7 @@ private fun LuiDrawer(
                 shadowElevation = 8.dp,
             ) {
                 Column {
-                    children.drop(1).forEach { LuiNodeView(backend, it) }
+                    children.drop(1).forEachNode { LuiNodeView(backend, it) }
                 }
             }
         }
@@ -1731,7 +1733,7 @@ private fun LuiToast(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            children.forEach { LuiNodeView(backend, it) }
+            children.forEachNode { LuiNodeView(backend, it) }
         }
     }
 }
@@ -1750,7 +1752,7 @@ private fun LuiToolbar(
     val gap = gapOf(node)
     if (node.propString("orientation") == "vertical") {
         Column(modifier, verticalArrangement = Arrangement.spacedBy(gap.dp)) {
-            children.forEach { LuiNodeView(backend, it) }
+            children.forEachNode { LuiNodeView(backend, it) }
         }
         return
     }
@@ -1761,7 +1763,7 @@ private fun LuiToolbar(
             modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(gap.dp),
         ) {
-            children.forEach { LuiNodeView(backend, it) }
+            children.forEachNode { LuiNodeView(backend, it) }
         }
     } else {
         Row(modifier, horizontalArrangement = Arrangement.spacedBy(gap.dp)) {
@@ -1769,7 +1771,7 @@ private fun LuiToolbar(
                 Modifier.weight(1f).horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(gap.dp),
             ) {
-                children.dropLast(1).forEach { LuiNodeView(backend, it) }
+                children.dropLast(1).forEachNode { LuiNodeView(backend, it) }
             }
             LuiNodeView(backend, children.last())
         }
@@ -1790,7 +1792,7 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNode, id: Long) {
             confirmButton = {},
             text = {
                 Column {
-                    node.children.forEach { LuiNodeView(backend, it) }
+                    node.children.forEachNode { LuiNodeView(backend, it) }
                 }
             },
         )
@@ -1799,9 +1801,19 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNode, id: Long) {
             sheetState = rememberModalBottomSheetState(),
         ) {
             Column {
-                node.children.forEach { LuiNodeView(backend, it) }
+                node.children.forEachNode { LuiNodeView(backend, it) }
             }
         }
         else -> Unit
     }
+}
+
+@Composable
+internal fun List<Long>.forEachNode(content: @Composable (Long) -> Unit) {
+    for (id in this) key(id) { content(id) }
+}
+
+@Composable
+private fun List<Long>.forEachIndexedNode(content: @Composable (Int, Long) -> Unit) {
+    forEachIndexed { index, id -> key(id) { content(index, id) } }
 }

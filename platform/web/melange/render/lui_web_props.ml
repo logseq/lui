@@ -916,6 +916,9 @@ and apply_secondary_property renderer node kind dom_node property value =
   | DataAttrs, StringValue payload -> apply_data_attrs dom_node payload
   | KeyValue, StringValue key ->
       W.Element.setAttribute "data-key" key dom_node
+  | StyleValue, StringValue style ->
+      W.Element.setAttribute "data-list-style" style dom_node
+  | (ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange), _ -> ()
   | SeparatorValue, StringValue separator ->
       W.Element.setAttribute "data-separator" separator dom_node
   | _ ->
@@ -928,6 +931,8 @@ let remove_property renderer node kind dom_node property =
   match Store.node renderer.web_store node with
   | Some _current ->
       (match property with
+       | StyleValue -> W.Element.removeAttribute "data-list-style" dom_node
+       | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
        | TextValue -> apply_text_value renderer node kind dom_node ""
        | Enabled ->
            apply_property renderer node kind dom_node Enabled

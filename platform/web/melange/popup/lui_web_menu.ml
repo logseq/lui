@@ -186,7 +186,7 @@ let picker_menu_items renderer dropdown =
               Store.menu_item_row child_node
               && Store.enabled_node renderer child
           | None -> false)
-        current.retained_children
+        (Lui_sequence.to_list current.retained_children)
   | None -> []
 
 let picker_selected_index renderer dropdown =
@@ -298,18 +298,18 @@ let refresh_dropdown_item_roles renderer dropdown =
       | Some current ->
           if Store.menu_item_row current then
             if listbox then begin
-              W.Element.setAttribute "role" "option" current.platform_node;
+              W.Element.setAttribute "role" "option" (Lazy.force current.platform_node);
               W.Element.setAttribute "aria-selected"
                 (if
                    Store.property renderer.web_store item Selected
                    = Some (BoolValue true)
                  then "true"
                  else "false")
-                current.platform_node
+                (Lazy.force current.platform_node)
             end
             else begin
-              W.Element.setAttribute "role" "menuitem" current.platform_node;
-              W.Element.removeAttribute "aria-selected" current.platform_node
+              W.Element.setAttribute "role" "menuitem" (Lazy.force current.platform_node);
+              W.Element.removeAttribute "aria-selected" (Lazy.force current.platform_node)
             end
       | None -> ())
     (Store.children renderer.web_store dropdown)
@@ -327,7 +327,7 @@ let refresh_combobox_list_state renderer dropdown =
               let items = picker_menu_items renderer dropdown in
               let item_count = List.length items in
               let empty = items = [] in
-              let root = current.platform_node in
+              let root = (Lazy.force current.platform_node) in
               let control = Lui_web_util.child_element root 0 in
               let trigger = Lui_web_util.child_element root 1 in
               let positioner = Lui_web_nodes.dom_node renderer dropdown in
@@ -414,15 +414,15 @@ let direct_context_menu renderer node =
                      | Some item_node ->
                          Store.standard_kind_is item_node MenuItem
                      | None -> false)
-                   child_node.retained_children
+                   (Lui_sequence.to_list child_node.retained_children)
           | None -> false)
-        current.retained_children
+        (Lui_sequence.to_list current.retained_children)
   | None -> None
 
 let direct_dropdown_menu renderer node =
   match Store.node renderer.web_store node with
   | Some current ->
-      child_with_kind renderer current.retained_children DropdownMenu
+      child_with_kind renderer (Lui_sequence.to_list current.retained_children) DropdownMenu
   | None -> None
 
 let hide_context_menu renderer =
@@ -450,7 +450,7 @@ let context_menu_focus_items renderer menu =
               Store.menu_item_row child_node
               && Store.enabled_node renderer child
           | None -> false)
-        current.retained_children
+        (Lui_sequence.to_list current.retained_children)
   | None -> []
 
 let focus_context_menu_item renderer menu index =
@@ -494,7 +494,7 @@ let show_context_menu renderer menu x y =
             (match Store.node renderer.web_store parent with
              | Some host ->
                  Lui_web_popup_tracking.start ~document:renderer.web_document
-                   ~positioner:menu_node ~popup:menu_node ~anchor:host.platform_node
+                   ~positioner:menu_node ~popup:menu_node ~anchor:(Lazy.force host.platform_node)
                    ~valid:(fun () ->
                      !(renderer.web_open_context_menu) = Some menu
                      && Store.node renderer.web_store parent <> None
@@ -694,7 +694,7 @@ let rec dropdown_group_root renderer current =
 let rec group_positioners renderer acc current =
   let acc =
     if Store.standard_kind_is current DropdownMenu then
-      current.platform_node :: acc
+      (Lazy.force current.platform_node) :: acc
     else acc
   in
   List.fold_left
@@ -702,7 +702,7 @@ let rec group_positioners renderer acc current =
       match Store.node renderer.web_store child with
       | Some child_node -> group_positioners renderer acc child_node
       | None -> acc)
-    acc current.retained_children
+    acc (Lui_sequence.to_list current.retained_children)
 
 let dropdown_group_contains_event renderer node event =
   match Store.node renderer.web_store node with
@@ -961,7 +961,7 @@ let attach_dropdown_events renderer node _dropdown_node =
          | Some parent ->
              (match Store.node renderer.web_store parent with
               | Some parent_node when Store.menu_item_row parent_node ->
-                  Some parent_node.platform_node
+                  Some (Lazy.force parent_node.platform_node)
               | _ -> None)
          | None -> None)
   in
@@ -1174,7 +1174,7 @@ let attach_context_menu_events renderer node dom_node =
     match owner with
     | Some parent ->
         (match Store.node renderer.web_store parent with
-         | Some parent_node -> Some parent_node.platform_node
+         | Some parent_node -> Some (Lazy.force parent_node.platform_node)
          | None -> None)
     | None -> None
   in
@@ -1216,8 +1216,8 @@ let nested_submenu renderer current =
   | None -> false
 
 let attach_submenu_hover renderer node current trigger =
-  let positioner = current.platform_node in
-  let popup = Lui_web_util.child_element current.platform_node 0 in
+  let positioner = (Lazy.force current.platform_node) in
+  let popup = Lui_web_util.child_element (Lazy.force current.platform_node) 0 in
   (match Store.property renderer.web_store node AnchorValue with
    | Some _ -> ()
    | None ->
@@ -1417,11 +1417,11 @@ let highlight_initial_menu_item renderer container_id =
                 menu is presented (menus that are their own popup, e.g.
                 context menus, carry it on the node itself). *)
              let presented =
-               W.Element.hasAttribute "data-open" container.platform_node
+               W.Element.hasAttribute "data-open" (Lazy.force container.platform_node)
                ||
                (match
                   W.HtmlCollection.item 0
-                    (W.Element.children container.platform_node)
+                    (W.Element.children (Lazy.force container.platform_node))
                 with
                 | Some popup -> W.Element.hasAttribute "data-open" popup
                 | None -> false)
@@ -1461,7 +1461,7 @@ let highlight_initial_menu_item renderer container_id =
              let nodes =
                W.Element.querySelectorAll
                  "[role=menuitem]:not([data-disabled]):not([aria-disabled='true']):not([data-menu-tail])"
-                 container.platform_node
+                 (Lazy.force container.platform_node)
              in
              let n = W.NodeList.length nodes in
              let rec in_submenu element =
@@ -1471,7 +1471,7 @@ let highlight_initial_menu_item renderer container_id =
                    if
                      W.Element.isSameNode
                        (W.Element.asNode parent)
-                       container.platform_node
+                       (Lazy.force container.platform_node)
                    then false
                    else
                      (match W.Element.getAttribute "data-submenu" parent with
@@ -1521,7 +1521,7 @@ let highlight_initial_menu_item renderer container_id =
 let mount_dropdown renderer node =
   match Store.node renderer.web_store node with
   | Some current ->
-      let popup = Lui_web_util.child_element current.platform_node 0 in
+      let popup = Lui_web_util.child_element (Lazy.force current.platform_node) 0 in
       let listbox = Lui_web_nodes.dropdown_listbox renderer node in
       W.Element.setAttribute "role"
         (if listbox then "listbox" else "menu")
@@ -1541,7 +1541,7 @@ let mount_dropdown renderer node =
                      entry (ArrowRight) focuses the first item directly. *)
                   ignore
                     (attach_submenu_hover renderer node current
-                       parent_node.platform_node)
+                       (Lazy.force parent_node.platform_node))
                 else begin
                   (* Picker dropdowns place initial focus themselves
                      (mount_picker_dropdown lands on the selected item); the
@@ -1568,14 +1568,14 @@ let update_picker_expanded renderer parent expanded =
                | Some Select ->
                    W.Element.setAttribute "aria-expanded"
                      (if expanded then "true" else "false")
-                     current.platform_node
+                     (Lazy.force current.platform_node)
                | Some Combobox ->
                    W.Element.setAttribute "aria-expanded"
                      (if expanded then "true" else "false")
-                     (Lui_web_util.child_element current.platform_node 0)
+                     (Lui_web_util.child_element (Lazy.force current.platform_node) 0)
                | _ -> ())
           | None -> ())
-        parent_node.retained_children
+        (Lui_sequence.to_list parent_node.retained_children)
   | None -> ()
 
 let update_picker_expanded_bang = update_picker_expanded
@@ -1644,7 +1644,7 @@ let attach_popover_events_bang = attach_popover_events
 let mount_popover renderer node =
   match Store.node renderer.web_store node with
   | Some current ->
-      let positioner = current.platform_node in
+      let positioner = (Lazy.force current.platform_node) in
       let popup = Lui_web_util.child_element positioner 0 in
       W.Element.setAttribute "id"
         (Lui_web_util.node_dom_id node ^ "-popup") popup;

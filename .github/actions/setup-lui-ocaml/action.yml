@@ -1,0 +1,58 @@
+name: Cached LUI OCaml environment
+description: Restore a complete compiler and dependency switch before setup-ocaml runs
+inputs:
+  scope:
+    description: dependencies or compiler
+    default: dependencies
+runs:
+  using: composite
+  steps:
+    - name: Select cache epoch
+      id: epoch
+      shell: bash
+      run: |
+        echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+        echo "image=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+    - name: Restore OCaml environment
+      id: environment
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          ~/.opam
+          _opam
+        key: lui-ocaml-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.epoch.outputs.image }}-5.5.1-${{ inputs.scope }}-${{ hashFiles('*.opam*', 'dune-project') }}-${{ steps.epoch.outputs.week }}
+    - name: Activate cached opam
+      if: steps.environment.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        echo "$GITHUB_WORKSPACE/_opam/.ci/bin" >> "$GITHUB_PATH"
+        echo "OPAMROOT=$HOME/.opam" >> "$GITHUB_ENV"
+        echo "OPAMYES=true" >> "$GITHUB_ENV"
+    - uses: ocaml/setup-ocaml@v3
+      if: steps.environment.outputs.cache-hit != 'true'
+      with:
+        ocaml-compiler: "5.5.1"
+        # The complete environment cache below owns the bootstrap. Avoid a
+        # second overlapping root cache and its unconditional opam update.
+        cache: false
+    - name: Install locked dependencies
+      if: steps.environment.outputs.cache-hit != 'true' && inputs.scope == 'dependencies'
+      shell: bash
+      run: opam install . --deps-only --with-test -y --locked
+    - name: Preserve the opam executable
+      if: steps.environment.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        mkdir -p _opam/.ci/bin
+        cp -L "$(command -v opam)" _opam/.ci/bin/opam
+    - name: Save OCaml environment
+      if: steps.environment.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ~/.opam
+          _opam
+        key: ${{ steps.environment.outputs.cache-primary-key }}
+    - name: Check active compiler
+      shell: bash
+      run: opam exec -- ocamlc -version

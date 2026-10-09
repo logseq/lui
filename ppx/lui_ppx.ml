@@ -163,6 +163,30 @@ let dyn_supported args =
    becoming a nonexistent `~test_signal:` parameter. *)
 let signal_only_labels = [ "test"; "source" ]
 
+let scoped_expression ~loc build =
+  let context = gen_symbol ~prefix:"__lui_context_" () in
+  let scope = B.pexp_field ~loc (evar ~loc context)
+    { txt = Ldot (Lident "Lui_ui", "ui_scope"); loc } in
+  let own_generated = object
+    inherit Ast_traverse.map as super
+    method! expression expression =
+      let expression = super#expression expression in
+      match expression.pexp_desc with
+      | Pexp_apply ({ pexp_desc = Pexp_ident
+          { txt = Ldot (Lident "Signal", ("map" | "map2")); _ }; _ }, _) ->
+        apply ~loc (B.pexp_ident ~loc
+          { txt = Ldot (Lident "Signal", "own_signal"); loc }) [scope; expression]
+      | _ -> expression
+  end in
+  let scoped = B.pexp_ident ~loc
+    { txt = Ldot (Lident "Lui_elements", "scoped"); loc } in
+  apply ~loc scoped [lam ~loc [pvar ~loc context] (build own_generated)]
+
+let structural_constructor expression = match expression.pexp_desc with
+  | Pexp_ident { txt = Lident ("if_" | "keyed")
+      | Ldot (Lident "Lui_elements", ("if_" | "keyed")); _ } -> true
+  | _ -> false
+
 class mapper =
   object
     inherit Ast_traverse.map as super
@@ -172,11 +196,28 @@ class mapper =
       | Pexp_apply (fn, args)
         when is_reactive_ident fn && dyn_supported args ->
           (* bare `reactive` at expression position: dyn over the signal *)
-          super#expression (dyn_expand ~loc:expr.pexp_loc args)
+          let expanded = dyn_expand ~loc:expr.pexp_loc args in
+          if List.length (List.filter (fun (label, _) -> label = Nolabel) args) > 2 then
+            scoped_expression ~loc:expr.pexp_loc (fun owner ->
+              super#expression (owner#expression expanded))
+          else super#expression expanded
       | Pexp_apply (fn, args) ->
           (* labelled `~p:(reactive …)`: rewrite the label first so the
              inner `reactive` is consumed here rather than revisited as a
              bare dyn expansion when super descends *)
+          let needs_scope = ref false in
+          (* A constructor may already be applied to its mount context and
+             parent. Scope the view builder, then preserve that application;
+             wrapping the final node id would change the expression's type. *)
+          let positional = List.filter (fun (label, _) -> label = Nolabel) args in
+          let constructor_args, mount_args =
+            match List.rev args with
+            | (Nolabel, parent) :: (Nolabel, context) :: reversed
+              when List.length positional >= 3
+                || (structural_constructor fn && List.length positional = 2) ->
+              List.rev reversed, [Nolabel, context; Nolabel, parent]
+            | _ -> args, [] in
+          let transform arguments owner =
           let args =
             List.map
               (fun ((label : arg_label), arg) ->
@@ -196,12 +237,18 @@ class mapper =
                        then name
                        else name ^ "_signal"
                      in
+                     let own expression =
+                       if not (List.mem name signal_only_labels)
+                          || structural_constructor fn then begin
+                         needs_scope := true;
+                         owner#expression expression
+                       end else expression in
                      (match rest with
                       | [ (Nolabel, source) ] ->
                           (* reactive f src *)
                           ( Labelled target,
-                            apply ~loc:arg.pexp_loc
-                              (signal_map arg.pexp_loc) [ first; source ] )
+                            own (apply ~loc:arg.pexp_loc
+                              (signal_map arg.pexp_loc) [ first; source ]) )
                       | [] ->
                           (* reactive src: the arg itself is the signal *)
                           (Labelled target, first)
@@ -211,11 +258,18 @@ class mapper =
                             List.map snd rest
                           in
                           ( Labelled target,
-                            expand ~loc:arg.pexp_loc first sources ))
+                            own (expand ~loc:arg.pexp_loc first sources) ))
                  | _ -> (label, arg))
-              args
+              arguments
           in
-          super#expression { expr with pexp_desc = Pexp_apply (fn, args) }
+          super#expression { expr with pexp_desc = Pexp_apply (fn, args) } in
+          let plain = transform args (new Ast_traverse.map) in
+          if !needs_scope then
+            let scoped = scoped_expression ~loc:expr.pexp_loc (transform constructor_args) in
+            if mount_args = [] then scoped
+            else B.pexp_apply ~loc:expr.pexp_loc scoped
+              (List.map (fun (label, argument) -> label, super#expression argument) mount_args)
+          else plain
       | _ -> super#expression expr
   end
 

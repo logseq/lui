@@ -20,7 +20,7 @@ form; `dyn` is a ppx expansion target and is never called directly.
 ## The reactive vocabulary
 
 ```ocaml
-(* prop position: ~p:(reactive f s) — expands to ~p_signal:(Signal.map f s) *)
+(* prop position: derived signals are created and owned by the mounted view *)
 button ~icon:(reactive (fun v -> if v then `eye_off else `eye) visible) []
 
 (* children position: model -> subtree (this IS dyn, via ppx) *)
@@ -61,15 +61,14 @@ keyed ~source:items_s ~key:(fun it -> it.id) ~cmp:Int.compare
 
 ## Signals and ownership
 
-- `dyn`/`if_`/`keyed` do NOT own the signals they consume. A signal
-  handed to them must outlive every (re)mount of the branch — derive it
-  once at section emit (e.g. `let test = Signal.map f model_source`)
-  and share it. Creating a fresh `Signal.map` inside a remounting
-  branch body works but leaks an upstream subscription on each remount
-  — hoist derivations instead.
-- Arguments to `if_`/`reactive`/`keyed` are evaluated once when the
-  `t` is constructed, not per mount: an inline `reactive`/`Signal.map`
-  in argument position still produces a shared signal.
+- Caller-provided signals are borrowed by `dyn`/`if_`/`keyed` and property
+  bindings; their owner must keep them alive for the view's lifetime.
+- PPX-created `reactive` derivations are created per mount and owned by that
+  view scope, including derived `if_ ~test` and `keyed ~source` signals.
+  Library-created property conversions follow the same ownership rule.
+- Do not dispose a shared caller-owned source when one consumer unmounts.
+  Handwritten derivations in lifecycle callbacks must explicitly register
+  ownership with the appropriate scope.
 
 ## Comments
 

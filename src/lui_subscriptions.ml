@@ -16,6 +16,7 @@ type 'dispatch subscription_coordinator = {
   subscription_dispatch : 'dispatch;
   active_subscriptions : (string, active_subscription) Hashtbl.t;
   subscription_completed_generation : int ref;
+  subscription_disposed : bool ref;
 }
 
 type reconcile_status =
@@ -33,6 +34,7 @@ let create dispatch =
     subscription_dispatch = dispatch;
     active_subscriptions = Hashtbl.create 16;
     subscription_completed_generation = ref 0;
+    subscription_disposed = ref false;
   }
 
 let reject coordinator generation message =
@@ -70,6 +72,16 @@ let dispose_started started =
   (* Attempt every cancellation without masking the original startup failure. *)
   List.iter (fun subscription ->
     try Signal.dispose_subscription subscription with _ -> ()) !started
+
+let dispose_all subscriptions =
+  let failure = ref None in
+  List.iter (fun subscription ->
+    try Signal.dispose_subscription subscription with error ->
+      if !failure = None then failure := Some error)
+    subscriptions;
+  match !failure with
+  | None -> ()
+  | Some error -> raise error
 
 let build_desired active specs dispatch =
   let started = ref [] in
@@ -112,6 +124,8 @@ let build_desired active specs dispatch =
     | _ -> raise failure)
 
 let reconcile coordinator generation specs =
+  if !(coordinator.subscription_disposed) then
+    invalid_arg "subscription coordinator is disposed";
   let completed = !(coordinator.subscription_completed_generation) in
   if generation <= completed then SubscriptionsStale generation
   else
@@ -130,6 +144,12 @@ let reconcile coordinator generation specs =
         | SubscriptionsPrepareRejected message ->
           reject coordinator generation message
         | SubscriptionsPrepared desired ->
+          if !(coordinator.subscription_disposed) then begin
+            dispose_all (Hashtbl.fold (fun _ current subscriptions ->
+              current.active_subscription_value :: subscriptions) desired []);
+            invalid_arg "subscription coordinator was disposed during preparation"
+          end;
+          let retired = ref [] in
           Hashtbl.iter
             (fun key current ->
                match Hashtbl.find_opt desired key with
@@ -138,22 +158,22 @@ let reconcile coordinator generation specs =
                    current.active_subscription_fingerprint
                    <> replacement.active_subscription_fingerprint
                  then
-                   Signal.dispose_subscription
-                     current.active_subscription_value
+                   retired := current.active_subscription_value :: !retired
                | None ->
-                 Signal.dispose_subscription
-                   current.active_subscription_value)
+                 retired := current.active_subscription_value :: !retired)
             active;
           Hashtbl.reset active;
           Hashtbl.iter (Hashtbl.replace active) desired;
           coordinator.subscription_completed_generation := generation;
+          dispose_all !retired;
           SubscriptionsApplied generation
 
 let dispose coordinator =
-  Hashtbl.iter
-    (fun _key active ->
-       Signal.dispose_subscription active.active_subscription_value)
-    coordinator.active_subscriptions;
-  Hashtbl.reset coordinator.active_subscriptions
+  coordinator.subscription_disposed := true;
+  let retired = Hashtbl.fold (fun _ active subscriptions ->
+    active.active_subscription_value :: subscriptions)
+    coordinator.active_subscriptions [] in
+  Hashtbl.reset coordinator.active_subscriptions;
+  dispose_all retired
 
 let count coordinator = Hashtbl.length coordinator.active_subscriptions

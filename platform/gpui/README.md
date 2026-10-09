@@ -40,6 +40,21 @@ cargo run -p lui-demo
   boots; unregistered extension identifiers fall back to a generic host
   container (children + labeled box).
 
+## Wire validation boundary
+
+The store validates standard kinds, property/scalar admission, final node
+requirements, parent/child relationships, and standard/extension property
+boundaries. Generate admission tables with
+`node tooling/generate_gpui_protocol_rules.mjs`; CI checks them against the
+canonical OCaml protocol. Rejected batches roll back all affected nodes.
+
+GPUI's `ExtensionSpec` is renderer metadata. Extension properties, events, and
+fingerprints are supplied by trusted OCaml traffic after validation against
+`Lui_extension`; the Rust registry does not reproduce that typed schema. Apps
+that accept externally authored extension batches must validate them against
+their application schema before invoking this backend. Standard-node validation
+runs independently at the Rust wire boundary.
+
 ## `gpui-*` extension namespace
 
 `lui-gpui` has an `ExtensionRenderer` registry keyed by extension

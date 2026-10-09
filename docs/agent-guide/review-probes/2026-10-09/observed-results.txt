@@ -1,0 +1,34 @@
+Review revision: 91aecb52a1cba2faaf23aac1d64a0bd1cb6549e7
+Date: 2026-10-09
+Diagnostic output from the final standalone runner invocation.
+Timings are single-run smoke measurements, not production frame times.
+
+keyed_partial_failure: before=2 after=4 children=1 pending=4 failure=Failure("mount after creating node")
+keyed_partial_failure: after_recovery=4
+keyed_mount_hook_failure: nodes=2 mounted=true disposed=false
+keyed_teardown_failure: children=1 segment_size=0 row_disposed=true failure=Failure("cleanup failed")
+keyed_teardown_retry: Invalid_argument("dynamic segment index is out of bounds")
+sibling_state_collision: first=10 second=10 expected=10,20
+removed_handler_event: callbacks_after_drop=1
+subscription_dispose_failure: started=2 cancelled=1 tracked=1 failure=Failure("cancel failed")
+keyed_no_change n=1000 ms=2.205 allocated_mb=3.294
+keyed_no_change n=10000 ms=39.992 allocated_mb=36.165
+keyed_no_change n=50000 ms=330.042 allocated_mb=170.022
+derived_signal_leak: initial_upstream=1 after_20_remounts=21
+web_flat_mount n=1000 ms=9.86
+web_flat_mount n=4000 ms=57.94
+web_flat_mount n=8000 ms=221.64
+web_single_prop n=1000 100_updates_ms=15.54
+web_single_prop n=10000 100_updates_ms=143.61
+web_single_prop n=50000 100_updates_ms=728.68
+web_false_retry generation=2 accepted=false text=old
+android_scalar input="123" decoded=IntValue(value=123)
+android_scalar input="true" decoded=Bool(value=true)
+android_scalar input="false" decoded=Bool(value=false)
+android_scalar input="1.5" decoded=DoubleValue(value=1.5)
+android_scalar input=4294967296 decoded=IntValue(value=0)
+android_self_cycle parent=1 children=[1]
+android_after_rejection gen=1 error=expected patch generation 2, received 3
+android_single_prop n=1000 100_updates_ms=18.85
+android_single_prop n=10000 100_updates_ms=65.33
+android_single_prop n=50000 100_updates_ms=232.82

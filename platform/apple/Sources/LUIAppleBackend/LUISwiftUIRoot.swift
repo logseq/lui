@@ -6351,16 +6351,7 @@ private struct LUIListView: View {
                     }
                 }
             }
-            // iOS 26's UpdateCoalescingCollectionView coalesces List updates
-            // across transactions and can silently drop an insert, leaving the
-            // collection's tracked counts diverged from the data source; the
-            // next update — even an unrelated zero-diff one — then asserts in
-            // UICollectionView's validation. Rebuilding the List on every
-            // commit turns each update into a fresh mount, which never goes
-            // through the coalesced batch-update path. These LUI lists are
-            // small (graphs, settings, pickers, search results), so the extra
-            // re-render is negligible.
-            .id(backend.commitSequence)
+
         )
         .scrollContentBackground(
             listBackground == nil
