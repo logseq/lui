@@ -1000,11 +1000,22 @@ private fun LuiTextControl(
     val borderless = (node.propString("style-class") ?: "").split(' ')
         .contains("composer-input")
 
-    // Local text keeps typing responsive; the model's `text` prop re-syncs
-    // when a patch changes it.
+    // Local text keeps typing responsive. The model echoes our own edits
+    // back through the `text` prop, possibly one patch per keystroke, so a
+    // stale intermediate echo must not overwrite newer local input. Track
+    // the values we emitted and only re-sync on a value we never sent
+    // (external clears/sets).
     var localText by remember(id) { mutableStateOf(node.text()) }
+    val emitted = remember(id) { mutableSetOf(node.text()) }
     val modelText = node.text()
-    LaunchedEffect(modelText) { if (modelText != localText) localText = modelText }
+    LaunchedEffect(modelText) {
+        if (modelText in emitted) {
+            emitted.remove(modelText)
+        } else if (modelText != localText) {
+            localText = modelText
+            emitted.clear()
+        }
+    }
 
     val fieldModifier = modifier.then(
         if (grouped || borderless) Modifier.fillMaxWidth() else Modifier.width(240.dp),
@@ -1015,6 +1026,7 @@ private fun LuiTextControl(
     )
     val onValueChange: (String) -> Unit = { value ->
         localText = value
+        emitted.add(value)
         backend.emit(LuiEvent.TextChanged(id, value))
     }
     val placeholderContent: (@Composable () -> Unit)? =
