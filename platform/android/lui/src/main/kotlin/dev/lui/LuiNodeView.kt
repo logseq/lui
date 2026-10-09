@@ -313,7 +313,7 @@ private fun LuiNodeContent(
 
         LuiNodeKind.bubble -> LuiBubble(backend, node, modifier, children)
 
-        LuiNodeKind.box -> Column(modifier.fillMaxWidth()) {
+        LuiNodeKind.box -> Column(modifier) {
             children.forEachNode { childId -> GrowChildColumn(backend, childId) }
         }
 
@@ -1194,6 +1194,14 @@ private fun LuiMenuTrigger(backend: LuiBackend, node: LuiNode, id: Long, modifie
             onClick = { open = !open },
             enabled = enabled,
             modifier = modifier,
+            // TextButton contentColor defaults to primary; the Apple backend
+            // renders menu triggers with the dark foreground, so keep glyphs
+            // like the header overflow icon from being tinted.
+            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                contentColor =
+                    luiThemeColor(node.propString("foreground"), foreground = true)
+                        ?: MaterialTheme.colorScheme.onSurface,
+            ),
         ) {
             if (icon != null && node.text().isEmpty()) {
                 Icon(
