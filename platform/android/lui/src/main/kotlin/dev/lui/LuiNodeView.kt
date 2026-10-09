@@ -313,7 +313,7 @@ private fun LuiNodeContent(
 
         LuiNodeKind.bubble -> LuiBubble(backend, node, modifier, children)
 
-        LuiNodeKind.box -> Column(modifier.fillMaxWidth()) {
+        LuiNodeKind.box -> Column(modifier) {
             children.forEachNode { childId -> GrowChildColumn(backend, childId) }
         }
 
