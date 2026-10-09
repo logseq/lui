@@ -88,10 +88,12 @@ fun luiThemeColor(name: String?, foreground: Boolean = false): Color? {
         "muted-foreground" -> scheme.onSurfaceVariant
         "destructive" -> scheme.error
         "destructive-foreground" -> scheme.onError
-        "success" -> scheme.tertiaryContainer
-        "success-foreground" -> scheme.onTertiaryContainer
-        "warning" -> scheme.secondaryContainer
-        "warning-foreground" -> scheme.onSecondaryContainer
+        // iOS maps these to SwiftUI .green/.orange at 15% container opacity
+        // (LUIThemePolicy); Material container roles read as dark neutrals.
+        "success" -> Color(0xFF34C759).copy(alpha = 0.15f)
+        "success-foreground" -> Color(0xFF34C759)
+        "warning" -> Color(0xFFFF9500).copy(alpha = 0.15f)
+        "warning-foreground" -> Color(0xFFFF9500)
         "error" -> scheme.errorContainer
         "error-foreground" -> scheme.onErrorContainer
         "border" -> scheme.outlineVariant
