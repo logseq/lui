@@ -130,7 +130,7 @@ pub fn handle_dom_op(
             }
             events
         }
-        "scroll-into-view" | "scroll-to-node" => {
+        "scroll-into-view" => {
             let Some(id) = target else { return Vec::new() };
             let Some(ancestor) = find_scroll_ancestor(shared, id, cx) else {
                 return Vec::new();
@@ -164,43 +164,9 @@ pub fn handle_dom_op(
             dump_tree(shared);
             Vec::new()
         }
-        // Body-appended imperative elements (OCaml `imperative_dom.ml`)
-        // materialize as `logseq-*` extension nodes orphaned from the
-        // document tree; these ops list them for the root view, which
-        // mounts them in a window-level overlay layer where their
-        // `position:fixed` styles self-place them (fixed -> absolute).
-        "imperative-attach" => {
-            if let Some(id) = parsed.get("nodeId").and_then(Value::as_i64) {
-                let host = {
-                    let mut guard = shared.borrow_mut();
-                    if !guard.imperative_roots.contains(&id) {
-                        guard.imperative_roots.push(id);
-                    }
-                    guard.imperative_host_view
-                };
-                if let Some(entity) = host {
-                    cx.notify(entity);
-                }
-            }
-            Vec::new()
-        }
-        "imperative-detach" => {
-            if let Some(id) = parsed.get("nodeId").and_then(Value::as_i64) {
-                let host = {
-                    let mut guard = shared.borrow_mut();
-                    guard.imperative_roots.retain(|root| *root != id);
-                    guard.imperative_host_view
-                };
-                if let Some(entity) = host {
-                    cx.notify(entity);
-                }
-            }
-            Vec::new()
-        }
-        // Imperative mutation ops from imperative_dom/editor_dom — they
-        // patch the rendered node's attrs/class/text/style the way a DOM
-        // mutation would. Implemented as store ops so the dirty path
-        // re-renders exactly the touched node.
+        // Mutation ops that patch a rendered node's attrs/class/text/style
+        // the way a DOM mutation would. Implemented as store ops so the
+        // dirty path re-renders exactly the touched node.
         "set-attr" => {
             if let Some(id) = target {
                 let name = parsed.get("name").and_then(Value::as_str).unwrap_or("");
@@ -217,17 +183,6 @@ pub fn handle_dom_op(
                 let mut attrs = current_attrs(shared, id);
                 attrs.remove(name);
                 apply_local(shared, &attr_batch(id, attrs), cx);
-            }
-            Vec::new()
-        }
-        "set-class" => {
-            if let Some(id) = target {
-                let class = parsed.get("class").and_then(Value::as_str).unwrap_or("");
-                apply_local(
-                    shared,
-                    &style_prop_batch(shared, id, "style-class", class),
-                    cx,
-                );
             }
             Vec::new()
         }
@@ -252,32 +207,10 @@ pub fn handle_dom_op(
             }
             Vec::new()
         }
-        "set-text" | "set-text-content" => {
+        "set-text-content" => {
             if let Some(id) = target {
                 let text = parsed.get("text").and_then(Value::as_str).unwrap_or("");
                 apply_local(shared, &style_prop_batch(shared, id, "text", text), cx);
-            }
-            Vec::new()
-        }
-        // element.remove() — detach from the parent and drop the subtree,
-        // the same pair the reconciler emits for a removed node.
-        "remove" => {
-            if let Some(id) = target {
-                let parent = shared
-                    .borrow()
-                    .store
-                    .node(id)
-                    .and_then(|n| n.parent);
-                if let Some(parent) = parent {
-                    let batch = json!({
-                        "generation": 0,
-                        "ops": [
-                            {"op": "remove-child", "parent": parent, "child": id},
-                            {"op": "drop-node", "id": id},
-                        ],
-                    });
-                    apply_local(shared, &batch.to_string(), cx);
-                }
             }
             Vec::new()
         }
@@ -638,58 +571,6 @@ pub fn note_root_bounds(shared: &Shared, width: f32, height: f32) {
     }
 }
 
-/// `imperative-rects` frame feed: window-space bounds of every painted
-/// node under an imperative overlay root, diffed against the last
-/// reported frame. OCaml's imperative registry answers element rect
-/// reads from this table instead of a measure round-trip — the host
-/// calls it each pump tick and feeds the payload to
-/// `lui_ocaml_extension_event` (`imperative-rects` JSON).
-pub fn imperative_rects_payload(shared: &Shared) -> Option<Value> {
-    let mut guard = shared.borrow_mut();
-    if guard.imperative_roots.is_empty() && guard.imperative_rect_reported.is_empty() {
-        return None;
-    }
-    // Painted bounds across every imperative subtree.
-    let mut current: Vec<(i64, Bounds<Pixels>)> = Vec::new();
-    let mut stack = guard.imperative_roots.clone();
-    while let Some(id) = stack.pop() {
-        let Some(node) = guard.store.node(id) else {
-            continue;
-        };
-        if let Some(bounds) = guard.node_bounds.get(&id) {
-            current.push((id, *bounds));
-        }
-        stack.extend(node.children.iter().copied());
-    }
-    let tuple = |b: &Bounds<Pixels>| {
-        (
-            f32::from(b.origin.x),
-            f32::from(b.origin.y),
-            f32::from(b.origin.x + b.size.width),
-            f32::from(b.origin.y + b.size.height),
-        )
-    };
-    let mut rects = serde_json::Map::new();
-    for (id, bounds) in &current {
-        if guard.imperative_rect_reported.get(id) != Some(&tuple(bounds)) {
-            rects.insert(id.to_string(), bounds_json(Some(*bounds)));
-        }
-    }
-    let dropped: Vec<i64> = guard
-        .imperative_rect_reported
-        .keys()
-        .filter(|id| !current.iter().any(|(cid, _)| cid == *id))
-        .copied()
-        .collect();
-    guard.imperative_rect_reported = current.iter().map(|(id, b)| (*id, tuple(b))).collect();
-    if rects.is_empty() && dropped.is_empty() {
-        return None;
-    }
-    Some(json!({
-        "rects": Value::Object(rects),
-        "drop": dropped,
-    }))
-}
 
 #[cfg(test)]
 mod tests {

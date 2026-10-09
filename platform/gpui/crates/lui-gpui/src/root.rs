@@ -62,7 +62,6 @@ impl Drop for LuiRootView {
             shared.focus_nodes.clear();
             shared.overlay_stack.clear();
             shared.viewport_watched.clear();
-            shared.imperative_host_view = None;
             shared.toasts.clear();
             shared.toast_timers.clear();
             shared.toast_heights.clear();
@@ -73,7 +72,6 @@ impl Drop for LuiRootView {
             shared.menu_highlight = None;
             shared.last_click_emit = None;
             shared.painting_lists.clear();
-            shared.imperative_rect_reported.clear();
         }
     }
 }
@@ -179,9 +177,6 @@ impl Render for LuiRootView {
             f32::from(size.width),
             f32::from(size.height),
         );
-        // The imperative overlay layer re-renders through this view's
-        // entity: imperative-attach/detach dom-ops notify it.
-        self.shared.borrow_mut().imperative_host_view = Some(cx.entity_id());
         let focus = self.focus.get_or_init(|| cx.focus_handle()).clone();
         // Follow OS appearance changes: re-apply the registered theme so
         // colors, scrollbar and resize-handle styles all track light/dark.
@@ -198,31 +193,6 @@ impl Render for LuiRootView {
         match root_id {
             Some(id) => {
                 let view = LuiShared::view_for(&self.shared, id, cx);
-                // Imperative overlay roots (OCaml body-appended floaters,
-                // pushed via `imperative-attach`) mount in a window-level
-                // deferred layer above declarative popups (priority 4 vs.
-                // their 3). Their `position:fixed` styles resolve to
-                // `absolute` inside the viewport-sized layer, so each
-                // root self-places at its inline left/top.
-                let imperative_layer = {
-                    let ids = self.shared.borrow().imperative_roots.clone();
-                    if ids.is_empty() {
-                        None
-                    } else {
-                        let children: Vec<_> = ids
-                            .iter()
-                            .filter(|nid| self.shared.borrow().store.node(**nid).is_some())
-                            .map(|nid| LuiShared::view_for(&self.shared, *nid, cx))
-                            .collect();
-                        Some(crate::kinds::window_layer(
-                            v_flex()
-                                .w(size.width)
-                                .h(size.height)
-                                .children(children),
-                            4,
-                        ))
-                    }
-                };
                 // The LUI root node is typically a plain column; other
                 // backends get their outer scrolling from the host surface,
                 // so the window root supplies it here.
@@ -577,7 +547,7 @@ impl Render for LuiRootView {
                         .size(px(1.)),
                     )
                     .child(view)
-                    .children(imperative_layer)
+                    
                     .into_any_element()
             }
             None => div()

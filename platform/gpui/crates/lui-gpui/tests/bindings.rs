@@ -860,7 +860,7 @@ fn imperative_input_updates_preserve_runtime_generation(cx: &mut TestAppContext)
 }
 
 #[gpui_kit::test]
-fn imperative_dom_mutations_preserve_runtime_generation(cx: &mut TestAppContext) {
+fn host_dom_mutations_preserve_runtime_generation(cx: &mut TestAppContext) {
     mount!(
         cx,
         shared,
@@ -873,7 +873,7 @@ fn imperative_dom_mutations_preserve_runtime_generation(cx: &mut TestAppContext)
     window.update(|window, app| {
         for (op, body) in [
             ("class-add", r#"{"ref":{"node-id":2},"class":"accent"}"#),
-            ("set-text", r#"{"ref":{"node-id":2},"text":"updated"}"#),
+            ("set-text-content", r#"{"ref":{"node-id":2},"text":"updated"}"#),
             (
                 "style-set-property",
                 r#"{"ref":{"node-id":2},"property":"color","value":"red"}"#,
@@ -907,9 +907,14 @@ fn imperative_dom_mutations_preserve_runtime_generation(cx: &mut TestAppContext)
                 .contains_key("css-vars-rev"));
             assert_eq!(guard.store.generation, 1);
         }
-        lui_gpui::domops::handle_dom_op(&shared, "remove", r#"{"ref":{"node-id":2}}"#, window, app);
-        assert!(shared.borrow().store.node(2).is_none());
-        assert!(!shared.borrow().views.contains_key(&2));
+        lui_gpui::domops::handle_dom_op(
+            &shared,
+            "scroll-into-view",
+            r#"{"ref":{"node-id":2}}"#,
+            window,
+            app,
+        );
+        assert!(shared.borrow().store.node(2).is_some());
         assert_eq!(shared.borrow().store.generation, 1);
         apply_batch_json(&shared, r#"{"generation":2,"ops":[]}"#, app).unwrap();
     });
