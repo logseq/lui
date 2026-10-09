@@ -272,6 +272,10 @@ struct LUIBackendParityTests {
                 model: try #require(backend.model(id: 1)),
                 backend: backend
             )
+            // The regular-width path renders a system NavigationSplitView whose
+            // column geometry is not pixel-testable here; the compact overlay
+            // keeps the hand-rolled push layout this assertion pins down.
+            .environment(\.horizontalSizeClass, .compact)
             .frame(width: 400, height: 200)
         )
         renderer.scale = 1
