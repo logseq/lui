@@ -68,6 +68,12 @@ module Input : sig
         (** x y button click-count mods *)
     | Button_up of float * float * mouse_button * mods
     | Text_input of string  (** committed text from SDL_TEXTINPUT *)
+    | Text_editing of string * int * int
+        (** SDL_TEXTEDITING: composition text, selection start,
+            selection length — feeds {!Lui_ime}, never dispatched *)
+    | Caret of rect
+        (** driver-fed caret rect (device px) for candidate-window
+            tracking; emitted once per frame while focused *)
     | Key_down of key * mods * bool  (** key, mods, repeat *)
     | Resize of int * int  (** new window size, logical pixels *)
     | Wheel of float * float
@@ -85,11 +91,16 @@ end
 (** Effects the driver performs for [Ui.handle]: dispatch goes to
     [Lui_app.dispatch_event], [Resize_host] triggers [Lui_host.resize]
     from the current drawable size, [Focus_changed] lets the driver
-    update the SDL text-input area, [Quit] ends the loop. *)
+    start/stop SDL text input and place the candidate window,
+    [Ime_rect] moves that candidate rect while composing, [Quit]
+    ends the loop. *)
 type action =
   | Dispatch of Lui_protocol.event
   | Resize_host of int * int
   | Focus_changed of int
+  | Ime_rect of rect
+      (** SDL_SetTextInputRect target, device px — only emitted while
+          a composition is active and the caret moved *)
   | Quit
 
 (** Per-node device-pixel rectangles produced by [Layout.refresh] and
@@ -173,6 +184,20 @@ module Ui : sig
   (** Device-pixel scale; the driver updates it on resize/startup so
       logical input coordinates hit-test against device-pixel rects. *)
   val set_scale : t -> float -> unit
+
+  (** Text as the app sees it: the store prop lags one frame behind
+      dispatched edits, so the caret offset is defined against this
+      shadow value. *)
+  val shadow : t -> string
+
+  (** The composition state machine [handle] feeds — IME editing and
+      caret events land here; marked text lives inside it and is
+      never dispatched to the app. *)
+  val ime : t -> Lui_ime.state
+
+  (** Current marked (preedit) text, ["]"] when not composing. The
+      renderer draws it underlined at the caret of the focused node. *)
+  val marked : t -> string
 
   val set_focused : t -> Lui_store.t -> int -> unit
 

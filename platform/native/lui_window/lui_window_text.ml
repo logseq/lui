@@ -235,3 +235,12 @@ let measure store id ~scale =
     else
       let w, h = Lui_text.measure (font_of store id) text in
       (w *. scale, h *. scale)
+
+(* Device-pixel (w, h) of an arbitrary string in node [id]'s font —
+   the caret offset and the composition overlay measure through this
+   so they stay consistent with what [text_ops] paints. *)
+let measure_text t id s =
+  if s = "" then (0., 0.)
+  else
+    let w, h = Lui_text.measure (font_of (t.store ()) id) s in
+    (w *. t.scale (), h *. t.scale ())

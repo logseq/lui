@@ -86,6 +86,8 @@ module Input = struct
     | Button_down of float * float * mouse_button * int * mods
     | Button_up of float * float * mouse_button * mods
     | Text_input of string
+    | Text_editing of string * int * int
+    | Caret of rect
     | Key_down of key * mods * bool
     | Resize of int * int
     | Wheel of float * float
@@ -119,6 +121,7 @@ type action =
   | Dispatch of Lui_protocol.event
   | Resize_host of int * int
   | Focus_changed of int
+  | Ime_rect of rect
   | Quit
 
 module Rects = struct
@@ -399,24 +402,37 @@ module Ui = struct
        frame behind the events we dispatch, so rapid edits splice onto
        this shadow instead of the stale prop. *)
     mutable shadow : string;
+    (* IME composition state machine: SDL text-editing/commit events
+       feed it; marked text rides here (never dispatched) until the
+       commit lands through the normal input path. *)
+    mutable ime : Lui_ime.state;
     mutable dirty : bool;
   }
 
   let create () =
     { scale = 1.; hovered = 0; hover_detail = 0; pressed = 0;
       press_detail = 0; focused = 0; caret = 0; shadow = "";
-      dirty = true }
+      ime = Lui_ime.initial; dirty = true }
 
   let set_scale t s = t.scale <- s
   let hovered t = t.hovered
   let pressed t = t.pressed
   let focused t = t.focused
   let caret t = t.caret
+  let shadow t = t.shadow
+  let ime t = t.ime
+  let marked t = t.ime.Lui_ime.marked_text
 
   let text_of store id = string_prop store id "text"
 
   let set_focused t store id =
     if id <> t.focused then begin
+      (* Focus loss cancels any in-flight composition first — marked
+         text was never dispatched, so clearing it locally is the
+         whole rollback. *)
+      let st, _ = Lui_ime.feed_event t.ime (`Focus false) in
+      let st, _ = Lui_ime.feed_event st (`Focus (id <> 0)) in
+      t.ime <- st;
       t.focused <- id;
       t.shadow <- (if id = 0 then "" else text_of store id);
       t.caret <- (if id = 0 then 0 else String.length t.shadow);
@@ -532,6 +548,42 @@ module Ui = struct
   let submit store id =
     if event_supported store id (ev_submit id) then [ Dispatch (Submit id) ]
     else []
+
+  (* Translate one lui_ime action into window actions plus the Ui
+     side effects they imply. `Commit_text splices through the exact
+     path raw text input used before composition existed. *)
+  let apply_ime t store actions =
+    List.filter_map
+      (fun a ->
+         match a with
+         | `Move_candidate r -> Some (Ime_rect r)
+         | `Commit_text s ->
+           t.dirty <- true;
+           (match t.focused with
+            | 0 -> None
+            | n when node_enabled store n
+                     && event_supported store n (ev_text n) ->
+              let cur = t.shadow in
+              let caret = min t.caret (String.length cur) in
+              let next =
+                String.sub cur 0 caret ^ s
+                ^ String.sub cur caret (String.length cur - caret)
+              in
+              t.shadow <- next;
+              t.caret <- caret + String.length s;
+              Some (Dispatch (TextChanged (n, next)))
+            | _ -> None)
+         | `Begin_composition | `Update_composition _ | `Cancel ->
+           t.dirty <- true;
+           None)
+      actions
+
+  (* Feed one IME event into the state machine and apply what it
+     asks for. *)
+  let feed_ime t store ev =
+    let st, actions = Lui_ime.feed_event t.ime ev in
+    t.ime <- st;
+    apply_ime t store actions
 
   let handle t store rects = function
     | Input.Move (x, y) ->
@@ -662,24 +714,15 @@ module Ui = struct
          t.dirty <- true;
          up @ click
        | _ -> [])
-    | Input.Text_input s ->
-      (match t.focused with
-       | 0 -> []
-       | n when node_enabled store n
-                && event_supported store n (ev_text n) ->
-         let cur = t.shadow in
-         let caret = min t.caret (String.length cur) in
-         let next =
-           String.sub cur 0 caret ^ s
-           ^ String.sub cur caret (String.length cur - caret)
-         in
-         t.shadow <- next;
-         t.caret <- caret + String.length s;
-         t.dirty <- true;
-         [ Dispatch (TextChanged (n, next)) ]
-       | _ -> [])
+    | Input.Text_input s -> feed_ime t store (`Commit s)
+    | Input.Text_editing (text, start, len) ->
+      feed_ime t store (`Editing (text, start, len))
+    | Input.Caret r -> feed_ime t store (`Caret r)
     | Input.Key_down (key, mods, _repeat) ->
-      (match key, t.focused with
+      (* While marked text is on screen the keys belong to the IME —
+         SDL filters most of them already; this gate is the belt. *)
+      if Lui_ime.composing t.ime then []
+      else (match key, t.focused with
        | Input.Escape, 0 -> [ Quit ]
        | Input.Escape, _ ->
          set_focused t store 0;
