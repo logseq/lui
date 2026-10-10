@@ -7,6 +7,91 @@ use lui_gpui::{apply_batch_json, LuiRootView, LuiShared};
 static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[gpui_kit::test]
+fn rejected_batch_recovers_from_a_snapshot_stream(cx: &mut TestAppContext) {
+    let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+    cx.update(lui_gpui::init);
+    let _ = support::take_events();
+    let shared = LuiShared::new();
+    support::set_resync_payload(
+        r#"[
+        {"generation":40,"ops":[
+            {"op":"create-node","id":1,"kind":"root"},
+            {"op":"create-node","id":2,"kind":"column"},
+            {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]},
+        {"generation":41,"ops":[
+            {"op":"create-node","id":3,"kind":"text"},
+            {"op":"set-prop","id":3,"property":"text","value":"Restored"},
+            {"op":"insert-child","parent":2,"child":3,"index":0}
+        ]}
+    ]"#,
+    );
+    cx.update(|app| {
+        lui_gpui::backend::apply_stream_json(
+            &shared,
+            r#"[
+        {"generation":1,"ops":[{"op":"set-prop","id":99,"property":"text","value":"Invalid"}]},
+        {"generation":42,"ops":[{"op":"set-prop","id":3,"property":"text","value":"Stale tail"}]}
+    ]"#,
+            app,
+        )
+    });
+    assert_eq!(shared.borrow().store.root, Some(1));
+    assert_eq!(
+        shared
+            .borrow()
+            .store
+            .node(3)
+            .unwrap()
+            .string_prop(lui_core::Property::TextValue),
+        Some("Restored")
+    );
+    assert_eq!(shared.borrow().last_errors.len(), 1);
+    assert_eq!(support::take_events(), vec![support::RecordedEvent::Resync]);
+    cx.update(|app| {
+        apply_batch_json(
+            &shared,
+            r#"{"generation":42,"ops":[
+        {"op":"set-prop","id":3,"property":"text","value":"Continued"}
+    ]}"#,
+            app,
+        )
+        .unwrap()
+    });
+    assert_eq!(
+        shared
+            .borrow()
+            .store
+            .node(3)
+            .unwrap()
+            .string_prop(lui_core::Property::TextValue),
+        Some("Continued")
+    );
+}
+
+#[gpui_kit::test]
+fn invalid_resync_stream_is_reported_without_recursive_recovery(cx: &mut TestAppContext) {
+    let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+    cx.update(lui_gpui::init);
+    let _ = support::take_events();
+    let shared = LuiShared::new();
+    support::set_resync_payload(
+        r#"[{"generation":40,"ops":[
+        {"op":"set-prop","id":99,"property":"text","value":"Invalid snapshot"}
+    ]}]"#,
+    );
+    cx.update(|app| lui_gpui::backend::apply_stream_json(&shared, "invalid JSON", app));
+    assert_eq!(support::take_events(), vec![support::RecordedEvent::Resync]);
+    let guard = shared.borrow();
+    assert_eq!(guard.last_errors.len(), 2);
+    assert!(
+        guard.last_errors[1].contains("set-prop: unknown node"),
+        "{:?}",
+        guard.last_errors
+    );
+}
+
+#[gpui_kit::test]
 fn untitled_dialog_paints_its_content(cx: &mut TestAppContext) {
     let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
     cx.update(lui_gpui::init);

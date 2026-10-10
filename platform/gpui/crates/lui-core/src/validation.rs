@@ -88,8 +88,9 @@ pub(crate) fn property(kind: K, property: P, value: Option<&Value>) -> Result<()
                 | P::Visible
         ),
         Value::Int(number) => match property {
-            P::PaddingValue | P::PickerRequest | P::PickerCompletion => true,
+            P::PaddingValue | P::PickerRequest | P::PickerCompletion | P::ZIndex => true,
             P::HeadingLevel => (1..=6).contains(number),
+            P::FontWeight => (1..=1000).contains(number),
             P::TooltipDelay | P::DurationValue => (0..=i32::MAX as i64).contains(number),
             P::TreeLevel | P::MaxPixelSize => *number > 0,
             P::Gap
@@ -128,7 +129,21 @@ fn float_property(property: P, number: f64) -> bool {
         && match property {
             P::GrowValue | P::AvailableHeight => number >= 0.0,
             P::StepValue => number > 0.0,
-            P::Opacity => (0.0..=1.0).contains(&number),
+            P::Opacity | P::HoverOpacity | P::PressedOpacity | P::DisabledOpacity => {
+                (0.0..=1.0).contains(&number)
+            }
+            P::WidthViewport
+            | P::HeightViewport
+            | P::MinWidthViewport
+            | P::MaxWidthViewport
+            | P::MinHeightViewport
+            | P::MaxHeightViewport => number > 0.0 && number <= 1.0,
+            P::LetterSpacing
+            | P::Inset
+            | P::InsetTop
+            | P::InsetRight
+            | P::InsetBottom
+            | P::InsetLeft => true,
             P::ProgressValue
             | P::SourceX
             | P::SourceY
@@ -142,6 +157,63 @@ fn float_property(property: P, number: f64) -> bool {
             | P::PopupY => true,
             _ => false,
         }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn typed_visual_numbers_follow_the_ocaml_contract() {
+        for weight in [1, 400, 500, 700, 1000] {
+            property(K::Text, P::FontWeight, Some(&Value::Int(weight))).unwrap();
+        }
+        for weight in [0, 1001] {
+            assert!(property(K::Text, P::FontWeight, Some(&Value::Int(weight))).is_err());
+        }
+        assert!(property(K::Text, P::FontWeight, Some(&Value::Float(500.5))).is_err());
+        for p in [
+            P::LetterSpacing,
+            P::Inset,
+            P::InsetTop,
+            P::InsetRight,
+            P::InsetBottom,
+            P::InsetLeft,
+        ] {
+            for n in [-2.5, 0.0, 4.5] {
+                property(K::Text, p, Some(&Value::Float(n))).unwrap();
+            }
+            property(K::Text, p, Some(&Value::Int(0))).unwrap();
+            assert!(property(K::Text, p, Some(&Value::Float(f64::INFINITY))).is_err());
+        }
+        property(K::Text, P::ZIndex, Some(&Value::Int(-1))).unwrap();
+        assert!(property(K::Text, P::ZIndex, Some(&Value::Float(1.5))).is_err());
+        for p in [P::HoverOpacity, P::PressedOpacity, P::DisabledOpacity] {
+            for n in [0.0, 0.5, 1.0] {
+                property(K::Text, p, Some(&Value::Float(n))).unwrap();
+            }
+            property(K::Text, p, Some(&Value::Int(1))).unwrap();
+            for n in [-0.1, 1.1, f64::NAN] {
+                assert!(property(K::Text, p, Some(&Value::Float(n))).is_err());
+            }
+        }
+        for p in [
+            P::WidthViewport,
+            P::HeightViewport,
+            P::MinWidthViewport,
+            P::MaxWidthViewport,
+            P::MinHeightViewport,
+            P::MaxHeightViewport,
+        ] {
+            for n in [0.5, 1.0] {
+                property(K::Text, p, Some(&Value::Float(n))).unwrap();
+            }
+            property(K::Text, p, Some(&Value::Int(1))).unwrap();
+            for n in [0.0, -0.1, 1.1, f64::INFINITY] {
+                assert!(property(K::Text, p, Some(&Value::Float(n))).is_err());
+            }
+        }
+    }
 }
 
 fn ancestor(store: &Store, node: &Node, kind: K) -> bool {

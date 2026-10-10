@@ -11,6 +11,7 @@ use std::sync::Mutex;
 /// One call the OCaml runtime would have received, in wire order.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RecordedEvent {
+    Resync,
     Press(i64),
     PressModifiers {
         node: i64,
@@ -58,6 +59,11 @@ pub enum RecordedEvent {
 }
 
 static EVENTS: Mutex<Vec<RecordedEvent>> = Mutex::new(Vec::new());
+static RESYNC_PAYLOAD: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn set_resync_payload(payload: &str) {
+    *RESYNC_PAYLOAD.lock().unwrap() = Some(payload.to_owned());
+}
 
 fn record(event: RecordedEvent) {
     if let Ok(mut events) = EVENTS.lock() {
@@ -317,7 +323,13 @@ pub unsafe extern "C" fn lui_ocaml_extension_event_utf8(
 
 #[no_mangle]
 pub unsafe extern "C" fn lui_ocaml_resync() -> c_int {
-    0
+    record(RecordedEvent::Resync);
+    let Some(payload) = RESYNC_PAYLOAD.lock().unwrap().take() else {
+        return 0;
+    };
+    let payload = std::ffi::CString::new(payload).unwrap();
+    unsafe { lui_core::bridge::patch_sink(payload.as_ptr()) };
+    1
 }
 
 #[no_mangle]

@@ -863,9 +863,6 @@ fn notify_applied(shared: &Shared, batch: &Batch, applied: &Applied, cx: &mut Ap
     }
 }
 
-/// Apply a patch payload that may be either one batch object `{ops:[…]}`
-/// or the stream form `[batch, batch, …]` (what `take_patches` returns in
-/// hosts that fold event results into the sink).
 fn note_rejected_batch(shared: &Shared, message: String, cx: &mut App) {
     eprintln!("lui-gpui: rejected batch: {message}");
     shared.borrow_mut().last_errors.push(message);
@@ -885,39 +882,38 @@ fn note_rejected_batch(shared: &Shared, message: String, cx: &mut App) {
         guard.reset_render_state();
     }
     for json in patches {
-        if let Err(error) = apply_batch_json(shared, &json, cx) {
-            let message = error.to_string();
+        if let Err(message) = apply_patch_payload(shared, &json, cx) {
             eprintln!("lui-gpui: resync batch rejected: {message}");
             shared.borrow_mut().last_errors.push(message);
+            break;
         }
     }
 }
 
-pub fn apply_stream_json(shared: &Shared, json: &str, cx: &mut App) {
-    let parsed = serde_json::from_str::<serde_json::Value>(json);
+/// Apply either one batch object or the stream returned by `take_patches`.
+/// Stop at the first rejection so a resync cannot be followed by stale operations.
+fn apply_patch_payload(shared: &Shared, json: &str, cx: &mut App) -> Result<(), String> {
+    let parsed =
+        serde_json::from_str::<serde_json::Value>(json).map_err(|error| format!("decode: {error}"))?;
     match parsed {
-        Ok(serde_json::Value::Array(batches)) => {
+        serde_json::Value::Array(batches) => {
             for batch in batches {
-                let result = decode_batch_value(&batch)
+                decode_batch_value(&batch)
                     .map_err(ApplyError::Decode)
-                    .and_then(|batch| apply_batch(shared, &batch, cx));
-                if let Err(error) = result {
-                    note_rejected_batch(shared, error.to_string(), cx);
-                    // Everything left in the stream was generated against
-                    // the pre-resync tree — replaying it can only produce
-                    // more generation rejections.
-                    break;
-                }
+                    .and_then(|batch| apply_batch(shared, &batch, cx))
+                    .map_err(|error| error.to_string())?;
             }
         }
-        Ok(_) => {
-            if let Err(error) = apply_batch_json(shared, json, cx) {
-                note_rejected_batch(shared, error.to_string(), cx);
-            }
+        _ => {
+            apply_batch_json(shared, json, cx).map_err(|error| error.to_string())?;
         }
-        Err(error) => {
-            note_rejected_batch(shared, format!("decode: {error}"), cx);
-        }
+    }
+    Ok(())
+}
+
+pub fn apply_stream_json(shared: &Shared, json: &str, cx: &mut App) {
+    if let Err(message) = apply_patch_payload(shared, json, cx) {
+        note_rejected_batch(shared, message, cx);
     }
 }
 
