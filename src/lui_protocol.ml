@@ -1013,7 +1013,8 @@ let common_property_supported kind property =
   | SurfaceIdValue -> kind = MediaSurface
   | AnchorValue | AnchorAlignmentValue | AnchorOffset ->
     kind = DropdownMenu || kind = Tooltip || kind = Popover
-  | PopupX | PopupY | AvailableHeight -> kind = Popover
+  | PopupX | PopupY -> kind = Popover || kind = DropdownMenu
+  | AvailableHeight -> kind = Popover
   | TooltipDelay -> kind = Tooltip
   | DurationValue -> false
   | TextAlignment ->
@@ -1533,7 +1534,7 @@ let node_properties_supported kind properties =
         then Property_map.mem AnchorValue properties
         else true
       else true)
-  && (if kind = Popover then
+  && (if kind = Popover || kind = DropdownMenu then
         let has_x = Property_map.mem PopupX properties in
         let has_y = Property_map.mem PopupY properties in
         has_x = has_y

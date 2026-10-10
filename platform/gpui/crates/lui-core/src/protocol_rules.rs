@@ -55,7 +55,7 @@ pub(crate) fn property_supported(kind: NodeKind, property: Property) -> bool {
         NodeKind::Icon => (0x3f80180e0000000000004003067fffa0, 0x1ffffc),
         NodeKind::Select => (0x3ff8020e000001800000480007ffffa3, 0x1fffff),
         NodeKind::Combobox => (0x3ff8020e000001800000580006ffffa3, 0x1fffff),
-        NodeKind::DropdownMenu => (0x3ff8020e0000018038004000067fffa4, 0x1fffff),
+        NodeKind::DropdownMenu => (0x3ffb020e0000018038004000067fffa4, 0x1fffff),
         NodeKind::ContextMenu => (0x2000000000000000002000000, 0x0),
         NodeKind::MenuItem => (0xfff81a0e000001800000482d067fffbb, 0x1fffff),
         NodeKind::MenuTrigger => (0xe000000000000000807000803, 0x0),

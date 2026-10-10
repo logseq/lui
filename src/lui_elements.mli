@@ -2674,6 +2674,13 @@ val combobox :
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
   ?on_pointer_up:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+
+(** Menu surface mounted in the popup portal. Anchoring is either implicit
+    — the element under the menu's retained parent ([~anchor],
+    [~anchor_alignment], [~anchor_offset]) — or programmatic:
+    [~at:(x, y)] ([~at_signal]) opens the menu at a viewport point, clamped
+    like {!Lui_elements.popover}, with no DOM anchor required. [~at] and
+    [~anchor] are mutually exclusive (rejected at validation). *)
 val dropdown_menu :
   ?key:string ->
   ?gap:int ->
@@ -2707,6 +2714,8 @@ val dropdown_menu :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?at:float * float ->
+  ?at_signal:(float * float) Signal.signal ->
   ?anchor:anchor ->
   ?anchor_alignment:anchor_alignment ->
   ?anchor_offset:float ->

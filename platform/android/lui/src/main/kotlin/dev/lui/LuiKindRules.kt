@@ -616,7 +616,8 @@ internal object LuiKindRules {
                         kind == LuiNodeKind.tooltip ||
                         kind == LuiNodeKind.popover)
             "x", "y" ->
-                value.numberValue?.isFinite() == true && kind == LuiNodeKind.popover
+                value.numberValue?.isFinite() == true &&
+                    (kind == LuiNodeKind.popover || kind == LuiNodeKind.dropdownMenu)
             "available-height" ->
                 value.numberValue?.let { it.isFinite() && it >= 0 } == true &&
                     kind == LuiNodeKind.popover
