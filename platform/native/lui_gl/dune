@@ -1,0 +1,7 @@
+(library
+ (name lui_gl)
+ (modules lui_gl)
+ (libraries lui_scene lui_gpu tgls.tgl3)
+ (foreign_stubs
+  (language c)
+  (names lui_gl_stubs)))
