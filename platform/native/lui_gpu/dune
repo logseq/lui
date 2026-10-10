@@ -1,0 +1,15 @@
+(library
+ (name lui_gpu)
+ (modules lui_gpu shader_source)
+ (libraries lui_scene))
+
+(executable
+ (name embed)
+ (modules embed))
+
+(rule
+ (target shader_source.ml)
+ (deps shader.glsl)
+ (action
+  (with-stdout-to %{target}
+   (run %{exe:embed.exe} shader.glsl))))
