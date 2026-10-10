@@ -1,0 +1,4 @@
+(test
+ (name test_spike_render)
+ (modules test_spike_render)
+ (libraries spike_lib lui_scene alcotest))
