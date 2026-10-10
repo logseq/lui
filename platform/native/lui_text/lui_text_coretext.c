@@ -393,6 +393,8 @@ static CFIndex lui_utf8_to_utf16(const UInt8 *s, CFIndex len,
 /* Paragraph styles shared by every shape call, made once. */
 static CTParagraphStyleRef lui_para_styles[2] = { NULL, NULL };
 
+static CGColorSpaceRef lui_srgb(void);
+
 static void lui_init_para_styles(void)
 {
   for (int i = 0; i < 2; i++) {
@@ -463,7 +465,37 @@ static value lui_shape_run(CTRunRef run, const CFIndex *idx, CFIndex n16,
   }
 
   CTRunStatus st = CTRunGetStatus(run);
-  vrun = caml_alloc(5, 0);
+
+  /* Per-range ink color, when a span set one: packed 0xRRGGBBAA in an
+     option. */
+  value vcolor = Val_int(0);
+  CGColorRef colr = (CGColorRef)CFDictionaryGetValue(
+      attrs, kCTForegroundColorAttributeName);
+  if (colr != NULL) {
+    const CGFloat *cc = CGColorGetComponents(colr);
+    size_t nc = CGColorGetNumberOfComponents(colr);
+    int r = 0, g = 0, b = 0, a = 255;
+    if (nc >= 4) {
+      r = (int)(cc[0] * 255. + 0.5);
+      g = (int)(cc[1] * 255. + 0.5);
+      b = (int)(cc[2] * 255. + 0.5);
+      a = (int)(cc[3] * 255. + 0.5);
+    } else if (nc == 2) {
+      r = g = b = (int)(cc[0] * 255. + 0.5);
+      a = (int)(cc[1] * 255. + 0.5);
+    }
+    intnat packed = ((intnat)r << 24) | ((intnat)g << 16)
+                    | ((intnat)b << 8) | (intnat)a;
+    vcolor = caml_alloc(1, 0);
+    Store_field(vcolor, 0, Val_int(packed));
+  }
+
+  CFNumberRef un = (CFNumberRef)CFDictionaryGetValue(
+      attrs, kCTUnderlineStyleAttributeName);
+  int under = 0;
+  if (un != NULL) CFNumberGetValue(un, kCFNumberIntType, &under);
+
+  vrun = caml_alloc(7, 0);
   Store_field(vrun, 0, vfont);
   Store_field(vrun, 1, Val_int(lui_byte_of(idx, rr.location, n16) + base));
   Store_field(vrun, 2,
@@ -471,8 +503,41 @@ static value lui_shape_run(CTRunRef run, const CFIndex *idx, CFIndex n16,
                       + base));
   Store_field(vrun, 3, Val_bool((st & kCTRunStatusRightToLeft) != 0));
   Store_field(vrun, 4, vglyphs);
+  Store_field(vrun, 5, vcolor);
+  Store_field(vrun, 6, Val_int(under));
   tmp = vrun;
   CAMLreturn(tmp);
+}
+
+/* Emit one line record (start, stop, width, ascent, descent, leading,
+   run array) for a typeset line; byte offsets gain [base]. */
+static value lui_emit_line(CTLineRef line, const CFIndex *idx,
+                           CFIndex n16, CFIndex base)
+{
+  CAMLparam0();
+  CAMLlocal2(vline, vruns);
+  CFRange lr = CTLineGetStringRange(line);
+  CGFloat asc = 0, desc = 0, lead = 0;
+  double lw = CTLineGetTypographicBounds(line, &asc, &desc, &lead);
+  CFArrayRef runs = CTLineGetGlyphRuns(line);
+  CFIndex nr = CFArrayGetCount(runs);
+  vruns = caml_alloc((mlsize_t)nr, 0);
+  for (CFIndex i = 0; i < nr; i++) {
+    CTRunRef r = (CTRunRef)CFArrayGetValueAtIndex(runs, i);
+    Store_field(vruns, i, lui_shape_run(r, idx, n16, base));
+  }
+  vline = caml_alloc(7, 0);
+  Store_field(vline, 0,
+              Val_int(lui_byte_of(idx, lr.location, n16) + base));
+  Store_field(vline, 1,
+              Val_int(lui_byte_of(idx, lr.location + lr.length, n16)
+                      + base));
+  Store_field(vline, 2, caml_copy_double(lw));
+  Store_field(vline, 3, caml_copy_double(asc));
+  Store_field(vline, 4, caml_copy_double(desc));
+  Store_field(vline, 5, caml_copy_double(lead));
+  Store_field(vline, 6, vruns);
+  CAMLreturn(vline);
 }
 
 /* shape : font -> utf8 -> width -> rtl -> base -> line array
@@ -482,7 +547,7 @@ CAMLprim value lui_ct_shape(value vfont, value vstr, value vwidth,
                             value vrtl, value vbase)
 {
   CAMLparam5(vfont, vstr, vwidth, vrtl, vbase);
-  CAMLlocal5(vlines, vline, vruns, vcons, vempty);
+  CAMLlocal4(vlines, vline, vcons, vempty);
   CFIndex base = Long_val(vbase);
   double width = Double_val(vwidth);
   int rtl = Bool_val(vrtl);
@@ -535,28 +600,7 @@ CAMLprim value lui_ct_shape(value vfont, value vstr, value vwidth,
       line = CTTypesetterCreateLine(ts, CFRangeMake(start, count));
       if (line == NULL) break;
 
-      CFRange lr = CTLineGetStringRange(line);
-      CGFloat asc = 0, desc = 0, lead = 0;
-      double lw = CTLineGetTypographicBounds(line, &asc, &desc, &lead);
-      CFArrayRef runs = CTLineGetGlyphRuns(line);
-      CFIndex nr = CFArrayGetCount(runs);
-      vruns = caml_alloc((mlsize_t)nr, 0);
-      for (CFIndex i = 0; i < nr; i++) {
-        CTRunRef r = (CTRunRef)CFArrayGetValueAtIndex(runs, i);
-        Store_field(vruns, i, lui_shape_run(r, idx, n16, base));
-      }
-
-      vline = caml_alloc(7, 0);
-      Store_field(vline, 0,
-                  Val_int(lui_byte_of(idx, lr.location, n16) + base));
-      Store_field(vline, 1,
-                  Val_int(lui_byte_of(idx, lr.location + lr.length, n16)
-                          + base));
-      Store_field(vline, 2, caml_copy_double(lw));
-      Store_field(vline, 3, caml_copy_double(asc));
-      Store_field(vline, 4, caml_copy_double(desc));
-      Store_field(vline, 5, caml_copy_double(lead));
-      Store_field(vline, 6, vruns);
+      vline = lui_emit_line(line, idx, n16, base);
       vcons = caml_alloc(2, 0);
       Store_field(vcons, 0, vline);
       Store_field(vcons, 1, vlines);
@@ -589,6 +633,284 @@ done:
     }
   }
   CAMLreturn(vempty);
+}
+
+/* First UTF-16 unit index whose byte offset is >= b. */
+static CFIndex lui_u16_of_byte(const CFIndex *idx, CFIndex n16, CFIndex b)
+{
+  CFIndex lo = 0, hi = n16;
+  while (lo < hi) {
+    CFIndex mid = (lo + hi) / 2;
+    if (idx[mid] < b) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/* shape_spans : font -> utf8 -> width -> rtl -> base -> span_attr array
+   -> line array. A span_attr is
+   (start_byte, stop_byte, font option, color option, kern, under);
+   ranges are byte offsets into the segment string. The attributed
+   string gets the base font and paragraph style first, then each
+   span's attributes over its range. */
+CAMLprim value lui_ct_shape_spans(value vfont, value vstr, value vwidth,
+                                  value vrtl, value vbase, value vspans)
+{
+  CAMLparam5(vfont, vstr, vwidth, vrtl, vbase);
+  CAMLxparam1(vspans);
+  CAMLlocal4(vlines, vline, vcons, vempty);
+  CFIndex base = Long_val(vbase);
+  double width = Double_val(vwidth);
+  int rtl = Bool_val(vrtl);
+  CFIndex len = (CFIndex)caml_string_length(vstr);
+  int nlines = 0;
+
+  vlines = Val_int(0);
+  if (len == 0) {
+    vempty = caml_alloc(0, 0);
+    CAMLreturn(vempty);
+  }
+
+  UniChar *u16 = NULL;
+  CFIndex *idx = NULL;
+  CFIndex n16 = lui_utf8_to_utf16(Bytes_val(vstr), len, &u16, &idx);
+
+  CFStringRef str = NULL;
+  CFMutableAttributedStringRef attrstr = NULL;
+  CFDictionaryRef attrs = NULL;
+  CTTypesetterRef ts = NULL;
+  CTLineRef line = NULL;
+
+  @autoreleasepool {
+    lui_init_para_styles();
+
+    str = CFStringCreateWithCharacters(NULL, u16, n16);
+    const void *akeys[] = { kCTFontAttributeName,
+                            kCTParagraphStyleAttributeName };
+    const void *avals[] = { Lui_font_val(vfont),
+                            lui_para_styles[rtl ? 1 : 0] };
+    attrs = CFDictionaryCreate(NULL, akeys, avals, 2,
+                               &kCFTypeDictionaryKeyCallBacks,
+                               &kCFTypeDictionaryValueCallBacks);
+    if (str == NULL || attrs == NULL) goto done;
+    attrstr = CFAttributedStringCreateMutable(NULL, (CFIndex)n16);
+    if (attrstr == NULL) goto done;
+    CFAttributedStringReplaceString(attrstr, CFRangeMake(0, 0), str);
+    CFAttributedStringSetAttributes(attrstr, CFRangeMake(0, n16), attrs,
+                                  false);
+
+    /* Per-range attributes: byte ranges land on UTF-16 unit ranges
+       through the decode map. */
+    mlsize_t nspans = Wosize_val(vspans);
+    for (mlsize_t i = 0; i < nspans; i++) {
+      value vspan = Field(vspans, i);
+      CFIndex a16 = lui_u16_of_byte(idx, n16,
+                                    (CFIndex)Long_val(Field(vspan, 0)));
+      CFIndex b16 = lui_u16_of_byte(idx, n16,
+                                    (CFIndex)Long_val(Field(vspan, 1)));
+      if (b16 <= a16) continue;
+      CFRange r = CFRangeMake(a16, b16 - a16);
+
+      value vf = Field(vspan, 2);
+      if (vf != Val_int(0)) {
+        CFAttributedStringSetAttribute(
+            attrstr, r, kCTFontAttributeName,
+            Lui_font_val(Field(vf, 0)));
+      }
+      value vc = Field(vspan, 3);
+      if (vc != Val_int(0)) {
+        intnat c = Long_val(Field(vc, 0));
+        CGFloat comps[4] = { (CGFloat)((c >> 24) & 0xFF) / 255.,
+                             (CGFloat)((c >> 16) & 0xFF) / 255.,
+                             (CGFloat)((c >> 8) & 0xFF) / 255.,
+                             (CGFloat)(c & 0xFF) / 255. };
+        CGColorRef col = CGColorCreate(lui_srgb(), comps);
+        if (col != NULL) {
+          CFAttributedStringSetAttribute(
+              attrstr, r, kCTForegroundColorAttributeName, col);
+          CFRelease(col);
+        }
+      }
+      double kern = Double_val(Field(vspan, 4));
+      if (kern != 0.) {
+        CFNumberRef kn =
+          CFNumberCreate(NULL, kCFNumberDoubleType, &kern);
+        if (kn != NULL) {
+          CFAttributedStringSetAttribute(attrstr, r,
+                                         kCTKernAttributeName, kn);
+          CFRelease(kn);
+        }
+      }
+      int under = (int)Long_val(Field(vspan, 5));
+      if (under != 0) {
+        CFNumberRef un =
+          CFNumberCreate(NULL, kCFNumberIntType, &under);
+        if (un != NULL) {
+          CFAttributedStringSetAttribute(attrstr, r,
+                                         kCTUnderlineStyleAttributeName,
+                                         un);
+          CFRelease(un);
+        }
+      }
+    }
+
+    ts = CTTypesetterCreateWithAttributedString(attrstr);
+    if (ts == NULL) goto done;
+
+    CFIndex start = 0;
+    while (start < n16) {
+      CFIndex count = n16 - start;
+      if (width > 0) {
+        count = CTTypesetterSuggestLineBreak(ts, start, width);
+        if (count < 1) count = 1;
+      }
+      line = CTTypesetterCreateLine(ts, CFRangeMake(start, count));
+      if (line == NULL) break;
+
+      vline = lui_emit_line(line, idx, n16, base);
+      vcons = caml_alloc(2, 0);
+      Store_field(vcons, 0, vline);
+      Store_field(vcons, 1, vlines);
+      vlines = vcons;
+      nlines++;
+
+      CFRelease(line);
+      line = NULL;
+      start += count;
+    }
+  } /* autoreleasepool */
+
+done:
+  if (str != NULL) CFRelease(str);
+  if (attrs != NULL) CFRelease(attrs);
+  if (attrstr != NULL) CFRelease(attrstr);
+  if (ts != NULL) CFRelease(ts);
+  if (line != NULL) CFRelease(line);
+  free(u16);
+  free(idx);
+
+  vempty = caml_alloc((mlsize_t)nlines, 0);
+  {
+    value cur = vlines;
+    for (int i = nlines - 1; i >= 0; i--) {
+      Store_field(vempty, i, Field(cur, 0));
+      cur = Field(cur, 1);
+    }
+  }
+  CAMLreturn(vempty);
+}
+
+CAMLprim value lui_ct_shape_spans_byte(value *argv, int argn)
+{
+  (void)argn;
+  return lui_ct_shape_spans(argv[0], argv[1], argv[2], argv[3],
+                            argv[4], argv[5]);
+}
+
+/* graphemes : string -> int array — the byte offsets where composed
+   character sequences start or end, ending at the string's length. */
+CAMLprim value lui_ct_graphemes(value vstr)
+{
+  CAMLparam1(vstr);
+  CAMLlocal1(vbounds);
+  CFIndex len = (CFIndex)caml_string_length(vstr);
+  UniChar *u16 = NULL;
+  CFIndex *idx = NULL;
+  CFIndex n16 = lui_utf8_to_utf16(Bytes_val(vstr), len, &u16, &idx);
+  CFStringRef str = NULL;
+  CFIndex *bounds =
+    malloc(sizeof(CFIndex) * (size_t)(n16 + 2));
+  if (bounds == NULL) {
+    free(u16);
+    free(idx);
+    caml_failwith("lui_text: out of memory");
+  }
+  int k = 0;
+  bounds[k++] = 0;
+  str = CFStringCreateWithCharacters(NULL, u16, n16);
+  if (str != NULL) {
+    CFIndex p = 0;
+    while (p < n16) {
+      CFRange r = CFStringGetRangeOfComposedCharactersAtIndex(str, p);
+      if (r.length <= 0) break;
+      p = r.location + r.length;
+      bounds[k++] = (CFIndex)lui_byte_of(idx, p, n16);
+    }
+  }
+  vbounds = caml_alloc((mlsize_t)k, 0);
+  for (int i = 0; i < k; i++)
+    Store_field(vbounds, i, Val_int(bounds[i]));
+  if (str != NULL) CFRelease(str);
+  free(u16);
+  free(idx);
+  free(bounds);
+  CAMLreturn(vbounds);
+}
+
+/* truncate : font -> utf8 -> width -> mode -> rtl -> line array
+   mode 0 end, 1 start, 2 middle; the ellipsis token glyphs report a
+   cluster clamped to the string's end. */
+CAMLprim value lui_ct_truncate(value vfont, value vstr, value vwidth,
+                               value vmode, value vrtl)
+{
+  CAMLparam5(vfont, vstr, vwidth, vmode, vrtl);
+  CAMLlocal2(vout, vline);
+  CFIndex len = (CFIndex)caml_string_length(vstr);
+  double width = Double_val(vwidth);
+  int mode = (int)Long_val(vmode);
+  int rtl = Bool_val(vrtl);
+
+  UniChar *u16 = NULL;
+  CFIndex *idx = NULL;
+  CFIndex n16 = lui_utf8_to_utf16(Bytes_val(vstr), len, &u16, &idx);
+
+  CFStringRef str = NULL;
+  CFAttributedStringRef attrstr = NULL;
+  CFDictionaryRef attrs = NULL;
+  CTTypesetterRef ts = NULL;
+  CTLineRef full = NULL, truncd = NULL;
+  vout = caml_alloc(0, 0);
+
+  @autoreleasepool {
+    lui_init_para_styles();
+
+    str = CFStringCreateWithCharacters(NULL, u16, n16);
+    const void *akeys[] = { kCTFontAttributeName,
+                            kCTParagraphStyleAttributeName };
+    const void *avals[] = { Lui_font_val(vfont),
+                            lui_para_styles[rtl ? 1 : 0] };
+    attrs = CFDictionaryCreate(NULL, akeys, avals, 2,
+                               &kCFTypeDictionaryKeyCallBacks,
+                               &kCFTypeDictionaryValueCallBacks);
+    if (str == NULL || attrs == NULL) goto done;
+    attrstr = CFAttributedStringCreate(NULL, str, attrs);
+    if (attrstr == NULL) goto done;
+    ts = CTTypesetterCreateWithAttributedString(attrstr);
+    if (ts == NULL) goto done;
+    full = CTTypesetterCreateLine(ts, CFRangeMake(0, n16));
+    if (full == NULL) goto done;
+
+    CTLineTruncationType tt = kCTLineTruncationEnd;
+    if (mode == 1) tt = kCTLineTruncationStart;
+    else if (mode == 2) tt = kCTLineTruncationMiddle;
+    truncd = CTLineCreateTruncatedLine(full, width, tt, NULL);
+    if (truncd == NULL) goto done;
+
+    vline = lui_emit_line(truncd, idx, n16, 0);
+    vout = caml_alloc(1, 0);
+    Store_field(vout, 0, vline);
+  } /* autoreleasepool */
+
+done:
+  if (str != NULL) CFRelease(str);
+  if (attrs != NULL) CFRelease(attrs);
+  if (attrstr != NULL) CFRelease(attrstr);
+  if (ts != NULL) CFRelease(ts);
+  if (full != NULL) CFRelease(full);
+  if (truncd != NULL) CFRelease(truncd);
+  free(u16);
+  free(idx);
+  CAMLreturn(vout);
 }
 
 /* ---------------------------------------------------------- rasterize */
@@ -724,6 +1046,17 @@ CAMLprim value lui_ct_shape(value a, value b, value c, value d, value e) {
   (void)a; (void)b; (void)c; (void)d; (void)e; return unsupported(); }
 CAMLprim value lui_ct_rasterize(value a, value b, value c, value d,
                                 value e) {
+  (void)a; (void)b; (void)c; (void)d; (void)e; return unsupported(); }
+CAMLprim value lui_ct_shape_spans(value a, value b, value c, value d,
+                                  value e, value f) {
+  (void)a; (void)b; (void)c; (void)d; (void)e; (void)f;
+  return unsupported(); }
+CAMLprim value lui_ct_shape_spans_byte(value *argv, int argn) {
+  (void)argv; (void)argn; return unsupported(); }
+CAMLprim value lui_ct_graphemes(value a) {
+  (void)a; return unsupported(); }
+CAMLprim value lui_ct_truncate(value a, value b, value c, value d,
+                               value e) {
   (void)a; (void)b; (void)c; (void)d; (void)e; return unsupported(); }
 
 #endif /* __APPLE__ */
