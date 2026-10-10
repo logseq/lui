@@ -1,0 +1,21 @@
+(library
+ (name lui_gallery)
+ (modules lui_gallery)
+ (libraries lui lui_store lui_scene lui_paint lui_layout lui_raster
+   lui_host imagelib unix))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries lui_gallery lui lui_store lui_scene lui_paint lui_layout
+   lui_raster lui_host imagelib unix))
+
+; macOS-only CoreText variant: renders the same gallery with real
+; shaped text instead of the deterministic rectangle stub.
+(executable
+ (name main_text)
+ (modules lui_gallery_text main_text)
+ (enabled_if
+  (= %{system} macosx))
+ (libraries lui_gallery lui_text lui lui_store lui_scene lui_paint
+   lui_layout lui_raster lui_host imagelib unix))
