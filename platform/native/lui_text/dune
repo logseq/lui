@@ -1,0 +1,11 @@
+(library
+ (name lui_text)
+ (modules lui_text)
+ (enabled_if (= %{system} macosx))
+ (foreign_stubs
+  (language c)
+  (names lui_text_coretext)
+  (flags (:standard -x objective-c)))
+ (c_library_flags
+  (:standard -framework CoreText -framework CoreGraphics
+    -framework CoreFoundation -framework AppKit)))
