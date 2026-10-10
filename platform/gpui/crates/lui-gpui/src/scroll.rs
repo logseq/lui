@@ -6,8 +6,18 @@
 //! "superseded", "missing-target", "cancelled".
 
 use crate::backend::Shared;
-use gpui_kit::gpui::{px, App};
+use gpui_kit::gpui::{point, px, App, Pixels};
 use lui_core::wire_schema::{NodeKind, Property};
+
+/// A scroll request the backend has accepted but not yet reported:
+/// `applied` flips once the scrollable element actually performed the
+/// move (child bounds exist), and the entry completes on the following
+/// frame so the outcome reports the settled state.
+pub struct PendingScroll {
+    pub token: i64,
+    pub index: usize,
+    pub applied: bool,
+}
 
 /// Per-frame bookkeeping for one painted node — called from the node's
 /// prepaint once its bounds are fresh. Store reads and scroll-handle
@@ -21,36 +31,44 @@ pub(crate) fn tick(shared: &Shared, node_id: i64, window: &mut gpui_kit::gpui::W
     let mut load = false;
     {
         let mut guard = shared.borrow_mut();
-        let Some(node) = guard.store.node(node_id) else {
-            return;
-        };
-        match node.identity.kind() {
+        restore_clamped_offset(&mut guard, node_id);
+        let kind = guard
+            .store
+            .node(node_id)
+            .and_then(|node| node.identity.kind());
+        match kind {
             Some(NodeKind::VirtualList | NodeKind::ListContainer) => {
-                if node.flag(Property::TrackVisibleRange) {
-                    // Report the first/last child index whose painted bounds
-                    // intersect the list's viewport. Unpainted children
-                    // (virtual rows outside the window) carry no bounds, so
-                    // this works for both the virtual `list` and a fully
-                    // laid out `list-container`/`virtual-list`.
-                    if let Some(viewport) = guard.node_bounds.get(&node_id).copied() {
-                        let mut first = i64::MAX;
-                        let mut last = 0i64;
-                        for (index, child) in node.children.iter().enumerate() {
-                            if guard
-                                .node_bounds
-                                .get(child)
-                                .is_some_and(|bounds| bounds.intersects(&viewport))
-                            {
-                                first = first.min(index as i64);
-                                last = last.max(index as i64);
+                if let Some(node) = guard.store.node(node_id) {
+                    if node.flag(Property::TrackVisibleRange) {
+                        // Report the first/last child index whose painted
+                        // bounds intersect the list's viewport. Unpainted
+                        // children (virtual rows outside the window) carry
+                        // no bounds, so this works for both the virtual
+                        // `list` and a fully laid out `list-container`.
+                        if let Some(viewport) = guard.node_bounds.get(&node_id).copied() {
+                            let mut first = i64::MAX;
+                            let mut last = 0i64;
+                            for (index, child) in node.children.iter().enumerate() {
+                                if guard
+                                    .node_bounds
+                                    .get(child)
+                                    .is_some_and(|bounds| bounds.intersects(&viewport))
+                                {
+                                    first = first.min(index as i64);
+                                    last = last.max(index as i64);
+                                }
+                            }
+                            if first <= last {
+                                visible_span = Some((first, last));
                             }
                         }
-                        if first <= last
-                            && guard.visible_ranges.get(&node_id) != Some(&(first, last))
-                        {
-                            guard.visible_ranges.insert(node_id, (first, last));
-                            visible_span = Some((first, last));
-                        }
+                    }
+                }
+                if let Some((first, last)) = visible_span {
+                    if guard.visible_ranges.get(&node_id) != Some(&(first, last)) {
+                        guard.visible_ranges.insert(node_id, (first, last));
+                    } else {
+                        visible_span = None;
                     }
                 }
                 scroll_request(&mut guard, node_id, &mut completed);
@@ -61,12 +79,14 @@ pub(crate) fn tick(shared: &Shared, node_id: i64, window: &mut gpui_kit::gpui::W
                     // reports success; url/image-id sources report when the
                     // element commits (gpui decodes off-thread, so the first
                     // painted frame is the closest honest signal here).
-                    let ready = if let Some(path) = node.string_prop(Property::PathValue) {
-                        std::path::Path::new(path).exists()
-                    } else {
-                        node.string_prop(Property::UrlValue).is_some()
-                            || node.string_prop(Property::ImageIdValue).is_some()
-                    };
+                    let ready = guard.store.node(node_id).is_some_and(|node| {
+                        if let Some(path) = node.string_prop(Property::PathValue) {
+                            std::path::Path::new(path).exists()
+                        } else {
+                            node.string_prop(Property::UrlValue).is_some()
+                                || node.string_prop(Property::ImageIdValue).is_some()
+                        }
+                    });
                     if ready {
                         guard.loaded_images.insert(node_id);
                         load = true;
@@ -119,10 +139,38 @@ pub(crate) fn scroll_completed(node: i64, token: i64, outcome: &'static str, cx:
 
 
 
+/// gpui clamps a tracked div's scroll offset to the measured content
+/// size every prepaint, so a rebuild whose content momentarily measures
+/// empty clamps the offset to zero *permanently*. Remember the last real
+/// offset and restore it once the content overflows again — unless the
+/// user just wheeled to the top themselves (recorded by the scroll div's
+/// wheel listener into `scroll_wheel_marks`).
+fn restore_clamped_offset(guard: &mut crate::backend::LuiShared, node_id: i64) {
+    let Some(scroll) = guard.scroll_handles.get(&node_id).cloned() else {
+        return;
+    };
+    let current = scroll.offset().y;
+    let last = guard.scroll_offsets.get(&node_id).copied();
+    if current == px(0.)
+        && last.is_some_and(|last| last < px(0.))
+        && scroll.max_offset().y < px(0.)
+    {
+        let recent_wheel = guard
+            .scroll_wheel_marks
+            .get(&node_id)
+            .is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(300));
+        if !recent_wheel {
+            scroll.set_offset(point(px(0.), last.unwrap_or(px(0.))));
+        }
+    }
+    guard.scroll_offsets.insert(node_id, scroll.offset().y);
+}
+
 /// `scroll-token` handling. A new token supersedes any scroll still in
-/// flight; a resolved request reports "succeeded" on the next frame once
-/// the offset has actually been applied by the scrollable element. Reads
-/// and scroll-handle writes happen under the shared borrow; outcomes are
+/// flight; a resolved request performs immediately when the element has
+/// the target's bounds and otherwise retries each frame until it can,
+/// then reports "succeeded" on the frame after it applied. Reads and
+/// scroll-handle writes happen under the shared borrow; outcomes are
 /// queued for the caller's FFI phase.
 fn scroll_request(
     guard: &mut crate::backend::LuiShared,
@@ -133,26 +181,10 @@ fn scroll_request(
         return;
     };
     let token = node.int_prop(Property::ScrollToken);
-    if let Some(pending) = guard.pending_scrolls.remove(&node_id) {
-        if token == Some(pending) {
-            // The requested offset was applied by the scrollable element
-            // during this frame's layout pass — report completion.
-            completed.push((pending, "succeeded"));
-        } else {
-            // A newer token arrived before the in-flight scroll reported.
-            completed.push((pending, "superseded"));
-        }
-    }
-    let Some(token) = token else {
-        return;
-    };
-    if guard.handled_scroll_tokens.get(&node_id) == Some(&token) {
-        return;
-    }
-    guard.handled_scroll_tokens.insert(node_id, token);
-    // Resolve `scroll-target` against a child's `key` prop — the protocol's
-    // scroll target is a row key, not a node id.
-    let index = node
+    // Resolve `scroll-target` against a child's `key` prop — the
+    // protocol's scroll target is a row key, not a node id. Read now so
+    // the node borrow ends before the mutable work below.
+    let target_index = node
         .string_prop(Property::ScrollTarget)
         .and_then(|target| {
             node.children.iter().position(|child| {
@@ -163,11 +195,53 @@ fn scroll_request(
                     == Some(target)
             })
         });
-    match index {
+    let pending = guard
+        .pending_scrolls
+        .get(&node_id)
+        .map(|p| (p.token, p.index, p.applied));
+    if let Some((pending_token, index, applied)) = pending {
+        if token == Some(pending_token) {
+            if applied {
+                // The requested offset was applied during an earlier
+                // frame — report completion now that it has settled.
+                guard.pending_scrolls.remove(&node_id);
+                completed.push((pending_token, "succeeded"));
+            } else if perform_scroll(guard, node_id, index) {
+                if let Some(pending) = guard.pending_scrolls.get_mut(&node_id) {
+                    pending.applied = true;
+                }
+            }
+        } else {
+            // A newer token (or a removed `scroll-token` prop) arrived
+            // before the in-flight scroll reported.
+            guard.pending_scrolls.remove(&node_id);
+            let outcome = if token.is_some() {
+                "superseded"
+            } else {
+                "cancelled"
+            };
+            completed.push((pending_token, outcome));
+        }
+    }
+    let Some(token) = token else {
+        return;
+    };
+    if guard.handled_scroll_tokens.get(&node_id) == Some(&token) {
+        return;
+    }
+    guard.handled_scroll_tokens.insert(node_id, token);
+    match target_index {
         None => completed.push((token, "missing-target")),
         Some(index) => {
-            perform_scroll(guard, node_id, index);
-            guard.pending_scrolls.insert(node_id, token);
+            let applied = perform_scroll(guard, node_id, index);
+            guard.pending_scrolls.insert(
+                node_id,
+                PendingScroll {
+                    token,
+                    index,
+                    applied,
+                },
+            );
         }
     }
 }
@@ -175,9 +249,9 @@ fn scroll_request(
 /// Drive the node's scroll state toward `index`, honoring `scroll-anchor`
 /// ("top" | "center" | "bottom"; unset → reveal, the web's
 /// `scrollIntoView({block: "nearest"})` behavior).
-fn perform_scroll(guard: &mut crate::backend::LuiShared, node_id: i64, index: usize) {
+fn perform_scroll(guard: &mut crate::backend::LuiShared, node_id: i64, index: usize) -> bool {
     let Some(node) = guard.store.node(node_id) else {
-        return;
+        return false;
     };
     let anchor = node.string_prop(Property::ScrollAnchor).unwrap_or("");
     if node.identity.kind() == Some(NodeKind::VirtualList) {
@@ -210,34 +284,44 @@ fn perform_scroll(guard: &mut crate::backend::LuiShared, node_id: i64, index: us
                 _ => list.state.scroll_to_reveal_item(index),
             }
         }
-        return;
+        return true;
     }
     // `list-container` scrolls a plain div whose ScrollHandle is tracked
-    // at render time; gpui's ScrollHandle only offers top/first-visible
-    // placement, so center and bottom anchors are resolved against
-    // recorded child bounds.
+    // at render time. Every branch requires the element to have laid the
+    // target child out (gpui clamps a scroll request issued before the
+    // children exist — a mount-time request would land at the bottom),
+    // so defer until `children_count`/`bounds_for_item` cover `index`.
     let Some(scroll) = guard.scroll_handles.get(&node_id).cloned() else {
-        return;
+        return false;
     };
+    if scroll.children_count() <= index {
+        return false;
+    }
     match anchor {
         "center" | "bottom" => {
-            let child = node.children.get(index).copied();
-            let viewport = guard.node_bounds.get(&node_id).copied();
-            let child_bounds = child.and_then(|id| guard.node_bounds.get(&id).copied());
-            if let (Some(viewport), Some(child_bounds)) = (viewport, child_bounds) {
-                let offset = scroll.offset();
-                let target = if anchor == "center" {
-                    viewport.center().y - child_bounds.center().y
-                } else {
-                    viewport.bottom() - child_bounds.bottom()
-                };
-                scroll.set_offset(gpui_kit::gpui::point(offset.x, target));
+            let Some(child_bounds) = scroll.bounds_for_item(index) else {
+                return false;
+            };
+            let viewport = scroll.bounds();
+            // Recorded bounds move with the scroll offset, so anchor
+            // deltas are relative to the current offset — not absolute
+            // positions inside the content.
+            let offset = scroll.offset();
+            let delta: Pixels = if anchor == "center" {
+                child_bounds.center().y - viewport.center().y
             } else {
-                // Bounds not painted yet — fall back to reveal.
-                scroll.scroll_to_item(index);
-            }
+                child_bounds.bottom() - viewport.bottom()
+            };
+            scroll.set_offset(point(offset.x, offset.y - delta));
+            true
         }
-        "top" => scroll.scroll_to_top_of_item(index),
-        _ => scroll.scroll_to_item(index),
+        "top" => {
+            scroll.scroll_to_top_of_item(index);
+            true
+        }
+        _ => {
+            scroll.scroll_to_item(index);
+            true
+        }
     }
 }

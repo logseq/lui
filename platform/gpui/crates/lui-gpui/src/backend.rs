@@ -121,9 +121,16 @@ pub struct LuiShared {
     /// `scroll-token` values already consumed per list node — a repeated
     /// token (e.g. a re-render echo) is not a new scroll request.
     pub handled_scroll_tokens: HashMap<i64, i64>,
-    /// `scroll-token` whose scroll was requested last frame and still owes
-    /// a `scroll_completed` outcome.
-    pub pending_scrolls: HashMap<i64, i64>,
+    /// `scroll-token` whose scroll was requested but not yet reported —
+    /// waits for the target's bounds, then for one settled frame.
+    pub pending_scrolls: HashMap<i64, crate::scroll::PendingScroll>,
+    /// Last recorded scroll offset per scrollable container — gpui clamps
+    /// offsets to a transiently-empty content size, so `scroll.rs` restores
+    /// the last real offset once the content overflows again.
+    pub scroll_offsets: HashMap<i64, gpui_kit::gpui::Pixels>,
+    /// When each scrollable container last saw a wheel event — tells a
+    /// genuine scroll-to-top apart from a clamp-to-zero reset.
+    pub scroll_wheel_marks: HashMap<i64, std::time::Instant>,
     /// Last `visible_range` span reported per `track-visible-range` node.
     pub visible_ranges: HashMap<i64, (i64, i64)>,
     /// The ScrollHandle each scrollable container tracks, registered at
@@ -188,6 +195,8 @@ impl LuiShared {
             hit_disabled: HashMap::new(),
             handled_scroll_tokens: HashMap::new(),
             pending_scrolls: HashMap::new(),
+            scroll_offsets: HashMap::new(),
+            scroll_wheel_marks: HashMap::new(),
             visible_ranges: HashMap::new(),
             scroll_handles: HashMap::new(),
             loaded_images: std::collections::HashSet::new(),
@@ -269,6 +278,8 @@ impl LuiShared {
         self.hit_disabled.clear();
         self.handled_scroll_tokens.clear();
         self.pending_scrolls.clear();
+        self.scroll_offsets.clear();
+        self.scroll_wheel_marks.clear();
         self.visible_ranges.clear();
         self.scroll_handles.clear();
         self.loaded_images.clear();
@@ -725,6 +736,8 @@ fn notify_applied(shared: &Shared, batch: &Batch, applied: &Applied, cx: &mut Ap
         }
         shared_ref.viewport_watched.remove(id);
         shared_ref.handled_scroll_tokens.remove(id);
+        shared_ref.scroll_offsets.remove(id);
+        shared_ref.scroll_wheel_marks.remove(id);
         shared_ref.visible_ranges.remove(id);
         shared_ref.scroll_handles.remove(id);
         shared_ref.loaded_images.remove(id);
@@ -740,8 +753,8 @@ fn notify_applied(shared: &Shared, batch: &Batch, applied: &Applied, cx: &mut Ap
         }
         shared_ref.imperative_roots.retain(|root| root != id);
         shared_ref.imperative_rect_reported.remove(id);
-        if let Some(token) = shared_ref.pending_scrolls.remove(id) {
-            cancelled_scrolls.push((*id, token));
+        if let Some(pending) = shared_ref.pending_scrolls.remove(id) {
+            cancelled_scrolls.push((*id, pending.token));
         }
         // A dropped overlay node must not linger in the Escape-dismiss
         // stack — it would keep shadowing the layers below it.

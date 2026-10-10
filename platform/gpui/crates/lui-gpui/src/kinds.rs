@@ -3233,11 +3233,21 @@ pub fn render_node(
                 .borrow_mut()
                 .scroll_handles
                 .insert(node.id, view.states.scroll.clone());
+            // Stamp wheel events so `scroll.rs` can tell a genuine
+            // scroll-to-top from gpui's transient clamp-to-zero.
+            let wheel_shared = view.shared.clone();
+            let wheel_node = node.id;
             let mut element = v_flex()
                 .size_full()
                 .id(element_id(node.id))
                 .overflow_y_scroll()
-                .track_scroll(&view.states.scroll);
+                .track_scroll(&view.states.scroll)
+                .on_scroll_wheel(move |_, _, _| {
+                    wheel_shared
+                        .borrow_mut()
+                        .scroll_wheel_marks
+                        .insert(wheel_node, std::time::Instant::now());
+                });
             element = style::all(element, node, cx.theme());
             element
                 .children(view.child_elements(node, cx))
@@ -3800,7 +3810,7 @@ pub fn render_node(
                 Some(source) => {
                     let mut element = div()
                         .id(element_id(node.id))
-                        .child(gpui_kit::gpui::img(source.to_string()));
+                        .child(gpui_kit::gpui::img(source.to_string()).size_full());
                     element = style::all(element, node, cx.theme());
                     element.into_any_element()
                 }

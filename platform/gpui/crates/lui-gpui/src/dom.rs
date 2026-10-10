@@ -631,6 +631,10 @@ fn with_dom_events<E: StatefulInteractiveElement>(
     };
     let identifier = identifier_of(node);
     let mut element = element;
+    // `on_hover` may only be registered once per element, so all
+    // hover-mapped names collect first and a single listener emits them.
+    let mut hover_in: Vec<String> = Vec::new();
+    let mut hover_out: Vec<String> = Vec::new();
     for name in events.split_whitespace() {
         match name {
             "click" => {
@@ -665,42 +669,10 @@ fn with_dom_events<E: StatefulInteractiveElement>(
                 });
             }
             "mouseover" | "mouseenter" | "pointerover" | "pointerenter" => {
-                let shared = shared.clone();
-                let identifier = identifier.clone();
-                let node_id = node.id;
-                let event_name = name.to_string();
-                element = element.on_hover(move |hovered, _, cx| {
-                    if *hovered {
-                        dom_event_via(
-                            &shared,
-                            node_id,
-                            &identifier,
-                            node_id,
-                            &event_name,
-                            serde_json::json!({}),
-                            cx,
-                        );
-                    }
-                });
+                hover_in.push(name.to_string());
             }
             "mouseout" | "mouseleave" | "pointerout" | "pointerleave" => {
-                let shared = shared.clone();
-                let identifier = identifier.clone();
-                let node_id = node.id;
-                let event_name = name.to_string();
-                element = element.on_hover(move |hovered, _, cx| {
-                    if !*hovered {
-                        dom_event_via(
-                            &shared,
-                            node_id,
-                            &identifier,
-                            node_id,
-                            &event_name,
-                            serde_json::json!({}),
-                            cx,
-                        );
-                    }
-                });
+                hover_out.push(name.to_string());
             }
             "wheel" => {
                 let shared = shared.clone();
@@ -732,6 +704,25 @@ fn with_dom_events<E: StatefulInteractiveElement>(
             // generic div path.
             _ => {}
         }
+    }
+    if !hover_in.is_empty() || !hover_out.is_empty() {
+        let identifier = identifier.clone();
+        let node_id = node.id;
+        let shared = shared.clone();
+        element = element.on_hover(move |hovered, _, cx| {
+            let names = if *hovered { &hover_in } else { &hover_out };
+            for name in names {
+                dom_event_via(
+                    &shared,
+                    node_id,
+                    &identifier,
+                    node_id,
+                    name,
+                    serde_json::json!({}),
+                    cx,
+                );
+            }
+        });
     }
     element
 }
