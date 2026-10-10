@@ -794,9 +794,9 @@ static DBusMessage *event_signal(conn_t *c, value vpath, value viface,
   return sig;
 }
 
-CAMLprim value lui_ax_emit_num(value *argv, int argc)
+static value emit_num_impl(value *argv)
 {
-  CAMLparamN(argv, argc);
+  CAMLparamN(argv, 8);
   conn_t *c = conn_of(argv[0]);
   send_sig(c, event_signal(c, argv[1], argv[2], argv[3], argv[4],
                            argv[5], argv[6], 0, argv[7]));
@@ -804,14 +804,24 @@ CAMLprim value lui_ax_emit_num(value *argv, int argc)
   CAMLreturn(Val_unit);
 }
 
-CAMLprim value lui_ax_emit_num_bc(value *argv, int argc)
+/* >5-arg externals: the native entry takes individual arguments, the
+   bytecode entry takes (argv, argc) — they must not share one name. */
+CAMLprim value lui_ax_emit_num(value a, value b, value c, value d,
+                               value e, value f, value g, value h)
 {
-  return lui_ax_emit_num(argv, argc);
+  value argv[8] = { a, b, c, d, e, f, g, h };
+  return emit_num_impl(argv);
 }
 
-CAMLprim value lui_ax_emit_str(value *argv, int argc)
+CAMLprim value lui_ax_emit_num_bc(value *argv, int argc)
 {
-  CAMLparamN(argv, argc);
+  (void)argc;
+  return emit_num_impl(argv);
+}
+
+static value emit_str_impl(value *argv)
+{
+  CAMLparamN(argv, 8);
   conn_t *c = conn_of(argv[0]);
   send_sig(c, event_signal(c, argv[1], argv[2], argv[3], argv[4],
                            argv[5], argv[6], 1, argv[7]));
@@ -819,14 +829,22 @@ CAMLprim value lui_ax_emit_str(value *argv, int argc)
   CAMLreturn(Val_unit);
 }
 
-CAMLprim value lui_ax_emit_str_bc(value *argv, int argc)
+CAMLprim value lui_ax_emit_str(value a, value b, value c, value d,
+                               value e, value f, value g, value h)
 {
-  return lui_ax_emit_str(argv, argc);
+  value argv[8] = { a, b, c, d, e, f, g, h };
+  return emit_str_impl(argv);
 }
 
-CAMLprim value lui_ax_emit_ref(value *argv, int argc)
+CAMLprim value lui_ax_emit_str_bc(value *argv, int argc)
 {
-  CAMLparamN(argv, argc);
+  (void)argc;
+  return emit_str_impl(argv);
+}
+
+static value emit_ref_impl(value *argv)
+{
+  CAMLparamN(argv, 8);
   conn_t *c = conn_of(argv[0]);
   send_sig(c, event_signal(c, argv[1], argv[2], argv[3], argv[4],
                            argv[5], argv[6], 2, argv[7]));
@@ -834,9 +852,17 @@ CAMLprim value lui_ax_emit_ref(value *argv, int argc)
   CAMLreturn(Val_unit);
 }
 
+CAMLprim value lui_ax_emit_ref(value a, value b, value c, value d,
+                               value e, value f, value g, value h)
+{
+  value argv[8] = { a, b, c, d, e, f, g, h };
+  return emit_ref_impl(argv);
+}
+
 CAMLprim value lui_ax_emit_ref_bc(value *argv, int argc)
 {
-  return lui_ax_emit_ref(argv, argc);
+  (void)argc;
+  return emit_ref_impl(argv);
 }
 
 CAMLprim value lui_ax_emit_sig(value vc, value vpath, value viface,
@@ -855,9 +881,9 @@ CAMLprim value lui_ax_emit_sig(value vc, value vpath, value viface,
    ((so)(so)(so)iiassusau) — object ref, application ref, parent ref,
    index, child count, interfaces, name, role, description, states. */
 
-CAMLprim value lui_ax_emit_cache_add(value *argv, int argc)
+static value emit_cache_add_impl(value *argv)
 {
-  CAMLparamN(argv, argc);
+  CAMLparamN(argv, 10);
   conn_t *c = conn_of(argv[0]);
   const char *self = p_dbus_bus_get_unique_name(c->conn);
   const char *path = String_val(argv[1]);
@@ -931,9 +957,18 @@ CAMLprim value lui_ax_emit_cache_add(value *argv, int argc)
   CAMLreturn(Val_unit);
 }
 
+CAMLprim value lui_ax_emit_cache_add(value a, value b, value c, value d,
+                                     value e, value f, value g, value h,
+                                     value i, value j)
+{
+  value argv[10] = { a, b, c, d, e, f, g, h, i, j };
+  return emit_cache_add_impl(argv);
+}
+
 CAMLprim value lui_ax_emit_cache_add_bc(value *argv, int argc)
 {
-  return lui_ax_emit_cache_add(argv, argc);
+  (void)argc;
+  return emit_cache_add_impl(argv);
 }
 
 CAMLprim value lui_ax_emit_cache_remove(value vc, value vpath)

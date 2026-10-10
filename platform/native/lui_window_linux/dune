@@ -21,8 +21,7 @@
   ocaml-signal
   unix)
  (preprocess (pps lui_ppx))
- (wrapped false)
- (enabled_if (= %{system} linux)))
+ (wrapped false))
 
 (executable
  (name main)
@@ -46,5 +45,7 @@
   lui_vulkan
   tsdl
   ocaml-signal
-  unix)
- (enabled_if (= %{system} linux)))
+  unix))
+
+;; The host lib/executable compile everywhere (all linux deps are
+;; failwith-stubbed off-platform); only the test stays linux-gated.
