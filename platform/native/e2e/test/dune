@@ -1,0 +1,4 @@
+(test
+ (name e2e_test)
+ (modules e2e_test)
+ (libraries lui_e2e lui lui_store lui_scene lui_paint lui_host alcotest))
