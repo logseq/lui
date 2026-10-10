@@ -125,6 +125,13 @@ let () =
   in
   let headless = Option.is_some cfg.headless_frames in
   if headless then Unix.putenv "SDL_VIDEODRIVER" "dummy";
+  (* LUI_GPU=0|cpu forces the CPU path: no GL context, raster +
+     software-texture present. Anything else prefers GL and falls
+     back to a no-op loop renderer when no context exists. *)
+  let use_cpu =
+    let env = try Sys.getenv "LUI_GPU" with Not_found -> "" in
+    env = "0" || env = "cpu"
+  in
   sdl_ok (Sdl.init Sdl.Init.(video + events));
   (* GL context requirements from lui_gl.mli: OpenGL 3.3 core,
      double-buffered. Attributes are hints — SDL may refuse or
@@ -136,10 +143,11 @@ let () =
     (Sdl.gl_set_attribute Sdl.Gl.context_profile_mask
        Sdl.Gl.context_profile_core);
   sdl_ok (Sdl.gl_set_attribute Sdl.Gl.doublebuffer 1);
-  (* The dummy video driver refuses an OpenGL window entirely. *)
+  (* The dummy video driver refuses an OpenGL window entirely, and
+     the CPU path does not need one either. *)
   let flags =
     let base = Sdl.Window.(resizable + allow_highdpi + shown) in
-    if headless then base else Sdl.Window.(base + opengl)
+    if headless || use_cpu then base else Sdl.Window.(base + opengl)
   in
   let win =
     sdl_ok (Sdl.create_window "lui_window" ~w:cfg.width ~h:cfg.height flags)
@@ -147,7 +155,8 @@ let () =
   (* The dummy driver cannot create a GL context at all; a real
      window without one is useless, so only headless continues. *)
   let gctx =
-    match Sdl.gl_create_context win with
+    if use_cpu then None
+    else match Sdl.gl_create_context win with
     | Ok c ->
       sdl_ok (Sdl.gl_make_current win c);
       Some c
@@ -174,8 +183,44 @@ let () =
   in
   let dw, dh = drawable () in
   let scale = Float.max 0.01 (float dw /. float cfg.width) in
-  let renderer, gl_live =
-    match gctx with
+  let renderer, gl_live, blit =
+    if use_cpu then begin
+      (* CPU path: Lui_raster renders the scene; Lui_blit uploads the
+         damaged rects (or the whole frame) to the window texture. *)
+      match Lui_blit.create win ~w:dw ~h:dh with
+      | Error m ->
+        warn "lui_blit.create failed: %s" m;
+        ( { Lui_host.name = "noop";
+            render =
+              (fun s ->
+                 Bytes.create
+                   (s.Lui_scene.width * s.Lui_scene.height * 4)) },
+          false, None )
+      | Ok b ->
+        let rr = Lui_raster.Renderer.create () in
+        ( { Lui_host.name = "lui_raster+blit";
+            render =
+              (fun s ->
+                 let dirty = Lui_raster.Renderer.render rr s in
+                 let img = Lui_raster.Renderer.image rr in
+                 let stride = img.Lui_raster.Image.stride / 4 in
+                 if Lui_raster.Renderer.whole rr || dirty = [] then
+                   ignore
+                     (Lui_blit.update b ~pix:img.Lui_raster.Image.pix
+                        ~stride)
+                 else
+                   List.iter
+                     (fun (r : Lui_scene.irect) ->
+                        ignore
+                          (Lui_blit.update_region b ~x0:r.x0 ~y0:r.y0
+                             ~x1:r.x1 ~y1:r.y1
+                             ~pix:img.Lui_raster.Image.pix ~stride))
+                     dirty;
+                 Lui_blit.present b;
+                 img.Lui_raster.Image.pix) },
+          false, Some b )
+    end
+    else match gctx with
     | None ->
       warn "no GL context; using no-op loop renderer";
       ( { Lui_host.name = "noop";
@@ -183,7 +228,7 @@ let () =
             (fun s ->
                Bytes.create
                  (s.Lui_scene.width * s.Lui_scene.height * 4)) },
-        false )
+        false, None )
     | Some _ ->
     match Lui_gl.init () with
     | Ok gl ->
@@ -198,7 +243,7 @@ let () =
             (fun s ->
                Lui_gl.render gl s;
                Bytes.empty) },
-        true )
+        true, None )
     | Error msg ->
       warn "lui_gl.init failed: %s" msg;
       warn "falling back to no-op loop renderer";
@@ -207,7 +252,7 @@ let () =
             (fun s ->
                Bytes.create
                  (s.Lui_scene.width * s.Lui_scene.height * 4)) },
-        false )
+        false, None )
   in
   (* Wiring: mutable cells so the paint hooks can reach the host,
      scene and scale that only exist after Lui_host.create. *)
@@ -364,6 +409,14 @@ let () =
          warn "dispatch rejected event: %s" msg)
     | Resize_host _ ->
       let dw, dh = drawable () in
+      (match blit with
+       | Some b ->
+         if
+           (match Lui_blit.resize b ~w:dw ~h:dh with
+            | Ok () -> false
+            | Error m -> warn "blit resize: %s" m; true)
+         then ();
+       | None -> ());
       scale_cell := float dw /. float (max 1 !win_w);
       Ui.set_scale ui !scale_cell;
       Lui_host.resize host ~width:dw ~height:dh ~scale:!scale_cell;
