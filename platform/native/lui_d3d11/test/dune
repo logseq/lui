@@ -1,0 +1,6 @@
+(test
+ (name lui_d3d11_test)
+ (modules lui_d3d11_test)
+ (enabled_if
+  (= %{system} mingw64))
+ (libraries lui_d3d11 lui_raster lui_scene lui_gpu lui_raster_testkit))
