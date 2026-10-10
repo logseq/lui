@@ -86,6 +86,10 @@ pub(crate) fn render(view: &mut LuiNodeView, node: &NodeSnapshot, cx: &mut App) 
             if let std::collections::hash_map::Entry::Vacant(entry) = data.row_focus.entry(id) {
                 let focus = cx.focus_handle();
                 entry.insert(focus.clone());
+                // Rows are DOM-focusable targets too — register them so the
+                // `focus` dom-op and `document.activeElement` parity reach
+                // virtual rows, not only input/textarea surfaces.
+                guard.register_focus(id, focus.clone());
                 Some(focus)
             } else {
                 None

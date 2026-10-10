@@ -4,11 +4,13 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gpui_kit::gpui::{App, AppContext, Bounds, Entity, EntityId, FocusHandle, Pixels, Point, Window};
+use gpui_kit::gpui::{
+    App, AppContext, Bounds, Entity, EntityId, FocusHandle, Pixels, Point, ScrollHandle, Window,
+};
 use lui_core::bridge;
 use lui_core::extension::{ExtensionRegistry, ExtensionSpec};
 use lui_core::store::{Applied, BackendError, Store};
-use lui_core::wire::{decode_batch, Batch, DecodeError, Op};
+use lui_core::wire::{decode_batch, decode_batch_value, Batch, DecodeError, Op};
 use lui_core::EventKind;
 
 use crate::extension::ExtensionRenderer;
@@ -111,6 +113,25 @@ pub struct LuiShared {
     /// `imperative-rects` feed (node id -> l/t/r/b) — the feed diffs
     /// painted bounds against this map so unchanged frames stay quiet.
     pub imperative_rect_reported: HashMap<i64, (f32, f32, f32, f32)>,
+    /// Effective `pointer-events` decision per painted node, resolved at
+    /// prepaint (own explicit/implicit setting else the parent's effective
+    /// value) — hit testing reads this map instead of walking ancestors
+    /// and re-parsing `attrs`/`style-class` on every pointer event.
+    pub hit_disabled: HashMap<i64, bool>,
+    /// `scroll-token` values already consumed per list node — a repeated
+    /// token (e.g. a re-render echo) is not a new scroll request.
+    pub handled_scroll_tokens: HashMap<i64, i64>,
+    /// `scroll-token` whose scroll was requested last frame and still owes
+    /// a `scroll_completed` outcome.
+    pub pending_scrolls: HashMap<i64, i64>,
+    /// Last `visible_range` span reported per `track-visible-range` node.
+    pub visible_ranges: HashMap<i64, (i64, i64)>,
+    /// The ScrollHandle each scrollable container tracks, registered at
+    /// render so scroll-request handling can drive it without touching
+    /// the view entity.
+    pub scroll_handles: HashMap<i64, ScrollHandle>,
+    /// `image` nodes that already fired `load`.
+    pub loaded_images: std::collections::HashSet<i64>,
 }
 
 /// How a host-side Escape closes one open overlay — pushed onto
@@ -164,6 +185,12 @@ impl LuiShared {
             node_bounds: HashMap::new(),
             text_layouts: HashMap::new(),
             virtual_lists: HashMap::new(),
+            hit_disabled: HashMap::new(),
+            handled_scroll_tokens: HashMap::new(),
+            pending_scrolls: HashMap::new(),
+            visible_ranges: HashMap::new(),
+            scroll_handles: HashMap::new(),
+            loaded_images: std::collections::HashSet::new(),
             painting_lists: Vec::new(),
             viewport_watched: HashMap::new(),
             last_click_emit: None,
@@ -225,6 +252,40 @@ impl LuiShared {
             .iter()
             .find(|(_, h)| h.is_focused(window))
             .map(|(id, _)| *id)
+    }
+
+    /// Drop the store mirror and every derived/render-side table — used
+    /// before replaying a resync snapshot so no stale entity, overlay,
+    /// focus, scroll, or hit-test state outlives the rebuilt tree.
+    pub(crate) fn reset_render_state(&mut self) {
+        self.store.reset();
+        self.closing_nodes.clear();
+        self.closing_roots.clear();
+        self.views.clear();
+        self.node_bounds.clear();
+        self.text_layouts.clear();
+        self.virtual_lists.clear();
+        self.painting_lists.clear();
+        self.hit_disabled.clear();
+        self.handled_scroll_tokens.clear();
+        self.pending_scrolls.clear();
+        self.visible_ranges.clear();
+        self.scroll_handles.clear();
+        self.loaded_images.clear();
+        self.viewport_watched.clear();
+        self.last_click_emit = None;
+        self.focus_nodes.clear();
+        self.overlay_stack.clear();
+        self.toasts.clear();
+        self.toast_heights.clear();
+        self.toast_bounds.clear();
+        self.toast_drag = None;
+        self.toast_paused.clear();
+        self.toast_remaining_ms.clear();
+        self.toast_timers.clear();
+        self.menu_highlight = None;
+        self.imperative_roots.clear();
+        self.imperative_rect_reported.clear();
     }
 
     /// Push `id` onto the open-overlay stack. An already-present entry
@@ -503,17 +564,24 @@ pub fn apply_batch_json(shared: &Shared, json: &str, cx: &mut App) -> Result<App
         }
     }
     let batch = decode_batch(json).map_err(ApplyError::Decode)?;
-    let closing = capture_closing_popups(shared, &batch);
+    apply_batch(shared, &batch, cx)
+}
+
+/// Apply one already-decoded batch: commit to the store, drop released
+/// views, then notify changed entities without acquiring update leases.
+/// Content-sized ancestors still participate in layout.
+pub fn apply_batch(shared: &Shared, batch: &Batch, cx: &mut App) -> Result<Applied, ApplyError> {
+    let closing = capture_closing_popups(shared, batch);
     let applied = {
         let mut shared_ref = shared.borrow_mut();
         shared_ref
             .store
-            .apply(&batch)
+            .apply(batch)
             .map_err(ApplyError::Backend)?
     };
 
     retain_closing_popups(shared, closing, &applied, cx);
-    notify_applied(shared, &batch, &applied, cx);
+    notify_applied(shared, batch, &applied, cx);
     Ok(applied)
 }
 
@@ -641,6 +709,7 @@ fn retain_closing_popups(
 fn notify_applied(shared: &Shared, batch: &Batch, applied: &Applied, cx: &mut App) {
     // Release entities for dropped subtrees first: a fresh node id reuse is
     // impossible (ids are monotonic), so removal order is safe.
+    let mut cancelled_scrolls = Vec::new();
     for id in &applied.dropped {
         let mut shared_ref = shared.borrow_mut();
         let closing = shared_ref.closing_nodes.contains_key(id);
@@ -651,8 +720,14 @@ fn notify_applied(shared: &Shared, batch: &Batch, applied: &Applied, cx: &mut Ap
             shared_ref.toast_heights.remove(id);
             shared_ref.toast_bounds.remove(id);
             shared_ref.virtual_lists.remove(id);
+            shared_ref.hit_disabled.remove(id);
+            shared_ref.focus_nodes.retain(|(focus_id, _)| focus_id != id);
         }
         shared_ref.viewport_watched.remove(id);
+        shared_ref.handled_scroll_tokens.remove(id);
+        shared_ref.visible_ranges.remove(id);
+        shared_ref.scroll_handles.remove(id);
+        shared_ref.loaded_images.remove(id);
         shared_ref.toasts.retain(|toast_id| *toast_id != *id);
         shared_ref.toast_paused.remove(id);
         shared_ref.toast_remaining_ms.remove(id);
@@ -665,6 +740,20 @@ fn notify_applied(shared: &Shared, batch: &Batch, applied: &Applied, cx: &mut Ap
         }
         shared_ref.imperative_roots.retain(|root| root != id);
         shared_ref.imperative_rect_reported.remove(id);
+        if let Some(token) = shared_ref.pending_scrolls.remove(id) {
+            cancelled_scrolls.push((*id, token));
+        }
+        // A dropped overlay node must not linger in the Escape-dismiss
+        // stack — it would keep shadowing the layers below it.
+        shared_ref
+            .overlay_stack
+            .retain(|(overlay_id, _)| overlay_id != id);
+        drop(shared_ref);
+    }
+    // Dropped nodes never report their in-flight scroll — cancel so the
+    // runtime isn't left waiting on a token that can never complete.
+    for (id, token) in cancelled_scrolls {
+        crate::scroll::scroll_completed(id, token, "cancelled", cx);
     }
 
     {
@@ -780,9 +869,7 @@ fn note_rejected_batch(shared: &Shared, message: String, cx: &mut App) {
     }
     {
         let mut guard = shared.borrow_mut();
-        guard.store.reset();
-        guard.views.clear();
-        guard.text_layouts.clear();
+        guard.reset_render_state();
     }
     for json in patches {
         if let Err(error) = apply_batch_json(shared, &json, cx) {
@@ -798,9 +885,15 @@ pub fn apply_stream_json(shared: &Shared, json: &str, cx: &mut App) {
     match parsed {
         Ok(serde_json::Value::Array(batches)) => {
             for batch in batches {
-                let batch = batch.to_string();
-                if let Err(error) = apply_batch_json(shared, &batch, cx) {
+                let result = decode_batch_value(&batch)
+                    .map_err(ApplyError::Decode)
+                    .and_then(|batch| apply_batch(shared, &batch, cx));
+                if let Err(error) = result {
                     note_rejected_batch(shared, error.to_string(), cx);
+                    // Everything left in the stream was generated against
+                    // the pre-resync tree — replaying it can only produce
+                    // more generation rejections.
+                    break;
                 }
             }
         }

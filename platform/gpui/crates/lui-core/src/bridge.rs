@@ -70,6 +70,19 @@ extern "C" {
     ) -> c_int;
     pub fn lui_ocaml_pointer_enter(node: i64) -> c_int;
     pub fn lui_ocaml_pointer_leave(node: i64) -> c_int;
+    /// `load` — fires once an `image` node's resource has loaded.
+    pub fn lui_ocaml_load(node: i64) -> c_int;
+    /// `visible_range` — `track-visible-range` list reports the first and
+    /// last painted child index whenever the visible span changes.
+    pub fn lui_ocaml_visible_range(node: i64, first: i64, last: i64) -> c_int;
+    /// `scroll_completed` — report one handled `scroll-token` with the
+    /// outcome string ("succeeded" / "superseded" / "missing-target" /
+    /// "cancelled").
+    pub fn lui_ocaml_scroll_completed(
+        node: i64,
+        token: i64,
+        outcome: *const c_char,
+    ) -> c_int;
     pub fn lui_ocaml_extension_event(
         node: i64,
         identifier: *const c_char,

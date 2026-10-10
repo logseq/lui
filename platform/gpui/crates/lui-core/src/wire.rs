@@ -218,6 +218,12 @@ fn decode_op(json: &Json) -> Result<Op, DecodeError> {
 pub fn decode_batch(json: &str) -> Result<Batch, DecodeError> {
     let parsed: Json =
         serde_json::from_str(json).map_err(|error| DecodeError(error.to_string()))?;
+    decode_batch_value(&parsed)
+}
+
+/// Decode an already-parsed batch — the stream form `[batch, batch, …]`
+/// hands each element through without a re-serialization round-trip.
+pub fn decode_batch_value(parsed: &Json) -> Result<Batch, DecodeError> {
     let object = parsed
         .as_object()
         .ok_or_else(|| DecodeError("patch batch is not an object".into()))?;

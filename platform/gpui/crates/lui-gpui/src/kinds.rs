@@ -3228,6 +3228,11 @@ pub fn render_node(
         NodeKind::ListContainer => {
             // Ordinary collections retain their complete child layout.
             view.states.scroll_tracked = true;
+            view
+                .shared
+                .borrow_mut()
+                .scroll_handles
+                .insert(node.id, view.states.scroll.clone());
             let mut element = v_flex()
                 .size_full()
                 .id(element_id(node.id))
@@ -3784,9 +3789,25 @@ pub fn render_node(
             }
             None => extension::placeholder_box(view, node, "file-image", cx),
         },
-        // `image`/`media_surface`/`file_preview` reference host-owned
-        // registries (image ids, surface ids) — no bytes reach the wire.
-        NodeKind::Image | NodeKind::MediaSurface | NodeKind::FilePreview => {
+        // `image` resolves a `url` or `path` source directly; `image` ids,
+        // `media_surface` and `file_preview` reference host-owned
+        // registries — no bytes reach the wire for those.
+        NodeKind::Image => {
+            match node
+                .string_prop(Property::UrlValue)
+                .or_else(|| node.string_prop(Property::PathValue))
+            {
+                Some(source) => {
+                    let mut element = div()
+                        .id(element_id(node.id))
+                        .child(gpui_kit::gpui::img(source.to_string()));
+                    element = style::all(element, node, cx.theme());
+                    element.into_any_element()
+                }
+                None => extension::placeholder_box(view, node, kind.wire_name(), cx),
+            }
+        }
+        NodeKind::MediaSurface | NodeKind::FilePreview => {
             extension::placeholder_box(view, node, kind.wire_name(), cx)
         }
         // Line break: a full-width zero-height item ends the current line

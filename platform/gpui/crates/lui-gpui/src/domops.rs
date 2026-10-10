@@ -4,7 +4,7 @@
 //! Ops that produce replies return `(name, json)` pairs the host feeds to
 //! `lui_ocaml_extension_event` (a `dom-event` whose JSON carries the reply).
 
-use gpui_kit::gpui::{px, App, Bounds, Focusable, Pixels, Window};
+use gpui_kit::gpui::{px, App, Bounds, Pixels, Window};
 use lui_core::store::NodeIdentity;
 use lui_core::Property;
 use serde_json::{json, Value};
@@ -495,30 +495,34 @@ fn scroll_to_item(shared: &Shared, node_id: i64, ix: usize, cx: &mut App) {
 }
 
 fn focus_node(shared: &Shared, node_id: i64, window: &mut Window, cx: &mut App) {
-    // Same scrutinee-borrow hazard: `view.update` can emit events that
-    // drain patches (a nested `borrow_mut`), so copy the entity out first.
-    let view = shared.borrow().views.get(&node_id).cloned();
-    let Some(view) = view else {
-        return;
-    };
-    view.update(cx, |view, cx| {
-        // Focusable component states own FocusHandles; generic nodes
-        // have no focusable element until the editor surface lands.
-        let handle = if let Some(input) = &view.states.input {
-            Some(input.read(cx).focus_handle(cx))
-        } else {
-            view.states
-                .textarea
-                .as_ref()
-                .map(|textarea| textarea.read(cx).focus_handle(cx))
-        };
-        match handle {
-            Some(handle) => handle.focus(window, cx),
-            None => {
-                eprintln!("lui-gpui: focus on node {node_id}: no focusable state")
+    // Every focusable surface registers its FocusHandle in `focus_nodes`
+    // at render — inputs/textareas (kinds.rs) and virtual-list rows
+    // (virtual_list.rs) alike — so the op reaches any focusable node, not
+    // just the two component states that used to be special-cased here.
+    let handle = {
+        let mut guard = shared.borrow_mut();
+        let alive = guard.store.node(node_id).is_some();
+        let index = guard
+            .focus_nodes
+            .iter()
+            .position(|(id, _)| *id == node_id);
+        match index {
+            // A stale registration outlives its node (e.g. an input was
+            // removed without dropping the view) — prune it on lookup.
+            Some(index) if alive => Some(guard.focus_nodes[index].1.clone()),
+            Some(index) => {
+                guard.focus_nodes.remove(index);
+                None
             }
+            None => None,
         }
-    });
+    };
+    match handle {
+        Some(handle) => handle.focus(window, cx),
+        None => {
+            eprintln!("lui-gpui: focus on node {node_id}: no focusable state")
+        }
+    }
 }
 
 fn dump_tree(shared: &Shared) {

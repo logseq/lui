@@ -34,6 +34,14 @@ pub struct LuiRootView {
     /// a focused input consumes — the element-level `on_key_down` only
     /// sees keys in its own focus path.
     keystroke: OnceCell<Subscription>,
+    /// Document pointer state that must survive re-renders: the canvas
+    /// prepaint re-registers `on_mouse_event` listeners every frame (gpui
+    /// clears listeners after each dispatch), so dblclick detection and
+    /// the free-move throttle need cells that outlive any one listener
+    /// registration — owning them on the view keeps dblclick emitting
+    /// even when a repaint lands between the two clicks.
+    last_move: Rc<RefCell<(Option<i64>, Instant)>>,
+    last_click: Rc<RefCell<(Option<i64>, Instant)>>,
 }
 
 impl LuiRootView {
@@ -44,6 +52,11 @@ impl LuiRootView {
             focus: OnceCell::new(),
             appearance: OnceCell::new(),
             keystroke: OnceCell::new(),
+            last_move: Rc::new(RefCell::new((None, Instant::now()))),
+            last_click: Rc::new(RefCell::new((
+                None,
+                Instant::now() - std::time::Duration::from_secs(1),
+            ))),
         }
     }
 }
@@ -131,10 +144,14 @@ fn emit_dom_keydown(
         "space" => " ",
         other => other,
     };
-    crate::dom::dom_event(
+    // `keydown`'s DOM target is the focused element (or the open menu),
+    // not the carrier that delivers the event — OCaml's bubble walk keys
+    // off payload.nodeId, so point it at the real target.
+    crate::dom::dom_event_via(
         shared,
         node_id,
         &identifier,
+        found.unwrap_or(node_id),
         "keydown",
         serde_json::json!({
             "key": key,
@@ -160,10 +177,11 @@ fn emit_dom_keydown(
             .read_from_clipboard()
             .and_then(|item| item.text())
             .unwrap_or_default();
-        crate::dom::dom_event(
+        crate::dom::dom_event_via(
             shared,
             node_id,
             &identifier,
+            found.unwrap_or(node_id),
             "paste",
             serde_json::json!({ "clipboardData": { "text": text } }),
             cx,
@@ -235,6 +253,8 @@ impl Render for LuiRootView {
                 // backends get their outer scrolling from the host surface,
                 // so the window root supplies it here.
                 let mouse_shared = self.shared.clone();
+                let last_move = self.last_move.clone();
+                let last_click = self.last_click.clone();
                 self.keystroke.get_or_init(|| {
                     let keydown_shared = self.shared.clone();
                     cx.observe_keystrokes(move |_this, ev, window, cx| {
@@ -411,11 +431,8 @@ impl Render for LuiRootView {
                                 // a same-hit free move carries no new
                                 // information, so emit on hit change plus
                                 // a capped continuous feed (~25/s).
-                                let last_move =
-                                    Rc::new(RefCell::new((None::<i64>, Instant::now())));
-                                let last_click =
-                                    Rc::new(RefCell::new((None::<i64>, Instant::now()
-                                        - std::time::Duration::from_secs(1))));
+                                let last_move = last_move.clone();
+                                let last_click = last_click.clone();
                                 window.on_mouse_event(
                                     move |event: &MouseMoveEvent, phase, _window, cx| {
                                         if phase != DispatchPhase::Capture {

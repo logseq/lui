@@ -483,21 +483,18 @@ fn pointer_events_implicit(node: &lui_core::store::Node) -> Option<bool> {
     None
 }
 
-/// Whether `position` hits through `id` — `pointer-events` inherits, so
-/// the nearest ancestor's explicit setting decides.
+/// The node's own `pointer-events` decision — explicit setting first,
+/// then the structural implicit rule. `None` means inherit.
+pub(crate) fn pointer_decision(node: &lui_core::store::Node) -> Option<bool> {
+    pointer_events_explicit(node).or_else(|| pointer_events_implicit(node))
+}
+
+/// Whether `position` hits through `id`. The effective `pointer-events`
+/// decision (inheritance resolved at prepaint time) is cached per
+/// painted node, so a hit test costs a map lookup per candidate instead
+/// of an ancestor walk that re-parses `attrs`/`style-class` JSON.
 fn hit_transparent(shared: &std::cell::Ref<'_, crate::backend::LuiShared>, id: i64) -> bool {
-    let mut cursor = Some(id);
-    while let Some(current) = cursor {
-        let Some(node) = shared.store.node(current) else {
-            break;
-        };
-        if let Some(enabled) = pointer_events_explicit(node).or_else(|| pointer_events_implicit(node))
-        {
-            return !enabled;
-        }
-        cursor = node.parent;
-    }
-    false
+    shared.hit_disabled.get(&id).copied().unwrap_or(false)
 }
 
 /// Painted node under `position` — the DOM click target. Document order
@@ -667,6 +664,72 @@ fn with_dom_events<E: StatefulInteractiveElement>(
                     );
                 });
             }
+            "mouseover" | "mouseenter" | "pointerover" | "pointerenter" => {
+                let shared = shared.clone();
+                let identifier = identifier.clone();
+                let node_id = node.id;
+                let event_name = name.to_string();
+                element = element.on_hover(move |hovered, _, cx| {
+                    if *hovered {
+                        dom_event_via(
+                            &shared,
+                            node_id,
+                            &identifier,
+                            node_id,
+                            &event_name,
+                            serde_json::json!({}),
+                            cx,
+                        );
+                    }
+                });
+            }
+            "mouseout" | "mouseleave" | "pointerout" | "pointerleave" => {
+                let shared = shared.clone();
+                let identifier = identifier.clone();
+                let node_id = node.id;
+                let event_name = name.to_string();
+                element = element.on_hover(move |hovered, _, cx| {
+                    if !*hovered {
+                        dom_event_via(
+                            &shared,
+                            node_id,
+                            &identifier,
+                            node_id,
+                            &event_name,
+                            serde_json::json!({}),
+                            cx,
+                        );
+                    }
+                });
+            }
+            "wheel" => {
+                let shared = shared.clone();
+                let identifier = identifier.clone();
+                let node_id = node.id;
+                element = element.on_scroll_wheel(
+                    move |event: &gpui_kit::gpui::ScrollWheelEvent, window, cx| {
+                        let delta = event.delta.pixel_delta(window.line_height());
+                        dom_event_via(
+                            &shared,
+                            node_id,
+                            &identifier,
+                            node_id,
+                            "wheel",
+                            serde_json::json!({
+                                "deltaX": f64::from(delta.x),
+                                "deltaY": f64::from(delta.y),
+                            }),
+                            cx,
+                        );
+                    },
+                );
+            }
+            // `click` is wired above; mousedown/mouseup/mousemove/dblclick/
+            // contextmenu/keydown are emitted by the root-level document
+            // listeners. focus/blur need a focusable element (a FocusHandle
+            // per node — left out on purpose); input/change/drag/touch/
+            // scroll/select/submit have no gpui element analog on the
+            // generic div path.
             _ => {}
         }
     }
