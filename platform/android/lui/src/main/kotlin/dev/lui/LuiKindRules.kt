@@ -648,6 +648,12 @@ internal object LuiKindRules {
                 value is LuiWireValue.IntValue &&
                     kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip
+            // margins may be negative — collapsing adjacent space is legitimate
+            "margin", "margin-horizontal", "margin-vertical",
+            "margin-top", "margin-right", "margin-bottom", "margin-left" ->
+                value.intValue != null &&
+                    kind != LuiNodeKind.avatar &&
+                    kind != LuiNodeKind.tooltip
             "padding-horizontal", "padding-vertical" ->
                 value.intValue?.let { it >= 0 } == true &&
                     (kind == LuiNodeKind.row ||

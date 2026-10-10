@@ -20,7 +20,13 @@ UNIVERSAL_ARG = {
     'key': 's.s_key', 'gap': 's.s_gap', 'main': 's.s_main',
     'cross': 's.s_cross', 'grow': 's.s_grow', 'columns': 's.s_columns',
     'padding': 's.s_pad', 'padding_horizontal': 's.s_pad_h',
-    'padding_vertical': 's.s_pad_v', 'background': 's.s_bg',
+    'padding_vertical': 's.s_pad_v',
+    'margin': 's.s_margin', 'margin_horizontal': 's.s_margin_h',
+    'margin_vertical': 's.s_margin_v', 'margin_top': 's.s_margin_top',
+    'margin_right': 's.s_margin_right',
+    'margin_bottom': 's.s_margin_bottom',
+    'margin_left': 's.s_margin_left',
+    'background': 's.s_bg',
     'foreground': 's.s_fg', 'border_color': 's.s_border_color',
     'border_width': 's.s_border_width', 'corner_radius': 's.s_radius',
     'width': 's.s_width', 'height': 's.s_height',
@@ -46,6 +52,23 @@ EVENT_NAME = {
 # `Lui_protocol.event_supported` — the renderer wires `ev` for every
 # event arg of an "id"-carrying node, so dead pairs are dropped here to
 # keep `Lui_elements.register_*`'s unsupported-kind failure unreachable.
+# Args with no JSON-view decoder yet — skipped like signals so the file
+# stays regenerable. Adding a decoder for one of these in extra_arg (or
+# UNIVERSAL_ARG for a sty-carried universal arg) makes it reachable from
+# the view model; until then the arg is view-model-invisible, as it was
+# when this list was written.
+SKIP_ARGS = {'data_attrs'}
+SKIP_ARG_TYPES = {
+    '(string * Lui_ui.theme_token_value) list',  # tokens: theme pairs
+    '(string * string) list',  # data_attrs: DOM-attribute pairs
+    'Lui_ui.theme_mode',
+    'display', 'element_tag', 'file_picker_source',
+    'file_picker_token', 'float * float', 'image_fit', 'image_loading',
+    'input_kind', 'link_target', 'list_style', 'popover_role',
+    'referrer_policy', 'scroll_anchor', 'separator_visibility',
+    'swipe_action_el list', 'swipe_edge', 't',
+}
+
 DEAD_EVENTS = {
     'tree': {
         'on_press', 'on_change', 'on_toggle', 'on_press_detail',
@@ -58,6 +81,14 @@ DEAD_EVENTS = {
     'list_item': {'on_input'},
 }
 
+# Required labeled args (~name:type) per element: emitted as a decode plus
+# the platform default (edge-inset's missing data-edge pins top on web).
+REQUIRED_ARG = {
+    'edge_inset': [('edge',
+                    '(match edge_opt (v_str props "edge")'
+                    ' with Some e -> e | None -> `top)')],
+}
+
 ENUM_DECODER = {
     'variant': 'variant_opt', 'control_size': 'control_size_opt',
     'cell_size': 'cell_size_opt', 'main_alignment': 'main_opt',
@@ -65,16 +96,18 @@ ENUM_DECODER = {
     'orientation': 'orientation_opt', 'icon_placement': 'icon_placement_opt',
     'anchor': 'anchor_opt', 'anchor_alignment': 'anchor_align_opt',
     'frame_axes': 'frame_axes_opt', 'resize_easing': 'resize_easing_opt',
-    'role': 'role_opt',
+    'role': 'role_opt', 'alignment': 'alignment_opt',
 }
 
 SKIP = set('''mount reactive map sample get get_state attach enable
-mount_children dynamic dyn if_ keyed press on_input on_event
+mount_children dynamic dyn if_ keyed keyed_step keyed_timeline_item
+keyed_bottom_tab keyed_table_row keyed_table_cell keyed_radio
+keyed_swipe_action press on_input on_event
 is_press is_long_press is_double_press is_change is_input is_submit
 is_toggle is_dismiss is_appear is_resize register_press
 register_long_press register_double_press register_change
 register_input register_submit register_toggle register_dismiss
-appear_handler register_resize apply_universal'''.split())
+appear_handler register_resize apply_universal scoped align'''.split())
 
 
 def parse_args(body):
@@ -94,6 +127,10 @@ def extra_arg(name, typ, element=None):
         return None
     j = name.replace('_', '-')
     if 'Signal.signal' in typ:
+        return None
+    if name in SKIP_ARGS or typ in SKIP_ARG_TYPES:
+        return None
+    if name in SKIP_ARGS or typ in SKIP_ARG_TYPES:
         return None
     if typ == 'string':
         return f'?{name}:(v_str props "{j}")'
@@ -126,11 +163,16 @@ def call_args(args, element=None):
             frag = extra_arg(name, typ, element)
             if frag:
                 parts.append(frag)
+    for name, expr in REQUIRED_ARG.get(element, ()):
+        parts.append(f'~{name}:{expr}')
     return ('\n      ' + ' '.join(parts)) if parts else ''
 
 
 def main():
     mli = open(MLI).read()
+    # strip (* ... *) comments (including (** ... *) doc comments) so a doc
+    # glued onto the preceding val block can't corrupt its return tail
+    mli = re.sub(r'\(\*.*?\*\)', '', mli, flags=re.S)
     blocks = re.findall(r'val (\w+) :\s*(.*?)(?=\nval |\Z)', mli, re.S)
 
     normal = []           # arms in `element`
@@ -419,6 +461,25 @@ let role_opt = function
   | Some "navigation-heading" -> Some `navigation_heading
   | _ -> None
 
+let edge_opt = function
+  | Some "top" -> Some `top
+  | Some "bottom" -> Some `bottom
+  | Some "leading" -> Some `leading
+  | Some "trailing" -> Some `trailing
+  | _ -> None
+
+let alignment_opt = function
+  | Some "top-leading" -> Some `top_leading
+  | Some "top" -> Some `top
+  | Some "top-trailing" -> Some `top_trailing
+  | Some "leading" -> Some `leading
+  | Some "center" -> Some `center
+  | Some "trailing" -> Some `trailing
+  | Some "bottom-leading" -> Some `bottom_leading
+  | Some "bottom" -> Some `bottom
+  | Some "bottom-trailing" -> Some `bottom_trailing
+  | _ -> None
+
 (* schema icon names; unknown -> `app (host-registered icon) *)
 let icon_of_string = function
   | "alert" -> Some `alert
@@ -498,6 +559,13 @@ type sty = {
   s_pad : int option;
   s_pad_h : int option;
   s_pad_v : int option;
+  s_margin : int option;
+  s_margin_h : int option;
+  s_margin_v : int option;
+  s_margin_top : int option;
+  s_margin_right : int option;
+  s_margin_bottom : int option;
+  s_margin_left : int option;
   s_bg : string option;
   s_fg : string option;
   s_border_color : string option;
@@ -523,6 +591,13 @@ let sty_of p =
     s_pad = v_int p "padding";
     s_pad_h = v_int p "padding-horizontal";
     s_pad_v = v_int p "padding-vertical";
+    s_margin = v_int p "margin";
+    s_margin_h = v_int p "margin-horizontal";
+    s_margin_v = v_int p "margin-vertical";
+    s_margin_top = v_int p "margin-top";
+    s_margin_right = v_int p "margin-right";
+    s_margin_bottom = v_int p "margin-bottom";
+    s_margin_left = v_int p "margin-left";
     s_bg = v_str p "background";
     s_fg = v_str p "foreground";
     s_border_color = v_str p "border-color";

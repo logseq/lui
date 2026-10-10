@@ -125,6 +125,13 @@ type property =
   | PaddingValue
   | PaddingHorizontal
   | PaddingVertical
+  | MarginValue
+  | MarginHorizontal
+  | MarginVertical
+  | MarginTop
+  | MarginRight
+  | MarginBottom
+  | MarginLeft
   | BackgroundValue
   | ForegroundValue
   | BorderColorValue
@@ -868,6 +875,9 @@ let common_property_supported kind property =
   | GridColumns -> kind = Grid
   | PaddingValue | PaddingHorizontal | PaddingVertical ->
     kind <> Avatar && kind <> Tooltip
+  | MarginValue | MarginHorizontal | MarginVertical | MarginTop
+  | MarginRight | MarginBottom | MarginLeft ->
+    kind <> Avatar && kind <> Tooltip
   | BackgroundValue | BorderColorValue | BorderWidth | CornerRadius ->
     (not (modal_surface kind)) && kind <> Tooltip
   | ForegroundValue ->
@@ -1172,6 +1182,10 @@ let property_supported kind property =
       || property = DataAttrs
       || property = PaddingValue || property = PaddingHorizontal
       || property = PaddingVertical
+      || property = MarginValue || property = MarginHorizontal
+      || property = MarginVertical || property = MarginTop
+      || property = MarginRight || property = MarginBottom
+      || property = MarginLeft
     | Toolbar ->
       property = OrientationValue || property = AccessibilityLabel
       || property = Gap || property = StyleClass || property = PlacementValue
@@ -1268,6 +1282,11 @@ let property_value_supported property value =
   | PaddingValue, IntValue _ -> true
   | PaddingHorizontal, IntValue value -> value >= 0
   | PaddingVertical, IntValue value -> value >= 0
+  (* Margins may be negative — collapsing adjacent space is a legitimate
+     use, unlike padding which is clamped inside the box. *)
+  | ( MarginValue | MarginHorizontal | MarginVertical | MarginTop
+    | MarginRight | MarginBottom | MarginLeft ), IntValue _ ->
+    true
   | BackgroundValue, StringValue _ -> true
   | ForegroundValue, StringValue _ -> true
   | BorderColorValue, StringValue _ -> true

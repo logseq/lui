@@ -3682,6 +3682,52 @@ let test_drive_scenarios () =
   run_drive_scenario "counter.drive"
     (drive_mount ~initial:0 ~reducer:counter_reducer ~view:counter_view ())
 
+let test_margin_props () =
+  let open Lui_protocol in
+  let margins =
+    [ MarginValue; MarginHorizontal; MarginVertical; MarginTop;
+      MarginRight; MarginBottom; MarginLeft ]
+  in
+  List.iter
+    (fun property ->
+       Alcotest.(check bool) "margin on box" true
+         (property_supported Box property);
+       Alcotest.(check bool) "margin not on avatar" false
+         (property_supported Avatar property);
+       Alcotest.(check bool) "margin not on tooltip" false
+         (property_supported Tooltip property);
+       Alcotest.(check bool) "margin on toast" true
+         (property_supported Toast property);
+       (* margins may be negative — collapsing adjacent space *)
+       Alcotest.(check bool) "margin accepts negative" true
+         (property_value_supported property (IntValue (-8)));
+       Alcotest.(check bool) "margin rejects string" false
+         (property_value_supported property (StringValue "8")))
+    margins
+
+let test_margin_wire_props () =
+  let s =
+    drive_mount ~initial:()
+      ~reducer:(fun model _action -> model)
+      ~view:(fun _context _model_source _send ->
+         Lui_elements.column ~margin:4 ~margin_horizontal:8
+           ~margin_vertical:12 ~margin_top:1 ~margin_right:2 ~margin_bottom:3
+           ~margin_left:(-4)
+           [ Lui_elements.text ~value:"x" [] ])
+      ()
+  in
+  let column = drive_node s (Drive.Model.Kind "column") in
+  let check name value =
+    Alcotest.(check bool) name true (drive_prop s column name = Some value)
+  in
+  check "margin" (Lui_protocol.IntValue 4);
+  check "margin-horizontal" (Lui_protocol.IntValue 8);
+  check "margin-vertical" (Lui_protocol.IntValue 12);
+  check "margin-top" (Lui_protocol.IntValue 1);
+  check "margin-right" (Lui_protocol.IntValue 2);
+  check "margin-bottom" (Lui_protocol.IntValue 3);
+  check "margin-left" (Lui_protocol.IntValue (-4))
+
 let test_toast_padding () =
   let open Lui_protocol in
   List.iter (fun property ->
@@ -3731,6 +3777,8 @@ let () =
         ] );
       ( "protocol",
         [
+          Alcotest.test_case "margin prop family" `Quick test_margin_props;
+          Alcotest.test_case "margin wire props" `Quick test_margin_wire_props;
           Alcotest.test_case "toast padding" `Quick test_toast_padding;
           Alcotest.test_case "helpers" `Quick test_protocol_helpers;
           Alcotest.test_case "menu-trigger rules" `Quick

@@ -932,6 +932,41 @@
       "swift": "paddingVertical"
     },
     {
+      "lg": "MarginValue",
+      "wire": "margin",
+      "swift": "margin"
+    },
+    {
+      "lg": "MarginHorizontal",
+      "wire": "margin-horizontal",
+      "swift": "marginHorizontal"
+    },
+    {
+      "lg": "MarginVertical",
+      "wire": "margin-vertical",
+      "swift": "marginVertical"
+    },
+    {
+      "lg": "MarginTop",
+      "wire": "margin-top",
+      "swift": "marginTop"
+    },
+    {
+      "lg": "MarginRight",
+      "wire": "margin-right",
+      "swift": "marginRight"
+    },
+    {
+      "lg": "MarginBottom",
+      "wire": "margin-bottom",
+      "swift": "marginBottom"
+    },
+    {
+      "lg": "MarginLeft",
+      "wire": "margin-left",
+      "swift": "marginLeft"
+    },
+    {
       "lg": "BackgroundValue",
       "wire": "background",
       "swift": "background"
@@ -1831,7 +1866,14 @@
       "pointer-enabled",
       "padding",
       "padding-horizontal",
-      "padding-vertical"
+      "padding-vertical",
+      "margin",
+      "margin-horizontal",
+      "margin-vertical",
+      "margin-top",
+      "margin-right",
+      "margin-bottom",
+      "margin-left"
     ],
     "toolbar": [
 

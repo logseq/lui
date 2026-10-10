@@ -723,6 +723,27 @@ pub fn layout<E: Styled>(element: E, node: &NodeSnapshot) -> E {
     if let Some(value) = node.float_prop(Property::PaddingVertical) {
         element = element.py(px(value as f32));
     }
+    if let Some(value) = node.float_prop(Property::MarginValue) {
+        element = element.m(px(value as f32));
+    }
+    if let Some(value) = node.float_prop(Property::MarginHorizontal) {
+        element = element.mx(px(value as f32));
+    }
+    if let Some(value) = node.float_prop(Property::MarginVertical) {
+        element = element.my(px(value as f32));
+    }
+    if let Some(value) = node.float_prop(Property::MarginTop) {
+        element = element.mt(px(value as f32));
+    }
+    if let Some(value) = node.float_prop(Property::MarginRight) {
+        element = element.mr(px(value as f32));
+    }
+    if let Some(value) = node.float_prop(Property::MarginBottom) {
+        element = element.mb(px(value as f32));
+    }
+    if let Some(value) = node.float_prop(Property::MarginLeft) {
+        element = element.ml(px(value as f32));
+    }
     if let Some(main) = node.string_prop(Property::MainAlignment) {
         element = match main {
             "center" => element.justify_center(),

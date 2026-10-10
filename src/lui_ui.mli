@@ -193,6 +193,13 @@ val columns : ui_context -> int -> int -> unit
 val padding : ui_context -> int -> int -> unit
 val padding_horizontal : ui_context -> int -> int -> unit
 val padding_vertical : ui_context -> int -> int -> unit
+val margin : ui_context -> int -> int -> unit
+val margin_horizontal : ui_context -> int -> int -> unit
+val margin_vertical : ui_context -> int -> int -> unit
+val margin_top : ui_context -> int -> int -> unit
+val margin_right : ui_context -> int -> int -> unit
+val margin_bottom : ui_context -> int -> int -> unit
+val margin_left : ui_context -> int -> int -> unit
 val background : ui_context -> int -> string -> unit
 val foreground : ui_context -> int -> string -> unit
 val border_color : ui_context -> int -> string -> unit

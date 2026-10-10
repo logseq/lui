@@ -123,6 +123,13 @@ type property =
   | PaddingValue
   | PaddingHorizontal
   | PaddingVertical
+  | MarginValue
+  | MarginHorizontal
+  | MarginVertical
+  | MarginTop
+  | MarginRight
+  | MarginBottom
+  | MarginLeft
   | BackgroundValue
   | ForegroundValue
   | BorderColorValue
