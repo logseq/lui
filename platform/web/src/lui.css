@@ -113,6 +113,23 @@ body {
   --radius-xl: calc(var(--lui-radius) + 4px);
 }
 
+/* State-channel custom properties must not inherit: a row's shadow/hover
+   channel belongs to that element only. Unregistered custom properties
+   inherit by default, which repaints a parent's channel on every
+   descendant (e.g. a highlighted row's inset shadow on its children). */
+@property --lui-shadow { syntax: "*"; inherits: false; }
+@property --lui-hover-bg { syntax: "*"; inherits: false; }
+@property --lui-hover-shadow { syntax: "*"; inherits: false; }
+@property --lui-hover-opacity { syntax: "*"; inherits: false; }
+@property --lui-pressed-bg { syntax: "*"; inherits: false; }
+@property --lui-pressed-shadow { syntax: "*"; inherits: false; }
+@property --lui-pressed-opacity { syntax: "*"; inherits: false; }
+@property --lui-selected-bg { syntax: "*"; inherits: false; }
+@property --lui-selected-shadow { syntax: "*"; inherits: false; }
+@property --lui-selected-hover-shadow { syntax: "*"; inherits: false; }
+@property --lui-focus-shadow { syntax: "*"; inherits: false; }
+@property --lui-disabled-opacity { syntax: "*"; inherits: false; }
+
 @layer components {
   .lui-root {
     display: contents;
