@@ -62,6 +62,31 @@ pub struct Node {
     pub value_revision: u64,
 }
 
+/// The facet a structural op rewrites on one node.
+#[derive(Clone, Copy)]
+enum Facet {
+    Children,
+    Parent,
+}
+
+/// Before-image of a node within one batch, recorded per touched facet so
+/// property-only churn never clones `children` (and structural churn never
+/// clones the prop maps). `node` is the full snapshot — paid only for
+/// `drop-node`/`detach-subtree` members, where whole-subtree restore is
+/// genuinely required.
+#[derive(Default)]
+struct NodeUndo {
+    /// Node did not exist before the batch — rollback removes it.
+    created: bool,
+    props: Option<NodeProps>,
+    extension_props: Option<NodeExtensionProps>,
+    /// Prop writes also move `value_revision` — restore it with them.
+    value_revision: Option<u64>,
+    children: Option<Vec<i64>>,
+    parent: Option<Option<i64>>,
+    node: Option<Node>,
+}
+
 impl Node {
     pub fn prop(&self, property: Property) -> Option<&Value> {
         self.props.get(&property)
@@ -175,10 +200,13 @@ impl Store {
             generation,
             ..Applied::default()
         };
-        // Keep only the first before-image of each touched node. Property
-        // patches stay local while a rejected batch restores every link.
+        // Keep only the first before-image of each touched facet of each
+        // touched node — prop writes keep back only the prop maps and
+        // structural writes only the children/parent links, so a rejected
+        // batch restores every link without cloning whole Nodes (and the
+        // children Vec) for property-only churn.
         let root = self.root;
-        let mut undo = BTreeMap::new();
+        let mut undo: BTreeMap<i64, NodeUndo> = BTreeMap::new();
         let mut orders = BTreeMap::new();
         let result = (|| {
             for op in ops {
@@ -201,9 +229,22 @@ impl Store {
                         affected.insert(parent);
                     }
                 }
-                if self.node(id).and_then(|n| n.parent) != previous.as_ref().and_then(|n| n.parent)
-                {
-                    descend.push(id);
+                // The node's parent before the batch: a created node had
+                // none, a recorded snapshot or parent facet reports its
+                // before-image, and an unrecorded link means it could not
+                // have changed — so descendant invalidation only runs for
+                // links we actually rewrote.
+                let prior: Option<Option<i64>> = if previous.created {
+                    Some(None)
+                } else if let Some(snapshot) = &previous.node {
+                    Some(snapshot.parent)
+                } else {
+                    previous.parent.clone()
+                };
+                if let Some(prior) = prior {
+                    if self.node(id).and_then(|n| n.parent) != prior {
+                        descend.push(id);
+                    }
                 }
             }
             let mut visited = BTreeSet::new();
@@ -223,13 +264,30 @@ impl Store {
             Ok(())
         })();
         if let Err(error) = result {
-            for (id, node) in undo {
-                match node {
-                    Some(node) => {
-                        self.nodes.insert(id, node);
+            for (id, undo) in undo {
+                if undo.created {
+                    self.nodes.remove(&id);
+                    continue;
+                }
+                if let Some(snapshot) = undo.node {
+                    self.nodes.insert(id, snapshot);
+                    continue;
+                }
+                if let Some(node) = self.nodes.get_mut(&id) {
+                    if let Some(props) = undo.props {
+                        node.props = props;
                     }
-                    None => {
-                        self.nodes.remove(&id);
+                    if let Some(extension_props) = undo.extension_props {
+                        node.extension_props = extension_props;
+                    }
+                    if let Some(value_revision) = undo.value_revision {
+                        node.value_revision = value_revision;
+                    }
+                    if let Some(children) = undo.children {
+                        node.children = children;
+                    }
+                    if let Some(parent) = undo.parent {
+                        node.parent = parent;
                     }
                 }
             }
@@ -239,31 +297,78 @@ impl Store {
         Ok(applied)
     }
 
-    fn record_before(
-        &self,
-        op: &Op,
-        undo: &mut BTreeMap<i64, Option<Node>>,
-        orders: &BTreeMap<i64, Order>,
-    ) {
-        let mut ids = Vec::new();
+    fn record_before(&self, op: &Op, undo: &mut BTreeMap<i64, NodeUndo>, orders: &BTreeMap<i64, Order>) {
         match op {
-            Op::CreateNode { id, .. }
-            | Op::CreateExtension { id, .. }
-            | Op::SetProp { id, .. }
-            | Op::RemoveProp { id, .. }
-            | Op::SetExtensionProp { id, .. }
-            | Op::RemoveExtensionProp { id, .. } => ids.push(*id),
-            Op::InsertChild { parent, child, .. } => {
-                ids.extend([*parent, *child]);
-                ids.extend(self.node(*child).and_then(|node| node.parent));
+            Op::CreateNode { id, .. } | Op::CreateExtension { id, .. } => {
+                self.undo_entry(undo, *id);
             }
-            Op::RemoveChild { parent, child } => ids.extend([*parent, *child]),
-            Op::MoveChild { parent, .. } => ids.push(*parent),
+            Op::SetProp { id, .. } | Op::RemoveProp { id, .. } => {
+                let entry = self.undo_entry(undo, *id);
+                if entry.props.is_none() {
+                    entry.props = self.node(*id).map(|node| node.props.clone());
+                }
+                if entry.value_revision.is_none() {
+                    entry.value_revision =
+                        self.node(*id).map(|node| node.value_revision);
+                }
+            }
+            Op::SetExtensionProp { id, .. } | Op::RemoveExtensionProp { id, .. } => {
+                let entry = self.undo_entry(undo, *id);
+                if entry.extension_props.is_none() {
+                    entry.extension_props =
+                        self.node(*id).map(|node| node.extension_props.clone());
+                }
+            }
+            Op::InsertChild { parent, child, .. } => {
+                // A reparent detaches from the old parent first — record
+                // every link this op rewrites.
+                for (id, facet) in [(*parent, Facet::Children), (*child, Facet::Parent)] {
+                    self.record_facet(undo, id, facet);
+                }
+                if let Some(old_parent) = self.node(*child).and_then(|node| node.parent) {
+                    self.record_facet(undo, old_parent, Facet::Children);
+                }
+            }
+            Op::RemoveChild { parent, child } => {
+                self.record_facet(undo, *parent, Facet::Children);
+                self.record_facet(undo, *child, Facet::Parent);
+            }
+            Op::MoveChild { parent, .. } => {
+                self.record_facet(undo, *parent, Facet::Children);
+            }
             Op::DropNode { id } | Op::DetachSubtree { id } => {
-                ids.extend(self.node(*id).and_then(|node| node.parent));
+                if let Some(parent) = self.node(*id).and_then(|node| node.parent) {
+                    self.record_facet(undo, parent, Facet::Children);
+                }
+                // Removed nodes need their whole subtree back on rollback —
+                // the only op that still pays for a full snapshot.
                 let mut stack = vec![*id];
                 while let Some(id) = stack.pop() {
-                    ids.push(id);
+                    let entry = self.undo_entry(undo, id);
+                    if !entry.created && entry.node.is_none() {
+                        // A mid-batch snapshot must stay a before-image:
+                        // fold facets an earlier op already recorded into
+                        // it so the restored node is its pre-batch self.
+                        if let Some(snapshot) = self.node(id).cloned().as_mut() {
+                            if let Some(props) = entry.props.take() {
+                                snapshot.props = props;
+                            }
+                            if let Some(extension_props) = entry.extension_props.take()
+                            {
+                                snapshot.extension_props = extension_props;
+                            }
+                            if let Some(value_revision) = entry.value_revision.take() {
+                                snapshot.value_revision = value_revision;
+                            }
+                            if let Some(children) = entry.children.take() {
+                                snapshot.children = children;
+                            }
+                            if let Some(parent) = entry.parent.take() {
+                                snapshot.parent = parent;
+                            }
+                            entry.node = Some(snapshot.clone());
+                        }
+                    }
                     if let Some(node) = self.node(id) {
                         stack.extend(
                             orders
@@ -274,8 +379,41 @@ impl Store {
                 }
             }
         }
-        for id in ids {
-            undo.entry(id).or_insert_with(|| self.node(id).cloned());
+    }
+
+    /// The undo slot for `id`, stamped `created` only on first insert so
+    /// a node born inside the batch keeps that mark through later touches.
+    fn undo_entry<'u>(
+        &self,
+        undo: &'u mut BTreeMap<i64, NodeUndo>,
+        id: i64,
+    ) -> &'u mut NodeUndo {
+        let exists = self.nodes.contains_key(&id);
+        undo.entry(id)
+            .or_insert_with(|| NodeUndo {
+                created: !exists,
+                ..NodeUndo::default()
+            })
+    }
+
+    /// Snapshot one facet of `id` the first time a structural op touches
+    /// it; `created` still marks nodes the batch introduced.
+    fn record_facet(&self, undo: &mut BTreeMap<i64, NodeUndo>, id: i64, facet: Facet) {
+        let entry = self.undo_entry(undo, id);
+        let Some(node) = self.node(id) else {
+            return;
+        };
+        match facet {
+            Facet::Children => {
+                if entry.children.is_none() {
+                    entry.children = Some(node.children.clone());
+                }
+            }
+            Facet::Parent => {
+                if entry.parent.is_none() {
+                    entry.parent = Some(node.parent);
+                }
+            }
         }
     }
 

@@ -16,6 +16,7 @@ pub mod node_view;
 #[cfg(test)]
 pub mod ocaml_stubs;
 pub mod root;
+pub mod scroll;
 pub mod style;
 pub mod theme;
 mod virtual_list;

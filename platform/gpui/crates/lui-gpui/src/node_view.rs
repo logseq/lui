@@ -828,6 +828,24 @@ impl Element for NodeElement {
                 shared.painting_lists.push(self.id);
             }
             shared.node_bounds.insert(self.id, bounds);
+            // Resolve this node's effective `pointer-events` once per
+            // frame: hit testing reads this map instead of re-walking
+            // ancestors and re-parsing `attrs`/`style-class` JSON for
+            // every candidate under the cursor.
+            let hit_disabled = shared
+                .store
+                .node(self.id)
+                .map(|node| {
+                    crate::dom::pointer_decision(node)
+                        .map(|enabled| !enabled)
+                        .or_else(|| {
+                            node.parent
+                                .and_then(|parent| shared.hit_disabled.get(&parent).copied())
+                        })
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false);
+            shared.hit_disabled.insert(self.id, hit_disabled);
             // Re-arm a consumed lazy-mount/virt-end watch — the node may
             // have kept its id without re-rendering, leaving the render
             // path no chance to register a fresh watch.
@@ -867,6 +885,9 @@ impl Element for NodeElement {
             }
             own_list
         };
+        // Scroll requests, visible-range reports, and image `load` —
+        // deferred FFI emissions only; the bookkeeping is frame-local.
+        crate::scroll::tick(&self.shared, self.id, window, cx);
         let focus = {
             let shared = self.shared.borrow();
             shared

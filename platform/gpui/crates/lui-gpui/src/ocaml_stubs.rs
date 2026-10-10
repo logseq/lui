@@ -51,6 +51,9 @@ pub enum RecordedEvent {
         name: String,
         json: String,
     },
+    Load(i64),
+    VisibleRange { node: i64, first: i64, last: i64 },
+    ScrollCompleted { node: i64, token: i64, outcome: String },
 }
 
 static EVENTS: Mutex<Vec<RecordedEvent>> = Mutex::new(Vec::new());
@@ -314,5 +317,31 @@ pub unsafe extern "C" fn lui_ocaml_extension_event_utf8(
 
 #[no_mangle]
 pub unsafe extern "C" fn lui_ocaml_resync() -> c_int {
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_load(node: i64) -> c_int {
+    record(RecordedEvent::Load(node));
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_visible_range(node: i64, first: i64, last: i64) -> c_int {
+    record(RecordedEvent::VisibleRange { node, first, last });
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lui_ocaml_scroll_completed(
+    node: i64,
+    token: i64,
+    outcome: *const c_char,
+) -> c_int {
+    record(RecordedEvent::ScrollCompleted {
+        node,
+        token,
+        outcome: unsafe { cstr(outcome) },
+    });
     0
 }
