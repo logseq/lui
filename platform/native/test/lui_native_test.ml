@@ -115,11 +115,8 @@ let test_pipeline () =
           InsertChild (1, 2, 0) ] };
   let s = scene () in
   let hooks =
-    { Lui_paint.color_of = (fun _ -> None);
-      layout = (fun _ -> rect 0. 0. 100. 100.);
-      text_ops = (fun _ _ _ _ -> []);
-      image_of = (fun _ -> None);
-      shadow_of = (fun _ -> None) }
+    { Lui_paint.default_hooks with
+      layout = (fun _ -> Lui_paint.placement_of_rect (rect 0. 0. 100. 100.)) }
   in
   Lui_paint.paint hooks t s ~width:100 ~height:100 ~scale:1. ~clear:(color 255 255 255 255);
   match s.ops with
