@@ -71,6 +71,16 @@ type application = {
   (* Nodes with a CreateNode/CreateExtension still in [pending_ops]. Kept in
      sync with that list so same-batch drop elision does not scan it. *)
   pending_creates : (int, unit) Hashtbl.t;
+  (* Same-batch drop elision: ids marked while created and dropped inside
+     the open batch. [elision_root] maps an elided id to the group root it
+     was marked under, [elision_members] maps each group root to its ids
+     (leaves-first), [elision_edges] records a group's internal
+     child -> parent links for fallback edge removal. Batch-scoped: reset
+     whenever pending ops materialize. *)
+  elision_ghosts : (int, unit) Hashtbl.t;
+  elision_root : (int, int) Hashtbl.t;
+  elision_members : (int, int list) Hashtbl.t;
+  elision_edges : (int, int) Hashtbl.t;
   (* Per-node echo baselines for text / toggle / slider channels. *)
   runtime_echo : (int, echo_state) Hashtbl.t;
   runtime_generation : int ref;
@@ -107,6 +117,10 @@ type runtime_checkpoint = {
   checkpoint_parents : (int, int) Hashtbl.t;
   checkpoint_pending_ops : patch_op list;
   checkpoint_pending_creates : (int, unit) Hashtbl.t;
+  checkpoint_elision_ghosts : (int, unit) Hashtbl.t;
+  checkpoint_elision_root : (int, int) Hashtbl.t;
+  checkpoint_elision_members : (int, int list) Hashtbl.t;
+  checkpoint_elision_edges : (int, int) Hashtbl.t;
   checkpoint_echo : (int, echo_state) Hashtbl.t;
   checkpoint_next_handler_id : int;
   checkpoint_event_handlers : (int, event_handler list) Hashtbl.t;
@@ -160,6 +174,10 @@ let create_with_extensions scheduler backend registry =
     runtime_parents = Hashtbl.create 16;
     pending_ops = ref [];
     pending_creates = Hashtbl.create 16;
+    elision_ghosts = Hashtbl.create 16;
+    elision_root = Hashtbl.create 16;
+    elision_members = Hashtbl.create 16;
+    elision_edges = Hashtbl.create 16;
     runtime_echo = Hashtbl.create 16;
     runtime_generation = ref 0;
     runtime_diagnostics = ref (empty_diagnostics ());
@@ -240,6 +258,12 @@ let checkpoint ?nodes application =
        The set is empty after a flush, so a local update does not copy
        the mounted tree. Echo is per-node state and follows [nodes]. *)
     checkpoint_pending_creates = snapshot_hashtbl application.pending_creates;
+    (* Elision marks are batch-global too: a scoped checkpoint still keeps
+       drops whose group belongs to other nodes in the same batch. *)
+    checkpoint_elision_ghosts = snapshot_hashtbl application.elision_ghosts;
+    checkpoint_elision_root = snapshot_hashtbl application.elision_root;
+    checkpoint_elision_members = snapshot_hashtbl application.elision_members;
+    checkpoint_elision_edges = snapshot_hashtbl application.elision_edges;
     checkpoint_echo = copy application.runtime_echo;
     checkpoint_next_handler_id = !(application.next_handler_id);
     checkpoint_event_handlers = copy application.event_handlers;
@@ -352,6 +376,22 @@ let restore application saved =
   Hashtbl.iter
     (fun node () -> Hashtbl.replace application.pending_creates node ())
     saved.checkpoint_pending_creates;
+  Hashtbl.clear application.elision_ghosts;
+  Hashtbl.clear application.elision_root;
+  Hashtbl.clear application.elision_members;
+  Hashtbl.clear application.elision_edges;
+  Hashtbl.iter
+    (fun node () -> Hashtbl.replace application.elision_ghosts node ())
+    saved.checkpoint_elision_ghosts;
+  Hashtbl.iter
+    (fun id root -> Hashtbl.replace application.elision_root id root)
+    saved.checkpoint_elision_root;
+  Hashtbl.iter
+    (fun root ids -> Hashtbl.replace application.elision_members root ids)
+    saved.checkpoint_elision_members;
+  Hashtbl.iter
+    (fun child parent -> Hashtbl.replace application.elision_edges child parent)
+    saved.checkpoint_elision_edges;
   replace application.runtime_echo saved.checkpoint_echo;
   application.next_handler_id := saved.checkpoint_next_handler_id;
   replace application.event_handlers saved.checkpoint_event_handlers;
@@ -748,9 +788,298 @@ let emit_extension_property_diff application node old_values desired_values =
    op group (including structural detach ops) is pruned and no drop op
    is emitted. Nodes dropped across batches keep their ops: pre-existing
    records resolve through the pre-batch mirror, and the store still
-   needs the remove-child op that precedes a drop. *)
-let operation_mentions_node node operation =
-  let subject =
+   needs the remove-child op that precedes a drop.
+
+   Dropping marks the node instead of rewriting the queue: at flush the
+   whole pending stream is replayed ONCE, pruning ops that mention an
+   elided id and renumbering surviving structural ops around each ghost
+   slot. Replaying the queue per drop (the old design) rescanned
+   [pending_ops] for every dropped node and shifted a per-parent
+   position table on every structural op, which made replacing a keyed
+   collection before its first flush cubic in the item count. *)
+let pending_create_exists application node =
+  Hashtbl.mem application.pending_creates node
+
+(* Mark every id in [ids] (leaves-first, [root] is the outermost node) as
+   created-and-dropped inside the open batch. Internal child -> parent
+   links that carry no dedicated remove op are kept so a fallback drop
+   can still unlink the group explicitly. *)
+let mark_elided_group application root ids =
+  let group = Hashtbl.create (List.length ids) in
+  List.iter (fun id -> Hashtbl.replace group id ()) ids;
+  List.iter
+    (fun id ->
+       Hashtbl.replace application.elision_ghosts id ();
+       Hashtbl.replace application.elision_root id root;
+       Hashtbl.remove application.pending_creates id;
+       if id <> root then
+         match Hashtbl.find_opt application.runtime_parents id with
+         | Some parent when Hashtbl.mem group parent ->
+             Hashtbl.replace application.elision_edges id parent
+         | _ -> ())
+    ids;
+  Hashtbl.replace application.elision_members root ids
+
+let enqueue_drop application node =
+  if pending_create_exists application node then
+    mark_elided_group application node [ node ]
+  else enqueue application (drop_node_op node)
+
+(* Implicit-order sequence over one parent's children during the replay:
+   a size-augmented treap keyed by position, tracking how many of the
+   children in each subtree are elided ghosts. [slot_ghosts_below]
+   answers "how many ghosts sit before index i" in O(log n) — the query
+   each surviving structural op needs to renumber itself. *)
+type elision_slot = {
+  slot_child : int;
+  slot_ghost : bool;
+  slot_prio : int;
+  mutable slot_left : elision_slot option;
+  mutable slot_right : elision_slot option;
+  mutable slot_parent : elision_slot option;
+  mutable slot_size : int;
+  mutable slot_ghosts : int;
+}
+
+let slot_size = function None -> 0 | Some slot -> slot.slot_size
+let slot_ghosts = function None -> 0 | Some slot -> slot.slot_ghosts
+
+let slot_update slot =
+  slot.slot_size <- 1 + slot_size slot.slot_left + slot_size slot.slot_right;
+  slot.slot_ghosts <-
+    (if slot.slot_ghost then 1 else 0) + slot_ghosts slot.slot_left
+    + slot_ghosts slot.slot_right
+
+let make_slot child ghost =
+  {
+    slot_child = child;
+    slot_ghost = ghost;
+    (* a fixed mix keeps the treap balanced for sequential node ids *)
+    slot_prio = (child * 0x9E3779B1) land max_int;
+    slot_left = None;
+    slot_right = None;
+    slot_parent = None;
+    slot_size = 1;
+    slot_ghosts = (if ghost then 1 else 0);
+  }
+
+(* split [root] into its first [count] elements and the rest; returned
+   roots carry no parent pointer *)
+let rec slot_split root count =
+  match root with
+  | None -> (None, None)
+  | Some slot ->
+    let left_size = slot_size slot.slot_left in
+    if count <= left_size then begin
+      let left, mid = slot_split slot.slot_left count in
+      slot.slot_left <- mid;
+      (match mid with Some mid -> mid.slot_parent <- Some slot | None -> ());
+      slot_update slot;
+      slot.slot_parent <- None;
+      (left, Some slot)
+    end
+    else begin
+      let mid, right = slot_split slot.slot_right (count - left_size - 1) in
+      slot.slot_right <- mid;
+      (match mid with Some mid -> mid.slot_parent <- Some slot | None -> ());
+      slot_update slot;
+      slot.slot_parent <- None;
+      (Some slot, right)
+    end
+
+let rec slot_merge left right =
+  match (left, right) with
+  | None, _ ->
+    (match right with Some r -> r.slot_parent <- None | None -> ());
+    right
+  | _, None ->
+    (match left with Some l -> l.slot_parent <- None | None -> ());
+    left
+  | Some left, Some right ->
+    if left.slot_prio > right.slot_prio then begin
+      let merged = slot_merge left.slot_right (Some right) in
+      left.slot_right <- merged;
+      (match merged with Some m -> m.slot_parent <- Some left | None -> ());
+      slot_update left;
+      left.slot_parent <- None;
+      Some left
+    end
+    else begin
+      let merged = slot_merge (Some left) right.slot_left in
+      right.slot_left <- merged;
+      (match merged with Some m -> m.slot_parent <- Some right | None -> ());
+      slot_update right;
+      right.slot_parent <- None;
+      Some right
+    end
+
+let slot_insert root index slot =
+  let left, right = slot_split root index in
+  slot_merge (slot_merge left (Some slot)) right
+
+let slot_rank slot =
+  let rank = ref (slot_size slot.slot_left) in
+  let rec walk node =
+    match node.slot_parent with
+    | None -> ()
+    | Some parent ->
+      (match parent.slot_right with
+       | Some right when right == node ->
+           rank := !rank + slot_size parent.slot_left + 1
+       | _ -> ());
+      walk parent
+  in
+  walk slot;
+  !rank
+
+let slot_remove root slot =
+  let left, rest = slot_split root (slot_rank slot) in
+  let _slot, right = slot_split rest 1 in
+  slot_merge left right
+
+(* ghosts among the first [index] positions *)
+let rec slot_ghosts_below root index =
+  match root with
+  | None -> 0
+  | Some slot ->
+    if index <= 0 then 0
+    else
+      let left_size = slot_size slot.slot_left in
+      if index <= left_size then slot_ghosts_below slot.slot_left index
+      else
+        slot_ghosts slot.slot_left + (if slot.slot_ghost then 1 else 0)
+        + slot_ghosts_below slot.slot_right (index - left_size - 1)
+
+(* Replay the pending stream once and produce the batch to send. Ops
+   that mention an elided node are pruned; structural ops that survive
+   are renumbered around each ghost slot they assumed was still there.
+   A ghost group whose parent's index repair is unrecoverable — an op
+   removed or moved a child the batch itself never attached — falls
+   back to a real drop: edge unlinks first, then drop ops leaves-first,
+   appended after the original ops so "created then dropped" still
+   holds. *)
+let elide_pending_ops application =
+  let ops = !(application.pending_ops) in
+  (* ghosts forced real after their parent's repair was found unsafe *)
+  let real = Hashtbl.create 8 in
+  (* parents whose tracked positions an untracked remove/move broke *)
+  let poisoned = Hashtbl.create 4 in
+  let marked_roots = Hashtbl.create 4 in
+  (* per-parent live children / currently-attached ghosts, seeded from
+     the flush-time child lists and updated as the ops say *)
+  let live = Hashtbl.create 8 in
+  let active = Hashtbl.create 8 in
+  (* (parent, child) pairs attached by a pending op — never treated as
+     pre-existing children when seeding a parent's tracked order *)
+  let attached = Hashtbl.create 16 in
+  let ghost id =
+    Hashtbl.mem application.elision_ghosts id && not (Hashtbl.mem real id)
+  in
+  let mark_fallback id =
+    let root =
+      match Hashtbl.find_opt application.elision_root id with
+      | Some root -> root
+      | None -> id
+    in
+    if not (Hashtbl.mem marked_roots root) then begin
+      Hashtbl.replace marked_roots root ();
+      match Hashtbl.find_opt application.elision_members root with
+      | Some ids -> List.iter (fun id -> Hashtbl.replace real id ()) ids
+      | None -> Hashtbl.replace real root ()
+    end
+  in
+  let live_children parent =
+    match Hashtbl.find_opt live parent with
+    | Some children -> children
+    | None ->
+      let children = Hashtbl.create 8 in
+      (match Hashtbl.find_opt application.runtime_children parent with
+       | Some current ->
+           Lui_sequence.iter
+             (fun child -> Hashtbl.replace children child ()) current
+       | None -> ());
+      Hashtbl.replace live parent children;
+      children
+  in
+  let active_ghosts parent =
+    match Hashtbl.find_opt active parent with
+    | Some ghosts -> ghosts
+    | None ->
+      let ghosts = Hashtbl.create 8 in
+      Hashtbl.replace active parent ghosts;
+      ghosts
+  in
+  let untracked_foreign parent =
+    Hashtbl.replace poisoned parent ();
+    match Hashtbl.find_opt active parent with
+    | Some ghosts -> Hashtbl.iter (fun id () -> mark_fallback id) ghosts
+    | None -> ()
+  in
+  (* first pass: which children does the stream attach where, and which
+     parents saw a remove/move of a child it never tracked *)
+  List.iter
+    (fun operation ->
+       match operation with
+       | InsertChild (parent, child, _) ->
+         if not (ghost parent) then begin
+           Hashtbl.replace (live_children parent) child ();
+           Hashtbl.replace attached (parent, child) ();
+           if ghost child then
+             if Hashtbl.mem poisoned parent then mark_fallback child
+             else Hashtbl.replace (active_ghosts parent) child ()
+         end
+       | RemoveChild (parent, child) ->
+         if not (ghost parent) then
+           if Hashtbl.mem (live_children parent) child then begin
+             Hashtbl.remove (live_children parent) child;
+             match Hashtbl.find_opt active parent with
+             | Some ghosts -> Hashtbl.remove ghosts child
+             | None -> ()
+           end
+           else untracked_foreign parent
+       | MoveChild (parent, child, _) ->
+         if
+           (not (ghost parent))
+           && not (Hashtbl.mem (live_children parent) child)
+         then untracked_foreign parent
+       | _ -> ())
+    (List.rev ops);
+  (* second pass: prune ghost ops and renumber survivors around the
+     ghost slots they assumed, seeding each parent's tracked order with
+     its pre-existing children *)
+  let seqs = Hashtbl.create 8 in
+  let slot_of = Hashtbl.create 16 in
+  let seq_children parent =
+    match Hashtbl.find_opt seqs parent with
+    | Some state -> state
+    | None ->
+      let state = ref None in
+      (match Hashtbl.find_opt application.runtime_children parent with
+       | Some current ->
+           Lui_sequence.iter
+             (fun child ->
+                if not (Hashtbl.mem attached (parent, child)) then begin
+                  let slot = make_slot child false in
+                  state := slot_insert !state (slot_size !state) slot;
+                  Hashtbl.replace slot_of child slot
+                end)
+             current
+       | None -> ());
+      Hashtbl.replace seqs parent state;
+      state
+  in
+  let out = ref [] in
+  let emit operation = out := operation :: !out in
+  let drop_slot parent child =
+    match Hashtbl.find_opt slot_of child with
+    | Some slot ->
+      let state = seq_children parent in
+      state := slot_remove !state slot;
+      Hashtbl.remove slot_of child;
+      true
+    | None -> false
+  in
+  let ghost_mention operation =
     match operation with
     | CreateNode (subject, _)
     | CreateExtension (subject, _, _)
@@ -759,164 +1088,79 @@ let operation_mentions_node node operation =
     | SetProp (subject, _, _)
     | RemoveProp (subject, _)
     | SetExtensionProp (subject, _, _)
-    | RemoveExtensionProp (subject, _)
-    | InsertChild (subject, _, _)
-    | RemoveChild (subject, _)
-    | MoveChild (subject, _, _) ->
-        Some subject
+    | RemoveExtensionProp (subject, _) -> ghost subject
+    | _ -> false
   in
-  let child =
-    match operation with
-    | InsertChild (_, child, _)
-    | RemoveChild (_, child)
-    | MoveChild (_, child, _) ->
-        Some child
-    | _ -> None
-  in
-  subject = Some node || child = Some node
-
-let pending_create_exists application node =
-  Hashtbl.mem application.pending_creates node
-
-(* A node created and dropped within one batch cancels out: its whole op
-   group is pruned. Structural ops emitted while it was attached counted
-   its slot in their indices, so survivors on the same parent must be
-   renumbered. pending_ops is stored newest-first; replay it oldest-first
-   and track per-parent child positions (the dropped child included) as
-   the ops describe them. The backend applies move-child as remove-then-
-   insert, so both sides of a foreign move adjust positions; a foreign
-   remove does the same through its tracked origin. A foreign remove or
-   move whose origin the stream does not reveal — a child attached before
-   this batch — makes the remaining indices unrecoverable, so elision
-   bails out and the node is dropped for real instead. *)
-exception Abort_elision
-
-let enqueue_drop application node =
-  if pending_create_exists application node then begin
-    (* parent -> (child -> index): ghost-space positions for children the
-       batch itself attached or moved. *)
-    let positions = Hashtbl.create 4 in
-    (* parents whose recorded positions stopped being trustworthy after
-       an untracked child's removal or move. *)
-    let poisoned = Hashtbl.create 4 in
-    let positions_for parent =
-      match Hashtbl.find_opt positions parent with
-      | Some table -> table
-      | None ->
-        let table = Hashtbl.create 8 in
-        Hashtbl.replace positions parent table;
-        table
-    in
-    let child_index parent child =
-      match Hashtbl.find_opt positions parent with
-      | Some table -> Hashtbl.find_opt table child
-      | None -> None
-    in
-    (* The dropped node's own slot is always exact: its index comes from
-       the op that attached it, never inferred from another child. *)
-    let ghost_slot parent = child_index parent node in
-    let foreign_index parent child =
-      if Hashtbl.mem poisoned parent then None
-      else child_index parent child
-    in
-    let shift_positions parent ~from_index ~strict ~delta =
-      match Hashtbl.find_opt positions parent with
-      | Some table ->
-        Hashtbl.iter
-          (fun child index ->
-             if (strict && index > from_index)
-                || ((not strict) && index >= from_index)
-             then Hashtbl.replace table child (index + delta))
-          table
-      | None -> ()
-    in
-    let track_insert parent child index =
-      shift_positions parent ~from_index:index ~strict:false ~delta:1;
-      Hashtbl.replace (positions_for parent) child index
-    in
-    let track_remove parent index =
-      shift_positions parent ~from_index:index ~strict:true ~delta:(-1)
-    in
-    let untracked_foreign parent operation =
-      match ghost_slot parent with
-      | Some _ -> raise Abort_elision
-      | None ->
-        Hashtbl.replace poisoned parent ();
-        Some operation
-    in
-    let renumber operation =
-      match operation with
-      | InsertChild (parent, child, index) ->
-        if child = node then begin
-          track_insert parent node index;
-          None
-        end
-        else if parent = node then None
-        else begin
-          track_insert parent child index;
-          match ghost_slot parent with
-          | Some slot when index > slot ->
-            Some (InsertChild (parent, child, index - 1))
-          | _ -> Some operation
-        end
-      | RemoveChild (parent, child) ->
-        if child = node then begin
-          (match child_index parent node with
-           | Some index ->
-             track_remove parent index;
-             Hashtbl.remove (positions_for parent) node
-           | None -> ());
-          None
-        end
-        else if parent = node then None
-        else
-          (match foreign_index parent child with
-           | Some index ->
-             track_remove parent index;
-             Hashtbl.remove (positions_for parent) child;
-             Some operation
-           | None -> untracked_foreign parent operation)
-      | MoveChild (parent, child, index) ->
-        if child = node then begin
-          (match child_index parent node with
-           | Some origin -> track_remove parent origin
-           | None -> ());
-          track_insert parent node index;
-          None
-        end
-        else if parent = node then None
-        else
-          (match foreign_index parent child with
-           | Some origin ->
-             track_remove parent origin;
-             let emitted =
-               match ghost_slot parent with
-               | Some slot when index > slot -> index - 1
-               | _ -> index
-             in
-             track_insert parent child index;
-             Some (MoveChild (parent, child, emitted))
-           | None -> untracked_foreign parent operation)
-      | _ when operation_mentions_node node operation -> None
-      | _ -> Some operation
-    in
-    let original = !(application.pending_ops) in
-    (try
-       application.pending_ops :=
-         List.fold_left
-           (fun acc operation ->
-              match renumber operation with
-              | Some operation -> operation :: acc
-              | None -> acc)
-           []
-           (List.rev original);
-       Hashtbl.remove application.pending_creates node
-     with Abort_elision ->
-       application.pending_ops := original;
-       enqueue application (drop_node_op node))
-  end
-  else enqueue application (drop_node_op node)
-
+  List.iter
+    (fun operation ->
+       match operation with
+       | InsertChild (parent, child, index) ->
+         if ghost parent then ()
+         else if ghost child then begin
+           let state = seq_children parent in
+           let slot = make_slot child true in
+           state := slot_insert !state index slot;
+           Hashtbl.replace slot_of child slot
+         end
+         else begin
+           let state = seq_children parent in
+           emit
+             (insert_child_op parent child
+                (index - slot_ghosts_below !state index));
+           let slot = make_slot child false in
+           state := slot_insert !state index slot;
+           Hashtbl.replace slot_of child slot
+         end
+       | RemoveChild (parent, child) ->
+         if ghost parent then ()
+         else if ghost child then ignore (drop_slot parent child)
+         else begin
+           ignore (drop_slot parent child);
+           emit operation
+         end
+       | MoveChild (parent, child, index) ->
+         if ghost parent then ()
+         else if ghost child then
+           (match Hashtbl.find_opt slot_of child with
+            | Some slot ->
+              let state = seq_children parent in
+              state := slot_remove !state slot;
+              state := slot_insert !state index slot
+            | None -> ())
+         else
+           (match Hashtbl.find_opt slot_of child with
+            | Some slot ->
+              let state = seq_children parent in
+              state := slot_remove !state slot;
+              emit
+                (move_child_op parent child
+                   (index - slot_ghosts_below !state index));
+              state := slot_insert !state index slot
+            | None -> emit operation)
+       | _ -> if not (ghost_mention operation) then emit operation)
+    (List.rev ops);
+  (* fallback drops for the groups forced real above *)
+  let drops = ref [] in
+  Hashtbl.iter
+    (fun root () ->
+       let ids =
+         match Hashtbl.find_opt application.elision_members root with
+         | Some ids -> ids
+         | None -> [ root ]
+       in
+       List.iter
+         (fun id ->
+            match Hashtbl.find_opt application.elision_edges id with
+            | Some parent -> drops := remove_child_op parent id :: !drops
+            | None -> ())
+         ids;
+       List.iter (fun id -> drops := drop_node_op id :: !drops) ids)
+    marked_roots;
+  Hashtbl.clear application.elision_ghosts;
+  Hashtbl.clear application.elision_root;
+  Hashtbl.clear application.elision_members;
+  Hashtbl.clear application.elision_edges;
+  List.rev !out @ List.rev !drops
 let rec emit_dropped_subtree application saved removed_set node =
   if pending_create_exists application node then
     (* a node created inside this batch still needs the per-node walk so
@@ -1065,6 +1309,22 @@ let reconcile_subtree application saved parent old_root candidate_root =
   Hashtbl.iter
     (fun node () -> Hashtbl.replace application.pending_creates node ())
     saved.checkpoint_pending_creates;
+  Hashtbl.clear application.elision_ghosts;
+  Hashtbl.clear application.elision_root;
+  Hashtbl.clear application.elision_members;
+  Hashtbl.clear application.elision_edges;
+  Hashtbl.iter
+    (fun node () -> Hashtbl.replace application.elision_ghosts node ())
+    saved.checkpoint_elision_ghosts;
+  Hashtbl.iter
+    (fun id root -> Hashtbl.replace application.elision_root id root)
+    saved.checkpoint_elision_root;
+  Hashtbl.iter
+    (fun root ids -> Hashtbl.replace application.elision_members root ids)
+    saved.checkpoint_elision_members;
+  Hashtbl.iter
+    (fun child parent -> Hashtbl.replace application.elision_edges child parent)
+    saved.checkpoint_elision_edges;
   List.iter
     (fun candidate ->
        if candidate = map_node mapping candidate then
@@ -1348,80 +1608,26 @@ let rec created_subtree_ids application node acc =
       in
       loop acc (Lui_sequence.to_list children)
 
-(* Drop a same-batch subtree in one elision pass. Returns false when a
-   descendant was also inserted outside the subtree (index repair then has
-   to run per node) or when elision aborts. *)
-and try_elide_created_subtree application root =
+(* Drop a same-batch subtree by marking it: the flush-time replay prunes
+   the group's ops and renumbers survivors around its slots. Returns
+   false when a descendant is not a pending create, in which case the
+   caller keeps the per-node ops for that node. *)
+and mark_created_subtree application root =
   match created_subtree_ids application root [] with
   | None -> false
   | Some ids ->
-    let set = Hashtbl.create (List.length ids) in
-    List.iter (fun id -> Hashtbl.replace set id ()) ids;
-    let external_insert =
-      List.exists
-        (fun operation ->
-           match operation with
-           | InsertChild (parent, child, _) | MoveChild (parent, child, _) ->
-             Hashtbl.mem set child
-             && (not (Hashtbl.mem set parent))
-             && child <> root
-           | _ -> false)
-        !(application.pending_ops)
-    in
-    if external_insert then false
-    else
-      let saved_ops = !(application.pending_ops) in
-      let saved_creates = snapshot_hashtbl application.pending_creates in
-      enqueue_drop application root;
-      let aborted =
-        List.exists
-          (function DropNode id -> id = root | _ -> false)
-          !(application.pending_ops)
-      in
-      if aborted then begin
-        application.pending_ops := saved_ops;
-        Hashtbl.clear application.pending_creates;
-        Hashtbl.iter
-          (fun node () -> Hashtbl.replace application.pending_creates node ())
-          saved_creates;
-        false
-      end
-      else begin
-        application.pending_ops :=
-          List.filter
-            (fun operation ->
-               let other id = Hashtbl.mem set id && id <> root in
-               match operation with
-               | CreateNode (id, _)
-               | CreateExtension (id, _, _)
-               | DropNode id
-               | DetachSubtree id
-               | SetProp (id, _, _)
-               | RemoveProp (id, _)
-               | SetExtensionProp (id, _, _)
-               | RemoveExtensionProp (id, _) ->
-                 not (other id)
-               | InsertChild (parent, child, _)
-               | RemoveChild (parent, child)
-               | MoveChild (parent, child, _) ->
-                 not (other parent || other child))
-            !(application.pending_ops);
-        (match Hashtbl.find_opt application.runtime_parents root with
-        | Some parent -> (
-          try unlink_child application parent root
-          with Invalid_argument _ ->
-            Hashtbl.remove application.runtime_parents root)
-        | None -> ());
-        List.iter
-          (fun id ->
-             if id <> root then unmount_node application id;
-             Hashtbl.remove application.pending_creates id)
-          ids;
-        Hashtbl.replace application.runtime_children root Lui_sequence.empty;
-        unmount_node application root;
-        Hashtbl.remove application.pending_creates root;
-        true
-      end
+    mark_elided_group application root ids;
+    (match Hashtbl.find_opt application.runtime_parents root with
+     | Some parent -> (
+       try unlink_child application parent root
+       with Invalid_argument _ ->
+         Hashtbl.remove application.runtime_parents root)
+     | None -> ());
+    List.iter
+      (fun id -> if id <> root then unmount_node application id) ids;
+    Hashtbl.replace application.runtime_children root Lui_sequence.empty;
+    unmount_node application root;
+    true
 
 and drop_subtree application node =
   let node = canonical_node application node in
@@ -1430,9 +1636,9 @@ and drop_subtree application node =
     || Hashtbl.mem application.runtime_extension_nodes node
   then
     if pending_create_exists application node then begin
-      if not (try_elide_created_subtree application node) then
-        (* created inside this batch: keep the per-node ops so the elision
-           replay can prune the whole group *)
+      if not (mark_created_subtree application node) then
+        (* some descendant is not a pending create: keep the per-node ops
+           so each created node still marks itself for the replay *)
         drop_subtree_ops application node
     end
     else begin
@@ -2038,7 +2244,11 @@ let rec flush application =
           validate_extension_nodes application;
           application.runtime_extension_dirty := false
         end;
-        let operations = List.rev !(application.pending_ops) in
+        let operations =
+          if Hashtbl.length application.elision_ghosts = 0 then
+            List.rev !(application.pending_ops)
+          else elide_pending_ops application
+        in
         (* detach before apply: ops queued while the backend applies
            this batch (emits re-entering through event dispatch) land
            in the next batch instead of being re-sent under a stale
