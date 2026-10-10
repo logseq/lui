@@ -48,8 +48,9 @@ val windows_packager : Lui_pkg.packager
 
 (** {1 Bundling} *)
 
-val bundle : Lui_pkg.app_spec -> dir:string -> string Lui_pkg.outcome
-(** [bundle spec ~dir] writes [<dir>/<name>-<version>-windows-<arch>]
+val bundle :
+  ?arch:string -> Lui_pkg.app_spec -> dir:string -> string Lui_pkg.outcome
+(** [bundle ?arch spec ~dir] writes [<dir>/<name>-<version>-windows-<arch>]
     and returns its path. The directory holds [<name>.exe] (a copy of
     [spec.executable]), [<name>.exe.manifest] ({!manifest}),
     [<name>.ico] when [spec.icon] is set, and every resource of
@@ -192,7 +193,11 @@ module Private : sig
   end
 
   module Bundle : sig
-    val write : Lui_pkg.app_spec -> dir:string -> string Lui_pkg.outcome
+    val write :
+      ?arch:string ->
+      Lui_pkg.app_spec ->
+      dir:string ->
+      string Lui_pkg.outcome
     val exe_name : Lui_pkg.app_spec -> string
   end
 

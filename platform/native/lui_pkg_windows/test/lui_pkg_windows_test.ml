@@ -319,7 +319,7 @@ let test_bundle () =
   in
   let dir = Filename.concat base "dist" in
   P.Fs.mkdir_p dir;
-  let app = expect_ok (W.bundle spec ~dir) in
+  let app = expect_ok (W.bundle ~arch:"x64" spec ~dir) in
   eqs "dir name"
     (Filename.concat dir "WinApp-1.4.2-windows-x64")
     app;
