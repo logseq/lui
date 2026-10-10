@@ -1,0 +1,9 @@
+(library
+ (name lui_shell_linux)
+ (modules lui_shell_linux)
+ (libraries unix)
+ (foreign_stubs
+  (language c)
+  (names lui_shell_linux_stubs)
+  (flags -O2 -fPIC))
+ (c_library_flags -ldl))
