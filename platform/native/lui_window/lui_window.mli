@@ -32,12 +32,15 @@ module Input : sig
     | Backspace
     | Delete
     | Tab
+    | Space
     | Arrow_left
     | Arrow_right
     | Arrow_up
     | Arrow_down
     | Home
     | End
+    | Page_up
+    | Page_down
     | Other of int  (** SDL keycode for keys without special handling. *)
 
   type mouse_button =
@@ -75,14 +78,22 @@ module Input : sig
         (** driver-fed caret rect (device px) for candidate-window
             tracking; emitted once per frame while focused *)
     | Key_down of key * mods * bool  (** key, mods, repeat *)
+    | Paste of string
+        (** clipboard text the driver feeds after a [Paste_request]
+            action — clipboard I/O stays outside this pure module *)
     | Resize of int * int  (** new window size, logical pixels *)
     | Wheel of float * float
     | Quit_input
 
   (** SDL_Scancode integer values → keys (40 return, 41 escape, 42
-      backspace, 76 delete, 43 tab, 74 home, 77 end, 79-82 arrows).
-      Pure table so the driver stays thin and tests need no SDL. *)
+      backspace, 76 delete, 43 tab, 44 space, 74 home, 75 page-up,
+      77 end, 78 page-down, 79-82 arrows). Pure table so the driver
+      stays thin and tests need no SDL. *)
   val key_of_sdl_scancode : int -> key
+
+  (** SDL scancode → printable char for host-side typeahead and the
+      accelerator table; [~shift] uppercases letters. *)
+  val char_of_scancode : ?shift:bool -> int -> char option
 
   (** SDL_BUTTON_* integer values: 1 left, 2 middle, 3 right. *)
   val button_of_sdl : int -> mouse_button
@@ -101,6 +112,11 @@ type action =
   | Ime_rect of rect
       (** SDL_SetTextInputRect target, device px — only emitted while
           a composition is active and the caret moved *)
+  | Clipboard_write of string
+      (** copy/cut: driver performs SDL_SetClipboardText *)
+  | Paste_request
+      (** the accelerator for paste fired: driver should read the
+          clipboard and feed {!Input.Paste} back into [Ui.handle] *)
   | Quit
 
 (** Per-node device-pixel rectangles produced by [Layout.refresh] and
@@ -181,6 +197,42 @@ module Ui : sig
   val focused : t -> int
   val caret : t -> int
 
+  (** Editable selection anchor (byte offset into {!shadow}); the
+      selection is [min anchor caret .. max anchor caret). *)
+  val sel_anchor : t -> int
+
+  (** Static user-select=text selection: [(node, anchor, focus)] byte
+      offsets into the node's [text] prop, independent of focus. *)
+  val sel_text : t -> (int * int * int) option
+
+  (** Focus arrived via keyboard (Tab) rather than the pointer — the
+      distinction behind focus-ring visibility. *)
+  val focus_visible : t -> bool
+
+  (** Highlighted list-item for arrow/typeahead navigation. *)
+  val hl_item : t -> int
+
+  (** Current typeahead prefix buffer. *)
+  val typeahead : t -> string
+
+  (** [(drop-target, payload)] of the last completed drop, if any.
+      Host-local: the wire has no drop event. *)
+  val last_drop : t -> (int * string) option
+
+  (** A data-attrs drag session is in flight. *)
+  val drag_active : t -> bool
+
+  (** Topmost overlay-kind node currently tracked (0 = none). *)
+  val overlay_top : t -> int
+
+  (** Driver hooks: glyph measurement for caret/selection math, and
+      unshifted (content-space) rects for [scroll_show]/visible-range.
+      Deterministic defaults keep tests text-engine free. *)
+  val set_measure :
+    t -> (Lui_store.t -> int -> string -> float * float) -> unit
+
+  val set_content_rect : t -> (int -> Lui_scene.rect) -> unit
+
   (** Device-pixel scale; the driver updates it on resize/startup so
       logical input coordinates hit-test against device-pixel rects. *)
   val set_scale : t -> float -> unit
@@ -199,7 +251,16 @@ module Ui : sig
       renderer draws it underlined at the caret of the focused node. *)
   val marked : t -> string
 
-  val set_focused : t -> Lui_store.t -> int -> unit
+  (** [~kbd:true] marks keyboard-driven focus (affects
+      {!focus_visible}); the default is pointer/programmatic focus. *)
+  val set_focused : ?kbd:bool -> t -> Lui_store.t -> int -> unit
+
+  (** Effects that react to store changes: dead-focus cleanup, modal
+      overlay focus save/restore, Appear lifecycle events,
+      scroll-target requests and track-visible-range reports. The
+      driver runs it after every [Lui_app.flush]; [handle] runs it
+      before each input too. *)
+  val store_changed : t -> Lui_store.t -> action list
 
   (** Map one input event to ordered actions. *)
   val handle : t -> Lui_store.t -> Rects.t -> Input.t -> action list
@@ -230,6 +291,17 @@ module Ui : sig
   val set_scroll_cap : t -> int -> float -> unit
   (** Update a container's scrollable range; clamps the live offset
       when the range shrank under it. *)
+
+  (** Programmatic scroll APIs (clamped to the driver-filled caps);
+      each returns the actions the move produced — currently
+      [VisibleRange] dispatches for tracked containers. *)
+  val scroll_to : t -> Lui_store.t -> int -> float -> action list
+
+  val scroll_by : t -> Lui_store.t -> int -> float -> action list
+
+  (** Reveal a node inside its nearest scrollable ancestor (minimal
+      reveal — only scrolls when the node is clipped). *)
+  val scroll_show : t -> Lui_store.t -> int -> action list
 
   (** Repaint pacing: true when the store is dirty (wants_repaint) or
       hover/press/focus state changed since the last frame. *)

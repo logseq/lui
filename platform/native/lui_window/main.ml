@@ -489,6 +489,11 @@ let () =
      hit-test mirror and scroll caps below see real rects. *)
   ignore (Lui_host.repaint host);
   populate_rects ();
+  (* Ui driver hooks: real glyph measurement for caret/selection math,
+     unshifted engine rects for scroll_show/visible-range. *)
+  Ui.set_measure ui
+    (fun _store id s -> Lui_window_text.measure_text text_engine id s);
+  Ui.set_content_rect ui engine_rect;
   (* The a11y forest mirrors the store: synced after every repaint,
      focused along with the Ui focus, dumped on request and at quit. *)
   let a11y = Lui_a11y.of_store store in
@@ -582,11 +587,20 @@ let () =
         r.Lui_scene.h
     end
   in
-  let apply_actions = List.iter (function
+  let rec apply_actions acts = List.iter (function
     | Dispatch ev ->
       (try ignore (Lui_app.dispatch_event app ev)
        with Invalid_argument msg ->
          warn "dispatch rejected event: %s" msg)
+    | Clipboard_write s ->
+      if not headless then ignore (Lui_shell.clipboard_write s)
+    | Paste_request ->
+      (* clipboard I/O is a driver concern: read + feed back as
+         Input.Paste (interactive only — headless never types Cmd-V) *)
+      (match if headless then None else Lui_shell.clipboard_read () with
+       | Some s ->
+         apply_actions (Ui.handle ui store rects (Input.Paste s))
+       | None -> ())
     | Resize_host _ ->
       let dw, dh = drawable () in
       (match blit with
@@ -611,6 +625,7 @@ let () =
       end
     | Ime_rect r -> set_ime_rect r
     | Quit -> quit := true)
+    acts
   in
   let e = Sdl.Event.create () in
   (* Model actions the macOS shell layer queues out-of-band (menu-bar
@@ -703,6 +718,9 @@ let () =
     (* Patches queued by dispatched events land in the store here;
        the repaint below picks them up through the layout sync. *)
     ignore (Lui_app.flush app);
+    (* Store-driven effects: Appear lifecycle events, scroll-target
+       completions, visible-range reports, modal focus save/restore. *)
+    apply_actions (Ui.store_changed ui store);
     poll_driver ();
     (* Report the caret once per frame: while a composition is open
        the state machine emits Ime_rect on movement so the candidate

@@ -750,7 +750,459 @@ let test_headless_checksum () =
   (* the recorded value pins the demo's initial scene: any render-path
      change shows up here *)
   Alcotest.(check string) "golden"
-    "headless done: frames=6 checksum=68b1be2fbd3e039d" c1
+    "headless done: frames=6 checksum=e521097a2982d115" c1
+
+(* ---------- widget-layer interactions ---------- *)
+
+let key ?(mods = Input.mods_none) k =
+  Input.Key_down (k, mods, false)
+
+let meta = { Input.mods_none with Input.meta = true }
+let shift = { Input.mods_none with Input.shift = true }
+let ctrl = { Input.mods_none with Input.ctrl = true }
+
+let press_field s rects ui x y =
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_down (x, y, Input.Left, 1, Input.mods_none)))
+
+let test_sel_shift_and_all () =
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  press_field s rects ui 5. 40.;
+  ignore (Ui.handle ui s rects (Input.Text_input "hello"));
+  (* caret at end: shift+Home selects the whole word *)
+  ignore (Ui.handle ui s rects (key ~mods:shift Input.Home));
+  Alcotest.(check int) "anchor stays" 5 (Ui.sel_anchor ui);
+  Alcotest.(check int) "caret home" 0 (Ui.caret ui);
+  (* plain Home collapses *)
+  ignore (Ui.handle ui s rects (key Input.End));
+  Alcotest.(check int) "collapsed" 5 (Ui.sel_anchor ui);
+  (* Cmd/Ctrl+A selects all *)
+  ignore (Ui.handle ui s rects (key ~mods:meta (Input.Other 4)));
+  Alcotest.(check int) "sel all a" 0 (Ui.sel_anchor ui);
+  Alcotest.(check int) "sel all c" 5 (Ui.caret ui)
+
+let test_clipboard_cycle () =
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  press_field s rects ui 5. 40.;
+  ignore (Ui.handle ui s rects (Input.Text_input "clip"));
+  ignore (Ui.handle ui s rects (key ~mods:meta (Input.Other 4)));
+  (* cut = clipboard + delete *)
+  (match
+     Ui.handle ui s rects (key ~mods:meta (Input.Other 27))
+   with
+   | [ Clipboard_write "clip"; Dispatch (TextChanged (4, "")) ] -> ()
+   | a -> Alcotest.failf "cut: %d actions" (List.length a));
+  (* paste requests the driver's clipboard read *)
+  (match
+     Ui.handle ui s rects (key ~mods:meta (Input.Other 25))
+   with
+   | [ Paste_request ] -> ()
+   | _ -> Alcotest.fail "expected Paste_request");
+  (* the driver feeds the text back through Input.Paste *)
+  (match
+     Ui.handle ui s rects (Input.Paste "back")
+   with
+   | [ Dispatch (TextChanged (4, "back")) ] -> ()
+   | _ -> Alcotest.fail "expected paste splice");
+  (* copy-only (mod+C) leaves the text *)
+  ignore (Ui.handle ui s rects (key ~mods:meta (Input.Other 4)));
+  (match
+     Ui.handle ui s rects (key ~mods:ctrl (Input.Other 6))
+   with
+   | [ Clipboard_write "back" ] -> ()
+   | _ -> Alcotest.fail "expected copy")
+
+let test_undo_redo () =
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  press_field s rects ui 5. 40.;
+  ignore (Ui.handle ui s rects (Input.Text_input "a"));
+  ignore (Ui.handle ui s rects (Input.Text_input "b"));
+  (* Cmd+Z undoes the second commit *)
+  (match
+     Ui.handle ui s rects (key ~mods:meta (Input.Other 29))
+   with
+   | [ Dispatch (TextChanged (4, "a")) ] -> ()
+   | _ -> Alcotest.fail "expected undo");
+  (* shift+Cmd+Z redoes it *)
+  let m = { Input.mods_none with Input.meta = true; Input.shift = true } in
+  (match
+     Ui.handle ui s rects (key ~mods:m (Input.Other 29))
+   with
+   | [ Dispatch (TextChanged (4, "ab")) ] -> ()
+   | _ -> Alcotest.fail "expected redo")
+
+(* Text node with data-user-select for the static-selection path. *)
+let sel_text_store () =
+  store_of
+    [ CreateNode (1, Root); CreateNode (2, Column);
+      CreateNode (3, Text);
+      InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+      SetProp (3, TextValue, StringValue "hello world");
+      SetProp
+        (3, DataAttrs,
+          StringValue
+            (Lui_protocol.data_attrs_encode
+               [ ("data-user-select", "text") ])) ]
+
+let test_static_select () =
+  let s = sel_text_store () in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:200 ~height:100 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  let r = Rects.get rects 3 in
+  (* double-click near the left edge selects the first word *)
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_down (r.x +. 2., r.y +. 2., Input.Left, 2,
+          Input.mods_none)));
+  (match Ui.sel_text ui with
+   | Some (3, 0, 5) -> ()
+   | a -> Alcotest.failf "word sel: %s"
+            (match a with
+             | Some (i, x, y) ->
+               Printf.sprintf "(%d,%d,%d)" i x y
+             | None -> "none"));
+  (* drag-select extends the range to the drop point *)
+  ignore
+    (Ui.handle ui s rects
+       (Input.Move (r.x +. 90., r.y +. 2.)));
+  (match Ui.sel_text ui with
+   | Some (3, 0, e) when e > 5 -> ()
+   | a -> Alcotest.failf "drag extend: %s"
+            (match a with
+             | Some (i, x, y) ->
+               Printf.sprintf "(%d,%d,%d)" i x y
+             | None -> "none"));
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_up (r.x +. 90., r.y +. 2., Input.Left,
+          Input.mods_none)));
+  (* copy on the static selection writes the substring *)
+  (match
+     Ui.handle ui s rects (key ~mods:meta (Input.Other 6))
+   with
+   | [ Clipboard_write t ] ->
+     Alcotest.(check bool) "copied slice" true
+       (String.length t > 5 && String.sub t 0 5 = "hello")
+   | _ -> Alcotest.fail "expected copy of selection")
+
+let test_tab_activation () =
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  (* Tab now tours every activatable control: button 3, field 4,
+     button 7 — keyboard focus shows the ring *)
+  (match Ui.handle ui s rects (key Input.Tab) with
+   | [ Focus_changed 3 ] -> ()
+   | a -> Alcotest.failf "tab1: %d acts" (List.length a));
+  Alcotest.(check bool) "kbd focus" true (Ui.focus_visible ui);
+  (match Ui.handle ui s rects (key Input.Tab) with
+   | [ Focus_changed 4 ] -> ()
+   | _ -> Alcotest.fail "tab2 expected field");
+  (match Ui.handle ui s rects (key Input.Tab) with
+   | [ Focus_changed 7 ] -> ()
+   | _ -> Alcotest.fail "tab3 expected nested button");
+  (* shift+Tab walks back *)
+  (match
+     Ui.handle ui s rects (key ~mods:shift Input.Tab)
+   with
+   | [ Focus_changed 4 ] -> ()
+   | _ -> Alcotest.fail "shift-tab expected field");
+  ignore (Ui.handle ui s rects (key ~mods:shift Input.Tab));
+  Alcotest.(check int) "back on btn" 3 (Ui.focused ui);
+  (* Space activates the focused control *)
+  (match Ui.handle ui s rects (key Input.Space) with
+   | [ Dispatch (Press 3) ] -> ()
+   | _ -> Alcotest.fail "space should press");
+  (* pointer focus does not show the ring *)
+  press_field s rects ui 5. 40.;
+  Alcotest.(check bool) "ptr focus" false (Ui.focus_visible ui)
+
+let test_control_keys () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        CreateNode (3, NumberStepper); CreateNode (4, Slider);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+        InsertChild (2, 4, 1);
+        SetProp (3, MinValue, FloatValue 0.);
+        SetProp (3, MaxValue, FloatValue 10.);
+        SetProp (3, StepValue, FloatValue 0.5);
+        SetProp (4, ProgressValue, FloatValue 0.5) ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:200 ~height:100 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  Ui.set_focused ui s 3;
+  (match Ui.handle ui s rects (key Input.Arrow_right) with
+   | [ Dispatch (ValueChanged (3, v)) ] ->
+     Alcotest.(check (float 0.001)) "step" 0.5 v
+   | _ -> Alcotest.fail "stepper arrow");
+  Ui.set_focused ui s 4;
+  (match Ui.handle ui s rects (key Input.Arrow_left) with
+   | [ Dispatch (ValueChanged (4, v)) ] ->
+     Alcotest.(check (float 0.001)) "slider" 0.45 v
+   | _ -> Alcotest.fail "slider arrow");
+  (* radio arrows move inside the group *)
+  let s' =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        CreateNode (3, Radio); CreateNode (4, Radio);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+        InsertChild (2, 4, 1) ]
+  in
+  Ui.set_focused ui s' 3;
+  (match Ui.handle ui s' rects (key Input.Arrow_down) with
+   | Focus_changed 4 :: _ -> ()
+   | _ -> Alcotest.fail "radio move")
+
+(* A list (ListContainer) with keyed items, for scroll/typeahead. *)
+let list_store () =
+  store_of
+    [ CreateNode (1, Root); CreateNode (2, ListContainer);
+      CreateNode (3, ListItem); CreateNode (4, ListItem);
+      CreateNode (5, ListItem);
+      InsertChild (1, 2, 0);
+      InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+      InsertChild (2, 5, 2);
+      SetProp (3, KeyValue, StringValue "item-a");
+      SetProp (3, TextValue, StringValue "apple");
+      SetProp (4, KeyValue, StringValue "item-b");
+      SetProp (4, TextValue, StringValue "banana");
+      SetProp (5, KeyValue, StringValue "item-c");
+      SetProp (5, TextValue, StringValue "cherry") ]
+
+let test_list_typeahead () =
+  let s = list_store () in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:100 ~height:40 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  Ui.set_content_rect ui (fun id -> Rects.get rects id);
+  (* click the first item: becomes the highlight, scopes typeahead *)
+  let r3 = Rects.get rects 3 in
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_down
+          (r3.x +. 2., r3.y +. 2., Input.Left, 1, Input.mods_none)));
+  Alcotest.(check int) "hl" 3 (Ui.hl_item ui);
+  (* 'b' jumps to banana *)
+  ignore
+    (Ui.handle ui s rects (key (Input.Other 5)));
+  Alcotest.(check int) "typeahead b" 4 (Ui.hl_item ui);
+  Alcotest.(check string) "buf" "b" (Ui.typeahead ui);
+  (* arrows move the highlight; Enter presses it *)
+  ignore (Ui.handle ui s rects (key Input.Arrow_down));
+  Alcotest.(check int) "arrow" 5 (Ui.hl_item ui);
+  (match Ui.handle ui s rects (key Input.Return) with
+   | [ Dispatch (Press 5) ] -> ()
+   | _ -> Alcotest.fail "enter should press highlighted item")
+
+let test_scroll_request () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, ListContainer);
+        CreateNode (3, ListItem); CreateNode (4, ListItem);
+        CreateNode (5, ListItem);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+        InsertChild (2, 5, 2);
+        SetProp (3, KeyValue, StringValue "item-a");
+        SetProp (4, KeyValue, StringValue "item-b");
+        SetProp (5, KeyValue, StringValue "item-c");
+        SetProp (2, ScrollTarget, StringValue "item-c");
+        SetProp (2, ScrollToken, IntValue 1);
+        SetProp (2, TrackVisibleRange, BoolValue true);
+        (* a 20px viewport over 72px of items: scrolling has range *)
+        SetProp (2, HeightValue, IntValue 20) ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:100 ~height:200 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  Ui.set_content_rect ui (fun id -> Rects.get rects id);
+  Ui.set_scroll_cap ui 2 200.;
+  (* the sync pass honors the new scroll-target token *)
+  let acts = Ui.store_changed ui s in
+  (match press_actions acts with
+   | [ ScrollCompleted (2, 1, "succeeded") ] -> ()
+   | [ VisibleRange _; ScrollCompleted (2, 1, "succeeded") ]
+   | [ ScrollCompleted (2, 1, "succeeded"); VisibleRange _ ] -> ()
+   | _ -> Alcotest.fail "expected ScrollCompleted");
+  Alcotest.(check bool) "scrolled" true (Ui.scroll_offset ui 2 > 0.);
+  (* a missing target reports missing-target *)
+  Lui_store.apply_batch s
+    { generation = 2;
+      ops =
+        [ SetProp (2, ScrollTarget, StringValue "nope");
+          SetProp (2, ScrollToken, IntValue 2) ] };
+  (match press_actions (Ui.store_changed ui s) with
+   | [ ScrollCompleted (2, 2, "missing-target") ]
+   | [ VisibleRange _; ScrollCompleted (2, 2, "missing-target") ]
+   | [ ScrollCompleted (2, 2, "missing-target"); VisibleRange _ ] -> ()
+   | a -> Alcotest.failf "missing: %d" (List.length a));
+  (* programmatic APIs clamp and move *)
+  ignore (Ui.scroll_to ui s 2 9999.);
+  Alcotest.(check (float 0.001)) "cap" 200. (Ui.scroll_offset ui 2);
+  ignore (Ui.scroll_by ui s 2 (-50.));
+  Alcotest.(check (float 0.001)) "by" 150. (Ui.scroll_offset ui 2)
+
+let test_drag_drop () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        CreateNode (3, Row); CreateNode (4, Row);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+        SetProp (3, HeightValue, IntValue 20);
+        SetProp (4, HeightValue, IntValue 20);
+        SetProp
+          (3, DataAttrs,
+            StringValue
+              (Lui_protocol.data_attrs_encode
+                 [ ("draggable", "true");
+                   ("data-drag-payload", "row-payload") ]));
+        SetProp
+          (4, DataAttrs,
+            StringValue
+              (Lui_protocol.data_attrs_encode
+                 [ ("data-drop-target", "true");
+                   ("data-drop-accept", "row-") ])) ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:100 ~height:60 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  let r3 = Rects.get rects 3 and r4 = Rects.get rects 4 in
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_down
+          (r3.x +. 4., r3.y +. 4., Input.Left, 1, Input.mods_none)));
+  (* small move stays a plain press; past 6px the grab promotes *)
+  ignore (Ui.handle ui s rects (Input.Move (r3.x +. 7., r3.y +. 5.)));
+  Alcotest.(check bool) "not yet" false (Ui.drag_active ui);
+  ignore (Ui.handle ui s rects (Input.Move (r3.x +. 30., r3.y +. 20.)));
+  Alcotest.(check bool) "dragging" true (Ui.drag_active ui);
+  (* over the accepting target, then release: drop completes *)
+  ignore
+    (Ui.handle ui s rects
+       (Input.Move (r4.x +. 5., r4.y +. 5.)));
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_up
+          (r4.x +. 5., r4.y +. 5., Input.Left, Input.mods_none)));
+  (match Ui.last_drop ui with
+   | Some (4, "row-payload") -> ()
+   | a -> Alcotest.failf "drop: %s"
+            (match a with
+             | Some (i, p) -> Printf.sprintf "(%d,%s)" i p
+             | None -> "none"))
+
+let test_overlay_close () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        CreateNode (3, TextField); CreateNode (4, Dialog);
+        CreateNode (5, Button); CreateNode (6, Popover);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+        InsertChild (4, 5, 0); InsertChild (2, 6, 2);
+        SetProp (3, TextValue, StringValue "") ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:200 ~height:200 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  (* popover is topmost (later in paint order): Escape dismisses it *)
+  (match Ui.handle ui s rects (key Input.Escape) with
+   | [ Dispatch (Dismiss 6) ] -> ()
+   | a -> Alcotest.failf "esc popover: %d" (List.length a));
+  (* the app closes it — drop the node so the dialog becomes top *)
+  Lui_store.apply_batch s
+    { generation = 2; ops = [ DropNode 6 ] };
+  (* dialog is modal: a press outside its subtree is swallowed —
+     no PointerDown, no focus move *)
+  let acts =
+    Ui.handle ui s rects
+      (Input.Button_down (5., 5., Input.Left, 1, Input.mods_none))
+  in
+  Alcotest.(check int) "modal swallows" 0 (List.length acts);
+  Alcotest.(check int) "no focus steal" 0 (Ui.focused ui);
+  (* Escape on the modal dialog dismisses through the wire *)
+  (match Ui.handle ui s rects (key Input.Escape) with
+   | [ Dispatch (Dismiss 4) ] -> ()
+   | _ -> Alcotest.fail "esc dialog")
+
+let test_light_dismiss () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        CreateNode (3, TextField); CreateNode (4, Popover);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+        SetProp (3, TextValue, StringValue "") ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:200 ~height:200 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  (* click outside a light-dismiss surface: Dismiss + normal press *)
+  (match
+     Ui.handle ui s rects
+       (Input.Button_down (5., 5., Input.Left, 1, Input.mods_none))
+   with
+   | Dispatch (Dismiss 4) :: _ -> ()
+   | _ -> Alcotest.fail "expected Dismiss on click outside")
+
+let test_autofocus () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        CreateNode (3, Button); CreateNode (4, TextField);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+        SetProp (3, TextValue, StringValue "ok");
+        SetProp (4, TextValue, StringValue "");
+        SetProp (4, Autofocus, BoolValue true) ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:100 ~height:100 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  (* the autofocus-marked field takes focus once, at mount *)
+  (match Ui.store_changed ui s with
+   | [ Focus_changed 4 ] -> ()
+   | a -> Alcotest.failf "autofocus: %d acts" (List.length a));
+  Alcotest.(check int) "focused" 4 (Ui.focused ui);
+  (* never steals focus again *)
+  Ui.set_focused ui s 0;
+  Alcotest.(check int) "once" 0
+    (List.length (Ui.store_changed ui s))
+
+let test_appear_once () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        CreateNode (3, Text);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+        SetProp (3, AppearEnabled, BoolValue true);
+        SetProp (3, TextValue, StringValue "hi") ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:100 ~height:100 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  (* mount lifecycle: Appear fires once, not per frame *)
+  (match press_actions (Ui.store_changed ui s) with
+   | [ Appear 3 ] -> ()
+   | _ -> Alcotest.fail "expected Appear 3");
+  Alcotest.(check int) "once" 0
+    (List.length (press_actions (Ui.store_changed ui s)))
 
 let () =
   Alcotest.run "lui_window"
@@ -792,5 +1244,24 @@ let () =
         [ Alcotest.test_case "wheel" `Quick test_scroll ] );
       ( "demo",
         [ Alcotest.test_case "dispatch flow" `Quick test_demo_dispatch ] );
+      ( "selection",
+        [ Alcotest.test_case "shift+all" `Quick test_sel_shift_and_all;
+          Alcotest.test_case "static text" `Quick test_static_select ] );
+      ( "clipboard",
+        [ Alcotest.test_case "cut/copy/paste" `Quick test_clipboard_cycle;
+          Alcotest.test_case "undo/redo" `Quick test_undo_redo ] );
+      ( "keys",
+        [ Alcotest.test_case "tab activation" `Quick test_tab_activation;
+          Alcotest.test_case "control keys" `Quick test_control_keys ] );
+      ( "list",
+        [ Alcotest.test_case "typeahead" `Quick test_list_typeahead;
+          Alcotest.test_case "scroll request" `Quick test_scroll_request ] );
+      ( "dnd",
+        [ Alcotest.test_case "drag drop" `Quick test_drag_drop ] );
+      ( "overlay",
+        [ Alcotest.test_case "modal+esc" `Quick test_overlay_close;
+          Alcotest.test_case "light dismiss" `Quick test_light_dismiss;
+          Alcotest.test_case "appear once" `Quick test_appear_once;
+          Alcotest.test_case "autofocus" `Quick test_autofocus ] );
       ( "headless",
         [ Alcotest.test_case "checksum" `Quick test_headless_checksum ] ) ]
