@@ -8,6 +8,8 @@
    Everything else goes through the C interfaces of Core Text, Core
    Graphics and Core Foundation. */
 
+#if defined(__APPLE__)
+
 #import <AppKit/AppKit.h>
 #import <CoreText/CoreText.h>
 #import <CoreGraphics/CoreGraphics.h>
@@ -690,3 +692,38 @@ CAMLprim value lui_ct_rasterize(value vfont, value vid, value vscale,
   Store_field(vres, 0, vtup);
   CAMLreturn(vres);
 }
+
+#else /* !__APPLE__ */
+
+/* The library stays buildable on every platform so cross-platform
+   consumers and platform-gated tests resolve cleanly; any call on an
+   unsupported platform fails immediately. */
+#include <caml/mlvalues.h>
+#include <caml/fail.h>
+
+static value unsupported(void) {
+  caml_failwith("lui_text: this backend requires macOS");
+  return Val_unit;
+}
+
+CAMLprim value lui_ct_named(value a, value b, value c, value d) {
+  (void)a; (void)b; (void)c; (void)d; return unsupported(); }
+CAMLprim value lui_ct_system(value a, value b, value c, value d) {
+  (void)a; (void)b; (void)c; (void)d; return unsupported(); }
+CAMLprim value lui_ct_cascade(value a, value b, value c, value d) {
+  (void)a; (void)b; (void)c; (void)d; return unsupported(); }
+CAMLprim value lui_ct_fallback(value a, value b) {
+  (void)a; (void)b; return unsupported(); }
+CAMLprim value lui_ct_metrics(value a) {
+  (void)a; return unsupported(); }
+CAMLprim value lui_ct_is_color(value a) {
+  (void)a; return unsupported(); }
+CAMLprim value lui_ct_family(value a) {
+  (void)a; return unsupported(); }
+CAMLprim value lui_ct_shape(value a, value b, value c, value d, value e) {
+  (void)a; (void)b; (void)c; (void)d; (void)e; return unsupported(); }
+CAMLprim value lui_ct_rasterize(value a, value b, value c, value d,
+                                value e) {
+  (void)a; (void)b; (void)c; (void)d; (void)e; return unsupported(); }
+
+#endif /* __APPLE__ */
