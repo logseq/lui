@@ -498,11 +498,20 @@ let () =
   (* The accessibility bridge cell: created after the app tree exists,
      consulted by Focus_changed. *)
   let ax_cell = ref None in
-  let apply_actions = List.iter (function
+  let rec apply_actions acts = List.iter (function
     | Dispatch ev ->
       (try ignore (Lui_app.dispatch_event app ev)
        with Invalid_argument msg ->
          warn "dispatch rejected event: %s" msg)
+    | Clipboard_write s ->
+      if not headless then ignore (Lui_shell_linux.clipboard_write s)
+    | Paste_request ->
+      (* clipboard I/O is a driver concern: read + feed back as
+         Input.Paste (interactive only — headless never types Ctrl-V) *)
+      (match if headless then None else Lui_shell_linux.clipboard_read () with
+       | Some s ->
+         apply_actions (Ui.handle ui store rects (Input.Paste s))
+       | None -> ())
     | Resize_host _ ->
       let dw, dh = drawable () in
       (match blit with
@@ -535,6 +544,7 @@ let () =
       end
     | Ime_rect r -> set_ime_rect r
     | Quit -> quit := true)
+    acts
   in
   (* Accessibility: mirror the Lui_a11y semantic tree over the a11y
      bus. Everything is transport-guarded: offline, events queue and

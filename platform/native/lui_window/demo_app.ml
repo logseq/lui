@@ -198,6 +198,12 @@ let caption v = text ~value:v ~foreground:"#5f6478" ~font_size:"12" []
 let set_shadow spec : t =
   dynamic (fun ctx parent -> Lui_ui.shadow ctx parent spec)
 
+(* data-user-select is the legal data-* channel for opting a text
+   node into the host's selection model when the vocabulary lacks a
+   user-select param — drag-select/double-click/click-outside and
+   Cmd+C all work on it. *)
+let sel_text_attrs = [ ("data-user-select", "text") ]
+
 let ghost_btn send label act =
   button ~text:label ~background:"#2c2e3e" ~foreground:"#e4e6ee"
     ~border_color:"#383b4c" ~border_width:1 ~corner_radius:6
@@ -267,7 +273,20 @@ let section_inputs model_s send =
         ~value:
           "the IME candidate window tracks the caret — the host reports \
            its rect to SDL every frame"
-        ~foreground:"#5f6478" ~font_size:"11" [] ]
+        ~foreground:"#5f6478" ~font_size:"11" [];
+      column ~gap:6
+        [ text
+            ~value:
+              "this line is selectable — drag-select, \
+               double-click a word, Cmd+C copies"
+            ~foreground:"#8ab4ff" ~font_size:"12"
+            ~data_attrs:sel_text_attrs [];
+          text
+            ~value:
+              "fields: Cmd/Ctrl+A select-all, X/C/V cut-copy-paste, \
+               Cmd+Z undo, shift+arrows extend, triple-click selects \
+               a line"
+            ~foreground:"#5f6478" ~font_size:"11" [] ] ]
 
 let section_controls model_s send =
   column ~gap:14 ~padding:16
@@ -381,19 +400,41 @@ let section_lists model_s send =
                 ~key:(fun s -> s) ~cmp:String.compare
                 ~mount:(item_row send) ] ];
       column ~grow:1. ~gap:10
-        [ caption "a fixed-height scrollable list (scrollbar + wheel)";
+        [ caption
+            "fixed-height list — opens scrolled to row 08 \
+             (scroll-target), wheel/typeahead/arrows move, \
+             row 12 drags into the drop well";
           list ~height:130 ~background:"#1b1c28" ~corner_radius:8
-            ~padding:6 ~gap:4
+            ~padding:6 ~gap:4 ~track_visible_range:true
+            ~scroll_target:"row-08" ~scroll_token:1
+            ~scroll_anchor:`center
             (List.init 16 (fun i ->
+               let n = i + 1 in
                list_item
-                 ~text:(Printf.sprintf "row %02d — hover me" (i + 1))
+                 ~text:(Printf.sprintf "row %02d — hover me" n)
+                 ~key:(Printf.sprintf "row-%02d" n)
                  ~foreground:"#e4e6ee" ~padding_horizontal:8
                  ~corner_radius:4
+                 ~data_attrs:
+                   (if n = 12 then
+                      [ ("draggable", "true");
+                        ("data-drag-payload", "row-12") ]
+                    else [])
                  ~on_press:
                    (press send
                       (Last_event
-                         (Printf.sprintf "row %d pressed" (i + 1))))
+                         (Printf.sprintf "row %d pressed" n)))
                  []));
+          row ~gap:8 ~cross:`center
+            ~on_appear:
+              (press send (Last_event "lists section appeared"))
+            [ text
+                ~value:"drop well (data-drop-target)"
+                ~foreground:"#8ab4ff" ~font_size:"12"
+                ~padding:8 ~corner_radius:6
+                ~data_attrs:
+                  [ ("data-drop-target", "true");
+                    ("data-drop-accept", "row-") ] [] ];
           caption "table";
           table ~background:"#1b1c28" ~corner_radius:8
             [ table_row

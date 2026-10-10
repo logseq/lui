@@ -26,9 +26,17 @@ missing API/channel) and keep the source scenario as the spec.
   upload/cache update, open-url handlers.
 - Open 425 (all TODO-annotated): ~30 lui_svg rows (module does not exist),
   ~15 gamut/wide-codec rows (private to lui_scene, no exported API), ~90
-  widget-layer e2e rows needing lui_window/lui_gallery support (scroll,
-  selection, drag/drop, shortcuts, popovers, dialogs, tooltips, transitions,
-  widget a11y states), ~50 lui_text rows needing caret/span/feature/buffer/
+  widget-layer e2e rows needing lui_window/lui_gallery support — lui_window
+  now carries headless-tested channels for text selection (caret/range,
+  shift-extend, drag, word/line/all), clipboard cut/copy/paste, undo/redo,
+  scroll APIs + scroll-target/VisibleRange wiring, list keyboard/typeahead,
+  host-side drag/drop via data-* attrs, focus rings + Tab activation,
+  overlay open-close-dismiss (modal swallow, Escape, light-dismiss, focus
+  trap/restore) and the Appear enter hook; rows above keep TODO for e2e
+  scenario wiring, gallery/virtual-list specifics, and the wire-level gaps
+  noted per row (typed drop payloads, file drops, horizontal scroll,
+  scrollbar widget, multi-node selection, follow-end tracking, transition
+  exit hooks, tooltips). ~50 lui_text rows needing caret/span/feature/buffer/
   cache APIs, ~30 list/table/grid rows, shell-lifecycle and accel rows
   (lui_shell*), real-GPU rows (only the gated real-GL pattern applies),
   decode paths absent from lui_image (webp/halve/exif/gray).
@@ -53,13 +61,13 @@ missing API/channel) and keep the source scenario as the spec.
 ## P1 — semantics
 
 - [ ] `test_host_before_run` — e2e ~partial~ — covers TestBeforeRun (internal/e2e) — TODO: window/shell lifecycle (lui_shell*/lui_window, out of scope)
-- [ ] `test_text_selection_drag` — e2e — covers TestContentWindowTextSelection (internal/e2e) — TODO: no text-selection input channel in lui_window (out of scope)
+- [ ] `test_text_selection_drag` — e2e ~partial~ — covers TestContentWindowTextSelection (internal/e2e) — TODO: selection channel exists in lui_window (drag-select headless-tested); e2e scenario unwired (e2e/ out of module scope)
 - [x] `test_ime_composition` — e2e — covers TestContentWindowInputMethod (internal/e2e) — ✓ e2e/input 'composition commits'
 - [x] `test_ime_textarea` — e2e — covers TestContentWindowTextAreaInputMethod (internal/e2e) — ✓ e2e/input 'textarea'
 - [ ] `test_ime_text_buffer` — e2e — covers TestContentWindowTextBufferInputMethod (internal/e2e) — TODO: no caret/span/feature/buffer/cache API in lui_text yet
 - [x] `test_observed_events` — e2e — covers TestContentWindowObserved (internal/e2e) — ✓ e2e/input 'observed appear'
 - [x] `test_a11y_list` — e2e ~partial~ — covers TestContentWindowListAccessibility (internal/e2e) — ✓ e2e/input 'list rows'
-- [ ] `test_list_type_to_choose` — e2e — covers TestContentWindowListTypeToChoose (internal/e2e) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_list_type_to_choose` — e2e ~partial~ — covers TestContentWindowListTypeToChoose (internal/e2e) — TODO: typeahead/jump implemented in lui_window lists
 - [x] `test_composing_keys` — e2e — covers TestContentWindowComposingKeys (internal/e2e) — ✓ e2e/input 'composition commits' + lui_window 'keys suppressed'/'editing not dispatched'
 - [x] `test_menu_button` — e2e — covers TestContentWindowMenuButton (internal/e2e) — ✓ e2e/input 'menu button'
 - [x] `test_context_menu` — e2e — covers TestContentWindowContextMenu (internal/e2e) — ✓ e2e/input 'context menu'/'input context menu'
@@ -137,25 +145,25 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_toggle_bases` — e2e ~partial~ — covers TestToggleBases (ui/base_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_slider_content_box` — e2e ~partial~ — covers TestSliderBaseMapsItsContentBox (ui/base_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_tabs_base` — e2e — covers TestTabsBase (ui/base_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_select_base` — e2e — covers TestSelectBase (ui/base_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_dialog_popover_bases` — e2e ~partial~ — covers TestDialogAndPopoverBases (ui/base_test.go) — TODO: window/shell lifecycle (lui_shell*/lui_window, out of scope)
-- [ ] `test_dismissed` — e2e — covers TestDismissed (ui/base_test.go) — TODO: window/shell lifecycle (lui_shell*/lui_window, out of scope)
+- [ ] `test_select_base` — e2e — covers TestSelectBase (ui/base_test.go) — TODO: selection channel exists in lui_window; select-widget base (popup/options) remains gallery-side
+- [ ] `test_dialog_popover_bases` — e2e ~partial~ — covers TestDialogAndPopoverBases (ui/base_test.go) — TODO: dialog/popover open-close-dismiss implemented in lui_window (modal swallow, Escape/click-outside Dismiss, focus save/restore); window-lifecycle ops remain in lui_shell*
+- [ ] `test_dismissed` — e2e ~partial~ — covers TestDismissed (ui/base_test.go) — TODO: Dismiss on Escape/click-outside implemented in lui_window; window-close lifecycle remains in lui_shell*
 - [ ] `test_text_input_base` — e2e ~partial~ — covers TestTextInputBase (ui/base_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_focus_ring` — e2e — covers TestFocusRing (ui/base_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_focus_ring` — e2e ~partial~ — covers TestFocusRing (ui/base_test.go) — TODO: focus-visible implemented in lui_window (Tab sets keyboard focus ring, pointer clears); gallery coverage pending
 - [ ] `test_popups_open_where_fit` — e2e ~partial~ — covers TestPopupsOpenWhereTheyFit (ui/base_test.go) — TODO: window/shell lifecycle (lui_shell*/lui_window, out of scope)
 - [ ] `test_enter_window_shortcut` — e2e — covers TestEnterWithWindowShortcut (ui/base_test.go) — TODO: shortcut parsing/dispatch is shell-level (lui_shell*, out of scope)
 - [ ] `test_combobox_rebuild` — e2e — covers TestComboboxChosenRebuildsDependentUI (collapsible / combobox (`ui/collapsible_test.go`, `ui/combobox_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_combobox` — e2e — covers TestCombobox (collapsible / combobox (`ui/collapsible_test.go`, `ui/combobox_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_combobox_a11y` — e2e ~partial~ — covers TestComboboxAccessibility (collapsible / combobox (`ui/collapsible_test.go`, `ui/combobox_test.go`)) — TODO: needs widget-level a11y semantics; flatten machinery proven by e2e/input a11y tests
 - [ ] `test_autocomplete` — e2e — covers TestAutocomplete (collapsible / combobox (`ui/collapsible_test.go`, `ui/combobox_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_combobox_scroll_highlight` — e2e — covers TestComboboxScrollsPastHighlight (collapsible / combobox (`ui/collapsible_test.go`, `ui/combobox_test.go`)) — TODO: no scroll input channel in lui_window (out of scope)
-- [ ] `test_select_scroll_highlight` — e2e — covers TestSelectBaseScrollsToHighlight (collapsible / combobox (`ui/collapsible_test.go`, `ui/combobox_test.go`)) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_list_reorder` — e2e — covers TestListReorder (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: no drag/drop input channel in lui_window (out of scope)
-- [ ] `test_grid_reorder` — e2e — covers TestGridReorder (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: no drag/drop input channel in lui_window (out of scope)
+- [ ] `test_combobox_scroll_highlight` — e2e ~partial~ — covers TestComboboxScrollsPastHighlight (collapsible / combobox (`ui/collapsible_test.go`, `ui/combobox_test.go`)) — TODO: scroll + highlight move exist in lui_window; combobox popup specifics remain
+- [ ] `test_select_scroll_highlight` — e2e ~partial~ — covers TestSelectBaseScrollsToHighlight (collapsible / combobox (`ui/collapsible_test.go`, `ui/combobox_test.go`)) — TODO: selection + scroll-to-highlight exist in lui_window; select-popup specifics remain
+- [ ] `test_list_reorder` — e2e ~partial~ — covers TestListReorder (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: drag/drop exists host-side in lui_window (draggable + data-drop-accept attrs, payload); reorder policy is app-side
+- [ ] `test_grid_reorder` — e2e ~partial~ — covers TestGridReorder (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: drag/drop exists host-side in lui_window; reorder policy is app-side
 - [ ] `test_editor_client_between_frames` — e2e — covers TestWidgetInputUsesClientBetweenFrames (ui/editor_input_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_editor_composition_undo` — e2e — covers TestWidgetCompositionHasOneUndoTransaction (ui/editor_input_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_editor_privacy_readonly` — e2e — covers TestWidgetInputPrivacyAndReadonly (ui/editor_input_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_editor_bidi_selection` — e2e — covers TestWidgetBidiSelectionCopyReplaceAndUndo (ui/editor_input_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
+- [ ] `test_editor_bidi_selection` — e2e — covers TestWidgetBidiSelectionCopyReplaceAndUndo (ui/editor_input_test.go) — TODO: selection channel exists in lui_window (byte offsets); bidi/grapheme segmentation still missing
 - [ ] `test_editor_query_no_retain` — e2e — covers TestWidgetNativeQueryDoesNotRetainOldDocument (ui/editor_input_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_editor_layout_release` — e2e — covers TestWidgetSingleLineLayoutReleasesOldDocument (ui/editor_input_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_editor_malformed_utf8` — e2e — covers TestWidgetNativeQueryMalformedUTF8 (ui/editor_input_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
@@ -167,7 +175,7 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_gridview_multi` — e2e — covers TestGridViewChoosesSeveral (ui/gridview_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_gridview_resizes` — e2e — covers TestGridViewResizes (ui/gridview_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_spinner_behavior` — e2e ~partial~ — covers TestSpinner (ui/indicators_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_step_slider` — e2e ~partial~ — covers TestStepSlider (ui/indicators_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_step_slider` — e2e ~partial~ — covers TestStepSlider (ui/indicators_test.go) — TODO: slider/number-stepper arrow keys implemented in lui_window (ValueChanged via min/max/step props)
 - [ ] `test_range_slider` — e2e — covers TestRangeSlider (ui/indicators_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_inline_link` — e2e — covers TestInlineLink (ui/inline_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_inline_styles` — e2e — covers TestInlineStyles (ui/inline_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
@@ -180,23 +188,23 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_list_row_width_fits` — e2e — covers TestListRowWidthFits (ui/list_sideways_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_variable_heights` — e2e — covers TestListVariableHeights (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_fills_first_frame` — e2e — covers TestListFillsTheFirstFrame (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_list_huge_scrolls` — e2e — covers TestListHugeScrollsByFractions (ui/list_test.go) — TODO: no scroll input channel in lui_window (out of scope)
-- [ ] `test_list_scroll_to` — e2e — covers TestListScrollTo (ui/list_test.go) — TODO: no scroll input channel in lui_window (out of scope)
+- [ ] `test_list_huge_scrolls` — e2e — covers TestListHugeScrollsByFractions (ui/list_test.go) — TODO: scroll APIs exist in lui_window; huge/fractional virtual-list semantics need lui_gallery
+- [ ] `test_list_scroll_to` — e2e ~partial~ — covers TestListScrollTo (ui/list_test.go) — TODO: scroll-target wire prop honored by lui_window (scroll_align + ScrollCompleted)
 - [ ] `test_list_keeps_place` — e2e — covers TestListKeepsPlaceAsRowsAboveChange (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_list_keys` — e2e — covers TestListKeys (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_list_keys` — e2e ~partial~ — covers TestListKeys (ui/list_test.go) — TODO: list arrow/Home/End/Page/typeahead keys implemented in lui_window; gallery list-widget specifics remain
 - [ ] `test_list_follow_end` — e2e — covers TestListFollowEnd (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_follow_end_start` — e2e — covers TestListFollowEndStartsAtTheEnd (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_justify_end` — e2e — covers TestListJustifyEnd (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_gap_padding` — e2e — covers TestListGapAndPadding (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_rows_go_away` — e2e — covers TestListRowsGoAway (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_list_selection` — e2e — covers TestListSelection (ui/list_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
+- [ ] `test_list_selection` — e2e — covers TestListSelection (ui/list_test.go) — TODO: selection exists in lui_window; multi-select-across-items model still missing
 - [ ] `test_list_keys_keep_choice` — e2e — covers TestListKeysKeepTheChoice (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_keeps_focused` — e2e — covers TestListKeepsTheFocusedRow (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_sticky_headers` — e2e — covers TestListStickyHeaders (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_rows_below_pinned` — e2e — covers TestListRowsShowBelowThePinnedHeader (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_sticky_skip_choice` — e2e — covers TestListStickyHeadersSkipTheChoice (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_list_scrollbar_end` — e2e — covers TestListScrollBarDragReachesTheEnd (ui/list_test.go) — TODO: no scroll input channel in lui_window (out of scope)
-- [ ] `test_list_scrollbar_estimates` — e2e — covers TestListScrollBarDragFollowsThePointerAsEstimatesChange (ui/list_test.go) — TODO: no scroll input channel in lui_window (out of scope)
+- [ ] `test_list_scrollbar_end` — e2e — covers TestListScrollBarDragReachesTheEnd (ui/list_test.go) — TODO: scroll offsets exist in lui_window; scrollbar widget/drag channel missing
+- [ ] `test_list_scrollbar_estimates` — e2e — covers TestListScrollBarDragFollowsThePointerAsEstimatesChange (ui/list_test.go) — TODO: scroll offsets exist in lui_window; scrollbar widget/estimate-follow missing
 - [ ] `test_list_two_states_panic` — e2e — covers TestListStateOfTwoListsPanics (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_tab_reveals` — e2e — covers TestListTabRevealsRows (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_view_position` — e2e — covers TestListViewSeesWhereItIs (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
@@ -205,7 +213,7 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_list_new_state_start` — e2e — covers TestListNewStateStartsAtTheStart (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_heights` — e2e — covers TestListHeights (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_pinned_click_once` — e2e — covers TestListPinnedHeaderHandlesAClickOnce (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_list_scroll_rows_one_frame` — e2e — covers TestListScrollAndRowsAboveInOneFrame (ui/list_test.go) — TODO: no scroll input channel in lui_window (out of scope)
+- [ ] `test_list_scroll_rows_one_frame` — e2e ~partial~ — covers TestListScrollAndRowsAboveInOneFrame (ui/list_test.go) — TODO: scroll + VisibleRange emit exist in lui_window
 - [ ] `test_list_end` — e2e — covers TestListEndShowsTheEnd (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_step_unmeasured` — e2e — covers TestListScrollsByTheStepIntoRowsNotMeasured (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_track_prefirst` — e2e — covers TestListTrackScrollBeforeTheFirstFrame (ui/list_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
@@ -222,7 +230,7 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_editor_paragraph_release` — e2e — covers TestEditorParagraphLayoutReleasesOldDocument (ui/memory_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [x] `test_context_menu` — e2e — covers TestContextMenu (ui/menu_test.go) — ✓ e2e/input 'context menu'/'input context menu'
 - [x] `test_innermost_menu` — e2e — covers TestInnermostContextMenu (ui/menu_test.go) — ✓ e2e/input 'innermost menu'
-- [ ] `test_menu_keyboard` — e2e — covers TestContextMenuFromTheKeyboard (ui/menu_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_menu_keyboard` — e2e ~partial~ — covers TestContextMenuFromTheKeyboard (ui/menu_test.go) — TODO: overlay Escape + list keyboard nav exist in lui_window; menu-specific keyboard nav remains
 - [x] `test_input_context_menu` — e2e — covers TestTextInputContextMenu (ui/menu_test.go) — ✓ e2e/input 'input context menu'
 - [x] `test_menu_button` — e2e — covers TestMenuButton (ui/menu_test.go) — ✓ e2e/input 'menu button'
 - [ ] `test_menu_button_a11y` — e2e ~partial~ — covers TestMenuButtonAccessibility (ui/menu_test.go) — TODO: needs widget-level a11y semantics; flatten machinery proven by e2e/input a11y tests
@@ -238,38 +246,38 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_painter_after` — e2e — covers TestPainterAfter (paint and repaint (`ui/paint_test.go`, `ui/repaint_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_indicators_repaint` — e2e — covers TestIndicatorsRepaint (paint and repaint (`ui/paint_test.go`, `ui/repaint_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_held_occluded` — e2e — covers TestHeldWhileOccluded (paint and repaint (`ui/paint_test.go`, `ui/repaint_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_on_paste` — e2e — covers TestOnPaste (paste / preferences (`ui/paste_test.go`, `ui/preferences_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_on_paste` — e2e ~partial~ — covers TestOnPaste (paste / preferences (`ui/paste_test.go`, `ui/preferences_test.go`)) — TODO: paste channel implemented in lui_window (Cmd/Ctrl+V -> Paste_request -> Input.Paste)
 - [ ] `test_access_own_states` — e2e — covers TestAccessStatesOfYourOwn (ui/primitives_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_readonly_input` — e2e — covers TestReadOnlyInput (ui/primitives_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [x] `test_composing` — e2e — covers TestComposing (ui/primitives_test.go) — ✓ lui_ime suite + e2e/input 'composition commits'
-- [ ] `test_popover_light_dismiss` — e2e — covers TestPopoverLightDismiss (ui/primitives_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_modal_overlay` — e2e — covers TestModalOverlayOfYourOwn (ui/primitives_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_popover_light_dismiss` — e2e ~partial~ — covers TestPopoverLightDismiss (ui/primitives_test.go) — TODO: light-dismiss (click-outside) + Escape Dismiss implemented in lui_window
+- [ ] `test_modal_overlay` — e2e ~partial~ — covers TestModalOverlayOfYourOwn (ui/primitives_test.go) — TODO: modal swallow + focus trap implemented in lui_window
 - [ ] `test_slider_settings` — e2e ~partial~ — covers TestSliderBaseSettings (ui/primitives_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_select_highlight` — e2e — covers TestSelectHighlight (ui/primitives_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
+- [ ] `test_select_highlight` — e2e — covers TestSelectHighlight (ui/primitives_test.go) — TODO: selection exists in lui_window; select-highlight specifics remain
 - [ ] `test_snap_decimals` — e2e — covers TestSnapToTheStepsDecimals (ui/primitives_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [x] `test_stroke_widths` — lui_paint ~partial~ — covers TestStrokesAreAsWideAsAsked (ui/primitives_test.go) — ✓ lui_raster 'thin line coverage' + lui_paint 'dashed border'/'per-edge borders'
-- [ ] `test_popover_scroll_anchor` — e2e — covers TestPopoverScrollsWithItsAnchor (ui/primitives_test.go) — TODO: no scroll input channel in lui_window (out of scope)
-- [ ] `test_escape_inner_popover` — e2e — covers TestEscapeClosesTheInnerPopover (ui/primitives_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_popover_scroll_anchor` — e2e — covers TestPopoverScrollsWithItsAnchor (ui/primitives_test.go) — TODO: scroll APIs exist in lui_window; popover anchor-follow missing
+- [ ] `test_escape_inner_popover` — e2e ~partial~ — covers TestEscapeClosesTheInnerPopover (ui/primitives_test.go) — TODO: Escape dismisses topmost overlay in lui_window
 - [ ] `test_range_steps` — e2e — covers TestRangeSteps (ui/primitives_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_paste_during_frame` — e2e — covers TestPasteDuringFrame (ui/primitives_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_paste_during_frame` — e2e ~partial~ — covers TestPasteDuringFrame (ui/primitives_test.go) — TODO: paste channel exists in lui_window; during-frame ordering unverified
 - [ ] `test_rich_text` — lui_text — covers TestRichText (ui/richtext_test.go) — TODO: no caret/span/feature/buffer/cache API in lui_text yet
 - [x] `test_measure_text_cache` — lui_text — covers TestMeasureTextAgain (ui/richtext_test.go) — ✓ lui_text 'measure'+'determinism' (pure measure, repeat calls identical)
-- [ ] `test_dialog_focus_trap` — e2e — covers TestDialogKeepsTheFocus (ui/scope_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_escape_top_overlay` — e2e — covers TestEscapeClosesTheOverlayOnTop (ui/scope_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_overlay_focus_back` — e2e — covers TestOverlayGivesTheFocusBack (ui/scope_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_dialog_focus_trap` — e2e ~partial~ — covers TestDialogKeepsTheFocus (ui/scope_test.go) — TODO: modal focus trap implemented in lui_window (focusables scoped to top modal)
+- [ ] `test_escape_top_overlay` — e2e ~partial~ — covers TestEscapeClosesTheOverlayOnTop (ui/scope_test.go) — TODO: Escape targets topmost overlay in lui_window
+- [ ] `test_overlay_focus_back` — e2e ~partial~ — covers TestOverlayGivesTheFocusBack (ui/scope_test.go) — TODO: modal close restores saved focus in lui_window
 - [ ] `test_shortcuts_behind_dialog` — e2e — covers TestShortcutsWaitBehindADialog (ui/scope_test.go) — TODO: shortcut parsing/dispatch is shell-level (lui_shell*, out of scope)
 - [ ] `test_popover_follow_anchor` — e2e — covers TestPopoverFollowsItsAnchor (ui/scope_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_dialog_hides_a11y` — e2e ~partial~ — covers TestBehindADialogIsHidden (ui/scope_test.go) — TODO: needs widget-level a11y semantics; flatten machinery proven by e2e/input a11y tests
-- [ ] `test_escape_focused_first` — e2e — covers TestEscapeGoesToTheFocusedElementFirst (ui/scope_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_track_scroll` — e2e ~partial~ — covers TestTrackScroll (ui/scroll_test.go) — TODO: no scroll input channel in lui_window (out of scope)
-- [ ] `test_track_scroll_settles` — e2e — covers TestTrackScrollSettles (ui/scroll_test.go) — TODO: no scroll input channel in lui_window (out of scope)
-- [ ] `test_track_scroll_end` — e2e — covers TestTrackScrollFollowsTheEnd (ui/scroll_test.go) — TODO: no scroll input channel in lui_window (out of scope)
-- [ ] `test_track_scroll_page` — e2e — covers TestTrackScrollPerPage (ui/scroll_test.go) — TODO: no scroll input channel in lui_window (out of scope)
-- [ ] `test_track_scroll_list` — e2e — covers TestTrackScrollList (ui/scroll_test.go) — TODO: no scroll input channel in lui_window (out of scope)
-- [ ] `test_scroll_into_view` — e2e — covers TestScrollIntoView (ui/scroll_test.go) — TODO: no scroll input channel in lui_window (out of scope)
-- [ ] `test_scroll_into_view_nested` — e2e — covers TestScrollIntoViewNested (ui/scroll_test.go) — TODO: no scroll input channel in lui_window (out of scope)
-- [ ] `test_tab_scrolls_focus` — e2e — covers TestTabScrollsTheFocusIntoView (ui/scroll_test.go) — TODO: no scroll input channel in lui_window (out of scope)
-- [ ] `test_selectable_text` — e2e — covers TestSelectableText (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: no text-selection input channel in lui_window (out of scope)
+- [ ] `test_escape_focused_first` — e2e — covers TestEscapeGoesToTheFocusedElementFirst (ui/scope_test.go) — TODO: Escape dispatches Dismiss on top overlay in lui_window; focused-element-first semantics not modeled
+- [ ] `test_track_scroll` — e2e ~partial~ — covers TestTrackScroll (ui/scroll_test.go) — TODO: scroll APIs exist in lui_window; follow-end tracking not modeled on the wire
+- [ ] `test_track_scroll_settles` — e2e — covers TestTrackScrollSettles (ui/scroll_test.go) — TODO: scroll APIs exist in lui_window; follow-end settle semantics not modeled on the wire
+- [ ] `test_track_scroll_end` — e2e — covers TestTrackScrollFollowsTheEnd (ui/scroll_test.go) — TODO: scroll APIs exist in lui_window; follow-end not modeled on the wire
+- [ ] `test_track_scroll_page` — e2e — covers TestTrackScrollPerPage (ui/scroll_test.go) — TODO: scroll APIs exist in lui_window; per-page tracking missing
+- [ ] `test_track_scroll_list` — e2e — covers TestTrackScrollList (ui/scroll_test.go) — TODO: scroll APIs exist in lui_window; follow-end not modeled on the wire
+- [ ] `test_scroll_into_view` — e2e ~partial~ — covers TestScrollIntoView (ui/scroll_test.go) — TODO: scroll_show implemented in lui_window
+- [ ] `test_scroll_into_view_nested` — e2e ~partial~ — covers TestScrollIntoViewNested (ui/scroll_test.go) — TODO: scroll_ancestor climbs containers in lui_window; nested-chain scenarios remain
+- [ ] `test_tab_scrolls_focus` — e2e ~partial~ — covers TestTabScrollsTheFocusIntoView (ui/scroll_test.go) — TODO: Tab moves focus and scroll_shows it in lui_window
+- [ ] `test_selectable_text` — e2e ~partial~ — covers TestSelectableText (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: user-select text selectable in lui_window (headless-tested)
 - [ ] `test_pressed_rebuilds` — e2e ~partial~ — covers TestPressedSelectionRebuildsBeforePaint (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [x] `test_click_waits_release` — e2e — covers TestButtonClickStillWaitsForRelease (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — ✓ lui_window 'click'+'release elsewhere' (press resolves on Button_up)
 - [ ] `test_click_modifiers` — e2e — covers TestClickModifiers (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
@@ -277,19 +285,19 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_list_extend_keys` — e2e — covers TestListExtendsTheChoiceWithTheKeys (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_move_no_choose` — e2e — covers TestListMovesWithoutChoosing (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_list_choice_follows` — e2e — covers TestListChoiceOfSeveralFollowsItsItems (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_list_type_choose` — e2e — covers TestListTypeToChoose (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_list_type_choose` — e2e ~partial~ — covers TestListTypeToChoose (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: typeahead/jump implemented in lui_window lists
 - [ ] `test_type_choose_shortcuts` — e2e — covers TestListTypeToChooseLeavesShortcuts (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: shortcut parsing/dispatch is shell-level (lui_shell*, out of scope)
-- [ ] `test_list_page_keys` — e2e — covers TestListPageKeys (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_list_page_keys` — e2e ~partial~ — covers TestListPageKeys (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: Page_up/Page_down handled in lui_window lists
 - [x] `test_a11y_list_multi` — e2e ~partial~ — covers TestAccessibilityOfListsChoosingSeveral (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — ✓ e2e/input 'list rows' (selected state through a11y)
 - [ ] `test_table_multi_select` — e2e — covers TestTableChoosesSeveral (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_selection_wrong_key` — e2e — covers TestSelectionOfAnotherKeyPanics (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_type_after_click` — e2e — covers TestListTypeRightAfterAClick (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_selection_wrong_key` — e2e — covers TestSelectionOfAnotherKeyPanics (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: selection exists in lui_window; keyed-identity semantics missing
+- [ ] `test_type_after_click` — e2e ~partial~ — covers TestListTypeRightAfterAClick (selection (`ui/select_test.go`, `ui/selection_test.go`, `ui/selection_press_test.go`)) — TODO: click seeds highlight; typeahead works in lui_window
 - [ ] `test_text_decorations` — lui_paint — covers TestTextDecorations (ui/style_test.go) — TODO: no matching prop/op in lui_paint yet
 - [ ] `test_text_options` — lui_paint — covers TestTextOptions (ui/style_test.go) — TODO: no matching prop/op in lui_paint yet
 - [ ] `test_button_intrinsic_width` — e2e — covers TestButtonLabelsAtIntrinsicWidth (ui/style_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_scroll_both` — e2e — covers TestScrollBoth (ui/style_test.go) — TODO: no scroll input channel in lui_window (out of scope)
-- [ ] `test_scrollbar_insets` — e2e ~partial~ — covers TestScrollbarInsets (ui/style_test.go) — TODO: no scroll input channel in lui_window (out of scope)
-- [ ] `test_scroll_content_shrinks` — e2e — covers TestScrollContentShrinks (ui/style_test.go) — TODO: no scroll input channel in lui_window (out of scope)
+- [ ] `test_scroll_both` — e2e — covers TestScrollBoth (ui/style_test.go) — TODO: vertical scroll exists in lui_window; horizontal-axis scroll missing
+- [ ] `test_scrollbar_insets` — e2e ~partial~ — covers TestScrollbarInsets (ui/style_test.go) — TODO: scrollbar widget/insets missing in lui_window (scroll offsets exist)
+- [ ] `test_scroll_content_shrinks` — e2e — covers TestScrollContentShrinks (ui/style_test.go) — TODO: scroll exists in lui_window; content-shrink layout semantics remain
 - [ ] `test_icon_text_color` — lui_svg (new) — covers TestIconTakesTheTextColorAndSize (ui/svg_test.go) — TODO: no lui_svg module exists yet; land it with the decoder
 - [ ] `test_icon_draws_once` — lui_svg (new) — covers TestIconDrawsItsShapeOnce (ui/svg_test.go) — TODO: no lui_svg module exists yet; land it with the decoder
 - [ ] `test_image_of_svg` — lui_svg (new) — covers TestImageOfAnSVG (ui/svg_test.go) — TODO: no lui_svg module exists yet; land it with the decoder
@@ -315,7 +323,7 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_textarea_heights` — e2e — covers TestHeights (ui/textarea_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_textarea_layout_whole` — e2e — covers TestTextAreaLaysOutAsWholeText (ui/textarea_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_textarea_undo` — e2e — covers TestTextAreaUndo (ui/textarea_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_textarea_scrolls` — e2e — covers TestTextAreaScrolls (ui/textarea_test.go) — TODO: no scroll input channel in lui_window (out of scope)
+- [ ] `test_textarea_scrolls` — e2e ~partial~ — covers TestTextAreaScrolls (ui/textarea_test.go) — TODO: scroll channel exists in lui_window
 - [ ] `test_textarea_select_whole` — e2e — covers TestTextAreaSelectsAsWholeText (ui/textarea_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_textarea_undo_app` — e2e — covers TestTextAreaUndoAppChanges (ui/textarea_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_textarea_undo_log` — e2e — covers TestTextAreaUndoAppLog (ui/textarea_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
@@ -323,7 +331,7 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_textarea_reveals_wrapped` — e2e — covers TestTextAreaRevealsWrapped (ui/textarea_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_textarea_keeps_view` — e2e — covers TestTextAreaKeepsViewOnAppText (ui/textarea_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_textarea_lines_wrap` — e2e — covers TestTextAreaLinesFollowWrappedText (ui/textarea_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_textarea_selection` — e2e — covers TestTextSelection (ui/textarea_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
+- [ ] `test_textarea_selection` — e2e ~partial~ — covers TestTextSelection (ui/textarea_test.go) — TODO: selection channel exists in lui_window
 - [ ] `test_text_ranges` — e2e — covers TestTextRanges (ui/textarea_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_text_ranges_composing` — e2e — covers TestTextRangesWhileComposing (ui/textarea_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_buffer_input_undo` — e2e — covers TestBufferInputsEditComposeAndUndo (ui/textbuffer_input_test.go) — TODO: no caret/span/feature/buffer/cache API in lui_text yet
@@ -332,34 +340,34 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_buffer_input_swap` — e2e — covers TestBufferInputBindingSwapAndStringCompatibility (ui/textbuffer_input_test.go) — TODO: no caret/span/feature/buffer/cache API in lui_text yet
 - [x] `test_text_lines` — lui_text ~partial~ — covers TestTextLines (ui/textlines_test.go) — ✓ lui_text 'newlines'+'wrap'
 - [x] `test_text_lines_before_layout` — lui_text — covers TestTextLinesBeforeLayout (ui/textlines_test.go) — ✓ lui_text 'newlines' (lines known at shape time)
-- [ ] `test_sel_multi_click` — e2e — covers TestSelectableContainerMultiClick (ui/textselection_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_sel_order_overlap` — e2e — covers TestSelectableContainerOrderAndOverlap (ui/textselection_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_sel_scroll` — e2e — covers TestSelectableContainerScroll (ui/textselection_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_sel_inline_rebuild` — e2e — covers TestSelectableInlineParagraphRebuild (ui/textselection_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_sel_container` — e2e — covers TestSelectableContainer (ui/textselection_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_sel_keyboard` — e2e — covers TestSelectableContainerKeyboard (ui/textselection_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_sel_scopes` — e2e — covers TestSelectableContainerScopesAndControls (ui/textselection_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_sel_inline` — e2e — covers TestSelectableContainerInlineAndRebuild (ui/textselection_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_sel_other_text` — e2e — covers TestSelectableContainerChangingOtherText (ui/textselection_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_sel_focus_disable` — e2e — covers TestSelectableContainerFocusAndDisable (ui/textselection_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_sel_context_menu` — e2e — covers TestSelectableTextContextMenu (ui/textselection_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_sel_edit_items` — e2e — covers TestTextInputContextMenuEditItems (ui/textselection_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
-- [ ] `test_sel_color` — e2e — covers TestSelectionColor (ui/textselection_test.go) — TODO: no text-selection input channel in lui_window (out of scope)
+- [ ] `test_sel_multi_click` — e2e ~partial~ — covers TestSelectableContainerMultiClick (ui/textselection_test.go) — TODO: double/triple-click word/line selection implemented in lui_window
+- [ ] `test_sel_order_overlap` — e2e — covers TestSelectableContainerOrderAndOverlap (ui/textselection_test.go) — TODO: per-node selection exists; container order/overlap semantics missing
+- [ ] `test_sel_scroll` — e2e ~partial~ — covers TestSelectableContainerScroll (ui/textselection_test.go) — TODO: selection + scroll exist in lui_window
+- [ ] `test_sel_inline_rebuild` — e2e — covers TestSelectableInlineParagraphRebuild (ui/textselection_test.go) — TODO: selection exists; rebuild-during-selection semantics missing
+- [ ] `test_sel_container` — e2e — covers TestSelectableContainer (ui/textselection_test.go) — TODO: per-node selection exists in lui_window; cross-node container selection missing
+- [ ] `test_sel_keyboard` — e2e ~partial~ — covers TestSelectableContainerKeyboard (ui/textselection_test.go) — TODO: shift-extend keyboard selection exists in lui_window; container scope missing
+- [ ] `test_sel_scopes` — e2e — covers TestSelectableContainerScopesAndControls (ui/textselection_test.go) — TODO: selection exists; scoped-container semantics missing
+- [ ] `test_sel_inline` — e2e — covers TestSelectableContainerInlineAndRebuild (ui/textselection_test.go) — TODO: selection exists; inline rebuild semantics missing
+- [ ] `test_sel_other_text` — e2e — covers TestSelectableContainerChangingOtherText (ui/textselection_test.go) — TODO: per-node selection exists; cross-node 'other text' changes missing
+- [ ] `test_sel_focus_disable` — e2e — covers TestSelectableContainerFocusAndDisable (ui/textselection_test.go) — TODO: selection exists; focus/disable interplay unverified
+- [ ] `test_sel_context_menu` — e2e — covers TestSelectableTextContextMenu (ui/textselection_test.go) — TODO: selection exists; selection context-menu items missing (no menu channel)
+- [ ] `test_sel_edit_items` — e2e — covers TestTextInputContextMenuEditItems (ui/textselection_test.go) — TODO: selection exists; edit-menu items missing
+- [ ] `test_sel_color` — e2e — covers TestSelectionColor (ui/textselection_test.go) — TODO: selection exists; selection paint color unstyled in demo
 - [ ] `test_letter_spacing_features` — lui_text — covers TestLetterSpacingAndFeatures (ui/textstyle_test.go) — TODO: no caret/span/feature/buffer/cache API in lui_text yet
-- [ ] `test_focus_group_tab` — e2e — covers TestFocusGroupIsOneTabStop (ui/toggle_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_focus_group_keys` — e2e — covers TestFocusGroupLeavesKeysToWhatTakesThem (ui/toggle_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_radio_arrows` — e2e ~partial~ — covers TestRadioGroupArrowsChoose (ui/toggle_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_focus_group_tab` — e2e ~partial~ — covers TestFocusGroupIsOneTabStop (ui/toggle_test.go) — TODO: Tab cycles all activatable controls in lui_window; group-tab-stop semantics missing
+- [ ] `test_focus_group_keys` — e2e ~partial~ — covers TestFocusGroupLeavesKeysToWhatTakesThem (ui/toggle_test.go) — TODO: Tab ring + focused key activation exist in lui_window; group key ownership missing
+- [ ] `test_radio_arrows` — e2e ~partial~ — covers TestRadioGroupArrowsChoose (ui/toggle_test.go) — TODO: radio-group arrow navigation implemented in lui_window
 - [ ] `test_toggle_behavior` — e2e ~partial~ — covers TestToggle (ui/toggle_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_tabs_tab_stop` — e2e — covers TestTabsAreOneTabStop (ui/toggle_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_tabs_tab_stop` — e2e — covers TestTabsAreOneTabStop (ui/toggle_test.go) — TODO: Tab ring exists in lui_window; one-tab-stop grouping missing
 - [ ] `test_toolbar_a11y` — e2e ~partial~ — covers TestToolbarAccessibility (ui/toggle_test.go) — TODO: needs widget-level a11y semantics; flatten machinery proven by e2e/input a11y tests
 - [x] `test_demo_renders` — e2e ~partial~ — covers TestDemoRenders (ui/ui_test.go) — ✓ e2e_test full-app nodes/props/repaint/glyphs
 - [x] `test_input_follows_focus` — e2e — covers TestTextInputFollowsTheFocusAtOnce (ui/ui_test.go) — ✓ e2e/input 'input follows focus'
 - [ ] `test_key_on_widget` — e2e — covers TestKeyOnAWidget (ui/ui_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_emacs_keys` — e2e — covers TestEmacsKeys (ui/ui_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_list_scroll_select` — e2e — covers TestListScrollsAndSelects (ui/ui_test.go) — TODO: no scroll input channel in lui_window (out of scope)
+- [ ] `test_list_scroll_select` — e2e ~partial~ — covers TestListScrollsAndSelects (ui/ui_test.go) — TODO: scroll + highlight exist in lui_window
 - [x] `test_tab_focus` — e2e — covers TestTabFocus (ui/ui_test.go) — ✓ e2e/input 'tab focus'
-- [ ] `test_auto_focus` — e2e — covers TestAutoFocus (ui/ui_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_keyboard_scrolling` — e2e — covers TestKeyboardScrolling (ui/ui_test.go) — TODO: window/shell lifecycle (lui_shell*/lui_window, out of scope)
+- [ ] `test_auto_focus` — e2e ~partial~ — covers TestAutoFocus (ui/ui_test.go) — TODO: autofocus prop honored at mount in lui_window
+- [ ] `test_keyboard_scrolling` — e2e ~partial~ — covers TestKeyboardScrolling (ui/ui_test.go) — TODO: keyboard scroll over focused lists exists in lui_window
 - [x] `test_hover_while_pressed` — e2e — covers TestHoverWhilePressed (ui/ui_test.go) — ✓ e2e/input 'hover while pressed'
 - [ ] `test_popover_last_press` — e2e — covers TestPopoverLastPressDecides (ui/webview_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [x] `test_oklch_srgb` — lui_paint — covers TestOklchInsideSRGBHasNoWideColor (ui/widecolor_test.go) — ✓ lui_raster 'oklab gradient' (in-gamut OKLCH hits sRGB exactly)
@@ -384,7 +392,7 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_global_shortcut_portal` — e2e — covers TestGlobalShortcutPortal (internal/e2e) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_close_events` — e2e — covers TestCloseEvents (internal/e2e) — TODO: window/shell lifecycle (lui_shell*/lui_window, out of scope)
 - [ ] `test_calls_end_on_close` — e2e — covers TestCallsEndWithTheWindow (internal/e2e) — TODO: window/shell lifecycle (lui_shell*/lui_window, out of scope)
-- [ ] `test_reorder_by_drag` — e2e — covers TestReorderByDragging (internal/e2e) — TODO: no drag/drop input channel in lui_window (out of scope)
+- [ ] `test_reorder_by_drag` — e2e ~partial~ — covers TestReorderByDragging (internal/e2e) — TODO: drag/drop exists host-side in lui_window; reorder policy app-side
 - [x] `test_resize_first_frame` — e2e ~partial~ — covers TestContentWindowResizeFromFirstFrame (internal/e2e) — ✓ e2e/input 'resize first frame'
 - [x] `test_shader_source_sum` — lui_gpu ~partial~ — covers TestSourceSum (internal/gpu) — ✓ lui_gl 'effect source' (source deterministic)
 - [ ] `test_gl_resize_settles` — lui_gl — covers d3d11/TestResizeSettles (internal/gpu) — TODO: needs a real GPU; only the gated real-GL pattern (lui_gl test) applies
@@ -409,13 +417,13 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_accordion` — e2e — covers TestAccordion (collapsible / combobox (`ui/collapsible_test.go`, `ui/combobox_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_search_field` — e2e — covers TestSearchField (collapsible / combobox (`ui/collapsible_test.go`, `ui/combobox_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_token_field` — e2e — covers TestTokenField (collapsible / combobox (`ui/collapsible_test.go`, `ui/combobox_test.go`)) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_data_drop_negotiate` — e2e — covers TestNativeDataDropNegotiatesAndReadsOnDrop (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: no drag/drop input channel in lui_window (out of scope)
-- [ ] `test_data_drop_typed` — e2e — covers TestNativeTypedDropKeepsGoValue (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: no drag/drop input channel in lui_window (out of scope)
-- [ ] `test_drag_cancel_cleanup` — e2e — covers TestNativeDragCancellationAndSourceRemoval (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: no drag/drop input channel in lui_window (out of scope)
-- [ ] `test_drag_close_releases_ime` — e2e — covers TestNativeDragCloseReleasesTextInputClient (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: no drag/drop input channel in lui_window (out of scope)
-- [ ] `test_drag_rejects` — e2e — covers TestNativeDestinationRejectsMismatchDisabledAndFailedData (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: no drag/drop input channel in lui_window (out of scope)
-- [ ] `test_drag_and_drop` — e2e — covers TestDragAndDrop (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: no drag/drop input channel in lui_window (out of scope)
-- [ ] `test_file_drops` — e2e — covers TestFileDrops (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: no drag/drop input channel in lui_window (out of scope)
+- [ ] `test_data_drop_negotiate` — e2e — covers TestNativeDataDropNegotiatesAndReadsOnDrop (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: drop targets with accept-filter exist in lui_window; wire-level negotiate op missing (protocol TODO)
+- [ ] `test_data_drop_typed` — e2e — covers TestNativeTypedDropKeepsGoValue (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: string payload exists in lui_window; typed payloads missing on the wire
+- [ ] `test_drag_cancel_cleanup` — e2e ~partial~ — covers TestNativeDragCancellationAndSourceRemoval (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: drag exists; Escape cancels drag in lui_window; source-removal protocol remains
+- [ ] `test_drag_close_releases_ime` — e2e — covers TestNativeDragCloseReleasesTextInputClient (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: drag exists in lui_window; close/ime-release coupling missing
+- [ ] `test_drag_rejects` — e2e ~partial~ — covers TestNativeDestinationRejectsMismatchDisabledAndFailedData (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: data-drop-accept prefix matching implemented in lui_window
+- [ ] `test_drag_and_drop` — e2e ~partial~ — covers TestDragAndDrop (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: drag source + drop target implemented host-side in lui_window
+- [ ] `test_file_drops` — e2e — covers TestFileDrops (data drag / file drop (`ui/data_drag_test.go`, `ui/drop_test.go`, `ui/dragdrop_test.go`)) — TODO: widget-level drag/drop exists in lui_window; OS file-drop channel missing (needs shell/SDL drop events)
 - [ ] `test_calendar` — e2e — covers TestCalendar (ui/datetime_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_time_input` — e2e — covers TestTimeInput (ui/datetime_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_color_picker` — e2e — covers TestColorPicker (ui/datetime_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
@@ -440,7 +448,7 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_services_outlive_build` — e2e — covers TestWindowServicesOutliveBuild (ui/frame_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_handle_diagnostics` — e2e — covers TestExpiredHandleDiagnosticsAndSlotReuse (ui/frame_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_handle_queries` — e2e — covers TestHandleQueriesBeforeBindingAndAcrossWindows (ui/frame_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_shortcut_hidden_control` — e2e — covers TestHandleShortcutBeforeBindingDropsHiddenControl (ui/frame_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
+- [ ] `test_shortcut_hidden_control` — e2e ~partial~ — covers TestHandleShortcutBeforeBindingDropsHiddenControl (ui/frame_test.go) — TODO: accelerator table exists in lui_window (mod+A/C/V/X/Z routed via dispatch); shortcut-scoped registration is app-side
 - [ ] `test_focus_binding` — e2e — covers TestFocusBindingDistinguishesRequestedAndActual (ui/frame_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_bound_input_timing` — e2e — covers TestBoundInputRunsAfterAllConfiguration (ui/frame_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_response_commit_text` — e2e — covers TestResponseQueriesCommitLocalText (ui/frame_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
@@ -483,8 +491,8 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_theme_units` — lui_paint — covers TestThemeUnits (ui/style_test.go) — TODO: no matching prop/op in lui_paint yet
 - [ ] `test_table_sort` — e2e — covers TestTableSort (ui/table_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_table_resize` — e2e — covers TestTableResize (ui/table_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
-- [ ] `test_table_reorder` — e2e — covers TestTableReorder (ui/table_test.go) — TODO: no drag/drop input channel in lui_window (out of scope)
-- [ ] `test_table_reorder_far` — e2e — covers TestTableReorderFar (ui/table_test.go) — TODO: no drag/drop input channel in lui_window (out of scope)
+- [ ] `test_table_reorder` — e2e ~partial~ — covers TestTableReorder (ui/table_test.go) — TODO: drag/drop exists in lui_window; table reorder policy app-side
+- [ ] `test_table_reorder_far` — e2e ~partial~ — covers TestTableReorderFar (ui/table_test.go) — TODO: drag/drop exists in lui_window; table reorder policy app-side
 - [ ] `test_table_scroll_sideways` — e2e — covers TestTableScrollsSideways (ui/table_test.go) — TODO: no scroll input channel in lui_window (out of scope)
 - [ ] `test_table_editable` — e2e — covers TestEditableTextInTable (ui/table_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_editable_text` — e2e — covers TestEditableText (ui/table_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
