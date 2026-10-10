@@ -1,0 +1,4 @@
+(library
+ (name lui_blit)
+ (modules lui_blit)
+ (libraries tsdl))
