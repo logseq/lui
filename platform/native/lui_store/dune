@@ -1,0 +1,4 @@
+(library
+ (name lui_store)
+ (modules lui_store)
+ (libraries lui))
