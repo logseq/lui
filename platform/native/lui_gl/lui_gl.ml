@@ -191,7 +191,7 @@ let effect_tail =
    \tEffect e = Effect(vRect, abs(vRadii), vInner, vColor, vColor2,\n\
    \t\tvBorder, vGrad, vWidths, vParams.z);\n\
    \tfragColor = effect(p, e) * (rectCoverage(p, vRect, vRadii)\n\
-   \t\t * rectCoverage(p, vClip, vClipRadii) * vParams.w);\n\
+   \t\t * clipCoverage(p) * vParams.w);\n\
    #ifdef DUAL\n\
    \tfragAlpha = fragColor.aaaa;\n\
    #endif\n\
@@ -200,6 +200,34 @@ let effect_tail =
 let effect_source src =
   "#define EFFECT\n" ^ Lui_gpu.shader_source ^ "\n" ^ effect_head ^ "\n" ^ src
   ^ "\n" ^ effect_tail
+
+(* The GLSL of an effect without one, for the effects the scene ships
+   named: their CPU twins' fixed translation, parameterized by the
+   effect's numeric params. *)
+let default_effect = function
+  | "testfx" ->
+    "vec4 effect(vec2 p, Effect e) {\n\
+     \treturn vec4(p.x / 100.0, p.y / 80.0, 0.6, 1.0);\n\
+     }"
+  | "dim" ->
+    "vec4 effect(vec2 p, Effect e) {\n\
+     \treturn vec4(sampleBackdrop(e, p) * 0.5, 1.0);\n\
+     }"
+  | "tint" ->
+    "vec4 effect(vec2 p, Effect e) {\n\
+     \treturn vec4(e.p1.rgb * e.p1.a, 1.0);\n\
+     }"
+  | "lens" ->
+    "vec4 effect(vec2 p, Effect e) {\n\
+     \tfloat d = max(8.0 + sdRoundRect(p, e.rect, e.radii), 0.0) * e.p0.x;\n\
+     \tvec3 c = sampleBackdrop(e, vec2(p.x + d, p.y));\n\
+     \treturn vec4(c + (e.p1.rgb - c) * e.p1.a, 1.0);\n\
+     }"
+  | _ -> ""
+
+(* The GLSL an effect compiles: its own, or the built-in twin its
+   name selects when it ships none. *)
+let effect_glsl e = if e.eglsl = "" then default_effect e.ename else e.eglsl
 
 (* {1 Types} *)
 
@@ -454,7 +482,7 @@ let effect_program r e =
       match
         link_program
           ~vs_src:(r.header ^ "#define VERTEX\n" ^ Lui_gpu.shader_source)
-          ~fs_src:(r.header ^ effect_source e.eglsl)
+          ~fs_src:(r.header ^ effect_source (effect_glsl e))
       with
       | Stdlib.Error err ->
         let err = Printf.sprintf "the effect %s: %s" e.ename err in

@@ -142,36 +142,6 @@ let j_effect =
   "the effect's GLSL twin computes at float32 what its CPU twin \
    computes at float64"
 
-let k_cont =
-  "continuous corners are CPU-only for now: the shader's rectCoverage \
-   treats the negative fitted radii as a square rectangle"
-
-let k_clip =
-  "the GL renderer applies only the innermost clip's coverage in the \
-   shader; the CPU evaluator multiplies the coverage of every clip on \
-   the stack, so pixels inside the inner clip but outside an outer \
-   rounded clip differ"
-
-let k_isrc =
-  "GPU bilinear sampling of an image bleeds texels outside the source \
-   rectangle at its edges; the CPU sampler clamps the source \
-   coordinates to the rectangle"
-
-let k_empty_glsl =
-  "the effect's GLSL is empty: the GL renderer compiles nothing and \
-   draws nothing where the CPU twin draws"
-
-let k_margin =
-  "image and glyph quads have no margin in the GL rasterizer, so a \
-   fractional rect's outer partial-coverage strip — the half-pixel \
-   ring beyond its edge — is never drawn, where the CPU renderer \
-   blends it"
-
-let k_empty_src =
-  "an empty image source rectangle: the GL shader maps the whole \
-   destination to a single texture coordinate — a solid stretch of \
-   the corner texel — where the CPU skips the op"
-
 let j_boundary =
   "coverage at a fractional shape or clip edge is a steep function of \
    position, so a float32-vs-float64 boundary flip multiplies the \
@@ -363,23 +333,23 @@ let authored : (string * (unit -> Lui_scene.t) * expect) list =
             Pop_clip;
             Tk.ifill (rect 0. 0. 96. 64.) (color 16 185 129 110);
             Pop_clip ]),
-      Known k_clip );
+      Within (1, j_round) );
     ( "image_interior",
       (fun () ->
         Tk.scene ~w:96 ~h:64
           [ Tk.iimage (rect 10. 10. 60. 40.) (checker ()) (rect 1. 1. 2. 2.) ]),
-      Known k_isrc );
+      Within (1, j_round) );
     ( "image_frac",
       (fun () ->
         Tk.scene ~w:96 ~h:64
           [ Tk.iimage (rect 22.8 36.4 32.9 22.6) (checker ())
               (rect 0. 0. 4. 4.) ]),
-      Known k_margin );
+      Within (1, j_boundary) );
     ( "image_empty_src",
       (fun () ->
         Tk.scene ~w:96 ~h:64
           [ Tk.iimage (rect 10. 10. 60. 40.) (checker ()) (rect 0. 0. 0. 0.) ]),
-      Known k_empty_src );
+      Exact );
     ( "glyph_frac",
       (fun () ->
         let mask = mask_atlas () in
@@ -465,14 +435,15 @@ let authored : (string * (unit -> Lui_scene.t) * expect) list =
 
    The golden scenes of the CPU test suite — the same Lui_scene.t
    values on both sides — plus the authored scenes above. The golden
-   effect scenes stay: their empty GLSL is itself the documented
-   divergence. *)
+   effect scenes stay: their empty GLSL selects the renderer's
+   built-in twin of the effect's name, which the CPU twin computes on
+   the other side. *)
 
 let golden : (string * expect) list =
   [ ("fill_round", Within (1, j_round));
     ("fill_square", Within (1, j_round));
-    ("fill_cont", Known k_cont);
-    ("fill_cont_pill", Known k_cont);
+    ("fill_cont", Exact);
+    ("fill_cont_pill", Within (1, j_boundary));
     ("fill_linear", Within (1, j_grad));
     ("fill_oklab", Within (2, j_grad));
     ("fill_linear_t", Within (1, j_grad));
@@ -481,17 +452,17 @@ let golden : (string * expect) list =
     ("shadow_cast", Within (1, j_shadow));
     ("shadow_caster", Within (1, j_shadow));
     ("shadow_inset", Within (1, j_shadow));
-    ("clip_nested", Known k_clip);
-    ("clip_cont", Known k_cont);
+    ("clip_nested", Within (1, j_round));
+    ("clip_cont", Within (1, j_boundary));
     ("hole", Within (1, j_round));
-    ("image_ops", Known k_isrc);
+    ("image_ops", Exact);
     ("glyphs", Within (1, j_round));
     ("glyphs_color", Within (2, j_subpix));
     ("glyphs_text", Within (1, j_subpix));
-    ("effect", Known k_empty_glsl);
-    ("effect_backdrop", Known k_empty_glsl);
-    ("edges", Known k_cont);
-    ("two_effects", Known k_empty_glsl) ]
+    ("effect", Exact);
+    ("effect_backdrop", Within (2, j_backdrop));
+    ("edges", Within (1, j_round));
+    ("two_effects", Exact) ]
 
 let corpus : (string * (unit -> Lui_scene.t) * expect) list =
   List.map

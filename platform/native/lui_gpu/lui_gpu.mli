@@ -7,13 +7,13 @@ type f4 = float * float * float * float
 (** A vec4 in the instance layout. *)
 
 (** The data of one quad, in device pixels, as the shader reads it:
-    eleven float4s.
+    fifteen float4s.
 
     [rect] is x, y, width, height; [radii] the corners' radii (top-left,
     top-right, bottom-right, bottom-left), negative for continuous
     corners, or a glyph's gamma ratios; [inner] those of a border's
-    inner edge, of the box casting a shadow, or a glyph's contrast and
-    thin boost.
+    inner edge, of the box casting a shadow, a glyph's contrast and
+    thin boost, or an image's source-texel clamp.
 
     [color], [color2] (a gradient's end) and [border] are straight RGBA.
 
@@ -26,8 +26,10 @@ type f4 = float * float * float * float
     [color], [color2], [border] and [grad], and in [uv] where its
     backdrop's area starts in the frame and its size in texels.
 
-    [clip] and [clip_radii] are the innermost clip, which the shader
-    cuts; outer clips became scissor rectangles.
+    [clip] and [clip_radii] are the innermost clip, [clip2] and
+    [clip3] the two containing it (the everything rectangle where the
+    stack is shallower); the shader multiplies their coverages, and
+    clips deeper than three cut by their scissor bounds only.
 
     [params] is (kind, flag, aux, opacity): kind as below; flag is 1 for
     a dashed border, a grayscale image or an inner shadow (whose box is
@@ -46,6 +48,10 @@ type instance = {
   clip : f4;
   clip_radii : f4;
   params : f4;
+  clip2 : f4;
+  clip2_radii : f4;
+  clip3 : f4;
+  clip3_radii : f4;
 }
 
 (** Instance kinds, selected by [params] component 0. *)
@@ -58,7 +64,7 @@ val kind_subpixel_glyph : float
 val kind_effect : float
 
 val instance_floats : int
-(** Floats in the packed layout of one instance (44). *)
+(** Floats in the packed layout of one instance (60). *)
 
 (** A scissor rectangle in device pixels. *)
 type scissor = { left : int; top : int; right : int; bottom : int }
@@ -122,7 +128,8 @@ val build : ?wide:bool -> Lui_scene.t -> batch list
 val to_float32_array : instance -> float array
 (** The packed layout of one instance for the instance buffer — rect,
     radii, inner, color, color2, border, grad, uv, clip, clip_radii,
-    params — rounded to float32. *)
+    params, clip2, clip2_radii, clip3, clip3_radii — rounded to
+    float32. *)
 
 val shader_source : string
 (** The shader of shader.glsl, verbatim, as data. *)
