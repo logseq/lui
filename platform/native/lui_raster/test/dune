@@ -1,0 +1,10 @@
+(library
+ (name lui_raster_testkit)
+ (modules testkit)
+ (libraries lui_scene))
+
+(test
+ (name lui_raster_test)
+ (modules lui_raster_test)
+ (deps (glob_files_rec golden/*))
+ (libraries lui_raster lui_scene lui_raster_testkit alcotest))
