@@ -1,5 +1,8 @@
 (test
  (name lui_window_test)
+ ;; main.exe must be current before the headless tests spawn it —
+ ;; without this dep, runtest can race a stale exe against new code.
+ (deps ../main.exe)
  (modules lui_window_test)
  (libraries lui_window lui_window_demo lui lui_store lui_scene lui_paint
  lui_host lui_ime alcotest unix str))
