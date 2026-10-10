@@ -638,6 +638,7 @@ internal object LuiKindRules {
                         kind == LuiNodeKind.list ||
                         kind == LuiNodeKind.virtualList ||
                         kind == LuiNodeKind.dropdownMenu ||
+                        kind == LuiNodeKind.popover ||
                         kind == LuiNodeKind.tableRow ||
                         kind == LuiNodeKind.tree ||
                         kind == LuiNodeKind.split ||

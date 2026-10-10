@@ -2298,6 +2298,8 @@ let test_vocab_batch2 () =
   Alcotest.(check bool) "treeitem role rejected on popover" false
     (property_value_supported_for_kind Popover RoleValue
        (StringValue "treeitem"));
+  Alcotest.(check bool) "gap on popover" true
+    (property_supported Popover Gap);
   let with_x =
     Property_map.add PopupX (FloatValue 10.0) Property_map.empty
   in
@@ -2319,7 +2321,7 @@ let test_vocab_batch2 () =
          Lui_elements.column
            [ capture_node popover_node
                (Lui_elements.popover ~at:(10.0, 20.0)
-                  ~available_height:200.0 ~role:`menu []) ])
+                  ~available_height:200.0 ~role:`menu ~gap:8 []) ])
   in
   ignore (Lui_app.start app);
   flush_app app;
@@ -2347,6 +2349,8 @@ let test_vocab_batch2 () =
     (emitted AvailableHeight (FloatValue 200.0));
   Alcotest.(check bool) "role emitted" true
     (emitted RoleValue (StringValue "menu"));
+  Alcotest.(check bool) "gap emitted" true
+    (emitted Gap (IntValue 8));
   (* dropdown_menu ~at — programmatic point anchor *)
   Alcotest.(check bool) "x on dropdown-menu" true
     (property_supported DropdownMenu PopupX);
