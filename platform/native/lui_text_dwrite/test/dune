@@ -1,0 +1,5 @@
+(test
+ (name lui_text_dwrite_test)
+ (modules lui_text_dwrite_test)
+ (enabled_if (= %{system} mingw64))
+ (libraries lui_text_dwrite alcotest))
