@@ -1,0 +1,57 @@
+name: Deploy site to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: platform/web/package-lock.json
+      - uses: ./.github/actions/setup-lui-ocaml
+      - name: Cache dune
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/dune
+          key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            dune-${{ runner.os }}-${{ github.job }}-
+            dune-${{ runner.os }}-
+      - name: Enable dune cache
+        run: |
+          echo "DUNE_CACHE=enabled" >> "$GITHUB_ENV"
+          echo "DUNE_CACHE_TRANSPORT=direct" >> "$GITHUB_ENV"
+      - name: Install Web dependencies
+        run: npm --prefix platform/web ci
+      - name: Build Web stylesheet
+        run: npm --prefix platform/web run build
+      - name: Build production renderer and Gallery
+        run: opam exec -- dune build @web
+      - name: Assemble release site
+        run: node tooling/build_web_release.mjs
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _build/web-release
+      - id: deployment
+        uses: actions/deploy-pages@v4

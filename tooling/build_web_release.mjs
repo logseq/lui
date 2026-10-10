@@ -16,6 +16,12 @@ await mkdir(output, {recursive: true});
 await build({
   entryPoints: [entry],
   outfile: path.join(output, "app.js"),
+  alias: {
+    "@tanstack/virtual-core": path.join(
+      root,
+      "platform/web/node_modules/@tanstack/virtual-core/dist/esm/index.js",
+    ),
+  },
   bundle: true,
   minify: true,
   treeShaking: true,
