@@ -1,0 +1,10 @@
+(test
+ (name lui_shell_test)
+ (modules lui_shell_test)
+ (libraries lui_shell alcotest))
+
+(test
+ (name lui_shell_mac_test)
+ (modules lui_shell_mac_test)
+ (enabled_if (= %{system} macosx))
+ (libraries lui_shell alcotest unix))

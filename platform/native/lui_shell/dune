@@ -1,0 +1,24 @@
+(library
+ (name lui_shell)
+ (modules lui_shell)
+ (foreign_stubs
+  (language c)
+  (names lui_shell_stubs)
+  (flags (:standard (:include c_flags.sexp))))
+ (c_library_flags (:standard (:include c_libs.sexp))))
+
+; The stubs are plain C off macOS but must be compiled as Objective-C
+; on macOS to reach AppKit; the frameworks only exist there.
+(rule
+ (target c_flags.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-x objective-c)'; else printf '()'; fi"))))
+
+(rule
+ (target c_libs.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-framework AppKit -framework UserNotifications)'; else printf '()'; fi"))))
