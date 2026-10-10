@@ -1,14 +1,14 @@
 (* Headless e2e harness for the native backend: a Lui_host wired to a
    stub renderer that records every display list it is asked to draw,
-   plus deterministic stubs for the layout, text, color, image and
-   shadow hooks — enough to assert scene ops without a window or a
-   real renderer. *)
+   REAL layout (Lui_layout through the host's engine slot, re-synced by
+   Lui_host on every repaint) and deterministic stubs for the text,
+   color, image and shadow hooks — enough to assert scene ops and
+   laid-out rects without a window or a real renderer. *)
 
 open Lui_scene
 
 let frame_w = 320
 let frame_h = 240
-let row_h = 24.
 
 (* What the stub renderer recorded on its last render call. *)
 type captured = {
@@ -20,7 +20,6 @@ type captured = {
 type t = {
   host : Lui_host.t;
   cap : captured;
-  rects : (int, rect) Hashtbl.t;
 }
 
 let host t = t.host
@@ -32,24 +31,16 @@ let wants_repaint t = Lui_host.wants_repaint t.host
 let apply_batch t batch = Lui_host.apply_batch t.host batch
 let resize t ~width ~height ~scale = Lui_host.resize t.host ~width ~height ~scale
 
-(* Vertical-stack layout: each node gets a 304x20 row in store preorder,
-   so reparenting or reordering children moves its scene rect. *)
-let refresh_layout t =
-  Hashtbl.reset t.rects;
-  List.iteri
-    (fun i id ->
-       Hashtbl.replace t.rects id (rect 8. (float i *. row_h) 304. 20.))
-    (Lui_store.preorder (store t))
-
+(* The node's last laid-out rect — real flex output, device px. Unknown
+   ids (dropped nodes, display:none) report the zero rect. *)
 let rect_of t id =
-  match Hashtbl.find_opt t.rects id with
+  match Lui_host.layout_rect t.host id with
   | Some r -> r
   | None -> rect 0. 0. 0. 0.
 
 (* Repaint through the real paint pass; returns the ops the stub
    renderer recorded. *)
 let repaint t =
-  refresh_layout t;
   ignore (Lui_host.repaint t.host);
   t.cap.ops
 
@@ -67,6 +58,12 @@ let stub_renderer cap =
 
 let test_image = new_image ~w:2 ~h:2 (Bytes.make 16 '\255')
 
+(* Deterministic text measure: 8 device px per byte, 16 px tall. Real
+   text engines are platform-bound, so e2e fixes intrinsic text sizes
+   to stay deterministic and cross-platform. *)
+let stub_measure _id text _offered_w _offered_h =
+  Some (8. *. float_of_int (String.length text), 16.)
+
 (* Stub text engine: one Glyphs op per call, [gend] carrying the string
    length so tests can correlate ops with text nodes. *)
 let stub_text_ops _id _r c s =
@@ -77,13 +74,8 @@ let stub_text_ops _id _r c s =
 
 let create ?(width = frame_w) ?(height = frame_h) () =
   let cap = { ops = []; frames = 0; bytes = 0 } in
-  let rects = Hashtbl.create 32 in
-  let layout id =
-    Lui_paint.placement_of_rect
-      (match Hashtbl.find_opt rects id with
-       | Some r -> r
-       | None -> rect 0. 0. 0. 0.)
-  in
+  (* hooks.layout stays the zero-rect default so the host swaps in the
+     engine's placement hook; every other stub is explicit. *)
   let hooks =
     { Lui_paint.default_hooks with
       color_of =
@@ -91,7 +83,6 @@ let create ?(width = frame_w) ?(height = frame_h) () =
           match name with
           | "accent" -> Some (color 10 20 30 255)
           | _ -> None);
-      layout;
       text_ops = stub_text_ops;
       image_of = (fun _id -> Some test_image);
       shadow_of =
@@ -104,10 +95,10 @@ let create ?(width = frame_w) ?(height = frame_h) () =
           | _ -> None) }
   in
   { host =
-      Lui_host.create ~hooks ~renderer:(stub_renderer cap)
-        ~width ~height ~scale:1. ();
-    cap;
-    rects }
+      Lui_host.create ~hooks
+        ~layout:(module Lui_layout) ~measure:stub_measure
+        ~renderer:(stub_renderer cap) ~width ~height ~scale:1. ();
+    cap }
 
 (* ---------- assertion helpers ---------- *)
 

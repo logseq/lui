@@ -345,6 +345,53 @@ let test_move_remove_drop () =
   let ops = E2e_harness.repaint h in
   check int "no shadow now" 0 (List.length (ops_named "shadow" ops))
 
+(* Real layout, not the stub: a padded/gapped column holding a
+   padded/gapped row. The first e2e assertions on numeric flex output —
+   every offset below is derived from the wire props, nothing is
+   hand-placed. *)
+let test_real_layout_positions () =
+  let h = E2e_harness.create () in
+  ignore
+    (E2e_harness.apply_batch h
+       { generation = 1;
+         ops =
+           [ CreateNode (1, Column);
+             SetProp (1, PaddingValue, IntValue 8);
+             SetProp (1, Gap, IntValue 4);
+             CreateNode (2, Row);
+             SetProp (2, HeightValue, IntValue 40);
+             SetProp (2, PaddingValue, IntValue 6);
+             SetProp (2, Gap, IntValue 2);
+             InsertChild (1, 2, 0);
+             CreateNode (3, Box);
+             SetProp (3, WidthValue, IntValue 20);
+             SetProp (3, HeightValue, IntValue 10);
+             InsertChild (2, 3, 0);
+             CreateNode (4, Box);
+             SetProp (4, WidthValue, IntValue 30);
+             SetProp (4, HeightValue, IntValue 10);
+             InsertChild (2, 4, 1);
+             CreateNode (5, Box);
+             SetProp (5, HeightValue, IntValue 12);
+             InsertChild (1, 5, 1) ] });
+  ignore (E2e_harness.repaint h);
+  let check_rect id x y w hgt =
+    let r = E2e_harness.rect_of h id in
+    check (float 0.001) (Printf.sprintf "id%d x" id) x r.x;
+    check (float 0.001) (Printf.sprintf "id%d y" id) y r.y;
+    check (float 0.001) (Printf.sprintf "id%d w" id) w r.w;
+    check (float 0.001) (Printf.sprintf "id%d h" id) hgt r.h
+  in
+  (* the column root grows into the whole 320x240 frame *)
+  check_rect 1 0. 0. 320. 240.;
+  (* the row sits inside the column's 8px padding, stretched on cross *)
+  check_rect 2 8. 8. 304. 40.;
+  (* row children: content origin 8+6, laid along main axis with gap 2 *)
+  check_rect 3 14. 14. 20. 10.;
+  check_rect 4 36. 14. 30. 10.;
+  (* second column child: after the 40px row plus the 4px column gap *)
+  check_rect 5 8. 52. 304. 12.
+
 let test_invalid_ops_ignored () =
   let h = E2e_harness.create () in
   let store = E2e_harness.store h in
@@ -390,6 +437,7 @@ let () =
          test_case "dispose" `Quick test_dispose ]);
       ("store+scene",
        [ test_case "scene ops" `Quick test_scene_ops;
+         test_case "real layout positions" `Quick test_real_layout_positions;
          test_case "move/remove/drop" `Quick test_move_remove_drop;
          test_case "invalid ops" `Quick test_invalid_ops_ignored;
          test_case "host flags+resize" `Quick test_host_flags_and_resize ]) ]
