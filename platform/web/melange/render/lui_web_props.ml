@@ -862,7 +862,9 @@ and apply_secondary_property renderer node kind dom_node property value =
   | PickerDirectory, BoolValue value ->
       Util.set_state_attribute dom_node "data-directory" value
   | PopupX, FloatValue _ | PopupY, FloatValue _ ->
-      Lui_web_position.position_popover renderer node
+      if kind = DropdownMenu then
+        Lui_web_position.position_dropdown renderer node
+      else Lui_web_position.position_popover renderer node
   | AvailableHeight, FloatValue value ->
       let popup = Util.child_element dom_node 0 in
       set_style popup "max-height" (Js.Float.toString value ^ "px");
@@ -1083,7 +1085,9 @@ let remove_property renderer node kind dom_node property =
        | PickerDirectory ->
            W.Element.removeAttribute "data-directory" dom_node
        | PopupX | PopupY ->
-           Lui_web_position.position_popover renderer node
+           if kind = DropdownMenu then
+             Lui_web_position.position_dropdown renderer node
+           else Lui_web_position.position_popover renderer node
        | AvailableHeight ->
            let popup = Util.child_element dom_node 0 in
            set_style popup "max-height" "";

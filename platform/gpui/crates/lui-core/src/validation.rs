@@ -249,7 +249,7 @@ pub(crate) fn node(store: &Store, node: &Node) -> Result<(), BackendError> {
             "anchor settings require an anchor",
         )?;
     }
-    if kind == K::Popover {
+    if matches!(kind, K::Popover | K::DropdownMenu) {
         fail(
             present(P::PopupX) == present(P::PopupY)
                 && !(present(P::PopupX) && present(P::AnchorValue)),

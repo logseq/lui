@@ -2287,7 +2287,53 @@ let test_vocab_batch2 () =
   Alcotest.(check bool) "available-height emitted" true
     (emitted AvailableHeight (FloatValue 200.0));
   Alcotest.(check bool) "role emitted" true
-    (emitted RoleValue (StringValue "menu"))
+    (emitted RoleValue (StringValue "menu"));
+  (* dropdown_menu ~at — programmatic point anchor *)
+  Alcotest.(check bool) "x on dropdown-menu" true
+    (property_supported DropdownMenu PopupX);
+  Alcotest.(check bool) "y on dropdown-menu" true
+    (property_supported DropdownMenu PopupY);
+  Alcotest.(check bool) "available-height stays popover-only" false
+    (property_supported DropdownMenu AvailableHeight);
+  Alcotest.(check bool) "x without y rejected on dropdown-menu" false
+    (node_properties_supported DropdownMenu with_x);
+  Alcotest.(check bool) "x and y accepted on dropdown-menu" true
+    (node_properties_supported DropdownMenu with_xy);
+  Alcotest.(check bool) "point + anchor rejected on dropdown-menu" false
+    (node_properties_supported DropdownMenu with_xy_anchor);
+  let menu_node = ref 0 in
+  let menu_app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      (fun _context _model_source _send ->
+         Lui_elements.column
+           [ capture_node menu_node
+               (Lui_elements.dropdown_menu ~at:(48.0, 96.0)
+                  ~on_dismiss:(fun _event -> ())
+                  [ Lui_elements.menu_item ~text:"Item" [] ]) ])
+  in
+  ignore (Lui_app.start menu_app);
+  flush_app menu_app;
+  let menu_ops = all_ops () in
+  let menu_emitted property value =
+    List.exists
+      (function
+         | Lui_protocol.SetProp (id, property', value') ->
+           id = !menu_node && property' = property && value' = value
+         | _ -> false)
+      menu_ops
+  in
+  Alcotest.(check bool) "dropdown-menu node created" true
+    (List.exists
+       (function
+          | Lui_protocol.CreateNode (id, Lui_protocol.DropdownMenu) ->
+            id = !menu_node
+          | _ -> false)
+       menu_ops);
+  Alcotest.(check bool) "dropdown-menu x emitted" true
+    (menu_emitted PopupX (FloatValue 48.0));
+  Alcotest.(check bool) "dropdown-menu y emitted" true
+    (menu_emitted PopupY (FloatValue 96.0))
 
 let test_visual_appearance_props () =
   let open Lui_protocol in

@@ -392,6 +392,16 @@ let align_select_item_with_trigger_bang = align_select_item_with_trigger
 let position_dropdown renderer node =
   if anchored renderer node then begin
     let positioner = Nodes.dom_node renderer node in
+    match Store.property renderer.web_store node PopupX with
+    | Some (FloatValue x) ->
+        (match Store.property renderer.web_store node PopupY with
+         | Some (FloatValue y) ->
+             (* programmatic point anchor (popover ~at parity): the menu
+                mounts at a computed point, not a DOM element *)
+             Util.set_state_attribute positioner "hidden" false;
+             position_at_point renderer.web_document positioner x y
+         | _ -> ())
+    | _ ->
     let popup = Util.child_element positioner 0 in
     let anchor = Nodes.dropdown_anchor_node renderer node in
     let anchor_bounds = W.Element.getBoundingClientRect anchor in

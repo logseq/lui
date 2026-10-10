@@ -1067,7 +1067,8 @@ struct LUIRetainedTree {
             kind == .avatar || kind == .image
         case .anchor, .anchorAlignment, .anchorOffset:
             kind == .dropdownMenu || kind == .tooltip || kind == .popover
-        case .popupX, .popupY, .availableHeight: kind == .popover
+        case .popupX, .popupY: kind == .popover || kind == .dropdownMenu
+        case .availableHeight: kind == .popover
         case .tooltipDelay: kind == .tooltip
         case .duration: false
         case .textAlignment:

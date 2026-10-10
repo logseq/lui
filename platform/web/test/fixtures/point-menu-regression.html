@@ -1,0 +1,138 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LUI point-anchored dropdown menu regression</title>
+<link rel="stylesheet" href="/platform/web/dist/lui.css">
+<script type="importmap">{"imports":{
+  "@tanstack/virtual-core": "/platform/web/dist/tanstack-virtual.js",
+          "lui.web.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui.web.dom/",
+  "lui/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui/",
+  "melange-webapi/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange-webapi/",
+  "melange.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.dom/",
+  "melange.js/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.js/",
+  "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
+  "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
+}}</script>
+<style>body { margin: 24px; font: 16px system-ui } #host { max-width: 720px }</style>
+<main id="host"></main>
+<script type="module">
+import * as Web from "lui.web.dom/shell/lui_web.js"
+import { Protocol, properties, kinds } from "./protocol-fixture.mjs"
+
+const host = document.querySelector("#host")
+const renderer = Web.create(undefined, host)
+const backend = Web.backend(renderer)
+const list = items => items.reduceRight((tl, hd) => ({ hd, tl }), 0)
+const children = new Map()
+const handlers = new Map()
+let ops = [], generation = 0, id = 0
+const events = []
+const activations = []
+
+// Value variant tags mirror src/lui_protocol.ml's `value` declaration
+// order: StringValue 0, BoolValue 1, IntValue 2, FloatValue 3.
+const TAGS = { string: 0, boolean: 1, int: 2, float: 3 }
+const FLOATS = new Set(["x", "y", "anchor-offset"])
+function set(node, name, value, tag = FLOATS.has(name) ? "float" : typeof value === "string" ? "string" : typeof value === "boolean" ? "boolean" : Number.isInteger(value) ? "int" : "float") {
+  ops.push(Protocol.set_prop_op(node, properties.get(name), { TAG: TAGS[tag], _0: value }))
+}
+function create(kind, parent, props = {}) {
+  const node = ++id
+  ops.push(Protocol.create_node_op(node, kinds.get(kind)))
+  children.set(node, { parent, kids: [] })
+  for (const [key, value] of Object.entries(props)) set(node, key, value)
+  if (parent) {
+    const siblings = children.get(parent).kids
+    ops.push(Protocol.insert_child_op(parent, node, siblings.length))
+    siblings.push(node)
+  }
+  return node
+}
+function drop(node) {
+  if (!node || !children.has(node)) return
+  for (const child of [...children.get(node).kids]) drop(child)
+  const parent = children.get(node).parent
+  if (parent) {
+    ops.push(Protocol.remove_child_op(parent, node))
+    const record = children.get(parent)
+    record.kids = record.kids.filter(x => x !== node)
+  }
+  ops.push(Protocol.drop_node_op(node))
+  children.delete(node)
+  handlers.delete(node)
+}
+function flush() {
+  if (ops.length) {
+    backend.apply_batch({ generation: ++generation, ops: list(ops) })
+    ops = []
+  }
+}
+
+const root = create("column", null, { gap: 8 })
+create("text", root, { text: "Host text far from the emitted point" })
+const box = create("box", root, {
+  "accessibility-identifier": "point-menu-host",
+  width: 120,
+  height: 40,
+  background: "accent",
+})
+create("text", box, { text: "retained parent (not the DOM anchor)" })
+
+// `dropdown-menu` with x/y: the programmatic point anchor. The menu mounts
+// in the popup portal at the emitted point even though its retained parent
+// is a plain box elsewhere in the layout.
+let menu = null
+function openPointMenu(x = 64, y = 96) {
+  if (menu) return menu
+  menu = create("dropdown-menu", box, { "min-width": 200 })
+  set(menu, "x", x)
+  set(menu, "y", y)
+  create("menu-item", menu, { text: "Point alpha", "press-enabled": true, selected: true })
+  const beta = create("menu-item", menu, { text: "Point beta", "press-enabled": true })
+  handlers.set(beta, () => activations.push("beta"))
+  handlers.set(menu, () => { drop(menu); menu = null })
+  flush()
+  return menu
+}
+function movePointMenu(x, y) {
+  set(menu, "x", x)
+  set(menu, "y", y)
+  flush()
+}
+function closePointMenu() {
+  drop(menu)
+  menu = null
+  flush()
+}
+
+// A second menu anchored the classic way (anchor:"below" under the same
+// parent) for the regression pair: it must keep tracking its sibling.
+let anchored = null
+function openAnchoredMenu() {
+  if (anchored) return anchored
+  const stack = create("stack", root)
+  const select = create("select", stack, { text: "Anchored select", "press-enabled": true })
+  handlers.set(select, () => {
+    if (anchored) return
+    anchored = create("dropdown-menu", stack, { anchor: "below", "min-width": 200 })
+    create("menu-item", anchored, { text: "Anchored item", "press-enabled": true })
+    handlers.set(anchored, () => { drop(anchored); anchored = null })
+    flush()
+  })
+  flush()
+  return select
+}
+
+Web.set_event_handler(renderer, e => {
+  events.push(e)
+  if (e.TAG === 0 || e.TAG === 7) {
+    handlers.get(e._0)?.()
+    flush()
+  }
+  return true
+})
+flush()
+Web.mount(renderer, root, host)
+
+window.audit = { renderer, events, activations, openPointMenu, movePointMenu, closePointMenu, openAnchoredMenu, node: () => menu }
+</script>

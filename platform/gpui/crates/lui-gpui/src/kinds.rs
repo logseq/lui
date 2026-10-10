@@ -1662,6 +1662,35 @@ fn dropdown_menu(
     _window: &mut Window,
     cx: &mut Context<LuiNodeView>,
 ) -> AnyElement {
+    // `~at` programmatic anchor (web position_at_point parity): the menu
+    // mounts at a computed viewport point instead of a DOM sibling rect.
+    if node.float_prop(Property::PopupX).is_some() {
+        let x = node.float_prop(Property::PopupX).unwrap_or(0.) as f32;
+        let y = node.float_prop(Property::PopupY).unwrap_or(0.) as f32;
+        let mut menu = menu_box(view, node, cx);
+        if event_gate(view, node.id, EventKind::Dismiss) {
+            let shared = view.shared.clone();
+            let node_id = node.id;
+            menu = menu.on_mouse_down_out(move |_, _, cx| {
+                fire(&shared, node_id, EventKind::Dismiss, cx, || unsafe {
+                    bridge::lui_ocaml_dismiss(node_id)
+                });
+            });
+        }
+        view.shared
+            .borrow_mut()
+            .push_overlay(node.id, OverlayEntry::Node);
+        let layer = anchored()
+            .position(point(px(x), px(y)))
+            .anchor(Anchor::TopLeft)
+            .snap_to_window()
+            .child(popup_motion(menu, node, &view.shared));
+        return div()
+            .id(element_id(node.id))
+            .size_0()
+            .child(deferred(layer).with_priority(5))
+            .into_any_element();
+    }
     let offset = node.float_prop(Property::AnchorOffset).unwrap_or(0.) as f32;
     let placement = match node.string_prop(Property::AnchorValue) {
         Some("above") => Placement::Top,
@@ -3256,6 +3285,7 @@ pub fn render_node(
             // section showcasing menu items — renders in place.
             let floating = matches!(parent_kind, Some(NodeKind::Stack) | Some(NodeKind::Overlay))
                 || node.string_prop(Property::AnchorValue).is_some()
+                || node.float_prop(Property::PopupX).is_some()
                 || event_gate(view, node.id, EventKind::Dismiss);
             match parent_kind {
                 // A `dropdown-menu` nested under a `menu-trigger` (the

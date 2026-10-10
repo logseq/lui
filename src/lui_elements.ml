@@ -1629,10 +1629,22 @@ let combobox ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal 
   mount_children context node children;
   node
 
-let dropdown_menu ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?anchor ?anchor_alignment ?anchor_offset ?on_press ?on_input ?on_submit ?on_dismiss (children : t list) : t =
+let dropdown_menu ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?at ?at_signal ?anchor ?anchor_alignment ?anchor_offset ?on_press ?on_input ?on_submit ?on_dismiss (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.dropdown_menu context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave;
+  Option.iter
+    (fun (x, y) ->
+      Lui_ui.float_property context node PopupX x;
+      Lui_ui.float_property context node PopupY y)
+    at;
+  Option.iter
+    (fun signal_ ->
+      Lui_ui.float_property_signal context node PopupX
+        (owned_map context fst signal_);
+      Lui_ui.float_property_signal context node PopupY
+        (owned_map context snd signal_))
+    at_signal;
   Option.iter (Lui_ui.string_property context node AnchorValue) (Option.map anchor_value anchor);
   Option.iter (Lui_ui.string_property context node AnchorAlignmentValue) (Option.map anchor_alignment_value anchor_alignment);
   Option.iter (Lui_ui.float_property context node AnchorOffset) anchor_offset;

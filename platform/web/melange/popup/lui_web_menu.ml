@@ -375,9 +375,13 @@ let rec set_dropdown_open renderer node open_ =
     Lui_web_layers.open_layer renderer.web_layers renderer.web_document node;
     begin_popup_open popup;
     ignore (Lui_web_position.position_dropdown renderer node);
-    Lui_web_position.track renderer node popup
-      ~update:(fun () -> Lui_web_position.position_dropdown renderer node)
-      ~on_invalid:(fun () -> set_dropdown_open renderer node false)
+    (* Point-anchored menus (~at) have no DOM anchor to follow — like
+       popover ~at they skip geometry tracking; the model re-emits x/y to
+       move them and node removal tears them down. *)
+    if Store.property renderer.web_store node PopupX = None then
+      Lui_web_position.track renderer node popup
+        ~update:(fun () -> Lui_web_position.position_dropdown renderer node)
+        ~on_invalid:(fun () -> set_dropdown_open renderer node false)
   end
   else begin
     Lui_web_popup_tracking.stop positioner;
