@@ -79,12 +79,14 @@ let create ?(width = frame_w) ?(height = frame_h) () =
   let cap = { ops = []; frames = 0; bytes = 0 } in
   let rects = Hashtbl.create 32 in
   let layout id =
-    match Hashtbl.find_opt rects id with
-    | Some r -> r
-    | None -> rect 0. 0. 0. 0.
+    Lui_paint.placement_of_rect
+      (match Hashtbl.find_opt rects id with
+       | Some r -> r
+       | None -> rect 0. 0. 0. 0.)
   in
   let hooks =
-    { Lui_paint.color_of =
+    { Lui_paint.default_hooks with
+      color_of =
         (fun name ->
           match name with
           | "accent" -> Some (color 10 20 30 255)
@@ -97,7 +99,7 @@ let create ?(width = frame_w) ?(height = frame_h) () =
           match name with
           | "card" ->
             Some
-              { dx = 0.; dy = 2.; blur = 6.;
+              { dx = 0.; dy = 2.; blur = 6.; spread = 0.;
                 scolor = color 0 0 0 80; inset = false }
           | _ -> None) }
   in

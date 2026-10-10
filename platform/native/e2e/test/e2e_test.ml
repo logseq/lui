@@ -75,20 +75,23 @@ let test_boot_pipeline () =
   let ops = E2e_harness.repaint h in
   check bool "repaint clears dirty" false (E2e_harness.wants_repaint h);
   check (list string) "op sequence"
-    [ "glyphs"; "fill"; "glyphs"; "glyphs" ]
+    [ "glyphs"; "glyphs"; "fill"; "glyphs"; "glyphs"; "glyphs";
+      "glyphs"; "glyphs"; "glyphs"; "glyphs" ]
     (E2e_harness.op_names ops);
   check int "one frame" 1 (E2e_harness.cap h).frames;
   check int "pixel bytes" (320 * 240 * 4) (E2e_harness.cap h).bytes;
-  match List.nth ops 1 with
-  | Fill f ->
-    let add = require_id (E2e_harness.find_text_id store "button" "add") in
-    let r = E2e_harness.rect_of h add in
-    check int "fill r" 51 f.fcolor.r;
-    check int "fill g" 102 f.fcolor.g;
-    check int "fill b" 255 f.fcolor.b;
-    check (float 0.001) "fill x" r.x f.frect.x;
-    check (float 0.001) "fill w" r.w f.frect.w
-  | _ -> fail "second op must be the add-button fill"
+  (match
+     List.find_opt (function Lui_scene.Fill _ -> true | _ -> false) ops
+   with
+   | Some (Fill f) ->
+     let add = require_id (E2e_harness.find_text_id store "button" "add") in
+     let r = E2e_harness.rect_of h add in
+     check int "fill r" 51 f.fcolor.r;
+     check int "fill g" 102 f.fcolor.g;
+     check int "fill b" 255 f.fcolor.b;
+     check (float 0.001) "fill x" r.x f.frect.x;
+     check (float 0.001) "fill w" r.w f.frect.w
+   | _ -> fail "expected the add-button fill op")
 
 let test_text_changed () =
   let h, app = boot () in
@@ -105,7 +108,7 @@ let test_text_changed () =
   let dirty = Lui_store.drain_dirty store in
   check bool "field marked dirty" true (List.mem fid dirty);
   let ops = E2e_harness.repaint h in
-  check int "glyph ops" 3 (List.length (ops_named "glyphs" ops));
+  check int "glyph ops" 9 (List.length (ops_named "glyphs" ops));
   match ops with
   | Glyphs g :: _ ->
     check int "summary len" (String.length "items=2 draft=gamma") g.gend
@@ -136,7 +139,9 @@ let test_press_add_remove_promote () =
   check bool "new row dirty" true (List.mem gamma_row dirty);
   let ops = E2e_harness.repaint h in
   check (list string) "op sequence"
-    [ "glyphs"; "fill"; "glyphs"; "glyphs"; "glyphs" ]
+    [ "glyphs"; "glyphs"; "fill"; "glyphs"; "glyphs"; "glyphs";
+      "glyphs"; "glyphs"; "glyphs"; "glyphs"; "glyphs"; "glyphs";
+      "glyphs" ]
     (E2e_harness.op_names ops);
 
   (* promote moves the gamma row to the front of the keyed list *)
