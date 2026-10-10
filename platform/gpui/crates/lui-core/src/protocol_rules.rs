@@ -77,7 +77,7 @@ pub(crate) fn property_supported(kind: NodeKind, property: Property) -> bool {
         NodeKind::Drawer => 0x20e000001800000442007018383,
         NodeKind::Sheet => 0x20e0c0001800000400006018381,
         NodeKind::Tooltip => 0x6000000007800400002600001,
-        NodeKind::Toast => 0xe000000008000000007000000,
+        NodeKind::Toast => 0xe000000008000000007000380,
         NodeKind::Toolbar => 0xe0000000000000000c7000004,
         NodeKind::StatusBar => 0xe0000000100004000067fffa1,
         NodeKind::ListSection => 0x6000006000000000002000000,

@@ -6,6 +6,194 @@ use lui_gpui::{apply_batch_json, LuiRootView, LuiShared};
 
 static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+#[gpui_kit::test]
+fn untitled_dialog_paints_its_content(cx: &mut TestAppContext) {
+    let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+    cx.update(lui_gpui::init);
+    let shared = LuiShared::new();
+    cx.update(|app| {
+        apply_batch_json(&shared, r#"{"generation":1,"ops":[
+            {"op":"create-node","id":1,"kind":"root"},
+            {"op":"create-node","id":2,"kind":"dialog"},
+            {"op":"set-prop","id":2,"property":"width","value":400},
+            {"op":"create-node","id":3,"kind":"text"},
+            {"op":"set-prop","id":3,"property":"text","value":"Search content"},
+            {"op":"insert-child","parent":2,"child":3,"index":0},
+            {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}"#, app).unwrap();
+    });
+    let build = shared.clone();
+    let (_, window) = cx.add_window_view(move |_, _| LuiRootView::new(build));
+    window.run_until_parked();
+    let bounds = shared.borrow().node_bounds.get(&3).copied().unwrap();
+    assert!(f32::from(bounds.size.width) > 0.);
+    assert!(f32::from(bounds.size.height) > 0.);
+}
+
+#[gpui_kit::test]
+fn empty_cover_host_paints_a_new_popup_after_model_updates(cx: &mut TestAppContext) {
+    let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+    cx.update(lui_gpui::init);
+    let shared = LuiShared::new();
+    cx.update(|app| {
+        apply_batch_json(&shared, r#"{"generation":1,"ops":[
+            {"op":"create-node","id":1,"kind":"root"},
+            {"op":"create-node","id":2,"kind":"popover"},
+            {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}"#, app).unwrap();
+    });
+    let build = shared.clone();
+    let (_, window) = cx.add_window_view(move |_, _| LuiRootView::new(build));
+    window.run_until_parked();
+    window.update(|_, app| {
+        apply_batch_json(&shared, r#"{"generation":2,"ops":[
+            {"op":"create-node","id":3,"kind":"popover"},
+            {"op":"set-prop","id":3,"property":"x","value":20.0},
+            {"op":"set-prop","id":3,"property":"y","value":40.0},
+            {"op":"create-node","id":4,"kind":"text"},
+            {"op":"set-prop","id":4,"property":"text","value":"New popup"},
+            {"op":"insert-child","parent":3,"child":4,"index":0},
+            {"op":"insert-child","parent":2,"child":3,"index":0}
+        ]}"#, app).unwrap();
+    });
+    window.run_until_parked();
+    assert!(shared.borrow().node_bounds.contains_key(&4), "a popup inserted in a zero-size host must paint without an unrelated window refresh");
+}
+
+#[gpui_kit::test]
+fn closing_popup_retains_content_then_releases_it(cx: &mut TestAppContext) {
+    let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+    cx.update(lui_gpui::init);
+    let shared = LuiShared::new();
+    let clock = cx.background_executor.clone();
+    cx.update(|app| {
+        apply_batch_json(
+            &shared,
+            r#"{"generation":1,"ops":[
+            {"op":"create-node","id":1,"kind":"root"},
+            {"op":"create-node","id":4,"kind":"column"},
+            {"op":"create-node","id":2,"kind":"popover"},
+            {"op":"create-node","id":3,"kind":"text"},
+            {"op":"set-prop","id":3,"property":"text","value":"Retained popup content"},
+            {"op":"insert-child","parent":2,"child":3,"index":0},
+            {"op":"insert-child","parent":1,"child":4,"index":0},
+            {"op":"insert-child","parent":4,"child":2,"index":0}
+        ]}"#,
+            app,
+        )
+        .unwrap();
+    });
+    let build = shared.clone();
+    let (_, window) = cx.add_window_view(move |_, _| LuiRootView::new(build));
+    window.run_until_parked();
+    window.update(|_, app| {
+        apply_batch_json(
+            &shared,
+            r#"{"generation":2,"ops":[{"op":"detach-subtree","id":2}]}"#,
+            app,
+        )
+        .unwrap();
+    });
+    assert!(
+        shared.borrow().store.node(2).is_none(),
+        "dismissal removes the live model immediately"
+    );
+    assert!(
+        shared.borrow().views.contains_key(&3),
+        "closing content must stay available to paint its exit"
+    );
+    window.update(|_, app| {
+        apply_batch_json(
+            &shared,
+            r#"{"generation":3,"ops":[
+            {"op":"create-node","id":5,"kind":"popover"},
+            {"op":"create-node","id":6,"kind":"text"},
+            {"op":"set-prop","id":6,"property":"text","value":"New popup content"},
+            {"op":"insert-child","parent":5,"child":6,"index":0},
+            {"op":"insert-child","parent":4,"child":5,"index":0}
+        ]}"#,
+            app,
+        )
+        .unwrap();
+    });
+    window.run_until_parked();
+    clock.advance_clock(std::time::Duration::from_millis(600));
+    window.run_until_parked();
+    assert!(!shared.borrow().views.contains_key(&2));
+    assert!(!shared.borrow().views.contains_key(&3));
+    assert!(
+        shared.borrow().views.contains_key(&6),
+        "an old exit must not release a newer popup"
+    );
+}
+
+#[gpui_kit::test]
+fn cover_popover_escape_dismisses_only_the_top_layer(cx: &mut TestAppContext) {
+    let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+    cx.update(lui_gpui::init);
+    let _ = support::take_events();
+    let shared = LuiShared::new();
+    cx.update(|app| {
+        apply_batch_json(
+            &shared,
+            r#"{"generation":1,"ops":[
+            {"op":"create-node","id":1,"kind":"root"},
+            {"op":"create-node","id":4,"kind":"column"},
+            {"op":"create-node","id":2,"kind":"popover"},
+            {"op":"create-node","id":3,"kind":"popover"},
+            {"op":"insert-child","parent":1,"child":4,"index":0},
+            {"op":"insert-child","parent":4,"child":2,"index":0},
+            {"op":"insert-child","parent":4,"child":3,"index":1}
+        ]}"#,
+            app,
+        )
+        .unwrap();
+    });
+    let build = shared.clone();
+    let (_, window) = cx.add_window_view(move |_, _| LuiRootView::new(build));
+    window.run_until_parked();
+    window.simulate_keystrokes("escape");
+    window.run_until_parked();
+    assert_eq!(
+        support::take_events(),
+        vec![support::RecordedEvent::Dismiss(3)]
+    );
+    assert!(shared.borrow().store.node(2).is_some());
+}
+
+#[gpui_kit::test]
+fn toast_respects_typed_padding(cx: &mut TestAppContext) {
+    let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+    cx.update(lui_gpui::init);
+    let shared = LuiShared::new();
+    cx.update(|app| {
+        apply_batch_json(
+            &shared,
+            r#"{"generation":1,"ops":[
+            {"op":"create-node","id":1,"kind":"root"},
+            {"op":"create-node","id":2,"kind":"toast"},
+            {"op":"set-prop","id":2,"property":"padding","value":0},
+            {"op":"create-node","id":3,"kind":"box"},
+            {"op":"set-prop","id":3,"property":"width","value":100},
+            {"op":"set-prop","id":3,"property":"height","value":20},
+            {"op":"insert-child","parent":2,"child":3,"index":0},
+            {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}"#,
+            app,
+        )
+        .unwrap();
+    });
+    let build = shared.clone();
+    let (_, window) = cx.add_window_view(move |_, _| LuiRootView::new(build));
+    window.update(|window, _| window.refresh());
+    window.run_until_parked();
+    assert_eq!(
+        shared.borrow().toast_heights[&2],
+        22.,
+        "only the content and border contribute to a zero-padding toast"
+    );
+}
+
 static UNCHANGED_RENDERS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 fn counting_renderer(

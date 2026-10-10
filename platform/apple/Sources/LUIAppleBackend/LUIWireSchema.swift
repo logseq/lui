@@ -219,7 +219,7 @@ enum LUISchemaMatrix {
         .timelineItem: [.title, .description, .meta, .indicator, .icon, .variant, .connector, .selected, .pressEnabled, .pointerEnabled],
         .inputGroup: [.accessibilityLabel, .width, .height, .minWidth, .grow, .pointerEnabled],
         .inputGroupActions: [.gap, .pointerEnabled],
-        .toast: [.duration, .accessibilityLabel, .styleClass, .dataAttrs, .pointerEnabled],
+        .toast: [.duration, .accessibilityLabel, .styleClass, .dataAttrs, .pointerEnabled, .padding, .paddingHorizontal, .paddingVertical],
         .toolbar: [.orientation, .accessibilityLabel, .gap, .styleClass, .dataAttrs, .placement, .pointerEnabled],
         .bottomTabs: [.accessibilityLabel, .styleClass, .dataAttrs, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight, .pointerEnabled],
         .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled, .pointerEnabled],

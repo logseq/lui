@@ -19,6 +19,7 @@ pub mod root;
 pub mod style;
 pub mod theme;
 mod virtual_list;
+mod measured_text;
 
 pub use backend::{apply_batch_json, drain_pending, fire, LuiShared, Shared};
 pub use node_view::{LuiNodeView, NodeSnapshot};

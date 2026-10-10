@@ -1095,6 +1095,8 @@ let property_supported kind property =
       property = DurationValue || property = AccessibilityLabel
       || property = StyleClass || property = PointerEnabled
       || property = DataAttrs
+      || property = PaddingValue || property = PaddingHorizontal
+      || property = PaddingVertical
     | Toolbar ->
       property = OrientationValue || property = AccessibilityLabel
       || property = Gap || property = StyleClass || property = PlacementValue
@@ -1394,7 +1396,7 @@ let node_properties_supported kind properties =
         (text <> "" || icon <> "")
         && (if text = "" then label <> "" else true)
       else true)
-  && (if modal_surface kind then string_property_nonempty properties TextValue
+  && (if kind = Drawer || kind = Sheet then string_property_nonempty properties TextValue
       else true)
   && (if kind = Tooltip then
         string_property_nonempty properties TextValue

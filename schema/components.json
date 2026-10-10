@@ -1658,7 +1658,10 @@
       "accessibility-label",
       "style-class",
       "data-attrs",
-      "pointer-enabled"
+      "pointer-enabled",
+      "padding",
+      "padding-horizontal",
+      "padding-vertical"
     ],
     "toolbar": [
 

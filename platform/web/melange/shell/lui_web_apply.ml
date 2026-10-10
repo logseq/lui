@@ -371,6 +371,8 @@ let apply_remove_child renderer previous_nodes parent child =
    else if prev_kind_is previous_nodes child Popover then
      Lui_web_menu.remove_popover_after_exit renderer child parent_node
        child_node
+   else if prev_kind_is previous_nodes child Toast then
+     Lui_web_overlay.remove_toast_after_exit renderer child_node
    else (
      (* parent_node is re-resolved from the previous snapshot and can be
         stale for portal-rendered children; remove from the actual DOM
@@ -617,10 +619,11 @@ let apply_detach_subtree renderer previous_nodes children_of node =
   let exit_boundary =
     match prev_node previous_nodes node with
     | Some previous
-      when Lui_web_layers.is_present renderer.web_layers node
+      when Store.standard_kind_is previous Toast
+           || (Lui_web_layers.is_present renderer.web_layers node
            && (prev_modal previous_nodes node
                || Store.standard_kind_is previous DropdownMenu
-               || Store.standard_kind_is previous Popover) ->
+               || Store.standard_kind_is previous Popover)) ->
         (match previous.retained_parent with
          | Some parent ->
              let boundary =
@@ -633,8 +636,25 @@ let apply_detach_subtree renderer previous_nodes children_of node =
          | None -> None)
     | _ -> None
   in
+  let toast_boundaries = ref [] in
+  let rec retain_toasts node_id =
+    (match prev_node previous_nodes node_id with
+     | Some previous when Store.standard_kind_is previous Toast
+                          && Lazy.is_val previous.platform_node ->
+         let toast = Lazy.force previous.platform_node in
+         (match W.Element.parentElement toast with
+          | Some _ ->
+              if not (W.Element.hasAttribute "data-ending-style" toast) then
+                Lui_web_overlay.remove_toast_after_exit renderer toast;
+              toast_boundaries := toast :: !toast_boundaries
+          | None -> ())
+     | _ -> ());
+    List.iter retain_toasts (shadow_ids (children_of node_id))
+  in
+  retain_toasts node;
   let retained_for_exit element =
-    match exit_boundary with
+    List.exists (fun toast -> W.Element.contains (W.Element.asNode element) toast)
+      !toast_boundaries || match exit_boundary with
     | Some boundary ->
         W.Element.contains (W.Element.asNode element) boundary
     | None -> false

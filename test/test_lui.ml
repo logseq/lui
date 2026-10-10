@@ -3332,6 +3332,13 @@ let test_drive_scenarios () =
   run_drive_scenario "counter.drive"
     (drive_mount ~initial:0 ~reducer:counter_reducer ~view:counter_view ())
 
+let test_toast_padding () =
+  let open Lui_protocol in
+  List.iter (fun property ->
+      Alcotest.(check bool) "toast padding" true
+        (property_supported Toast property))
+    [ PaddingValue; PaddingHorizontal; PaddingVertical ]
+
 let () =
   Alcotest.run "lui"
     [
@@ -3373,6 +3380,7 @@ let () =
         ] );
       ( "protocol",
         [
+          Alcotest.test_case "toast padding" `Quick test_toast_padding;
           Alcotest.test_case "helpers" `Quick test_protocol_helpers;
           Alcotest.test_case "menu-trigger rules" `Quick
             test_menu_trigger_rules;

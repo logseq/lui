@@ -57,8 +57,11 @@ impl Drop for LuiRootView {
         shared.root_owners -= 1;
         if shared.root_owners == 0 {
             shared.views.clear();
+            shared.closing_nodes.clear();
+            shared.closing_roots.clear();
             shared.virtual_lists.clear();
             shared.node_bounds.clear();
+            shared.text_layouts.clear();
             shared.focus_nodes.clear();
             shared.overlay_stack.clear();
             shared.viewport_watched.clear();
@@ -198,6 +201,11 @@ impl Render for LuiRootView {
         match root_id {
             Some(id) => {
                 let view = LuiShared::view_for(&self.shared, id, cx);
+                let closing = self.shared.borrow().closing_roots.clone();
+                let closing_views: Vec<_> = closing
+                    .into_iter()
+                    .map(|id| LuiShared::view_for(&self.shared, id, cx))
+                    .collect();
                 // Imperative overlay roots (OCaml body-appended floaters,
                 // pushed via `imperative-attach`) mount in a window-level
                 // deferred layer above declarative popups (priority 4 vs.
@@ -365,9 +373,7 @@ impl Render for LuiRootView {
                                         // handlers see it.
                                         let Some(hit) =
                                             crate::dom::deepest_hit(&down_shared, event.position)
-                                                .or_else(|| {
-                                                    down_shared.borrow().store.root
-                                                })
+                                                .or_else(|| down_shared.borrow().store.root)
                                         else {
                                             return;
                                         };
@@ -577,6 +583,7 @@ impl Render for LuiRootView {
                         .size(px(1.)),
                     )
                     .child(view)
+                    .children(closing_views)
                     .children(imperative_layer)
                     .into_any_element()
             }

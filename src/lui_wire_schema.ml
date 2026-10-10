@@ -313,7 +313,7 @@ let kind_property_matrix kind =
   | TimelineItem -> Some [ TitleValue; DescriptionValue; MetaValue; IndicatorValue; InlineIconName; VariantValue; Connector; Selected; PressEnabled; PointerEnabled ]
   | InputGroup -> Some [ AccessibilityLabel; WidthValue; HeightValue; MinWidth; GrowValue; PointerEnabled ]
   | InputGroupActions -> Some [ Gap; PointerEnabled ]
-  | Toast -> Some [ DurationValue; AccessibilityLabel; StyleClass; DataAttrs; PointerEnabled ]
+  | Toast -> Some [ DurationValue; AccessibilityLabel; StyleClass; DataAttrs; PointerEnabled; PaddingValue; PaddingHorizontal; PaddingVertical ]
   | Toolbar -> Some [ OrientationValue; AccessibilityLabel; Gap; StyleClass; DataAttrs; PlacementValue; PointerEnabled ]
   | BottomTabs -> Some [ AccessibilityLabel; StyleClass; DataAttrs; GrowValue; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; PointerEnabled ]
   | BottomTab -> Some [ TitleValue; InlineIconName; Selected; Enabled; PressEnabled; PointerEnabled ]

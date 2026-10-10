@@ -24,11 +24,11 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::Icon;
 use gpui_kit::component::{h_flex, v_flex, Disableable, Selectable, Sizable};
 use gpui_kit::gpui::{
-    anchored, deferred, div, img, point, px, Anchor, AnyElement, App, AppContext, ClickEvent,
-    Bounds, Context, ElementId, Focusable, FontWeight, ImageSource, InteractiveElement, IntoElement,
-    Modifiers, MouseButton, MouseDownEvent, ParentElement, PathPromptOptions, Pixels, Point,
-    RenderImage,
-    StatefulInteractiveElement, Styled, SvgSize, Window, WindowControlArea,
+    anchored, deferred, div, img, point, px, Anchor, Animation, AnimationExt, AnyElement, App,
+    AppContext, Bounds, ClickEvent, Context, ElementId, Focusable, FontWeight, ImageSource,
+    InteractiveElement, IntoElement, Modifiers, MouseButton, MouseDownEvent, ParentElement,
+    PathPromptOptions, Pixels, Point, RenderImage, StatefulInteractiveElement, Styled, SvgSize,
+    Window, WindowControlArea,
 };
 use gpui_kit::prelude::FluentBuilder;
 use lui_core::bridge;
@@ -43,10 +43,104 @@ use crate::extension;
 use crate::node_view::{LuiNodeView, LuiOption, LuiOptions, NodeSnapshot};
 use crate::style;
 
+#[cfg(test)]
+mod icon_tests {
+    use super::*;
+    use lui_core::wire::decode_batch;
+    use serde_json::json;
+    use std::rc::Rc;
+
+    #[gpui_kit::test]
+    fn application_icons_render_their_foreground_after_property_changes(
+        cx: &mut gpui_kit::TestAppContext,
+    ) {
+        cx.update(gpui_kit::init);
+        let shared = LuiShared::new();
+        shared.borrow_mut().app_icon_svg = Some(Rc::new(|_| {
+            Some(r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="currentColor"/></svg>"#.into())
+        }));
+        let batch = decode_batch(&json!({"generation": 1, "ops": [
+            {"op": "create-node", "id": 99501, "kind": "icon"},
+            {"op": "set-prop", "id": 99501, "property": "name", "value": "app:foreground-regression"}
+        ]}).to_string()).unwrap();
+        shared.borrow_mut().store.apply(&batch).unwrap();
+        let fixture = shared.clone();
+        let (view, cx) = cx.add_window_view(move |_, _| LuiNodeView::new(99501, fixture));
+        for (step, (color, expected)) in [
+            ("#858585", [133, 133, 133]),
+            ("#5bb98c", [140, 185, 91]),
+            ("#eb9091", [145, 144, 235]),
+        ].into_iter().enumerate() {
+            let batch = decode_batch(&json!({"generation": step + 2, "ops": [
+                {"op": "set-prop", "id": 99501, "property": "foreground", "value": color}
+            ]}).to_string()).unwrap();
+            shared.borrow_mut().store.apply(&batch).unwrap();
+            let image = cx.update(|window, app| view.update(app, |view, cx| {
+                app_icon_image(view, &view.snapshot().unwrap(), "foreground-regression", window, cx).unwrap()
+            }));
+            let pixel = image.as_bytes(0).unwrap().chunks_exact(4)
+                .find(|pixel| pixel[3] == 255).expect("the SVG must paint opaque pixels");
+            for channel in 0..3 {
+                assert!(pixel[channel].abs_diff(expected[channel]) <= 1,
+                    "icon foreground {color}: expected BGRA {expected:?}, got {pixel:?}");
+            }
+        }
+    }
+}
+
 fn element_id(node_id: i64) -> ElementId {
     // Element ids live inside the entity's own id space — per-node ids are
-    // unique and stable across renders.
-    ElementId::Name(format!("lui-{node_id}").into())
+    // unique and stable across renders. Keep them numeric so every ancestor
+    // in GPUI's state path does not allocate and hash a formatted string.
+    ElementId::Integer(node_id as u64)
+}
+
+pub(crate) fn animated_popup(kind: NodeKind) -> bool {
+    matches!(
+        kind,
+        NodeKind::Dialog
+            | NodeKind::Drawer
+            | NodeKind::Sheet
+            | NodeKind::Toast
+            | NodeKind::Popover
+            | NodeKind::DropdownMenu
+    )
+}
+
+pub(crate) fn popup_duration(node: &NodeSnapshot) -> std::time::Duration {
+    let millis = match node.identity.kind() {
+        Some(NodeKind::Toast) => 500,
+        Some(NodeKind::Dialog) => 150,
+        Some(NodeKind::Drawer | NodeKind::Sheet) => 200,
+        Some(NodeKind::Popover)
+            if node.float_prop(Property::PopupX).is_none()
+                && node.string_prop(Property::AnchorValue).is_none() =>
+        {
+            150
+        }
+        _ => 130,
+    };
+    std::time::Duration::from_millis(millis)
+}
+
+fn popup_motion<E: IntoElement + Styled + 'static>(
+    surface: E,
+    node: &NodeSnapshot,
+    shared: &Shared,
+) -> AnyElement {
+    let closing = shared.borrow().closing_nodes.contains_key(&node.id);
+    surface
+        .with_animation(
+            ElementId::Name(
+                format!("lui-{}-{}", node.id, if closing { "exit" } else { "enter" }).into(),
+            ),
+            Animation::new(popup_duration(node))
+                .with_easing(|progress| 1. - (1. - progress).powi(3)),
+            move |surface, progress| {
+                surface.opacity(if closing { 1. - progress } else { progress })
+            },
+        )
+        .into_any_element()
 }
 
 fn text_of(node: &NodeSnapshot) -> String {
@@ -256,6 +350,26 @@ fn container(
     // the kind's direction — child elision must match the direction that
     // actually renders.
     let flat_horizontal = crate::node_view::snapshot_flex_direction(node).unwrap_or(horizontal);
+    let pressable = press_gate(view, node.id);
+    let titlebar = dom::attr(node, "data-window-titlebar").is_some();
+    let role = dom::attr(node, "role");
+    // Retained node views already scope their children by entity identity.
+    // Plain layout needs no second state boundary: allocating one makes
+    // every descendant copy and hash an unnecessarily deep element path.
+    if matches!(kind, NodeKind::Row | NodeKind::Column | NodeKind::Box)
+        && !pressable
+        && !titlebar
+        && role.as_deref() != Some("menuitem")
+    {
+        let base = if horizontal { h_flex() } else { v_flex() };
+        let mut element = style::all(base, node, cx.theme());
+        if !node.enabled() {
+            element = element.opacity(0.5);
+        }
+        return element
+            .children(view.child_elements_flat(node, flat_horizontal, multi, cx))
+            .into_any_element();
+    }
     let base = if horizontal {
         h_flex().id(element_id(node.id))
     } else {
@@ -306,13 +420,13 @@ fn container(
     // highlight (menu_item_ids collects them); paint it with the
     // accent the menu-item kind uses.
     element = element.when(
-        crate::dom::attr(node, "role").as_deref() == Some("menuitem")
+        role.as_deref() == Some("menuitem")
             && view.shared.borrow().menu_highlight == Some(node.id),
         |element| element.bg(cx.theme().accent),
     );
     // Any container kind may carry `pressable` (the model enables the
     // PressEnabled prop) — the gate decides, not the kind.
-    if press_gate(view, node.id) {
+    if pressable {
         element = element
             .cursor_pointer()
             .on_click(press_handler(view, node.id));
@@ -321,7 +435,7 @@ fn container(
     // `data-window-titlebar` marks the container as the platform titlebar
     // region: dragging uncovered areas moves the window and a double-click
     // zooms it (hosts opt in via a transparent/merged titlebar).
-    if dom::attr(node, "data-window-titlebar").is_some() {
+    if titlebar {
         element = element
             .window_control_area(WindowControlArea::Drag)
             .on_double_click(|_, window, _| {
@@ -521,10 +635,11 @@ fn icon_name_raw(node: &NodeSnapshot) -> Option<&str> {
 
 /// Rasterize an `app:` icon name through the host's `app_icon_svg`
 /// resolver (e.g. a bundled tabler table). `currentColor` is bound to
-/// the theme foreground so the glyph follows the palette. Cached per
-/// (name, color, scale): icons are immutable.
+/// the node's styled foreground so the glyph follows its surface props.
+/// Cached per (name, color, scale): icons are immutable.
 fn app_icon_image(
     view: &LuiNodeView,
+    node: &NodeSnapshot,
     name: &str,
     window: &mut Window,
     cx: &mut Context<LuiNodeView>,
@@ -532,7 +647,8 @@ fn app_icon_image(
     static CACHE: LazyLock<Mutex<HashMap<(String, u32, u32), Arc<RenderImage>>>> =
         LazyLock::new(|| Mutex::new(HashMap::new()));
     let resolver = view.shared.borrow().app_icon_svg.clone()?;
-    let color = cx.theme().foreground;
+    let mut styled = style::all(div(), node, cx.theme());
+    let color = styled.style().text.color.unwrap_or(cx.theme().foreground);
     let rgb = color.to_rgb();
     let hex = format!(
         "#{:02x}{:02x}{:02x}",
@@ -566,7 +682,7 @@ fn icon_name(node: &NodeSnapshot, property: Property) -> Option<gpui_kit::assets
 
 /// Raw svg bytes for an `app:` icon name via the host's `app_icon_svg`
 /// resolver — `currentColor` is left in place so the consumer's text
-/// color binds it (unlike `app_icon_image`, which pre-bakes the theme
+/// color binds it (unlike `app_icon_image`, which pre-bakes the styled
 /// foreground into a bitmap for standalone image slots).
 fn app_icon_data(view: &LuiNodeView, node: &NodeSnapshot) -> Option<Vec<u8>> {
     let name = icon_name_raw(node)?.strip_prefix("app:")?;
@@ -650,7 +766,9 @@ fn text_element(
             .font_weight(FontWeight::MEDIUM);
     }
     if children.is_empty() {
-        element = element.child(text_of(node));
+        element = element.child(crate::measured_text::MeasuredText::new(
+            text_of(node), node.id, view.shared.clone(),
+        ));
     } else {
         // Inline run: a `text` node can carry element children (logseq-*
         // spans — page refs, katex slots — plus nested `text` runs). Lay
@@ -1303,12 +1421,15 @@ fn overlay_modal(
             .rounded_t(cx.theme().radius_lg)
             .shadow(shadows)
             .into_any_element(),
-        _ => card
-            .max_w(px(360.))
-            .p_3()
-            .rounded(cx.theme().radius_lg)
-            .shadow(shadows)
-            .into_any_element(),
+        _ => style::all(
+            card.max_w(px(360.))
+                .p_3()
+                .rounded(cx.theme().radius_lg)
+                .shadow(shadows),
+            node,
+            cx.theme(),
+        )
+        .into_any_element(),
     };
 
     let mut layer = div().relative().w(viewport.width).h(viewport.height);
@@ -1327,7 +1448,15 @@ fn overlay_modal(
             // ones opened before it, offset by their painted heights
             // (a height that hasn't painted yet falls back to a slot
             // estimate and corrects itself on the next frame).
-            let offset = {
+            let closing = view.shared.borrow().closing_nodes.contains_key(&node.id);
+            let offset = if closing {
+                view.shared
+                    .borrow()
+                    .toast_bounds
+                    .get(&node.id)
+                    .map(|bounds| f32::from(bounds.origin.y) - 16.)
+                    .expect("closing toast must retain its painted bounds")
+            } else {
                 let mut shared_ref = view.shared.borrow_mut();
                 let fresh = !shared_ref.toasts.contains(&node.id);
                 if fresh {
@@ -1464,7 +1593,7 @@ fn overlay_modal(
     div()
         .id(element_id(node.id))
         .size_0()
-        .child(window_layer(layer, 2))
+        .child(window_layer(popup_motion(layer, node, &view.shared), 2))
         .into_any_element()
 }
 
@@ -1594,7 +1723,7 @@ fn dropdown_menu(
             }
         }
     }
-    popup = popup.child(menu.into_any_element());
+    popup = popup.child(popup_motion(menu, node, &view.shared));
     let mut slot = div().id(element_id(node.id));
     slot = if positioned {
         slot.absolute().size_full()
@@ -1604,29 +1733,28 @@ fn dropdown_menu(
     let shared_for_prepaint = view.shared.clone();
     let node_id = node.id;
     let parent_node = node.parent;
-    slot
-        .on_prepaint({
-            let entity_id = cx.entity().entity_id();
-            let menu_bounds = view.states.menu_bounds.clone();
-            move |bounds, _, cx| {
-                // Non-positioned mounts anchor to the trigger sibling /
-                // painted ancestor, not to this zero-size slot's point.
-                let anchor = if positioned {
-                    Some(bounds)
-                } else {
-                    menu_anchor_bounds(&shared_for_prepaint, node_id, parent_node)
-                };
-                if menu_bounds.get() != anchor {
-                    menu_bounds.set(anchor);
-                    cx.notify(entity_id);
-                }
+    slot.on_prepaint({
+        let entity_id = cx.entity().entity_id();
+        let menu_bounds = view.states.menu_bounds.clone();
+        move |bounds, _, cx| {
+            // Non-positioned mounts anchor to the trigger sibling /
+            // painted ancestor, not to this zero-size slot's point.
+            let anchor = if positioned {
+                Some(bounds)
+            } else {
+                menu_anchor_bounds(&shared_for_prepaint, node_id, parent_node)
+            };
+            if menu_bounds.get() != anchor {
+                menu_bounds.set(anchor);
+                cx.notify(entity_id);
             }
-        })
-        // Menus are the topmost transient surface: they can open inside
-        // imperative-root subtrees (priority 4, e.g. dialogs), which
-        // must not paint over them.
-        .child(deferred(popup).with_priority(5))
-        .into_any_element()
+        }
+    })
+    // Menus are the topmost transient surface: they can open inside
+    // imperative-root subtrees (priority 4, e.g. dialogs), which
+    // must not paint over them.
+    .child(deferred(popup).with_priority(5))
+    .into_any_element()
 }
 
 /// `list-item`/`treeitem` row: indent by `tree-level`, disclosure chevron
@@ -3417,7 +3545,7 @@ pub fn render_node(
             }
             None => match icon_name_raw(node)
                 .and_then(|raw| raw.strip_prefix("app:"))
-                .and_then(|name| app_icon_image(view, name, window, cx))
+                .and_then(|name| app_icon_image(view, node, name, window, cx))
             {
                 Some(image) => {
                     let mut element = div()
@@ -3746,7 +3874,7 @@ fn popover(
                 .anchor(corner)
                 .offset(point(px(dx), px(dy)))
                 .snap_to_window()
-                .child(menu);
+                .child(popup_motion(menu, node, &view.shared));
             return div()
                 .id(element_id(node.id))
                 .size_0()
@@ -3761,10 +3889,13 @@ fn popover(
             .w(viewport.width)
             .h(viewport.height)
             .children(view.child_elements(node, cx));
+        view.shared
+            .borrow_mut()
+            .push_overlay(node.id, OverlayEntry::Node);
         return div()
             .id(element_id(node.id))
             .size_0()
-            .child(window_layer(content, 3))
+            .child(window_layer(popup_motion(content, node, &view.shared), 3))
             .into_any_element();
     }
     let x = node.float_prop(Property::PopupX).unwrap_or(0.) as f32;
@@ -3817,7 +3948,7 @@ fn popover(
         .position(point(px(x), px(y)))
         .anchor(corner)
         .snap_to_window()
-        .child(menu);
+        .child(popup_motion(menu, node, &view.shared));
     div()
         .id(element_id(node.id))
         .size_0()
