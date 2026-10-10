@@ -15,6 +15,7 @@
   lui_host
   lui_ime
   lui_gl
+  lui_metal
   lui_raster
   lui_blit
   lui_text

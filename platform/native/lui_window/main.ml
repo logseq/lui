@@ -125,12 +125,12 @@ let () =
   in
   let headless = Option.is_some cfg.headless_frames in
   if headless then Unix.putenv "SDL_VIDEODRIVER" "dummy";
-  (* LUI_GPU=0|cpu forces the CPU path: no GL context, raster +
-     software-texture present. Anything else prefers GL and falls
-     back to a no-op loop renderer when no context exists. *)
-  let use_cpu =
-    let env = try Sys.getenv "LUI_GPU" with Not_found -> "" in
-    env = "0" || env = "cpu"
+  (* Renderer selection on macOS: Metal is preferred, GL on request
+     (LUI_GPU=gl|opengl) or as fallback, CPU on LUI_GPU=0|cpu. *)
+  let env = try Sys.getenv "LUI_GPU" with Not_found -> "" in
+  let use_cpu = env = "0" || env = "cpu" in
+  let prefer_metal =
+    not headless && not use_cpu && env <> "gl" && env <> "opengl"
   in
   sdl_ok (Sdl.init Sdl.Init.(video + events));
   (* GL context requirements from lui_gl.mli: OpenGL 3.3 core,
@@ -143,22 +143,45 @@ let () =
     (Sdl.gl_set_attribute Sdl.Gl.context_profile_mask
        Sdl.Gl.context_profile_core);
   sdl_ok (Sdl.gl_set_attribute Sdl.Gl.doublebuffer 1);
-  (* The dummy video driver refuses an OpenGL window entirely, and
-     the CPU path does not need one either. *)
-  let flags =
+  (* The dummy video driver refuses an OpenGL window entirely, the
+     CPU path does not need one, and Metal attaches its own layer to
+     a plain window — the opengl flag is only set when a GL context
+     will actually be created. *)
+  let flags gl =
     let base = Sdl.Window.(resizable + allow_highdpi + shown) in
-    if headless || use_cpu then base else Sdl.Window.(base + opengl)
+    if gl then Sdl.Window.(base + opengl) else base
   in
   let win =
-    sdl_ok (Sdl.create_window "lui_window" ~w:cfg.width ~h:cfg.height flags)
+    ref
+      (sdl_ok
+         (Sdl.create_window "lui_window" ~w:cfg.width ~h:cfg.height
+            (flags (not headless && not use_cpu && not prefer_metal))))
+  in
+  (* Metal attempt — before any GL context. On failure the plain
+     window is replaced by an opengl-flagged one and the GL path
+     continues below. *)
+  let metal =
+    match prefer_metal with
+    | false -> None
+    | true -> (
+      match Lui_metal.init_window (Sdl.unsafe_ptr_of_window !win) with
+      | Ok m -> Some m
+      | Error e ->
+        warn "lui_metal.init_window failed (%s); falling back to GL" e;
+        Sdl.destroy_window !win;
+        win :=
+          sdl_ok
+            (Sdl.create_window "lui_window" ~w:cfg.width ~h:cfg.height
+               (flags true));
+        None)
   in
   (* The dummy driver cannot create a GL context at all; a real
      window without one is useless, so only headless continues. *)
   let gctx =
-    if use_cpu then None
-    else match Sdl.gl_create_context win with
+    if use_cpu || Option.is_some metal then None
+    else match Sdl.gl_create_context !win with
     | Ok c ->
-      sdl_ok (Sdl.gl_make_current win c);
+      sdl_ok (Sdl.gl_make_current !win c);
       Some c
     | Error (`Msg m) ->
       if headless then begin
@@ -177,17 +200,31 @@ let () =
   let drawable () =
     (* Under the dummy driver this may report 0x0; fall back to the
        window size so layout still gets a sane extent. *)
-    match Sdl.gl_get_drawable_size win with
+    match Sdl.gl_get_drawable_size !win with
     | 0, 0 -> (cfg.width, cfg.height)
     | d -> d
   in
   let dw, dh = drawable () in
   let scale = Float.max 0.01 (float dw /. float cfg.width) in
   let renderer, gl_live, blit =
+    match metal with
+    | Some m ->
+      log "renderer: lui_metal";
+      (* Lui_metal.render encodes; present commits and blits to the
+         layer drawable — called from inside the render callback like
+         the CPU path's Lui_blit.present. *)
+      ( { Lui_host.name = "lui_metal";
+          render =
+            (fun s ->
+               Lui_metal.render m s;
+               Lui_metal.present m;
+               Bytes.empty) },
+        false, None )
+    | None ->
     if use_cpu then begin
       (* CPU path: Lui_raster renders the scene; Lui_blit uploads the
          damaged rects (or the whole frame) to the window texture. *)
-      match Lui_blit.create win ~w:dw ~h:dh with
+      match Lui_blit.create !win ~w:dw ~h:dh with
       | Error m ->
         warn "lui_blit.create failed: %s" m;
         ( { Lui_host.name = "noop";
@@ -477,7 +514,7 @@ let () =
     let dirty = headless || Ui.want_frame ui host in
     if dirty then begin
       ignore (Lui_host.repaint host);
-      if gl_live then Sdl.gl_swap_window win;
+      if gl_live then Sdl.gl_swap_window !win;
       Ui.frame_done ui;
       incr frame;
       Checksum.add_scene checksum (Lui_host.scene host);
@@ -509,5 +546,5 @@ let () =
   (match gctx with
    | Some c -> Sdl.gl_delete_context c
    | None -> ());
-  Sdl.destroy_window win;
+  Sdl.destroy_window !win;
   Sdl.quit ()
