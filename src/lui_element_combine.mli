@@ -38,10 +38,13 @@ val buttons : actions:action list -> t
 
 (** {1 Composer} *)
 
-(** Message/capture input capsule: optional horizontal attachment strip
-    ([attachments_visible_signal] mounts the strip only while its signal holds),
-    a controls row of caller [actions], a content-sized [composer-input]
-    textarea capped at 168pt, and an optional send button. [on_press] fires when
+(** Message/capture input capsule: a full-width, content-sized [composer-input]
+    textarea on its own first row, capped at 168pt. The optional attachment strip
+    and caller [actions] are below the input, with an optional send button at the
+    trailing edge. Actions scroll horizontally when they exceed the available
+    width, leaving the input and send button in place.
+    [attachments_visible_signal] mounts the strip only while its signal holds.
+    [on_press] fires when
     the capsule itself is pressed (e.g. to focus the field);
     [autofocus_signal] drives the textarea's autofocus reactively.
     [attachments_height] bounds the strip (default 128pt); [feedback] is

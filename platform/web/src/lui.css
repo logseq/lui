@@ -398,6 +398,15 @@ body {
     @apply grid overflow-auto;
   }
 
+  .lui-scroll.composer-actions {
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .lui-scroll.composer-actions::-webkit-scrollbar {
+    display: none;
+  }
+
   .lui-scroll > * {
     grid-area: 1 / 1;
   }

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { once } from "node:events"
+import { readFile } from "node:fs/promises"
 import test, { after, before } from "node:test"
 
 import { createStaticServer } from "../../../tooling/serve_web.mjs"
@@ -21,6 +22,42 @@ after(async () => {
     server.close()
     await closed
   }
+})
+
+test("composer action overflow keeps full touch height and a stationary Send", async () => {
+  const css = await readFile(new URL("../dist/lui.css", import.meta.url), "utf8")
+  await page.setContent(`<style>${css}
+    *::-webkit-scrollbar { height: 16px; width: 16px; }
+    .actions { display: flex; gap: 8px; width: 236px; }
+    .actions button { flex: none; width: 44px; height: 44px; }
+    .actions button:first-child { width: 132px; }
+  </style>
+  <div style="width:256px;display:flex;gap:8px">
+    <div class="lui-scroll composer-actions" style="min-width:0;height:44px;flex-grow:1">
+      <div class="actions"><button>Attachments</button><button>Task</button><button>Discard</button></div>
+    </div><button id="send" style="width:36px;height:36px;flex:none">Send</button>
+  </div>`)
+  const strip = page.locator(".composer-actions")
+  const metrics = await strip.evaluate(element => ({
+    height: element.clientHeight, contentHeight: element.scrollHeight,
+    width: element.clientWidth, contentWidth: element.scrollWidth,
+    overflowY: getComputedStyle(element).overflowY,
+  }))
+  assert.equal(metrics.height, 44)
+  assert.equal(metrics.contentHeight, 44)
+  assert.equal(metrics.overflowY, "hidden")
+  assert.ok(metrics.contentWidth > metrics.width)
+  const sendBefore = await page.locator("#send").boundingBox()
+  await strip.hover()
+  await page.mouse.wheel(400, 0)
+  await page.waitForFunction(() => {
+    const element = document.querySelector(".composer-actions")
+    return element.scrollLeft + element.clientWidth >= element.scrollWidth - 1
+  })
+  const discard = await page.getByRole("button", { name: "Discard", exact: true }).boundingBox()
+  const sendAfter = await page.locator("#send").boundingBox()
+  assert.ok(discard.x + discard.width <= sendAfter.x)
+  assert.deepEqual(sendAfter, sendBefore)
 })
 
 test("View That Fits switches retained candidates and moves only hidden focus", async () => {
