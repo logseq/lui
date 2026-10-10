@@ -6,7 +6,7 @@
 //! "superseded", "missing-target", "cancelled".
 
 use crate::backend::Shared;
-use gpui_kit::gpui::{point, px, App, Pixels};
+use gpui_kit::gpui::{point, px, App};
 use lui_core::wire_schema::{NodeKind, Property};
 
 /// A scroll request the backend has accepted but not yet reported:
@@ -303,16 +303,19 @@ fn perform_scroll(guard: &mut crate::backend::LuiShared, node_id: i64, index: us
                 return false;
             };
             let viewport = scroll.bounds();
-            // Recorded bounds move with the scroll offset, so anchor
-            // deltas are relative to the current offset — not absolute
-            // positions inside the content.
+            if viewport.size.height <= px(0.) {
+                return false;
+            }
+            // `bounds_for_item` is content space: `bounds + offset` is the
+            // screen position, so the target offset is absolute —
+            // `anchor_edge(viewport) - anchor_edge(child)`.
             let offset = scroll.offset();
-            let delta: Pixels = if anchor == "center" {
-                child_bounds.center().y - viewport.center().y
+            let target = if anchor == "center" {
+                viewport.center().y - child_bounds.center().y
             } else {
-                child_bounds.bottom() - viewport.bottom()
+                viewport.bottom() - child_bounds.bottom()
             };
-            scroll.set_offset(point(offset.x, offset.y - delta));
+            scroll.set_offset(point(offset.x, target));
             true
         }
         "top" => {

@@ -510,28 +510,53 @@ pub(crate) fn deepest_hit(
 ) -> Option<i64> {
     let shared = shared.borrow();
     let mut best: Option<i64> = None;
-    let mut stack: Vec<i64> = Vec::new();
+    // (node id, inherited clip): a scroll container clips its subtree to
+    // its viewport, so descendants whose recorded bounds fell outside it
+    // (scrolled-out rows retaining stale bounds) can never win a hit.
+    let mut stack: Vec<(i64, Option<gpui_kit::gpui::Bounds<gpui_kit::gpui::Pixels>>)> =
+        Vec::new();
     // Imperative overlay roots paint in the topmost window layer — seed
     // them below the document root (reversed, so the last-attached root
     // is hit-tested last) so their subtree always wins the hit.
-    stack.extend(shared.imperative_roots.iter().rev().copied());
+    stack.extend(
+        shared
+            .imperative_roots
+            .iter()
+            .rev()
+            .map(|id| (*id, None)),
+    );
     if let Some(root) = shared.store.root {
-        stack.push(root);
+        stack.push((root, None));
     }
-    while let Some(id) = stack.pop() {
+    while let Some((id, clip)) = stack.pop() {
         let Some(node) = shared.store.node(id) else {
             continue;
         };
-        if shared
-            .node_bounds
-            .get(&id)
-            .is_some_and(|bounds| bounds.contains(&position))
-            && !hit_transparent(&shared, id)
-        {
+        let bounds = shared.node_bounds.get(&id).copied();
+        let visible = bounds.is_some_and(|bounds| {
+            bounds.contains(&position)
+                && clip.is_none_or(|clip| bounds.intersects(&clip))
+        });
+        if visible && !hit_transparent(&shared, id) {
             best = Some(id);
         }
+        // Scroll containers narrow the clip for their subtree.
+        let child_clip = if shared.scroll_handles.contains_key(&id) {
+            match (bounds, clip) {
+                (Some(bounds), Some(clip)) => Some(bounds.intersect(&clip)),
+                (Some(bounds), None) => Some(bounds),
+                (None, clip) => clip,
+            }
+        } else {
+            clip
+        };
         // Push children reversed so the pop order is document order.
-        stack.extend(node.children.iter().rev().copied());
+        stack.extend(
+            node.children
+                .iter()
+                .rev()
+                .map(|child| (*child, child_clip)),
+        );
     }
     best
 }
