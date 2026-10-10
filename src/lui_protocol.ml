@@ -230,6 +230,40 @@ type property =
   | PopupX
   | PopupY
   | AvailableHeight
+  | FontSize
+  | FontWeight
+  | LineHeight
+  | LetterSpacing
+  | Position
+  | Inset
+  | InsetTop
+  | InsetRight
+  | InsetBottom
+  | InsetLeft
+  | ZIndex
+  | WhiteSpace
+  | TextOverflow
+  | Overflow
+  | UserSelect
+  | Cursor
+  | Shadow
+  | HoverBackground
+  | HoverOpacity
+  | HoverShadow
+  | PressedBackground
+  | PressedOpacity
+  | PressedShadow
+  | FocusShadow
+  | SelectedBackground
+  | SelectedShadow
+  | SelectedHoverShadow
+  | DisabledOpacity
+  | WidthViewport
+  | HeightViewport
+  | MinWidthViewport
+  | MaxWidthViewport
+  | MinHeightViewport
+  | MaxHeightViewport
 
 module Property_map =
   Map.Make
@@ -846,6 +880,19 @@ let common_property_supported kind property =
     | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar
     | Link | FileImage -> true
     | _ -> false)
+  | FontSize | FontWeight | LineHeight | LetterSpacing | UserSelect ->
+    (* Text styling inherits; admitted on the same kinds that accept a
+       foreground color minus purely graphical kinds whose [size] governs
+       their metrics (icon, spinner, file-image). *)
+    (match kind with
+    | Row | Column | Grid | Box | Panel | Card | Stack | Scroll | Avatar
+    | EdgeInset | Overlay | ViewThatFits
+    | Text | Heading | Paragraph | Label | Button | ToggleButton | TextField
+    | SecureField | Input | SearchField | Textarea | Checkbox | Toggle | Radio
+    | Slider | NumberStepper | Select | Combobox | DropdownMenu | MenuItem
+    | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar
+    | Link -> true
+    | _ -> false)
   | WidthValue | HeightValue -> kind <> Tooltip
   | MinWidth | MaxWidth | MinHeight | MaxHeight ->
     (not (modal_surface kind)) && kind <> Tooltip
@@ -1078,6 +1125,32 @@ let common_property_supported kind property =
     || kind = EdgeInset
     || horizontal_container kind
   | Visible -> kind = EdgeInset
+  | WhiteSpace | TextOverflow ->
+    (* Kinds that render their own inline text; containers clip via
+       [overflow] instead. *)
+    (match kind with
+    | Text | Heading | Paragraph | Label | Button | ToggleButton | MenuItem
+    | ListItem | TableCell | Alert | Bubble | StatusBar | Link -> true
+    | _ -> false)
+  | Overflow ->
+    (* Scrolling containers own their overflow behavior. *)
+    can_contain_children kind
+    && kind <> Scroll && kind <> ListContainer && kind <> VirtualList
+    && kind <> Tooltip
+  | Position | Inset | InsetTop | InsetRight | InsetBottom | InsetLeft
+  | ZIndex ->
+    (* Modal surfaces and tooltips are positioned by the host. *)
+    kind <> Root && kind <> Tooltip && not (modal_surface kind)
+  | Cursor -> kind <> Root
+  | Shadow -> (not (modal_surface kind)) && kind <> Tooltip
+  | HoverBackground | HoverOpacity | HoverShadow | PressedBackground
+  | PressedOpacity | PressedShadow | FocusShadow | SelectedBackground
+  | SelectedShadow | SelectedHoverShadow | DisabledOpacity ->
+    (* Interactive-state appearance channels; no-op on hosts that do not
+       resolve interaction states. *)
+    kind <> Root && kind <> Tooltip && not (modal_surface kind)
+  | WidthViewport | HeightViewport | MinWidthViewport | MaxWidthViewport
+  | MinHeightViewport | MaxHeightViewport -> kind <> Tooltip
 
 let property_supported kind property =
   if property = AccessibilityIdentifier then true
@@ -1151,6 +1224,15 @@ let property_supported kind property =
     | Kbd ->
       property = TextValue || property = StyleClass
       || property = PointerEnabled || property = DataAttrs
+      || property = FontSize || property = FontWeight || property = LineHeight
+      || property = LetterSpacing || property = WhiteSpace
+      || property = TextOverflow || property = UserSelect || property = Cursor
+      || property = Shadow || property = HoverBackground
+      || property = HoverOpacity || property = HoverShadow
+      || property = PressedBackground || property = PressedOpacity
+      || property = PressedShadow || property = FocusShadow
+      || property = SelectedBackground || property = SelectedShadow
+      || property = SelectedHoverShadow || property = DisabledOpacity
     | SwipeAction ->
       List.mem
         property
@@ -1303,6 +1385,33 @@ let property_value_supported property value =
     alignment_supported value
   | DataAttrs, StringValue payload -> data_attrs_value_ok payload
   | As, StringValue tag -> element_tag_known tag
+  | FontSize, StringValue value | LineHeight, StringValue value ->
+    (* Length in px or rem, or a unitless multiplier for line-height. *)
+    String.trim value <> ""
+  | FontWeight, IntValue value -> value >= 1 && value <= 1000
+  | LetterSpacing, FloatValue value | Inset, FloatValue value
+  | InsetTop, FloatValue value | InsetRight, FloatValue value
+  | InsetBottom, FloatValue value | InsetLeft, FloatValue value ->
+    is_finite value
+  | Position, StringValue value ->
+    List.mem value [ "static"; "relative"; "absolute"; "fixed" ]
+  | ZIndex, IntValue _ -> true
+  | WhiteSpace, StringValue value -> List.mem value [ "normal"; "nowrap" ]
+  | TextOverflow, StringValue value -> List.mem value [ "clip"; "ellipsis" ]
+  | Overflow, StringValue value -> List.mem value [ "visible"; "hidden"; "auto" ]
+  | UserSelect, StringValue value -> List.mem value [ "none"; "text" ]
+  | Cursor, StringValue value -> List.mem value [ "default"; "pointer"; "text" ]
+  | Shadow, StringValue value | HoverShadow, StringValue value
+  | PressedShadow, StringValue value | FocusShadow, StringValue value
+  | SelectedShadow, StringValue value | SelectedHoverShadow, StringValue value
+  | HoverBackground, StringValue value | PressedBackground, StringValue value
+  | SelectedBackground, StringValue value -> String.trim value <> ""
+  | HoverOpacity, FloatValue value | PressedOpacity, FloatValue value
+  | DisabledOpacity, FloatValue value -> value >= 0.0 && value <= 1.0
+  | WidthViewport, FloatValue value | HeightViewport, FloatValue value
+  | MinWidthViewport, FloatValue value | MaxWidthViewport, FloatValue value
+  | MinHeightViewport, FloatValue value | MaxHeightViewport, FloatValue value ->
+    value > 0.0 && value <= 1.0
   | _ -> false
 
 let property_value_supported_for_kind kind property value =
@@ -1344,6 +1453,19 @@ let surface_size_supported properties =
   size_axis_supported properties WidthValue MinWidth MaxWidth
   && size_axis_supported properties HeightValue MinHeight MaxHeight
 
+let viewport_axis_supported properties min_property max_property =
+  match
+    ( Property_map.find_opt min_property properties,
+      Property_map.find_opt max_property properties )
+  with
+  | Some (FloatValue minimum), Some (FloatValue maximum) -> minimum <= maximum
+  | Some _, Some _ -> false
+  | _ -> true
+
+let viewport_size_supported properties =
+  viewport_axis_supported properties MinWidthViewport MaxWidthViewport
+  && viewport_axis_supported properties MinHeightViewport MaxHeightViewport
+
 let string_property_or properties property fallback =
   match Property_map.find_opt property properties with
   | Some (StringValue value) -> value
@@ -1361,6 +1483,7 @@ let float_property_of properties property fallback =
 
 let node_properties_supported kind properties =
   surface_size_supported properties
+  && viewport_size_supported properties
   && (if kind = Icon then
         match Property_map.find_opt IconName properties with
         | Some name -> property_value_supported IconName name

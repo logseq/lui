@@ -303,6 +303,40 @@ let property_name property =
   | PopupX -> "x"
   | PopupY -> "y"
   | AvailableHeight -> "available-height"
+  | FontSize -> "font-size"
+  | FontWeight -> "font-weight"
+  | LineHeight -> "line-height"
+  | LetterSpacing -> "letter-spacing"
+  | Position -> "position"
+  | Inset -> "inset"
+  | InsetTop -> "inset-top"
+  | InsetRight -> "inset-right"
+  | InsetBottom -> "inset-bottom"
+  | InsetLeft -> "inset-left"
+  | ZIndex -> "z-index"
+  | WhiteSpace -> "white-space"
+  | TextOverflow -> "text-overflow"
+  | Overflow -> "overflow"
+  | UserSelect -> "user-select"
+  | Cursor -> "cursor"
+  | Shadow -> "shadow"
+  | HoverBackground -> "hover-background"
+  | HoverOpacity -> "hover-opacity"
+  | HoverShadow -> "hover-shadow"
+  | PressedBackground -> "pressed-background"
+  | PressedOpacity -> "pressed-opacity"
+  | PressedShadow -> "pressed-shadow"
+  | FocusShadow -> "focus-shadow"
+  | SelectedBackground -> "selected-background"
+  | SelectedShadow -> "selected-shadow"
+  | SelectedHoverShadow -> "selected-hover-shadow"
+  | DisabledOpacity -> "disabled-opacity"
+  | WidthViewport -> "width-viewport"
+  | HeightViewport -> "height-viewport"
+  | MinWidthViewport -> "min-width-viewport"
+  | MaxWidthViewport -> "max-width-viewport"
+  | MinHeightViewport -> "min-height-viewport"
+  | MaxHeightViewport -> "max-height-viewport"
 
 let kind_property_matrix kind =
   match kind with
@@ -323,7 +357,7 @@ let kind_property_matrix kind =
   | SwipeAction -> Some [ TextValue; InlineIconName; VariantValue; EdgeValue; Enabled; BackgroundValue; PressEnabled; PointerEnabled ]
   | FilePicker -> Some [ PickerRequest; PickerTypes; PickerMultiple; PickerSource; PickerCompletion; PickerAccept; PickerDirectory; Enabled; AppearEnabled; PointerEnabled ]
   | FilePreview -> Some [ PathValue; PointerEnabled ]
-  | Kbd -> Some [ TextValue; StyleClass; DataAttrs; PointerEnabled ]
+  | Kbd -> Some [ TextValue; StyleClass; DataAttrs; PointerEnabled; FontSize; FontWeight; LineHeight; LetterSpacing; WhiteSpace; TextOverflow; UserSelect; Cursor; Shadow; HoverBackground; HoverOpacity; HoverShadow; PressedBackground; PressedOpacity; PressedShadow; FocusShadow; SelectedBackground; SelectedShadow; SelectedHoverShadow; DisabledOpacity ]
   | _ -> None
 
 let kind_extra_properties kind =
@@ -333,4 +367,4 @@ let kind_extra_properties kind =
 
 let all_node_kinds = [ Root; Row; Column; Grid; Stack; EdgeInset; Overlay; ViewThatFits; Panel; Card; Alert; Bubble; Box; Text; Heading; Paragraph; Label; Button; ToggleButton; Toggle; RadioGroup; Radio; Slider; NumberStepper; TextField; SecureField; Input; SearchField; Textarea; Checkbox; SwitchControl; Progress; Divider; Scroll; ListContainer; VirtualList; Tabs; BottomTabs; BottomTab; ButtonGroup; ToggleGroup; Spacer; Spinner; Icon; Select; Combobox; DropdownMenu; ContextMenu; MenuItem; MenuTrigger; ListItem; Avatar; Image; MediaSurface; Stepper; Step; Timeline; TimelineItem; InputGroup; InputGroupActions; Breadcrumb; Pagination; Accordion; Table; TableRow; TableCell; Tree; Resizable; Split; Dialog; Drawer; Sheet; Tooltip; Toast; Toolbar; StatusBar; ListSection; ListSectionHeader; ListSectionFooter; SwipeActions; SwipeAction; FilePicker; Kbd; Link; FileImage; FilePreview; Br; Popover ]
 
-let all_properties = [ TextValue; Enabled; Gap; MainAlignment; CrossAlignment; GrowValue; GridColumns; PaddingValue; PaddingHorizontal; PaddingVertical; BackgroundValue; ForegroundValue; BorderColorValue; BorderWidth; CornerRadius; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; ContainerRelativeFrameValue; ContainerRelativeFrameInset; PlaceholderValue; AccessibilityLabel; AccessibilityIdentifier; StyleClass; HeadingLevel; Checked; ProgressValue; OrientationValue; PlacementValue; SizeValue; IconName; VariantValue; InlineIconName; IconPlacementValue; Selected; Autofocus; SubmitOnEnter; LongPressEnabled; ChangeEnabled; ToggleEnabled; PressEnabled; SubmitEnabled; DoublePressEnabled; AppearEnabled; ImageIdValue; SurfaceIdValue; ActiveIndex; TitleValue; DescriptionValue; MetaValue; IndicatorValue; Connector; SourceX; SourceY; SourceWidth; SourceHeight; AnchorValue; AnchorAlignmentValue; AnchorOffset; TooltipDelay; DurationValue; TextAlignment; RoleValue; TreeLevel; Expanded; ResizeDuration; ResizeEasing; ResizeOrigin; ThemeValue; ThemeMode; KeyValue; SeparatorValue; StyleValue; ScrollTarget; ScrollAnchor; ScrollToken; ScrollAnimated; TrackVisibleRange; EdgeValue; PickerRequest; PickerTypes; PickerMultiple; PickerSource; PickerCompletion; MinValue; MaxValue; StepValue; Detents; Sizing; PathValue; UrlValue; MaxPixelSize; ImageFitValue; Visible; AlignmentValue; PointerEnabled; DataAttrs; As; AltValue; LoadingValue; ReferrerPolicy; TargetValue; Opacity; DisplayValue; TooltipText; TooltipKeys; InputType; PickerAccept; PickerDirectory; PopupX; PopupY; AvailableHeight ]
+let all_properties = [ TextValue; Enabled; Gap; MainAlignment; CrossAlignment; GrowValue; GridColumns; PaddingValue; PaddingHorizontal; PaddingVertical; BackgroundValue; ForegroundValue; BorderColorValue; BorderWidth; CornerRadius; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; ContainerRelativeFrameValue; ContainerRelativeFrameInset; PlaceholderValue; AccessibilityLabel; AccessibilityIdentifier; StyleClass; HeadingLevel; Checked; ProgressValue; OrientationValue; PlacementValue; SizeValue; IconName; VariantValue; InlineIconName; IconPlacementValue; Selected; Autofocus; SubmitOnEnter; LongPressEnabled; ChangeEnabled; ToggleEnabled; PressEnabled; SubmitEnabled; DoublePressEnabled; AppearEnabled; ImageIdValue; SurfaceIdValue; ActiveIndex; TitleValue; DescriptionValue; MetaValue; IndicatorValue; Connector; SourceX; SourceY; SourceWidth; SourceHeight; AnchorValue; AnchorAlignmentValue; AnchorOffset; TooltipDelay; DurationValue; TextAlignment; RoleValue; TreeLevel; Expanded; ResizeDuration; ResizeEasing; ResizeOrigin; ThemeValue; ThemeMode; KeyValue; SeparatorValue; StyleValue; ScrollTarget; ScrollAnchor; ScrollToken; ScrollAnimated; TrackVisibleRange; EdgeValue; PickerRequest; PickerTypes; PickerMultiple; PickerSource; PickerCompletion; MinValue; MaxValue; StepValue; Detents; Sizing; PathValue; UrlValue; MaxPixelSize; ImageFitValue; Visible; AlignmentValue; PointerEnabled; DataAttrs; As; AltValue; LoadingValue; ReferrerPolicy; TargetValue; Opacity; DisplayValue; TooltipText; TooltipKeys; InputType; PickerAccept; PickerDirectory; PopupX; PopupY; AvailableHeight; FontSize; FontWeight; LineHeight; LetterSpacing; Position; Inset; InsetTop; InsetRight; InsetBottom; InsetLeft; ZIndex; WhiteSpace; TextOverflow; Overflow; UserSelect; Cursor; Shadow; HoverBackground; HoverOpacity; HoverShadow; PressedBackground; PressedOpacity; PressedShadow; FocusShadow; SelectedBackground; SelectedShadow; SelectedHoverShadow; DisabledOpacity; WidthViewport; HeightViewport; MinWidthViewport; MaxWidthViewport; MinHeightViewport; MaxHeightViewport ]

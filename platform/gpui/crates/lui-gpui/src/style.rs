@@ -8,7 +8,10 @@
 //! Tailwind palette — plus a semantic-class hook apps can extend.
 
 use gpui_kit::component::theme::{try_parse_color, Theme};
-use gpui_kit::gpui::{px, rgba, AbsoluteLength, DefiniteLength, Hsla, Length, Styled};
+use gpui_kit::gpui::{
+    point, px, rgba, AbsoluteLength, BoxShadow, CursorStyle, DefiniteLength, FontWeight, Hsla,
+    Length, StatefulInteractiveElement, Styled, StyleRefinement,
+};
 use lui_core::Property;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -458,6 +461,251 @@ pub fn frame<E: Styled>(element: E, node: &NodeSnapshot) -> E {
         }
     }
     element
+}
+
+/// `<shadow-layer>[, ...]` -> `BoxShadow` list. Each layer is CSS-shaped:
+/// `[inset] <x> <y> [<blur> [<spread>]] <color>` — gpui carries a real
+/// `inset` flag so the highlight ring (`inset 0 0 0 1px`) translates
+/// natively. Unparseable layers (e.g. `none`) drop out.
+fn wire_shadows(value: &str, theme: &Theme) -> Vec<BoxShadow> {
+    value
+        .split(',')
+        .filter_map(|layer| {
+            let mut inset = false;
+            let mut lengths: Vec<f32> = Vec::new();
+            let mut color = None;
+            for token in layer.split_whitespace() {
+                if token == "inset" {
+                    inset = true;
+                } else if let Some(v) = resolve_px(token) {
+                    lengths.push(v);
+                } else if let Some(c) = color_themed(token, theme) {
+                    color = Some(c);
+                }
+            }
+            let color = color?;
+            Some(BoxShadow {
+                color,
+                offset: point(px(*lengths.first().unwrap_or(&0.0)), px(*lengths.get(1).unwrap_or(&0.0))),
+                blur_radius: px(*lengths.get(2).unwrap_or(&0.0)),
+                spread_radius: px(*lengths.get(3).unwrap_or(&0.0)),
+                inset,
+            })
+        })
+        .collect()
+}
+
+/// `line-height` string -> `DefiniteLength`. Unitless numbers are font-size
+/// multiples (CSS semantics) — px/rem resolve like `resolve_length`, but a
+/// bare `1.5` is a `Fraction`, not 1.5px.
+fn line_height_length(token: &str) -> Option<DefiniteLength> {
+    let token = token.trim();
+    if token.is_empty() {
+        return None;
+    }
+    if token.ends_with("px") || token.ends_with("rem") || token.ends_with('%') {
+        return resolve_length(token);
+    }
+    token
+        .parse::<f32>()
+        .ok()
+        .map(DefiniteLength::Fraction)
+}
+
+/// Apply the typed appearance props on any element: typography,
+/// position/insets, text overflow, shadows, cursor, viewport-relative
+/// sizes, plus the static half of the state channels (`selected-*` when
+/// the node's `selected` prop is set, `disabled-opacity` when disabled).
+/// Pointer/focus channels live in `interactive` (they need an
+/// [`InteractiveElement`]). `z-index`, `user-select` and `letter-spacing`
+/// have no gpui style field — ordering is paint order, text selection is
+/// not a style — so they are intentionally unhandled here.
+fn appearance<E: Styled>(mut element: E, node: &NodeSnapshot, theme: &Theme) -> E {
+    if let Some(value) = node.string_prop(Property::FontSize) {
+        element = apply_decl(element, "font-size", value, theme);
+    }
+    if let Some(value) = node.int_prop(Property::FontWeight) {
+        element = element.font_weight(FontWeight(value as f32));
+    }
+    if let Some(value) = node
+        .string_prop(Property::LineHeight)
+        .and_then(line_height_length)
+    {
+        element = element.line_height(value);
+    }
+    if let Some(value) = node.string_prop(Property::Position) {
+        element = apply_decl(element, "position", value, theme);
+    }
+    if let Some(value) = node.float_prop(Property::Inset) {
+        element = element
+            .top(px(value as f32))
+            .right(px(value as f32))
+            .bottom(px(value as f32))
+            .left(px(value as f32));
+    }
+    if let Some(value) = node.float_prop(Property::InsetTop) {
+        element = element.top(px(value as f32));
+    }
+    if let Some(value) = node.float_prop(Property::InsetRight) {
+        element = element.right(px(value as f32));
+    }
+    if let Some(value) = node.float_prop(Property::InsetBottom) {
+        element = element.bottom(px(value as f32));
+    }
+    if let Some(value) = node.float_prop(Property::InsetLeft) {
+        element = element.left(px(value as f32));
+    }
+    if let Some(value) = node.string_prop(Property::WhiteSpace) {
+        element = match value {
+            "nowrap" => element.whitespace_nowrap(),
+            "normal" => element.whitespace_normal(),
+            _ => element,
+        };
+    }
+    if node
+        .string_prop(Property::TextOverflow)
+        .is_some_and(|value| value == "ellipsis")
+    {
+        element = element.text_ellipsis();
+    }
+    if let Some(value) = node.string_prop(Property::Overflow) {
+        element = apply_decl(element, "overflow", value, theme);
+    }
+    if let Some(value) = node.string_prop(Property::Cursor) {
+        element.style().mouse_cursor = match value {
+            "pointer" => Some(CursorStyle::PointingHand),
+            "text" => Some(CursorStyle::IBeam),
+            _ => Some(CursorStyle::Arrow),
+        };
+    }
+    if let Some(value) = node.string_prop(Property::Shadow) {
+        element.style().box_shadow = wire_shadows(value, theme);
+    }
+    // Viewport-relative sizing: fractions of the live viewport dimensions.
+    let (vw, vh) = *VIEWPORT.read().expect("viewport lock poisoned");
+    if let Some(value) = node.float_prop(Property::WidthViewport) {
+        element = element.w(px(value as f32 * vw));
+    }
+    if let Some(value) = node.float_prop(Property::HeightViewport) {
+        element = element.h(px(value as f32 * vh));
+    }
+    if let Some(value) = node.float_prop(Property::MinWidthViewport) {
+        element = element.min_w(px(value as f32 * vw));
+    }
+    if let Some(value) = node.float_prop(Property::MaxWidthViewport) {
+        element = element.max_w(px(value as f32 * vw));
+    }
+    if let Some(value) = node.float_prop(Property::MinHeightViewport) {
+        element = element.min_h(px(value as f32 * vh));
+    }
+    if let Some(value) = node.float_prop(Property::MaxHeightViewport) {
+        element = element.max_h(px(value as f32 * vh));
+    }
+    // `selected`/`enabled` are snapshot booleans — their channels apply
+    // statically here; the pointer-gated channels (`selected-hover-shadow`,
+    // `hover-*`, `pressed-*`, `focus-shadow`) attach in `interactive`.
+    if node.bool_prop(Property::Selected).unwrap_or(false) {
+        if let Some(bg) = node
+            .string_prop(Property::SelectedBackground)
+            .and_then(|token| color_themed(token, theme))
+        {
+            element = element.bg(bg);
+        }
+        if let Some(value) = node.string_prop(Property::SelectedShadow) {
+            element.style().box_shadow = wire_shadows(value, theme);
+        }
+    }
+    if !node.enabled() {
+        if let Some(value) = node.float_prop(Property::DisabledOpacity) {
+            element = element.opacity(value as f32);
+        }
+    }
+    element
+}
+
+/// Attach the pointer/focus state channels (`hover-*`, `pressed-*`,
+/// `focus-shadow`, `selected-hover-shadow`) to a stateful element — the
+/// generic containers and text kinds in `kinds.rs` build `.id(...)`
+/// elements, so their state is tracked and the channels work.
+pub fn interactive<E: StatefulInteractiveElement>(
+    element: E,
+    node: &NodeSnapshot,
+    theme: &Theme,
+) -> E {
+    let mut element = element;
+    let hover_bg = node
+        .string_prop(Property::HoverBackground)
+        .and_then(|token| color_themed(token, theme))
+        .map(Into::into);
+    let hover_opacity = node.float_prop(Property::HoverOpacity).map(|v| v as f32);
+    let hover_shadow = node
+        .string_prop(Property::HoverShadow)
+        .map(|value| wire_shadows(value, theme));
+    let selected = node.bool_prop(Property::Selected).unwrap_or(false);
+    let selected_hover_shadow = node
+        .string_prop(Property::SelectedHoverShadow)
+        .map(|value| wire_shadows(value, theme));
+    if hover_bg.is_some()
+        || hover_opacity.is_some()
+        || hover_shadow.is_some()
+        || selected_hover_shadow.is_some()
+    {
+        element = element.hover(move |mut style: StyleRefinement| {
+            if let Some(bg) = hover_bg {
+                style.background = Some(bg);
+            }
+            if let Some(opacity) = hover_opacity {
+                style.opacity = Some(opacity);
+            }
+            if let Some(shadow) = selected_hover_shadow.clone().filter(|_| selected) {
+                style.box_shadow = shadow;
+            } else if let Some(shadow) = hover_shadow.clone() {
+                style.box_shadow = shadow;
+            }
+            style
+        });
+    }
+    let pressed_bg = node
+        .string_prop(Property::PressedBackground)
+        .and_then(|token| color_themed(token, theme))
+        .map(Into::into);
+    let pressed_opacity = node.float_prop(Property::PressedOpacity).map(|v| v as f32);
+    let pressed_shadow = node
+        .string_prop(Property::PressedShadow)
+        .map(|value| wire_shadows(value, theme));
+    if pressed_bg.is_some() || pressed_opacity.is_some() || pressed_shadow.is_some() {
+        element = element.active(move |mut style: StyleRefinement| {
+            if let Some(bg) = pressed_bg {
+                style.background = Some(bg);
+            }
+            if let Some(opacity) = pressed_opacity {
+                style.opacity = Some(opacity);
+            }
+            if let Some(shadow) = pressed_shadow.clone() {
+                style.box_shadow = shadow;
+            }
+            style
+        });
+    }
+    let focus_shadow = node
+        .string_prop(Property::FocusShadow)
+        .map(|value| wire_shadows(value, theme));
+    if let Some(focus_shadow) = focus_shadow {
+        element = element.focus_visible(move |mut style: StyleRefinement| {
+            style.box_shadow = focus_shadow.clone();
+            style
+        });
+    }
+    element
+}
+
+/// `all` plus the pointer state channels — use on stateful (`.id`-bearing)
+/// elements. `all` alone is for leaves whose kind never attaches a state.
+pub fn all_interactive<E>(element: E, node: &NodeSnapshot, theme: &Theme) -> E
+where
+    E: StatefulInteractiveElement + Styled,
+{
+    interactive(all(element, node, theme), node, theme)
 }
 
 /// Apply box props (`padding*`, `gap`, `main`, `cross`) on containers.
@@ -1280,6 +1528,7 @@ pub fn all<E: Styled>(element: E, node: &NodeSnapshot, theme: &Theme) -> E {
     element = apply_inline_style(element, node, theme);
     let element = layout(element, node);
     let element = surface(element, node, theme);
+    let element = appearance(element, node, theme);
     match node.float_prop(Property::Opacity) {
         Some(value) => element.opacity(value as f32),
         None => element,

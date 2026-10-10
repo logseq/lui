@@ -1,0 +1,97 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LUI typed appearance props regression</title>
+<link rel="stylesheet" href="/platform/web/dist/lui.css">
+<script type="importmap">{"imports":{
+  "@tanstack/virtual-core": "/platform/web/dist/tanstack-virtual.js",
+          "lui.web.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui.web.dom/",
+  "lui/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui/",
+  "melange-webapi/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange-webapi/",
+  "melange.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.dom/",
+  "melange.js/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.js/",
+  "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
+  "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
+}}</script>
+<style>body { margin: 24px; font: 16px system-ui } #host { max-width: 720px }</style>
+<main id="host"></main>
+<script type="module">
+import * as Web from "lui.web.dom/shell/lui_web.js"
+import { Protocol, properties, kinds } from "./protocol-fixture.mjs"
+
+const host = document.querySelector("#host")
+const renderer = Web.create(undefined, host)
+const backend = Web.backend(renderer)
+const list = items => items.reduceRight((tl, hd) => ({ hd, tl }), 0)
+const children = new Map()
+let ops = [], generation = 0, id = 0
+
+// Value variant tags mirror src/lui_protocol.ml's `value` declaration
+// order: StringValue 0, BoolValue 1, IntValue 2, FloatValue 3.
+const TAGS = { string: 0, boolean: 1, int: 2, float: 3 }
+function set(node, name, value, tag = typeof value === "string" ? "string" : typeof value === "boolean" ? "boolean" : Number.isInteger(value) ? "int" : "float") {
+  ops.push(Protocol.set_prop_op(node, properties.get(name), { TAG: TAGS[tag], _0: value }))
+}
+function unset(node, name) {
+  ops.push(Protocol.remove_prop_op(node, properties.get(name)))
+}
+function create(kind, parent, props = {}) {
+  const node = ++id
+  ops.push(Protocol.create_node_op(node, kinds.get(kind)))
+  children.set(node, [])
+  for (const [key, value] of Object.entries(props)) set(node, key, value)
+  if (parent) {
+    const siblings = children.get(parent)
+    ops.push(Protocol.insert_child_op(parent, node, siblings.length))
+    siblings.push(node)
+  }
+  return node
+}
+function flush() {
+  backend.apply_batch({ generation: ++generation, ops: list(ops) })
+  ops = []
+}
+
+const root = create("column", null, { gap: 8 })
+const typography = create("text", root, {
+  text: "Typography",
+  "font-size": "0.75rem",
+  "font-weight": 500,
+  "line-height": "1.25rem",
+  "letter-spacing": -0.5,
+  "white-space": "nowrap",
+  "text-overflow": "ellipsis",
+  "user-select": "none",
+})
+const positioned = create("box", root, {
+  position: "absolute",
+  inset: 0,
+  "inset-top": 4,
+  "z-index": 30,
+  overflow: "hidden",
+  cursor: "pointer",
+  "width-viewport": 0.5,
+  "max-height-viewport": 0.65,
+})
+const interactive = create("row", root, {
+  shadow: "0 1px 3px rgba(0,0,0,0.12)",
+  "hover-background": "accent",
+  "hover-opacity": 0.9,
+  "hover-shadow": "0 2px 4px rgba(0,0,0,0.2)",
+  "pressed-background": "muted",
+  "pressed-opacity": 0.8,
+  "pressed-shadow": "inset 0 0 0 1px primary",
+  "focus-shadow": "0 0 0 2px ring",
+  "selected-background": "accent",
+  "selected-shadow": "inset 0 0 0 1px accent",
+  "selected-hover-shadow": "inset 0 0 0 2px accent",
+  "disabled-opacity": 0.5,
+})
+create("text", interactive, { text: "row child" })
+flush()
+
+window.probe = {
+  typography, positioned, interactive,
+  set, unset, flush,
+}
+</script>

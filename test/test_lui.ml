@@ -2289,6 +2289,186 @@ let test_vocab_batch2 () =
   Alcotest.(check bool) "role emitted" true
     (emitted RoleValue (StringValue "menu"))
 
+let test_visual_appearance_props () =
+  let open Lui_protocol in
+  (* Typed appearance props: typography, positioning, text overflow,
+     user-select, shadows, state channels, viewport-relative sizes. *)
+  Alcotest.(check bool) "font-size rem" true
+    (property_value_supported FontSize (StringValue "0.75rem"));
+  Alcotest.(check bool) "font-size px" true
+    (property_value_supported FontSize (StringValue "12px"));
+  Alcotest.(check bool) "font-weight range" true
+    (property_value_supported FontWeight (IntValue 500));
+  Alcotest.(check bool) "font-weight below range" false
+    (property_value_supported FontWeight (IntValue 0));
+  Alcotest.(check bool) "font-weight above range" false
+    (property_value_supported FontWeight (IntValue 1001));
+  Alcotest.(check bool) "line-height unitless" true
+    (property_value_supported LineHeight (StringValue "1.5"));
+  Alcotest.(check bool) "line-height px" true
+    (property_value_supported LineHeight (StringValue "18px"));
+  Alcotest.(check bool) "letter-spacing negative ok" true
+    (property_value_supported LetterSpacing (FloatValue (-0.5)));
+  Alcotest.(check bool) "letter-spacing non-finite rejected" false
+    (property_value_supported LetterSpacing (FloatValue nan));
+  Alcotest.(check bool) "position enum" true
+    (property_value_supported Position (StringValue "absolute"));
+  Alcotest.(check bool) "position rejects sticky" false
+    (property_value_supported Position (StringValue "sticky"));
+  Alcotest.(check bool) "inset finite" true
+    (property_value_supported Inset (FloatValue 0.0));
+  Alcotest.(check bool) "inset non-finite rejected" false
+    (property_value_supported InsetTop (FloatValue infinity));
+  Alcotest.(check bool) "z-index int" true
+    (property_value_supported ZIndex (IntValue 40));
+  Alcotest.(check bool) "white-space enum" true
+    (property_value_supported WhiteSpace (StringValue "nowrap"));
+  Alcotest.(check bool) "white-space rejects pre" false
+    (property_value_supported WhiteSpace (StringValue "pre"));
+  Alcotest.(check bool) "text-overflow enum" true
+    (property_value_supported TextOverflow (StringValue "ellipsis"));
+  Alcotest.(check bool) "overflow enum" true
+    (property_value_supported Overflow (StringValue "hidden"));
+  Alcotest.(check bool) "overflow rejects scroll" false
+    (property_value_supported Overflow (StringValue "scroll"));
+  Alcotest.(check bool) "user-select enum" true
+    (property_value_supported UserSelect (StringValue "none"));
+  Alcotest.(check bool) "cursor enum" true
+    (property_value_supported Cursor (StringValue "pointer"));
+  Alcotest.(check bool) "shadow inset ring" true
+    (property_value_supported Shadow
+       (StringValue "inset 0 0 0 1px var(--color-primary)"));
+  Alcotest.(check bool) "shadow none" true
+    (property_value_supported HoverShadow (StringValue "none"));
+  Alcotest.(check bool) "state color props" true
+    (property_value_supported HoverBackground (StringValue "accent")
+     && property_value_supported PressedBackground (StringValue "accent")
+     && property_value_supported SelectedBackground (StringValue "accent"));
+  Alcotest.(check bool) "state opacity bounds" true
+    (property_value_supported PressedOpacity (FloatValue 0.7)
+     && property_value_supported DisabledOpacity (FloatValue 0.5));
+  Alcotest.(check bool) "state opacity out of range" false
+    (property_value_supported HoverOpacity (FloatValue 1.5));
+  Alcotest.(check bool) "state shadow props" true
+    (property_value_supported FocusShadow
+       (StringValue "0 0 0 2px var(--color-ring)")
+     && property_value_supported SelectedShadow
+          (StringValue "inset 0 0 0 1px var(--color-primary)")
+     && property_value_supported SelectedHoverShadow
+          (StringValue "inset 0 0 0 1px var(--color-primary)"));
+  Alcotest.(check bool) "viewport fraction" true
+    (property_value_supported MaxHeightViewport (FloatValue 0.65));
+  Alcotest.(check bool) "viewport out of range" false
+    (property_value_supported WidthViewport (FloatValue 1.2));
+  Alcotest.(check bool) "typography on text kinds" true
+    (property_supported Text FontSize && property_supported Label LineHeight
+     && property_supported Heading FontWeight
+     && property_supported Paragraph LetterSpacing);
+  Alcotest.(check bool) "typography not on icon" false
+    (property_supported Icon FontSize);
+  Alcotest.(check bool) "position on box" true
+    (property_supported Box Position);
+  Alcotest.(check bool) "position not on root" false
+    (property_supported Root Position);
+  Alcotest.(check bool) "position not on tooltip" false
+    (property_supported Tooltip Position);
+  Alcotest.(check bool) "position not on dialog" false
+    (property_supported Dialog Inset);
+  Alcotest.(check bool) "overflow on text" true
+    (property_supported Text Overflow);
+  Alcotest.(check bool) "overflow not on scroll" false
+    (property_supported Scroll Overflow);
+  Alcotest.(check bool) "state props on list-item" true
+    (property_supported ListItem HoverBackground
+     && property_supported ListItem SelectedShadow
+     && property_supported ListItem DisabledOpacity
+     && property_supported Button PressedOpacity
+     && property_supported Button FocusShadow);
+  Alcotest.(check bool) "state props not on tooltip/root" false
+    (property_supported Tooltip HoverBackground
+     || property_supported Root HoverBackground);
+  Alcotest.(check bool) "viewport sizes on dialog" true
+    (property_supported Dialog WidthViewport
+     && property_supported Dialog MaxHeightViewport);
+  Alcotest.(check bool) "min-viewport <= max-viewport" true
+    (node_properties_supported Row
+       (Property_map.add MinHeightViewport (FloatValue 0.3)
+          (Property_map.add MaxHeightViewport (FloatValue 0.65)
+             Property_map.empty)));
+  Alcotest.(check bool) "min-viewport > max-viewport rejected" false
+    (node_properties_supported Row
+       (Property_map.add MinHeightViewport (FloatValue 0.8)
+          (Property_map.add MaxHeightViewport (FloatValue 0.65)
+             Property_map.empty)));
+  let text_node = ref 0 in
+  let row_node = ref 0 in
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model)
+      (fun _context _model_source _send ->
+         Lui_elements.column
+           [ capture_node text_node
+               (Lui_elements.text ~font_size:"0.75rem" ~font_weight:500
+                  ~line_height:"1.4" ~letter_spacing:(-0.5)
+                  ~white_space:"nowrap" ~text_overflow:"ellipsis"
+                  ~overflow:"hidden" []);
+             capture_node row_node (fun context parent ->
+                let node = Lui_elements.row ~grow:1.0 [] context parent in
+                Lui_ui.string_property context node Position "absolute";
+                Lui_ui.float_property context node Inset 0.0;
+                Lui_ui.int_property context node ZIndex 40;
+                Lui_ui.string_property context node UserSelect "none";
+                Lui_ui.string_property context node Cursor "pointer";
+                Lui_ui.string_property context node Shadow
+                  "inset 0 0 0 1px var(--color-primary)";
+                Lui_ui.string_property context node HoverBackground "accent";
+                Lui_ui.float_property context node PressedOpacity 0.7;
+                Lui_ui.string_property context node FocusShadow
+                  "0 0 0 2px var(--color-ring)";
+                Lui_ui.string_property context node SelectedShadow
+                  "inset 0 0 0 1px var(--color-primary)";
+                Lui_ui.float_property context node DisabledOpacity 0.5;
+                Lui_ui.float_property context node MaxHeightViewport 0.65;
+                node) ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let emitted property value =
+    List.exists
+      (function
+         | Lui_protocol.SetProp (id, property', value') ->
+           (id = !text_node || id = !row_node)
+           && property' = property && value' = value
+         | _ -> false)
+      ops
+  in
+  List.iter
+    (fun (property, value) ->
+       Alcotest.(check bool)
+         (Printf.sprintf "emitted %s"
+            (Lui_wire_schema.property_name property))
+         true (emitted property value))
+    [ (FontSize, StringValue "0.75rem");
+      (FontWeight, IntValue 500);
+      (LineHeight, StringValue "1.4");
+      (LetterSpacing, FloatValue (-0.5));
+      (WhiteSpace, StringValue "nowrap");
+      (TextOverflow, StringValue "ellipsis");
+      (Overflow, StringValue "hidden");
+      (Position, StringValue "absolute");
+      (Inset, FloatValue 0.0);
+      (ZIndex, IntValue 40);
+      (UserSelect, StringValue "none");
+      (Cursor, StringValue "pointer");
+      (Shadow, StringValue "inset 0 0 0 1px var(--color-primary)");
+      (HoverBackground, StringValue "accent");
+      (PressedOpacity, FloatValue 0.7);
+      (FocusShadow, StringValue "0 0 0 2px var(--color-ring)");
+      (SelectedShadow, StringValue "inset 0 0 0 1px var(--color-primary)");
+      (DisabledOpacity, FloatValue 0.5);
+      (MaxHeightViewport, FloatValue 0.65) ]
+
 let test_property_matrix_sync () =
   (* property_supported's restrictive arms and additive extras must mirror
      schema/components.json (kindProperties / kindExtraProperties) as emitted
@@ -3394,6 +3574,8 @@ let () =
             test_edge_overlay_fit_rules;
           Alcotest.test_case "property matrix sync" `Quick
             test_property_matrix_sync;
+          Alcotest.test_case "visual appearance props" `Quick
+            test_visual_appearance_props;
           Alcotest.test_case "data-attrs protocol" `Quick
             test_data_attrs_protocol;
           Alcotest.test_case "finite float encoding" `Quick

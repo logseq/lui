@@ -118,6 +118,46 @@ body {
     display: contents;
   }
 
+  /* Typed appearance/state channels. Recipes emit --lui-* custom
+     properties (and the matching typed props for position, typography,
+     overflow, sizing). These zero-specificity rules bind the channels so
+     they always lose to per-kind chrome rules — recipes compose them on
+     unstyled kinds like box/row/text. */
+  :where([class*="lui-"]) {
+    box-shadow: var(--lui-shadow, none);
+  }
+
+  :where([class*="lui-"]:hover) {
+    background-color: var(--lui-hover-bg, revert-layer);
+    box-shadow: var(--lui-hover-shadow, var(--lui-shadow, revert-layer));
+    opacity: var(--lui-hover-opacity, revert-layer);
+  }
+
+  :where([class*="lui-"]:active) {
+    background-color: var(--lui-pressed-bg, revert-layer);
+    box-shadow: var(--lui-pressed-shadow, revert-layer);
+    opacity: var(--lui-pressed-opacity, revert-layer);
+  }
+
+  :where([class*="lui-"][data-selected]) {
+    background-color: var(--lui-selected-bg, revert-layer);
+    box-shadow: var(--lui-selected-shadow, var(--lui-shadow, revert-layer));
+  }
+
+  :where([class*="lui-"][data-selected]:hover) {
+    box-shadow: var(--lui-selected-hover-shadow,
+      var(--lui-selected-shadow, var(--lui-hover-shadow, var(--lui-shadow, revert-layer))));
+  }
+
+  :where([class*="lui-"][data-disabled]) {
+    opacity: var(--lui-disabled-opacity, revert-layer);
+  }
+
+  :where([class*="lui-"]:focus-visible):where([data-pressable], [data-press-enabled]) {
+    box-shadow: var(--lui-focus-shadow,
+      var(--lui-selected-shadow, var(--lui-shadow, revert-layer)));
+  }
+
   .lui-row {
     @apply flex flex-row;
   }

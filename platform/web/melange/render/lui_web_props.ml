@@ -921,6 +921,76 @@ and apply_secondary_property renderer node kind dom_node property value =
   | (ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange), _ -> ()
   | SeparatorValue, StringValue separator ->
       W.Element.setAttribute "data-separator" separator dom_node
+  | FontSize, StringValue size -> set_style dom_node "font-size" size
+  | FontWeight, IntValue weight ->
+      set_style dom_node "font-weight" (string_of_int weight)
+  | LineHeight, StringValue height ->
+      set_style dom_node "line-height" height
+  | LetterSpacing, FloatValue spacing ->
+      set_style dom_node "letter-spacing" (Js.Float.toString spacing ^ "px")
+  | Position, StringValue position ->
+      set_style dom_node "position" position
+  | Inset, FloatValue inset ->
+      set_style dom_node "inset" (Js.Float.toString inset ^ "px")
+  | InsetTop, FloatValue inset ->
+      set_style dom_node "top" (Js.Float.toString inset ^ "px")
+  | InsetRight, FloatValue inset ->
+      set_style dom_node "right" (Js.Float.toString inset ^ "px")
+  | InsetBottom, FloatValue inset ->
+      set_style dom_node "bottom" (Js.Float.toString inset ^ "px")
+  | InsetLeft, FloatValue inset ->
+      set_style dom_node "left" (Js.Float.toString inset ^ "px")
+  | ZIndex, IntValue index ->
+      set_style dom_node "z-index" (string_of_int index)
+  | WhiteSpace, StringValue value ->
+      set_style dom_node "white-space" value
+  | TextOverflow, StringValue value ->
+      set_style dom_node "text-overflow" value
+  | Overflow, StringValue value -> set_style dom_node "overflow" value
+  | UserSelect, StringValue value -> set_style dom_node "user-select" value
+  | Cursor, StringValue value -> set_style dom_node "cursor" value
+  | Shadow, StringValue shadow ->
+      set_style dom_node "--lui-shadow" shadow
+  | HoverBackground, StringValue color ->
+      set_style dom_node "--lui-hover-bg" (Util.web_color_value color)
+  | HoverOpacity, FloatValue opacity ->
+      set_style dom_node "--lui-hover-opacity" (Js.Float.toString opacity)
+  | HoverShadow, StringValue shadow ->
+      set_style dom_node "--lui-hover-shadow" shadow
+  | PressedBackground, StringValue color ->
+      set_style dom_node "--lui-pressed-bg" (Util.web_color_value color)
+  | PressedOpacity, FloatValue opacity ->
+      set_style dom_node "--lui-pressed-opacity" (Js.Float.toString opacity)
+  | PressedShadow, StringValue shadow ->
+      set_style dom_node "--lui-pressed-shadow" shadow
+  | FocusShadow, StringValue shadow ->
+      set_style dom_node "--lui-focus-shadow" shadow
+  | SelectedBackground, StringValue color ->
+      set_style dom_node "--lui-selected-bg" (Util.web_color_value color)
+  | SelectedShadow, StringValue shadow ->
+      set_style dom_node "--lui-selected-shadow" shadow
+  | SelectedHoverShadow, StringValue shadow ->
+      set_style dom_node "--lui-selected-hover-shadow" shadow
+  | DisabledOpacity, FloatValue opacity ->
+      set_style dom_node "--lui-disabled-opacity" (Js.Float.toString opacity)
+  | WidthViewport, FloatValue width ->
+      set_style dom_node "width"
+        (Printf.sprintf "%gdvw" (width *. 100.0))
+  | HeightViewport, FloatValue height ->
+      set_style dom_node "height"
+        (Printf.sprintf "%gdvh" (height *. 100.0))
+  | MinWidthViewport, FloatValue width ->
+      set_style dom_node "min-width"
+        (Printf.sprintf "%gdvw" (width *. 100.0))
+  | MaxWidthViewport, FloatValue width ->
+      set_style dom_node "max-width"
+        (Printf.sprintf "%gdvw" (width *. 100.0))
+  | MinHeightViewport, FloatValue height ->
+      set_style dom_node "min-height"
+        (Printf.sprintf "%gdvh" (height *. 100.0))
+  | MaxHeightViewport, FloatValue height ->
+      set_style dom_node "max-height"
+        (Printf.sprintf "%gdvh" (height *. 100.0))
   | _ ->
       invalid_arg
         ("invalid DOM property value: " ^ Lui_wire_schema.property_name property)
@@ -1047,6 +1117,41 @@ let remove_property renderer node kind dom_node property =
            end
        | StyleClass -> refresh_node_class renderer node kind dom_node
        | DataAttrs -> remove_data_attrs dom_node
+       | FontSize -> set_style dom_node "font-size" ""
+       | FontWeight -> set_style dom_node "font-weight" ""
+       | LineHeight -> set_style dom_node "line-height" ""
+       | LetterSpacing -> set_style dom_node "letter-spacing" ""
+       | Position -> set_style dom_node "position" ""
+       | Inset -> set_style dom_node "inset" ""
+       | InsetTop -> set_style dom_node "top" ""
+       | InsetRight -> set_style dom_node "right" ""
+       | InsetBottom -> set_style dom_node "bottom" ""
+       | InsetLeft -> set_style dom_node "left" ""
+       | ZIndex -> set_style dom_node "z-index" ""
+       | WhiteSpace -> set_style dom_node "white-space" ""
+       | TextOverflow -> set_style dom_node "text-overflow" ""
+       | Overflow -> set_style dom_node "overflow" ""
+       | UserSelect -> set_style dom_node "user-select" ""
+       | Cursor -> set_style dom_node "cursor" ""
+       | Shadow -> set_style dom_node "--lui-shadow" ""
+       | HoverBackground -> set_style dom_node "--lui-hover-bg" ""
+       | HoverOpacity -> set_style dom_node "--lui-hover-opacity" ""
+       | HoverShadow -> set_style dom_node "--lui-hover-shadow" ""
+       | PressedBackground -> set_style dom_node "--lui-pressed-bg" ""
+       | PressedOpacity -> set_style dom_node "--lui-pressed-opacity" ""
+       | PressedShadow -> set_style dom_node "--lui-pressed-shadow" ""
+       | FocusShadow -> set_style dom_node "--lui-focus-shadow" ""
+       | SelectedBackground -> set_style dom_node "--lui-selected-bg" ""
+       | SelectedShadow -> set_style dom_node "--lui-selected-shadow" ""
+       | SelectedHoverShadow ->
+           set_style dom_node "--lui-selected-hover-shadow" ""
+       | DisabledOpacity -> set_style dom_node "--lui-disabled-opacity" ""
+       | WidthViewport -> set_style dom_node "width" ""
+       | HeightViewport -> set_style dom_node "height" ""
+       | MinWidthViewport -> set_style dom_node "min-width" ""
+       | MaxWidthViewport -> set_style dom_node "max-width" ""
+       | MinHeightViewport -> set_style dom_node "min-height" ""
+       | MaxHeightViewport -> set_style dom_node "max-height" ""
        | _ -> ())
   | None -> invalid_arg "unknown DOM node"
 

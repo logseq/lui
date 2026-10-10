@@ -1580,6 +1580,13 @@ val text :
   ?value:string ->
   ?value_signal:string Signal.signal ->
   ?text_alignment:text_alignment ->
+  ?font_size:string ->
+  ?font_weight:int ->
+  ?line_height:string ->
+  ?letter_spacing:float ->
+  ?white_space:string ->
+  ?text_overflow:string ->
+  ?overflow:string ->
   ?on_press:(Lui_protocol.event -> unit) ->
   ?on_press_detail:(Lui_protocol.event -> unit) ->
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
@@ -1620,7 +1627,15 @@ val heading :
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?level:int ->
-  ?value:string -> ?value_signal:string Signal.signal -> nothing list -> t
+  ?value:string -> ?value_signal:string Signal.signal ->
+  ?font_size:string ->
+  ?font_weight:int ->
+  ?line_height:string ->
+  ?letter_spacing:float ->
+  ?white_space:string ->
+  ?text_overflow:string ->
+  ?overflow:string ->
+  nothing list -> t
 val paragraph :
   ?key:string ->
   ?gap:int ->
@@ -1655,7 +1670,15 @@ val paragraph :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?value:string -> ?value_signal:string Signal.signal -> nothing list -> t
+  ?value:string -> ?value_signal:string Signal.signal ->
+  ?font_size:string ->
+  ?font_weight:int ->
+  ?line_height:string ->
+  ?letter_spacing:float ->
+  ?white_space:string ->
+  ?text_overflow:string ->
+  ?overflow:string ->
+  nothing list -> t
 val label :
   ?key:string ->
   ?gap:int ->
@@ -1690,7 +1713,15 @@ val label :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?value:string -> ?value_signal:string Signal.signal -> nothing list -> t
+  ?value:string -> ?value_signal:string Signal.signal ->
+  ?font_size:string ->
+  ?font_weight:int ->
+  ?line_height:string ->
+  ?letter_spacing:float ->
+  ?white_space:string ->
+  ?text_overflow:string ->
+  ?overflow:string ->
+  nothing list -> t
 val kbd :
   ?key:string ->
   ?gap:int ->

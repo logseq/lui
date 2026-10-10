@@ -306,6 +306,44 @@ enum LUIWireValue: Decodable, Equatable {
             return value == "text" || value == "color"
         case .pickerDirectory:
             return boolValue != nil
+        case .fontSize, .lineHeight, .shadow, .hoverBackground, .pressedBackground,
+             .selectedBackground, .hoverShadow, .pressedShadow, .focusShadow,
+             .selectedShadow, .selectedHoverShadow:
+            guard let value = stringValue else { return false }
+            return !value.trimmingCharacters(in: .whitespaces).isEmpty
+        case .fontWeight:
+            guard let value = intValue else { return false }
+            return value >= 1 && value <= 1000
+        case .letterSpacing, .inset, .insetTop, .insetRight, .insetBottom, .insetLeft:
+            guard let value = doubleValue else { return false }
+            return value.isFinite
+        case .position:
+            guard let value = stringValue else { return false }
+            return ["static", "relative", "absolute", "fixed"].contains(value)
+        case .zIndex:
+            return intValue != nil
+        case .whiteSpace:
+            guard let value = stringValue else { return false }
+            return value == "normal" || value == "nowrap"
+        case .textOverflow:
+            guard let value = stringValue else { return false }
+            return value == "clip" || value == "ellipsis"
+        case .overflow:
+            guard let value = stringValue else { return false }
+            return ["visible", "hidden", "auto"].contains(value)
+        case .userSelect:
+            guard let value = stringValue else { return false }
+            return value == "none" || value == "text"
+        case .cursor:
+            guard let value = stringValue else { return false }
+            return ["default", "pointer", "text"].contains(value)
+        case .hoverOpacity, .pressedOpacity, .disabledOpacity:
+            guard let value = doubleValue else { return false }
+            return value.isFinite && value >= 0 && value <= 1
+        case .widthViewport, .heightViewport, .minWidthViewport, .maxWidthViewport,
+             .minHeightViewport, .maxHeightViewport:
+            guard let value = doubleValue else { return false }
+            return value.isFinite && value > 0 && value <= 1
         case .popupX, .popupY:
             guard let value = doubleValue else { return false }
             return value.isFinite
@@ -1060,6 +1098,45 @@ struct LUIRetainedTree {
         case .visible: kind == .edgeInset
         // `.alignment` is admitted ahead of the restrictive matrix above.
         case .alignment: kind != .root
+        // Typography carries a foreground — same kinds as `.foreground`
+        // minus purely graphical kinds whose `size` prop governs metrics.
+        case .fontSize, .fontWeight, .lineHeight, .letterSpacing, .userSelect:
+            kind == .row || kind == .column || kind == .grid || kind == .box ||
+                kind == .panel || kind == .card || kind == .stack ||
+                kind == .scroll || kind == .avatar ||
+                kind == .edgeInset || kind == .overlay ||
+                kind == .viewThatFits ||
+                kind == .text || kind == .heading || kind == .paragraph ||
+                kind == .label || kind == .button || kind == .toggleButton ||
+                isTextEntry(kind) || kind == .checkbox || kind == .toggle ||
+                kind == .radio || kind == .slider || kind == .numberStepper ||
+                kind == .select || kind == .combobox || kind == .dropdownMenu ||
+                kind == .menuItem || kind == .listItem ||
+                kind == .tableCell || kind == .resizable || kind == .split ||
+                kind == .alert || kind == .bubble || kind == .statusBar ||
+                kind == .link
+        case .whiteSpace, .textOverflow:
+            kind == .text || kind == .heading || kind == .paragraph ||
+                kind == .label || kind == .button || kind == .toggleButton ||
+                kind == .menuItem || kind == .listItem ||
+                kind == .tableCell || kind == .alert || kind == .bubble ||
+                kind == .statusBar || kind == .link
+        case .overflow:
+            canContainChildren(kind) && kind != .scroll && kind != .list &&
+                kind != .virtualList && kind != .tooltip
+        case .position, .inset, .insetTop, .insetRight, .insetBottom, .insetLeft,
+             .zIndex:
+            kind != .root && kind != .tooltip && !isModalSurface(kind)
+        case .cursor: kind != .root
+        case .shadow: kind != .tooltip && !isModalSurface(kind)
+        case .hoverBackground, .hoverOpacity, .hoverShadow,
+             .pressedBackground, .pressedOpacity, .pressedShadow,
+             .focusShadow, .selectedBackground, .selectedShadow,
+             .selectedHoverShadow, .disabledOpacity:
+            kind != .root && kind != .tooltip && !isModalSurface(kind)
+        case .widthViewport, .heightViewport, .minWidthViewport, .maxWidthViewport,
+             .minHeightViewport, .maxHeightViewport:
+            kind != .tooltip
         }
     }
 
