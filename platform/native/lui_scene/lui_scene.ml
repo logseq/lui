@@ -155,7 +155,9 @@ let backdrop_sample b x y =
   let fu = floor u and fv = floor v in
   let tx = u -. fu and ty = v -. fv in
   let ix f = min (max (int_of_float f) 0) (b.bw - 1) in
-  let x0 = ix fu and x1 = ix (fu +. 1.) and y0 = ix fv and y1 = ix (fv +. 1.) in
+  let iy f = min (max (int_of_float f) 0) (b.bh - 1) in
+  let x0 = ix fu and x1 = ix (fu +. 1.) in
+  let y0 = iy fv and y1 = iy (fv +. 1.) in
   let p i j c = b.bpix.(4 * (j * b.bw + i) + c) in
   let c ch =
     let top = p x0 y0 ch *. (1. -. tx) +. p x1 y0 ch *. tx in
