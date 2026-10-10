@@ -1,0 +1,5 @@
+(test
+ (name lui_text_pango_test)
+ (modules lui_text_pango_test)
+ (enabled_if (= %{system} linux))
+ (libraries lui_text_pango alcotest))
