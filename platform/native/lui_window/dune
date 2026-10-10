@@ -1,0 +1,22 @@
+(library
+ (name lui_window)
+ (modules lui_window)
+ (libraries lui lui_store lui_scene lui_paint lui_host))
+
+(executable
+ (name main)
+ (modules main demo_app lui_window_text)
+ (libraries
+  lui_window
+  lui
+  lui_store
+  lui_scene
+  lui_paint
+  lui_host
+  lui_gl
+  lui_text
+  tsdl
+  ocaml-signal
+  unix)
+ (preprocess (pps lui_ppx))
+ (enabled_if (= %{system} macosx)))
