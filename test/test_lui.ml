@@ -170,9 +170,9 @@ let test_same_batch_create_drop_renumbers () =
     (all_ops ());
   ignore (Lui_app.dispose app)
 
-(* Runs enqueue_drop over a hand-built pending_ops stream (stored
-   newest-first inside the runtime) and returns the surviving ops in
-   oldest-first order. *)
+(* Marks a same-batch drop over a hand-built pending_ops stream (stored
+   newest-first inside the runtime), flushes so the elision replay runs,
+   and returns the surviving ops in oldest-first order. *)
 let elided_ops ops ghost =
   let runtime =
     Lui_runtime.create (Signal.scheduler ()) (recording_backend ())
@@ -186,7 +186,8 @@ let elided_ops ops ghost =
       | _ -> ())
     ops;
   Lui_runtime.enqueue_drop runtime ghost;
-  List.rev !(runtime.Lui_runtime.pending_ops)
+  ignore (Lui_runtime.flush runtime);
+  all_ops ()
 
 let describe_op (operation : Lui_protocol.patch_op) =
   let open Lui_protocol in
@@ -585,6 +586,64 @@ let creates_text_count ops =
         | Lui_protocol.CreateNode (_, Lui_protocol.Text) -> true
         | _ -> false)
        ops)
+
+(* A keyed collection whose items are created and entirely replaced inside
+   one batch (mounted but never flushed): every dropped item must elide its
+   whole op group, and the elision itself must not replay the pending op
+   list per dropped node — that made stabilization O(n^3) in list size. *)
+let unflushed_items prefix n = List.init n (fun i -> prefix ^ string_of_int i)
+
+let unflushed_keyed_app n =
+  Lui_app.create
+    (recording_backend ())
+    (unflushed_items "item-" n)
+    (fun _model action -> match action with `Replace items -> items)
+    (fun _context model_source _send ->
+       Lui_elements.column
+         [
+           Lui_elements.keyed ~source:model_source
+             ~key:(fun (s : string) -> s) ~cmp:String.compare
+             ~mount:(fun item_source ->
+                Lui_elements.text ~value_signal:item_source []);
+         ])
+
+let test_keyed_unflushed_replace () =
+  let app = unflushed_keyed_app 4 in
+  ignore (Lui_app.start app);
+  (* the mount already created the first items in the open batch; replacing
+     before any flush drops them inside the same batch they were created *)
+  ignore (Lui_app.send app (`Replace (unflushed_items "shifted-" 4)));
+  flush_app app;
+  let ops = all_ops () in
+  Alcotest.(check int) "only replacement texts created" 4
+    (creates_text_count ops);
+  Alcotest.(check bool) "nothing dropped" false (drops_node ops);
+  ignore (Lui_app.dispose app)
+
+let test_keyed_unflushed_replace_scaling () =
+  let elapsed n =
+    let app = unflushed_keyed_app n in
+    ignore (Lui_app.start app);
+    ignore (Lui_app.send app (`Replace (unflushed_items "shifted-" n)));
+    let t0 = Unix.gettimeofday () in
+    flush_app app;
+    let elapsed = Unix.gettimeofday () -. t0 in
+    Printf.printf "unflushed keyed replace N=%d: %.3fs\n%!" n elapsed;
+    ignore (Lui_app.dispose app);
+    elapsed
+  in
+  (match Sys.getenv_opt "LUI_PERF_SIZES" with
+   | Some sizes ->
+     (* opt-in full curve: LUI_PERF_SIZES="250,500,1000,2000,4000" *)
+     ignore
+       (List.map elapsed
+          (List.map int_of_string
+             (String.split_on_char ',' sizes)))
+   | None ->
+     let last = elapsed 2000 in
+     (* generous regression budget: the old per-drop replay was ~11s here,
+         the shared batch replay finishes in tens of milliseconds *)
+     Alcotest.(check bool) "N=2000 within 2s" true (last < 2.0))
 
 (* [keyed ~source] mounts one child per item and diffs republished
    membership by key. *)
@@ -3731,6 +3790,13 @@ let () =
             test_number_stepper_schema;
           Alcotest.test_case "sheet detents + sizing" `Quick
             test_sheet_presentation_props;
+        ] );
+      ( "unflushed elision",
+        [
+          Alcotest.test_case "keyed replace elides" `Quick
+            test_keyed_unflushed_replace;
+          Alcotest.test_case "keyed replace scaling" `Quick
+            test_keyed_unflushed_replace_scaling;
         ] );
       ( "scenarios",
         [
