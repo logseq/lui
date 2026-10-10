@@ -14,12 +14,17 @@ type config = {
   headless_frames : int option;
       (** [Some n]: run [n] frames under the dummy video driver and
           exit; [None]: normal interactive loop. *)
+  drop_files : string list;
+      (** [--drop-file PATH] repeat flag: synthetic OS file drops the
+          headless driver injects on frame 1 (at the deepest target
+          accepting the ["file:"] payload). *)
 }
 
 val default_config : config
 
 (** Parse driver arguments (already stripped of argv\[0\]).
-    Recognises [--width N], [--height N], [--headless N]. *)
+    Recognises [--width N], [--height N], [--headless N],
+    [--drop-file PATH]. *)
 val parse_args : string list -> (config, string) result
 
 (** Backend-neutral input events. [main.ml] translates SDL events into
@@ -83,6 +88,18 @@ module Input : sig
             action — clipboard I/O stays outside this pure module *)
     | Resize of int * int  (** new window size, logical pixels *)
     | Wheel of float * float
+        (** dx dy — SDL convention: +y scrolls content up *)
+    | Wheel_mods of float * float * mods
+        (** wheel deltas with the modifier state at dispatch — Shift
+            turns the vertical delta horizontal *)
+    | Drop_file of string
+        (** OS file drop (SDL_DROPFILE). Lands at the last pointer
+            position — SDL drop events carry no coordinates. The
+            payload offered to matching drop targets is
+            ["file:" ^ path], so [data-drop-accept="file:"] selects
+            it. *)
+    | Drop_text of string
+        (** OS text drop (SDL_DROPTEXT); payload ["text:" ^ s]. *)
     | Quit_input
 
   (** SDL_Scancode integer values → keys (40 return, 41 escape, 42
@@ -201,9 +218,12 @@ module Ui : sig
       selection is [min anchor caret .. max anchor caret). *)
   val sel_anchor : t -> int
 
-  (** Static user-select=text selection: [(node, anchor, focus)] byte
-      offsets into the node's [text] prop, independent of focus. *)
-  val sel_text : t -> (int * int * int) option
+  (** Static user-select=text selection, independent of focus:
+      [(anchor_node, anchor_off, focus_node, focus_off)] byte offsets
+      into each node's [text] prop. A drag or shift-click may extend
+      the focus endpoint onto sibling text nodes of the anchor's
+      container — the bound of cross-node selection. *)
+  val sel_text : t -> (int * int * int * int) option
 
   (** Focus arrived via keyboard (Tab) rather than the pointer — the
       distinction behind focus-ring visibility. *)
@@ -215,9 +235,11 @@ module Ui : sig
   (** Current typeahead prefix buffer. *)
   val typeahead : t -> string
 
-  (** [(drop-target, payload)] of the last completed drop, if any.
-      Host-local: the wire has no drop event. *)
-  val last_drop : t -> (int * string) option
+  (** [(drop-target, payload, serial)] of the last completed drop,
+      if any. Host-local: the wire has no drop event. The serial
+      bumps on every completed drop so the driver notices a repeat
+      drop of an identical payload. *)
+  val last_drop : t -> (int * string * int) option
 
   (** A data-attrs drag session is in flight. *)
   val drag_active : t -> bool
@@ -281,26 +303,47 @@ module Ui : sig
       scrollable [overflow] prop) — the same rule the paint pass uses
       to clip and draw a scrollbar. *)
 
+  (** Scroll axes: [Y] is the vertical path, [X] the horizontal one
+      (wheel-x / shift+wheel deltas, horizontal reveal). *)
+  type axis = X | Y
+
   val scroll_offset : t -> int -> float
-  (** Current scroll offset of the container, device px (0 when it was
-      never scrolled). *)
+  (** Current vertical scroll offset of the container, device px
+      (0 when it was never scrolled). *)
 
   val scroll_cap : t -> int -> float
-  (** Maximum scroll offset of the container, device px. *)
+  (** Maximum vertical scroll offset of the container, device px. *)
 
   val set_scroll_cap : t -> int -> float -> unit
-  (** Update a container's scrollable range; clamps the live offset
-      when the range shrank under it. *)
+  (** Update a container's vertical scrollable range; clamps the live
+      offset when the range shrank under it. *)
+
+  val scroll_offset_x : t -> int -> float
+  (** Horizontal counterparts of {!scroll_offset}/{!scroll_cap}/
+      {!set_scroll_cap}. *)
+
+  val scroll_cap_x : t -> int -> float
+
+  val set_scroll_cap_x : t -> int -> float -> unit
 
   (** Programmatic scroll APIs (clamped to the driver-filled caps);
       each returns the actions the move produced — currently
-      [VisibleRange] dispatches for tracked containers. *)
-  val scroll_to : t -> Lui_store.t -> int -> float -> action list
+      [VisibleRange] dispatches for tracked containers (y-axis
+      moves only). *)
+  val scroll_to :
+    ?axis:axis -> t -> Lui_store.t -> int -> float -> action list
 
-  val scroll_by : t -> Lui_store.t -> int -> float -> action list
+  val scroll_by :
+    ?axis:axis -> t -> Lui_store.t -> int -> float -> action list
+
+  (** Whether the node's drop-target attrs accept [payload]
+      (data-drop-target + comma-separated data-drop-accept prefixes).
+      OS drops offer namespaced payloads: ["file:" ^ path] and
+      ["text:" ^ s]. *)
+  val drop_accepts : Lui_store.t -> int -> string -> bool
 
   (** Reveal a node inside its nearest scrollable ancestor (minimal
-      reveal — only scrolls when the node is clipped). *)
+      reveal on both axes — only scrolls when the node is clipped). *)
   val scroll_show : t -> Lui_store.t -> int -> action list
 
   (** Repaint pacing: true when the store is dirty (wants_repaint) or

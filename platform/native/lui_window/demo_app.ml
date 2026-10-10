@@ -15,6 +15,7 @@ type model = {
   tab : tab;
   badge : string;         (* "renderer — N fps" line, set by the driver *)
   last_event : string;    (* status line: the last interesting action *)
+  last_drop : string;     (* payload of the last completed drop, set by the driver *)
   (* Inputs *)
   name : string;
   secret : string;
@@ -52,6 +53,7 @@ type action =
   | Tab of tab
   | Badge of string
   | Last_event of string
+  | Dropped of string
   | Name of string
   | Secret of string
   | Search of string
@@ -84,6 +86,7 @@ let initial =
   { tab = Inputs;
     badge = "";
     last_event = "ready — click a tab";
+    last_drop = "";
     name = ""; secret = ""; search = ""; notes = ""; combo = "";
     bold = false; italic = false; subscribed = true; wifi = true;
     choice = "alpha"; volume = 0.35; count = 2.;
@@ -124,6 +127,8 @@ let update model action =
   | Tab t -> { model with tab = t; last_event = "tab: " ^ tab_name t }
   | Badge s -> { model with badge = s }
   | Last_event s -> { model with last_event = s }
+  | Dropped s ->
+    { model with last_drop = s; last_event = "drop: " ^ s }
   | Name s -> { model with name = s; last_event = "name changed" }
   | Secret s -> { model with secret = s; last_event = "secret changed" }
   | Search s -> { model with search = s; last_event = "search changed" }
@@ -286,7 +291,24 @@ let section_inputs model_s send =
               "fields: Cmd/Ctrl+A select-all, X/C/V cut-copy-paste, \
                Cmd+Z undo, shift+arrows extend, triple-click selects \
                a line"
-            ~foreground:"#5f6478" ~font_size:"11" [] ] ]
+            ~foreground:"#5f6478" ~font_size:"11" [] ];
+      caption
+        "OS drops — drag a file or text snippet onto the well; drags \
+         of list rows land here too";
+      row ~gap:8 ~cross:`center
+        [ text
+            ~value:
+              (reactive
+                 (fun m ->
+                    if m.last_drop = "" then
+                      "drop well — drop a file or text onto me"
+                    else "dropped " ^ m.last_drop)
+                 model_s)
+            ~foreground:"#8ab4ff" ~font_size:"12" ~padding:8
+            ~corner_radius:6
+            ~data_attrs:
+              [ ("data-drop-target", "true");
+                ("data-drop-accept", "file:,text:,row-") ] [] ] ]
 
 let section_controls model_s send =
   column ~gap:14 ~padding:16
@@ -435,6 +457,33 @@ let section_lists model_s send =
                 ~data_attrs:
                   [ ("data-drop-target", "true");
                     ("data-drop-accept", "row-") ] [] ];
+          caption
+            "horizontal strip — wheel-x or shift+wheel scrolls it";
+          scroll ~height:64 ~background:"#1b1c28" ~corner_radius:8
+            ~padding:6
+            [ row ~gap:8
+                (List.init 10 (fun i ->
+                   box ~width:96 ~height:44 ~background:"#262743"
+                     ~corner_radius:6 ~padding:8
+                     [ text
+                         ~value:
+                           (Printf.sprintf "cell %02d" (i + 1))
+                         ~foreground:"#e4e6ee" ~font_size:"12" [] ])) ];
+          caption
+            "multi-line selection — drag selects across these \
+             sibling lines, Cmd+C copies in document order";
+          column ~gap:2
+            [ text ~value:"alpha line — drag down through the siblings"
+                ~foreground:"#8ab4ff" ~font_size:"12"
+                ~data_attrs:sel_text_attrs [];
+              text
+                ~value:"beta line — contiguous siblings join the selection"
+                ~foreground:"#8ab4ff" ~font_size:"12"
+                ~data_attrs:sel_text_attrs [];
+              text
+                ~value:"gamma line — the copy lands in document order"
+                ~foreground:"#8ab4ff" ~font_size:"12"
+                ~data_attrs:sel_text_attrs [] ];
           caption "table";
           table ~background:"#1b1c28" ~corner_radius:8
             [ table_row
