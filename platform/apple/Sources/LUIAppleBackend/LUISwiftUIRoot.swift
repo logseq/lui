@@ -7163,8 +7163,8 @@ enum LUISurfaceFramePolicy {
         return (kind == .textarea && classes.contains("composer-input")) ||
             (kind == .column && classes.contains("composer-surface"))
     }
-    static func usesTopLeadingAlignment(kind: LUINodeKind, styleClass: String? = nil) -> Bool {
-        kind == .textarea && !usesIntrinsicHeight(kind: kind, styleClass: styleClass)
+    static func usesTopLeadingAlignment(kind: LUINodeKind) -> Bool {
+        kind == .textarea
     }
 }
 
@@ -7384,10 +7384,7 @@ private struct LUISurfaceModifier: ViewModifier {
                 maxWidth: model.kind == .resizable ? nil : model.surfaceMaxWidth.map(CGFloat.init),
                 minHeight: model.surfaceMinHeight.map(CGFloat.init),
                 maxHeight: model.surfaceMaxHeight.map(CGFloat.init),
-                alignment: LUISurfaceFramePolicy.usesTopLeadingAlignment(
-                    kind: model.kind,
-                    styleClass: model.property(.styleClass)?.stringValue
-                )
+                alignment: LUISurfaceFramePolicy.usesTopLeadingAlignment(kind: model.kind)
                     ? .topLeading
                     : .center
             )

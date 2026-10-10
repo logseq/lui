@@ -194,7 +194,7 @@ let composer
    in
    let field =
      textarea
-       ~grow:1.0 ~min_width:0 ~min_height:36 ~max_height:168
+       ~grow:1.0 ~min_width:0 ~min_height:0 ~max_height:168
        ~style_class:"composer-input" ~placeholder
        ~label:(match label with Some value -> value | None -> placeholder)
        ?text ?text_signal ~autofocus ?submit_on_enter
@@ -236,7 +236,7 @@ let composer
        ~padding_vertical:8
        ~background:"glass"
        ~corner_radius:24
-       ([ row ~cross:`end_
+       ([ row ~min_height:36 ~cross:`center
             ~accessibility_identifier:"row.composer.input" [ field ] ]
         @ attachment_strip
         @ Option.to_list feedback

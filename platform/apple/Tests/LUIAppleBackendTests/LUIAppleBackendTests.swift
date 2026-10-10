@@ -146,30 +146,6 @@ struct LUISwiftUIBackendTests {
         #expect(!LUISurfaceFramePolicy.usesTopLeadingAlignment(kind: .box))
     }
 
-    @Test("composer inputs center spare height without changing other textareas")
-    func composerInputsCenterSpareHeight() {
-        #expect(!LUISurfaceFramePolicy.usesTopLeadingAlignment(
-            kind: .textarea, styleClass: "composer-input"
-        ))
-        #expect(!LUISurfaceFramePolicy.usesTopLeadingAlignment(
-            kind: .textarea, styleClass: "body-line composer-input extra"
-        ))
-        for styleClass: String? in [nil, "", "editor", "composer-input-extra", "not-composer-input"] {
-            #expect(LUISurfaceFramePolicy.usesTopLeadingAlignment(
-                kind: .textarea, styleClass: styleClass
-            ))
-        }
-        #expect(!LUISurfaceFramePolicy.usesTopLeadingAlignment(
-            kind: .textField, styleClass: "composer-input"
-        ))
-        #expect(!LUISurfaceFramePolicy.usesTopLeadingAlignment(
-            kind: .box, styleClass: "composer-input"
-        ))
-        #expect(LUISurfaceFramePolicy.usesIntrinsicHeight(
-            kind: .textarea, styleClass: "composer-input"
-        ))
-    }
-
     @Test("composer input measures content instead of filling its height ceiling")
     func composerInputUsesIntrinsicHeight() {
         #expect(LUISurfaceFramePolicy.usesIntrinsicHeight(kind: .textarea, styleClass: "composer-input"))

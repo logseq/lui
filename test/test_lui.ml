@@ -3129,6 +3129,17 @@ let test_composer_content_sizing () =
      | Some (Lui_protocol.FloatValue value) -> value <= 0.
      | _ -> true);
   let textarea = drive_node s (Drive.Model.Kind "textarea") in
+  let input_row =
+    match textarea.Drive.Model.parent with
+    | Some id -> Option.get (Hashtbl.find_opt tree.Drive.Model.nodes id)
+    | None -> Alcotest.fail "composer input row missing"
+  in
+  Alcotest.(check bool) "input row owns the minimum input height" true
+    (drive_prop s input_row "min-height" = Some (Lui_protocol.IntValue 36));
+  Alcotest.(check bool) "input row centers short drafts" true
+    (drive_prop s input_row "cross" = Some (Lui_protocol.StringValue "center"));
+  Alcotest.(check bool) "textarea measures its content without spare height" true
+    (drive_prop s textarea "min-height" = Some (Lui_protocol.IntValue 0));
   Alcotest.(check bool) "textarea has a bounded content height" true
     (match drive_prop s textarea "max-height" with
      | Some (Lui_protocol.IntValue value) -> value > 36 && value <= 200

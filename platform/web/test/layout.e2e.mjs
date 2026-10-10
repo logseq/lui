@@ -60,6 +60,69 @@ test("composer action overflow keeps full touch height and a stationary Send", a
   assert.deepEqual(sendAfter, sendBefore)
 })
 
+test("shared composer row centers short drafts and preserves bounded editing", async () => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`${origin}/examples/components/web/index.html`)
+  await page.locator(".lui-gallery-nav-item").filter({ hasText: /^Combine$/ }).click()
+  const draft = page.getByPlaceholder("Capture", { exact: true })
+  const measure = () => draft.evaluate(input => {
+    const row = input.parentElement
+    const inputBounds = input.getBoundingClientRect()
+    const rowBounds = row.getBoundingClientRect()
+    return {
+      height: inputBounds.height,
+      width: inputBounds.width,
+      rowHeight: rowBounds.height,
+      rowWidth: rowBounds.width,
+      offset: inputBounds.top - rowBounds.top,
+      minHeight: getComputedStyle(input).minHeight,
+      rowMinHeight: getComputedStyle(row).minHeight,
+      alignment: getComputedStyle(row).alignItems,
+      clientHeight: input.clientHeight,
+      scrollHeight: input.scrollHeight,
+      focused: document.activeElement === input,
+    }
+  })
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 })
+    for (const colorScheme of ["light", "dark"]) {
+      await page.emulateMedia({ colorScheme })
+      await draft.fill("A single line")
+      const short = await measure()
+      assert.equal(short.rowMinHeight, "36px")
+      assert.equal(short.alignment, "center")
+      assert.equal(short.minHeight, "0px")
+      assert.ok(short.rowHeight >= 36)
+      assert.ok(Math.abs(short.offset - (short.rowHeight - short.height) / 2) < 1)
+      assert.ok(short.width <= short.rowWidth + 1)
+      await draft.fill("First line\nSecond line\nThird line")
+      const multiline = await measure()
+      assert.ok(multiline.height > short.height)
+      await draft.fill(Array.from({ length: 30 }, (_, index) => `Line ${index + 1}`).join("\n"))
+      const long = await measure()
+      assert.ok(long.height <= 168)
+      assert.ok(long.scrollHeight > long.clientHeight)
+      assert.equal(long.focused, true)
+      const endpoints = await draft.evaluate(input => {
+        input.scrollTop = 0
+        const start = input.scrollTop
+        input.scrollTop = input.scrollHeight
+        return { start, end: input.scrollTop, maximum: input.scrollHeight - input.clientHeight }
+      })
+      assert.equal(endpoints.start, 0)
+      assert.ok(Math.abs(endpoints.end - endpoints.maximum) < 1)
+      await draft.fill("Short again")
+      const shrunk = await measure()
+      assert.equal(shrunk.height, short.height)
+      assert.equal(shrunk.focused, true)
+      await draft.fill("")
+      const empty = await measure()
+      assert.equal(empty.height, short.height)
+    }
+  }
+  await page.emulateMedia({ colorScheme: null })
+})
+
 test("View That Fits switches retained candidates and moves only hidden focus", async () => {
   await page.setViewportSize({ width: 900, height: 900 })
   await page.goto(`${origin}/platform/web/test/fixtures/fit-regression.html`)
