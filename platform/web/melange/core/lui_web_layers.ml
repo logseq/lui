@@ -17,6 +17,12 @@ external viewport_listen : visual_viewport -> string -> (Dom.event -> unit) -> u
   = "addEventListener" [@@mel.send]
 external viewport_unlisten : visual_viewport -> string -> (Dom.event -> unit) -> unit
   = "removeEventListener" [@@mel.send]
+external document_listen :
+  W.Document.t -> string -> (Dom.event -> unit) -> bool -> unit
+  = "addEventListener" [@@mel.send]
+external document_unlisten :
+  W.Document.t -> string -> (Dom.event -> unit) -> bool -> unit
+  = "removeEventListener" [@@mel.send]
 external window_inner_height : W.Window.t -> float = "innerHeight" [@@mel.get]
 external window_navigator : W.Window.t -> navigator = "navigator" [@@mel.get]
 external navigator_platform : navigator -> string = "platform" [@@mel.get]
@@ -71,6 +77,12 @@ type t = {
   mutable listeners_installed : bool;
   mutable scroll_lock_held : bool;
   mutable is_descendant : (int -> int -> bool) option;
+  (* capture-phase pointer tracking: the element under the currently
+     held pointer button. press handlers fire inside this pointerdown's
+     dispatch — before focus lands — so a popover's mount reads this
+     (not activeElement) to learn its real trigger *)
+  mutable down_target : Dom.element option;
+  mutable target_listeners : (Dom.event -> unit) list;
 }
 
 let style_properties =
@@ -251,9 +263,13 @@ let create () =
     focus_listener = None;
     listeners_installed = false;
     scroll_lock_held = false;
-    is_descendant = None }
+    is_descendant = None;
+    down_target = None;
+    target_listeners = [] }
 
 let layer_at registry id = Hashtbl.find_opt registry.layers id
+
+let down_target registry = registry.down_target
 
 let layer_contains layer element =
   W.Element.contains (W.Element.asNode element) layer.content
@@ -352,6 +368,10 @@ let sync_listeners registry document =
     (match registry.focus_listener with
      | Some listener -> W.Document.addEventListener "focusin" listener document
      | None -> ());
+    List.iter2
+      (fun name listener ->
+        document_listen document name listener true)
+      [ "pointerdown"; "pointerup" ] registry.target_listeners;
     registry.listeners_installed <- true
   end
   else if not wanted && registry.listeners_installed then begin
@@ -367,6 +387,10 @@ let sync_listeners registry document =
      | Some listener ->
          W.Document.removeEventListener "focusin" listener document
      | None -> ());
+    List.iter2
+      (fun name listener ->
+        document_unlisten document name listener true)
+      [ "pointerdown"; "pointerup" ] registry.target_listeners;
     registry.listeners_installed <- false
   end
 
@@ -442,7 +466,12 @@ let install registry _document is_descendant event_target_to_element =
   in
   registry.key_listener <- Some key_listener;
   registry.pointer_listener <- Some pointer_listener;
-  registry.focus_listener <- Some focus_listener
+  registry.focus_listener <- Some focus_listener;
+  registry.target_listeners <-
+    [ (fun event ->
+          registry.down_target <-
+            Some (event_target_to_element (W.Event.target event)));
+      (fun _event -> registry.down_target <- None) ]
 
 let register registry ~document ~id ~owner ~trigger ~content ~style_targets ~policy
     ~dismiss ~close ~key_handler ~present ~open_ =
