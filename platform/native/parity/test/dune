@@ -1,0 +1,12 @@
+(test
+ (name parity_test)
+ (modules parity_test)
+ (libraries
+  lui_parity
+  lui_raster_testkit
+  lui_raster
+  lui_gl
+  lui_scene
+  tsdl
+  tgls.tgl3
+  alcotest))
