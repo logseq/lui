@@ -208,6 +208,29 @@ module Ui : sig
       from this Ui plus selected/disabled props. *)
   val state_of : t -> Lui_store.t -> int -> Lui_paint.state
 
+  (** {1 Scroll state}
+
+      Wheel input scrolls the deepest scrollable ancestor under the
+      pointer; the driver fills [scroll_cap] from the layout engine's
+      content extents each frame and reads [scroll_offset] to shift
+      descendants' paint and hit rects. *)
+
+  val scrollable : Lui_store.t -> int -> bool
+  (** Whether the node is a scroll container (scroll/list kinds or a
+      scrollable [overflow] prop) — the same rule the paint pass uses
+      to clip and draw a scrollbar. *)
+
+  val scroll_offset : t -> int -> float
+  (** Current scroll offset of the container, device px (0 when it was
+      never scrolled). *)
+
+  val scroll_cap : t -> int -> float
+  (** Maximum scroll offset of the container, device px. *)
+
+  val set_scroll_cap : t -> int -> float -> unit
+  (** Update a container's scrollable range; clamps the live offset
+      when the range shrank under it. *)
+
   (** Repaint pacing: true when the store is dirty (wants_repaint) or
       hover/press/focus state changed since the last frame. *)
   val want_frame : t -> Lui_host.t -> bool

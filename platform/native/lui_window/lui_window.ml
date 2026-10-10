@@ -407,12 +407,24 @@ module Ui = struct
        commit lands through the normal input path. *)
     mutable ime : Lui_ime.state;
     mutable dirty : bool;
+    (* Scroll: offset and max offset (device px) per scroll container
+       id. The driver computes caps from the layout engine's content
+       extents each frame; wheel deltas scroll the deepest scrollable
+       ancestor under the pointer. *)
+    scroll_off : (int, float) Hashtbl.t;
+    scroll_cap : (int, float) Hashtbl.t;
+    (* Last pointer position in logical px — the wheel's implicit
+       target since SDL mouse-wheel events carry no coordinates. *)
+    mutable last_x : float;
+    mutable last_y : float;
   }
 
   let create () =
     { scale = 1.; hovered = 0; hover_detail = 0; pressed = 0;
       press_detail = 0; focused = 0; caret = 0; shadow = "";
-      ime = Lui_ime.initial; dirty = true }
+      ime = Lui_ime.initial; dirty = true;
+      scroll_off = Hashtbl.create 8; scroll_cap = Hashtbl.create 8;
+      last_x = 0.; last_y = 0. }
 
   let set_scale t s = t.scale <- s
   let hovered t = t.hovered
@@ -422,6 +434,32 @@ module Ui = struct
   let shadow t = t.shadow
   let ime t = t.ime
   let marked t = t.ime.Lui_ime.marked_text
+
+  (* Same scrollable rule as the paint pass: a scroll-kind node, or
+     anything opting in through its overflow prop. *)
+  let scrollable store id =
+    (match kind_name store id with
+     | "scroll" | "list" | "virtual-list" -> true
+     | _ -> false)
+    || (match string_prop store id "overflow" with
+        | "scroll" | "auto" -> true
+        | _ -> false)
+
+  let scroll_offset t id =
+    Option.value ~default:0. (Hashtbl.find_opt t.scroll_off id)
+
+  let scroll_cap t id =
+    Option.value ~default:0. (Hashtbl.find_opt t.scroll_cap id)
+
+  let set_scroll_cap t id cap =
+    Hashtbl.replace t.scroll_cap id cap;
+    (* A shrinking cap (content removed, window grown) clamps any
+       offset it left dangling past the new range. *)
+    let off = scroll_offset t id in
+    if off > cap then begin
+      Hashtbl.replace t.scroll_off id cap;
+      t.dirty <- true
+    end
 
   let text_of store id = string_prop store id "text"
 
@@ -587,6 +625,8 @@ module Ui = struct
 
   let handle t store rects = function
     | Input.Move (x, y) ->
+      t.last_x <- x;
+      t.last_y <- y;
       let path =
         hit_path store rects ~x:(x *. t.scale) ~y:(y *. t.scale)
       in
@@ -614,6 +654,8 @@ module Ui = struct
       t.hover_detail <- detail;
       actions
     | Input.Button_down (x, y, btn, clicks, mods) ->
+      t.last_x <- x;
+      t.last_y <- y;
       (match btn with
        | Input.Left ->
          let dx, dy = x *. t.scale, y *. t.scale in
@@ -673,6 +715,8 @@ module Ui = struct
           | None -> [])
        | _ -> [])
     | Input.Button_up (x, y, btn, mods) ->
+      t.last_x <- x;
+      t.last_y <- y;
       (match btn with
        | Input.Left ->
          let up =
@@ -786,7 +830,32 @@ module Ui = struct
          t.caret <- String.length t.shadow; []
        | _ -> [])
     | Input.Resize (w, h) -> [ Resize_host (w, h) ]
-    | Input.Wheel _ -> []
+    | Input.Wheel (_dx, dy) ->
+      (* Scroll the deepest scrollable ancestor under the pointer that
+         actually has range. SDL reports +y for scroll-away
+         (content up); offset grows with -dy, scaled to device px. *)
+      let path =
+        hit_path store rects
+          ~x:(t.last_x *. t.scale) ~y:(t.last_y *. t.scale)
+      in
+      (match
+         List.find_opt
+           (fun id -> scrollable store id && scroll_cap t id > 0.001)
+           path
+       with
+       | Some id ->
+         let cap = scroll_cap t id in
+         let off = scroll_offset t id in
+         let off' =
+           Float.max 0.
+             (Float.min cap (off -. (dy *. 44. *. t.scale)))
+         in
+         if off' <> off then begin
+           Hashtbl.replace t.scroll_off id off';
+           t.dirty <- true
+         end;
+         []
+       | None -> [])
     | Input.Quit_input -> [ Quit ]
 
   let state_of t store id =

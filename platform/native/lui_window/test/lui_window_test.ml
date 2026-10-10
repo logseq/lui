@@ -6,6 +6,7 @@
 open Lui_scene
 open Lui_protocol
 open Lui_window
+open Lui_window_demo
 
 (* ---------- store helpers ---------- *)
 
@@ -513,6 +514,244 @@ let test_checksum () =
   Alcotest.(check bool) "changes" true
     (Checksum.value c1 <> Checksum.value c2)
 
+(* ---------- scroll containers ---------- *)
+
+let test_scroll () =
+  (* a scroll kind with children taller than its viewport: wheel input
+     must move the container's offset, clamped to the driver-supplied
+     cap *)
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Scroll);
+        CreateNode (3, ListItem);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0) ]
+  in
+  Alcotest.(check bool) "scroll kind" true (Ui.scrollable s 2);
+  Alcotest.(check bool) "plain kind" false (Ui.scrollable s 3);
+  (* an overflow=scroll prop marks any container scrollable too *)
+  let s' =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        InsertChild (1, 2, 0);
+        SetProp (2, Overflow, StringValue "scroll") ]
+  in
+  Alcotest.(check bool) "overflow scroll" true (Ui.scrollable s' 2);
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:100 ~height:100 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  Ui.set_scroll_cap ui 2 80.;
+  Alcotest.(check (float 0.001)) "cap" 80. (Ui.scroll_cap ui 2);
+  Alcotest.(check (float 0.001)) "starts at 0" 0. (Ui.scroll_offset ui 2);
+  (* park the pointer inside the scroll container, then wheel down *)
+  ignore (Ui.handle ui s rects (Input.Move (10., 10.)));
+  ignore (Ui.handle ui s rects (Input.Wheel (0., -1.)));
+  Alcotest.(check (float 0.001)) "scrolled" 44. (Ui.scroll_offset ui 2);
+  (* two more wheels clamp at the cap *)
+  ignore (Ui.handle ui s rects (Input.Wheel (0., -1.)));
+  ignore (Ui.handle ui s rects (Input.Wheel (0., -1.)));
+  Alcotest.(check (float 0.001)) "clamped" 80. (Ui.scroll_offset ui 2);
+  (* wheel up scrolls back but not past zero *)
+  ignore (Ui.handle ui s rects (Input.Wheel (0., 3.)));
+  Alcotest.(check (float 0.001)) "floor" 0. (Ui.scroll_offset ui 2);
+  (* shrinking the cap clamps the live offset too *)
+  Ui.set_scroll_cap ui 2 30.;
+  Alcotest.(check (float 0.001)) "cap shrink" 0. (Ui.scroll_offset ui 2)
+
+(* ---------- demo dispatch flow ---------- *)
+
+(* Boot the real demo app against a store-mirroring backend, then feed
+   protocol events down the same paths SDL input takes: dispatch_event
+   → mounted handler → reducer → flush → store/model assertions. *)
+let demo_backend store =
+  { Lui_protocol.backend_profile = Lui_protocol.generic_profile ();
+    apply_batch =
+      (fun batch -> Lui_store.apply_batch store batch; true) }
+
+let find_prop_id store kind prop value =
+  List.find_map
+    (fun n ->
+      if Lui_store.node_kind n = kind
+         && Lui_store.node_prop n prop = Some (Lui_protocol.StringValue value)
+      then Some (Lui_store.node_id n)
+      else None)
+    (Lui_store.all_nodes store)
+
+let find_kind_id store kind =
+  List.find_map
+    (fun n ->
+      if Lui_store.node_kind n = kind then Some (Lui_store.node_id n)
+      else None)
+    (Lui_store.all_nodes store)
+
+let require_id = function Some id -> id | None -> Alcotest.fail "node"
+
+let test_demo_dispatch () =
+  let store = Lui_store.create () in
+  let app = Demo_app.create (demo_backend store) in
+  Alcotest.(check bool) "start" true (Lui_app.start app);
+  Alcotest.(check bool) "initial flush" true (Lui_app.flush app);
+  let m : Demo_app.model = Lui_app.model app in
+  Alcotest.(check bool) "initial tab" true (m.tab = Demo_app.Inputs);
+  Alcotest.(check int) "initial items" 6 (List.length m.items);
+  (* bottom-tab press switches sections — the Lists section mounts the
+     todo field the next events target *)
+  let lists_id =
+    require_id (find_prop_id store "bottom-tab" "title" "lists")
+  in
+  Alcotest.(check bool) "lists press" true
+    (Lui_app.dispatch_event app (Press lists_id));
+  Alcotest.(check bool) "lists flush" true (Lui_app.flush app);
+  let m : Demo_app.model = Lui_app.model app in
+  Alcotest.(check bool) "lists tab" true (m.tab = Demo_app.Lists);
+  (* text-field input flows through on_input → Draft *)
+  let draft_id =
+    require_id (find_prop_id store "text-field" "placeholder" "new item")
+  in
+  Alcotest.(check bool) "draft event" true
+    (Lui_app.dispatch_event app (TextChanged (draft_id, "gamma")));
+  Alcotest.(check bool) "draft flush" true (Lui_app.flush app);
+  let m : Demo_app.model = Lui_app.model app in
+  Alcotest.(check string) "draft stored" "gamma" m.draft;
+  Alcotest.(check string) "field prop" "gamma"
+    (match Lui_store.prop store draft_id "text" with
+     | Some (Lui_protocol.StringValue s) -> s
+     | _ -> "");
+  (* the add button fires on_press → Add, appending the draft *)
+  let add_id =
+    require_id (find_prop_id store "button" "text" "add")
+  in
+  Alcotest.(check bool) "add press" true
+    (Lui_app.dispatch_event app (Press add_id));
+  Alcotest.(check bool) "add flush" true (Lui_app.flush app);
+  let m : Demo_app.model = Lui_app.model app in
+  Alcotest.(check int) "item appended" 7 (List.length m.items);
+  Alcotest.(check string) "draft tail" "gamma"
+    (List.nth m.items 6);
+  Alcotest.(check string) "draft cleared" "" m.draft;
+  (* bottom-tab press switches sections *)
+  let controls_id =
+    require_id (find_prop_id store "bottom-tab" "title" "controls")
+  in
+  Alcotest.(check bool) "tab press" true
+    (Lui_app.dispatch_event app (Press controls_id));
+  Alcotest.(check bool) "tab flush" true (Lui_app.flush app);
+  let m : Demo_app.model = Lui_app.model app in
+  Alcotest.(check bool) "controls tab" true (m.tab = Demo_app.Controls);
+  (* every section mounts cleanly — pressing each tab flushes a mount;
+     an unsupported prop on any element raises here *)
+  List.iter
+    (fun title ->
+      let id =
+        require_id (find_prop_id store "bottom-tab" "title" title)
+      in
+      Alcotest.(check bool)
+        (Printf.sprintf "%s press" title)
+        true (Lui_app.dispatch_event app (Press id));
+      Alcotest.(check bool)
+        (Printf.sprintf "%s flush" title)
+        true (Lui_app.flush app))
+    [ "inputs"; "controls"; "lists"; "overlays"; "deco" ];
+  let m : Demo_app.model = Lui_app.model app in
+  Alcotest.(check bool) "deco tab" true (m.tab = Demo_app.Deco);
+  (* back to Controls for the control-kind event paths *)
+  let controls_id =
+    require_id (find_prop_id store "bottom-tab" "title" "controls")
+  in
+  ignore (Lui_app.dispatch_event app (Press controls_id));
+  Alcotest.(check bool) "controls flush" true (Lui_app.flush app);
+  (* the Controls section mounted: checkbox toggle flows through *)
+  let cb_id = require_id (find_prop_id store "checkbox" "text" "notify me") in
+  Alcotest.(check bool) "toggle event" true
+    (Lui_app.dispatch_event app (ToggleChanged (cb_id, false)));
+  Alcotest.(check bool) "toggle flush" true (Lui_app.flush app);
+  let m : Demo_app.model = Lui_app.model app in
+  Alcotest.(check bool) "unsubscribed" false m.subscribed;
+  (* slider ValueChanged carries the float through on_change *)
+  let sl_id = require_id (find_kind_id store "slider") in
+  Alcotest.(check bool) "value event" true
+    (Lui_app.dispatch_event app (ValueChanged (sl_id, 0.5)));
+  Alcotest.(check bool) "value flush" true (Lui_app.flush app);
+  let m : Demo_app.model = Lui_app.model app in
+  Alcotest.(check (float 0.001)) "volume" 0.5 m.volume;
+  (* overlay flow: Open mounts the dialog kind, Close drops it *)
+  Alcotest.(check bool) "dialog absent" true
+    (find_kind_id store "dialog" = None);
+  ignore (Lui_app.send app (Demo_app.Open Demo_app.P_dialog));
+  Alcotest.(check bool) "open flush" true (Lui_app.flush app);
+  Alcotest.(check bool) "dialog mounted" true
+    (find_kind_id store "dialog" <> None);
+  ignore (Lui_app.send app (Demo_app.Close Demo_app.P_dialog));
+  Alcotest.(check bool) "close flush" true (Lui_app.flush app);
+  Alcotest.(check bool) "dialog dropped" true
+    (find_kind_id store "dialog" = None);
+  ignore (Lui_app.dispose app)
+
+(* ---------- headless checksum regression ---------- *)
+
+(* The demo doubles as the pipeline regression: a fixed number of
+   headless frames must always produce the same scene checksum.
+   Spawns the real binary so the assertion covers the whole chain —
+   Lui_app → store → flex → paint → scene ops — not a mock. *)
+let read_all ic =
+  let buf = Buffer.create 1024 in
+  (try
+     while true do
+       Buffer.add_string buf (input_line ic);
+       Buffer.add_char buf '\n'
+     done
+   with End_of_file -> ());
+  Buffer.contents buf
+
+let main_exe () =
+  let candidates = [ "../main.exe"; "./main.exe" ] in
+  match
+    List.find_opt Sys.file_exists
+      (match Sys.getenv_opt "LUI_WINDOW_MAIN" with
+       | Some p -> p :: candidates
+       | None -> candidates)
+  with
+  | Some p -> p
+  | None -> Alcotest.fail "main.exe not found next to the test binary"
+
+let test_headless_checksum () =
+  let exe = main_exe () in
+  let run () =
+    let ic =
+      Unix.open_process_in
+        (Printf.sprintf "%s --headless 6" (Filename.quote exe))
+    in
+    let out = read_all ic in
+    match Unix.close_process_in ic with
+    | Unix.WEXITED 0 -> out
+    | _ -> Alcotest.failf "main.exe failed: %s" out
+  in
+  let checksum_of out =
+    match
+      List.find_opt
+        (fun l ->
+          try
+            ignore (Str.search_forward (Str.regexp "checksum=") l 0);
+            true
+          with Not_found -> false)
+        (String.split_on_char '\n' out)
+    with
+    | Some l -> l
+    | None -> Alcotest.failf "no checksum line in:\n%s" out
+  in
+  let out1 = run () and out2 = run () in
+  Alcotest.(check bool) "noop renderer" true
+    (try
+       ignore (Str.search_forward (Str.regexp "renderer=noop") out1 0);
+       true
+     with Not_found -> false);
+  let c1 = checksum_of out1 and c2 = checksum_of out2 in
+  Alcotest.(check string) "deterministic" c1 c2;
+  (* the recorded value pins the demo's initial scene: any render-path
+     change shows up here *)
+  Alcotest.(check string) "golden"
+    "headless done: frames=6 checksum=68b1be2fbd3e039d" c1
+
 let () =
   Alcotest.run "lui_window"
     [ ("config", [ Alcotest.test_case "parse_args" `Quick test_parse_args ]);
@@ -548,4 +787,10 @@ let () =
       ( "pacing",
         [ Alcotest.test_case "dirty" `Quick test_pacing ] );
       ( "checksum",
-        [ Alcotest.test_case "ops" `Quick test_checksum ] ) ]
+        [ Alcotest.test_case "ops" `Quick test_checksum ] );
+      ( "scroll",
+        [ Alcotest.test_case "wheel" `Quick test_scroll ] );
+      ( "demo",
+        [ Alcotest.test_case "dispatch flow" `Quick test_demo_dispatch ] );
+      ( "headless",
+        [ Alcotest.test_case "checksum" `Quick test_headless_checksum ] ) ]
