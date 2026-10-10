@@ -69,6 +69,14 @@ glyphs (bpp 4). `text_coverage`/`subpixel_coverage`/`gamma_ratios` are the
 text corrections — reuse verbatim. `backdrop_of`/`blur_weight`/
 `backdrop_sample`/`sd_round_rect` are the shared blur/SDF math.
 
+## Validation matrix
+
+Validation fans out across platforms: the full test matrix plus a real
+window run gets exercised separately on macOS, Linux and Windows —
+text engines (CoreText/Pango/DWrite), GL3 vs GLES, SDL window/event
+quirks, and rendering parity all differ per platform. A module is not
+"done" until it runs on the platforms that can run it.
+
 ## Test coverage
 
 - raster: every op kind rasterized vs golden pixels; corner SDF incl.
