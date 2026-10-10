@@ -73,10 +73,12 @@ const typography = create("text", root, {
   "text-overflow": "ellipsis",
   "user-select": "none",
 })
+// The box is anchored below the interactive row so its absolute overlay
+// does not swallow the pointer events the hover assertions rely on.
 const positioned = create("box", root, {
   position: "absolute",
   inset: 0,
-  "inset-top": 4,
+  "inset-top": 320,
   "z-index": 30,
   overflow: "hidden",
   cursor: "pointer",

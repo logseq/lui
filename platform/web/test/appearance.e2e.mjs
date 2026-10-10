@@ -68,22 +68,30 @@ test("typed appearance props land as styles and state channels", async () => {
     }
   })
   assert.equal(positionedStyles.position, "absolute")
-  assert.equal(positionedStyles.top, "4px") // inset-top overrides inset
+  assert.equal(positionedStyles.top, "320px") // inset-top overrides inset
   assert.equal(positionedStyles.right, "0px")
   assert.equal(positionedStyles.bottom, "0px")
   assert.equal(positionedStyles.left, "0px")
   assert.equal(positionedStyles.zIndex, "30")
   assert.equal(positionedStyles.overflow, "hidden")
   assert.equal(positionedStyles.cursor, "pointer")
-  // width-viewport 0.5 and max-height-viewport 0.65 emit 50dvw/65dvh.
-  assert.equal(positionedStyles.width, `${0.5 * 1280}px`)
-  assert.equal(positionedStyles.maxHeight, `${0.65 * 720}px`)
+  // width-viewport 0.5 and max-height-viewport 0.65 emit 50dvw/65dvh,
+  // resolved against whatever viewport the shared session created.
+  const viewport = await page.evaluate(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }))
+  assert.equal(positionedStyles.width, `${0.5 * viewport.width}px`)
+  assert.equal(positionedStyles.maxHeight, `${0.65 * viewport.height}px`)
 
   // `shadow` and the state channels land as --lui-* custom properties so
   // the zero-specificity state rules in lui.css can compose them.
   const interactive = page.locator(`#lui-node-${await page.evaluate(() => window.probe.interactive)}`)
+  // Read the emitted channel values from the inline style: getComputedStyle
+  // resolves var() references in custom properties, which hides the token
+  // the renderer actually wrote.
   assert.deepEqual(await interactive.evaluate((el) => {
-    const style = getComputedStyle(el)
+    const style = el.style
     return {
       shadow: style.getPropertyValue("--lui-shadow").trim(),
       hoverBg: style.getPropertyValue("--lui-hover-bg").trim(),
@@ -97,8 +105,6 @@ test("typed appearance props land as styles and state channels", async () => {
       selectedShadow: style.getPropertyValue("--lui-selected-shadow").trim(),
       selectedHoverShadow: style.getPropertyValue("--lui-selected-hover-shadow").trim(),
       disabledOpacity: style.getPropertyValue("--lui-disabled-opacity").trim(),
-      resolvedBoxShadow: style.boxShadow,
-      resolvedOpacity: style.opacity,
     }
   }), {
     shadow: "0 1px 3px rgba(0,0,0,0.12)",
@@ -113,23 +119,26 @@ test("typed appearance props land as styles and state channels", async () => {
     selectedShadow: "inset 0 0 0 1px var(--color-accent)",
     selectedHoverShadow: "inset 0 0 0 2px var(--color-accent)",
     disabledOpacity: "0.5",
-    // Not selected and not disabled — base channel paints `shadow`.
-    resolvedBoxShadow: "rgba(0, 0, 0, 0.12) 0px 1px 3px",
-    resolvedOpacity: "1",
   })
+
+  // Not selected and not disabled — the base channel paints `shadow`.
+  // Chromium serializes an explicit spread radius, so accept either form.
+  assert.match(
+    await interactive.evaluate((el) => getComputedStyle(el).boxShadow),
+    /^rgba\(0, 0, 0, 0\.12\) 0px 1px 3px( 0px)?$/)
+  assert.equal(await interactive.evaluate((el) => getComputedStyle(el).opacity), "1")
 
   // Hover paints the hover channels through the lui.css state rules.
   await interactive.hover()
-  assert.deepEqual(await interactive.evaluate((el) => {
+  const hoverStyle = await interactive.evaluate((el) => {
     const style = getComputedStyle(el)
     return {
       background: style.backgroundColor,
       shadow: style.boxShadow,
       opacity: style.opacity,
     }
-  }), {
-    background: "oklch(0.97 0 0)", // --color-accent, resolved through var()
-    shadow: "rgba(0, 0, 0, 0.2) 0px 2px 4px",
-    opacity: "0.9",
   })
+  assert.equal(hoverStyle.background, "oklch(0.97 0 0)") // --color-accent, resolved through var()
+  assert.match(hoverStyle.shadow, /^rgba\(0, 0, 0, 0\.2\) 0px 2px 4px( 0px)?$/)
+  assert.equal(hoverStyle.opacity, "0.9")
 })
