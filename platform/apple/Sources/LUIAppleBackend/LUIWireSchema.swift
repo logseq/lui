@@ -103,6 +103,13 @@ enum LUIProperty: String, Decodable, Hashable {
     case padding = "padding"
     case paddingHorizontal = "padding-horizontal"
     case paddingVertical = "padding-vertical"
+    case margin = "margin"
+    case marginHorizontal = "margin-horizontal"
+    case marginVertical = "margin-vertical"
+    case marginTop = "margin-top"
+    case marginRight = "margin-right"
+    case marginBottom = "margin-bottom"
+    case marginLeft = "margin-left"
     case background = "background"
     case foreground = "foreground"
     case borderColor = "border-color"
@@ -253,7 +260,7 @@ enum LUISchemaMatrix {
         .timelineItem: [.title, .description, .meta, .indicator, .icon, .variant, .connector, .selected, .pressEnabled, .pointerEnabled],
         .inputGroup: [.accessibilityLabel, .width, .height, .minWidth, .grow, .pointerEnabled],
         .inputGroupActions: [.gap, .pointerEnabled],
-        .toast: [.duration, .accessibilityLabel, .styleClass, .dataAttrs, .pointerEnabled, .padding, .paddingHorizontal, .paddingVertical],
+        .toast: [.duration, .accessibilityLabel, .styleClass, .dataAttrs, .pointerEnabled, .padding, .paddingHorizontal, .paddingVertical, .margin, .marginHorizontal, .marginVertical, .marginTop, .marginRight, .marginBottom, .marginLeft],
         .toolbar: [.orientation, .accessibilityLabel, .gap, .styleClass, .dataAttrs, .placement, .pointerEnabled],
         .bottomTabs: [.accessibilityLabel, .styleClass, .dataAttrs, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight, .pointerEnabled],
         .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled, .pointerEnabled],

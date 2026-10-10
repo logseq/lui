@@ -664,6 +664,20 @@ let rec apply_property renderer node kind dom_node property value =
       set_style dom_node "padding-inline" (string_of_int padding ^ "px")
   | PaddingVertical, IntValue padding ->
       set_style dom_node "padding-block" (string_of_int padding ^ "px")
+  | MarginValue, IntValue margin ->
+      set_style dom_node "margin" (string_of_int margin ^ "px")
+  | MarginHorizontal, IntValue margin ->
+      set_style dom_node "margin-inline" (string_of_int margin ^ "px")
+  | MarginVertical, IntValue margin ->
+      set_style dom_node "margin-block" (string_of_int margin ^ "px")
+  | MarginTop, IntValue margin ->
+      set_style dom_node "margin-top" (string_of_int margin ^ "px")
+  | MarginRight, IntValue margin ->
+      set_style dom_node "margin-right" (string_of_int margin ^ "px")
+  | MarginBottom, IntValue margin ->
+      set_style dom_node "margin-bottom" (string_of_int margin ^ "px")
+  | MarginLeft, IntValue margin ->
+      set_style dom_node "margin-left" (string_of_int margin ^ "px")
   | BackgroundValue, StringValue background ->
       set_style dom_node "background" (Util.web_color_value background)
   | ForegroundValue, StringValue foreground ->
@@ -1022,6 +1036,13 @@ let remove_property renderer node kind dom_node property =
            set_style dom_node "--lui-content-padding" ""
        | PaddingHorizontal -> set_style dom_node "padding-inline" ""
        | PaddingVertical -> set_style dom_node "padding-block" ""
+       | MarginValue -> set_style dom_node "margin" ""
+       | MarginHorizontal -> set_style dom_node "margin-inline" ""
+       | MarginVertical -> set_style dom_node "margin-block" ""
+       | MarginTop -> set_style dom_node "margin-top" ""
+       | MarginRight -> set_style dom_node "margin-right" ""
+       | MarginBottom -> set_style dom_node "margin-bottom" ""
+       | MarginLeft -> set_style dom_node "margin-left" ""
        | BackgroundValue -> set_style dom_node "background" ""
        | ForegroundValue -> set_style dom_node "color" ""
        | BorderColorValue -> set_style dom_node "border-color" ""

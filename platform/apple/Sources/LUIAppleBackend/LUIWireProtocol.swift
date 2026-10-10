@@ -277,7 +277,9 @@ enum LUIWireValue: Decodable, Equatable {
         case .alignment:
             guard let value = stringValue else { return false }
             return Self.overlayAlignments.contains(value)
-        case .gap, .padding:
+        case .gap, .padding,
+             .margin, .marginHorizontal, .marginVertical,
+             .marginTop, .marginRight, .marginBottom, .marginLeft:
             return intValue != nil
         case .alt:
             return stringValue != nil
@@ -944,7 +946,9 @@ struct LUIRetainedTree {
                 isHorizontalGroup(kind)
         case .grow: kind != .avatar && kind != .tooltip && !isModalSurface(kind)
         case .columns: kind == .grid
-        case .padding, .paddingHorizontal, .paddingVertical:
+        case .padding, .paddingHorizontal, .paddingVertical,
+             .margin, .marginHorizontal, .marginVertical,
+             .marginTop, .marginRight, .marginBottom, .marginLeft:
             kind != .avatar && kind != .tooltip
         case .width, .height: kind != .tooltip
         case .styleClass, .dataAttrs:

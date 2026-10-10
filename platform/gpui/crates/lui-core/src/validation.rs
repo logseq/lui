@@ -88,7 +88,18 @@ pub(crate) fn property(kind: K, property: P, value: Option<&Value>) -> Result<()
                 | P::Visible
         ),
         Value::Int(number) => match property {
-            P::PaddingValue | P::PickerRequest | P::PickerCompletion | P::ZIndex => true,
+            // margins may be negative — collapsing adjacent space is legitimate
+            P::PaddingValue
+            | P::PickerRequest
+            | P::PickerCompletion
+            | P::ZIndex
+            | P::MarginValue
+            | P::MarginHorizontal
+            | P::MarginVertical
+            | P::MarginTop
+            | P::MarginRight
+            | P::MarginBottom
+            | P::MarginLeft => true,
             P::HeadingLevel => (1..=6).contains(number),
             P::FontWeight => (1..=1000).contains(number),
             P::TooltipDelay | P::DurationValue => (0..=i32::MAX as i64).contains(number),

@@ -283,6 +283,13 @@ val apply_universal :
   padding:int option ->
   padding_horizontal:int option ->
   padding_vertical:int option ->
+  margin:int option ->
+  margin_horizontal:int option ->
+  margin_vertical:int option ->
+  margin_top:int option ->
+  margin_right:int option ->
+  margin_bottom:int option ->
+  margin_left:int option ->
   background:string option ->
   foreground:string option ->
   border_color:string option ->
@@ -316,6 +323,13 @@ val row :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -352,6 +366,13 @@ val column :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -391,6 +412,13 @@ val grid :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -427,6 +455,13 @@ val stack :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -471,6 +506,13 @@ val edge_inset :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -515,6 +557,13 @@ val overlay :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -560,6 +609,13 @@ val view_that_fits :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -597,6 +653,13 @@ val panel :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -633,6 +696,13 @@ val card :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -669,6 +739,13 @@ val alert :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -708,6 +785,13 @@ val bubble :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -747,6 +831,13 @@ val box :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -783,6 +874,13 @@ val scroll :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -820,6 +918,13 @@ val list :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -866,6 +971,13 @@ val virtual_list :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -902,6 +1014,13 @@ val tabs :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -936,6 +1055,13 @@ val bottom_tabs :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -970,6 +1096,13 @@ val bottom_tab :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1014,6 +1147,13 @@ val button_group :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1047,6 +1187,13 @@ val toggle_group :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1080,6 +1227,13 @@ val breadcrumb :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1113,6 +1267,13 @@ val pagination :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1146,6 +1307,13 @@ val table :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1179,6 +1347,13 @@ val table_row :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1213,6 +1388,13 @@ val table_cell :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1255,6 +1437,13 @@ val tree :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1300,6 +1489,13 @@ val resizable :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1334,6 +1530,13 @@ val split :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1373,6 +1576,13 @@ val drawer :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1411,6 +1621,13 @@ val status_bar :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1446,6 +1663,13 @@ val spacer :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1479,6 +1703,13 @@ val spinner :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1512,6 +1743,13 @@ val icon :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1553,6 +1791,13 @@ val text :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1602,6 +1847,13 @@ val heading :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1646,6 +1898,13 @@ val paragraph :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1689,6 +1948,13 @@ val label :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1732,6 +1998,13 @@ val kbd :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1766,6 +2039,13 @@ val button :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1823,6 +2103,13 @@ val toggle_button :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1875,6 +2162,13 @@ val checkbox :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1917,6 +2211,13 @@ val switch_ :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -1959,6 +2260,13 @@ val toggle :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2001,6 +2309,13 @@ val radio_group :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2034,6 +2349,13 @@ val radio :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2082,6 +2404,13 @@ val slider :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2122,6 +2451,13 @@ val number_stepper :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2167,6 +2503,13 @@ val progress :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2201,6 +2544,13 @@ val divider :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2235,6 +2585,13 @@ val separator :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2271,6 +2628,13 @@ val br :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2304,6 +2668,13 @@ val text_field :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2348,6 +2719,13 @@ val secure_field :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2392,6 +2770,13 @@ val input :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2437,6 +2822,13 @@ val search_field :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2481,6 +2873,13 @@ val textarea :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2525,6 +2924,13 @@ val input_group :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2558,6 +2964,13 @@ val input_group_actions :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2591,6 +3004,13 @@ val select :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2638,6 +3058,13 @@ val combobox :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2691,6 +3118,13 @@ val dropdown_menu :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2733,6 +3167,13 @@ val context_menu :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2806,6 +3247,13 @@ val dialog :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2844,6 +3292,13 @@ val sheet :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2884,6 +3339,13 @@ val tooltip :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2922,6 +3384,13 @@ val toast :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -2969,6 +3438,13 @@ val file_picker :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -3043,6 +3519,13 @@ val popover :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -3088,6 +3571,13 @@ val toolbar :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -3123,6 +3613,13 @@ val accordion :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -3163,6 +3660,13 @@ val menu_item :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -3224,6 +3728,13 @@ val list_item :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -3309,6 +3820,13 @@ val avatar :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -3349,6 +3867,13 @@ val image :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -3393,6 +3918,13 @@ val media_surface :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -3428,6 +3960,13 @@ val link :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -3474,6 +4013,13 @@ val file_image :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -3523,6 +4069,13 @@ val stepper :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -3558,6 +4111,13 @@ val step :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -3592,6 +4152,13 @@ val timeline :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->
@@ -3625,6 +4192,13 @@ val timeline_item :
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
   ?background:string ->
   ?foreground:string ->
   ?border_color:string ->

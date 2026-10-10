@@ -400,6 +400,19 @@ let padding_horizontal context node padding =
   int_property context node PaddingHorizontal padding
 let padding_vertical context node padding =
   int_property context node PaddingVertical padding
+let margin context node margin = int_property context node MarginValue margin
+let margin_horizontal context node margin =
+  int_property context node MarginHorizontal margin
+let margin_vertical context node margin =
+  int_property context node MarginVertical margin
+let margin_top context node margin =
+  int_property context node MarginTop margin
+let margin_right context node margin =
+  int_property context node MarginRight margin
+let margin_bottom context node margin =
+  int_property context node MarginBottom margin
+let margin_left context node margin =
+  int_property context node MarginLeft margin
 let background context node color = string_property context node BackgroundValue color
 let foreground context node color = string_property context node ForegroundValue color
 let border_color context node color = string_property context node BorderColorValue color

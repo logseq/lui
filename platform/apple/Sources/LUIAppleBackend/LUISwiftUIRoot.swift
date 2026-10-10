@@ -7449,6 +7449,38 @@ private struct LUISurfaceModifier: ViewModifier {
                 cornerRadius: radius,
                 clipsContent: clipsContent && !clipsInsideGlass
             ))
+            // Margin is space outside the visual box: outer padding applied
+            // after background/border/shadow/clip. leading/trailing stand in
+            // for left/right — identical in LTR and mirrored in RTL.
+            .padding(.top, marginTop)
+            .padding(.leading, marginLeading)
+            .padding(.bottom, marginBottom)
+            .padding(.trailing, marginTrailing)
+    }
+
+    /// CSS-style margin resolution: side ?? axis ?? shorthand ?? 0.
+    private var marginTop: CGFloat {
+        let base = model.property(.margin)?.intValue ?? 0
+        let vertical = model.property(.marginVertical)?.intValue ?? base
+        return CGFloat(model.property(.marginTop)?.intValue ?? vertical)
+    }
+
+    private var marginBottom: CGFloat {
+        let base = model.property(.margin)?.intValue ?? 0
+        let vertical = model.property(.marginVertical)?.intValue ?? base
+        return CGFloat(model.property(.marginBottom)?.intValue ?? vertical)
+    }
+
+    private var marginLeading: CGFloat {
+        let base = model.property(.margin)?.intValue ?? 0
+        let horizontal = model.property(.marginHorizontal)?.intValue ?? base
+        return CGFloat(model.property(.marginLeft)?.intValue ?? horizontal)
+    }
+
+    private var marginTrailing: CGFloat {
+        let base = model.property(.margin)?.intValue ?? 0
+        let horizontal = model.property(.marginHorizontal)?.intValue ?? base
+        return CGFloat(model.property(.marginRight)?.intValue ?? horizontal)
     }
 
     private func foregroundColor(_ name: String?) -> Color? {
